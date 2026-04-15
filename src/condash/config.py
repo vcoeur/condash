@@ -21,7 +21,6 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 DEFAULT_PRIMARY: list[str] = []
 DEFAULT_SECONDARY: list[str] = []
 
@@ -51,9 +50,7 @@ def _format_toml(cfg: CondashConfig) -> str:
         f'conception_path = "{_toml_escape(str(cfg.conception_path))}"',
         "",
         "[repositories]",
-        "primary = ["
-        + ", ".join(f'"{_toml_escape(r)}"' for r in cfg.repositories_primary)
-        + "]",
+        "primary = [" + ", ".join(f'"{_toml_escape(r)}"' for r in cfg.repositories_primary) + "]",
         "secondary = ["
         + ", ".join(f'"{_toml_escape(r)}"' for r in cfg.repositories_secondary)
         + "]",

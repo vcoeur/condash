@@ -7,9 +7,7 @@
 ## Install
 
 ```bash
-uv tool install condash        # preferred
-# or
-pipx install condash
+pip install condash
 ```
 
 ### System prerequisite (Linux)
@@ -21,6 +19,16 @@ sudo apt install libwebkit2gtk-4.1-0   # or libwebkit2gtk-4.0-37 on older releas
 ```
 
 `pip` cannot install this — it has to come from the distro package manager.
+
+### Development from a source checkout
+
+```bash
+git clone https://github.com/vcoeur/condash.git
+cd condash
+uv sync --all-extras
+uv run condash --version
+uv run condash               # launches the native window, reading ~/.config/condash/config.toml
+```
 
 ## First launch
 

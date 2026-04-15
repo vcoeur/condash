@@ -87,6 +87,7 @@ def h(text):
 # Parser
 # ---------------------------------------------------------------------------
 
+
 def _parse_sections(lines):
     """Extract the ## Steps section with its checkboxes."""
     sections = []
@@ -105,22 +106,23 @@ def _parse_sections(lines):
         if mc and cur_sec is not None:
             char = mc.group(2)
             status = (
-                "done" if char.lower() == "x"
-                else ("progress" if char == "~"
-                      else ("abandoned" if char == "-" else "open"))
+                "done"
+                if char.lower() == "x"
+                else ("progress" if char == "~" else ("abandoned" if char == "-" else "open"))
             )
-            cur_sec["items"].append({
-                "text": mc.group(3).strip(),
-                "done": status in ("done", "abandoned"),
-                "status": status,
-                "line": i,
-            })
+            cur_sec["items"].append(
+                {
+                    "text": mc.group(3).strip(),
+                    "done": status in ("done", "abandoned"),
+                    "status": status,
+                    "line": i,
+                }
+            )
 
     if cur_sec:
         sections.append(cur_sec)
 
-    return [s for s in sections
-            if s["items"] or s["heading"].lower() == "steps"]
+    return [s for s in sections if s["items"] or s["heading"].lower() == "steps"]
 
 
 def _parse_deliverables(lines):
@@ -139,11 +141,13 @@ def _parse_deliverables(lines):
         if in_section:
             m = DELIVERABLE_RE.match(line.strip())
             if m:
-                deliverables.append({
-                    "label": m.group(1).strip(),
-                    "path": m.group(2).strip(),
-                    "desc": (m.group(3) or "").strip(),
-                })
+                deliverables.append(
+                    {
+                        "label": m.group(1).strip(),
+                        "path": m.group(2).strip(),
+                        "desc": (m.group(3) or "").strip(),
+                    }
+                )
 
     return deliverables
 
@@ -159,10 +163,12 @@ def _list_notes(item_dir):
             continue
         if f.suffix.lower() != ".md":
             continue
-        out.append({
-            "name": f.name,
-            "path": str(f.relative_to(BASE_DIR)),
-        })
+        out.append(
+            {
+                "name": f.name,
+                "path": str(f.relative_to(BASE_DIR)),
+            }
+        )
     return out
 
 
@@ -191,16 +197,13 @@ def parse_readme(path, kind):
     date = meta.get("date", "")
     apps_raw = meta.get("apps", meta.get("composant", ""))
     severity = meta.get("sévérité", meta.get("severity", None))
-    apps = [
-        a.strip().strip("`").split("(")[0].strip()
-        for a in apps_raw.split(",") if a.strip()
-    ]
+    apps = [a.strip().strip("`").split("(")[0].strip() for a in apps_raw.split(",") if a.strip()]
 
     summary = ""
     if first_section_idx is not None:
         para = []
         in_code = False
-        for line in lines[first_section_idx + 1:]:
+        for line in lines[first_section_idx + 1 :]:
             if line.startswith("```"):
                 in_code = not in_code
                 continue
@@ -224,7 +227,7 @@ def parse_readme(path, kind):
     deliverables = _parse_deliverables(lines)
     item_dir = str(path.parent.relative_to(BASE_DIR))
     for d in deliverables:
-        d["full_path"] = f'{item_dir}/{d["path"]}'
+        d["full_path"] = f"{item_dir}/{d['path']}"
 
     notes = _list_notes(path.parent)
 
@@ -277,10 +280,13 @@ def collect_items():
 # Card rendering
 # ---------------------------------------------------------------------------
 
+
 def _render_step(item, file_path):
     status = item["status"]
     js_file = json.dumps(file_path).replace("'", "\\'").replace('"', "'")
-    dot_char = {"done": "\u2713", "progress": "~", "abandoned": "\u2014", "open": ""}.get(status, "")
+    dot_char = {"done": "\u2713", "progress": "~", "abandoned": "\u2014", "open": ""}.get(
+        status, ""
+    )
     return (
         f'<div class="step {status}" draggable="true" '
         f'data-file="{h(file_path)}" data-line="{item["line"]}" '
@@ -289,13 +295,13 @@ def _render_step(item, file_path):
         f'<span class="drag-handle">\u283f</span>'
         f'<span class="status-dot status-{status}" '
         f'onmousedown="event.stopPropagation();event.preventDefault()" '
-        f'onclick="var s=this.closest(\'.step\');cycle({js_file},+s.dataset.line,s)">{dot_char}</span>'
+        f"onclick=\"var s=this.closest('.step');cycle({js_file},+s.dataset.line,s)\">{dot_char}</span>"
         f'<span class="text" onmousedown="event.stopPropagation()" '
         f'onclick="event.stopPropagation();startEditText(this)">{h(item["text"])}</span>'
         f'<button class="remove-btn" '
         f'onmousedown="event.stopPropagation();event.preventDefault()" '
-        f'onclick="var s=this.closest(\'.step\');removeStep({js_file},+s.dataset.line,this)">\u00d7</button>'
-        f'</div>'
+        f"onclick=\"var s=this.closest('.step');removeStep({js_file},+s.dataset.line,this)\">\u00d7</button>"
+        f"</div>"
     )
 
 
@@ -311,17 +317,17 @@ def _render_group(heading, items, file_path):
     add_html = (
         f'<div class="add-row">'
         f'<input type="text" placeholder="Add task\u2026" '
-        f'onkeydown="if(event.key===\'Enter\')addStep({js_file},{js_heading},this)">'
+        f"onkeydown=\"if(event.key==='Enter')addStep({js_file},{js_heading},this)\">"
         f'<button onclick="addStep({js_file},{js_heading},this.previousElementSibling)">+</button>'
-        f'</div>'
+        f"</div>"
     )
     return (
         f'<div class="sec-group">'
         f'<div class="sec-heading {open_cls}" onclick="toggleSection(this)">'
         f'{h(heading)} <span class="sec-count">({done}/{total})</span></div>'
         f'<div class="sec-items" style="display:{display}">'
-        f'{items_html}'
-        f'{add_html}</div></div>'
+        f"{items_html}"
+        f"{add_html}</div></div>"
     )
 
 
@@ -331,7 +337,7 @@ def _render_readme_link(item):
     return (
         f'<div class="readme-preview" '
         f'onclick="openNotePreview({js_path},{js_title})">'
-        f'\u2261 README</div>'
+        f"\u2261 README</div>"
     )
 
 
@@ -344,7 +350,7 @@ def _render_notes(notes):
         label = n["name"][:-3] if n["name"].endswith(".md") else n["name"]
         items_html += (
             f'<div class="note-item" onclick="openNotePreview({js_path},'
-            f'\'{h(n["name"])}\')">{h(label)}</div>'
+            f"'{h(n['name'])}')\">{h(label)}</div>"
         )
     count = len(notes)
     return (
@@ -352,7 +358,7 @@ def _render_notes(notes):
         f'<div class="notes-heading" onclick="toggleNotes(this)">'
         f'Notes <span class="notes-count">({count})</span></div>'
         f'<div class="notes-list" style="display:none">{items_html}</div>'
-        f'</div>'
+        f"</div>"
     )
 
 
@@ -361,18 +367,16 @@ def _render_deliverables(deliverables):
         return ""
     links = []
     for d in deliverables:
-        href = f'/download/{d["full_path"]}'
+        href = f"/download/{d['full_path']}"
         title = f' title="{h(d["desc"])}"' if d["desc"] else ""
         desc = f' <span class="dlv-desc">— {h(d["desc"])}</span>' if d["desc"] else ""
         links.append(
             f'<a class="dlv-link" href="{h(href)}" target="_blank"{title}>'
-            f'\u2913 {h(d["label"])}</a>{desc}'
+            f"\u2913 {h(d['label'])}</a>{desc}"
         )
     items_html = "".join(f'<div class="dlv-item">{lnk}</div>' for lnk in links)
     return (
-        f'<div class="deliverables">'
-        f'<div class="dlv-heading">Deliverables</div>'
-        f'{items_html}</div>'
+        f'<div class="deliverables"><div class="dlv-heading">Deliverables</div>{items_html}</div>'
     )
 
 
@@ -382,7 +386,7 @@ def _render_card(item):
     pri = item["priority"]
     pri_options = "".join(
         f'<span class="pri-option pri-{p}" '
-        f'onclick="event.stopPropagation();pickPriority({js_file},\'{p}\',this.closest(\'.pri-wrap\'))">{p}</span>'
+        f"onclick=\"event.stopPropagation();pickPriority({js_file},'{p}',this.closest('.pri-wrap'))\">{p}</span>"
         for p in PRIORITIES
     )
     priority_select = (
@@ -399,28 +403,26 @@ def _render_card(item):
             f' <span class="progress-text">{item["done"]}/{item["total"]} '
             f'<span class="progress-bar" style="background:var(--progress-track)">'
             f'<span class="progress-fill" style="width:{pct}%;background:var({fill_var})"></span>'
-            f'</span></span>'
+            f"</span></span>"
         )
 
     apps_html = " ".join(f'<span class="pill">{h(a)}</span>' for a in item["apps"])
     apps_div = f'<div class="card-apps">{apps_html}</div>' if apps_html else ""
 
     sections_html = "\n".join(
-        _render_group(s["heading"], s["items"], item["path"])
-        for s in item["sections"]
+        _render_group(s["heading"], s["items"], item["path"]) for s in item["sections"]
     )
 
     deliverables_html = _render_deliverables(item.get("deliverables", []))
     readme_link_html = _render_readme_link(item)
     notes_html = _render_notes(item.get("notes", []))
 
-    summary_html = (
-        f'<p class="summary">{h(item["summary"])}</p>' if item["summary"] else ""
-    )
+    summary_html = f'<p class="summary">{h(item["summary"])}</p>' if item["summary"] else ""
 
     pdf_badge = (
         '<span class="dlv-icon" title="Has deliverables">PDF</span>'
-        if item.get("deliverables") else ""
+        if item.get("deliverables")
+        else ""
     )
 
     return (
@@ -429,22 +431,22 @@ def _render_card(item):
         f'<div class="card-header-left" onclick="toggleCard(this.closest(\'.card\'))">'
         f'<span class="kind-prefix kind-{kind}">{kind}</span>'
         f'<span class="card-title">{h(item["title"])}</span>'
-        f'{pdf_badge}</div>'
+        f"{pdf_badge}</div>"
         f'<div class="card-header-right">'
-        f'{progress} {priority_select} '
+        f"{progress} {priority_select} "
         f'<span class="date">{h(item["date"])}</span></div></div>'
         f'<div class="card-body">'
         f'<div class="card-left">'
-        f'{apps_div}'
-        f'{summary_html}'
-        f'{readme_link_html}'
-        f'{notes_html}'
-        f'{deliverables_html}'
-        f'</div>'
+        f"{apps_div}"
+        f"{summary_html}"
+        f"{readme_link_html}"
+        f"{notes_html}"
+        f"{deliverables_html}"
+        f"</div>"
         f'<div class="card-right">'
         f'<div class="sections">{sections_html}</div>'
-        f'</div></div>'
-        f'</div>'
+        f"</div></div>"
+        f"</div>"
     )
 
 
@@ -452,11 +454,15 @@ def _git_status(path):
     try:
         branch = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         ).stdout.strip()
         status_out = subprocess.run(
             ["git", "-C", str(path), "status", "--porcelain"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         ).stdout
     except Exception:
         return "?", False, 0, []
@@ -476,7 +482,9 @@ def _git_worktrees(repo_path):
     try:
         out = subprocess.run(
             ["git", "-C", str(repo_path), "worktree", "list", "--porcelain"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         ).stdout
     except Exception:
         return []
@@ -487,22 +495,28 @@ def _git_worktrees(repo_path):
         if not line:
             if current.get("path") and current["path"] != main:
                 wt_path = Path(current["path"])
-                key = wt_path.parent.name if wt_path.parent.parent.name == "worktrees" else wt_path.name
+                key = (
+                    wt_path.parent.name
+                    if wt_path.parent.parent.name == "worktrees"
+                    else wt_path.name
+                )
                 branch, dirty, changed, changed_files = _git_status(wt_path)
-                worktrees.append({
-                    "key": key,
-                    "path": current["path"],
-                    "branch": branch or current.get("branch", ""),
-                    "dirty": dirty,
-                    "changed": changed,
-                    "changed_files": changed_files,
-                })
+                worktrees.append(
+                    {
+                        "key": key,
+                        "path": current["path"],
+                        "branch": branch or current.get("branch", ""),
+                        "dirty": dirty,
+                        "changed": changed,
+                        "changed_files": changed_files,
+                    }
+                )
             current = {}
             continue
         if line.startswith("worktree "):
-            current["path"] = line[len("worktree "):]
+            current["path"] = line[len("worktree ") :]
         elif line.startswith("branch "):
-            current["branch"] = line[len("branch "):].replace("refs/heads/", "")
+            current["branch"] = line[len("branch ") :].replace("refs/heads/", "")
     return worktrees
 
 
@@ -545,11 +559,7 @@ def _collect_git_repos():
             }
 
     structure = _load_repository_structure()
-    submodule_map = {
-        name: subs
-        for _, entries in structure
-        for name, subs in entries
-    }
+    submodule_map = {name: subs for _, entries in structure for name, subs in entries}
 
     def _attach_counts(container):
         changed_files = container.get("changed_files") or []
@@ -587,11 +597,11 @@ _ICON_SVGS = {
         '<svg viewBox="0 0 24 24" width="15" height="15" '
         'fill="currentColor" aria-hidden="true">'
         '<path d="M0 0v24h24V0zm3.723 3.111h5v1.834h-1.39v6.277h1.39v1.834h-5'
-        'v-1.834h1.444V4.945H3.723zm11.055 0H17v6.5c0 .612-.055 1.111-.222 '
-        '1.556-.167.444-.39.777-.723 1.11-.277.279-.666.557-1.11.668a3.933 '
-        '3.933 0 0 1-1.445.278c-.778 0-1.444-.167-1.944-.445a4.81 4.81 0 0 '
-        '1-1.279-1.056l1.39-1.555c.277.334.555.555.833.722.277.167.611.278'
-        '.945.278.389 0 .721-.111 1-.389.221-.278.333-.667.333-1.278zM2.222 '
+        "v-1.834h1.444V4.945H3.723zm11.055 0H17v6.5c0 .612-.055 1.111-.222 "
+        "1.556-.167.444-.39.777-.723 1.11-.277.279-.666.557-1.11.668a3.933 "
+        "3.933 0 0 1-1.445.278c-.778 0-1.444-.167-1.944-.445a4.81 4.81 0 0 "
+        "1-1.279-1.056l1.39-1.555c.277.334.555.555.833.722.277.167.611.278"
+        ".945.278.389 0 .721-.111 1-.389.221-.278.333-.667.333-1.278zM2.222 "
         '19.5h9V21h-9z"/></svg>'
     ),
     "code": (
@@ -621,8 +631,8 @@ def _render_git_actions(path):
     items = "".join(
         f'<button class="git-action-btn git-action-{tool}" title="{title}" '
         f'aria-label="{title}" '
-        f'onclick="openPath(event,{js_path},\'{tool}\')">'
-        f'{_ICON_SVGS[tool]}</button>'
+        f"onclick=\"openPath(event,{js_path},'{tool}')\">"
+        f"{_ICON_SVGS[tool]}</button>"
         for tool, title in buttons
     )
     return f'<div class="git-actions">{items}</div>'
@@ -639,11 +649,12 @@ def _render_submodule_rows(submodules, worktree=False):
         dirty_cls = " git-dirty" if count else ""
         badge = (
             f'<span class="git-changes">{count} changed</span>'
-            if count else '<span class="git-clean">\u2713</span>'
+            if count
+            else '<span class="git-clean">\u2713</span>'
         )
         rows.append(
             f'<div class="git-row git-submodule{extra}{dirty_cls}" title="{h(sub["path"])}">'
-            f'{sub_actions}'
+            f"{sub_actions}"
             f'<span class="git-name">\u2514 {h(sub["name"])}</span>'
             f'<span class="git-branch"></span>'
             f'<span class="git-status">{badge}</span>'
@@ -667,7 +678,8 @@ def _render_git_repos(groups):
             dirty_cls = " git-dirty" if r["dirty"] else ""
             badge = (
                 f'<span class="git-changes">{r["changed"]} changed</span>'
-                if r["dirty"] else '<span class="git-clean">\u2713</span>'
+                if r["dirty"]
+                else '<span class="git-clean">\u2713</span>'
             )
             actions = _render_git_actions(r["path"])
             has_subs = bool(r.get("submodules"))
@@ -676,7 +688,7 @@ def _render_git_repos(groups):
             chev = chevron if has_subs else ""
             out.append(
                 f'<div class="git-row{dirty_cls}{toggle_cls}"{toggle_attr}>'
-                f'{actions}'
+                f"{actions}"
                 f'<span class="git-name">{chev}{h(r["name"])}</span>'
                 f'<span class="git-branch">{h(r["branch"])}</span>'
                 f'<span class="git-status">{badge}</span>'
@@ -689,7 +701,8 @@ def _render_git_repos(groups):
                 wt_dirty_cls = " git-dirty" if wt["dirty"] else ""
                 wt_badge = (
                     f'<span class="git-changes">{wt["changed"]} changed</span>'
-                    if wt["dirty"] else '<span class="git-clean">\u2713</span>'
+                    if wt["dirty"]
+                    else '<span class="git-clean">\u2713</span>'
                 )
                 wt_actions = _render_git_actions(wt["path"])
                 wt_has_subs = bool(wt.get("submodules"))
@@ -699,15 +712,13 @@ def _render_git_repos(groups):
                 out.append(
                     f'<div class="git-row git-worktree{wt_dirty_cls}{wt_toggle_cls}" '
                     f'title="{h(wt["path"])}"{wt_toggle_attr}>'
-                    f'{wt_actions}'
+                    f"{wt_actions}"
                     f'<span class="git-name">{wt_chev}\u21b3 {h(wt["key"])}</span>'
                     f'<span class="git-branch">{h(wt["branch"])}</span>'
                     f'<span class="git-status">{wt_badge}</span>'
                     f'<span class="git-spacer"></span></div>'
                 )
-                wt_sub_html = _render_submodule_rows(
-                    wt.get("submodules") or [], worktree=True
-                )
+                wt_sub_html = _render_submodule_rows(wt.get("submodules") or [], worktree=True)
                 if wt_sub_html:
                     out.append(wt_sub_html)
             out.append("</div>")  # /git-repo
@@ -752,12 +763,13 @@ def render_page(items):
     template = _template_path().read_text(encoding="utf-8")
     template = template.replace("{{CARDS}}", cards)
     template = template.replace("{{GIT_REPOS}}", git_html)
-    return (template
-            .replace("{{TIMESTAMP}}", now)
-            .replace("{{COUNT_CURRENT}}", str(count_current))
-            .replace("{{COUNT_NEXT}}", str(count_next))
-            .replace("{{COUNT_BACKLOG}}", str(count_backlog))
-            .replace("{{COUNT_DONE}}", str(count_done)))
+    return (
+        template.replace("{{TIMESTAMP}}", now)
+        .replace("{{COUNT_CURRENT}}", str(count_current))
+        .replace("{{COUNT_NEXT}}", str(count_next))
+        .replace("{{COUNT_BACKLOG}}", str(count_backlog))
+        .replace("{{COUNT_DONE}}", str(count_done))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -808,11 +820,16 @@ _IMG_SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', re.IGNORECASE)
 def _rewrite_img_src(html, note_dir_rel):
     def sub(m):
         src = m.group(2)
-        if (src.startswith("http://") or src.startswith("https://")
-                or src.startswith("//") or src.startswith("/")
-                or src.startswith("data:")):
+        if (
+            src.startswith("http://")
+            or src.startswith("https://")
+            or src.startswith("//")
+            or src.startswith("/")
+            or src.startswith("data:")
+        ):
             return m.group(0)
         return f"{m.group(1)}/asset/{note_dir_rel}/{src}{m.group(3)}"
+
     return _IMG_SRC_RE.sub(sub, html)
 
 
@@ -825,7 +842,10 @@ def _render_note(full_path):
     try:
         out = subprocess.run(
             ["pandoc", "--from=gfm", "--to=html", "--no-highlight"],
-            input=text, capture_output=True, text=True, timeout=10,
+            input=text,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if out.returncode == 0 and out.stdout.strip():
             return _rewrite_img_src(out.stdout, note_dir_rel)
@@ -940,8 +960,7 @@ def _tidy():
                     new_path = month_dir / child.name
                     if not new_path.exists():
                         child.rename(new_path)
-                        moves.append((f"{folder}/{child.name}",
-                                      f"{folder}/{month}/{child.name}"))
+                        moves.append((f"{folder}/{child.name}", f"{folder}/{month}/{child.name}"))
 
             elif _MONTH_DIR_RE.match(child.name):
                 for sub in sorted(child.iterdir()):
@@ -955,8 +974,9 @@ def _tidy():
                         new_path = base / sub.name
                         if not new_path.exists():
                             sub.rename(new_path)
-                            moves.append((f"{folder}/{child.name}/{sub.name}",
-                                          f"{folder}/{sub.name}"))
+                            moves.append(
+                                (f"{folder}/{child.name}/{sub.name}", f"{folder}/{sub.name}")
+                            )
 
                 if child.exists() and not any(child.iterdir()):
                     child.rmdir()
@@ -976,14 +996,21 @@ def _compute_fingerprint(items):
             (s["heading"], tuple((it["text"], it["status"]) for it in s["items"]))
             for s in item["sections"]
         )
-        deliverables = tuple(
-            (d["label"], d["path"]) for d in item.get("deliverables", [])
-        )
+        deliverables = tuple((d["label"], d["path"]) for d in item.get("deliverables", []))
         notes = tuple(n["path"] for n in item.get("notes", []))
-        data.append((
-            item["slug"], item["title"], item["priority"], item["kind"],
-            tuple(item["apps"]), item["summary"], sections, deliverables, notes,
-        ))
+        data.append(
+            (
+                item["slug"],
+                item["title"],
+                item["priority"],
+                item["kind"],
+                tuple(item["apps"]),
+                item["summary"],
+                sections,
+                deliverables,
+                notes,
+            )
+        )
     return hashlib.md5(repr(data).encode()).hexdigest()[:16]
 
 
@@ -992,8 +1019,7 @@ def _tidy_needed(items):
         parts = item["path"].split("/")
         if len(parts) == 3 and item["priority"] == "done":
             return True
-        if (len(parts) == 4 and _MONTH_DIR_RE.match(parts[1])
-                and item["priority"] != "done"):
+        if len(parts) == 4 and _MONTH_DIR_RE.match(parts[1]) and item["priority"] != "done":
             return True
     return False
 
@@ -1017,11 +1043,15 @@ def _git_fingerprint():
             try:
                 head = subprocess.run(
                     ["git", "-C", str(child), "rev-parse", "HEAD"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 ).stdout.strip()
                 status = subprocess.run(
                     ["git", "-C", str(child), "status", "--porcelain"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 ).stdout
                 parts.append(f"{child.name}:{head}:{status}")
             except Exception:
@@ -1166,8 +1196,15 @@ def _validate_open_path(path_str):
 
 def _find_idea_launcher():
     import shutil
-    for name in ("idea.sh", "idea", "intellij-idea-ultimate",
-                 "intellij-idea-community", "idea-ultimate", "idea-community"):
+
+    for name in (
+        "idea.sh",
+        "idea",
+        "intellij-idea-ultimate",
+        "intellij-idea-community",
+        "idea-ultimate",
+        "idea-community",
+    ):
         resolved = shutil.which(name)
         if resolved:
             return resolved
@@ -1183,8 +1220,7 @@ def _find_idea_launcher():
     for root in toolbox_roots:
         if not root.exists():
             continue
-        matches = (list(root.glob("*/bin/idea.sh"))
-                   + list(root.glob("*/*/bin/idea.sh")))
+        matches = list(root.glob("*/bin/idea.sh")) + list(root.glob("*/*/bin/idea.sh"))
         if matches:
             return str(max(matches, key=lambda p: p.stat().st_mtime))
     return None
@@ -1196,14 +1232,16 @@ def _build_open_candidates(tool, path_str):
         cmds = []
         if launcher:
             cmds.append([launcher, path_str])
-        cmds.extend([
-            ["idea", path_str],
-            ["idea.sh", path_str],
-            ["idea-ultimate", path_str],
-            ["idea-community", path_str],
-            ["intellij-idea-ultimate", path_str],
-            ["intellij-idea-community", path_str],
-        ])
+        cmds.extend(
+            [
+                ["idea", path_str],
+                ["idea.sh", path_str],
+                ["idea-ultimate", path_str],
+                ["idea-community", path_str],
+                ["intellij-idea-ultimate", path_str],
+                ["intellij-idea-community", path_str],
+            ]
+        )
         return cmds
     return {
         "code": [
@@ -1245,8 +1283,7 @@ def _open_path(tool, path):
         except Exception as exc:
             print(f"[open] {tool}: {cmd[0]} failed: {exc}", file=sys.stderr)
             return False
-    print(f"[open] {tool}: no launcher found (last error: {last_err})",
-          file=sys.stderr)
+    print(f"[open] {tool}: no launcher found (last error: {last_err})", file=sys.stderr)
     return False
 
 

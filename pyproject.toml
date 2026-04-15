@@ -29,6 +29,7 @@ classifiers = [
 dependencies = [
     "nicegui>=2.0",
     "pywebview>=5.0",
+    "typer>=0.16",
 ]
 
 [project.optional-dependencies]
