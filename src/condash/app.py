@@ -10,14 +10,27 @@ from __future__ import annotations
 
 import os
 from importlib.resources import files as _package_files
+from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from nicegui import app as _ng_app
 from nicegui import ui
 
+from . import config as config_mod
 from . import legacy
-from .config import CondashConfig
+from .config import (
+    OPEN_WITH_SLOT_KEYS,
+    CondashConfig,
+    ConfigIncompleteError,
+    OpenWithSlot,
+)
+
+
+# Holds the live runtime config so the in-app editor can mutate it after a
+# successful POST /config without forcing a process restart. Initialized by
+# `run` before NiceGUI starts.
+_RUNTIME_CFG: CondashConfig | None = None
 
 
 def icon_path() -> str:
@@ -182,9 +195,125 @@ def _register_routes() -> None:
             "moves": [{"from": f, "to": t} for f, t in moves],
         }
 
+    @_ng_app.get("/config")
+    def get_config():
+        cfg = _RUNTIME_CFG
+        if cfg is None:
+            return _error(500, "config not initialised")
+        return _config_to_payload(cfg)
+
+    @_ng_app.post("/config")
+    async def post_config(req: Request):
+        global _RUNTIME_CFG
+        if _RUNTIME_CFG is None:
+            return _error(500, "config not initialised")
+        data = await req.json()
+        try:
+            new_cfg = _payload_to_config(data)
+        except (ValueError, KeyError, TypeError) as exc:
+            return _error(400, f"invalid config: {exc}")
+        config_mod.save(new_cfg)
+        # Re-init module-level state so paths / repos / open-with changes
+        # take effect on the next request without needing a process restart.
+        legacy.init(new_cfg)
+        # Surface which fields require a restart to actually take effect.
+        restart_required = []
+        old = _RUNTIME_CFG
+        if old.port != new_cfg.port:
+            restart_required.append("port")
+        if old.native != new_cfg.native:
+            restart_required.append("native")
+        _RUNTIME_CFG = new_cfg
+        return {
+            "ok": True,
+            "restart_required": restart_required,
+            "config": _config_to_payload(new_cfg),
+        }
+
+
+def _config_to_payload(cfg: CondashConfig) -> dict:
+    """Serialise the live config to JSON for ``GET /config``."""
+    return {
+        "conception_path": str(cfg.conception_path),
+        "workspace_path": str(cfg.workspace_path) if cfg.workspace_path else "",
+        "worktrees_path": str(cfg.worktrees_path) if cfg.worktrees_path else "",
+        "port": int(cfg.port),
+        "native": bool(cfg.native),
+        "repositories_primary": list(cfg.repositories_primary),
+        "repositories_secondary": list(cfg.repositories_secondary),
+        "open_with": {
+            slot_key: {
+                "label": cfg.open_with[slot_key].label,
+                "commands": list(cfg.open_with[slot_key].commands),
+            }
+            for slot_key in OPEN_WITH_SLOT_KEYS
+            if slot_key in cfg.open_with
+        },
+    }
+
+
+def _payload_to_config(data: dict) -> CondashConfig:
+    """Build a validated CondashConfig from the in-app editor's JSON payload."""
+    if not isinstance(data, dict):
+        raise ValueError("payload must be an object")
+    conception_raw = (data.get("conception_path") or "").strip()
+    if not conception_raw:
+        raise ValueError("conception_path is required")
+    conception = Path(conception_raw).expanduser()
+
+    workspace_raw = (data.get("workspace_path") or "").strip()
+    workspace = Path(workspace_raw).expanduser() if workspace_raw else None
+    worktrees_raw = (data.get("worktrees_path") or "").strip()
+    worktrees = Path(worktrees_raw).expanduser() if worktrees_raw else None
+
+    port_raw = data.get("port", 0)
+    if isinstance(port_raw, str):
+        port_raw = int(port_raw or 0)
+    if not isinstance(port_raw, int) or not 0 <= port_raw <= 65535:
+        raise ValueError("port must be an integer between 0 and 65535")
+
+    native_raw = data.get("native", True)
+    if not isinstance(native_raw, bool):
+        raise ValueError("native must be a boolean")
+
+    primary = [str(s).strip() for s in (data.get("repositories_primary") or []) if str(s).strip()]
+    secondary = [str(s).strip() for s in (data.get("repositories_secondary") or []) if str(s).strip()]
+
+    open_with_raw = data.get("open_with") or {}
+    if not isinstance(open_with_raw, dict):
+        raise ValueError("open_with must be an object")
+    open_with: dict[str, OpenWithSlot] = {}
+    for slot_key in OPEN_WITH_SLOT_KEYS:
+        defaults = config_mod.DEFAULT_OPEN_WITH[slot_key]
+        slot_data = open_with_raw.get(slot_key) or {}
+        if not isinstance(slot_data, dict):
+            raise ValueError(f"open_with.{slot_key} must be an object")
+        label = str(slot_data.get("label") or defaults["label"])
+        commands_raw = slot_data.get("commands")
+        if commands_raw is None:
+            commands = list(defaults["commands"])
+        elif isinstance(commands_raw, list):
+            commands = [str(c) for c in commands_raw if str(c).strip()]
+        else:
+            raise ValueError(f"open_with.{slot_key}.commands must be a list")
+        open_with[slot_key] = OpenWithSlot(label=label, commands=commands)
+
+    return CondashConfig(
+        conception_path=conception,
+        workspace_path=workspace,
+        worktrees_path=worktrees,
+        repositories_primary=primary,
+        repositories_secondary=secondary,
+        port=port_raw,
+        native=native_raw,
+        open_with=open_with,
+    )
+
 
 def run(cfg: CondashConfig) -> None:
     """Launch the condash dashboard (native window or browser, per config)."""
+    global _RUNTIME_CFG
+    _RUNTIME_CFG = cfg
     legacy.init(cfg)
     _register_routes()
     kwargs: dict = {
@@ -200,8 +329,11 @@ def run(cfg: CondashConfig) -> None:
         # systems missing python3-gi. PyQt6 is a hard runtime dependency
         # (pywebview[qt] in pyproject), so this is always available.
         _ng_app.native.start_args["gui"] = "qt"
-        # Set the window icon so the OS task switcher shows it.
-        _ng_app.native.window_args["icon"] = icon_path()
+        # Set the window icon so the OS task switcher shows it. pywebview 6.x
+        # exposes `icon` on webview.start() (i.e. start_args), NOT on
+        # create_window() — passing it via window_args raises TypeError on
+        # launch.
+        _ng_app.native.start_args["icon"] = icon_path()
         # NiceGUI's check_shutdown thread sometimes fails to actually stop
         # uvicorn after the user closes the window — leaving the port bound
         # for the next launch. Force-exit the whole process when the

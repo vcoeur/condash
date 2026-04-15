@@ -236,6 +236,13 @@ def _full_payload(target: Path, cfg: CondashConfig) -> dict[str, Any]:
         "native": cfg.native,
         "repositories_primary": cfg.repositories_primary,
         "repositories_secondary": cfg.repositories_secondary,
+        "open_with": {
+            slot_key: {
+                "label": slot.label,
+                "commands": list(slot.commands),
+            }
+            for slot_key, slot in cfg.open_with.items()
+        },
     }
 
 

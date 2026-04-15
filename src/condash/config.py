@@ -13,6 +13,18 @@ if set). Schema:
     primary = ["repo-a", "repo-b"]
     secondary = ["repo-c", "repo-d"]
 
+    [open_with.main_ide]
+    label    = "Open in main IDE"
+    commands = ["idea {path}", "idea.sh {path}"]
+
+    [open_with.secondary_ide]
+    label    = "Open in secondary IDE"
+    commands = ["code {path}", "codium {path}"]
+
+    [open_with.terminal]
+    label    = "Open terminal here"
+    commands = ["ghostty --working-directory={path}", "gnome-terminal --working-directory {path}"]
+
 ``workspace_path`` is the directory condash scans for git repositories to
 display in the dashboard's repo strip. ``primary`` / ``secondary`` are bare
 directory names (matched against what the scan finds), not paths. If
@@ -23,6 +35,13 @@ entirely — including the catch-all "Others" group.
 a safe sandbox in addition to ``workspace_path``. Useful if you keep your
 git worktrees outside the main workspace tree. Optional.
 
+``[open_with.*]`` defines the three vendor-neutral launcher slots wired to
+the per-repo action buttons. Each slot has a ``label`` (tooltip text) and a
+``commands`` fallback chain. Each command is a single shell-style string
+parsed with ``shlex``; the literal ``{path}`` in any argument is replaced
+with the absolute path of the repo / worktree being opened. Commands are
+tried in order until one starts successfully.
+
 First-run flow: if the file is missing, ``condash init`` (or
 ``condash config edit``) writes a commented template that the user must edit
 before condash can launch the dashboard. The template is shipped as
@@ -32,6 +51,7 @@ before condash can launch the dashboard. The template is shipped as
 from __future__ import annotations
 
 import os
+import shlex
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,7 +95,97 @@ DEFAULT_CONFIG_TEMPLATE = """\
 # Both lists are ignored when `workspace_path` is unset.
 # primary = ["repo-a", "repo-b"]
 # secondary = ["repo-c", "repo-d"]
+
+# [open_with.<slot>]
+# Three vendor-neutral launcher slots: `main_ide`, `secondary_ide`, `terminal`.
+# Each slot defines:
+#   - label:    tooltip text shown on hover
+#   - commands: ordered list of shell-style command strings. The literal
+#               `{path}` is replaced with the absolute path of the repo or
+#               worktree being opened. Commands are tried in order until one
+#               starts successfully.
+# Built-in defaults reproduce the previous behaviour. Override only the
+# slots you want to customise — each slot falls back to the defaults if the
+# section is missing.
+#
+# [open_with.main_ide]
+# label    = "Open in main IDE"
+# commands = ["idea {path}", "idea.sh {path}"]
+#
+# [open_with.secondary_ide]
+# label    = "Open in secondary IDE"
+# commands = ["code {path}", "codium {path}"]
+#
+# [open_with.terminal]
+# label    = "Open terminal here"
+# commands = [
+#     "ghostty --working-directory={path}",
+#     "gnome-terminal --working-directory {path}",
+#     "konsole --workdir {path}",
+# ]
 """
+
+
+OPEN_WITH_SLOT_KEYS: tuple[str, ...] = ("main_ide", "secondary_ide", "terminal")
+
+DEFAULT_OPEN_WITH: dict[str, dict] = {
+    "main_ide": {
+        "label": "Open in main IDE",
+        "commands": [
+            "idea {path}",
+            "idea.sh {path}",
+            "intellij-idea-ultimate {path}",
+            "intellij-idea-community {path}",
+            "idea-ultimate {path}",
+            "idea-community {path}",
+        ],
+    },
+    "secondary_ide": {
+        "label": "Open in secondary IDE",
+        "commands": [
+            "code {path}",
+            "codium {path}",
+        ],
+    },
+    "terminal": {
+        "label": "Open terminal here",
+        "commands": [
+            "ghostty --working-directory={path}",
+            "gnome-terminal --working-directory {path}",
+            "konsole --workdir {path}",
+            "xfce4-terminal --working-directory={path}",
+            "x-terminal-emulator --working-directory {path}",
+            "xterm -e bash -c 'cd \"{path}\" && exec bash'",
+        ],
+    },
+}
+
+
+@dataclass
+class OpenWithSlot:
+    """A single 'open with' button slot — vendor-neutral by design."""
+
+    label: str
+    commands: list[str] = field(default_factory=list)
+
+    def resolve(self, path: str) -> list[list[str]]:
+        """Return the command fallback chain with ``{path}`` substituted.
+
+        Each command is shell-parsed via ``shlex`` so the user can write
+        ``--working-directory={path}`` or ``--profile work {path}`` naturally.
+        """
+        out: list[list[str]] = []
+        for raw in self.commands:
+            if not raw.strip():
+                continue
+            try:
+                argv = shlex.split(raw)
+            except ValueError:
+                continue
+            argv = [arg.replace("{path}", path) for arg in argv]
+            if argv:
+                out.append(argv)
+        return out
 
 
 @dataclass
@@ -89,6 +199,7 @@ class CondashConfig:
     repositories_secondary: list[str] = field(default_factory=list)
     port: int = 0
     native: bool = True
+    open_with: dict[str, OpenWithSlot] = field(default_factory=dict)
 
 
 def config_path() -> Path:
@@ -98,30 +209,72 @@ def config_path() -> Path:
     return base / "condash" / "config.toml"
 
 
-def _toml_escape(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"')
-
-
-def _format_toml(cfg: CondashConfig) -> str:
-    lines = [
-        f'conception_path = "{_toml_escape(str(cfg.conception_path))}"',
-        "",
-        "[repositories]",
-        "primary = [" + ", ".join(f'"{_toml_escape(r)}"' for r in cfg.repositories_primary) + "]",
-        "secondary = ["
-        + ", ".join(f'"{_toml_escape(r)}"' for r in cfg.repositories_secondary)
-        + "]",
-        "",
-    ]
-    return "\n".join(lines)
-
-
 def save(cfg: CondashConfig, path: Path | None = None) -> Path:
-    """Atomically write a config file. Returns the path written to."""
+    """Atomically write ``cfg`` to ``path``, preserving comments where possible.
+
+    If the target file already exists, its existing content is parsed with
+    ``tomlkit`` and the typed values from ``cfg`` are merged into it in place.
+    That way user comments, blank lines, and key ordering are retained around
+    the edits made by the in-app editor or ``CondashConfig`` round-trips.
+
+    If the target does not exist, a fresh document is built from scratch.
+    """
+    import tomlkit
+    from tomlkit import comment, document, nl, table
+
     target = path or config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    if target.exists():
+        try:
+            doc = tomlkit.parse(target.read_text(encoding="utf-8"))
+        except Exception:
+            doc = document()
+    else:
+        doc = document()
+        doc.add(comment("condash configuration"))
+        doc.add(nl())
+
+    # Top-level scalars
+    doc["conception_path"] = str(cfg.conception_path)
+    if cfg.workspace_path is not None:
+        doc["workspace_path"] = str(cfg.workspace_path)
+    elif "workspace_path" in doc:
+        del doc["workspace_path"]
+    if cfg.worktrees_path is not None:
+        doc["worktrees_path"] = str(cfg.worktrees_path)
+    elif "worktrees_path" in doc:
+        del doc["worktrees_path"]
+    doc["port"] = int(cfg.port)
+    doc["native"] = bool(cfg.native)
+
+    # [repositories]
+    repos = doc.get("repositories")
+    if not hasattr(repos, "value"):
+        repos = table()
+        doc["repositories"] = repos
+    repos["primary"] = list(cfg.repositories_primary)
+    repos["secondary"] = list(cfg.repositories_secondary)
+
+    # [open_with.<slot>]
+    open_with_table = doc.get("open_with")
+    if not hasattr(open_with_table, "value"):
+        open_with_table = table()
+        doc["open_with"] = open_with_table
+    for slot_key in OPEN_WITH_SLOT_KEYS:
+        slot = cfg.open_with.get(slot_key)
+        if slot is None:
+            continue
+        slot_table = open_with_table.get(slot_key)
+        if not hasattr(slot_table, "value"):
+            slot_table = table()
+            open_with_table[slot_key] = slot_table
+        slot_table["label"] = slot.label
+        slot_table["commands"] = list(slot.commands)
+
+    rendered = tomlkit.dumps(doc)
     tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(_format_toml(cfg), encoding="utf-8")
+    tmp.write_text(rendered, encoding="utf-8")
     tmp.replace(target)
     return target
 
@@ -179,6 +332,31 @@ def _parse(data: dict, source: Path) -> CondashConfig:
     if not isinstance(native_raw, bool):
         raise ConfigIncompleteError(f"{source}: 'native' must be a boolean")
 
+    open_with_raw = data.get("open_with") or {}
+    if not isinstance(open_with_raw, dict):
+        raise ConfigIncompleteError(f"{source}: 'open_with' must be a table")
+    open_with: dict[str, OpenWithSlot] = {}
+    for slot_key in OPEN_WITH_SLOT_KEYS:
+        defaults = DEFAULT_OPEN_WITH[slot_key]
+        slot_data = open_with_raw.get(slot_key) or {}
+        if not isinstance(slot_data, dict):
+            raise ConfigIncompleteError(
+                f"{source}: 'open_with.{slot_key}' must be a table"
+            )
+        label = slot_data.get("label", defaults["label"])
+        if not isinstance(label, str):
+            raise ConfigIncompleteError(
+                f"{source}: 'open_with.{slot_key}.label' must be a string"
+            )
+        commands_raw = slot_data.get("commands", defaults["commands"])
+        if not isinstance(commands_raw, list) or not all(
+            isinstance(c, str) for c in commands_raw
+        ):
+            raise ConfigIncompleteError(
+                f"{source}: 'open_with.{slot_key}.commands' must be a list of strings"
+            )
+        open_with[slot_key] = OpenWithSlot(label=label, commands=list(commands_raw))
+
     return CondashConfig(
         conception_path=conception_path,
         workspace_path=workspace_path,
@@ -187,6 +365,7 @@ def _parse(data: dict, source: Path) -> CondashConfig:
         repositories_secondary=[str(r) for r in secondary],
         port=port_raw,
         native=native_raw,
+        open_with=open_with,
     )
 
 

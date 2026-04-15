@@ -58,6 +58,18 @@ native          = true                        # false = open in your browser ins
 [repositories]
 primary = ["repo-a", "repo-b"]
 secondary = ["repo-c", "repo-d"]
+
+[open_with.main_ide]
+label    = "Open in main IDE"
+commands = ["idea {path}", "idea.sh {path}"]
+
+[open_with.secondary_ide]
+label    = "Open in secondary IDE"
+commands = ["code {path}", "codium {path}"]
+
+[open_with.terminal]
+label    = "Open terminal here"
+commands = ["ghostty --working-directory={path}", "gnome-terminal --working-directory {path}"]
 ```
 
 `conception_path` is required. Everything else is optional:
@@ -67,8 +79,13 @@ secondary = ["repo-c", "repo-d"]
 - `port` — TCP port for the embedded HTTP server. `0` (default) lets the OS pick a free port. Set a fixed value if you want to reach the dashboard from your browser at `http://127.0.0.1:<port>`.
 - `native` — `true` (default) opens a desktop window via pywebview. `false` skips the native window and lets you use any browser; useful if you don't have GTK/Qt Python bindings installed.
 - `[repositories]` — `primary` and `secondary` are bare directory names (not paths) matched against what is found under `workspace_path`. Anything left over lands in an "Others" card. Both lists are ignored when `workspace_path` is unset.
+- `[open_with.<slot>]` — three vendor-neutral launcher slots (`main_ide`, `secondary_ide`, `terminal`) wired to the per-repo action buttons. Each slot has a `label` (tooltip text) and a `commands` fallback chain. Each command is a single shell-style string parsed with `shlex`; the literal `{path}` is replaced with the absolute path of the repo being opened. Commands are tried in order until one starts. Built-in defaults reproduce the previous behaviour, so you only need to override the slots you actually want to customise.
 
 Once `conception_path` is set, run `condash` to launch the dashboard.
+
+### Editing the config from inside the app
+
+Click the gear icon in the dashboard header (next to the light/dark toggle). A modal opens with form fields for every option above; saving writes the file atomically (preserving comments via `tomlkit`) and reloads the dashboard. Path / repository / open-with changes apply on reload; changes to `port` or `native` need a `condash` restart and the modal will tell you so.
 
 ## CLI
 
@@ -106,7 +123,7 @@ The native window also picks up the same icon at runtime via pywebview, so it ap
 
 ## Status
 
-Version 0.1.5 — cross-OS pipx install (PyQt6 bundled), `native = false` honored, native window force-quits on close, Linux desktop entry installer, app icon. Still Linux-first overall; macOS and Windows should work but are less tested.
+Version 0.2.0 — adds an in-app config editor (gear icon next to the theme toggle) and three vendor-neutral `[open_with]` launcher slots that replace the previous hardcoded IntelliJ / VS Code / terminal buttons. Also fixes the v0.1.5 desktop-launcher crash where the window icon was forwarded via the wrong pywebview kwarg dict. Still Linux-first overall; macOS and Windows should work but are less tested.
 
 ## License
 
