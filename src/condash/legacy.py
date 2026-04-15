@@ -30,6 +30,7 @@ from datetime import datetime
 from importlib.resources import files as _package_files
 from itertools import groupby
 from pathlib import Path
+from typing import Any
 
 # Populated by init() before any rendering / mutation function is called.
 BASE_DIR: Path = Path("/nonexistent")
@@ -47,6 +48,11 @@ _WORKTREES: Path | None = None
 # Populated by init() from CondashConfig.repositories_{primary,secondary}.
 _REPO_STRUCTURE: list[tuple[str, list[tuple[str, list[str]]]]] = []
 
+# Populated by init() from CondashConfig.open_with — the three vendor-neutral
+# launcher slots used by the per-repo action buttons. Defaults to an empty
+# dict; render_git_actions falls back to slot-key-as-title when missing.
+_OPEN_WITH: dict[str, Any] = {}
+
 
 def init(cfg) -> None:
     """Wire runtime configuration into this module.
@@ -55,7 +61,7 @@ def init(cfg) -> None:
     :class:`condash.config.CondashConfig` (typed as ``Any`` here to avoid
     a circular import at module load).
     """
-    global BASE_DIR, _WORKSPACE, _WORKTREES, _REPO_STRUCTURE
+    global BASE_DIR, _WORKSPACE, _WORKTREES, _REPO_STRUCTURE, _OPEN_WITH
     BASE_DIR = Path(cfg.conception_path).expanduser().resolve()
     _WORKSPACE = (
         Path(cfg.workspace_path).expanduser().resolve()
@@ -71,6 +77,7 @@ def init(cfg) -> None:
         ("Primary", [(name, []) for name in cfg.repositories_primary]),
         ("Secondary", [(name, []) for name in cfg.repositories_secondary]),
     ]
+    _OPEN_WITH = dict(cfg.open_with or {})
 
 
 def _template_path() -> Path:
@@ -618,24 +625,25 @@ def _collect_git_repos():
 
 
 _ICON_SVGS = {
-    "idea": (
-        '<svg viewBox="0 0 24 24" width="15" height="15" '
-        'fill="currentColor" aria-hidden="true">'
-        '<path d="M0 0v24h24V0zm3.723 3.111h5v1.834h-1.39v6.277h1.39v1.834h-5'
-        "v-1.834h1.444V4.945H3.723zm11.055 0H17v6.5c0 .612-.055 1.111-.222 "
-        "1.556-.167.444-.39.777-.723 1.11-.277.279-.666.557-1.11.668a3.933 "
-        "3.933 0 0 1-1.445.278c-.778 0-1.444-.167-1.944-.445a4.81 4.81 0 0 "
-        "1-1.279-1.056l1.39-1.555c.277.334.555.555.833.722.277.167.611.278"
-        ".945.278.389 0 .721-.111 1-.389.221-.278.333-.667.333-1.278zM2.222 "
-        '19.5h9V21h-9z"/></svg>'
+    # Generic "code editor window" — title bar with two horizontal code lines.
+    "main_ide": (
+        '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" '
+        'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        '<rect x="3" y="4" width="18" height="16" rx="2"/>'
+        '<line x1="3" y1="9" x2="21" y2="9"/>'
+        '<line x1="7" y1="14" x2="13" y2="14"/>'
+        '<line x1="7" y1="17" x2="11" y2="17"/></svg>'
     ),
-    "code": (
+    # Generic "code" chevrons — < / >.
+    "secondary_ide": (
         '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" '
         'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" '
         'stroke-linejoin="round" aria-hidden="true">'
         '<polyline points="16 18 22 12 16 6"/>'
         '<polyline points="8 6 2 12 8 18"/></svg>'
     ),
+    # Generic "terminal" — prompt arrow + cursor underline.
     "terminal": (
         '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" '
         'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" '
@@ -648,19 +656,17 @@ _ICON_SVGS = {
 
 def _render_git_actions(path):
     js_path = json.dumps(path).replace("'", "\\'").replace('"', "'")
-    buttons = [
-        ("idea", "Open in IntelliJ IDEA"),
-        ("code", "Open in VS Code"),
-        ("terminal", "Open terminal here"),
-    ]
-    items = "".join(
-        f'<button class="git-action-btn git-action-{tool}" title="{title}" '
-        f'aria-label="{title}" '
-        f"onclick=\"openPath(event,{js_path},'{tool}')\">"
-        f"{_ICON_SVGS[tool]}</button>"
-        for tool, title in buttons
-    )
-    return f'<div class="git-actions">{items}</div>'
+    items_html: list[str] = []
+    for slot_key in ("main_ide", "secondary_ide", "terminal"):
+        slot = _OPEN_WITH.get(slot_key)
+        title = slot.label if slot is not None else slot_key
+        items_html.append(
+            f'<button class="git-action-btn git-action-{slot_key}" '
+            f'title="{h(title)}" aria-label="{h(title)}" '
+            f"onclick=\"openPath(event,{js_path},'{slot_key}')\">"
+            f"{_ICON_SVGS[slot_key]}</button>"
+        )
+    return f'<div class="git-actions">{"".join(items_html)}</div>'
 
 
 def _render_submodule_rows(submodules, worktree=False):
@@ -1227,76 +1233,21 @@ def _validate_open_path(path_str):
     return None
 
 
-def _find_idea_launcher():
-    import shutil
+def _open_path(slot_key, path):
+    """Launch the user-configured command for ``slot_key`` against ``path``.
 
-    for name in (
-        "idea.sh",
-        "idea",
-        "intellij-idea-ultimate",
-        "intellij-idea-community",
-        "idea-ultimate",
-        "idea-community",
-    ):
-        resolved = shutil.which(name)
-        if resolved:
-            return resolved
-    home = Path.home()
-    for pattern in ("bin/idea-*/bin/idea.sh", "bin/idea-*/bin/idea"):
-        matches = sorted(home.glob(pattern))
-        if matches:
-            return str(matches[-1])
-    toolbox_roots = [
-        home / ".local/share/JetBrains/Toolbox/apps",
-        home / "JetBrains/Toolbox/apps",
-    ]
-    for root in toolbox_roots:
-        if not root.exists():
-            continue
-        matches = list(root.glob("*/bin/idea.sh")) + list(root.glob("*/*/bin/idea.sh"))
-        if matches:
-            return str(max(matches, key=lambda p: p.stat().st_mtime))
-    return None
-
-
-def _build_open_candidates(tool, path_str):
-    if tool == "idea":
-        launcher = _find_idea_launcher()
-        cmds = []
-        if launcher:
-            cmds.append([launcher, path_str])
-        cmds.extend(
-            [
-                ["idea", path_str],
-                ["idea.sh", path_str],
-                ["idea-ultimate", path_str],
-                ["idea-community", path_str],
-                ["intellij-idea-ultimate", path_str],
-                ["intellij-idea-community", path_str],
-            ]
-        )
-        return cmds
-    return {
-        "code": [
-            ["code", path_str],
-            ["codium", path_str],
-        ],
-        "terminal": [
-            ["ghostty", f"--working-directory={path_str}"],
-            ["gnome-terminal", "--working-directory", path_str],
-            ["konsole", "--workdir", path_str],
-            ["xfce4-terminal", f"--working-directory={path_str}"],
-            ["x-terminal-emulator", "--working-directory", path_str],
-            ["xterm", "-e", f'cd "{path_str}" && exec bash'],
-        ],
-    }.get(tool, [])
-
-
-def _open_path(tool, path):
+    ``slot_key`` is one of ``main_ide`` / ``secondary_ide`` / ``terminal``.
+    The fallback chain comes from ``cfg.open_with[slot_key]`` (set by ``init``).
+    Each command is shell-parsed and tried in order until one starts.
+    """
     path_str = str(path)
-    candidates = _build_open_candidates(tool, path_str)
+    slot = _OPEN_WITH.get(slot_key)
+    if slot is None:
+        print(f"[open] unknown slot: {slot_key!r}", file=sys.stderr)
+        return False
+    candidates = slot.resolve(path_str)
     if not candidates:
-        print(f"[open] unknown tool: {tool!r}", file=sys.stderr)
+        print(f"[open] {slot_key}: no commands configured", file=sys.stderr)
         return False
     last_err = None
     for cmd in candidates:
@@ -1308,15 +1259,18 @@ def _open_path(tool, path):
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            print(f"[open] {tool}: launched {cmd[0]}", file=sys.stderr)
+            print(f"[open] {slot_key}: launched {cmd[0]}", file=sys.stderr)
             return True
         except FileNotFoundError as exc:
             last_err = exc
             continue
         except Exception as exc:
-            print(f"[open] {tool}: {cmd[0]} failed: {exc}", file=sys.stderr)
+            print(f"[open] {slot_key}: {cmd[0]} failed: {exc}", file=sys.stderr)
             return False
-    print(f"[open] {tool}: no launcher found (last error: {last_err})", file=sys.stderr)
+    print(
+        f"[open] {slot_key}: no launcher found (last error: {last_err})",
+        file=sys.stderr,
+    )
     return False
 
 

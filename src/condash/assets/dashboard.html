@@ -136,7 +136,8 @@ body {
 h1 { font-size: 1.4rem; }
 .meta { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 1.25rem; }
 
-/* --- Theme toggle --- */
+/* --- Theme toggle / header actions --- */
+.header-actions { display: flex; align-items: center; gap: 0.5rem; }
 .theme-toggle {
     display: flex; align-items: center; gap: 0.5rem;
     cursor: pointer; user-select: none; padding: 4px 10px;
@@ -146,6 +147,53 @@ h1 { font-size: 1.4rem; }
 }
 .theme-toggle:hover { border-color: var(--accent); }
 .theme-toggle .icon { font-size: 1rem; line-height: 1; }
+.config-toggle { padding: 4px 8px; }
+.config-toggle svg { display: block; }
+
+/* --- Config modal form --- */
+.config-modal { max-width: 720px; }
+.config-fieldset {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.75rem 1rem 1rem; margin: 0 0 1rem;
+}
+.config-fieldset legend { padding: 0 0.4rem; font-weight: 600; color: var(--text-secondary); font-size: 0.85rem; }
+.config-fieldset label {
+    display: flex; flex-direction: column; gap: 0.25rem;
+    margin: 0.5rem 0; font-size: 0.85rem; color: var(--text-secondary);
+}
+.config-fieldset label.config-checkbox { flex-direction: row; align-items: center; gap: 0.5rem; }
+.config-fieldset input[type="text"],
+.config-fieldset input[type="number"],
+.config-fieldset textarea {
+    background: var(--bg-card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 6px 8px; font: inherit; font-size: 0.85rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.config-fieldset input:focus, .config-fieldset textarea:focus {
+    outline: none; border-color: var(--accent);
+}
+.config-fieldset small { color: var(--text-muted); font-size: 0.75rem; }
+.config-required { color: #ef4444; margin-left: 0.15rem; }
+.config-restart-hint { font-weight: 400; color: var(--text-muted); font-size: 0.75rem; }
+.config-help { font-size: 0.78rem; color: var(--text-muted); margin: 0.25rem 0 0.75rem; }
+.config-error {
+    background: #fee2e2; color: #991b1b; padding: 0.5rem 0.75rem;
+    border-radius: 4px; font-size: 0.85rem; margin-bottom: 0.75rem;
+}
+[data-theme="dark"] .config-error { background: #450a0a; color: #fca5a5; }
+.config-restart-warning {
+    background: #fef3c7; color: #92400e; padding: 0.5rem 0.75rem;
+    border-radius: 4px; font-size: 0.85rem; margin-bottom: 0.75rem;
+}
+[data-theme="dark"] .config-restart-warning { background: #422006; color: #fcd34d; }
+.config-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+.config-actions button {
+    padding: 6px 14px; border-radius: 4px; cursor: pointer; font: inherit;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+}
+.config-actions button.config-save { background: var(--accent); color: #fff; border-color: var(--accent); }
+.config-actions button:hover { border-color: var(--accent); }
 
 /* --- Tabs --- */
 .tabs {
@@ -663,9 +711,17 @@ h1 { font-size: 1.4rem; }
 <body>
 <div class="header">
     <h1>Incidents, Projects &amp; Documents</h1>
-    <div class="theme-toggle" onclick="toggleTheme()" title="Switch theme">
-        <span class="icon" id="theme-icon">&#9790;</span>
-        <span id="theme-label">Dark</span>
+    <div class="header-actions">
+        <div class="theme-toggle" onclick="toggleTheme()" title="Switch theme">
+            <span class="icon" id="theme-icon">&#9790;</span>
+            <span id="theme-label">Dark</span>
+        </div>
+        <button class="theme-toggle config-toggle" onclick="openConfigModal()" title="Edit configuration" aria-label="Edit configuration">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+        </button>
     </div>
 </div>
 <div class="meta">{{TIMESTAMP}}</div>
@@ -693,6 +749,86 @@ h1 { font-size: 1.4rem; }
             <button class="note-modal-close" onclick="closeNotePreview()" aria-label="Close">&times;</button>
         </div>
         <div class="note-modal-body" id="note-modal-body"></div>
+    </div>
+</div>
+<div id="config-modal" class="note-modal-backdrop" onclick="if(event.target===this)closeConfigModal()">
+    <div class="note-modal config-modal">
+        <div class="note-modal-header">
+            <span class="note-modal-title">Configuration</span>
+            <button class="note-modal-close" onclick="closeConfigModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="note-modal-body">
+            <form id="config-form" onsubmit="saveConfig(event)">
+                <fieldset class="config-fieldset">
+                    <legend>Paths</legend>
+                    <label>conception_path<span class="config-required">*</span>
+                        <input type="text" name="conception_path" required>
+                    </label>
+                    <label>workspace_path
+                        <input type="text" name="workspace_path">
+                        <small>Directory containing your code repos. Empty = repo strip hidden.</small>
+                    </label>
+                    <label>worktrees_path
+                        <input type="text" name="worktrees_path">
+                        <small>Extra git-worktrees sandbox for "open in IDE".</small>
+                    </label>
+                </fieldset>
+                <fieldset class="config-fieldset">
+                    <legend>Server <span class="config-restart-hint">— restart required after change</span></legend>
+                    <label>port
+                        <input type="number" name="port" min="0" max="65535">
+                        <small>0 lets the OS pick a free port.</small>
+                    </label>
+                    <label class="config-checkbox">
+                        <input type="checkbox" name="native">
+                        Open in native window (uncheck for browser mode)
+                    </label>
+                </fieldset>
+                <fieldset class="config-fieldset">
+                    <legend>Repositories</legend>
+                    <label>primary
+                        <textarea name="repositories_primary" rows="3" placeholder="one directory name per line"></textarea>
+                    </label>
+                    <label>secondary
+                        <textarea name="repositories_secondary" rows="3" placeholder="one directory name per line"></textarea>
+                    </label>
+                </fieldset>
+                <fieldset class="config-fieldset">
+                    <legend>Open with</legend>
+                    <p class="config-help">Each slot is a fallback chain of shell-style commands (one per line). The literal <code>{path}</code> is replaced with the repo's absolute path. The first command that starts is used.</p>
+                    <div data-slot="main_ide">
+                        <label>main_ide — label
+                            <input type="text" data-field="label">
+                        </label>
+                        <label>main_ide — commands
+                            <textarea data-field="commands" rows="4" placeholder="idea {path}&#10;idea.sh {path}"></textarea>
+                        </label>
+                    </div>
+                    <div data-slot="secondary_ide">
+                        <label>secondary_ide — label
+                            <input type="text" data-field="label">
+                        </label>
+                        <label>secondary_ide — commands
+                            <textarea data-field="commands" rows="4" placeholder="code {path}&#10;codium {path}"></textarea>
+                        </label>
+                    </div>
+                    <div data-slot="terminal">
+                        <label>terminal — label
+                            <input type="text" data-field="label">
+                        </label>
+                        <label>terminal — commands
+                            <textarea data-field="commands" rows="4" placeholder="ghostty --working-directory={path}&#10;gnome-terminal --working-directory {path}"></textarea>
+                        </label>
+                    </div>
+                </fieldset>
+                <div id="config-error" class="config-error" style="display:none"></div>
+                <div id="config-restart-warning" class="config-restart-warning" style="display:none"></div>
+                <div class="config-actions">
+                    <button type="button" onclick="closeConfigModal()">Cancel</button>
+                    <button type="submit" class="config-save">Save &amp; reload</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 <script>
@@ -724,6 +860,128 @@ function toggleTheme() {
 }
 
 applyTheme(getPreferredTheme());
+
+/* --- In-app config editor --- */
+function _setField(form, name, value) {
+    var el = form.elements[name];
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!value;
+    else el.value = value == null ? '' : value;
+}
+
+function _getField(form, name) {
+    var el = form.elements[name];
+    if (!el) return null;
+    if (el.type === 'checkbox') return el.checked;
+    if (el.type === 'number') return el.value === '' ? 0 : Number(el.value);
+    return el.value;
+}
+
+function _linesToList(text) {
+    return (text || '').split('\n').map(function(s){return s.trim();}).filter(function(s){return s.length;});
+}
+
+function _listToLines(list) {
+    return (list || []).join('\n');
+}
+
+function _setSlotFields(form, slotKey, slot) {
+    var container = form.querySelector('[data-slot="' + slotKey + '"]');
+    if (!container || !slot) return;
+    container.querySelector('[data-field="label"]').value = slot.label || '';
+    container.querySelector('[data-field="commands"]').value = _listToLines(slot.commands);
+}
+
+function _readSlotFields(form, slotKey) {
+    var container = form.querySelector('[data-slot="' + slotKey + '"]');
+    if (!container) return null;
+    return {
+        label: container.querySelector('[data-field="label"]').value || '',
+        commands: _linesToList(container.querySelector('[data-field="commands"]').value),
+    };
+}
+
+async function openConfigModal() {
+    var modal = document.getElementById('config-modal');
+    var form = document.getElementById('config-form');
+    var errEl = document.getElementById('config-error');
+    var warnEl = document.getElementById('config-restart-warning');
+    errEl.style.display = 'none';
+    warnEl.style.display = 'none';
+    modal.style.display = 'flex';
+    try {
+        var res = await fetch('/config');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        var cfg = await res.json();
+        _setField(form, 'conception_path', cfg.conception_path);
+        _setField(form, 'workspace_path', cfg.workspace_path);
+        _setField(form, 'worktrees_path', cfg.worktrees_path);
+        _setField(form, 'port', cfg.port);
+        _setField(form, 'native', cfg.native);
+        form.elements['repositories_primary'].value = _listToLines(cfg.repositories_primary);
+        form.elements['repositories_secondary'].value = _listToLines(cfg.repositories_secondary);
+        var ow = cfg.open_with || {};
+        _setSlotFields(form, 'main_ide', ow.main_ide);
+        _setSlotFields(form, 'secondary_ide', ow.secondary_ide);
+        _setSlotFields(form, 'terminal', ow.terminal);
+        // Stash the loaded port/native so we can detect changes on save.
+        form.dataset.loadedPort = String(cfg.port);
+        form.dataset.loadedNative = String(cfg.native);
+    } catch (e) {
+        errEl.textContent = 'Could not load config: ' + e;
+        errEl.style.display = 'block';
+    }
+}
+
+function closeConfigModal() {
+    document.getElementById('config-modal').style.display = 'none';
+}
+
+async function saveConfig(ev) {
+    ev.preventDefault();
+    var form = document.getElementById('config-form');
+    var errEl = document.getElementById('config-error');
+    var warnEl = document.getElementById('config-restart-warning');
+    errEl.style.display = 'none';
+    warnEl.style.display = 'none';
+    var payload = {
+        conception_path: _getField(form, 'conception_path'),
+        workspace_path: _getField(form, 'workspace_path'),
+        worktrees_path: _getField(form, 'worktrees_path'),
+        port: _getField(form, 'port'),
+        native: _getField(form, 'native'),
+        repositories_primary: _linesToList(form.elements['repositories_primary'].value),
+        repositories_secondary: _linesToList(form.elements['repositories_secondary'].value),
+        open_with: {
+            main_ide: _readSlotFields(form, 'main_ide'),
+            secondary_ide: _readSlotFields(form, 'secondary_ide'),
+            terminal: _readSlotFields(form, 'terminal'),
+        },
+    };
+    try {
+        var res = await fetch('/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        var body = await res.json().catch(function(){return {};});
+        if (!res.ok) {
+            errEl.textContent = body.error || ('HTTP ' + res.status);
+            errEl.style.display = 'block';
+            return;
+        }
+        var restart = (body && body.restart_required) || [];
+        if (restart.length) {
+            warnEl.textContent = 'Saved. The following changes need a condash restart to take effect: ' + restart.join(', ') + '. Reloading…';
+            warnEl.style.display = 'block';
+        }
+        // Brief pause so the user sees the warning, then refresh.
+        setTimeout(function(){ location.reload(); }, restart.length ? 1500 : 200);
+    } catch (e) {
+        errEl.textContent = 'Save failed: ' + e;
+        errEl.style.display = 'block';
+    }
+}
 
 /* --- Git row actions: open in IDEA / VS Code / terminal --- */
 async function openPath(ev, path, tool) {
