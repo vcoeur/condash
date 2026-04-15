@@ -64,14 +64,10 @@ def init(cfg) -> None:
     global BASE_DIR, _WORKSPACE, _WORKTREES, _REPO_STRUCTURE, _OPEN_WITH
     BASE_DIR = Path(cfg.conception_path).expanduser().resolve()
     _WORKSPACE = (
-        Path(cfg.workspace_path).expanduser().resolve()
-        if cfg.workspace_path is not None
-        else None
+        Path(cfg.workspace_path).expanduser().resolve() if cfg.workspace_path is not None else None
     )
     _WORKTREES = (
-        Path(cfg.worktrees_path).expanduser().resolve()
-        if cfg.worktrees_path is not None
-        else None
+        Path(cfg.worktrees_path).expanduser().resolve() if cfg.worktrees_path is not None else None
     )
     _REPO_STRUCTURE = [
         ("Primary", [(name, []) for name in cfg.repositories_primary]),
