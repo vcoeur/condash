@@ -1,73 +1,223 @@
-"""Command-line entry point for condash."""
+"""Typer CLI entry point for condash.
+
+Default invocation (`condash` with no subcommand) launches the NiceGUI
+native window. Explicit subcommands cover configuration inspection /
+editing, the tidy pass, and the first-run bootstrap. Matches the shape
+quelle uses (`<app> init`, `<app> config show / path / edit`) so the
+three vcoeur CLI tools present the same config UX to users.
+"""
 
 from __future__ import annotations
 
-import argparse
-import sys
+import json
+import os
+import platform
+import subprocess
 from pathlib import Path
+from typing import Any
+
+import typer
 
 from . import __version__
-from .config import load
+from .config import CondashConfig, config_path, load, save
+
+app = typer.Typer(
+    help="Standalone desktop dashboard for markdown-based conception items.",
+    no_args_is_help=False,
+    add_completion=False,
+)
+
+config_app = typer.Typer(
+    help="Inspect and edit the condash configuration.",
+    no_args_is_help=True,
+)
+app.add_typer(config_app, name="config")
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="condash",
-        description="Standalone desktop dashboard for markdown-based conception items.",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"condash {__version__}",
-    )
-    parser.add_argument(
+_DEFAULT_CONCEPTION_PATH = Path.home() / "src" / "vcoeur" / "conception"
+
+
+@app.callback(invoke_without_command=True)
+def _root(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", help="Print version and exit."),
+    config_file: Path | None = typer.Option(
+        None,
         "--config",
-        type=Path,
-        default=None,
         help="Path to config file (default: ~/.config/condash/config.toml)",
-    )
-    parser.add_argument(
+    ),
+    conception_path_override: Path | None = typer.Option(
+        None,
         "--conception-path",
-        type=Path,
-        default=None,
         help="One-shot override of the conception directory (does not touch config).",
-    )
-    parser.add_argument(
-        "--tidy",
-        action="store_true",
-        help="Move done items into YYYY-MM/ archive dirs and exit.",
-    )
-    return parser
+    ),
+) -> None:
+    if version:
+        typer.echo(f"condash {__version__}")
+        raise typer.Exit(0)
 
+    ctx.obj = {
+        "config_file": config_file,
+        "conception_override": conception_path_override,
+    }
 
-def main(argv: list[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(argv)
+    if ctx.invoked_subcommand is not None:
+        return
 
-    cfg = load(path=args.config, conception_override=args.conception_path)
-
+    # Default behaviour: launch the dashboard window.
+    cfg = load(path=config_file, conception_override=conception_path_override)
     if not cfg.conception_path.is_dir():
-        print(
+        typer.echo(
             f"condash: error: conception directory does not exist: {cfg.conception_path}",
-            file=sys.stderr,
+            err=True,
         )
-        return 2
+        raise typer.Exit(2)
 
     from . import legacy
 
     legacy.init(cfg)
 
-    if args.tidy:
-        moves = legacy.run_tidy()
-        if moves:
-            for old, new in moves:
-                print(f"  {old} \u2192 {new}")
-            print(f"{len(moves)} item(s) moved.")
-        else:
-            print("Nothing to move.")
-        return 0
+    from . import app as app_module
 
-    from . import app
+    app_module.run(cfg)
 
-    app.run(cfg)
-    return 0
+
+@app.command("tidy")
+def cmd_tidy(ctx: typer.Context) -> None:
+    """Move done items into YYYY-MM/ archive dirs and exit."""
+    obj = ctx.obj or {}
+    cfg = load(
+        path=obj.get("config_file"),
+        conception_override=obj.get("conception_override"),
+    )
+    if not cfg.conception_path.is_dir():
+        typer.echo(
+            f"condash: error: conception directory does not exist: {cfg.conception_path}",
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    from . import legacy
+
+    legacy.init(cfg)
+    moves = legacy.run_tidy()
+    if moves:
+        for old, new in moves:
+            typer.echo(f"  {old} \u2192 {new}")
+        typer.echo(f"{len(moves)} item(s) moved.")
+    else:
+        typer.echo("Nothing to move.")
+
+
+@app.command("init")
+def cmd_init() -> None:
+    """Create the config file with defaults if missing; print the resolved path."""
+    target = config_path()
+    created = _seed_default_config(target)
+    cfg = load(path=target)
+    typer.echo(f"config_file: {target}")
+    typer.echo(f"conception_path: {cfg.conception_path}")
+    if created:
+        typer.echo("(created with default values — run `condash config edit` to customise)")
+    else:
+        typer.echo("(already present)")
+
+
+@config_app.command("show")
+def cmd_config_show(
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Show the effective configuration."""
+    target = config_path()
+    if not target.exists():
+        _error(f"No config file at {target}. Run `condash init` to create one.")
+    cfg = _safe_load(target)
+    payload = _full_payload(target, cfg)
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2))
+    else:
+        for key, value in payload.items():
+            typer.echo(f"{key}: {value}")
+
+
+@config_app.command("path")
+def cmd_config_path(
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Print the resolved config file path."""
+    target = config_path()
+    payload = {
+        "config_file": str(target),
+        "exists": target.exists(),
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2))
+    else:
+        typer.echo(f"config_file: {target}")
+        typer.echo(f"exists: {target.exists()}")
+
+
+@config_app.command("edit")
+def cmd_config_edit() -> None:
+    """Open the condash config.toml in $VISUAL / $EDITOR or the OS default editor."""
+    target = config_path()
+    created = _seed_default_config(target)
+    editor = _resolve_editor()
+    if created:
+        typer.echo(f"Created {target} with default values.")
+    typer.echo(f"Opening {target} in {editor!r}")
+    subprocess.run([editor, str(target)], check=False)
+
+
+def _seed_default_config(target: Path) -> bool:
+    """Create a default config file at `target` if it does not exist."""
+    if target.exists():
+        return False
+    default = CondashConfig(
+        conception_path=_DEFAULT_CONCEPTION_PATH,
+    )
+    save(default, target)
+    return True
+
+
+def _full_payload(target: Path, cfg: CondashConfig) -> dict[str, Any]:
+    return {
+        "config_file": str(target),
+        "conception_path": str(cfg.conception_path),
+        "repositories_primary": cfg.repositories_primary,
+        "repositories_secondary": cfg.repositories_secondary,
+    }
+
+
+def _safe_load(target: Path) -> CondashConfig:
+    try:
+        return load(path=target)
+    except Exception as exc:
+        _error(str(exc))
+
+
+def _error(message: str) -> Any:
+    typer.echo(f"condash: error: {message}", err=True)
+    raise typer.Exit(2)
+
+
+def _resolve_editor() -> str:
+    for var in ("VISUAL", "EDITOR"):
+        value = os.environ.get(var)
+        if value:
+            return value
+    system = platform.system()
+    if system == "Windows":
+        return "notepad"
+    if system == "Darwin":
+        return "open"
+    return "xdg-open"
+
+
+def main() -> None:
+    """Entry point used by the `condash` console script."""
+    app()
+
+
+if __name__ == "__main__":
+    main()
