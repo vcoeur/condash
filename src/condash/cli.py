@@ -123,6 +123,39 @@ def cmd_init() -> None:
         typer.echo("(already present)")
 
 
+@app.command("install-desktop")
+def cmd_install_desktop() -> None:
+    """Register condash with your XDG desktop launcher (Linux only)."""
+    if platform.system() != "Linux":
+        _error("install-desktop is only supported on Linux.")
+    from . import desktop
+
+    paths = desktop.install()
+    typer.echo("Installed desktop entry:")
+    typer.echo(f"  desktop file: {paths['desktop_file']}")
+    typer.echo(f"  icon file:    {paths['icon_file']}")
+    typer.echo(f"  exec:         {paths['exec']}")
+    typer.echo("Condash should now appear in your application launcher.")
+
+
+@app.command("uninstall-desktop")
+def cmd_uninstall_desktop() -> None:
+    """Remove the user-local condash desktop entry (Linux only)."""
+    if platform.system() != "Linux":
+        _error("uninstall-desktop is only supported on Linux.")
+    from . import desktop
+
+    result = desktop.uninstall()
+    if result["desktop_removed"] or result["icon_removed"]:
+        typer.echo("Removed:")
+        if result["desktop_removed"]:
+            typer.echo(f"  {desktop.desktop_file_path()}")
+        if result["icon_removed"]:
+            typer.echo(f"  {desktop.installed_icon_path()}")
+    else:
+        typer.echo("Nothing to remove (no condash desktop entry installed).")
+
+
 @config_app.command("show")
 def cmd_config_show(
     json_output: bool = typer.Option(False, "--json"),
