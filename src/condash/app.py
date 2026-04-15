@@ -22,10 +22,8 @@ from . import legacy
 from .config import (
     OPEN_WITH_SLOT_KEYS,
     CondashConfig,
-    ConfigIncompleteError,
     OpenWithSlot,
 )
-
 
 # Holds the live runtime config so the in-app editor can mutate it after a
 # successful POST /config without forcing a process restart. Initialized by
@@ -36,6 +34,31 @@ _RUNTIME_CFG: CondashConfig | None = None
 def icon_path() -> str:
     """Absolute path to the bundled app icon (SVG)."""
     return str(_package_files("condash") / "assets" / "favicon.svg")
+
+
+def _set_qt_desktop_identity() -> None:
+    """Advertise this process to Qt as "condash" so Wayland compositors can
+    match the running window to ``condash.desktop``.
+
+    On Wayland (default on modern GNOME/KDE), windows are matched to their
+    ``.desktop`` file via the ``xdg_toplevel::set_app_id`` protocol. Qt's
+    Wayland backend derives that app_id from
+    ``QGuiApplication::desktopFileName()``. If it is not set, the app_id
+    falls back to the executable name that pywebview happens to pass to
+    ``QApplication(sys.argv)`` — which is not ``condash`` after pipx
+    wrapping — so GNOME Shell cannot resolve the ``.desktop`` entry and
+    the task switcher shows a generic icon.
+
+    Setting this before ``ui.run()`` (which ends up creating the
+    QApplication inside pywebview's Qt backend) makes the match succeed.
+    """
+    try:
+        from qtpy.QtGui import QGuiApplication
+    except ImportError:
+        return
+    QGuiApplication.setApplicationName("condash")
+    QGuiApplication.setApplicationDisplayName("Condash")
+    QGuiApplication.setDesktopFileName("condash")
 
 
 def _error(status: int, message: str) -> JSONResponse:
@@ -277,7 +300,9 @@ def _payload_to_config(data: dict) -> CondashConfig:
         raise ValueError("native must be a boolean")
 
     primary = [str(s).strip() for s in (data.get("repositories_primary") or []) if str(s).strip()]
-    secondary = [str(s).strip() for s in (data.get("repositories_secondary") or []) if str(s).strip()]
+    secondary = [
+        str(s).strip() for s in (data.get("repositories_secondary") or []) if str(s).strip()
+    ]
 
     open_with_raw = data.get("open_with") or {}
     if not isinstance(open_with_raw, dict):
@@ -334,6 +359,10 @@ def run(cfg: CondashConfig) -> None:
         # create_window() — passing it via window_args raises TypeError on
         # launch.
         _ng_app.native.start_args["icon"] = icon_path()
+        # Advertise the Qt desktop identity before pywebview creates the
+        # QApplication, so the Wayland app_id matches condash.desktop and
+        # GNOME/KDE task switchers can resolve the bundled icon.
+        _set_qt_desktop_identity()
         # NiceGUI's check_shutdown thread sometimes fails to actually stop
         # uvicorn after the user closes the window — leaving the port bound
         # for the next launch. Force-exit the whole process when the

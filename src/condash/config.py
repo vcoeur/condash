@@ -324,9 +324,7 @@ def _parse(data: dict, source: Path) -> CondashConfig:
 
     port_raw = data.get("port", 0)
     if not isinstance(port_raw, int) or not 0 <= port_raw <= 65535:
-        raise ConfigIncompleteError(
-            f"{source}: 'port' must be an integer between 0 and 65535"
-        )
+        raise ConfigIncompleteError(f"{source}: 'port' must be an integer between 0 and 65535")
 
     native_raw = data.get("native", True)
     if not isinstance(native_raw, bool):
@@ -340,18 +338,12 @@ def _parse(data: dict, source: Path) -> CondashConfig:
         defaults = DEFAULT_OPEN_WITH[slot_key]
         slot_data = open_with_raw.get(slot_key) or {}
         if not isinstance(slot_data, dict):
-            raise ConfigIncompleteError(
-                f"{source}: 'open_with.{slot_key}' must be a table"
-            )
+            raise ConfigIncompleteError(f"{source}: 'open_with.{slot_key}' must be a table")
         label = slot_data.get("label", defaults["label"])
         if not isinstance(label, str):
-            raise ConfigIncompleteError(
-                f"{source}: 'open_with.{slot_key}.label' must be a string"
-            )
+            raise ConfigIncompleteError(f"{source}: 'open_with.{slot_key}.label' must be a string")
         commands_raw = slot_data.get("commands", defaults["commands"])
-        if not isinstance(commands_raw, list) or not all(
-            isinstance(c, str) for c in commands_raw
-        ):
+        if not isinstance(commands_raw, list) or not all(isinstance(c, str) for c in commands_raw):
             raise ConfigIncompleteError(
                 f"{source}: 'open_with.{slot_key}.commands' must be a list of strings"
             )
