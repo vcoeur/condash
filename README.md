@@ -75,14 +75,38 @@ Once `conception_path` is set, run `condash` to launch the dashboard.
 ```
 condash                         # open the dashboard window
 condash --version               # print version and exit
-condash --tidy                  # move done items into YYYY-MM/ archive dirs and exit
 condash --conception-path PATH  # one-shot override (does not touch config file)
 condash --config PATH           # use a different config file
+
+condash init                    # write a default config template
+condash config show             # print the effective configuration
+condash config edit             # open the config in $EDITOR
+condash tidy                    # move done items into YYYY-MM/ archive dirs
+
+condash install-desktop         # register condash with the XDG launcher (Linux)
+condash uninstall-desktop       # remove the user-local desktop entry (Linux)
 ```
+
+## Linux: register condash in your application launcher
+
+`condash install-desktop` writes a user-local XDG desktop entry plus the bundled SVG icon, so condash appears in GNOME Activities, KDE Kickoff, Cinnamon menu, and other launchers that read `~/.local/share/applications`:
+
+```bash
+condash install-desktop
+```
+
+This installs:
+
+- `~/.local/share/applications/condash.desktop` — the launcher entry, pointing at the absolute path of whichever `condash` binary you ran the command with (so it survives pipx / venv isolation)
+- `~/.local/share/icons/hicolor/scalable/apps/condash.svg` — the SVG app icon
+
+No `sudo` and no system-wide changes. To remove it later: `condash uninstall-desktop`.
+
+The native window also picks up the same icon at runtime via pywebview, so it appears in your taskbar / Alt-Tab switcher.
 
 ## Status
 
-Version 0.1.0 — first standalone release. Ports the existing `conception/tools/dashboard.py` into a standalone PyPI package with configurable paths. Linux-first; other platforms untested.
+Version 0.1.5 — cross-OS pipx install (PyQt6 bundled), `native = false` honored, native window force-quits on close, Linux desktop entry installer, app icon. Still Linux-first overall; macOS and Windows should work but are less tested.
 
 ## License
 

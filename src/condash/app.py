@@ -8,6 +8,9 @@ FastAPI instance.
 
 from __future__ import annotations
 
+import os
+from importlib.resources import files as _package_files
+
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from nicegui import app as _ng_app
@@ -15,6 +18,11 @@ from nicegui import ui
 
 from . import legacy
 from .config import CondashConfig
+
+
+def icon_path() -> str:
+    """Absolute path to the bundled app icon (SVG)."""
+    return str(_package_files("condash") / "assets" / "favicon.svg")
 
 
 def _error(status: int, message: str) -> JSONResponse:
@@ -188,4 +196,15 @@ def run(cfg: CondashConfig) -> None:
     }
     if cfg.native:
         kwargs["window_size"] = (1400, 900)
+        # Force the Qt backend so we don't print a noisy GTK traceback on
+        # systems missing python3-gi. PyQt6 is a hard runtime dependency
+        # (pywebview[qt] in pyproject), so this is always available.
+        _ng_app.native.start_args["gui"] = "qt"
+        # Set the window icon so the OS task switcher shows it.
+        _ng_app.native.window_args["icon"] = icon_path()
+        # NiceGUI's check_shutdown thread sometimes fails to actually stop
+        # uvicorn after the user closes the window — leaving the port bound
+        # for the next launch. Force-exit the whole process when the
+        # native window emits its `closed` event.
+        _ng_app.native.on("closed", lambda: os._exit(0))
     ui.run(**kwargs)
