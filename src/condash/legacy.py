@@ -466,14 +466,20 @@ def _render_knowledge(root: dict | None) -> str:
 
 
 def _render_knowledge_group(node: dict) -> str:
-    """Render one directory as a group, recursing into subdirectories."""
-    parts = ['<div class="knowledge-group">']
-    parts.append('<div class="knowledge-group-heading">')
+    """Render one directory as a collapsible group, recursing into subdirs.
+
+    Uses ``<details>`` / ``<summary>`` so the open state is browser-native
+    (keyboard + a11y for free) and starts closed by default. The chevron
+    span is animated by CSS via ``details[open]``.
+    """
+    parts = ['<details class="knowledge-group">']
+    parts.append('<summary class="knowledge-group-heading">')
+    parts.append('<span class="knowledge-chevron" aria-hidden="true">&#9656;</span>')
     parts.append(f'<span class="knowledge-group-name">{h(node["label"])}</span>')
-    parts.append(f' <span class="knowledge-count">({node["count"]})</span>')
+    parts.append(f'<span class="knowledge-count">({node["count"]})</span>')
     if node["index"]:
         parts.append(_render_index_badge(node["index"], top_level=False))
-    parts.append("</div>")
+    parts.append("</summary>")
     if node["body"]:
         parts.append('<div class="knowledge-list">')
         for e in node["body"]:
@@ -481,7 +487,7 @@ def _render_knowledge_group(node: dict) -> str:
         parts.append("</div>")
     for child in node["children"]:
         parts.append(_render_knowledge_group(child))
-    parts.append("</div>")
+    parts.append("</details>")
     return "".join(parts)
 
 
@@ -500,12 +506,18 @@ def _render_knowledge_card(e: dict) -> str:
 
 
 def _render_index_badge(idx: dict, top_level: bool) -> str:
-    """Index files become a clickable pill, not a card."""
+    """Index files become a clickable pill, not a card.
+
+    The non-top-level badge sits inside a ``<summary>`` — stop the click
+    from bubbling up so opening the index doesn't also toggle the parent
+    group's open state.
+    """
     js_path = json.dumps(idx["path"]).replace("'", "\\'").replace('"', "'")
     js_title = json.dumps(idx["title"]).replace("'", "\\'").replace('"', "'")
     cls = "knowledge-index-badge" + (" knowledge-index-top" if top_level else "")
     return (
-        f'<a class="{cls}" onclick="openNotePreview({js_path},{js_title})" '
+        f'<a class="{cls}" '
+        f'onclick="event.stopPropagation();openNotePreview({js_path},{js_title})" '
         f'title="{h(idx["path"])}">index</a>'
     )
 

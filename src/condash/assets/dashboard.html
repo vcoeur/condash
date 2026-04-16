@@ -702,7 +702,18 @@ body {
 .knowledge-group-heading {
     display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.55rem;
+    letter-spacing: 0.05em; color: var(--text-muted);
+    cursor: pointer; user-select: none;
+    list-style: none; /* hide Firefox default marker */
+}
+.knowledge-group-heading::-webkit-details-marker { display: none; }
+.knowledge-group[open] > .knowledge-group-heading { margin-bottom: 0.55rem; }
+.knowledge-chevron {
+    display: inline-block; font-size: 0.7rem; line-height: 1;
+    color: var(--text-muted); transition: transform 0.15s ease;
+}
+.knowledge-group[open] > .knowledge-group-heading > .knowledge-chevron {
+    transform: rotate(90deg);
 }
 .knowledge-count { font-weight: 400; color: var(--text-muted); }
 /* Subdirectory groups render inside their parent — drop the card chrome
@@ -1785,10 +1796,15 @@ function filterKnowledge(q) {
         c.style.display = match ? '' : 'none';
         if (!match) return;
         totalVisible += 1;
+        // Re-reveal every ancestor knowledge-group AND open it (the
+        // groups are <details> closed by default; without setAttribute
+        // the matched card would still be hidden inside a collapsed
+        // ancestor).
         var anc = c.parentElement;
         while (anc && anc !== panel) {
             if (anc.classList && anc.classList.contains('knowledge-group')) {
                 anc.style.display = '';
+                anc.setAttribute('open', '');
             }
             anc = anc.parentElement;
         }
