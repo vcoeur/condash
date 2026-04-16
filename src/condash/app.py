@@ -582,6 +582,26 @@ def _resolve_terminal_shell(cfg: CondashConfig) -> str:
     return os.environ.get("SHELL") or "/bin/bash"
 
 
+class ClipboardBridge:
+    """pywebview JS→Python bridge for clipboard access.
+
+    Exposed on ``window.pywebview.api`` via ``js_api`` in native mode.
+    Each method is invoked on pywebview's main thread (the same thread
+    that owns the QApplication) so ``QClipboard`` is safe to touch —
+    unlike the FastAPI worker thread where ``QGuiApplication.instance()``
+    returns None or Qt warns about cross-thread GUI access.
+
+    Method names are intentionally short: the JS side calls
+    ``window.pywebview.api.clipboard_get()`` / ``clipboard_set(text)``.
+    """
+
+    def clipboard_get(self) -> str:
+        return _clipboard_read()
+
+    def clipboard_set(self, text: str) -> bool:
+        return _clipboard_write(text or "")
+
+
 def _qt_clipboard():
     """Return the running QClipboard, or None if Qt isn't initialised.
 
@@ -786,6 +806,11 @@ def run(cfg: CondashConfig) -> None:
         # systems missing python3-gi. PyQt6 is a hard runtime dependency
         # (pywebview[qt] in pyproject), so this is always available.
         _ng_app.native.start_args["gui"] = "qt"
+        # Expose a Python→JS clipboard bridge. pywebview invokes js_api
+        # methods on its main Qt thread, so QClipboard works without
+        # tripping navigator.clipboard's permission callback (which
+        # crashes on PyQt6 6.x — see qt.py::onFeaturePermissionRequested).
+        _ng_app.native.window_args["js_api"] = ClipboardBridge()
         # Set the window icon so the OS task switcher shows it. pywebview 6.x
         # exposes `icon` on webview.start() (i.e. start_args), NOT on
         # create_window() — passing it via window_args raises TypeError on

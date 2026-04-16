@@ -361,12 +361,18 @@ h1 { font-size: 1.4rem; }
     border-radius: 3px; padding: 0 3px; font: inherit; min-width: 60px;
 }
 .term-tab-rename:focus { outline: none; }
+/* Match the tab-chip height so the + sits on the same baseline. */
 .term-new-tab {
-    background: transparent; color: #8a8a92;
-    border: 1px dashed #3a3a44; border-radius: 4px;
-    font-size: 0.9rem; line-height: 1; padding: 0 8px; cursor: pointer;
+    background: transparent; color: #b8b8c0;
+    border: 1px solid #3a3a44; border-radius: 4px 4px 0 0;
+    font-size: 1.05rem; font-weight: 600; line-height: 1;
+    padding: 4px 12px; cursor: pointer; min-width: 28px;
+    align-self: stretch;
 }
-.term-new-tab:hover { color: #e6e6ec; border-color: #6a6a74; }
+.term-new-tab:hover {
+    color: #f0f0f5; border-color: var(--accent);
+    background: #1a1b20;
+}
 
 /* Each session has its own full-sized mount inside .term-mount. Hidden
    sessions stop layout-contributing so the visible one gets the full
@@ -2146,15 +2152,34 @@ async function runTidy() {
    `exit` info frame when the shell dies; client closes the tab. Closing
    the last tab hides the pane. The pane's × and the toggle shortcut
    hide/show the pane while leaving the tabs intact. */
-/* Clipboard bridge — always route through the server /clipboard
-   endpoint. We deliberately do NOT touch navigator.clipboard:
-   pywebview's Qt permission callback (setFeaturePermission, qt.py:301)
-   still passes an int argument that PyQt6 rejects as "unexpected type",
-   and the moment JS calls navigator.clipboard.readText/writeText on
-   localhost the webview throws a TypeError into Python. The server
-   endpoint drives QClipboard directly, bypassing the permission path. */
+/* Clipboard bridge — native mode exposes window.pywebview.api.clipboard_*
+   backed by QClipboard on pywebview's main Qt thread. That path works
+   in Qt 6.x without the permission-request crash navigator.clipboard
+   triggers, and without the cross-thread nulls that the /clipboard HTTP
+   endpoint hits when the FastAPI worker calls QClipboard from its own
+   thread. /clipboard stays as a fallback for browser mode (no pywebview
+   object) — there it relies on wl-copy / xclip / xsel. */
+function _termHasPyApi() {
+    return typeof window !== 'undefined' &&
+           window.pywebview && window.pywebview.api &&
+           typeof window.pywebview.api.clipboard_get === 'function' &&
+           typeof window.pywebview.api.clipboard_set === 'function';
+}
+
 function _termClipboardWrite(text) {
     if (!text) return;
+    if (_termHasPyApi()) {
+        try {
+            Promise.resolve(window.pywebview.api.clipboard_set(text)).catch(function() {
+                _termClipboardWriteHttp(text);
+            });
+            return;
+        } catch (e) {}
+    }
+    _termClipboardWriteHttp(text);
+}
+
+function _termClipboardWriteHttp(text) {
     try {
         fetch('/clipboard', {
             method: 'POST',
@@ -2165,6 +2190,18 @@ function _termClipboardWrite(text) {
 }
 
 function _termClipboardRead() {
+    if (_termHasPyApi()) {
+        try {
+            return Promise.resolve(window.pywebview.api.clipboard_get()).then(
+                function(t) { return t || ''; },
+                function() { return _termClipboardReadHttp(); },
+            );
+        } catch (e) {}
+    }
+    return _termClipboardReadHttp();
+}
+
+function _termClipboardReadHttp() {
     return fetch('/clipboard', {cache: 'no-store'})
         .then(function(r) { return r.ok ? r.text() : ''; })
         .catch(function() { return ''; });
