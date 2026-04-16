@@ -364,6 +364,111 @@ def parse_readme(path, kind):
     }
 
 
+_KNOWLEDGE_GROUPS: list[tuple[str, str | None]] = [
+    ("Overview", None),  # loose files at knowledge/ root
+    ("Topics", "topics"),
+    ("Apps", "apps"),
+    ("External", "external"),
+    ("Internal", "internal"),
+]
+
+
+def _knowledge_title_and_desc(path: Path) -> tuple[str, str]:
+    """Pick a human label + short description from a knowledge file.
+
+    Title: first ``# heading`` line, else the filename without extension.
+    Description: first non-blank line after the heading that is not
+    itself a heading or frontmatter.
+    """
+    title = path.stem.replace("-", " ").replace("_", " ")
+    desc = ""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return title, desc
+    title_taken = False
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if not title_taken and line.startswith("#"):
+            title = line.lstrip("#").strip() or title
+            title_taken = True
+            continue
+        if line.startswith("#") or line.startswith("---"):
+            continue
+        desc = line.rstrip(".")
+        break
+    return title, desc[:220]
+
+
+def collect_knowledge() -> list[tuple[str, list[dict[str, str]]]]:
+    """Scan ``knowledge/`` and return pages grouped for the explorer tab.
+
+    Returns a list of ``(group_label, [{path, title, desc, rel}, …])``.
+    Empty groups are dropped.
+    """
+    knowledge_root = BASE_DIR / "knowledge"
+    if not knowledge_root.is_dir():
+        return []
+    out: list[tuple[str, list[dict[str, str]]]] = []
+    for label, subdir in _KNOWLEDGE_GROUPS:
+        target = knowledge_root if subdir is None else knowledge_root / subdir
+        if not target.is_dir():
+            continue
+        entries: list[dict[str, str]] = []
+        if subdir is None:
+            # Loose .md at knowledge/ root — do not recurse here.
+            candidates = sorted(
+                p for p in target.iterdir() if p.is_file() and p.suffix.lower() == ".md"
+            )
+        else:
+            candidates = sorted(target.rglob("*.md"))
+        for p in candidates:
+            if any(part.startswith(".") for part in p.parts):
+                continue
+            title, desc = _knowledge_title_and_desc(p)
+            entries.append(
+                {
+                    "path": str(p.relative_to(BASE_DIR)),
+                    "title": title,
+                    "desc": desc,
+                    "rel": p.name,
+                }
+            )
+        if entries:
+            out.append((label, entries))
+    return out
+
+
+def _render_knowledge(groups: list[tuple[str, list[dict[str, str]]]]) -> str:
+    if not groups:
+        return '<p class="note-empty">No <code>knowledge/</code> tree under the configured conception path.</p>'
+    parts = ['<div class="knowledge-panel">']
+    for label, entries in groups:
+        parts.append('<div class="knowledge-group">')
+        parts.append(
+            f'<div class="knowledge-group-heading">{h(label)} '
+            f'<span class="knowledge-count">({len(entries)})</span></div>'
+        )
+        parts.append('<div class="knowledge-list">')
+        for e in entries:
+            js_path = json.dumps(e["path"]).replace("'", "\\'").replace('"', "'")
+            js_title = json.dumps(e["title"]).replace("'", "\\'").replace('"', "'")
+            desc_html = f'<div class="knowledge-desc">{h(e["desc"])}</div>' if e["desc"] else ""
+            parts.append(
+                f'<div class="knowledge-card" '
+                f'onclick="openNotePreview({js_path},{js_title})">'
+                f'<div class="knowledge-title">{h(e["title"])}</div>'
+                f"{desc_html}"
+                f'<div class="knowledge-path">{h(e["path"])}</div>'
+                f"</div>"
+            )
+        parts.append("</div></div>")
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def collect_items():
     """Find and parse all incident/project/document READMEs."""
     items = []
@@ -925,15 +1030,21 @@ def render_page(items):
     git_groups = _collect_git_repos()
     git_html = _render_git_repos(git_groups)
 
+    knowledge_groups = collect_knowledge()
+    knowledge_html = _render_knowledge(knowledge_groups)
+    count_knowledge = sum(len(entries) for _, entries in knowledge_groups)
+
     template = _template_path().read_text(encoding="utf-8")
     template = template.replace("{{CARDS}}", cards)
     template = template.replace("{{GIT_REPOS}}", git_html)
+    template = template.replace("{{KNOWLEDGE}}", knowledge_html)
     return (
         template.replace("{{TIMESTAMP}}", now)
         .replace("{{COUNT_CURRENT}}", str(count_current))
         .replace("{{COUNT_NEXT}}", str(count_next))
         .replace("{{COUNT_BACKLOG}}", str(count_backlog))
         .replace("{{COUNT_DONE}}", str(count_done))
+        .replace("{{COUNT_KNOWLEDGE}}", str(count_knowledge))
     )
 
 
