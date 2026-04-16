@@ -2146,23 +2146,15 @@ async function runTidy() {
    `exit` info frame when the shell dies; client closes the tab. Closing
    the last tab hides the pane. The pane's × and the toggle shortcut
    hide/show the pane while leaving the tabs intact. */
-/* Clipboard bridge — pywebview's Qt webview denies navigator.clipboard
-   access and often doesn't dispatch native paste events either, so both
-   paths go through server endpoints that drive QClipboard (or xclip /
-   wl-paste as fallbacks). We still try the browser API first in case
-   the webview ever grants it. */
+/* Clipboard bridge — always route through the server /clipboard
+   endpoint. We deliberately do NOT touch navigator.clipboard:
+   pywebview's Qt permission callback (setFeaturePermission, qt.py:301)
+   still passes an int argument that PyQt6 rejects as "unexpected type",
+   and the moment JS calls navigator.clipboard.readText/writeText on
+   localhost the webview throws a TypeError into Python. The server
+   endpoint drives QClipboard directly, bypassing the permission path. */
 function _termClipboardWrite(text) {
     if (!text) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).catch(function() {
-            _termClipboardWriteServer(text);
-        });
-        return;
-    }
-    _termClipboardWriteServer(text);
-}
-
-function _termClipboardWriteServer(text) {
     try {
         fetch('/clipboard', {
             method: 'POST',
@@ -2173,18 +2165,9 @@ function _termClipboardWriteServer(text) {
 }
 
 function _termClipboardRead() {
-    // Try the browser API first — if the webview granted access this
-    // avoids a server round-trip. Empty string / rejection falls back
-    // to the server endpoint.
-    var attempt = (navigator.clipboard && navigator.clipboard.readText)
-        ? navigator.clipboard.readText().then(function(text) { return text || ''; }, function() { return ''; })
-        : Promise.resolve('');
-    return attempt.then(function(text) {
-        if (text) return text;
-        return fetch('/clipboard', {cache: 'no-store'})
-            .then(function(r) { return r.ok ? r.text() : ''; })
-            .catch(function() { return ''; });
-    });
+    return fetch('/clipboard', {cache: 'no-store'})
+        .then(function(r) { return r.ok ? r.text() : ''; })
+        .catch(function() { return ''; });
 }
 
 var _termTabs = [];           // [{id, side, term, fit, ws, mount, button, shell}]
