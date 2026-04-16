@@ -408,11 +408,19 @@ h1 { font-size: 1.4rem; }
 /* --- Notes (collapsible list of notes/*.md per item) --- */
 .notes-block { margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed var(--border); }
 .notes-heading {
+    display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 0.05em;
     cursor: pointer; user-select: none; padding: 2px 4px; border-radius: 4px;
     transition: color 0.1s, background 0.1s;
 }
+.notes-new-btn {
+    margin-left: auto; font-size: 0.9rem; line-height: 1;
+    padding: 0 6px; border-radius: 4px;
+    border: 1px solid transparent; background: transparent; color: var(--text-muted);
+    cursor: pointer;
+}
+.notes-new-btn:hover { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
 .notes-heading:hover { color: var(--accent); background: var(--accent-bg); }
 .notes-heading::before { content: '\25b8  '; font-size: 0.65rem; }
 .notes-heading.open::before { content: '\25be  '; }
@@ -522,6 +530,30 @@ h1 { font-size: 1.4rem; }
 .note-modal-body .note-preview-binary {
     padding: 1.2rem 1rem; text-align: center; color: var(--text-secondary);
 }
+.note-modal-actions { display: flex; align-items: center; gap: 0.35rem; }
+.note-action-btn {
+    font-size: 0.8rem; padding: 3px 10px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+    cursor: pointer;
+}
+.note-action-btn:hover:not(:disabled) { background: var(--accent-bg); }
+.note-action-btn:disabled { opacity: 0.4; cursor: default; }
+.note-action-btn.note-action-primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.note-action-btn.note-action-primary:hover { filter: brightness(0.9); }
+.note-edit-textarea {
+    width: 100%; min-height: 65vh; resize: vertical;
+    font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+    font-size: 0.85rem; line-height: 1.5;
+    padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-card); color: var(--text);
+}
+.note-edit-error {
+    color: var(--git-changes); font-size: 0.82rem;
+    margin: 0.45rem 0 0.2rem; display: none;
+}
+.note-edit-error.visible { display: block; }
 .note-modal-body hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 .note-loading { color: var(--text-muted); font-style: italic; }
 .note-error { color: var(--git-changes); }
@@ -772,7 +804,12 @@ h1 { font-size: 1.4rem; }
     <div class="note-modal">
         <div class="note-modal-header">
             <span class="note-modal-title" id="note-modal-title">Note</span>
-            <button class="note-modal-close" onclick="closeNotePreview()" aria-label="Close">&times;</button>
+            <div class="note-modal-actions">
+                <button id="note-edit-btn" class="note-action-btn" onclick="enterEditMode()" title="Edit">Edit</button>
+                <button id="note-save-btn" class="note-action-btn note-action-primary" onclick="saveEdit()" style="display:none">Save</button>
+                <button id="note-cancel-btn" class="note-action-btn" onclick="exitEditMode()" style="display:none">Cancel</button>
+                <button class="note-modal-close" onclick="closeNotePreview()" aria-label="Close">&times;</button>
+            </div>
         </div>
         <div class="note-modal-body" id="note-modal-body"></div>
     </div>
@@ -1347,6 +1384,136 @@ function _wireNoteLinks(body, notePath) {
 
 function closeNotePreview() {
     document.getElementById('note-modal').classList.remove('open');
+    exitEditMode(true);  // discard any pending edit state silently
+}
+
+/* --- Edit mode ---
+   Edit flips the modal body to a textarea pre-filled with /note-raw.
+   Save POSTs to /note with expected_mtime — server refuses on mtime
+   mismatch so a stale editor can't silently clobber out-of-band edits. */
+function _setEditButtons(editing) {
+    document.getElementById('note-edit-btn').style.display = editing ? 'none' : '';
+    document.getElementById('note-save-btn').style.display = editing ? '' : 'none';
+    document.getElementById('note-cancel-btn').style.display = editing ? '' : 'none';
+}
+
+async function enterEditMode() {
+    var body = document.getElementById('note-modal-body');
+    var path = body.dataset.notePath;
+    if (!path) return;
+    try {
+        var res = await fetch('/note-raw?path=' + encodeURIComponent(path));
+        var data = await res.json().catch(function(){return {};});
+        if (!res.ok) {
+            alert('Cannot edit: ' + (data.error || ('HTTP ' + res.status)));
+            return;
+        }
+        body.dataset.editMtime = String(data.mtime);
+        body.innerHTML = '';
+        var ta = document.createElement('textarea');
+        ta.className = 'note-edit-textarea';
+        ta.value = data.content || '';
+        body.appendChild(ta);
+        var err = document.createElement('div');
+        err.className = 'note-edit-error';
+        err.id = 'note-edit-error';
+        body.appendChild(err);
+        ta.focus();
+        _setEditButtons(true);
+    } catch (e) {
+        alert('Could not load for editing: ' + e);
+    }
+}
+
+async function saveEdit() {
+    var body = document.getElementById('note-modal-body');
+    var ta = body.querySelector('.note-edit-textarea');
+    if (!ta) return;
+    var path = body.dataset.notePath;
+    var expected = body.dataset.editMtime;
+    var err = document.getElementById('note-edit-error');
+    if (err) err.classList.remove('visible');
+    try {
+        var res = await fetch('/note', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                path: path,
+                content: ta.value,
+                expected_mtime: expected ? Number(expected) : null,
+            }),
+        });
+        var data = await res.json().catch(function(){return {};});
+        if (!res.ok) {
+            if (res.status === 409 && data.mtime) body.dataset.editMtime = String(data.mtime);
+            var msg = data.reason || data.error || ('HTTP ' + res.status);
+            if (err) {
+                err.textContent = msg;
+                err.classList.add('visible');
+            }
+            return;
+        }
+        // Success — fall back to preview mode with the new rendering.
+        _setEditButtons(false);
+        var name = document.getElementById('note-modal-title').textContent;
+        await _reloadNotePreview(path, name);
+    } catch (e) {
+        if (err) {
+            err.textContent = 'Save failed: ' + e;
+            err.classList.add('visible');
+        }
+    }
+}
+
+function exitEditMode(silent) {
+    var body = document.getElementById('note-modal-body');
+    var ta = body.querySelector('.note-edit-textarea');
+    if (!ta) return;
+    delete body.dataset.editMtime;
+    _setEditButtons(false);
+    if (silent) return;
+    var path = body.dataset.notePath;
+    var name = document.getElementById('note-modal-title').textContent;
+    _reloadNotePreview(path, name);
+}
+
+/* Prompt for a filename, POST /note/create, and drop into edit mode
+   on success. Default extension is `.md`; user can type something else. */
+async function createNoteFor(readmePath) {
+    var raw = prompt('New note filename (e.g. plan.md, decision.txt):', 'new-note.md');
+    if (!raw) return;
+    raw = raw.trim();
+    if (!raw) return;
+    if (raw.indexOf('.') < 0) raw = raw + '.md';
+    try {
+        var res = await fetch('/note/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({item_readme: readmePath, filename: raw}),
+        });
+        var data = await res.json().catch(function(){return {};});
+        if (!res.ok) {
+            alert('Could not create note: ' + (data.reason || data.error || ('HTTP ' + res.status)));
+            return;
+        }
+        await openNotePreview(data.path, raw);
+        enterEditMode();
+    } catch (e) {
+        alert('Network error: ' + e);
+    }
+}
+
+async function _reloadNotePreview(path, name) {
+    var body = document.getElementById('note-modal-body');
+    body.innerHTML = '<p class="note-loading">Loading\u2026</p>';
+    var res = await fetch('/note?path=' + encodeURIComponent(path));
+    if (!res.ok) {
+        body.innerHTML = '<p class="note-error">Failed to load note (' + res.status + ').</p>';
+        return;
+    }
+    body.innerHTML = await res.text();
+    _renderMermaidIn(body);
+    _wireNoteLinks(body, path);
 }
 
 document.addEventListener('keydown', function(e) {

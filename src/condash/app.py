@@ -107,6 +107,46 @@ def _register_routes() -> None:
             return Response(status_code=403)
         return HTMLResponse(content=legacy._render_note(full))
 
+    @_ng_app.get("/note-raw")
+    def get_note_raw(path: str = ""):
+        """Return plain-text content + mtime for the in-modal edit mode."""
+        full = legacy.validate_note_path(path)
+        if full is None:
+            return _error(403, "invalid path")
+        kind = legacy._note_kind(full)
+        if kind not in ("md", "text"):
+            return _error(400, f"not editable ({kind})")
+        return legacy.read_note_raw(full)
+
+    @_ng_app.post("/note")
+    async def post_note(req: Request):
+        """Atomically overwrite a note file with the editor's content."""
+        data = await req.json()
+        full = legacy.validate_note_path(str(data.get("path") or ""))
+        if full is None:
+            return _error(403, "invalid path")
+        if legacy._note_kind(full) not in ("md", "text"):
+            return _error(400, "not editable")
+        content = data.get("content")
+        if not isinstance(content, str):
+            return _error(400, "content must be a string")
+        result = legacy.write_note(full, content, data.get("expected_mtime"))
+        if not result.get("ok"):
+            return JSONResponse(status_code=409, content=result)
+        return result
+
+    @_ng_app.post("/note/create")
+    async def post_note_create(req: Request):
+        """Create an empty note under an item's ``notes/`` directory."""
+        data = await req.json()
+        result = legacy.create_note(
+            str(data.get("item_readme") or ""),
+            str(data.get("filename") or ""),
+        )
+        if not result.get("ok"):
+            return _error(400, result.get("reason", "create failed"))
+        return result
+
     @_ng_app.get("/download/{rel_path:path}")
     def download(rel_path: str):
         full = legacy.validate_download_path(rel_path)

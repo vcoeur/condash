@@ -449,9 +449,13 @@ def _render_readme_link(item):
     )
 
 
-def _render_notes(notes):
-    if not notes:
-        return ""
+def _render_notes(notes, readme_rel: str | None = None):
+    """Render the notes block for an item card.
+
+    The block is always emitted (even empty) so the user has a place to
+    click ``+`` and create the first note. ``readme_rel`` is the item's
+    README.md relative path; it seeds the create-note POST target.
+    """
     items_html = ""
     for n in notes:
         js_path = json.dumps(n["path"]).replace("'", "\\'").replace('"', "'")
@@ -463,10 +467,19 @@ def _render_notes(notes):
             f"{h(label)}</div>"
         )
     count = len(notes)
+    create_btn = ""
+    if readme_rel:
+        js_readme = json.dumps(readme_rel).replace("'", "\\'").replace('"', "'")
+        create_btn = (
+            f'<button class="notes-new-btn" title="New note" '
+            f'onclick="event.stopPropagation();createNoteFor({js_readme})">+</button>'
+        )
+    empty_class = " is-empty" if not notes else ""
     return (
-        f'<div class="notes-block">'
+        f'<div class="notes-block{empty_class}">'
         f'<div class="notes-heading" onclick="toggleNotes(this)">'
-        f'Notes <span class="notes-count">({count})</span></div>'
+        f'Notes <span class="notes-count">({count})</span>'
+        f"{create_btn}</div>"
         f'<div class="notes-list" style="display:none">{items_html}</div>'
         f"</div>"
     )
@@ -525,7 +538,7 @@ def _render_card(item):
 
     deliverables_html = _render_deliverables(item.get("deliverables", []))
     readme_link_html = _render_readme_link(item)
-    notes_html = _render_notes(item.get("notes", []))
+    notes_html = _render_notes(item.get("notes", []), readme_rel=item.get("path"))
 
     summary_html = f'<p class="summary">{h(item["summary"])}</p>' if item["summary"] else ""
 
@@ -1214,6 +1227,64 @@ def validate_note_path(rel_path: str) -> Path | None:
     except ValueError:
         return None
     return full if full.is_file() else None
+
+
+_VALID_NOTE_FILENAME_RE = re.compile(r"^[\w.-]+\.[A-Za-z0-9]+$")
+
+
+def read_note_raw(full_path: Path) -> dict[str, Any]:
+    """Return the plain bytes + mtime for the edit surface."""
+    stat_res = full_path.stat()
+    content = full_path.read_text(encoding="utf-8", errors="replace")
+    return {
+        "path": str(full_path.relative_to(BASE_DIR)),
+        "content": content,
+        "mtime": stat_res.st_mtime,
+    }
+
+
+def write_note(full_path: Path, content: str, expected_mtime: float | None) -> dict[str, Any]:
+    """Atomically rewrite ``full_path`` with ``content``.
+
+    Refuses when the on-disk mtime doesn't match ``expected_mtime`` so
+    a stale editor never silently overwrites out-of-band edits.
+    Returns ``{ok, mtime | reason}``.
+    """
+    try:
+        current_mtime = full_path.stat().st_mtime
+    except FileNotFoundError:
+        return {"ok": False, "reason": "file vanished"}
+    if expected_mtime is not None and abs(current_mtime - float(expected_mtime)) > 1e-6:
+        return {"ok": False, "reason": "file changed on disk", "mtime": current_mtime}
+    tmp = full_path.with_suffix(full_path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(full_path)
+    return {"ok": True, "mtime": full_path.stat().st_mtime}
+
+
+def create_note(item_readme_rel: str, filename: str) -> dict[str, Any]:
+    """Create an empty note file under the item's ``notes/`` directory.
+
+    ``item_readme_rel`` is the README.md path of the owning item (validated
+    against ``_VALID_PATH_RE``). ``filename`` must be a plain basename with
+    an extension — no slashes, no traversal. Returns ``{ok, path | reason}``.
+    """
+    item = _validate_path(item_readme_rel)
+    if item is None or item.name != "README.md":
+        return {"ok": False, "reason": "invalid item"}
+    if not _VALID_NOTE_FILENAME_RE.match(filename):
+        return {"ok": False, "reason": "invalid filename"}
+    notes_dir = item.parent / "notes"
+    notes_dir.mkdir(exist_ok=True)
+    target = notes_dir / filename
+    if target.exists():
+        return {"ok": False, "reason": "file exists"}
+    target.write_text("", encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(target.relative_to(BASE_DIR)),
+        "mtime": target.stat().st_mtime,
+    }
 
 
 def validate_file_path(rel_path: str) -> tuple[Path, str] | None:
