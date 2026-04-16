@@ -2120,6 +2120,34 @@ async function runTidy() {
    `exit` info frame when the shell dies; client closes the tab. Closing
    the last tab hides the pane. The pane's × and the toggle shortcut
    hide/show the pane while leaving the tabs intact. */
+/* Clipboard helpers — prefer the modern async API (works in pywebview's
+   Qt webview over localhost), fall back to document.execCommand for
+   paste on older engines. Both paths swallow errors so the terminal key
+   handler stays predictable if the user's browser blocks clipboard. */
+function _termClipboardWrite(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(function() {});
+        return;
+    }
+    try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    } catch (e) {}
+}
+
+function _termClipboardRead() {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+        return navigator.clipboard.readText().catch(function() { return ''; });
+    }
+    return Promise.resolve('');
+}
+
 var _termTabs = [];           // [{id, term, fit, ws, mount, button, shell}]
 var _termActiveId = null;
 var _termNextId = 1;
@@ -2210,10 +2238,39 @@ function _termCreateTab() {
     // so our shortcut closes the pane from inside the active tab without
     // the document handler firing a second toggle.
     term.attachCustomKeyEventHandler(function(ev) {
-        if (ev.type === 'keydown' && _termShortcut && _matchShortcut(ev, _termShortcut)) {
+        if (ev.type !== 'keydown') return true;
+        // Toggle the pane — see comment in _termInit for why we both
+        // handle it here and preventDefault+stopPropagation.
+        if (_termShortcut && _matchShortcut(ev, _termShortcut)) {
             ev.preventDefault();
             ev.stopPropagation();
             toggleTerminal();
+            return false;
+        }
+        // Ctrl+C: copy the current selection if there is one, otherwise
+        // let xterm send ^C (SIGINT) as normal. Ctrl+Shift+C: always copy
+        // (no-op without a selection) — matches GNOME Terminal / Ghostty.
+        if (ev.ctrlKey && !ev.altKey && !ev.metaKey &&
+            (ev.key === 'c' || ev.key === 'C')) {
+            if (ev.shiftKey || term.hasSelection()) {
+                var sel = term.getSelection();
+                if (sel) {
+                    _termClipboardWrite(sel);
+                    ev.preventDefault();
+                    return false;
+                }
+                // Ctrl+Shift+C with no selection — swallow silently.
+                if (ev.shiftKey) { ev.preventDefault(); return false; }
+            }
+            return true;  // fall through to SIGINT
+        }
+        // Ctrl+V / Ctrl+Shift+V: paste clipboard into the terminal.
+        if (ev.ctrlKey && !ev.altKey && !ev.metaKey &&
+            (ev.key === 'v' || ev.key === 'V')) {
+            ev.preventDefault();
+            _termClipboardRead().then(function(text) {
+                if (text) term.paste(text);
+            });
             return false;
         }
         return true;
