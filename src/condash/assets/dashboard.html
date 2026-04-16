@@ -185,17 +185,19 @@ body {
    rather than stacking a second scroll region on top of a taller body.
 
    The pinned rows and the scroll region are both full width — the
-   1100px column lives on their children, so the scrollbar sits at the
-   viewport's right edge rather than inset inside a centered column. */
+   --content-max-width column lives on their children, so the scrollbar
+   sits at the viewport's right edge rather than inset inside a centered
+   column. */
 .app {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column;
     width: 100%; max-width: none; margin: 0; padding: 0;
+    --content-max-width: 1280px;
 }
 .app > .topbar,
 .app > .setup-banner,
 .app > .tabs {
-    width: 100%; max-width: 1100px;
+    width: 100%; max-width: var(--content-max-width);
     margin-left: auto; margin-right: auto;
     padding-left: 2rem; padding-right: 2rem;
     flex: 0 0 auto;
@@ -206,7 +208,7 @@ body {
     overflow-y: auto; overflow-x: hidden;
 }
 #main-scroll > * {
-    width: 100%; max-width: 1100px;
+    width: 100%; max-width: var(--content-max-width);
     margin-left: auto; margin-right: auto;
     padding: 0 2rem 1.5rem;
 }
@@ -698,10 +700,41 @@ body {
     background: var(--bg-card); padding: 0.8rem 1rem; box-shadow: var(--shadow-sm);
 }
 .knowledge-group-heading {
+    display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.55rem;
 }
 .knowledge-count { font-weight: 400; color: var(--text-muted); }
+/* Subdirectory groups render inside their parent — drop the card chrome
+   so they read as a section rather than a peer, and add a left rule so
+   the depth is still legible. The wrapper-level gap handles spacing. */
+.knowledge-group .knowledge-group {
+    border: none; box-shadow: none; background: transparent;
+    padding: 0.2rem 0 0.2rem 0.75rem;
+    border-left: 2px solid var(--border-light);
+    border-radius: 0;
+    margin-top: 0.6rem;
+}
+/* Index files are pointers, not content — render as a clickable pill in
+   the heading instead of a card alongside body files. The top-level
+   variant sits above the first group on its own row. */
+.knowledge-index-badge {
+    display: inline-block;
+    padding: 0.05rem 0.5rem;
+    border: 1px solid var(--border); border-radius: 999px;
+    font-size: 0.68rem; font-weight: 500;
+    color: var(--text-muted); background: var(--bg-card-hover);
+    text-transform: none; letter-spacing: 0;
+    cursor: pointer;
+    transition: border-color 0.1s, color 0.1s, background 0.1s;
+}
+.knowledge-index-badge:hover {
+    border-color: var(--accent); color: var(--accent); background: var(--accent-bg);
+}
+.knowledge-index-top {
+    align-self: flex-start; margin-bottom: 0.4rem;
+    font-size: 0.72rem; padding: 0.1rem 0.55rem;
+}
 .knowledge-list {
     display: grid; gap: 0.55rem;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1732,20 +1765,35 @@ function filterKnowledge(q) {
     q = (q || '').trim().toLowerCase();
     var panel = document.getElementById('knowledge');
     if (!panel) return;
-    var totalVisible = 0;
-    panel.querySelectorAll('.knowledge-group').forEach(function(group) {
-        var groupVisible = 0;
-        group.querySelectorAll('.knowledge-card').forEach(function(card) {
-            var hay = (card.textContent || '').toLowerCase();
-            var match = !q || hay.indexOf(q) !== -1;
-            card.style.display = match ? '' : 'none';
-            if (match) groupVisible += 1;
-        });
-        group.style.display = groupVisible ? '' : 'none';
-        totalVisible += groupVisible;
-    });
+    var groups = panel.querySelectorAll('.knowledge-group');
+    var cards = panel.querySelectorAll('.knowledge-card');
     var existingEmpty = panel.querySelector('.knowledge-empty');
-    if (q && totalVisible === 0) {
+    if (!q) {
+        groups.forEach(function(g){ g.style.display = ''; });
+        cards.forEach(function(c){ c.style.display = ''; });
+        if (existingEmpty) existingEmpty.remove();
+        return;
+    }
+    // Hide every group first, then walk up from each matching card and
+    // re-reveal its ancestor groups. Lets matches deep in the tree
+    // surface their parents without making sibling subdirs visible.
+    groups.forEach(function(g){ g.style.display = 'none'; });
+    var totalVisible = 0;
+    cards.forEach(function(c) {
+        var hay = (c.textContent || '').toLowerCase();
+        var match = hay.indexOf(q) !== -1;
+        c.style.display = match ? '' : 'none';
+        if (!match) return;
+        totalVisible += 1;
+        var anc = c.parentElement;
+        while (anc && anc !== panel) {
+            if (anc.classList && anc.classList.contains('knowledge-group')) {
+                anc.style.display = '';
+            }
+            anc = anc.parentElement;
+        }
+    });
+    if (totalVisible === 0) {
         if (!existingEmpty) {
             var empty = document.createElement('p');
             empty.className = 'knowledge-empty';

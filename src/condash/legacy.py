@@ -364,15 +364,6 @@ def parse_readme(path, kind):
     }
 
 
-_KNOWLEDGE_GROUPS: list[tuple[str, str | None]] = [
-    ("Overview", None),  # loose files at knowledge/ root
-    ("Topics", "topics"),
-    ("Apps", "apps"),
-    ("External", "external"),
-    ("Internal", "internal"),
-]
-
-
 def _knowledge_title_and_desc(path: Path) -> tuple[str, str]:
     """Pick a human label + short description from a knowledge file.
 
@@ -402,71 +393,121 @@ def _knowledge_title_and_desc(path: Path) -> tuple[str, str]:
     return title, desc[:220]
 
 
-def collect_knowledge() -> list[tuple[str, list[dict[str, str]]]]:
-    """Scan ``knowledge/`` and return pages grouped for the explorer tab.
+def collect_knowledge() -> dict | None:
+    """Scan ``knowledge/`` recursively and return a tree for the explorer tab.
 
-    Returns a list of ``(group_label, [{path, title, desc, rel}, …])``.
-    Empty groups are dropped.
+    Mirrors the on-disk shape: every directory becomes a node with its
+    direct ``index.md`` (if any) lifted out as a special "index" entry,
+    its non-index ``.md`` files as ``body`` entries, and its subdirectories
+    as ``children`` (recursive). ``count`` is the total navigable page
+    count at and below this node (index counts as 1, body files count, all
+    descendants roll up).
+
+    Returns ``None`` if ``knowledge/`` doesn't exist.
     """
-    knowledge_root = BASE_DIR / "knowledge"
-    if not knowledge_root.is_dir():
-        return []
-    out: list[tuple[str, list[dict[str, str]]]] = []
-    for label, subdir in _KNOWLEDGE_GROUPS:
-        target = knowledge_root if subdir is None else knowledge_root / subdir
-        if not target.is_dir():
+    root = BASE_DIR / "knowledge"
+    if not root.is_dir():
+        return None
+    return _knowledge_node(root)
+
+
+def _knowledge_node(d: Path) -> dict:
+    """Build one tree node for directory ``d``."""
+    is_root = d == BASE_DIR / "knowledge"
+    label = "Knowledge" if is_root else d.name.replace("_", " ").replace("-", " ").title()
+    index: dict[str, str] | None = None
+    body: list[dict[str, str]] = []
+    children: list[dict] = []
+    for entry in sorted(d.iterdir()):
+        if entry.name.startswith("."):
             continue
-        entries: list[dict[str, str]] = []
-        if subdir is None:
-            # Loose .md at knowledge/ root — do not recurse here.
-            candidates = sorted(
-                p for p in target.iterdir() if p.is_file() and p.suffix.lower() == ".md"
-            )
-        else:
-            candidates = sorted(target.rglob("*.md"))
-        for p in candidates:
-            if any(part.startswith(".") for part in p.parts):
-                continue
-            title, desc = _knowledge_title_and_desc(p)
-            entries.append(
-                {
-                    "path": str(p.relative_to(BASE_DIR)),
-                    "title": title,
-                    "desc": desc,
-                    "rel": p.name,
-                }
-            )
-        if entries:
-            out.append((label, entries))
-    return out
+        if entry.is_file() and entry.suffix.lower() == ".md":
+            title, desc = _knowledge_title_and_desc(entry)
+            item = {"path": str(entry.relative_to(BASE_DIR)), "title": title, "desc": desc}
+            if entry.name == "index.md":
+                index = item
+            else:
+                body.append(item)
+        elif entry.is_dir():
+            child = _knowledge_node(entry)
+            # Drop empty subtrees so the UI doesn't render lone headings.
+            if child["count"] > 0:
+                children.append(child)
+    count = len(body) + (1 if index else 0) + sum(c["count"] for c in children)
+    return {
+        "name": "" if is_root else d.name,
+        "label": label,
+        "rel_dir": str(d.relative_to(BASE_DIR)),
+        "index": index,
+        "body": body,
+        "children": children,
+        "count": count,
+    }
 
 
-def _render_knowledge(groups: list[tuple[str, list[dict[str, str]]]]) -> str:
-    if not groups:
+def _render_knowledge(root: dict | None) -> str:
+    """Render the knowledge tree returned by ``collect_knowledge``."""
+    if root is None or root["count"] == 0:
         return '<p class="note-empty">No <code>knowledge/</code> tree under the configured conception path.</p>'
     parts = ['<div class="knowledge-panel">']
-    for label, entries in groups:
-        parts.append('<div class="knowledge-group">')
-        parts.append(
-            f'<div class="knowledge-group-heading">{h(label)} '
-            f'<span class="knowledge-count">({len(entries)})</span></div>'
-        )
+    # Root index sits above all groups as a panel-level badge — it
+    # describes the whole tree, not any one subdir.
+    if root["index"]:
+        parts.append(_render_index_badge(root["index"], top_level=True))
+    if root["body"]:
         parts.append('<div class="knowledge-list">')
-        for e in entries:
-            js_path = json.dumps(e["path"]).replace("'", "\\'").replace('"', "'")
-            js_title = json.dumps(e["title"]).replace("'", "\\'").replace('"', "'")
-            desc_html = f'<div class="knowledge-desc">{h(e["desc"])}</div>' if e["desc"] else ""
-            parts.append(
-                f'<div class="knowledge-card" '
-                f'onclick="openNotePreview({js_path},{js_title})">'
-                f'<div class="knowledge-title">{h(e["title"])}</div>'
-                f"{desc_html}"
-                f'<div class="knowledge-path">{h(e["path"])}</div>'
-                f"</div>"
-            )
-        parts.append("</div></div>")
+        for e in root["body"]:
+            parts.append(_render_knowledge_card(e))
+        parts.append("</div>")
+    for child in root["children"]:
+        parts.append(_render_knowledge_group(child))
     parts.append("</div>")
     return "".join(parts)
+
+
+def _render_knowledge_group(node: dict) -> str:
+    """Render one directory as a group, recursing into subdirectories."""
+    parts = ['<div class="knowledge-group">']
+    parts.append('<div class="knowledge-group-heading">')
+    parts.append(f'<span class="knowledge-group-name">{h(node["label"])}</span>')
+    parts.append(f' <span class="knowledge-count">({node["count"]})</span>')
+    if node["index"]:
+        parts.append(_render_index_badge(node["index"], top_level=False))
+    parts.append("</div>")
+    if node["body"]:
+        parts.append('<div class="knowledge-list">')
+        for e in node["body"]:
+            parts.append(_render_knowledge_card(e))
+        parts.append("</div>")
+    for child in node["children"]:
+        parts.append(_render_knowledge_group(child))
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _render_knowledge_card(e: dict) -> str:
+    js_path = json.dumps(e["path"]).replace("'", "\\'").replace('"', "'")
+    js_title = json.dumps(e["title"]).replace("'", "\\'").replace('"', "'")
+    desc_html = f'<div class="knowledge-desc">{h(e["desc"])}</div>' if e["desc"] else ""
+    return (
+        f'<div class="knowledge-card" '
+        f'onclick="openNotePreview({js_path},{js_title})">'
+        f'<div class="knowledge-title">{h(e["title"])}</div>'
+        f"{desc_html}"
+        f'<div class="knowledge-path">{h(e["path"])}</div>'
+        f"</div>"
+    )
+
+
+def _render_index_badge(idx: dict, top_level: bool) -> str:
+    """Index files become a clickable pill, not a card."""
+    js_path = json.dumps(idx["path"]).replace("'", "\\'").replace('"', "'")
+    js_title = json.dumps(idx["title"]).replace("'", "\\'").replace('"', "'")
+    cls = "knowledge-index-badge" + (" knowledge-index-top" if top_level else "")
+    return (
+        f'<a class="{cls}" onclick="openNotePreview({js_path},{js_title})" '
+        f'title="{h(idx["path"])}">index</a>'
+    )
 
 
 def collect_items():
@@ -1044,9 +1085,9 @@ def render_page(items):
     git_html = _render_git_repos(git_groups)
     count_repos = sum(len(repos) for _, repos in git_groups)
 
-    knowledge_groups = collect_knowledge()
-    knowledge_html = _render_knowledge(knowledge_groups)
-    count_knowledge = sum(len(entries) for _, entries in knowledge_groups)
+    knowledge_root = collect_knowledge()
+    knowledge_html = _render_knowledge(knowledge_root)
+    count_knowledge = knowledge_root["count"] if knowledge_root else 0
     count_projects = len(all_items)
 
     template = _template_path().read_text(encoding="utf-8")
