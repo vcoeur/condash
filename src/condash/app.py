@@ -130,6 +130,25 @@ def _register_routes() -> None:
             headers={"Cache-Control": "public, max-age=300"},
         )
 
+    @_ng_app.get("/file/{rel_path:path}")
+    def get_file(rel_path: str):
+        """Stream raw bytes for any file under the conception tree.
+
+        Powers the in-modal preview for PDFs and images, and the
+        "Open externally" fallback path handoff. Narrower than a generic
+        static mount: paths are re-validated against conception-tree
+        regexes on every call.
+        """
+        result = legacy.validate_file_path(rel_path)
+        if result is None:
+            return Response(status_code=403)
+        full, ctype = result
+        return Response(
+            content=full.read_bytes(),
+            media_type=ctype,
+            headers={"Cache-Control": "private, max-age=60"},
+        )
+
     @_ng_app.post("/toggle")
     async def toggle(req: Request):
         data = await req.json()
