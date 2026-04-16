@@ -648,11 +648,18 @@ def _render_deliverables(deliverables):
         return ""
     links = []
     for d in deliverables:
-        href = f"/download/{d['full_path']}"
+        # target="_blank" routed through pywebview is flaky — some backends
+        # open the system browser on 127.0.0.1:<port>/download/… and fail to
+        # render. Route through /open-doc so the OS default PDF viewer opens
+        # the local file directly, same as note-body non-md links.
+        js_path = json.dumps(d["full_path"]).replace("'", "\\'").replace('"', "'")
         title = f' title="{h(d["desc"])}"' if d["desc"] else ""
         desc = f' <span class="dlv-desc">— {h(d["desc"])}</span>' if d["desc"] else ""
         links.append(
-            f'<a class="dlv-link" href="{h(href)}" target="_blank"{title}>'
+            f'<a class="dlv-link" href="#" '
+            f'onclick="event.preventDefault();event.stopPropagation();'
+            f'openDeliverable({js_path});return false;"'
+            f"{title}>"
             f"\u2913 {h(d['label'])}</a>{desc}"
         )
     items_html = "".join(f'<div class="dlv-item">{lnk}</div>' for lnk in links)

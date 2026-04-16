@@ -1998,6 +1998,19 @@ function closeNotePreview() {
     exitEditMode(true);  // discard any pending edit state silently
 }
 
+/* Route a ## Deliverables PDF click to the OS default viewer. target="_blank"
+   under pywebview routes to the system browser on 127.0.0.1:<port> and fails
+   to render inline, so we mirror the note-link pattern and POST /open-doc
+   with the conception-tree-relative path — xdg-open / open / startfile
+   then opens the local file in the user's native PDF viewer. */
+function openDeliverable(path) {
+    fetch('/open-doc', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: path}),
+    }).catch(function() {});
+}
+
 /* --- Edit mode ---
    Edit flips the modal body to a textarea pre-filled with /note-raw.
    Save POSTs to /note with expected_mtime — server refuses on mtime
