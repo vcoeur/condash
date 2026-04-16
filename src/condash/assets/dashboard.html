@@ -305,37 +305,27 @@ h1 { font-size: 1.4rem; }
     height: 4px; cursor: ns-resize; background: var(--border);
     flex-shrink: 0;
 }
-.term-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 4px 10px; font-size: 0.78rem; color: #bdbdbd;
-    background: #17181c; border-bottom: 1px solid #2a2b30;
+/* Unified top row — left tab group, flex spacer, right tab group.
+   Each `+` button sits immediately after its side's tab chips; the right
+   `+` ends up flush at the pane's right edge because there's nothing
+   after it. Drop the old per-side head + pane header — this single row
+   owns all tab/new-tab affordances. */
+.term-top-row {
+    display: flex; align-items: flex-end; gap: 3px;
+    padding: 4px 8px 0; background: #17181c;
+    border-bottom: 1px solid #2a2b30;
+    min-height: 30px;
 }
-.term-title { font-weight: 600; letter-spacing: 0.05em; font-size: 0.72rem; }
-.term-shell {
-    font-family: ui-monospace, "SF Mono", "Menlo", monospace;
-    font-size: 0.72rem; color: #8a8a92;
-}
-.term-spacer { flex: 1; }
-.term-header { gap: 0.5rem; }
-.term-split-btn {
-    background: transparent; color: #8a8a92;
-    border: 1px solid transparent; border-radius: 4px;
-    padding: 2px 4px; cursor: pointer;
-    display: inline-flex; align-items: center;
-}
-.term-split-btn:hover { color: #e6e6ec; border-color: #3a3a44; background: #1a1b20; }
+.term-tabs { display: flex; flex-wrap: wrap; gap: 3px; align-items: flex-end; }
+.term-tabs-right { justify-content: flex-end; }
+.term-spacer { flex: 1; min-width: 10px; }
 
-/* Body below the pane header: flex row of left side + splitter + right side. */
+/* Body below the top row: flex row of left side + splitter + right side. */
 .term-body { flex: 1; min-height: 0; display: flex; }
 .term-side {
     flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
 }
 .term-side[hidden] { display: none; }
-.term-side-head {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 3px;
-    padding: 2px 6px 0; background: #17181c;
-    border-bottom: 1px solid #2a2b30;
-}
 .term-mount { flex: 1; min-height: 0; padding: 4px 6px; }
 .term-mount .xterm { height: 100%; }
 
@@ -383,11 +373,6 @@ h1 { font-size: 1.4rem; }
    height. */
 .term-mount-session { height: 100%; display: none; }
 .term-mount-session.active { display: block; }
-.term-close {
-    background: transparent; color: #bdbdbd; border: none;
-    font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0 4px;
-}
-.term-close:hover { color: #fff; }
 
 /* --- Setup banner (shown when conception_path is unset) --- */
 .setup-banner {
@@ -1019,33 +1004,19 @@ h1 { font-size: 1.4rem; }
 </div>
 <div id="term-pane" class="term-pane" hidden>
     <div class="term-handle" onmousedown="termDragStart(event)" title="Drag to resize"></div>
-    <div class="term-header">
-        <span class="term-title">TERMINAL</span>
-        <button class="term-split-btn" onclick="termNewTab('right')" title="Open new tab in a right split">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="5" width="8" height="14" rx="1"/>
-                <rect x="13" y="5" width="8" height="14" rx="1"/>
-                <line x1="17" y1="9" x2="17" y2="15"/>
-            </svg>
-        </button>
-        <span class="term-shell" id="term-shell"></span>
+    <div class="term-top-row">
+        <div class="term-tabs term-tabs-left" id="term-tabs-left"></div>
+        <button class="term-new-tab" onclick="termNewTab('left')" title="New tab (left)" aria-label="New tab (left)">+</button>
         <span class="term-spacer"></span>
-        <button class="term-close" onclick="toggleTerminal()" aria-label="Hide terminal">&times;</button>
+        <div class="term-tabs term-tabs-right" id="term-tabs-right"></div>
+        <button class="term-new-tab" onclick="termNewTab('right')" title="New tab (right)" aria-label="New tab (right)">+</button>
     </div>
     <div class="term-body">
         <div class="term-side" data-side="left">
-            <div class="term-side-head">
-                <div class="term-tabs" id="term-tabs-left"></div>
-                <button class="term-new-tab" onclick="termNewTab('left')" title="New tab (left)" aria-label="New tab (left)">+</button>
-            </div>
             <div class="term-mount" id="term-mount-left"></div>
         </div>
         <div class="term-splitter" id="term-splitter" hidden onmousedown="termSplitStart(event)" title="Drag to resize split"></div>
         <div class="term-side" data-side="right" hidden>
-            <div class="term-side-head">
-                <div class="term-tabs" id="term-tabs-right"></div>
-                <button class="term-new-tab" onclick="termNewTab('right')" title="New tab (right)" aria-label="New tab (right)">+</button>
-            </div>
             <div class="term-mount" id="term-mount-right"></div>
         </div>
     </div>
@@ -2175,29 +2146,45 @@ async function runTidy() {
    `exit` info frame when the shell dies; client closes the tab. Closing
    the last tab hides the pane. The pane's × and the toggle shortcut
    hide/show the pane while leaving the tabs intact. */
-/* Copy helper for Ctrl+C / Ctrl+Shift+C. Tries the async clipboard API
-   first, then falls back to the hidden-textarea + execCommand trick so
-   copy works in older webviews. Paste is NOT handled here — xterm's
-   textarea receives the browser's native paste event on Ctrl+V. */
+/* Clipboard bridge — pywebview's Qt webview denies navigator.clipboard
+   access and often doesn't dispatch native paste events either, so both
+   paths go through server endpoints that drive QClipboard (or xclip /
+   wl-paste as fallbacks). We still try the browser API first in case
+   the webview ever grants it. */
 function _termClipboardWrite(text) {
     if (!text) return;
     if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).catch(_termCopyFallback.bind(null, text));
+        navigator.clipboard.writeText(text).catch(function() {
+            _termClipboardWriteServer(text);
+        });
         return;
     }
-    _termCopyFallback(text);
+    _termClipboardWriteServer(text);
 }
 
-function _termCopyFallback(text) {
+function _termClipboardWriteServer(text) {
     try {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed'; ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
+        fetch('/clipboard', {
+            method: 'POST',
+            headers: {'Content-Type': 'text/plain'},
+            body: text,
+        }).catch(function() {});
     } catch (e) {}
+}
+
+function _termClipboardRead() {
+    // Try the browser API first — if the webview granted access this
+    // avoids a server round-trip. Empty string / rejection falls back
+    // to the server endpoint.
+    var attempt = (navigator.clipboard && navigator.clipboard.readText)
+        ? navigator.clipboard.readText().then(function(text) { return text || ''; }, function() { return ''; })
+        : Promise.resolve('');
+    return attempt.then(function(text) {
+        if (text) return text;
+        return fetch('/clipboard', {cache: 'no-store'})
+            .then(function(r) { return r.ok ? r.text() : ''; })
+            .catch(function() { return ''; });
+    });
 }
 
 var _termTabs = [];           // [{id, side, term, fit, ws, mount, button, shell}]
@@ -2398,11 +2385,18 @@ function _termCreateTab(side) {
             }
             return true;  // fall through to SIGINT
         }
-        // Ctrl+V and Ctrl+Shift+V: do NOT intercept. xterm's internal
-        // keyboard handling yields to the browser for these keys, so the
-        // native paste event fires on its hidden textarea and xterm
-        // inserts the clipboard content itself. Intercepting here and
-        // calling preventDefault would suppress that native path.
+        // Ctrl+V / Ctrl+Shift+V: read clipboard via the bridge (browser
+        // API if allowed, else the /clipboard server endpoint backed by
+        // QClipboard). We can't rely on xterm's native paste in Qt
+        // webviews because the paste event rarely fires there.
+        if (ev.ctrlKey && !ev.altKey && !ev.metaKey &&
+            (ev.key === 'v' || ev.key === 'V')) {
+            ev.preventDefault();
+            _termClipboardRead().then(function(text) {
+                if (text) term.paste(text);
+            });
+            return false;
+        }
         return true;
     });
 
