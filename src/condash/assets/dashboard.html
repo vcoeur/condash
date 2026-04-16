@@ -508,6 +508,20 @@ h1 { font-size: 1.4rem; }
 }
 .note-modal-body th { background: var(--bg-card-hover); font-weight: 600; }
 .note-modal-body img { max-width: 100%; height: auto; }
+.note-modal-body .note-preview-embed {
+    display: block; width: 100%; min-height: min(80vh, 900px);
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card);
+}
+.note-modal-body .note-preview-image {
+    display: block; margin: 0 auto; max-height: 80vh;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card);
+}
+.note-modal-body .note-preview-text {
+    max-height: 75vh; overflow: auto;
+}
+.note-modal-body .note-preview-binary {
+    padding: 1.2rem 1rem; text-align: center; color: var(--text-secondary);
+}
 .note-modal-body hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 .note-loading { color: var(--text-muted); font-style: italic; }
 .note-error { color: var(--git-changes); }

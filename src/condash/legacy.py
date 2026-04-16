@@ -190,23 +190,93 @@ def _parse_deliverables(lines):
     return deliverables
 
 
-def _list_notes(item_dir):
-    """List ``notes/*.md`` files inside an item dir."""
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif"}
+_PDF_EXTS = {".pdf"}
+_TEXT_EXTS = {
+    ".txt",
+    ".log",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".rs",
+    ".go",
+    ".java",
+    ".kt",
+    ".rb",
+    ".php",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".xml",
+    ".html",
+    ".css",
+    ".scss",
+    ".sass",
+    ".sql",
+    ".env",
+    ".gitignore",
+}
+
+
+def _note_kind(path: Path) -> str:
+    """Classify a file by extension — drives the preview dispatcher."""
+    ext = path.suffix.lower()
+    if ext == ".md":
+        return "md"
+    if ext in _PDF_EXTS:
+        return "pdf"
+    if ext in _IMAGE_EXTS:
+        return "image"
+    if ext in _TEXT_EXTS:
+        return "text"
+    return "binary"
+
+
+def _list_notes(item_dir, max_depth: int = 2):
+    """List every file under ``<item_dir>/notes/`` with its detected kind.
+
+    Walks up to ``max_depth`` levels of subdirectories so items can group
+    related files (e.g. `notes/drafts/…`) without the dashboard flattening
+    the structure. Hidden files and dirs (`.…`) are skipped.
+    """
     notes_dir = item_dir / "notes"
     if not notes_dir.is_dir():
         return []
-    out = []
-    for f in sorted(notes_dir.iterdir()):
-        if not f.is_file() or f.name.startswith("."):
-            continue
-        if f.suffix.lower() != ".md":
-            continue
-        out.append(
-            {
-                "name": f.name,
-                "path": str(f.relative_to(BASE_DIR)),
-            }
-        )
+    out: list[dict[str, str]] = []
+
+    def walk(current: Path, depth: int) -> None:
+        for entry in sorted(current.iterdir()):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                if depth < max_depth:
+                    walk(entry, depth + 1)
+                continue
+            if not entry.is_file():
+                continue
+            out.append(
+                {
+                    "name": str(entry.relative_to(notes_dir)),
+                    "path": str(entry.relative_to(BASE_DIR)),
+                    "kind": _note_kind(entry),
+                }
+            )
+
+    walk(notes_dir, 1)
     return out
 
 
@@ -386,9 +456,11 @@ def _render_notes(notes):
     for n in notes:
         js_path = json.dumps(n["path"]).replace("'", "\\'").replace('"', "'")
         label = n["name"][:-3] if n["name"].endswith(".md") else n["name"]
+        kind = n.get("kind", "md")
         items_html += (
-            f'<div class="note-item" onclick="openNotePreview({js_path},'
-            f"'{h(n['name'])}')\">{h(label)}</div>"
+            f'<div class="note-item" data-kind="{h(kind)}" '
+            f"onclick=\"openNotePreview({js_path},'{h(n['name'])}')\">"
+            f"{h(label)}</div>"
         )
     count = len(notes)
     return (
@@ -899,6 +971,16 @@ _ASSET_CONTENT_TYPES = {
     ".webp": "image/webp",
 }
 
+# Any file directly under an item's `notes/` tree. Separate from the
+# narrower image-only asset regex above so /file can serve PDFs, text,
+# and misc binaries for in-modal preview.
+_VALID_ITEM_FILE_RE = re.compile(
+    r"^(?:incidents|projects|documents)/"
+    r"(?:\d{4}-\d{2}/)?"
+    r"\d{4}-\d{2}-\d{2}-[\w.-]+/"
+    r"notes/[\w./-]+$"
+)
+
 _IMG_SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', re.IGNORECASE)
 
 
@@ -1031,12 +1113,11 @@ def _preprocess_wikilinks(text: str) -> str:
     return _WIKILINK_RE.sub(repl, text)
 
 
-def _render_note(full_path):
+def _render_markdown(full_path, note_dir_rel):
     try:
         text = full_path.read_text(encoding="utf-8")
     except Exception:
         return '<p class="note-error">Unable to read note.</p>'
-    note_dir_rel = str(full_path.parent.relative_to(BASE_DIR))
     text = _preprocess_wikilinks(text)
     try:
         out = subprocess.run(
@@ -1053,6 +1134,53 @@ def _render_note(full_path):
     return f'<pre class="note-raw">{h(text)}</pre>'
 
 
+def _render_note(full_path: Path) -> str:
+    """Dispatch preview rendering by file kind — see ``_note_kind``.
+
+    Non-markdown kinds emit HTML that reuses the existing plumbing:
+    images/PDFs reference ``/file/<rel>``; text files are inlined in a
+    ``<pre>``; anything else falls back to an "Open externally" button
+    that the existing link-wiring routes through ``/open-doc``.
+    """
+    kind = _note_kind(full_path)
+    try:
+        note_dir_rel = str(full_path.parent.relative_to(BASE_DIR))
+    except ValueError:
+        return '<p class="note-error">Path outside conception tree.</p>'
+    file_rel = str(full_path.relative_to(BASE_DIR))
+
+    if kind == "md":
+        return _render_markdown(full_path, note_dir_rel)
+
+    if kind == "pdf":
+        return (
+            f'<iframe class="note-preview-embed" '
+            f'src="/file/{h(file_rel)}" '
+            f'title="{h(full_path.name)}"></iframe>'
+        )
+
+    if kind == "image":
+        return (
+            f'<img class="note-preview-image" src="/file/{h(file_rel)}" alt="{h(full_path.name)}">'
+        )
+
+    if kind == "text":
+        try:
+            text = full_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return '<p class="note-error">Unable to read file.</p>'
+        return f'<pre class="note-raw note-preview-text">{h(text)}</pre>'
+
+    # Anything else — offer the OS default viewer as a fallback. The
+    # anchor gets picked up by _wireNoteLinks and routed to /open-doc.
+    return (
+        '<div class="note-preview-binary">'
+        "<p>No inline preview available for this file.</p>"
+        f'<p><a href="{h(file_rel)}">Open externally</a></p>'
+        "</div>"
+    )
+
+
 def _validate_path(rel_path):
     if ".." in rel_path:
         return None
@@ -1067,10 +1195,18 @@ def _validate_path(rel_path):
 
 
 def validate_note_path(rel_path: str) -> Path | None:
-    """Public: validate a note/README/knowledge path for the /note endpoint."""
+    """Public: validate a note/README/knowledge/notes-file path.
+
+    Accepts: item READMEs and any file under `<item>/notes/**`, plus
+    pages under `knowledge/`. Paths outside conception are rejected.
+    """
     if ".." in rel_path:
         return None
-    if not (_VALID_NOTE_RE.match(rel_path) or _VALID_KNOWLEDGE_NOTE_RE.match(rel_path)):
+    if not (
+        _VALID_NOTE_RE.match(rel_path)
+        or _VALID_KNOWLEDGE_NOTE_RE.match(rel_path)
+        or _VALID_ITEM_FILE_RE.match(rel_path)
+    ):
         return None
     full = (BASE_DIR / rel_path).resolve()
     try:
@@ -1078,6 +1214,33 @@ def validate_note_path(rel_path: str) -> Path | None:
     except ValueError:
         return None
     return full if full.is_file() else None
+
+
+def validate_file_path(rel_path: str) -> tuple[Path, str] | None:
+    """Validate a raw-byte serve request for the /file endpoint.
+
+    Same acceptance set as :func:`validate_note_path` (note/README/asset
+    files under items, plus pages under `knowledge/`). Returns the absolute
+    path and a best-effort content type.
+    """
+    result = validate_note_path(rel_path)
+    if result is None:
+        return None
+    return result, _guess_content_type(result)
+
+
+def _guess_content_type(path: Path) -> str:
+    import mimetypes
+
+    ext = path.suffix.lower()
+    if ext in _ASSET_CONTENT_TYPES:
+        return _ASSET_CONTENT_TYPES[ext]
+    if ext == ".pdf":
+        return "application/pdf"
+    if ext == ".md":
+        return "text/markdown; charset=utf-8"
+    guess, _ = mimetypes.guess_type(path.name)
+    return guess or "application/octet-stream"
 
 
 def validate_download_path(rel_path: str) -> Path | None:
