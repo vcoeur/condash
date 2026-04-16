@@ -433,6 +433,41 @@ h1 { font-size: 1.4rem; }
 }
 .note-item:hover { background: var(--accent-bg); text-decoration: underline; }
 
+/* --- Knowledge explorer panel ---
+   A separate content region, swapped in when the Knowledge tab is
+   active. One group per knowledge/ subfolder; each entry renders as a
+   compact card the user can click to open in the note modal. */
+.knowledge-panel { display: flex; flex-direction: column; gap: 1.1rem; }
+.knowledge-group {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-card); padding: 0.8rem 1rem; box-shadow: var(--shadow-sm);
+}
+.knowledge-group-heading {
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.55rem;
+}
+.knowledge-count { font-weight: 400; color: var(--text-muted); }
+.knowledge-list {
+    display: grid; gap: 0.55rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.knowledge-card {
+    border: 1px solid var(--border-light); border-radius: 8px;
+    padding: 0.55rem 0.75rem; background: var(--bg-card-hover);
+    cursor: pointer; transition: border-color 0.1s, background 0.1s;
+}
+.knowledge-card:hover { border-color: var(--accent); background: var(--accent-bg); }
+.knowledge-title { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+.knowledge-desc {
+    font-size: 0.82rem; color: var(--text-secondary); margin-top: 0.15rem;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.knowledge-path {
+    font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+    font-size: 0.72rem; color: var(--text-muted); margin-top: 0.3rem;
+}
+
 /* --- Note preview modal --- */
 .note-modal-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,0.55);
@@ -796,8 +831,10 @@ h1 { font-size: 1.4rem; }
     <div class="tab" data-tab="next" onclick="switchTab('next')">Next<span class="tab-count">({{COUNT_NEXT}})</span></div>
     <div class="tab" data-tab="backlog" onclick="switchTab('backlog')">Backlog<span class="tab-count">({{COUNT_BACKLOG}})</span></div>
     <div class="tab" data-tab="done" onclick="switchTab('done')">Done<span class="tab-count">({{COUNT_DONE}})</span></div>
+    <div class="tab" data-tab="knowledge" onclick="switchTab('knowledge')">Knowledge<span class="tab-count">({{COUNT_KNOWLEDGE}})</span></div>
 </div>
 <div id="cards">{{CARDS}}</div>
+<div id="knowledge" style="display:none">{{KNOWLEDGE}}</div>
 <div class="git-section-heading">Git</div>
 <div id="git-panel" class="git-panel">{{GIT_REPOS}}</div>
 <div id="note-modal" class="note-modal-backdrop" onclick="if(event.target===this)closeNotePreview()">
@@ -1167,7 +1204,7 @@ var TAB_MAP = {
 };
 // Tabs where the priority groups should be labelled with a subheader.
 var TAB_SHOWS_HEADINGS = {current: true, next: true};
-var VALID_TABS = ['current', 'next', 'backlog', 'done'];
+var VALID_TABS = ['current', 'next', 'backlog', 'done', 'knowledge'];
 var _activeTab = 'current';
 
 function switchTab(tab) {
@@ -1179,6 +1216,18 @@ function switchTab(tab) {
     document.querySelectorAll('.tab').forEach(function(t) {
         t.classList.toggle('active', t.getAttribute('data-tab') === tab);
     });
+    // Knowledge is a separate panel, not a card filter — swap the main
+    // content region wholesale when switching in or out of it.
+    var knowledgeTab = tab === 'knowledge';
+    document.getElementById('cards').style.display = knowledgeTab ? 'none' : '';
+    var knowledgePanel = document.getElementById('knowledge');
+    if (knowledgePanel) knowledgePanel.style.display = knowledgeTab ? '' : 'none';
+    if (knowledgeTab) {
+        var url = new URL(location.href);
+        url.searchParams.set('tab', tab);
+        history.replaceState(null, '', url);
+        return;
+    }
     var allowed = TAB_MAP[tab] || [];
     document.querySelectorAll('.card').forEach(function(card) {
         card.classList.toggle('hidden', allowed.indexOf(card.getAttribute('data-priority')) === -1);
