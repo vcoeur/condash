@@ -262,6 +262,31 @@ def _register_routes() -> None:
             return {"ok": True}
         return _error(400, "cannot reorder")
 
+    @_ng_app.get("/clipboard")
+    def clipboard_read():
+        """Server-side clipboard read for the embedded terminal.
+
+        pywebview's Qt webview doesn't grant ``navigator.clipboard.readText``
+        access over localhost, and Qt often doesn't dispatch ``paste``
+        events to the xterm textarea. So the client falls back to this
+        endpoint, which reads the system clipboard via ``QClipboard``
+        (always available when condash runs in native Qt mode) then
+        tries wl-paste / xclip / xsel subprocesses.
+        """
+        return Response(
+            content=_clipboard_read(),
+            media_type="text/plain; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @_ng_app.post("/clipboard")
+    async def clipboard_write(req: Request):
+        """Server-side clipboard write — Ctrl+C copy from terminal."""
+        body = await req.body()
+        text = body.decode("utf-8", errors="replace")
+        ok = _clipboard_write(text)
+        return {"ok": bool(ok)}
+
     @_ng_app.post("/open")
     async def open_path(req: Request):
         data = await req.json()
@@ -555,6 +580,85 @@ def _resolve_terminal_shell(cfg: CondashConfig) -> str:
     if cfg.terminal.shell:
         return cfg.terminal.shell
     return os.environ.get("SHELL") or "/bin/bash"
+
+
+def _qt_clipboard():
+    """Return the running QClipboard, or None if Qt isn't initialised.
+
+    condash runs inside pywebview's Qt backend when ``native=true`` (the
+    default) so a QGuiApplication is live and ``clipboard()`` just works.
+    Browser mode has no Qt — the subprocess fallbacks take over.
+    """
+    try:
+        from qtpy.QtGui import QGuiApplication
+    except ImportError:
+        return None
+    app = QGuiApplication.instance()
+    if app is None:
+        return None
+    try:
+        return app.clipboard()
+    except Exception:
+        return None
+
+
+def _clipboard_read() -> str:
+    import subprocess as _sp
+
+    cb = _qt_clipboard()
+    if cb is not None:
+        try:
+            return cb.text() or ""
+        except Exception:
+            pass
+    for argv in (
+        ["wl-paste", "--no-newline"],
+        ["xclip", "-selection", "clipboard", "-o"],
+        ["xsel", "--clipboard", "--output"],
+    ):
+        try:
+            out = _sp.run(argv, capture_output=True, timeout=2)
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        if out.returncode == 0:
+            return out.stdout.decode("utf-8", errors="replace")
+    return ""
+
+
+def _clipboard_write(text: str) -> bool:
+    import subprocess as _sp
+
+    cb = _qt_clipboard()
+    if cb is not None:
+        try:
+            cb.setText(text)
+            return True
+        except Exception:
+            pass
+    for argv in (
+        ["wl-copy"],
+        ["xclip", "-selection", "clipboard", "-i"],
+        ["xsel", "--clipboard", "--input"],
+    ):
+        try:
+            proc = _sp.Popen(argv, stdin=_sp.PIPE)
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        try:
+            proc.communicate(text.encode("utf-8"), timeout=2)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            continue
+        if proc.returncode == 0:
+            return True
+    return False
 
 
 def _parse_repo_entries(raw: object, key: str) -> tuple[list[str], dict[str, list[str]]]:
