@@ -205,7 +205,7 @@ class OpenWithSlot:
 class CondashConfig:
     """Runtime configuration for a condash session."""
 
-    conception_path: Path
+    conception_path: Path | None = None
     workspace_path: Path | None = None
     worktrees_path: Path | None = None
     repositories_primary: list[str] = field(default_factory=list)
@@ -269,7 +269,10 @@ def save(cfg: CondashConfig, path: Path | None = None) -> Path:
         doc.add(nl())
 
     # Top-level scalars
-    doc["conception_path"] = str(cfg.conception_path)
+    if cfg.conception_path is not None:
+        doc["conception_path"] = str(cfg.conception_path)
+    elif "conception_path" in doc:
+        del doc["conception_path"]
     if cfg.workspace_path is not None:
         doc["workspace_path"] = str(cfg.workspace_path)
     elif "workspace_path" in doc:
@@ -373,12 +376,14 @@ def _parse_repo_list(raw: object, source: Path, key: str) -> tuple[list[str], di
 
 def _parse(data: dict, source: Path) -> CondashConfig:
     conception_raw = data.get("conception_path")
-    if not conception_raw:
-        raise ConfigIncompleteError(
-            f"{source}: missing required key 'conception_path' "
-            f"(edit the file and uncomment the example)"
-        )
-    conception_path = Path(str(conception_raw)).expanduser()
+    conception_path: Path | None
+    if conception_raw:
+        conception_path = Path(str(conception_raw)).expanduser()
+    else:
+        # Treat missing/empty conception_path as "not yet configured" — the
+        # dashboard launches anyway and prompts the user to set it via the
+        # in-app config editor.
+        conception_path = None
 
     workspace_raw = data.get("workspace_path")
     workspace_path: Path | None
@@ -446,10 +451,11 @@ def load(
 ) -> CondashConfig:
     """Load config from disk.
 
-    Raises ``ConfigNotFoundError`` if the file does not exist and
-    ``ConfigIncompleteError`` if it exists but is missing required values.
-    The CLI is responsible for turning those into actionable error messages
-    that point the user at ``condash init`` or ``condash config edit``.
+    Raises ``ConfigNotFoundError`` if the file does not exist. Missing
+    ``conception_path`` no longer raises — it leaves the field as ``None``
+    so the dashboard can launch and let the user pick it from the gear.
+    ``ConfigIncompleteError`` is still raised for shape errors (e.g. a
+    non-integer port or a malformed ``[repositories]`` entry).
 
     ``conception_override`` is a one-shot runtime override (e.g. from
     ``--conception-path``) and is not written back to the config file.

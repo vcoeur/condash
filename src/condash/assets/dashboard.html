@@ -225,6 +225,22 @@ h1 { font-size: 1.4rem; }
 }
 .tidy-btn[data-busy="1"] { opacity: 0.55; pointer-events: none; }
 
+/* --- Setup banner (shown when conception_path is unset) --- */
+.setup-banner {
+    display: flex; align-items: center; gap: 0.9rem;
+    padding: 0.85rem 1.1rem; margin-bottom: 1rem;
+    background: var(--accent-bg); border: 1px solid var(--accent);
+    border-radius: 10px; color: var(--accent); font-size: 0.9rem;
+}
+.setup-banner strong { font-weight: 600; }
+.setup-banner button {
+    font-size: 0.82rem; font-weight: 600;
+    padding: 5px 14px; border-radius: 6px;
+    cursor: pointer; border: 1px solid var(--accent);
+    background: var(--accent); color: #fff; transition: filter 0.1s;
+}
+.setup-banner button:hover { filter: brightness(0.9); }
+
 /* --- Cards --- */
 .card {
     border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem;
@@ -716,6 +732,10 @@ h1 { font-size: 1.4rem; }
         </button>
     </div>
 </div>
+<div id="setup-banner" class="setup-banner" style="display:none">
+    <span><strong>Welcome to condash.</strong> Set <code>conception_path</code> to point at your projects/incidents/documents tree to get started.</span>
+    <button type="button" onclick="openConfigModal()">Configure</button>
+</div>
 <div class="meta">{{TIMESTAMP}}</div>
 <div class="tabs">
     <div class="tab active" data-tab="current" onclick="switchTab('current')">Current<span class="tab-count">({{COUNT_CURRENT}})</span></div>
@@ -745,8 +765,9 @@ h1 { font-size: 1.4rem; }
             <form id="config-form" onsubmit="saveConfig(event)">
                 <fieldset class="config-fieldset">
                     <legend>Paths</legend>
-                    <label>conception_path<span class="config-required">*</span>
-                        <input type="text" name="conception_path" required>
+                    <label>conception_path
+                        <input type="text" name="conception_path" placeholder="/path/to/conception">
+                        <small>Absolute path to the directory holding your projects/, incidents/, documents/.</small>
                     </label>
                     <label>workspace_path
                         <input type="text" name="workspace_path">
@@ -770,11 +791,12 @@ h1 { font-size: 1.4rem; }
                 </fieldset>
                 <fieldset class="config-fieldset">
                     <legend>Repositories</legend>
+                    <p class="config-help">One repo per line. To attach subrepository rows (plain subdirectories rendered as expandable sub-rows in the repo strip), write <code>reponame: sub/one, sub/two</code>.</p>
                     <label>primary
-                        <textarea name="repositories_primary" rows="3" placeholder="one directory name per line"></textarea>
+                        <textarea name="repositories_primary" rows="4" placeholder="knoten&#10;vcoeur.com: apps/web, apps/api"></textarea>
                     </label>
                     <label>secondary
-                        <textarea name="repositories_secondary" rows="3" placeholder="one directory name per line"></textarea>
+                        <textarea name="repositories_secondary" rows="3" placeholder="conception"></textarea>
                     </label>
                 </fieldset>
                 <fieldset class="config-fieldset">
@@ -869,6 +891,29 @@ function _listToLines(list) {
     return (list || []).join('\n');
 }
 
+/* Parse a repositories textarea. Each non-empty line is either
+   "name" or "name: sub/a, sub/b" — colons inside submodule paths are
+   preserved because we only split on the FIRST colon. */
+function _linesToRepos(text) {
+    return _linesToList(text).map(function(line){
+        var idx = line.indexOf(':');
+        if (idx < 0) return {name: line, submodules: []};
+        var name = line.slice(0, idx).trim();
+        var subs = line.slice(idx + 1).split(',')
+            .map(function(s){return s.trim();})
+            .filter(function(s){return s.length;});
+        return {name: name, submodules: subs};
+    }).filter(function(entry){return entry.name.length;});
+}
+
+function _reposToLines(entries) {
+    return (entries || []).map(function(entry){
+        if (!entry || !entry.name) return '';
+        var subs = entry.submodules || [];
+        return subs.length ? (entry.name + ': ' + subs.join(', ')) : entry.name;
+    }).filter(function(s){return s.length;}).join('\n');
+}
+
 function _setSlotFields(form, slotKey, slot) {
     var container = form.querySelector('[data-slot="' + slotKey + '"]');
     if (!container || !slot) return;
@@ -902,8 +947,8 @@ async function openConfigModal() {
         _setField(form, 'worktrees_path', cfg.worktrees_path);
         _setField(form, 'port', cfg.port);
         _setField(form, 'native', cfg.native);
-        form.elements['repositories_primary'].value = _listToLines(cfg.repositories_primary);
-        form.elements['repositories_secondary'].value = _listToLines(cfg.repositories_secondary);
+        form.elements['repositories_primary'].value = _reposToLines(cfg.repositories_primary);
+        form.elements['repositories_secondary'].value = _reposToLines(cfg.repositories_secondary);
         var ow = cfg.open_with || {};
         _setSlotFields(form, 'main_ide', ow.main_ide);
         _setSlotFields(form, 'secondary_ide', ow.secondary_ide);
@@ -934,8 +979,8 @@ async function saveConfig(ev) {
         worktrees_path: _getField(form, 'worktrees_path'),
         port: _getField(form, 'port'),
         native: _getField(form, 'native'),
-        repositories_primary: _linesToList(form.elements['repositories_primary'].value),
-        repositories_secondary: _linesToList(form.elements['repositories_secondary'].value),
+        repositories_primary: _linesToRepos(form.elements['repositories_primary'].value),
+        repositories_secondary: _linesToRepos(form.elements['repositories_secondary'].value),
         open_with: {
             main_ide: _readSlotFields(form, 'main_ide'),
             secondary_ide: _readSlotFields(form, 'secondary_ide'),
@@ -1512,6 +1557,20 @@ async function runTidy() {
 
 checkUpdates();
 setInterval(checkUpdates, 5000);
+
+/* On first load, detect an unset conception_path and surface the setup
+   banner + auto-open the config modal so the user lands on the editor. */
+(async function detectSetup() {
+    try {
+        var res = await fetch('/config');
+        if (!res.ok) return;
+        var cfg = await res.json();
+        if (!cfg.conception_path) {
+            document.getElementById('setup-banner').style.display = '';
+            openConfigModal();
+        }
+    } catch (e) {}
+})();
 </script>
 </body>
 </html>
