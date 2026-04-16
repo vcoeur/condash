@@ -235,11 +235,6 @@ def _register_routes() -> None:
             new_cfg = _payload_to_config(data)
         except (ValueError, KeyError, TypeError) as exc:
             return _error(400, f"invalid config: {exc}")
-        # The config form only exposes repo names (one per line). Carry
-        # over any submodule declarations from the live config so saving
-        # from the form doesn't wipe structured entries authored via
-        # `condash config edit`.
-        new_cfg.repo_submodules = dict(_RUNTIME_CFG.repo_submodules)
         config_mod.save(new_cfg)
         # Re-init module-level state so paths / repos / open-with changes
         # take effect on the next request without needing a process restart.
@@ -259,16 +254,23 @@ def _register_routes() -> None:
         }
 
 
+def _repo_entries(names: list[str], submodules: dict[str, list[str]]) -> list[dict]:
+    """Shape a repo-name list for the /config JSON payload: one object per
+    repo with its submodule paths attached.
+    """
+    return [{"name": name, "submodules": list(submodules.get(name) or [])} for name in names]
+
+
 def _config_to_payload(cfg: CondashConfig) -> dict:
     """Serialise the live config to JSON for ``GET /config``."""
     return {
-        "conception_path": str(cfg.conception_path),
+        "conception_path": str(cfg.conception_path) if cfg.conception_path else "",
         "workspace_path": str(cfg.workspace_path) if cfg.workspace_path else "",
         "worktrees_path": str(cfg.worktrees_path) if cfg.worktrees_path else "",
         "port": int(cfg.port),
         "native": bool(cfg.native),
-        "repositories_primary": list(cfg.repositories_primary),
-        "repositories_secondary": list(cfg.repositories_secondary),
+        "repositories_primary": _repo_entries(cfg.repositories_primary, cfg.repo_submodules),
+        "repositories_secondary": _repo_entries(cfg.repositories_secondary, cfg.repo_submodules),
         "open_with": {
             slot_key: {
                 "label": cfg.open_with[slot_key].label,
@@ -280,14 +282,46 @@ def _config_to_payload(cfg: CondashConfig) -> dict:
     }
 
 
+def _parse_repo_entries(raw: object, key: str) -> tuple[list[str], dict[str, list[str]]]:
+    """Parse a `repositories_primary` / `_secondary` payload entry.
+
+    Accepts either a list of strings (legacy) or a list of
+    ``{name, submodules}`` objects. Returns the ordered name list plus a
+    submodule map keyed by name.
+    """
+    if raw is None:
+        return [], {}
+    if not isinstance(raw, list):
+        raise ValueError(f"{key} must be a list")
+    names: list[str] = []
+    subs: dict[str, list[str]] = {}
+    for entry in raw:
+        if isinstance(entry, str):
+            name = entry.strip()
+            if name:
+                names.append(name)
+        elif isinstance(entry, dict):
+            name = str(entry.get("name") or "").strip()
+            if not name:
+                continue
+            sub_raw = entry.get("submodules") or []
+            if not isinstance(sub_raw, list):
+                raise ValueError(f"{key}[].submodules must be a list")
+            cleaned = [str(s).strip() for s in sub_raw if str(s).strip()]
+            names.append(name)
+            if cleaned:
+                subs[name] = cleaned
+        else:
+            raise ValueError(f"{key} entries must be strings or objects")
+    return names, subs
+
+
 def _payload_to_config(data: dict) -> CondashConfig:
     """Build a validated CondashConfig from the in-app editor's JSON payload."""
     if not isinstance(data, dict):
         raise ValueError("payload must be an object")
     conception_raw = (data.get("conception_path") or "").strip()
-    if not conception_raw:
-        raise ValueError("conception_path is required")
-    conception = Path(conception_raw).expanduser()
+    conception = Path(conception_raw).expanduser() if conception_raw else None
 
     workspace_raw = (data.get("workspace_path") or "").strip()
     workspace = Path(workspace_raw).expanduser() if workspace_raw else None
@@ -304,10 +338,13 @@ def _payload_to_config(data: dict) -> CondashConfig:
     if not isinstance(native_raw, bool):
         raise ValueError("native must be a boolean")
 
-    primary = [str(s).strip() for s in (data.get("repositories_primary") or []) if str(s).strip()]
-    secondary = [
-        str(s).strip() for s in (data.get("repositories_secondary") or []) if str(s).strip()
-    ]
+    primary, primary_subs = _parse_repo_entries(
+        data.get("repositories_primary"), "repositories_primary"
+    )
+    secondary, secondary_subs = _parse_repo_entries(
+        data.get("repositories_secondary"), "repositories_secondary"
+    )
+    repo_submodules: dict[str, list[str]] = {**primary_subs, **secondary_subs}
 
     open_with_raw = data.get("open_with") or {}
     if not isinstance(open_with_raw, dict):
@@ -334,6 +371,7 @@ def _payload_to_config(data: dict) -> CondashConfig:
         worktrees_path=worktrees,
         repositories_primary=primary,
         repositories_secondary=secondary,
+        repo_submodules=repo_submodules,
         port=port_raw,
         native=native_raw,
         open_with=open_with,

@@ -64,7 +64,13 @@ def init(cfg) -> None:
     a circular import at module load).
     """
     global BASE_DIR, _WORKSPACE, _WORKTREES, _REPO_STRUCTURE, _OPEN_WITH
-    BASE_DIR = Path(cfg.conception_path).expanduser().resolve()
+    if cfg.conception_path is None:
+        # Sentinel path that .is_dir() returns False for — collect_items
+        # short-circuits to an empty list and the dashboard renders the
+        # setup prompt.
+        BASE_DIR = Path("/nonexistent")
+    else:
+        BASE_DIR = Path(cfg.conception_path).expanduser().resolve()
     _WORKSPACE = (
         Path(cfg.workspace_path).expanduser().resolve() if cfg.workspace_path is not None else None
     )

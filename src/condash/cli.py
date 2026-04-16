@@ -68,14 +68,21 @@ def _root(
     if ctx.invoked_subcommand is not None:
         return
 
-    # Default behaviour: launch the dashboard window.
+    # Default behaviour: launch the dashboard window. If `conception_path`
+    # is unset or points to a missing directory we still launch — the user
+    # fixes it from the in-app gear, which hot-reloads the config.
+    # If there is no config file at all, seed the default template so the
+    # user can land on the setup screen rather than a CLI error.
+    target = config_file or config_path()
+    if not target.exists():
+        _seed_default_config(target)
     cfg = _load_or_exit(config_file, conception_path_override)
-    if not cfg.conception_path.is_dir():
+    if cfg.conception_path is not None and not cfg.conception_path.is_dir():
         typer.echo(
-            f"condash: error: conception directory does not exist: {cfg.conception_path}",
+            f"condash: warning: conception directory does not exist: "
+            f"{cfg.conception_path} — set it from the gear icon.",
             err=True,
         )
-        raise typer.Exit(2)
 
     from . import legacy
 
@@ -91,6 +98,13 @@ def cmd_tidy(ctx: typer.Context) -> None:
     """Move done items into YYYY-MM/ archive dirs and exit."""
     obj = ctx.obj or {}
     cfg = _load_or_exit(obj.get("config_file"), obj.get("conception_override"))
+    if cfg.conception_path is None:
+        typer.echo(
+            "condash: error: conception_path is not configured. "
+            "Run `condash config edit` or set it from the gear icon in `condash`.",
+            err=True,
+        )
+        raise typer.Exit(2)
     if not cfg.conception_path.is_dir():
         typer.echo(
             f"condash: error: conception directory does not exist: {cfg.conception_path}",
@@ -229,7 +243,7 @@ def _load_or_exit(
 def _full_payload(target: Path, cfg: CondashConfig) -> dict[str, Any]:
     return {
         "config_file": str(target),
-        "conception_path": str(cfg.conception_path),
+        "conception_path": str(cfg.conception_path) if cfg.conception_path else None,
         "workspace_path": str(cfg.workspace_path) if cfg.workspace_path else None,
         "worktrees_path": str(cfg.worktrees_path) if cfg.worktrees_path else None,
         "port": cfg.port,
