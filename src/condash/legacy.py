@@ -190,23 +190,93 @@ def _parse_deliverables(lines):
     return deliverables
 
 
-def _list_notes(item_dir):
-    """List ``notes/*.md`` files inside an item dir."""
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif"}
+_PDF_EXTS = {".pdf"}
+_TEXT_EXTS = {
+    ".txt",
+    ".log",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".rs",
+    ".go",
+    ".java",
+    ".kt",
+    ".rb",
+    ".php",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".xml",
+    ".html",
+    ".css",
+    ".scss",
+    ".sass",
+    ".sql",
+    ".env",
+    ".gitignore",
+}
+
+
+def _note_kind(path: Path) -> str:
+    """Classify a file by extension — drives the preview dispatcher."""
+    ext = path.suffix.lower()
+    if ext == ".md":
+        return "md"
+    if ext in _PDF_EXTS:
+        return "pdf"
+    if ext in _IMAGE_EXTS:
+        return "image"
+    if ext in _TEXT_EXTS:
+        return "text"
+    return "binary"
+
+
+def _list_notes(item_dir, max_depth: int = 2):
+    """List every file under ``<item_dir>/notes/`` with its detected kind.
+
+    Walks up to ``max_depth`` levels of subdirectories so items can group
+    related files (e.g. `notes/drafts/…`) without the dashboard flattening
+    the structure. Hidden files and dirs (`.…`) are skipped.
+    """
     notes_dir = item_dir / "notes"
     if not notes_dir.is_dir():
         return []
-    out = []
-    for f in sorted(notes_dir.iterdir()):
-        if not f.is_file() or f.name.startswith("."):
-            continue
-        if f.suffix.lower() != ".md":
-            continue
-        out.append(
-            {
-                "name": f.name,
-                "path": str(f.relative_to(BASE_DIR)),
-            }
-        )
+    out: list[dict[str, str]] = []
+
+    def walk(current: Path, depth: int) -> None:
+        for entry in sorted(current.iterdir()):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                if depth < max_depth:
+                    walk(entry, depth + 1)
+                continue
+            if not entry.is_file():
+                continue
+            out.append(
+                {
+                    "name": str(entry.relative_to(notes_dir)),
+                    "path": str(entry.relative_to(BASE_DIR)),
+                    "kind": _note_kind(entry),
+                }
+            )
+
+    walk(notes_dir, 1)
     return out
 
 
@@ -294,6 +364,111 @@ def parse_readme(path, kind):
     }
 
 
+_KNOWLEDGE_GROUPS: list[tuple[str, str | None]] = [
+    ("Overview", None),  # loose files at knowledge/ root
+    ("Topics", "topics"),
+    ("Apps", "apps"),
+    ("External", "external"),
+    ("Internal", "internal"),
+]
+
+
+def _knowledge_title_and_desc(path: Path) -> tuple[str, str]:
+    """Pick a human label + short description from a knowledge file.
+
+    Title: first ``# heading`` line, else the filename without extension.
+    Description: first non-blank line after the heading that is not
+    itself a heading or frontmatter.
+    """
+    title = path.stem.replace("-", " ").replace("_", " ")
+    desc = ""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return title, desc
+    title_taken = False
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if not title_taken and line.startswith("#"):
+            title = line.lstrip("#").strip() or title
+            title_taken = True
+            continue
+        if line.startswith("#") or line.startswith("---"):
+            continue
+        desc = line.rstrip(".")
+        break
+    return title, desc[:220]
+
+
+def collect_knowledge() -> list[tuple[str, list[dict[str, str]]]]:
+    """Scan ``knowledge/`` and return pages grouped for the explorer tab.
+
+    Returns a list of ``(group_label, [{path, title, desc, rel}, …])``.
+    Empty groups are dropped.
+    """
+    knowledge_root = BASE_DIR / "knowledge"
+    if not knowledge_root.is_dir():
+        return []
+    out: list[tuple[str, list[dict[str, str]]]] = []
+    for label, subdir in _KNOWLEDGE_GROUPS:
+        target = knowledge_root if subdir is None else knowledge_root / subdir
+        if not target.is_dir():
+            continue
+        entries: list[dict[str, str]] = []
+        if subdir is None:
+            # Loose .md at knowledge/ root — do not recurse here.
+            candidates = sorted(
+                p for p in target.iterdir() if p.is_file() and p.suffix.lower() == ".md"
+            )
+        else:
+            candidates = sorted(target.rglob("*.md"))
+        for p in candidates:
+            if any(part.startswith(".") for part in p.parts):
+                continue
+            title, desc = _knowledge_title_and_desc(p)
+            entries.append(
+                {
+                    "path": str(p.relative_to(BASE_DIR)),
+                    "title": title,
+                    "desc": desc,
+                    "rel": p.name,
+                }
+            )
+        if entries:
+            out.append((label, entries))
+    return out
+
+
+def _render_knowledge(groups: list[tuple[str, list[dict[str, str]]]]) -> str:
+    if not groups:
+        return '<p class="note-empty">No <code>knowledge/</code> tree under the configured conception path.</p>'
+    parts = ['<div class="knowledge-panel">']
+    for label, entries in groups:
+        parts.append('<div class="knowledge-group">')
+        parts.append(
+            f'<div class="knowledge-group-heading">{h(label)} '
+            f'<span class="knowledge-count">({len(entries)})</span></div>'
+        )
+        parts.append('<div class="knowledge-list">')
+        for e in entries:
+            js_path = json.dumps(e["path"]).replace("'", "\\'").replace('"', "'")
+            js_title = json.dumps(e["title"]).replace("'", "\\'").replace('"', "'")
+            desc_html = f'<div class="knowledge-desc">{h(e["desc"])}</div>' if e["desc"] else ""
+            parts.append(
+                f'<div class="knowledge-card" '
+                f'onclick="openNotePreview({js_path},{js_title})">'
+                f'<div class="knowledge-title">{h(e["title"])}</div>'
+                f"{desc_html}"
+                f'<div class="knowledge-path">{h(e["path"])}</div>'
+                f"</div>"
+            )
+        parts.append("</div></div>")
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def collect_items():
     """Find and parse all incident/project/document READMEs."""
     items = []
@@ -379,22 +554,37 @@ def _render_readme_link(item):
     )
 
 
-def _render_notes(notes):
-    if not notes:
-        return ""
+def _render_notes(notes, readme_rel: str | None = None):
+    """Render the notes block for an item card.
+
+    The block is always emitted (even empty) so the user has a place to
+    click ``+`` and create the first note. ``readme_rel`` is the item's
+    README.md relative path; it seeds the create-note POST target.
+    """
     items_html = ""
     for n in notes:
         js_path = json.dumps(n["path"]).replace("'", "\\'").replace('"', "'")
         label = n["name"][:-3] if n["name"].endswith(".md") else n["name"]
+        kind = n.get("kind", "md")
         items_html += (
-            f'<div class="note-item" onclick="openNotePreview({js_path},'
-            f"'{h(n['name'])}')\">{h(label)}</div>"
+            f'<div class="note-item" data-kind="{h(kind)}" '
+            f"onclick=\"openNotePreview({js_path},'{h(n['name'])}')\">"
+            f"{h(label)}</div>"
         )
     count = len(notes)
+    create_btn = ""
+    if readme_rel:
+        js_readme = json.dumps(readme_rel).replace("'", "\\'").replace('"', "'")
+        create_btn = (
+            f'<button class="notes-new-btn" title="New note" '
+            f'onclick="event.stopPropagation();createNoteFor({js_readme})">+</button>'
+        )
+    empty_class = " is-empty" if not notes else ""
     return (
-        f'<div class="notes-block">'
+        f'<div class="notes-block{empty_class}">'
         f'<div class="notes-heading" onclick="toggleNotes(this)">'
-        f'Notes <span class="notes-count">({count})</span></div>'
+        f'Notes <span class="notes-count">({count})</span>'
+        f"{create_btn}</div>"
         f'<div class="notes-list" style="display:none">{items_html}</div>'
         f"</div>"
     )
@@ -453,7 +643,7 @@ def _render_card(item):
 
     deliverables_html = _render_deliverables(item.get("deliverables", []))
     readme_link_html = _render_readme_link(item)
-    notes_html = _render_notes(item.get("notes", []))
+    notes_html = _render_notes(item.get("notes", []), readme_rel=item.get("path"))
 
     summary_html = f'<p class="summary">{h(item["summary"])}</p>' if item["summary"] else ""
 
@@ -719,9 +909,16 @@ def _render_git_actions(path):
 
 
 def _render_submodule_rows(submodules, worktree=False):
+    """Render subrepo rows at the same visual size as parent repos.
+
+    The subrepos live inside a small grouping container (`.git-subgroup`)
+    under their parent repo / worktree so the relationship is still clear
+    — collapsible via the same toggle — but each row is a full-size
+    `.git-row` with its own action buttons, not an indented half-height
+    sub-row.
+    """
     if not submodules:
         return ""
-    extra = " git-submodule-of-worktree" if worktree else ""
     rows = []
     for sub in submodules:
         sub_actions = _render_git_actions(sub["path"])
@@ -733,15 +930,21 @@ def _render_submodule_rows(submodules, worktree=False):
             else '<span class="git-clean">\u2713</span>'
         )
         rows.append(
-            f'<div class="git-row git-submodule{extra}{dirty_cls}" title="{h(sub["path"])}">'
+            f'<div class="git-row{dirty_cls}" title="{h(sub["path"])}">'
             f"{sub_actions}"
-            f'<span class="git-name">\u2514 {h(sub["name"])}</span>'
+            f'<span class="git-name">{h(sub["name"])}</span>'
             f'<span class="git-branch"></span>'
             f'<span class="git-status">{badge}</span>'
             f'<span class="git-spacer"></span></div>'
         )
     inner = "\n".join(rows)
-    return f'<div class="git-submodules collapsed">\n{inner}\n</div>'
+    scope = "worktree" if worktree else "repo"
+    return (
+        f'<div class="git-subgroup git-subgroup-{scope} collapsed">'
+        f'<div class="git-subgroup-label">Subrepos</div>'
+        f"{inner}"
+        f"</div>"
+    )
 
 
 def _render_git_repos(groups):
@@ -839,16 +1042,26 @@ def render_page(items):
 
     git_groups = _collect_git_repos()
     git_html = _render_git_repos(git_groups)
+    count_repos = sum(len(repos) for _, repos in git_groups)
+
+    knowledge_groups = collect_knowledge()
+    knowledge_html = _render_knowledge(knowledge_groups)
+    count_knowledge = sum(len(entries) for _, entries in knowledge_groups)
+    count_projects = len(all_items)
 
     template = _template_path().read_text(encoding="utf-8")
     template = template.replace("{{CARDS}}", cards)
     template = template.replace("{{GIT_REPOS}}", git_html)
+    template = template.replace("{{KNOWLEDGE}}", knowledge_html)
     return (
         template.replace("{{TIMESTAMP}}", now)
         .replace("{{COUNT_CURRENT}}", str(count_current))
         .replace("{{COUNT_NEXT}}", str(count_next))
         .replace("{{COUNT_BACKLOG}}", str(count_backlog))
         .replace("{{COUNT_DONE}}", str(count_done))
+        .replace("{{COUNT_PROJECTS}}", str(count_projects))
+        .replace("{{COUNT_REPOS}}", str(count_repos))
+        .replace("{{COUNT_KNOWLEDGE}}", str(count_knowledge))
     )
 
 
@@ -877,6 +1090,11 @@ _VALID_NOTE_RE = re.compile(
     r"(?:notes/[\w.-]+|README)\.md$"
 )
 
+# Knowledge pages live outside the date-prefixed item structure. Match
+# `knowledge/<file>.md` at the root (apps.md, conventions.md) and
+# `knowledge/<subdir>/<file>.md` (topics/, external/, internal/, …).
+_VALID_KNOWLEDGE_NOTE_RE = re.compile(r"^knowledge/(?:[\w.-]+/)?[\w.-]+\.md$")
+
 _VALID_ASSET_RE = re.compile(
     r"^(?:incidents|projects|documents)/"
     r"(?:\d{4}-\d{2}/)?"
@@ -893,6 +1111,16 @@ _ASSET_CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".webp": "image/webp",
 }
+
+# Any file directly under an item's `notes/` tree. Separate from the
+# narrower image-only asset regex above so /file can serve PDFs, text,
+# and misc binaries for in-modal preview.
+_VALID_ITEM_FILE_RE = re.compile(
+    r"^(?:incidents|projects|documents)/"
+    r"(?:\d{4}-\d{2}/)?"
+    r"\d{4}-\d{2}-\d{2}-[\w.-]+/"
+    r"notes/[\w./-]+$"
+)
 
 _IMG_SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', re.IGNORECASE)
 
@@ -913,12 +1141,125 @@ def _rewrite_img_src(html, note_dir_rel):
     return _IMG_SRC_RE.sub(sub, html)
 
 
-def _render_note(full_path):
+_WIKILINK_RE = re.compile(r"\[\[([^\]\|\n]+?)(?:\|([^\]\n]+?))?\]\]")
+
+# Match short item slugs ("my-project") vs directory-name slugs
+# ("2026-04-16-my-project"). Used by the wikilink resolver.
+_DATE_SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+_ITEM_TYPE_NORMAL = {
+    "project": "projects",
+    "projects": "projects",
+    "incident": "incidents",
+    "incidents": "incidents",
+    "document": "documents",
+    "documents": "documents",
+}
+
+
+def _find_item_dir(type_plural: str, target: str) -> str | None:
+    """Look up a single item directory by exact name or short-name match.
+
+    Scans both the type's top-level and any `YYYY-MM/` archive folders.
+    Prefers the most recent directory when several short-names collide.
+    """
+    root = BASE_DIR / type_plural
+    if not root.is_dir():
+        return None
+    candidates: list[str] = []
+    for child in root.iterdir():
+        if not child.is_dir():
+            continue
+        if child.name == target or (_DATE_SLUG_RE.match(child.name) and child.name[11:] == target):
+            candidates.append(child.name)
+        if re.match(r"^\d{4}-\d{2}$", child.name):
+            for grand in child.iterdir():
+                if not grand.is_dir():
+                    continue
+                if grand.name == target or (
+                    _DATE_SLUG_RE.match(grand.name) and grand.name[11:] == target
+                ):
+                    candidates.append(f"{child.name}/{grand.name}")
+    if not candidates:
+        return None
+    return max(candidates)  # sorts by date thanks to the YYYY-MM[-DD] prefix
+
+
+def _resolve_wikilink(target: str) -> str | None:
+    """Resolve a `[[target]]` to a conception-relative path, if it exists.
+
+    Resolution order:
+    1. Prefixed item reference: `project/<slug>`, `incidents/<slug>`, etc.
+    2. Knowledge path: `knowledge/topics/foo` or `knowledge/foo`.
+    3. Short slug across all three item kinds — most recent wins.
+    4. Short knowledge page across `topics/`, `external/`, `internal/` and
+       the root `apps.md` / `conventions.md`.
+    """
+    target = target.strip()
+    if not target:
+        return None
+
+    if "/" in target:
+        head, _, tail = target.partition("/")
+        type_pl = _ITEM_TYPE_NORMAL.get(head)
+        if type_pl:
+            found = _find_item_dir(type_pl, tail)
+            if found:
+                return f"{type_pl}/{found}/README.md"
+        if head == "knowledge":
+            path = target if target.endswith(".md") else f"{target}.md"
+            if (BASE_DIR / path).is_file():
+                return path
+
+    for type_pl in ("projects", "incidents", "documents"):
+        found = _find_item_dir(type_pl, target)
+        if found:
+            return f"{type_pl}/{found}/README.md"
+
+    for sub in ("topics", "external", "internal"):
+        candidate = BASE_DIR / "knowledge" / sub / f"{target}.md"
+        if candidate.is_file():
+            return f"knowledge/{sub}/{target}.md"
+    for root_file in ("apps.md", "conventions.md"):
+        if target == root_file.removesuffix(".md"):
+            candidate = BASE_DIR / "knowledge" / root_file
+            if candidate.is_file():
+                return f"knowledge/{root_file}"
+
+    return None
+
+
+def _preprocess_wikilinks(text: str) -> str:
+    """Rewrite `[[target]]` / `[[target|label]]` into raw-HTML anchors.
+
+    Pandoc GFM passes raw HTML through unchanged, so emitting the final
+    `<a>` here keeps the rendering pipeline single-pass. Resolved links
+    get class `wikilink`; misses get `wikilink-missing` and no href so the
+    webview doesn't try to navigate.
+    """
+
+    def repl(match: re.Match) -> str:
+        target = match.group(1).strip()
+        label = (match.group(2) or target).strip()
+        resolved = _resolve_wikilink(target)
+        if resolved:
+            return (
+                f'<a class="wikilink" href="{h(resolved)}" '
+                f'data-wikilink-target="{h(target)}">{h(label)}</a>'
+            )
+        return (
+            f'<a class="wikilink-missing" '
+            f'title="Wikilink target not found: {h(target)}">{h(label)}</a>'
+        )
+
+    return _WIKILINK_RE.sub(repl, text)
+
+
+def _render_markdown(full_path, note_dir_rel):
     try:
         text = full_path.read_text(encoding="utf-8")
     except Exception:
         return '<p class="note-error">Unable to read note.</p>'
-    note_dir_rel = str(full_path.parent.relative_to(BASE_DIR))
+    text = _preprocess_wikilinks(text)
     try:
         out = subprocess.run(
             ["pandoc", "--from=gfm", "--to=html", "--no-highlight"],
@@ -932,6 +1273,53 @@ def _render_note(full_path):
     except Exception:
         pass
     return f'<pre class="note-raw">{h(text)}</pre>'
+
+
+def _render_note(full_path: Path) -> str:
+    """Dispatch preview rendering by file kind — see ``_note_kind``.
+
+    Non-markdown kinds emit HTML that reuses the existing plumbing:
+    images/PDFs reference ``/file/<rel>``; text files are inlined in a
+    ``<pre>``; anything else falls back to an "Open externally" button
+    that the existing link-wiring routes through ``/open-doc``.
+    """
+    kind = _note_kind(full_path)
+    try:
+        note_dir_rel = str(full_path.parent.relative_to(BASE_DIR))
+    except ValueError:
+        return '<p class="note-error">Path outside conception tree.</p>'
+    file_rel = str(full_path.relative_to(BASE_DIR))
+
+    if kind == "md":
+        return _render_markdown(full_path, note_dir_rel)
+
+    if kind == "pdf":
+        return (
+            f'<iframe class="note-preview-embed" '
+            f'src="/file/{h(file_rel)}" '
+            f'title="{h(full_path.name)}"></iframe>'
+        )
+
+    if kind == "image":
+        return (
+            f'<img class="note-preview-image" src="/file/{h(file_rel)}" alt="{h(full_path.name)}">'
+        )
+
+    if kind == "text":
+        try:
+            text = full_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return '<p class="note-error">Unable to read file.</p>'
+        return f'<pre class="note-raw note-preview-text">{h(text)}</pre>'
+
+    # Anything else — offer the OS default viewer as a fallback. The
+    # anchor gets picked up by _wireNoteLinks and routed to /open-doc.
+    return (
+        '<div class="note-preview-binary">'
+        "<p>No inline preview available for this file.</p>"
+        f'<p><a href="{h(file_rel)}">Open externally</a></p>'
+        "</div>"
+    )
 
 
 def _validate_path(rel_path):
@@ -948,8 +1336,18 @@ def _validate_path(rel_path):
 
 
 def validate_note_path(rel_path: str) -> Path | None:
-    """Public: validate a note/README path for the /note endpoint."""
-    if ".." in rel_path or not _VALID_NOTE_RE.match(rel_path):
+    """Public: validate a note/README/knowledge/notes-file path.
+
+    Accepts: item READMEs and any file under `<item>/notes/**`, plus
+    pages under `knowledge/`. Paths outside conception are rejected.
+    """
+    if ".." in rel_path:
+        return None
+    if not (
+        _VALID_NOTE_RE.match(rel_path)
+        or _VALID_KNOWLEDGE_NOTE_RE.match(rel_path)
+        or _VALID_ITEM_FILE_RE.match(rel_path)
+    ):
         return None
     full = (BASE_DIR / rel_path).resolve()
     try:
@@ -957,6 +1355,124 @@ def validate_note_path(rel_path: str) -> Path | None:
     except ValueError:
         return None
     return full if full.is_file() else None
+
+
+_VALID_NOTE_FILENAME_RE = re.compile(r"^[\w.-]+\.[A-Za-z0-9]+$")
+
+
+def read_note_raw(full_path: Path) -> dict[str, Any]:
+    """Return the plain bytes + mtime for the edit surface."""
+    stat_res = full_path.stat()
+    content = full_path.read_text(encoding="utf-8", errors="replace")
+    return {
+        "path": str(full_path.relative_to(BASE_DIR)),
+        "content": content,
+        "mtime": stat_res.st_mtime,
+    }
+
+
+def write_note(full_path: Path, content: str, expected_mtime: float | None) -> dict[str, Any]:
+    """Atomically rewrite ``full_path`` with ``content``.
+
+    Refuses when the on-disk mtime doesn't match ``expected_mtime`` so
+    a stale editor never silently overwrites out-of-band edits.
+    Returns ``{ok, mtime | reason}``.
+    """
+    try:
+        current_mtime = full_path.stat().st_mtime
+    except FileNotFoundError:
+        return {"ok": False, "reason": "file vanished"}
+    if expected_mtime is not None and abs(current_mtime - float(expected_mtime)) > 1e-6:
+        return {"ok": False, "reason": "file changed on disk", "mtime": current_mtime}
+    tmp = full_path.with_suffix(full_path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(full_path)
+    return {"ok": True, "mtime": full_path.stat().st_mtime}
+
+
+def rename_note(rel_path: str, new_stem: str) -> dict[str, Any]:
+    """Rename a file under ``<item>/notes/`` while preserving its extension.
+
+    ``new_stem`` is the user-typed basename without the extension. The
+    original suffix is re-attached and the resulting filename is
+    validated against the same whitelist as ``create_note``. README and
+    knowledge/* files are deliberately out of scope — those have
+    structural meaning elsewhere in the dashboard.
+    """
+    full = validate_note_path(rel_path)
+    if full is None:
+        return {"ok": False, "reason": "invalid path"}
+    if not _VALID_ITEM_FILE_RE.match(rel_path):
+        return {"ok": False, "reason": "only files under <item>/notes/ can be renamed"}
+    new_stem = (new_stem or "").strip()
+    if not new_stem or not re.match(r"^[\w.-]+$", new_stem) or new_stem in (".", ".."):
+        return {"ok": False, "reason": "invalid filename"}
+    new_filename = new_stem + full.suffix
+    if not _VALID_NOTE_FILENAME_RE.match(new_filename):
+        return {"ok": False, "reason": "invalid filename"}
+    new_path = full.parent / new_filename
+    if new_path.exists() and new_path.resolve() != full.resolve():
+        return {"ok": False, "reason": "target already exists"}
+    if new_path == full:
+        return {"ok": True, "path": rel_path, "mtime": full.stat().st_mtime}
+    full.rename(new_path)
+    return {
+        "ok": True,
+        "path": str(new_path.relative_to(BASE_DIR)),
+        "mtime": new_path.stat().st_mtime,
+    }
+
+
+def create_note(item_readme_rel: str, filename: str) -> dict[str, Any]:
+    """Create an empty note file under the item's ``notes/`` directory.
+
+    ``item_readme_rel`` is the README.md path of the owning item (validated
+    against ``_VALID_PATH_RE``). ``filename`` must be a plain basename with
+    an extension — no slashes, no traversal. Returns ``{ok, path | reason}``.
+    """
+    item = _validate_path(item_readme_rel)
+    if item is None or item.name != "README.md":
+        return {"ok": False, "reason": "invalid item"}
+    if not _VALID_NOTE_FILENAME_RE.match(filename):
+        return {"ok": False, "reason": "invalid filename"}
+    notes_dir = item.parent / "notes"
+    notes_dir.mkdir(exist_ok=True)
+    target = notes_dir / filename
+    if target.exists():
+        return {"ok": False, "reason": "file exists"}
+    target.write_text("", encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(target.relative_to(BASE_DIR)),
+        "mtime": target.stat().st_mtime,
+    }
+
+
+def validate_file_path(rel_path: str) -> tuple[Path, str] | None:
+    """Validate a raw-byte serve request for the /file endpoint.
+
+    Same acceptance set as :func:`validate_note_path` (note/README/asset
+    files under items, plus pages under `knowledge/`). Returns the absolute
+    path and a best-effort content type.
+    """
+    result = validate_note_path(rel_path)
+    if result is None:
+        return None
+    return result, _guess_content_type(result)
+
+
+def _guess_content_type(path: Path) -> str:
+    import mimetypes
+
+    ext = path.suffix.lower()
+    if ext in _ASSET_CONTENT_TYPES:
+        return _ASSET_CONTENT_TYPES[ext]
+    if ext == ".pdf":
+        return "application/pdf"
+    if ext == ".md":
+        return "text/markdown; charset=utf-8"
+    guess, _ = mimetypes.guess_type(path.name)
+    return guess or "application/octet-stream"
 
 
 def validate_download_path(rel_path: str) -> Path | None:
@@ -1321,6 +1837,68 @@ def _open_path(slot_key, path):
         file=sys.stderr,
     )
     return False
+
+
+def _validate_doc_path(rel_path: str) -> Path | None:
+    """Resolve a note-body link target against the conception tree.
+
+    Rejects anything outside ``BASE_DIR`` (symlink-safe) or any non-existent
+    file. Returns the resolved absolute path on success, ``None`` otherwise.
+    """
+    if not rel_path or "\x00" in rel_path or ".." in rel_path.split("/"):
+        return None
+    try:
+        full = (BASE_DIR / rel_path).resolve(strict=True)
+        full.relative_to(BASE_DIR.resolve())
+    except (OSError, ValueError):
+        return None
+    return full if full.is_file() else None
+
+
+def _os_open(path: Path) -> bool:
+    """Hand ``path`` to the OS-native default-application launcher.
+
+    Linux uses ``xdg-open``; macOS ``open``; Windows uses ``os.startfile``.
+    """
+    path_str = str(path)
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", path_str], start_new_session=True)
+        elif os.name == "nt":
+            os.startfile(path_str)  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(
+                ["xdg-open", path_str],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        return True
+    except Exception as exc:
+        print(f"[open-doc] failed: {exc}", file=sys.stderr)
+        return False
+
+
+_EXTERNAL_URL_RE = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
+
+
+def _is_external_url(url: str) -> bool:
+    return bool(url) and bool(_EXTERNAL_URL_RE.match(url))
+
+
+def _open_external(url: str) -> bool:
+    """Open ``url`` in the user's default browser via ``webbrowser``.
+
+    pywebview intercepts in-page navigation, so we always route external
+    URLs through the host browser — otherwise they'd replace the dashboard.
+    """
+    import webbrowser
+
+    try:
+        return bool(webbrowser.open(url, new=2))
+    except Exception as exc:
+        print(f"[open-external] failed: {exc}", file=sys.stderr)
+        return False
 
 
 def _reorder_all(full_path, order):
