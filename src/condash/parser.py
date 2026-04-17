@@ -8,7 +8,7 @@ Entry points:
   - :func:`_compute_fingerprint` / :func:`_tidy_needed` — cheap checks the
     ``/check-updates`` route runs to decide whether clients must re-fetch.
 
-All functions read ``BASE_DIR`` from :mod:`condash.legacy`; Phase 2 replaces
+All functions read ``BASE_DIR`` from :mod:`condash.core`; Phase 2 replaces
 that with an explicit ``RenderCtx`` parameter.
 """
 
@@ -161,7 +161,7 @@ def _list_notes(item_dir, max_depth: int = 2):
     related files (e.g. ``notes/drafts/…``) without the dashboard flattening
     the structure. Hidden files and dirs (``.…``) are skipped.
     """
-    from . import legacy
+    from . import core as legacy
 
     notes_dir = item_dir / "notes"
     if not notes_dir.is_dir():
@@ -192,7 +192,7 @@ def _list_notes(item_dir, max_depth: int = 2):
 
 def parse_readme(path, kind):
     """Parse a single incident/project README."""
-    from . import legacy
+    from . import core as legacy
 
     try:
         text = path.read_text(encoding="utf-8")
@@ -318,7 +318,7 @@ def collect_knowledge() -> dict | None:
 
     Returns ``None`` if ``knowledge/`` doesn't exist.
     """
-    from . import legacy
+    from . import core as legacy
 
     root = legacy.BASE_DIR / "knowledge"
     if not root.is_dir():
@@ -328,7 +328,7 @@ def collect_knowledge() -> dict | None:
 
 def _knowledge_node(d: Path) -> dict:
     """Build one tree node for directory ``d``."""
-    from . import legacy
+    from . import core as legacy
 
     is_root = d == legacy.BASE_DIR / "knowledge"
     label = "Knowledge" if is_root else d.name.replace("_", " ").replace("-", " ").title()
@@ -364,7 +364,7 @@ def _knowledge_node(d: Path) -> dict:
 
 def collect_items():
     """Find and parse all incident/project/document READMEs."""
-    from . import legacy
+    from . import core as legacy
 
     items = []
     for kind, folder in [

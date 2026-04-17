@@ -6,7 +6,7 @@ anchor before pandoc sees the text — pandoc's GFM reader passes raw HTML
 through unchanged, so the two-stage pipeline stays single-pass.
 
 Currently reads ``BASE_DIR`` and the ``h`` escape helper from
-:mod:`condash.legacy`; Phase 2 will replace both with an explicit
+:mod:`condash.core`; Phase 2 will replace both with an explicit
 ``RenderCtx`` parameter.
 """
 
@@ -38,7 +38,7 @@ def _find_item_dir(type_plural: str, target: str) -> str | None:
     Scans both the type's top-level and any ``YYYY-MM/`` archive folders.
     Prefers the most recent directory when several short-names collide.
     """
-    from . import legacy
+    from . import core as legacy
 
     root = legacy.BASE_DIR / type_plural
     if not root.is_dir():
@@ -72,7 +72,7 @@ def _resolve_wikilink(target: str) -> str | None:
     4. Short knowledge page across ``topics/``, ``external/``, ``internal/`` and
        the root ``apps.md`` / ``conventions.md``.
     """
-    from . import legacy
+    from . import core as legacy
 
     target = target.strip()
     if not target:
@@ -116,7 +116,7 @@ def _preprocess_wikilinks(text: str) -> str:
     get class ``wikilink``; misses get ``wikilink-missing`` and no href so
     the webview doesn't try to navigate.
     """
-    from .legacy import h
+    from .core import h
 
     def repl(match: re.Match) -> str:
         target = match.group(1).strip()

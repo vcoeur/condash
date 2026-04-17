@@ -6,8 +6,8 @@ validators here to resolve it safely under ``BASE_DIR``. The shared
 resolve + relative_to + existence check" dance that every validator used
 to duplicate inline.
 
-``BASE_DIR`` lives in :mod:`condash.legacy` during the Phase 1 split; the
-validators read it via ``from . import legacy`` as a transition. Phase 2
+``BASE_DIR`` lives in :mod:`condash.core` during the Phase 1 split; the
+validators read it via ``from . import core as legacy`` as a transition. Phase 2
 replaces that with an explicit ``RenderCtx`` parameter.
 """
 
@@ -73,7 +73,7 @@ def _safe_resolve(
         return None
     if regexes and not any(p.match(rel_path) for p in regexes):
         return None
-    from . import legacy
+    from . import core as legacy
 
     base = legacy.BASE_DIR
     try:
@@ -169,7 +169,7 @@ def _validate_open_path(path_str: str) -> Path | None:
         return None
     if not p.is_dir():
         return None
-    from . import legacy
+    from . import core as legacy
 
     roots: list[Path] = []
     if legacy._WORKSPACE is not None:

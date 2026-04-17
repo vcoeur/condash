@@ -85,7 +85,7 @@ def _root(
             err=True,
         )
 
-    from . import legacy
+    from . import core as legacy
 
     legacy.init(cfg)
 
@@ -113,7 +113,7 @@ def cmd_tidy(ctx: typer.Context) -> None:
         )
         raise typer.Exit(2)
 
-    from . import legacy
+    from . import core as legacy
 
     legacy.init(cfg)
     moves = legacy.run_tidy()

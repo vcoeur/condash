@@ -6,14 +6,14 @@ from fastapi.testclient import TestClient
 from nicegui import app as _ng_app
 
 from condash import app as app_mod
-from condash import legacy
+from condash import core
 from condash.config import CondashConfig
 
 
 def _client(cfg: CondashConfig) -> TestClient:
     """Wire up the FastAPI routes against ``cfg`` and return a TestClient."""
     app_mod._RUNTIME_CFG = cfg
-    legacy.init(cfg)
+    core.init(cfg)
     app_mod._register_routes()
     return TestClient(_ng_app)
 

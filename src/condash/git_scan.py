@@ -6,7 +6,7 @@ and attaches dirty-file counts + worktree listings. A 30-second fingerprint
 cache (keyed off ``HEAD`` + porcelain status) drives the ``/check-updates``
 long-poll so the dashboard only re-renders when something actually changed.
 
-Reads ``_WORKSPACE`` and ``_REPO_STRUCTURE`` from :mod:`condash.legacy`;
+Reads ``_WORKSPACE`` and ``_REPO_STRUCTURE`` from :mod:`condash.core`;
 Phase 2 replaces both with an explicit ``RenderCtx`` parameter.
 """
 
@@ -132,7 +132,7 @@ def _git_worktrees(repo_path):
 
 def _load_repository_structure():
     """Return configured primary/secondary repo buckets."""
-    from . import legacy
+    from . import core as legacy
 
     return list(legacy._REPO_STRUCTURE)
 
@@ -152,7 +152,7 @@ def _collect_git_repos():
 
     Returns ``[]`` (no repo strip) when ``workspace_path`` is unset.
     """
-    from . import legacy
+    from . import core as legacy
 
     if legacy._WORKSPACE is None:
         return []
@@ -212,7 +212,7 @@ def _collect_git_repos():
 
 
 def _git_fingerprint():
-    from . import legacy
+    from . import core as legacy
 
     now = time.monotonic()
     if _git_cache["fingerprint"] and now - _git_cache["timestamp"] < 30:
