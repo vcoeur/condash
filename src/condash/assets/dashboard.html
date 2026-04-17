@@ -416,6 +416,19 @@ body {
     border-color: var(--accent);
     opacity: 0.65;
 }
+/* Reload affordance — an invisible clickable overlay on the dot so the
+   user can refresh just this subtree. Sized generously to be easy to hit
+   on touch. Hover scales the dot slightly to telegraph clickability. */
+.node-reload-btn {
+    position: absolute; top: -2px; right: 0;
+    width: 22px; height: 22px; padding: 0; margin: 0;
+    background: transparent; border: 0; cursor: pointer;
+    z-index: 3;
+}
+[data-node-id]:has(.node-reload-btn:hover)::after {
+    transform: scale(1.25);
+    transition: transform 0.12s ease;
+}
 /* Pane wrappers already cover the whole viewport — putting the dot on
    them would float it in no-man's-land. Suppress. The tab header shows
    its own stale dot (``.tabs-primary .tab.stale::after``) anyway. */
@@ -2648,7 +2661,30 @@ function _renderStale() {
         if (firstCard) firstCard.classList.add('group-dirty-leader');
     });
 
-    // 5. Tab-header dots — coarse "something in this tab needs attention".
+    // 5. Inject reload buttons on every stale / hinted node so the user
+    //    can click any level to refresh just that subtree. Leaf nodes we
+    //    know how to fragment-fetch (cards + knowledge dirs) do a local
+    //    swap; everything else falls back to a global _reloadInPlace.
+    document.querySelectorAll('[data-node-id].node-stale, [data-node-id].node-stale-hint')
+        .forEach(function(el) {
+            if (el.id === 'projects-pane' || el.id === 'code-pane' || el.id === 'knowledge-pane') {
+                return; // pane wrappers never get a reload button (dot is hidden too)
+            }
+            if (el.querySelector(':scope > .node-reload-btn')) return;
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'node-reload-btn';
+            btn.setAttribute('aria-label', 'Reload this section');
+            btn.title = 'Reload this section';
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                reloadNode(el.getAttribute('data-node-id'));
+            });
+            el.appendChild(btn);
+        });
+
+    // 6. Tab-header dots — coarse "something in this tab needs attention".
     _deriveLegacyFlags();
     var staleByTab = {
         projects: _itemsStale,
@@ -2712,6 +2748,98 @@ async function updateBaseline() {
         _lastFingerprint = data.fingerprint;
         _lastGitFingerprint = data.git_fingerprint;
         _renderStale();
+    } catch (e) {}
+}
+
+/* --- Local subtree reload ---
+   Click on a stale marker. For node ids the server knows how to fragment
+   (project card, knowledge card, knowledge directory) we fetch just that
+   fragment and replace the matching element in place, preserving any
+   <details> open-state inside it. For everything else (groups, tabs, code
+   nodes) the fragment endpoint returns 404 and we fall back to the global
+   _reloadInPlace. Either way the dirty-set entries covered by the reload
+   are dropped and the baseline is refreshed for those entries. */
+function _supportsFragmentFetch(nodeId) {
+    // Project cards: projects/<pri>/<slug>
+    if (/^projects\/[a-z]+\/.+/.test(nodeId)) return true;
+    // Knowledge directories and cards (not the root).
+    if (nodeId === 'knowledge') return false;
+    if (/^knowledge\//.test(nodeId)) return true;
+    return false;
+}
+
+function _captureDetailsOpenState(root) {
+    var map = {};
+    root.querySelectorAll('details[data-node-id]').forEach(function(d) {
+        map[d.getAttribute('data-node-id')] = d.open;
+    });
+    return map;
+}
+
+function _restoreDetailsOpenState(root, map) {
+    root.querySelectorAll('details[data-node-id]').forEach(function(d) {
+        var id = d.getAttribute('data-node-id');
+        if (id in map) d.open = map[id];
+    });
+}
+
+async function reloadNode(nodeId) {
+    // Fall back to global reload for tab-level, group-level, and code nodes.
+    if (!_supportsFragmentFetch(nodeId)) {
+        _reloadInPlace();
+        return;
+    }
+    try {
+        var res = await fetch('/fragment?id=' + encodeURIComponent(nodeId),
+                              {cache: 'no-store'});
+        if (!res.ok) { _reloadInPlace(); return; }
+        var html = await res.text();
+        var esc = (window.CSS && CSS.escape) ? CSS.escape(nodeId) : nodeId;
+        var existing = document.querySelector('[data-node-id="' + esc + '"]');
+        if (!existing) { _reloadInPlace(); return; }
+
+        // Preserve <details> open state inside the subtree across the swap.
+        var openMap = _captureDetailsOpenState(existing);
+
+        var tpl = document.createElement('template');
+        tpl.innerHTML = html.trim();
+        var fresh = tpl.content.firstElementChild;
+        if (!fresh) { _reloadInPlace(); return; }
+
+        existing.replaceWith(fresh);
+        _restoreDetailsOpenState(fresh, openMap);
+
+        // Drop this node and all its descendants from the dirty set,
+        // then refresh the baseline hashes for those ids.
+        var prefix = nodeId + '/';
+        var dropped = [];
+        _dirtyNodes.forEach(function(id) {
+            if (id === nodeId || id.indexOf(prefix) === 0) dropped.push(id);
+        });
+        dropped.forEach(function(id) { _dirtyNodes.delete(id); });
+        await _refreshBaselineFor(nodeId);
+        _renderStale();
+    } catch (e) {
+        _reloadInPlace();
+    }
+}
+
+async function _refreshBaselineFor(nodeId) {
+    // Re-fetch /check-updates and adopt the current hash for the reloaded
+    // subtree so the next poll doesn't immediately re-dirty it. Other
+    // nodes' dirty state is preserved.
+    try {
+        var res = await fetch('/check-updates');
+        if (!res.ok) return;
+        var data = await res.json();
+        var current = data.nodes || {};
+        if (!_nodeBaseline) _nodeBaseline = {};
+        var prefix = nodeId + '/';
+        for (var id in current) {
+            if (id === nodeId || id.indexOf(prefix) === 0) {
+                _nodeBaseline[id] = current[id];
+            }
+        }
     } catch (e) {}
 }
 

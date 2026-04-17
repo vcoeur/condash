@@ -496,6 +496,36 @@ def _walk_knowledge_nodes(node: dict, out: dict[str, str], parent_id: str | None
     return node_id
 
 
+def find_knowledge_node(tree: dict | None, rel_dir: str) -> dict | None:
+    """Return the knowledge tree node at ``rel_dir`` (e.g. ``knowledge/topics``) or None."""
+    if tree is None:
+        return None
+    if tree["rel_dir"] == rel_dir:
+        return tree
+    for child in tree.get("children", []):
+        found = find_knowledge_node(child, rel_dir)
+        if found is not None:
+            return found
+    return None
+
+
+def find_knowledge_card(tree: dict | None, path: str) -> dict | None:
+    """Return the card entry (index or body) at file ``path`` or None."""
+    if tree is None:
+        return None
+    idx = tree.get("index")
+    if idx and idx["path"] == path:
+        return idx
+    for entry in tree.get("body", []):
+        if entry["path"] == path:
+            return entry
+    for child in tree.get("children", []):
+        found = find_knowledge_card(child, path)
+        if found is not None:
+            return found
+    return None
+
+
 def compute_knowledge_node_fingerprints(tree: dict | None) -> dict[str, str]:
     """Return ``{node_id: hash}`` for the Knowledge tree.
 

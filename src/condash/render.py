@@ -626,6 +626,22 @@ def _render_git_repos(ctx: RenderCtx, groups):
     return "\n".join(out)
 
 
+def render_card_fragment(item) -> str:
+    """HTML for one project card — used by the /fragment endpoint to
+    serve a single card on local reload."""
+    return _render_card(item)
+
+
+def render_knowledge_card_fragment(entry: dict) -> str:
+    """HTML for one knowledge card (file)."""
+    return _render_knowledge_card(entry)
+
+
+def render_knowledge_group_fragment(node: dict) -> str:
+    """HTML for one knowledge directory (recursive, including children)."""
+    return _render_knowledge_group(node)
+
+
 def render_page(ctx: RenderCtx, items):
     """Load the HTML template and inject rendered cards."""
     all_items = sorted(
