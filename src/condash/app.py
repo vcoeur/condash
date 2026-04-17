@@ -28,7 +28,7 @@ from nicegui import app as _ng_app
 from nicegui import ui
 
 from . import config as config_mod
-from . import legacy
+from . import core as legacy
 from .config import (
     OPEN_WITH_SLOT_KEYS,
     CondashConfig,

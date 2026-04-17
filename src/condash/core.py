@@ -1,20 +1,17 @@
-"""Ported from ``conception/tools/dashboard.py``.
+"""Init hook, shared state, and backward-compat re-exports.
 
-This module keeps the original parser, renderers, mutation helpers, and
-HTTP surface semantics verbatim. The only differences from the upstream
-file are:
+Holds the module globals (``BASE_DIR``, ``_WORKSPACE``, ``_WORKTREES``,
+``_REPO_STRUCTURE``, ``_OPEN_WITH``, ``_PDF_VIEWER``) that the split
+submodules read until Phase 2 replaces them with an explicit
+``RenderCtx`` parameter. Also the template/asset loaders and the
+:func:`init` hook that :mod:`condash.cli` and :mod:`condash.app` call
+before the first render.
 
-* ``BASE_DIR`` is no longer hard-coded from ``__file__``; it is set by
-  :func:`init` from the ``CondashConfig``.
-* The HTML template lives inside the ``condash`` package as a resource
-  and is loaded via ``importlib.resources``.
-* The repositories list (primary / secondary) comes from the config, not
-  from a YAML file next to the script.
-* ``BaseHTTPRequestHandler`` / ``DashboardServer`` / ``main`` are removed —
-  the web surface now lives in :mod:`condash.app` on top of NiceGUI /
-  FastAPI. All the helpers they called (``_toggle_checkbox``,
-  ``_add_step``, ``_render_note``, ``_tidy``, etc.) are still exported
-  here unchanged so ``app.py`` can call them directly.
+Every symbol previously exported by ``legacy.py`` is re-exported here,
+so ``from condash import core`` gives the same surface during the
+Phase 1 split. ``app.py`` and ``cli.py`` can already import from the
+split submodules directly; the re-exports remain as a safety net for
+anything still going through the old path.
 """
 
 from __future__ import annotations

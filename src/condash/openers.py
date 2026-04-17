@@ -8,7 +8,7 @@ Four public-ish entry points:
   - :func:`_is_external_url` / :func:`_open_external` — recognise
     ``http(s)://…`` anchors and route them through the host browser.
 
-Reads ``_OPEN_WITH`` and ``_PDF_VIEWER`` from :mod:`condash.legacy`; Phase 2
+Reads ``_OPEN_WITH`` and ``_PDF_VIEWER`` from :mod:`condash.core`; Phase 2
 replaces them with an explicit ``RenderCtx`` parameter.
 """
 
@@ -32,7 +32,7 @@ def _open_path(slot_key, path):
     The fallback chain comes from ``cfg.open_with[slot_key]`` (set by ``init``).
     Each command is shell-parsed and tried in order until one starts.
     """
-    from . import legacy
+    from . import core as legacy
 
     path_str = str(path)
     slot = legacy._OPEN_WITH.get(slot_key)
@@ -72,7 +72,7 @@ def _try_pdf_viewer(path_str: str) -> bool:
     True on the first command that starts without raising; False if the list
     is empty or every entry fails (bad shell syntax, missing binary, …).
     """
-    from . import legacy
+    from . import core as legacy
 
     for raw in legacy._PDF_VIEWER:
         if not raw.strip():

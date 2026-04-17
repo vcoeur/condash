@@ -7,7 +7,7 @@ deliverables, steps, wikilinks-rewritten markdown, and the git repo
 action buttons.
 
 Reads ``BASE_DIR``, ``_OPEN_WITH`` and the ``_template_path`` loader from
-:mod:`condash.legacy`; Phase 2 replaces all three with an explicit
+:mod:`condash.core`; Phase 2 replaces all three with an explicit
 ``RenderCtx`` parameter.
 """
 
@@ -83,7 +83,7 @@ def _render_note(full_path: Path) -> str:
     ``<pre>``; anything else falls back to an "Open externally" button
     that the existing link-wiring routes through ``/open-doc``.
     """
-    from . import legacy
+    from . import core as legacy
 
     kind = _note_kind(full_path)
     try:
@@ -416,7 +416,7 @@ _ICON_SVGS = {
 
 
 def _render_git_actions(path):
-    from . import legacy
+    from . import core as legacy
 
     js_path = json.dumps(path).replace("'", "\\'").replace('"', "'")
     items_html: list[str] = []
@@ -536,7 +536,7 @@ def _render_git_repos(groups):
 
 def render_page(items):
     """Load the HTML template and inject rendered cards."""
-    from . import legacy
+    from . import core as legacy
 
     all_items = sorted(
         items,

@@ -6,7 +6,7 @@ items into ``YYYY-MM/`` archives. Paths must already be validated (via
 :mod:`condash.paths`) before these functions see them — they do not
 re-check the sandbox.
 
-Reads ``BASE_DIR`` from :mod:`condash.legacy`; Phase 2 replaces that with
+Reads ``BASE_DIR`` from :mod:`condash.core`; Phase 2 replaces that with
 an explicit ``RenderCtx`` parameter.
 """
 
@@ -34,7 +34,7 @@ _KIND_MAP = {"incidents": "incident", "projects": "project", "documents": "docum
 
 def read_note_raw(full_path: Path) -> dict[str, Any]:
     """Return the plain bytes + mtime for the edit surface."""
-    from . import legacy
+    from . import core as legacy
 
     stat_res = full_path.stat()
     content = full_path.read_text(encoding="utf-8", errors="replace")
@@ -66,7 +66,7 @@ def write_note(full_path: Path, content: str, expected_mtime: float | None) -> d
 
 def rename_note(rel_path: str, new_stem: str) -> dict[str, Any]:
     """Rename a file under ``<item>/notes/`` while preserving its extension."""
-    from . import legacy
+    from . import core as legacy
 
     full = validate_note_path(rel_path)
     if full is None:
@@ -94,7 +94,7 @@ def rename_note(rel_path: str, new_stem: str) -> dict[str, Any]:
 
 def create_note(item_readme_rel: str, filename: str) -> dict[str, Any]:
     """Create an empty note file under the item's ``notes/`` directory."""
-    from . import legacy
+    from . import core as legacy
 
     item = _validate_path(item_readme_rel)
     if item is None or item.name != "README.md":
@@ -141,7 +141,7 @@ def _set_priority(full_path, priority):
 
 
 def _tidy():
-    from . import legacy
+    from . import core as legacy
 
     moves = []
     for folder in ("incidents", "projects", "documents"):
