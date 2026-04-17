@@ -5,8 +5,8 @@ Entry points:
     the rest of the package consumes.
   - :func:`collect_items` — walk every item folder under ``ctx.base_dir``.
   - :func:`collect_knowledge` — walk ``knowledge/`` recursively.
-  - :func:`_compute_fingerprint` / :func:`_tidy_needed` — cheap checks the
-    ``/check-updates`` route runs to decide whether clients must re-fetch.
+  - :func:`_compute_fingerprint` — cheap hash the ``/check-updates`` route
+    runs to decide whether clients must re-fetch.
 """
 
 from __future__ import annotations
@@ -29,9 +29,6 @@ DELIVERABLE_RE = re.compile(r"-\s+\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—–-]\s*
 
 PRIORITIES = ("now", "soon", "later", "backlog", "review", "done")
 PRI_ORDER = {p: i for i, p in enumerate(PRIORITIES)}
-
-_MONTH_DIR_RE = re.compile(r"^\d{4}-\d{2}$")
-_ITEM_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-.+$")
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif"}
 _PDF_EXTS = {".pdf"}
@@ -187,8 +184,13 @@ def _list_notes(ctx: RenderCtx, item_dir, max_depth: int = 2):
     return out
 
 
-def parse_readme(ctx: RenderCtx, path, kind):
-    """Parse a single incident/project README."""
+def parse_readme(ctx: RenderCtx, path, kind: str | None = None):
+    """Parse a single item README.
+
+    Kind is read from the ``**Kind**`` metadata field. The ``kind`` argument is
+    a fallback used by tests and callers that already know the kind; it is
+    overridden by the README header whenever present.
+    """
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -254,6 +256,8 @@ def parse_readme(ctx: RenderCtx, path, kind):
     if priority not in PRIORITIES:
         priority = "backlog"
 
+    resolved_kind = meta.get("kind", "").lower() or kind or "project"
+
     return {
         "slug": path.parent.name,
         "title": title,
@@ -268,7 +272,7 @@ def parse_readme(ctx: RenderCtx, path, kind):
         "done": done,
         "total": total,
         "path": str(path.relative_to(ctx.base_dir)),
-        "kind": kind,
+        "kind": resolved_kind,
     }
 
 
@@ -347,22 +351,19 @@ def _knowledge_node(ctx: RenderCtx, d: Path) -> dict:
 
 
 def collect_items(ctx: RenderCtx):
-    """Find and parse all incident/project/document READMEs."""
-    items = []
-    for kind, folder in [
-        ("incident", "incidents"),
-        ("project", "projects"),
-        ("document", "documents"),
-    ]:
-        base = ctx.base_dir / folder
-        if not base.is_dir():
-            continue
-        readmes = set(base.glob("*/README.md")) | set(base.glob("*/*/README.md"))
-        for readme in sorted(readmes):
-            item = parse_readme(ctx, readme, kind)
-            if item:
-                items.append(item)
+    """Find and parse every item README under ``projects/``.
 
+    Every item lives at ``projects/YYYY-MM/YYYY-MM-DD-slug/README.md`` and carries
+    its kind (``project``/``incident``/``document``) in the ``**Kind**`` header.
+    """
+    items = []
+    base = ctx.base_dir / "projects"
+    if not base.is_dir():
+        return items
+    for readme in sorted(base.glob("*/*/README.md")):
+        item = parse_readme(ctx, readme)
+        if item:
+            items.append(item)
     return items
 
 
@@ -389,13 +390,3 @@ def _compute_fingerprint(items):
             )
         )
     return hashlib.md5(repr(data).encode()).hexdigest()[:16]
-
-
-def _tidy_needed(items):
-    for item in items:
-        parts = item["path"].split("/")
-        if len(parts) == 3 and item["priority"] == "done":
-            return True
-        if len(parts) == 4 and _MONTH_DIR_RE.match(parts[1]) and item["priority"] != "done":
-            return True
-    return False

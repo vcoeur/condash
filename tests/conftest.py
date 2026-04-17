@@ -21,14 +21,12 @@ def tmp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def tmp_conception(tmp_path: Path) -> Path:
     """Create a minimal conception tree with one project containing one checkbox step."""
     root = tmp_path / "conception"
-    project = root / "projects" / "2026-01-01-hello"
+    project = root / "projects" / "2026-01" / "2026-01-01-hello"
     project.mkdir(parents=True)
     (project / "README.md").write_text(
-        "# Hello\n\n**Date**: 2026-01-01\n**Status**: now\n\n## Steps\n\n- [ ] first task\n",
+        "# Hello\n\n**Date**: 2026-01-01\n**Kind**: project\n**Status**: now\n\n## Steps\n\n- [ ] first task\n",
         encoding="utf-8",
     )
-    (root / "incidents").mkdir()
-    (root / "documents").mkdir()
     return root
 
 

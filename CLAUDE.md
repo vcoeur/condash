@@ -1,6 +1,6 @@
 # CLAUDE.md — condash
 
-Standalone desktop dashboard for markdown-based conception projects, incidents, and documents. Renders a live view of a `conception`-style directory tree (`projects/YYYY-MM-DD-slug/README.md`, `incidents/…`, `documents/…`), tracks `## Steps` checklists, toggles item status, reorders steps, opens files in your IDE, and tidies done items into `YYYY-MM/` archive folders — all from one native window backed by the same Markdown files the user edits by hand.
+Standalone desktop dashboard for markdown-based conception items. Every item — project, incident, or document — lives at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md` and carries a `**Kind**` field in its header. Condash renders a live view of that tree, tracks `## Steps` checklists, toggles item status, reorders steps, and opens files in your IDE — all from one native window backed by the same Markdown files the user edits by hand.
 
 The name is a contraction of *conception dashboard*. The package distributes on PyPI under `condash`; the command-line binary is also `condash`.
 
@@ -21,15 +21,15 @@ The name is a contraction of *conception dashboard*. The package distributes on 
 
 ```
 condash/
-  cli.py       <- Typer app (default launches the window; subcommands: init, tidy, install-desktop, uninstall-desktop, config show/path/edit)
+  cli.py       <- Typer app (default launches the window; subcommands: init, install-desktop, uninstall-desktop, config show/path/edit)
   config.py    <- TOML loader + writer (tomlkit round-trip) + CondashConfig dataclass + DEFAULT_CONFIG_TEMPLATE
   context.py   <- RenderCtx dataclass + build_ctx(cfg) + favicon loader
-  app.py       <- NiceGUI bootstrap + FastAPI route registration (`/`, `/toggle`, `/add-step`, `/tidy`, `/config`, …). Holds _RUNTIME_CFG + _RUNTIME_CTX so the in-app editor can mutate both without a restart.
+  app.py       <- NiceGUI bootstrap + FastAPI route registration (`/`, `/toggle`, `/add-step`, `/config`, …). Holds _RUNTIME_CFG + _RUNTIME_CTX so the in-app editor can mutate both without a restart.
   paths.py     <- Path-traversal-safe validators for every user-supplied rel_path
   wikilinks.py <- `[[target]]` / `[[target|label]]` resolution + pre-pandoc rewrite
-  parser.py    <- README parsing + knowledge-tree scanning + fingerprint / tidy-needed checks
+  parser.py    <- README parsing + knowledge-tree scanning + fingerprint check
   render.py    <- HTML rendering for cards, notes, knowledge tree, git strip, full page
-  mutations.py <- File mutations: toggle checkbox, add/edit/remove step, rename/create note, _tidy
+  mutations.py <- File mutations: toggle checkbox, add/edit/remove step, rename/create note
   git_scan.py  <- `workspace_path` scan + git status/worktree/fingerprint for the repo strip
   openers.py   <- External launchers (IDE, PDF viewer, OS default, web browser)
   desktop.py   <- XDG .desktop entry writer for `condash install-desktop` (Linux only)
@@ -67,7 +67,6 @@ uv run condash init             # write a default config template
 uv run condash config show      # print the effective configuration
 uv run condash config path      # print the resolved config-file path
 uv run condash config edit      # open the config file in $VISUAL / $EDITOR
-uv run condash tidy             # move done items into YYYY-MM/ archive dirs
 uv run condash install-desktop  # register the XDG .desktop entry (Linux)
 ```
 
@@ -88,7 +87,7 @@ The CLI honours `CONDASH_LOG_LEVEL` (default `INFO`) for the root logger; set to
 - Runtime context: `src/condash/context.py::RenderCtx` + `build_ctx(cfg)`. Frozen dataclass carrying `base_dir`, `workspace`, `worktrees`, `repo_structure`, `open_with`, `pdf_viewer`, `template`. Rebuilt on every `/config` POST.
 - Path validators: `src/condash/paths.py::_safe_resolve` is the shared traversal guard; every route-facing validator composes regex gates on top of it.
 - Parsers + renderers: `src/condash/parser.py` (README + knowledge tree), `src/condash/render.py` (HTML for cards / notes / knowledge / git strip / page).
-- File mutations: `src/condash/mutations.py` — toggle / add / edit / remove step, rename / create note, priority edit, `_tidy` archive mover.
+- File mutations: `src/condash/mutations.py` — toggle / add / edit / remove step, rename / create note, priority edit.
 - Git scan + repo strip: `src/condash/git_scan.py` — workspace scan, per-repo status, worktree listing, fingerprint cache for the `/check-updates` long-poll.
 - External launchers: `src/condash/openers.py` — open-in-IDE, PDF viewer chain, OS default opener, external URL routing.
 - Wikilinks: `src/condash/wikilinks.py` — `[[target]]` resolver called from markdown preprocess before pandoc.

@@ -5,10 +5,10 @@ The Phase 1 split still stored ``BASE_DIR`` / ``_WORKSPACE`` / ``_OPEN_WITH``
 ``core.init(cfg)``. Phase 2 bundles them into a single frozen dataclass and
 threads it through every helper that needs them. Module globals disappear.
 
-Every public entry point (``render_page``, ``collect_items``, ``run_tidy``,
-the path validators, the openers) now takes ``ctx`` as its first positional
-argument. Pure helpers (parsers, serialisers, regex gates, rendering of
-things that don't need config) do not take ``ctx``.
+Every public entry point (``render_page``, ``collect_items``, the path
+validators, the openers) now takes ``ctx`` as its first positional argument.
+Pure helpers (parsers, serialisers, regex gates, rendering of things that
+don't need config) do not take ``ctx``.
 """
 
 from __future__ import annotations

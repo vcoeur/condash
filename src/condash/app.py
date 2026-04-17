@@ -1,9 +1,8 @@
 """NiceGUI-backed native window for condash.
 
 The existing ``dashboard.html`` is served verbatim at ``/``; all the AJAX
-endpoints the JS calls (``/toggle``, ``/add-step``, ``/tidy``, …) are
-re-implemented here as FastAPI routes on top of NiceGUI's underlying
-FastAPI instance.
+endpoints the JS calls (``/toggle``, ``/add-step``, …) are re-implemented
+here as FastAPI routes on top of NiceGUI's underlying FastAPI instance.
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ from .mutations import (
     _remove_step,
     _reorder_all,
     _set_priority,
-    _tidy,
     _toggle_checkbox,
     create_note,
     read_note_raw,
@@ -49,7 +47,7 @@ from .mutations import (
     write_note,
 )
 from .openers import _is_external_url, _open_external, _open_path, _os_open
-from .parser import _compute_fingerprint, _note_kind, _tidy_needed, collect_items
+from .parser import _compute_fingerprint, _note_kind, collect_items
 from .paths import (
     _validate_doc_path,
     _validate_open_path,
@@ -180,7 +178,6 @@ def _register_routes() -> None:
         items = collect_items(_ctx())
         return {
             "fingerprint": _compute_fingerprint(items),
-            "tidy_needed": _tidy_needed(items),
             "git_fingerprint": _git_fingerprint(_ctx()),
         }
 
@@ -341,8 +338,7 @@ def _register_routes() -> None:
             return _error(400, "invalid path")
         priority = data.get("priority", "")
         if _set_priority(full, priority):
-            moves = _tidy(_ctx())
-            return {"ok": True, "priority": priority, "moved": bool(moves)}
+            return {"ok": True, "priority": priority}
         return _error(400, "invalid priority")
 
     @_ng_app.post("/reorder-all")
@@ -419,14 +415,6 @@ def _register_routes() -> None:
         if _open_external(url):
             return {"ok": True}
         return _error(500, "could not launch browser")
-
-    @_ng_app.post("/tidy")
-    async def tidy(_req: Request):
-        moves = _tidy(_ctx())
-        return {
-            "ok": True,
-            "moves": [{"from": f, "to": t} for f, t in moves],
-        }
 
     @_ng_app.get("/config")
     def get_config():
