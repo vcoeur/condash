@@ -55,6 +55,14 @@ from .paths import (  # noqa: F401 — re-exported for backward compat during th
     validate_file_path,
     validate_note_path,
 )
+from .wikilinks import (  # noqa: F401 — re-exported for backward compat during the Phase 1 split
+    _DATE_SLUG_RE,
+    _ITEM_TYPE_NORMAL,
+    _WIKILINK_RE,
+    _find_item_dir,
+    _preprocess_wikilinks,
+    _resolve_wikilink,
+)
 
 log = logging.getLogger(__name__)
 
@@ -1195,119 +1203,6 @@ def _rewrite_img_src(html, note_dir_rel):
         return f"{m.group(1)}/asset/{note_dir_rel}/{src}{m.group(3)}"
 
     return _IMG_SRC_RE.sub(sub, html)
-
-
-_WIKILINK_RE = re.compile(r"\[\[([^\]\|\n]+?)(?:\|([^\]\n]+?))?\]\]")
-
-# Match short item slugs ("my-project") vs directory-name slugs
-# ("2026-04-16-my-project"). Used by the wikilink resolver.
-_DATE_SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
-_ITEM_TYPE_NORMAL = {
-    "project": "projects",
-    "projects": "projects",
-    "incident": "incidents",
-    "incidents": "incidents",
-    "document": "documents",
-    "documents": "documents",
-}
-
-
-def _find_item_dir(type_plural: str, target: str) -> str | None:
-    """Look up a single item directory by exact name or short-name match.
-
-    Scans both the type's top-level and any `YYYY-MM/` archive folders.
-    Prefers the most recent directory when several short-names collide.
-    """
-    root = BASE_DIR / type_plural
-    if not root.is_dir():
-        return None
-    candidates: list[str] = []
-    for child in root.iterdir():
-        if not child.is_dir():
-            continue
-        if child.name == target or (_DATE_SLUG_RE.match(child.name) and child.name[11:] == target):
-            candidates.append(child.name)
-        if re.match(r"^\d{4}-\d{2}$", child.name):
-            for grand in child.iterdir():
-                if not grand.is_dir():
-                    continue
-                if grand.name == target or (
-                    _DATE_SLUG_RE.match(grand.name) and grand.name[11:] == target
-                ):
-                    candidates.append(f"{child.name}/{grand.name}")
-    if not candidates:
-        return None
-    return max(candidates)  # sorts by date thanks to the YYYY-MM[-DD] prefix
-
-
-def _resolve_wikilink(target: str) -> str | None:
-    """Resolve a `[[target]]` to a conception-relative path, if it exists.
-
-    Resolution order:
-    1. Prefixed item reference: `project/<slug>`, `incidents/<slug>`, etc.
-    2. Knowledge path: `knowledge/topics/foo` or `knowledge/foo`.
-    3. Short slug across all three item kinds — most recent wins.
-    4. Short knowledge page across `topics/`, `external/`, `internal/` and
-       the root `apps.md` / `conventions.md`.
-    """
-    target = target.strip()
-    if not target:
-        return None
-
-    if "/" in target:
-        head, _, tail = target.partition("/")
-        type_pl = _ITEM_TYPE_NORMAL.get(head)
-        if type_pl:
-            found = _find_item_dir(type_pl, tail)
-            if found:
-                return f"{type_pl}/{found}/README.md"
-        if head == "knowledge":
-            path = target if target.endswith(".md") else f"{target}.md"
-            if (BASE_DIR / path).is_file():
-                return path
-
-    for type_pl in ("projects", "incidents", "documents"):
-        found = _find_item_dir(type_pl, target)
-        if found:
-            return f"{type_pl}/{found}/README.md"
-
-    for sub in ("topics", "external", "internal"):
-        candidate = BASE_DIR / "knowledge" / sub / f"{target}.md"
-        if candidate.is_file():
-            return f"knowledge/{sub}/{target}.md"
-    for root_file in ("apps.md", "conventions.md"):
-        if target == root_file.removesuffix(".md"):
-            candidate = BASE_DIR / "knowledge" / root_file
-            if candidate.is_file():
-                return f"knowledge/{root_file}"
-
-    return None
-
-
-def _preprocess_wikilinks(text: str) -> str:
-    """Rewrite `[[target]]` / `[[target|label]]` into raw-HTML anchors.
-
-    Pandoc GFM passes raw HTML through unchanged, so emitting the final
-    `<a>` here keeps the rendering pipeline single-pass. Resolved links
-    get class `wikilink`; misses get `wikilink-missing` and no href so the
-    webview doesn't try to navigate.
-    """
-
-    def repl(match: re.Match) -> str:
-        target = match.group(1).strip()
-        label = (match.group(2) or target).strip()
-        resolved = _resolve_wikilink(target)
-        if resolved:
-            return (
-                f'<a class="wikilink" href="{h(resolved)}" '
-                f'data-wikilink-target="{h(target)}">{h(label)}</a>'
-            )
-        return (
-            f'<a class="wikilink-missing" '
-            f'title="Wikilink target not found: {h(target)}">{h(label)}</a>'
-        )
-
-    return _WIKILINK_RE.sub(repl, text)
 
 
 def _render_markdown(full_path, note_dir_rel):
