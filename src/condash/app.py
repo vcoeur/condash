@@ -33,7 +33,7 @@ from .config import (
     OpenWithSlot,
 )
 from .context import RenderCtx, build_ctx, favicon_bytes
-from .git_scan import _git_fingerprint
+from .git_scan import _git_fingerprint, compute_git_node_fingerprints
 from .mutations import (
     _add_step,
     _edit_step,
@@ -47,7 +47,16 @@ from .mutations import (
     write_note,
 )
 from .openers import _is_external_url, _open_external, _open_path, _os_open
-from .parser import _compute_fingerprint, _note_kind, collect_items
+from .parser import (
+    _compute_fingerprint,
+    _note_kind,
+    collect_items,
+    collect_knowledge,
+    compute_knowledge_node_fingerprints,
+    compute_project_node_fingerprints,
+    find_knowledge_card,
+    find_knowledge_node,
+)
 from .paths import (
     _validate_doc_path,
     _validate_open_path,
@@ -57,7 +66,13 @@ from .paths import (
     validate_file_path,
     validate_note_path,
 )
-from .render import _render_note, render_page
+from .render import (
+    _render_note,
+    render_card_fragment,
+    render_knowledge_card_fragment,
+    render_knowledge_group_fragment,
+    render_page,
+)
 
 log = logging.getLogger(__name__)
 
@@ -175,11 +190,59 @@ def _register_routes() -> None:
 
     @_ng_app.get("/check-updates")
     def check_updates():
-        items = collect_items(_ctx())
+        ctx = _ctx()
+        items = collect_items(ctx)
+        knowledge = collect_knowledge(ctx)
+        nodes: dict[str, str] = {}
+        nodes.update(compute_project_node_fingerprints(items))
+        nodes.update(compute_knowledge_node_fingerprints(knowledge))
+        nodes.update(compute_git_node_fingerprints(ctx))
         return {
             "fingerprint": _compute_fingerprint(items),
-            "git_fingerprint": _git_fingerprint(_ctx()),
+            "git_fingerprint": _git_fingerprint(ctx),
+            "nodes": nodes,
         }
+
+    @_ng_app.get("/fragment", response_class=HTMLResponse)
+    def fragment(id: str = ""):
+        """Return the HTML subtree for a single card or knowledge directory.
+
+        Supported id shapes:
+          - ``projects/<priority>/<slug>`` — one project card.
+          - ``knowledge/<rel>`` — one knowledge card (if ``<rel>`` is a file)
+            or one directory subtree (if ``<rel>`` is a knowledge directory).
+        Anything else (group, tab, code node) returns 404; the client falls
+        back to a global in-place reload for those.
+        """
+        ctx = _ctx()
+        if not id:
+            return _error(400, "missing id")
+        if id.startswith("projects/"):
+            parts = id.split("/", 2)
+            if len(parts) != 3:
+                return _error(404, "not a card id")
+            slug = parts[2]
+            for item in collect_items(ctx):
+                if item["slug"] == slug:
+                    return HTMLResponse(content=render_card_fragment(item))
+            return _error(404, "card not found")
+        if id == "knowledge":
+            # Root pane uses a different wrapper than a subdirectory group;
+            # falling back to global reload is simpler than special-casing it.
+            return _error(404, "use global reload")
+        if id.startswith("knowledge/"):
+            tree = collect_knowledge(ctx)
+            # File cards have an extension (e.g. ".md"); directories do not.
+            if id.endswith(".md"):
+                card = find_knowledge_card(tree, id)
+                if card is None:
+                    return _error(404, "card not found")
+                return HTMLResponse(content=render_knowledge_card_fragment(card))
+            node = find_knowledge_node(tree, id)
+            if node is None:
+                return _error(404, "dir not found")
+            return HTMLResponse(content=render_knowledge_group_fragment(node))
+        return _error(404, "unsupported id")
 
     @_ng_app.get("/note")
     def get_note(path: str = ""):
