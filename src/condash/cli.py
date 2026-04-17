@@ -2,9 +2,9 @@
 
 Default invocation (`condash` with no subcommand) launches the NiceGUI
 native window. Explicit subcommands cover configuration inspection /
-editing, the tidy pass, and the first-run bootstrap. Matches the shape
-quelle uses (`<app> init`, `<app> config show / path / edit`) so the
-three vcoeur CLI tools present the same config UX to users.
+editing, desktop-entry install/uninstall, and the first-run bootstrap.
+Matches the shape quelle uses (`<app> init`, `<app> config show / path
+/ edit`) so the three vcoeur CLI tools present the same config UX.
 """
 
 from __future__ import annotations
@@ -88,38 +88,6 @@ def _root(
     from . import app as app_module
 
     app_module.run(cfg)
-
-
-@app.command("tidy")
-def cmd_tidy(ctx: typer.Context) -> None:
-    """Move done items into YYYY-MM/ archive dirs and exit."""
-    obj = ctx.obj or {}
-    cfg = _load_or_exit(obj.get("config_file"), obj.get("conception_override"))
-    if cfg.conception_path is None:
-        typer.echo(
-            "condash: error: conception_path is not configured. "
-            "Run `condash config edit` or set it from the gear icon in `condash`.",
-            err=True,
-        )
-        raise typer.Exit(2)
-    if not cfg.conception_path.is_dir():
-        typer.echo(
-            f"condash: error: conception directory does not exist: {cfg.conception_path}",
-            err=True,
-        )
-        raise typer.Exit(2)
-
-    from .context import build_ctx
-    from .mutations import run_tidy
-
-    ctx = build_ctx(cfg)
-    moves = run_tidy(ctx)
-    if moves:
-        for old, new in moves:
-            typer.echo(f"  {old} \u2192 {new}")
-        typer.echo(f"{len(moves)} item(s) moved.")
-    else:
-        typer.echo("Nothing to move.")
 
 
 @app.command("init")

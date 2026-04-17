@@ -37,14 +37,14 @@ def test_config_get(cfg: CondashConfig):
 
 def test_toggle_flips_checkbox(cfg: CondashConfig):
     client = _client(cfg)
-    target = cfg.conception_path / "projects" / "2026-01-01-hello" / "README.md"
+    target = cfg.conception_path / "projects" / "2026-01" / "2026-01-01-hello" / "README.md"
     lines = target.read_text(encoding="utf-8").splitlines()
     step_line_index = lines.index("- [ ] first task")  # 0-based; matches legacy._toggle_checkbox
 
     response = client.post(
         "/toggle",
         json={
-            "file": "projects/2026-01-01-hello/README.md",
+            "file": "projects/2026-01/2026-01-01-hello/README.md",
             "line": step_line_index,
         },
     )
@@ -59,5 +59,5 @@ def test_download_rejects_traversal(cfg: CondashConfig):
     # and exercises its `..` + regex + resolve guard. A raw `../../etc/...`
     # URL gets normalised before the router, so wedge the dot-dot inside a
     # plausible-looking prefix to reach the handler.
-    response = client.get("/download/projects/2026-01-01-hello/../../etc/passwd")
+    response = client.get("/download/projects/2026-01/2026-01-01-hello/../../../etc/passwd")
     assert response.status_code == 403

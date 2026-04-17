@@ -15,9 +15,7 @@ from pathlib import Path
 
 from .context import RenderCtx
 
-_VALID_ITEM_PREFIX = (
-    r"^(?:incidents|projects|documents)/(?:\d{4}-\d{2}/)?\d{4}-\d{2}-\d{2}-[\w.-]+/"
-)
+_VALID_ITEM_PREFIX = r"^projects/\d{4}-\d{2}/\d{4}-\d{2}-\d{2}-[\w.-]+/"
 
 _VALID_PATH_RE = re.compile(_VALID_ITEM_PREFIX + r"README\.md$")
 

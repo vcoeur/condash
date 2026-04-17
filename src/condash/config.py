@@ -72,7 +72,7 @@ DEFAULT_CONFIG_TEMPLATE = """\
 # Uncomment and edit the values below before launching `condash`.
 
 # conception_path: absolute path to the directory holding your conception items
-# (projects/, incidents/, documents/). Required.
+# (must contain a `projects/` tree). Required.
 # conception_path = "/path/to/conception"
 
 # workspace_path: absolute path to a directory containing your code

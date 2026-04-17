@@ -1,10 +1,9 @@
 """File-mutation helpers — the write side of the dashboard.
 
 Every handler here mutates a Markdown file in place under ``ctx.base_dir``:
-flipping checkboxes, inserting new steps, renaming notes, moving done
-items into ``YYYY-MM/`` archives. Paths must already be validated (via
-:mod:`condash.paths`) before these functions see them — they do not
-re-check the sandbox.
+flipping checkboxes, inserting new steps, renaming notes. Paths must already
+be validated (via :mod:`condash.paths`) before these functions see them —
+they do not re-check the sandbox.
 """
 
 from __future__ import annotations
@@ -15,19 +14,14 @@ from typing import Any
 
 from .context import RenderCtx
 from .parser import (
-    _ITEM_DIR_RE,
-    _MONTH_DIR_RE,
     CHECKBOX_RE,
     HEADING2_RE,
     HEADING3_RE,
     METADATA_RE,
     PRIORITIES,
     STATUS_RE,
-    parse_readme,
 )
 from .paths import _VALID_ITEM_FILE_RE, _VALID_NOTE_FILENAME_RE, _validate_path, validate_note_path
-
-_KIND_MAP = {"incidents": "incident", "projects": "project", "documents": "document"}
 
 
 def read_note_raw(ctx: RenderCtx, full_path: Path) -> dict[str, Any]:
@@ -130,59 +124,6 @@ def _set_priority(full_path, priority):
         lines.insert(insert_at, f"**Status**: {priority}")
     full_path.write_text("\n".join(lines), encoding="utf-8")
     return True
-
-
-def _tidy(ctx: RenderCtx):
-    moves = []
-    for folder in ("incidents", "projects", "documents"):
-        base = ctx.base_dir / folder
-        if not base.is_dir():
-            continue
-        kind = _KIND_MAP[folder]
-
-        for child in sorted(base.iterdir()):
-            if not child.is_dir():
-                continue
-
-            if _ITEM_DIR_RE.match(child.name):
-                readme = child / "README.md"
-                if not readme.exists():
-                    continue
-                item = parse_readme(ctx, readme, kind)
-                if item and item["priority"] == "done":
-                    month = child.name[:7]
-                    month_dir = base / month
-                    month_dir.mkdir(exist_ok=True)
-                    new_path = month_dir / child.name
-                    if not new_path.exists():
-                        child.rename(new_path)
-                        moves.append((f"{folder}/{child.name}", f"{folder}/{month}/{child.name}"))
-
-            elif _MONTH_DIR_RE.match(child.name):
-                for sub in sorted(child.iterdir()):
-                    if not sub.is_dir() or not _ITEM_DIR_RE.match(sub.name):
-                        continue
-                    readme = sub / "README.md"
-                    if not readme.exists():
-                        continue
-                    item = parse_readme(ctx, readme, kind)
-                    if item and item["priority"] != "done":
-                        new_path = base / sub.name
-                        if not new_path.exists():
-                            sub.rename(new_path)
-                            moves.append(
-                                (f"{folder}/{child.name}/{sub.name}", f"{folder}/{sub.name}")
-                            )
-
-                if child.exists() and not any(child.iterdir()):
-                    child.rmdir()
-
-    return moves
-
-
-def run_tidy(ctx: RenderCtx):
-    """Public alias used by the CLI entry point."""
-    return _tidy(ctx)
 
 
 def _toggle_checkbox(full_path, line_num):

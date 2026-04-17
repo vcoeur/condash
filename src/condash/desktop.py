@@ -69,7 +69,7 @@ def _format_desktop_entry(exec_path: str, icon_full_path: Path) -> str:
         "Version=1.0\n"
         "Name=Condash\n"
         "GenericName=Conception Dashboard\n"
-        "Comment=Dashboard for markdown-based projects, incidents and documents\n"
+        "Comment=Dashboard for markdown-based conception projects\n"
         f"Exec={exec_path}\n"
         f"Icon={icon_full_path}\n"
         "Terminal=false\n"

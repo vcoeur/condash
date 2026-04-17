@@ -380,8 +380,7 @@ body {
 
 /* --- Reload action button ---
    Always clickable; a small dot indicator lights up when a reload is
-   recommended (items, git, or tidy_needed). The click runs /tidy first
-   so done items move into their YYYY-MM bucket, then location.reload. */
+   recommended (items or git). The click refetches content in place. */
 .reload-btn { position: relative; }
 .reload-btn.stale::after {
     content: ''; position: absolute; top: 2px; right: 2px;
@@ -1127,7 +1126,7 @@ body {
             <span class="icon" id="theme-icon">&#9790;</span>
             <span id="theme-label">Dark</span>
         </div>
-        <button id="reload-btn" class="theme-toggle reload-btn" onclick="reloadAndTidy()" title="Reload (tidies done items first)" aria-label="Reload">
+        <button id="reload-btn" class="theme-toggle reload-btn" onclick="reloadAndTidy()" title="Reload" aria-label="Reload">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="23 4 23 10 17 10"/>
                 <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
@@ -1148,7 +1147,7 @@ body {
     </div>
 </div>
 <div id="setup-banner" class="setup-banner" style="display:none">
-    <span><strong>Welcome to condash.</strong> Set <code>conception_path</code> to point at your projects/incidents/documents tree to get started.</span>
+    <span><strong>Welcome to condash.</strong> Set <code>conception_path</code> to point at your conception tree (with a <code>projects/</code> directory) to get started.</span>
     <button type="button" onclick="openConfigModal()">Configure</button>
 </div>
 <div id="projects-subtabs" class="tabs tabs-secondary">
@@ -1217,7 +1216,7 @@ body {
                     <legend>Paths</legend>
                     <label>conception_path
                         <input type="text" name="conception_path" placeholder="/path/to/conception">
-                        <small>Absolute path to the directory holding your projects/, incidents/, documents/.</small>
+                        <small>Absolute path to the directory holding your <code>projects/</code> tree.</small>
                     </label>
                     <label>workspace_path
                         <input type="text" name="workspace_path">
@@ -1720,7 +1719,7 @@ document.addEventListener('click', function(e) {
 /* In-place refresh: refetch /, parse the fresh HTML, swap #dash-main
    into place, and re-apply tab/subtab state + counters. Used instead of
    location.reload() by mutations that only change dashboard content
-   (toggling a step, reordering, tidy, …). Keeps:
+   (toggling a step, reordering, …). Keeps:
    - the terminal pane (sibling of #dash-main, with its own pty session
      state preserved server-side by Fix B anyway),
    - open modals (also siblings of #dash-main),
@@ -2149,7 +2148,7 @@ async function createNoteFor(readmePath) {
    left alone (server returns 400 for those so the UI fails loud). The
    extension stays fixed — users type a stem, server re-appends the
    suffix. */
-var _NOTES_RENAMEABLE_RE = /^(?:incidents|projects|documents)\/(?:\d{4}-\d{2}\/)?\d{4}-\d{2}-\d{2}-[\w.\-]+\/notes\//;
+var _NOTES_RENAMEABLE_RE = /^projects\/\d{4}-\d{2}\/\d{4}-\d{2}-\d{2}-[\w.\-]+\/notes\//;
 
 function startRenameNote() {
     var titleEl = document.getElementById('note-modal-title');
@@ -2476,7 +2475,6 @@ async function checkUpdates() {
         } else if (data.git_fingerprint !== _lastGitFingerprint) {
             _gitStale = true;
         }
-        if (data.tidy_needed) _itemsStale = true;
         _renderStale();
     } catch (e) {}
 }
@@ -2494,17 +2492,8 @@ async function updateBaseline() {
     } catch (e) {}
 }
 
-/* Reload button runs tidy first so archived-done items move into their
-   YYYY-MM/ bucket before the page re-renders. No separate tidy button —
-   this is the only surface. */
+/* Reload button: re-fetch dashboard content in place. */
 async function reloadAndTidy() {
-    try {
-        await fetch('/tidy', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: '{}'
-        });
-    } catch (e) {}
     _reloadInPlace();
 }
 

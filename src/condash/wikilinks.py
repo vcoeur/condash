@@ -19,37 +19,28 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]\|\n]+?)(?:\|([^\]\n]+?))?\]\]")
 # ("2026-04-16-my-project"). Used by the wikilink resolver.
 _DATE_SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 
-_ITEM_TYPE_NORMAL = {
-    "project": "projects",
-    "projects": "projects",
-    "incident": "incidents",
-    "incidents": "incidents",
-    "document": "documents",
-    "documents": "documents",
-}
-
 _MONTH_DIR_RE = re.compile(r"^\d{4}-\d{2}$")
 
+# Legacy kind prefixes inherited from the three-folder layout. Every item now
+# lives under projects/, but users may still type [[incident/slug]] — all
+# three prefixes resolve through the single tree.
+_LEGACY_KIND_PREFIXES = {"project", "projects", "incident", "incidents", "document", "documents"}
 
-def _find_item_dir(ctx: RenderCtx, type_plural: str, target: str) -> str | None:
-    """Look up a single item directory by exact name or short-name match."""
-    root = ctx.base_dir / type_plural
+
+def _find_item_dir(ctx: RenderCtx, target: str) -> str | None:
+    """Look up a single item folder under ``projects/YYYY-MM/`` by name or short-name."""
+    root = ctx.base_dir / "projects"
     if not root.is_dir():
         return None
     candidates: list[str] = []
-    for child in root.iterdir():
-        if not child.is_dir():
+    for month in root.iterdir():
+        if not month.is_dir() or not _MONTH_DIR_RE.match(month.name):
             continue
-        if child.name == target or (_DATE_SLUG_RE.match(child.name) and child.name[11:] == target):
-            candidates.append(child.name)
-        if _MONTH_DIR_RE.match(child.name):
-            for grand in child.iterdir():
-                if not grand.is_dir():
-                    continue
-                if grand.name == target or (
-                    _DATE_SLUG_RE.match(grand.name) and grand.name[11:] == target
-                ):
-                    candidates.append(f"{child.name}/{grand.name}")
+        for item in month.iterdir():
+            if not item.is_dir():
+                continue
+            if item.name == target or (_DATE_SLUG_RE.match(item.name) and item.name[11:] == target):
+                candidates.append(f"{month.name}/{item.name}")
     if not candidates:
         return None
     return max(candidates)  # sorts by date thanks to the YYYY-MM[-DD] prefix
@@ -63,20 +54,18 @@ def _resolve_wikilink(ctx: RenderCtx, target: str) -> str | None:
 
     if "/" in target:
         head, _, tail = target.partition("/")
-        type_pl = _ITEM_TYPE_NORMAL.get(head)
-        if type_pl:
-            found = _find_item_dir(ctx, type_pl, tail)
+        if head in _LEGACY_KIND_PREFIXES:
+            found = _find_item_dir(ctx, tail)
             if found:
-                return f"{type_pl}/{found}/README.md"
+                return f"projects/{found}/README.md"
         if head == "knowledge":
             path = target if target.endswith(".md") else f"{target}.md"
             if (ctx.base_dir / path).is_file():
                 return path
 
-    for type_pl in ("projects", "incidents", "documents"):
-        found = _find_item_dir(ctx, type_pl, target)
-        if found:
-            return f"{type_pl}/{found}/README.md"
+    found = _find_item_dir(ctx, target)
+    if found:
+        return f"projects/{found}/README.md"
 
     for sub in ("topics", "external", "internal"):
         candidate = ctx.base_dir / "knowledge" / sub / f"{target}.md"
