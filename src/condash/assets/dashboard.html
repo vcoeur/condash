@@ -1754,12 +1754,13 @@ function switchTab(tab) {
     var clickedSameTab = tab === _activeTab;
     var clickedTabStale =
         (tab === 'projects' && _itemsStale) ||
-        (tab === 'code' && _gitStale);
+        (tab === 'code' && _gitStale) ||
+        (tab === 'knowledge' && _knowledgeStale);
     if (clickedSameTab && clickedTabStale) {
         _reloadInPlace();
         return;
     }
-    if ((_itemsStale || _gitStale) && !clickedSameTab) {
+    if ((_itemsStale || _gitStale || _knowledgeStale) && !clickedSameTab) {
         // Commit the new tab first so _reloadInPlace's post-swap
         // _rebindDashHandlers → switchTab(_activeTab) lands on it —
         // otherwise the user has to click the tab a second time.
