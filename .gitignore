@@ -31,6 +31,9 @@ site/
 .coverage
 htmlcov/
 
+# Test config
+.env
+
 # Editors / OS
 .idea/
 .vscode/
