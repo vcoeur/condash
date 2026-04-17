@@ -1271,7 +1271,7 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
                 </fieldset>
                 <fieldset class="config-fieldset">
                     <legend>PDF viewer</legend>
-                    <p class="config-help">Fallback chain of shell-style commands tried for <code>*.pdf</code> files (one per line). The literal <code>{path}</code> is replaced with the file's absolute path. Leave empty to use the OS default (<code>xdg-open</code> / <code>open</code> / <code>startfile</code>). Images and Markdown always use the OS default.</p>
+                    <p class="config-help">Fallback chain of shell-style commands tried for <code>*.pdf</code> files (one per line). The literal <code>{path}</code> is replaced with the file's absolute path; if the command has no <code>{path}</code>, the path is appended as the last argument (so <code>evince</code> behaves the same as <code>evince {path}</code>). Leave empty to use the OS default (<code>xdg-open</code> / <code>open</code> / <code>startfile</code>). Images and Markdown always use the OS default.</p>
                     <label>commands
                         <textarea name="pdf_viewer" rows="3" placeholder="evince {path}&#10;okular {path}"></textarea>
                     </label>
