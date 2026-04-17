@@ -887,6 +887,12 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
     border: 1px solid var(--border); border-radius: 12px;
     box-shadow: var(--shadow-md);
     width: min(1400px, 96vw); height: min(1100px, 95vh);
+    /* Never exceed the (possibly shrunk) backdrop. When the terminal is
+       open, the backdrop is clipped by `bottom: var(--term-height)`; this
+       cap keeps the modal inside that area so the flex-centered layout
+       doesn't overflow both top and bottom. The inner .note-modal-body
+       already handles overflow with overflow:auto. */
+    max-height: 100%;
     display: flex; flex-direction: column; overflow: hidden;
 }
 .note-modal-header {
