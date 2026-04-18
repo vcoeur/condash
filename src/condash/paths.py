@@ -103,6 +103,17 @@ def _validate_doc_path(ctx: RenderCtx, rel_path: str) -> Path | None:
     return _safe_resolve(ctx, rel_path, strict=True)
 
 
+_VALID_ITEM_DIR_RE = re.compile(r"^projects/\d{4}-\d{2}/\d{4}-\d{2}-\d{2}-[\w.-]+/?$")
+
+
+def _validate_item_dir(ctx: RenderCtx, rel_path: str) -> Path | None:
+    """Resolve a project-item folder path against the conception tree."""
+    full = _safe_resolve(ctx, rel_path, (_VALID_ITEM_DIR_RE,), require_file=False)
+    if full is None or not full.is_dir():
+        return None
+    return full
+
+
 def validate_download_path(ctx: RenderCtx, rel_path: str) -> Path | None:
     return _safe_resolve(ctx, rel_path, (_VALID_DOWNLOAD_RE,))
 
