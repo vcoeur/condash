@@ -1254,6 +1254,13 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
 }
 .git-action-btn.is-err { color: var(--git-changes); }
 
+/* Per-card quick actions (work-on + open folder) — sit to the right of
+   the date in the card header, use the same icon-button styling as the
+   git-row slots so the visual language stays consistent. */
+.card-actions {
+    display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle;
+}
+
 </style>
 </head>
 <body>
@@ -1721,6 +1728,69 @@ function openInTerminal(ev, path) {
         var tab = _termActiveTab();
         if (tab) { _termSendResize(tab); tab.term.focus(); }
     }, 0);
+}
+
+/* Per-card "work on <slug>" button — inject the text at the prompt of
+   the currently focused terminal tab, no auto-Enter (user confirms). If
+   no tab is open, open the terminal pane, spawn one, and inject once
+   its WebSocket is ready. */
+function workOn(ev, slug) {
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    var text = 'work on ' + slug;
+    var active = _termActiveTab();
+    if (active && active.ws && active.ws.readyState === WebSocket.OPEN) {
+        active.ws.send(new TextEncoder().encode(text));
+        active.term.focus();
+        return;
+    }
+    var pane = document.getElementById('term-pane');
+    if (pane.hasAttribute('hidden')) {
+        pane.removeAttribute('hidden');
+        _termSyncOpenFlag(true);
+        localStorage.setItem('term-open', '1');
+    }
+    if (_termTabs.length === 0) _termCreateTab('left');
+    // Fresh tab: ws.open is async — poll briefly until the socket is ready.
+    var tries = 0;
+    (function trySend() {
+        var tab = _termActiveTab();
+        if (tab && tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+            tab.ws.send(new TextEncoder().encode(text));
+            tab.term.focus();
+            return;
+        }
+        if (++tries < 40) setTimeout(trySend, 75);
+    })();
+}
+
+/* Per-card "open folder" button — hand the item's folder to the OS
+   default file manager. Mirrors openPath's transient ok/err feedback. */
+async function openFolder(ev, relPath) {
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    var btn = ev.currentTarget;
+    var originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    function restore() {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove('is-ok', 'is-err');
+        btn.disabled = false;
+    }
+    function flash(cls, label, ms) {
+        btn.classList.add(cls);
+        btn.textContent = label;
+        setTimeout(restore, ms);
+    }
+    try {
+        var res = await fetch('/open-folder', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: relPath})
+        });
+        if (!res.ok) { flash('is-err', 'err', 1200); return; }
+        flash('is-ok', 'ok', 800);
+    } catch (e) {
+        flash('is-err', 'err', 1200);
+    }
 }
 
 /* --- Collapsible submodule groups ---

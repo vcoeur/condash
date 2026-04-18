@@ -59,6 +59,7 @@ from .parser import (
 )
 from .paths import (
     _validate_doc_path,
+    _validate_item_dir,
     _validate_open_path,
     _validate_path,
     validate_asset_path,
@@ -462,6 +463,21 @@ def _register_routes() -> None:
         """
         data = await req.json()
         resolved = _validate_doc_path(_ctx(), data.get("path", ""))
+        if not resolved:
+            return _error(400, "invalid path")
+        if _os_open(_ctx(), resolved):
+            return {"ok": True}
+        return _error(500, "could not launch system opener")
+
+    @_ng_app.post("/open-folder")
+    async def open_folder(req: Request):
+        """Hand a project-item folder to the OS default file manager.
+
+        Accepts a path relative to ``conception_path`` matching the
+        ``projects/YYYY-MM/YYYY-MM-DD-slug/`` shape; rejects anything else.
+        """
+        data = await req.json()
+        resolved = _validate_item_dir(_ctx(), data.get("path", ""))
         if not resolved:
             return _error(400, "invalid path")
         if _os_open(_ctx(), resolved):

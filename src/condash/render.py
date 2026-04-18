@@ -281,6 +281,7 @@ def _render_card(item):
     )
 
     node_id = f"projects/{pri}/{item['slug']}"
+    card_actions_html = _render_card_actions(item)
     return (
         f'<div class="card collapsed" id="{item["slug"]}" '
         f'data-kind="{item["kind"]}" data-priority="{pri}" data-node-id="{node_id}">'
@@ -291,7 +292,8 @@ def _render_card(item):
         f"{pdf_badge}</div>"
         f'<div class="card-header-right">'
         f"{progress} {priority_select} "
-        f'<span class="date">{h(item["date"])}</span></div></div>'
+        f'<span class="date">{h(item["date"])}</span>'
+        f"{card_actions_html}</div></div>"
         f'<div class="card-body">'
         f'<div class="card-left">'
         f"{apps_div}"
@@ -495,7 +497,46 @@ _ICON_SVGS = {
         '<polyline points="7 11 10 14 7 17"/>'
         '<line x1="12" y1="17" x2="16" y2="17"/></svg>'
     ),
+    # "Work on" — terminal window with a play triangle inside, signalling
+    # "send the `work on <slug>` command to the focused terminal tab".
+    "work_on": (
+        '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" '
+        'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        '<rect x="3" y="4" width="18" height="16" rx="2"/>'
+        '<polygon points="10 9 16 12 10 15" fill="currentColor" stroke="none"/></svg>'
+    ),
+    # Folder outline — opens the item directory in the OS file manager.
+    "folder": (
+        '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" '
+        'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
+    ),
 }
+
+
+def _render_card_actions(item):
+    """Per-card quick-action cluster: "work on <slug>" + open folder."""
+    slug = item["slug"]
+    # Item folder is the README's parent dir; strip the trailing "README.md".
+    rel_dir = item["path"].rsplit("/", 1)[0] + "/"
+    js_slug = json.dumps(slug).replace("'", "\\'").replace('"', "'")
+    js_dir = json.dumps(rel_dir).replace("'", "\\'").replace('"', "'")
+    work_title = f'Work on — insert "work on {slug}" in the focused terminal tab'
+    folder_title = "Open folder in file manager"
+    return (
+        '<div class="card-actions">'
+        f'<button class="git-action-btn card-action-work-on" '
+        f'title="{h(work_title)}" aria-label="{h(work_title)}" '
+        f'onclick="workOn(event,{js_slug})">'
+        f"{_ICON_SVGS['work_on']}</button>"
+        f'<button class="git-action-btn card-action-folder" '
+        f'title="{h(folder_title)}" aria-label="{h(folder_title)}" '
+        f'onclick="openFolder(event,{js_dir})">'
+        f"{_ICON_SVGS['folder']}</button>"
+        "</div>"
+    )
 
 
 def _render_git_actions(ctx: RenderCtx, path):
