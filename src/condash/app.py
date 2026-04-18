@@ -42,8 +42,10 @@ from .mutations import (
     _set_priority,
     _toggle_checkbox,
     create_note,
+    create_notes_subdir,
     read_note_raw,
     rename_note,
+    store_uploads,
     write_note,
 )
 from .openers import _is_external_url, _open_external, _open_path, _os_open
@@ -294,15 +296,55 @@ def _register_routes() -> None:
 
     @_ng_app.post("/note/create")
     async def post_note_create(req: Request):
-        """Create an empty note under an item's ``notes/`` directory."""
+        """Create an empty note under ``<item>/notes[/subdir]/``."""
         data = await req.json()
         result = create_note(
             _ctx(),
             str(data.get("item_readme") or ""),
             str(data.get("filename") or ""),
+            subdir=str(data.get("subdir") or ""),
         )
         if not result.get("ok"):
             return _error(400, result.get("reason", "create failed"))
+        return result
+
+    @_ng_app.post("/note/mkdir")
+    async def post_note_mkdir(req: Request):
+        """Create a (possibly nested) directory under ``<item>/notes/``."""
+        data = await req.json()
+        result = create_notes_subdir(
+            _ctx(),
+            str(data.get("item_readme") or ""),
+            str(data.get("subpath") or ""),
+        )
+        if not result.get("ok"):
+            status = 409 if result.get("reason") == "exists" else 400
+            return JSONResponse(status_code=status, content=result)
+        return result
+
+    @_ng_app.post("/note/upload")
+    async def post_note_upload(req: Request):
+        """Persist files uploaded via ``multipart/form-data`` under
+        ``<item>/notes[/subdir]/``. Auto-suffixes ``(2)``, ``(3)``… on
+        name collision; rejects > 50 MB per file. Streams to disk so a
+        large upload doesn't sit in RAM."""
+        form = await req.form()
+        item_readme = str(form.get("item_readme") or "")
+        subdir = str(form.get("subdir") or "")
+        uploads: list[tuple[str, object]] = []
+        for key in form.keys():
+            if key != "file":
+                continue
+            for entry in form.getlist(key):
+                # Starlette gives UploadFile for files, str for plain
+                # fields — skip anything that's not a file.
+                if hasattr(entry, "file") and hasattr(entry, "filename"):
+                    uploads.append((entry.filename, entry.file))
+        if not uploads:
+            return _error(400, "no files in upload")
+        result = store_uploads(_ctx(), item_readme, subdir, uploads)
+        if not result.get("ok"):
+            return _error(400, result.get("reason", "upload failed"))
         return result
 
     @_ng_app.get("/download/{rel_path:path}")

@@ -9,8 +9,9 @@ they do not re-check the sandbox.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from .context import RenderCtx
 from .parser import (
@@ -20,6 +21,7 @@ from .parser import (
     METADATA_RE,
     PRIORITIES,
     STATUS_RE,
+    _note_kind,
 )
 from .paths import (
     _VALID_ITEM_NOTES_FILE_RE,
@@ -30,13 +32,14 @@ from .paths import (
 
 
 def read_note_raw(ctx: RenderCtx, full_path: Path) -> dict[str, Any]:
-    """Return the plain bytes + mtime for the edit surface."""
+    """Return the plain bytes + mtime + kind for the edit surface."""
     stat_res = full_path.stat()
     content = full_path.read_text(encoding="utf-8", errors="replace")
     return {
         "path": str(full_path.relative_to(ctx.base_dir)),
         "content": content,
         "mtime": stat_res.st_mtime,
+        "kind": _note_kind(full_path),
     }
 
 
@@ -85,16 +88,51 @@ def rename_note(ctx: RenderCtx, rel_path: str, new_stem: str) -> dict[str, Any]:
     }
 
 
-def create_note(ctx: RenderCtx, item_readme_rel: str, filename: str) -> dict[str, Any]:
-    """Create an empty note file under the item's ``notes/`` directory."""
+_VALID_SUBDIR_RE = re.compile(r"^[\w.-]+(/[\w.-]+)*$")
+
+
+def _resolve_under_item(item_dir: Path, subdir: str) -> Path | None:
+    """Resolve ``subdir`` (relative to ``item_dir``) and verify the result
+    stays inside the item directory. Empty subdir resolves to item_dir
+    itself. Returns ``None`` on traversal / regex failure."""
+    sub = (subdir or "").strip().strip("/")
+    if not sub:
+        return item_dir
+    if ".." in sub.split("/") or not _VALID_SUBDIR_RE.match(sub):
+        return None
+    target = item_dir / sub
+    try:
+        target.resolve().relative_to(item_dir.resolve())
+    except ValueError:
+        return None
+    return target
+
+
+def create_note(
+    ctx: RenderCtx,
+    item_readme_rel: str,
+    filename: str,
+    subdir: str = "",
+) -> dict[str, Any]:
+    """Create an empty note file under ``<item>/[subdir]/<filename>``.
+
+    ``subdir`` is relative to the item directory ("" places the file at
+    the item root, alongside ``README.md`` / ``notes/`` etc). The subdir
+    must already exist when non-empty — ``+ folder`` is a separate
+    action.
+    """
     item = _validate_path(ctx, item_readme_rel)
     if item is None or item.name != "README.md":
         return {"ok": False, "reason": "invalid item"}
     if not _VALID_NOTE_FILENAME_RE.match(filename):
         return {"ok": False, "reason": "invalid filename"}
-    notes_dir = item.parent / "notes"
-    notes_dir.mkdir(exist_ok=True)
-    target = notes_dir / filename
+    target_dir = _resolve_under_item(item.parent, subdir)
+    if target_dir is None:
+        return {"ok": False, "reason": "invalid subdirectory"}
+    if subdir and not target_dir.exists():
+        return {"ok": False, "reason": "subdirectory does not exist"}
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / filename
     if target.exists():
         return {"ok": False, "reason": "file exists"}
     target.write_text("", encoding="utf-8")
@@ -102,6 +140,120 @@ def create_note(ctx: RenderCtx, item_readme_rel: str, filename: str) -> dict[str
         "ok": True,
         "path": str(target.relative_to(ctx.base_dir)),
         "mtime": target.stat().st_mtime,
+    }
+
+
+def _disambiguate(target: Path) -> Path:
+    """Pick a non-colliding sibling name by suffixing ``" (2)"``, ``" (3)"`` …
+    Mirrors Finder/Nautilus when the user drops a file with the same name."""
+    if not target.exists():
+        return target
+    stem = target.stem
+    suffix = target.suffix
+    parent = target.parent
+    n = 2
+    while True:
+        candidate = parent / f"{stem} ({n}){suffix}"
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
+_VALID_UPLOAD_FILENAME_RE = re.compile(r"^[\w. \-()]+\.[A-Za-z0-9]+$")
+
+
+def store_uploads(
+    ctx: RenderCtx,
+    item_readme_rel: str,
+    subdir: str,
+    uploads: Iterable[tuple[str, BinaryIO]],
+    *,
+    max_bytes_per_file: int = 50 * 1024 * 1024,
+) -> dict[str, Any]:
+    """Persist one or more uploaded files under ``<item>/[subdir]/``.
+
+    ``subdir`` is relative to the item directory ("" uploads to the item
+    root, alongside ``README.md`` / ``notes/``). Each entry in ``uploads``
+    is ``(filename, stream)``. Filenames are validated against
+    ``_VALID_UPLOAD_FILENAME_RE`` (more permissive than the note regex —
+    accepts spaces and parentheses for typical Camera/PDF exports). Name
+    collisions auto-suffix ``(2)``, ``(3)``… Files larger than
+    ``max_bytes_per_file`` are rejected without partial writes. Returns
+    ``{ok, stored: [rel_path, ...], rejected: [...]}``.
+    """
+    item = _validate_path(ctx, item_readme_rel)
+    if item is None or item.name != "README.md":
+        return {"ok": False, "reason": "invalid item"}
+    target_dir = _resolve_under_item(item.parent, subdir)
+    if target_dir is None:
+        return {"ok": False, "reason": "invalid subdirectory"}
+    if subdir and not target_dir.exists():
+        return {"ok": False, "reason": "subdirectory does not exist"}
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    stored: list[str] = []
+    rejected: list[dict[str, str]] = []
+    for filename, stream in uploads:
+        name = (filename or "").strip()
+        if not name or not _VALID_UPLOAD_FILENAME_RE.match(name) or name in (".", ".."):
+            rejected.append({"filename": name, "reason": "invalid filename"})
+            continue
+        target = _disambiguate(target_dir / name)
+        # Stream the upload to disk via a temp file, enforcing the size
+        # cap as we go. A copy that exceeds the cap is removed before any
+        # caller sees it.
+        tmp = target.with_suffix(target.suffix + ".part")
+        try:
+            written = 0
+            with tmp.open("wb") as out:
+                while True:
+                    chunk = stream.read(64 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > max_bytes_per_file:
+                        out.close()
+                        tmp.unlink(missing_ok=True)
+                        rejected.append({"filename": name, "reason": "exceeds size limit"})
+                        break
+                    out.write(chunk)
+                else:
+                    pass
+            if tmp.exists():
+                tmp.replace(target)
+                stored.append(str(target.relative_to(ctx.base_dir)))
+        except OSError as exc:
+            tmp.unlink(missing_ok=True)
+            rejected.append({"filename": name, "reason": f"write failed: {exc}"})
+
+    return {"ok": True, "stored": stored, "rejected": rejected}
+
+
+def create_notes_subdir(ctx: RenderCtx, item_readme_rel: str, subpath: str) -> dict[str, Any]:
+    """Create a (possibly nested) directory under the item directory.
+
+    ``subpath`` is relative to the item root (``<item>/<subpath>``), so
+    a folder created at the root level becomes a sibling of ``notes/``.
+    Errors with ``exists`` when the directory is already there. Returns
+    the relative path on success so the client can pre-open the new
+    group.
+    """
+    item = _validate_path(ctx, item_readme_rel)
+    if item is None or item.name != "README.md":
+        return {"ok": False, "reason": "invalid item"}
+    sub = (subpath or "").strip().strip("/")
+    if not sub:
+        return {"ok": False, "reason": "invalid subdirectory name"}
+    target = _resolve_under_item(item.parent, sub)
+    if target is None:
+        return {"ok": False, "reason": "invalid subdirectory name"}
+    if target.exists():
+        return {"ok": False, "reason": "exists"}
+    target.mkdir(parents=True, exist_ok=False)
+    return {
+        "ok": True,
+        "rel_dir": sub,
+        "subdir_key": f"{item.parent.name}/{sub}",
     }
 
 
