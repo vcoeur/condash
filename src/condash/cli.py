@@ -56,6 +56,16 @@ def _root(
         "--conception-path",
         help="One-shot override of the conception directory (does not touch config).",
     ),
+    port_override: int | None = typer.Option(
+        None,
+        "--port",
+        help="One-shot override of the HTTP port (0 = OS picks). Does not touch config.",
+    ),
+    native_override: bool | None = typer.Option(
+        None,
+        "--native/--no-native",
+        help="One-shot override of native window mode. Does not touch config.",
+    ),
 ) -> None:
     if version:
         typer.echo(f"condash {__version__}")
@@ -64,6 +74,8 @@ def _root(
     ctx.obj = {
         "config_file": config_file,
         "conception_override": conception_path_override,
+        "port_override": port_override,
+        "native_override": native_override,
     }
 
     if ctx.invoked_subcommand is not None:
@@ -77,7 +89,12 @@ def _root(
     target = config_file or config_path()
     if not target.exists():
         _seed_default_config(target)
-    cfg = _load_or_exit(config_file, conception_path_override)
+    cfg = _load_or_exit(
+        config_file,
+        conception_path_override,
+        port_override=port_override,
+        native_override=native_override,
+    )
     if cfg.conception_path is not None and not cfg.conception_path.is_dir():
         typer.echo(
             f"condash: warning: conception directory does not exist: "
@@ -193,10 +210,18 @@ def _seed_default_config(target: Path) -> bool:
 def _load_or_exit(
     config_file: Path | None,
     conception_override: Path | None,
+    *,
+    port_override: int | None = None,
+    native_override: bool | None = None,
 ) -> CondashConfig:
     """Load the config or exit with an actionable error message."""
     try:
-        return load(path=config_file, conception_override=conception_override)
+        return load(
+            path=config_file,
+            conception_override=conception_override,
+            port_override=port_override,
+            native_override=native_override,
+        )
     except ConfigNotFoundError as exc:
         _error(
             f"No config file at {exc}. Run `condash init` to create one, "
