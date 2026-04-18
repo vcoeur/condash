@@ -586,6 +586,8 @@ def load(
     path: Path | None = None,
     *,
     conception_override: Path | None = None,
+    port_override: int | None = None,
+    native_override: bool | None = None,
 ) -> CondashConfig:
     """Load config from disk.
 
@@ -595,8 +597,10 @@ def load(
     ``ConfigIncompleteError`` is still raised for shape errors (e.g. a
     non-integer port or a malformed ``[repositories]`` entry).
 
-    ``conception_override`` is a one-shot runtime override (e.g. from
-    ``--conception-path``) and is not written back to the config file.
+    ``conception_override`` / ``port_override`` / ``native_override`` are
+    one-shot runtime overrides (e.g. from ``--conception-path`` /
+    ``--port`` / ``--native|--no-native``) and are not written back to the
+    config file.
     """
     target = path or config_path()
     if not target.is_file():
@@ -605,4 +609,10 @@ def load(
     cfg = _parse(data, target)
     if conception_override is not None:
         cfg.conception_path = Path(conception_override).expanduser()
+    if port_override is not None:
+        if not 0 <= port_override <= 65535:
+            raise ConfigIncompleteError(f"--port must be between 0 and 65535 (got {port_override})")
+        cfg.port = port_override
+    if native_override is not None:
+        cfg.native = native_override
     return cfg

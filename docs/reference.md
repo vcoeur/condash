@@ -58,9 +58,12 @@ condash                               # open the dashboard window
 condash --version                     # print version and exit
 condash --conception-path PATH        # one-shot override (does not touch the config file)
 condash --config PATH                 # use a different config file
+condash --port 8765                   # one-shot override of the HTTP port (0 = OS picks)
+condash --no-native                   # one-shot: serve in your browser instead of a native window
+condash --native                      # one-shot: force native window even if config says false
 ```
 
-`--conception-path` is a convenience for testing another tree without rewriting the config — for example while developing a workflow against a scratch directory. `--config` lets you keep multiple configs side by side (work vs personal, for instance).
+`--conception-path`, `--port`, and `--native / --no-native` are runtime overrides — they take effect for that launch only and never touch the config file. Useful for testing against a scratch tree, pinning a known port for quick browser access, or skipping pywebview on a host without the GTK/Qt bindings. `--config` lets you keep multiple configs side by side (work vs personal, for instance).
 
 ### `condash init`
 
