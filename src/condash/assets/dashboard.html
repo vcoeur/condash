@@ -769,8 +769,7 @@ body:not([data-single-term]) .term-side.is-active-side .term-mount {
     display: flex; align-items: center; gap: 0.4rem;
     font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
     text-transform: uppercase; letter-spacing: 0.05em;
-    cursor: pointer; user-select: none; padding: 2px 4px; border-radius: 4px;
-    transition: color 0.1s, background 0.1s;
+    user-select: none; padding: 2px 4px; border-radius: 4px;
 }
 .notes-new-btn {
     margin-left: auto; font-size: 0.9rem; line-height: 1;
@@ -779,9 +778,6 @@ body:not([data-single-term]) .term-side.is-active-side .term-mount {
     cursor: pointer;
 }
 .notes-new-btn:hover { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
-.notes-heading:hover { color: var(--accent); background: var(--accent-bg); }
-.notes-heading::before { content: '\25b8  '; font-size: 0.65rem; }
-.notes-heading.open::before { content: '\25be  '; }
 .notes-count { font-weight: 400; color: var(--text-muted); }
 .notes-list { padding-left: 0.4rem; padding-top: 0.2rem; }
 .note-item {
@@ -790,6 +786,41 @@ body:not([data-single-term]) .term-side.is-active-side .term-mount {
     word-break: break-all; transition: background 0.1s;
 }
 .note-item:hover { background: var(--accent-bg); text-decoration: underline; }
+.notes-mkdir-btn {
+    font-size: 0.68rem; line-height: 1.1;
+    padding: 1px 6px; border-radius: 4px;
+    border: 1px solid transparent; background: transparent; color: var(--text-muted);
+    cursor: pointer; text-transform: none; letter-spacing: 0;
+}
+.notes-mkdir-btn:hover { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+.notes-upload-btn {
+    font-size: 0.85rem; line-height: 1;
+    padding: 0 6px; border-radius: 4px;
+    border: 1px solid transparent; background: transparent; color: var(--text-muted);
+    cursor: pointer;
+}
+.notes-upload-btn:hover { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+/* Per-group upload button: smaller and pinned to the right of the summary. */
+.notes-group .notes-upload-btn { margin-left: auto; font-size: 0.75rem; padding: 0 4px; }
+.notes-group {
+    margin: 0.15rem 0;
+}
+.notes-group > summary.notes-group-heading {
+    list-style: none;
+    display: flex; align-items: center; gap: 0.3rem;
+    font-size: 0.74rem; color: var(--text-secondary);
+    padding: 2px 4px; border-radius: 4px; cursor: pointer;
+    user-select: none;
+}
+.notes-group > summary.notes-group-heading::-webkit-details-marker { display: none; }
+.notes-group > summary.notes-group-heading:hover { background: var(--accent-bg); color: var(--text); }
+.notes-chevron {
+    display: inline-block; transition: transform 0.1s;
+    font-size: 0.65rem; color: var(--text-muted);
+}
+.notes-group[open] > summary > .notes-chevron { transform: rotate(90deg); }
+.notes-group-name { font-weight: 500; }
+.notes-group .notes-list { padding-left: 0.9rem; padding-top: 0.1rem; }
 
 /* --- Knowledge explorer panel ---
    A separate content region, swapped in when the Knowledge tab is
@@ -971,6 +1002,45 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
        passage out of a note. */
     user-select: text; -webkit-user-select: text;
 }
+/* Note-preview modal uses a three-pane flex column; the config modal
+   (which reuses .note-modal-body) keeps the default scrolling block
+   layout above. */
+#note-modal-body {
+    padding: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
+}
+/* Three sibling panes — one visible at a time, driven by the modal's
+   [data-mode] attribute. Panes keep their own state (CM6 EditorView,
+   textarea value, rendered HTML) across mode switches within the same
+   note — they are hidden, not unmounted. */
+.note-pane { display: none; flex: 1; min-height: 0; }
+.note-modal[data-mode="view"] .note-pane-view {
+    display: block; overflow: auto;
+    padding: 1.2rem 1.6rem;
+}
+.note-modal[data-mode="cm"] .note-pane-cm {
+    display: flex; flex-direction: column;
+    padding: 0.5rem 0.8rem 0.8rem;
+}
+.note-modal[data-mode="plain"] .note-pane-plain {
+    display: flex; flex-direction: column;
+    padding: 0.5rem 0.8rem 0.8rem; gap: 0.3rem;
+}
+/* CM6 EditorView hostlist — the Compartment theme extends this. */
+.note-pane-cm .cm-editor {
+    flex: 1; min-height: 0;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-card);
+}
+.note-pane-cm .cm-editor.cm-focused { outline: 1px solid var(--accent); outline-offset: -1px; }
+.note-pane-cm .cm-scroller {
+    font-family: ui-monospace, "SF Mono", "Menlo", monospace;
+    font-size: 0.85rem; line-height: 1.5;
+}
+.note-pane-cm-loading {
+    padding: 1rem; color: var(--text-muted); font-style: italic;
+}
 .note-modal-body h1, .note-modal-body h2, .note-modal-body h3,
 .note-modal-body h4, .note-modal-body h5, .note-modal-body h6 {
     margin: 1.2rem 0 0.5rem; line-height: 1.3;
@@ -1046,11 +1116,32 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
 }
 .note-action-btn.note-action-primary:hover { filter: brightness(0.9); }
 .note-edit-textarea {
-    width: 100%; min-height: 65vh; resize: vertical;
+    flex: 1; min-height: 0; width: 100%; box-sizing: border-box;
+    resize: none;
     font-family: ui-monospace, "SF Mono", "Menlo", monospace;
     font-size: 0.85rem; line-height: 1.5;
     padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 6px;
     background: var(--bg-card); color: var(--text);
+}
+.note-mode-toggle {
+    display: inline-flex; border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden; margin: 0 0.6rem;
+}
+.note-mode-btn {
+    border: none; background: var(--bg-card); color: var(--text-secondary);
+    padding: 3px 10px; font-size: 0.78rem; cursor: pointer;
+    font-family: inherit;
+}
+.note-mode-btn + .note-mode-btn { border-left: 1px solid var(--border); }
+.note-mode-btn:hover:not(:disabled) { background: var(--accent-bg); color: var(--text); }
+.note-modal[data-mode="view"] .note-mode-btn[data-mode="view"],
+.note-modal[data-mode="cm"] .note-mode-btn[data-mode="cm"],
+.note-modal[data-mode="plain"] .note-mode-btn[data-mode="plain"] {
+    background: var(--accent); color: #fff;
+}
+.note-mode-btn:disabled {
+    opacity: 0.35; cursor: default;
+    background: var(--bg-card); color: var(--text-muted);
 }
 .note-edit-error {
     color: var(--git-changes); font-size: 0.82rem;
@@ -1344,13 +1435,16 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
     </div>
 </div>
 <div id="note-modal" class="note-modal-backdrop" onclick="if(event.target===this)closeNotePreview()">
-    <div class="note-modal">
+    <div class="note-modal" id="note-modal-inner" data-mode="view">
         <div class="note-modal-header">
             <span class="note-modal-title" id="note-modal-title" ondblclick="startRenameNote()" title="Double-click to rename (notes/ files only)">Note</span>
+            <div class="note-mode-toggle" id="note-mode-toggle" role="group" aria-label="Note mode">
+                <button class="note-mode-btn" data-mode="view" onclick="setNoteMode('view')" title="View (rendered)">View</button>
+                <button class="note-mode-btn" data-mode="cm" onclick="setNoteMode('cm')" title="Edit with syntax highlighting (Ctrl+E)">Edit</button>
+                <button class="note-mode-btn" data-mode="plain" onclick="setNoteMode('plain')" title="Plain textarea edit">Plain</button>
+            </div>
             <div class="note-modal-actions">
-                <button id="note-edit-btn" class="note-action-btn" onclick="enterEditMode()" title="Edit">Edit</button>
                 <button id="note-save-btn" class="note-action-btn note-action-primary" onclick="saveEdit()" style="display:none">Save</button>
-                <button id="note-cancel-btn" class="note-action-btn" onclick="exitEditMode()" style="display:none">Cancel</button>
                 <button class="note-modal-close" onclick="closeNotePreview()" aria-label="Close">&times;</button>
             </div>
         </div>
@@ -1361,7 +1455,14 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
             <button class="note-action-btn" onclick="noteSearchStep(1)" title="Next (Enter)" aria-label="Next match">&darr;</button>
             <button class="note-action-btn" onclick="noteSearchClose()" title="Close (Esc)" aria-label="Close search">&times;</button>
         </div>
-        <div class="note-modal-body" id="note-modal-body"></div>
+        <div class="note-modal-body" id="note-modal-body">
+            <div class="note-pane note-pane-view" id="note-pane-view"></div>
+            <div class="note-pane note-pane-cm" id="note-pane-cm"></div>
+            <div class="note-pane note-pane-plain" id="note-pane-plain">
+                <textarea class="note-edit-textarea" id="note-edit-textarea" spellcheck="false"></textarea>
+                <div class="note-edit-error" id="note-edit-error"></div>
+            </div>
+        </div>
     </div>
 </div>
 <div id="config-modal" class="note-modal-backdrop" onclick="if(event.target===this)closeConfigModal()">
@@ -1982,6 +2083,7 @@ function _rebindDashHandlers() {
     updateTabCounts();
     updateBaseline();
     _reapplySearches();
+    restoreNotesTreeState();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1994,7 +2096,147 @@ document.addEventListener('DOMContentLoaded', function() {
     if (PRIMARY_TABS.indexOf(tab) === -1) tab = 'projects';
     if (tab === 'projects' && SUBTABS.indexOf(sub) !== -1) _activeSubtab = sub;
     switchTab(tab);
+    restoreNotesTreeState();
 });
+
+/* --- Notes-tree per-subdir collapsed/expanded state ---
+   Each <details data-subdir-key="<slug>/<rel_dir>"> remembers its open
+   state in localStorage. On render (full reload, in-place reload, or
+   after a card fragment swap) we walk every notes-group <details> and
+   restore the saved state — defaulting to closed. */
+var _NOTES_OPEN_KEY = 'condash:notes-open:';
+function restoreNotesTreeState() {
+    document.querySelectorAll('.notes-group[data-subdir-key]').forEach(function(d) {
+        var key = d.getAttribute('data-subdir-key');
+        var saved = null;
+        try { saved = localStorage.getItem(_NOTES_OPEN_KEY + key); } catch (e) {}
+        d.open = saved === 'open';
+    });
+}
+
+document.addEventListener('toggle', function(ev) {
+    var target = ev.target;
+    if (!target || !target.classList || !target.classList.contains('notes-group')) return;
+    var key = target.getAttribute('data-subdir-key');
+    if (!key) return;
+    try {
+        localStorage.setItem(_NOTES_OPEN_KEY + key, target.open ? 'open' : 'closed');
+    } catch (e) {}
+}, true);
+
+/* Find the node id (`projects/<pri>/<slug>`) of the card that owns
+   ``readmePath``. Used so localized actions like upload / mkdir can
+   refresh just the affected card via reloadNode() instead of swapping
+   the whole dashboard (which would re-collapse every other card). */
+function _cardNodeIdFor(readmePath) {
+    var parts = (readmePath || '').split('/');
+    if (parts.length < 4) return null;
+    var slug = parts[2];
+    var card = document.getElementById(slug);
+    return card ? card.getAttribute('data-node-id') : null;
+}
+
+/* Open a hidden file picker, then POST the chosen files to /note/upload
+   as multipart/form-data. ``subdir`` is the subdir-relative path (e.g.
+   "notes/drafts") or empty for the root. After upload, refresh the
+   card so the new files appear, and pre-open the target group. */
+/* Upload one or more files into ``<item>/<subdirRelToItem>/``. The
+   subdir is the same string the server stored as the group's
+   ``rel_dir`` — empty for the item root. */
+function uploadToNotes(readmePath, subdirRelToItem) {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.addEventListener('change', async function() {
+        if (!input.files || !input.files.length) {
+            document.body.removeChild(input);
+            return;
+        }
+        var fd = new FormData();
+        fd.append('item_readme', readmePath);
+        if (subdirRelToItem) fd.append('subdir', subdirRelToItem);
+        for (var i = 0; i < input.files.length; i++) {
+            fd.append('file', input.files[i], input.files[i].name);
+        }
+        try {
+            var res = await fetch('/note/upload', {method: 'POST', body: fd});
+            var data = await res.json().catch(function() { return {}; });
+            if (!res.ok) {
+                alert('Upload failed: ' + (data.reason || data.error || ('HTTP ' + res.status)));
+                return;
+            }
+            if ((data.rejected || []).length) {
+                alert('Some files were rejected:\n' + data.rejected.map(function(r) {
+                    return '  ' + (r.filename || '?') + ': ' + r.reason;
+                }).join('\n'));
+            }
+            // Pre-open the target group so the user sees the new files.
+            if (subdirRelToItem) {
+                var parts = readmePath.split('/');
+                if (parts.length >= 4) {
+                    var slug = parts[2];
+                    try {
+                        localStorage.setItem(_NOTES_OPEN_KEY + slug + '/' + subdirRelToItem, 'open');
+                    } catch (e) {}
+                }
+            }
+            // Localized refresh: only the affected card swaps in place
+            // so other cards keep their expanded/collapsed state.
+            var nodeId = _cardNodeIdFor(readmePath);
+            if (nodeId) reloadNode(nodeId); else _reloadInPlace();
+        } catch (e) {
+            alert('Network error: ' + e);
+        } finally {
+            document.body.removeChild(input);
+        }
+    });
+    input.click();
+}
+
+/* Prompt for a subdirectory name and POST /note/mkdir. ``parentRelToItem``
+   is the directory the new folder lives in, relative to the item root —
+   "" creates a sibling of notes/ at the item root, "notes" creates a
+   child of notes/, "notes/drafts" creates a child of notes/drafts. */
+async function createNotesSubdir(readmePath, parentRelToItem) {
+    var promptLabel = parentRelToItem
+        ? 'New subdirectory inside ' + parentRelToItem + '/ (e.g. drafts):'
+        : 'New folder at the item root (sibling of notes/, e.g. drawings):';
+    var raw = prompt(promptLabel, '');
+    if (!raw) return;
+    raw = raw.trim().replace(/^\/+|\/+$/g, '');
+    if (!raw) return;
+    if (!/^[\w.-]+(\/[\w.-]+)*$/.test(raw)) {
+        alert('Invalid name: only letters, digits, dot, dash, underscore, and "/" for nesting.');
+        return;
+    }
+    var subpath = parentRelToItem ? parentRelToItem + '/' + raw : raw;
+    try {
+        var res = await fetch('/note/mkdir', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({item_readme: readmePath, subpath: subpath}),
+        });
+        var data = await res.json().catch(function() { return {}; });
+        if (!res.ok) {
+            var msg = data.reason === 'exists'
+                ? 'A folder with that name already exists.'
+                : (data.reason || data.error || ('HTTP ' + res.status));
+            alert('Could not create folder: ' + msg);
+            return;
+        }
+        // Pre-open the new group so it's visible right after the refresh.
+        if (data.subdir_key) {
+            try { localStorage.setItem(_NOTES_OPEN_KEY + data.subdir_key, 'open'); }
+            catch (e) {}
+        }
+        var nodeId = _cardNodeIdFor(readmePath);
+        if (nodeId) reloadNode(nodeId); else _reloadInPlace();
+    } catch (e) {
+        alert('Network error: ' + e);
+    }
+}
 
 function updateTabCounts() {
     // Primary tabs — Projects counts active items under Projects-tab
@@ -2293,29 +2535,84 @@ function _renderMermaidIn(container) {
     } catch (e) {}
 }
 
+/* Notes open in three modes. The modal carries `data-mode` on its inner
+   element (#note-modal-inner); three sibling panes inside #note-modal-body
+   are hidden/shown by CSS. `_noteModal` tracks the state shared across
+   panes so mode switches preserve user edits and mtime for the save
+   contract. */
+var _noteModal = {
+    path: null,
+    editable: false,     // false when kind is pdf/image/binary — edit modes disabled
+    kind: null,          // from /note-raw
+    mtime: null,
+    renderedHtml: '',    // last server render shown in the view pane
+    /* Canonical text shared between CM6 and the plain textarea. Updated
+       whenever the user switches away from an edit mode so the other
+       mode can start from the same buffer. Reset on open and on save. */
+    text: '',
+    /* Which edit mode was last active. Ctrl-E from view returns here. */
+    lastEditMode: 'cm',
+};
+
 async function openNotePreview(path, name) {
     var modal = document.getElementById('note-modal');
+    var inner = document.getElementById('note-modal-inner');
     var title = document.getElementById('note-modal-title');
-    var body = document.getElementById('note-modal-body');
+    var viewPane = document.getElementById('note-pane-view');
+    var ta = document.getElementById('note-edit-textarea');
     // Reset any in-note search: matches point at DOM nodes we're about
     // to discard and the count would be stale against the new note.
     noteSearchClose();
+    _destroyCm();
     title.textContent = name;
-    body.dataset.notePath = path;
-    body.innerHTML = '<p class="note-loading">Loading\u2026</p>';
+    _noteModal.path = path;
+    _noteModal.editable = false;
+    _noteModal.kind = null;
+    _noteModal.mtime = null;
+    _noteModal.text = '';
+    _noteModal.renderedHtml = '';
+    ta.value = '';
+    viewPane.innerHTML = '<p class="note-loading">Loading\u2026</p>';
+    _setNoteModeAttr(inner, 'view');
+    _syncModeControls();
+    _hideSaveError();
     modal.classList.add('open');
+    // Kick off both fetches in parallel. /note returns HTML for the view
+    // pane; /note-raw returns text+mtime+kind for the edit panes. The
+    // raw fetch is best-effort: pdf/image kinds 4xx here and we leave
+    // the edit modes disabled.
+    var viewP = fetch('/note?path=' + encodeURIComponent(path)).then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+    });
+    var rawP = fetch('/note-raw?path=' + encodeURIComponent(path)).then(function(res) {
+        if (!res.ok) return null;
+        return res.json();
+    }).catch(function() { return null; });
     try {
-        var res = await fetch('/note?path=' + encodeURIComponent(path));
-        if (!res.ok) {
-            body.innerHTML = '<p class="note-error">Failed to load note (' + res.status + ').</p>';
-            return;
-        }
-        body.innerHTML = await res.text();
-        _renderMermaidIn(body);
-        _wireNoteLinks(body, path);
+        var html = await viewP;
+        // Guard against late arrival for a different note (user opened
+        // another before this one resolved).
+        if (_noteModal.path !== path) return;
+        viewPane.innerHTML = html;
+        viewPane.scrollTop = 0;
+        _noteModal.renderedHtml = html;
+        _renderMermaidIn(viewPane);
+        _wireNoteLinks(viewPane, path);
     } catch (e) {
-        body.innerHTML = '<p class="note-error">Network error.</p>';
+        if (_noteModal.path !== path) return;
+        viewPane.innerHTML = '<p class="note-error">Failed to load note.</p>';
     }
+    var raw = await rawP;
+    if (_noteModal.path !== path) return;
+    if (raw && typeof raw.content === 'string') {
+        _noteModal.editable = true;
+        _noteModal.kind = raw.kind || null;
+        _noteModal.mtime = raw.mtime != null ? Number(raw.mtime) : null;
+        _noteModal.text = raw.content;
+        ta.value = raw.content;
+    }
+    _syncModeControls();
 }
 
 /* Resolve a path relative to `baseDir` — `baseDir/../foo` collapses to
@@ -2387,7 +2684,9 @@ function _wireNoteLinks(body, notePath) {
 
 function closeNotePreview() {
     document.getElementById('note-modal').classList.remove('open');
-    exitEditMode(true);  // discard any pending edit state silently
+    _destroyCm();
+    _hideSaveError();
+    _noteModal.path = null;
     noteSearchClose();
 }
 
@@ -2399,14 +2698,14 @@ function closeNotePreview() {
    native behaviour still works there. */
 var _noteSearch = { matches: [], idx: -1 };
 function _clearNoteMarks() {
-    var body = document.getElementById('note-modal-body');
-    if (!body) return;
-    body.querySelectorAll('mark.note-match').forEach(function(m) {
+    var pane = document.getElementById('note-pane-view');
+    if (!pane) return;
+    pane.querySelectorAll('mark.note-match').forEach(function(m) {
         var parent = m.parentNode;
         while (m.firstChild) parent.insertBefore(m.firstChild, m);
         parent.removeChild(m);
     });
-    body.normalize();
+    pane.normalize();
 }
 function noteSearchRun() {
     var input = document.getElementById('note-search-input');
@@ -2419,14 +2718,14 @@ function noteSearchRun() {
         if (countEl) countEl.textContent = '';
         return;
     }
-    var body = document.getElementById('note-modal-body');
-    if (!body) return;
+    var pane = document.getElementById('note-pane-view');
+    if (!pane) return;
     var qLow = q.toLowerCase();
     var qLen = q.length;
     // Collect text nodes first (the walker becomes unreliable once we
     // mutate the tree). Skip script/style just in case; the body is
     // server-rendered markdown but we don't assume.
-    var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+    var walker = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT, {
         acceptNode: function(n) {
             var tag = n.parentNode && n.parentNode.nodeName;
             if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
@@ -2515,14 +2814,24 @@ function noteSearchClose() {
 document.addEventListener('keydown', function(ev) {
     var modal = document.getElementById('note-modal');
     if (!modal || !modal.classList.contains('open')) return;
-    var editing = !!document.querySelector('#note-modal-body textarea');
+    var inner = document.getElementById('note-modal-inner');
+    var mode = inner ? inner.getAttribute('data-mode') : 'view';
+    var editing = mode === 'cm' || mode === 'plain';
     var isFindKey = (ev.ctrlKey || ev.metaKey) && !ev.altKey
         && (ev.key === 'f' || ev.key === 'F');
     if (isFindKey) {
-        if (editing) return;  // let the textarea keep native behaviour
+        if (editing) return;  // let the edit panes keep native behaviour
         ev.preventDefault();
         ev.stopPropagation();
         noteSearchOpen();
+        return;
+    }
+    // Ctrl+E toggles between view and the last-used edit mode.
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === 'e' || ev.key === 'E')) {
+        if (!_noteModal.editable) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        setNoteMode(mode === 'view' ? (_noteModal.lastEditMode || 'cm') : 'view');
         return;
     }
     var bar = document.getElementById('note-search-bar');
@@ -2555,99 +2864,213 @@ function openDeliverable(path) {
     }).catch(function() {});
 }
 
-/* --- Edit mode ---
-   Edit flips the modal body to a textarea pre-filled with /note-raw.
-   Save POSTs to /note with expected_mtime — server refuses on mtime
-   mismatch so a stale editor can't silently clobber out-of-band edits. */
-function _setEditButtons(editing) {
-    document.getElementById('note-edit-btn').style.display = editing ? 'none' : '';
-    document.getElementById('note-save-btn').style.display = editing ? '' : 'none';
-    document.getElementById('note-cancel-btn').style.display = editing ? '' : 'none';
+/* --- CodeMirror 6 mount / unmount ---
+   CM6 is loaded lazily by the <script type="module"> block at the end
+   of the document. Once ready, it sets window.__cm6 = {EditorView,
+   EditorState, basicSetup, markdown, keymap, Compartment, themeC,
+   buildTheme} and calls window.__cm6OnReady(). Before that, the "Edit"
+   toggle stays disabled. */
+var _cm = { view: null, themeC: null };
+
+function _mountCm() {
+    if (!window.__cm6) return;
+    var host = document.getElementById('note-pane-cm');
+    if (!host) return;
+    if (_cm.view) return;
+    // Clear any placeholder text.
+    host.innerHTML = '';
+    var cm6 = window.__cm6;
+    _cm.themeC = new cm6.Compartment();
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var exts = [
+        cm6.basicSetup,
+        cm6.markdown(),
+        cm6.keymap.of([
+            {key: 'Mod-s', preventDefault: true, run: function() { saveEdit(); return true; }},
+        ]),
+        _cm.themeC.of(cm6.buildTheme(isDark)),
+        cm6.EditorView.updateListener.of(function(u) {
+            // Reflect edits into the canonical buffer live so a mode
+            // switch doesn't need a separate capture path.
+            if (u.docChanged) _noteModal.text = u.state.doc.toString();
+        }),
+    ];
+    _cm.view = new cm6.EditorView({
+        doc: _noteModal.text || '',
+        parent: host,
+        extensions: exts,
+    });
+    // Caret at offset 0, scroll to top, focus.
+    _cm.view.dispatch({selection: {anchor: 0}});
+    _cm.view.scrollDOM.scrollTop = 0;
+    _cm.view.focus();
 }
 
-async function enterEditMode() {
-    var body = document.getElementById('note-modal-body');
-    var path = body.dataset.notePath;
-    if (!path) return;
-    try {
-        var res = await fetch('/note-raw?path=' + encodeURIComponent(path));
-        var data = await res.json().catch(function(){return {};});
-        if (!res.ok) {
-            alert('Cannot edit: ' + (data.error || ('HTTP ' + res.status)));
-            return;
+function _destroyCm() {
+    if (_cm.view) { try { _cm.view.destroy(); } catch (e) {} }
+    _cm.view = null;
+    _cm.themeC = null;
+    var host = document.getElementById('note-pane-cm');
+    if (host) host.innerHTML = '';
+}
+
+/* Called by the theme toggle to repaint CM6 without remounting. */
+function _cmRetheme() {
+    if (!_cm.view || !_cm.themeC || !window.__cm6) return;
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    _cm.view.dispatch({
+        effects: _cm.themeC.reconfigure(window.__cm6.buildTheme(isDark)),
+    });
+}
+
+/* --- Note modal mode management ---
+   Three sibling panes (view, cm, plain) live inside #note-modal-body;
+   the modal's data-mode attribute drives CSS visibility. setNoteMode
+   transfers the canonical buffer between the two edit modes on switch
+   so edits survive toggling, then updates the chrome (save button,
+   toggle state). Save POSTs to /note with expected_mtime — server
+   refuses on mtime mismatch so a stale editor can't silently clobber
+   out-of-band edits. */
+
+function _setNoteModeAttr(inner, mode) {
+    inner.setAttribute('data-mode', mode);
+}
+
+function _hideSaveError() {
+    var err = document.getElementById('note-edit-error');
+    if (err) { err.textContent = ''; err.classList.remove('visible'); }
+}
+
+function _showSaveError(msg) {
+    var err = document.getElementById('note-edit-error');
+    if (!err) return;
+    err.textContent = msg;
+    err.classList.add('visible');
+}
+
+/* Update the mode toggle (disable edit buttons when the file is not
+   editable) and show/hide the Save button per mode. */
+function _syncModeControls() {
+    var inner = document.getElementById('note-modal-inner');
+    var mode = inner ? inner.getAttribute('data-mode') : 'view';
+    var toggle = document.getElementById('note-mode-toggle');
+    var saveBtn = document.getElementById('note-save-btn');
+    if (toggle) {
+        toggle.querySelector('[data-mode="cm"]').disabled =
+            !_noteModal.editable || !window.__cm6;
+        toggle.querySelector('[data-mode="plain"]').disabled = !_noteModal.editable;
+        if (!window.__cm6) {
+            toggle.querySelector('[data-mode="cm"]').title =
+                'Loading editor…';
+        } else if (!_noteModal.editable) {
+            toggle.querySelector('[data-mode="cm"]').title =
+                'This file is not editable (binary/preview-only)';
+        } else {
+            toggle.querySelector('[data-mode="cm"]').title =
+                'Edit with syntax highlighting (Ctrl+E)';
         }
-        body.dataset.editMtime = String(data.mtime);
-        body.innerHTML = '';
-        var ta = document.createElement('textarea');
-        ta.className = 'note-edit-textarea';
-        ta.value = data.content || '';
-        body.appendChild(ta);
-        var err = document.createElement('div');
-        err.className = 'note-edit-error';
-        err.id = 'note-edit-error';
-        body.appendChild(err);
-        ta.focus();
-        _setEditButtons(true);
-    } catch (e) {
-        alert('Could not load for editing: ' + e);
+    }
+    if (saveBtn) saveBtn.style.display = (mode === 'cm' || mode === 'plain') ? '' : 'none';
+}
+
+/* Pull the active pane's buffer back into _noteModal.text so a mode
+   switch starts the next pane from the same content. */
+function _captureActiveBuffer() {
+    var inner = document.getElementById('note-modal-inner');
+    var mode = inner.getAttribute('data-mode');
+    if (mode === 'cm' && _cm.view) {
+        _noteModal.text = _cm.view.state.doc.toString();
+    } else if (mode === 'plain') {
+        var ta = document.getElementById('note-edit-textarea');
+        if (ta) _noteModal.text = ta.value;
+    }
+}
+
+/* Hydrate a pane from _noteModal.text so the user sees their latest
+   edits after a switch. No-op for view mode — view reflects last-save. */
+function _hydratePane(mode) {
+    if (mode === 'plain') {
+        var ta = document.getElementById('note-edit-textarea');
+        if (!ta) return;
+        if (ta.value !== _noteModal.text) ta.value = _noteModal.text;
+        ta.setSelectionRange(0, 0);
+        ta.scrollTop = 0;
+    } else if (mode === 'cm') {
+        if (!_cm.view) { _mountCm(); return; }
+        var cur = _cm.view.state.doc.toString();
+        if (cur !== _noteModal.text) {
+            _cm.view.dispatch({
+                changes: {from: 0, to: cur.length, insert: _noteModal.text},
+            });
+        }
+        _cm.view.dispatch({selection: {anchor: 0}});
+        _cm.view.scrollDOM.scrollTop = 0;
+    } else if (mode === 'view') {
+        var pane = document.getElementById('note-pane-view');
+        if (pane) pane.scrollTop = 0;
+    }
+}
+
+function setNoteMode(next) {
+    if (next !== 'view' && next !== 'cm' && next !== 'plain') return;
+    if ((next === 'cm' || next === 'plain') && !_noteModal.editable) return;
+    if (next === 'cm' && !window.__cm6) return;
+    var inner = document.getElementById('note-modal-inner');
+    var prev = inner.getAttribute('data-mode');
+    if (prev === next) return;
+    if (prev === 'cm' || prev === 'plain') _captureActiveBuffer();
+    _setNoteModeAttr(inner, next);
+    if (next === 'cm' || next === 'plain') _noteModal.lastEditMode = next;
+    _hideSaveError();
+    _hydratePane(next);
+    _syncModeControls();
+    if (next === 'cm' && _cm.view) { setTimeout(function() { _cm.view.focus(); }, 0); }
+    else if (next === 'plain') {
+        var ta = document.getElementById('note-edit-textarea');
+        if (ta) setTimeout(function() { ta.focus(); }, 0);
     }
 }
 
 async function saveEdit() {
-    var body = document.getElementById('note-modal-body');
-    var ta = body.querySelector('.note-edit-textarea');
-    if (!ta) return;
-    var path = body.dataset.notePath;
-    var expected = body.dataset.editMtime;
-    var err = document.getElementById('note-edit-error');
-    if (err) err.classList.remove('visible');
+    var inner = document.getElementById('note-modal-inner');
+    var mode = inner.getAttribute('data-mode');
+    if (mode !== 'cm' && mode !== 'plain') return;
+    if (!_noteModal.path) return;
+    _captureActiveBuffer();
+    _hideSaveError();
     try {
         var res = await fetch('/note', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                path: path,
-                content: ta.value,
-                expected_mtime: expected ? Number(expected) : null,
+                path: _noteModal.path,
+                content: _noteModal.text,
+                expected_mtime: _noteModal.mtime,
             }),
         });
-        var data = await res.json().catch(function(){return {};});
+        var data = await res.json().catch(function() { return {}; });
         if (!res.ok) {
-            if (res.status === 409 && data.mtime) body.dataset.editMtime = String(data.mtime);
-            var msg = data.reason || data.error || ('HTTP ' + res.status);
-            if (err) {
-                err.textContent = msg;
-                err.classList.add('visible');
-            }
+            if (res.status === 409 && data.mtime) _noteModal.mtime = Number(data.mtime);
+            _showSaveError(data.reason || data.error || ('HTTP ' + res.status));
             return;
         }
-        // Success — fall back to preview mode with the new rendering.
-        _setEditButtons(false);
+        if (data.mtime != null) _noteModal.mtime = Number(data.mtime);
+        // Refresh the view pane from the server render so it stays
+        // aligned with what's now on disk.
         var name = document.getElementById('note-modal-title').textContent;
-        await _reloadNotePreview(path, name);
+        await _reloadNotePreview(_noteModal.path, name);
     } catch (e) {
-        if (err) {
-            err.textContent = 'Save failed: ' + e;
-            err.classList.add('visible');
-        }
+        _showSaveError('Save failed: ' + e);
     }
-}
-
-function exitEditMode(silent) {
-    var body = document.getElementById('note-modal-body');
-    var ta = body.querySelector('.note-edit-textarea');
-    if (!ta) return;
-    delete body.dataset.editMtime;
-    _setEditButtons(false);
-    if (silent) return;
-    var path = body.dataset.notePath;
-    var name = document.getElementById('note-modal-title').textContent;
-    _reloadNotePreview(path, name);
 }
 
 /* Prompt for a filename, POST /note/create, and drop into edit mode
    on success. Default extension is `.md`; user can type something else. */
-async function createNoteFor(readmePath) {
+/* Prompt for a filename and POST /note/create. ``subRelToNotes`` is the
+   target subdirectory relative to ``<item>/notes/`` ("" for notes/ root)
+   so the per-folder + buttons can drop the file into the folder whose
+   summary they live on. */
+async function createNoteFor(readmePath, subRelToNotes) {
     var raw = prompt('New note filename (e.g. plan.md, decision.txt):', 'new-note.md');
     if (!raw) return;
     raw = raw.trim();
@@ -2657,7 +3080,11 @@ async function createNoteFor(readmePath) {
         var res = await fetch('/note/create', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({item_readme: readmePath, filename: raw}),
+            body: JSON.stringify({
+                item_readme: readmePath,
+                filename: raw,
+                subdir: subRelToNotes || '',
+            }),
         });
         var data = await res.json().catch(function(){return {};});
         if (!res.ok) {
@@ -2665,7 +3092,10 @@ async function createNoteFor(readmePath) {
             return;
         }
         await openNotePreview(data.path, raw);
-        enterEditMode();
+        // Drop straight into the preferred edit mode for the new file.
+        if (_noteModal.editable) {
+            setNoteMode(window.__cm6 ? 'cm' : 'plain');
+        }
     } catch (e) {
         alert('Network error: ' + e);
     }
@@ -2680,8 +3110,7 @@ var _NOTES_RENAMEABLE_RE = /^projects\/\d{4}-\d{2}\/\d{4}-\d{2}-\d{2}-[\w.\-]+\/
 
 function startRenameNote() {
     var titleEl = document.getElementById('note-modal-title');
-    var body = document.getElementById('note-modal-body');
-    var path = body.dataset.notePath || '';
+    var path = _noteModal.path || '';
     if (!_NOTES_RENAMEABLE_RE.test(path)) return;
     if (titleEl.querySelector('.note-rename-input')) return;  // already editing
     var filename = path.substring(path.lastIndexOf('/') + 1);
@@ -2722,8 +3151,8 @@ function startRenameNote() {
                 restore();
                 return;
             }
-            body.dataset.notePath = result.data.path;
-            if (body.dataset.editMtime) body.dataset.editMtime = String(result.data.mtime);
+            _noteModal.path = result.data.path;
+            if (result.data.mtime != null) _noteModal.mtime = Number(result.data.mtime);
             var newName = newStem + ext;
             titleEl.textContent = newName;
             restored = true;  // keep the new value
@@ -2742,16 +3171,20 @@ function startRenameNote() {
 }
 
 async function _reloadNotePreview(path, name) {
-    var body = document.getElementById('note-modal-body');
-    body.innerHTML = '<p class="note-loading">Loading\u2026</p>';
+    var pane = document.getElementById('note-pane-view');
+    if (name) document.getElementById('note-modal-title').textContent = name;
+    pane.innerHTML = '<p class="note-loading">Loading\u2026</p>';
     var res = await fetch('/note?path=' + encodeURIComponent(path));
     if (!res.ok) {
-        body.innerHTML = '<p class="note-error">Failed to load note (' + res.status + ').</p>';
+        pane.innerHTML = '<p class="note-error">Failed to load note (' + res.status + ').</p>';
         return;
     }
-    body.innerHTML = await res.text();
-    _renderMermaidIn(body);
-    _wireNoteLinks(body, path);
+    var html = await res.text();
+    pane.innerHTML = html;
+    _noteModal.renderedHtml = html;
+    _renderMermaidIn(pane);
+    _wireNoteLinks(pane, path);
+    pane.scrollTop = 0;
 }
 
 document.addEventListener('keydown', function(e) {
@@ -3213,8 +3646,21 @@ async function reloadNode(nodeId) {
         var fresh = tpl.content.firstElementChild;
         if (!fresh) { _reloadInPlace(); return; }
 
+        // Card .collapsed/.expanded toggle is held only in the live
+        // class list; the server always re-renders the card collapsed.
+        // Preserve whatever the user had open across the swap so a
+        // localized refresh doesn't snap the card shut on them.
+        var wasExpanded = existing.classList.contains('card')
+            && !existing.classList.contains('collapsed');
+
         existing.replaceWith(fresh);
         _restoreDetailsOpenState(fresh, openMap);
+        if (wasExpanded && fresh.classList && fresh.classList.contains('card')) {
+            fresh.classList.remove('collapsed');
+        }
+        // Notes-tree groups persist in localStorage (no data-node-id),
+        // so a per-key restore is needed after the swap.
+        restoreNotesTreeState();
 
         // Drop this node and all its descendants from the dirty set,
         // then refresh the baseline hashes for those ids.
@@ -3974,6 +4420,86 @@ setInterval(checkUpdates, 5000);
             openConfigModal();
         }
     } catch (e) {}
+})();
+
+/* --- CodeMirror 6 theme re-sync ---
+   When the user flips dark/light, the theme-loader script in <head>
+   updates documentElement.data-theme synchronously. We watch that
+   attribute and retheme the live EditorView (no remount) so the
+   markdown editor picks up the new palette in the same frame. */
+new MutationObserver(function() {
+    if (typeof _cmRetheme === 'function') _cmRetheme();
+}).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+</script>
+
+<script type="module">
+/* Bootstrap CodeMirror 6 from esm.sh (no bundler, pinned versions).
+   Exposes window.__cm6 once the module graph resolves so the classic
+   <script> above can lazily mount editors on demand. If the CDN is
+   unreachable we leave __cm6 unset; the "Edit" toggle stays disabled
+   and users fall back to the plain textarea. */
+(async function() {
+    try {
+        const [core, lang, viewMod, stateMod, cmds] = await Promise.all([
+            import('https://esm.sh/codemirror@6.0.1'),
+            import('https://esm.sh/@codemirror/lang-markdown@6.3.0'),
+            import('https://esm.sh/@codemirror/view@6.34.0'),
+            import('https://esm.sh/@codemirror/state@6.5.0'),
+            import('https://esm.sh/@codemirror/commands@6.7.0'),
+        ]);
+        const {EditorView} = viewMod;
+        const {EditorState, Compartment} = stateMod;
+        const {keymap} = viewMod;
+        const {basicSetup} = core;
+        const {markdown} = lang;
+
+        /* Build a theme bound to condash's CSS variables so the editor
+           stays aligned with dark/light without a second theme system.
+           Passing {dark: true/false} flips CM's semantic colours
+           (selection, cursor) for the right palette. */
+        function buildTheme(isDark) {
+            const styles = getComputedStyle(document.documentElement);
+            const v = (name, fb) => (styles.getPropertyValue(name).trim() || fb);
+            const bg = v('--bg-card', isDark ? '#18181b' : '#fff');
+            const fg = v('--text', isDark ? '#e4e4e7' : '#18181b');
+            const accent = v('--accent', '#2563eb');
+            const accentBg = v('--accent-bg', 'rgba(37,99,235,0.1)');
+            const pillBg = v('--pill-bg', isDark ? '#27272a' : '#f4f4f5');
+            const border = v('--border', isDark ? '#3f3f46' : '#e4e4e7');
+            const muted = v('--text-muted', '#a1a1aa');
+            return EditorView.theme({
+                '&': {color: fg, backgroundColor: bg, height: '100%'},
+                '.cm-content': {caretColor: accent},
+                '&.cm-focused': {outline: 'none'},
+                '.cm-gutters': {
+                    backgroundColor: pillBg, color: muted,
+                    borderRight: '1px solid ' + border,
+                },
+                '.cm-activeLineGutter, .cm-activeLine': {
+                    backgroundColor: accentBg,
+                },
+                '.cm-selectionMatch, ::selection': {backgroundColor: accentBg},
+                '.cm-cursor, .cm-dropCursor': {borderLeftColor: accent},
+                '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+                    backgroundColor: accentBg,
+                },
+            }, {dark: isDark});
+        }
+
+        window.__cm6 = {
+            EditorView: EditorView,
+            EditorState: EditorState,
+            Compartment: Compartment,
+            keymap: keymap,
+            basicSetup: basicSetup,
+            markdown: markdown,
+            buildTheme: buildTheme,
+        };
+        // Re-enable the Edit (CM6) toggle if the modal is already open.
+        if (typeof _syncModeControls === 'function') _syncModeControls();
+    } catch (err) {
+        console.warn('[condash] CodeMirror 6 failed to load:', err);
+    }
 })();
 </script>
 </body>

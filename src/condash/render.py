@@ -174,40 +174,106 @@ def _render_readme_link(item):
     )
 
 
-def _render_files(files, readme_rel: str | None = None):
-    """Render the item-files block for a card.
+def _render_file_entry(n: dict) -> str:
+    js_path = json.dumps(n["path"]).replace("'", "\\'").replace('"', "'")
+    label = n["name"][:-3] if n["name"].endswith(".md") else n["name"]
+    kind = n.get("kind", "md")
+    return (
+        f'<div class="note-item" data-kind="{h(kind)}" '
+        f"onclick=\"openNotePreview({js_path},'{h(n['name'])}')\">"
+        f"{h(label)}</div>"
+    )
 
-    Lists every file under the item directory (any subdirectory, not only
-    ``notes/``). Paths are shown relative to the item root so the user can
-    tell at a glance whether a file lives in ``notes/``, a sibling folder,
-    or directly at the item root. The ``+`` shortcut still creates a note
-    under ``notes/`` — that remains the canonical place for new writing.
+
+def _render_subdir_group(group: dict, item_slug: str, readme_rel: str | None) -> str:
+    """One ``<details>`` per subdirectory. ``data-subdir-key`` lets the
+    client persist collapsed/expanded state per group across reloads.
+    Recurses into nested groups.
+
+    Each group's summary hosts three actions, all scoped to that folder:
+    ``+`` (new note here), ``↑`` (upload here), ``+ folder`` (mkdir a
+    child of this folder). The subdir is passed to the server relative
+    to the item root, so writes can land anywhere inside the item — not
+    just under ``notes/``.
     """
-    items_html = ""
-    for n in files:
-        js_path = json.dumps(n["path"]).replace("'", "\\'").replace('"', "'")
-        label = n["name"][:-3] if n["name"].endswith(".md") else n["name"]
-        kind = n.get("kind", "md")
-        items_html += (
-            f'<div class="note-item" data-kind="{h(kind)}" '
-            f"onclick=\"openNotePreview({js_path},'{h(n['name'])}')\">"
-            f"{h(label)}</div>"
-        )
-    count = len(files)
-    create_btn = ""
+    rel = group["rel_dir"]
+    file_count = len(group["files"]) + sum(_subtree_count(g) for g in group["groups"])
+    files_html = "".join(_render_file_entry(n) for n in group["files"])
+    nested_html = "".join(_render_subdir_group(g, item_slug, readme_rel) for g in group["groups"])
+    key = f"{item_slug}/{rel}"
+
+    actions_html = ""
     if readme_rel:
         js_readme = json.dumps(readme_rel).replace("'", "\\'").replace('"', "'")
-        create_btn = (
-            f'<button class="notes-new-btn" title="New note (under notes/)" '
-            f'onclick="event.stopPropagation();createNoteFor({js_readme})">+</button>'
+        js_sub = json.dumps(rel).replace("'", "\\'").replace('"', "'")
+        actions_html = (
+            f'<button class="notes-new-btn" title="New note in this folder" '
+            f'onclick="event.stopPropagation();event.preventDefault();'
+            f'createNoteFor({js_readme},{js_sub})">+</button>'
+            f'<button class="notes-upload-btn" title="Upload files into this folder" '
+            f'onclick="event.stopPropagation();event.preventDefault();'
+            f'uploadToNotes({js_readme},{js_sub})">\u2191</button>'
+            f'<button class="notes-mkdir-btn" title="New subdirectory inside this folder" '
+            f'onclick="event.stopPropagation();event.preventDefault();'
+            f'createNotesSubdir({js_readme},{js_sub})">+ folder</button>'
         )
-    empty_class = " is-empty" if not files else ""
+    return (
+        f'<details class="notes-group" data-subdir-key="{h(key)}">'
+        f'<summary class="notes-group-heading">'
+        f'<span class="notes-chevron" aria-hidden="true">&#9656;</span>'
+        f'<span class="notes-group-name">{h(group["label"])}/</span>'
+        f'<span class="notes-count">({file_count})</span>'
+        f"{actions_html}"
+        f"</summary>"
+        f'<div class="notes-list">{files_html}{nested_html}</div>'
+        f"</details>"
+    )
+
+
+def _subtree_count(group: dict) -> int:
+    return len(group["files"]) + sum(_subtree_count(g) for g in group["groups"])
+
+
+def _render_files(tree, readme_rel: str | None = None, item_slug: str = ""):
+    """Render the item-files block for a card.
+
+    ``tree`` is the recursive ``{files, groups}`` shape produced by
+    ``parser._list_item_tree``. Top-level files render flat at the root;
+    each subdirectory becomes a collapsible ``<details>`` group with its
+    own (recursive) contents. Per-folder actions (new note, upload, new
+    subfolder) live on each group's summary — see ``_render_subdir_group``.
+    The root header is a label + count only.
+
+    If the item has no ``notes/`` directory yet, render a placeholder
+    "+ notes folder" action so the user can bootstrap it without touching
+    the filesystem manually.
+    """
+    if not isinstance(tree, dict):  # legacy callers passed a flat list
+        tree = {"files": list(tree), "groups": []}
+    files = tree.get("files") or []
+    groups = tree.get("groups") or []
+    top_files_html = "".join(_render_file_entry(n) for n in files)
+    groups_html = "".join(_render_subdir_group(g, item_slug, readme_rel) for g in groups)
+    total = len(files) + sum(_subtree_count(g) for g in groups)
+    # Root-level action: ``+ folder`` only (creates a sibling of notes/
+    # at the item root). Per-folder ``+`` and ``↑`` live on each group's
+    # summary, so they don't repeat at the root.
+    bootstrap_action = ""
+    if readme_rel:
+        js_readme = json.dumps(readme_rel).replace("'", "\\'").replace('"', "'")
+        bootstrap_action = (
+            f'<button class="notes-mkdir-btn" '
+            f'title="New folder at the item root (sibling of notes/)" '
+            f'onclick="event.stopPropagation();event.preventDefault();'
+            f"createNotesSubdir({js_readme},'')\">+ folder</button>"
+        )
+    empty_class = " is-empty" if total == 0 else ""
     return (
         f'<div class="notes-block{empty_class}">'
-        f'<div class="notes-heading" onclick="toggleNotes(this)">'
-        f'Files <span class="notes-count">({count})</span>'
-        f"{create_btn}</div>"
-        f'<div class="notes-list" style="display:none">{items_html}</div>'
+        f'<div class="notes-heading">'
+        f'Files <span class="notes-count">({total})</span>'
+        f"{bootstrap_action}</div>"
+        f'<div class="notes-list">{top_files_html}{groups_html}</div>'
         f"</div>"
     )
 
@@ -270,7 +336,11 @@ def _render_card(item):
 
     deliverables_html = _render_deliverables(item.get("deliverables", []))
     readme_link_html = _render_readme_link(item)
-    notes_html = _render_files(item.get("files", []), readme_rel=item.get("path"))
+    notes_html = _render_files(
+        item.get("files") or {"files": [], "groups": []},
+        readme_rel=item.get("path"),
+        item_slug=item.get("slug", ""),
+    )
 
     summary_html = f'<p class="summary">{h(item["summary"])}</p>' if item["summary"] else ""
 
