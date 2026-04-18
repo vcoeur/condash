@@ -150,41 +150,64 @@ def _note_kind(path: Path) -> str:
     return "binary"
 
 
-def _list_item_files(ctx: RenderCtx, item_dir, max_depth: int = 3):
-    """List every file inside ``item_dir`` (any subdirectory) with its kind.
+def _list_item_tree(ctx: RenderCtx, item_dir, max_depth: int = 3):
+    """Recursive tree of files under ``item_dir`` grouped per subdirectory.
 
-    Walks up to ``max_depth`` levels from the item root so items can keep
-    files under ``notes/``, alongside loose files in the item root, and
-    one further level of nesting (e.g. ``notes/drafts/…``). Hidden entries
-    (``.…``) and the item's top-level ``README.md`` are skipped — the
-    README has its own dedicated preview link on the card.
+    Returns ``{"files": [FileEntry, ...], "groups": [GroupEntry, ...]}`` where
+    ``GroupEntry`` is ``{"rel_dir", "label", "files", "groups"}``. Walks up
+    to ``max_depth`` levels so deeply-nested layouts (``notes/drafts/…``)
+    show as nested groups. Hidden entries (``.…``) and the item's
+    top-level ``README.md`` are skipped — the README has its own preview
+    link on the card. Empty subdirectories are kept so a freshly-created
+    folder shows up immediately as an empty group.
     """
     if not item_dir.is_dir():
-        return []
-    out: list[dict[str, str]] = []
+        return {"files": [], "groups": []}
 
-    def walk(current: Path, depth: int) -> None:
+    def walk(current: Path, depth: int) -> dict:
+        files: list[dict[str, str]] = []
+        groups: list[dict] = []
         for entry in sorted(current.iterdir()):
             if entry.name.startswith("."):
                 continue
             if entry.is_dir():
-                if depth < max_depth:
-                    walk(entry, depth + 1)
+                if depth >= max_depth:
+                    continue
+                child = walk(entry, depth + 1)
+                rel_dir = str(entry.relative_to(item_dir))
+                groups.append(
+                    {
+                        "rel_dir": rel_dir,
+                        "label": entry.name,
+                        "files": child["files"],
+                        "groups": child["groups"],
+                    }
+                )
                 continue
             if not entry.is_file():
                 continue
             if depth == 1 and entry.name == "README.md":
                 continue
-            out.append(
+            files.append(
                 {
-                    "name": str(entry.relative_to(item_dir)),
+                    "name": entry.name,
                     "path": str(entry.relative_to(ctx.base_dir)),
                     "kind": _note_kind(entry),
                 }
             )
+        return {"files": files, "groups": groups}
 
-    walk(item_dir, 1)
-    return out
+    return walk(item_dir, 1)
+
+
+def _flatten_tree_paths(tree: dict) -> list[str]:
+    """Collect every file path in the tree, in stable depth-first order.
+    Used by the fingerprint helpers — the tree's own ordering is the
+    sort key, no need for a second sort."""
+    paths: list[str] = [n["path"] for n in tree.get("files", [])]
+    for g in tree.get("groups", []):
+        paths.extend(_flatten_tree_paths(g))
+    return paths
 
 
 def parse_readme(ctx: RenderCtx, path, kind: str | None = None):
@@ -250,7 +273,7 @@ def parse_readme(ctx: RenderCtx, path, kind: str | None = None):
     for d in deliverables:
         d["full_path"] = f"{item_dir}/{d['path']}"
 
-    files = _list_item_files(ctx, path.parent)
+    files = _list_item_tree(ctx, path.parent)
 
     done = sum(it["done"] for s in sections for it in s["items"])
     total = sum(len(s["items"]) for s in sections)
@@ -378,7 +401,7 @@ def _compute_fingerprint(items):
             for s in item["sections"]
         )
         deliverables = tuple((d["label"], d["path"]) for d in item.get("deliverables", []))
-        files = tuple(n["path"] for n in item.get("files", []))
+        files = tuple(_flatten_tree_paths(item.get("files") or {}))
         data.append(
             (
                 item["slug"],
@@ -410,7 +433,7 @@ def _card_content_data(item):
         for s in item["sections"]
     )
     deliverables = tuple((d["label"], d["path"]) for d in item.get("deliverables", []))
-    files = tuple(n["path"] for n in item.get("files", []))
+    files = tuple(_flatten_tree_paths(item.get("files") or {}))
     return (
         item["slug"],
         item["title"],
