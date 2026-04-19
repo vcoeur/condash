@@ -313,7 +313,7 @@ def _register_routes() -> None:
         if id.startswith("code/"):
             # Only whole-repo nodes are fragmentable — groups and the
             # bare 'code' root still fall through to the global reload.
-            rest = id[len("code/"):]
+            rest = id[len("code/") :]
             if "/" not in rest:
                 return _error(404, "use global reload")
             html = render_git_repo_fragment(ctx, id)
@@ -871,9 +871,7 @@ def _register_routes() -> None:
             # greyed status line, then stay attached for ring-buffer replay
             # until the client detaches.
             try:
-                await ws.send_text(
-                    json.dumps({"type": "exit", "exit_code": session.exit_code})
-                )
+                await ws.send_text(json.dumps({"type": "exit", "exit_code": session.exit_code}))
             except (WebSocketDisconnect, RuntimeError, OSError):
                 session.attached_ws = None
                 return

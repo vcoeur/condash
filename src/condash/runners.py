@@ -60,7 +60,7 @@ class RunnerSession:
     rows: int = 24
     buffer: bytearray = field(default_factory=bytearray)
     out_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
-    attached_ws: "WebSocket | None" = None
+    attached_ws: WebSocket | None = None
     pump_task: asyncio.Task | None = None
     exit_code: int | None = None
     stamp: int = 0
@@ -264,9 +264,7 @@ async def _pump(session: RunnerSession) -> None:
             session.attached_ws = None
             if ws is not None:
                 try:
-                    await ws.send_text(
-                        json.dumps({"type": "exit", "exit_code": session.exit_code})
-                    )
+                    await ws.send_text(json.dumps({"type": "exit", "exit_code": session.exit_code}))
                 except (WebSocketDisconnect, RuntimeError, OSError):
                     pass
             # Keep the session record around for UI display; _detach_exited

@@ -694,6 +694,10 @@ def _runner_key(repo_name: str, sub_name: str | None = None) -> str:
     return f"{repo_name}--{sub_name}"
 
 
+def _runner_key_for_member(family: dict, member: dict) -> str:
+    return _runner_key(family["name"], member["name"] if member.get("is_subrepo") else None)
+
+
 def _render_runner_button(
     key: str,
     checkout_key: str,
@@ -744,9 +748,7 @@ def _render_runner_mount(key: str, checkout_key: str) -> str:
     session = runners_mod.get(key)
     if session is None or session.checkout_key != checkout_key:
         return ""
-    exited_attr = (
-        f' data-exit-code="{session.exit_code}"' if session.exit_code is not None else ""
-    )
+    exited_attr = f' data-exit-code="{session.exit_code}"' if session.exit_code is not None else ""
     js_label = h(f"{key} @ {checkout_key}")
     return (
         f'<div class="runner-term-mount" '
@@ -761,21 +763,16 @@ def _render_runner_mount(key: str, checkout_key: str) -> str:
         f'<button class="runner-control runner-stop-inline" '
         f'title="Stop" aria-label="Stop" '
         f'onclick="runnerStopInline(this)">{_ICON_SVGS["runner_stop"]}</button>'
-        f'</div>'
+        f"</div>"
         f'<div class="runner-term-host"></div>'
-        f'</div>'
+        f"</div>"
     )
 
 
-def _repo_has_live_runner(ctx: RenderCtx, repo: dict) -> bool:
-    """True if any configured runner key anchored at this repo is live."""
-    name = repo["name"]
-    keys = [name]
-    keys.extend(
-        f"{name}--{sub}"
-        for sub in (s["name"] for s in repo.get("submodules") or [])
-    )
-    for key in keys:
+def _family_has_live_runner(ctx: RenderCtx, family: dict) -> bool:
+    """True if any configured runner key anchored at any family member is live."""
+    for member in family["members"]:
+        key = _runner_key_for_member(family, member)
         if key in ctx.repo_run:
             session = runners_mod.get(key)
             if session is not None and session.exit_code is None:
@@ -783,203 +780,159 @@ def _repo_has_live_runner(ctx: RenderCtx, repo: dict) -> bool:
     return False
 
 
-def _render_submodule_rows(
+def _status_badge(member_or_wt: dict) -> str:
+    if member_or_wt.get("missing"):
+        return '<span class="git-missing">missing</span>'
+    if member_or_wt.get("dirty"):
+        return f'<span class="git-changes">{member_or_wt["changed"]} changed</span>'
+    return '<span class="git-clean">\u2713</span>'
+
+
+def _render_member_row(
     ctx: RenderCtx,
-    submodules,
-    worktree=False,
-    parent_node_id: str = "",
-    parent_repo_name: str = "",
-    checkout_key: str = "",
-):
-    """Render subrepo rows at the same visual size as parent repos."""
-    if not submodules:
-        return ""
-    rows = []
-    for sub in submodules:
-        sub_actions = _render_git_actions(ctx, sub["path"])
-        count = sub.get("changed", 0)
-        dirty_cls = " git-dirty" if count else ""
-        badge = (
-            f'<span class="git-changes">{count} changed</span>'
-            if count
-            else '<span class="git-clean">\u2713</span>'
-        )
-        node_attr = (
-            f' data-node-id="{parent_node_id}/sub:{h(sub["name"])}"' if parent_node_id else ""
-        )
-        runner_btn = ""
-        runner_mount = ""
-        if parent_repo_name and checkout_key:
-            sub_key = _runner_key(parent_repo_name, sub["name"])
-            if sub_key in ctx.repo_run:
-                runner_btn = _render_runner_button(sub_key, checkout_key, sub["path"])
-                runner_mount = _render_runner_mount(sub_key, checkout_key)
-        rows.append(
-            f'<div class="git-row{dirty_cls}"{node_attr} title="{h(sub["path"])}">'
-            f"{sub_actions}{runner_btn}"
-            f'<span class="git-name">{h(sub["name"])}</span>'
-            f'<span class="git-branch"></span>'
-            f'<span class="git-status">{badge}</span>'
-            f'<span class="git-spacer"></span></div>'
-        )
-        if runner_mount:
-            rows.append(runner_mount)
-    inner = "\n".join(rows)
-    scope = "worktree" if worktree else "repo"
-    return (
-        f'<div class="git-subgroup git-subgroup-{scope} collapsed">'
-        f'<div class="git-subgroup-label">Subrepos</div>'
-        f"{inner}"
-        f"</div>"
-    )
-
-
-_GIT_CHEVRON = '<span class="git-chevron">\u25b6</span>'
-
-
-def _render_git_repo_block(ctx: RenderCtx, repo: dict, group_id: str) -> str:
-    """Render one ``.git-repo`` block (main row + subrepos + worktrees).
-
-    Factored out so ``/fragment`` can return a single repo's HTML for
-    localized reloads when runner state changes — otherwise a Run/Stop
-    click would force a full dash refresh.
-    """
-    parts: list[str] = []
-    r = repo
-    repo_id = f"{group_id}/{r['name']}"
-    repo_live = _repo_has_live_runner(ctx, r)
-    live_cls = " git-repo-runner-live" if repo_live else ""
-    parts.append(f'<div class="git-repo{live_cls}" data-node-id="{h(repo_id)}">')
-    dirty_cls = " git-dirty" if r["dirty"] else ""
-    badge = (
-        f'<span class="git-changes">{r["changed"]} changed</span>'
-        if r["dirty"]
-        else '<span class="git-clean">\u2713</span>'
-    )
-    actions = _render_git_actions(ctx, r["path"])
-    repo_name = r["name"]
-    top_key = _runner_key(repo_name)
-    top_runner_btn = (
-        _render_runner_button(top_key, "main", r["path"])
-        if top_key in ctx.repo_run
-        else ""
-    )
-    top_runner_mount = (
-        _render_runner_mount(top_key, "main") if top_key in ctx.repo_run else ""
-    )
+    family: dict,
+    member: dict,
+    member_id: str,
+    family_live: bool,
+) -> str:
+    missing_cls = " git-missing-row" if member.get("missing") else ""
+    dirty_cls = " git-dirty" if member.get("dirty") else ""
+    actions = "" if member.get("missing") else _render_git_actions(ctx, member["path"])
+    if not actions:
+        actions = '<div class="git-actions git-actions-empty"></div>'
+    runner_btn = ""
+    if not member.get("missing"):
+        member_key = _runner_key_for_member(family, member)
+        if member_key in ctx.repo_run:
+            runner_btn = _render_runner_button(member_key, "main", member["path"])
+    # Jump-to-terminal arrow on the parent member when the family has a
+    # live runner anywhere — single anchor per family, matches the old
+    # repo-level behaviour.
     jump_arrow = (
         f'<button class="git-runner-jump" title="Jump to runner terminal" '
         f'aria-label="Jump to runner terminal" '
         f'onclick="runnerJump(event,this)">{_ICON_SVGS["runner_jump"]}</button>'
-        if repo_live
+        if family_live and not member.get("is_subrepo")
         else ""
     )
-    has_subs = bool(r.get("submodules"))
-    toggle_cls = " git-row-collapsible" if has_subs else ""
-    toggle_attr = ' onclick="toggleSubmodules(this)"' if has_subs else ""
-    chev = _GIT_CHEVRON if has_subs else ""
-    parts.append(
-        f'<div class="git-row{dirty_cls}{toggle_cls}"{toggle_attr}>'
-        f"{actions}{top_runner_btn}"
-        f'<span class="git-name">{chev}{jump_arrow}{h(repo_name)}</span>'
-        f'<span class="git-branch">{h(r["branch"])}</span>'
-        f'<span class="git-status">{badge}</span>'
+    return (
+        f'<div class="git-row{dirty_cls}{missing_cls}" '
+        f'data-node-id="{h(member_id)}" title="{h(member["path"])}">'
+        f"{actions}{runner_btn}"
+        f'<span class="git-name">{jump_arrow}{h(member["name"])}</span>'
+        f'<span class="git-branch">{h(member["branch"])}</span>'
+        f'<span class="git-status">{_status_badge(member)}</span>'
         f'<span class="git-spacer"></span></div>'
     )
-    if top_runner_mount:
-        parts.append(top_runner_mount)
-    sub_html = _render_submodule_rows(
-        ctx,
-        r.get("submodules") or [],
-        parent_node_id=repo_id,
-        parent_repo_name=repo_name,
-        checkout_key="main",
+
+
+def _render_worktree_row(
+    ctx: RenderCtx,
+    family: dict,
+    member: dict,
+    wt: dict,
+    wt_id: str,
+) -> str:
+    missing_cls = " git-missing-row" if wt.get("missing") else ""
+    dirty_cls = " git-dirty" if wt.get("dirty") else ""
+    actions = "" if wt.get("missing") else _render_git_actions(ctx, wt["path"])
+    if not actions:
+        actions = '<div class="git-actions git-actions-empty"></div>'
+    runner_btn = ""
+    if not wt.get("missing"):
+        member_key = _runner_key_for_member(family, member)
+        if member_key in ctx.repo_run:
+            runner_btn = _render_runner_button(member_key, wt["key"], wt["path"])
+    return (
+        f'<div class="git-row git-worktree{dirty_cls}{missing_cls}" '
+        f'data-node-id="{h(wt_id)}" title="{h(wt["path"])}">'
+        f"{actions}{runner_btn}"
+        f'<span class="git-name">\u21b3 {h(wt["key"])}</span>'
+        f'<span class="git-branch">{h(wt["branch"])}</span>'
+        f'<span class="git-status">{_status_badge(wt)}</span>'
+        f'<span class="git-spacer"></span></div>'
     )
-    if sub_html:
-        parts.append(sub_html)
-    for wt in r.get("worktrees", []):
-        wt_id = f"{repo_id}/wt:{wt['key']}"
-        wt_dirty_cls = " git-dirty" if wt["dirty"] else ""
-        wt_badge = (
-            f'<span class="git-changes">{wt["changed"]} changed</span>'
-            if wt["dirty"]
-            else '<span class="git-clean">\u2713</span>'
-        )
-        wt_actions = _render_git_actions(ctx, wt["path"])
-        wt_runner_btn = (
-            _render_runner_button(top_key, wt["key"], wt["path"])
-            if top_key in ctx.repo_run
-            else ""
-        )
-        wt_runner_mount = (
-            _render_runner_mount(top_key, wt["key"])
-            if top_key in ctx.repo_run
-            else ""
-        )
-        wt_has_subs = bool(wt.get("submodules"))
-        wt_toggle_cls = " git-row-collapsible" if wt_has_subs else ""
-        wt_toggle_attr = ' onclick="toggleSubmodules(this)"' if wt_has_subs else ""
-        wt_chev = _GIT_CHEVRON if wt_has_subs else ""
-        parts.append(
-            f'<div class="git-row git-worktree{wt_dirty_cls}{wt_toggle_cls}" '
-            f'data-node-id="{h(wt_id)}" '
-            f'title="{h(wt["path"])}"{wt_toggle_attr}>'
-            f"{wt_actions}{wt_runner_btn}"
-            f'<span class="git-name">{wt_chev}\u21b3 {h(wt["key"])}</span>'
-            f'<span class="git-branch">{h(wt["branch"])}</span>'
-            f'<span class="git-status">{wt_badge}</span>'
-            f'<span class="git-spacer"></span></div>'
-        )
-        if wt_runner_mount:
-            parts.append(wt_runner_mount)
-        wt_sub_html = _render_submodule_rows(
-            ctx,
-            wt.get("submodules") or [],
-            worktree=True,
-            parent_node_id=wt_id,
-            parent_repo_name=repo_name,
-            checkout_key=wt["key"],
-        )
-        if wt_sub_html:
-            parts.append(wt_sub_html)
-    parts.append("</div>")  # /git-repo
+
+
+def _render_git_family_block(ctx: RenderCtx, family: dict, group_id: str) -> str:
+    """Render one ``.git-family`` block (every member row + worktree rows
+    + inline runner mounts).
+
+    Factored out so ``/fragment`` can return a single family's HTML for
+    localized reloads when runner state changes — otherwise a Run/Stop
+    click would force a full dash refresh.
+    """
+    family_id = f"{group_id}/{family['name']}"
+    family_live = _family_has_live_runner(ctx, family)
+    family_cls = "git-family"
+    if family["has_subrepos"]:
+        family_cls += " git-family-with-subs"
+    if family_live:
+        family_cls += " git-family-runner-live"
+    parts: list[str] = [f'<div class="{family_cls}" data-node-id="{h(family_id)}">']
+    for member in family["members"]:
+        member_id = f"{family_id}/m:{member['name']}"
+        parts.append(_render_member_row(ctx, family, member, member_id, family_live))
+        member_key = _runner_key_for_member(family, member)
+        if not member.get("missing") and member_key in ctx.repo_run:
+            mount = _render_runner_mount(member_key, "main")
+            if mount:
+                parts.append(mount)
+        for wt in member.get("worktrees") or []:
+            wt_id = f"{member_id}/wt:{wt['key']}"
+            parts.append(_render_worktree_row(ctx, family, member, wt, wt_id))
+            if not wt.get("missing") and member_key in ctx.repo_run:
+                mount = _render_runner_mount(member_key, wt["key"])
+                if mount:
+                    parts.append(mount)
+    parts.append("</div>")  # /git-family
     return "\n".join(parts)
 
 
 def render_git_repo_fragment(ctx: RenderCtx, node_id: str) -> str | None:
-    """Return the HTML for the ``.git-repo`` block matching ``node_id``.
+    """Return the HTML for the ``.git-family`` block matching ``node_id``.
 
-    ``node_id`` shape: ``code/<group-label>/<repo-name>``. Returns
-    ``None`` when the id doesn't match a known repo — the /fragment
-    caller then falls back to the global reload.
+    ``node_id`` shape: ``code/<group-label>/<family-name>``. Family name is
+    the parent repo name, so old callers passing ``code/<group>/<repo>``
+    still resolve. Returns ``None`` when the id doesn't match a known
+    family — the ``/fragment`` caller then falls back to a global reload.
     """
     prefix = "code/"
     if not node_id.startswith(prefix):
         return None
-    rest = node_id[len(prefix):]
+    rest = node_id[len(prefix) :]
     if "/" not in rest:
         return None
-    group_label, repo_name = rest.split("/", 1)
-    for label, repos in _collect_git_repos(ctx):
+    group_label, family_name = rest.split("/", 1)
+    for label, families in _collect_git_repos(ctx):
         if label != group_label:
             continue
-        for repo in repos:
-            if repo["name"] == repo_name:
-                return _render_git_repo_block(ctx, repo, f"code/{label}")
+        for family in families:
+            if family["name"] == family_name:
+                return _render_git_family_block(ctx, family, f"code/{label}")
     return None
 
 
 def _render_git_repos(ctx: RenderCtx, groups):
+    """Render the Code-tab repo strip.
+
+    Each ``group`` (primary / secondary / Others) holds families. A family
+    is a parent repo plus the subrepos declared under it in
+    ``repositories.yml``. Members render as top-level rows; each member's
+    worktrees nest directly underneath. When a family carries subrepos a
+    blue accent left-border wraps the whole family so the eye groups them
+    visually.
+    """
     if not groups:
         return ""
     out = []
-    for label, repos in groups:
+    for label, families in groups:
         group_id = f"code/{label}"
         out.append(f'<div class="git-group" data-node-id="{h(group_id)}">')
         out.append(f'<div class="git-group-header">{h(label)}</div>')
         out.append('<div class="git-group-body">')
-        for r in repos:
-            out.append(_render_git_repo_block(ctx, r, group_id))
+        for family in families:
+            out.append(_render_git_family_block(ctx, family, group_id))
         out.append("</div>")  # /git-group-body
         out.append("</div>")  # /git-group
     return "\n".join(out)

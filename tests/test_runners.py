@@ -15,7 +15,6 @@ import pytest
 
 from condash import runners as runners_mod
 
-
 pytestmark = pytest.mark.skipif(
     sys.platform not in ("linux", "darwin"), reason="runners use pty.fork"
 )
