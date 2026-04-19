@@ -40,7 +40,8 @@ Slug the filename to match the item: `<item-slug>.pdf` for the primary deliverab
 
 ## What the card looks like
 
-![An item card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf.png)
+![An item card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-light.png#only-light)
+![An item card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-dark.png#only-dark)
 
 - A **PDF badge** on the collapsed card tells you "this item has a deliverable".
 - Expanded, the **Deliverables** section lists every entry with its label and description.

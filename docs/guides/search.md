@@ -11,7 +11,8 @@ The **History** tab is a full-text search across every item's README, every note
 
 ## The tab
 
-![History tab — ranked search results with snippets](../assets/screenshots/history-tab.png)
+![History tab — ranked search results with snippets](../assets/screenshots/history-tab-light.png#only-light)
+![History tab — ranked search results with snippets](../assets/screenshots/history-tab-dark.png#only-dark)
 
 Click **History** in the top bar. A search box captures focus; start typing. Results render live as you type, ranked and grouped by item.
 

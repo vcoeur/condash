@@ -4,19 +4,18 @@ This is a minimum working `conception/` tree for [`condash`](https://condash.vco
 
 ```
 ~/conception/
-├── README.md                              ← this file (optional — condash ignores it)
-├── projects/
-│   └── 2026-04-15-first-project/
-│       └── README.md
-├── incidents/
-│   └── 2026-04-15-first-incident/
-│       └── README.md
-└── documents/
-    └── 2026-04-15-first-document/
-        └── README.md
+├── README.md                                       ← this file (optional — condash ignores it)
+└── projects/
+    └── 2026-04/
+        ├── 2026-04-15-first-project/
+        │   └── README.md    (**Kind**: project)
+        ├── 2026-04-15-first-incident/
+        │   └── README.md    (**Kind**: incident)
+        └── 2026-04-15-first-document/
+            └── README.md    (**Kind**: document)
 ```
 
-Three item types — projects, incidents, documents — each with one seed item in a distinct status.
+Every item lives under `projects/YYYY-MM/YYYY-MM-DD-<slug>/`. The three kinds — project, incident, document — all share that one flat layout; the `**Kind**` field in the README header is what tells them apart. See [README format](https://condash.vcoeur.com/reference/readme-format/) for the full header schema.
 
 ## Install and use
 
@@ -38,5 +37,5 @@ The three example items appear in the dashboard in different kanban columns (`no
 ## Next
 
 - Edit the three example READMEs to match your real work, or delete them and replace with your own. Everything the dashboard knows is re-parsed from the files on every refresh.
-- Read the [Conception convention](https://condash.vcoeur.com/conception-convention/) for the full README header, `## Steps`, `## Timeline`, and `## Deliverables` specification.
-- Install the [management skill](https://condash.vcoeur.com/skill/) so Claude Code can create, update, and close items for you.
+- Read the [Status, steps, deliverables](https://condash.vcoeur.com/reference/conception-convention/) reference for the full body-level syntax (`## Steps`, `## Timeline`, `## Deliverables`).
+- Install the [management skill](https://condash.vcoeur.com/reference/skill/) so Claude Code can create, update, and close items for you.

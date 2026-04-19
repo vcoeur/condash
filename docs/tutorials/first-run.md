@@ -80,7 +80,8 @@ condash
 
 A desktop window opens. You should see this:
 
-![Dashboard rendering the demo tree — Current tab selected](../assets/screenshots/dashboard-overview.png)
+![Dashboard rendering the demo tree — Current tab selected](../assets/screenshots/dashboard-overview-light.png#only-light)
+![Dashboard rendering the demo tree — Current tab selected](../assets/screenshots/dashboard-overview-dark.png#only-dark)
 
 The header shows four top-level tabs with counts: **Projects (9)**, **Code (3)**, **Knowledge (8)**, **History (9)**. Under **Projects**, the sub-tabs are **Current / Next / Backlog / Done**. The demo tree was built so every bucket has something in it.
 

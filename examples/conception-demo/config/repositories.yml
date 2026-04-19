@@ -8,8 +8,12 @@ workspace_path: /tmp/conception-demo-workspace
 worktrees_path: /tmp/conception-demo-worktrees
 repositories:
   primary:
-  - helio
-  - helio-web
+  - name: helio
+    run: "cargo watch -x 'run -- serve'"
+    submodules:
+    - { name: crates/parser }
+    - { name: crates/search, run: "cargo watch -p search -x test" }
+  - { name: helio-web, run: "npm run dev" }
   - helio-docs
   secondary: []
 open_with:

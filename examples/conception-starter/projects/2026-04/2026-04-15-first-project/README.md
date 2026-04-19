@@ -1,6 +1,7 @@
 # First project — seed the dashboard
 
 **Date**: 2026-04-15
+**Kind**: project
 **Status**: now
 **Apps**: `example-app`
 

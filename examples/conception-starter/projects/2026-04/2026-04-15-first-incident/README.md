@@ -1,6 +1,7 @@
 # First incident — seed the dashboard
 
 **Date**: 2026-04-15
+**Kind**: incident
 **Status**: now
 **Apps**: `example-app`
 **Environment**: `prod`

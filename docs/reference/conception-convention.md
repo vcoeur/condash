@@ -56,7 +56,7 @@ Six ordered values, highest-urgency first:
 | `review` | Work done, awaiting review or verification |
 | `done` | Closed. Stays in its `YYYY-MM/` folder indefinitely. |
 
-The parser normalises the value to lowercase and falls back to `backlog` for anything unrecognised. Inside the dashboard, status changes via drag-and-drop rewrite the `**Status**:` line in place — see [mutations](mutations.md).
+The parser normalises the value to lowercase and falls back to `backlog` for anything unrecognised. Unknown values also log a parser warning and make the card sprout a red `!? <value>` badge next to its status pill so typos (`wip`, `active`, …) don't silently vanish into `backlog`; see [README format — Status](readme-format.md#status) for the full rule. Inside the dashboard, status changes via drag-and-drop rewrite the `**Status**:` line in place — see [mutations](mutations.md).
 
 ## Steps
 

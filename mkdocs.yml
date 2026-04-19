@@ -98,6 +98,7 @@ nav:
     - README format: reference/readme-format.md
     - Status, steps, deliverables: reference/conception-convention.md
     - Mutation model: reference/mutations.md
+    - Inline dev-server runner: reference/inline-runner.md
     - HTTP and WebSocket API: reference/http-api.md
     - Keyboard shortcuts: reference/shortcuts.md
     - Environment variables: reference/env.md

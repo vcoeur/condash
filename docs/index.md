@@ -9,7 +9,8 @@ description: Live desktop dashboard for a Markdown-first project-tracking conven
 
 `condash` is a single-user desktop app that renders a live dashboard of a directory tree of **projects**, **incidents**, and **documents** written as plain Markdown. No database, no sync server, no account — the Markdown files are the source of truth, and `condash` is the view layer.
 
-![condash dashboard overview](assets/screenshots/dashboard-overview.png)
+![condash dashboard overview](assets/screenshots/dashboard-overview-light.png#only-light)
+![condash dashboard overview](assets/screenshots/dashboard-overview-dark.png#only-dark)
 
 ## Start here
 

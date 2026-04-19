@@ -16,7 +16,8 @@ Two ways:
 - Click the `>_` icon in the dashboard header.
 - Press the configured toggle shortcut. Default is `` Ctrl+` ``; change it under `terminal.shortcut` in `config.toml` or `preferences.yml`.
 
-![Terminal pane open beneath the dashboard](../assets/screenshots/terminal.png)
+![Terminal pane open beneath the dashboard](../assets/screenshots/terminal-light.png#only-light)
+![Terminal pane open beneath the dashboard](../assets/screenshots/terminal-dark.png#only-dark)
 
 The pane pushes the dashboard up — it does not overlay. Toggling the pane closed suspends rendering but keeps every tab's PTY alive and its scrollback intact.
 
@@ -80,7 +81,8 @@ See the [config reference](../reference/config.md) for the full key table with d
 
 The gear modal's **Preferences** tab has form fields for every `[terminal]` key:
 
-![Gear modal — Preferences tab with terminal settings](../assets/screenshots/gear-modal-preferences.png)
+![Gear modal — Preferences tab with terminal settings](../assets/screenshots/gear-modal-preferences-light.png#only-light)
+![Gear modal — Preferences tab with terminal settings](../assets/screenshots/gear-modal-preferences-dark.png#only-dark)
 
 Saves go to `preferences.yml`. The shortcut field shows a live "press the combination" capture when you click into it — less error-prone than hand-typing `KeyboardEvent.key` names.
 

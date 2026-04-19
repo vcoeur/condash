@@ -34,7 +34,10 @@ repositories:
 
 Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. Every repo not listed in either group lands in an auto-generated **OTHERS** card. The three cards render as a single strip, in the order primary → secondary → others:
 
-![Code tab — three repos organised into primary, secondary, others](../assets/screenshots/code-tab.png)
+![Code tab — three repos organised into primary, secondary, others](../assets/screenshots/code-tab-light.png#only-light)
+![Code tab — three repos organised into primary, secondary, others](../assets/screenshots/code-tab-dark.png#only-dark)
+
+Inside a card, each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it — see [Multi-machine setup](multi-machine.md) for where worktrees come from.
 
 The grouping is a UX signal, nothing more — every group behaves the same (same dirty counts, same launcher buttons). Use it to keep the repos you actually touch today at eye level.
 
@@ -48,9 +51,13 @@ repositories:
     - { name: helio, submodules: [apps/web, apps/api, crates/parser] }
 ```
 
-Each listed subdirectory renders as a sub-row under the parent repo, keeps its own dirty count, and gets its own set of launcher buttons. The parent row stays collapsible.
+Since v0.14.0 each declared submodule renders as a **top-level row** alongside its parent, not as a collapsible child under it. Parent and submodules share a row level; the whole family is wrapped in a left-border accent (the blue "family" line) so the eye still groups them. The collapse chevron is gone — submodules are always rendered when they exist.
 
-This is an inline map (`{name: …, submodules: […]}`), not a nested block. A plain string entry continues to mean "treat the whole repo as one unit".
+Each row in the family (parent or submodule) keeps its own dirty count, its own set of `open_with` buttons, its own [inline runner](../reference/inline-runner.md), and its own nested worktrees. A repo without declared submodules simply renders as a family of one.
+
+If a configured submodule path is missing in one of a repo's worktrees (the worktree predates the submodule's addition, or someone deleted the subdir), condash surfaces a greyed **"missing"** row in that family rather than silently omitting it — that way the visual family stays consistent across checkouts and the gap is obvious.
+
+The `submodules` entry is an inline map (`{name: …, submodules: […]}`), not a nested block. A plain string entry continues to mean "treat the whole repo as one unit".
 
 ## The three `open_with` slots
 
@@ -88,11 +95,27 @@ Built-in defaults for the three slots reproduce the previous IntelliJ / VS Code 
 
 Click the gear icon in the header, switch to the **Repositories** tab:
 
-![Gear modal — Repositories tab](../assets/screenshots/gear-modal-repositories.png)
+![Gear modal — Repositories tab](../assets/screenshots/gear-modal-repositories-light.png#only-light)
+![Gear modal — Repositories tab](../assets/screenshots/gear-modal-repositories-dark.png#only-dark)
 
 Form fields for `workspace_path`, `worktrees_path`, and the primary / secondary lists. Saves write `repositories.yml` atomically and reload the dashboard live. Add new repos to the primary list by dragging them up from the OTHERS card on the dashboard itself.
 
 `open_with` is not currently exposed in the modal — edit `repositories.yml` directly for launcher changes.
+
+## Starting a dev server from the row
+
+Distinct from `open_with` (which launches **external** tools like your IDE), the inline **Run** button spawns a dev server as a PTY-owned child of condash itself, with its output streamed into an xterm mounted under the row. Enable it by adding `run: "<command>"` to the repo's inline-map entry:
+
+```yaml
+repositories:
+  primary:
+    - { name: notes.vcoeur.com, run: "make dev" }
+    - name: helio
+      submodules:
+        - { name: apps/web, run: "npm --prefix apps/web run dev" }
+```
+
+The runner and the `open_with` launchers solve different problems: `open_with` hands control to a separate process you then interact with elsewhere; Run keeps the process under condash's lifecycle and shows its output right in the dashboard. See [inline dev-server runner](../reference/inline-runner.md) for the full state machine, single-session-per-repo lock, and websocket routes.
 
 ## Sandbox rules
 

@@ -97,6 +97,7 @@ open_with:
 | `repositories.primary` | List of bare directory names (not paths) matched against the scan. Shown in the `PRIMARY` card. |
 | `repositories.secondary` | Same as primary, shown in the `SECONDARY` card. Anything under `workspace_path` not named in either list lands in an `OTHERS` card. |
 | Entry with `submodules` | An inline map `{name: repo, submodules: [sub/one, sub/two]}` renders the repo as an expandable row with sub-rows for each listed subdirectory. Each submodule keeps its own dirty count and "open with" buttons. Useful for monorepos where different subtrees are edited independently. |
+| Entry with `run` | Either a top-level inline map `{name: repo, run: "<cmd>"}` or a sub-repo map `{name: apps/web, run: "<cmd>"}` wires an [inline dev-server runner](inline-runner.md) into that row. `run:` is independent of `submodules:` — a parent's `run:` is **not** inherited by its submodules. |
 | `open_with.<slot>` | Three vendor-neutral launcher slots (`main_ide`, `secondary_ide`, `terminal`). Each slot has a `label` (tooltip) and a `commands` fallback chain. |
 
 ### `{path}` substitution
@@ -137,14 +138,17 @@ Result: you get sensible per-machine defaults from `~/.config/`, team-shared rep
 
 Click the gear icon in the header. A modal opens with three tabs:
 
-![Gear modal General tab](../assets/screenshots/gear-modal.png)
+![Gear modal General tab](../assets/screenshots/gear-modal-light.png#only-light)
+![Gear modal General tab](../assets/screenshots/gear-modal-dark.png#only-dark)
 
 - **General** → writes `conception_path`, `port`, `native` to `config.toml`.
 - **Repositories** → writes `workspace_path`, `worktrees_path`, `repositories`, `open_with` to `repositories.yml`.
 - **Preferences** → writes `pdf_viewer`, `terminal` to `preferences.yml`.
 
-![Gear modal Repositories tab](../assets/screenshots/gear-modal-repositories.png)
+![Gear modal Repositories tab](../assets/screenshots/gear-modal-repositories-light.png#only-light)
+![Gear modal Repositories tab](../assets/screenshots/gear-modal-repositories-dark.png#only-dark)
 
-![Gear modal Preferences tab](../assets/screenshots/gear-modal-preferences.png)
+![Gear modal Preferences tab](../assets/screenshots/gear-modal-preferences-light.png#only-light)
+![Gear modal Preferences tab](../assets/screenshots/gear-modal-preferences-dark.png#only-dark)
 
 Saves are atomic (`tomlkit` / PyYAML) and preserve comments you've added outside the header block. Changes to `port` and `native` require a restart; the modal tells you so. Everything else reloads live.

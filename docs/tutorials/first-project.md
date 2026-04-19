@@ -68,7 +68,8 @@ EOF
 
 Switch back to the condash window and click the refresh icon in the header. The project appears under **Next** with status `soon`.
 
-![Projects → Next shows the newly created soon-status item](../assets/screenshots/projects-next.png)
+![Projects → Next shows the newly created soon-status item](../assets/screenshots/projects-next-light.png#only-light)
+![Projects → Next shows the newly created soon-status item](../assets/screenshots/projects-next-dark.png#only-dark)
 
 Notice the `[[fuzzy-search-v2|the fuzzy-search item]]` in the last step — that's a **wikilink** that will resolve to the existing fuzzy-search-v2 item. Click the step text once you've expanded the card; condash follows the link to that item's card.
 
@@ -101,7 +102,7 @@ Tick another — try the second one — and then **shift-click** a third to mark
 
 The dashboard can create files inside `<item>/notes/`. Click the **`+`** button in the Files panel (bottom-left of the expanded card). Name the new file `corpus-format.md` and hit Enter.
 
-A blank preview opens on the right. Click into it to edit; condash writes as you type. Paste something plausible:
+A blank preview opens on the right. Click into it to edit. The **Save** button (top of the note pane) turns active as soon as you type the first character — condash tracks unsaved changes explicitly rather than autosaving. Paste something plausible:
 
 ```markdown
 # Corpus format decision
@@ -116,6 +117,8 @@ Two options:
 
 Going with (1) — the reproducibility cost of (2) is too high for a perf harness.
 ```
+
+Click **Save** (or press `Ctrl+S`). The button dims back to *No unsaved changes* once the write succeeds. If you close the note pane while the button is still lit, condash pops a `You have unsaved changes. Discard them?` confirm so a stray click doesn't lose the buffer.
 
 Click back to the README pane. The note you just created shows up in the Files tree. That's it — the note is a regular `.md` file under `<item>/notes/`, gitignorable, diffable, editable from your editor too.
 

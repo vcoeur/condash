@@ -23,7 +23,8 @@ condash
 
 Click the **Current** sub-tab and click the `helio search` incident row. The card expands.
 
-![Incident card expanded with all four step markers visible](../assets/screenshots/item-fuzzy-search.png)
+![Incident card expanded with all four step markers visible](../assets/screenshots/item-fuzzy-search-light.png#only-light)
+![Incident card expanded with all four step markers visible](../assets/screenshots/item-fuzzy-search-dark.png#only-dark)
 
 (Screenshot is of a project card; the incident layout is identical except for the pink `INCIDENT` badge and the `Environment` / `Severity` header fields.)
 
@@ -33,7 +34,8 @@ Read the README. The summary points at a specific test corpus, and the `notes/st
 
 Switch to the **Code** tab. Three helio repos render as rows: `helio`, `helio-web`, `helio-docs`. The `helio` row has a `1 changed` pill — you left a WIP note there last week.
 
-![Code tab — three repos, helio with a dirty-file indicator](../assets/screenshots/code-tab.png)
+![Code tab — three repos, helio with a dirty-file indicator](../assets/screenshots/code-tab-light.png#only-light)
+![Code tab — three repos, helio with a dirty-file indicator](../assets/screenshots/code-tab-dark.png#only-dark)
 
 Each repo has four icon buttons: README preview, code browser, embedded terminal, and "open in main IDE". Click the IDE icon on `helio` — your main editor launches in that directory.
 
@@ -43,7 +45,8 @@ The launcher command chain lives in `config/repositories.yml`, under `open_with.
 
 Click the **terminal** icon (`>_`) in the header — a pane opens beneath the dashboard with a real bash prompt.
 
-![Terminal pane with a running helio command](../assets/screenshots/terminal.png)
+![Terminal pane with a running helio command](../assets/screenshots/terminal-light.png#only-light)
+![Terminal pane with a running helio command](../assets/screenshots/terminal-dark.png#only-dark)
 
 Cwd is already set to wherever you were, and `TERM=xterm-256color`. Run the repro from the incident's `notes/repro.md`:
 
@@ -53,7 +56,7 @@ cargo build --release
 ./target/release/helio search --format=json /tmp/fixtures/1g-corpus.log 'ERROR'
 ```
 
-You get a `thread 'main' panicked at 'attempt to subtract with overflow'` — confirmed reproducible. While the build was running, the terminal scrollback captured the traceback; paste it into the item by switching back to the card, opening `notes/stack-trace.md`, and dropping the new trace at the bottom. Save.
+You get a `thread 'main' panicked at 'attempt to subtract with overflow'` — confirmed reproducible. While the build was running, the terminal scrollback captured the traceback; paste it into the item by switching back to the card, opening `notes/stack-trace.md`, and dropping the new trace at the bottom. The **Save** button lights up as soon as you type — click it or hit `Ctrl+S`. If you try to close the note pane with unsaved edits still in the buffer, condash asks before discarding.
 
 The terminal has two useful quality-of-life features:
 
@@ -77,7 +80,8 @@ bash ~/.claude/scripts/md_to_pdf.sh notes/investigation.md deliverables/incident
 
 Refresh the dashboard; the `PDF` badge on the item row lights up and the Deliverables section in the expanded card now offers a download link.
 
-![A card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf.png)
+![A card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-light.png#only-light)
+![A card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-dark.png#only-dark)
 
 Clicking the link opens the vendored PDF viewer in a modal — no OS handler involved.
 
@@ -98,7 +102,8 @@ If you've installed the [`/pr` skill](https://github.com/vcoeur/conception/tree/
 
 In the Current sub-tab, the item moves from the `NOW` group to the `REVIEW` group. You can see exactly this split in the screenshot below — the `CLI config migration to layered TOML` item is already in review while three others are still under NOW.
 
-![Current sub-tab with NOW and REVIEW groups side by side](../assets/screenshots/dashboard-overview.png)
+![Current sub-tab with NOW and REVIEW groups side by side](../assets/screenshots/dashboard-overview-light.png#only-light)
+![Current sub-tab with NOW and REVIEW groups side by side](../assets/screenshots/dashboard-overview-dark.png#only-dark)
 
 ## 7. Close on merge
 
@@ -106,13 +111,15 @@ The PR lands the next day. Open the item, tick the final step, change status fro
 
 Check Done sub-tab — the item is there alongside last month's archived entries.
 
-![Done sub-tab — closed items surface here](../assets/screenshots/projects-done.png)
+![Done sub-tab — closed items surface here](../assets/screenshots/projects-done-light.png#only-light)
+![Done sub-tab — closed items surface here](../assets/screenshots/projects-done-dark.png#only-dark)
 
 ## 8. Find it again later
 
 The item stays where it was created. Open the **History** tab and type `overflow` — the incident's README and your updated stack-trace note surface together, ranked by relevance.
 
-![History tab — ranked search results across items and notes](../assets/screenshots/history-tab.png)
+![History tab — ranked search results across items and notes](../assets/screenshots/history-tab-light.png#only-light)
+![History tab — ranked search results across items and notes](../assets/screenshots/history-tab-dark.png#only-dark)
 
 ## What you just learned
 

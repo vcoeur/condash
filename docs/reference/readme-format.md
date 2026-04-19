@@ -13,7 +13,7 @@ Every item lives at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. The first line
 |---|---|---|---|
 | `**Date**` | no | all | ISO `YYYY-MM-DD`. Defaults to the directory's date prefix when missing. |
 | `**Kind**` | no | all | `project` / `incident` / `document`. Defaults to `project`. |
-| `**Status**` | **yes** | all | `now` / `soon` / `later` / `backlog` / `review` / `done`. Unknown → `backlog`. |
+| `**Status**` | **yes** | all | `now` / `soon` / `later` / `backlog` / `review` / `done`. Unknown values coerce to `backlog`, log a parser warning, and surface a `!?` badge on the card. |
 | `**Apps**` | no | all | Comma-separated backtick-wrapped app names. Powers the per-app filter. |
 | `**Branch**` | no | projects | Git branch name. Hints the `/pr` skill + worktree isolation rules. |
 | `**Base**` | no | projects | Base branch for `/pr`. Defaults to `origin/HEAD`. |
@@ -126,7 +126,17 @@ Six values, in this exact order:
 now → soon → later → backlog → review → done
 ```
 
-Anything outside this set falls back to `backlog`. See [conception convention](conception-convention.md) for the status model and what each value means.
+Anything outside this set is **coerced to `backlog`** with two side-effects so the typo doesn't slip past you:
+
+- The parser logs a `WARNING` with the offending value and the item's path, e.g. `unknown Status 'wip' in projects/2026-04/2026-04-17-foo/README.md — coerced to 'backlog'`.
+- The card renders a red **`!? <value>`** badge next to the status pill, with a tooltip showing the valid enum. It disappears as soon as the README is fixed — the next poll cycle re-parses, finds a valid Status, and drops the badge.
+
+![Backlog card showing a red `!? WIP` badge next to its status pill](../assets/screenshots/status-unknown-badge-light.png#only-light)
+![Backlog card showing a red `!? WIP` badge next to its status pill](../assets/screenshots/status-unknown-badge-dark.png#only-dark)
+
+Without the badge, a typo like `active` would silently land in the `backlog` column; with it, the item sticks out visibly until corrected.
+
+See [conception convention](conception-convention.md) for the status model and what each value means.
 
 ## Apps
 

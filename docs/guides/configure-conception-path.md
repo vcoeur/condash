@@ -47,7 +47,8 @@ The flag overrides `config.toml` for that launch only. Useful for:
 
 Click the gear icon in the dashboard header. The **General** tab shows the current `conception_path` in an editable field:
 
-![Gear modal — General tab](../assets/screenshots/gear-modal.png)
+![Gear modal — General tab](../assets/screenshots/gear-modal-light.png#only-light)
+![Gear modal — General tab](../assets/screenshots/gear-modal-dark.png#only-dark)
 
 Typing a new path and clicking **Save** rewrites `config.toml` atomically (via `tomlkit`, so comments above the header block are preserved) and reloads the dashboard against the new tree. No restart needed.
 

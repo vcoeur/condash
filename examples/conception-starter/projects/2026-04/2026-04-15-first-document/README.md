@@ -1,6 +1,7 @@
 # First document — seed the dashboard
 
 **Date**: 2026-04-15
+**Kind**: document
 **Status**: review
 **Apps**: `example-app`
 
@@ -22,7 +23,7 @@ A bulleted list of the material this document is based on. Cite inline too, but 
 
 - [Some upstream doc](https://example.com/upstream)
 - A private repo, file `path/to/file.py`
-- An incident post-mortem: `incidents/2026-04-14-login-500s/`
+- An incident post-mortem: `projects/2026-04/2026-04-14-login-500s/`
 
 ## Steps
 

@@ -31,8 +31,15 @@ knowledge/
 ├── apps.md                  # short per-app descriptions
 ├── topics/
 │   ├── index.md
-│   ├── playwright-sandbox.md
-│   └── pdf-pipeline.md
+│   ├── ops/
+│   │   ├── index.md
+│   │   └── dev-ports.md     # nested arbitrarily deep — condash doesn't cap depth
+│   ├── security/
+│   │   ├── index.md
+│   │   └── legal-privacy.md
+│   └── testing/
+│       ├── index.md
+│       └── playwright-sandbox.md
 ├── internal/
 │   ├── index.md
 │   └── helio.md             # per-app internal runbook
@@ -42,11 +49,13 @@ knowledge/
 
 The three-folder split (`topics/`, `internal/`, `external/`) is not enforced by condash — it's a convention:
 
-- **`topics/`** — cross-cutting technical reference.
+- **`topics/`** — cross-cutting technical reference. Sub-categorise further when it helps (`topics/ops/`, `topics/security/`, `topics/testing/`, …); condash renders any depth.
 - **`internal/`** — per-app operational knowledge that only makes sense to the team.
 - **`external/`** — references copied in from outside (upstream docs, vendor runbooks).
 
 Put `conventions.md` at the root because it's the first thing a new teammate opens.
+
+There is no cap on subdirectory depth — `knowledge/topics/ops/dev-ports.md` works the same as `knowledge/conventions.md`. Before v0.12.6 the note-serving endpoint capped at one sub-level and deeper files returned `Failed to load note.`; since v0.12.6 arbitrary depth is served and linkable.
 
 ## How condash scans the tree
 
@@ -64,7 +73,8 @@ Titles come from the first `# Heading` line of the file. If the file has no top-
 
 Open the **Knowledge** tab in the header. The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
 
-![Knowledge tab — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-tab.png)
+![Knowledge tab — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-tab-light.png#only-light)
+![Knowledge tab — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-tab-dark.png#only-dark)
 
 Click a tile to open the file in the right-hand pane. Click a folder to expand it; the folder's `index.md` (if any) renders as a summary tile at the top.
 
