@@ -1266,6 +1266,23 @@ def _reap_all_pty_sessions() -> None:
     _PTY_SESSIONS.clear()
 
 
+def _reap_and_exit() -> None:
+    """Native-close handler: SIGTERM every child before ``os._exit``.
+
+    ``os._exit`` skips FastAPI's ``on_shutdown`` hooks, so without this
+    every runner (``make dev`` + friends) and every terminal-tab shell
+    would be reparented to init and keep its ports bound across the next
+    launch. Best-effort: swallow everything so a stuck reap can't block
+    the exit — the whole point is to leave cleanly.
+    """
+    for reap in (_reap_all_pty_sessions, runners_mod.reap_all):
+        try:
+            reap()
+        except Exception as exc:  # noqa: BLE001
+            log.debug("reap on close: %s failed: %s", reap.__name__, exc)
+    os._exit(0)
+
+
 async def _attach_runner_ws(session, ws: WebSocket) -> None:
     """Receive loop for a ws viewing a :class:`RunnerSession`.
 
@@ -1743,6 +1760,9 @@ def run(cfg: CondashConfig) -> None:
         # NiceGUI's check_shutdown thread sometimes fails to actually stop
         # uvicorn after the user closes the window — leaving the port bound
         # for the next launch. Force-exit the whole process when the
-        # native window emits its `closed` event.
-        _ng_app.native.on("closed", lambda: os._exit(0))
+        # native window emits its `closed` event. `os._exit` bypasses
+        # FastAPI's shutdown hooks, so we have to SIGTERM every pty + inline
+        # runner child ourselves — otherwise `make dev` servers survive as
+        # orphans and keep ports bound across relaunches.
+        _ng_app.native.on("closed", _reap_and_exit)
     ui.run(**kwargs)

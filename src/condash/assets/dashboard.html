@@ -612,6 +612,17 @@ body:not([data-single-term]) .term-side.is-active-side .term-mount {
     color: #f0f0f5; border-color: var(--accent);
     background: #1a1b20;
 }
+/* Close-pane button uses the same chip styling as the + buttons, but the
+   glyph reads as "close" and hover turns it red to match the Stop button
+   colour language elsewhere in the dashboard. */
+.term-new-tab.term-close {
+    margin-left: 6px;
+    font-size: 1.15rem;
+}
+.term-new-tab.term-close:hover {
+    color: #f0f0f5; border-color: #d64545;
+    background: #2a1a1a;
+}
 
 /* Drag affordances for tab chips. A chip being dragged goes translucent;
    the chip under the pointer draws a 2px accent line on the side where
@@ -1370,10 +1381,10 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
 /* A repo block groups a main repo row with its worktrees. Sibling
    repo blocks are split by a solid rule — clearly more space than
    between a repo and its own worktrees. */
-.git-repo { padding: 0.2rem 0; }
-.git-repo + .git-repo {
+.git-family + .git-family {
     border-top: 1px solid var(--border);
     margin-top: 0.2rem;
+    padding-top: 0.2rem;
 }
 
 /* Shared column grid — every row (main repo or worktree) uses the
@@ -1404,6 +1415,13 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
     width: 110px; flex-shrink: 0;
     display: flex; align-items: center;
 }
+/* Fixed-width slot holding the inline runner button between name and
+   branch — always rendered (empty for non-runnable repos) so the branch
+   and status columns stay aligned across runnable and non-runnable rows. */
+.git-runner-slot {
+    width: 30px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
 .git-changes {
     font-size: 0.75rem; color: var(--git-changes); background: var(--git-changes-bg);
     padding: 1px 8px; border-radius: 8px; font-weight: 500;
@@ -1427,13 +1445,17 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
 .git-row.git-worktree .git-clean { font-size: 0.82rem; }
 
 /* Family wrapper — groups a parent repo with the subrepos declared
-   under it in repositories.yml. The accent left border is the only
-   visual cue tying them together; rows themselves render top-level. */
-.git-family { padding: 0; }
+   under it in repositories.yml. Every family reserves the same left
+   inset (transparent border + padding) so columns align across families
+   with and without subs; only the border color changes when subs are
+   present, turning into the blue accent that ties the group together. */
+.git-family {
+    padding: 0 0 0 0.4rem;
+    border-left: 2px solid transparent;
+}
 .git-family-with-subs {
     margin: 0.15rem 0 0.3rem;
-    border-left: 2px solid var(--accent);
-    padding-left: 0.4rem;
+    border-left-color: var(--accent);
 }
 /* Missing-row state: subrepo worktree whose subdir doesn't exist in
    that worktree. Greyed out, no actions, "missing" pill in the status
@@ -1512,12 +1534,25 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
     border-left-color: var(--text-muted);
     opacity: 0.85;
 }
+/* Collapsed inline runner: hide the output, keep the header (so the
+   label, status and controls stay reachable) and flip the chevron. The
+   server-side session keeps running — this is a view-only toggle. */
+.runner-term-mount.runner-collapsed .runner-term-host { display: none; }
+.runner-term-mount.runner-collapsed .runner-collapse svg { transform: rotate(180deg); }
 .runner-term-header {
     display: flex; align-items: center; gap: 0.5rem;
     padding: 0.2rem 0.5rem;
     background: color-mix(in srgb, var(--bg-card) 85%, black 15%);
     border-bottom: 1px solid var(--border);
     font-size: 0.72rem;
+    cursor: pointer;
+    user-select: none;
+}
+.runner-term-header:hover {
+    background: color-mix(in srgb, var(--bg-card) 70%, black 30%);
+}
+.runner-term-mount.runner-collapsed .runner-term-header {
+    border-bottom-color: transparent;
 }
 .runner-term-label {
     font-weight: 600; color: var(--text-secondary);
@@ -1574,8 +1609,18 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
     background: transparent; color: var(--text-secondary);
     border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
 }
+/* Inside the popout modal the mount and its host both stretch to fill the
+   dialog. Without this, .runner-term-mount keeps its default margin +
+   row-based height and leaves a large empty band below the terminal. */
+.runner-modal-dialog .runner-modal-viewer {
+    flex: 1 1 auto;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    min-height: 0;
+}
 .runner-modal-dialog .runner-term-host {
-    flex: 1 1 auto; height: auto;
+    flex: 1 1 auto; height: auto; min-height: 0;
 }
 
 /* Per-card quick actions (work-on + open folder) — sit to the right of
@@ -1795,6 +1840,7 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
         <div class="term-tabs term-tabs-right" id="term-tabs-right"></div>
         <button class="term-new-tab" onclick="termNewTab('right')" title="New tab (right)" aria-label="New tab (right)">+</button>
         <button class="term-new-tab" id="term-launcher-right" onclick="termNewLauncherTab('right')" hidden>λ</button>
+        <button class="term-new-tab term-close" onclick="toggleTerminal()" title="Close terminal pane" aria-label="Close terminal pane">&times;</button>
     </div>
     <div class="term-body">
         <div class="term-side" data-side="left">
@@ -5636,6 +5682,36 @@ function _runnerCreateViewer(mount, key, checkout, opts) {
     term.loadAddon(fit);
     term.open(host);
     try { fit.fit(); } catch (e) {}
+    // Same copy/paste story as the bottom terminal: Ctrl+C copies the
+    // selection if there is one (else falls through to SIGINT), Ctrl+Shift+C
+    // always copies, Ctrl+V pastes via the clipboard bridge. Without this
+    // handler xterm swallows Ctrl+C as SIGINT before the selection can be
+    // read, so users couldn't copy runner output at all.
+    term.attachCustomKeyEventHandler(function(ev) {
+        if (ev.type !== 'keydown') return true;
+        if (ev.ctrlKey && !ev.altKey && !ev.metaKey &&
+            (ev.key === 'c' || ev.key === 'C')) {
+            if (ev.shiftKey || term.hasSelection()) {
+                var sel = term.getSelection();
+                if (sel) {
+                    _termClipboardWrite(sel);
+                    ev.preventDefault();
+                    return false;
+                }
+                if (ev.shiftKey) { ev.preventDefault(); return false; }
+            }
+            return true;  // fall through to SIGINT
+        }
+        if (ev.ctrlKey && !ev.altKey && !ev.metaKey &&
+            (ev.key === 'v' || ev.key === 'V')) {
+            ev.preventDefault();
+            _termClipboardRead().then(function(text) {
+                if (text && !viewer.exited) term.paste(text);
+            });
+            return false;
+        }
+        return true;
+    });
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var wsUrl = proto + '//' + location.host + '/ws/runner/' + encodeURIComponent(key);
     var ws = new WebSocket(wsUrl);
@@ -5668,13 +5744,18 @@ function _runnerCreateViewer(mount, key, checkout, opts) {
                         mount.classList.add('runner-exited');
                     }
                 } else if (obj.type === 'exit') {
+                    // Only refresh on the running → exited transition. The
+                    // server also replays an `exit` frame whenever a client
+                    // re-attaches to an already-dead session; without this
+                    // guard, the refresh re-renders the mount, reattach
+                    // spins up a new viewer, the server replays `exit`
+                    // again — and the repo row blinks in a tight loop.
+                    var wasExited = viewer.exited;
                     viewer.exited = true;
                     mount.setAttribute('data-exit-code', String(obj.exit_code));
                     mount.classList.add('runner-exited');
                     _runnerSetStatus(viewer, 'exited: ' + (obj.exit_code == null ? '?' : obj.exit_code));
-                    // Trigger a fragment refresh so the Stop button flips back
-                    // to Run and the repo-strip reflects the end-of-run state.
-                    _runnerScheduleRefresh(key, checkout);
+                    if (!wasExited) _runnerScheduleRefresh(key, checkout);
                 } else if (obj.type === 'session-missing') {
                     _runnerSetStatus(viewer, 'no session');
                 } else if (obj.type === 'error' && obj.message) {
@@ -5757,7 +5838,7 @@ function _runnerFindMount(key, checkout) {
 function _runnerRepoNodeIdFor(key, checkout) {
     var mount = _runnerFindMount(key, checkout);
     if (!mount) return null;
-    var repo = mount.closest('.git-repo');
+    var repo = mount.closest('.git-family');
     return repo ? repo.getAttribute('data-node-id') : null;
 }
 
@@ -5773,7 +5854,7 @@ function _runnerScheduleRefresh(key, checkout) {
     // confirm-switch flow shouldn't trigger three fragment fetches.
     if (_runnerRefreshPending) clearTimeout(_runnerRefreshPending);
     var repoId = _runnerRepoNodeIdFor(key, checkout)
-        || document.querySelector('.git-repo[data-node-id*="/' + key.split('--')[0] + '"]');
+        || document.querySelector('.git-family[data-node-id*="/' + key.split('--')[0] + '"]');
     if (repoId && repoId.getAttribute) repoId = repoId.getAttribute('data-node-id');
     _runnerRefreshPending = setTimeout(function() {
         _runnerRefreshPending = null;
@@ -5829,6 +5910,33 @@ function runnerStopInline(btn) {
     runnerStop(null, mount.dataset.runnerKey);
 }
 
+function runnerToggleCollapse(btn) {
+    var mount = btn.closest('.runner-term-mount');
+    if (!mount) return;
+    var collapsed = mount.classList.toggle('runner-collapsed');
+    btn.setAttribute('aria-label', collapsed ? 'Expand terminal' : 'Collapse terminal');
+    // Refit on expand so xterm picks up the host's new height — otherwise
+    // the terminal keeps its pre-collapse row count and the bottom rows
+    // render off-screen.
+    if (!collapsed) {
+        var key = mount.dataset.runnerKey;
+        var checkout = mount.dataset.runnerCheckout;
+        var viewer = _runnerViewers[_runnerDomKey(key, checkout)];
+        if (viewer) {
+            requestAnimationFrame(function() {
+                try {
+                    viewer.fit.fit();
+                    if (viewer.ws.readyState === WebSocket.OPEN) {
+                        viewer.ws.send(JSON.stringify({
+                            type: 'resize', cols: viewer.term.cols, rows: viewer.term.rows,
+                        }));
+                    }
+                } catch (e) {}
+            });
+        }
+    }
+}
+
 async function _runnerStopFetch(key) {
     try {
         await fetch('/api/runner/stop', {
@@ -5843,7 +5951,7 @@ function _findRepoNodeIdByKey(key) {
     var repoName = key.indexOf('--') >= 0 ? key.split('--')[0] : key;
     var esc = (window.CSS && CSS.escape) ? CSS.escape : function(s) { return s; };
     // The repo node id is "code/<group>/<repo>". We match by suffix.
-    var nodes = document.querySelectorAll('.git-repo[data-node-id]');
+    var nodes = document.querySelectorAll('.git-family[data-node-id]');
     for (var i = 0; i < nodes.length; i++) {
         var id = nodes[i].getAttribute('data-node-id');
         if (id && id.endsWith('/' + repoName)) return id;
@@ -5853,7 +5961,7 @@ function _findRepoNodeIdByKey(key) {
 
 function runnerJump(ev, btn) {
     if (ev) ev.stopPropagation();
-    var repo = btn.closest('.git-repo');
+    var repo = btn.closest('.git-family');
     if (!repo) return;
     var mount = repo.querySelector('.runner-term-mount');
     if (!mount) return;
