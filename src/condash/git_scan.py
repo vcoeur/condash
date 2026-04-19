@@ -291,6 +291,23 @@ def _collect_git_repos(ctx: RenderCtx):
     return groups
 
 
+def _runner_tokens_for(ctx: RenderCtx, repo_name: str, sub_name: str | None = None) -> str:
+    """Return a fingerprint fragment for the runner keys anchored at a row.
+
+    Late-imports :mod:`condash.runners` to avoid import cycles at module
+    load (render/git_scan are loaded before the FastAPI routes run).
+    """
+    from . import runners as runners_mod
+
+    if sub_name is None:
+        key = repo_name
+    else:
+        key = f"{repo_name}--{sub_name}"
+    if key not in ctx.repo_run:
+        return ""
+    return f"|run:{runners_mod.fingerprint_token(key)}"
+
+
 def compute_git_node_fingerprints(ctx: RenderCtx) -> dict[str, str]:
     """Return ``{node_id: hash}`` for the Code tab hierarchy.
 
@@ -339,9 +356,24 @@ def compute_git_node_fingerprints(ctx: RenderCtx) -> dict[str, str]:
                     wt_id = f"{member_id}/wt:{wt['key']}"
                     out[wt_id] = leaf_hash(wt)
                     wt_ids.append(wt_id)
-                out[member_id] = _hash(("member", leaf_hash(member), tuple(sorted(wt_ids))))
+                # Mix the runner key into the member hash so a runner
+                # start/exit repaints this row (the inline terminal mount
+                # lives on the member row, not on its worktrees).
+                runner_token = (
+                    _runner_tokens_for(ctx, family["name"], member["name"])
+                    if member.get("is_subrepo")
+                    else _runner_tokens_for(ctx, family["name"])
+                )
+                out[member_id] = _hash(
+                    ("member", leaf_hash(member), tuple(sorted(wt_ids)), runner_token)
+                )
                 member_ids.append(member_id)
-            out[family_id] = _hash(("family", tuple(sorted(member_ids))))
+            # Family hash mixes each member's hash so a runner start/exit
+            # (or any leaf-state edit) on a member bubbles to the family —
+            # the /fragment endpoint reloads at the family level.
+            out[family_id] = _hash(
+                ("family", tuple((mid, out[mid]) for mid in member_ids))
+            )
             family_ids.append(family_id)
         out[group_id] = _hash(("group", label, tuple(sorted(family_ids))))
         top_child_ids.append(group_id)
