@@ -154,6 +154,61 @@ def test_pdf_note_emits_mount_point_not_iframe(cfg: CondashConfig):
     assert "<iframe" not in body
 
 
+def test_api_items_creates_project_and_renders_in_dashboard(cfg: CondashConfig):
+    """POST /api/items writes the folder; the next GET / sees the new
+    card alongside the seed item. Closes the loop between the backend
+    scaffolder and the round-trip the UI depends on."""
+    client = _client(cfg)
+    response = client.post(
+        "/api/items",
+        json={
+            "title": "Dashboard-created item",
+            "slug": "dashboard-created-item",
+            "kind": "project",
+            "status": "now",
+            "apps": "condash",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is True
+    assert body["slug"] == "dashboard-created-item"
+
+    root_response = client.get("/")
+    assert root_response.status_code == 200
+    assert "dashboard-created-item" in root_response.text
+
+
+def test_api_items_rejects_bad_slug(cfg: CondashConfig):
+    client = _client(cfg)
+    response = client.post(
+        "/api/items",
+        json={
+            "title": "x",
+            "slug": "Has Capital",
+            "kind": "project",
+            "status": "now",
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["ok"] is False
+
+
+def test_api_items_returns_409_on_collision(cfg: CondashConfig):
+    client = _client(cfg)
+    payload = {
+        "title": "x",
+        "slug": "duplicate-on-same-day",
+        "kind": "project",
+        "status": "now",
+    }
+    first = client.post("/api/items", json=payload)
+    assert first.status_code == 200
+    second = client.post("/api/items", json=payload)
+    assert second.status_code == 409
+    assert second.json()["ok"] is False
+
+
 def test_note_serves_knowledge_files_at_any_subdir_depth(cfg: CondashConfig):
     """Knowledge files live at variable depth (root, one subdir, two subdirs after
     the 2026-04 topics/ restructure). ``validate_note_path`` must accept all of

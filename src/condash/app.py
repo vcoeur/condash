@@ -45,6 +45,7 @@ from .mutations import (
     _reorder_all,
     _set_priority,
     _toggle_checkbox,
+    create_item,
     create_note,
     create_notes_subdir,
     read_note_raw,
@@ -403,6 +404,34 @@ def _register_routes() -> None:
         )
         if not result.get("ok"):
             return _error(400, result.get("reason", "create failed"))
+        return result
+
+    @_ng_app.post("/api/items")
+    async def post_api_items(req: Request):
+        """Scaffold a new conception item from the header "New item" modal.
+
+        Writes ``projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md`` +
+        ``notes/`` with a minimal seeded body; the user fills the rest in
+        their editor. Client-side validation is not trusted — every field
+        is re-checked in :func:`create_item`. ``409`` on slug collision,
+        ``400`` on any other validation failure.
+        """
+        data = await req.json()
+        result = create_item(
+            _ctx(),
+            title=str(data.get("title") or ""),
+            slug=str(data.get("slug") or ""),
+            kind=str(data.get("kind") or ""),
+            status=str(data.get("status") or ""),
+            apps=str(data.get("apps") or ""),
+            environment=str(data.get("environment") or ""),
+            severity=str(data.get("severity") or ""),
+            languages=str(data.get("languages") or ""),
+        )
+        if not result.get("ok"):
+            reason = result.get("reason", "create failed")
+            status = 409 if "already exists" in reason else 400
+            return JSONResponse(status_code=status, content=result)
         return result
 
     @_ng_app.post("/note/mkdir")
