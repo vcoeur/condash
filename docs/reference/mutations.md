@@ -32,6 +32,41 @@ All operate on the item's `README.md` in place. Paths are validated against the 
 
 The step-edit routes operate on single lines by line number; `reorder-all` takes a list of source line numbers and rewrites them into their sorted positions. All of them validate that every target line is a checkbox before touching the file — no-op if the file has drifted since the client loaded it.
 
+## Item creation
+
+The header **New item** button opens a small modal asking only the fields needed to scaffold a schema-valid README. Everything else — Goal / Scope / Steps / body prose — stays in the user's editor.
+
+| Action | HTTP | Trigger | Effect |
+|---|---|---|---|
+| Create item | `POST /api/items` | Header "+" button → modal | Writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` + empty `notes/` with a minimal seeded body per-kind; `touch projects/.index-dirty`. |
+
+Body (`application/json`):
+
+```json
+{
+  "title": "Login 500s under concurrent load",
+  "slug": "login-500s",
+  "kind": "incident",
+  "status": "now",
+  "apps": "vcoeur.com",
+  "environment": "PROD",
+  "severity": "high",
+  "languages": ""
+}
+```
+
+Server-side rules (re-validated in [`create_item`](https://github.com/vcoeur/condash/blob/main/src/condash/mutations.py) — client input is never trusted):
+
+- `title` required.
+- `kind` ∈ `{project, incident, document}`.
+- `status` ∈ the canonical enum `{now, soon, later, backlog, review, done}`.
+- `slug` matches `^[a-z0-9]+(?:-[a-z0-9]+)*$`. Uppercase, spaces, underscores, double hyphens, leading/trailing hyphens → 400.
+- `environment` (incidents only) ∈ `{PROD, STAGING, DEV}`; `severity` ∈ `{low, medium, high}`.
+- `languages` (documents only) is free-text — saved verbatim as `**Languages**:`.
+- Collision on `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/` → **409** with `{ok: false, reason: "item with this slug already exists today"}`.
+
+Dates are always **today** on the server. Changing the date means renaming the folder — out of scope for the dashboard.
+
 ## Notes and attachments
 
 All paths live under an item's directory (`projects/YYYY-MM/YYYY-MM-DD-slug/...`). The `notes/` subdirectory is the conventional home, but `create_note` and `store_uploads` accept any subpath relative to the item root.
@@ -86,8 +121,7 @@ The one exception is the embedded terminal (`WS /ws/term`): its `?cwd=` query pa
 |---|---|
 | Anything under `.git/` | Out of scope. Use your editor / CLI. |
 | Anything outside `conception_path` (except the TOML config) | Path validation rejects escapes. |
-| Item directory renames / moves | The flat-month layout means items stay put for life. |
-| New items (`projects/YYYY-MM/YYYY-MM-DD-slug/`) | Creation is an editor or `/conception-items` skill action — see [management skill](skill.md). |
+| Item directory renames / moves | The flat-month layout means items stay put for life; slug / date changes need `git mv` in the user's shell. |
 | `knowledge/` tree | Read-only from the dashboard. Edit in your editor. |
 | Caches or indices | There are none — the tree is re-parsed on every request. |
 | Lock files | Concurrent edits are detected via mtime check on `POST /note`; there's no advisory lock. |

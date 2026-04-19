@@ -8,6 +8,7 @@ they do not re-check the sandbox.
 
 from __future__ import annotations
 
+import datetime as _dt
 import re
 from collections.abc import Iterable
 from pathlib import Path
@@ -18,9 +19,11 @@ from .parser import (
     CHECKBOX_RE,
     HEADING2_RE,
     HEADING3_RE,
+    KINDS,
     METADATA_RE,
     PRIORITIES,
     STATUS_RE,
+    VALID_SLUG_RE,
     _note_kind,
 )
 from .paths import (
@@ -392,6 +395,232 @@ def _add_step(full_path, text, section_heading=None):
 
     full_path.write_text("\n".join(lines), encoding="utf-8")
     return insert_at
+
+
+_ENVIRONMENTS = ("PROD", "STAGING", "DEV")
+_SEVERITIES = ("low", "medium", "high")
+
+
+def _render_apps(apps_raw: str) -> str:
+    """Turn a comma-separated free-text apps string into the backtick-wrapped
+    form the README header uses (`app1`, `app2/sub`)."""
+    parts = [p.strip().strip("`") for p in (apps_raw or "").split(",")]
+    parts = [p for p in parts if p]
+    return ", ".join(f"`{p}`" for p in parts)
+
+
+def _render_item_template(
+    *,
+    kind: str,
+    title: str,
+    date: str,
+    status: str,
+    apps_line: str,
+    environment: str = "",
+    severity: str = "",
+    languages: str = "",
+) -> str:
+    """Build the seed README body for a new item.
+
+    The header is the minimal set of fields condash's parser relies on;
+    optional kind-specific rows (Environment/Severity on incidents,
+    Languages on documents) are emitted only when the caller supplies a
+    non-empty value. Body sections stay intentionally sparse — the user
+    fleshes them out in their editor after the dashboard writes the file.
+    """
+    header = [
+        f"# {title}",
+        "",
+        f"**Date**: {date}",
+        f"**Kind**: {kind}",
+        f"**Status**: {status}",
+    ]
+    if apps_line:
+        header.append(f"**Apps**: {apps_line}")
+    if kind == "incident":
+        if environment:
+            header.append(f"**Environment**: {environment}")
+        if severity:
+            header.append(f"**Severity**: {severity}")
+    if kind == "document" and languages:
+        header.append(f"**Languages**: {languages}")
+
+    if kind == "project":
+        body = [
+            "## Goal",
+            "",
+            "_Describe the user-facing outcome this project aims to achieve._",
+            "",
+            "## Scope",
+            "",
+            "_What is in scope; what is explicitly out of scope._",
+            "",
+            "## Steps",
+            "",
+            "- [ ] First milestone",
+            "",
+            "## Timeline",
+            "",
+            f"- {date} — Project created.",
+            "",
+            "## Notes",
+            "",
+        ]
+    elif kind == "incident":
+        body = [
+            "## Description",
+            "",
+            "_Observable symptoms, scope, when it started._",
+            "",
+            "## Symptoms",
+            "",
+            "- _Error messages, user-facing effects, log patterns._",
+            "",
+            "## Analysis",
+            "",
+            "_Investigation findings, hypotheses, references to `notes/`._",
+            "",
+            "## Root cause",
+            "",
+            "_Not yet identified._",
+            "",
+            "## Steps",
+            "",
+            "- [ ] Reproduce",
+            "",
+            "## Timeline",
+            "",
+            f"- {date} — Incident opened.",
+            "",
+            "## Notes",
+            "",
+        ]
+    else:  # document
+        body = [
+            "## Goal",
+            "",
+            "_What this document is for and who the audience is._",
+            "",
+            "## Steps",
+            "",
+            "- [ ] Collect sources",
+            "- [ ] Draft",
+            "- [ ] Review",
+            "",
+            "## Deliverables",
+            "",
+            "**Audience**: _who the PDF is for_",
+            "**Key elements**: _structural spec — what sections must appear_",
+            "**Sources**: _where to read from to produce the deliverable_",
+            "**Current summary**: _Not yet generated._",
+            "",
+            "## Timeline",
+            "",
+            f"- {date} — Created.",
+            "",
+            "## Notes",
+            "",
+        ]
+
+    return "\n".join(header + [""] + body)
+
+
+def create_item(
+    ctx: RenderCtx,
+    *,
+    title: str,
+    slug: str,
+    kind: str,
+    status: str,
+    apps: str = "",
+    environment: str = "",
+    severity: str = "",
+    languages: str = "",
+    today: _dt.date | None = None,
+) -> dict[str, Any]:
+    """Scaffold a new conception item under ``projects/YYYY-MM/YYYY-MM-DD-<slug>/``.
+
+    Writes a minimal-but-valid ``README.md`` seeded from :func:`_render_item_template`,
+    creates an empty ``notes/`` sibling, and touches
+    ``projects/.index-dirty`` so the index-refresh skill knows to run.
+    Returns ``{ok, rel_path, slug, priority, month}`` on success or
+    ``{ok: False, reason}`` with a machine-readable reason the caller can
+    surface inline. Never creates partial state — every failure short-
+    circuits before any write hits disk.
+    """
+    title = (title or "").strip()
+    # Preserve slug casing so the regex can reject uppercase (the folder
+    # name must be lowercase — silent mangling would mask typos).
+    slug = (slug or "").strip()
+    kind = (kind or "").strip().lower()
+    status = (status or "").strip().lower()
+    apps_raw = (apps or "").strip()
+    environment = (environment or "").strip().upper()
+    severity = (severity or "").strip().lower()
+    languages = (languages or "").strip().lower()
+
+    if not title:
+        return {"ok": False, "reason": "title required"}
+    if kind not in KINDS:
+        return {"ok": False, "reason": f"kind must be one of {list(KINDS)}"}
+    if status not in PRIORITIES:
+        return {"ok": False, "reason": f"status must be one of {list(PRIORITIES)}"}
+    if not VALID_SLUG_RE.match(slug):
+        return {
+            "ok": False,
+            "reason": "slug must be lowercase letters, digits, and single hyphens",
+        }
+    if kind == "incident" and environment and environment not in _ENVIRONMENTS:
+        return {"ok": False, "reason": f"environment must be one of {list(_ENVIRONMENTS)}"}
+    if kind == "incident" and severity and severity not in _SEVERITIES:
+        return {"ok": False, "reason": f"severity must be one of {list(_SEVERITIES)}"}
+
+    day = today or _dt.date.today()
+    month = f"{day.year:04d}-{day.month:02d}"
+    date_str = day.isoformat()
+    folder_name = f"{date_str}-{slug}"
+
+    projects_root = ctx.base_dir / "projects"
+    month_dir = projects_root / month
+    item_dir = month_dir / folder_name
+
+    try:
+        item_dir.resolve().relative_to(projects_root.resolve())
+    except ValueError:
+        return {"ok": False, "reason": "resolved path escapes projects/"}
+    if item_dir.exists():
+        return {"ok": False, "reason": "item with this slug already exists today"}
+
+    body = _render_item_template(
+        kind=kind,
+        title=title,
+        date=date_str,
+        status=status,
+        apps_line=_render_apps(apps_raw),
+        environment=environment,
+        severity=severity,
+        languages=languages,
+    )
+
+    item_dir.mkdir(parents=True, exist_ok=False)
+    (item_dir / "notes").mkdir(exist_ok=False)
+    (item_dir / "README.md").write_text(body, encoding="utf-8")
+
+    # Touch projects/.index-dirty so /projects index picks up the new
+    # folder. Best-effort — failure here doesn't roll back the write.
+    try:
+        (projects_root / ".index-dirty").touch()
+    except OSError:
+        pass
+
+    return {
+        "ok": True,
+        "rel_path": str((item_dir / "README.md").relative_to(ctx.base_dir)),
+        "slug": slug,
+        "folder_name": folder_name,
+        "priority": status,
+        "month": month,
+    }
 
 
 def _reorder_all(full_path, order):

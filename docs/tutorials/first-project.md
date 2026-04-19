@@ -17,7 +17,20 @@ See the full list in [Mutation model](../reference/mutations.md).
 
 ## 1. Create the item
 
-Projects live at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. Pick today's date and a slug. From a shell:
+Projects live at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. Pick today's date and a slug.
+
+**From the dashboard**: click the **`+`** button in the header (right of the terminal icon). A modal opens asking for the handful of fields condash's parser actually reads:
+
+- **Kind** — project, incident, or document.
+- **Status** — `now` / `soon` / `later` / `backlog` / `review` / `done`.
+- **Title** — becomes the `# H1` heading.
+- **Slug** — auto-derived from the title; edit it if you want a shorter handle.
+- **Apps** — comma-separated, rendered as a backticked list in the header.
+- For an incident, add **Environment** + **Severity**; for a document, optional **Languages**.
+
+Click **Create item**. condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` + an empty `notes/` sibling, seeds the body with just enough structure (Goal, Steps, Timeline) to parse cleanly, switches to the matching sub-tab, and expands the new card. Everything else — Scope, Goal body, Steps content — you write in your editor.
+
+**From the shell** (equivalent, useful when condash isn't running):
 
 ```bash
 mkdir -p ~/conception-demo/projects/2026-04/2026-04-18-helio-benchmark-harness/notes

@@ -29,6 +29,12 @@ DELIVERABLE_RE = re.compile(r"-\s+\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—–-]\s*
 
 PRIORITIES = ("now", "soon", "later", "backlog", "review", "done")
 PRI_ORDER = {p: i for i, p in enumerate(PRIORITIES)}
+KINDS = ("project", "incident", "document")
+# Slug grammar matches the YYYY-MM-DD-<slug> folder convention:
+# lowercase ASCII letters, digits, and internal hyphens. Double hyphens
+# and leading/trailing hyphens are rejected so the folder name is
+# cleanly round-trippable through the wikilink resolver.
+VALID_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif"}
 _PDF_EXTS = {".pdf"}
