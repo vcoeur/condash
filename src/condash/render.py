@@ -623,6 +623,16 @@ _ICON_SVGS = {
         'stroke-linejoin="round" aria-hidden="true">'
         '<polyline points="6 9 12 15 18 9"/></svg>'
     ),
+    # Chevron that flips between down (expanded) and up (collapsed) via
+    # the .runner-collapsed parent class. Used on the inline-terminal
+    # header so the user can hide the output area without stopping the
+    # child process.
+    "runner_collapse": (
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" '
+        'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        '<polyline points="6 15 12 9 18 15"/></svg>'
+    ),
     # Diagonal arrow out of a box — "pop the inline terminal into a modal".
     "runner_popout": (
         '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" '
@@ -713,9 +723,9 @@ def _render_runner_button(
     - session elsewhere    → amber Switch button (triggers confirm dialog)
     """
     session = runners_mod.get(key)
-    js_key = json.dumps(key)
-    js_checkout = json.dumps(checkout_key)
-    js_path = json.dumps(checkout_path)
+    js_key = json.dumps(key).replace("'", "\\'").replace('"', "'")
+    js_checkout = json.dumps(checkout_key).replace("'", "\\'").replace('"', "'")
+    js_path = json.dumps(checkout_path).replace("'", "\\'").replace('"', "'")
     if session is None or session.exit_code is not None:
         # Off or exited — exited gets the same Run affordance; clicking
         # starts a fresh session (replacing the stale record).
@@ -750,19 +760,28 @@ def _render_runner_mount(key: str, checkout_key: str) -> str:
         return ""
     exited_attr = f' data-exit-code="{session.exit_code}"' if session.exit_code is not None else ""
     js_label = h(f"{key} @ {checkout_key}")
+    # Fresh mounts start collapsed — the user clicks the header (or the
+    # runner_jump arrow on the repo row) to reveal the output. Expanded
+    # state is per-mount and not persisted across reloads.
     return (
-        f'<div class="runner-term-mount" '
+        f'<div class="runner-term-mount runner-collapsed" '
         f'data-runner-key="{h(key)}" '
         f'data-runner-checkout="{h(checkout_key)}"{exited_attr}>'
-        f'<div class="runner-term-header">'
+        f'<div class="runner-term-header" '
+        f'title="Click to collapse / expand (keeps process running)" '
+        f'onclick="runnerToggleCollapse(this)">'
         f'<span class="runner-term-label">{js_label}</span>'
         f'<span class="runner-term-status" aria-live="polite"></span>'
+        f'<button class="runner-control runner-collapse" '
+        f'aria-label="Collapse terminal" tabindex="-1" '
+        f'onclick="event.stopPropagation();runnerToggleCollapse(this)">'
+        f'{_ICON_SVGS["runner_collapse"]}</button>'
         f'<button class="runner-control runner-popout" '
         f'title="Pop out" aria-label="Pop out" '
-        f'onclick="runnerPopout(this)">{_ICON_SVGS["runner_popout"]}</button>'
+        f'onclick="event.stopPropagation();runnerPopout(this)">{_ICON_SVGS["runner_popout"]}</button>'
         f'<button class="runner-control runner-stop-inline" '
         f'title="Stop" aria-label="Stop" '
-        f'onclick="runnerStopInline(this)">{_ICON_SVGS["runner_stop"]}</button>'
+        f'onclick="event.stopPropagation();runnerStopInline(this)">{_ICON_SVGS["runner_stop"]}</button>'
         f"</div>"
         f'<div class="runner-term-host"></div>'
         f"</div>"
@@ -818,8 +837,9 @@ def _render_member_row(
     return (
         f'<div class="git-row{dirty_cls}{missing_cls}" '
         f'data-node-id="{h(member_id)}" title="{h(member["path"])}">'
-        f"{actions}{runner_btn}"
+        f"{actions}"
         f'<span class="git-name">{jump_arrow}{h(member["name"])}</span>'
+        f'<span class="git-runner-slot">{runner_btn}</span>'
         f'<span class="git-branch">{h(member["branch"])}</span>'
         f'<span class="git-status">{_status_badge(member)}</span>'
         f'<span class="git-spacer"></span></div>'
@@ -846,8 +866,9 @@ def _render_worktree_row(
     return (
         f'<div class="git-row git-worktree{dirty_cls}{missing_cls}" '
         f'data-node-id="{h(wt_id)}" title="{h(wt["path"])}">'
-        f"{actions}{runner_btn}"
+        f"{actions}"
         f'<span class="git-name">\u21b3 {h(wt["key"])}</span>'
+        f'<span class="git-runner-slot">{runner_btn}</span>'
         f'<span class="git-branch">{h(wt["branch"])}</span>'
         f'<span class="git-status">{_status_badge(wt)}</span>'
         f'<span class="git-spacer"></span></div>'
