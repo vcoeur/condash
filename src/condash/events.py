@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Drop duplicate events within this window — filesystem churn (save +
 # editor swap file + metadata touch) can otherwise fire three events
 # for one logical change.
-_DEBOUNCE_SECONDS = 0.3
+_DEBOUNCE_SECONDS = 0.75
 
 
 class EventBus:

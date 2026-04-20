@@ -4892,7 +4892,27 @@ function _diffNodes(baseline, current) {
     return dirty;
 }
 
+/* Coalesce rapid checkUpdates triggers. A single user save fires
+   multiple watchdog events (the file, its directory, its parents);
+   each used to start its own fetch + fragment-swap pass, which
+   showed up as a flicker on the active tab. _scheduleCheckUpdates
+   collapses calls within a 250ms window into a single run and
+   guarantees a trailing pass so the last event isn't dropped. */
+var _checkUpdatesTimer = null;
+var _checkUpdatesInFlight = false;
+var _checkUpdatesPending = false;
+function _scheduleCheckUpdates() {
+    if (_checkUpdatesInFlight) { _checkUpdatesPending = true; return; }
+    if (_checkUpdatesTimer) return;
+    _checkUpdatesTimer = setTimeout(function() {
+        _checkUpdatesTimer = null;
+        checkUpdates();
+    }, 250);
+}
+
 async function checkUpdates() {
+    if (_checkUpdatesInFlight) { _checkUpdatesPending = true; return; }
+    _checkUpdatesInFlight = true;
     try {
         var res = await fetch('/check-updates');
         if (!res.ok) return;
@@ -4923,7 +4943,14 @@ async function checkUpdates() {
             if (anyInactiveDirty) _refreshShadowCache();
         }
         _renderStale();
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+        _checkUpdatesInFlight = false;
+        if (_checkUpdatesPending) {
+            _checkUpdatesPending = false;
+            _scheduleCheckUpdates();
+        }
+    }
 }
 
 function _activeTabPrefix() {
@@ -4963,8 +4990,9 @@ function _startEventStream() {
     });
     _eventSource.addEventListener('ping', function() { /* keepalive */ });
     _eventSource.onmessage = function() {
-        // Any non-typed message is a staleness hint. Reconcile.
-        checkUpdates();
+        // Any non-typed message is a staleness hint. Debounced so a
+        // burst of watcher events collapses into a single fetch + swap.
+        _scheduleCheckUpdates();
         // Phase 7: open-note reconcile — a disk change anywhere in the
         // watched tree might affect the currently-displayed note.
         _reconcileNoteModal();
@@ -5006,7 +5034,23 @@ function _autoReloadActiveTab(freshIds) {
         return !_supportsFragmentFetch(id);
     });
     if (needGlobal) { _reloadInPlace(); return; }
-    freshInActive.forEach(function(id) { reloadNode(id); });
+    // Dedupe: if both "projects/now/foo" and "projects/now/foo/sub" are
+    // dirty, reloading the parent covers the child. Without this every
+    // descendant triggers its own fragment swap and the tab flickers.
+    var minimal = _minimalRoots(freshInActive);
+    minimal.forEach(function(id) { reloadNode(id); });
+}
+
+function _minimalRoots(ids) {
+    var sorted = ids.slice().sort();
+    var out = [];
+    sorted.forEach(function(id) {
+        var covered = out.some(function(prev) {
+            return id === prev || id.indexOf(prev + '/') === 0;
+        });
+        if (!covered) out.push(id);
+    });
+    return out;
 }
 
 async function updateBaseline() {
