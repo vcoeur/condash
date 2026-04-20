@@ -1207,6 +1207,17 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
     background: var(--bg-card-hover);
 }
 .note-modal-search[hidden] { display: none; }
+/* Phase 7: external-change banner. Surfaces inside the note modal
+   when disk mtime drifts from the buffer's load mtime. */
+.note-modal-external-banner {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.4rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    background: #fff3cd; color: #000;
+    font-size: 0.85rem;
+}
+.note-modal-external-banner[hidden] { display: none; }
+.note-modal-external-banner span { flex: 1; }
 .note-modal-search input[type="search"] {
     flex: 1; padding: 0.3rem 0.6rem;
     border: 1px solid var(--input-border); border-radius: 6px;
@@ -1977,6 +1988,11 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
                 <button id="note-save-btn" class="note-action-btn note-action-primary" onclick="saveEdit()" style="display:none">Save</button>
                 <button class="note-modal-close" onclick="closeNotePreview()" aria-label="Close">&times;</button>
             </div>
+        </div>
+        <div class="note-modal-external-banner" id="note-modal-external-banner" hidden>
+            <span>This note changed on disk.</span>
+            <button type="button" class="note-action-btn" onclick="_noteReconcileDismiss()">Keep my edits</button>
+            <button type="button" class="note-action-btn note-action-primary" onclick="_noteReconcileReload()">Reload from disk</button>
         </div>
         <div class="note-modal-search" id="note-search-bar" hidden>
             <input type="search" id="note-search-input" placeholder="Find in note…" autocomplete="off" oninput="noteSearchRun()">
@@ -3681,6 +3697,8 @@ async function openNotePreview(path, name) {
     _noteModal.text = '';
     _noteModal.renderedHtml = '';
     _noteModal.dirty = false;
+    _noteShowExternalBanner(false);
+    _noteReconcileSuppressedUntilMtime = null;
     ta.value = '';
     viewPane.innerHTML = '<p class="note-loading">Loading\u2026</p>';
     _setNoteModeAttr(inner, 'view');
@@ -3863,6 +3881,8 @@ function closeNotePreview() {
     _noteNavStack = [];
     _syncNoteBack();
     noteSearchClose();
+    _noteShowExternalBanner(false);
+    _noteReconcileSuppressedUntilMtime = null;
     if (typeof _flushPendingReloads === 'function') _flushPendingReloads();
 }
 
@@ -4387,6 +4407,97 @@ function startRenameNote() {
     input.onclick = function(ev) { ev.stopPropagation(); };
 }
 
+/* --- Phase 7: note modal reconcile ---
+   When /events signals a filesystem change, any open note may now
+   diverge from its on-disk content. _reconcileNoteModal compares the
+   loaded mtime with the live mtime and acts by buffer state:
+     - clean buffer → silently reload text + render, restoring selection.
+     - dirty buffer → reveal the banner and leave the buffer alone until
+       the user picks "Keep my edits" or "Reload from disk".
+   The banner dismissal is sticky until a new external change is
+   detected (so the user who keeps editing isn't re-nagged).
+*/
+var _noteReconcileSuppressedUntilMtime = null;
+
+async function _reconcileNoteModal() {
+    if (!_noteModal || !_noteModal.path) return;
+    var path = _noteModal.path;
+    try {
+        var res = await fetch('/note-raw?path=' + encodeURIComponent(path));
+        if (!res.ok) return;
+        var data = await res.json();
+        if (_noteModal.path !== path) return;  // user switched notes mid-flight
+        var fresh = Number(data.mtime);
+        var loaded = Number(_noteModal.mtime);
+        if (!isFinite(fresh) || !isFinite(loaded)) return;
+        if (fresh <= loaded) return;  // no external change
+        if (_noteReconcileSuppressedUntilMtime != null
+            && fresh <= _noteReconcileSuppressedUntilMtime) {
+            return;  // user said "keep my edits"; wait for a newer change
+        }
+        if (_noteModal.editable) _captureActiveBuffer();
+        if (_noteModal.dirty) {
+            _noteShowExternalBanner(true);
+        } else {
+            await _noteSilentReload(data);
+        }
+    } catch (e) {}
+}
+
+function _noteShowExternalBanner(show) {
+    var banner = document.getElementById('note-modal-external-banner');
+    if (!banner) return;
+    if (show) banner.removeAttribute('hidden');
+    else banner.setAttribute('hidden', '');
+}
+
+function _noteReconcileDismiss() {
+    // Remember the disk mtime we just decided to ignore so repeat
+    // polls don't re-show the banner until a newer change lands.
+    _noteReconcileSuppressedUntilMtime = Number(_noteModal.mtime) || 0;
+    _noteShowExternalBanner(false);
+}
+
+async function _noteReconcileReload() {
+    try {
+        var res = await fetch('/note-raw?path=' + encodeURIComponent(_noteModal.path));
+        if (!res.ok) return;
+        var data = await res.json();
+        await _noteSilentReload(data);
+        _noteShowExternalBanner(false);
+        _noteReconcileSuppressedUntilMtime = null;
+    } catch (e) {}
+}
+
+async function _noteSilentReload(rawData) {
+    // Update buffer + preview, preserve caret/selection where possible.
+    _noteModal.text = rawData.content;
+    _noteModal.mtime = Number(rawData.mtime);
+    _setDirty(false);
+    // Hydrate whichever pane is active. CM6 owns its own state —
+    // replace the doc but keep the selection when it still fits.
+    if (_cm && _cm.view) {
+        var prevSel = null;
+        try { prevSel = _cm.view.state.selection; } catch (e) {}
+        _cm.view.dispatch({
+            changes: {from: 0, to: _cm.view.state.doc.length, insert: _noteModal.text},
+        });
+        if (prevSel) {
+            try {
+                var max = _cm.view.state.doc.length;
+                var anchor = Math.min(prevSel.main.anchor, max);
+                var head = Math.min(prevSel.main.head, max);
+                _cm.view.dispatch({selection: {anchor: anchor, head: head}});
+            } catch (e) {}
+        }
+    }
+    var ta = document.getElementById('note-edit-textarea');
+    if (ta) ta.value = _noteModal.text;
+    try {
+        await _reloadNotePreview(_noteModal.path, null);
+    } catch (e) {}
+}
+
 async function _reloadNotePreview(path, name) {
     var pane = document.getElementById('note-pane-view');
     if (name) document.getElementById('note-modal-title').textContent = name;
@@ -4854,6 +4965,9 @@ function _startEventStream() {
     _eventSource.onmessage = function() {
         // Any non-typed message is a staleness hint. Reconcile.
         checkUpdates();
+        // Phase 7: open-note reconcile — a disk change anywhere in the
+        // watched tree might affect the currently-displayed note.
+        _reconcileNoteModal();
     };
     _eventSource.onerror = function() {
         _setReconnecting(true);
