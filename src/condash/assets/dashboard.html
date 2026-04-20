@@ -756,9 +756,12 @@ body:not([data-single-term]) .term-side.is-active-side .term-mount {
     display: none; position: absolute; top: 100%; left: 0; z-index: 10;
     margin-top: 3px; padding: 3px; background: var(--bg-card);
     border: 1px solid var(--border); border-radius: 8px;
-    box-shadow: var(--shadow-md); white-space: nowrap;
+    box-shadow: var(--shadow-md);
 }
-.pri-menu.open { display: flex; gap: 3px; }
+/* Stack options one-per-row: predictable width, no clipping off-card
+   regardless of how many statuses the enum grows to carry. */
+.pri-menu.open { display: flex; flex-direction: column; gap: 3px; }
+.pri-menu .pri-option { text-align: center; }
 .pri-option {
     font-size: 0.65rem; font-weight: 600; padding: 2px 8px;
     border-radius: 10px; text-transform: uppercase; letter-spacing: 0.03em;
