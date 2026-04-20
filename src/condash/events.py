@@ -115,13 +115,23 @@ class _ConfigHandler(FileSystemEventHandler):
 
     Only reacts to ``repositories.yml`` / ``preferences.yml`` — anything
     else under ``<conception>/config/`` (scratch files, editor backups)
-    is ignored. Before fanning out to SSE clients the handler invokes
+    is ignored. Only write-style events trigger reload — open and
+    close-no-write events are dropped so an open for reading (e.g. the
+    dashboard's own ``GET /config`` path) never kicks off a reload
+    cycle. Before fanning out to SSE clients the handler invokes
     ``on_reload`` (via ``loop.call_soon_threadsafe``) so the server can
     rebuild its runtime config atomically on the event loop thread
     rather than on watchdog's worker thread.
+
+    Debouncing is per-file: a burst of events for ``repositories.yml``
+    doesn't swallow a concurrent edit of ``preferences.yml``. The
+    window is short (0.3 s) — just enough to collapse the three-event
+    storm a single atomic write produces on Linux.
     """
 
     _WATCHED = frozenset({"repositories.yml", "preferences.yml"})
+    _WRITE_EVENTS = frozenset({"modified", "created", "moved", "closed"})
+    _DEBOUNCE = 0.3
 
     def __init__(
         self,
@@ -130,20 +140,25 @@ class _ConfigHandler(FileSystemEventHandler):
     ) -> None:
         self._bus = bus
         self._on_reload = on_reload
-        self._last_emit = 0.0
+        self._last_emit: dict[str, float] = {}
 
     def on_any_event(self, event) -> None:
         leaf = Path(getattr(event, "src_path", "") or "").name
         if leaf not in self._WATCHED:
             return
-        now = time.time()
-        if now - self._last_emit < _DEBOUNCE_SECONDS:
+        if event.event_type not in self._WRITE_EVENTS:
             return
-        self._last_emit = now
+        now = time.time()
+        if now - self._last_emit.get(leaf, 0.0) < self._DEBOUNCE:
+            return
+        self._last_emit[leaf] = now
+        logger.info("_ConfigHandler: firing reload for %s (%s)", leaf, event.event_type)
         if self._on_reload is not None:
             loop = self._bus._loop  # noqa: SLF001 — deliberate bridge
             if loop is not None and not loop.is_closed():
                 loop.call_soon_threadsafe(self._on_reload, leaf)
+            else:
+                logger.warning("_ConfigHandler: event loop not bound; reload skipped")
         self._bus.publish_threadsafe({"tab": "config", "file": leaf, "ts": now})
 
 

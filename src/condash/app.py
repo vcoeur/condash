@@ -1970,6 +1970,10 @@ def run(cfg: CondashConfig) -> None:
     )
     if _EVENT_OBSERVER is not None:
         _ng_app.on_shutdown(_stop_event_observer)
+        # Bind the asyncio loop to the event bus as soon as it's spinning so
+        # the first filesystem event doesn't lose its reload callback just
+        # because no SSE client has connected yet.
+        _ng_app.on_startup(lambda: _EVENT_BUS.bind_loop(asyncio.get_running_loop()))
     port = _pick_free_port() if cfg.port == 0 else cfg.port
     kwargs: dict = {
         "native": cfg.native,
