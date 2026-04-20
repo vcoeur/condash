@@ -97,3 +97,14 @@ def test_phase4_shadow_cache_present():
     assert "anyInactiveDirty" in body
     # _reloadInPlace prefers the cache over re-fetching.
     assert "_consumeShadowCache()" in body
+
+
+def test_phase5_search_inputs_data_preserve():
+    body = _html()
+    assert 'data-preserve="condash.search.knowledge"' in body
+    assert 'data-preserve="condash.search.history"' in body
+    # Live writes to sessionStorage via filter functions.
+    assert "_persistSearch(" in body
+    # Initial page load reads sessionStorage and replays the filter.
+    assert "function _restorePreservedSearches(" in body
+    assert "_restorePreservedSearches();" in body

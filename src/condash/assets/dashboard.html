@@ -1919,13 +1919,13 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
     </div>
     <div id="knowledge-pane" style="display:none" data-node-id="knowledge">
         <div class="search-toolbar knowledge-toolbar">
-            <input id="knowledge-search" type="search" placeholder="Search knowledge — title, description, or path…" oninput="filterKnowledge(this.value)" autocomplete="off">
+            <input id="knowledge-search" type="search" placeholder="Search knowledge — title, description, or path…" oninput="filterKnowledge(this.value)" autocomplete="off" data-preserve="condash.search.knowledge">
         </div>
         <div id="knowledge">{{KNOWLEDGE}}</div>
     </div>
     <div id="history-pane" style="display:none" data-node-id="history">
         <div class="search-toolbar history-toolbar">
-            <input id="history-search" type="search" placeholder="Search history — title, apps, notes, filenames…" oninput="filterHistory(this.value)" autocomplete="off">
+            <input id="history-search" type="search" placeholder="Search history — title, apps, notes, filenames…" oninput="filterHistory(this.value)" autocomplete="off" data-preserve="condash.search.history">
         </div>
         <div id="history-results" hidden></div>
         <div id="history">{{HISTORY}}</div>
@@ -3019,7 +3019,33 @@ document.addEventListener('DOMContentLoaded', function() {
     if (tab === 'projects' && SUBTABS.indexOf(sub) !== -1) _activeSubtab = sub;
     switchTab(tab);
     restoreNotesTreeState();
+    _restorePreservedSearches();
 });
+
+/* Phase 5: pull saved search terms out of sessionStorage and replay
+   them through the filter functions. Runs once on initial page load;
+   subsequent swaps go through focusSafeSwap which handles restoration
+   via data-preserve. */
+function _restorePreservedSearches() {
+    var mapping = {
+        'condash.search.knowledge': {id: 'knowledge-search', fn: 'filterKnowledge'},
+        'condash.search.history': {id: 'history-search', fn: 'filterHistory'},
+    };
+    Object.keys(mapping).forEach(function(key) {
+        var raw = null;
+        try { raw = sessionStorage.getItem(key); } catch (e) { return; }
+        if (!raw) return;
+        var payload;
+        try { payload = JSON.parse(raw); } catch (e) { return; }
+        if (!payload || payload.value == null || payload.value === '') return;
+        var input = document.getElementById(mapping[key].id);
+        if (!input) return;
+        input.value = payload.value;
+        if (typeof window[mapping[key].fn] === 'function') {
+            window[mapping[key].fn](payload.value);
+        }
+    });
+}
 
 /* --- Notes-tree per-subdir collapsed/expanded state ---
    Each <details data-subdir-key="<slug>/<rel_dir>"> remembers its open
@@ -3329,11 +3355,19 @@ function _resetTree(panel, emptyCls) {
 /* --- Knowledge search --- */
 function filterKnowledge(q) {
     _knowledgeSearchQ = q || '';
+    _persistSearch('condash.search.knowledge', _knowledgeSearchQ);
     var panel = document.getElementById('knowledge');
     if (!panel) return;
     var qTrim = (q || '').trim();
     _filterTree(panel, _searchTokens(q), qTrim,
         'knowledge-empty', 'No knowledge pages match "' + qTrim + '".');
+}
+
+function _persistSearch(key, value) {
+    try {
+        if (!value) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, JSON.stringify({value: value}));
+    } catch (e) {}
 }
 
 /* --- History search ---
@@ -3345,6 +3379,7 @@ var _historySearchTimer = null;
 var _historySearchAbort = null;
 function filterHistory(q) {
     _historySearchQ = q || '';
+    _persistSearch('condash.search.history', _historySearchQ);
     var pane = document.getElementById('history-pane');
     var tree = document.getElementById('history');
     var results = document.getElementById('history-results');
