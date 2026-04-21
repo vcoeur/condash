@@ -15,7 +15,6 @@ import asyncio
 import logging
 import os
 import socket
-from importlib.resources import files as _package_files
 
 from nicegui import app as _ng_app
 from nicegui import ui
@@ -29,6 +28,7 @@ from .cache import WorkspaceCache
 from .clipboard import ClipboardBridge
 from .config import CondashConfig
 from .context import RenderCtx, build_ctx
+from .paths import icon_path
 from .state import AppState
 
 log = logging.getLogger(__name__)
@@ -92,11 +92,6 @@ def _reload_runtime_config_from_disk(leaf: str) -> None:
     if state.cache is not None:
         state.cache.invalidate_all()
     log.info("live config reload: %s applied", leaf)
-
-
-def icon_path() -> str:
-    """Absolute path to the bundled app icon (SVG)."""
-    return str(_package_files("condash") / "assets" / "favicon.svg")
 
 
 def _set_qt_desktop_identity() -> None:
