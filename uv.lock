@@ -266,6 +266,7 @@ name = "condash"
 version = "0.17.2"
 source = { editable = "." }
 dependencies = [
+    { name = "jinja2" },
     { name = "nicegui" },
     { name = "pywebview", extra = ["qt"] },
     { name = "pyyaml" },
@@ -287,6 +288,7 @@ e2e = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "nicegui", specifier = ">=2.0" },
     { name = "playwright", marker = "extra == 'e2e'", specifier = ">=1.40" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },

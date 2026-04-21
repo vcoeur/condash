@@ -1,0 +1,157 @@
+{# Shared macros used across card.html.j2, knowledge_tree.html.j2, and history.html.j2. #}
+
+{% macro step(step, file_path) %}
+{% set dot = {"done": "✓", "progress": "~", "abandoned": "—", "open": ""}.get(step.status, "") %}
+<div class="step {{ step.status }}" data-file="{{ file_path }}" data-line="{{ step.line }}">
+  <span class="drag-handle" onpointerdown="stepPointerDown(event)">⠿</span>
+  <span class="status-dot status-{{ step.status }}"
+    onmousedown="event.stopPropagation();event.preventDefault()"
+    onclick="var s=this.closest('.step');cycle({{ file_path | embed }},+s.dataset.line,s)">{{ dot }}</span>
+  <span class="text"
+    onmousedown="event.stopPropagation()"
+    onclick="event.stopPropagation();startEditText(this)">{{ step.text }}</span>
+  <button class="remove-btn"
+    onmousedown="event.stopPropagation();event.preventDefault()"
+    onclick="var s=this.closest('.step');removeStep({{ file_path | embed }},+s.dataset.line,this)">×</button>
+</div>
+{% endmacro %}
+
+
+{% macro group(heading, items, file_path) %}
+{% set done = items | selectattr('status', 'equalto', 'done') | list | length %}
+{% set total = items | length %}
+{% set all_done = total > 0 and done == total %}
+<div class="sec-group">
+  <div class="sec-heading{% if not all_done %} open{% endif %}" onclick="toggleSection(this)">
+    {{ heading }} <span class="sec-count">({{ done }}/{{ total }})</span>
+  </div>
+  <div class="sec-items" style="display:{% if all_done %}none{% else %}block{% endif %}">
+    {% for it in items %}{{ step(it, file_path) }}{% endfor %}
+    <div class="add-row">
+      <input type="text" placeholder="Add task…"
+        onkeydown="if(event.key==='Enter')addStep({{ file_path | embed }},{{ heading | embed }},this)">
+      <button onclick="addStep({{ file_path | embed }},{{ heading | embed }},this.previousElementSibling)">+</button>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{% macro file_entry(n) %}
+{% set label = n.name[:-3] if n.name.endswith('.md') else n.name %}
+<div class="note-item" data-kind="{{ n.kind | default('md') }}"
+  onclick="openNotePreview({{ n.path | embed }},'{{ n.name }}')">{{ label }}</div>
+{% endmacro %}
+
+
+{% macro subdir_group(group_, item_slug, readme_rel) %}
+{% set key = item_slug ~ '/' ~ group_.rel_dir %}
+<details class="notes-group" data-subdir-key="{{ key }}">
+  <summary class="notes-group-heading">
+    <span class="notes-chevron" aria-hidden="true">&#9656;</span>
+    <span class="notes-group-name">{{ group_.label }}/</span>
+    <span class="notes-count">({{ group_ | subtree_count }})</span>
+    {% if readme_rel %}
+    <button class="notes-new-btn" title="New note in this folder"
+      onclick="event.stopPropagation();event.preventDefault();createNoteFor({{ readme_rel | embed }},{{ group_.rel_dir | embed }})">+</button>
+    <button class="notes-upload-btn" title="Upload files into this folder"
+      onclick="event.stopPropagation();event.preventDefault();uploadToNotes({{ readme_rel | embed }},{{ group_.rel_dir | embed }})">↑</button>
+    <button class="notes-mkdir-btn" title="New subdirectory inside this folder"
+      onclick="event.stopPropagation();event.preventDefault();createNotesSubdir({{ readme_rel | embed }},{{ group_.rel_dir | embed }})">+ folder</button>
+    {% endif %}
+  </summary>
+  <div class="notes-list">
+    {% for f in group_.files %}{{ file_entry(f) }}{% endfor %}
+    {% for g in group_.groups %}{{ subdir_group(g, item_slug, readme_rel) }}{% endfor %}
+  </div>
+</details>
+{% endmacro %}
+
+
+{% macro files_block(tree, readme_rel, item_slug, total) %}
+<div class="notes-block{% if total == 0 %} is-empty{% endif %}">
+  <div class="notes-heading">
+    Files <span class="notes-count">({{ total }})</span>
+    {% if readme_rel %}
+    <button class="notes-mkdir-btn"
+      title="New folder at the item root (sibling of notes/)"
+      onclick="event.stopPropagation();event.preventDefault();createNotesSubdir({{ readme_rel | embed }},'')">+ folder</button>
+    {% endif %}
+  </div>
+  <div class="notes-list">
+    {% for f in tree.files %}{{ file_entry(f) }}{% endfor %}
+    {% for g in tree.groups %}{{ subdir_group(g, item_slug, readme_rel) }}{% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+
+{% macro readme_link(item) %}
+<div class="readme-preview"
+  onclick="openNotePreview({{ item.path | embed }},{{ item.title | embed }})">≡ README</div>
+{% endmacro %}
+
+
+{% macro deliverables_block(deliverables) %}
+{% if deliverables %}
+<div class="deliverables">
+  <div class="dlv-heading">Deliverables</div>
+  {% for d in deliverables %}
+  <div class="dlv-item">
+    <a class="dlv-link" href="#"
+      onclick="event.preventDefault();event.stopPropagation();openDeliverable({{ d.full_path | embed }});return false;"
+      {% if d.desc %}title="{{ d.desc }}"{% endif %}>⤓ {{ d.label }}</a>{% if d.desc %} <span class="dlv-desc">— {{ d.desc }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{% macro card_actions(item, icons) %}
+{% set rel_dir = item.path.rsplit('/', 1)[0] ~ '/' %}
+{% set work_title = 'Work on — insert "work on ' ~ item.slug ~ '" in the focused terminal tab' %}
+<div class="card-actions">
+  <button class="git-action-btn card-action-work-on"
+    title="{{ work_title }}" aria-label="{{ work_title }}"
+    onclick="workOn(event,{{ item.slug | embed }})">{{ icons.work_on | safe }}</button>
+  <button class="git-action-btn card-action-folder"
+    title="Open folder in file manager" aria-label="Open folder in file manager"
+    onclick="openFolder(event,{{ rel_dir | embed }})">{{ icons.folder | safe }}</button>
+</div>
+{% endmacro %}
+
+
+{% macro index_badge(idx, top_level=false) %}
+<a class="knowledge-index-badge{% if top_level %} knowledge-index-top{% endif %}"
+  onclick="event.stopPropagation();openNotePreview({{ idx.path | embed }},{{ idx.title | embed }})"
+  title="{{ idx.path }}">index</a>
+{% endmacro %}
+
+
+{% macro knowledge_card(e) %}
+<div class="knowledge-card" data-node-id="{{ e.path }}"
+  onclick="openNotePreview({{ e.path | embed }},{{ e.title | embed }})">
+  <div class="knowledge-title">{{ e.title }}</div>
+  {% if e.desc %}<div class="knowledge-desc">{{ e.desc }}</div>{% endif %}
+  <div class="knowledge-path">{{ e.path }}</div>
+</div>
+{% endmacro %}
+
+
+{% macro knowledge_group(node) %}
+<details class="knowledge-group" data-node-id="{{ node.rel_dir }}">
+  <summary class="knowledge-group-heading">
+    <span class="knowledge-chevron" aria-hidden="true">&#9656;</span>
+    <span class="knowledge-group-name">{{ node.label }}</span>
+    <span class="knowledge-count">({{ node.count }})</span>
+    {% if node.index %}{{ index_badge(node.index, top_level=false) }}{% endif %}
+  </summary>
+  {% if node.body %}
+  <div class="knowledge-list">
+    {% for e in node.body %}{{ knowledge_card(e) }}{% endfor %}
+  </div>
+  {% endif %}
+  {% for child in node.children %}{{ knowledge_group(child) }}{% endfor %}
+</details>
+{% endmacro %}
