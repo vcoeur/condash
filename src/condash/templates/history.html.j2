@@ -1,0 +1,36 @@
+{% import "_macros.html.j2" as m %}
+{% if no_projects_dir %}
+<p class="note-empty">No <code>projects/</code> tree under the configured conception path.</p>
+{% else %}
+<div class="knowledge-panel history-panel">
+  {% if root_index %}{{ m.index_badge(root_index, top_level=true) }}{% endif %}
+  {% if not months %}
+  <p class="note-empty">No projects on disk yet.</p>
+  {% else %}
+    {% for month in months %}
+    <details class="knowledge-group history-group" open>
+      <summary class="knowledge-group-heading">
+        <span class="knowledge-chevron" aria-hidden="true">&#9656;</span>
+        <span class="knowledge-group-name">{{ month.name }}</span>
+        <span class="knowledge-count">({{ month['items'] | length }})</span>
+        {% if month.index %}{{ m.index_badge(month.index, top_level=false) }}{% endif %}
+      </summary>
+      <div class="knowledge-list">
+        {% for item in month['items'] %}
+        <div class="knowledge-card history-card"
+          data-priority="{{ item.priority }}" data-kind="{{ item.kind }}"
+          onclick="openNotePreview({{ item.path | embed }},{{ item.title | embed }})">
+          <div class="knowledge-title">{{ item.title }}</div>
+          <div class="history-meta">
+            <span class="pill pri-{{ item.priority }}">{{ item.priority }}</span>
+            <span class="pill">{{ item.kind }}</span>
+          </div>
+          <div class="knowledge-path">{{ item.slug }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endif %}

@@ -11,9 +11,22 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from importlib.resources import files as _package_files
 from pathlib import Path
 
 from .context import RenderCtx
+
+
+def icon_path() -> str:
+    """Absolute path to the bundled app icon (SVG).
+
+    Used by :mod:`condash.app` (pywebview start_args) and
+    :mod:`condash.desktop` (XDG icon install). Living here keeps
+    ``desktop.py`` free of an ``app.py`` import — the installer has no
+    business pulling in NiceGUI, routes, or the runtime state container.
+    """
+    return str(_package_files("condash") / "assets" / "favicon.svg")
+
 
 _VALID_ITEM_PREFIX = r"^projects/\d{4}-\d{2}/\d{4}-\d{2}-\d{2}-[\w.-]+/"
 

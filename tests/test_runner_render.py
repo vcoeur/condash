@@ -67,8 +67,8 @@ def test_render_includes_run_button(tmp_path: Path, tmp_conception: Path) -> Non
 
 def test_fragment_endpoint_serves_repo_block(tmp_path: Path, tmp_conception: Path) -> None:
     cfg = _cfg(tmp_path, tmp_conception, "make dev")
-    app_mod._RUNTIME_CFG = cfg
-    app_mod._RUNTIME_CTX = build_ctx(cfg)
+    app_mod.state.cfg = cfg
+    app_mod.state.ctx = build_ctx(cfg)
     app_mod._register_routes()
     client = TestClient(_ng_app)
     res = client.get("/fragment", params={"id": "code/Primary/demo"})

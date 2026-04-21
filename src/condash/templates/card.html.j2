@@ -1,0 +1,66 @@
+{% import "_macros.html.j2" as m %}
+{% set pri = item.priority %}
+{% set kind = item.kind %}
+{% set node_id = "projects/" ~ pri ~ "/" ~ item.slug %}
+<div class="card collapsed" id="{{ item.slug }}"
+  data-kind="{{ kind }}" data-priority="{{ pri }}" data-node-id="{{ node_id }}">
+  <div class="card-header">
+    <div class="card-header-left" onclick="toggleCard(this.closest('.card'))">
+      <span class="kind-prefix kind-{{ kind }}">{{ kind }}</span>
+      <span class="card-title">{{ item.title }}</span>
+      {% if item.deliverables %}<span class="dlv-icon" title="Has deliverables">PDF</span>{% endif %}
+    </div>
+    <div class="card-header-right">
+      {% if item.total and item.total > 0 %}
+        {% set pct = (item.done / item.total * 100) | round | int %}
+        {% set fill_var = "--progress-done" if pct == 100 else "--progress-fill" %}
+        <span class="progress-text">{{ item.done }}/{{ item.total }}
+          <span class="progress-bar" style="background:var(--progress-track)">
+            <span class="progress-fill" style="width:{{ pct }}%;background:var({{ fill_var }})"></span>
+          </span>
+        </span>
+      {% endif %}
+      {% if item.invalid_status %}
+        <span class="invalid-status-badge"
+          title='Unknown Status "{{ item.invalid_status }}" in README — treated as backlog. Valid: now, soon, later, backlog, review, done.'>!? {{ item.invalid_status }}</span>
+      {% endif %}
+      <span class="pri-wrap" onclick="event.stopPropagation();togglePriMenu(this)">
+        <span class="pri-current pri-{{ pri }}">{{ pri }}</span>
+        <span class="pri-menu">
+          {% for p in priorities %}
+          <span class="pri-option pri-{{ p }}"
+            onclick="event.stopPropagation();pickPriority({{ item.path | embed }},'{{ p }}',this.closest('.pri-wrap'))">{{ p }}</span>
+          {% endfor %}
+        </span>
+      </span>
+      <span class="date">{{ item.date }}</span>
+      {{ m.card_actions(item, icons) }}
+    </div>
+  </div>
+  {% if next_step %}
+  <div class="card-next-step"
+    onclick="toggleCard(this.closest('.card'))"
+    title="Next pending step">
+    <span class="next-step-marker next-step-{{ next_step.status }}" aria-hidden="true"></span>
+    <span class="next-step-text">{{ next_step.text }}</span>
+  </div>
+  {% endif %}
+  <div class="card-body">
+    <div class="card-left">
+      {% if item.apps %}
+      <div class="card-apps">
+        {% for a in item.apps %}<span class="pill">{{ a }}</span>{% if not loop.last %} {% endif %}{% endfor %}
+      </div>
+      {% endif %}
+      {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
+      {{ m.readme_link(item) }}
+      {{ m.files_block(files_tree, item.path, item.slug, files_total) }}
+      {{ m.deliverables_block(item.deliverables) }}
+    </div>
+    <div class="card-right">
+      <div class="sections">
+        {% for s in item.sections %}{{ m.group(s.heading, s['items'], item.path) }}{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>

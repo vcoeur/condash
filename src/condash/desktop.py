@@ -21,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .app import icon_path
+from .paths import icon_path
 
 log = logging.getLogger(__name__)
 

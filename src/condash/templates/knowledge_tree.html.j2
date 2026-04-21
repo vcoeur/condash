@@ -1,0 +1,14 @@
+{% import "_macros.html.j2" as m %}
+{% if root is none or root.count == 0 %}
+<p class="note-empty">No <code>knowledge/</code> tree under the configured conception path.</p>
+{% else %}
+<div class="knowledge-panel" data-node-id="knowledge">
+  {% if root.index %}{{ m.index_badge(root.index, top_level=true) }}{% endif %}
+  {% if root.body %}
+  <div class="knowledge-list">
+    {% for e in root.body %}{{ m.knowledge_card(e) }}{% endfor %}
+  </div>
+  {% endif %}
+  {% for child in root.children %}{{ m.knowledge_group(child) }}{% endfor %}
+</div>
+{% endif %}
