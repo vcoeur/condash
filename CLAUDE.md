@@ -106,6 +106,6 @@ The CLI honours `CONDASH_LOG_LEVEL` (default `INFO`) for the root logger; set to
 - Git scan + repo strip: `src/condash/git_scan.py` — workspace scan, per-repo status, worktree listing, fingerprint cache for the `/check-updates` long-poll.
 - External launchers: `src/condash/openers.py` — open-in-IDE, PDF viewer chain, OS default opener, external URL routing.
 - Wikilinks: `src/condash/wikilinks.py` — `[[target]]` resolver called from markdown preprocess before pandoc.
-- Config dataclass + loader: `src/condash/config.py::CondashConfig` and `config.load`. `ConfigNotFoundError` vs `ConfigIncompleteError` are distinct so the CLI can suggest `init` vs `config edit`.
+- Config dataclass + loader: `src/condash/config.py::CondashConfig` and `config.load`. `ConfigNotFoundError` vs `ConfigIncompleteError` are distinct so the CLI can suggest `init` vs `config edit`. The same module owns the editor's payload boundary (`config_to_payload` / `payload_to_config`) so every input shape — TOML, YAML, JSON — funnels through one validator (`config.parse_repo_entries`).
 - Native window launcher: `src/condash/desktop.py` — writes `~/.local/share/applications/condash.desktop` and the SVG icon. Linux only.
 - Assets shipped in the wheel: `src/condash/assets/` — referenced via `importlib.resources.files("condash") / "assets"`, never via `__file__`, so the app works when installed from a wheel.

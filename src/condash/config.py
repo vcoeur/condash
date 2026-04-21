@@ -563,26 +563,34 @@ def write_default_template(target: Path) -> None:
     tmp.replace(target)
 
 
-def _parse_repo_list(
-    raw: object, source: Path, key: str
+def parse_repo_entries(
+    raw: object, source_label: str, key: str
 ) -> tuple[list[str], dict[str, list[str]], dict[str, RepoRunCommand]]:
-    """Split a ``primary`` / ``secondary`` list into (names, submodules, runs).
+    """Canonical parser for a ``primary`` / ``secondary`` repo list.
 
-    Each entry is either a bare string (name only) or an inline table with
-    ``{name = "...", submodules = [...], run = "..."}`` — ``name`` is
-    required; ``submodules`` and ``run`` are optional. Name may be bare
-    (``"condash"``, for a flat workspace) or slashed (``"myorg/repo-x"``,
-    for a depth-2 workspace where ``workspace_path`` is a parent of org
-    folders). Submodule paths are plain subdirectories relative to the
-    repo root, not real git submodules.
+    Used by every input shape — TOML, YAML, and the in-app editor's JSON
+    payload — so the validation rules live in exactly one place.
 
-    Submodule entries may also be dicts of the form
-    ``{name = "...", run = "..."}`` to carry their own inline-runner
-    command. Plain strings keep working and simply have no runner.
+    Each entry is either:
+      - a bare string (``"condash"``, name only), or
+      - a mapping ``{name, submodules?, submodule_entries?, run?}`` where
+        ``submodule_entries`` (the rich form, may carry per-sub ``run``)
+        wins over the plain ``submodules`` list when both are present.
+
+    Submodule entries themselves may be strings or
+    ``{name, run?}`` mappings. Names may be bare (``"condash"``, flat
+    workspace) or slashed (``"myorg/repo-x"``, depth-2 layout where
+    ``workspace_path`` is a parent of org folders). Submodule paths are
+    plain subdirectories relative to the repo root — not real git
+    submodules.
 
     Run commands are returned keyed by ``"<repo>"`` for top-level entries
     and ``"<repo>--<sub>"`` for sub-repo entries — the same key shape the
     runner registry uses at runtime.
+
+    Errors are raised as :class:`ConfigIncompleteError` (a ``ValueError``
+    subclass). ``source_label`` is prefixed onto every error message — pass
+    a file path for on-disk loaders, ``"payload"`` (or similar) for HTTP.
 
     The PR base branch is **not** carried here — ``/pr`` resolves it from
     ``origin/HEAD`` on the main checkout at call time.
@@ -590,72 +598,78 @@ def _parse_repo_list(
     if raw is None:
         return [], {}, {}
     if not isinstance(raw, list):
-        raise ConfigIncompleteError(f"{source}: 'repositories.{key}' must be a list")
+        raise ConfigIncompleteError(f"{source_label}: 'repositories.{key}' must be a list")
     names: list[str] = []
     subs: dict[str, list[str]] = {}
     runs: dict[str, RepoRunCommand] = {}
     for i, entry in enumerate(raw):
         if isinstance(entry, str):
             name = entry.strip()
-            if not name:
-                continue
-            names.append(name)
-        elif isinstance(entry, dict):
-            name_raw = entry.get("name")
-            if not isinstance(name_raw, str) or not name_raw.strip():
-                raise ConfigIncompleteError(
-                    f"{source}: 'repositories.{key}[{i}].name' must be a non-empty string"
-                )
-            name = name_raw.strip()
-            names.append(name)
-            sub_raw = entry.get("submodules") or []
-            if not isinstance(sub_raw, list):
-                raise ConfigIncompleteError(
-                    f"{source}: 'repositories.{key}[{i}].submodules' must be a list"
-                )
-            cleaned: list[str] = []
-            for j, sub_entry in enumerate(sub_raw):
-                if isinstance(sub_entry, str):
-                    s = sub_entry.strip()
-                    if s:
-                        cleaned.append(s)
-                    continue
-                if isinstance(sub_entry, dict):
-                    sub_name_raw = sub_entry.get("name")
-                    if not isinstance(sub_name_raw, str) or not sub_name_raw.strip():
-                        raise ConfigIncompleteError(
-                            f"{source}: 'repositories.{key}[{i}].submodules[{j}].name' "
-                            f"must be a non-empty string"
-                        )
-                    sub_name = sub_name_raw.strip()
-                    cleaned.append(sub_name)
-                    sub_run_raw = sub_entry.get("run")
-                    if sub_run_raw is not None:
-                        if not isinstance(sub_run_raw, str) or not sub_run_raw.strip():
-                            raise ConfigIncompleteError(
-                                f"{source}: 'repositories.{key}[{i}].submodules[{j}].run' "
-                                f"must be a non-empty string"
-                            )
-                        runs[f"{name}--{sub_name}"] = RepoRunCommand(template=sub_run_raw.strip())
-                    continue
-                raise ConfigIncompleteError(
-                    f"{source}: 'repositories.{key}[{i}].submodules[{j}]' must be a "
-                    f"string or a table with 'name' (and optional 'run')"
-                )
-            if cleaned:
-                subs[name] = cleaned
-            run_raw = entry.get("run")
-            if run_raw is not None:
-                if not isinstance(run_raw, str) or not run_raw.strip():
-                    raise ConfigIncompleteError(
-                        f"{source}: 'repositories.{key}[{i}].run' must be a non-empty string"
-                    )
-                runs[name] = RepoRunCommand(template=run_raw.strip())
-        else:
+            if name:
+                names.append(name)
+            continue
+        if not isinstance(entry, dict):
             raise ConfigIncompleteError(
-                f"{source}: 'repositories.{key}[{i}]' must be a string or a "
+                f"{source_label}: 'repositories.{key}[{i}]' must be a string or a "
                 f"table with 'name' and optional 'submodules' / 'run'"
             )
+        name_raw = entry.get("name")
+        if not isinstance(name_raw, str) or not name_raw.strip():
+            raise ConfigIncompleteError(
+                f"{source_label}: 'repositories.{key}[{i}].name' must be a non-empty string"
+            )
+        name = name_raw.strip()
+        names.append(name)
+
+        # ``submodule_entries`` is the rich form (may carry per-sub ``run``);
+        # it wins over the plain ``submodules`` list when both are present so
+        # the editor's payload round-trips losslessly.
+        sub_field = "submodule_entries" if "submodule_entries" in entry else "submodules"
+        sub_raw = entry.get(sub_field) or []
+        if not isinstance(sub_raw, list):
+            raise ConfigIncompleteError(
+                f"{source_label}: 'repositories.{key}[{i}].{sub_field}' must be a list"
+            )
+        cleaned: list[str] = []
+        for j, sub_entry in enumerate(sub_raw):
+            if isinstance(sub_entry, str):
+                s = sub_entry.strip()
+                if s:
+                    cleaned.append(s)
+                continue
+            if not isinstance(sub_entry, dict):
+                raise ConfigIncompleteError(
+                    f"{source_label}: 'repositories.{key}[{i}].{sub_field}[{j}]' must be a "
+                    f"string or a table with 'name' (and optional 'run')"
+                )
+            sub_name_raw = sub_entry.get("name")
+            if not isinstance(sub_name_raw, str) or not sub_name_raw.strip():
+                raise ConfigIncompleteError(
+                    f"{source_label}: 'repositories.{key}[{i}].{sub_field}[{j}].name' "
+                    f"must be a non-empty string"
+                )
+            sub_name = sub_name_raw.strip()
+            cleaned.append(sub_name)
+            sub_run_raw = sub_entry.get("run")
+            if sub_run_raw is None:
+                continue
+            if not isinstance(sub_run_raw, str) or not sub_run_raw.strip():
+                raise ConfigIncompleteError(
+                    f"{source_label}: 'repositories.{key}[{i}].{sub_field}[{j}].run' "
+                    f"must be a non-empty string"
+                )
+            runs[f"{name}--{sub_name}"] = RepoRunCommand(template=sub_run_raw.strip())
+        if cleaned:
+            subs[name] = cleaned
+
+        run_raw = entry.get("run")
+        if run_raw is None:
+            continue
+        if not isinstance(run_raw, str) or not run_raw.strip():
+            raise ConfigIncompleteError(
+                f"{source_label}: 'repositories.{key}[{i}].run' must be a non-empty string"
+            )
+        runs[name] = RepoRunCommand(template=run_raw.strip())
     return names, subs, runs
 
 
@@ -685,9 +699,11 @@ def _parse(data: dict, source: Path) -> CondashConfig:
         worktrees_path = None
 
     repos = data.get("repositories") or {}
-    primary, primary_subs, primary_runs = _parse_repo_list(repos.get("primary"), source, "primary")
-    secondary, secondary_subs, secondary_runs = _parse_repo_list(
-        repos.get("secondary"), source, "secondary"
+    primary, primary_subs, primary_runs = parse_repo_entries(
+        repos.get("primary"), str(source), "primary"
+    )
+    secondary, secondary_subs, secondary_runs = parse_repo_entries(
+        repos.get("secondary"), str(source), "secondary"
     )
     repo_submodules: dict[str, list[str]] = {**primary_subs, **secondary_subs}
     repo_run: dict[str, RepoRunCommand] = {**primary_runs, **secondary_runs}
@@ -933,9 +949,11 @@ def _apply_repositories_yaml(cfg: CondashConfig, data: dict, source: Path) -> No
     repos = data.get("repositories") or {}
     if not isinstance(repos, dict):
         raise ConfigIncompleteError(f"{source}: 'repositories' must be a mapping")
-    primary, primary_subs, primary_runs = _parse_repo_list(repos.get("primary"), source, "primary")
-    secondary, secondary_subs, secondary_runs = _parse_repo_list(
-        repos.get("secondary"), source, "secondary"
+    primary, primary_subs, primary_runs = parse_repo_entries(
+        repos.get("primary"), str(source), "primary"
+    )
+    secondary, secondary_subs, secondary_runs = parse_repo_entries(
+        repos.get("secondary"), str(source), "secondary"
     )
     cfg.repositories_primary = primary
     cfg.repositories_secondary = secondary
@@ -1039,6 +1057,216 @@ def save_repositories_yaml(cfg: CondashConfig, path: Path | None = None) -> Path
     tmp.write_text(rendered, encoding="utf-8")
     tmp.replace(target)
     return target
+
+
+# --- HTTP payload <-> CondashConfig ---------------------------------------
+#
+# These two functions (and their tiny helper) are the schema-mapping
+# boundary between the in-app editor's JSON payload and the typed config.
+# They live here, alongside the YAML/TOML readers and writers, so that the
+# accept-shapes are validated by exactly one parser
+# (:func:`parse_repo_entries`) regardless of input format.
+
+
+def _repo_entries_payload(
+    names: list[str],
+    repo_submodules: dict[str, list[str]],
+    repo_run: dict[str, RepoRunCommand] | None = None,
+) -> list[dict]:
+    """Shape a repo-name list for ``GET /config``: one mapping per repo
+    with its submodule paths and — when configured — the inline-runner
+    template, both for the repo and for each sub-repo.
+    """
+    runs = repo_run or {}
+    out: list[dict] = []
+    for name in names:
+        subs = list(repo_submodules.get(name) or [])
+        sub_objs = [
+            {"name": sub, "run": runs[f"{name}--{sub}"].template}
+            if f"{name}--{sub}" in runs
+            else {"name": sub}
+            for sub in subs
+        ]
+        entry: dict = {
+            "name": name,
+            "submodules": subs,
+            "submodule_entries": sub_objs,
+        }
+        top_run = runs.get(name)
+        if top_run is not None:
+            entry["run"] = top_run.template
+        out.append(entry)
+    return out
+
+
+def _read_yaml_body(target: Path | None) -> str:
+    """Read raw YAML bytes for the modal's split-pane view (best effort)."""
+    if target is None:
+        return ""
+    try:
+        return target.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def config_to_payload(cfg: CondashConfig) -> dict:
+    """Serialise the live config to JSON for ``GET /config``.
+
+    Includes the raw YAML bodies + their resolved disk paths so the
+    split-pane modal can render the live YAML alongside the form without
+    a second request.
+    """
+    # Local import to avoid a circular dep — pty itself imports CondashConfig.
+    from .pty import resolve_terminal_shell
+
+    repos_yaml_target = repositories_yaml_path(cfg.conception_path)
+    prefs_yaml_target = preferences_yaml_path(cfg.conception_path)
+    return {
+        "conception_path": str(cfg.conception_path) if cfg.conception_path else "",
+        "workspace_path": str(cfg.workspace_path) if cfg.workspace_path else "",
+        "worktrees_path": str(cfg.worktrees_path) if cfg.worktrees_path else "",
+        "port": int(cfg.port),
+        "native": bool(cfg.native),
+        "repositories_primary": _repo_entries_payload(
+            cfg.repositories_primary, cfg.repo_submodules, cfg.repo_run
+        ),
+        "repositories_secondary": _repo_entries_payload(
+            cfg.repositories_secondary, cfg.repo_submodules, cfg.repo_run
+        ),
+        "repositories_yaml_source": str(cfg.yaml_source) if cfg.yaml_source else "",
+        "repositories_yaml_expected_path": (str(repos_yaml_target) if repos_yaml_target else ""),
+        "repositories_yaml_body": _read_yaml_body(cfg.yaml_source or repos_yaml_target),
+        "preferences_yaml_source": (str(cfg.preferences_source) if cfg.preferences_source else ""),
+        "preferences_yaml_expected_path": (str(prefs_yaml_target) if prefs_yaml_target else ""),
+        "preferences_yaml_body": _read_yaml_body(cfg.preferences_source or prefs_yaml_target),
+        "terminal": {
+            "shell": cfg.terminal.shell or "",
+            "shortcut": cfg.terminal.shortcut,
+            "resolved_shell": resolve_terminal_shell(cfg),
+            "screenshot_dir": cfg.terminal.screenshot_dir or "",
+            "resolved_screenshot_dir": str(cfg.terminal.resolved_screenshot_dir()),
+            "screenshot_paste_shortcut": cfg.terminal.screenshot_paste_shortcut,
+            "launcher_command": cfg.terminal.launcher_command,
+            "move_tab_left_shortcut": cfg.terminal.move_tab_left_shortcut,
+            "move_tab_right_shortcut": cfg.terminal.move_tab_right_shortcut,
+        },
+        "open_with": {
+            slot_key: {
+                "label": cfg.open_with[slot_key].label,
+                "commands": list(cfg.open_with[slot_key].commands),
+            }
+            for slot_key in OPEN_WITH_SLOT_KEYS
+            if slot_key in cfg.open_with
+        },
+        "pdf_viewer": list(cfg.pdf_viewer),
+    }
+
+
+def payload_to_config(data: dict) -> CondashConfig:
+    """Build a validated :class:`CondashConfig` from the editor's JSON payload.
+
+    Raises :class:`ConfigIncompleteError` (a ``ValueError`` subclass) on
+    any shape error so route handlers can catch ``ValueError`` and return
+    a 400 with the message intact.
+    """
+    if not isinstance(data, dict):
+        raise ConfigIncompleteError("payload: must be an object")
+    conception_raw = (data.get("conception_path") or "").strip()
+    conception = Path(conception_raw).expanduser() if conception_raw else None
+
+    workspace_raw = (data.get("workspace_path") or "").strip()
+    workspace = Path(workspace_raw).expanduser() if workspace_raw else None
+    worktrees_raw = (data.get("worktrees_path") or "").strip()
+    worktrees = Path(worktrees_raw).expanduser() if worktrees_raw else None
+
+    port_raw = data.get("port", 0)
+    if isinstance(port_raw, str):
+        port_raw = int(port_raw or 0)
+    if not isinstance(port_raw, int) or not 0 <= port_raw <= 65535:
+        raise ConfigIncompleteError("payload: 'port' must be an integer between 0 and 65535")
+
+    native_raw = data.get("native", True)
+    if not isinstance(native_raw, bool):
+        raise ConfigIncompleteError("payload: 'native' must be a boolean")
+
+    primary, primary_subs, primary_runs = parse_repo_entries(
+        data.get("repositories_primary"), "payload", "primary"
+    )
+    secondary, secondary_subs, secondary_runs = parse_repo_entries(
+        data.get("repositories_secondary"), "payload", "secondary"
+    )
+    repo_submodules: dict[str, list[str]] = {**primary_subs, **secondary_subs}
+    repo_run: dict[str, RepoRunCommand] = {**primary_runs, **secondary_runs}
+
+    open_with_raw = data.get("open_with") or {}
+    if not isinstance(open_with_raw, dict):
+        raise ConfigIncompleteError("payload: 'open_with' must be an object")
+    open_with: dict[str, OpenWithSlot] = {}
+    for slot_key in OPEN_WITH_SLOT_KEYS:
+        defaults = DEFAULT_OPEN_WITH[slot_key]
+        slot_data = open_with_raw.get(slot_key) or {}
+        if not isinstance(slot_data, dict):
+            raise ConfigIncompleteError(f"payload: 'open_with.{slot_key}' must be an object")
+        label = str(slot_data.get("label") or defaults["label"])
+        commands_raw = slot_data.get("commands")
+        if commands_raw is None:
+            commands = list(defaults["commands"])
+        elif isinstance(commands_raw, list):
+            commands = [str(c) for c in commands_raw if str(c).strip()]
+        else:
+            raise ConfigIncompleteError(f"payload: 'open_with.{slot_key}.commands' must be a list")
+        open_with[slot_key] = OpenWithSlot(label=label, commands=commands)
+
+    pdf_viewer_raw = data.get("pdf_viewer", [])
+    if pdf_viewer_raw is None:
+        pdf_viewer: list[str] = []
+    elif isinstance(pdf_viewer_raw, list):
+        pdf_viewer = [str(c).strip() for c in pdf_viewer_raw if str(c).strip()]
+    else:
+        raise ConfigIncompleteError("payload: 'pdf_viewer' must be a list of command strings")
+
+    term_raw = data.get("terminal") or {}
+    if not isinstance(term_raw, dict):
+        raise ConfigIncompleteError("payload: 'terminal' must be an object")
+    shell_in = str(term_raw.get("shell") or "").strip() or None
+    shortcut_in = str(term_raw.get("shortcut") or "").strip() or DEFAULT_TERMINAL_SHORTCUT
+    screenshot_dir_in = str(term_raw.get("screenshot_dir") or "").strip() or None
+    paste_shortcut_in = (
+        str(term_raw.get("screenshot_paste_shortcut") or "").strip()
+        or DEFAULT_SCREENSHOT_PASTE_SHORTCUT
+    )
+    launcher_command_in = str(term_raw.get("launcher_command", DEFAULT_LAUNCHER_COMMAND))
+    move_left_in = (
+        str(term_raw.get("move_tab_left_shortcut") or "").strip() or DEFAULT_MOVE_TAB_LEFT_SHORTCUT
+    )
+    move_right_in = (
+        str(term_raw.get("move_tab_right_shortcut") or "").strip()
+        or DEFAULT_MOVE_TAB_RIGHT_SHORTCUT
+    )
+    terminal = TerminalConfig(
+        shell=shell_in,
+        shortcut=shortcut_in,
+        screenshot_dir=screenshot_dir_in,
+        screenshot_paste_shortcut=paste_shortcut_in,
+        launcher_command=launcher_command_in.strip(),
+        move_tab_left_shortcut=move_left_in,
+        move_tab_right_shortcut=move_right_in,
+    )
+
+    return CondashConfig(
+        conception_path=conception,
+        workspace_path=workspace,
+        worktrees_path=worktrees,
+        repositories_primary=primary,
+        repositories_secondary=secondary,
+        repo_submodules=repo_submodules,
+        terminal=terminal,
+        port=port_raw,
+        native=native_raw,
+        open_with=open_with,
+        pdf_viewer=pdf_viewer,
+        repo_run=repo_run,
+    )
 
 
 def load(
