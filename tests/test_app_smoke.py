@@ -12,8 +12,8 @@ from condash.context import build_ctx
 
 def _client(cfg: CondashConfig) -> TestClient:
     """Wire up the FastAPI routes against ``cfg`` and return a TestClient."""
-    app_mod._RUNTIME_CFG = cfg
-    app_mod._RUNTIME_CTX = build_ctx(cfg)
+    app_mod.state.cfg = cfg
+    app_mod.state.ctx = build_ctx(cfg)
     app_mod._register_routes()
     return TestClient(_ng_app)
 

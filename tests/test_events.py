@@ -132,8 +132,8 @@ def test_events_route_registered(cfg):
     from condash import app as app_mod
     from condash.context import build_ctx
 
-    app_mod._RUNTIME_CFG = cfg
-    app_mod._RUNTIME_CTX = build_ctx(cfg)
+    app_mod.state.cfg = cfg
+    app_mod.state.ctx = build_ctx(cfg)
     app_mod._register_routes()
     paths = [getattr(r, "path", "") for r in _ng_app.routes]
     assert "/events" in paths

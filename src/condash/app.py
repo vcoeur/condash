@@ -18,7 +18,6 @@ import socket
 import struct
 import sys
 import termios
-import time
 from dataclasses import dataclass, field
 from importlib.resources import files as _package_files
 from pathlib import Path
@@ -85,31 +84,18 @@ from .render import (
     render_page,
 )
 from .search import search_items
+from .state import AppState
 
 log = logging.getLogger(__name__)
 
-# Holds the live runtime config and derived RenderCtx so the in-app editor
-# can mutate both after a successful POST /config without forcing a
-# process restart. Initialized by `run` before NiceGUI starts.
-_RUNTIME_CFG: CondashConfig | None = None
-_RUNTIME_CTX: RenderCtx | None = None
-
-# When POST /config writes the YAML, the watchdog observer sees its own
-# write and would emit a redundant config-reload event. We stamp each
-# expected filename here with an expiry timestamp right before saving; the
-# file-watcher callback drops any leaf whose stamp is still in the future.
-# A timestamp-based approach (vs. a one-shot set) handles the case where
-# the handler's 0.75s debounce collapses two rapid self-writes into a
-# single event — a set-based stamp would leak.
-_CONFIG_SELF_WRITE: dict[str, float] = {}
-_CONFIG_SELF_WRITE_TTL = 2.0
-
-# Phase 6: filesystem-driven staleness push. The bus collects events
-# from the watchdog worker thread; ``/events`` fans them out to every
-# connected SSE client. A single observer is spun up in :func:`run`
-# and torn down on shutdown.
-_EVENT_BUS = events_mod.EventBus()
-_EVENT_OBSERVER = None
+# Runtime state container. Created once at import time; :func:`run` or
+# test bootstrap populates ``cfg`` / ``ctx`` before :func:`_register_routes`
+# is called. See :mod:`condash.state` for the fields and the config
+# self-write suppression helpers.
+#
+# Module-level so routes (defined inside ``_register_routes``) can close
+# over it, and tests can poke ``state.cfg`` / ``state.ctx`` directly.
+state = AppState(event_bus=events_mod.EventBus())
 
 # Vendored Mozilla PDF.js. Served as-is from inside the package under
 # /vendor/pdfjs/... — the in-modal viewer loads pdf.mjs + pdf.worker.mjs
@@ -138,16 +124,13 @@ _XTERM_MIME = {
 
 def _ctx() -> RenderCtx:
     """Return the live RenderCtx or raise if uninitialised."""
-    if _RUNTIME_CTX is None:
-        raise RuntimeError("condash.app: _RUNTIME_CTX not initialised")
-    return _RUNTIME_CTX
+    return state.get_ctx()
 
 
 def _stop_event_observer() -> None:
     """NiceGUI shutdown hook: halt the watchdog observer cleanly."""
-    global _EVENT_OBSERVER
-    obs = _EVENT_OBSERVER
-    _EVENT_OBSERVER = None
+    obs = state.event_observer
+    state.event_observer = None
     if obs is None:
         return
     try:
@@ -163,36 +146,31 @@ def _reload_runtime_config_from_disk(leaf: str) -> None:
     Runs on the asyncio event loop (scheduled by the watchdog worker via
     ``loop.call_soon_threadsafe``). Drops the event when the write was
     initiated by this process itself — POST ``/config`` stamps the leaf
-    into :data:`_CONFIG_SELF_WRITE` right before saving so the watcher's
-    echo is suppressed exactly once.
+    via :meth:`AppState.stamp_config_self_write` right before saving so
+    the watcher's echo is suppressed exactly once.
 
-    Rebuilds ``_RUNTIME_CFG`` + ``_RUNTIME_CTX`` atomically (pointer swap)
-    so concurrent readers see either the previous config or the new one,
+    Rebuilds ``state.cfg`` + ``state.ctx`` atomically (pointer swap) so
+    concurrent readers see either the previous config or the new one,
     never a half-initialised state. Errors are logged and dropped — a
     malformed hand edit leaves the running config intact, and the user
     gets the parse error via the normal log channel.
     """
-    global _RUNTIME_CFG, _RUNTIME_CTX
-    now = time.time()
-    expiry = _CONFIG_SELF_WRITE.get(leaf)
-    if expiry is not None and now < expiry:
+    if state.is_config_self_write(leaf):
         return
-    # Reap any long-expired self-write stamps so the dict doesn't grow.
-    for stale_leaf in [k for k, v in _CONFIG_SELF_WRITE.items() if v <= now]:
-        _CONFIG_SELF_WRITE.pop(stale_leaf, None)
-    if _RUNTIME_CFG is None:
+    current_cfg = state.cfg
+    if current_cfg is None:
         return
     try:
         new_cfg = config_mod.load(
-            port_override=_RUNTIME_CFG.port,
-            native_override=_RUNTIME_CFG.native,
+            port_override=current_cfg.port,
+            native_override=current_cfg.native,
         )
     except (config_mod.ConfigNotFoundError, config_mod.ConfigIncompleteError) as exc:
         log.warning("live config reload failed (%s): %s", leaf, exc)
         return
     new_ctx = build_ctx(new_cfg)
-    _RUNTIME_CFG = new_cfg
-    _RUNTIME_CTX = new_ctx
+    state.cfg = new_cfg
+    state.ctx = new_ctx
     log.info("live config reload: %s applied", leaf)
 
 
@@ -227,9 +205,6 @@ class PtySession:
     out_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     attached_ws: WebSocket | None = None
     pump_task: asyncio.Task | None = None
-
-
-_PTY_SESSIONS: dict[str, PtySession] = {}
 
 
 def icon_path() -> str:
@@ -392,8 +367,8 @@ def _register_routes() -> None:
         (and the browser's EventSource) keep the connection open and
         reconnection logic has a signal to latch onto.
         """
-        _EVENT_BUS.bind_loop(asyncio.get_running_loop())
-        queue = _EVENT_BUS.subscribe()
+        state.event_bus.bind_loop(asyncio.get_running_loop())
+        queue = state.event_bus.subscribe()
 
         async def stream():
             try:
@@ -410,7 +385,7 @@ def _register_routes() -> None:
                         continue
                     yield f"data: {json.dumps(payload)}\n\n"
             finally:
-                _EVENT_BUS.unsubscribe(queue)
+                state.event_bus.unsubscribe(queue)
 
         return StreamingResponse(
             stream(),
@@ -813,7 +788,7 @@ def _register_routes() -> None:
         dir: <abs>, reason: <message>}`` when the directory is missing,
         unreadable, or empty.
         """
-        cfg = _RUNTIME_CFG
+        cfg = state.cfg
         if cfg is None:
             return _error(500, "config not initialised")
         directory = cfg.terminal.resolved_screenshot_dir()
@@ -849,15 +824,14 @@ def _register_routes() -> None:
 
     @_ng_app.get("/config")
     def get_config():
-        cfg = _RUNTIME_CFG
+        cfg = state.cfg
         if cfg is None:
             return _error(500, "config not initialised")
         return _config_to_payload(cfg)
 
     @_ng_app.post("/config")
     async def post_config(req: Request):
-        global _RUNTIME_CFG
-        if _RUNTIME_CFG is None:
+        if state.cfg is None:
             return _error(500, "config not initialised")
         data = await req.json()
         try:
@@ -865,24 +839,20 @@ def _register_routes() -> None:
         except (ValueError, KeyError, TypeError) as exc:
             return _error(400, f"invalid config: {exc}")
         # Stamp self-writes so the filesystem watcher doesn't echo our
-        # own save back as an external reload event. Expiry-based so the
-        # 0.75s handler debounce can't leak a stamp into the next edit.
-        expiry = time.time() + _CONFIG_SELF_WRITE_TTL
-        _CONFIG_SELF_WRITE["repositories.yml"] = expiry
-        _CONFIG_SELF_WRITE["preferences.yml"] = expiry
+        # own save back as an external reload event.
+        state.stamp_config_self_write("repositories.yml", "preferences.yml")
         config_mod.save(new_cfg)
         # Rebuild the RenderCtx so paths / repos / open-with changes
         # take effect on the next request without needing a process restart.
-        global _RUNTIME_CTX
-        _RUNTIME_CTX = build_ctx(new_cfg)
+        state.ctx = build_ctx(new_cfg)
         # Surface which fields require a restart to actually take effect.
         restart_required = []
-        old = _RUNTIME_CFG
+        old = state.cfg
         if old.port != new_cfg.port:
             restart_required.append("port")
         if old.native != new_cfg.native:
             restart_required.append("native")
-        _RUNTIME_CFG = new_cfg
+        state.cfg = new_cfg
         return {
             "ok": True,
             "restart_required": restart_required,
@@ -905,8 +875,7 @@ def _register_routes() -> None:
         rewritten byte-identically from the current state. That's fine
         and keeps the data flow uniform.
         """
-        global _RUNTIME_CFG, _RUNTIME_CTX
-        if _RUNTIME_CFG is None:
+        if state.cfg is None:
             return _error(500, "config not initialised")
         try:
             data = await req.json()
@@ -920,7 +889,7 @@ def _register_routes() -> None:
             return _error(400, "file must be 'repositories' or 'preferences'")
         if not isinstance(body, str):
             return _error(400, "body must be a string")
-        if _RUNTIME_CFG.conception_path is None:
+        if state.cfg.conception_path is None:
             return _error(400, "conception_path is unset — set it in General first")
         # Parse + validate before touching disk. Reuse the loader helpers
         # so we get the same shape errors the file-based path reports.
@@ -938,7 +907,7 @@ def _register_routes() -> None:
         # half-applied if _apply_* raises deep into the parse.
         import copy
 
-        draft = copy.deepcopy(_RUNTIME_CFG)
+        draft = copy.deepcopy(state.cfg)
         try:
             if which == "repositories":
                 target = config_mod.repositories_yaml_path(draft.conception_path)
@@ -949,12 +918,10 @@ def _register_routes() -> None:
         except config_mod.ConfigIncompleteError as exc:
             return _error(400, str(exc))
         # Stamp self-writes so the file watcher doesn't echo back.
-        expiry = time.time() + _CONFIG_SELF_WRITE_TTL
-        _CONFIG_SELF_WRITE["repositories.yml"] = expiry
-        _CONFIG_SELF_WRITE["preferences.yml"] = expiry
+        state.stamp_config_self_write("repositories.yml", "preferences.yml")
         config_mod.save(draft)
-        _RUNTIME_CTX = build_ctx(draft)
-        _RUNTIME_CFG = draft
+        state.ctx = build_ctx(draft)
+        state.cfg = draft
         return {"ok": True, "config": _config_to_payload(draft)}
 
     @_ng_app.post("/api/runner/start")
@@ -981,9 +948,9 @@ def _register_routes() -> None:
         path_raw = str(data.get("path") or "").strip()
         if not key or not checkout_key or not path_raw:
             return _error(400, "key, checkout_key, path required")
-        if _RUNTIME_CFG is None:
+        if state.cfg is None:
             return _error(500, "runtime config not initialised")
-        cmd = _RUNTIME_CFG.repo_run.get(key)
+        cmd = state.cfg.repo_run.get(key)
         if cmd is None:
             return _error(404, f"no run command configured for {key}")
         validated = _validate_open_path(_ctx(), path_raw)
@@ -999,7 +966,7 @@ def _register_routes() -> None:
                     "checkout_key": existing.checkout_key,
                 },
             )
-        shell = _resolve_terminal_shell(_RUNTIME_CFG)
+        shell = _resolve_terminal_shell(state.cfg)
         try:
             session = await runners_mod.start(
                 key=key,
@@ -1138,7 +1105,7 @@ def _register_routes() -> None:
             return
 
         requested_id = ws.query_params.get("session_id") or None
-        session = _PTY_SESSIONS.get(requested_id) if requested_id else None
+        session = state.pty_sessions.get(requested_id) if requested_id else None
 
         if requested_id and session is None:
             # Reattach to an unknown session — almost always "condash was
@@ -1244,8 +1211,8 @@ async def _spawn_pty_session(
     shell_label: str
     if use_launcher:
         raw_command = (
-            _RUNTIME_CFG.terminal.launcher_command
-            if _RUNTIME_CFG is not None and _RUNTIME_CFG.terminal.launcher_command
+            state.cfg.terminal.launcher_command
+            if state.cfg is not None and state.cfg.terminal.launcher_command
             else ""
         )
         if not raw_command.strip():
@@ -1261,8 +1228,8 @@ async def _spawn_pty_session(
         shell_label = argv[0]
     else:
         shell_label = (
-            _resolve_terminal_shell(_RUNTIME_CFG)
-            if _RUNTIME_CFG is not None
+            _resolve_terminal_shell(state.cfg)
+            if state.cfg is not None
             else os.environ.get("SHELL") or "/bin/bash"
         )
         argv = [shell_label, "-l"]
@@ -1318,7 +1285,7 @@ async def _spawn_pty_session(
 
     loop.add_reader(fd, _on_readable)
     session.pump_task = asyncio.create_task(_pump_session(session))
-    _PTY_SESSIONS[session.session_id] = session
+    state.pty_sessions[session.session_id] = session
     return session
 
 
@@ -1342,7 +1309,7 @@ async def _pump_session(session: PtySession) -> None:
         data = await session.out_queue.get()
         if data is None:
             # EOF — shell exited. Tear the session down.
-            _PTY_SESSIONS.pop(session.session_id, None)
+            state.pty_sessions.pop(session.session_id, None)
             ws = session.attached_ws
             session.attached_ws = None
             if ws is not None:
@@ -1496,14 +1463,14 @@ async def _attach_ws(session: PtySession, ws: WebSocket) -> None:
 
 def _reap_all_pty_sessions() -> None:
     """SIGTERM every live pty. Called on server shutdown."""
-    for session in list(_PTY_SESSIONS.values()):
+    for session in list(state.pty_sessions.values()):
         try:
             os.kill(session.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
         except OSError:
             pass
-    _PTY_SESSIONS.clear()
+    state.pty_sessions.clear()
 
 
 def _reap_and_exit() -> None:
@@ -1981,22 +1948,21 @@ def _pick_free_port() -> int:
 
 def run(cfg: CondashConfig) -> None:
     """Launch the condash dashboard (native window or browser, per config)."""
-    global _RUNTIME_CFG, _RUNTIME_CTX, _EVENT_OBSERVER
-    _RUNTIME_CFG = cfg
-    _RUNTIME_CTX = build_ctx(cfg)
+    state.cfg = cfg
+    state.ctx = build_ctx(cfg)
     _register_routes()
     # Filesystem → SSE bridge. The observer runs on its own worker
     # thread and publishes to the module-level bus; /events streams
     # from there. Stopped on NiceGUI shutdown.
-    _EVENT_OBSERVER = events_mod.start_watcher(
-        _RUNTIME_CTX, _EVENT_BUS, on_config_reload=_reload_runtime_config_from_disk
+    state.event_observer = events_mod.start_watcher(
+        state.ctx, state.event_bus, on_config_reload=_reload_runtime_config_from_disk
     )
-    if _EVENT_OBSERVER is not None:
+    if state.event_observer is not None:
         _ng_app.on_shutdown(_stop_event_observer)
         # Bind the asyncio loop to the event bus as soon as it's spinning so
         # the first filesystem event doesn't lose its reload callback just
         # because no SSE client has connected yet.
-        _ng_app.on_startup(lambda: _EVENT_BUS.bind_loop(asyncio.get_running_loop()))
+        _ng_app.on_startup(lambda: state.event_bus.bind_loop(asyncio.get_running_loop()))
     port = _pick_free_port() if cfg.port == 0 else cfg.port
     kwargs: dict = {
         "native": cfg.native,

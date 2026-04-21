@@ -49,8 +49,8 @@ def tree(tmp_conception: Path) -> Path:
 
 
 def _client(cfg: CondashConfig) -> TestClient:
-    app_mod._RUNTIME_CFG = cfg
-    app_mod._RUNTIME_CTX = build_ctx(cfg)
+    app_mod.state.cfg = cfg
+    app_mod.state.ctx = build_ctx(cfg)
     app_mod._register_routes()
     return TestClient(_ng_app)
 
