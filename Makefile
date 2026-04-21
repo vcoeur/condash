@@ -133,6 +133,25 @@ update-codemirror: ## Re-vendor CodeMirror 6 into src/condash/assets/vendor/code
 	echo "Vendored CodeMirror 6:"; \
 	du -sh "$$DEST"
 
+frontend: ## Bundle the dashboard source (src/condash/assets/src/) into dist/bundle.{js,css}
+	@set -e; \
+	SRC_JS=src/condash/assets/src/js/entry.js; \
+	SRC_CSS=src/condash/assets/src/css/main.css; \
+	DEST=src/condash/assets/dist; \
+	mkdir -p "$$DEST"; \
+	echo "Bundling $$SRC_JS → $$DEST/bundle.js (esbuild $(ESBUILD_VERSION))"; \
+	NPM_CONFIG_CACHE="$${TMPDIR:-/tmp}/.npm-cache" npx --yes esbuild@$(ESBUILD_VERSION) \
+	    "$$SRC_JS" \
+	    --bundle --format=iife --global-name=Condash --target=es2019 \
+	    --outfile="$$DEST/bundle.js" --log-level=warning; \
+	echo "Bundling $$SRC_CSS → $$DEST/bundle.css"; \
+	NPM_CONFIG_CACHE="$${TMPDIR:-/tmp}/.npm-cache" npx --yes esbuild@$(ESBUILD_VERSION) \
+	    "$$SRC_CSS" \
+	    --bundle --target=es2019 \
+	    --outfile="$$DEST/bundle.css" --log-level=warning; \
+	echo "Frontend bundle:"; \
+	du -sh "$$DEST"
+
 update-mermaid: ## Re-vendor Mermaid at $(MERMAID_VERSION) into src/condash/assets/vendor/mermaid/
 	@set -e; \
 	URL="https://cdn.jsdelivr.net/npm/mermaid@$(MERMAID_VERSION)/dist/mermaid.min.js"; \
@@ -150,4 +169,4 @@ update-mermaid: ## Re-vendor Mermaid at $(MERMAID_VERSION) into src/condash/asse
 	echo "Vendored Mermaid $(MERMAID_VERSION):"; \
 	du -sh "$$DEST"
 
-.PHONY: help install dev-install run test test-e2e test-all coverage lint format update-pdfjs update-codemirror update-mermaid
+.PHONY: help install dev-install run test test-e2e test-all coverage lint format frontend update-pdfjs update-codemirror update-mermaid

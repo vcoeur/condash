@@ -25,6 +25,16 @@
 <script src="/vendor/xterm/lib/xterm.min.js" defer></script>
 <script src="/vendor/xterm/lib/xterm-addon-fit.min.js" defer></script>
 <script src="/vendor/codemirror/codemirror.min.js" defer></script>
+<!--
+  Frontend-split bundle (F1 scaffolding, 2026-04 condash-frontend-split project).
+  Built from src/condash/assets/src/{js,css}/ by `make frontend` (esbuild).
+  Empty in F1 — as each region of the inline <style> and <script> blocks
+  below is extracted (F2 for CSS, F3/F4 for JS), its content moves into
+  the bundle and the inline copy shrinks. Keep loaded in this order so
+  that during the split inline rules still win on specificity ties.
+-->
+<link rel="stylesheet" href="/assets/dist/bundle.css">
+<script src="/assets/dist/bundle.js" defer></script>
 <style>
 :root, [data-theme="light"] {
     --bg: #f4f4f5;
