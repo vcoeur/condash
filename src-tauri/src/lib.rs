@@ -13,6 +13,7 @@ use condash_state::WorkspaceCache;
 use tauri::Manager;
 
 pub mod config;
+pub mod events;
 pub mod paths;
 pub mod server;
 
@@ -60,12 +61,27 @@ pub fn run() {
                 let _ = warm_cache.get_knowledge(&warm_ctx);
             });
 
+            let event_bus = events::EventBus::default();
             let state = server::AppState {
-                ctx,
+                ctx: ctx.clone(),
                 cache,
                 asset_dir: Arc::new(asset_dir),
                 version: Arc::new(env!("CARGO_PKG_VERSION").to_string()),
+                event_bus: event_bus.clone(),
             };
+
+            // Start the filesystem watcher (best-effort — the UI
+            // degrades to pure long-polling when the OS refuses to
+            // attach the watcher, e.g. inotify limits).
+            let watch_cfg = events::WatchConfig::from_ctx(
+                &ctx.base_dir,
+                ctx.workspace.as_deref(),
+                ctx.worktrees.as_deref(),
+            );
+            let _watcher = events::start_watcher(event_bus.clone(), watch_cfg);
+            if let Some(w) = _watcher {
+                app.manage(w);
+            }
 
             // Start axum + grab the port it picked.
             let port = tauri::async_runtime::block_on(server::start(state.clone()))

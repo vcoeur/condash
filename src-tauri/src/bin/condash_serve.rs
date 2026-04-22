@@ -35,11 +35,22 @@ async fn main() -> Result<()> {
     let _ = cache.get_items(&ctx);
     let _ = cache.get_knowledge(&ctx);
 
+    let event_bus = condash_lib::events::EventBus::default();
+    // Start the filesystem watcher so /events pushes real staleness
+    // signals. Hang onto the handle for the life of the process.
+    let watch_cfg = condash_lib::events::WatchConfig::from_ctx(
+        &ctx.base_dir,
+        ctx.workspace.as_deref(),
+        ctx.worktrees.as_deref(),
+    );
+    let _watcher = condash_lib::events::start_watcher(event_bus.clone(), watch_cfg);
+
     let state = condash_lib::server::AppState {
         ctx,
         cache,
         asset_dir: Arc::new(asset_dir),
         version: Arc::new(env!("CARGO_PKG_VERSION").to_string()),
+        event_bus,
     };
 
     // Honor CONDASH_PORT if set, else pick a free one like the Tauri

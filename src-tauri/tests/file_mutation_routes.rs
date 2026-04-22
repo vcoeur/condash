@@ -41,6 +41,7 @@ fn harness() -> Harness {
         cache,
         asset_dir: Arc::new(PathBuf::from("/nonexistent")),
         version: Arc::new("test".into()),
+        event_bus: condash_lib::events::EventBus::default(),
     };
 
     Harness {

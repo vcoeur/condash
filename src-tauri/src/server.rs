@@ -36,9 +36,14 @@
 //! - `POST /note/upload`    — multipart file uploads (≤ 50 MB each)
 //! - `POST /create-item`    — scaffold a new project/incident/document
 //!
-//! Routes *not* ported here (Phase 3+ territory): `/events` (SSE),
-//! `/note-raw` (read-side), runners (`/ws/runner/…`), terminal
-//! WebSockets.
+//! Phase 3 slice 4 added the SSE channel:
+//!
+//! - `GET /events`          — server-sent events (fan-out from the
+//!   filesystem watcher in `events.rs`; `hello` frame on connect, then
+//!   per-tab staleness payloads, with a 30 s keep-alive `ping`)
+//!
+//! Routes *not* ported here (Phase 4+ territory): `/note-raw` (read-side),
+//! runners (`/ws/runner/…`), terminal WebSockets.
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
@@ -88,6 +93,9 @@ pub struct AppState {
     pub asset_dir: Arc<PathBuf>,
     /// Version string stamped into the dashboard shell at `{{VERSION}}`.
     pub version: Arc<String>,
+    /// Fan-out for filesystem-driven staleness events. Cloneable — each
+    /// `/events` subscriber grabs its own `broadcast::Receiver`.
+    pub event_bus: crate::events::EventBus,
 }
 
 /// Start the axum server on a free localhost port and return the port
@@ -132,6 +140,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/edit-step", post(edit_step_route))
         .route("/set-priority", post(set_priority_route))
         .route("/reorder-all", post(reorder_all_route))
+        // Phase 3 slice 4 — SSE events channel.
+        .route("/events", get(events_stream))
         // Phase 3 slice 3 — file-level mutations.
         .route("/note", post(post_note))
         .route("/note/rename", post(post_note_rename))
@@ -740,6 +750,45 @@ async fn fragment(
     }
 
     error(StatusCode::NOT_FOUND, "unsupported id")
+}
+
+/// `GET /events` — server-sent events stream. Mirrors
+/// `routes/updates.py`'s `/events`: opens with a `hello` frame so the
+/// browser's `EventSource.onopen` fires immediately, fans out the
+/// event-bus payloads as `data:` frames, and punctuates the stream
+/// with a 30-second keep-alive so reverse proxies don't kill an idle
+/// connection.
+async fn events_stream(
+    State(state): State<AppState>,
+) -> axum::response::Sse<
+    impl futures_util::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+> {
+    use axum::response::sse::{Event as SseEvent, KeepAlive};
+    use futures_util::StreamExt;
+    use tokio_stream::wrappers::BroadcastStream;
+
+    let rx = state.event_bus.subscribe();
+    let hello = futures_util::stream::once(async {
+        Ok::<_, std::convert::Infallible>(SseEvent::default().event("hello").data("{}"))
+    });
+    let payloads = BroadcastStream::new(rx).filter_map(|res| async move {
+        match res {
+            Ok(payload) => {
+                let data = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into());
+                Some(Ok::<_, std::convert::Infallible>(
+                    SseEvent::default().data(data),
+                ))
+            }
+            // Subscriber lagged — the reconciler picks it up, just skip.
+            Err(_) => None,
+        }
+    });
+    let combined = hello.chain(payloads);
+    axum::response::Sse::new(combined).keep_alive(
+        KeepAlive::new()
+            .interval(std::time::Duration::from_secs(30))
+            .text("ping"),
+    )
 }
 
 async fn check_updates(State(state): State<AppState>) -> impl IntoResponse {
