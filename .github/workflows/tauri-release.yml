@@ -1,13 +1,22 @@
 name: tauri-release
 
-# Builds the Rust / Tauri desktop app for the three platforms we ship
-# to and attaches the artifacts to a draft GitHub Release. No signing,
-# no notarization, no codesigning certs — per notes/packaging.md, this
-# project ships unsigned with the in-app updater disabled.
+# Builds the Tauri desktop app for Linux / macOS / Windows on tag push
+# and attaches signed-but-unsigned bundles (MSI / DMG / AppImage) to a
+# draft GitHub Release. Per notes/packaging.md the project ships
+# unsigned — no code-signing certs, no Apple notarization, no Tauri
+# updater.
 #
-# Trigger: push a tag matching `tauri-v*` (e.g. `tauri-v0.21.0`). A
-# separate prefix from the Python `v*` tags keeps the two release
-# cadences independent.
+# Trigger: push a tag matching `tauri-v*` (e.g. `tauri-v0.21.0`).
+#
+# Phase 5 slice 5 swap (2026-04-22): the prior slice 2 workflow ran
+# `cargo build --bin condash-serve` directly to validate the matrix +
+# artifact-attach plumbing. With that gate green, this revision
+# hands the full build off to `tauri-apps/tauri-action`, which:
+#   * runs `cargo tauri build` per OS,
+#   * invokes the per-OS bundler (WiX → .msi, hdiutil → .dmg,
+#     linuxdeploy → .AppImage + .deb),
+#   * creates / updates the draft release inline (no separate publish
+#     job).
 
 on:
   push:
@@ -61,58 +70,30 @@ jobs:
             .
             src-tauri
 
-      - name: Build Tauri bundle
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin condash-serve
-        # Rationale: the full `cargo tauri build` path needs tauri-cli
-        # and invokes bundlers per-OS. Phase 5 slice 1 made condash-serve
-        # self-contained, so shipping that as a first-pass binary works
-        # across all three platforms. Slice 2b will swap this for
-        # `tauri-apps/tauri-action` once we have the config reviewed on
-        # each OS — wiring bundlers is platform-specific (WiX for MSI,
-        # hdiutil for DMG, linuxdeploy for AppImage) and worth landing
-        # separately so failures are attributable.
-
-      - name: Stage artifact
-        shell: bash
-        run: |
-          mkdir -p out
-          # Workspace target lives at the repo root (this is a cargo
-          # workspace — src-tauri is a member crate), so the binary
-          # lands at target/release/, not src-tauri/target/release/.
-          case "${{ matrix.os }}" in
-            ubuntu-latest)
-              cp target/release/condash-serve out/condash-serve-linux-x86_64
-              ;;
-            macos-latest)
-              cp target/release/condash-serve out/condash-serve-macos
-              ;;
-            windows-latest)
-              cp target/release/condash-serve.exe out/condash-serve-windows-x86_64.exe
-              ;;
-          esac
-          ls -lah out/
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Build + bundle (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No code-signing — leave TAURI_SIGNING_PRIVATE_KEY etc unset
+          # so the bundler skips signing/notarization. This produces
+          # unsigned artifacts; users go through the SmartScreen /
+          # Gatekeeper bypass documented in
+          # docs/guides/install-desktop.md.
         with:
-          name: condash-${{ matrix.label }}
-          path: out/*
-          if-no-files-found: error
+          # tauri.conf.json lives under src-tauri/.
+          projectPath: src-tauri
+          # Reuse the GitHub-provided tag for the release name. The
+          # `__VERSION__` placeholder gets substituted by the action
+          # against the bumped Cargo.toml version.
+          tagName: ${{ github.ref_name }}
+          releaseName: 'condash ${{ github.ref_name }}'
+          releaseBody: |
+            Unsigned Tauri build of condash.
 
-  publish:
-    name: Attach to release
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/tauri-v')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-      - name: Create/update release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          generate_release_notes: true
-          files: dist/**/*
+            Install bypass per OS: see docs/guides/install-desktop.md.
+
+            - Windows: SmartScreen → "More info" → "Run anyway".
+            - macOS: System Settings → Privacy & Security → "Open Anyway".
+            - Linux: `chmod +x` the AppImage, run.
+          releaseDraft: true
+          prerelease: false
