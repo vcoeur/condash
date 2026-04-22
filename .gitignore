@@ -16,6 +16,17 @@ wheels/
 # dist artefact — re-include it explicitly.
 !src/condash/assets/vendor/pdfjs/build/
 !src/condash/assets/vendor/pdfjs/build/**
+# …and the frontend build output ships with the wheel (esbuild bundles,
+# rebuilt by `make frontend`), same re-include pattern.
+!src/condash/assets/dist/
+!src/condash/assets/dist/**
+
+# Node — frontend build toolchain. esbuild is invoked via `npx --yes` by
+# `make frontend` so `node_modules/` is never required, but a developer who
+# runs `npm install` locally (for IDE completions) produces one.
+node_modules/
+.npm-cache/
+npm-debug.log*
 
 # Virtual environments
 .venv/

@@ -1,10 +1,11 @@
 """Static + vendored-asset routes.
 
 Serves the dashboard shell at ``/`` (HTML rendered by :mod:`render`),
-favicons, and the vendored frontend libraries (Mozilla PDF.js, xterm.js,
-CodeMirror 6, Mermaid) under ``/vendor/<lib>/{rel_path}``. Each vendor
-route is a narrow read-only window into the package's
-``assets/vendor/<lib>/`` tree with a regex-free traversal guard.
+favicons, the vendored frontend libraries (Mozilla PDF.js, xterm.js,
+CodeMirror 6, Mermaid) under ``/vendor/<lib>/{rel_path}``, and the
+esbuild-built dashboard bundle under ``/assets/dist/{rel_path}``. Each
+route is a narrow read-only window into the package's ``assets/`` tree
+with a regex-free traversal guard.
 """
 
 from __future__ import annotations
@@ -39,15 +40,25 @@ _MERMAID_MIME = {
     ".js": "text/javascript",
 }
 
+_DIST_MIME = {
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".map": "application/json",
+}
 
-def _serve_vendor(lib: str, rel_path: str, mime_table: dict[str, str] | None = None) -> Response:
-    """Read-only window into ``assets/vendor/<lib>/`` with a traversal guard."""
+
+def _serve_under_assets(
+    subpath: tuple[str, ...],
+    rel_path: str,
+    mime_table: dict[str, str] | None = None,
+) -> Response:
+    """Read-only window into ``assets/<subpath>/`` with a traversal guard."""
     if not rel_path or "\x00" in rel_path:
         return Response(status_code=403)
     parts = rel_path.split("/")
     if any(p in ("", "..") for p in parts):
         return Response(status_code=403)
-    base = Path(str(_package_files("condash") / "assets" / "vendor" / lib))
+    base = Path(str(_package_files("condash").joinpath("assets", *subpath)))
     try:
         full = (base / rel_path).resolve()
         full.relative_to(base.resolve())
@@ -64,6 +75,11 @@ def _serve_vendor(lib: str, rel_path: str, mime_table: dict[str, str] | None = N
         media_type=ctype,
         headers={"Cache-Control": "public, max-age=86400"},
     )
+
+
+def _serve_vendor(lib: str, rel_path: str, mime_table: dict[str, str] | None = None) -> Response:
+    """Read-only window into ``assets/vendor/<lib>/``."""
+    return _serve_under_assets(("vendor", lib), rel_path, mime_table)
 
 
 def build_router(state: AppState) -> APIRouter:
@@ -113,5 +129,10 @@ def build_router(state: AppState) -> APIRouter:
     def mermaid_asset(rel_path: str):
         """Serve the vendored Mermaid UMD bundle to the note preview modal."""
         return _serve_vendor("mermaid", rel_path, _MERMAID_MIME)
+
+    @router.get("/assets/dist/{rel_path:path}")
+    def dist_asset(rel_path: str):
+        """Serve the esbuild-built dashboard bundle (bundle.js / bundle.css)."""
+        return _serve_under_assets(("dist",), rel_path, _DIST_MIME)
 
     return router

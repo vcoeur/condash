@@ -177,6 +177,36 @@ def test_pdfjs_asset_404_for_missing_file(cfg: CondashConfig):
     assert response.status_code == 404
 
 
+def test_dist_bundle_js_is_served(cfg: CondashConfig):
+    """The esbuild-built frontend bundle is reachable at /assets/dist/bundle.js."""
+    client = _client(cfg)
+    response = client.get("/assets/dist/bundle.js")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/javascript")
+    # F1 ships an empty entry; esbuild's IIFE wrapper alone exceeds 100 bytes.
+    assert len(response.content) > 100
+
+
+def test_dist_bundle_css_is_served(cfg: CondashConfig):
+    client = _client(cfg)
+    response = client.get("/assets/dist/bundle.css")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/css")
+
+
+def test_dist_route_rejects_traversal(cfg: CondashConfig):
+    client = _client(cfg)
+    # %2e%2e so the client doesn't normalise before the handler's `..` guard.
+    response = client.get("/assets/dist/%2e%2e/%2e%2e/pyproject.toml")
+    assert response.status_code == 403
+
+
+def test_dist_route_404_for_missing_file(cfg: CondashConfig):
+    client = _client(cfg)
+    response = client.get("/assets/dist/does-not-exist.js")
+    assert response.status_code == 404
+
+
 def test_pdf_note_emits_mount_point_not_iframe(cfg: CondashConfig):
     """`.pdf` notes render as a .note-pdf-host div so the in-dashboard
     PDF.js viewer can pick them up — not an <iframe> (that used to rely
