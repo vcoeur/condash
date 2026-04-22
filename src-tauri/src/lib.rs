@@ -15,6 +15,7 @@ use tauri::Manager;
 pub mod config;
 pub mod events;
 pub mod paths;
+pub mod pty;
 pub mod server;
 
 /// Re-exports for the standalone `condash-serve` binary (same config
@@ -62,12 +63,14 @@ pub fn run() {
             });
 
             let event_bus = events::EventBus::default();
+            let pty_registry = pty::PtyRegistry::new();
             let state = server::AppState {
                 ctx: ctx.clone(),
                 cache,
                 asset_dir: Arc::new(asset_dir),
                 version: Arc::new(env!("CARGO_PKG_VERSION").to_string()),
                 event_bus: event_bus.clone(),
+                pty_registry: pty_registry.clone(),
             };
 
             // Start the filesystem watcher (best-effort — the UI

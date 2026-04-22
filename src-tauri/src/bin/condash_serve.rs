@@ -51,6 +51,7 @@ async fn main() -> Result<()> {
         asset_dir: Arc::new(asset_dir),
         version: Arc::new(env!("CARGO_PKG_VERSION").to_string()),
         event_bus,
+        pty_registry: condash_lib::pty::PtyRegistry::new(),
     };
 
     // Honor CONDASH_PORT if set, else pick a free one like the Tauri

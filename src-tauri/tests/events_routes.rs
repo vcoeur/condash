@@ -31,6 +31,7 @@ fn state_with_bus() -> (TempDir, AppState, EventBus) {
         asset_dir: Arc::new(PathBuf::from("/nonexistent")),
         version: Arc::new("test".into()),
         event_bus: bus.clone(),
+        pty_registry: condash_lib::pty::PtyRegistry::new(),
     };
     (tmp, state, bus)
 }
