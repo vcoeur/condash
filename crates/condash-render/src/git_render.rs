@@ -1,17 +1,18 @@
 //! Git-strip rendering — Rust port of render.py's peer-card / branch-row
 //! / runner-button / open-with helpers.
 //!
-//! Phase 2 scope: the readers. Runner sessions don't exist yet in the
-//! Rust build (Phase 4 territory), so `_render_runner_button` always
-//! takes the "no session" branch (green "Start" button) and
-//! `_render_runner_mount` returns an empty string. The fingerprint
-//! layer already emits `|run:off` for configured rows — the rendered
-//! HTML here matches what Python emits when `runners.registry()` is
-//! empty, which is the Phase 2 invariant on both sides.
+//! The public entry points take a `live_set` slice of runner keys that
+//! currently have an active PTY session. The set drives three visible
+//! bits of UI: the peer-card "live" tag, the `.runner-term-mount` div
+//! the frontend attaches xterm + WebSocket to, and the `.peer-row-live`
+//! modifier on the active row. The Rust server passes
+//! `state.runner_registry.keys()`; tests pass an empty set.
 //!
 //! The string-concat style mirrors Python's render.py one-for-one so
 //! the byte-for-byte diff tool can prove they agree on the live
 //! workspace.
+
+use std::collections::HashSet;
 
 use condash_state::{Checkout, Family, Group, Member, RenderCtx};
 
@@ -134,11 +135,17 @@ fn render_runner_button(key: &str, checkout_key: &str, checkout_path: &str) -> S
     )
 }
 
-/// Inline runner mount — in Phase 2 we have no live sessions, so this
-/// always returns the empty string (matches Python's `if session is
-/// None: return ""` branch).
-fn render_runner_mount(_key: &str, _checkout_key: &str) -> String {
-    String::new()
+/// Inline runner mount — emitted when the runner identified by `key` has
+/// a live session. The div carries the data attributes the frontend's
+/// `runnerReattachAll()` scans for; xterm + `/ws/runner/<key>`
+/// attachment happens entirely on the client side.
+fn render_runner_mount(key: &str, checkout_key: &str) -> String {
+    format!(
+        "<div class=\"runner-term-mount\" data-runner-key=\"{k}\" \
+         data-runner-checkout=\"{c}\"></div>",
+        k = h(key),
+        c = h(checkout_key),
+    )
 }
 
 fn branch_status_cell(info: &Checkout) -> String {
@@ -194,6 +201,7 @@ fn render_branch_row_inner(
     checkout_key: &str,
     is_main: bool,
     node_id: &str,
+    live_set: &HashSet<String>,
 ) -> String {
     // Branch label: subrepo's main row inherits the parent's branch.
     let branch_label = if !info_branch.is_empty() {
@@ -212,12 +220,9 @@ fn render_branch_row_inner(
     // Runner pill — only for configured members that aren't missing.
     let mut runner_pill = String::new();
     let member_key = runner_key_for_member(family, member);
-    let mut is_live = false; // Phase 2: no live sessions.
+    let is_live = live_set.contains(&member_key);
     if !info_missing && ctx.repo_run_keys.contains(&member_key) {
         runner_pill = render_runner_button(&member_key, checkout_key, info_path);
-        // Python here re-checks runners_mod.get(); Phase 2 has no
-        // sessions so is_live stays false.
-        let _ = &mut is_live;
     }
     let _ = info_changed;
     let _ = info_changed_files;
@@ -271,6 +276,7 @@ fn render_branch_row_main(
     family: &Family,
     member: &Member,
     node_id: &str,
+    live_set: &HashSet<String>,
 ) -> String {
     let status_html = branch_status_cell_member(member);
     render_branch_row_inner(
@@ -287,6 +293,7 @@ fn render_branch_row_main(
         "main",
         true,
         node_id,
+        live_set,
     )
 }
 
@@ -296,6 +303,7 @@ fn render_branch_row_worktree(
     member: &Member,
     wt: &Checkout,
     node_id: &str,
+    live_set: &HashSet<String>,
 ) -> String {
     let status_html = branch_status_cell(wt);
     render_branch_row_inner(
@@ -312,12 +320,19 @@ fn render_branch_row_worktree(
         &wt.key,
         false,
         node_id,
+        live_set,
     )
 }
 
 /// One peer card (parent or promoted subrepo). Port of
 /// `_render_peer_card`.
-fn render_peer_card(ctx: &RenderCtx, family: &Family, member: &Member, member_id: &str) -> String {
+fn render_peer_card(
+    ctx: &RenderCtx,
+    family: &Family,
+    member: &Member,
+    member_id: &str,
+    live_set: &HashSet<String>,
+) -> String {
     let is_subrepo = member.is_subrepo;
     let is_missing = member.missing;
 
@@ -343,8 +358,8 @@ fn render_peer_card(ctx: &RenderCtx, family: &Family, member: &Member, member_id
     } else {
         "<span class=\"peer-tag peer-tag-clean\">clean</span>".to_string()
     };
-    // Phase 2: no live runner sessions, so never append the "live" tag.
-    let live = false;
+    let member_key = runner_key_for_member(family, member);
+    let live = !is_missing && live_set.contains(&member_key);
     let head_tag = if live {
         format!("{head_tag}<span class=\"peer-tag peer-tag-live\">live</span>")
     } else {
@@ -392,21 +407,20 @@ fn render_peer_card(ctx: &RenderCtx, family: &Family, member: &Member, member_id
         family,
         member,
         &format!("{member_id}/b:main"),
+        live_set,
     ));
     for wt in &member.worktrees {
         let wt_id = format!("{member_id}/wt:{}", wt.key);
-        parts.push(render_branch_row_worktree(ctx, family, member, wt, &wt_id));
+        parts.push(render_branch_row_worktree(
+            ctx, family, member, wt, &wt_id, live_set,
+        ));
     }
     parts.push("</div>".into()); // /peer-rows
 
-    // Inline runner terminal mount — only present when a live session
-    // is running. Phase 2: never.
+    // Inline runner terminal mount — only when the session is live.
     if live {
-        let member_key = runner_key_for_member(family, member);
         let mount = render_runner_mount(&member_key, "main");
-        if !mount.is_empty() {
-            parts.push(format!("<div class=\"peer-term\">{mount}</div>"));
-        }
+        parts.push(format!("<div class=\"peer-term\">{mount}</div>"));
     }
 
     let foot_path = &member.path;
@@ -429,7 +443,12 @@ fn render_peer_card(ctx: &RenderCtx, family: &Family, member: &Member, member_id
 }
 
 /// One family → bucket-grid wrapper. Port of `_render_flat_group`.
-fn render_flat_group(ctx: &RenderCtx, family: &Family, group_id: &str) -> String {
+fn render_flat_group(
+    ctx: &RenderCtx,
+    family: &Family,
+    group_id: &str,
+    live_set: &HashSet<String>,
+) -> String {
     let family_id = format!("{group_id}/{}", family.name);
     let is_compound = family.members.len() > 1;
     let cls = if is_compound {
@@ -450,7 +469,7 @@ fn render_flat_group(ctx: &RenderCtx, family: &Family, group_id: &str) -> String
     }
     for member in &family.members {
         let member_id = format!("{family_id}/m:{}", member.name);
-        parts.push(render_peer_card(ctx, family, member, &member_id));
+        parts.push(render_peer_card(ctx, family, member, &member_id, live_set));
     }
     parts.push("</div>".into());
     parts.join("\n")
@@ -462,6 +481,7 @@ pub fn render_git_repo_fragment(
     ctx: &RenderCtx,
     groups: &[Group],
     node_id: &str,
+    live_set: &HashSet<String>,
 ) -> Option<String> {
     let rest = node_id.strip_prefix("code/")?;
     let (group_label, family_name) = rest.split_once('/')?;
@@ -475,6 +495,7 @@ pub fn render_git_repo_fragment(
                     ctx,
                     family,
                     &format!("code/{group_label}"),
+                    live_set,
                 ));
             }
         }
@@ -484,7 +505,7 @@ pub fn render_git_repo_fragment(
 
 /// Render the full Code tab given the list of discovered groups.
 /// Port of `_render_git_repos`.
-pub fn render_git_repos(ctx: &RenderCtx, groups: &[Group]) -> String {
+pub fn render_git_repos(ctx: &RenderCtx, groups: &[Group], live_set: &HashSet<String>) -> String {
     if groups.is_empty() {
         return String::new();
     }
@@ -499,7 +520,7 @@ pub fn render_git_repos(ctx: &RenderCtx, groups: &[Group]) -> String {
             label = h(&group.label),
         ));
         for family in &group.families {
-            parts.push(render_flat_group(ctx, family, &group_id));
+            parts.push(render_flat_group(ctx, family, &group_id, live_set));
         }
         parts.push("</div></section>".into());
     }
