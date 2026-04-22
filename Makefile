@@ -72,6 +72,25 @@ test: ## Run cargo tests across the workspace
 format: ## cargo fmt across the workspace
 	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) fmt --all
 
+frontend: ## Bundle the dashboard source (frontend/src/) into dist/bundle.{js,css}
+	@set -e; \
+	SRC_JS=frontend/src/js/entry.js; \
+	SRC_CSS=frontend/src/css/main.css; \
+	DEST=frontend/dist; \
+	mkdir -p "$$DEST"; \
+	echo "Bundling $$SRC_JS → $$DEST/bundle.js (esbuild $(ESBUILD_VERSION))"; \
+	NPM_CONFIG_CACHE="$${TMPDIR:-/tmp}/.npm-cache" npx --yes esbuild@$(ESBUILD_VERSION) \
+	    "$$SRC_JS" \
+	    --bundle --format=iife --global-name=Condash --target=es2019 \
+	    --outfile="$$DEST/bundle.js" --log-level=warning; \
+	echo "Bundling $$SRC_CSS → $$DEST/bundle.css"; \
+	NPM_CONFIG_CACHE="$${TMPDIR:-/tmp}/.npm-cache" npx --yes esbuild@$(ESBUILD_VERSION) \
+	    "$$SRC_CSS" \
+	    --bundle --target=es2019 \
+	    --outfile="$$DEST/bundle.css" --log-level=warning; \
+	echo "Frontend bundle:"; \
+	du -sh "$$DEST"
+
 CONCEPTION ?= $(HOME)/src/vcoeur/conception
 
 update-pdfjs: ## Re-vendor Mozilla PDF.js at $(PDFJS_VERSION) into frontend/vendor/pdfjs/
@@ -141,25 +160,6 @@ update-codemirror: ## Re-vendor CodeMirror 6 into frontend/vendor/codemirror/
 	} > "$$DEST/LICENSE"; \
 	rm -rf "$$WORK"; \
 	echo "Vendored CodeMirror 6:"; \
-	du -sh "$$DEST"
-
-frontend: ## Bundle the dashboard source (frontend/src/) into dist/bundle.{js,css}
-	@set -e; \
-	SRC_JS=frontend/src/js/entry.js; \
-	SRC_CSS=frontend/src/css/main.css; \
-	DEST=frontend/dist; \
-	mkdir -p "$$DEST"; \
-	echo "Bundling $$SRC_JS → $$DEST/bundle.js (esbuild $(ESBUILD_VERSION))"; \
-	NPM_CONFIG_CACHE="$${TMPDIR:-/tmp}/.npm-cache" npx --yes esbuild@$(ESBUILD_VERSION) \
-	    "$$SRC_JS" \
-	    --bundle --format=iife --global-name=Condash --target=es2019 \
-	    --outfile="$$DEST/bundle.js" --log-level=warning; \
-	echo "Bundling $$SRC_CSS → $$DEST/bundle.css"; \
-	NPM_CONFIG_CACHE="$${TMPDIR:-/tmp}/.npm-cache" npx --yes esbuild@$(ESBUILD_VERSION) \
-	    "$$SRC_CSS" \
-	    --bundle --target=es2019 \
-	    --outfile="$$DEST/bundle.css" --log-level=warning; \
-	echo "Frontend bundle:"; \
 	du -sh "$$DEST"
 
 update-mermaid: ## Re-vendor Mermaid at $(MERMAID_VERSION) into frontend/vendor/mermaid/
