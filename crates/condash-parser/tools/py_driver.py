@@ -113,6 +113,10 @@ def _serialise_ctx(ctx) -> dict:
                 "repos": [{"name": name, "submodules": list(subs)} for name, subs in entries],
             }
         )
+    open_with = {}
+    for slot_key, slot in (ctx.open_with or {}).items():
+        label = getattr(slot, "label", None) or slot_key
+        open_with[slot_key] = {"label": label}
     return {
         "workspace": str(ctx.workspace) if ctx.workspace else None,
         "worktrees": str(ctx.worktrees) if ctx.worktrees else None,
@@ -122,6 +126,9 @@ def _serialise_ctx(ctx) -> dict:
         # config. The Rust port emits `|run:off` for every configured
         # key (no live session yet) which matches Python's behaviour.
         "repo_run_keys": sorted(ctx.repo_run.keys()),
+        # Per-slot labels for the "Open with …" popover. Command
+        # resolution itself lives on the mutations side.
+        "open_with": open_with,
     }
 
 
@@ -177,19 +184,22 @@ def _run_search(condash_src: str, conception: Path, query: str) -> int:
     return 0
 
 
-def _run_render(condash_src: str, base_dir: Path) -> int:
+def _run_render(condash_src: str, conception: Path) -> int:
     """Emit rendered HTML for every card and knowledge node/card.
 
     Shape: ``{"cards": {slug: html}, "knowledge_groups": {rel_dir: html},
     "knowledge_cards": {path: html}}``. The Rust side reproduces the
     same keys and diffs byte-for-byte.
     """
-    ctx = _build_ctx(condash_src, base_dir)
+    ctx = _load_full_ctx(condash_src, conception)
+    from condash.git_scan import _collect_git_repos  # noqa: E402
     from condash.parser import collect_items, collect_knowledge  # noqa: E402
     from condash.render import (  # noqa: E402
+        _render_git_repos,
         _render_history,
         _render_knowledge,
         render_card_fragment,
+        render_git_repo_fragment,
         render_knowledge_card_fragment,
         render_knowledge_group_fragment,
     )
@@ -215,21 +225,31 @@ def _run_render(condash_src: str, base_dir: Path) -> int:
 
     _walk(knowledge)
 
-    # render_page substitution pipeline depends on git_scan (later
-    # slice) + a pinned timestamp + pinned version. Instead of mocking
-    # the whole chain here, we compare the two expensive sub-trees the
-    # diff actually cares about — history and the knowledge-tree
-    # render. The caller will diff render_page as a whole once
-    # git_scan lands.
     history = _render_history(ctx, items)
     knowledge_tree = _render_knowledge(knowledge)
 
+    # Git-strip HTML: the full Code tab plus per-family fragments the
+    # /fragment route serves on scoped reload.
+    git_groups = _collect_git_repos(ctx)
+    git_repos_html = _render_git_repos(ctx, git_groups)
+    git_fragments: dict[str, str] = {}
+    for label, families in git_groups:
+        group_id = f"code/{label}"
+        for family in families:
+            node_id = f"{group_id}/{family['name']}"
+            fragment = render_git_repo_fragment(ctx, node_id)
+            if fragment is not None:
+                git_fragments[node_id] = fragment
+
     out = {
+        "ctx": _serialise_ctx(ctx),
         "cards": cards,
         "knowledge_groups": knowledge_groups,
         "knowledge_cards": knowledge_cards,
         "history": history,
         "knowledge_tree": knowledge_tree,
+        "git_repos": git_repos_html,
+        "git_fragments": git_fragments,
     }
     json.dump(out, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
@@ -239,6 +259,8 @@ def _run_render(condash_src: str, base_dir: Path) -> int:
             f"driver: render cards={len(cards)}"
             f" knowledge_groups={len(knowledge_groups)}"
             f" knowledge_cards={len(knowledge_cards)}"
+            f" git_repos={len(git_repos_html)}b"
+            f" git_fragments={len(git_fragments)}"
         ),
         file=sys.stderr,
     )

@@ -8,6 +8,7 @@
 //! stubbed as empty collections and will grow as mutations + openers +
 //! runners land in Phases 3–4.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// One section of the repository explorer tab: a label (e.g. `"Primary"`)
@@ -26,6 +27,15 @@ pub struct RepoEntry {
     pub submodules: Vec<String>,
 }
 
+/// One "Open with …" slot config entry. Mirrors Python's
+/// `OpenWithSlot` — only the user-visible `label` is needed for
+/// rendering; the `commands` list is used by the mutations / openers
+/// layer (Phase 3+) and lives elsewhere.
+#[derive(Debug, Clone, Default)]
+pub struct OpenWithSlot {
+    pub label: String,
+}
+
 /// Immutable runtime context carried by every helper that needs config.
 ///
 /// Built once per effective config; rebuilt and swapped into the shared
@@ -41,6 +51,11 @@ pub struct RenderCtx {
     pub workspace: Option<PathBuf>,
     pub worktrees: Option<PathBuf>,
     pub repo_structure: Vec<RepoSection>,
+    /// "Open with …" slots keyed by slot name (`main_ide`,
+    /// `secondary_ide`, `terminal`, …). Only the `label` is consumed
+    /// here; the command list itself lives on the mutations side and
+    /// lands in Phase 3+.
+    pub open_with: HashMap<String, OpenWithSlot>,
     /// Names of repo checkouts that carry a configured dev-runner.
     /// Parent repos use their `name`; subrepos use `<parent>--<sub>`.
     /// Matches the keyspace of Python's `ctx.repo_run`. Used by the

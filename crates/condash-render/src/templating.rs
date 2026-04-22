@@ -26,19 +26,32 @@ pub const KNOWLEDGE_TREE_TEMPLATE: &str =
 pub const MACROS_TEMPLATE: &str = include_str!("../../../src/condash/templates/_macros.html.j2");
 
 fn embed_filter(value: Value) -> Result<Value, Error> {
-    // json.dumps(x).replace("'", "\\'").replace('"', "'")
-    // Python's json.dumps defaults to ensure_ascii=True — it emits
-    // `\uXXXX` escapes for every non-ASCII codepoint. serde_json keeps
-    // UTF-8 literal by default, so we post-process to match.
     let json = serde_json::to_string(&value).map_err(|e| {
         Error::new(
             ErrorKind::InvalidOperation,
             format!("embed: json encode failed: {e}"),
         )
     })?;
-    let ascii = ensure_ascii(&json);
-    let swapped: String = ascii.replace('\'', "\\'").replace('"', "'");
-    Ok(Value::from_safe_string(swapped))
+    Ok(Value::from_safe_string(embed_json_string(&json)))
+}
+
+/// Embed a JSON-serializable value as an HTML-attribute-safe literal.
+///
+/// Matches Python's `json.dumps(obj).replace("'", "\\'").replace('"', "'")`:
+/// the outer quotes become `'`, JSON's `\"` escaping vanishes, and any
+/// single quote inside the value is backslash-escaped. Safe to drop
+/// inside a double-quoted attribute like `onclick="foo({{…}})"`.
+pub fn embed_attr<T: serde::Serialize>(value: &T) -> String {
+    let json = serde_json::to_string(value).expect("serialise for embed");
+    embed_json_string(&json)
+}
+
+fn embed_json_string(json: &str) -> String {
+    let ascii = ensure_ascii(json);
+    // `json.dumps(x).replace("'", "\\'").replace('"', "'")` — the
+    // replacements are applied in order: escape single quotes first,
+    // then swap the outer double quotes for singles.
+    ascii.replace('\'', "\\'").replace('"', "'")
 }
 
 /// Replace every non-ASCII codepoint with `\uXXXX` (or a UTF-16

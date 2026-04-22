@@ -17,7 +17,7 @@ pub mod git;
 pub mod search;
 
 pub use cache::{Tab, WorkspaceCache};
-pub use ctx::RenderCtx;
+pub use ctx::{OpenWithSlot, RenderCtx, RepoEntry, RepoSection};
 pub use git::{
     collect_git_repos, compute_git_node_fingerprints, git_fingerprint, Checkout, Family, Group,
     Member,

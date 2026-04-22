@@ -14,11 +14,12 @@
 //! those paths depend on pandoc + wikilink resolution and land with
 //! the note routes in a later slice.
 
+pub mod git_render;
 pub mod icons;
 pub mod templating;
 
 use condash_parser::{knowledge_title_and_desc, Item, KnowledgeCard, KnowledgeNode};
-use condash_state::RenderCtx;
+use condash_state::{collect_git_repos, RenderCtx};
 use minijinja::context;
 use minijinja::value::Value;
 
@@ -191,13 +192,6 @@ pub fn render_history(ctx: &RenderCtx, items: &[Item]) -> String {
     templating::render("history.html.j2", tctx)
 }
 
-/// Stub for the git-strip HTML — wired up in slice 4 alongside
-/// `git_scan`. Keeping it as a function rather than inlining `""` so
-/// the handoff is a single import change.
-pub fn render_git_repos_stub() -> String {
-    String::new()
-}
-
 /// Public entry point for `/`. Port of `render_page`.
 ///
 /// `items` is typically `cache.get_items(ctx)`; `knowledge` is
@@ -272,8 +266,9 @@ pub fn render_page(
         }
     }
 
-    let git_html = render_git_repos_stub();
-    let count_repos = 0usize;
+    let git_groups = collect_git_repos(ctx);
+    let git_html = git_render::render_git_repos(ctx, &git_groups);
+    let count_repos: usize = git_groups.iter().map(|g| g.families.len()).sum();
 
     let knowledge_html = render_knowledge(knowledge);
     let count_knowledge = knowledge.map(|k| k.count).unwrap_or(0);
