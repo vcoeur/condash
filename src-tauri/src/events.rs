@@ -1,9 +1,14 @@
 //! Filesystem-driven staleness push — Rust port of `src/condash/events.py`.
 //!
 //! The watcher emits coarse per-tab events (`projects` / `knowledge` /
-//! `code` / `config`) whenever a watched path changes. The SSE handler in
+//! `code`) whenever a watched path changes. The SSE handler in
 //! `server.rs` subscribes to the bus and streams events to the browser;
 //! the frontend treats every event as a hint to re-poll `/check-updates`.
+//!
+//! The merged `configuration.yml` is intentionally *not* watched —
+//! edits come from the in-app YAML editor which explicitly triggers a
+//! `RenderCtx` rebuild on Save. Out-of-band edits (hand-edit from a
+//! different tool) require the user to reopen the modal or restart.
 //!
 //! Two differences from the Python original:
 //!
@@ -12,10 +17,9 @@
 //!    broadcast channel gives us lagging-subscriber semantics for free
 //!    (the client re-polls on lag, which is the same fall-back the
 //!    reconciler already provides).
-//! 2. Config hot-reload (the `on_config_reload` callback) is deferred —
-//!    the Rust build doesn't yet expose a `/config` HTTP endpoint, so
-//!    there's nothing to rebuild on config change. The config handler
-//!    still fires the `config` event so a future slice can hook it.
+//! 2. Config hot-reload is the config modal's responsibility — it
+//!    rebuilds the `RenderCtx` in-band after a successful save and the
+//!    event bus stays out of that path.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -30,11 +34,6 @@ use tokio::sync::broadcast;
 /// save often produces swap-file + metadata-touch events too. Matches
 /// Python's `_DEBOUNCE_SECONDS`.
 pub const DEBOUNCE: Duration = Duration::from_millis(750);
-
-/// Config-file debounce. Shorter than the default — just long enough to
-/// collapse the three-event storm an atomic write produces on Linux.
-/// Matches Python's `_ConfigHandler._DEBOUNCE`.
-pub const CONFIG_DEBOUNCE: Duration = Duration::from_millis(300);
 
 /// Payload emitted by the watcher. Wire format matches Python —
 /// `{"tab": <tab>, "ts": <seconds>, "file": <leaf>?}`.
@@ -147,18 +146,17 @@ fn leaf_of(path: &Path) -> String {
 pub struct WatchConfig {
     pub projects: Option<PathBuf>,
     pub knowledge: Option<PathBuf>,
-    pub config: Option<PathBuf>,
     pub git_dirs: Vec<PathBuf>,
 }
 
 impl WatchConfig {
     /// Derive a [`WatchConfig`] from a conception base dir + optional
-    /// workspace / worktrees roots. Mirrors Python's `start_watcher`
-    /// directory selection.
+    /// workspace / worktrees roots. `configuration.yml` is deliberately
+    /// *not* watched (see module docs); the config modal pushes rebuilds
+    /// explicitly.
     pub fn from_ctx(base_dir: &Path, workspace: Option<&Path>, worktrees: Option<&Path>) -> Self {
         let projects = base_dir.join("projects");
         let knowledge = base_dir.join("knowledge");
-        let config = base_dir.join("config");
 
         let mut git_dirs = Vec::new();
         if let Some(ws) = workspace {
@@ -180,7 +178,6 @@ impl WatchConfig {
         WatchConfig {
             projects: projects.is_dir().then_some(projects),
             knowledge: knowledge.is_dir().then_some(knowledge),
-            config: config.is_dir().then_some(config),
             git_dirs,
         }
     }
@@ -225,15 +222,9 @@ pub fn start_watcher(bus: EventBus, cfg: WatchConfig) -> Option<WatcherHandle> {
     let projects_deb = Arc::new(Debouncer::new(DEBOUNCE));
     let knowledge_deb = Arc::new(Debouncer::new(DEBOUNCE));
     let code_deb = Arc::new(Debouncer::new(DEBOUNCE));
-    // Config has per-file debouncers keyed by leaf — build them upfront
-    // for the two files we care about.
-    let config_repos_deb = Arc::new(Debouncer::new(CONFIG_DEBOUNCE));
-    let config_prefs_deb = Arc::new(Debouncer::new(CONFIG_DEBOUNCE));
 
-    let nothing_to_watch = cfg.projects.is_none()
-        && cfg.knowledge.is_none()
-        && cfg.config.is_none()
-        && cfg.git_dirs.is_empty();
+    let nothing_to_watch =
+        cfg.projects.is_none() && cfg.knowledge.is_none() && cfg.git_dirs.is_empty();
     if nothing_to_watch {
         return None;
     }
@@ -241,7 +232,6 @@ pub fn start_watcher(bus: EventBus, cfg: WatchConfig) -> Option<WatcherHandle> {
     let bus_clone = bus.clone();
     let projects_path = cfg.projects.clone();
     let knowledge_path = cfg.knowledge.clone();
-    let config_path = cfg.config.clone();
     let git_dirs = cfg.git_dirs.clone();
 
     let mut watcher = recommended_watcher(move |res: notify::Result<Event>| {
@@ -266,21 +256,6 @@ pub fn start_watcher(bus: EventBus, cfg: WatchConfig) -> Option<WatcherHandle> {
                     continue;
                 }
             }
-            if let Some(root) = &config_path {
-                if src.starts_with(root) {
-                    let deb = match leaf.as_str() {
-                        "repositories.yml" => Some(&config_repos_deb),
-                        "preferences.yml" => Some(&config_prefs_deb),
-                        _ => None,
-                    };
-                    if let Some(deb) = deb {
-                        if deb.should_fire() {
-                            bus_clone.publish(EventPayload::new("config", Some(leaf.clone())));
-                            continue;
-                        }
-                    }
-                }
-            }
             for gitdir in &git_dirs {
                 if src.starts_with(gitdir)
                     && matches!(leaf.as_str(), "HEAD" | "index" | "packed-refs")
@@ -299,9 +274,6 @@ pub fn start_watcher(bus: EventBus, cfg: WatchConfig) -> Option<WatcherHandle> {
     }
     if let Some(p) = &cfg.knowledge {
         let _ = watcher.watch(p, RecursiveMode::Recursive);
-    }
-    if let Some(p) = &cfg.config {
-        let _ = watcher.watch(p, RecursiveMode::NonRecursive);
     }
     for gitdir in &cfg.git_dirs {
         let _ = watcher.watch(gitdir, RecursiveMode::NonRecursive);
@@ -364,7 +336,6 @@ mod tests {
         let cfg = WatchConfig::from_ctx(base, None, None);
         assert!(cfg.projects.is_some());
         assert!(cfg.knowledge.is_none());
-        assert!(cfg.config.is_none());
         assert!(cfg.git_dirs.is_empty());
     }
 

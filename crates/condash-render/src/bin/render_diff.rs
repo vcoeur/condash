@@ -171,6 +171,8 @@ fn build_ctx_from_py(ctx_json: &Value, base: &Path) -> RenderCtx {
         open_with,
         repo_run_keys,
         repo_run_templates: Default::default(),
+        pdf_viewer: Vec::new(),
+        terminal: Default::default(),
         template: String::new(),
     }
 }

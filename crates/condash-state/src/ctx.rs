@@ -36,6 +36,22 @@ pub struct OpenWithSlot {
     pub label: String,
 }
 
+/// Embedded-terminal preferences. Carries the Python
+/// `TerminalConfig` fields verbatim, all optional so the YAML
+/// round-trip via the plain-text config modal preserves whatever
+/// the user wrote. The renderer applies built-in defaults when a
+/// field is `None`.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalPrefs {
+    pub shell: Option<String>,
+    pub shortcut: Option<String>,
+    pub screenshot_dir: Option<String>,
+    pub screenshot_paste_shortcut: Option<String>,
+    pub launcher_command: Option<String>,
+    pub move_tab_left_shortcut: Option<String>,
+    pub move_tab_right_shortcut: Option<String>,
+}
+
 /// Immutable runtime context carried by every helper that needs config.
 ///
 /// Built once per effective config; rebuilt and swapped into the shared
@@ -74,6 +90,13 @@ pub struct RenderCtx {
     /// `/api/runner/start` handler treats that as "no command
     /// configured" and 404s, matching Python.
     pub repo_run_templates: HashMap<String, String>,
+    /// PDF-viewer command fallback chain (e.g. `["evince {path}",
+    /// "okular {path}"]`). Empty = use the built-in chain. Consumed by
+    /// the openers layer (Phase 3+).
+    pub pdf_viewer: Vec<String>,
+    /// Embedded-terminal preferences. All fields optional; absent ones
+    /// fall back to the renderer's built-in defaults.
+    pub terminal: TerminalPrefs,
     /// Dashboard HTML template shipped with the wheel. Loaded once at
     /// ctx-build time so render helpers don't re-read it per request.
     pub template: String,
