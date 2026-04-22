@@ -76,17 +76,21 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
+          # Workspace target lives at the repo root (this is a cargo
+          # workspace — src-tauri is a member crate), so the binary
+          # lands at target/release/, not src-tauri/target/release/.
           case "${{ matrix.os }}" in
             ubuntu-latest)
-              cp src-tauri/target/release/condash-serve out/condash-serve-linux-x86_64
+              cp target/release/condash-serve out/condash-serve-linux-x86_64
               ;;
             macos-latest)
-              cp src-tauri/target/release/condash-serve out/condash-serve-macos
+              cp target/release/condash-serve out/condash-serve-macos
               ;;
             windows-latest)
-              cp src-tauri/target/release/condash-serve.exe out/condash-serve-windows-x86_64.exe
+              cp target/release/condash-serve.exe out/condash-serve-windows-x86_64.exe
               ;;
           esac
+          ls -lah out/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
