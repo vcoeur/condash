@@ -800,8 +800,7 @@ fn error_json(code: StatusCode, msg: &str) -> Response {
 async fn index(State(state): State<AppState>) -> impl IntoResponse {
     let items = state.cache.get_items(&state.ctx);
     let knowledge = state.cache.get_knowledge(&state.ctx);
-    let live_runners: std::collections::HashSet<String> =
-        state.runner_registry.keys().into_iter().collect();
+    let live_runners = live_runners_snapshot(&state);
     let html = render_page(
         &state.ctx,
         &items,
@@ -810,6 +809,26 @@ async fn index(State(state): State<AppState>) -> impl IntoResponse {
         &live_runners,
     );
     html_response(html)
+}
+
+/// Build the renderer's `LiveRunners` map from the current runner
+/// registry. One entry per session (live or exited); the renderer
+/// decides whether to paint the mount as running or "exited: N".
+fn live_runners_snapshot(state: &AppState) -> condash_render::git_render::LiveRunners {
+    state
+        .runner_registry
+        .snapshot()
+        .into_iter()
+        .map(|session| {
+            (
+                session.key.clone(),
+                condash_render::git_render::RunnerLive {
+                    checkout_key: session.checkout_key.clone(),
+                    exit_code: session.exit_code_now(),
+                },
+            )
+        })
+        .collect()
 }
 
 #[derive(Debug, Deserialize)]
@@ -854,8 +873,7 @@ async fn fragment(
             return error(StatusCode::NOT_FOUND, "use global reload");
         }
         let groups = collect_git_repos(&state.ctx);
-        let live_runners: std::collections::HashSet<String> =
-            state.runner_registry.keys().into_iter().collect();
+        let live_runners = live_runners_snapshot(&state);
         if let Some(html) = render_git_repo_fragment(&state.ctx, &groups, &id, &live_runners) {
             return html_response(html);
         }

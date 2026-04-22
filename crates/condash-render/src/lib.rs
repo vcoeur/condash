@@ -206,7 +206,7 @@ pub fn render_page(
     items: &[Item],
     knowledge: Option<&KnowledgeNode>,
     version: &str,
-    live_runners: &std::collections::HashSet<String>,
+    live_runners: &git_render::LiveRunners,
 ) -> String {
     // Sort: by (pri_order, slug[:10]), then within each priority reverse
     // by slug[:10]. Matches Python's two-pass sort exactly.
@@ -405,7 +405,7 @@ mod tests {
             template: "<html>{{CARDS}} | count={{COUNT_PROJECTS}} | v={{VERSION}}</html>".into(),
             ..Default::default()
         };
-        let live: std::collections::HashSet<String> = Default::default();
+        let live: git_render::LiveRunners = Default::default();
         let out = render_page(&ctx, &[], None, "0.99.0", &live);
         assert!(out.contains("count=0"));
         assert!(out.contains("v=0.99.0"));
