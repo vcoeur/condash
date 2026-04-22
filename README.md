@@ -25,10 +25,10 @@ You need a [rustup](https://rustup.rs)-managed Rust toolchain (1.90+). On Linux 
 ```bash
 git clone https://github.com/vcoeur/condash.git
 cd condash
-make install-tauri-cli     # one-off: installs cargo-tauri into the rustup toolchain
+make setup                 # one-off: installs cargo-tauri into the rustup toolchain
 make frontend              # bundle frontend/src/{js,css}/ -> frontend/dist/ via esbuild
-make run-tauri             # open the dev window
-make build-tauri           # produce the signed installer under src-tauri/target/release/bundle/
+make run                   # open the dev window
+make build                 # produce the signed installer under src-tauri/target/release/bundle/
 ```
 
 `make frontend` is only needed when the source under `frontend/src/` changes — the built `dist/bundle.{js,css}` files are committed so a fresh clone builds without a Node toolchain. The target invokes `esbuild` transiently through `npx --yes`, so no `node_modules/` is created.
@@ -36,8 +36,8 @@ make build-tauri           # produce the signed installer under src-tauri/target
 For running the HTTP surface headless (useful for Playwright, curl, or hacking the server without the GUI deps):
 
 ```bash
-make run-serve             # runs condash-serve against $HOME/src/vcoeur/conception
-CONDASH_CONCEPTION_PATH=/other/tree make run-serve
+make serve                 # runs condash-serve against $HOME/src/vcoeur/conception
+CONDASH_CONCEPTION_PATH=/other/tree make serve
 ```
 
 ## First launch

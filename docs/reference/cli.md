@@ -16,7 +16,7 @@ condash ships two binaries. Neither takes subcommands or flags â€” everything th
 
 ## `condash`
 
-The main binary. Packaged into the per-OS installer on the [releases page](https://github.com/vcoeur/condash/releases); also produced by `make build-tauri` from source.
+The main binary. Packaged into the per-OS installer on the [releases page](https://github.com/vcoeur/condash/releases); also produced by `make build` from source.
 
 ```bash
 condash
@@ -28,7 +28,7 @@ Closing the window exits the process. Relaunch whenever you want to come back â€
 
 ## `condash-serve`
 
-A developer-oriented binary that runs the same HTTP server without opening a window. Produced by `cargo build -p condash --bin condash-serve`, or `make run-serve` when iterating.
+A developer-oriented binary that runs the same HTTP server without opening a window. Produced by `cargo build -p condash --bin condash-serve`, or `make serve` when iterating.
 
 ```bash
 condash-serve

@@ -41,20 +41,20 @@ CARGO      := $(RUSTUP_BIN)/cargo
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "%-20s %s\n", $$1, $$2}'
 
-install-tauri-cli: ## One-shot: install cargo-tauri CLI into the rustup toolchain
+setup: ## One-shot: install cargo-tauri CLI into the rustup toolchain
 	# Prepend RUSTUP_BIN to PATH so cargo finds the rustup-managed rustc
 	# (1.93+) instead of Ubuntu's /usr/bin/rustc (1.75), which is too old
 	# for tauri-cli.
 	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) install tauri-cli --version '^2'
 
-run-tauri: ## Open the Tauri window against dashboard.html
+run: ## Open the Tauri window against dashboard.html
 	cd src-tauri && PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri dev
 
-run-serve: ## Run the Rust HTTP server headless (no GUI deps needed). Override CONCEPTION= to point elsewhere.
+serve: ## Run the Rust HTTP server headless (no GUI deps needed). Override CONCEPTION= to point elsewhere.
 	PATH="$(RUSTUP_BIN):$$PATH" CONDASH_CONCEPTION_PATH=$(CONCEPTION) \
 	    $(CARGO) run -q --bin condash-serve
 
-build-tauri: ## Bundle Tauri release artefacts (requires Linux system deps)
+build: ## Bundle Tauri release artefacts (requires Linux system deps)
 	cd src-tauri && PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri build
 
 check: ## cargo check across the workspace (fast, no codegen)
@@ -173,4 +173,4 @@ update-mermaid: ## Re-vendor Mermaid at $(MERMAID_VERSION) into frontend/vendor/
 	echo "Vendored Mermaid $(MERMAID_VERSION):"; \
 	du -sh "$$DEST"
 
-.PHONY: help install-tauri-cli run-tauri run-serve build-tauri check test format frontend update-pdfjs update-codemirror update-mermaid
+.PHONY: help setup run serve build check test format frontend update-pdfjs update-codemirror update-mermaid

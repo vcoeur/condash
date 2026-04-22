@@ -24,9 +24,9 @@ The builds are unsigned — your OS will ask you to confirm once on first launch
 If you'd rather build from source, clone the repo and run:
 
 ```bash
-make install-tauri-cli     # one-off, installs cargo-tauri
+make setup                 # one-off, installs cargo-tauri into the rustup toolchain
 make frontend              # bundle the dashboard JS/CSS
-make build-tauri           # produce the platform installer under src-tauri/target/release/bundle/
+make build                 # produce the platform installer under src-tauri/target/release/bundle/
 ```
 
 That's the same pipeline CI uses. You'll need a Rust toolchain and, on Linux, the usual WebKitGTK + libappindicator system packages.
