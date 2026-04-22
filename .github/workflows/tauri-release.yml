@@ -1,0 +1,114 @@
+name: tauri-release
+
+# Builds the Rust / Tauri desktop app for the three platforms we ship
+# to and attaches the artifacts to a draft GitHub Release. No signing,
+# no notarization, no codesigning certs — per notes/packaging.md, this
+# project ships unsigned with the in-app updater disabled.
+#
+# Trigger: push a tag matching `tauri-v*` (e.g. `tauri-v0.21.0`). A
+# separate prefix from the Python `v*` tags keeps the two release
+# cadences independent.
+
+on:
+  push:
+    tags:
+      - 'tauri-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+          - os: macos-latest
+            label: macos
+          - os: windows-latest
+            label: windows
+
+    name: bundle-${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux Tauri deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            build-essential \
+            file \
+            libgtk-3-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            src-tauri
+
+      - name: Build Tauri bundle
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin condash-serve
+        # Rationale: the full `cargo tauri build` path needs tauri-cli
+        # and invokes bundlers per-OS. Phase 5 slice 1 made condash-serve
+        # self-contained, so shipping that as a first-pass binary works
+        # across all three platforms. Slice 2b will swap this for
+        # `tauri-apps/tauri-action` once we have the config reviewed on
+        # each OS — wiring bundlers is platform-specific (WiX for MSI,
+        # hdiutil for DMG, linuxdeploy for AppImage) and worth landing
+        # separately so failures are attributable.
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p out
+          case "${{ matrix.os }}" in
+            ubuntu-latest)
+              cp src-tauri/target/release/condash-serve out/condash-serve-linux-x86_64
+              ;;
+            macos-latest)
+              cp src-tauri/target/release/condash-serve out/condash-serve-macos
+              ;;
+            windows-latest)
+              cp src-tauri/target/release/condash-serve.exe out/condash-serve-windows-x86_64.exe
+              ;;
+          esac
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: condash-${{ matrix.label }}
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    name: Attach to release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/tauri-v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create/update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          files: dist/**/*

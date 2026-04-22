@@ -81,6 +81,7 @@ nav:
 
   - Guides:
     - guides/index.md
+    - Install the desktop app: guides/install-desktop.md
     - Configure the conception path: guides/configure-conception-path.md
     - Repositories and open-with buttons: guides/repositories-and-open-with.md
     - Use the embedded terminal: guides/terminal.md
