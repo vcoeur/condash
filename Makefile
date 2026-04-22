@@ -126,6 +126,11 @@ test: ## Run the fast in-process pytest suite (skips tests/e2e/)
 test-e2e: ## Run the Playwright browser smoke tests (uses system Chrome)
 	uv run --extra e2e pytest tests/e2e -v; RET=$$?; if [ $$RET -eq 5 ]; then exit 0; else exit $$RET; fi
 
+test-e2e-rust: ## Phase 2 exit gate — Playwright smoke against the Rust build
+	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) build -q --bin condash-serve
+	uv run --extra e2e pytest tests/e2e/test_dashboard_smoke_rust.py -v; \
+	    RET=$$?; if [ $$RET -eq 5 ]; then exit 0; else exit $$RET; fi
+
 test-all: test test-e2e ## Run both suites
 
 coverage: ## Run pytest with line-coverage report
@@ -244,4 +249,4 @@ update-mermaid: ## Re-vendor Mermaid at $(MERMAID_VERSION) into src/condash/asse
 	echo "Vendored Mermaid $(MERMAID_VERSION):"; \
 	du -sh "$$DEST"
 
-.PHONY: help install dev-install run test test-e2e test-all coverage lint format frontend update-pdfjs update-codemirror update-mermaid
+.PHONY: help install dev-install run test test-e2e test-e2e-rust test-all coverage lint format frontend update-pdfjs update-codemirror update-mermaid

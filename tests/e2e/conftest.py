@@ -184,6 +184,96 @@ def condash_server(tmp_path: Path) -> Iterator[CondashServer]:
                 pass
 
 
+def _find_rust_server_binary() -> Path | None:
+    """Locate the built ``condash-serve`` binary, release preferred over debug.
+
+    Phase 2 slice 5 builds the binary into ``<repo>/target/{release,debug}/``.
+    Returning ``None`` lets the Rust fixture skip cleanly with a hint.
+    """
+    for profile in ("release", "debug"):
+        candidate = REPO_ROOT / "target" / profile / "condash-serve"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+@pytest.fixture
+def condash_rust_server(tmp_path: Path) -> Iterator[CondashServer]:
+    """Start a fresh ``condash-serve`` (Rust) process, yield its URL, kill on teardown.
+
+    Mirrors :func:`condash_server` but drives the Phase 2 Rust HTTP surface
+    — the same dashboard HTML, rendered by ``condash-render`` and served by
+    axum. The binary is the one ``make run-rust`` launches. It is *read-only*:
+    mutation routes (``/add-step`` etc.) are Phase 3 territory and 404 here,
+    so tests parametrised on this fixture must stay within the Phase 2 surface.
+    """
+    binary = _find_rust_server_binary()
+    if binary is None:
+        pytest.skip(
+            "condash-serve binary not built — "
+            "run `make run-rust` (or `cargo build --bin condash-serve`) first."
+        )
+
+    conception = tmp_path / "conception"
+    conception.mkdir()
+    _seed_conception(conception)
+
+    port = _pick_free_port()
+    env = os.environ.copy()
+    env["CONDASH_CONCEPTION_PATH"] = str(conception)
+    env["CONDASH_PORT"] = str(port)
+    # Keep the Rust build from reading a home-dir conception tree by accident.
+    env.pop("PYTEST_CURRENT_TEST", None)
+
+    log_path = tmp_path / "condash-serve.log"
+    log_handle = log_path.open("wb")
+    proc = subprocess.Popen(
+        [str(binary)],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+
+    url = f"http://127.0.0.1:{port}"
+    try:
+        _wait_for_ready("127.0.0.1", port)
+    except Exception as err:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        log_handle.close()
+        log = log_path.read_text(errors="replace")
+        pytest.fail(
+            f"condash-serve failed to become ready at {url}: {err}\n"
+            f"---subprocess log---\n{log}"
+        )
+
+    try:
+        yield CondashServer(url=url, port=port, conception_path=conception, process=proc)
+    finally:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
 @pytest.fixture(scope="session")
 def playwright() -> Iterator[Playwright]:
     with sync_playwright() as pw:
