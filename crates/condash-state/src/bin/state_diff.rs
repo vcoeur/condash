@@ -163,6 +163,7 @@ fn build_ctx_from_py(ctx_json: &Value) -> RenderCtx {
         repo_structure,
         open_with: Default::default(),
         repo_run_keys,
+        repo_run_templates: Default::default(),
         template: String::new(),
     }
 }

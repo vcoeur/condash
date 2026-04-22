@@ -16,6 +16,7 @@ pub mod config;
 pub mod events;
 pub mod paths;
 pub mod pty;
+pub mod runners;
 pub mod server;
 
 /// Re-exports for the standalone `condash-serve` binary (same config
@@ -64,6 +65,7 @@ pub fn run() {
 
             let event_bus = events::EventBus::default();
             let pty_registry = pty::PtyRegistry::new();
+            let runner_registry = runners::RunnerRegistry::new();
             let state = server::AppState {
                 ctx: ctx.clone(),
                 cache,
@@ -71,6 +73,7 @@ pub fn run() {
                 version: Arc::new(env!("CARGO_PKG_VERSION").to_string()),
                 event_bus: event_bus.clone(),
                 pty_registry: pty_registry.clone(),
+                runner_registry: runner_registry.clone(),
             };
 
             // Start the filesystem watcher (best-effort — the UI

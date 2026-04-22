@@ -32,6 +32,7 @@ fn state_with_bus() -> (TempDir, AppState, EventBus) {
         version: Arc::new("test".into()),
         event_bus: bus.clone(),
         pty_registry: condash_lib::pty::PtyRegistry::new(),
+        runner_registry: condash_lib::runners::RunnerRegistry::new(),
     };
     (tmp, state, bus)
 }

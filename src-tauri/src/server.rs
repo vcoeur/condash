@@ -51,8 +51,20 @@
 //!   `?launcher=1` (falls back to login shell until the config layer
 //!   exposes `terminal.launcher_command`).
 //!
-//! Routes *not* ported here (Phase 4+ territory): `/note-raw`
-//! (read-side), runners (`/ws/runner/…`, `/api/runner/{start,stop}`).
+//! Phase 4 slice 2 added the inline dev-server runner surface:
+//!
+//! - `POST /api/runner/start` — spawn a dev server for a configured
+//!   repo key (template from `ctx.repo_run_templates`, sandbox-gated
+//!   path)
+//! - `POST /api/runner/stop`  — SIGTERM + reap the runner session and
+//!   clear its registry slot
+//! - `GET  /ws/runner/:key`   — attach a WebSocket viewer to an
+//!   existing runner's PTY; no-spawn on miss
+//!
+//! Routes *not* ported here (Phase 5+ territory): `/note-raw`
+//! (read-side convenience endpoint; the bulk-read `/note` write path
+//! already covers the primary editor flow) and the config-editing
+//! surface.
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
@@ -109,6 +121,9 @@ pub struct AppState {
     /// Per-process registry of live PTY sessions — the `/ws/term`
     /// WebSocket handler looks up sessions here.
     pub pty_registry: crate::pty::PtyRegistry,
+    /// Per-process registry of inline dev-server runners — used by
+    /// `/api/runner/{start,stop}` and `/ws/runner/:key`.
+    pub runner_registry: crate::runners::RunnerRegistry,
 }
 
 /// Start the axum server on a free localhost port and return the port
@@ -157,6 +172,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/events", get(events_stream))
         // Phase 4 slice 1 — embedded terminal WebSocket.
         .route("/ws/term", get(term_ws))
+        // Phase 4 slice 2 — inline dev-server runners.
+        .route("/api/runner/start", post(runner_start_route))
+        .route("/api/runner/stop", post(runner_stop_route))
+        .route("/ws/runner/{key}", get(runner_ws))
         // Phase 3 slice 3 — file-level mutations.
         .route("/note", post(post_note))
         .route("/note/rename", post(post_note_rename))
@@ -959,6 +978,269 @@ async fn handle_term_ws(mut socket: axum::extract::ws::WebSocket, state: AppStat
     }
 
     session.detach_viewer();
+}
+
+// ---------------------------------------------------------------------
+// Phase 4 slice 2: runner routes.
+// - `POST /api/runner/start` — spawn a dev server for a configured key
+// - `POST /api/runner/stop`  — SIGTERM + reap + clear
+// - `GET  /ws/runner/:key`   — attach a viewer to the live session
+// ---------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct RunnerStartPayload {
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    checkout_key: String,
+    #[serde(default)]
+    path: String,
+}
+
+async fn runner_start_route(
+    State(state): State<AppState>,
+    Json(p): Json<RunnerStartPayload>,
+) -> impl IntoResponse {
+    let key = p.key.trim();
+    let checkout_key = p.checkout_key.trim();
+    let path_raw = p.path.trim();
+    if key.is_empty() || checkout_key.is_empty() || path_raw.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "key, checkout_key, path required");
+    }
+    let Some(template) = state.ctx.repo_run_templates.get(key).cloned() else {
+        return error_json(
+            StatusCode::NOT_FOUND,
+            &format!("no run command configured for {key}"),
+        );
+    };
+    let Some(validated) = validate_open_path(&state.ctx, path_raw) else {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            &format!("path out of sandbox: {path_raw}"),
+        );
+    };
+    if let Some(existing) = state.runner_registry.get(key) {
+        if existing.exit_code_now().is_none() {
+            return json_with_status(
+                &serde_json::json!({
+                    "error": "runner already active",
+                    "key": key,
+                    "checkout_key": existing.checkout_key,
+                }),
+                StatusCode::CONFLICT,
+            );
+        }
+    }
+    let shell = crate::pty::resolve_terminal_shell(None);
+    match crate::runners::start(
+        &state.runner_registry,
+        &state.pty_registry,
+        key,
+        checkout_key,
+        validated.to_str().unwrap_or(path_raw),
+        &template,
+        &shell,
+    ) {
+        Ok(session) => {
+            let body = serde_json::json!({
+                "ok": true,
+                "key": session.key,
+                "checkout_key": session.checkout_key,
+                "pid": session.pty.session_id,
+                "template": session.template,
+            });
+            json_response(&body)
+        }
+        Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("spawn: {e}")),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RunnerStopPayload {
+    #[serde(default)]
+    key: String,
+}
+
+async fn runner_stop_route(
+    State(state): State<AppState>,
+    Json(p): Json<RunnerStopPayload>,
+) -> impl IntoResponse {
+    let key = p.key.trim();
+    if key.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "key required");
+    }
+    let Some(session) = state.runner_registry.get(key) else {
+        return json_response(&serde_json::json!({"ok": true, "cleared": false}));
+    };
+    if session.exit_code_now().is_some() {
+        crate::runners::clear_exited(&state.runner_registry, key);
+        return json_response(&serde_json::json!({"ok": true, "cleared": true, "exited": true}));
+    }
+    match crate::runners::stop(
+        &state.runner_registry,
+        key,
+        std::time::Duration::from_secs(5),
+    )
+    .await
+    {
+        Ok(_) => json_response(&serde_json::json!({"ok": true, "cleared": true})),
+        Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("stop: {e}")),
+    }
+}
+
+/// `/ws/runner/:key` — attach a viewer to an existing runner. Fails
+/// closed with `session-missing` when the key has no live (or exited-
+/// but-still-in-registry) entry; the Code tab posts `/api/runner/start`
+/// first, so a miss here is unexpected.
+async fn runner_ws(
+    ws: axum::extract::ws::WebSocketUpgrade,
+    State(state): State<AppState>,
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_runner_ws(socket, state, key))
+}
+
+async fn handle_runner_ws(mut socket: axum::extract::ws::WebSocket, state: AppState, key: String) {
+    use axum::extract::ws::Message;
+
+    if !crate::pty::supports_pty() {
+        let _ = socket
+            .send(Message::Text(
+                serde_json::json!({
+                    "type": "error",
+                    "message": "Runner only supported on Linux/macOS.",
+                })
+                .to_string()
+                .into(),
+            ))
+            .await;
+        let _ = socket.close().await;
+        return;
+    }
+
+    let Some(session) = state.runner_registry.get(&key) else {
+        let _ = socket
+            .send(Message::Text(
+                serde_json::json!({"type": "session-missing", "key": key})
+                    .to_string()
+                    .into(),
+            ))
+            .await;
+        let _ = socket.close().await;
+        return;
+    };
+
+    // Displace any stale viewer.
+    session.pty.detach_viewer();
+
+    let info = serde_json::json!({
+        "type": "info",
+        "key": session.key,
+        "checkout_key": session.checkout_key,
+        "path": session.path,
+        "template": session.template,
+        "exit_code": session.exit_code_now(),
+    });
+    if socket
+        .send(Message::Text(info.to_string().into()))
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    let mut rx = session.pty.attach_viewer();
+
+    // If the runner already exited, emit the exit frame once the buffer
+    // has been drained so the client paints the greyed status line.
+    if let Some(code) = session.exit_code_now() {
+        let _ = socket
+            .send(Message::Text(
+                serde_json::json!({"type": "exit", "exit_code": code})
+                    .to_string()
+                    .into(),
+            ))
+            .await;
+    }
+
+    loop {
+        tokio::select! {
+            msg = rx.recv() => match msg {
+                Some(crate::pty::PumpMessage::Data(bytes)) => {
+                    if socket.send(Message::Binary(bytes.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Some(crate::pty::PumpMessage::Exit) => {
+                    let exit_code = session.exit_code_now().unwrap_or(0);
+                    let _ = socket
+                        .send(Message::Text(
+                            serde_json::json!({"type": "exit", "exit_code": exit_code})
+                                .to_string()
+                                .into(),
+                        ))
+                        .await;
+                    break;
+                }
+                None => break,
+            },
+            ws_msg = socket.recv() => match ws_msg {
+                Some(Ok(Message::Binary(bytes))) => {
+                    if session.exit_code_now().is_some() {
+                        continue; // Swallow typing after exit.
+                    }
+                    if session.pty.write_input(&bytes).is_err() {
+                        break;
+                    }
+                }
+                Some(Ok(Message::Text(text))) => {
+                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if val.get("type").and_then(|v| v.as_str()) == Some("resize") {
+                            let cols = val
+                                .get("cols")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(80) as u16;
+                            let rows = val
+                                .get("rows")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(24) as u16;
+                            if session.exit_code_now().is_none() {
+                                session.pty.resize(cols, rows);
+                            }
+                        }
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None => break,
+                Some(Ok(_)) => {}
+                Some(Err(_)) => break,
+            }
+        }
+    }
+    session.pty.detach_viewer();
+}
+
+/// Validate a filesystem path as an in-sandbox directory under
+/// `ctx.workspace` or `ctx.worktrees`. Rust port of
+/// `paths._validate_open_path` from `paths.py`.
+fn validate_open_path(ctx: &condash_state::RenderCtx, path: &str) -> Option<std::path::PathBuf> {
+    if path.is_empty() || path.contains('\0') {
+        return None;
+    }
+    let canonical = std::fs::canonicalize(path).ok()?;
+    if !canonical.is_dir() {
+        return None;
+    }
+    let roots: Vec<std::path::PathBuf> = [ctx.workspace.as_ref(), ctx.worktrees.as_ref()]
+        .into_iter()
+        .flatten()
+        .filter_map(|p| std::fs::canonicalize(p).ok())
+        .collect();
+    for root in roots {
+        if canonical.starts_with(&root) {
+            return Some(canonical);
+        }
+    }
+    None
 }
 
 /// `GET /events` — server-sent events stream. Mirrors

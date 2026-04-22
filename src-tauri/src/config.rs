@@ -109,22 +109,32 @@ pub fn build_ctx(conception_path: &Path, template_path: &Path) -> Result<RenderC
 
     let mut repo_structure = Vec::new();
     let mut repo_run_keys = std::collections::HashSet::new();
+    let mut repo_run_templates: HashMap<String, String> = HashMap::new();
     if let Some(buckets) = &parsed.repositories {
         if !buckets.primary.is_empty() {
             repo_structure.push(RepoSection {
                 label: "Primary".into(),
-                repos: entries_from(&buckets.primary, &mut repo_run_keys),
+                repos: entries_from(
+                    &buckets.primary,
+                    &mut repo_run_keys,
+                    &mut repo_run_templates,
+                ),
             });
         }
         if !buckets.secondary.is_empty() {
             repo_structure.push(RepoSection {
                 label: "Secondary".into(),
-                repos: entries_from(&buckets.secondary, &mut repo_run_keys),
+                repos: entries_from(
+                    &buckets.secondary,
+                    &mut repo_run_keys,
+                    &mut repo_run_templates,
+                ),
             });
         }
     }
     ctx.repo_structure = repo_structure;
     ctx.repo_run_keys = repo_run_keys;
+    ctx.repo_run_templates = repo_run_templates;
 
     if let Some(open_with) = parsed.open_with {
         ctx.open_with = open_with
@@ -142,6 +152,7 @@ pub fn build_ctx(conception_path: &Path, template_path: &Path) -> Result<RenderC
 fn entries_from(
     yaml: &[RepoEntryYaml],
     repo_run_keys: &mut std::collections::HashSet<String>,
+    repo_run_templates: &mut HashMap<String, String>,
 ) -> Vec<RepoEntry> {
     let mut out = Vec::with_capacity(yaml.len());
     for entry in yaml {
@@ -155,16 +166,25 @@ fn entries_from(
                 submodules,
                 run,
             } => {
-                if run.is_some() {
-                    repo_run_keys.insert(name.clone());
+                if let Some(tpl) = run.as_deref() {
+                    let trimmed = tpl.trim();
+                    if !trimmed.is_empty() {
+                        repo_run_keys.insert(name.clone());
+                        repo_run_templates.insert(name.clone(), trimmed.into());
+                    }
                 }
                 let mut sub_names = Vec::with_capacity(submodules.len());
                 for s in submodules {
                     match s {
                         SubmoduleYaml::Bare(n) => sub_names.push(n.clone()),
                         SubmoduleYaml::Full { name: sub, run } => {
-                            if run.is_some() {
-                                repo_run_keys.insert(format!("{name}--{sub}"));
+                            if let Some(tpl) = run.as_deref() {
+                                let trimmed = tpl.trim();
+                                if !trimmed.is_empty() {
+                                    let key = format!("{name}--{sub}");
+                                    repo_run_keys.insert(key.clone());
+                                    repo_run_templates.insert(key, trimmed.into());
+                                }
                             }
                             sub_names.push(sub.clone());
                         }

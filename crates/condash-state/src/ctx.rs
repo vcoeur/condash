@@ -65,6 +65,15 @@ pub struct RenderCtx {
     /// agree *now* so `/check-updates` stays consistent across the
     /// Python / Rust builds.
     pub repo_run_keys: std::collections::HashSet<String>,
+    /// Runner command template per repo key. Populated from
+    /// `repositories.yml`'s `run:` fields alongside [`Self::repo_run_keys`].
+    /// The `{path}` placeholder is replaced with the absolute checkout
+    /// path at spawn time (see `condash_mutations` / `pty.rs` callers).
+    /// A key present in `repo_run_keys` but missing here means the
+    /// config layer hasn't populated templates yet — the runner
+    /// `/api/runner/start` handler treats that as "no command
+    /// configured" and 404s, matching Python.
+    pub repo_run_templates: HashMap<String, String>,
     /// Dashboard HTML template shipped with the wheel. Loaded once at
     /// ctx-build time so render helpers don't re-read it per request.
     pub template: String,

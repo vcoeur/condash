@@ -33,6 +33,7 @@ async fn start_server() -> (u16, TempDir) {
         version: Arc::new("test".into()),
         event_bus: EventBus::default(),
         pty_registry: PtyRegistry::new(),
+        runner_registry: condash_lib::runners::RunnerRegistry::new(),
     };
     let port = server::start(state).await.expect("start server");
     (port, tmp)
