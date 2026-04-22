@@ -53,8 +53,23 @@ setup: ## One-shot: install cargo-tauri CLI into the rustup toolchain
 	# for tauri-cli.
 	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) install tauri-cli --version '^2'
 
+# AppImageKit's AppRun injects PYTHONHOME / LD_LIBRARY_PATH / APPDIR / …
+# into every child process, including any shell launched from a condash
+# terminal. That leak steers ld.so to the AppImage-bundled webkit at
+# exec time (before condash's in-binary env scrub runs), and the
+# bundled libwebkit2gtk resolves WebKitNetworkProcess via a broken
+# relative libexec path. Unset the leaks here so `cargo tauri dev`
+# links against the system webkit. Harmless when running from a
+# non-AppImage shell. See projects/2026-04-22-condash-appimage-env-leak.
+APPIMAGE_LEAK_VARS := APPDIR APPIMAGE APPIMAGE_UUID ARGV0 OWD \
+    LD_LIBRARY_PATH XDG_DATA_DIRS GSETTINGS_SCHEMA_DIR \
+    GIO_EXTRA_MODULES GDK_PIXBUF_MODULE_FILE GTK_PATH \
+    GST_PLUGIN_SYSTEM_PATH GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_PATH \
+    PYTHONHOME PYTHONPATH PERLLIB QT_PLUGIN_PATH
+
 run: ## Open the Tauri window against dashboard.html
-	cd src-tauri && PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri dev
+	cd src-tauri && unset $(APPIMAGE_LEAK_VARS) && \
+	    PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri dev
 
 serve: ## Run the Rust HTTP server headless (no GUI deps needed). Override CONCEPTION= to point elsewhere.
 	PATH="$(RUSTUP_BIN):$$PATH" CONDASH_CONCEPTION_PATH=$(CONCEPTION) \
