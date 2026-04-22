@@ -59,3 +59,7 @@ htmlcov/
 .claude/*
 !.claude/skills/
 !.claude/scripts/
+
+# Rust / Tauri build output (src-tauri/.gitignore handles its own tree,
+# this catches target/ anywhere else a Rust crate lands in the repo).
+/target/

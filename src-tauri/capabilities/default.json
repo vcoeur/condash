@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability set for the condash main window. Phase 0 scaffold — no IPC commands exposed yet.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

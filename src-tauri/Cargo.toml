@@ -1,0 +1,28 @@
+[package]
+name = "condash"
+version = "0.20.1"
+description = "Conception dashboard — Tauri port (Phase 0 scaffold)"
+authors = ["Alice Voland <alice@vcoeur.com>"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77"
+default-run = "condash"
+
+[lib]
+name = "condash_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

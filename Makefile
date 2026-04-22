@@ -45,6 +45,25 @@ dev-install: ## Install dev dependencies too
 run: ## Run the condash CLI (pass args after --, e.g. make run -- init)
 	uv run condash
 
+# Rust + Tauri port (Phase 0). The rustup-managed toolchain at
+# ~/.rustup/toolchains/*/bin is picked up explicitly because the user
+# does not have ~/.cargo/bin on PATH. Once cargo-tauri is installed it
+# lives under that same toolchain's bin dir, so the same prefix works.
+RUSTUP_BIN := $(HOME)/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin
+CARGO      := $(RUSTUP_BIN)/cargo
+
+run-tauri: ## Phase 0 exit gate — open the Tauri window against dashboard.html with stub (404) API
+	cd src-tauri && PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri dev
+
+build-tauri: ## Bundle Tauri release artefacts (requires Linux system deps)
+	cd src-tauri && PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri build
+
+install-tauri-cli: ## One-shot: install cargo-tauri CLI into the rustup toolchain
+	# Prepend RUSTUP_BIN to PATH so cargo finds the rustup-managed rustc
+	# (1.93+) instead of Ubuntu's /usr/bin/rustc (1.75), which is too old
+	# for tauri-cli.
+	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) install tauri-cli --version '^2'
+
 test: ## Run the fast in-process pytest suite (skips tests/e2e/)
 	uv run pytest; RET=$$?; if [ $$RET -eq 5 ]; then exit 0; else exit $$RET; fi
 

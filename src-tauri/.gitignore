@@ -1,0 +1,5 @@
+# Rust build output
+/target/
+
+# Tauri-generated files (schemas, capability JSONs materialised at build time)
+/gen/
