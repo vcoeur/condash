@@ -613,7 +613,7 @@ dependencies = [
 
 [[package]]
 name = "condash"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "anyhow",
  "axum",
@@ -635,6 +635,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "shlex",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",

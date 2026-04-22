@@ -48,8 +48,9 @@
 //!   bytes. `info` frame on connect, binary frames for output, text
 //!   JSON for `exit`, `session-expired`, and `error`. Reattach via
 //!   `?session_id=…`, override cwd via `?cwd=…`, launcher mode via
-//!   `?launcher=1` (falls back to login shell until the config layer
-//!   exposes `terminal.launcher_command`).
+//!   `?launcher=1` to spawn `terminal.launcher_command` (shlex-parsed)
+//!   instead of a shell; falls back to the login shell when that config
+//!   field is empty or malformed.
 //!
 //! Phase 4 slice 2 added the inline dev-server runner surface:
 //!
@@ -986,17 +987,24 @@ async fn handle_term_ws(mut socket: axum::extract::ws::WebSocket, state: AppStat
             })
             .unwrap_or_else(|| state.ctx.base_dir.clone());
         let use_launcher = q.launcher.as_deref() == Some("1");
-        let mode = if use_launcher {
-            // Phase 4 slice 2 will pipe the launcher command through
-            // config; for this slice we fall back to the shell so the
-            // handler still produces a usable terminal.
-            crate::pty::SpawnMode::LoginShell {
-                shell: crate::pty::resolve_terminal_shell(None),
-            }
+        let launcher_argv = if use_launcher {
+            state
+                .ctx
+                .terminal
+                .launcher_command
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .and_then(shlex::split)
+                .filter(|argv| !argv.is_empty())
         } else {
-            crate::pty::SpawnMode::LoginShell {
+            None
+        };
+        let mode = match launcher_argv {
+            Some(argv) => crate::pty::SpawnMode::Launcher { argv },
+            None => crate::pty::SpawnMode::LoginShell {
                 shell: crate::pty::resolve_terminal_shell(None),
-            }
+            },
         };
         match crate::pty::spawn_session(&state.pty_registry, mode, cwd, 80, 24) {
             Ok(s) => s,

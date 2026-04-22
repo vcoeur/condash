@@ -67,11 +67,11 @@ APPIMAGE_LEAK_VARS := APPDIR APPIMAGE APPIMAGE_UUID ARGV0 OWD \
     GST_PLUGIN_SYSTEM_PATH GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_PATH \
     PYTHONHOME PYTHONPATH PERLLIB QT_PLUGIN_PATH
 
-run: ## Open the Tauri window against dashboard.html
+run: frontend ## Open the Tauri window against dashboard.html
 	cd src-tauri && unset $(APPIMAGE_LEAK_VARS) && \
 	    PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri dev
 
-serve: ## Run the Rust HTTP server headless (no GUI deps needed). Override CONCEPTION= to point elsewhere.
+serve: frontend ## Run the Rust HTTP server headless (no GUI deps needed). Override CONCEPTION= to point elsewhere.
 	PATH="$(RUSTUP_BIN):$$PATH" CONDASH_CONCEPTION_PATH=$(CONCEPTION) \
 	    $(CARGO) run -q --bin condash-serve
 
