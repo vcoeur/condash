@@ -196,4 +196,17 @@ update-xterm: ## Re-vendor xterm.js at $(XTERM_VERSION) + xterm-addon-fit at $(X
 	echo "Vendored xterm $(XTERM_VERSION) + addon-fit $(XTERM_FIT_VERSION):"; \
 	du -sh "$$DEST"
 
-.PHONY: help setup run serve build check test format frontend update-pdfjs update-codemirror update-mermaid update-xterm
+# MkDocs site build — the GitHub Action at .github/workflows/docs.yml
+# pins mkdocs-material to this same version, so local builds match CI.
+MKDOCS_MATERIAL_VERSION := 9.5.49
+
+docs: ## Build the mkdocs-material site into ./site/ (matches .github/workflows/docs.yml)
+	uv run --with "mkdocs-material==$(MKDOCS_MATERIAL_VERSION)" mkdocs build --strict
+
+docs-serve: ## Live-reload preview of the mkdocs site on http://127.0.0.1:8000/
+	uv run --with "mkdocs-material==$(MKDOCS_MATERIAL_VERSION)" mkdocs serve
+
+docs-clean: ## Remove the generated ./site/ directory
+	rm -rf site
+
+.PHONY: help setup run serve build check test format frontend docs docs-serve docs-clean update-pdfjs update-codemirror update-mermaid update-xterm
