@@ -109,6 +109,13 @@ diff-render: ## Diff rendered card + knowledge fragments Rust-vs-Python (Phase 2
 	    --driver $(CURDIR)/crates/condash-parser/tools/py_driver.py \
 	    --python python3
 
+diff-state: ## Diff git_scan + search outputs Rust-vs-Python (Phase 2 slice 4 exit gate)
+	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) run -q -p condash-state --bin state-diff -- \
+	    --conception $(CONCEPTION) \
+	    --condash-src $(CURDIR)/src \
+	    --driver $(CURDIR)/crates/condash-parser/tools/py_driver.py \
+	    --python python3
+
 test: ## Run the fast in-process pytest suite (skips tests/e2e/)
 	uv run pytest; RET=$$?; if [ $$RET -eq 5 ]; then exit 0; else exit $$RET; fi
 

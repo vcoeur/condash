@@ -226,7 +226,11 @@ fn main() {
     let rs_history = render_history(&ctx, &items);
     let rs_knowledge_tree = render_knowledge(collect_knowledge(&args.conception).as_ref());
     let ok_hist = compare_single("history", Some(py_history), &rs_history);
-    let ok_ktree = compare_single("knowledge_tree", Some(py_knowledge_tree), &rs_knowledge_tree);
+    let ok_ktree = compare_single(
+        "knowledge_tree",
+        Some(py_knowledge_tree),
+        &rs_knowledge_tree,
+    );
 
     eprintln!("  cards: matched={m1} mismatched={x1} only_py={py_only_1} only_rs={rs_only_1}");
     eprintln!(
@@ -236,17 +240,9 @@ fn main() {
         "  knowledge_cards: matched={m3} mismatched={x3} only_py={py_only_3} only_rs={rs_only_3}"
     );
 
-    let failed = x1
-        + x2
-        + x3
-        + py_only_1
-        + py_only_2
-        + py_only_3
-        + rs_only_1
-        + rs_only_2
-        + rs_only_3
-        > 0
-        || !ok_hist
-        || !ok_ktree;
+    let failed =
+        x1 + x2 + x3 + py_only_1 + py_only_2 + py_only_3 + rs_only_1 + rs_only_2 + rs_only_3 > 0
+            || !ok_hist
+            || !ok_ktree;
     std::process::exit(if failed { 1 } else { 0 });
 }

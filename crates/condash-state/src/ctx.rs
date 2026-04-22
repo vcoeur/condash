@@ -41,6 +41,15 @@ pub struct RenderCtx {
     pub workspace: Option<PathBuf>,
     pub worktrees: Option<PathBuf>,
     pub repo_structure: Vec<RepoSection>,
+    /// Names of repo checkouts that carry a configured dev-runner.
+    /// Parent repos use their `name`; subrepos use `<parent>--<sub>`.
+    /// Matches the keyspace of Python's `ctx.repo_run`. Used by the
+    /// Code-tab node fingerprint to emit `|run:<token>` fragments for
+    /// configured rows and `""` for unconfigured ones — runner state
+    /// itself is Phase 4+ territory, but the fingerprint needs to
+    /// agree *now* so `/check-updates` stays consistent across the
+    /// Python / Rust builds.
+    pub repo_run_keys: std::collections::HashSet<String>,
     /// Dashboard HTML template shipped with the wheel. Loaded once at
     /// ctx-build time so render helpers don't re-read it per request.
     pub template: String,

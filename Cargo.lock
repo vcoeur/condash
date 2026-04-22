@@ -361,6 +361,11 @@ name = "condash-state"
 version = "0.1.0"
 dependencies = [
  "condash-parser",
+ "md-5",
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

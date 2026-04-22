@@ -13,6 +13,13 @@
 
 pub mod cache;
 pub mod ctx;
+pub mod git;
+pub mod search;
 
 pub use cache::{Tab, WorkspaceCache};
 pub use ctx::RenderCtx;
+pub use git::{
+    collect_git_repos, compute_git_node_fingerprints, git_fingerprint, Checkout, Family, Group,
+    Member,
+};
+pub use search::{search_items, Hit, SearchResult};
