@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "crates/condash-parser",
+]
+
+# Lints live at the workspace level so every member crate inherits them
+# via `[lints] workspace = true`. Phase-1 porting picks up here; later
+# phases can tighten this list once the Rust surface stabilises.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

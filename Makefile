@@ -64,6 +64,15 @@ install-tauri-cli: ## One-shot: install cargo-tauri CLI into the rustup toolchai
 	# for tauri-cli.
 	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) install tauri-cli --version '^2'
 
+test-rust: ## Run cargo tests across the workspace (condash-parser, src-tauri, …)
+	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) test --workspace
+
+check-rust: ## cargo check across the workspace (fast, no codegen)
+	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) check --workspace
+
+fmt-rust: ## cargo fmt across the workspace
+	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) fmt --all
+
 test: ## Run the fast in-process pytest suite (skips tests/e2e/)
 	uv run pytest; RET=$$?; if [ $$RET -eq 5 ]; then exit 0; else exit $$RET; fi
 
