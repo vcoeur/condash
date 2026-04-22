@@ -15,6 +15,13 @@ pub struct Deliverable {
     /// PDF path relative to the item directory (same as Python's `path`).
     pub path: String,
     pub desc: String,
+    /// `<item_dir>/<path>`. Absent on the raw `parse_deliverables` output;
+    /// `parse_readme_content` fills it once it knows the item directory.
+    /// Serialised as `"full_path"` matching the Python dict key; skipped
+    /// when absent so standalone `parse_deliverables` callers see the same
+    /// three-field shape as before.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub full_path: Option<String>,
 }
 
 /// Scan `lines` for the first `## Deliverables` heading and collect every
@@ -45,6 +52,7 @@ pub fn parse_deliverables(lines: &[&str]) -> Vec<Deliverable> {
                         .get(3)
                         .map(|m| m.as_str().trim().to_string())
                         .unwrap_or_default(),
+                    full_path: None,
                 });
             }
         }

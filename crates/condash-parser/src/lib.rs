@@ -7,10 +7,12 @@
 //! easy to unit-test against the Python output.
 
 pub mod deliverables;
+pub mod readme;
 pub mod regexes;
 pub mod sections;
 
 pub use deliverables::{parse_deliverables, Deliverable};
+pub use readme::{parse_readme_content, ItemReadme};
 pub use sections::{parse_sections, CheckboxStatus, Section, SectionItem};
 
 /// Ordered priority / status enum. The order of variants mirrors Python's
