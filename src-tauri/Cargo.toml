@@ -1,6 +1,6 @@
 [package]
 name = "condash"
-version = "0.20.1"
+version = "1.1.0"
 description = "Conception dashboard — Tauri port (Phase 0 scaffold)"
 authors = ["Alice Voland <alice@vcoeur.com>"]
 license = "MIT"
@@ -38,6 +38,7 @@ anyhow = "1"
 once_cell = "1"
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rfd = "0.15"
 
 condash-parser = { path = "../crates/condash-parser" }
 condash-state = { path = "../crates/condash-state" }

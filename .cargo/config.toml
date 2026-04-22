@@ -1,0 +1,10 @@
+# Wrap rustc with sccache so every compilation unit is content-addressed
+# and reused across worktrees, branch switches, and `cargo clean` cycles.
+# The first build of a new worktree or a fresh `target/` still *links*,
+# but it no longer *compiles* crates it has seen before — a full Tauri
+# dep graph drops from ~3 min to seconds.
+#
+# Install once: `cargo install sccache` (or via a prebuilt binary).
+# Verify the cache is active with `sccache --show-stats` after a build.
+[build]
+rustc-wrapper = "sccache"

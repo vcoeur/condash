@@ -46,11 +46,18 @@ Import direction: `cli` → `app` → `routes/*` → {`context`, `render`, `muta
 
 ## Config
 
-Config file lives at `~/.config/condash/config.toml` (or `$XDG_CONFIG_HOME/condash/config.toml`). Required key: `conception_path`. Everything else optional — see the `DEFAULT_CONFIG_TEMPLATE` string in `condash/config.py` for the full schema, and the top-of-file docstring for the canonical documentation.
+Two files, two layers:
 
-- **First-run flow**: `condash init` writes the template (fully commented out); `condash config edit` opens it in `$VISUAL` / `$EDITOR`. If the user runs `condash` before editing the template, `ConfigIncompleteError` is raised and the CLI prints a pointer to `condash config edit`.
-- **In-app editor**: the gear icon in the dashboard header posts to `/config`, which rewrites the TOML file atomically via tomlkit (comments and key order preserved) and rebuilds `_RUNTIME_CTX` via `build_ctx(new_cfg)`. Path / repository / `open_with` changes take effect on dashboard reload; `port` / `native` changes require a process restart and the modal tells the user so.
-- **`[open_with.*]` slots**: three vendor-neutral launcher keys — `main_ide`, `secondary_ide`, `terminal` — each with a `label` and a `commands` fallback chain. Commands are `shlex`-parsed; `{path}` is substituted with the absolute path of the repo / worktree being opened. Commands are tried in order until one starts. Built-in defaults reproduce the pre-0.2 hardcoded IntelliJ / VS Code / terminal behaviour, so the user only needs to override the slots they actually want to customise.
+- **Per-user**: `${XDG_CONFIG_HOME:-~/.config}/condash/settings.yaml`. Flat, today a single key: `conception_path`. Points condash at the conception tree it should render. Written atomically (temp + rename), `0600` on unix. Loader: `src-tauri/src/user_config.rs`.
+- **Per-tree**: `<conception_path>/configuration.yml`. Flat YAML merging the old `config/repositories.yml` + `config/preferences.yml` — carries `workspace_path`, `worktrees_path`, `repositories.{primary,secondary}`, `open_with`, `pdf_viewer`, `terminal`. Loader: `src-tauri/src/config.rs::build_ctx`.
+
+Precedence when resolving the conception tree (`src-tauri/src/lib.rs::resolve_conception_path`): `CONDASH_CONCEPTION_PATH` env var → `settings.yaml` → (GUI only) native folder picker → hard error. No hard-coded `~/src/vcoeur/conception` fallback — the picker replaces that.
+
+- **First-run flow** (GUI): if neither env nor settings.yaml supply a path, a native folder picker opens via `rfd`. Loose validation (directory exists + contains `configuration.yml` or `projects/`). On accept, the choice is persisted to `settings.yaml` before the dashboard loads. On cancel, the app exits cleanly.
+- **Headless** (`condash-serve`): env var → settings.yaml → hard error. No prompt.
+- **In-app editor**: the gear icon opens a plain-text YAML editor (`GET /configuration` returns the raw file; `POST /configuration` validates via `serde_yaml_ng::from_str::<ConfigurationYaml>` and atomically replaces the file). The current build does not hot-swap `RenderCtx` — the modal's success message tells the user to reopen condash for changes to take effect.
+- **`[open_with.*]` slots**: three vendor-neutral launcher keys — `main_ide`, `secondary_ide`, `terminal` — each with a `label` and a `commands` fallback chain. `{path}` is substituted with the absolute path of the repo / worktree being opened. Commands are tried in order until one starts.
+- **Split files** (`<conception_path>/config/repositories.yml` + `preferences.yml`): kept on disk for the retired Python build (`condash-python`). Condash no longer reads them. Edits via the modal land in `configuration.yml` and do not propagate to the split files — known drift hazard, accepted because condash-python is retired.
 
 ## Sandbox rules for "open in IDE"
 

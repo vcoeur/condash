@@ -1,23 +1,24 @@
-//! Minimal config loader — reads `<conception>/config/repositories.yml`
-//! into a [`RenderCtx`] suitable for the Phase 2 read-only routes.
+//! Config loader — reads `<conception>/configuration.yml` into a
+//! [`RenderCtx`].
 //!
-//! Scoped intentionally narrow: parses `workspace_path`, `worktrees_path`,
-//! `repositories.{primary,secondary}` (repo names + optional submodule
-//! lists + optional `run:` commands), and `open_with` labels. The
-//! Python build has a richer config.py with TOML layering, defaults,
-//! and preferences.yml — those belong in a later phase once the Rust
-//! app runs real user workflows.
+//! Flat YAML: the top level carries both the workspace layout
+//! (`workspace_path`, `worktrees_path`, `repositories`, `open_with`)
+//! and the user preferences (`pdf_viewer`, `terminal`). Replaces the
+//! old split between `config/repositories.yml` and
+//! `config/preferences.yml` — those split files are still written on
+//! disk for the retired Python build (`condash-python`) but condash no
+//! longer reads them.
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use condash_state::{OpenWithSlot, RenderCtx, RepoEntry, RepoSection};
+use condash_state::{OpenWithSlot, RenderCtx, RepoEntry, RepoSection, TerminalPrefs};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Default)]
-struct RepositoriesYaml {
+struct ConfigurationYaml {
     #[serde(default)]
     workspace_path: Option<String>,
     #[serde(default)]
@@ -26,6 +27,54 @@ struct RepositoriesYaml {
     repositories: Option<RepoBuckets>,
     #[serde(default)]
     open_with: Option<HashMap<String, OpenWithSlotYaml>>,
+    #[serde(default)]
+    pdf_viewer: Vec<String>,
+    #[serde(default)]
+    terminal: Option<TerminalYaml>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct TerminalYaml {
+    #[serde(default)]
+    shell: Option<String>,
+    #[serde(default)]
+    shortcut: Option<String>,
+    #[serde(default)]
+    screenshot_dir: Option<String>,
+    #[serde(default)]
+    screenshot_paste_shortcut: Option<String>,
+    #[serde(default)]
+    launcher_command: Option<String>,
+    #[serde(default)]
+    move_tab_left_shortcut: Option<String>,
+    #[serde(default)]
+    move_tab_right_shortcut: Option<String>,
+}
+
+impl TerminalYaml {
+    fn into_prefs(self) -> TerminalPrefs {
+        let TerminalYaml {
+            shell,
+            shortcut,
+            screenshot_dir,
+            screenshot_paste_shortcut,
+            launcher_command,
+            move_tab_left_shortcut,
+            move_tab_right_shortcut,
+        } = self;
+        // Treat empty strings as unset so the YAML idiom `shell: ''` —
+        // how the preferences file ships — round-trips as None.
+        let squash = |s: Option<String>| s.filter(|v| !v.is_empty());
+        TerminalPrefs {
+            shell: squash(shell),
+            shortcut: squash(shortcut),
+            screenshot_dir: squash(screenshot_dir),
+            screenshot_paste_shortcut: squash(screenshot_paste_shortcut),
+            launcher_command: squash(launcher_command),
+            move_tab_left_shortcut: squash(move_tab_left_shortcut),
+            move_tab_right_shortcut: squash(move_tab_right_shortcut),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -75,16 +124,49 @@ struct OpenWithSlotYaml {
     // commands: skipped for Phase 2 — consumed by the mutations layer.
 }
 
+/// Path to the merged configuration file inside a conception tree.
+pub fn configuration_path(conception_path: &Path) -> PathBuf {
+    conception_path.join("configuration.yml")
+}
+
+/// Parse `body` as a well-formed `configuration.yml`. Returns Ok on
+/// success. The config modal calls this before writing so invalid YAML
+/// never hits disk.
+pub fn validate_configuration_yaml(body: &str) -> Result<()> {
+    let _: ConfigurationYaml =
+        serde_yaml_ng::from_str(body).with_context(|| "parsing configuration.yml body")?;
+    Ok(())
+}
+
+/// Atomically write `body` as `<conception>/configuration.yml`. Rejects
+/// invalid YAML; on success, the file on disk is replaced in a single
+/// rename so a crash mid-write cannot truncate the user's config.
+pub fn write_configuration(conception_path: &Path, body: &str) -> Result<PathBuf> {
+    validate_configuration_yaml(body)?;
+    let path = configuration_path(conception_path);
+    let tmp = {
+        let mut p = path.to_path_buf();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "configuration.yml".into());
+        p.set_file_name(format!(".{name}.tmp"));
+        p
+    };
+    fs::write(&tmp, body.as_bytes()).with_context(|| format!("writing {}", tmp.display()))?;
+    fs::rename(&tmp, &path)
+        .with_context(|| format!("renaming {} -> {}", tmp.display(), path.display()))?;
+    Ok(path)
+}
+
 /// Build a [`RenderCtx`] for the conception tree at `conception_path`.
 ///
-/// Reads `<conception>/config/repositories.yml` when present; falls
-/// back to minimal state when absent (no workspace, no git strip).
-/// Also loads `<conception_path>/../<template>` — the dashboard shell —
-/// into `ctx.template`. The template itself lives next to the Python
-/// package's `assets/` directory; `template_path` points the loader at
-/// it explicitly so the Tauri binary can be launched from anywhere.
+/// Reads `<conception>/configuration.yml` when present; falls back to
+/// a minimal ctx when absent (no workspace, no git strip, no
+/// preferences). `template` is the dashboard shell HTML — loaded once
+/// by the caller so render helpers don't re-read the asset per request.
 pub fn build_ctx(conception_path: &Path, template: String) -> Result<RenderCtx> {
-    let yaml_path = conception_path.join("config").join("repositories.yml");
+    let yaml_path = configuration_path(conception_path);
     let mut ctx = RenderCtx {
         base_dir: conception_path.to_path_buf(),
         template,
@@ -92,13 +174,13 @@ pub fn build_ctx(conception_path: &Path, template: String) -> Result<RenderCtx> 
     };
 
     if !yaml_path.is_file() {
-        // No repositories.yml yet — return a minimal ctx; the dashboard
+        // No configuration.yml yet — return a minimal ctx; the dashboard
         // renders without the Code tab populated.
         return Ok(ctx);
     }
     let raw = fs::read_to_string(&yaml_path)
         .with_context(|| format!("reading {}", yaml_path.display()))?;
-    let parsed: RepositoriesYaml = serde_yaml_ng::from_str(&raw)
+    let parsed: ConfigurationYaml = serde_yaml_ng::from_str(&raw)
         .with_context(|| format!("parsing YAML at {}", yaml_path.display()))?;
 
     ctx.workspace = parsed.workspace_path.as_deref().map(expand_tilde);
@@ -141,6 +223,11 @@ pub fn build_ctx(conception_path: &Path, template: String) -> Result<RenderCtx> 
                 (key, OpenWithSlot { label })
             })
             .collect();
+    }
+
+    ctx.pdf_viewer = parsed.pdf_viewer;
+    if let Some(term) = parsed.terminal {
+        ctx.terminal = term.into_prefs();
     }
 
     Ok(ctx)
