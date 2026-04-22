@@ -3343,59 +3343,45 @@ async function _refreshBaselineFor(nodeId) {
    `exit` info frame when the shell dies; client closes the tab. Closing
    the last tab hides the pane. The pane's × and the toggle shortcut
    hide/show the pane while leaving the tabs intact. */
-/* Clipboard bridge — native mode exposes window.pywebview.api.clipboard_*
-   backed by QClipboard on pywebview's main Qt thread. That path works
-   in Qt 6.x without the permission-request crash navigator.clipboard
-   triggers, and without the cross-thread nulls that the /clipboard HTTP
-   endpoint hits when the FastAPI worker calls QClipboard from its own
-   thread. /clipboard stays as a fallback for browser mode (no pywebview
-   object) — there it relies on wl-copy / xclip / xsel. */
-function _termHasPyApi() {
-    return typeof window !== 'undefined' &&
-           window.pywebview && window.pywebview.api &&
-           typeof window.pywebview.api.clipboard_get === 'function' &&
-           typeof window.pywebview.api.clipboard_set === 'function';
+/* Clipboard bridge — Tauri 2 exposes an IPC `invoke` under
+   `window.__TAURI__.core.invoke` (requires `withGlobalTauri: true` plus a
+   capability covering this origin and the `clipboard-manager:allow-*-text`
+   permissions; see src-tauri/src/lib.rs::run). We call the plugin's
+   commands directly rather than importing `@tauri-apps/plugin-clipboard-manager`
+   so the frontend bundle stays `npm install`-free — same reasoning as
+   xterm/mermaid/pdfjs, which are vendored flat. Browser-mode
+   (`condash-serve`) has no IPC, so `_tauriInvoke` returns null there and
+   paste becomes a no-op; that's acceptable — the HTTP `/clipboard` route
+   was dropped with the Python build. */
+function _tauriInvoke() {
+    if (typeof window === 'undefined') return null;
+    var g = window.__TAURI__;
+    if (g && g.core && typeof g.core.invoke === 'function') return g.core.invoke;
+    var internals = window.__TAURI_INTERNALS__;
+    if (internals && typeof internals.invoke === 'function') return internals.invoke;
+    return null;
 }
 
 function _termClipboardWrite(text) {
     if (!text) return;
-    if (_termHasPyApi()) {
-        try {
-            Promise.resolve(window.pywebview.api.clipboard_set(text)).catch(function() {
-                _termClipboardWriteHttp(text);
-            });
-            return;
-        } catch (e) {}
-    }
-    _termClipboardWriteHttp(text);
-}
-
-function _termClipboardWriteHttp(text) {
+    var invoke = _tauriInvoke();
+    if (!invoke) return;
     try {
-        fetch('/clipboard', {
-            method: 'POST',
-            headers: {'Content-Type': 'text/plain'},
-            body: text,
-        }).catch(function() {});
+        Promise.resolve(invoke('plugin:clipboard-manager|write_text', {text: text}))
+            .catch(function() {});
     } catch (e) {}
 }
 
 function _termClipboardRead() {
-    if (_termHasPyApi()) {
-        try {
-            return Promise.resolve(window.pywebview.api.clipboard_get()).then(
-                function(t) { return t || ''; },
-                function() { return _termClipboardReadHttp(); },
-            );
-        } catch (e) {}
+    var invoke = _tauriInvoke();
+    if (!invoke) return Promise.resolve('');
+    try {
+        return Promise.resolve(invoke('plugin:clipboard-manager|read_text'))
+            .then(function(t) { return typeof t === 'string' ? t : ''; },
+                  function() { return ''; });
+    } catch (e) {
+        return Promise.resolve('');
     }
-    return _termClipboardReadHttp();
-}
-
-function _termClipboardReadHttp() {
-    return fetch('/clipboard', {cache: 'no-store'})
-        .then(function(r) { return r.ok ? r.text() : ''; })
-        .catch(function() { return ''; });
 }
 
 var _termTabs = [];           // [{id, side, term, fit, ws, mount, button, shell}]

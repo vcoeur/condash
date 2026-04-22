@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use condash_state::WorkspaceCache;
+use tauri::ipc::CapabilityBuilder;
 use tauri::Manager;
 
 pub mod assets;
@@ -53,6 +54,7 @@ pub fn load_template_for_bin(source: &assets::AssetSource) -> anyhow::Result<Str
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let conception_path = match resolve_conception_path() {
                 Ok(p) => p,
@@ -124,6 +126,21 @@ pub fn run() {
             // navigate it; otherwise build one programmatically.
             let url = format!("http://127.0.0.1:{port}/");
             let parsed: tauri::Url = url.parse().map_err(|e| format!("bad url: {e}"))?;
+
+            // The webview loads a `remote` origin (our own axum server on
+            // a pid-chosen port), so Tauri only injects the IPC bridge +
+            // plugin permissions after we declare that origin in a
+            // capability. Without this, the clipboard-manager plugin's
+            // JS calls fail with "Unknown window" at runtime.
+            app.add_capability(
+                CapabilityBuilder::new("condash-remote")
+                    .remote(url.clone())
+                    .window("main")
+                    .permission("clipboard-manager:allow-read-text")
+                    .permission("clipboard-manager:allow-write-text"),
+            )
+            .map_err(|e| format!("add remote capability: {e}"))?;
+
             if let Some(win) = app.get_webview_window("main") {
                 win.navigate(parsed).map_err(|e| format!("navigate: {e}"))?;
             } else {
