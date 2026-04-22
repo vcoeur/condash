@@ -40,6 +40,10 @@ async fn main() -> Result<()> {
     );
     let _watcher = condash_lib::events::start_watcher(event_bus.clone(), watch_cfg);
 
+    // Bridge watcher events to the cache so hand-edits invalidate the
+    // items / knowledge slices without needing an explicit `/rescan`.
+    condash_lib::events::spawn_cache_invalidator(event_bus.clone(), cache.clone());
+
     let state = condash_lib::server::AppState {
         ctx,
         cache,

@@ -102,6 +102,17 @@ pub fn run() {
                 app.manage(w);
             }
 
+            // Bridge watcher events to the items/knowledge cache —
+            // without this, in-place edits to `projects/` or
+            // `knowledge/` never invalidate the cached slices and the
+            // Projects tab keeps rendering stale data until the user
+            // explicitly hits `/rescan`. `tokio::spawn` inside the
+            // helper requires a runtime context, which `block_on`
+            // provides; the spawned task outlives this scope.
+            tauri::async_runtime::block_on(async {
+                events::spawn_cache_invalidator(event_bus.clone(), state.cache.clone());
+            });
+
             // Start axum + grab the port it picked.
             let port = tauri::async_runtime::block_on(server::start(state.clone()))
                 .map_err(|e| format!("start server: {e}"))?;

@@ -212,6 +212,40 @@ pub struct WatcherHandle {
     _watcher: RecommendedWatcher,
 }
 
+/// Bridge filesystem-watcher events to the shared items/knowledge
+/// cache. Without this, the watcher publishes `projects` / `knowledge`
+/// events to the SSE fan-out but the server keeps handing back the
+/// first-warmed cached slices, so hand-edits and `git pull` never
+/// surface until the user hits `/rescan`.
+pub fn spawn_cache_invalidator(
+    bus: EventBus,
+    cache: std::sync::Arc<condash_state::WorkspaceCache>,
+) {
+    let mut rx = bus.subscribe();
+    tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(payload) => {
+                    let tab = match payload.tab.as_str() {
+                        "projects" => Some(condash_state::Tab::Projects),
+                        "knowledge" => Some(condash_state::Tab::Knowledge),
+                        // "code" is watched for SSE stale-dots but has no
+                        // server-side cache to flush.
+                        _ => None,
+                    };
+                    if let Some(tab) = tab {
+                        cache.on_event(tab);
+                    }
+                }
+                // Lagged: we missed events, but the next one we do see
+                // will still invalidate — safe to keep going.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+}
+
 /// Start filesystem watchers for each configured directory. Returns
 /// `None` when nothing is configured.
 ///
