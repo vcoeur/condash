@@ -17,7 +17,7 @@ For one-off commands (a test run, a manual repro), keep using the embedded termi
 
 ## Configuring a runner
 
-The runner is opt-in per repo and per sub-repo. Declare it in [`config/repositories.yml`](config.md#repositoriesyml-per-tree-versioned) with the `run:` field:
+The runner is opt-in per repo and per sub-repo. Declare it in [`configuration.yml`](config.md#repositories) with the `run:` field:
 
 ```yaml
 repositories:
@@ -101,4 +101,4 @@ Runner state is folded into the repo-strip fingerprint, so `/check-updates` (the
 
 - [Repositories and open-with buttons](../guides/repositories-and-open-with.md) — the related but distinct "launcher slots" that open external IDEs rather than PTY-owned processes.
 - [Use the embedded terminal](../guides/terminal.md) — the sibling surface for ad-hoc commands.
-- [Config files — `repositories.yml`](config.md#repositoriesyml-per-tree-versioned) — the broader schema the `run:` field sits inside.
+- [Config files — `repositories`](config.md#repositories) — the broader schema the `run:` field sits inside.

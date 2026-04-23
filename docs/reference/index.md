@@ -8,7 +8,7 @@ description: Exhaustive lookup for every command, config key, README field, muta
 Short pages, one per surface. Look things up here; learn them in the [Tutorials](../tutorials/index.md) and [Guides](../guides/index.md).
 
 - **[CLI](cli.md)** — the two binaries (`condash`, `condash-serve`) and their env vars.
-- **[Config files](config.md)** — `repositories.yml` (team-shared) + `preferences.yml` (per-machine), both under `<conception_path>/config/`.
+- **[Config files](config.md)** — `configuration.yml` at the conception tree root (team-shared) + `settings.yaml` in your XDG config (per-user, holds only `conception_path`).
 - **[README format](readme-format.md)** — header fields, kind-specific additions, field rules.
 - **[Status, steps, deliverables](conception-convention.md)** — the content-level syntax for step markers, deliverable links, and status transitions.
 - **[Mutation model](mutations.md)** — the exhaustive list of every action the dashboard takes on your files.
