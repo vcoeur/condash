@@ -1,18 +1,21 @@
 //! HTML rendering for the conception dashboard.
 //!
-//! Rust port of `src/condash/render.py`. Pairs with `condash-parser`
-//! (item + knowledge data types) and `condash-state` (`RenderCtx`,
-//! cache). The Jinja2 templates under `crates/condash-render/templates/` are
-//! embedded verbatim via `include_str!` in [`templating`] and driven
-//! through `minijinja` — no runtime filesystem dependency, no template
-//! deviation from the Python build.
+//! Pairs with `condash-parser` (item + knowledge data types) and
+//! `condash-state` (`RenderCtx`, cache). The Jinja2 templates under
+//! `crates/condash-render/templates/` are embedded verbatim via
+//! `include_str!` in [`templating`] and driven through `minijinja` —
+//! no runtime filesystem dependency.
 //!
-//! Phase 2 slice 3 covers the cards, knowledge tree, history, and
-//! dashboard shell. Git-strip rendering is stubbed to an empty string
-//! here; slice 4 wires the real implementation alongside `git_scan`.
-//! Note rendering (`_render_note`, `_render_markdown`) is deferred —
-//! those paths depend on pandoc + wikilink resolution and land with
-//! the note routes in a later slice.
+//! Surface:
+//!
+//! - [`render_page`] — the full dashboard shell (cards, knowledge tree,
+//!   history, git strip).
+//! - [`render_card_fragment`] / [`render_knowledge_card_fragment`] /
+//!   [`render_knowledge_group_fragment`] — per-node fragments used by
+//!   the long-poll `/fragment` endpoint.
+//! - [`git_render`] — the git-strip (peer cards, runner buttons).
+//! - [`note_render`] — the `/note` read path (markdown → HTML via
+//!   pulldown-cmark, wikilink resolution, raw-payload accessor).
 
 pub mod git_render;
 pub mod icons;

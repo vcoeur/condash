@@ -1,12 +1,12 @@
-//! axum HTTP server — the Phase 2 read-only route surface.
+//! axum HTTP server — the dashboard's entire HTTP + WebSocket surface.
 //!
 //! The Tauri host owns the `RenderCtx` + `WorkspaceCache` and spawns
 //! this server on a free localhost port at startup. The main webview
-//! then navigates to `http://127.0.0.1:<port>/` so the dashboard's
-//! existing JS — which speaks plain HTTP fetches — stays unchanged
-//! between the Python and Rust builds.
+//! then navigates to `http://127.0.0.1:<port>/` so the dashboard's JS —
+//! which speaks plain HTTP fetches — has a fixed origin regardless of
+//! host.
 //!
-//! Routes mounted here:
+//! Read / static surface:
 //!
 //! - `GET /` — full dashboard page (cards + knowledge + git strip)
 //! - `GET /fragment?id=<node-id>` — per-card / per-family HTML
@@ -18,7 +18,7 @@
 //! - `GET /asset/<path>` — any file under the conception tree
 //!   (notes, deliverables, file-tree previews)
 //!
-//! Phase 3 slice 2 added the step-mutation surface:
+//! Step mutations (operate on a single README checkbox line):
 //!
 //! - `POST /toggle`         — flip one checkbox's state
 //! - `POST /add-step`       — insert a new `- [ ]` line
@@ -27,8 +27,10 @@
 //! - `POST /set-priority`   — update the `**Status**` metadata line
 //! - `POST /reorder-all`    — shuffle checkboxes within their section
 //!
-//! Phase 3 slice 3 added the file-level mutation surface:
+//! File-level mutations:
 //!
+//! - `GET  /note`           — read a note file's body + mtime
+//! - `GET  /note-raw`       — read a note file as `text/plain`
 //! - `POST /note`           — atomically overwrite a note file
 //! - `POST /note/rename`    — rename a file under `<item>/notes/`
 //! - `POST /note/create`    — create an empty note file
@@ -36,13 +38,15 @@
 //! - `POST /note/upload`    — multipart file uploads (≤ 50 MB each)
 //! - `POST /create-item`    — scaffold a new project/incident/document
 //!
-//! Phase 3 slice 4 added the SSE channel:
+//! Staleness + rescan:
 //!
-//! - `GET /events`          — server-sent events (fan-out from the
+//! - `GET  /events`         — server-sent events (fan-out from the
 //!   filesystem watcher in `events.rs`; `hello` frame on connect, then
 //!   per-tab staleness payloads, with a 30 s keep-alive `ping`)
+//! - `POST /rescan`         — rebuild `RenderCtx` from disk + clear
+//!   cached slices
 //!
-//! Phase 4 slice 1 added the embedded terminal WebSocket:
+//! Embedded terminal:
 //!
 //! - `GET /ws/term`         — upgrade to a WebSocket streaming PTY
 //!   bytes. `info` frame on connect, binary frames for output, text
@@ -52,20 +56,30 @@
 //!   instead of a shell; falls back to the login shell when that config
 //!   field is empty or malformed.
 //!
-//! Phase 4 slice 2 added the inline dev-server runner surface:
+//! Inline dev-server runners:
 //!
-//! - `POST /api/runner/start` — spawn a dev server for a configured
+//! - `POST /api/runner/start`      — spawn a dev server for a configured
 //!   repo key (template from `ctx.repo_run_templates`, sandbox-gated
 //!   path)
-//! - `POST /api/runner/stop`  — SIGTERM + reap the runner session and
-//!   clear its registry slot
-//! - `GET  /ws/runner/:key`   — attach a WebSocket viewer to an
+//! - `POST /api/runner/stop`       — SIGTERM + reap the runner session
+//!   and clear its registry slot
+//! - `POST /api/runner/force-stop` — nuclear-option shell escape for
+//!   the repo-level "free the port" button
+//! - `GET  /ws/runner/:key`        — attach a WebSocket viewer to an
 //!   existing runner's PTY; no-spawn on miss
 //!
-//! Routes *not* ported here (Phase 5+ territory): `/note-raw`
-//! (read-side convenience endpoint; the bulk-read `/note` write path
-//! already covers the primary editor flow) and the config-editing
-//! surface.
+//! Configuration + openers:
+//!
+//! - `GET  /configuration`   — raw `configuration.yml` for the modal
+//! - `POST /configuration`   — validate + atomically replace the file
+//! - `GET  /config`          — small JSON summary (conception_path,
+//!   terminal) used by the frontend for setup banners and shortcut
+//!   loading
+//! - `POST /open`, `/open-folder`, `/open-external`, `/open-doc` —
+//!   dispatch user-visible "Open with …" actions to detached external
+//!   processes; sandbox-gated
+//! - `GET  /recent-screenshot` — resolve the most recent screenshot
+//!   inside `terminal.screenshot_dir`, for the paste-into-note flow
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
@@ -109,10 +123,10 @@ pub struct AppState {
     pub cache: Arc<WorkspaceCache>,
     /// Source of the dashboard shell (`dashboard.html`),
     /// `favicon.{svg,ico}`, `dist/`, and `vendor/`. Production binaries
-    /// use [`assets::AssetSource::Embedded`]; dev runs can flip to
-    /// [`assets::AssetSource::Disk`] via the `CONDASH_ASSET_DIR` env
-    /// var. Phase 5 step 1 landed the embedded variant so the binary
-    /// is self-contained.
+    /// use [`assets::AssetSource::Embedded`] so the binary is
+    /// self-contained; dev runs can flip to [`assets::AssetSource::Disk`]
+    /// via the `CONDASH_ASSET_DIR` env var to reload bundles without a
+    /// rebuild.
     pub assets: crate::assets::AssetSource,
     /// Version string stamped into the dashboard shell at `{{VERSION}}`.
     pub version: Arc<String>,
@@ -176,23 +190,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/vendor/{*path}", get(vendor_asset))
         .route("/assets/dist/{*path}", get(dist_asset))
         .route("/asset/{*path}", get(conception_asset))
-        // Phase 3 slice 2 — step mutations.
+        // Step mutations (operate on a single README checkbox line).
         .route("/toggle", post(toggle))
         .route("/add-step", post(add_step_route))
         .route("/remove-step", post(remove_step_route))
         .route("/edit-step", post(edit_step_route))
         .route("/set-priority", post(set_priority_route))
         .route("/reorder-all", post(reorder_all_route))
-        // Phase 3 slice 4 — SSE events channel.
+        // SSE staleness channel.
         .route("/events", get(events_stream))
-        // Phase 4 slice 1 — embedded terminal WebSocket.
+        // Embedded terminal WebSocket.
         .route("/ws/term", get(term_ws))
-        // Phase 4 slice 2 — inline dev-server runners.
+        // Inline dev-server runners.
         .route("/api/runner/start", post(runner_start_route))
         .route("/api/runner/stop", post(runner_stop_route))
         .route("/api/runner/force-stop", post(runner_force_stop_route))
         .route("/ws/runner/{key}", get(runner_ws))
-        // Phase 3 slice 3 — file-level mutations.
+        // File-level mutations.
         .route("/note", get(get_note).post(post_note))
         .route("/note-raw", get(get_note_raw))
         .route("/note/rename", post(post_note_rename))
@@ -231,11 +245,10 @@ pub fn build_router(state: AppState) -> Router {
 }
 
 // ---------------------------------------------------------------------
-// Phase 3 slice 2: step-mutation handlers.
-// Shape matches `src/condash/routes/steps.py` — each handler validates
-// the README path with `paths::validate_readme_path`, delegates to the
-// matching helper in `condash-mutations`, and — on success — flushes
-// the items cache so the next `/check-updates` sees a fresh fingerprint.
+// Step-mutation handlers. Each handler validates the README path with
+// `paths::validate_readme_path`, delegates to the matching helper in
+// `condash-mutations`, and — on success — flushes the items cache so
+// the next `/check-updates` sees a fresh fingerprint.
 // ---------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -409,9 +422,9 @@ async fn reorder_all_route(
 }
 
 // ---------------------------------------------------------------------
-// Phase 3 slice 3: file-level mutation handlers.
-// Shape matches `src/condash/routes/notes.py` and
-// `src/condash/routes/items.py`.
+// File-level mutation handlers — note read/write, rename, create,
+// mkdir, multipart upload, and `/create-item` (new project/incident/
+// document scaffold).
 // ---------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -901,8 +914,7 @@ async fn fragment(
 }
 
 // ---------------------------------------------------------------------
-// Phase 4 slice 1: /ws/term embedded-terminal handler.
-// Mirrors `routes/terminals.py` + `pty.py::attach_ws`:
+// /ws/term — embedded-terminal handler.
 // - Query params: `session_id` (reattach), `cwd` (override working dir),
 //   `launcher` (=1 to spawn the configured launcher instead of a shell).
 // - Frames: `info` on attach, `session-expired` for stale reattach,
@@ -1102,10 +1114,11 @@ async fn handle_term_ws(mut socket: axum::extract::ws::WebSocket, state: AppStat
 }
 
 // ---------------------------------------------------------------------
-// Phase 4 slice 2: runner routes.
-// - `POST /api/runner/start` — spawn a dev server for a configured key
-// - `POST /api/runner/stop`  — SIGTERM + reap + clear
-// - `GET  /ws/runner/:key`   — attach a viewer to the live session
+// Runner routes — inline dev-server processes.
+// - `POST /api/runner/start`      — spawn a dev server for a configured key
+// - `POST /api/runner/stop`       — SIGTERM + reap + clear
+// - `POST /api/runner/force-stop` — repo-level nuclear stop (free a port)
+// - `GET  /ws/runner/:key`        — attach a viewer to the live session
 // ---------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
