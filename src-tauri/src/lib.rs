@@ -117,7 +117,7 @@ pub fn run() {
             });
 
             // Start axum + grab the port it picked.
-            let port = tauri::async_runtime::block_on(server::start(state.clone()))
+            let port = tauri::async_runtime::block_on(server::start(state.clone(), 0))
                 .map_err(|e| format!("start server: {e}"))?;
             eprintln!("condash: HTTP server listening on 127.0.0.1:{port}");
 

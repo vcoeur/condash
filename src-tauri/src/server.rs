@@ -79,16 +79,15 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Datelike;
-use condash_mutations::write_note;
 use condash_mutations::{
     add_step, create_item, create_note, create_notes_subdir, edit_step, remove_step, rename_note,
-    reorder_all, set_priority, store_uploads, toggle_checkbox, CreateItemResult, CreateNoteResult,
-    CreateSubdirResult, NewItemSpec, RenameResult, WriteNoteResult,
+    reorder_all, set_priority, store_uploads, toggle_checkbox, write_note, CreateItemResult,
+    CreateNoteResult, CreateSubdirResult, NewItemSpec, RenameResult, WriteNoteResult,
 };
 use condash_parser::{
     compute_fingerprint, compute_knowledge_node_fingerprints, compute_project_node_fingerprints,
+    find_card, find_node,
 };
-use condash_parser::{find_card, find_node};
 use condash_render::git_render::render_git_repo_fragment;
 use condash_render::{
     render_card_fragment, render_knowledge_card_fragment, render_knowledge_group_fragment,
@@ -128,15 +127,10 @@ pub struct AppState {
     pub runner_registry: crate::runners::RunnerRegistry,
 }
 
-/// Start the axum server on a free localhost port and return the port
-/// so the caller can point the Tauri webview at it. The server runs
-/// forever on the current tokio runtime.
-pub async fn start(state: AppState) -> Result<u16> {
-    start_on(state, 0).await
-}
-
-/// Start the axum server on an explicit port (`0` means any free port).
-pub async fn start_on(state: AppState, port: u16) -> Result<u16> {
+/// Start the axum server on the given localhost port (`0` means any free
+/// port) and return the bound port so the caller can point the Tauri
+/// webview at it. The server runs forever on the current tokio runtime.
+pub async fn start(state: AppState, port: u16) -> Result<u16> {
     let std_listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))
         .context("binding 127.0.0.1 for the dashboard HTTP server")?;
     std_listener.set_nonblocking(true)?;
@@ -434,10 +428,10 @@ async fn get_note(
     Query(q): Query<NotePathQuery>,
 ) -> impl IntoResponse {
     if q.path.is_empty() {
-        return error(StatusCode::BAD_REQUEST, "missing path");
+        return error_json(StatusCode::BAD_REQUEST, "missing path");
     }
     let Some(full) = crate::paths::validate_note_path(&state.ctx.base_dir, &q.path) else {
-        return error(StatusCode::FORBIDDEN, "invalid path");
+        return error_json(StatusCode::FORBIDDEN, "invalid path");
     };
     let html = condash_render::render_note(&q.path, &full, &state.ctx.base_dir);
     html_response(html)
@@ -776,10 +770,14 @@ async fn post_create_item(
     }
 }
 
+fn json_response<T: serde::Serialize>(body: &T) -> Response {
+    json_with_status(body, StatusCode::OK)
+}
+
 fn json_with_status<T: serde::Serialize>(body: &T, code: StatusCode) -> Response {
     let bytes = match serde_json::to_vec(body) {
         Ok(b) => b,
-        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, &format!("json: {e}")),
+        Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("json: {e}")),
     };
     Response::builder()
         .status(code)
@@ -788,8 +786,9 @@ fn json_with_status<T: serde::Serialize>(body: &T, code: StatusCode) -> Response
         .unwrap()
 }
 
-/// JSON error response matching `routes/_common.error()` — a
-/// `{"error": <msg>}` body plus the given status code.
+/// JSON error response — a `{"error": <msg>}` body plus the given
+/// status code. Every failure path in this module funnels through here
+/// so the frontend parses one shape.
 fn error_json(code: StatusCode, msg: &str) -> Response {
     let body = serde_json::json!({"error": msg});
     let bytes = serde_json::to_vec(&body).unwrap_or_default();
@@ -846,14 +845,14 @@ async fn fragment(
 ) -> impl IntoResponse {
     let id = q.id;
     if id.is_empty() {
-        return error(StatusCode::BAD_REQUEST, "missing id");
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
     }
 
     if let Some(rest) = id.strip_prefix("projects/") {
         // projects/<priority>/<slug> — look up the card by slug.
         let parts: Vec<&str> = rest.splitn(2, '/').collect();
         if parts.len() != 2 {
-            return error(StatusCode::NOT_FOUND, "not a card id");
+            return error_json(StatusCode::NOT_FOUND, "not a card id");
         }
         let slug = parts[1];
         let items = state.cache.get_items(&state.ctx);
@@ -862,25 +861,25 @@ async fn fragment(
                 return html_response(render_card_fragment(item));
             }
         }
-        return error(StatusCode::NOT_FOUND, "card not found");
+        return error_json(StatusCode::NOT_FOUND, "card not found");
     }
 
     if id == "knowledge" {
         // Root tab — fall back to global reload like Python.
-        return error(StatusCode::NOT_FOUND, "use global reload");
+        return error_json(StatusCode::NOT_FOUND, "use global reload");
     }
 
     if let Some(rest) = id.strip_prefix("code/") {
         if !rest.contains('/') {
             // A bare code group — only whole-repo nodes are fragmentable.
-            return error(StatusCode::NOT_FOUND, "use global reload");
+            return error_json(StatusCode::NOT_FOUND, "use global reload");
         }
         let groups = collect_git_repos(&state.ctx);
         let live_runners = live_runners_snapshot(&state);
         if let Some(html) = render_git_repo_fragment(&state.ctx, &groups, &id, &live_runners) {
             return html_response(html);
         }
-        return error(StatusCode::NOT_FOUND, "repo not found");
+        return error_json(StatusCode::NOT_FOUND, "repo not found");
     }
 
     if id.starts_with("knowledge/") {
@@ -890,15 +889,15 @@ async fn fragment(
             if let Some(card) = find_card(root, &id) {
                 return html_response(render_knowledge_card_fragment(card));
             }
-            return error(StatusCode::NOT_FOUND, "card not found");
+            return error_json(StatusCode::NOT_FOUND, "card not found");
         }
         if let Some(node) = find_node(root, &id) {
             return html_response(render_knowledge_group_fragment(node));
         }
-        return error(StatusCode::NOT_FOUND, "dir not found");
+        return error_json(StatusCode::NOT_FOUND, "dir not found");
     }
 
-    error(StatusCode::NOT_FOUND, "unsupported id")
+    error_json(StatusCode::NOT_FOUND, "unsupported id")
 }
 
 // ---------------------------------------------------------------------
@@ -1591,7 +1590,7 @@ fn serve_embedded(source: &crate::assets::AssetSource, rel_path: &str) -> Respon
                 .body(Body::from(bytes.into_owned()))
                 .unwrap()
         }
-        None => error(StatusCode::NOT_FOUND, "no such asset"),
+        None => error_json(StatusCode::NOT_FOUND, "no such asset"),
     }
 }
 
@@ -1604,27 +1603,27 @@ async fn conception_asset(
 
 fn serve_under(base: &std::path::Path, rel: &str, mime_override: Option<&str>) -> Response {
     if rel.is_empty() || rel.contains('\0') {
-        return error(StatusCode::FORBIDDEN, "bad path");
+        return error_json(StatusCode::FORBIDDEN, "bad path");
     }
     for part in rel.split('/') {
         if part.is_empty() || part == ".." {
-            return error(StatusCode::FORBIDDEN, "path traversal");
+            return error_json(StatusCode::FORBIDDEN, "path traversal");
         }
     }
     let full = base.join(rel);
     let canonical = match std::fs::canonicalize(&full) {
         Ok(c) => c,
-        Err(_) => return error(StatusCode::NOT_FOUND, "no such file"),
+        Err(_) => return error_json(StatusCode::NOT_FOUND, "no such file"),
     };
     let base_canonical = match std::fs::canonicalize(base) {
         Ok(c) => c,
-        Err(_) => return error(StatusCode::NOT_FOUND, "base missing"),
+        Err(_) => return error_json(StatusCode::NOT_FOUND, "base missing"),
     };
     if !canonical.starts_with(&base_canonical) {
-        return error(StatusCode::FORBIDDEN, "outside base");
+        return error_json(StatusCode::FORBIDDEN, "outside base");
     }
     if !canonical.is_file() {
-        return error(StatusCode::NOT_FOUND, "not a file");
+        return error_json(StatusCode::NOT_FOUND, "not a file");
     }
     serve_fixed(
         &canonical,
@@ -1640,7 +1639,7 @@ fn serve_fixed(path: &std::path::Path, mime: &str) -> Response {
             .header(header::CACHE_CONTROL, "public, max-age=86400")
             .body(Body::from(bytes))
             .unwrap(),
-        Err(_) => error(StatusCode::NOT_FOUND, "read failed"),
+        Err(_) => error_json(StatusCode::NOT_FOUND, "read failed"),
     }
 }
 
@@ -1671,27 +1670,6 @@ fn html_response(body: String) -> Response {
     r
 }
 
-fn json_response<T: serde::Serialize>(body: &T) -> Response {
-    let bytes = match serde_json::to_vec(body) {
-        Ok(b) => b,
-        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, &format!("json: {e}")),
-    };
-    let mut r = Response::new(Body::from(bytes));
-    r.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    );
-    r
-}
-
-fn error(code: StatusCode, msg: &str) -> Response {
-    Response::builder()
-        .status(code)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .body(Body::from(format!("{code} — {msg}\n")))
-        .unwrap()
-}
-
 // ---------------------------------------------------------------------
 // Configuration modal (GET/POST /configuration) — plain-text YAML editor
 // backed by <conception>/configuration.yml.
@@ -1707,7 +1685,7 @@ async fn get_configuration(State(state): State<AppState>) -> Response {
     let body = match std::fs::read_to_string(&path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, &format!("read: {e}")),
+        Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("read: {e}")),
     };
     let mut r = Response::new(Body::from(body));
     r.headers_mut().insert(
@@ -1722,7 +1700,7 @@ async fn get_configuration(State(state): State<AppState>) -> Response {
 
 async fn post_configuration(State(state): State<AppState>, body: String) -> Response {
     if let Err(e) = crate::config::validate_configuration_yaml(&body) {
-        return error(StatusCode::BAD_REQUEST, &format!("{e}"));
+        return error_json(StatusCode::BAD_REQUEST, &format!("{e}"));
     }
     match crate::config::write_configuration(&state.ctx.base_dir, &body) {
         Ok(_path) => {
@@ -1739,7 +1717,7 @@ async fn post_configuration(State(state): State<AppState>, body: String) -> Resp
             )
                 .into_response()
         }
-        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{e}")),
+        Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("{e}")),
     }
 }
 
