@@ -35,7 +35,7 @@ async fn start_server() -> (u16, TempDir) {
         pty_registry: PtyRegistry::new(),
         runner_registry: condash_lib::runners::RunnerRegistry::new(),
     };
-    let port = server::start(state).await.expect("start server");
+    let port = server::start(state, 0).await.expect("start server");
     (port, tmp)
 }
 

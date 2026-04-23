@@ -71,13 +71,12 @@ async fn async_main() -> Result<()> {
     };
 
     // Honor CONDASH_PORT if set, else pick a free one like the Tauri
-    // host does.
-    let port = if let Some(p) = std::env::var("CONDASH_PORT").ok() {
-        let port: u16 = p.parse().context("CONDASH_PORT is not a u16")?;
-        condash_lib::server::start_on(state, port).await?
-    } else {
-        condash_lib::server::start(state).await?
+    // host does (port = 0).
+    let requested_port = match std::env::var("CONDASH_PORT").ok() {
+        Some(p) => p.parse::<u16>().context("CONDASH_PORT is not a u16")?,
+        None => 0,
     };
+    let port = condash_lib::server::start(state, requested_port).await?;
     eprintln!("condash-serve: listening on http://127.0.0.1:{port}/");
 
     // Block forever — the server task owns the listener.

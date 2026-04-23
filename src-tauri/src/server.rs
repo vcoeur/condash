@@ -1,12 +1,12 @@
-//! axum HTTP server — the Phase 2 read-only route surface.
+//! axum HTTP server — the dashboard's entire HTTP + WebSocket surface.
 //!
 //! The Tauri host owns the `RenderCtx` + `WorkspaceCache` and spawns
 //! this server on a free localhost port at startup. The main webview
-//! then navigates to `http://127.0.0.1:<port>/` so the dashboard's
-//! existing JS — which speaks plain HTTP fetches — stays unchanged
-//! between the Python and Rust builds.
+//! then navigates to `http://127.0.0.1:<port>/` so the dashboard's JS —
+//! which speaks plain HTTP fetches — has a fixed origin regardless of
+//! host.
 //!
-//! Routes mounted here:
+//! Read / static surface:
 //!
 //! - `GET /` — full dashboard page (cards + knowledge + git strip)
 //! - `GET /fragment?id=<node-id>` — per-card / per-family HTML
@@ -18,7 +18,7 @@
 //! - `GET /asset/<path>` — any file under the conception tree
 //!   (notes, deliverables, file-tree previews)
 //!
-//! Phase 3 slice 2 added the step-mutation surface:
+//! Step mutations (operate on a single README checkbox line):
 //!
 //! - `POST /toggle`         — flip one checkbox's state
 //! - `POST /add-step`       — insert a new `- [ ]` line
@@ -27,8 +27,10 @@
 //! - `POST /set-priority`   — update the `**Status**` metadata line
 //! - `POST /reorder-all`    — shuffle checkboxes within their section
 //!
-//! Phase 3 slice 3 added the file-level mutation surface:
+//! File-level mutations:
 //!
+//! - `GET  /note`           — read a note file's body + mtime
+//! - `GET  /note-raw`       — read a note file as `text/plain`
 //! - `POST /note`           — atomically overwrite a note file
 //! - `POST /note/rename`    — rename a file under `<item>/notes/`
 //! - `POST /note/create`    — create an empty note file
@@ -36,13 +38,15 @@
 //! - `POST /note/upload`    — multipart file uploads (≤ 50 MB each)
 //! - `POST /create-item`    — scaffold a new project/incident/document
 //!
-//! Phase 3 slice 4 added the SSE channel:
+//! Staleness + rescan:
 //!
-//! - `GET /events`          — server-sent events (fan-out from the
+//! - `GET  /events`         — server-sent events (fan-out from the
 //!   filesystem watcher in `events.rs`; `hello` frame on connect, then
 //!   per-tab staleness payloads, with a 30 s keep-alive `ping`)
+//! - `POST /rescan`         — rebuild `RenderCtx` from disk + clear
+//!   cached slices
 //!
-//! Phase 4 slice 1 added the embedded terminal WebSocket:
+//! Embedded terminal:
 //!
 //! - `GET /ws/term`         — upgrade to a WebSocket streaming PTY
 //!   bytes. `info` frame on connect, binary frames for output, text
@@ -52,20 +56,30 @@
 //!   instead of a shell; falls back to the login shell when that config
 //!   field is empty or malformed.
 //!
-//! Phase 4 slice 2 added the inline dev-server runner surface:
+//! Inline dev-server runners:
 //!
-//! - `POST /api/runner/start` — spawn a dev server for a configured
+//! - `POST /api/runner/start`      — spawn a dev server for a configured
 //!   repo key (template from `ctx.repo_run_templates`, sandbox-gated
 //!   path)
-//! - `POST /api/runner/stop`  — SIGTERM + reap the runner session and
-//!   clear its registry slot
-//! - `GET  /ws/runner/:key`   — attach a WebSocket viewer to an
+//! - `POST /api/runner/stop`       — SIGTERM + reap the runner session
+//!   and clear its registry slot
+//! - `POST /api/runner/force-stop` — nuclear-option shell escape for
+//!   the repo-level "free the port" button
+//! - `GET  /ws/runner/:key`        — attach a WebSocket viewer to an
 //!   existing runner's PTY; no-spawn on miss
 //!
-//! Routes *not* ported here (Phase 5+ territory): `/note-raw`
-//! (read-side convenience endpoint; the bulk-read `/note` write path
-//! already covers the primary editor flow) and the config-editing
-//! surface.
+//! Configuration + openers:
+//!
+//! - `GET  /configuration`   — raw `configuration.yml` for the modal
+//! - `POST /configuration`   — validate + atomically replace the file
+//! - `GET  /config`          — small JSON summary (conception_path,
+//!   terminal) used by the frontend for setup banners and shortcut
+//!   loading
+//! - `POST /open`, `/open-folder`, `/open-external`, `/open-doc` —
+//!   dispatch user-visible "Open with …" actions to detached external
+//!   processes; sandbox-gated
+//! - `GET  /recent-screenshot` — resolve the most recent screenshot
+//!   inside `terminal.screenshot_dir`, for the paste-into-note flow
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener};
@@ -79,16 +93,15 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Datelike;
-use condash_mutations::write_note;
 use condash_mutations::{
     add_step, create_item, create_note, create_notes_subdir, edit_step, remove_step, rename_note,
-    reorder_all, set_priority, store_uploads, toggle_checkbox, CreateItemResult, CreateNoteResult,
-    CreateSubdirResult, NewItemSpec, RenameResult, WriteNoteResult,
+    reorder_all, set_priority, store_uploads, toggle_checkbox, write_note, CreateItemResult,
+    CreateNoteResult, CreateSubdirResult, NewItemSpec, RenameResult, WriteNoteResult,
 };
 use condash_parser::{
     compute_fingerprint, compute_knowledge_node_fingerprints, compute_project_node_fingerprints,
+    find_card, find_node,
 };
-use condash_parser::{find_card, find_node};
 use condash_render::git_render::render_git_repo_fragment;
 use condash_render::{
     render_card_fragment, render_knowledge_card_fragment, render_knowledge_group_fragment,
@@ -110,10 +123,10 @@ pub struct AppState {
     pub cache: Arc<WorkspaceCache>,
     /// Source of the dashboard shell (`dashboard.html`),
     /// `favicon.{svg,ico}`, `dist/`, and `vendor/`. Production binaries
-    /// use [`assets::AssetSource::Embedded`]; dev runs can flip to
-    /// [`assets::AssetSource::Disk`] via the `CONDASH_ASSET_DIR` env
-    /// var. Phase 5 step 1 landed the embedded variant so the binary
-    /// is self-contained.
+    /// use [`assets::AssetSource::Embedded`] so the binary is
+    /// self-contained; dev runs can flip to [`assets::AssetSource::Disk`]
+    /// via the `CONDASH_ASSET_DIR` env var to reload bundles without a
+    /// rebuild.
     pub assets: crate::assets::AssetSource,
     /// Version string stamped into the dashboard shell at `{{VERSION}}`.
     pub version: Arc<String>,
@@ -128,15 +141,10 @@ pub struct AppState {
     pub runner_registry: crate::runners::RunnerRegistry,
 }
 
-/// Start the axum server on a free localhost port and return the port
-/// so the caller can point the Tauri webview at it. The server runs
-/// forever on the current tokio runtime.
-pub async fn start(state: AppState) -> Result<u16> {
-    start_on(state, 0).await
-}
-
-/// Start the axum server on an explicit port (`0` means any free port).
-pub async fn start_on(state: AppState, port: u16) -> Result<u16> {
+/// Start the axum server on the given localhost port (`0` means any free
+/// port) and return the bound port so the caller can point the Tauri
+/// webview at it. The server runs forever on the current tokio runtime.
+pub async fn start(state: AppState, port: u16) -> Result<u16> {
     let std_listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))
         .context("binding 127.0.0.1 for the dashboard HTTP server")?;
     std_listener.set_nonblocking(true)?;
@@ -182,23 +190,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/vendor/{*path}", get(vendor_asset))
         .route("/assets/dist/{*path}", get(dist_asset))
         .route("/asset/{*path}", get(conception_asset))
-        // Phase 3 slice 2 — step mutations.
+        // Step mutations (operate on a single README checkbox line).
         .route("/toggle", post(toggle))
         .route("/add-step", post(add_step_route))
         .route("/remove-step", post(remove_step_route))
         .route("/edit-step", post(edit_step_route))
         .route("/set-priority", post(set_priority_route))
         .route("/reorder-all", post(reorder_all_route))
-        // Phase 3 slice 4 — SSE events channel.
+        // SSE staleness channel.
         .route("/events", get(events_stream))
-        // Phase 4 slice 1 — embedded terminal WebSocket.
+        // Embedded terminal WebSocket.
         .route("/ws/term", get(term_ws))
-        // Phase 4 slice 2 — inline dev-server runners.
+        // Inline dev-server runners.
         .route("/api/runner/start", post(runner_start_route))
         .route("/api/runner/stop", post(runner_stop_route))
         .route("/api/runner/force-stop", post(runner_force_stop_route))
         .route("/ws/runner/{key}", get(runner_ws))
-        // Phase 3 slice 3 — file-level mutations.
+        // File-level mutations.
         .route("/note", get(get_note).post(post_note))
         .route("/note-raw", get(get_note_raw))
         .route("/note/rename", post(post_note_rename))
@@ -237,11 +245,10 @@ pub fn build_router(state: AppState) -> Router {
 }
 
 // ---------------------------------------------------------------------
-// Phase 3 slice 2: step-mutation handlers.
-// Shape matches `src/condash/routes/steps.py` — each handler validates
-// the README path with `paths::validate_readme_path`, delegates to the
-// matching helper in `condash-mutations`, and — on success — flushes
-// the items cache so the next `/check-updates` sees a fresh fingerprint.
+// Step-mutation handlers. Each handler validates the README path with
+// `paths::validate_readme_path`, delegates to the matching helper in
+// `condash-mutations`, and — on success — flushes the items cache so
+// the next `/check-updates` sees a fresh fingerprint.
 // ---------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -415,9 +422,9 @@ async fn reorder_all_route(
 }
 
 // ---------------------------------------------------------------------
-// Phase 3 slice 3: file-level mutation handlers.
-// Shape matches `src/condash/routes/notes.py` and
-// `src/condash/routes/items.py`.
+// File-level mutation handlers — note read/write, rename, create,
+// mkdir, multipart upload, and `/create-item` (new project/incident/
+// document scaffold).
 // ---------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -434,10 +441,10 @@ async fn get_note(
     Query(q): Query<NotePathQuery>,
 ) -> impl IntoResponse {
     if q.path.is_empty() {
-        return error(StatusCode::BAD_REQUEST, "missing path");
+        return error_json(StatusCode::BAD_REQUEST, "missing path");
     }
     let Some(full) = crate::paths::validate_note_path(&state.ctx.base_dir, &q.path) else {
-        return error(StatusCode::FORBIDDEN, "invalid path");
+        return error_json(StatusCode::FORBIDDEN, "invalid path");
     };
     let html = condash_render::render_note(&q.path, &full, &state.ctx.base_dir);
     html_response(html)
@@ -510,7 +517,7 @@ async fn post_note_rename(
     let Some(full) = crate::paths::validate_note_path(&state.ctx.base_dir, &p.path) else {
         return error_json(StatusCode::BAD_REQUEST, "invalid path");
     };
-    if !crate::paths::is_item_notes_file(&p.path) {
+    if !crate::paths::VALID_ITEM_NOTES_FILE_RE.is_match(&p.path) {
         return error_json(
             StatusCode::BAD_REQUEST,
             "only files under <item>/notes/ can be renamed",
@@ -776,10 +783,14 @@ async fn post_create_item(
     }
 }
 
+fn json_response<T: serde::Serialize>(body: &T) -> Response {
+    json_with_status(body, StatusCode::OK)
+}
+
 fn json_with_status<T: serde::Serialize>(body: &T, code: StatusCode) -> Response {
     let bytes = match serde_json::to_vec(body) {
         Ok(b) => b,
-        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, &format!("json: {e}")),
+        Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("json: {e}")),
     };
     Response::builder()
         .status(code)
@@ -788,8 +799,9 @@ fn json_with_status<T: serde::Serialize>(body: &T, code: StatusCode) -> Response
         .unwrap()
 }
 
-/// JSON error response matching `routes/_common.error()` — a
-/// `{"error": <msg>}` body plus the given status code.
+/// JSON error response — a `{"error": <msg>}` body plus the given
+/// status code. Every failure path in this module funnels through here
+/// so the frontend parses one shape.
 fn error_json(code: StatusCode, msg: &str) -> Response {
     let body = serde_json::json!({"error": msg});
     let bytes = serde_json::to_vec(&body).unwrap_or_default();
@@ -846,14 +858,14 @@ async fn fragment(
 ) -> impl IntoResponse {
     let id = q.id;
     if id.is_empty() {
-        return error(StatusCode::BAD_REQUEST, "missing id");
+        return error_json(StatusCode::BAD_REQUEST, "missing id");
     }
 
     if let Some(rest) = id.strip_prefix("projects/") {
         // projects/<priority>/<slug> — look up the card by slug.
         let parts: Vec<&str> = rest.splitn(2, '/').collect();
         if parts.len() != 2 {
-            return error(StatusCode::NOT_FOUND, "not a card id");
+            return error_json(StatusCode::NOT_FOUND, "not a card id");
         }
         let slug = parts[1];
         let items = state.cache.get_items(&state.ctx);
@@ -862,25 +874,25 @@ async fn fragment(
                 return html_response(render_card_fragment(item));
             }
         }
-        return error(StatusCode::NOT_FOUND, "card not found");
+        return error_json(StatusCode::NOT_FOUND, "card not found");
     }
 
     if id == "knowledge" {
         // Root tab — fall back to global reload like Python.
-        return error(StatusCode::NOT_FOUND, "use global reload");
+        return error_json(StatusCode::NOT_FOUND, "use global reload");
     }
 
     if let Some(rest) = id.strip_prefix("code/") {
         if !rest.contains('/') {
             // A bare code group — only whole-repo nodes are fragmentable.
-            return error(StatusCode::NOT_FOUND, "use global reload");
+            return error_json(StatusCode::NOT_FOUND, "use global reload");
         }
         let groups = collect_git_repos(&state.ctx);
         let live_runners = live_runners_snapshot(&state);
         if let Some(html) = render_git_repo_fragment(&state.ctx, &groups, &id, &live_runners) {
             return html_response(html);
         }
-        return error(StatusCode::NOT_FOUND, "repo not found");
+        return error_json(StatusCode::NOT_FOUND, "repo not found");
     }
 
     if id.starts_with("knowledge/") {
@@ -890,20 +902,19 @@ async fn fragment(
             if let Some(card) = find_card(root, &id) {
                 return html_response(render_knowledge_card_fragment(card));
             }
-            return error(StatusCode::NOT_FOUND, "card not found");
+            return error_json(StatusCode::NOT_FOUND, "card not found");
         }
         if let Some(node) = find_node(root, &id) {
             return html_response(render_knowledge_group_fragment(node));
         }
-        return error(StatusCode::NOT_FOUND, "dir not found");
+        return error_json(StatusCode::NOT_FOUND, "dir not found");
     }
 
-    error(StatusCode::NOT_FOUND, "unsupported id")
+    error_json(StatusCode::NOT_FOUND, "unsupported id")
 }
 
 // ---------------------------------------------------------------------
-// Phase 4 slice 1: /ws/term embedded-terminal handler.
-// Mirrors `routes/terminals.py` + `pty.py::attach_ws`:
+// /ws/term — embedded-terminal handler.
 // - Query params: `session_id` (reattach), `cwd` (override working dir),
 //   `launcher` (=1 to spawn the configured launcher instead of a shell).
 // - Frames: `info` on attach, `session-expired` for stale reattach,
@@ -1103,10 +1114,11 @@ async fn handle_term_ws(mut socket: axum::extract::ws::WebSocket, state: AppStat
 }
 
 // ---------------------------------------------------------------------
-// Phase 4 slice 2: runner routes.
-// - `POST /api/runner/start` — spawn a dev server for a configured key
-// - `POST /api/runner/stop`  — SIGTERM + reap + clear
-// - `GET  /ws/runner/:key`   — attach a viewer to the live session
+// Runner routes — inline dev-server processes.
+// - `POST /api/runner/start`      — spawn a dev server for a configured key
+// - `POST /api/runner/stop`       — SIGTERM + reap + clear
+// - `POST /api/runner/force-stop` — repo-level nuclear stop (free a port)
+// - `GET  /ws/runner/:key`        — attach a viewer to the live session
 // ---------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -1591,7 +1603,7 @@ fn serve_embedded(source: &crate::assets::AssetSource, rel_path: &str) -> Respon
                 .body(Body::from(bytes.into_owned()))
                 .unwrap()
         }
-        None => error(StatusCode::NOT_FOUND, "no such asset"),
+        None => error_json(StatusCode::NOT_FOUND, "no such asset"),
     }
 }
 
@@ -1604,32 +1616,39 @@ async fn conception_asset(
 
 fn serve_under(base: &std::path::Path, rel: &str, mime_override: Option<&str>) -> Response {
     if rel.is_empty() || rel.contains('\0') {
-        return error(StatusCode::FORBIDDEN, "bad path");
+        return error_json(StatusCode::FORBIDDEN, "bad path");
     }
     for part in rel.split('/') {
         if part.is_empty() || part == ".." {
-            return error(StatusCode::FORBIDDEN, "path traversal");
+            return error_json(StatusCode::FORBIDDEN, "path traversal");
         }
     }
     let full = base.join(rel);
     let canonical = match std::fs::canonicalize(&full) {
         Ok(c) => c,
-        Err(_) => return error(StatusCode::NOT_FOUND, "no such file"),
+        Err(_) => return error_json(StatusCode::NOT_FOUND, "no such file"),
     };
     let base_canonical = match std::fs::canonicalize(base) {
         Ok(c) => c,
-        Err(_) => return error(StatusCode::NOT_FOUND, "base missing"),
+        Err(_) => return error_json(StatusCode::NOT_FOUND, "base missing"),
     };
     if !canonical.starts_with(&base_canonical) {
-        return error(StatusCode::FORBIDDEN, "outside base");
+        return error_json(StatusCode::FORBIDDEN, "outside base");
     }
     if !canonical.is_file() {
-        return error(StatusCode::NOT_FOUND, "not a file");
+        return error_json(StatusCode::NOT_FOUND, "not a file");
     }
-    serve_fixed(
-        &canonical,
-        mime_override.unwrap_or_else(|| guess_mime(&canonical)),
-    )
+    let guessed;
+    let mime = match mime_override {
+        Some(m) => m,
+        None => {
+            guessed = mime_guess::from_path(&canonical)
+                .first_or_octet_stream()
+                .to_string();
+            guessed.as_str()
+        }
+    };
+    serve_fixed(&canonical, mime)
 }
 
 fn serve_fixed(path: &std::path::Path, mime: &str) -> Response {
@@ -1640,25 +1659,7 @@ fn serve_fixed(path: &std::path::Path, mime: &str) -> Response {
             .header(header::CACHE_CONTROL, "public, max-age=86400")
             .body(Body::from(bytes))
             .unwrap(),
-        Err(_) => error(StatusCode::NOT_FOUND, "read failed"),
-    }
-}
-
-fn guess_mime(path: &std::path::Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("mjs") | Some("js") => "text/javascript",
-        Some("css") => "text/css",
-        Some("json") => "application/json",
-        Some("wasm") => "application/wasm",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("pdf") => "application/pdf",
-        Some("html") => "text/html; charset=utf-8",
-        Some("md") | Some("txt") => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
+        Err(_) => error_json(StatusCode::NOT_FOUND, "read failed"),
     }
 }
 
@@ -1669,27 +1670,6 @@ fn html_response(body: String) -> Response {
         HeaderValue::from_static("text/html; charset=utf-8"),
     );
     r
-}
-
-fn json_response<T: serde::Serialize>(body: &T) -> Response {
-    let bytes = match serde_json::to_vec(body) {
-        Ok(b) => b,
-        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, &format!("json: {e}")),
-    };
-    let mut r = Response::new(Body::from(bytes));
-    r.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    );
-    r
-}
-
-fn error(code: StatusCode, msg: &str) -> Response {
-    Response::builder()
-        .status(code)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .body(Body::from(format!("{code} — {msg}\n")))
-        .unwrap()
 }
 
 // ---------------------------------------------------------------------
@@ -1707,7 +1687,7 @@ async fn get_configuration(State(state): State<AppState>) -> Response {
     let body = match std::fs::read_to_string(&path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, &format!("read: {e}")),
+        Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("read: {e}")),
     };
     let mut r = Response::new(Body::from(body));
     r.headers_mut().insert(
@@ -1722,7 +1702,7 @@ async fn get_configuration(State(state): State<AppState>) -> Response {
 
 async fn post_configuration(State(state): State<AppState>, body: String) -> Response {
     if let Err(e) = crate::config::validate_configuration_yaml(&body) {
-        return error(StatusCode::BAD_REQUEST, &format!("{e}"));
+        return error_json(StatusCode::BAD_REQUEST, &format!("{e}"));
     }
     match crate::config::write_configuration(&state.ctx.base_dir, &body) {
         Ok(_path) => {
@@ -1739,7 +1719,7 @@ async fn post_configuration(State(state): State<AppState>, body: String) -> Resp
             )
                 .into_response()
         }
-        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &format!("{e}")),
+        Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("{e}")),
     }
 }
 

@@ -206,7 +206,9 @@ async fn stop_noop_on_unknown_key() {
 #[tokio::test]
 async fn ws_runner_sends_session_missing_frame_for_unknown_key() {
     let h = harness_with(vec![]);
-    let port = server::start(h.state.clone()).await.expect("start server");
+    let port = server::start(h.state.clone(), 0)
+        .await
+        .expect("start server");
     let url = format!("ws://127.0.0.1:{port}/ws/runner/unknown");
     let (mut stream, _resp) = tokio_tungstenite::connect_async(&url)
         .await
@@ -238,7 +240,9 @@ async fn ws_runner_sends_info_frame_for_live_session() {
     .await;
     assert_eq!(start_status, StatusCode::OK);
 
-    let port = server::start(h.state.clone()).await.expect("start server");
+    let port = server::start(h.state.clone(), 0)
+        .await
+        .expect("start server");
     let url = format!("ws://127.0.0.1:{port}/ws/runner/demo");
     let (mut stream, _resp) = tokio_tungstenite::connect_async(&url)
         .await

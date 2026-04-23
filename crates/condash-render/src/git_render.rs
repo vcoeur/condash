@@ -14,26 +14,9 @@ use std::collections::HashMap;
 
 use condash_state::{Checkout, Family, Group, Member, RenderCtx};
 
+use crate::h;
 use crate::icons::Icons;
 use crate::templating::embed_attr;
-
-/// HTML-escape — mirror of Python's `html.escape(str(text), quote=True)`.
-/// Kept separate from the minijinja formatter so raw string builders
-/// (this module, `render_page`) can share it.
-fn h(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#x27;"),
-            other => out.push(other),
-        }
-    }
-    out
-}
 
 /// Canonical runner-registry key. Mirrors `_runner_key` in Python.
 pub fn runner_key(repo_name: &str, sub_name: Option<&str>) -> String {
