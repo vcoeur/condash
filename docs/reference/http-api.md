@@ -16,11 +16,11 @@ Groups:
 | Dashboard shell | `/`, `/favicon.*`, `/fragment` | Page HTML, favicons, partial re-renders |
 | Change polling | `/check-updates`, `/search-history` | Fingerprints + global search |
 | Notes | `/note`, `/note-raw`, `/note/*` | Read, edit, rename, create, upload |
-| Assets | `/download`, `/asset`, `/file` | Streaming bytes for PDFs, images, arbitrary files |
+| Assets | `/asset/{*path}` | Streaming bytes for PDFs, images, arbitrary files under the conception tree |
 | Mutations | `/toggle`, `/add-step`, `/edit-step`, `/remove-step`, `/reorder-all`, `/set-priority` | README edits |
 | Openers | `/open`, `/open-doc`, `/open-folder`, `/open-external` | Launch external processes |
-| Meta / clipboard | `/config`, `/clipboard`, `/recent-screenshot` | Config r/w, Qt clipboard, screenshot-paste lookup |
-| Vendored assets | `/vendor/pdfjs/…`, `/vendor/xterm/…` | pdf.js + xterm.js bundles |
+| Meta | `/configuration`, `/config`, `/recent-screenshot` | Config r/w, summary, screenshot-paste lookup |
+| Vendored assets | `/vendor/{*path}` | PDF.js + xterm.js + CodeMirror + Mermaid bundles |
 | Terminal | `WS /ws/term` | Interactive PTY |
 
 For mutation semantics (what each route writes), see [Mutation model](mutations.md).
@@ -91,11 +91,9 @@ See [mutations](mutations.md) for the filename regexes and sandbox rules.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/download/{rel}` | PDF download with `Content-Disposition: inline`. Rejects non-PDF paths. |
-| GET | `/asset/{rel}` | Image assets embedded in Markdown previews. 5-minute public cache. |
-| GET | `/file/{rel}` | Any file under the conception tree — used by the in-modal PDF + image viewer. 60 s private cache. |
+| GET | `/asset/{*path}` | Any file under the conception tree — PDFs, images embedded in Markdown previews, deliverables, anything linked from a note. 24-hour public cache. |
 
-All three re-validate the path against conception-tree regexes on every call. 403 on escape.
+`path` is taken relative to `conception_path`. The handler canonicalises it, refuses to escape the tree, and 403s on a `..` / null-byte / sandbox-escape attempt; 404s if the file is missing. `Content-Type` is inferred from the file extension via [`mime_guess`](https://docs.rs/mime_guess).
 
 ## Mutations
 
@@ -123,32 +121,41 @@ These launch external processes. **No filesystem writes** — but they do mean "
 | POST | `/open-folder` | `{path}` | OS default file manager. `path` must match `projects/YYYY-MM/YYYY-MM-DD-slug/`. |
 | POST | `/open-external` | `{url}` | User's default browser. URL must be `http(s)://…`. |
 
-## Meta, clipboard, config
+## Meta + config
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/config` | Full runtime config as JSON (merged TOML + YAML) |
-| POST | `/config` | Save the config. Returns `{ok, restart_required: [...], config}` |
-| GET | `/clipboard` | System clipboard text. Tries Qt `QClipboard`, then `wl-paste` / `xclip` / `xsel`. |
-| POST | `/clipboard` | Set the system clipboard. Body is the raw text. |
-| GET | `/recent-screenshot` | `{path, dir, reason?}` — path of the newest image file in `terminal.screenshot_dir` |
+| GET | `/configuration` | Raw `<conception_path>/configuration.yml` as `text/yaml`. Empty string if the file does not exist. |
+| POST | `/configuration` | Replace `configuration.yml`. Body is the plain-text YAML (not JSON) the gear modal's textarea contains. The handler parses the body, rejects invalid YAML with 400 + parse error, and atomically writes via `.tmp` + rename. |
+| GET | `/config` | Small JSON summary the frontend polls on load: `{conception_path, terminal}`. Used for the first-run setup banner and to pick up terminal-shortcut changes without a full reload. **Does not** return the full runtime config. |
+| GET | `/recent-screenshot` | `{path, dir, reason?}` — path of the newest image file in `terminal.screenshot_dir`. |
 
-`GET /config` returns a flat JSON matching the dashboard's gear-modal form. `yaml_source` / `preferences_yaml_source` show where the YAML fields currently come from (useful for debugging per-tree vs per-machine overrides).
+### Clipboard
 
-`/clipboard` works in both native and browser mode: the Qt `QClipboard` path is taken when `native=true`; otherwise the subprocess fallbacks handle Wayland / X11.
+There is **no** HTTP clipboard endpoint. The dashboard reads and writes the system clipboard through [`tauri-plugin-clipboard-manager`](https://v2.tauri.app/plugin/clipboard-manager/) in the Tauri build, and falls back to the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API when run under `condash-serve` in a browser.
 
-`/recent-screenshot` powers the screenshot-paste shortcut. `reason` is one of `directory does not exist`, `configured path is not a directory`, `permission denied`, `no image files found`. The client pastes `path` into the active terminal tab without appending a newline.
+### `/recent-screenshot`
+
+Powers the screenshot-paste shortcut. `reason` is one of `directory does not exist`, `configured path is not a directory`, `permission denied`, `no image files found`. The client pastes `path` into the active terminal tab without appending a newline.
 
 ## Vendored assets
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/vendor/pdfjs/{rel}` | Mozilla PDF.js (worker, cmaps, fonts, wasm, iccs). 24-hour cache. |
-| GET | `/vendor/xterm/{rel}` | xterm.js library + CSS + `addon-fit`. 24-hour cache. |
+| GET | `/vendor/{*path}` | Bundled third-party assets embedded in the binary. 24-hour public cache. |
 
-Both routes reject `..` and null bytes; files outside the bundled directory 403.
+The single route covers four vendored subtrees:
 
-Why vendored: QtWebEngine ships with `PdfViewerEnabled=false`, so the in-modal viewer can't rely on the webview's built-in PDF renderer. And a CDN fetch for xterm.js breaks offline / air-gapped installs. See [internals](../explanation/internals.md#vendored-assets).
+| Prefix | Contents |
+|---|---|
+| `/vendor/pdfjs/…` | Mozilla PDF.js (worker, cmaps, fonts, wasm, iccs). |
+| `/vendor/xterm/…` | xterm.js library + CSS + `addon-fit`. |
+| `/vendor/codemirror/…` | CodeMirror 6 editor bundle used by the note editor and the gear modal's YAML pane. |
+| `/vendor/mermaid/…` | Mermaid's UMD bundle for rendering Mermaid code blocks inside the note preview modal. |
+
+`..` and null bytes are rejected; paths outside the bundled directory 403.
+
+Why vendored: Tauri ships with the system's webview, and a CDN fetch for any of these bundles breaks offline / air-gapped installs. The binary stays self-contained by embedding all four libraries via `rust-embed`.
 
 ## Terminal WebSocket
 
@@ -190,4 +197,4 @@ The PTY survives the WebSocket: a page refresh detaches cleanly and the buffer (
 - No CORS headers — the dashboard lives on the same origin.
 - No multi-user mode; condash is single-user by design.
 
-If you want to drive condash from a second tool, run `condash-serve` with a pinned `CONDASH_PORT` — it prints the bound URL on startup. Without `CONDASH_PORT` set, the port is picked from `11111–12111` at launch.
+If you want to drive condash from a second tool, run `condash-serve` with a pinned `CONDASH_PORT` — it prints the bound URL on startup. Without `CONDASH_PORT` set, the server asks the OS for any free port (`bind(… 0)`), so the port varies across launches; read it from the `condash-serve: listening on …` stderr line.
