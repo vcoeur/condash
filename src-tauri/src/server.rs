@@ -1625,10 +1625,17 @@ fn serve_under(base: &std::path::Path, rel: &str, mime_override: Option<&str>) -
     if !canonical.is_file() {
         return error_json(StatusCode::NOT_FOUND, "not a file");
     }
-    serve_fixed(
-        &canonical,
-        mime_override.unwrap_or_else(|| guess_mime(&canonical)),
-    )
+    let guessed;
+    let mime = match mime_override {
+        Some(m) => m,
+        None => {
+            guessed = mime_guess::from_path(&canonical)
+                .first_or_octet_stream()
+                .to_string();
+            guessed.as_str()
+        }
+    };
+    serve_fixed(&canonical, mime)
 }
 
 fn serve_fixed(path: &std::path::Path, mime: &str) -> Response {
@@ -1640,24 +1647,6 @@ fn serve_fixed(path: &std::path::Path, mime: &str) -> Response {
             .body(Body::from(bytes))
             .unwrap(),
         Err(_) => error_json(StatusCode::NOT_FOUND, "read failed"),
-    }
-}
-
-fn guess_mime(path: &std::path::Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("mjs") | Some("js") => "text/javascript",
-        Some("css") => "text/css",
-        Some("json") => "application/json",
-        Some("wasm") => "application/wasm",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("pdf") => "application/pdf",
-        Some("html") => "text/html; charset=utf-8",
-        Some("md") | Some("txt") => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
     }
 }
 
