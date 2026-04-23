@@ -203,6 +203,11 @@ body[data-term-open="1"] #note-modal.note-modal-backdrop {
 .note-modal-body th, .note-modal-body td {
     border: 1px solid var(--border); padding: 4px 8px; text-align: left;
     font-size: 0.85rem;
+    /* Undo the pane-wide `overflow-wrap: anywhere` for table cells: with
+       auto table layout, breaking on any character lets a long-content
+       column squeeze the others to ~1ch wide (see issue #24). Let cells
+       wrap on word boundaries like a normal markdown renderer. */
+    overflow-wrap: normal; word-break: normal;
 }
 .note-modal-body th { background: var(--bg-card-hover); font-weight: 600; }
 .note-modal-body img { max-width: 100%; height: auto; }
