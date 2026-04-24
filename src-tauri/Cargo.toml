@@ -1,6 +1,6 @@
 [package]
 name = "condash"
-version = "1.3.1"
+version = "1.4.0"
 description = "A dashboard for the Markdown you already write."
 authors = ["Alice Voland <alice@vcoeur.com>"]
 license = "MIT"
@@ -40,6 +40,8 @@ regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 shlex = "1"
 md-5 = "0.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "ansi"] }
 
 condash-parser = { path = "../crates/condash-parser" }
 condash-state = { path = "../crates/condash-state" }

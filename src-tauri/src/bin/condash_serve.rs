@@ -33,6 +33,7 @@ fn main() -> Result<()> {
 }
 
 async fn async_main() -> Result<()> {
+    condash_lib::init_tracing();
     // Headless binary: env var → ~/.config/condash/settings.yaml →
     // hard error. No folder picker, no hard-coded default.
     let conception_path = resolve_conception_path().map_err(|e| anyhow::anyhow!("{e}"))?;

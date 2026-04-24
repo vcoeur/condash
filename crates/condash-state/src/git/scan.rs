@@ -410,6 +410,7 @@ fn subrepo_member(parent: &ScannedRepo, sub_name: &str) -> Member {
 /// Find git repos under `ctx.workspace` and group them per the
 /// configured repo structure. Returns `[]` when `workspace` is unset.
 /// Port of `_collect_git_repos`.
+#[tracing::instrument(skip_all, fields(workspace = ?ctx.workspace.as_deref()))]
 pub fn collect_git_repos(ctx: &RenderCtx) -> Vec<Group> {
     let Some(workspace) = ctx.workspace.as_deref() else {
         return Vec::new();

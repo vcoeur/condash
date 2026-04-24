@@ -89,6 +89,7 @@ pub(super) struct FragmentQuery {
     id: String,
 }
 
+#[tracing::instrument(skip_all, fields(id = %q.id))]
 pub(super) async fn fragment(
     State(state): State<AppState>,
     headers: HeaderMap,
