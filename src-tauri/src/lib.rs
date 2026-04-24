@@ -31,6 +31,28 @@ pub use config::build_ctx as build_ctx_for_bin;
 /// Playwright fixtures that want a stable path.
 pub const CONCEPTION_ENV: &str = "CONDASH_CONCEPTION_PATH";
 
+/// Environment variable controlling tracing output. Accepts the usual
+/// [`tracing-subscriber`] `EnvFilter` grammar, e.g.
+/// `CONDASH_LOG=condash=debug` or `CONDASH_LOG=condash_state=trace`.
+/// When unset, no subscriber is installed and `#[instrument]` spans are
+/// zero-cost.
+pub const LOG_ENV: &str = "CONDASH_LOG";
+
+/// Install the tracing subscriber iff `CONDASH_LOG` is set. Idempotent
+/// via `try_init` — a second call (e.g. in tests) is a silent no-op.
+pub fn init_tracing() {
+    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+    let Ok(filter) = std::env::var(LOG_ENV) else {
+        return;
+    };
+    let env_filter = EnvFilter::try_new(&filter).unwrap_or_else(|_| EnvFilter::new("condash=info"));
+    let _ = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt::layer().with_target(true).with_writer(std::io::stderr))
+        .try_init();
+}
+
 /// Load the dashboard HTML template from the configured asset source.
 /// Fails loudly when it's missing — the dashboard is unusable without
 /// it, and the embedded variant ships it unconditionally, so a failure
@@ -50,7 +72,9 @@ pub fn load_template_for_bin(source: &assets::AssetSource) -> anyhow::Result<Str
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[tracing::instrument]
 pub fn run() {
+    init_tracing();
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())

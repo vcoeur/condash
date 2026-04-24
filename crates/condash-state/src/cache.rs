@@ -60,6 +60,7 @@ impl WorkspaceCache {
     /// Return the memoized parsed-item list, warming on first access.
     /// The returned `Arc` stays valid across invalidations — the next
     /// `get_items` call will rebuild a fresh one from a new read.
+    #[tracing::instrument(skip_all, fields(base_dir = %ctx.base_dir.display()))]
     pub fn get_items(&self, ctx: &RenderCtx) -> Arc<Vec<Item>> {
         if let Some(items) = self.inner.read().unwrap().items.clone() {
             return items;
