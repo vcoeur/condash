@@ -28,7 +28,7 @@ import {
     openAboutModal, closeAboutModal, initAboutModalSideEffects,
 } from './sections/about-modal.js';
 import {
-    _refreshShadowCache, _consumeShadowCache,
+    _refreshShadowCache, _consumeShadowCache, _clearShadowCache,
 } from './sections/shadow-cache.js';
 import {
     openPath, openInTerminal, workOn, openFolder,
@@ -2637,7 +2637,7 @@ async function updateBaseline() {
 export function refreshAll() {
     _nodeBaseline = null;
     _dirtyNodes = new Set();
-    _shadowCache = null;
+    _clearShadowCache();
     _pendingReloadNodes.clear();
     _pendingReloadInPlace = false;
     _lastFingerprint = null;
