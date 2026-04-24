@@ -12,12 +12,12 @@
    Extracted from dashboard-main.js on 2026-04-24 (P-09 cut 3 of
    conception/projects/2026-04-23-condash-frontend-extraction).
 
-   The seven module-level stale bindings (_nodeBaseline, _dirtyNodes,
-   _lastFingerprint, _lastGitFingerprint, _itemsStale, _gitStale,
-   _knowledgeStale) are exposed as a single `staleState` object — same
-   trick as termState + reloadState — so callers in dashboard-main.js
-   can write `staleState.dirtyNodes = new Set()` without the ESM
-   live-binding limit on reassigning `var`/`let` exports.
+   The five module-level stale bindings (_nodeBaseline, _dirtyNodes,
+   _itemsStale, _gitStale, _knowledgeStale) are exposed as a single
+   `staleState` object — same trick as termState + reloadState — so
+   callers in dashboard-main.js can write `staleState.dirtyNodes = new
+   Set()` without the ESM live-binding limit on reassigning
+   `var`/`let` exports.
 
    reloadNode + refreshAll live here too: both are primarily about
    reconciling the baseline + dirty set after a DOM swap, and both are
@@ -34,8 +34,6 @@ import { restoreNotesTreeState } from './notes-tree-state.js';
 const staleState = {
     nodeBaseline: null,     // Object id → hash (null until first poll)
     dirtyNodes: new Set(),  // ids whose current hash != baseline, or present on only one side
-    lastFingerprint: null,  // kept for back-compat with pickPriority/switchTab
-    lastGitFingerprint: null,
     itemsStale: false,
     gitStale: false,
     knowledgeStale: false,
@@ -52,17 +50,6 @@ function _deriveLegacyFlags() {
     staleState.itemsStale = items;
     staleState.gitStale = git;
     staleState.knowledgeStale = knowledge;
-}
-
-function _ancestorsOf(id) {
-    // "projects/now/slug" → ["projects/now", "projects"]. Splits on '/';
-    // subtree IDs like wt:foo or sub:bar are single segments so this is safe.
-    var parts = id.split('/');
-    var out = [];
-    for (var i = parts.length - 1; i > 0; i--) {
-        out.push(parts.slice(0, i).join('/'));
-    }
-    return out;
 }
 
 function _renderStale() {
@@ -142,8 +129,6 @@ async function checkUpdates() {
         var current = data.nodes || {};
         if (staleState.nodeBaseline === null) {
             staleState.nodeBaseline = current;
-            staleState.lastFingerprint = data.fingerprint;
-            staleState.lastGitFingerprint = data.git_fingerprint;
         } else {
             // Once a node is marked dirty, it stays dirty until a local or
             // global reload updates the baseline — so the user can see there
@@ -231,8 +216,6 @@ async function updateBaseline() {
         var data = await res.json();
         staleState.nodeBaseline = data.nodes || {};
         staleState.dirtyNodes = new Set();
-        staleState.lastFingerprint = data.fingerprint;
-        staleState.lastGitFingerprint = data.git_fingerprint;
         _renderStale();
     } catch (e) {}
 }
@@ -249,8 +232,6 @@ function refreshAll() {
     _clearShadowCache();
     reloadState.pendingNodes.clear();
     reloadState.pendingInPlace = false;
-    staleState.lastFingerprint = null;
-    staleState.lastGitFingerprint = null;
     // Force-invalidate the server-side items/knowledge caches before
     // reloading so the next GET / re-walks the tree from disk. Best
     // effort: reload unconditionally even if the POST errors, since
@@ -351,7 +332,7 @@ async function _refreshBaselineFor(nodeId) {
 
 export {
     staleState,
-    _deriveLegacyFlags, _ancestorsOf, _renderStale, _diffNodes,
+    _deriveLegacyFlags, _renderStale, _diffNodes,
     _scheduleCheckUpdates, checkUpdates,
     _activeTabPrefix, _idInTab, _tabForNodeId,
     _autoReloadActiveTab, _minimalRoots,
