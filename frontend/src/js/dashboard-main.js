@@ -37,6 +37,9 @@ import {
     openNewItemModal, closeNewItemModal, submitNewItem,
     initNewItemModalSideEffects,
 } from './sections/new-item-modal.js';
+import {
+    _NOTES_OPEN_KEY, restoreNotesTreeState, initNotesTreeStateSideEffects,
+} from './sections/notes-tree-state.js';
 
 /* --- In-app config editor --- */
 function _setField(form, name, value) {
@@ -607,31 +610,6 @@ function _restorePreservedSearches() {
         }
     });
 }
-
-/* --- Notes-tree per-subdir collapsed/expanded state ---
-   Each <details data-subdir-key="<slug>/<rel_dir>"> remembers its open
-   state in localStorage. On render (full reload, in-place reload, or
-   after a card fragment swap) we walk every notes-group <details> and
-   restore the saved state — defaulting to closed. */
-var _NOTES_OPEN_KEY = 'condash:notes-open:';
-function restoreNotesTreeState() {
-    document.querySelectorAll('.notes-group[data-subdir-key]').forEach(function(d) {
-        var key = d.getAttribute('data-subdir-key');
-        var saved = null;
-        try { saved = localStorage.getItem(_NOTES_OPEN_KEY + key); } catch (e) {}
-        d.open = saved === 'open';
-    });
-}
-
-document.addEventListener('toggle', function(ev) {
-    var target = ev.target;
-    if (!target || !target.classList || !target.classList.contains('notes-group')) return;
-    var key = target.getAttribute('data-subdir-key');
-    if (!key) return;
-    try {
-        localStorage.setItem(_NOTES_OPEN_KEY + key, target.open ? 'open' : 'closed');
-    } catch (e) {}
-}, true);
 
 /* Find the node id (`projects/<pri>/<slug>`) of the card that owns
    ``readmePath``. Used so localized actions like upload / mkdir can
@@ -3237,6 +3215,7 @@ initTabDragSideEffects();
 initThemeSideEffects();
 initAboutModalSideEffects();
 initNewItemModalSideEffects();
+initNotesTreeStateSideEffects();
 
 // Phase 6: event-driven staleness. /events streams tab-level hints;
 // checkUpdates() runs on connect + every hint to reconcile the real
