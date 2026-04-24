@@ -17,8 +17,25 @@ import { _syncSaveButton, _captureActiveBuffer, _syncModeControls, _setNoteModeA
 import { noteSearchClose } from './in-note-search.js';
 import { reconcileState, _noteShowExternalBanner } from './note-reconcile.js';
 
+/* Lazy-load the vendored mermaid bundle on first render. The UMD script
+   weighs ~3 MB; loading it eagerly from dashboard.html made every cold
+   start pay for a feature only used by notes that embed diagrams. The
+   promise is memoized so subsequent notes reuse the same <script>. */
+var _mermaidLoader = null;
+function _loadMermaid() {
+    if (window.mermaid) return Promise.resolve(window.mermaid);
+    if (_mermaidLoader) return _mermaidLoader;
+    _mermaidLoader = new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/vendor/mermaid/mermaid.min.js';
+        s.onload = function() { resolve(window.mermaid); };
+        s.onerror = function() { _mermaidLoader = null; reject(new Error('mermaid failed to load')); };
+        document.head.appendChild(s);
+    });
+    return _mermaidLoader;
+}
+
 function _renderMermaidIn(container) {
-    if (!window.mermaid) return;
     var blocks = container.querySelectorAll('pre.mermaid, pre > code.language-mermaid');
     if (!blocks.length) return;
     var nodes = [];
@@ -33,14 +50,16 @@ function _renderMermaidIn(container) {
         nodes.push(div);
     });
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    try {
-        window.mermaid.initialize({
-            startOnLoad: false,
-            theme: isDark ? 'dark' : 'default',
-            securityLevel: 'strict',
-        });
-        window.mermaid.run({ nodes: nodes }).catch(function() {});
-    } catch (e) {}
+    _loadMermaid().then(function(mermaid) {
+        try {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: isDark ? 'dark' : 'default',
+                securityLevel: 'strict',
+            });
+            mermaid.run({ nodes: nodes }).catch(function() {});
+        } catch (e) {}
+    }).catch(function() {});
 }
 
 /* Mount the vendored PDF.js viewer on every .note-pdf-host inside the

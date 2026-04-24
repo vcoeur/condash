@@ -20,7 +20,7 @@
     }
 })();
 </script>
-<script src="/vendor/mermaid/mermaid.min.js" defer></script>
+<!-- Mermaid is lazy-loaded on first use by frontend/src/js/sections/note-preview.js:_renderMermaidIn; saves ~3 MB on cold start for users who never view a mermaid-bearing note. -->
 <link rel="stylesheet" href="/vendor/xterm/css/xterm.min.css">
 <script src="/vendor/xterm/lib/xterm.min.js" defer></script>
 <script src="/vendor/xterm/lib/xterm-addon-fit.min.js" defer></script>
