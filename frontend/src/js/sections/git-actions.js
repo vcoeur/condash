@@ -16,9 +16,7 @@
 import { _termCreateTab, _termSyncOpenFlag } from './tab-drag.js';
 import { termState, _termActiveTab, _termSendResize } from './terminal.js';
 
-async function openPath(ev, path, tool) {
-    ev.stopPropagation();
-    var btn = ev.currentTarget;
+async function openPath(btn, path, tool) {
     // Buttons now hold an inline SVG, so save/restore innerHTML.
     var originalHtml = btn.innerHTML;
     btn.disabled = true;
@@ -144,9 +142,7 @@ function initGitActionsSideEffects() {
 
 /* Per-card "open folder" button — hand the item's folder to the OS
    default file manager. Mirrors openPath's transient ok/err feedback. */
-async function openFolder(ev, relPath) {
-    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-    var btn = ev.currentTarget;
+async function openFolder(btn, relPath) {
     var originalHtml = btn.innerHTML;
     btn.disabled = true;
     function restore() {

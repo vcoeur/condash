@@ -322,9 +322,7 @@ async function _runnerStopFetch(key) {
    is NOT scoped to a specific checkout; it's one per repo. Used to
    recover when the port is held by a process condash didn't start
    (stale server from another terminal, previous run killed uncleanly). */
-async function runnerForceStop(ev, key) {
-    if (ev) ev.stopPropagation();
-    var btn = ev && ev.currentTarget;
+async function runnerForceStop(btn, key) {
     if (btn && btn.disabled) return;
     if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
     try {

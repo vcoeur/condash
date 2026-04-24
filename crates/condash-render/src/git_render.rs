@@ -16,7 +16,6 @@ use condash_state::{Checkout, Family, Group, Member, RenderCtx};
 
 use crate::h;
 use crate::icons::Icons;
-use crate::templating::embed_attr;
 
 /// Canonical runner-registry key. Sub-repos use `<repo>--<sub>` to
 /// keep each submodule's runner session distinct from the parent's.
@@ -57,7 +56,7 @@ fn runner_key_for_member(family: &Family, member: &Member) -> String {
 /// picker. Phase 2 rendering is static; the interactive JS lives in
 /// the bundled dashboard frontend.
 pub fn render_open_with(ctx: &RenderCtx, path: &str) -> String {
-    let js_path = embed_attr(&path);
+    let path_h = h(path);
     let primary_slot = "main_ide";
     let primary_title = ctx
         .open_with
@@ -75,7 +74,8 @@ pub fn render_open_with(ctx: &RenderCtx, path: &str) -> String {
         let icon = icon_for(slot_key);
         picker_items.push_str(&format!(
             "<button type=\"button\" class=\"open-popover-item\" \
-             onclick=\"openPath(event,{js_path},'{slot_key}');gitClosePopovers()\">\
+             data-action=\"open-path\" data-stop=\"1\" \
+             data-path=\"{path_h}\" data-tool=\"{slot_key}\">\
              <span class=\"open-popover-icon\">{icon}</span>\
              <span>{label_h}</span></button>",
             label_h = h(&label),
@@ -84,7 +84,8 @@ pub fn render_open_with(ctx: &RenderCtx, path: &str) -> String {
     let integrated_title = "Open in integrated terminal";
     picker_items.push_str(&format!(
         "<button type=\"button\" class=\"open-popover-item\" \
-         onclick=\"openInTerminal(event,{js_path});gitClosePopovers()\">\
+         data-action=\"open-in-terminal\" data-stop=\"1\" data-prevent=\"1\" \
+         data-path=\"{path_h}\">\
          <span class=\"open-popover-icon\">{icon}</span>\
          <span>{title_h}</span></button>",
         icon = Icons::integrated_terminal,
@@ -95,11 +96,12 @@ pub fn render_open_with(ctx: &RenderCtx, path: &str) -> String {
         "<div class=\"open-grp\">\
          <button type=\"button\" class=\"open-primary\" title=\"{title_h}\" \
          aria-label=\"{title_h}\" \
-         onclick=\"openPath(event,{js_path},'{primary_slot}')\">\
+         data-action=\"open-path\" data-stop=\"1\" \
+         data-path=\"{path_h}\" data-tool=\"{primary_slot}\">\
          {primary_icon}</button>\
          <button type=\"button\" class=\"open-caret\" title=\"Open with…\" \
          aria-haspopup=\"menu\" aria-label=\"Open with menu\" \
-         onclick=\"gitToggleOpenPopover(event,this)\">\
+         data-action=\"git-toggle-open-popover\" data-stop=\"1\" data-prevent=\"1\">\
          {caret}</button>\
          {popover}</div>",
         title_h = h(&primary_title),
@@ -130,21 +132,24 @@ fn render_runner_button(
     checkout_path: &str,
     live: Option<&RunnerLive>,
 ) -> String {
-    let js_key = embed_attr(&key);
-    let js_checkout = embed_attr(&checkout_key);
-    let js_path = embed_attr(&checkout_path);
-    let (title, cls, icon, onclick) = match live {
+    let key_h = h(key);
+    let checkout_h = h(checkout_key);
+    let path_h = h(checkout_path);
+    // Stop/switch/start — dispatched in JS via `data-action="runner-<op>"`.
+    // The `switch` variant reuses the /api/runner/start endpoint, which
+    // returns 409 and drives a confirm-swap flow client-side.
+    let (title, cls, icon, op) = match live {
         None => (
             "Start dev runner",
             "git-action-runner-run",
             Icons::runner_run,
-            format!("runnerStart(event,{js_key},{js_checkout},{js_path})"),
+            "start",
         ),
         Some(RunnerLive { exit_code, .. }) if exit_code.is_some() => (
             "Start dev runner",
             "git-action-runner-run",
             Icons::runner_run,
-            format!("runnerStart(event,{js_key},{js_checkout},{js_path})"),
+            "start",
         ),
         Some(RunnerLive {
             checkout_key: owner,
@@ -153,19 +158,21 @@ fn render_runner_button(
             "Stop dev runner",
             "git-action-runner-stop",
             Icons::runner_stop,
-            format!("runnerStop(event,{js_key})"),
+            "stop",
         ),
         Some(_) => (
             "Switch runner to this checkout",
             "git-action-runner-switch",
             Icons::runner_run,
-            format!("runnerSwitch(event,{js_key},{js_checkout},{js_path})"),
+            "switch",
         ),
     };
     format!(
         "<button class=\"git-action-btn git-action-runner {cls}\" \
          title=\"{t}\" aria-label=\"{t}\" \
-         onclick=\"{onclick}\">{icon}</button>",
+         data-action=\"runner-{op}\" data-stop=\"1\" \
+         data-key=\"{key_h}\" data-checkout=\"{checkout_h}\" data-path=\"{path_h}\">\
+         {icon}</button>",
         t = h(title),
     )
 }
@@ -192,20 +199,20 @@ fn render_runner_mount(key: &str, checkout_key: &str, live: Option<&RunnerLive>)
          data-runner-key=\"{k}\" data-runner-checkout=\"{c}\"{ex}>\
          <div class=\"runner-term-header\" \
          title=\"Click to collapse / expand (keeps process running)\" \
-         onclick=\"runnerToggleCollapse(this)\">\
+         data-action=\"runner-toggle-collapse\">\
          <span class=\"runner-term-label\">{label_h}</span>\
          <span class=\"runner-term-status\" aria-live=\"polite\"></span>\
          <button class=\"runner-control runner-collapse\" \
          aria-label=\"Collapse terminal\" tabindex=\"-1\" \
-         onclick=\"event.stopPropagation();runnerToggleCollapse(this)\">\
+         data-action=\"runner-toggle-collapse\" data-stop=\"1\">\
          {collapse_icon}</button>\
          <button class=\"runner-control runner-popout\" \
          title=\"Pop out\" aria-label=\"Pop out\" \
-         onclick=\"event.stopPropagation();runnerPopout(this)\">\
+         data-action=\"runner-popout\" data-stop=\"1\">\
          {popout_icon}</button>\
          <button class=\"runner-control runner-stop-inline\" \
          title=\"Stop\" aria-label=\"Stop\" \
-         onclick=\"event.stopPropagation();runnerStopInline(this)\">\
+         data-action=\"runner-stop-inline\" data-stop=\"1\">\
          {stop_icon}</button>\
          </div>\
          <div class=\"runner-term-host\"></div>\
@@ -486,12 +493,13 @@ fn render_peer_card(
     // disk (otherwise the peer card itself is tagged missing and the
     // button would be meaningless).
     if !is_missing && ctx.repo_force_stop_templates.contains_key(&member_key) {
-        let js_key = embed_attr(&member_key);
         parts.push(format!(
             "<button type=\"button\" class=\"peer-force-stop\" \
              title=\"Force stop (run configured force_stop command)\" \
              aria-label=\"Force stop\" \
-             onclick=\"runnerForceStop(event,{js_key})\">{icon}</button>",
+             data-action=\"runner-force-stop\" data-stop=\"1\" \
+             data-key=\"{key_h}\">{icon}</button>",
+            key_h = h(&member_key),
             icon = Icons::runner_force_stop,
         ));
     }
@@ -532,7 +540,7 @@ fn render_peer_card(
         foot.push_str(&format!(
             "<button type=\"button\" class=\"peer-jump\" \
              title=\"Jump to live terminal\" aria-label=\"Jump to live terminal\" \
-             onclick=\"runnerJump(event,this)\">{icon}</button>",
+             data-action=\"runner-jump\" data-stop=\"1\">{icon}</button>",
             icon = Icons::peer_jump,
         ));
     }

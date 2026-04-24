@@ -10,7 +10,7 @@
      for their respective trees (still reached via `window.*` from the
      corresponding `oninput=` attributes in server-rendered HTML).
    - `jumpToProject` / `_openHistoryHit` — history-tab navigation
-     helpers exposed via `window.*`.
+     helpers wired up via `data-action` dispatch in `dashboard-main.js`.
    - `_reapplySearches` — re-runs both filters after an in-place reload.
    - Private helpers (`_searchTokens`, `_cardMatches`, `_buildSnippet`, …)
      that are implementation details of the filter logic. */
@@ -281,7 +281,7 @@ function _historyResultBlock(row) {
             '<li class="history-hit" ' +
             'data-path="' + pathAttr + '" ' +
             'data-label="' + labelAttr + '" ' +
-            'onclick="_openHistoryHit(this)">' +
+            'data-action="open-history-hit">' +
             '<span class="hit-src hit-src-' + _escapeHtml(h.source) + '">' +
                 _escapeHtml(h.label || h.source) + '</span>' +
             '<span class="hit-snippet">' + snippetHtml + '</span>' +
@@ -299,7 +299,7 @@ function _historyResultBlock(row) {
             '<span class="pill pri-' + _escapeHtml(row.status) + '">' +
                 _escapeHtml(row.status) + '</span>' +
             '<span class="history-result-month">' + _escapeHtml(row.month) + '</span>' +
-            '<button class="history-jump" onclick="jumpToProject(this)" ' +
+            '<button class="history-jump" data-action="jump-to-project" ' +
                 'title="Open in Projects tab" aria-label="Jump to project">' +
                 '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
                 'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +

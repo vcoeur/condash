@@ -595,6 +595,10 @@ function registerDashboardActions() {
     // Note preview (cards, history, knowledge, readme link, index badges)
     registerAction('open-note-preview', (_e, _el, d) => openNotePreview(d.path, d.title));
 
+    // History search results (rendered client-side by search-filter.js)
+    registerAction('open-history-hit', (_e, el) => _openHistoryHit(el));
+    registerAction('jump-to-project',  (_e, el) => jumpToProject(el));
+
     // Notes/files tree actions
     registerAction('create-note-for', (_e, _el, d) =>
         createNoteFor(d.readmeRel, d.relDir));
@@ -608,7 +612,30 @@ function registerDashboardActions() {
 
     // Card actions (work-on, open-folder)
     registerAction('work-on',     (event, _el, d) => workOn(event, d.slug));
-    registerAction('open-folder', (event, _el, d) => openFolder(event, d.relDir));
+    registerAction('open-folder', (_e, el, d) => openFolder(el, d.relDir));
+
+    // Git-strip: open-with popover + primary launcher
+    registerAction('open-path', (_e, el, d) => {
+        openPath(el, d.path, d.tool);
+        gitClosePopovers();
+    });
+    registerAction('open-in-terminal', (_e, _el, d) => {
+        openInTerminal(null, d.path);
+        gitClosePopovers();
+    });
+    registerAction('git-toggle-open-popover', (event, el) => gitToggleOpenPopover(event, el));
+
+    // Git-strip: runner tri-state button (start / stop / switch)
+    registerAction('runner-start',  (event, _el, d) => runnerStart(event, d.key, d.checkout, d.path));
+    registerAction('runner-stop',   (event, _el, d) => runnerStop(event, d.key));
+    registerAction('runner-switch', (event, _el, d) => runnerSwitch(event, d.key, d.checkout, d.path));
+
+    // Inline runner mount controls
+    registerAction('runner-toggle-collapse', (_e, el) => runnerToggleCollapse(el));
+    registerAction('runner-popout',          (_e, el) => runnerPopout(el));
+    registerAction('runner-stop-inline',     (_e, el) => runnerStopInline(el));
+    registerAction('runner-force-stop',      (_e, el, d) => runnerForceStop(el, d.key));
+    registerAction('runner-jump',            (event, el) => runnerJump(event, el));
 }
 registerDashboardActions();
 initActionDispatch();
