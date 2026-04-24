@@ -206,6 +206,8 @@ update-xterm: ## Re-vendor xterm.js at $(XTERM_VERSION) + xterm-addon-fit at $(X
 	    "https://cdn.jsdelivr.net/npm/xterm-addon-fit@$(XTERM_FIT_VERSION)/lib/xterm-addon-fit.js"; \
 	curl -sSL -o "$$DEST/css/xterm.min.css" \
 	    "https://cdn.jsdelivr.net/npm/xterm@$(XTERM_VERSION)/css/xterm.min.css"; \
+	sed -i -e '/\/\/# sourceMappingURL=/d' "$$DEST/lib/xterm.min.js" "$$DEST/lib/xterm-addon-fit.min.js"; \
+	sed -i -e 's|/\*# sourceMappingURL=[^*]*\*/||' "$$DEST/css/xterm.min.css"; \
 	curl -sSL -o "$$DEST/LICENSE" \
 	    "https://cdn.jsdelivr.net/npm/xterm@$(XTERM_VERSION)/LICENSE"; \
 	echo "Vendored xterm $(XTERM_VERSION) + addon-fit $(XTERM_FIT_VERSION):"; \
