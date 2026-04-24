@@ -22,13 +22,37 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use condash_parser::PyValue;
 use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 
 use crate::RenderCtx;
+
+/// Cache key for a single repo's ScannedRepo snapshot. Covers enough of
+/// the repo's state that any change it detects triggers a re-scan; any
+/// event it misses is corrected by the next legitimate user action
+/// (which touches HEAD or index). Falls back to epoch on stat failures
+/// so an unreadable `.git/` always rescans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct RepoStamp {
+    head: Option<SystemTime>,
+    index: Option<SystemTime>,
+    worktrees: Option<SystemTime>,
+}
+
+fn stamp_for(repo_dir: &Path) -> RepoStamp {
+    let git = repo_dir.join(".git");
+    let stat = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    RepoStamp {
+        head: stat(&git.join("HEAD")),
+        index: stat(&git.join("index")),
+        worktrees: stat(&git.join("worktrees")),
+    }
+}
+
+static REPO_CACHE: Mutex<Option<HashMap<PathBuf, (RepoStamp, ScannedRepo)>>> = Mutex::new(None);
 
 /// One checkout (main repo or worktree) — shared shape used by both
 /// worktree entries and the top-level repo dict. Python's dict always
@@ -269,19 +293,36 @@ struct ScannedRepo {
 }
 
 fn scan_repo(found: &mut BTreeMap<String, ScannedRepo>, repo_dir: &Path, display_name: &str) {
+    let key = repo_dir.to_path_buf();
+    let stamp = stamp_for(repo_dir);
+    {
+        let mut guard = REPO_CACHE.lock().unwrap();
+        let map = guard.get_or_insert_with(HashMap::new);
+        if let Some((cached_stamp, cached)) = map.get(&key) {
+            if *cached_stamp == stamp {
+                let mut reused = cached.clone();
+                reused.name = display_name.to_string();
+                found.insert(display_name.to_string(), reused);
+                return;
+            }
+        }
+    }
     let (branch, dirty, changed, changed_files) = git_status(repo_dir);
-    found.insert(
-        display_name.to_string(),
-        ScannedRepo {
-            name: display_name.to_string(),
-            path: resolve_str(repo_dir),
-            branch,
-            dirty,
-            changed,
-            changed_files,
-            worktrees: git_worktrees(repo_dir),
-        },
-    );
+    let scanned = ScannedRepo {
+        name: display_name.to_string(),
+        path: resolve_str(repo_dir),
+        branch,
+        dirty,
+        changed,
+        changed_files,
+        worktrees: git_worktrees(repo_dir),
+    };
+    {
+        let mut guard = REPO_CACHE.lock().unwrap();
+        let map = guard.get_or_insert_with(HashMap::new);
+        map.insert(key, (stamp, scanned.clone()));
+    }
+    found.insert(display_name.to_string(), scanned);
 }
 
 fn parent_member(repo: &ScannedRepo) -> Member {
