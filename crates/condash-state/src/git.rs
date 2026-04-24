@@ -292,18 +292,18 @@ struct ScannedRepo {
     worktrees: Vec<Checkout>,
 }
 
-fn scan_repo(found: &mut BTreeMap<String, ScannedRepo>, repo_dir: &Path, display_name: &str) {
+fn scan_one(repo_dir: &Path, display_name: &str) -> ScannedRepo {
     let key = repo_dir.to_path_buf();
     let stamp = stamp_for(repo_dir);
     {
-        let mut guard = REPO_CACHE.lock().unwrap();
-        let map = guard.get_or_insert_with(HashMap::new);
-        if let Some((cached_stamp, cached)) = map.get(&key) {
-            if *cached_stamp == stamp {
-                let mut reused = cached.clone();
-                reused.name = display_name.to_string();
-                found.insert(display_name.to_string(), reused);
-                return;
+        let guard = REPO_CACHE.lock().unwrap();
+        if let Some(map) = guard.as_ref() {
+            if let Some((cached_stamp, cached)) = map.get(&key) {
+                if *cached_stamp == stamp {
+                    let mut reused = cached.clone();
+                    reused.name = display_name.to_string();
+                    return reused;
+                }
             }
         }
     }
@@ -322,7 +322,7 @@ fn scan_repo(found: &mut BTreeMap<String, ScannedRepo>, repo_dir: &Path, display
         let map = guard.get_or_insert_with(HashMap::new);
         map.insert(key, (stamp, scanned.clone()));
     }
-    found.insert(display_name.to_string(), scanned);
+    scanned
 }
 
 fn parent_member(repo: &ScannedRepo) -> Member {
@@ -416,8 +416,9 @@ pub fn collect_git_repos(ctx: &RenderCtx) -> Vec<Group> {
     let Some(workspace) = ctx.workspace.as_deref() else {
         return Vec::new();
     };
-    let mut found: BTreeMap<String, ScannedRepo> = BTreeMap::new();
-
+    // First pass: enumerate all repos (no scanning yet). Depth 1 is a
+    // repo with `.git/`; depth 2 allows an org-style grouping directory.
+    let mut targets: Vec<(PathBuf, String)> = Vec::new();
     if workspace.is_dir() {
         let mut children: Vec<PathBuf> = match std::fs::read_dir(workspace) {
             Ok(it) => it.flatten().map(|e| e.path()).collect(),
@@ -433,10 +434,9 @@ pub fn collect_git_repos(ctx: &RenderCtx) -> Vec<Group> {
                 continue;
             }
             if child.join(".git").exists() {
-                scan_repo(&mut found, child, name);
+                targets.push((child.clone(), name.to_string()));
                 continue;
             }
-            // Depth 2 — child is an org-style grouping directory.
             let mut grandchildren: Vec<PathBuf> = match std::fs::read_dir(child) {
                 Ok(it) => it.flatten().map(|e| e.path()).collect(),
                 Err(_) => continue,
@@ -444,7 +444,7 @@ pub fn collect_git_repos(ctx: &RenderCtx) -> Vec<Group> {
             grandchildren.sort();
             for grand in grandchildren {
                 let gname = match grand.file_name().and_then(|n| n.to_str()) {
-                    Some(n) => n,
+                    Some(n) => n.to_string(),
                     None => continue,
                 };
                 if !grand.is_dir() || gname.starts_with('.') {
@@ -453,10 +453,23 @@ pub fn collect_git_repos(ctx: &RenderCtx) -> Vec<Group> {
                 if !grand.join(".git").exists() {
                     continue;
                 }
-                scan_repo(&mut found, &grand, &format!("{name}/{gname}"));
+                targets.push((grand, format!("{name}/{gname}")));
             }
         }
     }
+
+    // Second pass: scan repos in parallel. Each worker shells out to
+    // `git` independently; results are gathered and inserted sorted
+    // afterward so the downstream ordering is identical to the serial
+    // version.
+    let scanned: Vec<(String, ScannedRepo)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = targets
+            .iter()
+            .map(|(dir, display)| scope.spawn(move || (display.clone(), scan_one(dir, display))))
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let found: BTreeMap<String, ScannedRepo> = scanned.into_iter().collect();
 
     // Build submodule map from the configured repo structure.
     let mut submodule_map: HashMap<String, Vec<String>> = HashMap::new();
