@@ -21,46 +21,25 @@ import {
     termDragStart, termSplitStart, pasteRecentScreenshot,
     initTabDragSideEffects,
 } from './sections/tab-drag.js';
-
-/* --- Theme --- */
-function getPreferredTheme() {
-    var saved = localStorage.getItem('dashboard-theme');
-    if (saved) return saved;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-function applyTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme);
-    var icon = document.getElementById('theme-icon');
-    var label = document.getElementById('theme-label');
-    if (theme === 'dark') {
-        icon.innerHTML = '&#9790;';
-        label.textContent = 'Dark';
-    } else {
-        icon.innerHTML = '&#9788;';
-        label.textContent = 'Light';
-    }
-    // Live-swap any open CodeMirror editors to the matching theme.
-    if (window.CondashCM && typeof _cmViews === 'object') {
-        Object.keys(_cmViews).forEach(function(which) {
-            var view = _cmViews[which];
-            var ta = document.querySelector('#config-form textarea[data-yaml-file="' + which + '"]');
-            var comp = ta && ta._cmThemeComp;
-            if (view && comp) {
-                view.dispatch({ effects: comp.reconfigure(_currentCmTheme()) });
-            }
-        });
-    }
-}
-
-function toggleTheme() {
-    var current = document.documentElement.getAttribute('data-theme') || 'light';
-    var next = current === 'dark' ? 'light' : 'dark';
-    localStorage.setItem('dashboard-theme', next);
-    applyTheme(next);
-}
-
-applyTheme(getPreferredTheme());
+import {
+    toggleTheme, initThemeSideEffects,
+} from './sections/theme.js';
+import {
+    openAboutModal, closeAboutModal, initAboutModalSideEffects,
+} from './sections/about-modal.js';
+import {
+    _refreshShadowCache, _consumeShadowCache,
+} from './sections/shadow-cache.js';
+import {
+    openPath, openInTerminal, workOn, openFolder,
+} from './sections/git-actions.js';
+import {
+    openNewItemModal, closeNewItemModal, submitNewItem,
+    initNewItemModalSideEffects,
+} from './sections/new-item-modal.js';
+import {
+    _NOTES_OPEN_KEY, restoreNotesTreeState, initNotesTreeStateSideEffects,
+} from './sections/notes-tree-state.js';
 
 /* --- In-app config editor --- */
 function _setField(form, name, value) {
@@ -192,7 +171,7 @@ async function openConfigModal() {
    without ever poking at CM6 APIs. If the bundle hasn't arrived yet
    (defer script still loading) we fall back to the textarea for this
    paint; once the modal reopens, CM6 is wired. */
-var _cmViews = {};  // which → EditorView
+export var _cmViews = {};  // which → EditorView
 function _populateYamlEditor(which, body, preserveDirty) {
     var ta = document.querySelector('#config-form textarea[data-yaml-file="' + which + '"]');
     if (!ta) return;
@@ -287,7 +266,7 @@ function _populateYamlEditorCM(which, ta, body) {
     _setYamlStatus(which, 'synced');
 }
 
-function _currentCmTheme() {
+export function _currentCmTheme() {
     var theme = document.documentElement.getAttribute('data-theme') || 'light';
     return theme === 'dark' ? window.CondashCM.oneDark : [];
 }
@@ -308,170 +287,6 @@ function _getDirtyYamlFile() {
 
 function closeConfigModal() {
     document.getElementById('config-modal').style.display = 'none';
-}
-
-/* --- About modal ---
-   Static content (version baked in at render time, links hit the host
-   browser via /open-external because pywebview swallows target=_blank). */
-function openAboutModal() {
-    document.getElementById('about-modal').style.display = 'flex';
-}
-function closeAboutModal() {
-    document.getElementById('about-modal').style.display = 'none';
-}
-document.addEventListener('click', function(ev) {
-    var a = ev.target.closest && ev.target.closest('#about-modal a[data-about-link]');
-    if (!a) return;
-    ev.preventDefault();
-    fetch('/open-external', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url: a.getAttribute('href')}),
-    });
-});
-
-/* --- New-item modal ---
-   Lives next to the gear button. Collects the minimal fields the
-   README parser cares about (kind, status, title, slug, apps + kind-
-   specific extras) and POSTs /api/items. Everything else — goal,
-   scope, steps, body prose — the user types in their editor. */
-
-/* Remove accents + punctuation and produce a YYYY-MM-DD-compatible
-   slug. Keeps letters, digits, spaces; collapses spaces into single
-   hyphens. Lives client-side so the preview matches what lands on
-   disk, but the server re-validates. */
-function _deriveSlug(title) {
-    return (title || '')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-}
-
-function _newItemSubtab(status) {
-    // Map Status → the Projects sub-tab that renders it.
-    if (status === 'now' || status === 'review') return 'current';
-    if (status === 'soon') return 'next';
-    if (status === 'done') return 'done';
-    return 'backlog';
-}
-
-function openNewItemModal() {
-    var modal = document.getElementById('new-item-modal');
-    var form = document.getElementById('new-item-form');
-    if (!modal || !form) return;
-    form.reset();
-    document.getElementById('new-item-error').style.display = 'none';
-    // Reset the default-checked radios the browser loses on reset().
-    var k = form.querySelector('input[name="kind"][value="project"]');
-    if (k) k.checked = true;
-    var s = form.querySelector('input[name="status"][value="now"]');
-    if (s) s.checked = true;
-    _syncNewItemKindFields();
-    modal.style.display = 'flex';
-    setTimeout(function() {
-        var title = document.getElementById('new-item-title');
-        if (title) title.focus();
-    }, 40);
-}
-
-function closeNewItemModal() {
-    document.getElementById('new-item-modal').style.display = 'none';
-}
-
-function _syncNewItemKindFields() {
-    var form = document.getElementById('new-item-form');
-    if (!form) return;
-    var kindEl = form.querySelector('input[name="kind"]:checked');
-    var kind = kindEl ? kindEl.value : 'project';
-    form.querySelectorAll('[data-kind-fields]').forEach(function(fs) {
-        fs.style.display = (fs.getAttribute('data-kind-fields') === kind) ? '' : 'none';
-    });
-}
-
-(function _wireNewItemForm() {
-    document.addEventListener('DOMContentLoaded', function() {
-        var form = document.getElementById('new-item-form');
-        if (!form) return;
-        // Kind toggles show/hide the conditional fieldset.
-        form.querySelectorAll('input[name="kind"]').forEach(function(el) {
-            el.addEventListener('change', _syncNewItemKindFields);
-        });
-        // Auto-derive the slug from the title unless the user has typed
-        // into the slug field themselves.
-        var title = document.getElementById('new-item-title');
-        var slug = document.getElementById('new-item-slug');
-        if (title && slug) {
-            slug.addEventListener('input', function() { slug.dataset.manual = '1'; });
-            title.addEventListener('input', function() {
-                if (slug.dataset.manual === '1' && slug.value.trim() !== '') return;
-                slug.value = _deriveSlug(title.value);
-                delete slug.dataset.manual;
-            });
-        }
-    });
-})();
-
-async function submitNewItem(ev) {
-    ev.preventDefault();
-    var form = document.getElementById('new-item-form');
-    var errEl = document.getElementById('new-item-error');
-    errEl.style.display = 'none';
-
-    var kind = (form.querySelector('input[name="kind"]:checked') || {}).value || 'project';
-    var status = (form.querySelector('input[name="status"]:checked') || {}).value || 'now';
-    var environment = (form.querySelector('input[name="environment"]:checked') || {}).value || '';
-    var severity = (form.querySelector('input[name="severity"]:checked') || {}).value || '';
-    var payload = {
-        kind: kind,
-        status: status,
-        title: form.elements['title'].value.trim(),
-        slug: form.elements['slug'].value.trim(),
-        apps: (form.elements['apps'] || {}).value || '',
-        environment: kind === 'incident' ? environment : '',
-        severity: kind === 'incident' ? severity : '',
-        languages: kind === 'document' ? ((form.elements['languages'] || {}).value || '') : '',
-    };
-
-    var submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) submitBtn.disabled = true;
-    try {
-        var res = await fetch('/api/items', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload),
-        });
-        var data = {};
-        try { data = await res.json(); } catch (e) { data = {}; }
-        if (!res.ok || !data.ok) {
-            errEl.textContent = data.reason || ('Create failed (HTTP ' + res.status + ')');
-            errEl.style.display = 'block';
-            return;
-        }
-        closeNewItemModal();
-        // Switch to Projects → matching sub-tab, force a full refresh so
-        // the new card appears, then expand it.
-        try { switchTab('projects'); } catch (e) {}
-        try { switchSubtab(_newItemSubtab(status)); } catch (e) {}
-        if (typeof refreshAll === 'function') refreshAll();
-        var target = data.folder_name || data.slug;
-        setTimeout(function() { _expandCardBySlug(target); }, 500);
-    } finally {
-        if (submitBtn) submitBtn.disabled = false;
-    }
-}
-
-function _expandCardBySlug(slug) {
-    if (!slug) return;
-    var cards = document.querySelectorAll('.card');
-    for (var i = 0; i < cards.length; i++) {
-        var c = cards[i];
-        if ((c.id || '').indexOf(slug) >= 0) {
-            c.classList.remove('collapsed');
-            c.scrollIntoView({block: 'start', behavior: 'smooth'});
-            return;
-        }
-    }
 }
 
 async function saveConfig(ev) {
@@ -498,128 +313,6 @@ async function saveConfig(ev) {
     } catch (e) {
         errEl.textContent = 'Save failed: ' + e;
         errEl.style.display = 'block';
-    }
-}
-
-/* --- Git row actions: open in IDEA / VS Code / terminal --- */
-async function openPath(ev, path, tool) {
-    ev.stopPropagation();
-    var btn = ev.currentTarget;
-    // Buttons now hold an inline SVG, so save/restore innerHTML.
-    var originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    function restore() {
-        btn.innerHTML = originalHtml;
-        btn.classList.remove('is-ok', 'is-err');
-        btn.disabled = false;
-    }
-    function flash(cls, label, ms) {
-        btn.classList.add(cls);
-        btn.textContent = label;
-        setTimeout(restore, ms);
-    }
-    try {
-        var res = await fetch('/open', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path: path, tool: tool})
-        });
-        if (!res.ok) {
-            flash('is-err', 'err', 1200);
-            return;
-        }
-        flash('is-ok', 'ok', 800);
-    } catch (e) {
-        flash('is-err', 'err', 1200);
-    }
-}
-
-/* Open the integrated terminal pane and spawn a fresh tab cwd'd at the
-   given path. The button lives next to the "open with" slots on every
-   git row; path is the same absolute directory those slots use, and is
-   re-validated server-side against the workspace/worktrees sandbox
-   before the pty is forked. */
-function openInTerminal(ev, path) {
-    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-    var pane = document.getElementById('term-pane');
-    if (pane.hasAttribute('hidden')) {
-        pane.removeAttribute('hidden');
-        _termSyncOpenFlag(true);
-        localStorage.setItem('term-open', '1');
-    }
-    var side = termState.lastFocused === 'right' ? 'right' : 'left';
-    // Default tab label to the target directory basename so several tabs
-    // opened from different repos are visually distinct. Writes to
-    // customName, so double-click-to-rename still overrides it and the
-    // choice persists across reloads via _termPersistTabs.
-    var basename = String(path).replace(/\/+$/, '').split('/').pop() || '';
-    _termCreateTab(side, {cwd: path, customName: basename});
-    setTimeout(function() {
-        var tab = _termActiveTab();
-        if (tab) { _termSendResize(tab); tab.term.focus(); }
-    }, 0);
-}
-
-/* Per-card "work on <slug>" button — inject the text at the prompt of
-   the currently focused terminal tab, no auto-Enter (user confirms). If
-   no tab is open, open the terminal pane, spawn one, and inject once
-   its WebSocket is ready. */
-function workOn(ev, slug) {
-    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-    var text = 'work on ' + slug;
-    var active = _termActiveTab();
-    if (active && active.ws && active.ws.readyState === WebSocket.OPEN) {
-        active.ws.send(new TextEncoder().encode(text));
-        active.term.focus();
-        return;
-    }
-    var pane = document.getElementById('term-pane');
-    if (pane.hasAttribute('hidden')) {
-        pane.removeAttribute('hidden');
-        _termSyncOpenFlag(true);
-        localStorage.setItem('term-open', '1');
-    }
-    if (termState.tabs.length === 0) _termCreateTab('left');
-    // Fresh tab: ws.open is async — poll briefly until the socket is ready.
-    var tries = 0;
-    (function trySend() {
-        var tab = _termActiveTab();
-        if (tab && tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-            tab.ws.send(new TextEncoder().encode(text));
-            tab.term.focus();
-            return;
-        }
-        if (++tries < 40) setTimeout(trySend, 75);
-    })();
-}
-
-/* Per-card "open folder" button — hand the item's folder to the OS
-   default file manager. Mirrors openPath's transient ok/err feedback. */
-async function openFolder(ev, relPath) {
-    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-    var btn = ev.currentTarget;
-    var originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    function restore() {
-        btn.innerHTML = originalHtml;
-        btn.classList.remove('is-ok', 'is-err');
-        btn.disabled = false;
-    }
-    function flash(cls, label, ms) {
-        btn.classList.add(cls);
-        btn.textContent = label;
-        setTimeout(restore, ms);
-    }
-    try {
-        var res = await fetch('/open-folder', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({path: relPath})
-        });
-        if (!res.ok) { flash('is-err', 'err', 1200); return; }
-        flash('is-ok', 'ok', 800);
-    } catch (e) {
-        flash('is-err', 'err', 1200);
     }
 }
 
@@ -698,7 +391,7 @@ function _persistTabState() {
     history.replaceState(null, '', url);
 }
 
-function switchTab(tab) {
+export function switchTab(tab) {
     if (!PRIMARY_TABS.includes(tab)) tab = 'projects';
     // Clicking the already-active tab refreshes the dashboard when its
     // Phase 3: the active tab auto-reloads, so the old "click same
@@ -736,7 +429,7 @@ function switchTab(tab) {
     if (typeof _renderStale === 'function') _renderStale();
 }
 
-function switchSubtab(sub) {
+export function switchSubtab(sub) {
     if (!SUBTABS.includes(sub)) sub = 'current';
     _activeSubtab = sub;
     _applySubtab(sub);
@@ -855,35 +548,6 @@ async function _reloadInPlace() {
     }
 }
 
-/* --- Shadow pre-reload cache (Phase 4) ---
-   When staleness lands on an inactive tab, kick off a background
-   fetch of the dashboard HTML. On the user's next tab click that
-   would have triggered a live _reloadInPlace, the cached HTML is
-   applied instead, so the switch feels instant. The cache is a
-   single entry because `/` returns the whole app — any tab's fresh
-   content is already included. */
-var _shadowCache = null;  // {html, at} | {inflight: true} | null
-
-async function _refreshShadowCache() {
-    if (_shadowCache && _shadowCache.inflight) return;
-    _shadowCache = {inflight: true};
-    try {
-        var res = await fetch('/', {cache: 'no-store'});
-        if (!res.ok) { _shadowCache = null; return; }
-        var html = await res.text();
-        _shadowCache = {html: html, at: Date.now()};
-    } catch (e) {
-        _shadowCache = null;
-    }
-}
-
-function _consumeShadowCache() {
-    if (!_shadowCache || _shadowCache.inflight || !_shadowCache.html) return null;
-    var html = _shadowCache.html;
-    _shadowCache = null;
-    return html;
-}
-
 function _tabForNodeId(id) {
     if (id === 'projects' || id.indexOf('projects/') === 0) return 'projects';
     if (id === 'code' || id.indexOf('code/') === 0) return 'code';
@@ -946,31 +610,6 @@ function _restorePreservedSearches() {
         }
     });
 }
-
-/* --- Notes-tree per-subdir collapsed/expanded state ---
-   Each <details data-subdir-key="<slug>/<rel_dir>"> remembers its open
-   state in localStorage. On render (full reload, in-place reload, or
-   after a card fragment swap) we walk every notes-group <details> and
-   restore the saved state — defaulting to closed. */
-var _NOTES_OPEN_KEY = 'condash:notes-open:';
-function restoreNotesTreeState() {
-    document.querySelectorAll('.notes-group[data-subdir-key]').forEach(function(d) {
-        var key = d.getAttribute('data-subdir-key');
-        var saved = null;
-        try { saved = localStorage.getItem(_NOTES_OPEN_KEY + key); } catch (e) {}
-        d.open = saved === 'open';
-    });
-}
-
-document.addEventListener('toggle', function(ev) {
-    var target = ev.target;
-    if (!target || !target.classList || !target.classList.contains('notes-group')) return;
-    var key = target.getAttribute('data-subdir-key');
-    if (!key) return;
-    try {
-        localStorage.setItem(_NOTES_OPEN_KEY + key, target.open ? 'open' : 'closed');
-    } catch (e) {}
-}, true);
 
 /* Find the node id (`projects/<pri>/<slug>`) of the card that owns
    ``readmePath``. Used so localized actions like upload / mkdir can
@@ -3052,7 +2691,7 @@ async function updateBaseline() {
    the page from scratch. Used when the soft in-place reload can't shake
    the UI out of a bad state — e.g. a project rendered in no column, or a
    stuck stale-dot on a tab. Tracked: condash#14. */
-function refreshAll() {
+export function refreshAll() {
     _nodeBaseline = null;
     _dirtyNodes = new Set();
     _shadowCache = null;
@@ -3573,6 +3212,10 @@ export function _termRenderTabChip(tab) {
 // evaluating — see the notes for P-07
 // (projects/2026-04-23-condash-frontend-extraction/notes/01-p07-tab-drag-split.md).
 initTabDragSideEffects();
+initThemeSideEffects();
+initAboutModalSideEffects();
+initNewItemModalSideEffects();
+initNotesTreeStateSideEffects();
 
 // Phase 6: event-driven staleness. /events streams tab-level hints;
 // checkUpdates() runs on connect + every hint to reconcile the real
