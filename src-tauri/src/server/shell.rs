@@ -1,5 +1,5 @@
-//! Dashboard-shell surface: `/`, `/fragment`, `/check-updates`,
-//! `/search-history`, favicons, vendor + dist + asset static routes.
+//! Dashboard-shell surface: `/`, `/fragment`, `/fragment/history`,
+//! `/check-updates`, favicons, vendor + dist + asset static routes.
 //!
 //! This module owns the asset-serving helpers (`serve_embedded`,
 //! `serve_under`, `serve_fixed`) because they are reached only from
@@ -17,12 +17,10 @@ use condash_parser::{
 };
 use condash_render::git_render::render_git_repo_fragment;
 use condash_render::{
-    render_card_fragment, render_knowledge_card_fragment, render_knowledge_group_fragment,
-    render_page,
+    render_card_fragment, render_history_pane, render_knowledge_card_fragment,
+    render_knowledge_group_fragment, render_page,
 };
-use condash_state::{
-    collect_git_repos, compute_git_node_fingerprints, git_fingerprint, search_items,
-};
+use condash_state::{collect_git_repos, compute_git_node_fingerprints, git_fingerprint};
 use serde::Deserialize;
 
 use super::{error_json, html_response, json_response, live_runners_snapshot, AppState};
@@ -178,18 +176,22 @@ pub(super) async fn check_updates(State(state): State<AppState>) -> impl IntoRes
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct SearchQuery {
+pub(super) struct HistoryFragmentQuery {
     #[serde(default)]
     q: String,
 }
 
-pub(super) async fn search_history(
+/// HTML fragment for the History pane content. Empty `q` returns the
+/// month-grouped tree; non-empty `q` returns the search-results list.
+/// Driven by the htmx attributes on `#history-content` in
+/// `dashboard.html` — replaces the legacy JSON-returning
+/// `/search-history` + client-side renderer.
+pub(super) async fn fragment_history(
     State(state): State<AppState>,
-    Query(s): Query<SearchQuery>,
+    Query(s): Query<HistoryFragmentQuery>,
 ) -> impl IntoResponse {
     let items = state.cache.get_items(&state.ctx);
-    let results = search_items(&state.ctx, &items, &s.q);
-    json_response(&results)
+    html_response(render_history_pane(&state.ctx, &items, &s.q))
 }
 
 pub(super) async fn favicon_svg(State(state): State<AppState>) -> impl IntoResponse {

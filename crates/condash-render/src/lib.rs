@@ -25,7 +25,7 @@ pub mod templating;
 pub use note_render::{raw_payload as note_raw_payload, render_note};
 
 use condash_parser::{knowledge_title_and_desc, Item, KnowledgeCard, KnowledgeNode};
-use condash_state::{collect_git_repos, RenderCtx};
+use condash_state::{collect_git_repos, search_items, RenderCtx, SearchResult};
 use minijinja::context;
 use minijinja::value::Value;
 
@@ -193,6 +193,34 @@ pub fn render_history(ctx: &RenderCtx, items: &[Item]) -> String {
         months => Value::from_serialize(months),
     };
     templating::render("history.html.j2", tctx)
+}
+
+/// HTML for the History pane's search-results fragment. Mirrors the
+/// shape that `_renderHistoryResults` used to build client-side, so
+/// existing CSS and `data-action` wiring (`open-history-hit`,
+/// `jump-to-project`) keep working unchanged.
+pub fn render_history_search_results(results: &[SearchResult], q: &str) -> String {
+    let ctx = context! {
+        results => Value::from_serialize(results),
+        q => q,
+    };
+    templating::render("history_search_results.html.j2", ctx)
+}
+
+/// HTML for the History pane content — dispatch on whether the query
+/// is empty. Empty query → full month-grouped tree view (same shape as
+/// `render_history`). Non-empty query → search-results fragment.
+///
+/// This is the unified body emitted by `/fragment/history?q=…`; the
+/// template's outer `#history-content` div lives in `dashboard.html`,
+/// not here, so the htmx swap target is the surrounding container.
+pub fn render_history_pane(ctx: &RenderCtx, items: &[Item], q: &str) -> String {
+    let trimmed = q.trim();
+    if trimmed.is_empty() {
+        return render_history(ctx, items);
+    }
+    let results = search_items(ctx, items, trimmed);
+    render_history_search_results(&results, trimmed)
 }
 
 /// Public entry point for `/` — the full dashboard HTML.

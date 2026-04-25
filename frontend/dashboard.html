@@ -25,6 +25,12 @@
 <script src="/vendor/xterm/lib/xterm.min.js" defer></script>
 <script src="/vendor/xterm/lib/xterm-addon-fit.min.js" defer></script>
 <script src="/vendor/codemirror/codemirror.min.js" defer></script>
+<!-- htmx drives the History pane (and, after the spike succeeds, the
+     other server-rendered tabs). The SSE extension converts named
+     `event: projects` SSE frames into `hx-trigger="sse:projects"`
+     re-fetches without going through the legacy stale-poll pipeline. -->
+<script src="/vendor/htmx/htmx.min.js" defer></script>
+<script src="/vendor/htmx/htmx-ext-sse.js" defer></script>
 <link rel="stylesheet" href="/assets/dist/bundle.css">
 <script src="/assets/dist/bundle.js" defer></script>
 </head>
@@ -104,12 +110,24 @@
         </div>
         <div id="knowledge">{{KNOWLEDGE}}</div>
     </div>
-    <div id="history-pane" style="display:none" data-node-id="history">
+    <div id="history-pane" style="display:none" data-node-id="history"
+         hx-ext="sse" sse-connect="/events">
         <div class="search-toolbar history-toolbar">
-            <input id="history-search" type="search" placeholder="Search history — title, apps, notes, filenames…" oninput="filterHistory(this.value)" autocomplete="off" data-preserve="condash.search.history">
+            <input id="history-search" type="search" name="q"
+                   placeholder="Search history — title, apps, notes, filenames…"
+                   autocomplete="off" data-preserve="condash.search.history">
         </div>
-        <div id="history-results" hidden></div>
-        <div id="history">{{HISTORY}}</div>
+        <!-- Server-rendered initial content lands here. htmx re-fetches
+             /fragment/history on input changes, on `sse:projects` (file
+             watcher → backend → SSE), and on `htmx:load` so a saved
+             query restored via data-preserve after _reloadInPlace
+             takes effect without requiring a new keystroke. -->
+        <div id="history-content"
+             hx-get="/fragment/history"
+             hx-trigger="load, input changed delay:150ms from:#history-search, sse:projects"
+             hx-include="#history-search"
+             hx-target="this"
+             hx-swap="innerHTML">{{HISTORY}}</div>
     </div>
 </main>
 </div>

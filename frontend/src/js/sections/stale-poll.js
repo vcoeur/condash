@@ -70,11 +70,14 @@ function _renderStale() {
         .forEach(function(btn) { btn.remove(); });
 
     _deriveLegacyFlags();
+    // History no longer surfaces a stale dot: the htmx-driven
+    // #history-content listens for `sse:projects` and re-fetches as
+    // soon as the watcher fires, so the pane is always live regardless
+    // of which tab is active. The legacy stale-dot would lie.
     var staleByTab = {
         projects: staleState.itemsStale,
         code: staleState.gitStale,
         knowledge: staleState.knowledgeStale,
-        history: staleState.itemsStale,
     };
     document.querySelectorAll('.tabs-primary .tab').forEach(function(t) {
         var key = t.getAttribute('data-tab');
@@ -162,13 +165,15 @@ async function checkUpdates() {
 }
 
 function _activeTabPrefix() {
-    // History derives from the same on-disk data as Projects.
-    return _activeTab === 'history' ? 'projects' : _activeTab;
+    return _activeTab;
 }
 
 function _idInTab(id, tab) {
-    var prefix = tab === 'history' ? 'projects' : tab;
-    return id === prefix || id.indexOf(prefix + '/') === 0;
+    // History was previously aliased to `projects` here so a project
+    // change while History was active triggered a full reload — under
+    // htmx the History pane self-refreshes on `sse:projects`, so we
+    // skip the alias and let _autoReloadActiveTab do nothing for it.
+    return id === tab || id.indexOf(tab + '/') === 0;
 }
 
 function _tabForNodeId(id) {

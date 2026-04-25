@@ -102,7 +102,7 @@ import {
     openConfigModal, closeConfigModal, saveConfig,
 } from './sections/config-modal.js';
 import {
-    updateTabCounts, filterKnowledge, filterHistory,
+    updateTabCounts, filterKnowledge,
     jumpToProject, _openHistoryHit, _reapplySearches,
 } from './sections/search-filter.js';
 import {
@@ -330,6 +330,13 @@ export async function _reloadInPlace() {
         // async updateBaseline() that follows confirms the empty set
         // against a fresh /check-updates. condash#14.
         staleState.dirtyNodes = new Set();
+        // htmx attaches its triggers + SSE wiring on element processing.
+        // focusSafeSwap inserts the fresh #dash-main via replaceWith,
+        // which htmx's MutationObserver doesn't see — call process()
+        // explicitly so `hx-trigger`/`sse-connect` on the History pane
+        // re-bind and `htmx:load` fires on the freshly inserted
+        // #history-content.
+        if (window.htmx) window.htmx.process(fresh);
         _rebindDashHandlers();
         firePostReloadHooks();
     } catch (e) {
@@ -379,9 +386,13 @@ document.addEventListener('DOMContentLoaded', function() {
    subsequent swaps go through focusSafeSwap which handles restoration
    via data-preserve. */
 function _restorePreservedSearches() {
+    // History's saved query is restored by data-preserve into the
+    // input; htmx's `hx-trigger="load"` on #history-content fires
+    // automatically and uses the restored value via hx-include. So
+    // only the Knowledge filter (still client-side) needs the manual
+    // replay here.
     var mapping = {
         'condash.search.knowledge': {id: 'knowledge-search', fn: 'filterKnowledge'},
-        'condash.search.history': {id: 'history-search', fn: 'filterHistory'},
     };
     Object.keys(mapping).forEach(function(key) {
         var raw = null;
@@ -687,7 +698,7 @@ Object.assign(window, {
     startRenameNote,                          // ondblclick on the note-modal title
     stepPointerDown,                          // onpointerdown on the step drag handle
     termDragStart, termSplitStart,            // onmousedown on the terminal handles
-    filterHistory, filterKnowledge,           // oninput on the search inputs
+    filterKnowledge,                          // oninput on the knowledge search input
     noteSearchRun, _setDirty,                 // oninput on the note search bar + textarea
     saveConfig,                               // onsubmit on the config form
     _syncModeControls,                        // cm6-init.js reaches for this on load

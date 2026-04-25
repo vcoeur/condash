@@ -29,24 +29,18 @@ function _startEventStream() {
         checkUpdates();
     });
     sseState.eventSource.addEventListener('ping', function() { /* keepalive */ });
-    sseState.eventSource.onmessage = function(ev) {
-        // Parse the payload to dispatch on the ``tab`` field. Config
-        // events run a dedicated handler (refresh the modal if open,
-        // else in-place reload so repo strip + open-with buttons pick
-        // up the new YAML). Everything else falls through to the
-        // existing staleness pipeline.
-        var payload = null;
-        try { payload = JSON.parse(ev.data || '{}'); } catch (e) { payload = {}; }
-        // Config changes no longer stream over SSE — the watcher on
-        // config/*.yml was removed; the modal's Save path handles
-        // everything explicitly.
-        // Any other non-typed message is a staleness hint. Debounced so
-        // a burst of watcher events collapses into a single fetch + swap.
+    // Each frame now carries a named event matching its `tab` field
+    // (`projects` / `knowledge` / `code`) so htmx can trigger on a
+    // specific tab via `hx-trigger="sse:projects"`. Named events bypass
+    // `onmessage`, so we register a per-tab listener that funnels back
+    // into the same staleness + note-reconcile pipeline as before.
+    var onTabFrame = function() {
         _scheduleCheckUpdates();
-        // Phase 7: open-note reconcile — a disk change anywhere in the
-        // watched tree might affect the currently-displayed note.
         _reconcileNoteModal();
     };
+    sseState.eventSource.addEventListener('projects', onTabFrame);
+    sseState.eventSource.addEventListener('knowledge', onTabFrame);
+    sseState.eventSource.addEventListener('code', onTabFrame);
     sseState.eventSource.onerror = function() {
         _setReconnecting(true);
         try { sseState.eventSource.close(); } catch (e) {}
