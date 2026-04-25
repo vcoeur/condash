@@ -1,3 +1,18 @@
+/* --- Bucket label between cards (Now / Soon / Later / Review) ---
+   Server-rendered as `<div class="group-heading hidden" data-group="…">`.
+   The `hidden` class is removed by JS on the appropriate sub-tab. The
+   label itself sits flush above its first card in uppercase letter-
+   spaced caps, mirroring the design handoff's `.r-bucket-h`. */
+.group-heading {
+    font: 700 0.65rem/1 var(--font-sans);
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0.85rem 0 0.4rem;
+    padding: 0;
+}
+.group-heading:first-child { margin-top: 0.2rem; }
+.group-heading.hidden { display: none; }
+
 /* --- Cards --- */
 .card {
     border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem;
@@ -60,7 +75,12 @@
     display: flex; flex-direction: column; gap: 0.4rem; flex-shrink: 0;
 }
 .card-right { flex: 1; padding: 0.75rem 1.2rem; min-width: 0; }
-.card-title { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+.card-title {
+    font-family: var(--font-serif);
+    font-size: 1.05rem; font-weight: 600; line-height: 1.2;
+    letter-spacing: -0.005em;
+    color: var(--text);
+}
 .card-apps { display: flex; flex-wrap: wrap; gap: 4px; }
 .card[data-priority="backlog"] { opacity: 0.7; }
 .card[data-priority="review"] { opacity: 0.85; }
