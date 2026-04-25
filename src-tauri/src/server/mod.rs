@@ -83,6 +83,12 @@ pub struct AppState {
     /// Per-process registry of inline dev-server runners — used by
     /// `/api/runner/{start,stop}` and `/ws/runner/:key`.
     pub runner_registry: crate::runner_registry::RunnerRegistry,
+    /// Shutdown latch — flipped from `false` to `true` by the Tauri
+    /// host on `WindowEvent::CloseRequested` so the registries can run
+    /// their drop chains (force_stop runners, await PTY EOF) before
+    /// the OS reaper catches up. Cloneable; the host owns the sender,
+    /// background tasks subscribe via [`tokio::sync::watch::Receiver`].
+    pub shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
 }
 
 impl AppState {

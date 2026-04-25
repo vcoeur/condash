@@ -44,6 +44,7 @@ fn harness() -> Harness {
         event_bus: condash_lib::events::EventBus::default(),
         pty_registry: condash_lib::pty::PtyRegistry::new(),
         runner_registry: condash_lib::runner_registry::RunnerRegistry::new(),
+        shutdown_tx: Arc::new(tokio::sync::watch::channel(false).0),
     };
 
     Harness {

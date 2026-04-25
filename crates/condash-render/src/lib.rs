@@ -408,6 +408,38 @@ mod tests {
     }
 
     #[test]
+    fn invalid_status_renders_warning_pill() {
+        // R-05 — items whose README carries an unrecognised Status value
+        // get coerced to backlog at parse time, but the raw input rides
+        // along on `invalid_status` so the card can warn the user.
+        let mut item = simple_item("2026-04-22-foo", Priority::Backlog);
+        item.readme.invalid_status = Some("InProgress".into());
+        let html = render_card(&item);
+        assert!(
+            html.contains("invalid-status-badge"),
+            "missing badge class: {html}"
+        );
+        assert!(
+            html.contains("!? InProgress"),
+            "badge body wrong: {html}"
+        );
+        assert!(
+            html.contains("Unknown Status"),
+            "tooltip missing: {html}"
+        );
+    }
+
+    #[test]
+    fn invalid_status_absent_means_no_pill() {
+        let item = simple_item("2026-04-22-bar", Priority::Now);
+        let html = render_card(&item);
+        assert!(
+            !html.contains("invalid-status-badge"),
+            "unexpected badge: {html}"
+        );
+    }
+
+    #[test]
     fn render_knowledge_empty_tree() {
         let html = render_knowledge(None);
         assert!(html.contains("No <code>knowledge/</code>"));
