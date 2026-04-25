@@ -11,6 +11,8 @@ The Tauri builds of condash are **unsigned on purpose**. Signing Windows and mac
 
 ## Download
 
+> **Debian/Ubuntu users**: skip the download and jump to [Linux — apt repository](#linux--apt-repository-recommended) below — `apt` will fetch the package and keep it up to date for you.
+
 Start at the [latest release page](https://github.com/vcoeur/condash/releases/latest) and pick the artifact for your OS:
 
 | OS | Artifact | Typical size |
@@ -38,14 +40,41 @@ sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1   # Debian/Ubunt
 sudo dnf install webkit2gtk4.1 libappindicator-gtk3               # Fedora
 ```
 
-## Linux — `.deb`
+## Linux — apt repository (recommended)
+
+A signed apt repository at `condash.vcoeur.com/apt/` lets `apt` track new versions for you — `apt upgrade` becomes the update mechanism.
+
+One-time setup:
+
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://condash.vcoeur.com/apt/pubkey.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/condash.gpg
+echo "deb [signed-by=/etc/apt/keyrings/condash.gpg] https://condash.vcoeur.com/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/condash.list
+
+sudo apt update
+sudo apt install condash
+```
+
+Updates from then on are just:
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+The repository is signed with key fingerprint `BC6C 98E8 D6D8 0FFB C408 057F D1D6 9E3E 4A00 5621`.
+
+## Linux — `.deb` (one-off)
+
+If you don't want to add a repository, install a downloaded `.deb` directly:
 
 ```bash
 sudo apt install ./condash_*_amd64.deb
 condash
 ```
 
-Apt pulls in the GTK + WebKit deps automatically.
+Apt pulls in the GTK + WebKit deps automatically. Updates require re-running this for every new release.
 
 ## macOS — Gatekeeper bypass
 
@@ -91,11 +120,13 @@ The first time you launch condash, it opens a folder picker and asks you to sele
 
 ## Why no auto-update?
 
-Unsigned apps on macOS hit a quarantine bug when Tauri's in-app updater replaces the app bundle — macOS re-flags the new files and the relaunched binary fails silently. To avoid partially-broken installs, **the auto-updater is disabled**.
+Unsigned apps on macOS hit a quarantine bug when Tauri's in-app updater replaces the app bundle — macOS re-flags the new files and the relaunched binary fails silently. To avoid partially-broken installs, **the in-app auto-updater is disabled**.
 
-Updating is a manual download:
+For everything except apt, updating is a manual download:
 
 - Check **[Releases](releases.md)** occasionally, or watch the repo on GitHub.
 - Download the new artifact.
-- Drop it over the old one (Linux) or run the installer / DMG (Windows / macOS).
+- Drop it over the old one (Linux AppImage) or run the installer / DMG (Windows / macOS).
 - Redo the bypass gesture once on the first post-update launch.
+
+**Debian/Ubuntu users who installed via the apt repository above are exempt** — `sudo apt update && sudo apt upgrade` picks up new condash versions automatically.
