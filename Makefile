@@ -85,8 +85,11 @@ serve: frontend ## Run the Rust HTTP server headless (no GUI deps needed). Overr
 build: ## Bundle Tauri release artefacts (requires Linux system deps)
 	cd src-tauri && PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) tauri build
 
-check: ## cargo check across the workspace (fast, no codegen)
+check: check-inline-handlers ## cargo check across the workspace (fast, no codegen)
 	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) check --workspace
+
+check-inline-handlers: ## Guard against inline named on*= handlers (data-* + addEventListener instead)
+	@bash tools/check-inline-handlers.sh
 
 test: ## Run cargo tests across the workspace
 	PATH="$(RUSTUP_BIN):$$PATH" $(CARGO) test --workspace

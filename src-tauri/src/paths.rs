@@ -15,6 +15,48 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+/// A path that has cleared one of the validator gates in this module.
+///
+/// Routes that accept user-supplied paths should funnel them through a
+/// `validate_*` helper to obtain a `ValidatedPath`, then pass `.as_path()`
+/// to the fs-touching mutation helpers. The newtype prevents an
+/// accidentally-built `PathBuf` from reaching the boundary without going
+/// through validation.
+#[derive(Debug, Clone)]
+pub struct ValidatedPath(PathBuf);
+
+impl ValidatedPath {
+    /// Borrow the inner path for fs-touching helpers that take `&Path`.
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Consume into the inner [`PathBuf`].
+    pub fn into_inner(self) -> PathBuf {
+        self.0
+    }
+
+    /// Construct from a path the caller already verified lives inside a
+    /// sandbox boundary. Use only at validator boundaries — any caller
+    /// reaching for this is asserting the gate, not bypassing it.
+    pub fn from_canonical_in_sandbox(path: PathBuf) -> Self {
+        ValidatedPath(path)
+    }
+}
+
+impl std::ops::Deref for ValidatedPath {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for ValidatedPath {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
 /// Common item-path prefix — `projects/YYYY-MM/YYYY-MM-DD-<slug>/`.
 const VALID_ITEM_PREFIX: &str = r"^projects/\d{4}-\d{2}/\d{4}-\d{2}-\d{2}-[\w.-]+/";
 
@@ -84,7 +126,7 @@ pub fn safe_resolve(
     rel_path: &str,
     regexes: &[&Regex],
     require_file: bool,
-) -> Option<PathBuf> {
+) -> Option<ValidatedPath> {
     if rel_path.is_empty() || rel_path.contains('\0') || rel_path.contains("..") {
         return None;
     }
@@ -100,20 +142,20 @@ pub fn safe_resolve(
     if require_file && !canonical.is_file() {
         return None;
     }
-    Some(canonical)
+    Some(ValidatedPath(canonical))
 }
 
 /// Validate a README path (`projects/YYYY-MM/<slug>/README.md`). The
 /// README must resolve to an existing file under `base_dir`. Every
 /// step-mutation handler reads the file immediately after, so
 /// `require_file=true` is hardcoded.
-pub fn validate_readme_path(base_dir: &Path, rel_path: &str) -> Option<PathBuf> {
+pub fn validate_readme_path(base_dir: &Path, rel_path: &str) -> Option<ValidatedPath> {
     safe_resolve(base_dir, rel_path, &[&VALID_README_RE], true)
 }
 
 /// Validate a note-like path — item-tree file, `<item>/notes/*.md`, or
 /// `knowledge/**/*.md`. The target must resolve to an existing file.
-pub fn validate_note_path(base_dir: &Path, rel_path: &str) -> Option<PathBuf> {
+pub fn validate_note_path(base_dir: &Path, rel_path: &str) -> Option<ValidatedPath> {
     safe_resolve(
         base_dir,
         rel_path,
@@ -130,9 +172,9 @@ pub fn validate_note_path(base_dir: &Path, rel_path: &str) -> Option<PathBuf> {
 /// `base_dir`. Used by `/open-folder` so the "open folder in file
 /// manager" card button resolves against the conception tree (not the
 /// workspace/worktrees sandbox).
-pub fn validate_item_dir(base_dir: &Path, rel_path: &str) -> Option<PathBuf> {
+pub fn validate_item_dir(base_dir: &Path, rel_path: &str) -> Option<ValidatedPath> {
     let full = safe_resolve(base_dir, rel_path, &[&VALID_ITEM_DIR_RE], false)?;
-    if !full.is_dir() {
+    if !full.as_path().is_dir() {
         return None;
     }
     Some(full)
@@ -141,10 +183,10 @@ pub fn validate_item_dir(base_dir: &Path, rel_path: &str) -> Option<PathBuf> {
 /// Resolve `subdir` (relative to `item_dir`) and verify the result
 /// stays inside the item directory. Empty `subdir` resolves to
 /// `item_dir` itself. Returns `None` on traversal / regex failure.
-pub fn resolve_under_item(item_dir: &Path, subdir: &str) -> Option<PathBuf> {
+pub fn resolve_under_item(item_dir: &Path, subdir: &str) -> Option<ValidatedPath> {
     let trimmed = subdir.trim().trim_matches('/');
     if trimmed.is_empty() {
-        return Some(item_dir.to_path_buf());
+        return Some(ValidatedPath(item_dir.to_path_buf()));
     }
     if trimmed.split('/').any(|seg| seg == "..") {
         return None;
@@ -162,9 +204,9 @@ pub fn resolve_under_item(item_dir: &Path, subdir: &str) -> Option<PathBuf> {
         if !canonical_target.starts_with(&canonical_base) {
             return None;
         }
-        return Some(canonical_target);
+        return Some(ValidatedPath(canonical_target));
     }
-    Some(target)
+    Some(ValidatedPath(target))
 }
 
 #[cfg(test)]
@@ -252,9 +294,9 @@ mod tests {
     fn resolve_under_item_empty_is_item_dir() {
         let (_tmp, base) = seeded_tree();
         let item = base.join("projects/2026-04/2026-04-22-demo");
-        assert_eq!(resolve_under_item(&item, ""), Some(item.clone()));
-        assert_eq!(resolve_under_item(&item, "   "), Some(item.clone()));
-        assert_eq!(resolve_under_item(&item, "/"), Some(item.clone()));
+        assert_eq!(resolve_under_item(&item, "").map(|v| v.into_inner()), Some(item.clone()));
+        assert_eq!(resolve_under_item(&item, "   ").map(|v| v.into_inner()), Some(item.clone()));
+        assert_eq!(resolve_under_item(&item, "/").map(|v| v.into_inner()), Some(item.clone()));
     }
 
     #[test]
@@ -262,7 +304,7 @@ mod tests {
         let (_tmp, base) = seeded_tree();
         let item = base.join("projects/2026-04/2026-04-22-demo");
         let got = resolve_under_item(&item, "notes").expect("notes exists");
-        assert!(got.ends_with("projects/2026-04/2026-04-22-demo/notes"));
+        assert!(got.as_path().ends_with("projects/2026-04/2026-04-22-demo/notes"));
     }
 
     #[test]
@@ -282,7 +324,7 @@ mod tests {
         // code path. Should still resolve, since the regex + ".." reject
         // keep us safe.
         let got = resolve_under_item(&item, "freshly/nested").expect("ok");
-        assert!(got.ends_with("projects/2026-04/2026-04-22-demo/freshly/nested"));
+        assert!(got.as_path().ends_with("projects/2026-04/2026-04-22-demo/freshly/nested"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "condash"
-version = "1.4.3"
+version = "1.5.0"
 description = "A dashboard for the Markdown you already write."
 authors = ["Alice Voland <alice@vcoeur.com>"]
 license = "MIT"
@@ -42,6 +42,7 @@ shlex = "1"
 md-5 = "0.10"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "ansi"] }
+arc-swap = "1"
 
 condash-parser = { path = "../crates/condash-parser" }
 condash-state = { path = "../crates/condash-state" }

@@ -1,0 +1,50 @@
+name: ci
+
+# Fast PR validation — workspace-wide cargo check + the no-inline-handler
+# guard. Heavier targets (full release bundle, AppImage, etc.) live in
+# release.yml and docs.yml.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    # Swatinem/rust-cache@v2 auto-detects sccache and exports RUSTC_WRAPPER
+    # when it finds it on PATH. The hosted runner's sccache install is
+    # unreliable across image revisions — keep the wrapper unset so cargo
+    # invokes rustc directly. The cache action's actual cache hits work
+    # without it; we lose only the rustc-cache speedup.
+    env:
+      RUSTC_WRAPPER: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Inline-handler guard
+        run: bash tools/check-inline-handlers.sh
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+      - name: cargo test
+        run: cargo test --workspace

@@ -31,10 +31,10 @@ pub(super) async fn get_note(
     if q.path.is_empty() {
         return error_json(StatusCode::BAD_REQUEST, "missing path");
     }
-    let Some(full) = crate::paths::validate_note_path(&state.ctx.base_dir, &q.path) else {
+    let Some(full) = crate::paths::validate_note_path(&state.ctx().base_dir, &q.path) else {
         return error_json(StatusCode::FORBIDDEN, "invalid path");
     };
-    let html = condash_render::render_note(&q.path, &full, &state.ctx.base_dir);
+    let html = condash_render::render_note(&q.path, &full, &state.ctx().base_dir);
     html_response(html)
 }
 
@@ -48,7 +48,7 @@ pub(super) async fn get_note_raw(
     if q.path.is_empty() {
         return error_json(StatusCode::BAD_REQUEST, "missing path");
     }
-    let Some(full) = crate::paths::validate_note_path(&state.ctx.base_dir, &q.path) else {
+    let Some(full) = crate::paths::validate_note_path(&state.ctx().base_dir, &q.path) else {
         return error_json(StatusCode::FORBIDDEN, "invalid path");
     };
     match condash_render::note_raw_payload(&full) {
@@ -69,7 +69,7 @@ pub(super) async fn post_note(
     State(state): State<AppState>,
     Json(p): Json<NoteWritePayload>,
 ) -> impl IntoResponse {
-    let Some(full) = crate::paths::validate_note_path(&state.ctx.base_dir, &p.path) else {
+    let Some(full) = crate::paths::validate_note_path(&state.ctx().base_dir, &p.path) else {
         return error_json(StatusCode::FORBIDDEN, "invalid path");
     };
     let kind = condash_parser::note_kind(&full);
@@ -78,7 +78,7 @@ pub(super) async fn post_note(
     }
     match write_note(&full, &p.content, p.expected_mtime) {
         Ok(WriteNoteResult::Ok { mtime, .. }) => {
-            state.cache.invalidate_item_at(&full);
+            state.cache.consume(condash_state::MutationOutput::for_path(full.as_path().to_path_buf()));
             json_response(&serde_json::json!({"ok": true, "mtime": mtime}))
         }
         Ok(WriteNoteResult::Err { reason, mtime, .. }) => {
@@ -102,7 +102,7 @@ pub(super) async fn post_note_rename(
     State(state): State<AppState>,
     Json(p): Json<NoteRenamePayload>,
 ) -> impl IntoResponse {
-    let Some(full) = crate::paths::validate_note_path(&state.ctx.base_dir, &p.path) else {
+    let Some(full) = crate::paths::validate_note_path(&state.ctx().base_dir, &p.path) else {
         return error_json(StatusCode::BAD_REQUEST, "invalid path");
     };
     if !crate::paths::VALID_ITEM_NOTES_FILE_RE.is_match(&p.path) {
@@ -111,9 +111,9 @@ pub(super) async fn post_note_rename(
             "only files under <item>/notes/ can be renamed",
         );
     }
-    match rename_note(&full, &p.new_stem, &state.ctx.base_dir) {
+    match rename_note(&full, &p.new_stem, &state.ctx().base_dir) {
         Ok(RenameResult::Ok { path, mtime, .. }) => {
-            state.cache.invalidate_item_at(&full);
+            state.cache.consume(condash_state::MutationOutput::for_path(full.as_path().to_path_buf()));
             json_response(&serde_json::json!({"ok": true, "path": path, "mtime": mtime}))
         }
         Ok(RenameResult::Err { reason, .. }) => error_json(StatusCode::BAD_REQUEST, &reason),
@@ -133,7 +133,7 @@ pub(super) async fn post_note_create(
     State(state): State<AppState>,
     Json(p): Json<NoteCreatePayload>,
 ) -> impl IntoResponse {
-    let Some(readme) = crate::paths::validate_readme_path(&state.ctx.base_dir, &p.item_readme)
+    let Some(readme) = crate::paths::validate_readme_path(&state.ctx().base_dir, &p.item_readme)
     else {
         return error_json(StatusCode::BAD_REQUEST, "invalid item");
     };
@@ -147,11 +147,11 @@ pub(super) async fn post_note_create(
     match create_note(
         &target_dir,
         &p.filename,
-        &state.ctx.base_dir,
+        &state.ctx().base_dir,
         subdir_was_supplied,
     ) {
         Ok(CreateNoteResult::Ok { path, mtime, .. }) => {
-            state.cache.invalidate_item_at(&readme);
+            state.cache.consume(condash_state::MutationOutput::for_path(readme.as_path().to_path_buf()));
             json_response(&serde_json::json!({"ok": true, "path": path, "mtime": mtime}))
         }
         Ok(CreateNoteResult::Err { reason, .. }) => error_json(StatusCode::BAD_REQUEST, &reason),
@@ -172,7 +172,7 @@ pub(super) async fn post_note_mkdir(
     State(state): State<AppState>,
     Json(p): Json<NoteMkdirPayload>,
 ) -> impl IntoResponse {
-    let Some(readme) = crate::paths::validate_readme_path(&state.ctx.base_dir, &p.item_readme)
+    let Some(readme) = crate::paths::validate_readme_path(&state.ctx().base_dir, &p.item_readme)
     else {
         return error_json(StatusCode::BAD_REQUEST, "invalid item");
     };
@@ -196,7 +196,7 @@ pub(super) async fn post_note_mkdir(
             subdir_key,
             ..
         }) => {
-            state.cache.invalidate_item_at(&readme);
+            state.cache.consume(condash_state::MutationOutput::for_path(readme.as_path().to_path_buf()));
             json_response(&serde_json::json!({
                 "ok": true,
                 "rel_dir": rel_dir,
@@ -251,9 +251,8 @@ pub(super) async fn post_note_upload(
                     }
                 }
             }
-            _ => {
-                // Silently drop unknown fields — the route contract
-                // is `item_readme`, `subdir`, `file`; extras are ignored.
+            other => {
+                tracing::warn!(name = %other, "multipart upload: dropping unknown field");
                 let _ = field.bytes().await;
             }
         }
@@ -263,7 +262,7 @@ pub(super) async fn post_note_upload(
         return error_json(StatusCode::BAD_REQUEST, "no files in upload");
     }
 
-    let Some(readme) = crate::paths::validate_readme_path(&state.ctx.base_dir, &item_readme) else {
+    let Some(readme) = crate::paths::validate_readme_path(&state.ctx().base_dir, &item_readme) else {
         return error_json(StatusCode::BAD_REQUEST, "invalid item");
     };
     let Some(item_dir) = readme.parent() else {
@@ -282,7 +281,7 @@ pub(super) async fn post_note_upload(
 
     match store_uploads(
         &target_dir,
-        &state.ctx.base_dir,
+        &state.ctx().base_dir,
         read_uploads,
         subdir_was_supplied,
         UPLOAD_MAX_BYTES,
@@ -297,7 +296,7 @@ pub(super) async fn post_note_upload(
                     .unwrap_or_else(|| "upload failed".into());
                 return error_json(StatusCode::BAD_REQUEST, &reason);
             }
-            state.cache.invalidate_item_at(&readme);
+            state.cache.consume(condash_state::MutationOutput::for_path(readme.as_path().to_path_buf()));
             json_response(&serde_json::json!({
                 "ok": true,
                 "stored": res.stored,

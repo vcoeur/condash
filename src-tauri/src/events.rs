@@ -29,17 +29,15 @@ use tokio::sync::broadcast;
 pub const DEBOUNCE: Duration = Duration::from_millis(750);
 
 /// Payload emitted by the watcher. Wire format is
-/// `{"tab": <tab>, "ts": <seconds>, "file": <leaf>?}`.
+/// `{"tab": <tab>, "ts": <seconds>}`.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct EventPayload {
     pub tab: String,
     pub ts: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file: Option<String>,
 }
 
 impl EventPayload {
-    fn new(tab: impl Into<String>, file: Option<String>) -> Self {
+    fn new(tab: impl Into<String>) -> Self {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -47,8 +45,14 @@ impl EventPayload {
         EventPayload {
             tab: tab.into(),
             ts,
-            file,
         }
+    }
+
+    /// Public factory used by routes that need to publish a tab refresh
+    /// (currently the configuration save handler — see
+    /// [`server::config_surface`](crate::server::config_surface)).
+    pub fn for_tab(tab: impl Into<String>) -> Self {
+        Self::new(tab)
     }
 }
 
@@ -87,7 +91,7 @@ impl EventBus {
 
 impl Default for EventBus {
     fn default() -> Self {
-        EventBus::new(256)
+        EventBus::new(1024)
     }
 }
 
@@ -273,13 +277,13 @@ pub fn start_watcher(bus: EventBus, cfg: WatchConfig) -> Option<WatcherHandle> {
 
             if let Some(root) = &projects_path {
                 if src.starts_with(root) && !is_noise(&leaf) && projects_deb.should_fire() {
-                    bus_clone.publish(EventPayload::new("projects", None));
+                    bus_clone.publish(EventPayload::new("projects"));
                     continue;
                 }
             }
             if let Some(root) = &knowledge_path {
                 if src.starts_with(root) && !is_noise(&leaf) && knowledge_deb.should_fire() {
-                    bus_clone.publish(EventPayload::new("knowledge", None));
+                    bus_clone.publish(EventPayload::new("knowledge"));
                     continue;
                 }
             }
@@ -288,7 +292,7 @@ pub fn start_watcher(bus: EventBus, cfg: WatchConfig) -> Option<WatcherHandle> {
                     && matches!(leaf.as_str(), "HEAD" | "index" | "packed-refs")
                     && code_deb.should_fire()
                 {
-                    bus_clone.publish(EventPayload::new("code", None));
+                    bus_clone.publish(EventPayload::new("code"));
                     break;
                 }
             }
@@ -320,7 +324,7 @@ mod tests {
         let bus = EventBus::new(16);
         let mut rx1 = bus.subscribe();
         let mut rx2 = bus.subscribe();
-        let payload = EventPayload::new("projects", None);
+        let payload = EventPayload::new("projects");
         bus.publish(payload.clone());
         let got1 = rx1.try_recv().expect("rx1 received");
         let got2 = rx2.try_recv().expect("rx2 received");
@@ -333,7 +337,7 @@ mod tests {
     fn bus_drop_on_no_subscribers_is_silent() {
         let bus = EventBus::new(4);
         // No subscribers — must not panic.
-        bus.publish(EventPayload::new("knowledge", None));
+        bus.publish(EventPayload::new("knowledge"));
         assert_eq!(bus.subscriber_count(), 0);
     }
 
