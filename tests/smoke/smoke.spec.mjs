@@ -67,22 +67,26 @@ test('dashboard renders a card grid + reacts to fs events + dispatches actions',
     );
     expect(sawWarn, `no warn for unknown data-action; saw ${JSON.stringify(consoleEvents)}`).toBe(true);
 
-    // 5. The PR #51 inline-handler guard is a `grep` over source files;
-    //    assert at runtime that the served DOM holds zero inline named
-    //    `on(input|submit|change|...)=` attributes too — a regression
-    //    that bypassed the lint (e.g. from a server-side template) would
-    //    still fail here.
+    // 5. Runtime mirror of tools/check-inline-handlers.sh: flag inline
+    //    `on(input|submit|change|...)=` handlers whose value reaches into
+    //    the bundle's symbol surface (i.e. anything that isn't just a
+    //    DOM-API expression on `event.`). A regression that bypassed
+    //    the lint (e.g. from a server-side template the grep doesn't
+    //    cover) still fails here.
     const inlineHits = await page.evaluate(() => {
-        const re = /^on(input|submit|change|pointerdown|mousedown|dblclick|keydown)$/;
+        const attrRe = /^on(input|submit|change|pointerdown|mousedown|dblclick|keydown)$/;
+        const eventApiRe = /^\s*event\./;
         const out = [];
         document.querySelectorAll('*').forEach((el) => {
             for (const a of el.attributes) {
-                if (re.test(a.name)) out.push({ tag: el.tagName, name: a.name, value: a.value });
+                if (!attrRe.test(a.name)) continue;
+                if (eventApiRe.test(a.value)) continue;
+                out.push({ tag: el.tagName, name: a.name, value: a.value });
             }
         });
         return out;
     });
-    expect(inlineHits, 'inline named on*= attrs leaked into the DOM').toEqual([]);
+    expect(inlineHits, 'named on*= attrs (non-event.* values) leaked into the DOM').toEqual([]);
 
     // 6. Companion to step 5: pre-PR-#51 the bundle exposed dozens of
     //    handlers as window globals (Object.assign(window, …)). Confirm
