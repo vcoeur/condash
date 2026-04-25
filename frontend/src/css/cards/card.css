@@ -43,7 +43,13 @@
     contain: layout paint;
 }
 .card:hover {
-    box-shadow: var(--shadow-md);
+    /* Border-only hover. We tried `box-shadow: var(--shadow-md)` in the
+       hover state too; even snapped (no transition), repainting a
+       blurred drop-shadow region on every card the mouse crosses kept
+       sustained CPU at ~46% on Linux/WebKitGTK. Border-color repaints
+       a 1px outline — essentially free — and is enough to signal
+       hover. The base shadow stays in place; we just don't lift it on
+       hover. */
     border-color: color-mix(in srgb, var(--text-muted) 22%, var(--border));
 }
 /* Lift the card above later siblings while its status popover is open — the
