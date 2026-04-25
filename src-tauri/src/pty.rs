@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use rand::Rng;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 /// Cap on the per-session scrollback ring buffer. 256 KiB — enough for a
 /// few screens of output. Larger pastes trim from the head. Matches
@@ -59,6 +59,10 @@ pub struct PtySession {
     /// `Some(tx)` when a viewer is attached; the pump task forwards
     /// chunks to it until the tx is dropped or `None`.
     viewer: Arc<Mutex<Option<mpsc::UnboundedSender<PumpMessage>>>>,
+    /// Flipped to `true` by the pump on EOF — gives any awaiter (the
+    /// runner-registry exit watcher, graceful-shutdown reapers) an
+    /// instant signal instead of having to poll the registry.
+    exit_signal: watch::Sender<bool>,
 }
 
 impl PtySession {
@@ -121,6 +125,21 @@ impl PtySession {
             let _ = child.kill();
         }
     }
+
+    /// Subscribe to this session's exit signal. The receiver flips from
+    /// `false` to `true` exactly once, when the PTY pump observes EOF
+    /// on the master side. Cheaper than polling the registry: the
+    /// runner-registry exit watcher and the graceful-shutdown reaper
+    /// both `await` on this rather than sleeping in a 200 ms loop.
+    pub fn subscribe_exit(&self) -> watch::Receiver<bool> {
+        self.exit_signal.subscribe()
+    }
+
+    /// Snapshot whether the PTY pump has already observed EOF — used
+    /// by the runner-registry stop path to short-circuit.
+    pub fn has_exited(&self) -> bool {
+        *self.exit_signal.borrow()
+    }
 }
 
 /// Per-process registry of live PTY sessions — cloneable handle shared
@@ -173,6 +192,39 @@ impl PtyRegistry {
             session.kill();
         }
         guard.clear();
+    }
+
+    /// Snapshot of every live session. Used by the graceful-shutdown
+    /// path to await each pump's EOF before letting the host exit.
+    pub fn snapshot(&self) -> Vec<Arc<PtySession>> {
+        self.inner
+            .lock()
+            .expect("registry mutex")
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    /// Graceful shutdown — kill every live PTY and *await* each pump's
+    /// EOF watch with a per-session timeout, so any registered drop
+    /// path (runner-registry shutdown, force_stop runners) sees the
+    /// session actually go away instead of racing the OS reaper. After
+    /// the wait, the registry is force-cleared.
+    pub async fn shutdown(&self, grace: std::time::Duration) {
+        let sessions = self.snapshot();
+        for s in &sessions {
+            s.kill();
+        }
+        for s in sessions {
+            let mut rx = s.subscribe_exit();
+            if *rx.borrow() {
+                continue;
+            }
+            let _ = tokio::time::timeout(grace, rx.changed()).await;
+        }
+        // Force-clear in case any pump didn't reach the unregister step
+        // within the grace window.
+        self.inner.lock().expect("registry mutex").clear();
     }
 }
 
@@ -276,6 +328,7 @@ pub fn spawn_session(
             .collect()
     };
 
+    let (exit_signal, _exit_rx_seed) = watch::channel(false);
     let session = Arc::new(PtySession {
         session_id: session_id.clone(),
         shell: shell_label,
@@ -286,6 +339,7 @@ pub fn spawn_session(
         master: Arc::new(Mutex::new(pair.master)),
         child: Arc::new(Mutex::new(child)),
         viewer: Arc::new(Mutex::new(None)),
+        exit_signal,
     });
 
     registry.insert(session.clone());
@@ -334,11 +388,14 @@ fn pump_loop(session: Arc<PtySession>, registry: PtyRegistry, mut reader: Box<dy
             Err(_) => break,
         }
     }
-    // EOF or read error — tell the viewer and unregister.
+    // EOF or read error — tell the viewer, broadcast the exit signal
+    // to anyone awaiting on it (runner-registry exit watcher, the
+    // graceful-shutdown reaper), and unregister.
     let viewer = { session.viewer.lock().expect("viewer mutex").take() };
     if let Some(tx) = viewer {
         let _ = tx.send(PumpMessage::Exit);
     }
+    let _ = session.exit_signal.send(true);
     registry.remove(&session.session_id);
 }
 

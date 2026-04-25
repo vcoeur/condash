@@ -5,20 +5,27 @@
    `sections/*.js` is now in progress (P-07..P-10 of
    conception/projects/2026-04-23-condash-frontend-extraction).
 
-   First split: the terminal-tab subsystem (former "Tab drag" region)
-   lives in `sections/tab-drag.js`. Imports below + exports scattered
-   through the file are the contract between the two halves; see
-   notes/01-p07-tab-drag-split.md for the design decisions. The split is
-   intentionally circular (dashboard-main.js ↔ sections/tab-drag.js) —
-   safe because cross-module references only occur inside function
-   bodies, and side-effect registration happens from
-   initTabDragSideEffects() called at the bottom of this file. */
+   The terminal-tab subsystem lives across three sibling modules under
+   `sections/terminal-{pointer,lifecycle,shortcuts}.js` (the C10 split of
+   the 2026-04-25 architecture-hardening sweep, replacing the former
+   962-LOC `tab-drag.js` monolith). Each owns one focused concern; the
+   imports + side-effect inits below are the contract with the rest of
+   the bundle. The cycle (each terminal-* module imports from at least
+   one other) is safe because every cross-module reference is contained
+   inside a function body — see notes/01-p07-tab-drag-split.md §D2. */
 
 import {
     toggleTerminal, termNewTab, termNewLauncherTab,
-    termDragStart, termSplitStart, pasteRecentScreenshot,
-    initTabDragSideEffects,
-} from './sections/tab-drag.js';
+    initTerminalLifecycleSideEffects,
+} from './sections/terminal-lifecycle.js';
+import {
+    termDragStart, termSplitStart,
+    initTerminalPointerSideEffects,
+} from './sections/terminal-pointer.js';
+import {
+    pasteRecentScreenshot,
+    initTerminalShortcutsSideEffects,
+} from './sections/terminal-shortcuts.js';
 import {
     toggleTheme, initThemeSideEffects,
 } from './sections/theme.js';
@@ -353,10 +360,12 @@ async function createNotesSubdir(readmePath, parentRelToItem) {
 
 // The "Tab drag" region that used to live here (pointer-event drag,
 // tab create/close/rename, splitter drag, pane-resize drag, shortcuts,
-// restore-on-reload) now lives in `sections/tab-drag.js`. Register its
-// DOM-level side effects now that both modules have finished
-// evaluating — see the notes for P-07
-// (projects/2026-04-23-condash-frontend-extraction/notes/01-p07-tab-drag-split.md).
+// restore-on-reload) was first relocated to `sections/tab-drag.js`
+// (P-07 of conception/projects/2026-04-23-condash-frontend-extraction)
+// and then decomposed into the three focused modules now imported at
+// the top of this file (C10 of 2026-04-25-condash-architecture-hardening-finish).
+// Register their DOM-level side effects now that every module has
+// finished evaluating.
 /* Register all click actions rendered by the server as `data-action`
    attrs. Keep this block in one place so the inventory is obvious — one
    registerAction call per distinct action name, grouped by subsystem. */
@@ -471,7 +480,9 @@ function registerDashboardActions() {
 registerDashboardActions();
 initActionDispatch();
 
-initTabDragSideEffects();
+initTerminalPointerSideEffects();
+initTerminalLifecycleSideEffects();
+initTerminalShortcutsSideEffects();
 initThemeSideEffects();
 initAboutModalSideEffects();
 initNewItemModalSideEffects();

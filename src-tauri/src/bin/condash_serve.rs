@@ -61,6 +61,7 @@ async fn async_main() -> Result<()> {
     // items / knowledge slices without needing an explicit `/rescan`.
     condash_lib::events::spawn_cache_invalidator(event_bus.clone(), cache.clone());
 
+    let (shutdown_tx, _shutdown_rx_seed) = tokio::sync::watch::channel(false);
     let state = condash_lib::server::AppState {
         ctx_swap: Arc::new(arc_swap::ArcSwap::from(ctx)),
         cache,
@@ -69,6 +70,7 @@ async fn async_main() -> Result<()> {
         event_bus,
         pty_registry: condash_lib::pty::PtyRegistry::new(),
         runner_registry: condash_lib::runner_registry::RunnerRegistry::new(),
+        shutdown_tx: Arc::new(shutdown_tx),
     };
 
     // Honor CONDASH_PORT if set, else pick a free one like the Tauri

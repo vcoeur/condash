@@ -57,6 +57,7 @@ fn harness_with(templates: Vec<(&str, &str)>) -> Harness {
         event_bus: EventBus::default(),
         pty_registry: PtyRegistry::new(),
         runner_registry: RunnerRegistry::new(),
+        shutdown_tx: Arc::new(tokio::sync::watch::channel(false).0),
     };
     Harness {
         _tmp: tmp,

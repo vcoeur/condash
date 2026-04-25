@@ -78,6 +78,42 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // Graceful shutdown: when the user closes the main window,
+            // hold the close while we run the registries' drop chains
+            // (force_stop runners, await PTY EOF), then exit. Without
+            // this, the OS reaper kills child PTYs the moment the main
+            // process exits — and any configured `force_stop` shell
+            // command never gets a chance to run.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle().clone();
+                if let Some(state) = app.try_state::<server::AppState>() {
+                    let runner_registry = state.runner_registry.clone();
+                    let pty_registry = state.pty_registry.clone();
+                    let shutdown_tx = state.shutdown_tx.clone();
+                    let force_stop_templates =
+                        state.ctx().repo_force_stop_templates.clone();
+                    api.prevent_close();
+                    tauri::async_runtime::spawn(async move {
+                        // Flip the latch so any subscriber (e.g. event
+                        // streams) can wind itself down gracefully.
+                        let _ = shutdown_tx.send(true);
+                        // Run user-supplied force_stop scripts then
+                        // SIGTERM each PTY child, awaiting EOF so the
+                        // pump-thread cleanup runs to completion.
+                        let grace = std::time::Duration::from_secs(5);
+                        runner_registry::shutdown(
+                            &runner_registry,
+                            &force_stop_templates,
+                            grace,
+                        )
+                        .await;
+                        pty_registry.shutdown(grace).await;
+                        app.exit(0);
+                    });
+                }
+            }
+        })
         .setup(|app| {
             let conception_path = match resolve_conception_path() {
                 Ok(p) => p,
@@ -105,6 +141,8 @@ pub fn run() {
             let event_bus = events::EventBus::default();
             let pty_registry = pty::PtyRegistry::new();
             let runner_registry = runner_registry::RunnerRegistry::new();
+            let (shutdown_tx, _shutdown_rx_seed) = tokio::sync::watch::channel(false);
+            let shutdown_tx = Arc::new(shutdown_tx);
             let state = server::AppState {
                 ctx_swap: Arc::new(arc_swap::ArcSwap::from(ctx.clone())),
                 cache,
@@ -113,6 +151,7 @@ pub fn run() {
                 event_bus: event_bus.clone(),
                 pty_registry: pty_registry.clone(),
                 runner_registry: runner_registry.clone(),
+                shutdown_tx: shutdown_tx.clone(),
             };
 
             // Start the filesystem watcher (best-effort — the UI

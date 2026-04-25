@@ -5,15 +5,14 @@
    conception/projects/2026-04-23-condash-frontend-extraction).
 
    openInTerminal and workOn reach into the terminal-tab subsystem —
-   import _termSyncOpenFlag + _termCreateTab from the tab-drag module
-   (P-07) and _termActiveTab + _termSendResize + termState from
-   dashboard-main.js (the terminal region, earmarked for P-09). All
-   cross-module references sit inside function bodies, so the circular
-   import (dashboard-main → git-actions → dashboard-main) is safe
-   under the same TDZ rules documented in
-   notes/01-p07-tab-drag-split.md §D2. */
+   import _termSyncOpenFlag + _termCreateTab from the lifecycle module
+   (post-C10 split of the original tab-drag.js) and _termActiveTab +
+   _termSendResize + termState from terminal.js. All cross-module
+   references sit inside function bodies, so the circular import
+   (dashboard-main → git-actions → dashboard-main) is safe under the
+   same TDZ rules documented in notes/01-p07-tab-drag-split.md §D2. */
 
-import { _termCreateTab, _termSyncOpenFlag } from './tab-drag.js';
+import { _termCreateTab, _termSyncOpenFlag } from './terminal-lifecycle.js';
 import { termState, _termActiveTab, _termSendResize } from './terminal.js';
 
 async function openPath(btn, path, tool) {

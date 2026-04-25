@@ -110,6 +110,12 @@ impl RunnerRegistry {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Drop every registry entry. Used by the graceful-shutdown path
+    /// after each runner's drop chain has completed.
+    pub fn clear(&self) {
+        self.inner.lock().expect("runners mutex").clear();
+    }
 }
 
 /// Spawn a runner under the shared PTY registry. Returns `Err("already
@@ -152,37 +158,92 @@ pub fn start(
     });
     runners.insert(session.clone());
 
-    // Spawn a lightweight "exit watcher" thread that polls the PTY
-    // registry. When the PTY session disappears (pump thread reaped on
-    // EOF), we stamp the exit onto the runner. portable-pty doesn't
-    // expose the wait status on the parent side without moving the
-    // Child value, so we default to 0 — the UI only needs a signal
-    // that the runner stopped, not the exact code.
+    // Awaiter: the PTY pump signals its exit watch when EOF lands on
+    // the master side. We listen for that single transition and stamp
+    // the exit onto the runner — exit propagation is now bounded by
+    // event-loop latency rather than the previous 200 ms poll. The
+    // UI keeps the session in `exited: N` until the user clicks Stop.
+    // portable-pty doesn't expose the child's wait status on the
+    // parent side without moving the Child value, so we default to 0.
     let watcher_runner = session.clone();
-    let watcher_pty_reg = pty_registry.clone();
     let watcher_runners = runners.clone();
-    let watcher_pty_id = session.pty.session_id.clone();
     let watcher_key = key.to_string();
-    std::thread::Builder::new()
-        .name(format!("condash-runner-exit-{key}"))
-        .spawn(move || loop {
-            if watcher_pty_reg.get(&watcher_pty_id).is_none() {
-                *watcher_runner.exit_code.lock().expect("exit mutex") = Some(0);
-                *watcher_runner.stamp.lock().expect("stamp mutex") = next_stamp();
-                // Keep the session in the runner registry — the UI shows
-                // `exited: 0` until the user clicks Stop. Just exit the
-                // watcher thread.
-                break;
-            }
-            // Also bail if the session was manually cleared.
-            if watcher_runners.get(&watcher_key).is_none() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        })
-        .map_err(|e| format!("spawn watcher: {e}"))?;
+    let mut exit_rx = session.pty.subscribe_exit();
+    tokio::spawn(async move {
+        // First flip from `false` to `true` is the EOF signal. If the
+        // session was manually cleared from the registry while we
+        // were awaiting, drop out without stamping anything — the
+        // explicit stop path handles its own bookkeeping.
+        let _ = exit_rx.changed().await;
+        if watcher_runners.get(&watcher_key).is_none() {
+            return;
+        }
+        *watcher_runner.exit_code.lock().expect("exit mutex") = Some(0);
+        *watcher_runner.stamp.lock().expect("stamp mutex") = next_stamp();
+    });
 
     Ok(session)
+}
+
+/// Run the configured `force_stop` shell command for a single repo
+/// key, blocking up to `grace` for it to finish. Errors are swallowed
+/// — `force_stop` is a best-effort cleanup hook the user supplies.
+async fn run_force_stop(command: &str, grace: std::time::Duration) {
+    let cmd = command.to_string();
+    let spawn = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+    })
+    .await;
+    let mut child = match spawn {
+        Ok(Ok(c)) => c,
+        _ => return,
+    };
+    let wait = tokio::task::spawn_blocking(move || child.wait());
+    let _ = tokio::time::timeout(grace, wait).await;
+}
+
+/// Graceful shutdown — for every live runner, run any configured
+/// `force_stop` shell command first (so users can free a port before
+/// condash's own SIGTERM reaches the runner's children), then SIGTERM
+/// the PTY child. Awaits each session's PTY exit signal up to `grace`
+/// so the host doesn't exit while a runner's drop chain is still in
+/// flight. Called from the Tauri host's `WindowEvent::CloseRequested`
+/// handler.
+pub async fn shutdown(
+    runners: &RunnerRegistry,
+    force_stop_templates: &std::collections::HashMap<String, String>,
+    grace: std::time::Duration,
+) {
+    let sessions = runners.snapshot();
+    let mut handles = Vec::with_capacity(sessions.len());
+    for session in sessions {
+        if session.exit_code_now().is_some() {
+            continue;
+        }
+        let force_stop = force_stop_templates.get(&session.key).cloned();
+        let pty = session.pty.clone();
+        handles.push(tokio::spawn(async move {
+            if let Some(cmd) = force_stop {
+                run_force_stop(&cmd, grace).await;
+            }
+            pty.kill();
+            let mut rx = pty.subscribe_exit();
+            if !*rx.borrow() {
+                let _ = tokio::time::timeout(grace, rx.changed()).await;
+            }
+        }));
+    }
+    for h in handles {
+        let _ = h.await;
+    }
+    // Drop every registry slot — the host is going away.
+    runners.clear();
 }
 
 /// Stop a runner. SIGTERMs the PTY child (dropping its Child handle),
@@ -203,12 +264,13 @@ pub async fn stop(
         return Ok(true);
     }
     session.pty.kill();
-    let deadline = tokio::time::Instant::now() + grace;
-    while tokio::time::Instant::now() < deadline {
-        if session.exit_code_now().is_some() {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // Wait on the PTY's exit watch — the runner exit watcher (above)
+    // flips `exit_code` from the same signal, so as soon as the pump
+    // observes EOF the watcher's tokio task will stamp the code.
+    // Either path satisfies us; whichever lands first ends the wait.
+    let mut exit_rx = session.pty.subscribe_exit();
+    if !*exit_rx.borrow() && session.exit_code_now().is_none() {
+        let _ = tokio::time::timeout(grace, exit_rx.changed()).await;
     }
     // If the exit watcher hasn't flipped the code yet, stamp it
     // manually so the UI isn't left showing "running" on a dead

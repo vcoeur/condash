@@ -6,20 +6,21 @@
    shortcut hide/show the pane while leaving the tabs intact.
 
    Extracted from dashboard-main.js on 2026-04-24 (P-09 cut 2 of
-   conception/projects/2026-04-23-condash-frontend-extraction). This
-   is the second half of the terminal-tab subsystem P-07 started —
-   sections/tab-drag.js already owns _termCreateTab, _termCloseTab,
-   _termSyncOpenFlag, _termChipPointerDown, _termStartRename,
-   _termDefaultLabel. P-09 cut 2 brings the cross-region state
-   (termState) and the shared helpers that tab-drag reaches back in
-   for to the same directory. The circular import (terminal.js ↔
-   tab-drag.js) is safe under the TDZ rules documented in
-   notes/01-p07-tab-drag-split.md §D2. */
+   conception/projects/2026-04-23-condash-frontend-extraction). The
+   pre-2026-04-25 sister file `sections/tab-drag.js` was split into
+   three focused modules (terminal-pointer, terminal-lifecycle,
+   terminal-shortcuts) by C10 of the architecture-hardening sweep;
+   this module remains the cross-cutting state + low-level DOM
+   helpers everyone else reaches for. The circular imports
+   (terminal.js ↔ terminal-{pointer,lifecycle,shortcuts}.js) stay
+   safe under the TDZ rules documented in
+   notes/01-p07-tab-drag-split.md §D2 — every cross-module reference
+   is contained inside a function body. */
 
+import { _termChipPointerDown } from './terminal-pointer.js';
 import {
-    _termChipPointerDown, _termStartRename, _termDefaultLabel,
-    _termCloseTab,
-} from './tab-drag.js';
+    _termStartRename, _termDefaultLabel, _termCloseTab,
+} from './terminal-lifecycle.js';
 
 /* Clipboard bridge — Tauri 2 exposes an IPC `invoke` under
    `window.__TAURI__.core.invoke` (requires `withGlobalTauri: true` plus a

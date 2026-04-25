@@ -34,6 +34,7 @@ async fn start_server() -> (u16, TempDir) {
         event_bus: EventBus::default(),
         pty_registry: PtyRegistry::new(),
         runner_registry: condash_lib::runner_registry::RunnerRegistry::new(),
+        shutdown_tx: Arc::new(tokio::sync::watch::channel(false).0),
     };
     let port = server::start(state, 0).await.expect("start server");
     (port, tmp)
