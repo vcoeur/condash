@@ -41,7 +41,7 @@ condash/
       launcher.rs            <- "open with" command-chain executor
       server/                <- axum routers, one file per concern
         mod.rs                  - register_all + Router builder
-        shell.rs                - `/`, `/fragment/{history,knowledge,code,projects}`, static assets
+        shell.rs                - `/`, `/fragment/{history,knowledge,code,projects}` + per-item `/fragment/{projects,history}/:slug`, `/fragment/knowledge/one?path=…`, `/fragment/code/:repo`, static assets
         steps.rs                - `/toggle`, `/add-step`, `/edit-step`, `/remove-step`, `/set-priority`, `/reorder-all`
         notes.rs                - `/note*` mutations + uploads
         items.rs                - `/create-item`
@@ -95,7 +95,7 @@ Precedence when resolving the conception tree (`src-tauri/src/lib.rs::resolve_co
 
 ## Dashboard HTML
 
-`frontend/dashboard.html` is served verbatim at `/`. It is a single-file SPA driven by htmx + a small set of hand-written ES modules under `frontend/src/js/`. The bundle (`frontend/dist/bundle.{js,css}`) is rebuilt by `make frontend` and embedded into the binary via rust-embed. Per-pane refreshes go through `hx-trigger="sse:<tab>"` + `/fragment/<tab>`. Do not refactor `dashboard.html` into a JS framework — the single-file contract is deliberate (one `<script>` tag, zero npm install at runtime).
+`frontend/dashboard.html` is served verbatim at `/`. It is a single-file SPA driven by htmx + a small set of hand-written ES modules under `frontend/src/js/`. The bundle (`frontend/dist/bundle.{js,css}`) is rebuilt by `make frontend` and embedded into the binary via rust-embed. Per-pane refreshes go through `hx-trigger="sse:<tab>"` + `/fragment/<tab>` for structural changes; per-item refreshes go through `hx-trigger="sse:<tab>-<id>"` + `/fragment/<tab>/<id>` on each card root, so a single step toggle / file edit / git ref change re-fetches one ~few-KB fragment instead of the whole pane (see `src-tauri/src/events.rs::classify` for path → `(pane, id)` resolution). Do not refactor `dashboard.html` into a JS framework — the single-file contract is deliberate (one `<script>` tag, zero npm install at runtime).
 
 ## PDF preview
 

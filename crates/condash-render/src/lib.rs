@@ -24,7 +24,7 @@ pub mod templating;
 
 pub use note_render::{raw_payload as note_raw_payload, render_note};
 
-use condash_parser::{knowledge_title_and_desc, Item, KnowledgeNode};
+use condash_parser::{knowledge_title_and_desc, Item, KnowledgeCard, KnowledgeNode};
 use condash_state::{collect_git_repos, search_items, RenderCtx, SearchResult};
 use minijinja::context;
 use minijinja::value::Value;
@@ -98,6 +98,47 @@ pub fn render_card(item: &Item) -> String {
         icons => icons::icons_value(),
     };
     templating::render("card.html.j2", ctx)
+}
+
+/// Render one knowledge entry by its path. Walks the tree to find the
+/// matching `KnowledgeCard` (body or index) and renders the
+/// `knowledge_card` macro with it. Returns `None` when the path isn't
+/// present in the tree (file deleted between event and render — the
+/// pane-wide structural fallback handles those cases).
+pub fn render_one_knowledge_card(root: Option<&KnowledgeNode>, path: &str) -> Option<String> {
+    let entry = find_knowledge_entry(root?, path)?;
+    let ctx = context! {
+        e => Value::from_serialize(entry),
+        icons => icons::icons_value(),
+    };
+    Some(templating::render("knowledge_card_one.html.j2", ctx))
+}
+
+fn find_knowledge_entry<'a>(node: &'a KnowledgeNode, path: &str) -> Option<&'a KnowledgeCard> {
+    for entry in &node.body {
+        if entry.path == path {
+            return Some(entry);
+        }
+    }
+    if let Some(idx) = &node.index {
+        if idx.path == path {
+            return Some(idx);
+        }
+    }
+    for child in &node.children {
+        if let Some(hit) = find_knowledge_entry(child, path) {
+            return Some(hit);
+        }
+    }
+    None
+}
+
+/// Render one history row given the underlying item. Used by
+/// `/fragment/history/:slug`. The slug serves as the morph anchor (the
+/// row carries `id="hist-<slug>"`).
+pub fn render_one_history_row(item: &Item) -> String {
+    let ctx = context! { item => Value::from_serialize(item) };
+    templating::render("history_card_one.html.j2", ctx)
 }
 
 /// Render the full knowledge tree under the `{{KNOWLEDGE}}` placeholder.
@@ -402,6 +443,70 @@ mod tests {
         assert!(html.contains("class=\"card collapsed\""));
         assert!(html.contains("Title 2026-04-22-foo"));
         assert!(html.contains("data-node-id=\"projects/now/2026-04-22-foo\""));
+    }
+
+    #[test]
+    fn render_card_carries_per_item_hx_attrs() {
+        let item = simple_item("2026-04-22-foo", Priority::Now);
+        let html = render_card(&item);
+        assert!(
+            html.contains("hx-trigger=\"sse:projects-2026-04-22-foo\""),
+            "missing per-item sse trigger: {html}"
+        );
+        assert!(
+            html.contains("hx-get=\"/fragment/projects/2026-04-22-foo\""),
+            "missing per-item hx-get: {html}"
+        );
+        assert!(html.contains("hx-target=\"this\""));
+        assert!(html.contains("hx-swap=\"morph:outerHTML\""));
+    }
+
+    #[test]
+    fn render_one_history_row_outputs_history_card() {
+        let item = simple_item("2026-04-22-foo", Priority::Now);
+        let html = render_one_history_row(&item);
+        assert!(html.contains("class=\"knowledge-card history-card\""));
+        assert!(html.contains("id=\"hist-2026-04-22-foo\""));
+        assert!(html.contains("hx-trigger=\"sse:projects-2026-04-22-foo\""));
+        assert!(html.contains("hx-get=\"/fragment/history/2026-04-22-foo\""));
+    }
+
+    #[test]
+    fn render_one_knowledge_card_finds_entry_and_renders_macro() {
+        use condash_parser::KnowledgeCard;
+        let entry = KnowledgeCard {
+            path: "knowledge/internal/condash.md".into(),
+            title: "Condash".into(),
+            desc: "All about condash".into(),
+        };
+        let leaf = KnowledgeNode {
+            name: "internal".into(),
+            label: "internal".into(),
+            rel_dir: "knowledge/internal".into(),
+            index: None,
+            body: vec![entry.clone()],
+            children: vec![],
+            count: 1,
+        };
+        let root = KnowledgeNode {
+            name: "knowledge".into(),
+            label: "knowledge".into(),
+            rel_dir: "knowledge".into(),
+            index: None,
+            body: vec![],
+            children: vec![leaf],
+            count: 1,
+        };
+        let html = render_one_knowledge_card(Some(&root), "knowledge/internal/condash.md")
+            .expect("found entry");
+        assert!(html.contains("class=\"knowledge-card\""));
+        assert!(html.contains("Condash"));
+        assert!(html.contains(
+            "hx-trigger=\"sse:knowledge-knowledge/internal/condash.md\""
+        ));
+        assert!(html.contains("hx-get=\"/fragment/knowledge/one?path=knowledge/internal/condash.md\""));
+        // Missing path returns None.
+        assert!(render_one_knowledge_card(Some(&root), "knowledge/missing.md").is_none());
     }
 
     #[test]

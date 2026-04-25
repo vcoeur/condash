@@ -25,14 +25,16 @@ pub(super) async fn events_stream(
         match res {
             Ok(payload) => {
                 let data = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into());
-                // Emit a named SSE event matching the payload's `tab`
-                // field (`projects` / `knowledge` / `code`) so htmx
-                // listeners can target a specific tab via
-                // `hx-trigger="sse:projects"`. The generic
-                // `htmx:sseMessage` handler in `sse.js` still fires
-                // for every frame regardless of name.
+                // Emit a named SSE event:
+                //   - `<tab>` for pane-wide / structural events (the
+                //     pane container's `hx-trigger="sse:<tab>"` fires)
+                //   - `<tab>-<id>` for per-item events (a specific
+                //     card's `hx-trigger="sse:<tab>-<id>"` fires;
+                //     other cards stay quiet)
+                // The generic `htmx:sseMessage` handler in `sse.js`
+                // still fires for every frame regardless of name.
                 Some(Ok::<_, std::convert::Infallible>(
-                    SseEvent::default().event(payload.tab.clone()).data(data),
+                    SseEvent::default().event(payload.event_name()).data(data),
                 ))
             }
             // Subscriber lagged behind the broadcast queue. The next

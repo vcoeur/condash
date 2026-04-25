@@ -18,7 +18,10 @@ pub const CARD_TEMPLATE: &str = include_str!("../templates/card.html.j2");
 pub const HISTORY_TEMPLATE: &str = include_str!("../templates/history.html.j2");
 pub const HISTORY_SEARCH_RESULTS_TEMPLATE: &str =
     include_str!("../templates/history_search_results.html.j2");
+pub const HISTORY_CARD_ONE_TEMPLATE: &str = include_str!("../templates/history_card_one.html.j2");
 pub const KNOWLEDGE_TREE_TEMPLATE: &str = include_str!("../templates/knowledge_tree.html.j2");
+pub const KNOWLEDGE_CARD_ONE_TEMPLATE: &str =
+    include_str!("../templates/knowledge_card_one.html.j2");
 pub const MACROS_TEMPLATE: &str = include_str!("../templates/_macros.html.j2");
 
 fn embed_filter(value: Value) -> Result<Value, Error> {
@@ -184,6 +187,10 @@ fn build_env() -> Environment<'static> {
     )
     .unwrap();
     env.add_template("knowledge_tree.html.j2", KNOWLEDGE_TREE_TEMPLATE)
+        .unwrap();
+    env.add_template("knowledge_card_one.html.j2", KNOWLEDGE_CARD_ONE_TEMPLATE)
+        .unwrap();
+    env.add_template("history_card_one.html.j2", HISTORY_CARD_ONE_TEMPLATE)
         .unwrap();
 
     env.add_filter("embed", embed_filter);

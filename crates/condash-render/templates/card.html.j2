@@ -3,7 +3,11 @@
 {% set kind = item.kind %}
 {% set node_id = "projects/" ~ pri ~ "/" ~ item.slug %}
 <div class="card collapsed" id="{{ item.slug }}"
-  data-kind="{{ kind }}" data-priority="{{ pri }}" data-node-id="{{ node_id }}">
+  data-kind="{{ kind }}" data-priority="{{ pri }}" data-node-id="{{ node_id }}"
+  hx-trigger="sse:projects-{{ item.slug }}"
+  hx-get="/fragment/projects/{{ item.slug }}"
+  hx-target="this"
+  hx-swap="morph:outerHTML">
   <div class="card-header">
     <div class="card-header-left" data-action="toggle-card">
       <span class="kind-prefix kind-{{ kind }}">{{ kind }}</span>

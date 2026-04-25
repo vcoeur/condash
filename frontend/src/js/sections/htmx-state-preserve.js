@@ -7,12 +7,16 @@
    state in `htmx:beforeSwap` and re-applies it in `htmx:afterSwap`,
    per swap target.
 
-   Three targets carry preservable state:
+   Targets that carry preservable state:
 
-   - `#cards`              — card.collapsed class, card.expanded class
+   - `#cards`              — card.collapsed class on every child card
    - `#knowledge`          — <details data-node-id> open state, then
                              re-apply the client-side filterKnowledge
                              query
+   - per-card swap (a single `.card[id=<slug>]` root) — the
+                             `collapsed` class on that one card. Driven
+                             by per-item SSE patches, so the target is
+                             the card itself, not the pane.
    - `#git-panel`          — runner-viewer mounts already carry
                              `hx-preserve="true"` server-side, so
                              nothing to do here; included for symmetry. */
@@ -78,12 +82,21 @@ function _restoreKnowledgeState(el, snap) {
     }
 }
 
+/* Per-card snapshot — keyed by the card's id so multiple cards in
+   flight at once don't trample one another. */
+var _cardSnap = {};
+
 function initHtmxStatePreserve() {
     document.body.addEventListener('htmx:beforeSwap', function(ev) {
         var target = ev.target;
         if (!target || !target.id) return;
         if (target.id === 'cards') _snap.cards = _captureCardsState(target);
         else if (target.id === 'knowledge') _snap.knowledge = _captureKnowledgeState(target);
+        else if (target.classList && target.classList.contains('card')) {
+            _cardSnap[target.id] = {
+                expanded: !target.classList.contains('collapsed'),
+            };
+        }
     });
     document.body.addEventListener('htmx:afterSwap', function(ev) {
         var target = ev.target;
@@ -94,6 +107,16 @@ function initHtmxStatePreserve() {
         } else if (target.id === 'knowledge') {
             _restoreKnowledgeState(target, _snap.knowledge);
             _snap.knowledge = null;
+        } else if (target.classList && target.classList.contains('card')) {
+            var snap = _cardSnap[target.id];
+            if (snap && snap.expanded) target.classList.remove('collapsed');
+            _cardSnap[target.id] = null;
+            // After a per-card swap the priority filter still has to
+            // re-evaluate this one card — its data-priority may have
+            // changed even though the surrounding pane didn't refresh.
+            if (typeof _applySubtab === 'function' && _activeSubtab) {
+                _applySubtab(_activeSubtab);
+            }
         }
     });
 }
