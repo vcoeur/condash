@@ -27,12 +27,15 @@
     position: relative;
     border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem;
     box-shadow: var(--shadow-sm); background: var(--bg-card);
-    /* `box-shadow` is intentionally not animated — the hover state still
-       changes shadow, but we let it snap instead of repainting a blurred
-       drop-shadow on every frame. `transform` is GPU-only and `border-color`
-       only repaints the border edge, so animating those is essentially free. */
-    transition: border-color 0.18s ease, transform 0.18s ease;
-    /* Each card is its own paint + layout atom, so an SSE-driven morph swap
+    /* No hover transition. Earlier we animated `border-color` + `transform`
+       (b7d8535 already snapped `box-shadow`) on the assumption they were
+       essentially free — direct WebKit Inspector recordings of plain mouse
+       movement said otherwise (~48% avg CPU on Linux/WebKitGTK with the mouse
+       just sweeping the cards pane). Snapping every hover-relevant property
+       drops idle paint cost to ~0; the visual feedback (shadow lift, border
+       darken) is unchanged, just instant instead of 0.18 s eased.
+
+       Each card is its own paint + layout atom, so an SSE-driven morph swap
        invalidates only the changed cards instead of the full pane. The
        :has(.pri-menu.open) rule below drops paint containment because the
        open popover overflows the card's bottom edge — contain:paint would
@@ -42,7 +45,6 @@
 .card:hover {
     box-shadow: var(--shadow-md);
     border-color: color-mix(in srgb, var(--text-muted) 22%, var(--border));
-    transform: translateY(-1px);
 }
 /* Lift the card above later siblings while its status popover is open — the
    popover overflows the card's bottom edge and would otherwise paint behind
