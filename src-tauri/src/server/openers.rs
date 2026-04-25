@@ -42,7 +42,7 @@ pub(super) async fn post_open(
             &format!("no commands configured for {}", p.tool),
         );
     }
-    let value = validated.to_string_lossy().into_owned();
+    let value = validated.as_path().to_string_lossy().into_owned();
     match crate::launcher::try_chain(&slot.commands, "path", &value) {
         Some(used) => json_response(&serde_json::json!({"ok": true, "command": used})),
         None => error_json(StatusCode::BAD_GATEWAY, "all commands failed"),
@@ -72,7 +72,7 @@ pub(super) async fn post_open_folder(
     let Some(validated) = validated else {
         return error_json(StatusCode::FORBIDDEN, "path out of sandbox");
     };
-    let value = validated.to_string_lossy().into_owned();
+    let value = validated.as_path().to_string_lossy().into_owned();
     match crate::launcher::try_chain_static(crate::launcher::FOLDER_FALLBACKS, "path", &value) {
         Some(used) => json_response(&serde_json::json!({"ok": true, "command": used})),
         None => error_json(StatusCode::BAD_GATEWAY, "no folder opener succeeded"),
@@ -125,7 +125,7 @@ pub(super) async fn post_open_doc(
             match std::fs::canonicalize(&rel).ok().and_then(|c| {
                 let base = std::fs::canonicalize(&state.ctx.base_dir).ok()?;
                 if c.starts_with(&base) {
-                    Some(c)
+                    Some(crate::paths::ValidatedPath::from_canonical_in_sandbox(c))
                 } else {
                     None
                 }
@@ -135,7 +135,7 @@ pub(super) async fn post_open_doc(
             }
         }
     };
-    let value = full.to_string_lossy().into_owned();
+    let value = full.as_path().to_string_lossy().into_owned();
     // Prefer the user's configured pdf_viewer chain; fall back to the
     // xdg-open / gio open chain.
     let chain: Vec<String> = if state.ctx.pdf_viewer.is_empty() {

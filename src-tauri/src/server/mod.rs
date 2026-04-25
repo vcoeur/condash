@@ -268,7 +268,7 @@ pub(super) fn live_runners_snapshot(state: &AppState) -> condash_render::git_ren
 pub(super) fn validate_open_path(
     ctx: &condash_state::RenderCtx,
     path: &str,
-) -> Option<std::path::PathBuf> {
+) -> Option<crate::paths::ValidatedPath> {
     if path.is_empty() || path.contains('\0') {
         return None;
     }
@@ -283,7 +283,11 @@ pub(super) fn validate_open_path(
         .collect();
     for root in roots {
         if canonical.starts_with(&root) {
-            return Some(canonical);
+            // Sandbox check passed: the canonical path lives under one
+            // of the configured workspace roots.
+            return Some(crate::paths::ValidatedPath::from_canonical_in_sandbox(
+                canonical,
+            ));
         }
     }
     None
