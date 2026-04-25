@@ -1,7 +1,7 @@
 //! Filesystem-walk memoization.
 //!
 //! Without a cache every request re-walks the conception tree: `/`,
-//! `/check-updates`, `/fragment`, and `/search-history` all call
+//! `/check-updates`, and the `/fragment/*` routes all call
 //! `collect_items` (which parses every `README.md` under `projects/`)
 //! and `collect_knowledge` (which walks `knowledge/` recursively).
 //!
@@ -164,9 +164,9 @@ impl WorkspaceCache {
     }
 
     /// Return the memoized knowledge tree, warming on first access.
-    /// The outer `Arc` layer makes the `Option<KnowledgeNode>` cheap to
-    /// share; the inner `Option` mirrors Python's "directory missing"
-    /// case.
+    /// The outer `Arc` makes the `Option<KnowledgeNode>` cheap to
+    /// share; the inner `Option` is `None` when no `knowledge/`
+    /// directory exists.
     pub fn get_knowledge(&self, ctx: &RenderCtx) -> Arc<Option<KnowledgeNode>> {
         if let Some(k) = self.inner.read().unwrap().knowledge.clone() {
             return k;

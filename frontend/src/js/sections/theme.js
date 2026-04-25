@@ -1,16 +1,15 @@
-/* Theme toggle + persistence. Extracted from dashboard-main.js on
-   2026-04-24 (P-08 of conception/projects/2026-04-23-condash-frontend-extraction).
+/* Theme toggle + persistence.
 
    Reads the saved preference from localStorage, falls back to the
    system colour-scheme, and writes the chosen value back on every
    toggle. Also live-swaps any mounted CodeMirror editors so their
    colour scheme tracks the dashboard's.
 
-   Circular-import rule (see notes/01-p07-tab-drag-split.md §D2): the
-   CodeMirror bindings (_cmViews, _currentCmTheme) are referenced only
-   inside applyTheme's function body, never at top level. Side-effect
-   registration (the first applyTheme call) is deferred to
-   initThemeSideEffects(), invoked from dashboard-main.js's tail. */
+   The CodeMirror bindings (_cmViews, _currentCmTheme) are referenced
+   only inside applyTheme's function body, keeping the cycle with
+   config-modal.js TDZ-safe. Side-effect registration (the first
+   applyTheme call) is deferred to initThemeSideEffects(), invoked
+   from dashboard-main.js's tail. */
 
 import { _cmViews, _currentCmTheme } from './config-modal.js';
 

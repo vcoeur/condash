@@ -1,4 +1,5 @@
-//! Configuration modal (`/configuration`) + legacy `/config` summary.
+//! Configuration HTTP surface — `/configuration` (full r/w) and
+//! `/config` (small summary).
 //!
 //! - `GET /configuration` returns the raw `<conception>/configuration.yml`
 //!   contents so the modal populates a single `<textarea>`.
@@ -9,9 +10,9 @@
 //!   workspace cache is fully flushed, and SSE refresh events are
 //!   republished for every primary tab so the open dashboard repaints
 //!   without a restart.
-//! - `GET /config` is the small legacy summary the bundled frontend
-//!   polls for setup-banner detection and terminal-shortcut loading.
-//!   Returns only `conception_path` + the `terminal` block.
+//! - `GET /config` returns a small JSON summary the frontend polls
+//!   on load for setup-banner detection and terminal-shortcut wiring.
+//!   Body: `conception_path` + the `terminal` block only.
 //!
 //! `settings.yaml` is not written by any route — it is hand-edited on
 //! disk and re-read on the next launch.

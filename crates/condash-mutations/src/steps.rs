@@ -1,14 +1,10 @@
-//! Step-level mutations on an item README: toggle / add / remove / edit /
-//! set-priority / reorder-all. 1:1 with the `_toggle_checkbox`,
-//! `_remove_step`, `_edit_step`, `_add_step`, `_set_priority`, and
-//! `_reorder_all` helpers in `mutations.py`.
+//! Step-level mutations on an item README: toggle / add / remove /
+//! edit / set-priority / reorder-all.
 //!
-//! Every function reads the file as UTF-8, splits on `\n`, mutates the line
-//! slice in place, and re-joins with `\n` before writing. Python's
-//! `str.split("\n")` + `"\n".join(...)` round-trips a trailing newline
-//! because the split produces an empty final element; the Rust port uses
-//! the same primitives (`str::split('\n')` + `Vec::join("\n")`) and so
-//! preserves the trailing newline byte-for-byte.
+//! Every function reads the file as UTF-8, splits on `\n`, mutates
+//! the line slice in place, and re-joins with `\n` before writing.
+//! `str::split('\n')` + `Vec::join("\n")` round-trips a trailing
+//! newline because the split produces an empty final element.
 
 use std::fs;
 use std::io;
@@ -20,11 +16,9 @@ use condash_parser::sections::CheckboxStatus;
 use condash_parser::Priority;
 use regex::Regex;
 
-/// `## Steps` — matches exactly what Python's
-/// `re.match(r"^##\s+Steps", line, re.IGNORECASE)` matches: line starts
-/// with `##`, at least one whitespace, then `Steps` (case-insensitive).
-/// No `\b` anchor on purpose — Python's `re.match` doesn't either, so
-/// a heading like `## Steps (draft)` still counts as the Steps section.
+/// `## Steps` heading: line starts with `##`, at least one whitespace,
+/// then `Steps` (case-insensitive). No `\b` anchor — `## Steps (draft)`
+/// also counts as the Steps section.
 static STEPS_HEADING_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^##\s+Steps").expect("STEPS_HEADING_RE compiles"));
 
@@ -47,10 +41,9 @@ static ANY_HEADING_LEVEL_RE: LazyLock<Regex> =
 static ANY_HEADING_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(#{2,})\s+").expect("ANY_HEADING_RE compiles"));
 
-/// The literal string checkbox patterns Python's `_toggle_checkbox` tests
-/// against. Kept as separate `&str`s (rather than a regex) because the
-/// Python reference implementation also uses plain `in` / `str.replace`,
-/// and we want byte-identical behaviour.
+/// Literal checkbox markers. Kept as separate `&str`s (rather than
+/// a regex) so toggle is a plain substring `replace` — exactly the
+/// substring boundaries the on-disk markdown uses.
 const OPEN_MARK: &str = "- [ ]";
 const DONE_MARK_X: &str = "- [x]";
 const DONE_MARK_BIG_X: &str = "- [X]";
@@ -108,10 +101,9 @@ pub fn set_priority(path: &Path, priority: &str) -> io::Result<bool> {
     Ok(true)
 }
 
-/// Flip one checkbox line through the open → done → progress → abandoned
-/// → open cycle. Returns `Ok(None)` if `line_num` is out of bounds or the
-/// line isn't a recognised checkbox — same contract as Python's
-/// `_toggle_checkbox`, which returns `None` in both cases.
+/// Flip one checkbox line through the open → done → progress →
+/// abandoned → open cycle. Returns `Ok(None)` if `line_num` is out
+/// of bounds or the line isn't a recognised checkbox.
 pub fn toggle_checkbox(path: &Path, line_num: usize) -> io::Result<Option<CheckboxStatus>> {
     let text = fs::read_to_string(path)?;
     let mut lines: Vec<String> = text.split('\n').map(|s| s.to_string()).collect();
@@ -312,9 +304,8 @@ pub fn add_step(path: &Path, text: &str, section_heading: Option<&str>) -> io::R
 /// line exactly where it was and shuffles only the checkbox rows among
 /// themselves.
 ///
-/// Every element of `order` must be an in-bounds checkbox line or the
-/// whole reorder aborts without writing — same contract as Python's
-/// `_reorder_all`.
+/// Every element of `order` must be an in-bounds checkbox line or
+/// the whole reorder aborts without writing.
 pub fn reorder_all(path: &Path, order: &[usize]) -> io::Result<bool> {
     let text = fs::read_to_string(path)?;
     let mut lines: Vec<String> = text.split('\n').map(|s| s.to_string()).collect();
@@ -563,8 +554,8 @@ mod tests {
 
     #[test]
     fn add_step_falls_through_to_steps_when_heading_missing() {
-        // Explicit heading that doesn't exist — Python falls through to
-        // the Steps path rather than erroring.
+        // Explicit heading that doesn't exist — fall through to the
+        // Steps path rather than erroring.
         let (_dir, p) = tmp("# T\n\n## Steps\n\n- [ ] s1\n\n## Notes\n");
         let line = add_step(&p, "new", Some("Nonexistent")).unwrap();
         let got = fs::read_to_string(&p).unwrap();

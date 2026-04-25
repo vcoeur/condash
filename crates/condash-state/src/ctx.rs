@@ -63,17 +63,12 @@ pub struct RenderCtx {
     pub repo_structure: Vec<RepoSection>,
     /// "Open with …" slots keyed by slot name (`main_ide`,
     /// `secondary_ide`, `terminal`, …). Only the `label` is consumed
-    /// here; the command list itself lives on the mutations side and
-    /// lands in Phase 3+.
+    /// here; the command list itself lives on the openers side.
     pub open_with: HashMap<String, OpenWithSlot>,
     /// Names of repo checkouts that carry a configured dev-runner.
     /// Parent repos use their `name`; subrepos use `<parent>--<sub>`.
-    /// Matches the keyspace of Python's `ctx.repo_run`. Used by the
-    /// Code-tab node fingerprint to emit `|run:<token>` fragments for
-    /// configured rows and `""` for unconfigured ones — runner state
-    /// itself is Phase 4+ territory, but the fingerprint needs to
-    /// agree *now* so `/check-updates` stays consistent across the
-    /// Python / Rust builds.
+    /// Used by the Code-tab node fingerprint to emit `|run:<token>`
+    /// fragments for configured rows and `""` for unconfigured ones.
     pub repo_run_keys: std::collections::HashSet<String>,
     /// Runner command template per repo key. Populated from
     /// `repositories.yml`'s `run:` fields alongside [`Self::repo_run_keys`].
@@ -82,7 +77,7 @@ pub struct RenderCtx {
     /// A key present in `repo_run_keys` but missing here means the
     /// config layer hasn't populated templates yet — the runner
     /// `/api/runner/start` handler treats that as "no command
-    /// configured" and 404s, matching Python.
+    /// configured" and 404s.
     pub repo_run_templates: HashMap<String, String>,
     /// Optional per-repo "nuclear" stop command. Same keyspace as
     /// [`Self::repo_run_templates`] (parent: `name`, subrepo:
@@ -92,8 +87,8 @@ pub struct RenderCtx {
     /// key = no force-stop button rendered for that repo.
     pub repo_force_stop_templates: HashMap<String, String>,
     /// PDF-viewer command fallback chain (e.g. `["evince {path}",
-    /// "okular {path}"]`). Empty = use the built-in chain. Consumed by
-    /// the openers layer (Phase 3+).
+    /// "okular {path}"]`). Empty = use the built-in chain. Consumed
+    /// by the openers layer.
     pub pdf_viewer: Vec<String>,
     /// Embedded-terminal preferences. All fields optional; absent ones
     /// fall back to the renderer's built-in defaults.

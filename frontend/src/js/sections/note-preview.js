@@ -1,15 +1,13 @@
 /* Note preview modal — open / close / navigate + link wiring + server
    render mount (markdown, mermaid, PDF).
 
-   Owner of the shared `_noteModal` state object and the `_noteNavStack`
-   back-stack. The three sibling note-modal modules (note-mode.js,
-   in-note-search.js, note-reconcile.js) all read/write `_noteModal`
-   through this module — `_noteModal` is a plain object, so the ESM
-   live-binding limit on reassigning `var`/`let` exports doesn't apply
-   (no caller ever reassigns `_noteModal` itself, only its fields).
-
-   Extracted from dashboard-main.js on 2026-04-24 (P-09 cut 4 of
-   conception/projects/2026-04-23-condash-frontend-extraction). */
+   Owner of the shared `_noteModal` state object and the
+   `_noteNavStack` back-stack. The three sibling note-modal modules
+   (note-mode.js, in-note-search.js, note-reconcile.js) all read/write
+   `_noteModal` through this module — `_noteModal` is a plain object,
+   so the ESM live-binding limit on reassigning `var`/`let` exports
+   doesn't apply (no caller ever reassigns `_noteModal` itself, only
+   its fields). */
 
 import { _destroyCm } from './cm6-mount.js';
 import { _syncSaveButton, _captureActiveBuffer, _syncModeControls, _setNoteModeAttr, _hideSaveError } from './note-mode.js';

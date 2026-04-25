@@ -1,18 +1,12 @@
-/* Bundled dashboard script — migrated from the classic inline `<script>`
-   block in dashboard.html on 2026-04-22 (F3/F4 of condash-frontend-split).
-   Originally kept as one big file because the 247 declarations coexisted
-   as globals in the inline script; region-level splitting into
-   `sections/*.js` is now in progress (P-07..P-10 of
-   conception/projects/2026-04-23-condash-frontend-extraction).
+/* Bundled dashboard entry point. Imports + side-effect inits below
+   are the contract with the rest of the bundle.
 
-   The terminal-tab subsystem lives across three sibling modules under
-   `sections/terminal-{pointer,lifecycle,shortcuts}.js` (the C10 split of
-   the 2026-04-25 architecture-hardening sweep, replacing the former
-   962-LOC `tab-drag.js` monolith). Each owns one focused concern; the
-   imports + side-effect inits below are the contract with the rest of
-   the bundle. The cycle (each terminal-* module imports from at least
-   one other) is safe because every cross-module reference is contained
-   inside a function body — see notes/01-p07-tab-drag-split.md §D2. */
+   The terminal-tab subsystem is split across three sibling modules
+   under `sections/terminal-{pointer,lifecycle,shortcuts}.js`; each
+   owns one focused concern. The cycle (each terminal-* module imports
+   from at least one other) is safe because every cross-module
+   reference is contained inside a function body, keeping the imports
+   TDZ-safe. */
 
 import {
     toggleTerminal, termNewTab, termNewLauncherTab,
@@ -122,10 +116,10 @@ var PRIMARY_TABS = ['projects', 'code', 'knowledge', 'history'];
 var SUBTABS = ['current', 'next', 'backlog', 'done'];
 export var _activeTab = 'projects';
 export var _activeSubtab = 'current';
-// Map legacy `?tab=current` style URLs onto the new (primary, sub) pair.
-// History used to be a Projects sub-tab; legacy `?tab=projects&sub=history`
-// or `?tab=history-subtab` links land on the new History primary tab.
-var LEGACY_TAB_ALIAS = {
+// Map shorthand `?tab=current` URLs onto the canonical (primary, sub)
+// pair so a deep link from an external doc still lands on the right
+// pane.
+var TAB_ALIAS = {
     current: ['projects', 'current'],
     next: ['projects', 'next'],
     backlog: ['projects', 'backlog'],
@@ -207,11 +201,9 @@ document.addEventListener('DOMContentLoaded', function() {
     var params = new URLSearchParams(location.search);
     var tab = params.get('tab') || '';
     var sub = params.get('sub') || '';
-    // Legacy URL support: old ?tab=current links land on Projects/Current.
-    var alias = LEGACY_TAB_ALIAS[tab];
+    var alias = TAB_ALIAS[tab];
     if (alias) { tab = alias[0]; sub = alias[1] || sub; }
-    // History was a Projects sub-tab — legacy `?tab=projects&sub=history`
-    // lands on the new History primary tab.
+    // `?tab=projects&sub=history` is shorthand for the History primary tab.
     if (tab === 'projects' && sub === 'history') { tab = 'history'; sub = ''; }
     if (PRIMARY_TABS.indexOf(tab) === -1) tab = 'projects';
     if (tab === 'projects' && SUBTABS.indexOf(sub) !== -1) _activeSubtab = sub;
@@ -349,23 +341,9 @@ async function createNotesSubdir(readmePath, parentRelToItem) {
 
 // Per-pane refreshes are driven entirely by htmx — each pane carries
 // `hx-trigger="sse:<tab>"` and refetches its `/fragment/<tab>` on the
-// matching server-sent event. The hard-refresh button still fires a
-// real reload via `refreshAll` from `sections/refresh-all.js`. The
-// legacy `_reloadInPlace` / `reloadNode` pathway and its supporting
-// `dom-swap` / `local-subtree-reload` / `reload-guards` /
-// `reload-hooks` / `stale-poll` modules are gone. The classic
-// EventSource lifecycle in `sections/sse.js` is also gone — htmx-ext-sse
-// owns the connection; that module is now a thin bridge for the
-// reconnecting pill + note-modal reconcile.
+// matching server-sent event. The hard-refresh button fires a real
+// reload via `refreshAll` from `sections/refresh-all.js`.
 
-// The "Tab drag" region that used to live here (pointer-event drag,
-// tab create/close/rename, splitter drag, pane-resize drag, shortcuts,
-// restore-on-reload) was first relocated to `sections/tab-drag.js`
-// (P-07 of conception/projects/2026-04-23-condash-frontend-extraction)
-// and then decomposed into the three focused modules now imported at
-// the top of this file (C10 of 2026-04-25-condash-architecture-hardening-finish).
-// Register their DOM-level side effects now that every module has
-// finished evaluating.
 /* Register all click actions rendered by the server as `data-action`
    attrs. Keep this block in one place so the inventory is obvious — one
    registerAction call per distinct action name, grouped by subsystem. */
@@ -518,10 +496,11 @@ initHtmxStatePreserve();
 })();
 
 /* Bridge non-click inline-handler equivalents to delegated listeners.
-   Every former `on*=` attribute is now a `data-*` tag in dashboard.html
-   or _macros.html.j2; the CI guard in `tools/check-inline-handlers.sh`
-   keeps it that way. Listeners are document-level so htmx-morphed
-   markup is automatically covered without a re-bind step. */
+   Every `on*=` equivalent is expressed as a `data-*` tag in
+   dashboard.html or _macros.html.j2; the CI guard in
+   `tools/check-inline-handlers.sh` keeps it that way. Listeners are
+   document-level so htmx-morphed markup is automatically covered
+   without a re-bind step. */
 function initInlineHandlerBridges() {
     document.addEventListener('input', function(ev) {
         var t = ev.target;

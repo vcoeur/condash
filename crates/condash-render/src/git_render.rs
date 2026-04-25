@@ -53,8 +53,8 @@ fn runner_key_for_member(family: &Family, member: &Member) -> String {
 }
 
 /// The "Open with …" split button — primary icon + caret → popover
-/// picker. Phase 2 rendering is static; the interactive JS lives in
-/// the bundled dashboard frontend.
+/// picker. Server-rendered as static markup; the interactive JS lives
+/// in the bundled dashboard frontend.
 pub fn render_open_with(ctx: &RenderCtx, path: &str) -> String {
     let path_h = h(path);
     let primary_slot = "main_ide";
@@ -244,9 +244,9 @@ fn branch_status_cell(info: &Checkout) -> String {
 }
 
 fn branch_status_cell_member(info: &Member) -> String {
-    // Python shares `_branch_status_cell` across Member + Checkout via
-    // dict-key access — our two types differ, so mirror the logic
-    // against `Member` explicitly.
+    // Same status-cell logic as `branch_status_cell` above; duplicated
+    // because Member and Checkout don't share a trait for `missing` /
+    // `dirty` / `changed`.
     if info.missing {
         "<span class=\"branch-missing\">missing</span>".into()
     } else if info.dirty {
@@ -451,7 +451,7 @@ fn render_peer_card(
     let is_live = !is_missing && session.map(|s| s.exit_code.is_none()).unwrap_or(false);
     // Emit the mount (exited or running) whenever a session is anchored
     // here — so the "exited: N" state survives until the user clicks
-    // Stop. Matches Python's `_render_runner_mount` truth table.
+    // Stop.
     let has_session_here = !is_missing && session.is_some();
     let head_tag = if is_live {
         format!("{head_tag}<span class=\"peer-tag peer-tag-live\">live</span>")

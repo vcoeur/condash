@@ -45,7 +45,7 @@ fn status_to_subtab(status: condash_parser::Priority) -> &'static str {
     }
 }
 
-/// One hit within a project. Matches Python's dict fields.
+/// One hit within a project.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Hit {
     pub source: String,
@@ -82,7 +82,7 @@ fn tokenise(q: &str) -> Vec<String> {
     out
 }
 
-/// HTML-escape — mirrors Python's `html.escape(quote=True)`.
+/// HTML-escape `<`, `>`, `&`, `"`, `'`.
 fn html_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -140,10 +140,9 @@ fn build_snippet(text: &str, tokens: &[String], radius: usize) -> String {
     let mut end_c = (pos + hit_len + radius).min(text_chars.len());
 
     if start_c > 0 {
-        // Python: ws = text.rfind(" ", 0, start)  — returns -1 on no match.
-        // Then `if 0 <= start - ws < 20: start = ws + 1`. When ws is -1,
-        // `start - (-1) = start + 1`, so short snippets (start < 19)
-        // snap to start = 0 rather than keep the leading `…`.
+        // If a word-boundary space is within 20 chars to the left,
+        // snap there (or to 0 when none, so short snippets don't
+        // start with a stray `…`).
         let ws_i32: i32 = text_chars[..start_c]
             .iter()
             .rposition(|&c| c == ' ')
@@ -155,9 +154,8 @@ fn build_snippet(text: &str, tokens: &[String], radius: usize) -> String {
         }
     }
     if end_c < text_chars.len() {
-        // Python: we = text.find(" ", end) — returns -1 on no match, in
-        // which case the `if we >= 0 and we - end < 20` check is false,
-        // so no snap. Rust mirrors via `None` → don't snap.
+        // Same idea on the right edge: snap to a space within 20
+        // chars; if none, leave end_c alone.
         if let Some(offset) = text_chars[end_c..].iter().position(|&c| c == ' ') {
             let we = end_c + offset;
             if we - end_c < 20 {

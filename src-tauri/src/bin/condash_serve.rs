@@ -1,8 +1,8 @@
 //! Headless dashboard server — same HTTP surface the Tauri webview
-//! uses, but without the window. Handy for hitting the Rust build
+//! uses, but without the window. Handy for hitting the dashboard
 //! from curl / Playwright / a regular browser during development,
-//! and the natural driver for Phase 2's e2e exit gate before the
-//! GUI-dependent Tauri bootstrap runs.
+//! and the natural driver for the Playwright e2e suite which can't
+//! attach to the embedded webview.
 //!
 //! Flags: reads the same env vars the Tauri host reads
 //! (`CONDASH_CONCEPTION_PATH`, `CONDASH_ASSET_DIR`). Also accepts

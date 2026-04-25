@@ -26,8 +26,8 @@ pub static HEADING2_RE: LazyLock<Regex> =
 pub static HEADING3_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^###\s+(.+)$").expect("HEADING3_RE compiles"));
 
-/// `**Status**: …` metadata line. Case-insensitive to match Python's
-/// `re.IGNORECASE` — used by callers that just need to test presence.
+/// `**Status**: …` metadata line. Case-insensitive — used by callers
+/// that just need to test presence.
 pub static STATUS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^\*\*Status\*\*\s*:\s*.*$").expect("STATUS_RE compiles"));
 
@@ -57,8 +57,8 @@ mod tests {
     fn metadata_non_greedy_key() {
         // When more than one `**…**:` appears on the same line, the
         // non-greedy `.+?` pairs with the *first* closing `**:` it can
-        // reach — so the key is the first bolded segment, not everything
-        // up to the last bolded segment. Python's `re` does the same.
+        // reach — so the key is the first bolded segment, not
+        // everything up to the last bolded segment.
         let caps = METADATA_RE
             .captures("**First**: value **Second**: other")
             .unwrap();

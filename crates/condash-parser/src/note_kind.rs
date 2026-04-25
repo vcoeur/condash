@@ -57,10 +57,9 @@ pub fn note_kind(path: &Path) -> &'static str {
         return "binary";
     };
     let lower = name.to_ascii_lowercase();
-    // Python's Path.suffix only looks at the segment after the last dot;
-    // for dotfiles like ".gitignore" the suffix is empty and the file
-    // classifies as binary. Mirror that behavior rather than matching on
-    // bare filename.
+    // Dotfiles (`.gitignore`) have no suffix and classify as binary.
+    // We treat the segment after the *last* dot as the extension, so
+    // `foo.tar.gz` reads as `.gz`.
     let ext = match lower.rfind('.') {
         Some(0) | None => return "binary",
         Some(i) => &lower[i..],

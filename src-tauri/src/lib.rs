@@ -250,8 +250,8 @@ impl std::error::Error for ConceptionPathUnset {}
 /// Resolve the conception tree from (in order): `CONDASH_CONCEPTION_PATH`
 /// env var → user config at `~/.config/condash/settings.yaml` → absent.
 ///
-/// The GUI binary wraps `Err(ConceptionPathUnset)` into a folder picker
-/// (Phase 3); `condash-serve` and other headless callers surface the
+/// The GUI binary wraps `Err(ConceptionPathUnset)` into a folder
+/// picker; `condash-serve` and other headless callers surface the
 /// error verbatim.
 pub fn resolve_conception_path() -> Result<PathBuf, ConceptionPathUnset> {
     resolve_from(

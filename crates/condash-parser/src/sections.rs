@@ -9,10 +9,10 @@ use crate::regexes::{CHECKBOX_RE, HEADING2_RE};
 
 /// Resolved checkbox state.
 ///
-/// The Python parser maps the raw character inside `[…]` to one of four
-/// logical states; `done` and `abandoned` both count as "completed" for
-/// the done/total tally the dashboard shows, which is why `SectionItem`
-/// carries a boolean `done` *and* the richer `status`.
+/// The raw character inside `[…]` maps to one of four logical states;
+/// `done` and `abandoned` both count as "completed" for the done/total
+/// tally the dashboard shows, which is why `SectionItem` carries a
+/// boolean `done` *and* the richer `status`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CheckboxStatus {
@@ -44,7 +44,7 @@ pub struct SectionItem {
     pub text: String,
     pub done: bool,
     pub status: CheckboxStatus,
-    /// Zero-based line index in the source README. Matches Python.
+    /// Zero-based line index in the source README.
     pub line: usize,
 }
 

@@ -123,10 +123,9 @@ impl Debouncer {
     }
 }
 
-/// Should the filename (leaf) be ignored? Same rules as Python's
-/// `_DebouncedHandler.on_any_event`: swap files (`foo.md~`), hidden
-/// files (`.foo`), and editor scratch files start with `.` or end with
-/// `~`.
+/// Should the filename (leaf) be ignored? Swap files (`foo.md~`),
+/// hidden files (`.foo`), and editor scratch files all start with `.`
+/// or end with `~`.
 fn is_noise(leaf: &str) -> bool {
     leaf.is_empty() || leaf.starts_with('.') || leaf.ends_with('~')
 }

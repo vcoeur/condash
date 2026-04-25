@@ -44,7 +44,7 @@ const DEFAULT_MAX_DEPTH: usize = 3;
 /// entries (`.…`) and the item's top-level `README.md` are skipped.
 /// Empty subdirectories are kept so a freshly-created folder shows up
 /// immediately as an empty group. Walks up to `max_depth` levels
-/// (default 3, matching Python's signature).
+/// (default 3).
 pub fn list_item_tree(base_dir: &Path, item_dir: &Path) -> ItemTree {
     list_item_tree_with_depth(base_dir, item_dir, DEFAULT_MAX_DEPTH)
 }
@@ -117,16 +117,15 @@ fn walk(
     ItemTree { files, groups }
 }
 
-/// `path` relative to `base`, rendered with forward slashes (matching
-/// Python's `str(PosixPath)` on Linux).
+/// `path` relative to `base`, rendered with forward slashes.
 fn rel_to(base: &Path, path: &Path) -> String {
     path.strip_prefix(base)
         .map(|r| r.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| path.to_string_lossy().into_owned())
 }
 
-/// Flatten a tree to its file paths in depth-first order. Mirrors
-/// Python's `_flatten_tree_paths` — used by the fingerprint helpers.
+/// Flatten a tree to its file paths in depth-first order. Used by
+/// the fingerprint helpers.
 pub fn flatten_tree_paths(tree: &ItemTree) -> Vec<String> {
     let mut out: Vec<String> = tree.files.iter().map(|f| f.path.clone()).collect();
     for g in &tree.groups {
@@ -212,9 +211,8 @@ mod tests {
         touch(&item.join("a/b/c/deep.txt"));
 
         let tree = list_item_tree_with_depth(td.path(), &item, 2);
-        // With max_depth=2, the recursive walker enters `a/` (depth 1 → 2)
-        // but skips `b/` entirely (`depth >= max_depth`), matching Python's
-        // `if depth >= max_depth: continue`.
+        // With max_depth=2, the recursive walker enters `a/` (depth
+        // 1 → 2) but skips `b/` entirely (`depth >= max_depth`).
         let a = &tree.groups[0];
         assert_eq!(a.label, "a");
         assert!(a.groups.is_empty());

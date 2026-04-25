@@ -46,8 +46,8 @@ fn is_reserved_filename(name: &str) -> bool {
 // write_note
 // ---------------------------------------------------------------------
 
-/// Result of `write_note` — mirrors the `{ok, mtime | reason}` shape of
-/// `mutations.write_note`.
+/// Result of `write_note` — `{ok, mtime}` on success or
+/// `{ok: false, reason, mtime?}` on stale-mtime / IO failure.
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum WriteNoteResult {
@@ -100,8 +100,7 @@ pub fn write_note(
         }
     }
 
-    // Tmp sibling + rename for atomic replace. Python uses
-    // `full_path.with_suffix(suffix + ".tmp")` — append, don't replace.
+    // Tmp sibling + rename for atomic replace.
     let tmp = append_suffix(full_path, ".tmp");
     fs::write(&tmp, content)?;
     if let Err(e) = fs::rename(&tmp, full_path) {
@@ -115,9 +114,8 @@ pub fn write_note(
     })
 }
 
-/// Python's `Path.with_suffix(p.suffix + ".tmp")` appends `.tmp` to the
-/// existing suffix (so `foo.md` → `foo.md.tmp`). Rust's equivalent takes
-/// a couple of lines.
+/// Append `extra` to the path as a string suffix (so `foo.md` →
+/// `foo.md.tmp`), without replacing the existing extension.
 fn append_suffix(path: &Path, extra: &str) -> PathBuf {
     let mut s = path.as_os_str().to_os_string();
     s.push(extra);
@@ -128,8 +126,8 @@ fn append_suffix(path: &Path, extra: &str) -> PathBuf {
 // rename_note
 // ---------------------------------------------------------------------
 
-/// `{ok, path, mtime}` / `{ok: false, reason}` — mirrors
-/// `mutations.rename_note`.
+/// `{ok, path, mtime}` on success / `{ok: false, reason}` on conflict
+/// or IO failure.
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum RenameResult {
@@ -395,8 +393,8 @@ pub fn store_uploads<R: Read>(
     max_bytes_per_file: u64,
 ) -> io::Result<StoreUploadsResult> {
     if subdir_was_supplied && !target_dir.exists() {
-        // Python's `store_uploads` returns an ok=False with reason in
-        // this case; the route handler short-circuits to a 400.
+        // Caller supplied a subdir that doesn't exist — return ok=false
+        // so the route handler can surface a 400.
         return Ok(StoreUploadsResult {
             ok: false,
             stored: vec![],

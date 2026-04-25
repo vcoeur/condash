@@ -1,10 +1,6 @@
 /* Steps subsystem — the check/cycle/add/remove/reorder actions + the
    drag-reorder machinery + section folding + inline text editing.
 
-   Extracted from `dashboard-main.js` as part of C-08 of the
-   `2026-04-24-condash-dashboard-main-split` project. Pure behaviour-
-   preserving move.
-
    The module owns:
    - `cycle` — advance a step through its state machine.
    - `removeStep` — delete a step line.

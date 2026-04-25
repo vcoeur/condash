@@ -6,12 +6,10 @@
    buildTheme} and calls window.__cm6OnReady(). Before that, the "Edit"
    toggle stays disabled.
 
-   Extracted from dashboard-main.js on 2026-04-24 (P-09 of
-   conception/projects/2026-04-23-condash-frontend-extraction). Reaches
-   into three symbols from the note-modal sections (as of P-09 cut 4):
-   _noteModal + _setDirty from note-preview.js (object-field writes),
-   saveEdit from note-mode.js. All references are inside function
-   bodies; no top-level side effects. */
+   Reaches into three symbols from the note-modal sections: _noteModal
+   + _setDirty from note-preview.js (object-field writes), saveEdit
+   from note-mode.js. All references are inside function bodies; no
+   top-level side effects. */
 
 import { _noteModal, _setDirty } from './note-preview.js';
 import { saveEdit } from './note-mode.js';

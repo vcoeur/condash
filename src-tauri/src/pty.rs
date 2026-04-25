@@ -20,9 +20,8 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use rand::Rng;
 use tokio::sync::{mpsc, watch};
 
-/// Cap on the per-session scrollback ring buffer. 256 KiB — enough for a
-/// few screens of output. Larger pastes trim from the head. Matches
-/// Python's `_BUFFER_CAP`.
+/// Cap on the per-session scrollback ring buffer. 256 KiB — enough
+/// for a few screens of output. Larger pastes trim from the head.
 pub const BUFFER_CAP: usize = 256 * 1024;
 
 /// Bytes emitted by the PTY pump. `Data(b)` is raw output; `Exit` is
@@ -76,8 +75,8 @@ impl PtySession {
         self.buffer.lock().expect("buffer mutex").clone()
     }
     /// Attach a viewer to this session. Replaces any existing viewer's
-    /// sender (the old one is dropped so its receiver ends, mirroring
-    /// Python's "displace the old viewer" behaviour).
+    /// sender (the old one is dropped so its receiver ends — only one
+    /// viewer per session).
     pub fn attach_viewer(&self) -> mpsc::UnboundedReceiver<PumpMessage> {
         let (tx, rx) = mpsc::unbounded_channel();
         // Push the buffer first so the new viewer sees scrollback.
@@ -232,12 +231,10 @@ impl PtyRegistry {
 pub enum SpawnMode {
     /// Login shell (`<shell> -l`) — the normal `/ws/term` flow.
     LoginShell { shell: String },
-    /// Arbitrary argv parsed from `terminal.launcher_command` — mirrors
-    /// Python's `use_launcher=True` path.
+    /// Arbitrary argv parsed from `terminal.launcher_command`.
     Launcher { argv: Vec<String> },
-    /// `<shell> -lc <template-with-path-replaced>` — the runner flow
-    /// (Phase 4 slice 2). Kept on this enum so a single spawn path
-    /// covers every caller.
+    /// `<shell> -lc <template-with-path-replaced>` — the runner flow.
+    /// Kept on this enum so a single spawn path covers every caller.
     RunnerCommand {
         shell: String,
         template: String,
@@ -407,7 +404,7 @@ pub fn supports_pty() -> bool {
 }
 
 /// Resolve the shell to launch for `/ws/term`. Priority:
-/// 1. Explicit `override_shell` from the config layer (Phase 4 slice 2).
+/// 1. Explicit `override_shell` from the config layer.
 /// 2. `$SHELL` environment variable.
 /// 3. `/bin/bash`.
 pub fn resolve_terminal_shell(override_shell: Option<&str>) -> String {

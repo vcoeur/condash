@@ -8,9 +8,8 @@ members = [
     "crates/condash-mutations",
 ]
 
-# Lints live at the workspace level so every member crate inherits them
-# via `[lints] workspace = true`. Phase-1 porting picks up here; later
-# phases can tighten this list once the Rust surface stabilises.
+# Lints live at the workspace level so every member crate inherits
+# them via `[lints] workspace = true`.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

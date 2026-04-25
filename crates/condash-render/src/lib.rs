@@ -61,9 +61,8 @@ pub fn priorities() -> [&'static str; 6] {
     ]
 }
 
-/// First pending step across all sections, or `None`. Mirrors
-/// `_next_step` — "pending" = `open` or `progress`; `abandoned` isn't
-/// "next".
+/// First pending step across all sections, or `None`. "Pending" =
+/// `open` or `progress`; `abandoned` isn't "next".
 fn next_step(item: &Item) -> Option<Value> {
     use condash_parser::sections::CheckboxStatus;
     for sec in &item.readme.sections {
@@ -76,9 +75,9 @@ fn next_step(item: &Item) -> Option<Value> {
     None
 }
 
-/// Recursive file count for a group (Python's `_subtree_count`). Used
-/// by the card template via the `subtree_count` filter — but also by
-/// `_render_card` directly to compute the top-level total.
+/// Recursive file count for a group. Used by the card template via
+/// the `subtree_count` filter and by `_render_card` directly to
+/// compute the top-level total.
 fn subtree_count(group: &condash_parser::GroupEntry) -> usize {
     group.files.len() + group.groups.iter().map(subtree_count).sum::<usize>()
 }
@@ -150,8 +149,7 @@ pub fn render_history(ctx: &RenderCtx, items: &[Item]) -> String {
     let mut months: Vec<serde_json::Value> = Vec::with_capacity(month_names.len());
     for name in month_names {
         let mut month_items = by_month.remove(&name).unwrap();
-        // slug[:10] desc — Python uses `key=lambda x: x["slug"]` with
-        // reverse=True (no slug trimming); use whole slug.
+        // Sort by full slug, descending — newer items first within a month.
         month_items.sort_by(|a, b| b.readme.slug.cmp(&a.readme.slug));
         let items_json: Vec<serde_json::Value> = month_items
             .iter()
@@ -177,10 +175,9 @@ pub fn render_history(ctx: &RenderCtx, items: &[Item]) -> String {
     templating::render("history.html.j2", tctx)
 }
 
-/// HTML for the History pane's search-results fragment. Mirrors the
-/// shape that `_renderHistoryResults` used to build client-side, so
-/// existing CSS and `data-action` wiring (`open-history-hit`,
-/// `jump-to-project`) keep working unchanged.
+/// HTML for the History pane's search-results fragment. Emits the
+/// markup the History pane's CSS + `data-action` wiring
+/// (`open-history-hit`, `jump-to-project`) expects.
 pub fn render_history_search_results(results: &[SearchResult], q: &str) -> String {
     let ctx = context! {
         results => Value::from_serialize(results),
@@ -319,8 +316,7 @@ pub fn render_page(
         &all_items.iter().map(|&i| i.clone()).collect::<Vec<_>>(),
     );
 
-    // Placeholder substitution — use `replace` (all occurrences) to
-    // mirror Python's `str.replace` semantics.
+    // Placeholder substitution — `replace` swaps every occurrence.
     let mut out = ctx.template.clone();
     out = out.replace("{{CARDS}}", &cards);
     out = out.replace("{{GIT_REPOS}}", &git_html);

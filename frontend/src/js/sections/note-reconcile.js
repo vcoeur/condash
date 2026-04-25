@@ -1,4 +1,4 @@
-/* Note modal reconcile (Phase 7).
+/* Note modal reconcile.
 
    When /events signals a filesystem change, any open note may now
    diverge from its on-disk content. `_reconcileNoteModal` compares the
@@ -10,11 +10,7 @@
    detected (so the user who keeps editing isn't re-nagged).
 
    `reconcileState.suppressedUntilMtime` is reset from note-preview.js
-   whenever a note is opened or closed — same live-binding-safe pattern
-   as termState / sseState.
-
-   Extracted from dashboard-main.js on 2026-04-24 (P-09 cut 4 of
-   conception/projects/2026-04-23-condash-frontend-extraction). */
+   whenever a note is opened or closed. */
 
 import { _noteModal, _setDirty, _reloadNotePreview } from './note-preview.js';
 import { _captureActiveBuffer } from './note-mode.js';

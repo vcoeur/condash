@@ -32,12 +32,11 @@ pub struct KnowledgeNode {
     pub count: usize,
 }
 
-/// Pick a human label + short description from one `.md` file. Mirrors
-/// `_knowledge_title_and_desc`: first `# heading` wins as title (or the
-/// filename as fallback with `-` / `_` turned into spaces), first
-/// non-blank non-heading non-frontmatter line becomes the description.
-/// Description is trimmed of a trailing dot and capped at 220 *bytes*
-/// to match Python's `str[:220]` slicing.
+/// Pick a human label + short description from one `.md` file. The
+/// first `# heading` wins as title (or the filename as fallback with
+/// `-` / `_` turned into spaces); the first non-blank non-heading
+/// non-frontmatter line becomes the description. Description is
+/// trimmed of a trailing dot and capped at `DESC_MAX` codepoints.
 pub fn knowledge_title_and_desc(path: &Path) -> (String, String) {
     let stem = path
         .file_stem()
@@ -51,7 +50,7 @@ pub fn knowledge_title_and_desc(path: &Path) -> (String, String) {
         Ok(b) => b,
         Err(_) => return (title, desc),
     };
-    // Python's `read_text(errors="replace")` maps invalid bytes to U+FFFD.
+    // Invalid bytes map to U+FFFD rather than failing the whole read.
     let text = String::from_utf8_lossy(&bytes);
     let mut title_taken = false;
     for raw in text.split('\n') {
@@ -73,9 +72,8 @@ pub fn knowledge_title_and_desc(path: &Path) -> (String, String) {
         desc = line.trim_end_matches('.').to_string();
         break;
     }
-    // Python's `desc[:220]` slices by codepoint in py3 `str`, which
-    // for ASCII is the same as bytes. Use chars() to stay safe with
-    // non-ASCII descriptions.
+    // Slice by codepoint, not byte, so non-ASCII descriptions don't
+    // get cut mid-character.
     if desc.chars().count() > DESC_MAX {
         desc = desc.chars().take(DESC_MAX).collect();
     }
@@ -83,7 +81,7 @@ pub fn knowledge_title_and_desc(path: &Path) -> (String, String) {
 }
 
 /// Scan `<base_dir>/knowledge/` recursively; returns `None` if the
-/// directory is missing. Wrapper matching Python's `collect_knowledge`.
+/// directory is missing.
 pub fn collect_knowledge(base_dir: &Path) -> Option<KnowledgeNode> {
     collect_tree(base_dir, "knowledge", "Knowledge")
 }
@@ -170,9 +168,9 @@ fn build_node(base_dir: &Path, root_dir: &Path, d: &Path, root_label: &str) -> K
     }
 }
 
-/// `name.replace('_', ' ').replace('-', ' ').title()` — Python's
-/// `str.title()` uppercases the first letter of each word and lowercases
-/// the rest, with word boundaries at non-letter characters.
+/// Replace `_` and `-` with spaces, then title-case: uppercase the
+/// first letter of each word and lowercase the rest, with word
+/// boundaries at non-letter characters.
 fn title_case_segments(name: &str) -> String {
     let spaced = name.replace(['_', '-'], " ");
     let mut out = String::with_capacity(spaced.len());
@@ -297,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_shape_matches_python_contract() {
+    fn tree_shape_contract() {
         let td = tempfile::tempdir().unwrap();
         let base = td.path();
         write(
