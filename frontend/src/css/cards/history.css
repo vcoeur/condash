@@ -16,9 +16,10 @@
     background: var(--accent-bg);
 }
 .history-card .knowledge-title {
-    /* Slightly smaller than knowledge tab — these are project cards,
-       not editorial entries. */
-    font-size: 0.95rem;
+    /* Lexend, slightly smaller than the knowledge tile — project
+       cards, not editorial entries. */
+    font-size: 0.82rem;
+    letter-spacing: -0.01em;
 }
 .history-meta {
     display: flex; flex-wrap: wrap; gap: 0.3rem;
@@ -31,10 +32,18 @@
     text-transform: uppercase; letter-spacing: 0.03em;
 }
 
-/* Month group heading — apply the serif treatment so the archive
+/* Month group heading — bigger Lexend display weight so the archive
    reads as a year-by-year ledger instead of a flat folder. */
 .history-group > .knowledge-group-heading > .knowledge-group-name {
-    font-size: 1.1rem;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.2rem;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+}
+.history-group > .knowledge-group-heading {
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
 }
 
 /* History search results — flat list rendered when the query is non-empty.

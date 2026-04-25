@@ -1,3 +1,31 @@
+/* --- Knowledge hero strip ---
+   Sits above the search toolbar. Single Lexend stack — weight + size
+   carry the hierarchy. Pure tone-setter, no behaviour change. */
+.knowledge-hero {
+    display: flex; flex-direction: column; gap: 0.4rem;
+    margin: 0.2rem 0 1.1rem;
+    padding-bottom: 0.95rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
+}
+.knowledge-hero-title {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    color: var(--text);
+    margin: 0;
+}
+.knowledge-hero-tagline {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin: 0;
+    max-width: 64ch;
+}
+
 /* --- Knowledge explorer panel ---
    A separate content region, swapped in when the Knowledge tab is
    active. One group per knowledge/ subfolder; each entry renders as a
@@ -36,9 +64,11 @@
     transform: rotate(90deg);
 }
 .knowledge-group-name {
-    font-family: var(--font-serif);
-    font-size: 1rem; font-weight: 600; line-height: 1.2;
-    letter-spacing: -0.005em;
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
     color: var(--text);
 }
 .knowledge-count {
@@ -130,8 +160,11 @@
 }
 .knowledge-title {
     grid-area: title;
-    font-family: var(--font-serif);
-    font-size: 0.92rem; font-weight: 600; line-height: 1.2;
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.012em;
     color: var(--text);
     align-self: center;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -139,7 +172,11 @@
 .knowledge-card .knowledge-open-folder { grid-area: open; align-self: center; }
 .knowledge-desc {
     grid-area: desc;
-    font-size: 0.78rem; line-height: 1.4; color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
     /* Single line — full text on the destination page. */
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
