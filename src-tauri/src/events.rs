@@ -91,7 +91,7 @@ impl EventBus {
 
 impl Default for EventBus {
     fn default() -> Self {
-        EventBus::new(256)
+        EventBus::new(1024)
     }
 }
 

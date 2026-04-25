@@ -35,7 +35,9 @@ pub(super) async fn events_stream(
                     SseEvent::default().event(payload.tab.clone()).data(data),
                 ))
             }
-            // Subscriber lagged — the reconciler picks it up, just skip.
+            // Subscriber lagged behind the broadcast queue. The next
+            // event will refresh; capacity is sized so this is rare
+            // under normal use.
             Err(_) => None,
         }
     });
