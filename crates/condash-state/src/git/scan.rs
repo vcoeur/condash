@@ -1,12 +1,9 @@
 //! Git repo discovery + status for the dashboard's Code tab.
 //!
-//! Rust port of `src/condash/git_scan.py`. Shells out to `git` via
-//! `std::process::Command` — same binary, same `--porcelain` output —
-//! so the parsed result is byte-for-byte identical to the Python side.
-//! (Switching to libgit2 would be faster, but would risk subtle
-//! divergence on porcelain flags, worktree-list formatting, and
-//! sandbox-stub detection. Staying on the CLI is the conservative
-//! move for a direct port.)
+//! Shells out to `git` via `std::process::Command` rather than using
+//! libgit2 — the CLI's `--porcelain` output is the documented stable
+//! contract and avoids surprises around worktree-list formatting and
+//! sandbox-stub detection.
 //!
 //! The public surface:
 //!
@@ -48,10 +45,9 @@ fn stamp_for(repo_dir: &Path) -> RepoStamp {
 static REPO_CACHE: Mutex<Option<HashMap<PathBuf, (RepoStamp, ScannedRepo)>>> = Mutex::new(None);
 
 /// One checkout (main repo or worktree) — shared shape used by both
-/// worktree entries and the top-level repo dict. Python's dict always
-/// carries a `missing` key on worktree entries returned by
-/// `_parent_member` / `_subrepo_member`; matching that literally means
-/// emitting `missing: false` on every row rather than omitting it.
+/// worktree entries and the top-level repo entry. `missing` is always
+/// emitted (defaulting to `false`) so the JSON schema is uniform
+/// across rows.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Checkout {
     pub key: String,
@@ -64,7 +60,6 @@ pub struct Checkout {
 }
 
 /// One member of a family — the parent repo or a promoted subrepo.
-/// Matches Python's dict shape one-for-one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Member {
     pub name: String,
@@ -94,7 +89,7 @@ pub struct Group {
 }
 
 /// Return `true` for harness-synthesized stub files that should not
-/// count as real repo changes. Rust port of `_is_sandbox_stub`.
+/// count as real repo changes.
 ///
 /// When condash runs inside a sandbox (Claude Code's bwrap harness),
 /// the runtime binds zero-byte read-only copies of the user's home
@@ -132,7 +127,8 @@ fn is_sandbox_stub(repo_path: &Path, status: &str, rel: &str) -> bool {
         if md.size() != 0 {
             return false;
         }
-        // Writable? Python: `st.st_mode & 0o222` is truthy → real file.
+        // Writable? Any write bit set means a real file (sandbox-stub
+        // detection — true sandbox stubs are read-only).
         if md.mode() & 0o222 != 0 {
             return false;
         }
@@ -146,8 +142,8 @@ fn is_sandbox_stub(repo_path: &Path, status: &str, rel: &str) -> bool {
 }
 
 /// `(branch, dirty, changed_count, changed_files)` for a repo/worktree.
-/// Shell-out to `git rev-parse` and `git status --porcelain`, same as
-/// Python. Failures collapse to `("?", false, 0, [])`.
+/// Shells out to `git rev-parse` and `git status --porcelain`. Failures
+/// collapse to `("?", false, 0, [])`.
 fn git_status(path: &Path) -> (String, bool, usize, Vec<String>) {
     let Ok(branch_out) = Command::new("git")
         .arg("-C")
@@ -198,8 +194,8 @@ fn resolve_str(path: &Path) -> String {
 }
 
 /// Parse `git worktree list --porcelain` output into [`Checkout`]s.
-/// Main checkout is elided (matches Python) — the caller already has
-/// it from the top-level repo scan.
+/// Main checkout is elided — the caller already has it from the
+/// top-level repo scan.
 fn git_worktrees(repo_path: &Path) -> Vec<Checkout> {
     let Ok(out) = Command::new("git")
         .arg("-C")

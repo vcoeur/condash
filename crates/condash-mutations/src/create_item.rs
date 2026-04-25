@@ -12,7 +12,7 @@ use condash_parser::{Kind, Priority};
 use regex::Regex;
 use serde::Serialize;
 
-/// Kind of a new item — mirrors `parser.KINDS`.
+/// Kind of a new item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemKind {
     Project,
@@ -48,8 +48,8 @@ impl From<ItemKind> for Kind {
     }
 }
 
-/// Input spec for `create_item` — the fields the `/create-item` and
-/// `/api/items` routes collect from the new-item modal.
+/// Input spec for `create_item` — the fields the `/create-item` route
+/// collects from the new-item modal.
 #[derive(Debug, Default, Clone)]
 pub struct NewItemSpec {
     pub title: String,
@@ -302,10 +302,10 @@ pub fn create_item(
     let month_dir = projects_root.join(&month);
     let item_dir = month_dir.join(&folder_name);
 
-    // Python: item_dir.resolve().relative_to(projects_root.resolve())
-    // We replicate the invariant with a literal prefix check since the
-    // path doesn't exist yet. The slug regex already rejects traversal
-    // in practice (no `/` or `..`).
+    // Defence in depth: confirm the resolved path stays under
+    // projects/ via a literal prefix check on the canonicalised root.
+    // The slug regex already rejects traversal in practice (no `/`
+    // or `..`).
     let projects_canonical = fs::canonicalize(&projects_root).unwrap_or(projects_root.clone());
     let hypothetical = projects_canonical.join(&month).join(&folder_name);
     if !hypothetical.starts_with(&projects_canonical) {

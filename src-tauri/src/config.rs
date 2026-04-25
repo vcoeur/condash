@@ -94,11 +94,9 @@ struct RepoBuckets {
     secondary: Vec<RepoEntryYaml>,
 }
 
-/// One entry under `repositories.primary` / `secondary`. Accepts either
-/// a bare string (repo name) or a mapping with `name`, `submodules`,
-/// `run` — Python's config parser has the same flexibility. We skip
-/// `run` for Phase 2 and just remember that the key exists so the
-/// fingerprint layer emits `|run:off` for those rows.
+/// One entry under `repositories.primary` / `secondary`. Accepts
+/// either a bare string (repo name) or a mapping with `name`,
+/// `submodules`, `run`, `force_stop`.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum RepoEntryYaml {
@@ -107,9 +105,9 @@ enum RepoEntryYaml {
         name: String,
         #[serde(default)]
         submodules: Vec<SubmoduleYaml>,
-        /// Present iff the user configured a `run:` command on this repo.
-        /// We record it as a runner key; the command value is consumed
-        /// by the runners module (Phase 4).
+        /// Present iff the user configured a `run:` command on this
+        /// repo. We record it as a runner key; the command value is
+        /// consumed by the runners module.
         #[serde(default)]
         run: Option<String>,
         /// Optional "nuclear" stop command. Invoked by the force-stop

@@ -1,7 +1,6 @@
 {# History search results fragment — emitted by /fragment/history when q is non-empty.
-   Matches the structure that `_renderHistoryResults` / `_historyResultBlock`
-   used to build client-side, so existing CSS + data-action wiring (see
-   `open-history-hit`, `jump-to-project`) keeps working. #}
+   Matches the markup the History pane's CSS + data-action wiring
+   (`open-history-hit`, `jump-to-project`) expects. #}
 {% if not results %}
 <p class="history-empty">No projects match "{{ q }}".</p>
 {% else %}

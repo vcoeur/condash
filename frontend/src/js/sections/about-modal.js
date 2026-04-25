@@ -1,12 +1,9 @@
 /* About modal — open/close + the "links open in host browser" shim.
    Static content (version baked in at render time, links hit the host
-   browser via /open-external because pywebview swallows target=_blank).
-
-   Extracted from dashboard-main.js on 2026-04-24 (P-08 of
-   conception/projects/2026-04-23-condash-frontend-extraction). No
-   cross-module references — the document-level click listener is
-   registered from initAboutModalSideEffects(), called from
-   dashboard-main.js's tail. */
+   browser via /open-external because the embedded webview swallows
+   target=_blank). The document-level click listener is registered
+   from initAboutModalSideEffects(), called from dashboard-main.js's
+   tail. */
 
 function openAboutModal() {
     document.getElementById('about-modal').style.display = 'flex';

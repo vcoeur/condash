@@ -4,12 +4,10 @@
    pane-vertical-resize drag — plus the helpers that keep the split layout
    consistent (_termShowSide, _termApplySplitRatio).
 
-   Extracted from sections/tab-drag.js (former 962 LOC monolith) — the
-   audit's C10 split. The companion files are sections/terminal-lifecycle.js
-   (tab create/close/rename/restore) and sections/terminal-shortcuts.js
-   (keybindings + screenshot paste). Cross-module references are kept inside
-   function bodies so the cycle stays TDZ-safe — see
-   notes/01-p07-tab-drag-split.md §D2 for the original design rules. */
+   Companion files: sections/terminal-lifecycle.js (tab create/close/
+   rename/restore) and sections/terminal-shortcuts.js (keybindings +
+   screenshot paste). Cross-module references are kept inside function
+   bodies so the cycles stay TDZ-safe. */
 
 import {
     termState,
@@ -19,10 +17,10 @@ import {
 } from './terminal.js';
 
 /* --- Tab drag (pointer-event based) -----------------------------------
-   The HTML5 drag-and-drop API crashes pywebview: QtWebEngine tries to
-   snapshot the dragged element for the native drag image and segfaults
-   the whole process on dragstart. We do drag ourselves with pointer
-   events, which stays entirely in the page — no native Qt involvement.
+   We implement drag with pointer events rather than the HTML5
+   drag-and-drop API so the gesture stays entirely in the page —
+   no native drag-image snapshotting that some embedded webviews
+   handle badly.
 
    Flow:
      - pointerdown on chip → arm a pending drag (don't start yet, so we

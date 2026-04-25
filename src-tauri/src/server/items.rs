@@ -1,5 +1,5 @@
-//! `POST /create-item` (and its `/api/items` alias) — scaffolds a new
-//! project / incident / document under the conception tree.
+//! `POST /create-item` — scaffolds a new project / incident / document
+//! under the conception tree.
 
 use axum::extract::State;
 use axum::http::StatusCode;

@@ -38,7 +38,7 @@ The header **New item** button opens a small modal asking only the fields needed
 
 | Action | HTTP | Trigger | Effect |
 |---|---|---|---|
-| Create item | `POST /api/items` | Header "+" button → modal | Writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` + empty `notes/` with a minimal seeded body per-kind; `touch projects/.index-dirty`. |
+| Create item | `POST /create-item` | Header "+" button → modal | Writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` + empty `notes/` with a minimal seeded body per-kind; `touch projects/.index-dirty`. |
 
 Body (`application/json`):
 

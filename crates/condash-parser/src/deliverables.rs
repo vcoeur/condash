@@ -1,9 +1,7 @@
 //! `## Deliverables` PDF link extraction.
 //!
-//! Port of `_parse_deliverables`. `full_path` is *not* filled in here —
-//! Python's `parse_readme` prepends the item directory after the fact. The
-//! caller that owns the item's on-disk path handles that in the phase-2
-//! wrapper.
+//! `full_path` is *not* filled in here — the caller that owns the
+//! item's on-disk path prepends the item directory after the fact.
 
 use serde::{Deserialize, Serialize};
 

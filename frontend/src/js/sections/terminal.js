@@ -5,17 +5,11 @@
    Closing the last tab hides the pane. The pane's × and the toggle
    shortcut hide/show the pane while leaving the tabs intact.
 
-   Extracted from dashboard-main.js on 2026-04-24 (P-09 cut 2 of
-   conception/projects/2026-04-23-condash-frontend-extraction). The
-   pre-2026-04-25 sister file `sections/tab-drag.js` was split into
-   three focused modules (terminal-pointer, terminal-lifecycle,
-   terminal-shortcuts) by C10 of the architecture-hardening sweep;
-   this module remains the cross-cutting state + low-level DOM
-   helpers everyone else reaches for. The circular imports
-   (terminal.js ↔ terminal-{pointer,lifecycle,shortcuts}.js) stay
-   safe under the TDZ rules documented in
-   notes/01-p07-tab-drag-split.md §D2 — every cross-module reference
-   is contained inside a function body. */
+   This module owns the cross-cutting termState + low-level DOM
+   helpers; terminal-pointer / terminal-lifecycle / terminal-shortcuts
+   handle pointer-event drag, tab create/close/rename, and keybindings
+   respectively. Cross-module references are all inside function
+   bodies, keeping the cycles TDZ-safe. */
 
 import { _termChipPointerDown } from './terminal-pointer.js';
 import {
@@ -23,15 +17,15 @@ import {
 } from './terminal-lifecycle.js';
 
 /* Clipboard bridge — Tauri 2 exposes an IPC `invoke` under
-   `window.__TAURI__.core.invoke` (requires `withGlobalTauri: true` plus a
-   capability covering this origin and the `clipboard-manager:allow-*-text`
-   permissions; see src-tauri/src/lib.rs::run). We call the plugin's
-   commands directly rather than importing `@tauri-apps/plugin-clipboard-manager`
-   so the frontend bundle stays `npm install`-free — same reasoning as
+   `window.__TAURI__.core.invoke` (requires `withGlobalTauri: true`
+   plus a capability covering this origin and the
+   `clipboard-manager:allow-*-text` permissions; see
+   src-tauri/src/lib.rs::run). We call the plugin's commands directly
+   rather than importing `@tauri-apps/plugin-clipboard-manager` so the
+   frontend bundle stays `npm install`-free — same reasoning as
    xterm/mermaid/pdfjs, which are vendored flat. Browser-mode
-   (`condash-serve`) has no IPC, so `_tauriInvoke` returns null there and
-   paste becomes a no-op; that's acceptable — the HTTP `/clipboard` route
-   was dropped with the Python build. */
+   (`condash-serve`) has no IPC, so `_tauriInvoke` returns null and
+   paste becomes a no-op. */
 function _tauriInvoke() {
     if (typeof window === 'undefined') return null;
     var g = window.__TAURI__;
@@ -64,11 +58,9 @@ function _termClipboardRead() {
 }
 
 /* Shared cross-module state for the terminal-tab subsystem. Lives on
-   one object so tab-drag can mutate fields in-place — ESM live bindings
-   disallow reassigning imported primitive `let` exports from the
-   importer side. See
-   projects/2026-04-23-condash-frontend-extraction/notes/01-p07-tab-drag-split.md
-   §D1 for the design rationale. */
+   one object so the sibling terminal-* modules can mutate fields in
+   place — ESM live bindings disallow reassigning imported primitive
+   `let` exports from the importer side. */
 const termState = {
     tabs: [],                               // [{id, side, term, fit, ws, mount, button, shell}]
     active: { left: null, right: null },

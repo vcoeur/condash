@@ -9,10 +9,7 @@
 
    Also owns the Ctrl+E mode-toggle shortcut because it's registered
    from the same capture-phase keydown listener and would double-bind
-   if the two shortcuts lived in separate listeners.
-
-   Extracted from dashboard-main.js on 2026-04-24 (P-09 cut 4 of
-   conception/projects/2026-04-23-condash-frontend-extraction). */
+   if the two shortcuts lived in separate listeners. */
 
 import { _noteModal } from './note-preview.js';
 import { setNoteMode } from './note-mode.js';

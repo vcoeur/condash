@@ -33,10 +33,10 @@ fn embed_filter(value: Value) -> Result<Value, Error> {
 
 /// Embed a JSON-serializable value as an HTML-attribute-safe literal.
 ///
-/// Matches Python's `json.dumps(obj).replace("'", "\\'").replace('"', "'")`:
-/// the outer quotes become `'`, JSON's `\"` escaping vanishes, and any
-/// single quote inside the value is backslash-escaped. Safe to drop
-/// inside a double-quoted attribute like `onclick="foo({{…}})"`.
+/// JSON-encodes `value`, then swaps the outer double quotes for single
+/// quotes and backslash-escapes any single quote inside the value.
+/// Safe to drop inside a double-quoted attribute like
+/// `onclick="foo({{…}})"`.
 pub fn embed_attr<T: serde::Serialize>(value: &T) -> String {
     let json = serde_json::to_string(value).expect("serialise for embed");
     embed_json_string(&json)

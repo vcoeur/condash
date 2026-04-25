@@ -28,9 +28,9 @@ pub(super) async fn events_stream(
                 // Emit a named SSE event matching the payload's `tab`
                 // field (`projects` / `knowledge` / `code`) so htmx
                 // listeners can target a specific tab via
-                // `hx-trigger="sse:projects"`. The legacy `onmessage`
-                // path in `sse.js` doesn't gate on event name and
-                // continues to receive every frame as before.
+                // `hx-trigger="sse:projects"`. The generic
+                // `htmx:sseMessage` handler in `sse.js` still fires
+                // for every frame regardless of name.
                 Some(Ok::<_, std::convert::Infallible>(
                     SseEvent::default().event(payload.tab.clone()).data(data),
                 ))

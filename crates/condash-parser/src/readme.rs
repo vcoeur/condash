@@ -154,16 +154,10 @@ fn parse_header(lines: &[&str]) -> (HashMap<String, String>, Option<usize>) {
     (meta, first_section_idx)
 }
 
-/// Parse the `**Apps**:` (or `**Composant**:`) value into a list of app
-/// names. Python:
-///
-/// ```python
-/// [a.strip().strip("`").split("(")[0].strip()
-///  for a in apps_raw.split(",") if a.strip()]
-/// ```
-///
-/// Note that `a.strip("`")` strips *every* leading/trailing backtick, not
-/// just one — e.g. `` "``vcoeur``" `` becomes `"vcoeur"`.
+/// Parse the `**Apps**:` (or `**Composant**:`) value into a list of
+/// app names. Splits on `,`, trims, strips *every* leading/trailing
+/// backtick (so `` ``vcoeur`` `` becomes `vcoeur`), and drops anything
+/// from the first `(` onward so `` `app (note)` `` becomes `app`.
 fn split_apps(apps_raw: &str) -> Vec<String> {
     apps_raw
         .split(',')
@@ -178,8 +172,8 @@ fn split_apps(apps_raw: &str) -> Vec<String> {
 
 /// Extract the first paragraph of body text after the first `## heading`,
 /// skipping fenced code blocks, tables, and blank lines before content.
-/// Truncated to `SUMMARY_MAX` codepoints with a `...` tail when longer —
-/// matching Python's `summary[:297] + "..."` which slices by codepoint.
+/// Truncated to `SUMMARY_MAX` codepoints (not bytes) with a `...`
+/// tail when longer.
 fn extract_summary(lines: &[&str], first_section_idx: Option<usize>) -> String {
     let Some(idx) = first_section_idx else {
         return String::new();
@@ -449,8 +443,8 @@ Second paragraph should not appear.
 
     #[test]
     fn summary_truncated_at_300_codepoints_with_ellipsis() {
-        // 400 'é' characters (2 bytes each in UTF-8) — forces codepoint
-        // (not byte) counting to match Python.
+        // 400 'é' characters (2 bytes each in UTF-8) — forces
+        // codepoint (not byte) counting.
         let long: String = "é".repeat(400);
         let md = format!("# T\n\n## Goal\n\n{long}\n");
         let r = parse(&md);

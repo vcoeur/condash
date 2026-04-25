@@ -39,8 +39,7 @@ pub(super) struct HistoryFragmentQuery {
 /// HTML fragment for the History pane content. Empty `q` returns the
 /// month-grouped tree; non-empty `q` returns the search-results list.
 /// Driven by the htmx attributes on `#history-content` in
-/// `dashboard.html` — replaces the legacy JSON-returning
-/// `/search-history` + client-side renderer.
+/// `dashboard.html`.
 pub(super) async fn fragment_history(
     State(state): State<AppState>,
     Query(s): Query<HistoryFragmentQuery>,

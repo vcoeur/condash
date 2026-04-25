@@ -1,15 +1,13 @@
 /* New-item modal — lives next to the gear button. Collects the minimal
    fields the README parser cares about (kind, status, title, slug, apps
-   + kind-specific extras) and POSTs /api/items. Everything else — goal,
-   scope, steps, body prose — the user types in their editor.
+   + kind-specific extras) and POSTs /create-item. Everything else —
+   goal, scope, steps, body prose — the user types in their editor.
 
-   Extracted from dashboard-main.js on 2026-04-24 (P-08 of
-   conception/projects/2026-04-23-condash-frontend-extraction). The
-   form-wiring IIFE becomes initNewItemModalSideEffects() per the
-   circular-import discipline (see notes/01-p07-tab-drag-split.md §D2
-   + §D3). submitNewItem's post-create tab-switch calls switchTab /
-   switchSubtab via imports; both are referenced inside a function
-   body so the cycle remains TDZ-safe. */
+   The form-wiring runs through initNewItemModalSideEffects() rather
+   than a top-level IIFE because submitNewItem references switchTab /
+   switchSubtab from dashboard-main.js, and dashboard-main.js imports
+   from this module — referencing them inside a function body keeps
+   the cycle TDZ-safe. */
 
 import { switchTab, switchSubtab } from '../dashboard-main.js';
 
@@ -113,7 +111,7 @@ async function submitNewItem(ev) {
     var submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
     try {
-        var res = await fetch('/api/items', {
+        var res = await fetch('/create-item', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload),

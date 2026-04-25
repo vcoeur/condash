@@ -18,12 +18,12 @@
 //!                       `/edit-step`, `/set-priority`, `/reorder-all`
 //! - [`notes`]         — `/note`, `/note-raw`, `/note/rename`,
 //!                       `/note/create`, `/note/mkdir`, `/note/upload`
-//! - [`items`]         — `/create-item`, `/api/items`
+//! - [`items`]         — `/create-item`
 //! - [`events`]        — `GET /events` SSE stream
 //! - [`terminal`]      — `GET /ws/term` embedded-terminal WebSocket
 //! - [`runners`]       — `/api/runner/{start,stop,force-stop}`,
 //!                       `GET /ws/runner/{key}`
-//! - [`config_surface`] — `/configuration` r/w + legacy `/config`
+//! - [`config_surface`] — `/configuration` r/w + `/config` summary
 //! - [`openers`]       — `/open`, `/open-folder`, `/open-external`,
 //!                       `/open-doc`, `/recent-screenshot`
 //! - [`rescan`]        — `/rescan`
@@ -180,19 +180,15 @@ pub fn build_router(state: AppState) -> Router {
         .route("/note/mkdir", post(notes::post_note_mkdir))
         .route("/note/upload", post(notes::post_note_upload))
         .route("/create-item", post(items::post_create_item))
-        // `/api/items` is the legacy path the bundled frontend still
-        // calls for the New Item modal. Kept as an alias so the modal
-        // works without a frontend rebuild; semantically identical.
-        .route("/api/items", post(items::post_create_item))
         // Configuration modal — plain-text YAML editor of
         // <conception>/configuration.yml.
         .route(
             "/configuration",
             get(config_surface::get_configuration).post(config_surface::post_configuration),
         )
-        // Legacy config summary — used by the frontend for setup-banner
-        // detection and terminal shortcut loading. Returns a small
-        // JSON dict with `conception_path` + `terminal` fields only.
+        // Small config summary the frontend polls on load for
+        // setup-banner detection and terminal-shortcut wiring.
+        // Returns `conception_path` + the `terminal` block only.
         .route("/config", get(config_surface::get_config_summary))
         // Open-path surface — these four dispatch the user-visible
         // "Open with", "Open folder", "Open external", "Open doc"

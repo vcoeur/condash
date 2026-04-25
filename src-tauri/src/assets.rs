@@ -4,9 +4,8 @@
 //!
 //! The dashboard shell (`dashboard.html`), the bundled dashboard JS
 //! (`dist/`), the vendored frontend libraries (`vendor/`), and the
-//! favicon all ship baked into the binary by default — Phase 5 step 1 of
-//! the packaging scope change (see `notes/packaging.md`). A self-
-//! contained binary is the prerequisite for every other packaging step.
+//! favicon all ship baked into the binary by default so the wheel is
+//! self-contained.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};

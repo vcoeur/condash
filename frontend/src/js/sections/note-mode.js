@@ -9,12 +9,9 @@
    server returns 409 and we surface the error banner.
 
    Also owns `createNoteFor` (create + drop into edit mode) and
-   `startRenameNote` (double-click-to-rename on the modal title) — both
-   of them chain into note-preview via `openNotePreview` / `_noteModal`,
-   but they're editing-flow concerns, not view concerns.
-
-   Extracted from dashboard-main.js on 2026-04-24 (P-09 cut 4 of
-   conception/projects/2026-04-23-condash-frontend-extraction). */
+   `startRenameNote` (double-click-to-rename on the modal title) —
+   both chain into note-preview via `openNotePreview` / `_noteModal`,
+   but they're editing-flow concerns, not view concerns. */
 
 import { _noteModal, _setDirty, openNotePreview, _reloadNotePreview } from './note-preview.js';
 import { _cm, _mountCm } from './cm6-mount.js';

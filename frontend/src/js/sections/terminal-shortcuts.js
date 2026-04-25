@@ -5,12 +5,10 @@
    per-xterm key handler can read the current values without importing
    each spec individually.
 
-   Extracted from sections/tab-drag.js (former 962 LOC monolith) — the
-   audit's C10 split. Companion files: sections/terminal-pointer.js
-   (drag/splitter/pane-resize) and sections/terminal-lifecycle.js
-   (tab create/close/rename/restore). Cross-module references stay
-   inside function bodies so the cycle remains TDZ-safe — see
-   notes/01-p07-tab-drag-split.md §D2 for the original design rules. */
+   Companion files: sections/terminal-pointer.js (drag/splitter/
+   pane-resize) and sections/terminal-lifecycle.js (tab create/close/
+   rename/restore). Cross-module references stay inside function
+   bodies so the cycles remain TDZ-safe. */
 
 import { _termActiveTab, termState } from './terminal.js';
 import {

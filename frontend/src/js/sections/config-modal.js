@@ -1,9 +1,5 @@
 /* Configuration modal — YAML-backed editor for `configuration.yml`.
 
-   Extracted from `dashboard-main.js` as part of C-08 of the
-   `2026-04-24-condash-dashboard-main-split` project. Pure behaviour-
-   preserving move — same logic, same public surface.
-
    The module owns:
    - `openConfigModal` / `closeConfigModal` — show and hide the modal,
      fetch the current YAML body on open.

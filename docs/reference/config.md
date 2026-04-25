@@ -18,7 +18,7 @@ The tree-level file is versioned: commit it and every teammate who pulls picks u
 
 ### Precedence on overlap
 
-For backwards compatibility, `configuration.yml` still accepts `terminal`, `pdf_viewer`, and `open_with` keys. When the same key appears in both files, **`settings.yaml` wins**, merged field by field:
+`terminal`, `pdf_viewer`, and `open_with` are valid in **either** file — set them in `configuration.yml` for tree-wide defaults teammates pick up automatically, or in `settings.yaml` for per-machine overrides. When the same key appears in both files, **`settings.yaml` wins**, merged field by field:
 
 - `terminal.<field>` — each field set in `settings.yaml` replaces the tree's value; missing fields fall through.
 - `pdf_viewer` — a non-empty list in `settings.yaml` replaces the tree's; empty / missing falls through.

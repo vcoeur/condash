@@ -284,7 +284,7 @@ pub async fn stop(
 }
 
 /// Short token describing the session's visible state — used by the
-/// Code-tab fingerprint layer. Matches Python's `fingerprint_token`.
+/// Code-tab fingerprint layer.
 pub fn fingerprint_token(runners: &RunnerRegistry, key: &str) -> String {
     match runners.get(key) {
         None => "off".into(),
@@ -295,8 +295,7 @@ pub fn fingerprint_token(runners: &RunnerRegistry, key: &str) -> String {
     }
 }
 
-/// Drop an exited session without SIGTERM (no-op if live). Mirrors
-/// Python's `clear_exited`.
+/// Drop an exited session without SIGTERM (no-op if live).
 pub fn clear_exited(runners: &RunnerRegistry, key: &str) -> bool {
     let Some(session) = runners.get(key) else {
         return false;

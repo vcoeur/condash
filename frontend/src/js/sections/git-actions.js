@@ -1,16 +1,13 @@
-/* Git row actions — "open in IDEA / VS Code / terminal / Files" handlers
-   for the buttons rendered next to every git status row and every card.
+/* Git row actions — "open in IDEA / VS Code / terminal / Files"
+   handlers for the buttons rendered next to every git status row and
+   every card.
 
-   Extracted from dashboard-main.js on 2026-04-24 (P-08 of
-   conception/projects/2026-04-23-condash-frontend-extraction).
-
-   openInTerminal and workOn reach into the terminal-tab subsystem —
-   import _termSyncOpenFlag + _termCreateTab from the lifecycle module
-   (post-C10 split of the original tab-drag.js) and _termActiveTab +
-   _termSendResize + termState from terminal.js. All cross-module
-   references sit inside function bodies, so the circular import
-   (dashboard-main → git-actions → dashboard-main) is safe under the
-   same TDZ rules documented in notes/01-p07-tab-drag-split.md §D2. */
+   openInTerminal and workOn reach into the terminal-tab subsystem
+   (_termSyncOpenFlag + _termCreateTab from terminal-lifecycle.js,
+   _termActiveTab + _termSendResize + termState from terminal.js).
+   All cross-module references sit inside function bodies, keeping
+   the circular import (dashboard-main → git-actions → dashboard-main)
+   TDZ-safe. */
 
 import { _termCreateTab, _termSyncOpenFlag } from './terminal-lifecycle.js';
 import { termState, _termActiveTab, _termSendResize } from './terminal.js';
@@ -107,11 +104,9 @@ function workOn(ev, slug) {
 /* Code tab · "open with" popover.
 
    The code-tab's per-repo strip renders a dropdown of IDE launchers
-   (IDEA, VS Code, etc.) behind a "⋯" button. Click toggles the popover;
-   a click outside closes every open popover; Escape does the same. Used
-   to live at the tail of the runner-viewers region in dashboard-main.js
-   — moved here on 2026-04-24 (P-09 cut 2) because it's pure git-row
-   wiring, not a runner concern. */
+   (IDEA, VS Code, etc.) behind a "⋯" button. Click toggles the
+   popover; a click outside closes every open popover; Escape does
+   the same. */
 function gitToggleOpenPopover(ev, btn) {
     if (ev) { ev.stopPropagation(); ev.preventDefault(); }
     var grp = btn.closest('.open-grp');
