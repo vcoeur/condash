@@ -124,7 +124,9 @@
     border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
-    transition: border-color 0.12s, background 0.12s;
+    /* No hover transition — same rationale as `.card`. Snapping the
+       hover background + border keeps idle paint cost flat as the
+       mouse sweeps a 50-card knowledge tree. */
     contain: layout paint;
 }
 .knowledge-card:hover {

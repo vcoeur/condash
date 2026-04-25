@@ -93,10 +93,7 @@ async fn events_stream_forwards_bus_publish_to_subscriber() {
     tokio::spawn(async move {
         // Wait a hair so the subscriber is definitely attached.
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        bus2.publish(EventPayload {
-            tab: "projects".into(),
-            ts: 1234,
-        });
+        bus2.publish(EventPayload::for_tab("projects"));
     });
 
     let chunk = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
@@ -109,5 +106,5 @@ async fn events_stream_forwards_bus_publish_to_subscriber() {
         s.contains("data: ") && s.contains("\"tab\":\"projects\""),
         "expected projects event frame, got {s:?}"
     );
-    assert!(s.contains("\"ts\":1234"), "ts missing from {s:?}");
+    assert!(s.contains("\"ts\":"), "ts missing from {s:?}");
 }

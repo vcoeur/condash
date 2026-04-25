@@ -151,11 +151,35 @@
 {% endmacro %}
 
 
+{% macro history_card(item) %}
+<div class="knowledge-card history-card"
+  id="hist-{{ item.slug }}" data-node-id="hist/{{ item.slug }}"
+  data-priority="{{ item.priority }}" data-kind="{{ item.kind }}"
+  data-action="open-note-preview"
+  data-path="{{ item.path }}" data-title="{{ item.title }}"
+  hx-trigger="sse:projects-{{ item.slug }}"
+  hx-get="/fragment/history/{{ item.slug }}"
+  hx-target="this"
+  hx-swap="morph:outerHTML">
+  <div class="knowledge-title">{{ item.title }}</div>
+  <div class="history-meta">
+    <span class="pill pri-{{ item.priority }}">{{ item.priority }}</span>
+    <span class="pill">{{ item.kind }}</span>
+  </div>
+  <div class="knowledge-path">{{ item.slug }}</div>
+</div>
+{% endmacro %}
+
+
 {% macro knowledge_card(e) %}
 {% set parent_dir = e.path | dirname %}
 <div class="knowledge-card" data-node-id="{{ e.path }}"
   data-action="open-note-preview"
-  data-path="{{ e.path }}" data-title="{{ e.title }}">
+  data-path="{{ e.path }}" data-title="{{ e.title }}"
+  hx-trigger="sse:knowledge-{{ e.path }}"
+  hx-get="/fragment/knowledge/one?path={{ e.path }}"
+  hx-target="this"
+  hx-swap="morph:outerHTML">
   <div class="knowledge-title">{{ e.title }}</div>
   {{ open_folder_btn(parent_dir, e.title) }}
   {% if e.desc %}<div class="knowledge-desc">{{ e.desc }}</div>{% endif %}

@@ -572,8 +572,13 @@ fn render_flat_group(
     };
     let mut parts: Vec<String> = Vec::new();
     parts.push(format!(
-        "<div class=\"{cls}\" data-node-id=\"{id}\">",
-        id = h(&family_id)
+        "<div class=\"{cls}\" id=\"code-{name}\" data-node-id=\"{id}\" \
+         hx-trigger=\"sse:code-{name}\" \
+         hx-get=\"/fragment/code/{name}\" \
+         hx-target=\"this\" \
+         hx-swap=\"morph:outerHTML\">",
+        id = h(&family_id),
+        name = h(&family.name),
     ));
     if is_compound {
         parts.push(format!(
@@ -587,6 +592,31 @@ fn render_flat_group(
     }
     parts.push("</div>".into());
     parts.join("\n")
+}
+
+/// Render one repo's `flat-group` div by family name. Walks `groups`
+/// for the matching family, then re-uses [`render_flat_group`] so the
+/// markup is identical to what the full-pane render emits — same
+/// `data-node-id`, same hx-* attrs, same morph anchor.
+///
+/// Returns `None` when the family isn't found (repo dropped from
+/// configuration between event and render — pane-wide structural
+/// fallback covers those cases).
+pub fn render_one_code_repo(
+    ctx: &RenderCtx,
+    groups: &[Group],
+    repo_name: &str,
+    live: &LiveRunners,
+) -> Option<String> {
+    for group in groups {
+        let group_id = format!("code/{}", group.label);
+        for family in &group.families {
+            if family.name == repo_name {
+                return Some(render_flat_group(ctx, family, &group_id, live));
+            }
+        }
+    }
+    None
 }
 
 /// Render the full Code tab given the list of discovered groups.

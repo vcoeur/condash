@@ -13,6 +13,10 @@
 //! lives in one of the sibling sub-modules, grouped by surface:
 //!
 //! - [`shell`]         — `/`, `/fragment/{history,knowledge,code,projects}`,
+//!                       `/fragment/projects/:slug`,
+//!                       `/fragment/history/:slug`,
+//!                       `/fragment/knowledge/one?path=...`,
+//!                       `/fragment/code/:repo`,
 //!                       favicons, static assets
 //! - [`steps`]         — `/toggle`, `/add-step`, `/remove-step`,
 //!                       `/edit-step`, `/set-priority`, `/reorder-all`
@@ -148,6 +152,24 @@ pub fn build_router(state: AppState) -> Router {
         .route("/fragment/knowledge", get(shell::fragment_knowledge))
         .route("/fragment/code", get(shell::fragment_code))
         .route("/fragment/projects", get(shell::fragment_projects))
+        // Per-item fragment endpoints — driven by the per-card
+        // `hx-trigger="sse:<pane>-<id>"` listeners. See
+        // `events.rs::classify` for how a changed path turns into the
+        // matching id, and `crates/condash-render/src/lib.rs` for the
+        // single-card render helpers.
+        .route(
+            "/fragment/projects/{slug}",
+            get(shell::fragment_projects_one),
+        )
+        .route(
+            "/fragment/history/{slug}",
+            get(shell::fragment_history_one),
+        )
+        .route(
+            "/fragment/knowledge/one",
+            get(shell::fragment_knowledge_one),
+        )
+        .route("/fragment/code/{repo}", get(shell::fragment_code_one))
         .route("/favicon.svg", get(shell::favicon_svg))
         .route("/favicon.ico", get(shell::favicon_ico))
         .route("/vendor/{*path}", get(shell::vendor_asset))

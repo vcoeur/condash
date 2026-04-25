@@ -16,19 +16,7 @@
         {% if month.index %}{{ m.index_badge(month.index, top_level=false) }}{% endif %}
       </summary>
       <div class="knowledge-list">
-        {% for item in month['items'] %}
-        <div class="knowledge-card history-card"
-          data-priority="{{ item.priority }}" data-kind="{{ item.kind }}"
-          data-action="open-note-preview"
-          data-path="{{ item.path }}" data-title="{{ item.title }}">
-          <div class="knowledge-title">{{ item.title }}</div>
-          <div class="history-meta">
-            <span class="pill pri-{{ item.priority }}">{{ item.priority }}</span>
-            <span class="pill">{{ item.kind }}</span>
-          </div>
-          <div class="knowledge-path">{{ item.slug }}</div>
-        </div>
-        {% endfor %}
+        {% for item in month['items'] %}{{ m.history_card(item) }}{% endfor %}
       </div>
     </details>
     {% endfor %}

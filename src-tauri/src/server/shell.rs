@@ -6,12 +6,14 @@
 //! the static routes here.
 
 use axum::body::Body;
-use axum::extract::{Query, State};
+use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use condash_render::{
-    render_cards_pane, render_code_pane, render_history_pane, render_knowledge_pane, render_page,
+    git_render, render_card, render_cards_pane, render_code_pane, render_history_pane,
+    render_knowledge_pane, render_one_history_row, render_one_knowledge_card, render_page,
 };
+use condash_state::collect_git_repos;
 use serde::Deserialize;
 
 use super::{error_json, html_response, live_runners_snapshot, AppState};
@@ -74,6 +76,69 @@ pub(super) async fn fragment_code(State(state): State<AppState>) -> impl IntoRes
 pub(super) async fn fragment_projects(State(state): State<AppState>) -> impl IntoResponse {
     let items = state.cache.get_items(&state.ctx());
     html_response(render_cards_pane(&items))
+}
+
+/// HTML fragment for one project card. Refreshed on
+/// `sse:projects-<slug>`. Returns 404 when the slug doesn't resolve to
+/// a known item — the pane-wide structural event will reconcile.
+pub(super) async fn fragment_projects_one(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+) -> impl IntoResponse {
+    let items = state.cache.get_items(&state.ctx());
+    match items.iter().find(|i| i.readme.slug == slug) {
+        Some(item) => html_response(render_card(item)),
+        None => error_json(StatusCode::NOT_FOUND, "no such item"),
+    }
+}
+
+/// HTML fragment for one history row. Refreshed on
+/// `sse:projects-<slug>` (history shares triggers with Projects).
+pub(super) async fn fragment_history_one(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+) -> impl IntoResponse {
+    let items = state.cache.get_items(&state.ctx());
+    match items.iter().find(|i| i.readme.slug == slug) {
+        Some(item) => html_response(render_one_history_row(item)),
+        None => error_json(StatusCode::NOT_FOUND, "no such item"),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct KnowledgeOneQuery {
+    path: String,
+}
+
+/// HTML fragment for one knowledge card, identified by its
+/// `data-node-id` (file path relative to the conception base, e.g.
+/// `knowledge/internal/condash.md`). Path comes in as a query param —
+/// keeps the route a single segment despite the slashes in the id.
+pub(super) async fn fragment_knowledge_one(
+    State(state): State<AppState>,
+    Query(q): Query<KnowledgeOneQuery>,
+) -> impl IntoResponse {
+    let knowledge = state.cache.get_knowledge(&state.ctx());
+    match render_one_knowledge_card(knowledge.as_ref().as_ref(), &q.path) {
+        Some(html) => html_response(html),
+        None => error_json(StatusCode::NOT_FOUND, "no such knowledge entry"),
+    }
+}
+
+/// HTML fragment for one code-pane repo (one `flat-group`). Refreshed
+/// on `sse:code-<repo>`. Returns 404 when the repo isn't in the current
+/// configuration — pane-wide structural fallback handles config edits.
+pub(super) async fn fragment_code_one(
+    State(state): State<AppState>,
+    AxumPath(repo): AxumPath<String>,
+) -> impl IntoResponse {
+    let ctx_guard = state.ctx();
+    let groups = collect_git_repos(&ctx_guard);
+    let live = live_runners_snapshot(&state);
+    match git_render::render_one_code_repo(&ctx_guard, &groups, &repo, &live) {
+        Some(html) => html_response(html),
+        None => error_json(StatusCode::NOT_FOUND, "no such repo"),
+    }
 }
 
 pub(super) async fn favicon_svg(State(state): State<AppState>) -> impl IntoResponse {

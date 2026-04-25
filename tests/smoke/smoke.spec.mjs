@@ -106,6 +106,85 @@ test('dashboard renders a card grid + reacts to fs events + dispatches actions',
     expect(leakedGlobals, 'old inline-handler names leaked back onto window').toEqual([]);
 });
 
+test('item-internal change triggers per-card fragment refresh, not pane-wide', async ({ page }) => {
+    // Per-card SSE patches contract:
+    //  - touching a single project's README must produce exactly one
+    //    GET /fragment/projects/<slug> (the card's per-item endpoint)
+    //  - and zero GET /fragment/projects (pane-wide)
+    //  - and the htmx swap target must be that one card, not #cards
+    //
+    // The pane-level trigger remains as the structural fallback path —
+    // a separate test (or future: deletion of an item folder) covers
+    // that case. Touching one README is the most common item-internal
+    // change.
+
+    const requests = [];
+    page.on('request', (req) => {
+        const u = new URL(req.url());
+        if (u.pathname.startsWith('/fragment/')) {
+            requests.push({ method: req.method(), path: u.pathname, query: u.search });
+        }
+    });
+
+    await page.goto('/');
+    const cards = page.locator('#cards');
+    await expect(cards.locator('.card').first()).toBeVisible();
+    const firstCard = cards.locator('.card').first();
+    const slug = await firstCard.getAttribute('id');
+    expect(slug, 'first card must carry id=<slug>').toBeTruthy();
+
+    // The card root must carry per-item htmx wiring (template invariant).
+    await expect(firstCard).toHaveAttribute(
+        'hx-trigger',
+        new RegExp(`^sse:projects-${slug}$`),
+    );
+    await expect(firstCard).toHaveAttribute(
+        'hx-get',
+        new RegExp(`^/fragment/projects/${slug}$`),
+    );
+
+    // Reset the request log so we only count fragment fetches caused by
+    // the SSE-driven swap (not the initial page load's morph-target
+    // fetches).
+    requests.length = 0;
+
+    const swapTargetIds = page.evaluate(
+        () =>
+            new Promise((resolve) => {
+                const ids = [];
+                const handler = (ev) => {
+                    const t = ev.detail && ev.detail.target;
+                    ids.push(t ? (t.id || t.tagName) : null);
+                };
+                document.body.addEventListener('htmx:afterSwap', handler);
+                setTimeout(() => {
+                    document.body.removeEventListener('htmx:afterSwap', handler);
+                    resolve(ids);
+                }, 4000);
+            }),
+    );
+    // Touch the README of the *first* card's slug so the watcher emits
+    // `sse:projects-<slug>` (matching the per-item trigger we just
+    // asserted is on that card).
+    const targetReadme = await readmeForSlug(FIXTURE, slug);
+    const buf = await fs.readFile(targetReadme);
+    await fs.writeFile(targetReadme, buf);
+    const ids = await swapTargetIds;
+    expect(
+        ids.includes(slug),
+        `expected an htmx swap targeting card #${slug}; saw ${JSON.stringify(ids)}`,
+    ).toBe(true);
+
+    // The per-item fragment must have been hit; the pane-wide one
+    // must not (for this single-README touch).
+    const perItem = requests.filter((r) => r.path === `/fragment/projects/${slug}`);
+    const paneWide = requests.filter((r) => r.path === '/fragment/projects');
+    expect(perItem.length, `expected ≥1 per-item fetch; saw ${JSON.stringify(requests)}`)
+        .toBeGreaterThanOrEqual(1);
+    expect(paneWide.length, `expected zero pane-wide fetches; saw ${JSON.stringify(paneWide)}`)
+        .toBe(0);
+});
+
 // Locate the first README under projects/ in the fixture so we can
 // touch it to trigger the SSE pulse.
 async function firstReadme(root) {
@@ -127,4 +206,21 @@ async function firstReadme(root) {
     const found = await walk(path.join(root, 'projects'));
     if (!found) throw new Error(`no README under ${root}/projects`);
     return found;
+}
+
+// Locate the README of a specific item slug under projects/<month>/<slug>/.
+async function readmeForSlug(root, slug) {
+    const projectsRoot = path.join(root, 'projects');
+    const months = await fs.readdir(projectsRoot, { withFileTypes: true });
+    for (const m of months) {
+        if (!m.isDirectory()) continue;
+        const candidate = path.join(projectsRoot, m.name, slug, 'README.md');
+        try {
+            await fs.stat(candidate);
+            return candidate;
+        } catch {
+            // not in this month
+        }
+    }
+    throw new Error(`no README for slug ${slug} under ${projectsRoot}`);
 }
