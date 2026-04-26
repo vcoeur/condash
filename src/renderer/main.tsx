@@ -61,17 +61,124 @@ function hasSteps(c: StepCounts): boolean {
   return c.todo + c.doing + c.done + c.dropped > 0;
 }
 
-function StepBadge(props: { counts: StepCounts }) {
+function StepProgress(props: { counts: StepCounts }) {
   const total = (): number =>
     props.counts.todo + props.counts.doing + props.counts.done + props.counts.dropped;
+  const ratio = (): number => {
+    const t = total();
+    return t === 0 ? 0 : Math.min(1, props.counts.done / t);
+  };
   const title = (): string =>
     `${props.counts.todo} todo, ${props.counts.doing} doing, ${props.counts.done} done, ${props.counts.dropped} dropped`;
   return (
-    <span class="badge steps" title={title()}>
-      <span class="step-done">{props.counts.done}</span>
-      <span class="step-sep">/</span>
-      <span class="step-total">{total()}</span>
+    <span class="step-progress-inner" title={title()}>
+      <span class="progress-track">
+        <span class="progress-fill" style={{ width: `${ratio() * 100}%` }} />
+      </span>
+      <span class="progress-text">
+        {props.counts.done}/{total()}
+      </span>
     </span>
+  );
+}
+
+const KIND_ICON: Record<string, () => any> = {
+  project: () => (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 1.5L14.5 8 8 14.5 1.5 8z" />
+    </svg>
+  ),
+  incident: () => (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2L14.5 13.5h-13z" />
+      <path d="M8 6.5v3" />
+      <circle cx="8" cy="11.5" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  document: () => (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 1.5h6L13 5v9.5H3.5z" />
+      <path d="M9.5 1.5V5H13" />
+      <path d="M5.5 8h5M5.5 10.5h5M5.5 5.5h2" />
+    </svg>
+  ),
+};
+
+function KindIcon(props: { kind: string }) {
+  const Icon = KIND_ICON[props.kind];
+  if (!Icon) return null;
+  return <Icon />;
+}
+
+function AppsIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 4.5l6-3 6 3-6 3z" />
+      <path d="M2 8l6 3 6-3" />
+      <path d="M2 11.5l6 3 6-3" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2v8" />
+      <path d="M4.5 7L8 10.5 11.5 7" />
+      <path d="M2.5 13.5h11" />
+    </svg>
+  );
+}
+
+function WarnIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M8 5v3.5" />
+      <circle cx="8" cy="11" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 
@@ -914,8 +1021,10 @@ function GroupBlock(props: {
       onDrop={handleDrop}
     >
       <header class="group-header">
+        <span class="dot" aria-hidden="true" />
         <span class="name">{props.group.status}</span>
         <span class="count">{props.group.items.length}</span>
+        <span class="rule" aria-hidden="true" />
       </header>
       <div class="group-body">
         <For each={props.group.items}>
@@ -986,6 +1095,7 @@ function Card(props: {
     <article
       class="row"
       title={props.item.path}
+      data-status-card={props.item.status}
       draggable={isDraggable()}
       onDragStart={isDraggable() ? handleDragStart : undefined}
     >
@@ -995,34 +1105,46 @@ function Card(props: {
           <p class="summary">{props.item.summary}</p>
         </Show>
         <div class="meta">
-          <span class="slug">{props.item.slug}</span>
           <Show when={props.item.kind !== 'unknown'}>
-            <span class="badge">{props.item.kind}</span>
+            <span class="meta-icon kind" data-kind={props.item.kind} title={props.item.kind}>
+              <KindIcon kind={props.item.kind} />
+              {props.item.kind}
+            </span>
           </Show>
           <Show when={props.item.apps}>
-            <span class="badge">{props.item.apps}</span>
+            <span class="meta-icon apps" title={props.item.apps}>
+              <AppsIcon />
+              {props.item.apps}
+            </span>
           </Show>
           <Show when={hasSteps(props.item.stepCounts)}>
             <button
-              class="badge steps expander"
+              class="meta-icon expander"
               onClick={(e) => {
                 e.stopPropagation();
                 setExpanded((v) => !v);
               }}
               title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
             >
-              <StepBadge counts={props.item.stepCounts} />
+              <StepProgress counts={props.item.stepCounts} />
               <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
             </button>
           </Show>
           <Show when={props.item.deliverableCount > 0}>
-            <span class="badge" title="deliverables">
-              ⬇ {props.item.deliverableCount}
+            <span class="meta-icon" title="deliverables">
+              <DownloadIcon />
+              {props.item.deliverableCount}
             </span>
           </Show>
           <Show when={!(KNOWN_STATUSES as readonly string[]).includes(props.item.status)}>
-            <span class="badge warn">!? {props.item.status}</span>
+            <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
+              <WarnIcon />
+              {props.item.status}
+            </span>
           </Show>
+          <span class="slug" style={{ 'margin-left': 'auto' }}>
+            {props.item.slug}
+          </span>
         </div>
       </div>
       <Show when={expanded() && props.item.steps.length > 0}>

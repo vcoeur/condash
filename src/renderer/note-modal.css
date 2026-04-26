@@ -12,8 +12,8 @@
 .modal {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.32);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
   display: flex;
   flex-direction: column;
   width: min(900px, 100%);
@@ -33,9 +33,12 @@
 }
 
 .modal-title {
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: -0.005em;
   flex-shrink: 0;
-  max-width: 30%;
+  max-width: 40%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
