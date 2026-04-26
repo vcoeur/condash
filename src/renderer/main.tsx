@@ -1,8 +1,17 @@
 import { render } from 'solid-js/web';
 import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'solid-js';
-import type { Project, Step, StepCounts, StepMarker, Theme } from '@shared/types';
+import type {
+  KnowledgeNode,
+  Project,
+  Step,
+  StepCounts,
+  StepMarker,
+  Theme,
+} from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import './styles.css';
+
+type Tab = 'projects' | 'knowledge';
 
 const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
 const THEME_LABEL: Record<Theme, string> = {
@@ -116,6 +125,7 @@ function App() {
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [theme, setTheme] = createSignal<Theme>('system');
   const [toast, setToast] = createSignal<string | null>(null);
+  const [tab, setTab] = createSignal<Tab>('projects');
 
   void window.condash.getConceptionPath().then(setConceptionPath);
   void window.condash.getTheme().then((t) => {
@@ -141,6 +151,14 @@ function App() {
     async ([path]) => {
       if (!path) return [] as Project[];
       return window.condash.listProjects();
+    },
+  );
+
+  const [knowledge] = createResource(
+    () => [conceptionPath(), refreshKey(), tab()] as const,
+    async ([path, , currentTab]) => {
+      if (!path || currentTab !== 'knowledge') return null;
+      return window.condash.readKnowledgeTree();
     },
   );
 
@@ -194,6 +212,23 @@ function App() {
     <div class="app">
       <header class="toolbar">
         <h1>condash</h1>
+        <nav class="tabs">
+          <button
+            class="tab"
+            classList={{ active: tab() === 'projects' }}
+            onClick={() => setTab('projects')}
+          >
+            Projects
+          </button>
+          <button
+            class="tab"
+            classList={{ active: tab() === 'knowledge' }}
+            onClick={() => setTab('knowledge')}
+            disabled={!conceptionPath()}
+          >
+            Knowledge
+          </button>
+        </nav>
         <span class="path">{conceptionPath() ?? '(no conception path)'}</span>
         <button onClick={cycleTheme} title="Cycle theme">
           {THEME_LABEL[theme()]}
@@ -215,25 +250,42 @@ function App() {
           </div>
         }
       >
-        <Suspense fallback={<div class="empty">Loading…</div>}>
-          <Show
-            when={(projects() ?? []).length > 0}
-            fallback={<div class="empty">No projects found under projects/.</div>}
-          >
-            <div class="columns">
-              <For each={groupByStatus(projects() ?? [])}>
-                {(group) => (
-                  <Column
-                    group={group}
-                    onOpen={handleOpen}
-                    onToggleStep={handleToggleStep}
-                    onDropProject={handleDropOnColumn}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
-        </Suspense>
+        <Show when={tab() === 'projects'}>
+          <Suspense fallback={<div class="empty">Loading…</div>}>
+            <Show
+              when={(projects() ?? []).length > 0}
+              fallback={<div class="empty">No projects found under projects/.</div>}
+            >
+              <div class="columns">
+                <For each={groupByStatus(projects() ?? [])}>
+                  {(group) => (
+                    <Column
+                      group={group}
+                      onOpen={handleOpen}
+                      onToggleStep={handleToggleStep}
+                      onDropProject={handleDropOnColumn}
+                    />
+                  )}
+                </For>
+              </div>
+            </Show>
+          </Suspense>
+        </Show>
+
+        <Show when={tab() === 'knowledge'}>
+          <Suspense fallback={<div class="empty">Loading…</div>}>
+            <Show
+              when={knowledge()}
+              fallback={
+                <div class="empty">No knowledge/ directory under the selected conception path.</div>
+              }
+            >
+              <div class="knowledge-pane">
+                <KnowledgeTree node={knowledge()!} onOpen={handleOpen} />
+              </div>
+            </Show>
+          </Suspense>
+        </Show>
       </Show>
 
       <Show when={toast()}>
@@ -390,6 +442,58 @@ function Card(props: {
         </ul>
       </Show>
     </article>
+  );
+}
+
+function KnowledgeTree(props: { node: KnowledgeNode; onOpen: (path: string) => void }) {
+  return (
+    <ul class="knowledge-tree knowledge-tree-root">
+      <KnowledgeNodeView node={props.node} depth={0} onOpen={props.onOpen} initiallyExpanded />
+    </ul>
+  );
+}
+
+function KnowledgeNodeView(props: {
+  node: KnowledgeNode;
+  depth: number;
+  onOpen: (path: string) => void;
+  initiallyExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = createSignal(props.initiallyExpanded ?? props.depth === 0);
+
+  return (
+    <li class="knowledge-node" data-kind={props.node.kind}>
+      <Show
+        when={props.node.kind === 'directory'}
+        fallback={
+          <button
+            class="knowledge-leaf"
+            onClick={() => props.onOpen(props.node.path)}
+            title={props.node.path}
+          >
+            <span class="knowledge-icon">📄</span>
+            <span class="knowledge-title">{props.node.title}</span>
+          </button>
+        }
+      >
+        <button class="knowledge-dir" onClick={() => setExpanded((v) => !v)}>
+          <span class="knowledge-icon">{expanded() ? '▾' : '▸'}</span>
+          <span class="knowledge-title">{props.node.title}</span>
+          <Show when={props.node.children}>
+            <span class="knowledge-count">{props.node.children!.length}</span>
+          </Show>
+        </button>
+        <Show when={expanded() && props.node.children}>
+          <ul class="knowledge-tree">
+            <For each={props.node.children}>
+              {(child) => (
+                <KnowledgeNodeView node={child} depth={props.depth + 1} onOpen={props.onOpen} />
+              )}
+            </For>
+          </ul>
+        </Show>
+      </Show>
+    </li>
   );
 }
 

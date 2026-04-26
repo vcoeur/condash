@@ -48,3 +48,18 @@ export interface Settings {
   conceptionPath: string | null;
   theme: Theme;
 }
+
+export interface KnowledgeNode {
+  /** Path relative to <conception>/knowledge/. Empty string for the root. */
+  relPath: string;
+  /** Absolute path on disk. */
+  path: string;
+  /** Last segment of relPath, or 'knowledge' for the root. */
+  name: string;
+  /** Title from the .md (first h1) when this is a file; the directory name otherwise. */
+  title: string;
+  /** Directory or file. Files end with .md; everything else is skipped. */
+  kind: 'directory' | 'file';
+  /** Children (only for directories). Sorted: directories first, then files, both alphabetical. */
+  children?: KnowledgeNode[];
+}

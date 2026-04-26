@@ -5,6 +5,7 @@ import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
 import { setStatus, toggleStep } from './mutate';
+import { readKnowledgeTree } from './knowledge';
 import type { Project, StepMarker, Theme } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
@@ -60,6 +61,12 @@ async function listProjects(): Promise<Project[]> {
 
 function registerIpc(): void {
   ipcMain.handle('listProjects', () => listProjects());
+
+  ipcMain.handle('readKnowledgeTree', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return null;
+    return readKnowledgeTree(conceptionPath);
+  });
 
   ipcMain.handle('openInEditor', async (_, path: string) => {
     const error = await shell.openPath(path);

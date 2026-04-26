@@ -1,7 +1,8 @@
-import type { Project, StepMarker, Theme } from './types';
+import type { KnowledgeNode, Project, StepMarker, Theme } from './types';
 
 export interface CondashApi {
   listProjects(): Promise<Project[]>;
+  readKnowledgeTree(): Promise<KnowledgeNode | null>;
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;

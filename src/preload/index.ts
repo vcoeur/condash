@@ -3,6 +3,7 @@ import type { CondashApi } from '../shared/api';
 
 const api: CondashApi = {
   listProjects: () => ipcRenderer.invoke('listProjects'),
+  readKnowledgeTree: () => ipcRenderer.invoke('readKnowledgeTree'),
   openInEditor: (path) => ipcRenderer.invoke('openInEditor', path),
   pickConceptionPath: () => ipcRenderer.invoke('pickConceptionPath'),
   getConceptionPath: () => ipcRenderer.invoke('getConceptionPath'),
