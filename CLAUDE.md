@@ -6,12 +6,19 @@ Project tracking + per-feature specs live in `vcoeur/conception/projects/2026-04
 
 ## Stack
 
-- **Main**: Node, TypeScript (CommonJS), `tsc` to `dist-electron/`.
-- **Preload**: contextBridge surface, exposes `window.condash` typed as `CondashApi` (see `src/shared/api.ts`).
+- **Main**: Node, TypeScript, **bundled with esbuild** (`scripts/build-electron.mjs`) to a single CJS file at `dist-electron/main/index.js`. Imports are inlined; ESM-only deps (chokidar 4, future libs) bundle to CJS transparently. Native modules (electron, node-pty when MVP-15 lands, fsevents, better-sqlite3) stay external — they have to load from `node_modules` so `electron-rebuild` can reach them.
+- **Preload**: same bundler, output at `dist-electron/preload/index.js`. Stays CJS because `webPreferences.sandbox: true` + ESM preload don't mix on Electron.
+- **Typecheck**: `tsc -p tsconfig.main.json --noEmit` (and the renderer twin). `tsc` no longer emits — esbuild owns emission, tsc owns type-checking.
 - **Renderer**: Solid + Solid signals, Vite (with `vite-plugin-solid`), plain CSS files + CSS variables, `src/renderer/main.tsx`.
 - **Shared types**: `src/shared/types.ts` — plain serialisable objects, ISO strings, no methods.
 - **Packaging**: electron-builder, single `BrowserWindow`, all modals/panes are in-renderer overlays.
 - **Watcher (post-MVP-0)**: single global chokidar rooted at `<conception>/`, debounced 250 ms.
+
+### Adding a new main-process dep
+
+1. `npm install <pkg>`. ESM-only is fine — esbuild bundles it as CJS.
+2. If the dep is **native** (has a `binding.gyp` or ships prebuilt `.node` files — e.g. `node-pty`, `better-sqlite3`), add it to the `EXTERNAL` array in `scripts/build-electron.mjs` so esbuild leaves it alone, and wire `electron-rebuild` if needed.
+3. Pure-JS deps need no further work.
 
 ## Locked decisions
 
