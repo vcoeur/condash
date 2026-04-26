@@ -39,18 +39,34 @@ export function renderMarkdown(input: string): string {
 
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
 
+function activeMermaidTheme(): 'default' | 'dark' {
+  const explicit = document.documentElement.dataset.theme;
+  if (explicit === 'dark') return 'dark';
+  if (explicit === 'light') return 'default';
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
+}
+
 async function getMermaid(): Promise<typeof import('mermaid').default> {
   if (!mermaidPromise) {
     mermaidPromise = import('mermaid').then(({ default: mermaid }) => {
       mermaid.initialize({
         startOnLoad: false,
-        theme: 'default',
+        theme: activeMermaidTheme(),
         securityLevel: 'strict',
       });
       return mermaid;
     });
   }
   return mermaidPromise;
+}
+
+/**
+ * Drop the cached Mermaid instance so the next runMermaidIn re-initialises with
+ * the current theme. Newly rendered diagrams pick up the theme; existing rendered
+ * SVGs keep their colours until the next render.
+ */
+export function resetMermaidTheme(): void {
+  mermaidPromise = null;
 }
 
 export async function runMermaidIn(container: HTMLElement): Promise<void> {

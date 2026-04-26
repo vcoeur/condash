@@ -12,6 +12,7 @@ import type {
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
+import { resetMermaidTheme } from './markdown';
 import { buildSlugIndex } from './wikilinks';
 import './styles.css';
 import './note-modal.css';
@@ -161,6 +162,7 @@ function App() {
     const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
     setTheme(next);
     applyTheme(next);
+    resetMermaidTheme();
     void window.condash.setTheme(next);
   };
 
