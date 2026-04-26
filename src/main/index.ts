@@ -65,8 +65,19 @@ async function listProjects(): Promise<Project[]> {
   });
 }
 
+async function getProject(path: string): Promise<Project | null> {
+  try {
+    return await parseReadme(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('listProjects', () => listProjects());
+
+  ipcMain.handle('getProject', (_, path: string) => getProject(path));
 
   ipcMain.handle('readKnowledgeTree', async () => {
     const { conceptionPath } = await readSettings();

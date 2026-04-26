@@ -1,7 +1,16 @@
-import type { KnowledgeNode, Project, RepoEntry, SearchHit, StepMarker, Theme } from './types';
+import type {
+  KnowledgeNode,
+  Project,
+  RepoEntry,
+  SearchHit,
+  StepMarker,
+  Theme,
+  TreeEvent,
+} from './types';
 
 export interface CondashApi {
   listProjects(): Promise<Project[]>;
+  getProject(path: string): Promise<Project | null>;
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
   search(query: string): Promise<SearchHit[]>;
   listRepos(): Promise<RepoEntry[]>;
@@ -20,10 +29,10 @@ export interface CondashApi {
   readNote(path: string): Promise<string>;
   writeNote(path: string, expectedContent: string, newContent: string): Promise<void>;
   /**
-   * Subscribe to tree-changed events emitted by the main-process file watcher.
-   * Returns an unsubscribe function.
+   * Subscribe to per-path tree events emitted by the main-process file watcher.
+   * Each callback receives a debounced batch. Returns an unsubscribe function.
    */
-  onTreeChanged(callback: () => void): () => void;
+  onTreeEvents(callback: (events: TreeEvent[]) => void): () => void;
 }
 
 declare global {

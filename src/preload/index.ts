@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi } from '../shared/api';
+import type { TreeEvent } from '../shared/types';
 
 const api: CondashApi = {
   listProjects: () => ipcRenderer.invoke('listProjects'),
+  getProject: (path) => ipcRenderer.invoke('getProject', path),
   readKnowledgeTree: () => ipcRenderer.invoke('readKnowledgeTree'),
   search: (query) => ipcRenderer.invoke('search', query),
   listRepos: () => ipcRenderer.invoke('listRepos'),
@@ -17,11 +19,11 @@ const api: CondashApi = {
   readNote: (path) => ipcRenderer.invoke('readNote', path),
   writeNote: (path, expectedContent, newContent) =>
     ipcRenderer.invoke('writeNote', path, expectedContent, newContent),
-  onTreeChanged: (callback) => {
-    const handler = (): void => callback();
-    ipcRenderer.on('tree-changed', handler);
+  onTreeEvents: (callback) => {
+    const handler = (_: unknown, events: TreeEvent[]): void => callback(events);
+    ipcRenderer.on('tree-events', handler);
     return () => {
-      ipcRenderer.removeListener('tree-changed', handler);
+      ipcRenderer.removeListener('tree-events', handler);
     };
   },
 };

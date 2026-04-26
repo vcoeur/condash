@@ -9,6 +9,7 @@ import type {
   StepCounts,
   StepMarker,
   Theme,
+  TreeEvent,
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
@@ -153,8 +154,8 @@ function App() {
     applyTheme(t);
   });
 
-  const unsubscribe = window.condash.onTreeChanged(() => {
-    setRefreshKey((k) => k + 1);
+  const unsubscribe = window.condash.onTreeEvents((events) => {
+    void handleTreeEvents(events);
   });
   onCleanup(unsubscribe);
 
@@ -225,6 +226,48 @@ function App() {
   };
 
   const handleRefresh = () => setRefreshKey((k) => k + 1);
+
+  const handleTreeEvents = async (events: TreeEvent[]): Promise<void> => {
+    let knowledgeOrConfigDirty = false;
+    let unknownSeen = false;
+
+    for (const event of events) {
+      if (event.kind === 'unknown') {
+        unknownSeen = true;
+        break;
+      }
+      if (event.kind === 'config' || event.kind === 'knowledge') {
+        knowledgeOrConfigDirty = true;
+        continue;
+      }
+      // Per-project patch.
+      try {
+        if (event.op === 'unlink') {
+          mutate((items) => (items ?? []).filter((p) => p.path !== event.path));
+          continue;
+        }
+        const project = await window.condash.getProject(event.path);
+        if (!project) {
+          mutate((items) => (items ?? []).filter((p) => p.path !== event.path));
+          continue;
+        }
+        mutate((items) => {
+          const list = items ?? [];
+          const idx = list.findIndex((p) => p.path === project.path);
+          if (idx === -1) return [...list, project];
+          const next = list.slice();
+          next[idx] = project;
+          return next;
+        });
+      } catch {
+        unknownSeen = true;
+      }
+    }
+
+    if (unknownSeen || knowledgeOrConfigDirty) {
+      setRefreshKey((k) => k + 1);
+    }
+  };
 
   const handleOpenInEditor = (path: string) => {
     void window.condash.openInEditor(path);

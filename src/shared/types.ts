@@ -85,6 +85,12 @@ export interface SearchHit {
   snippets: string[];
 }
 
+export type TreeEvent =
+  | { kind: 'project'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'knowledge'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'config'; path: string }
+  | { kind: 'unknown' };
+
 export interface KnowledgeNode {
   /** Path relative to <conception>/knowledge/. Empty string for the root. */
   relPath: string;
