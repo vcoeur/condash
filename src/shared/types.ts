@@ -85,6 +85,30 @@ export interface RepoEntry {
   worktrees?: Worktree[];
 }
 
+export type TermSide = 'my' | 'code';
+
+export interface TermSpawnRequest {
+  side: TermSide;
+  /** When set, looks up the repo's `run:` and uses its cwd. */
+  repo?: string;
+  /** Free-form command to run via `bash -lc`. Mutually exclusive with `repo`. */
+  command?: string;
+  /** Override the cwd; defaults to $HOME (or the resolved repo cwd). */
+  cwd?: string;
+  cols?: number;
+  rows?: number;
+}
+
+export interface TermDataMessage {
+  id: string;
+  data: string;
+}
+
+export interface TermExitMessage {
+  id: string;
+  code: number;
+}
+
 export type OpenWithSlotKey = 'main_ide' | 'secondary_ide' | 'terminal';
 
 export interface OpenWithSlot {

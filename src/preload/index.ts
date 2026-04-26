@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi } from '../shared/api';
-import type { TreeEvent } from '../shared/types';
+import type { TermDataMessage, TermExitMessage, TreeEvent } from '../shared/types';
 
 const api: CondashApi = {
   listProjects: () => ipcRenderer.invoke('listProjects'),
@@ -28,6 +28,20 @@ const api: CondashApi = {
     return () => {
       ipcRenderer.removeListener('tree-events', handler);
     };
+  },
+  termSpawn: (request) => ipcRenderer.invoke('term.spawn', request),
+  termWrite: (id, data) => ipcRenderer.invoke('term.write', id, data),
+  termResize: (id, cols, rows) => ipcRenderer.invoke('term.resize', id, cols, rows),
+  termClose: (id) => ipcRenderer.invoke('term.close', id),
+  onTermData: (callback) => {
+    const handler = (_: unknown, msg: TermDataMessage): void => callback(msg);
+    ipcRenderer.on('term.data', handler);
+    return () => ipcRenderer.removeListener('term.data', handler);
+  },
+  onTermExit: (callback) => {
+    const handler = (_: unknown, msg: TermExitMessage): void => callback(msg);
+    ipcRenderer.on('term.exit', handler);
+    return () => ipcRenderer.removeListener('term.exit', handler);
   },
 };
 

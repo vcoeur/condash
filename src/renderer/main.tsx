@@ -16,6 +16,7 @@ import type {
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
 import { resetMermaidTheme } from './markdown';
+import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { buildSlugIndex } from './wikilinks';
 import './styles.css';
 import './note-modal.css';
@@ -146,6 +147,8 @@ function App() {
   const [tab, setTab] = createSignal<Tab>('projects');
   const [modal, setModal] = createSignal<ModalState>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
+  const [terminalOpen, setTerminalOpen] = createSignal(false);
+  let terminalHandle: TerminalPaneHandle | null = null;
   const [searchQuery, setSearchQuery] = createSignal('');
   const [searchInput, setSearchInput] = createSignal('');
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -227,6 +230,25 @@ function App() {
       flashToast(`Force-stopped ${repo.name}`);
     } catch (err) {
       flashToast(`Force-stop failed: ${(err as Error).message}`);
+    }
+  };
+
+  const ensureTerminalOpen = (): void => {
+    if (!terminalOpen()) setTerminalOpen(true);
+  };
+
+  const handleRunRepo = async (repo: RepoEntry) => {
+    if (!terminalHandle) {
+      ensureTerminalOpen();
+      // Wait one tick so the pane mounts and registers its handle.
+      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+    }
+    if (!terminalHandle) return;
+    ensureTerminalOpen();
+    try {
+      await terminalHandle.spawn({ side: 'code', repo: repo.name }, repo.name);
+    } catch (err) {
+      flashToast(`Run failed: ${(err as Error).message}`);
     }
   };
 
@@ -415,6 +437,13 @@ function App() {
           {THEME_LABEL[theme()]}
         </button>
         <button
+          onClick={() => setTerminalOpen((v) => !v)}
+          classList={{ active: terminalOpen() }}
+          title="Toggle terminal pane (Ctrl+`)"
+        >
+          ▤
+        </button>
+        <button
           onClick={handleOpenPreferences}
           disabled={!conceptionPath()}
           title="Edit configuration.json"
@@ -487,6 +516,7 @@ function App() {
                       onOpen={handleOpenInEditor}
                       onLaunch={(slot, path) => void handleLaunch(slot, path)}
                       onForceStop={(r) => void handleForceStop(r)}
+                      onRun={(r) => void handleRunRepo(r)}
                     />
                   )}
                 </For>
@@ -539,6 +569,14 @@ function App() {
           onOpenInOs={handleOpenInEditor}
         />
       </Show>
+
+      <TerminalPane
+        open={terminalOpen()}
+        onClose={() => setTerminalOpen(false)}
+        registerHandle={(handle) => {
+          terminalHandle = handle;
+        }}
+      />
 
       <Show when={toast()}>
         <div class="toast" role="status">
@@ -802,6 +840,7 @@ function RepoRow(props: {
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
+  onRun: (repo: RepoEntry) => void;
 }) {
   const dirtyLabel = (): string => {
     if (props.repo.missing) return 'missing';
@@ -831,6 +870,14 @@ function RepoRow(props: {
           title="Open in OS file manager"
         >
           Open
+        </button>
+        <button
+          class="modal-button"
+          onClick={() => props.onRun(props.repo)}
+          disabled={props.repo.missing}
+          title="Run in terminal pane"
+        >
+          ▶ Run
         </button>
         <For each={LAUNCHER_SLOTS}>
           {(slot) => (

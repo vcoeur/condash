@@ -6,6 +6,9 @@ import type {
   RepoEntry,
   SearchHit,
   StepMarker,
+  TermDataMessage,
+  TermExitMessage,
+  TermSpawnRequest,
   Theme,
   TreeEvent,
 } from './types';
@@ -38,6 +41,13 @@ export interface CondashApi {
    * Each callback receives a debounced batch. Returns an unsubscribe function.
    */
   onTreeEvents(callback: (events: TreeEvent[]) => void): () => void;
+
+  termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
+  termWrite(id: string, data: string): Promise<void>;
+  termResize(id: string, cols: number, rows: number): Promise<void>;
+  termClose(id: string): Promise<void>;
+  onTermData(callback: (msg: TermDataMessage) => void): () => void;
+  onTermExit(callback: (msg: TermExitMessage) => void): () => void;
 }
 
 declare global {

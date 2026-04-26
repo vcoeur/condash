@@ -10,7 +10,14 @@ import { readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
 import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
-import type { OpenWithSlotKey, Project, StepMarker, Theme } from '../shared/types';
+import { closeSession, killAll, resizeTerminal, spawnTerminal, writeTerminal } from './terminals';
+import type {
+  OpenWithSlotKey,
+  Project,
+  StepMarker,
+  TermSpawnRequest,
+  Theme,
+} from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
@@ -116,6 +123,23 @@ function registerIpc(): void {
     return forceStopRepo(conceptionPath, repoName);
   });
 
+  ipcMain.handle('term.spawn', async (event, request: TermSpawnRequest) => {
+    const { conceptionPath } = await readSettings();
+    return spawnTerminal(conceptionPath, event.sender, request);
+  });
+
+  ipcMain.handle('term.write', (_, id: string, data: string) => {
+    writeTerminal(id, data);
+  });
+
+  ipcMain.handle('term.resize', (_, id: string, cols: number, rows: number) => {
+    resizeTerminal(id, cols, rows);
+  });
+
+  ipcMain.handle('term.close', (_, id: string) => {
+    closeSession(id);
+  });
+
   ipcMain.handle('openInEditor', async (_, path: string) => {
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
@@ -180,5 +204,6 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  killAll();
   if (process.platform !== 'darwin') app.quit();
 });

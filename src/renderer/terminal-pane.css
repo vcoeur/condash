@@ -1,0 +1,122 @@
+.terminal-pane {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  height: 320px;
+  flex-shrink: 0;
+  contain: layout paint;
+}
+
+.terminal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.terminal-side-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.terminal-side-toggle .modal-button {
+  width: auto;
+  padding: 0 8px;
+  height: 24px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.terminal-side-toggle .modal-button.active {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.terminal-tabs {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  background: var(--bg-elevated);
+  max-width: 220px;
+}
+
+.terminal-tab.active {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.terminal-tab.exited {
+  opacity: 0.65;
+}
+
+.terminal-tab-label {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-tab-close,
+.terminal-tab-add {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.terminal-tab-close:hover,
+.terminal-tab-add:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.terminal-tab-add {
+  margin-left: 2px;
+  font-weight: 600;
+}
+
+.terminal-host {
+  flex: 1;
+  position: relative;
+  background: var(--bg-elevated);
+}
+
+.xterm-host {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  padding: 4px 8px;
+}
+
+.xterm-host .xterm {
+  flex: 1;
+  height: 100%;
+}
+
+.xterm-host .xterm-viewport,
+.xterm-host .xterm-screen {
+  background: transparent !important;
+}
