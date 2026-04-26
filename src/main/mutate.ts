@@ -4,7 +4,9 @@ import type { StepMarker } from '../shared/types';
 import { canonicaliseOpenWith, configSchema } from './config-schema';
 
 const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s.*)$/;
+const STEP_LINE_FULL_RE = /^(\s*-\s\[)([ ~x-])(\]\s)(.*)$/;
 const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)([^\s]+)\s*$/i;
+const HEADING2_RE = /^##\s+(.+)$/;
 
 const queues = new Map<string, Promise<unknown>>();
 
@@ -56,6 +58,103 @@ export async function toggleStep(
     }
 
     lines[lineIndex] = `${match[1]}${newMarker}${match[3]}`;
+    await atomicWrite(path, lines.join('\n'));
+  });
+}
+
+export async function editStepText(
+  path: string,
+  lineIndex: number,
+  expectedText: string,
+  newText: string,
+): Promise<void> {
+  const trimmed = newText.trim();
+  if (!trimmed) {
+    throw new Error('Step text cannot be empty');
+  }
+  if (/\r|\n/.test(trimmed)) {
+    throw new Error('Step text cannot contain line breaks');
+  }
+  return withFileQueue(path, async () => {
+    const raw = await fs.readFile(path, 'utf8');
+    const lines = raw.split(/\r?\n/);
+
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      throw new Error(`Line index ${lineIndex} out of range`);
+    }
+
+    const match = lines[lineIndex].match(STEP_LINE_FULL_RE);
+    if (!match) {
+      throw new Error(`Line ${lineIndex} is not a step`);
+    }
+    if (match[4].trim() !== expectedText.trim()) {
+      throw new Error(
+        `Drift: step text at line ${lineIndex} doesn't match expected text — reload before editing`,
+      );
+    }
+
+    lines[lineIndex] = `${match[1]}${match[2]}${match[3]}${trimmed}`;
+    await atomicWrite(path, lines.join('\n'));
+  });
+}
+
+/**
+ * Append a new `- [ ] text` line to the `## Steps` section. Inserts after
+ * the last existing step in that section; if there are no steps yet, appends
+ * at the end of the section (or end of file when the section is the last one).
+ */
+export async function addStep(path: string, text: string): Promise<void> {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error('Step text cannot be empty');
+  }
+  if (/\r|\n/.test(trimmed)) {
+    throw new Error('Step text cannot contain line breaks');
+  }
+  return withFileQueue(path, async () => {
+    const raw = await fs.readFile(path, 'utf8');
+    const lines = raw.split(/\r?\n/);
+
+    let stepsStart = -1;
+    let stepsEnd = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+      const heading = lines[i].match(HEADING2_RE);
+      if (!heading) continue;
+      if (stepsStart === -1 && heading[1].trim().toLowerCase() === 'steps') {
+        stepsStart = i;
+        continue;
+      }
+      if (stepsStart !== -1) {
+        stepsEnd = i;
+        break;
+      }
+    }
+
+    if (stepsStart === -1) {
+      throw new Error('No "## Steps" section found');
+    }
+
+    let insertAt = -1;
+    for (let i = stepsEnd - 1; i > stepsStart; i--) {
+      if (STEP_LINE_RE.test(lines[i])) {
+        insertAt = i + 1;
+        break;
+      }
+    }
+    if (insertAt === -1) {
+      // No step yet — drop the new step right under the heading, with a
+      // blank line of breathing room if the next line isn't already blank.
+      insertAt = stepsStart + 1;
+      while (insertAt < stepsEnd && lines[insertAt].trim() === '') insertAt++;
+    } else {
+      // Trim trailing blank lines so the insert sits flush with the existing list.
+      while (insertAt - 1 > stepsStart && lines[insertAt - 1].trim() === '') {
+        insertAt--;
+      }
+    }
+
+    const newLine = `- [ ] ${trimmed}`;
+    lines.splice(insertAt, 0, newLine);
     await atomicWrite(path, lines.join('\n'));
   });
 }

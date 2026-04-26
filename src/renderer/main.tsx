@@ -543,6 +543,36 @@ function App() {
     }
   };
 
+  const handleEditStepText = async (project: Project, step: Step, newText: string) => {
+    try {
+      await window.condash.editStepText(project.path, step.lineIndex, step.text, newText);
+      // Watcher fires a 'change' event for the README; the renderer patches in
+      // place. No optimistic update — the line index could shift if anything
+      // else changed in the file between read and write.
+    } catch (err) {
+      flashToast(`Edit step failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleAddStep = async (project: Project, text: string) => {
+    try {
+      await window.condash.addStep(project.path, text);
+    } catch (err) {
+      flashToast(`Add step failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleOpenFileFromPreview = (path: string) => {
+    if (path.toLowerCase().endsWith('.md')) {
+      setPreviewPath(null);
+      setModal({ path });
+    } else if (path.toLowerCase().endsWith('.pdf')) {
+      setPdfPath(path);
+    } else {
+      void window.condash.openInEditor(path);
+    }
+  };
+
   const handleDropOnColumn = async (path: string, newStatus: string) => {
     const items = projects() ?? [];
     const project = items.find((p) => p.path === path);
@@ -738,8 +768,11 @@ function App() {
         project={previewProject()}
         onClose={() => setPreviewPath(null)}
         onToggleStep={handleToggleStep}
+        onEditStepText={handleEditStepText}
+        onAddStep={handleAddStep}
         onChangeStatus={(p, s) => void handleDropOnColumn(p.path, s)}
         onOpenReadme={handleOpenReadmeFromPreview}
+        onOpenFile={handleOpenFileFromPreview}
         onOpenInEditor={handleOpenInEditor}
         onOpenDeliverable={handleOpenDeliverableFromPreview}
       />

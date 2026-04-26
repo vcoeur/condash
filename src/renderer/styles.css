@@ -311,21 +311,29 @@ button:hover {
 .row {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
   border-radius: var(--radius);
+  background: var(--bg-elevated);
   cursor: pointer;
   contain: layout paint;
 }
 .row:hover {
   background: var(--bg-hover);
+  border-color: var(--border);
 }
 
 .row .title {
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 .row .meta {
@@ -368,19 +376,20 @@ button:hover {
 
 .row .summary {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text);
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.45;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
 }
 
 .row-head {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .row .badge.expander {

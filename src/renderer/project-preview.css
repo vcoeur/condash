@@ -221,6 +221,138 @@
   margin: 0;
 }
 
+.preview-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.step-text-editable {
+  cursor: text;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.step-text-editable:hover {
+  background: var(--bg-hover);
+}
+
+.step-edit-input {
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  min-width: 0;
+}
+
+.step-edit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.add-step-button {
+  margin-top: 6px;
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.add-step-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.add-step-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-step-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.step-toggle-placeholder {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  width: 18px;
+  text-align: center;
+}
+
+.files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-group-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 6px 0 2px;
+}
+
+.file-row {
+  margin: 0;
+}
+
+.file-row-readme .file-button {
+  border-color: var(--accent);
+}
+
+.file-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.file-button:hover {
+  background: var(--bg-hover);
+}
+
+.file-icon {
+  font-size: 13px;
+}
+
+.file-name {
+  font-size: 13px;
+}
+
+.file-rel {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .deliverables-list {
   list-style: none;
   margin: 0;
