@@ -8,6 +8,9 @@ const api: CondashApi = {
   getConceptionPath: () => ipcRenderer.invoke('getConceptionPath'),
   getTheme: () => ipcRenderer.invoke('getTheme'),
   setTheme: (theme) => ipcRenderer.invoke('setTheme', theme),
+  toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
+    ipcRenderer.invoke('toggleStep', path, lineIndex, expectedMarker, newMarker),
+  setStatus: (path, newStatus) => ipcRenderer.invoke('setStatus', path, newStatus),
   onTreeChanged: (callback) => {
     const handler = (): void => callback();
     ipcRenderer.on('tree-changed', handler);

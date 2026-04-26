@@ -4,7 +4,8 @@ import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
-import type { Project, Theme } from '../shared/types';
+import { setStatus, toggleStep } from './mutate';
+import type { Project, StepMarker, Theme } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
@@ -81,6 +82,14 @@ function registerIpc(): void {
     next.theme = theme;
     await writeSettings(next);
   });
+
+  ipcMain.handle(
+    'toggleStep',
+    (_, path: string, lineIndex: number, expectedMarker: StepMarker, newMarker: StepMarker) =>
+      toggleStep(path, lineIndex, expectedMarker, newMarker),
+  );
+
+  ipcMain.handle('setStatus', (_, path: string, newStatus: string) => setStatus(path, newStatus));
 
   ipcMain.handle('pickConceptionPath', async () => {
     const result = await dialog.showOpenDialog({

@@ -18,6 +18,17 @@ export interface StepCounts {
   dropped: number;
 }
 
+export type StepMarker = ' ' | '~' | 'x' | '-';
+
+export const STEP_MARKERS: readonly StepMarker[] = [' ', '~', 'x', '-'];
+
+export interface Step {
+  lineIndex: number;
+  marker: StepMarker;
+  text: string;
+  section: string;
+}
+
 export interface Project {
   slug: string;
   path: string;
@@ -26,6 +37,7 @@ export interface Project {
   status: KnownStatus | string;
   apps?: string;
   summary?: string;
+  steps: Step[];
   stepCounts: StepCounts;
   deliverableCount: number;
 }

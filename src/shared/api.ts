@@ -1,4 +1,4 @@
-import type { Project, Theme } from './types';
+import type { Project, StepMarker, Theme } from './types';
 
 export interface CondashApi {
   listProjects(): Promise<Project[]>;
@@ -7,6 +7,13 @@ export interface CondashApi {
   getConceptionPath(): Promise<string | null>;
   getTheme(): Promise<Theme>;
   setTheme(theme: Theme): Promise<void>;
+  toggleStep(
+    path: string,
+    lineIndex: number,
+    expectedMarker: StepMarker,
+    newMarker: StepMarker,
+  ): Promise<void>;
+  setStatus(path: string, newStatus: string): Promise<void>;
   /**
    * Subscribe to tree-changed events emitted by the main-process file watcher.
    * Returns an unsubscribe function.

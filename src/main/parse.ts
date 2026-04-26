@@ -1,10 +1,10 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname } from 'node:path';
-import type { ItemKind, Project, StepCounts } from '../shared/types';
+import type { ItemKind, Project, Step, StepCounts, StepMarker } from '../shared/types';
 
 const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
 const HEADING2 = /^##\s+(.+)$/;
-const STEP_LINE = /^\s*-\s\[([ ~x-])\]\s/;
+const STEP_LINE = /^\s*-\s\[([ ~x-])\]\s+(.*)$/;
 const DELIVERABLE_LINE = /^\s*-\s\[[^\]]+\]\([^)]+\.pdf\)/i;
 const SUMMARY_MAX = 300;
 
@@ -15,7 +15,8 @@ export async function parseReadme(path: string): Promise<Project> {
   const title = extractTitle(lines);
   const meta = extractMetadata(lines);
   const summary = extractSummary(lines);
-  const stepCounts = countSteps(lines);
+  const steps = extractSteps(lines);
+  const stepCounts = countSteps(steps);
   const deliverableCount = countDeliverables(lines);
 
   const slug = basename(dirname(path));
@@ -28,6 +29,7 @@ export async function parseReadme(path: string): Promise<Project> {
     status: (meta.get('status') ?? 'backlog').toLowerCase(),
     apps: meta.get('apps'),
     summary,
+    steps,
     stepCounts,
     deliverableCount,
   };
@@ -88,12 +90,33 @@ function extractSummary(lines: readonly string[]): string | undefined {
   return text.slice(0, SUMMARY_MAX - 1).trimEnd() + '…';
 }
 
-function countSteps(lines: readonly string[]): StepCounts {
-  const counts: StepCounts = { todo: 0, doing: 0, done: 0, dropped: 0 };
-  for (const line of lines) {
+function extractSteps(lines: readonly string[]): Step[] {
+  const out: Step[] = [];
+  let section = '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const heading = line.match(HEADING2);
+    if (heading) {
+      section = heading[1].trim();
+      continue;
+    }
     const match = line.match(STEP_LINE);
     if (!match) continue;
-    switch (match[1]) {
+    out.push({
+      lineIndex: i,
+      marker: match[1] as StepMarker,
+      text: match[2].trim(),
+      section,
+    });
+  }
+  return out;
+}
+
+function countSteps(steps: readonly Step[]): StepCounts {
+  const counts: StepCounts = { todo: 0, doing: 0, done: 0, dropped: 0 };
+  for (const step of steps) {
+    switch (step.marker) {
       case ' ':
         counts.todo++;
         break;

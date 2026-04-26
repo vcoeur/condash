@@ -1,7 +1,7 @@
 import { render } from 'solid-js/web';
 import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'solid-js';
-import type { Project, StepCounts, Theme } from '@shared/types';
-import { KNOWN_STATUSES } from '@shared/types';
+import type { Project, Step, StepCounts, StepMarker, Theme } from '@shared/types';
+import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import './styles.css';
 
 const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
@@ -9,6 +9,20 @@ const THEME_LABEL: Record<Theme, string> = {
   system: '◐ system',
   light: '☀ light',
   dark: '☾ dark',
+};
+
+const MARKER_GLYPH: Record<StepMarker, string> = {
+  ' ': '☐',
+  '~': '◐',
+  x: '☑',
+  '-': '✕',
+};
+
+const MARKER_LABEL: Record<StepMarker, string> = {
+  ' ': 'todo',
+  '~': 'doing',
+  x: 'done',
+  '-': 'dropped',
 };
 
 function applyTheme(theme: Theme): void {
@@ -36,6 +50,35 @@ function StepBadge(props: { counts: StepCounts }) {
       <span class="step-total">{total()}</span>
     </span>
   );
+}
+
+function nextMarker(current: StepMarker): StepMarker {
+  const idx = STEP_MARKERS.indexOf(current);
+  return STEP_MARKERS[(idx + 1) % STEP_MARKERS.length];
+}
+
+function applyStepMarker(
+  items: Project[],
+  path: string,
+  lineIndex: number,
+  marker: StepMarker,
+): Project[] {
+  return items.map((p) => {
+    if (p.path !== path) return p;
+    const steps = p.steps.map((s) => (s.lineIndex === lineIndex ? { ...s, marker } : s));
+    return { ...p, steps, stepCounts: countSteps(steps) };
+  });
+}
+
+function countSteps(steps: readonly Step[]): StepCounts {
+  const c: StepCounts = { todo: 0, doing: 0, done: 0, dropped: 0 };
+  for (const s of steps) {
+    if (s.marker === ' ') c.todo++;
+    else if (s.marker === '~') c.doing++;
+    else if (s.marker === 'x') c.done++;
+    else if (s.marker === '-') c.dropped++;
+  }
+  return c;
 }
 
 type Group = { status: string; items: Project[] };
@@ -66,6 +109,7 @@ function App() {
   const [conceptionPath, setConceptionPath] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [theme, setTheme] = createSignal<Theme>('system');
+  const [toast, setToast] = createSignal<string | null>(null);
 
   void window.condash.getConceptionPath().then(setConceptionPath);
   void window.condash.getTheme().then((t) => {
@@ -86,13 +130,18 @@ function App() {
     void window.condash.setTheme(next);
   };
 
-  const [projects] = createResource(
+  const [projects, { mutate }] = createResource(
     () => [conceptionPath(), refreshKey()] as const,
     async ([path]) => {
       if (!path) return [] as Project[];
       return window.condash.listProjects();
     },
   );
+
+  const flashToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000);
+  };
 
   const handlePick = async () => {
     const picked = await window.condash.pickConceptionPath();
@@ -106,6 +155,17 @@ function App() {
 
   const handleOpen = (path: string) => {
     void window.condash.openInEditor(path);
+  };
+
+  const handleToggleStep = async (project: Project, step: Step) => {
+    const next = nextMarker(step.marker);
+    mutate((items) => applyStepMarker(items ?? [], project.path, step.lineIndex, next));
+    try {
+      await window.condash.toggleStep(project.path, step.lineIndex, step.marker, next);
+    } catch (err) {
+      mutate((items) => applyStepMarker(items ?? [], project.path, step.lineIndex, step.marker));
+      flashToast(`Toggle failed: ${(err as Error).message}`);
+    }
   };
 
   return (
@@ -149,40 +209,11 @@ function App() {
                     <div class="column-body">
                       <For each={group.items}>
                         {(item) => (
-                          <article
-                            class="row"
-                            onClick={() => handleOpen(item.path)}
-                            title={item.path}
-                          >
-                            <span class="title">{item.title}</span>
-                            <Show when={item.summary}>
-                              <p class="summary">{item.summary}</p>
-                            </Show>
-                            <div class="meta">
-                              <span class="slug">{item.slug}</span>
-                              <Show when={item.kind !== 'unknown'}>
-                                <span class="badge">{item.kind}</span>
-                              </Show>
-                              <Show when={item.apps}>
-                                <span class="badge">{item.apps}</span>
-                              </Show>
-                              <Show when={hasSteps(item.stepCounts)}>
-                                <StepBadge counts={item.stepCounts} />
-                              </Show>
-                              <Show when={item.deliverableCount > 0}>
-                                <span class="badge" title="deliverables">
-                                  ⬇ {item.deliverableCount}
-                                </span>
-                              </Show>
-                              <Show
-                                when={
-                                  !(KNOWN_STATUSES as readonly string[]).includes(item.status)
-                                }
-                              >
-                                <span class="badge warn">!? {item.status}</span>
-                              </Show>
-                            </div>
-                          </article>
+                          <Card
+                            item={item}
+                            onOpen={handleOpen}
+                            onToggleStep={handleToggleStep}
+                          />
                         )}
                       </For>
                     </div>
@@ -193,8 +224,96 @@ function App() {
           </Show>
         </Suspense>
       </Show>
+
+      <Show when={toast()}>
+        <div class="toast" role="status">
+          {toast()}
+        </div>
+      </Show>
     </div>
   );
+}
+
+function Card(props: {
+  item: Project;
+  onOpen: (path: string) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+}) {
+  const [expanded, setExpanded] = createSignal(false);
+
+  const handleHeaderClick = (event: MouseEvent) => {
+    if ((event.target as HTMLElement).closest('.step-toggle, .expander')) return;
+    props.onOpen(props.item.path);
+  };
+
+  return (
+    <article class="row" title={props.item.path}>
+      <div class="row-head" onClick={handleHeaderClick}>
+        <span class="title">{props.item.title}</span>
+        <Show when={props.item.summary}>
+          <p class="summary">{props.item.summary}</p>
+        </Show>
+        <div class="meta">
+          <span class="slug">{props.item.slug}</span>
+          <Show when={props.item.kind !== 'unknown'}>
+            <span class="badge">{props.item.kind}</span>
+          </Show>
+          <Show when={props.item.apps}>
+            <span class="badge">{props.item.apps}</span>
+          </Show>
+          <Show when={hasSteps(props.item.stepCounts)}>
+            <button
+              class="badge steps expander"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+              title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
+            >
+              <StepBadge counts={props.item.stepCounts} />
+              <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
+            </button>
+          </Show>
+          <Show when={props.item.deliverableCount > 0}>
+            <span class="badge" title="deliverables">
+              ⬇ {props.item.deliverableCount}
+            </span>
+          </Show>
+          <Show when={!(KNOWN_STATUSES as readonly string[]).includes(props.item.status)}>
+            <span class="badge warn">!? {props.item.status}</span>
+          </Show>
+        </div>
+      </div>
+      <Show when={expanded() && props.item.steps.length > 0}>
+        <ul class="steps-list">
+          <For each={props.item.steps}>
+            {(step) => (
+              <li class={`step step-marker-${markerClass(step.marker)}`}>
+                <button
+                  class="step-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onToggleStep(props.item, step);
+                  }}
+                  title={`${MARKER_LABEL[step.marker]} → ${MARKER_LABEL[nextMarker(step.marker)]}`}
+                >
+                  {MARKER_GLYPH[step.marker]}
+                </button>
+                <span class="step-text">{step.text}</span>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+    </article>
+  );
+}
+
+function markerClass(m: StepMarker): string {
+  if (m === ' ') return 'todo';
+  if (m === '~') return 'doing';
+  if (m === 'x') return 'done';
+  return 'dropped';
 }
 
 const root = document.getElementById('root');
