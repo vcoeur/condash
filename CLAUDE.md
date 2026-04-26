@@ -52,16 +52,19 @@ When changing the dev port, update **every** file:
 - **Tree-level (post-MVP-0)**: `<conception>/configuration.json`. New file, JSON. Coexists with the Tauri build's `<conception>/configuration.yml` until Tauri is deprecated.
 - `CONDASH_CONCEPTION_PATH` env var override: not yet wired. Add when needed.
 
-## Linux first-run fix
+## Sandbox: dev vs. production
 
-After every `npm install` on Linux, Chromium's sandbox helper needs `setuid root`:
+- **Dev** (`make dev`) — `dev:electron` passes `--no-sandbox`. Avoids the per-worktree `sudo chown root chrome-sandbox` ritual. The dev window only loads `http://localhost:5600` and local `file://` URLs, so the threat surface is local-only.
+- **Production** (`make package`) — `electron-builder` SUIDs the helper at install time on `.deb` and AppImage; the sandbox is on for end users.
+
+If you want the sandbox on during dev anyway: drop `--no-sandbox` from `dev:electron` in `package.json` and run once per worktree:
 
 ```bash
 sudo chown root node_modules/electron/dist/chrome-sandbox
 sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
-If you skip it, Electron aborts on launch with `The SUID sandbox helper binary was found, but is not configured correctly`. macOS and Windows are unaffected.
+macOS and Windows are unaffected.
 
 ## Conventions
 

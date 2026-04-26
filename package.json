@@ -7,7 +7,7 @@
   "scripts": {
     "dev:main": "tsc -p tsconfig.main.json --watch --preserveWatchOutput",
     "dev:renderer": "vite",
-    "dev:electron": "wait-on tcp:5600 && wait-on dist-electron/main/index.js && electron .",
+    "dev:electron": "wait-on tcp:5600 && wait-on dist-electron/main/index.js && electron --no-sandbox .",
     "dev": "rimraf dist-electron && tsc -p tsconfig.main.json && concurrently -k -n main,renderer,electron -c blue,green,magenta \"npm:dev:main\" \"npm:dev:renderer\" \"npm:dev:electron\"",
     "build:main": "rimraf dist-electron && tsc -p tsconfig.main.json",
     "build:renderer": "vite build",

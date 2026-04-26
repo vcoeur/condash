@@ -26,16 +26,21 @@ make build && make package
 # output → release/
 ```
 
-### Linux first-run fix
+### Sandbox in dev vs. production
 
-On Linux, Electron's Chromium sandbox helper needs to be `setuid root`. If the first launch aborts with `chrome-sandbox is not configured correctly`, run once after every `npm install`:
+Linux Chromium needs its `chrome-sandbox` helper to be `setuid root` to enable the sandbox. We handle this differently per environment:
+
+- **Dev** (`make dev`) — passes `--no-sandbox` to Electron. Avoids per-worktree `sudo`. The dev window only loads `http://localhost:5600` and local `file://` URLs, so the threat surface is local code already on the machine.
+- **Production** (`make package`) — `electron-builder` runs the SUID setup during install on `.deb` and AppImage; users get the sandbox enabled automatically.
+
+If you want the sandbox on during dev anyway: drop `--no-sandbox` from the `dev:electron` script in `package.json` and run, once per worktree:
 
 ```bash
 sudo chown root node_modules/electron/dist/chrome-sandbox
 sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
-This is a Chromium / Linux requirement — not a condash-electron decision. macOS and Windows don't need it.
+macOS and Windows don't need any of this.
 
 ## Architecture (MVP-0)
 
