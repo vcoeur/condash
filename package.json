@@ -18,6 +18,13 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,html,json}\""
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/search": "^6.7.0",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.1",
     "chokidar": "^5.0.0",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",

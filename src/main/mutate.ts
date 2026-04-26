@@ -59,6 +59,20 @@ export async function toggleStep(
   });
 }
 
+export async function writeNote(
+  path: string,
+  expectedContent: string,
+  newContent: string,
+): Promise<void> {
+  return withFileQueue(path, async () => {
+    const onDisk = await fs.readFile(path, 'utf8');
+    if (onDisk !== expectedContent) {
+      throw new Error('File on disk has drifted; reload before saving');
+    }
+    await atomicWrite(path, newContent);
+  });
+}
+
 export async function setStatus(path: string, newStatus: string): Promise<void> {
   return withFileQueue(path, async () => {
     const raw = await fs.readFile(path, 'utf8');

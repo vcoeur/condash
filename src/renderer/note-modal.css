@@ -194,3 +194,79 @@
 .empty.warn {
   color: var(--warn);
 }
+
+.modal-button.active {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.modal-dirty {
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.modal-saved {
+  color: var(--col-soon);
+  font-size: 12px;
+}
+
+.modal-error {
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg-elevated));
+  color: var(--warn);
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--warn);
+  font-size: 12px;
+}
+
+.find-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  align-items: center;
+}
+
+.find-input {
+  flex: 1;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: inherit;
+  font: inherit;
+}
+
+.find-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cm-host {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.cm-host .cm-editor {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  height: 100%;
+}
+
+.cm-host .cm-scroller {
+  font-family: inherit;
+}
+
+.find-hit {
+  background: rgba(241, 196, 15, 0.45);
+  border-radius: 2px;
+}
+
+.find-current {
+  background: rgba(241, 196, 15, 0.85);
+  outline: 1px solid #b58900;
+}
+

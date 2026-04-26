@@ -16,6 +16,7 @@ export interface CondashApi {
   ): Promise<void>;
   setStatus(path: string, newStatus: string): Promise<void>;
   readNote(path: string): Promise<string>;
+  writeNote(path: string, expectedContent: string, newContent: string): Promise<void>;
   /**
    * Subscribe to tree-changed events emitted by the main-process file watcher.
    * Returns an unsubscribe function.
