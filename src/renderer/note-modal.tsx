@@ -32,6 +32,7 @@ export function NoteModal(props: {
   state: ModalState;
   onClose: () => void;
   onOpenInEditor: (path: string) => void;
+  onOpenDeliverable: (path: string) => void;
   onWikilink: (slug: string) => void;
 }) {
   const [mode, setMode] = createSignal<Mode>(props.state?.initialMode ?? 'view');
@@ -380,7 +381,7 @@ export function NoteModal(props: {
                     <li>
                       <button
                         class="deliverable-link"
-                        onClick={() => void window.condash.openInEditor(d.path)}
+                        onClick={() => props.onOpenDeliverable(d.path)}
                         title={d.path}
                       >
                         ⬇ {d.label}

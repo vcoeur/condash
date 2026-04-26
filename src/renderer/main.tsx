@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'solid-js';
+import { createResource, createSignal, For, onCleanup, onMount, Show, Suspense } from 'solid-js';
 import type {
   KnowledgeNode,
   Project,
@@ -142,6 +142,7 @@ function App() {
   const [toast, setToast] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>('projects');
   const [modal, setModal] = createSignal<ModalState>(null);
+  const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [searchQuery, setSearchQuery] = createSignal('');
   const [searchInput, setSearchInput] = createSignal('');
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -227,6 +228,14 @@ function App() {
 
   const handleOpenInEditor = (path: string) => {
     void window.condash.openInEditor(path);
+  };
+
+  const handleOpenDeliverable = (path: string) => {
+    if (path.toLowerCase().endsWith('.pdf')) {
+      setPdfPath(path);
+    } else {
+      void window.condash.openInEditor(path);
+    }
   };
 
   const handleOpenProject = (project: Project) => {
@@ -439,7 +448,16 @@ function App() {
           state={modal()}
           onClose={() => setModal(null)}
           onOpenInEditor={handleOpenInEditor}
+          onOpenDeliverable={handleOpenDeliverable}
           onWikilink={handleWikilink}
+        />
+      </Show>
+
+      <Show when={pdfPath()}>
+        <PdfModal
+          path={pdfPath()!}
+          onClose={() => setPdfPath(null)}
+          onOpenInOs={handleOpenInEditor}
         />
       </Show>
 
@@ -757,6 +775,65 @@ function markerClass(m: StepMarker): string {
   if (m === '~') return 'doing';
   if (m === 'x') return 'done';
   return 'dropped';
+}
+
+function PdfModal(props: {
+  path: string;
+  onClose: () => void;
+  onOpenInOs: (path: string) => void;
+}) {
+  const handleKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      props.onClose();
+    }
+  };
+
+  onMount(() => {
+    document.addEventListener('keydown', handleKey, true);
+  });
+  onCleanup(() => {
+    document.removeEventListener('keydown', handleKey, true);
+  });
+
+  const fileUrl = (): string => {
+    const encoded = props.path
+      .split('/')
+      .map((seg) => encodeURIComponent(seg))
+      .join('/');
+    return `file://${encoded}`;
+  };
+
+  const fileName = (): string => props.path.split('/').pop() ?? props.path;
+
+  return (
+    <div class="modal-backdrop" onClick={props.onClose}>
+      <div
+        class="modal pdf-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header class="modal-head">
+          <span class="modal-title">{fileName()}</span>
+          <span class="modal-path">{props.path}</span>
+          <button
+            class="modal-button"
+            onClick={() => props.onOpenInOs(props.path)}
+            title="Open in OS default viewer"
+          >
+            ↗
+          </button>
+          <button class="modal-button" onClick={props.onClose} title="Close (Esc)">
+            ×
+          </button>
+        </header>
+        <div class="pdf-body">
+          <webview src={fileUrl()} partition="persist:pdf" class="pdf-webview" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const root = document.getElementById('root');

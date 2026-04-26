@@ -28,6 +28,9 @@ async function createWindow(): Promise<BrowserWindow> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // <webview> is used for the in-modal PDF viewer. The webview is sandboxed
+      // separately and only loads `file://` URLs we control.
+      webviewTag: true,
     },
   });
 
