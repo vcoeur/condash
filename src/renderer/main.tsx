@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createResource, createSignal, For, Show, Suspense } from 'solid-js';
+import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'solid-js';
 import type { Project } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import './styles.css';
@@ -33,6 +33,11 @@ function App() {
   const [refreshKey, setRefreshKey] = createSignal(0);
 
   void window.condash.getConceptionPath().then(setConceptionPath);
+
+  const unsubscribe = window.condash.onTreeChanged(() => {
+    setRefreshKey((k) => k + 1);
+  });
+  onCleanup(unsubscribe);
 
   const [projects] = createResource(
     () => [conceptionPath(), refreshKey()] as const,

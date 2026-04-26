@@ -6,6 +6,13 @@ const api: CondashApi = {
   openInEditor: (path) => ipcRenderer.invoke('openInEditor', path),
   pickConceptionPath: () => ipcRenderer.invoke('pickConceptionPath'),
   getConceptionPath: () => ipcRenderer.invoke('getConceptionPath'),
+  onTreeChanged: (callback) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('tree-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('tree-changed', handler);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('condash', api);

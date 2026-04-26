@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
+import { setWatchedConception } from './watcher';
 import type { Project } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
@@ -78,12 +79,15 @@ function registerIpc(): void {
     const next = await readSettings();
     next.conceptionPath = picked;
     await writeSettings(next);
+    await setWatchedConception(picked);
     return picked;
   });
 }
 
 app.whenReady().then(async () => {
   registerIpc();
+  const { conceptionPath } = await readSettings();
+  await setWatchedConception(conceptionPath);
   await createWindow();
 
   app.on('activate', () => {
