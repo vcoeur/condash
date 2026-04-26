@@ -1,7 +1,13 @@
 import { createEffect, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
-import { mountEditor, type MountedEditor } from './editor';
+import type { MountedEditor } from './editor';
 import 'highlight.js/styles/github.css';
+
+let editorModulePromise: Promise<typeof import('./editor')> | null = null;
+function loadEditor(): Promise<typeof import('./editor')> {
+  if (!editorModulePromise) editorModulePromise = import('./editor');
+  return editorModulePromise;
+}
 
 export type ModalState = {
   path: string;
@@ -59,22 +65,42 @@ export function NoteModal(props: {
   let editor: MountedEditor | null = null;
 
   // Mount / unmount the CodeMirror editor when entering / leaving edit mode.
+  // CodeMirror lives in a dynamically-imported chunk so the renderer's initial
+  // load only pays for it once the user opens an editor.
+  let mounting = false;
   createEffect(() => {
     const m = mode();
     const text = content();
-    if (m === 'edit' && editorParent && text != null && !editor) {
-      editor = mountEditor({
-        parent: editorParent,
-        initial: text,
-        language: props.state ? inferLanguage(props.state.path) : 'markdown',
-        onSave: () => void save(),
-        onChange: (next) => {
-          setDraft(next);
-          setDirty(next !== content());
-        },
-      });
-      setDraft(text);
-      setDirty(false);
+    if (m === 'edit' && editorParent && text != null && !editor && !mounting) {
+      mounting = true;
+      const parent = editorParent;
+      const initial = text;
+      const language = props.state ? inferLanguage(props.state.path) : 'markdown';
+      void loadEditor()
+        .then(({ mountEditor }) => {
+          // Bail if the user left edit mode while the chunk was loading.
+          if (mode() !== 'edit') {
+            mounting = false;
+            return;
+          }
+          editor = mountEditor({
+            parent,
+            initial,
+            language,
+            onSave: () => void save(),
+            onChange: (next) => {
+              setDraft(next);
+              setDirty(next !== content());
+            },
+          });
+          setDraft(initial);
+          setDirty(false);
+          mounting = false;
+        })
+        .catch((err) => {
+          mounting = false;
+          setError(`Failed to load editor: ${(err as Error).message}`);
+        });
     }
     if (m !== 'edit' && editor) {
       editor.destroy();
