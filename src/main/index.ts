@@ -31,7 +31,10 @@ import { KNOWN_STATUSES } from '../shared/types';
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
 const DEV_URL = 'http://localhost:5600';
-const isDev = !app.isPackaged;
+// Treat the build as "dev" when not packaged AND not explicitly forced into
+// production mode. CONDASH_FORCE_PROD=1 is set by the Playwright fixture so
+// tests load the real file:// build instead of the Vite dev URL.
+const isDev = !app.isPackaged && process.env.CONDASH_FORCE_PROD !== '1';
 
 async function createWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
