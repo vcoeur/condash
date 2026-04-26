@@ -10,6 +10,7 @@ import type {
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
+import { buildSlugIndex } from './wikilinks';
 import './styles.css';
 import './note-modal.css';
 
@@ -192,6 +193,21 @@ function App() {
     setModal({ path });
   };
 
+  const slugIndex = () => buildSlugIndex(projects() ?? [], knowledge() ?? null);
+
+  const handleWikilink = (slug: string) => {
+    const matches = slugIndex().get(slug);
+    if (!matches || matches.length === 0) {
+      flashToast(`No item matches [[${slug}]]`);
+      return;
+    }
+    const target = matches[0];
+    setModal({ path: target.path, title: target.title });
+    if (matches.length > 1) {
+      flashToast(`[[${slug}]] matched ${matches.length} items — opening the first`);
+    }
+  };
+
   const handleToggleStep = async (project: Project, step: Step) => {
     const next = nextMarker(step.marker);
     mutate((items) => applyStepMarker(items ?? [], project.path, step.lineIndex, next));
@@ -304,6 +320,7 @@ function App() {
           state={modal()}
           onClose={() => setModal(null)}
           onOpenInEditor={handleOpenInEditor}
+          onWikilink={handleWikilink}
         />
       </Show>
 

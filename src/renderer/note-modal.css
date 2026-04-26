@@ -270,3 +270,20 @@
   outline: 1px solid #b58900;
 }
 
+.md-rendered a.wikilink {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--accent);
+  cursor: pointer;
+}
+
+.md-rendered a.wikilink:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-bottom-style: solid;
+}
+
+.md-rendered a.wikilink.unresolved {
+  color: var(--warn);
+  border-bottom-color: var(--warn);
+}
+

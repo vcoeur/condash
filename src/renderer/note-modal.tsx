@@ -21,6 +21,7 @@ export function NoteModal(props: {
   state: ModalState;
   onClose: () => void;
   onOpenInEditor: (path: string) => void;
+  onWikilink: (slug: string) => void;
 }) {
   const [mode, setMode] = createSignal<Mode>('view');
   const [draft, setDraft] = createSignal('');
@@ -78,6 +79,16 @@ export function NoteModal(props: {
       void runMermaidIn(bodyRef);
     }
   });
+
+  const handleBodyClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    const link = target?.closest('a.wikilink');
+    if (link) {
+      e.preventDefault();
+      const slug = link.getAttribute('data-slug');
+      if (slug) props.onWikilink(slug);
+    }
+  };
 
   // Re-run find whenever the view-mode HTML or the query changes.
   createEffect(() => {
@@ -286,7 +297,7 @@ export function NoteModal(props: {
           <div class="modal-error">{error()}</div>
         </Show>
 
-        <div class="modal-body" ref={(el) => (bodyRef = el)}>
+        <div class="modal-body" ref={(el) => (bodyRef = el)} onClick={handleBodyClick}>
           <Show when={content.loading}>
             <div class="empty">Loading…</div>
           </Show>

@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import anchor from 'markdown-it-anchor';
 import taskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js/lib/common';
+import { wikilinks } from './wikilinks';
 
 const md = new MarkdownIt({
   html: false,
@@ -19,7 +20,8 @@ const md = new MarkdownIt({
   },
 })
   .use(anchor, { permalink: false })
-  .use(taskLists, { enabled: false });
+  .use(taskLists, { enabled: false })
+  .use(wikilinks);
 
 const defaultFence = md.renderer.rules.fence!;
 md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
