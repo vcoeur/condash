@@ -3,8 +3,16 @@ import { join } from 'node:path';
 import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
-import type { Project } from '../shared/types';
+import { setWatchedConception } from './watcher';
+import { setStatus, toggleStep, writeNote } from './mutate';
+import { readKnowledgeTree } from './knowledge';
+import { readNote } from './note';
+import { search } from './search';
+import { listRepos } from './repos';
+import type { Project, StepMarker, Theme } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
+
+const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
 const DEV_URL = 'http://localhost:5600';
 const isDev = !app.isPackaged;
@@ -57,6 +65,24 @@ async function listProjects(): Promise<Project[]> {
 function registerIpc(): void {
   ipcMain.handle('listProjects', () => listProjects());
 
+  ipcMain.handle('readKnowledgeTree', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return null;
+    return readKnowledgeTree(conceptionPath);
+  });
+
+  ipcMain.handle('search', async (_, query: string) => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return [];
+    return search(conceptionPath, query);
+  });
+
+  ipcMain.handle('listRepos', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return [];
+    return listRepos(conceptionPath);
+  });
+
   ipcMain.handle('openInEditor', async (_, path: string) => {
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
@@ -66,6 +92,34 @@ function registerIpc(): void {
     const { conceptionPath } = await readSettings();
     return conceptionPath;
   });
+
+  ipcMain.handle('getTheme', async () => {
+    const { theme } = await readSettings();
+    return theme;
+  });
+
+  ipcMain.handle('setTheme', async (_, theme: Theme) => {
+    if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`);
+    const next = await readSettings();
+    next.theme = theme;
+    await writeSettings(next);
+  });
+
+  ipcMain.handle(
+    'toggleStep',
+    (_, path: string, lineIndex: number, expectedMarker: StepMarker, newMarker: StepMarker) =>
+      toggleStep(path, lineIndex, expectedMarker, newMarker),
+  );
+
+  ipcMain.handle('setStatus', (_, path: string, newStatus: string) => setStatus(path, newStatus));
+
+  ipcMain.handle('readNote', (_, path: string) => readNote(path));
+
+  ipcMain.handle(
+    'writeNote',
+    (_, path: string, expectedContent: string, newContent: string) =>
+      writeNote(path, expectedContent, newContent),
+  );
 
   ipcMain.handle('pickConceptionPath', async () => {
     const result = await dialog.showOpenDialog({
@@ -78,12 +132,15 @@ function registerIpc(): void {
     const next = await readSettings();
     next.conceptionPath = picked;
     await writeSettings(next);
+    await setWatchedConception(picked);
     return picked;
   });
 }
 
 app.whenReady().then(async () => {
   registerIpc();
+  const { conceptionPath } = await readSettings();
+  await setWatchedConception(conceptionPath);
   await createWindow();
 
   app.on('activate', () => {
