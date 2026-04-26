@@ -2,6 +2,8 @@ import { render } from 'solid-js/web';
 import { createResource, createSignal, For, onCleanup, onMount, Show, Suspense } from 'solid-js';
 import type {
   KnowledgeNode,
+  OpenWithSlotKey,
+  OpenWithSlots,
   Project,
   RepoEntry,
   SearchHit,
@@ -201,6 +203,32 @@ function App() {
       return window.condash.listRepos();
     },
   );
+
+  const [openWithSlots] = createResource(
+    () => [conceptionPath(), refreshKey()] as const,
+    async ([path]) => {
+      if (!path) return {} as OpenWithSlots;
+      return window.condash.listOpenWith();
+    },
+  );
+
+  const handleLaunch = async (slot: OpenWithSlotKey, path: string) => {
+    try {
+      await window.condash.launchOpenWith(slot, path);
+    } catch (err) {
+      flashToast(`Launch failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleForceStop = async (repo: RepoEntry) => {
+    if (!window.confirm(`Force-stop ${repo.name}?`)) return;
+    try {
+      await window.condash.forceStopRepo(repo.name);
+      flashToast(`Force-stopped ${repo.name}`);
+    } catch (err) {
+      flashToast(`Force-stop failed: ${(err as Error).message}`);
+    }
+  };
 
   const onSearchInput = (value: string): void => {
     setSearchInput(value);
@@ -452,7 +480,15 @@ function App() {
             >
               <div class="repos-pane">
                 <For each={repos() ?? []}>
-                  {(repo) => <RepoRow repo={repo} onOpen={handleOpenInEditor} />}
+                  {(repo) => (
+                    <RepoRow
+                      repo={repo}
+                      slots={openWithSlots() ?? {}}
+                      onOpen={handleOpenInEditor}
+                      onLaunch={(slot, path) => void handleLaunch(slot, path)}
+                      onForceStop={(r) => void handleForceStop(r)}
+                    />
+                  )}
                 </For>
               </div>
             </Show>
@@ -760,7 +796,13 @@ function KnowledgeNodeView(props: {
   );
 }
 
-function RepoRow(props: { repo: RepoEntry; onOpen: (path: string) => void }) {
+function RepoRow(props: {
+  repo: RepoEntry;
+  slots: OpenWithSlots;
+  onOpen: (path: string) => void;
+  onLaunch: (slot: OpenWithSlotKey, path: string) => void;
+  onForceStop: (repo: RepoEntry) => void;
+}) {
   const dirtyLabel = (): string => {
     if (props.repo.missing) return 'missing';
     if (props.repo.dirty == null) return '?';
@@ -790,10 +832,75 @@ function RepoRow(props: { repo: RepoEntry; onOpen: (path: string) => void }) {
         >
           Open
         </button>
+        <For each={LAUNCHER_SLOTS}>
+          {(slot) => (
+            <Show when={props.slots[slot]}>
+              <button
+                class="modal-button"
+                onClick={() => props.onLaunch(slot, props.repo.path)}
+                disabled={props.repo.missing}
+                title={props.slots[slot]!.label}
+              >
+                {LAUNCHER_GLYPH[slot]}
+              </button>
+            </Show>
+          )}
+        </For>
+        <Show when={props.repo.hasForceStop}>
+          <button
+            class="modal-button warn"
+            onClick={() => props.onForceStop(props.repo)}
+            disabled={props.repo.missing}
+            title="Force-stop (runs configured force_stop:)"
+          >
+            ⏹
+          </button>
+        </Show>
       </div>
+      <Show when={props.repo.worktrees && props.repo.worktrees.length > 1}>
+        <ul class="worktrees">
+          <For each={props.repo.worktrees!.filter((w) => !w.primary)}>
+            {(wt) => (
+              <li class="worktree-row">
+                <span class="worktree-branch">{wt.branch ?? '(detached)'}</span>
+                <span class="worktree-path">{wt.path}</span>
+                <div class="worktree-actions">
+                  <button
+                    class="modal-button"
+                    onClick={() => props.onOpen(wt.path)}
+                    title="Open worktree in OS file manager"
+                  >
+                    Open
+                  </button>
+                  <For each={LAUNCHER_SLOTS}>
+                    {(slot) => (
+                      <Show when={props.slots[slot]}>
+                        <button
+                          class="modal-button"
+                          onClick={() => props.onLaunch(slot, wt.path)}
+                          title={props.slots[slot]!.label}
+                        >
+                          {LAUNCHER_GLYPH[slot]}
+                        </button>
+                      </Show>
+                    )}
+                  </For>
+                </div>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
     </article>
   );
 }
+
+const LAUNCHER_SLOTS: readonly OpenWithSlotKey[] = ['main_ide', 'secondary_ide', 'terminal'];
+const LAUNCHER_GLYPH: Record<OpenWithSlotKey, string> = {
+  main_ide: '⌘',
+  secondary_ide: '⌥',
+  terminal: '▶',
+};
 
 function SearchResult(props: { hit: SearchHit; onOpen: (path: string) => void }) {
   return (

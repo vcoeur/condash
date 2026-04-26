@@ -9,7 +9,8 @@ import { readKnowledgeTree } from './knowledge';
 import { readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
-import type { Project, StepMarker, Theme } from '../shared/types';
+import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
+import type { OpenWithSlotKey, Project, StepMarker, Theme } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
@@ -95,6 +96,24 @@ function registerIpc(): void {
     const { conceptionPath } = await readSettings();
     if (!conceptionPath) return [];
     return listRepos(conceptionPath);
+  });
+
+  ipcMain.handle('listOpenWith', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return {};
+    return listOpenWith(conceptionPath);
+  });
+
+  ipcMain.handle('launchOpenWith', async (_, slot: OpenWithSlotKey, path: string) => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) throw new Error('No conception path set');
+    return launchOpenWith(conceptionPath, slot, path);
+  });
+
+  ipcMain.handle('forceStopRepo', async (_, repoName: string) => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) throw new Error('No conception path set');
+    return forceStopRepo(conceptionPath, repoName);
   });
 
   ipcMain.handle('openInEditor', async (_, path: string) => {

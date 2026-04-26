@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { simpleGit } from 'simple-git';
 import type { RepoEntry } from '../shared/types';
+import { listWorktrees } from './worktrees';
 
 /**
  * Each repository entry in configuration.json is either a bare string (the
@@ -102,6 +103,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
       const path = resolveRepoPath(workspace, entry);
       const exists = await pathExists(path);
       const display = entry.parent ? `${entry.parent}/${entry.name}` : entry.name;
+      const hasForceStop = !!entry.forceStop;
       if (!exists) {
         return {
           name: display,
@@ -109,25 +111,36 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
           kind: entry.kind,
           dirty: null,
           missing: true,
+          hasForceStop,
         } satisfies RepoEntry;
       }
+      // Worktrees only meaningful for primary checkouts (top-level repos).
+      const worktreesPromise =
+        entry.kind === 'primary' && !entry.parent
+          ? listWorktrees(path).catch(() => [])
+          : Promise.resolve([]);
       try {
         const git = simpleGit({ baseDir: path });
-        const status = await git.status();
+        const [status, worktrees] = await Promise.all([git.status(), worktreesPromise]);
         return {
           name: display,
           path,
           kind: entry.kind,
           dirty: status.files.length,
           missing: false,
+          hasForceStop,
+          worktrees: worktrees.length > 1 ? worktrees : undefined,
         } satisfies RepoEntry;
       } catch {
+        const worktrees = await worktreesPromise;
         return {
           name: display,
           path,
           kind: entry.kind,
           dirty: null,
           missing: false,
+          hasForceStop,
+          worktrees: worktrees.length > 1 ? worktrees : undefined,
         } satisfies RepoEntry;
       }
     }),

@@ -1,5 +1,7 @@
 import type {
   KnowledgeNode,
+  OpenWithSlotKey,
+  OpenWithSlots,
   Project,
   RepoEntry,
   SearchHit,
@@ -14,6 +16,9 @@ export interface CondashApi {
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
   search(query: string): Promise<SearchHit[]>;
   listRepos(): Promise<RepoEntry[]>;
+  listOpenWith(): Promise<OpenWithSlots>;
+  launchOpenWith(slot: OpenWithSlotKey, path: string): Promise<void>;
+  forceStopRepo(repoName: string): Promise<void>;
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;

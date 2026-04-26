@@ -59,6 +59,15 @@ export interface Settings {
   theme: Theme;
 }
 
+export interface Worktree {
+  /** Absolute path on disk. */
+  path: string;
+  /** Branch name (without the `refs/heads/` prefix); null when detached. */
+  branch: string | null;
+  /** True when this worktree is the primary checkout (the one in `repositories`). */
+  primary: boolean;
+}
+
 export interface RepoEntry {
   /** Display name (typically the repo directory name). */
   name: string;
@@ -70,7 +79,20 @@ export interface RepoEntry {
   dirty: number | null;
   /** True when path doesn't exist or isn't a git repo. */
   missing: boolean;
+  /** True when configuration.json sets a `force_stop:` for this entry. */
+  hasForceStop?: boolean;
+  /** Worktrees attached to this repo (always includes the primary checkout). */
+  worktrees?: Worktree[];
 }
+
+export type OpenWithSlotKey = 'main_ide' | 'secondary_ide' | 'terminal';
+
+export interface OpenWithSlot {
+  label: string;
+  command: string;
+}
+
+export type OpenWithSlots = Partial<Record<OpenWithSlotKey, OpenWithSlot>>;
 
 export interface SearchHit {
   /** Absolute path of the matched file. */
