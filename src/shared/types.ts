@@ -29,6 +29,15 @@ export interface Step {
   section: string;
 }
 
+export interface Deliverable {
+  /** Label as written between the [ ] of `- [label](path) — desc`. */
+  label: string;
+  /** Resolved absolute path on disk. */
+  path: string;
+  /** Optional trailing description after ' — '. */
+  description?: string;
+}
+
 export interface Project {
   slug: string;
   path: string;
@@ -39,6 +48,7 @@ export interface Project {
   summary?: string;
   steps: Step[];
   stepCounts: StepCounts;
+  deliverables: Deliverable[];
   deliverableCount: number;
 }
 

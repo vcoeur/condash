@@ -1,11 +1,18 @@
 import { promises as fs } from 'node:fs';
-import { basename, dirname } from 'node:path';
-import type { ItemKind, Project, Step, StepCounts, StepMarker } from '../shared/types';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import type {
+  Deliverable,
+  ItemKind,
+  Project,
+  Step,
+  StepCounts,
+  StepMarker,
+} from '../shared/types';
 
 const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
 const HEADING2 = /^##\s+(.+)$/;
 const STEP_LINE = /^\s*-\s\[([ ~x-])\]\s+(.*)$/;
-const DELIVERABLE_LINE = /^\s*-\s\[[^\]]+\]\([^)]+\.pdf\)/i;
+const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
 const SUMMARY_MAX = 300;
 
 export async function parseReadme(path: string): Promise<Project> {
@@ -17,7 +24,7 @@ export async function parseReadme(path: string): Promise<Project> {
   const summary = extractSummary(lines);
   const steps = extractSteps(lines);
   const stepCounts = countSteps(steps);
-  const deliverableCount = countDeliverables(lines);
+  const deliverables = extractDeliverables(lines, dirname(path));
 
   const slug = basename(dirname(path));
 
@@ -31,7 +38,8 @@ export async function parseReadme(path: string): Promise<Project> {
     summary,
     steps,
     stepCounts,
-    deliverableCount,
+    deliverables,
+    deliverableCount: deliverables.length,
   };
 }
 
@@ -134,9 +142,9 @@ function countSteps(steps: readonly Step[]): StepCounts {
   return counts;
 }
 
-function countDeliverables(lines: readonly string[]): number {
+function extractDeliverables(lines: readonly string[], itemDir: string): Deliverable[] {
   let inDeliverables = false;
-  let count = 0;
+  const out: Deliverable[] = [];
 
   for (const line of lines) {
     const heading = line.match(HEADING2);
@@ -145,9 +153,17 @@ function countDeliverables(lines: readonly string[]): number {
       continue;
     }
     if (!inDeliverables) continue;
-    if (DELIVERABLE_LINE.test(line)) count++;
+    const match = line.match(DELIVERABLE_LINE);
+    if (!match) continue;
+    const [, label, rawPath, description] = match;
+    const absolute = isAbsolute(rawPath) ? rawPath : resolve(itemDir, rawPath);
+    out.push({
+      label: label.trim(),
+      path: absolute,
+      description: description?.trim() || undefined,
+    });
   }
-  return count;
+  return out;
 }
 
 function normaliseKind(value: string | undefined): ItemKind {

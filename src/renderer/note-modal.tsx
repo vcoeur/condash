@@ -15,6 +15,8 @@ export type ModalState = {
   title?: string;
   /** Force edit mode on open (used by the preferences modal). */
   initialMode?: 'view' | 'edit';
+  /** Deliverables to surface as a section above the rendered body, when known. */
+  deliverables?: { label: string; path: string; description?: string }[];
 } | null;
 
 type Mode = 'view' | 'edit';
@@ -341,6 +343,27 @@ export function NoteModal(props: {
               isMarkdown(props.state.path)
             }
           >
+            <Show when={(props.state?.deliverables?.length ?? 0) > 0}>
+              <section class="deliverables-strip">
+                <h3>Deliverables</h3>
+                <ul>
+                  {props.state!.deliverables!.map((d) => (
+                    <li>
+                      <button
+                        class="deliverable-link"
+                        onClick={() => void window.condash.openInEditor(d.path)}
+                        title={d.path}
+                      >
+                        ⬇ {d.label}
+                      </button>
+                      <Show when={d.description}>
+                        <span class="deliverable-desc"> — {d.description}</span>
+                      </Show>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </Show>
             <article class="md-rendered" innerHTML={html()} />
           </Show>
           <Show

@@ -186,7 +186,11 @@ function App() {
   };
 
   const handleOpenProject = (project: Project) => {
-    setModal({ path: project.path, title: project.title });
+    setModal({
+      path: project.path,
+      title: project.title,
+      deliverables: project.deliverables,
+    });
   };
 
   const handleOpenKnowledgeFile = (path: string) => {
