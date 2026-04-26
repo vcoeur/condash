@@ -3,12 +3,34 @@ import { isAbsolute, join } from 'node:path';
 import { simpleGit } from 'simple-git';
 import type { RepoEntry } from '../shared/types';
 
+/**
+ * Each repository entry in configuration.json is either a bare string (the
+ * directory name) or an object `{ name, run?, force_stop?, submodules? }`.
+ * Submodules use the same shape recursively.
+ */
+type RawRepo =
+  | string
+  | {
+      name: string;
+      run?: string;
+      force_stop?: string;
+      submodules?: RawRepo[];
+    };
+
 interface ConfigShape {
   workspace_path?: string;
   repositories?: {
-    primary?: string[];
-    secondary?: string[];
+    primary?: RawRepo[];
+    secondary?: RawRepo[];
   };
+}
+
+interface FlatRepo {
+  name: string;
+  kind: 'primary' | 'secondary';
+  parent?: string;
+  run?: string;
+  forceStop?: string;
 }
 
 async function readConfig(conceptionPath: string): Promise<ConfigShape> {
@@ -22,10 +44,37 @@ async function readConfig(conceptionPath: string): Promise<ConfigShape> {
   }
 }
 
-function resolveRepoPath(workspaceDir: string | undefined, name: string): string {
-  if (isAbsolute(name)) return name;
-  if (workspaceDir) return join(workspaceDir, name);
-  return name;
+function flatten(
+  entries: RawRepo[],
+  kind: 'primary' | 'secondary',
+  parent: string | undefined,
+  out: FlatRepo[],
+): void {
+  for (const entry of entries) {
+    if (typeof entry === 'string') {
+      out.push({ name: entry, kind, parent });
+      continue;
+    }
+    out.push({
+      name: entry.name,
+      kind,
+      parent,
+      run: entry.run,
+      forceStop: entry.force_stop,
+    });
+    if (entry.submodules?.length) {
+      flatten(entry.submodules, kind, entry.name, out);
+    }
+  }
+}
+
+function resolveRepoPath(workspaceDir: string | undefined, flat: FlatRepo): string {
+  if (isAbsolute(flat.name)) return flat.name;
+  const baseSegments: string[] = [];
+  if (workspaceDir) baseSegments.push(workspaceDir);
+  if (flat.parent) baseSegments.push(flat.parent);
+  baseSegments.push(flat.name);
+  return baseSegments.length === 1 ? baseSegments[0] : join(...baseSegments);
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -41,26 +90,45 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
   const config = await readConfig(conceptionPath);
   const workspace = config.workspace_path;
 
-  const all: { kind: 'primary' | 'secondary'; name: string }[] = [];
-  for (const name of config.repositories?.primary ?? []) all.push({ kind: 'primary', name });
-  for (const name of config.repositories?.secondary ?? []) all.push({ kind: 'secondary', name });
+  const flat: FlatRepo[] = [];
+  if (config.repositories?.primary) flatten(config.repositories.primary, 'primary', undefined, flat);
+  if (config.repositories?.secondary) {
+    flatten(config.repositories.secondary, 'secondary', undefined, flat);
+  }
 
-  const repos = await Promise.all(
-    all.map(async ({ kind, name }) => {
-      const path = resolveRepoPath(workspace, name);
+  return Promise.all(
+    flat.map(async (entry) => {
+      const path = resolveRepoPath(workspace, entry);
       const exists = await pathExists(path);
-      if (!exists) return { name, path, kind, dirty: null, missing: true } satisfies RepoEntry;
-
+      const display = entry.parent ? `${entry.parent}/${entry.name}` : entry.name;
+      if (!exists) {
+        return {
+          name: display,
+          path,
+          kind: entry.kind,
+          dirty: null,
+          missing: true,
+        } satisfies RepoEntry;
+      }
       try {
         const git = simpleGit({ baseDir: path });
         const status = await git.status();
-        const dirty = status.files.length;
-        return { name, path, kind, dirty, missing: false } satisfies RepoEntry;
+        return {
+          name: display,
+          path,
+          kind: entry.kind,
+          dirty: status.files.length,
+          missing: false,
+        } satisfies RepoEntry;
       } catch {
-        return { name, path, kind, dirty: null, missing: false } satisfies RepoEntry;
+        return {
+          name: display,
+          path,
+          kind: entry.kind,
+          dirty: null,
+          missing: false,
+        } satisfies RepoEntry;
       }
     }),
   );
-
-  return repos;
 }
