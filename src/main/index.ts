@@ -6,6 +6,7 @@ import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
 import { setStatus, toggleStep } from './mutate';
 import { readKnowledgeTree } from './knowledge';
+import { readNote } from './note';
 import type { Project, StepMarker, Theme } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
@@ -97,6 +98,8 @@ function registerIpc(): void {
   );
 
   ipcMain.handle('setStatus', (_, path: string, newStatus: string) => setStatus(path, newStatus));
+
+  ipcMain.handle('readNote', (_, path: string) => readNote(path));
 
   ipcMain.handle('pickConceptionPath', async () => {
     const result = await dialog.showOpenDialog({

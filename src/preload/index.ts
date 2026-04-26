@@ -12,6 +12,7 @@ const api: CondashApi = {
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
     ipcRenderer.invoke('toggleStep', path, lineIndex, expectedMarker, newMarker),
   setStatus: (path, newStatus) => ipcRenderer.invoke('setStatus', path, newStatus),
+  readNote: (path) => ipcRenderer.invoke('readNote', path),
   onTreeChanged: (callback) => {
     const handler = (): void => callback();
     ipcRenderer.on('tree-changed', handler);

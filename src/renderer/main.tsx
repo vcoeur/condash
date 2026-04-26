@@ -9,7 +9,9 @@ import type {
   Theme,
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
+import { NoteModal, type ModalState } from './note-modal';
 import './styles.css';
+import './note-modal.css';
 
 type Tab = 'projects' | 'knowledge';
 
@@ -126,6 +128,7 @@ function App() {
   const [theme, setTheme] = createSignal<Theme>('system');
   const [toast, setToast] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>('projects');
+  const [modal, setModal] = createSignal<ModalState>(null);
 
   void window.condash.getConceptionPath().then(setConceptionPath);
   void window.condash.getTheme().then((t) => {
@@ -177,8 +180,16 @@ function App() {
 
   const handleRefresh = () => setRefreshKey((k) => k + 1);
 
-  const handleOpen = (path: string) => {
+  const handleOpenInEditor = (path: string) => {
     void window.condash.openInEditor(path);
+  };
+
+  const handleOpenProject = (project: Project) => {
+    setModal({ path: project.path, title: project.title });
+  };
+
+  const handleOpenKnowledgeFile = (path: string) => {
+    setModal({ path });
   };
 
   const handleToggleStep = async (project: Project, step: Step) => {
@@ -261,7 +272,7 @@ function App() {
                   {(group) => (
                     <Column
                       group={group}
-                      onOpen={handleOpen}
+                      onOpen={handleOpenProject}
                       onToggleStep={handleToggleStep}
                       onDropProject={handleDropOnColumn}
                     />
@@ -281,11 +292,19 @@ function App() {
               }
             >
               <div class="knowledge-pane">
-                <KnowledgeTree node={knowledge()!} onOpen={handleOpen} />
+                <KnowledgeTree node={knowledge()!} onOpen={handleOpenKnowledgeFile} />
               </div>
             </Show>
           </Suspense>
         </Show>
+      </Show>
+
+      <Show when={modal()}>
+        <NoteModal
+          state={modal()}
+          onClose={() => setModal(null)}
+          onOpenInEditor={handleOpenInEditor}
+        />
       </Show>
 
       <Show when={toast()}>
@@ -299,7 +318,7 @@ function App() {
 
 function Column(props: {
   group: Group;
-  onOpen: (path: string) => void;
+  onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
 }) {
@@ -361,14 +380,14 @@ function Column(props: {
 
 function Card(props: {
   item: Project;
-  onOpen: (path: string) => void;
+  onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
 }) {
   const [expanded, setExpanded] = createSignal(false);
 
   const handleHeaderClick = (event: MouseEvent) => {
     if ((event.target as HTMLElement).closest('.step-toggle, .expander')) return;
-    props.onOpen(props.item.path);
+    props.onOpen(props.item);
   };
 
   const handleDragStart = (event: DragEvent) => {
