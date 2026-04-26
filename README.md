@@ -17,6 +17,20 @@ make install      # first time
 make dev          # main + renderer + electron in watch mode
 ```
 
+### Linux first-run: native deps
+
+`npm install` runs `electron-rebuild` as a postinstall step so any native module
+(currently `node-pty`, more later) is built against Electron's Node ABI rather
+than the system one. The build needs the standard Node-gyp toolchain and a few
+distro packages:
+
+```bash
+sudo apt install build-essential python3 libxkbfile-dev libsecret-1-dev
+```
+
+`@electron/rebuild` is invoked again automatically by `electron-builder` during
+`make package`, so installer output already targets the bundled Electron ABI.
+
 `make dev` runs three processes concurrently: `tsc --watch` for main + preload, Vite for the renderer (port 5600), and Electron pointed at the dev URL. Hot-reload works for the renderer; main/preload changes restart on the next launch.
 
 Build installers:

@@ -1,13 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
-import type {
-  Deliverable,
-  ItemKind,
-  Project,
-  Step,
-  StepCounts,
-  StepMarker,
-} from '../shared/types';
+import type { Deliverable, ItemKind, Project, Step, StepCounts, StepMarker } from '../shared/types';
 
 const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
 const HEADING2 = /^##\s+(.+)$/;

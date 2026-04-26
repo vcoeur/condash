@@ -1,4 +1,4 @@
-.PHONY: help install dev build start package typecheck format clean kill
+.PHONY: help install dev build start package typecheck format test clean kill
 
 DEV_PORT     ?= 5600
 PREVIEW_PORT ?= 5601
@@ -35,6 +35,10 @@ typecheck:
 
 format:
 	npm run format
+
+test:
+	npm run build
+	npm run test
 
 kill:
 	@lsof -ti:$(DEV_PORT) | xargs -r kill -9 || true

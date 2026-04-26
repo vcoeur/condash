@@ -1,14 +1,13 @@
-import {
-  createEffect,
-  createResource,
-  createSignal,
-  onCleanup,
-  onMount,
-  Show,
-} from 'solid-js';
+import { createEffect, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
-import { mountEditor, type MountedEditor } from './editor';
+import type { MountedEditor } from './editor';
 import 'highlight.js/styles/github.css';
+
+let editorModulePromise: Promise<typeof import('./editor')> | null = null;
+function loadEditor(): Promise<typeof import('./editor')> {
+  if (!editorModulePromise) editorModulePromise = import('./editor');
+  return editorModulePromise;
+}
 
 export type ModalState = {
   path: string;
@@ -33,6 +32,7 @@ export function NoteModal(props: {
   state: ModalState;
   onClose: () => void;
   onOpenInEditor: (path: string) => void;
+  onOpenDeliverable: (path: string) => void;
   onWikilink: (slug: string) => void;
 }) {
   const [mode, setMode] = createSignal<Mode>(props.state?.initialMode ?? 'view');
@@ -66,22 +66,42 @@ export function NoteModal(props: {
   let editor: MountedEditor | null = null;
 
   // Mount / unmount the CodeMirror editor when entering / leaving edit mode.
+  // CodeMirror lives in a dynamically-imported chunk so the renderer's initial
+  // load only pays for it once the user opens an editor.
+  let mounting = false;
   createEffect(() => {
     const m = mode();
     const text = content();
-    if (m === 'edit' && editorParent && text != null && !editor) {
-      editor = mountEditor({
-        parent: editorParent,
-        initial: text,
-        language: props.state ? inferLanguage(props.state.path) : 'markdown',
-        onSave: () => void save(),
-        onChange: (next) => {
-          setDraft(next);
-          setDirty(next !== content());
-        },
-      });
-      setDraft(text);
-      setDirty(false);
+    if (m === 'edit' && editorParent && text != null && !editor && !mounting) {
+      mounting = true;
+      const parent = editorParent;
+      const initial = text;
+      const language = props.state ? inferLanguage(props.state.path) : 'markdown';
+      void loadEditor()
+        .then(({ mountEditor }) => {
+          // Bail if the user left edit mode while the chunk was loading.
+          if (mode() !== 'edit') {
+            mounting = false;
+            return;
+          }
+          editor = mountEditor({
+            parent,
+            initial,
+            language,
+            onSave: () => void save(),
+            onChange: (next) => {
+              setDraft(next);
+              setDirty(next !== content());
+            },
+          });
+          setDraft(initial);
+          setDirty(false);
+          mounting = false;
+        })
+        .catch((err) => {
+          mounting = false;
+          setError(`Failed to load editor: ${(err as Error).message}`);
+        });
     }
     if (m !== 'edit' && editor) {
       editor.destroy();
@@ -249,10 +269,14 @@ export function NoteModal(props: {
           <span class="modal-title">{props.state?.title ?? props.state?.path ?? ''}</span>
           <span class="modal-path">{props.state?.path ?? ''}</span>
           <Show when={dirty()}>
-            <span class="modal-dirty" title="Unsaved changes">●</span>
+            <span class="modal-dirty" title="Unsaved changes">
+              ●
+            </span>
           </Show>
           <Show when={savedAt() !== null}>
-            <span class="modal-saved" title="Saved">✓</span>
+            <span class="modal-saved" title="Saved">
+              ✓
+            </span>
           </Show>
           <button
             class="modal-button"
@@ -301,7 +325,11 @@ export function NoteModal(props: {
                   : `${findMatch()!.index + 1} / ${findMatch()!.total}`}
               </span>
             </Show>
-            <button class="modal-button" onClick={() => stepFind(-1)} title="Previous (Shift+Enter)">
+            <button
+              class="modal-button"
+              onClick={() => stepFind(-1)}
+              title="Previous (Shift+Enter)"
+            >
               ↑
             </button>
             <button class="modal-button" onClick={() => stepFind(1)} title="Next (Enter)">
@@ -331,7 +359,9 @@ export function NoteModal(props: {
           <Show when={content.error}>
             <div class="empty warn">
               Failed to read: {(content.error as Error).message}
-              <button class="modal-button" onClick={() => void reload()}>Reload</button>
+              <button class="modal-button" onClick={() => void reload()}>
+                Reload
+              </button>
             </div>
           </Show>
           <Show
@@ -351,7 +381,7 @@ export function NoteModal(props: {
                     <li>
                       <button
                         class="deliverable-link"
-                        onClick={() => void window.condash.openInEditor(d.path)}
+                        onClick={() => props.onOpenDeliverable(d.path)}
                         title={d.path}
                       >
                         ⬇ {d.label}
@@ -390,7 +420,9 @@ const FIND_HIGHLIGHT_CLASS = 'find-hit';
 const FIND_CURRENT_CLASS = 'find-current';
 
 function clearFindHighlights(container: HTMLElement): void {
-  for (const el of Array.from(container.querySelectorAll<HTMLElement>(`.${FIND_HIGHLIGHT_CLASS}`))) {
+  for (const el of Array.from(
+    container.querySelectorAll<HTMLElement>(`.${FIND_HIGHLIGHT_CLASS}`),
+  )) {
     const parent = el.parentNode;
     if (!parent) continue;
     parent.replaceChild(document.createTextNode(el.textContent ?? ''), el);

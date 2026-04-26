@@ -9,13 +9,32 @@ import { readKnowledgeTree } from './knowledge';
 import { readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
-import type { Project, StepMarker, Theme } from '../shared/types';
+import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
+import {
+  closeSession,
+  getTerminalPrefs,
+  killAll,
+  latestScreenshot,
+  resizeTerminal,
+  spawnTerminal,
+  writeTerminal,
+} from './terminals';
+import type {
+  OpenWithSlotKey,
+  Project,
+  StepMarker,
+  TermSpawnRequest,
+  Theme,
+} from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
 const DEV_URL = 'http://localhost:5600';
-const isDev = !app.isPackaged;
+// Treat the build as "dev" when not packaged AND not explicitly forced into
+// production mode. CONDASH_FORCE_PROD=1 is set by the Playwright fixture so
+// tests load the real file:// build instead of the Vite dev URL.
+const isDev = !app.isPackaged && process.env.CONDASH_FORCE_PROD !== '1';
 
 async function createWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
@@ -28,6 +47,9 @@ async function createWindow(): Promise<BrowserWindow> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // <webview> is used for the in-modal PDF viewer. The webview is sandboxed
+      // separately and only loads `file://` URLs we control.
+      webviewTag: true,
     },
   });
 
@@ -62,8 +84,19 @@ async function listProjects(): Promise<Project[]> {
   });
 }
 
+async function getProject(path: string): Promise<Project | null> {
+  try {
+    return await parseReadme(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('listProjects', () => listProjects());
+
+  ipcMain.handle('getProject', (_, path: string) => getProject(path));
 
   ipcMain.handle('readKnowledgeTree', async () => {
     const { conceptionPath } = await readSettings();
@@ -81,6 +114,50 @@ function registerIpc(): void {
     const { conceptionPath } = await readSettings();
     if (!conceptionPath) return [];
     return listRepos(conceptionPath);
+  });
+
+  ipcMain.handle('listOpenWith', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return {};
+    return listOpenWith(conceptionPath);
+  });
+
+  ipcMain.handle('launchOpenWith', async (_, slot: OpenWithSlotKey, path: string) => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) throw new Error('No conception path set');
+    return launchOpenWith(conceptionPath, slot, path);
+  });
+
+  ipcMain.handle('forceStopRepo', async (_, repoName: string) => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) throw new Error('No conception path set');
+    return forceStopRepo(conceptionPath, repoName);
+  });
+
+  ipcMain.handle('term.spawn', async (event, request: TermSpawnRequest) => {
+    const { conceptionPath } = await readSettings();
+    return spawnTerminal(conceptionPath, event.sender, request);
+  });
+
+  ipcMain.handle('term.write', (_, id: string, data: string) => {
+    writeTerminal(id, data);
+  });
+
+  ipcMain.handle('term.resize', (_, id: string, cols: number, rows: number) => {
+    resizeTerminal(id, cols, rows);
+  });
+
+  ipcMain.handle('term.close', (_, id: string) => {
+    closeSession(id);
+  });
+
+  ipcMain.handle('term.getPrefs', async () => {
+    const { conceptionPath } = await readSettings();
+    return (await getTerminalPrefs(conceptionPath)) ?? {};
+  });
+
+  ipcMain.handle('term.latestScreenshot', async (_, dir: string) => {
+    return latestScreenshot(dir);
   });
 
   ipcMain.handle('openInEditor', async (_, path: string) => {
@@ -115,10 +192,8 @@ function registerIpc(): void {
 
   ipcMain.handle('readNote', (_, path: string) => readNote(path));
 
-  ipcMain.handle(
-    'writeNote',
-    (_, path: string, expectedContent: string, newContent: string) =>
-      writeNote(path, expectedContent, newContent),
+  ipcMain.handle('writeNote', (_, path: string, expectedContent: string, newContent: string) =>
+    writeNote(path, expectedContent, newContent),
   );
 
   ipcMain.handle('pickConceptionPath', async () => {
@@ -149,5 +224,6 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  killAll();
   if (process.platform !== 'darwin') app.quit();
 });

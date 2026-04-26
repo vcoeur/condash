@@ -1,17 +1,23 @@
 import { render } from 'solid-js/web';
-import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'solid-js';
+import { createResource, createSignal, For, onCleanup, onMount, Show, Suspense } from 'solid-js';
 import type {
   KnowledgeNode,
+  OpenWithSlotKey,
+  OpenWithSlots,
   Project,
   RepoEntry,
   SearchHit,
   Step,
   StepCounts,
   StepMarker,
+  TerminalPrefs,
   Theme,
+  TreeEvent,
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
+import { resetMermaidTheme } from './markdown';
+import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { buildSlugIndex } from './wikilinks';
 import './styles.css';
 import './note-modal.css';
@@ -105,24 +111,70 @@ type Group = { status: string; items: Project[] };
 
 const UNKNOWN = '?';
 
-function groupByStatus(items: Project[]): Group[] {
+const CURRENT_STATUSES = ['now', 'review', 'soon'] as const;
+const PLANNING_STATUSES = ['later', 'backlog', 'done'] as const;
+
+type Section = { name: string; statuses: readonly string[] };
+
+function groupByStatus(items: Project[]): Map<string, Project[]> {
   const buckets = new Map<string, Project[]>();
   for (const status of KNOWN_STATUSES) buckets.set(status, []);
   buckets.set(UNKNOWN, []);
 
   for (const item of items) {
-    const key = (KNOWN_STATUSES as readonly string[]).includes(item.status)
-      ? item.status
-      : UNKNOWN;
+    const key = (KNOWN_STATUSES as readonly string[]).includes(item.status) ? item.status : UNKNOWN;
     buckets.get(key)!.push(item);
   }
+  return buckets;
+}
 
-  const ordered: Group[] = [];
-  for (const status of KNOWN_STATUSES) {
-    ordered.push({ status, items: buckets.get(status)! });
+function sectionGroups(buckets: Map<string, Project[]>, section: Section): Group[] {
+  const out: Group[] = [];
+  for (const status of section.statuses) {
+    out.push({ status, items: buckets.get(status) ?? [] });
   }
-  ordered.push({ status: UNKNOWN, items: buckets.get(UNKNOWN)! });
-  return ordered.filter((g) => g.items.length > 0 || g.status !== UNKNOWN);
+  if (section.name === 'Planning') {
+    const unknown = buckets.get(UNKNOWN) ?? [];
+    if (unknown.length > 0) out.push({ status: UNKNOWN, items: unknown });
+  }
+  return out;
+}
+
+interface Shortcut {
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+  key: string;
+}
+
+function parseShortcut(spec: string | undefined): Shortcut | null {
+  if (!spec) return null;
+  const parts = spec
+    .split('+')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  const out: Shortcut = { ctrl: false, shift: false, alt: false, meta: false, key: '' };
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    if (lower === 'ctrl' || lower === 'control') out.ctrl = true;
+    else if (lower === 'shift') out.shift = true;
+    else if (lower === 'alt' || lower === 'option') out.alt = true;
+    else if (lower === 'cmd' || lower === 'meta' || lower === 'super') out.meta = true;
+    else out.key = part.length === 1 ? part.toLowerCase() : part;
+  }
+  return out.key ? out : null;
+}
+
+function matchesShortcut(event: KeyboardEvent, shortcut: Shortcut | null): boolean {
+  if (!shortcut) return false;
+  if (shortcut.ctrl !== event.ctrlKey) return false;
+  if (shortcut.shift !== event.shiftKey) return false;
+  if (shortcut.alt !== event.altKey) return false;
+  if (shortcut.meta !== event.metaKey) return false;
+  const eventKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  return eventKey === shortcut.key;
 }
 
 function App() {
@@ -132,6 +184,9 @@ function App() {
   const [toast, setToast] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>('projects');
   const [modal, setModal] = createSignal<ModalState>(null);
+  const [pdfPath, setPdfPath] = createSignal<string | null>(null);
+  const [terminalOpen, setTerminalOpen] = createSignal(false);
+  let terminalHandle: TerminalPaneHandle | null = null;
   const [searchQuery, setSearchQuery] = createSignal('');
   const [searchInput, setSearchInput] = createSignal('');
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -142,8 +197,8 @@ function App() {
     applyTheme(t);
   });
 
-  const unsubscribe = window.condash.onTreeChanged(() => {
-    setRefreshKey((k) => k + 1);
+  const unsubscribe = window.condash.onTreeEvents((events) => {
+    void handleTreeEvents(events);
   });
   onCleanup(unsubscribe);
 
@@ -152,6 +207,7 @@ function App() {
     const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
     setTheme(next);
     applyTheme(next);
+    resetMermaidTheme();
     void window.condash.setTheme(next);
   };
 
@@ -189,6 +245,120 @@ function App() {
     },
   );
 
+  const [openWithSlots] = createResource(
+    () => [conceptionPath(), refreshKey()] as const,
+    async ([path]) => {
+      if (!path) return {} as OpenWithSlots;
+      return window.condash.listOpenWith();
+    },
+  );
+
+  const [terminalPrefs] = createResource(
+    () => [conceptionPath(), refreshKey()] as const,
+    async ([path]) => {
+      if (!path) return {} as TerminalPrefs;
+      return window.condash.termGetPrefs();
+    },
+  );
+
+  const handleLaunch = async (slot: OpenWithSlotKey, path: string) => {
+    try {
+      await window.condash.launchOpenWith(slot, path);
+    } catch (err) {
+      flashToast(`Launch failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleForceStop = async (repo: RepoEntry) => {
+    if (!window.confirm(`Force-stop ${repo.name}?`)) return;
+    try {
+      await window.condash.forceStopRepo(repo.name);
+      flashToast(`Force-stopped ${repo.name}`);
+    } catch (err) {
+      flashToast(`Force-stop failed: ${(err as Error).message}`);
+    }
+  };
+
+  const ensureTerminalOpen = (): void => {
+    if (!terminalOpen()) setTerminalOpen(true);
+  };
+
+  const handleGlobalKeyDown = (event: KeyboardEvent): void => {
+    const target = event.target as HTMLElement | null;
+    // Don't grab keystrokes from text inputs / editor / inside the xterm host —
+    // the xterm canvas swallows printable keys via its own listener already.
+    if (target?.closest('.xterm-host, input, textarea, .cm-editor, [contenteditable=true]')) {
+      // The pane-toggle shortcut is the one exception: the user expects it
+      // to work from inside the active terminal too.
+    }
+
+    const prefs = terminalPrefs() ?? {};
+    const toggle = parseShortcut(prefs.shortcut ?? 'Ctrl+`');
+    if (matchesShortcut(event, toggle)) {
+      event.preventDefault();
+      setTerminalOpen((v) => !v);
+      return;
+    }
+
+    // Move-tab shortcuts only fire when the pane is open.
+    if (!terminalOpen() || !terminalHandle) return;
+    const left = parseShortcut(prefs.move_tab_left_shortcut ?? 'Ctrl+Left');
+    const right = parseShortcut(prefs.move_tab_right_shortcut ?? 'Ctrl+Right');
+    if (matchesShortcut(event, left)) {
+      event.preventDefault();
+      terminalHandle.moveActiveTab(-1);
+      return;
+    }
+    if (matchesShortcut(event, right)) {
+      event.preventDefault();
+      terminalHandle.moveActiveTab(1);
+      return;
+    }
+    const paste = parseShortcut(prefs.screenshot_paste_shortcut);
+    if (matchesShortcut(event, paste)) {
+      event.preventDefault();
+      void handleScreenshotPaste();
+    }
+  };
+
+  const handleScreenshotPaste = async (): Promise<void> => {
+    const prefs = terminalPrefs() ?? {};
+    const dir = prefs.screenshot_dir;
+    if (!dir) {
+      flashToast('No terminal.screenshot_dir set in configuration.json');
+      return;
+    }
+    const latest = await window.condash.termLatestScreenshot(dir);
+    if (!latest) {
+      flashToast(`No files under ${dir}`);
+      return;
+    }
+    if (!terminalHandle) return;
+    terminalHandle.typeIntoActive(latest);
+  };
+
+  onMount(() => {
+    document.addEventListener('keydown', handleGlobalKeyDown);
+  });
+  onCleanup(() => {
+    document.removeEventListener('keydown', handleGlobalKeyDown);
+  });
+
+  const handleRunRepo = async (repo: RepoEntry) => {
+    if (!terminalHandle) {
+      ensureTerminalOpen();
+      // Wait one tick so the pane mounts and registers its handle.
+      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+    }
+    if (!terminalHandle) return;
+    ensureTerminalOpen();
+    try {
+      await terminalHandle.spawn({ side: 'code', repo: repo.name }, repo.name);
+    } catch (err) {
+      flashToast(`Run failed: ${(err as Error).message}`);
+    }
+  };
+
   const onSearchInput = (value: string): void => {
     setSearchInput(value);
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
@@ -214,8 +384,58 @@ function App() {
 
   const handleRefresh = () => setRefreshKey((k) => k + 1);
 
+  const handleTreeEvents = async (events: TreeEvent[]): Promise<void> => {
+    let knowledgeOrConfigDirty = false;
+    let unknownSeen = false;
+
+    for (const event of events) {
+      if (event.kind === 'unknown') {
+        unknownSeen = true;
+        break;
+      }
+      if (event.kind === 'config' || event.kind === 'knowledge') {
+        knowledgeOrConfigDirty = true;
+        continue;
+      }
+      // Per-project patch.
+      try {
+        if (event.op === 'unlink') {
+          mutate((items) => (items ?? []).filter((p) => p.path !== event.path));
+          continue;
+        }
+        const project = await window.condash.getProject(event.path);
+        if (!project) {
+          mutate((items) => (items ?? []).filter((p) => p.path !== event.path));
+          continue;
+        }
+        mutate((items) => {
+          const list = items ?? [];
+          const idx = list.findIndex((p) => p.path === project.path);
+          if (idx === -1) return [...list, project];
+          const next = list.slice();
+          next[idx] = project;
+          return next;
+        });
+      } catch {
+        unknownSeen = true;
+      }
+    }
+
+    if (unknownSeen || knowledgeOrConfigDirty) {
+      setRefreshKey((k) => k + 1);
+    }
+  };
+
   const handleOpenInEditor = (path: string) => {
     void window.condash.openInEditor(path);
+  };
+
+  const handleOpenDeliverable = (path: string) => {
+    if (path.toLowerCase().endsWith('.pdf')) {
+      setPdfPath(path);
+    } else {
+      void window.condash.openInEditor(path);
+    }
   };
 
   const handleOpenProject = (project: Project) => {
@@ -324,6 +544,13 @@ function App() {
           {THEME_LABEL[theme()]}
         </button>
         <button
+          onClick={() => setTerminalOpen((v) => !v)}
+          classList={{ active: terminalOpen() }}
+          title="Toggle terminal pane (Ctrl+`)"
+        >
+          ▤
+        </button>
+        <button
           onClick={handleOpenPreferences}
           disabled={!conceptionPath()}
           title="Edit configuration.json"
@@ -333,9 +560,7 @@ function App() {
         <button onClick={handleRefresh} disabled={!conceptionPath()}>
           Refresh
         </button>
-        <button onClick={handlePick}>
-          {conceptionPath() ? 'Change…' : 'Choose folder…'}
-        </button>
+        <button onClick={handlePick}>{conceptionPath() ? 'Change…' : 'Choose folder…'}</button>
       </header>
 
       <Show
@@ -353,18 +578,12 @@ function App() {
               when={(projects() ?? []).length > 0}
               fallback={<div class="empty">No projects found under projects/.</div>}
             >
-              <div class="columns">
-                <For each={groupByStatus(projects() ?? [])}>
-                  {(group) => (
-                    <Column
-                      group={group}
-                      onOpen={handleOpenProject}
-                      onToggleStep={handleToggleStep}
-                      onDropProject={handleDropOnColumn}
-                    />
-                  )}
-                </For>
-              </div>
+              <ProjectsView
+                buckets={groupByStatus(projects() ?? [])}
+                onOpen={handleOpenProject}
+                onToggleStep={handleToggleStep}
+                onDropProject={handleDropOnColumn}
+              />
             </Show>
           </Suspense>
         </Show>
@@ -397,7 +616,16 @@ function App() {
             >
               <div class="repos-pane">
                 <For each={repos() ?? []}>
-                  {(repo) => <RepoRow repo={repo} onOpen={handleOpenInEditor} />}
+                  {(repo) => (
+                    <RepoRow
+                      repo={repo}
+                      slots={openWithSlots() ?? {}}
+                      onOpen={handleOpenInEditor}
+                      onLaunch={(slot, path) => void handleLaunch(slot, path)}
+                      onForceStop={(r) => void handleForceStop(r)}
+                      onRun={(r) => void handleRunRepo(r)}
+                    />
+                  )}
                 </For>
               </div>
             </Show>
@@ -421,9 +649,7 @@ function App() {
                 >
                   <ul class="search-results">
                     <For each={searchResults() ?? []}>
-                      {(hit) => (
-                        <SearchResult hit={hit} onOpen={handleOpenKnowledgeFile} />
-                      )}
+                      {(hit) => <SearchResult hit={hit} onOpen={handleOpenKnowledgeFile} />}
                     </For>
                   </ul>
                 </Show>
@@ -438,9 +664,27 @@ function App() {
           state={modal()}
           onClose={() => setModal(null)}
           onOpenInEditor={handleOpenInEditor}
+          onOpenDeliverable={handleOpenDeliverable}
           onWikilink={handleWikilink}
         />
       </Show>
+
+      <Show when={pdfPath()}>
+        <PdfModal
+          path={pdfPath()!}
+          onClose={() => setPdfPath(null)}
+          onOpenInOs={handleOpenInEditor}
+        />
+      </Show>
+
+      <TerminalPane
+        open={terminalOpen()}
+        onClose={() => setTerminalOpen(false)}
+        launcherCommand={terminalPrefs()?.launcher_command ?? null}
+        registerHandle={(handle) => {
+          terminalHandle = handle;
+        }}
+      />
 
       <Show when={toast()}>
         <div class="toast" role="status">
@@ -448,6 +692,60 @@ function App() {
         </div>
       </Show>
     </div>
+  );
+}
+
+const SECTIONS: Section[] = [
+  { name: 'Current Projects', statuses: CURRENT_STATUSES },
+  { name: 'Planning', statuses: PLANNING_STATUSES },
+];
+
+function ProjectsView(props: {
+  buckets: Map<string, Project[]>;
+  onOpen: (project: Project) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+  onDropProject: (path: string, newStatus: string) => void;
+}) {
+  return (
+    <div class="projects-view">
+      <For each={SECTIONS}>
+        {(section) => (
+          <ProjectsSection
+            name={section.name}
+            groups={sectionGroups(props.buckets, section)}
+            onOpen={props.onOpen}
+            onToggleStep={props.onToggleStep}
+            onDropProject={props.onDropProject}
+          />
+        )}
+      </For>
+    </div>
+  );
+}
+
+function ProjectsSection(props: {
+  name: string;
+  groups: Group[];
+  onOpen: (project: Project) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+  onDropProject: (path: string, newStatus: string) => void;
+}) {
+  return (
+    <section class="projects-section">
+      <header class="projects-section-header">{props.name}</header>
+      <div class="projects-section-body" style={{ '--columns': props.groups.length }}>
+        <For each={props.groups}>
+          {(group) => (
+            <Column
+              group={group}
+              onOpen={props.onOpen}
+              onToggleStep={props.onToggleStep}
+              onDropProject={props.onDropProject}
+            />
+          )}
+        </For>
+      </div>
+    </section>
   );
 }
 
@@ -504,9 +802,7 @@ function Column(props: {
       </header>
       <div class="column-body">
         <For each={props.group.items}>
-          {(item) => (
-            <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />
-          )}
+          {(item) => <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />}
         </For>
       </div>
     </section>
@@ -532,12 +828,7 @@ function Card(props: {
   };
 
   return (
-    <article
-      class="row"
-      title={props.item.path}
-      draggable={true}
-      onDragStart={handleDragStart}
-    >
+    <article class="row" title={props.item.path} draggable={true} onDragStart={handleDragStart}>
       <div class="row-head" onClick={handleHeaderClick}>
         <span class="title">{props.item.title}</span>
         <Show when={props.item.summary}>
@@ -651,7 +942,14 @@ function KnowledgeNodeView(props: {
   );
 }
 
-function RepoRow(props: { repo: RepoEntry; onOpen: (path: string) => void }) {
+function RepoRow(props: {
+  repo: RepoEntry;
+  slots: OpenWithSlots;
+  onOpen: (path: string) => void;
+  onLaunch: (slot: OpenWithSlotKey, path: string) => void;
+  onForceStop: (repo: RepoEntry) => void;
+  onRun: (repo: RepoEntry) => void;
+}) {
   const dirtyLabel = (): string => {
     if (props.repo.missing) return 'missing';
     if (props.repo.dirty == null) return '?';
@@ -666,7 +964,9 @@ function RepoRow(props: { repo: RepoEntry; onOpen: (path: string) => void }) {
     >
       <div class="repo-head">
         <span class="repo-name">{props.repo.name}</span>
-        <span class="badge" data-kind={props.repo.kind}>{props.repo.kind}</span>
+        <span class="badge" data-kind={props.repo.kind}>
+          {props.repo.kind}
+        </span>
         <span class="repo-dirty">{dirtyLabel()}</span>
       </div>
       <span class="repo-path">{props.repo.path}</span>
@@ -679,10 +979,83 @@ function RepoRow(props: { repo: RepoEntry; onOpen: (path: string) => void }) {
         >
           Open
         </button>
+        <button
+          class="modal-button"
+          onClick={() => props.onRun(props.repo)}
+          disabled={props.repo.missing}
+          title="Run in terminal pane"
+        >
+          ▶ Run
+        </button>
+        <For each={LAUNCHER_SLOTS}>
+          {(slot) => (
+            <Show when={props.slots[slot]}>
+              <button
+                class="modal-button"
+                onClick={() => props.onLaunch(slot, props.repo.path)}
+                disabled={props.repo.missing}
+                title={props.slots[slot]!.label}
+              >
+                {LAUNCHER_GLYPH[slot]}
+              </button>
+            </Show>
+          )}
+        </For>
+        <Show when={props.repo.hasForceStop}>
+          <button
+            class="modal-button warn"
+            onClick={() => props.onForceStop(props.repo)}
+            disabled={props.repo.missing}
+            title="Force-stop (runs configured force_stop:)"
+          >
+            ⏹
+          </button>
+        </Show>
       </div>
+      <Show when={props.repo.worktrees && props.repo.worktrees.length > 1}>
+        <ul class="worktrees">
+          <For each={props.repo.worktrees!.filter((w) => !w.primary)}>
+            {(wt) => (
+              <li class="worktree-row">
+                <span class="worktree-branch">{wt.branch ?? '(detached)'}</span>
+                <span class="worktree-path">{wt.path}</span>
+                <div class="worktree-actions">
+                  <button
+                    class="modal-button"
+                    onClick={() => props.onOpen(wt.path)}
+                    title="Open worktree in OS file manager"
+                  >
+                    Open
+                  </button>
+                  <For each={LAUNCHER_SLOTS}>
+                    {(slot) => (
+                      <Show when={props.slots[slot]}>
+                        <button
+                          class="modal-button"
+                          onClick={() => props.onLaunch(slot, wt.path)}
+                          title={props.slots[slot]!.label}
+                        >
+                          {LAUNCHER_GLYPH[slot]}
+                        </button>
+                      </Show>
+                    )}
+                  </For>
+                </div>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
     </article>
   );
 }
+
+const LAUNCHER_SLOTS: readonly OpenWithSlotKey[] = ['main_ide', 'secondary_ide', 'terminal'];
+const LAUNCHER_GLYPH: Record<OpenWithSlotKey, string> = {
+  main_ide: '⌘',
+  secondary_ide: '⌥',
+  terminal: '▶',
+};
 
 function SearchResult(props: { hit: SearchHit; onOpen: (path: string) => void }) {
   return (
@@ -707,6 +1080,65 @@ function markerClass(m: StepMarker): string {
   if (m === '~') return 'doing';
   if (m === 'x') return 'done';
   return 'dropped';
+}
+
+function PdfModal(props: {
+  path: string;
+  onClose: () => void;
+  onOpenInOs: (path: string) => void;
+}) {
+  const handleKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      props.onClose();
+    }
+  };
+
+  onMount(() => {
+    document.addEventListener('keydown', handleKey, true);
+  });
+  onCleanup(() => {
+    document.removeEventListener('keydown', handleKey, true);
+  });
+
+  const fileUrl = (): string => {
+    const encoded = props.path
+      .split('/')
+      .map((seg) => encodeURIComponent(seg))
+      .join('/');
+    return `file://${encoded}`;
+  };
+
+  const fileName = (): string => props.path.split('/').pop() ?? props.path;
+
+  return (
+    <div class="modal-backdrop" onClick={props.onClose}>
+      <div
+        class="modal pdf-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header class="modal-head">
+          <span class="modal-title">{fileName()}</span>
+          <span class="modal-path">{props.path}</span>
+          <button
+            class="modal-button"
+            onClick={() => props.onOpenInOs(props.path)}
+            title="Open in OS default viewer"
+          >
+            ↗
+          </button>
+          <button class="modal-button" onClick={props.onClose} title="Close (Esc)">
+            ×
+          </button>
+        </header>
+        <div class="pdf-body">
+          <webview src={fileUrl()} partition="persist:pdf" class="pdf-webview" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const root = document.getElementById('root');

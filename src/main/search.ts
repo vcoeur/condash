@@ -87,10 +87,7 @@ async function tryMatch(
       const end = Math.min(raw.length, idx + lowerQuery.length + SNIPPET_RADIUS);
       const prefix = start > 0 ? '…' : '';
       const suffix = end < raw.length ? '…' : '';
-      const snippet = raw
-        .slice(start, end)
-        .replace(/\s+/g, ' ')
-        .trim();
+      const snippet = raw.slice(start, end).replace(/\s+/g, ' ').trim();
       snippets.push(`${prefix}${snippet}${suffix}`);
     }
     cursor = idx + lowerQuery.length;

@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { StepMarker } from '../shared/types';
+import { canonicaliseOpenWith, configSchema } from './config-schema';
 
 const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s.*)$/;
 const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)([^\s]+)\s*$/i;
@@ -75,8 +76,30 @@ export async function writeNote(
     if (onDisk !== expectedContent) {
       throw new Error('File on disk has drifted; reload before saving');
     }
-    await atomicWrite(path, newContent);
+
+    const finalContent =
+      basename(path) === 'configuration.json'
+        ? validateAndCanonicaliseConfig(newContent)
+        : newContent;
+    await atomicWrite(path, finalContent);
   });
+}
+
+function validateAndCanonicaliseConfig(json: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (err) {
+    throw new Error(`Invalid JSON: ${(err as Error).message}`);
+  }
+  const result = configSchema.safeParse(parsed);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+    throw new Error(`configuration.json: ${where} — ${issue.message}`);
+  }
+  // Migrate `commands → command` while we're here.
+  return JSON.stringify(canonicaliseOpenWith(result.data), null, 2) + '\n';
 }
 
 export async function setStatus(path: string, newStatus: string): Promise<void> {

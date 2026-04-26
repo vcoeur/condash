@@ -59,6 +59,15 @@ export interface Settings {
   theme: Theme;
 }
 
+export interface Worktree {
+  /** Absolute path on disk. */
+  path: string;
+  /** Branch name (without the `refs/heads/` prefix); null when detached. */
+  branch: string | null;
+  /** True when this worktree is the primary checkout (the one in `repositories`). */
+  primary: boolean;
+}
+
 export interface RepoEntry {
   /** Display name (typically the repo directory name). */
   name: string;
@@ -70,7 +79,54 @@ export interface RepoEntry {
   dirty: number | null;
   /** True when path doesn't exist or isn't a git repo. */
   missing: boolean;
+  /** True when configuration.json sets a `force_stop:` for this entry. */
+  hasForceStop?: boolean;
+  /** Worktrees attached to this repo (always includes the primary checkout). */
+  worktrees?: Worktree[];
 }
+
+export type TermSide = 'my' | 'code';
+
+export interface TerminalPrefs {
+  shell?: string;
+  shortcut?: string;
+  screenshot_dir?: string;
+  screenshot_paste_shortcut?: string;
+  launcher_command?: string;
+  move_tab_left_shortcut?: string;
+  move_tab_right_shortcut?: string;
+}
+
+export interface TermSpawnRequest {
+  side: TermSide;
+  /** When set, looks up the repo's `run:` and uses its cwd. */
+  repo?: string;
+  /** Free-form command to run via `bash -lc`. Mutually exclusive with `repo`. */
+  command?: string;
+  /** Override the cwd; defaults to $HOME (or the resolved repo cwd). */
+  cwd?: string;
+  cols?: number;
+  rows?: number;
+}
+
+export interface TermDataMessage {
+  id: string;
+  data: string;
+}
+
+export interface TermExitMessage {
+  id: string;
+  code: number;
+}
+
+export type OpenWithSlotKey = 'main_ide' | 'secondary_ide' | 'terminal';
+
+export interface OpenWithSlot {
+  label: string;
+  command: string;
+}
+
+export type OpenWithSlots = Partial<Record<OpenWithSlotKey, OpenWithSlot>>;
 
 export interface SearchHit {
   /** Absolute path of the matched file. */
@@ -84,6 +140,12 @@ export interface SearchHit {
   /** First few snippets, each ~120 chars centred on the first line of each match. */
   snippets: string[];
 }
+
+export type TreeEvent =
+  | { kind: 'project'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'knowledge'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'config'; path: string }
+  | { kind: 'unknown' };
 
 export interface KnowledgeNode {
   /** Path relative to <conception>/knowledge/. Empty string for the root. */

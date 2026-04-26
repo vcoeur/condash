@@ -1,17 +1,28 @@
 import type {
   KnowledgeNode,
+  OpenWithSlotKey,
+  OpenWithSlots,
   Project,
   RepoEntry,
   SearchHit,
   StepMarker,
+  TermDataMessage,
+  TermExitMessage,
+  TermSpawnRequest,
+  TerminalPrefs,
   Theme,
+  TreeEvent,
 } from './types';
 
 export interface CondashApi {
   listProjects(): Promise<Project[]>;
+  getProject(path: string): Promise<Project | null>;
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
   search(query: string): Promise<SearchHit[]>;
   listRepos(): Promise<RepoEntry[]>;
+  listOpenWith(): Promise<OpenWithSlots>;
+  launchOpenWith(slot: OpenWithSlotKey, path: string): Promise<void>;
+  forceStopRepo(repoName: string): Promise<void>;
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;
@@ -27,10 +38,19 @@ export interface CondashApi {
   readNote(path: string): Promise<string>;
   writeNote(path: string, expectedContent: string, newContent: string): Promise<void>;
   /**
-   * Subscribe to tree-changed events emitted by the main-process file watcher.
-   * Returns an unsubscribe function.
+   * Subscribe to per-path tree events emitted by the main-process file watcher.
+   * Each callback receives a debounced batch. Returns an unsubscribe function.
    */
-  onTreeChanged(callback: () => void): () => void;
+  onTreeEvents(callback: (events: TreeEvent[]) => void): () => void;
+
+  termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
+  termWrite(id: string, data: string): Promise<void>;
+  termResize(id: string, cols: number, rows: number): Promise<void>;
+  termClose(id: string): Promise<void>;
+  termGetPrefs(): Promise<TerminalPrefs>;
+  termLatestScreenshot(dir: string): Promise<string | null>;
+  onTermData(callback: (msg: TermDataMessage) => void): () => void;
+  onTermExit(callback: (msg: TermExitMessage) => void): () => void;
 }
 
 declare global {
