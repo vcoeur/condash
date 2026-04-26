@@ -3,6 +3,7 @@ import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'so
 import type {
   KnowledgeNode,
   Project,
+  SearchHit,
   Step,
   StepCounts,
   StepMarker,
@@ -14,7 +15,7 @@ import { buildSlugIndex } from './wikilinks';
 import './styles.css';
 import './note-modal.css';
 
-type Tab = 'projects' | 'knowledge';
+type Tab = 'projects' | 'knowledge' | 'search';
 
 const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
 const THEME_LABEL: Record<Theme, string> = {
@@ -130,6 +131,9 @@ function App() {
   const [toast, setToast] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>('projects');
   const [modal, setModal] = createSignal<ModalState>(null);
+  const [searchQuery, setSearchQuery] = createSignal('');
+  const [searchInput, setSearchInput] = createSignal('');
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   void window.condash.getConceptionPath().then(setConceptionPath);
   void window.condash.getTheme().then((t) => {
@@ -161,10 +165,30 @@ function App() {
   const [knowledge] = createResource(
     () => [conceptionPath(), refreshKey(), tab()] as const,
     async ([path, , currentTab]) => {
-      if (!path || currentTab !== 'knowledge') return null;
+      if (!path || (currentTab !== 'knowledge' && currentTab !== 'search')) return null;
       return window.condash.readKnowledgeTree();
     },
   );
+
+  const [searchResults] = createResource(
+    () => [conceptionPath(), tab(), searchQuery()] as const,
+    async ([path, currentTab, query]) => {
+      if (!path || currentTab !== 'search' || query.trim().length === 0) {
+        return [] as SearchHit[];
+      }
+      return window.condash.search(query);
+    },
+  );
+
+  const onSearchInput = (value: string): void => {
+    setSearchInput(value);
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => setSearchQuery(value), 200);
+  };
+
+  onCleanup(() => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  });
 
   const flashToast = (msg: string) => {
     setToast(msg);
@@ -269,6 +293,14 @@ function App() {
           >
             Knowledge
           </button>
+          <button
+            class="tab"
+            classList={{ active: tab() === 'search' }}
+            onClick={() => setTab('search')}
+            disabled={!conceptionPath()}
+          >
+            Search
+          </button>
         </nav>
         <span class="path">{conceptionPath() ?? '(no conception path)'}</span>
         <button onClick={cycleTheme} title="Cycle theme">
@@ -333,6 +365,34 @@ function App() {
               </div>
             </Show>
           </Suspense>
+        </Show>
+
+        <Show when={tab() === 'search'}>
+          <div class="search-pane">
+            <input
+              class="search-input"
+              type="search"
+              placeholder="Search projects + knowledge…"
+              value={searchInput()}
+              onInput={(e) => onSearchInput(e.currentTarget.value)}
+            />
+            <Show when={searchInput().trim().length > 0}>
+              <Suspense fallback={<div class="empty">Searching…</div>}>
+                <Show
+                  when={(searchResults() ?? []).length > 0}
+                  fallback={<div class="empty">No matches.</div>}
+                >
+                  <ul class="search-results">
+                    <For each={searchResults() ?? []}>
+                      {(hit) => (
+                        <SearchResult hit={hit} onOpen={handleOpenKnowledgeFile} />
+                      )}
+                    </For>
+                  </ul>
+                </Show>
+              </Suspense>
+            </Show>
+          </div>
         </Show>
       </Show>
 
@@ -550,6 +610,24 @@ function KnowledgeNodeView(props: {
           </ul>
         </Show>
       </Show>
+    </li>
+  );
+}
+
+function SearchResult(props: { hit: SearchHit; onOpen: (path: string) => void }) {
+  return (
+    <li class="search-result">
+      <button class="search-row" onClick={() => props.onOpen(props.hit.path)}>
+        <div class="search-head">
+          <span class="search-title">{props.hit.title}</span>
+          <span class="badge">{props.hit.source}</span>
+          <span class="search-count">{props.hit.matchCount}</span>
+        </div>
+        <span class="search-path">{props.hit.path}</span>
+        <ul class="search-snippets">
+          <For each={props.hit.snippets}>{(s) => <li>{s}</li>}</For>
+        </ul>
+      </button>
     </li>
   );
 }

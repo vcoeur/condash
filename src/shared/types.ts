@@ -59,6 +59,19 @@ export interface Settings {
   theme: Theme;
 }
 
+export interface SearchHit {
+  /** Absolute path of the matched file. */
+  path: string;
+  /** Best-effort title (first H1 line) for display. */
+  title: string;
+  /** 'project' if the file is a projects/.../README.md, 'knowledge' otherwise. */
+  source: 'project' | 'knowledge';
+  /** Number of matches in the file. */
+  matchCount: number;
+  /** First few snippets, each ~120 chars centred on the first line of each match. */
+  snippets: string[];
+}
+
 export interface KnowledgeNode {
   /** Path relative to <conception>/knowledge/. Empty string for the root. */
   relPath: string;

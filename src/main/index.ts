@@ -7,6 +7,7 @@ import { setWatchedConception } from './watcher';
 import { setStatus, toggleStep, writeNote } from './mutate';
 import { readKnowledgeTree } from './knowledge';
 import { readNote } from './note';
+import { search } from './search';
 import type { Project, StepMarker, Theme } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
@@ -67,6 +68,12 @@ function registerIpc(): void {
     const { conceptionPath } = await readSettings();
     if (!conceptionPath) return null;
     return readKnowledgeTree(conceptionPath);
+  });
+
+  ipcMain.handle('search', async (_, query: string) => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return [];
+    return search(conceptionPath, query);
   });
 
   ipcMain.handle('openInEditor', async (_, path: string) => {
