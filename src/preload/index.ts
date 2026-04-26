@@ -5,6 +5,7 @@ const api: CondashApi = {
   listProjects: () => ipcRenderer.invoke('listProjects'),
   readKnowledgeTree: () => ipcRenderer.invoke('readKnowledgeTree'),
   search: (query) => ipcRenderer.invoke('search', query),
+  listRepos: () => ipcRenderer.invoke('listRepos'),
   openInEditor: (path) => ipcRenderer.invoke('openInEditor', path),
   pickConceptionPath: () => ipcRenderer.invoke('pickConceptionPath'),
   getConceptionPath: () => ipcRenderer.invoke('getConceptionPath'),

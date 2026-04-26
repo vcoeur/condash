@@ -59,6 +59,19 @@ export interface Settings {
   theme: Theme;
 }
 
+export interface RepoEntry {
+  /** Display name (typically the repo directory name). */
+  name: string;
+  /** Absolute path on disk. */
+  path: string;
+  /** primary | secondary — matches the configuration.json layout. */
+  kind: 'primary' | 'secondary';
+  /** Count of modified+staged+untracked files; null if git status couldn't run. */
+  dirty: number | null;
+  /** True when path doesn't exist or isn't a git repo. */
+  missing: boolean;
+}
+
 export interface SearchHit {
   /** Absolute path of the matched file. */
   path: string;

@@ -3,6 +3,7 @@ import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'so
 import type {
   KnowledgeNode,
   Project,
+  RepoEntry,
   SearchHit,
   Step,
   StepCounts,
@@ -15,7 +16,7 @@ import { buildSlugIndex } from './wikilinks';
 import './styles.css';
 import './note-modal.css';
 
-type Tab = 'projects' | 'knowledge' | 'search';
+type Tab = 'projects' | 'knowledge' | 'search' | 'code';
 
 const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
 const THEME_LABEL: Record<Theme, string> = {
@@ -180,6 +181,14 @@ function App() {
     },
   );
 
+  const [repos] = createResource(
+    () => [conceptionPath(), refreshKey(), tab()] as const,
+    async ([path, , currentTab]) => {
+      if (!path || currentTab !== 'code') return [] as RepoEntry[];
+      return window.condash.listRepos();
+    },
+  );
+
   const onSearchInput = (value: string): void => {
     setSearchInput(value);
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
@@ -301,6 +310,14 @@ function App() {
           >
             Search
           </button>
+          <button
+            class="tab"
+            classList={{ active: tab() === 'code' }}
+            onClick={() => setTab('code')}
+            disabled={!conceptionPath()}
+          >
+            Code
+          </button>
         </nav>
         <span class="path">{conceptionPath() ?? '(no conception path)'}</span>
         <button onClick={cycleTheme} title="Cycle theme">
@@ -362,6 +379,26 @@ function App() {
             >
               <div class="knowledge-pane">
                 <KnowledgeTree node={knowledge()!} onOpen={handleOpenKnowledgeFile} />
+              </div>
+            </Show>
+          </Suspense>
+        </Show>
+
+        <Show when={tab() === 'code'}>
+          <Suspense fallback={<div class="empty">Loading…</div>}>
+            <Show
+              when={(repos() ?? []).length > 0}
+              fallback={
+                <div class="empty">
+                  No repositories listed. Add <code>repositories.primary</code> /{' '}
+                  <code>secondary</code> to <code>configuration.json</code> via the gear.
+                </div>
+              }
+            >
+              <div class="repos-pane">
+                <For each={repos() ?? []}>
+                  {(repo) => <RepoRow repo={repo} onOpen={handleOpenInEditor} />}
+                </For>
               </div>
             </Show>
           </Suspense>
@@ -611,6 +648,39 @@ function KnowledgeNodeView(props: {
         </Show>
       </Show>
     </li>
+  );
+}
+
+function RepoRow(props: { repo: RepoEntry; onOpen: (path: string) => void }) {
+  const dirtyLabel = (): string => {
+    if (props.repo.missing) return 'missing';
+    if (props.repo.dirty == null) return '?';
+    if (props.repo.dirty === 0) return 'clean';
+    return `${props.repo.dirty} dirty`;
+  };
+
+  return (
+    <article
+      class="repo-row"
+      classList={{ missing: props.repo.missing, dirty: !!props.repo.dirty }}
+    >
+      <div class="repo-head">
+        <span class="repo-name">{props.repo.name}</span>
+        <span class="badge" data-kind={props.repo.kind}>{props.repo.kind}</span>
+        <span class="repo-dirty">{dirtyLabel()}</span>
+      </div>
+      <span class="repo-path">{props.repo.path}</span>
+      <div class="repo-actions">
+        <button
+          class="modal-button"
+          onClick={() => props.onOpen(props.repo.path)}
+          disabled={props.repo.missing}
+          title="Open in OS file manager"
+        >
+          Open
+        </button>
+      </div>
+    </article>
   );
 }
 
