@@ -1,11 +1,4 @@
-import type {
-  KnowledgeNode,
-  Project,
-  RepoEntry,
-  SearchHit,
-  StepMarker,
-  Theme,
-} from './types';
+import type { KnowledgeNode, Project, RepoEntry, SearchHit, StepMarker, Theme } from './types';
 
 export interface CondashApi {
   listProjects(): Promise<Project[]>;

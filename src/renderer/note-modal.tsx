@@ -1,11 +1,4 @@
-import {
-  createEffect,
-  createResource,
-  createSignal,
-  onCleanup,
-  onMount,
-  Show,
-} from 'solid-js';
+import { createEffect, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { mountEditor, type MountedEditor } from './editor';
 import 'highlight.js/styles/github.css';
@@ -249,10 +242,14 @@ export function NoteModal(props: {
           <span class="modal-title">{props.state?.title ?? props.state?.path ?? ''}</span>
           <span class="modal-path">{props.state?.path ?? ''}</span>
           <Show when={dirty()}>
-            <span class="modal-dirty" title="Unsaved changes">●</span>
+            <span class="modal-dirty" title="Unsaved changes">
+              ●
+            </span>
           </Show>
           <Show when={savedAt() !== null}>
-            <span class="modal-saved" title="Saved">✓</span>
+            <span class="modal-saved" title="Saved">
+              ✓
+            </span>
           </Show>
           <button
             class="modal-button"
@@ -301,7 +298,11 @@ export function NoteModal(props: {
                   : `${findMatch()!.index + 1} / ${findMatch()!.total}`}
               </span>
             </Show>
-            <button class="modal-button" onClick={() => stepFind(-1)} title="Previous (Shift+Enter)">
+            <button
+              class="modal-button"
+              onClick={() => stepFind(-1)}
+              title="Previous (Shift+Enter)"
+            >
               ↑
             </button>
             <button class="modal-button" onClick={() => stepFind(1)} title="Next (Enter)">
@@ -331,7 +332,9 @@ export function NoteModal(props: {
           <Show when={content.error}>
             <div class="empty warn">
               Failed to read: {(content.error as Error).message}
-              <button class="modal-button" onClick={() => void reload()}>Reload</button>
+              <button class="modal-button" onClick={() => void reload()}>
+                Reload
+              </button>
             </div>
           </Show>
           <Show
@@ -390,7 +393,9 @@ const FIND_HIGHLIGHT_CLASS = 'find-hit';
 const FIND_CURRENT_CLASS = 'find-current';
 
 function clearFindHighlights(container: HTMLElement): void {
-  for (const el of Array.from(container.querySelectorAll<HTMLElement>(`.${FIND_HIGHLIGHT_CLASS}`))) {
+  for (const el of Array.from(
+    container.querySelectorAll<HTMLElement>(`.${FIND_HIGHLIGHT_CLASS}`),
+  )) {
     const parent = el.parentNode;
     if (!parent) continue;
     parent.replaceChild(document.createTextNode(el.textContent ?? ''), el);

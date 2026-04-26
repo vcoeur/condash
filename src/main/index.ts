@@ -115,10 +115,8 @@ function registerIpc(): void {
 
   ipcMain.handle('readNote', (_, path: string) => readNote(path));
 
-  ipcMain.handle(
-    'writeNote',
-    (_, path: string, expectedContent: string, newContent: string) =>
-      writeNote(path, expectedContent, newContent),
+  ipcMain.handle('writeNote', (_, path: string, expectedContent: string, newContent: string) =>
+    writeNote(path, expectedContent, newContent),
   );
 
   ipcMain.handle('pickConceptionPath', async () => {

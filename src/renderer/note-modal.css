@@ -97,9 +97,17 @@
   margin-top: 0;
 }
 
-.md-rendered h1 { font-size: 1.6em; }
-.md-rendered h2 { font-size: 1.3em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
-.md-rendered h3 { font-size: 1.1em; }
+.md-rendered h1 {
+  font-size: 1.6em;
+}
+.md-rendered h2 {
+  font-size: 1.3em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.2em;
+}
+.md-rendered h3 {
+  font-size: 1.1em;
+}
 
 .md-rendered p {
   margin: 0.6em 0;
@@ -342,4 +350,3 @@
   padding: 12px;
   max-width: none;
 }
-

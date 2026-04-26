@@ -91,7 +91,8 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
   const workspace = config.workspace_path;
 
   const flat: FlatRepo[] = [];
-  if (config.repositories?.primary) flatten(config.repositories.primary, 'primary', undefined, flat);
+  if (config.repositories?.primary)
+    flatten(config.repositories.primary, 'primary', undefined, flat);
   if (config.repositories?.secondary) {
     flatten(config.repositories.secondary, 'secondary', undefined, flat);
   }

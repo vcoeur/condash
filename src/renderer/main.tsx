@@ -105,24 +105,33 @@ type Group = { status: string; items: Project[] };
 
 const UNKNOWN = '?';
 
-function groupByStatus(items: Project[]): Group[] {
+const CURRENT_STATUSES = ['now', 'review', 'soon'] as const;
+const PLANNING_STATUSES = ['later', 'backlog', 'done'] as const;
+
+type Section = { name: string; statuses: readonly string[] };
+
+function groupByStatus(items: Project[]): Map<string, Project[]> {
   const buckets = new Map<string, Project[]>();
   for (const status of KNOWN_STATUSES) buckets.set(status, []);
   buckets.set(UNKNOWN, []);
 
   for (const item of items) {
-    const key = (KNOWN_STATUSES as readonly string[]).includes(item.status)
-      ? item.status
-      : UNKNOWN;
+    const key = (KNOWN_STATUSES as readonly string[]).includes(item.status) ? item.status : UNKNOWN;
     buckets.get(key)!.push(item);
   }
+  return buckets;
+}
 
-  const ordered: Group[] = [];
-  for (const status of KNOWN_STATUSES) {
-    ordered.push({ status, items: buckets.get(status)! });
+function sectionGroups(buckets: Map<string, Project[]>, section: Section): Group[] {
+  const out: Group[] = [];
+  for (const status of section.statuses) {
+    out.push({ status, items: buckets.get(status) ?? [] });
   }
-  ordered.push({ status: UNKNOWN, items: buckets.get(UNKNOWN)! });
-  return ordered.filter((g) => g.items.length > 0 || g.status !== UNKNOWN);
+  if (section.name === 'Planning') {
+    const unknown = buckets.get(UNKNOWN) ?? [];
+    if (unknown.length > 0) out.push({ status: UNKNOWN, items: unknown });
+  }
+  return out;
 }
 
 function App() {
@@ -333,9 +342,7 @@ function App() {
         <button onClick={handleRefresh} disabled={!conceptionPath()}>
           Refresh
         </button>
-        <button onClick={handlePick}>
-          {conceptionPath() ? 'Change…' : 'Choose folder…'}
-        </button>
+        <button onClick={handlePick}>{conceptionPath() ? 'Change…' : 'Choose folder…'}</button>
       </header>
 
       <Show
@@ -353,18 +360,12 @@ function App() {
               when={(projects() ?? []).length > 0}
               fallback={<div class="empty">No projects found under projects/.</div>}
             >
-              <div class="columns">
-                <For each={groupByStatus(projects() ?? [])}>
-                  {(group) => (
-                    <Column
-                      group={group}
-                      onOpen={handleOpenProject}
-                      onToggleStep={handleToggleStep}
-                      onDropProject={handleDropOnColumn}
-                    />
-                  )}
-                </For>
-              </div>
+              <ProjectsView
+                buckets={groupByStatus(projects() ?? [])}
+                onOpen={handleOpenProject}
+                onToggleStep={handleToggleStep}
+                onDropProject={handleDropOnColumn}
+              />
             </Show>
           </Suspense>
         </Show>
@@ -421,9 +422,7 @@ function App() {
                 >
                   <ul class="search-results">
                     <For each={searchResults() ?? []}>
-                      {(hit) => (
-                        <SearchResult hit={hit} onOpen={handleOpenKnowledgeFile} />
-                      )}
+                      {(hit) => <SearchResult hit={hit} onOpen={handleOpenKnowledgeFile} />}
                     </For>
                   </ul>
                 </Show>
@@ -448,6 +447,60 @@ function App() {
         </div>
       </Show>
     </div>
+  );
+}
+
+const SECTIONS: Section[] = [
+  { name: 'Current Projects', statuses: CURRENT_STATUSES },
+  { name: 'Planning', statuses: PLANNING_STATUSES },
+];
+
+function ProjectsView(props: {
+  buckets: Map<string, Project[]>;
+  onOpen: (project: Project) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+  onDropProject: (path: string, newStatus: string) => void;
+}) {
+  return (
+    <div class="projects-view">
+      <For each={SECTIONS}>
+        {(section) => (
+          <ProjectsSection
+            name={section.name}
+            groups={sectionGroups(props.buckets, section)}
+            onOpen={props.onOpen}
+            onToggleStep={props.onToggleStep}
+            onDropProject={props.onDropProject}
+          />
+        )}
+      </For>
+    </div>
+  );
+}
+
+function ProjectsSection(props: {
+  name: string;
+  groups: Group[];
+  onOpen: (project: Project) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+  onDropProject: (path: string, newStatus: string) => void;
+}) {
+  return (
+    <section class="projects-section">
+      <header class="projects-section-header">{props.name}</header>
+      <div class="projects-section-body" style={{ '--columns': props.groups.length }}>
+        <For each={props.groups}>
+          {(group) => (
+            <Column
+              group={group}
+              onOpen={props.onOpen}
+              onToggleStep={props.onToggleStep}
+              onDropProject={props.onDropProject}
+            />
+          )}
+        </For>
+      </div>
+    </section>
   );
 }
 
@@ -504,9 +557,7 @@ function Column(props: {
       </header>
       <div class="column-body">
         <For each={props.group.items}>
-          {(item) => (
-            <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />
-          )}
+          {(item) => <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />}
         </For>
       </div>
     </section>
@@ -532,12 +583,7 @@ function Card(props: {
   };
 
   return (
-    <article
-      class="row"
-      title={props.item.path}
-      draggable={true}
-      onDragStart={handleDragStart}
-    >
+    <article class="row" title={props.item.path} draggable={true} onDragStart={handleDragStart}>
       <div class="row-head" onClick={handleHeaderClick}>
         <span class="title">{props.item.title}</span>
         <Show when={props.item.summary}>
@@ -666,7 +712,9 @@ function RepoRow(props: { repo: RepoEntry; onOpen: (path: string) => void }) {
     >
       <div class="repo-head">
         <span class="repo-name">{props.repo.name}</span>
-        <span class="badge" data-kind={props.repo.kind}>{props.repo.kind}</span>
+        <span class="badge" data-kind={props.repo.kind}>
+          {props.repo.kind}
+        </span>
         <span class="repo-dirty">{dirtyLabel()}</span>
       </div>
       <span class="repo-path">{props.repo.path}</span>
