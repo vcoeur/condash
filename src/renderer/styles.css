@@ -217,6 +217,33 @@ button:hover {
   font-weight: 600;
 }
 
+.row .badge.steps {
+  display: inline-flex;
+  gap: 1px;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.row .badge.steps .step-done {
+  color: var(--col-soon);
+  font-weight: 600;
+}
+
+.row .badge.steps .step-sep {
+  color: var(--text-muted);
+}
+
+.row .summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .row .slug {
   font-family: var(--font-mono);
   font-size: 11px;

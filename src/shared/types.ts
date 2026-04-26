@@ -11,6 +11,13 @@ export const KNOWN_STATUSES: readonly KnownStatus[] = [
   'done',
 ];
 
+export interface StepCounts {
+  todo: number;
+  doing: number;
+  done: number;
+  dropped: number;
+}
+
 export interface Project {
   slug: string;
   path: string;
@@ -18,6 +25,9 @@ export interface Project {
   kind: ItemKind;
   status: KnownStatus | string;
   apps?: string;
+  summary?: string;
+  stepCounts: StepCounts;
+  deliverableCount: number;
 }
 
 export interface Settings {

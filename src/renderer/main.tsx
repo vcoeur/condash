@@ -1,8 +1,26 @@
 import { render } from 'solid-js/web';
 import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'solid-js';
-import type { Project } from '@shared/types';
+import type { Project, StepCounts } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import './styles.css';
+
+function hasSteps(c: StepCounts): boolean {
+  return c.todo + c.doing + c.done + c.dropped > 0;
+}
+
+function StepBadge(props: { counts: StepCounts }) {
+  const total = (): number =>
+    props.counts.todo + props.counts.doing + props.counts.done + props.counts.dropped;
+  const title = (): string =>
+    `${props.counts.todo} todo, ${props.counts.doing} doing, ${props.counts.done} done, ${props.counts.dropped} dropped`;
+  return (
+    <span class="badge steps" title={title()}>
+      <span class="step-done">{props.counts.done}</span>
+      <span class="step-sep">/</span>
+      <span class="step-total">{total()}</span>
+    </span>
+  );
+}
 
 type Group = { status: string; items: Project[] };
 
@@ -105,6 +123,9 @@ function App() {
                             title={item.path}
                           >
                             <span class="title">{item.title}</span>
+                            <Show when={item.summary}>
+                              <p class="summary">{item.summary}</p>
+                            </Show>
                             <div class="meta">
                               <span class="slug">{item.slug}</span>
                               <Show when={item.kind !== 'unknown'}>
@@ -112,6 +133,14 @@ function App() {
                               </Show>
                               <Show when={item.apps}>
                                 <span class="badge">{item.apps}</span>
+                              </Show>
+                              <Show when={hasSteps(item.stepCounts)}>
+                                <StepBadge counts={item.stepCounts} />
+                              </Show>
+                              <Show when={item.deliverableCount > 0}>
+                                <span class="badge" title="deliverables">
+                                  ⬇ {item.deliverableCount}
+                                </span>
                               </Show>
                               <Show
                                 when={
