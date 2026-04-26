@@ -1,0 +1,224 @@
+:root {
+  --bg: #f7f7f8;
+  --bg-elevated: #ffffff;
+  --bg-hover: #efeff2;
+  --text: #1a1a1a;
+  --text-muted: #6c6c75;
+  --border: #e2e2e7;
+  --accent: #3a6ea5;
+  --warn: #c0392b;
+
+  --col-now: #3a6ea5;
+  --col-soon: #4a8a4f;
+  --col-later: #b08d3c;
+  --col-backlog: #6c6c75;
+  --col-review: #8e44ad;
+  --col-done: #2c3e50;
+  --col-unknown: #c0392b;
+
+  --pad: 8px;
+  --radius: 6px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161618;
+    --bg-elevated: #1f1f23;
+    --bg-hover: #2a2a2f;
+    --text: #ececf1;
+    --text-muted: #8a8a93;
+    --border: #2c2c33;
+    --accent: #6fa7d9;
+  }
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+}
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+button:hover {
+  background: var(--bg-hover);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.toolbar h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.toolbar .path {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 12px;
+  padding: 24px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 12px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 80px;
+  contain: layout paint;
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  border-top: 3px solid var(--col-status, var(--border));
+  border-top-left-radius: var(--radius);
+  border-top-right-radius: var(--radius);
+}
+
+.column[data-status='now'] .column-header { --col-status: var(--col-now); }
+.column[data-status='soon'] .column-header { --col-status: var(--col-soon); }
+.column[data-status='later'] .column-header { --col-status: var(--col-later); }
+.column[data-status='backlog'] .column-header { --col-status: var(--col-backlog); }
+.column[data-status='review'] .column-header { --col-status: var(--col-review); }
+.column[data-status='done'] .column-header { --col-status: var(--col-done); }
+.column[data-status='?'] .column-header { --col-status: var(--col-unknown); }
+
+.column-header .name {
+  font-weight: 600;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+
+.column-header .count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  contain: layout paint;
+}
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.row .title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.row .badge {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.row .badge.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.row .slug {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
