@@ -193,6 +193,16 @@ function App() {
     setModal({ path });
   };
 
+  const handleOpenPreferences = () => {
+    const cp = conceptionPath();
+    if (!cp) return;
+    setModal({
+      path: `${cp}/configuration.json`,
+      title: 'Preferences (configuration.json)',
+      initialMode: 'edit',
+    });
+  };
+
   const slugIndex = () => buildSlugIndex(projects() ?? [], knowledge() ?? null);
 
   const handleWikilink = (slug: string) => {
@@ -259,6 +269,13 @@ function App() {
         <span class="path">{conceptionPath() ?? '(no conception path)'}</span>
         <button onClick={cycleTheme} title="Cycle theme">
           {THEME_LABEL[theme()]}
+        </button>
+        <button
+          onClick={handleOpenPreferences}
+          disabled={!conceptionPath()}
+          title="Edit configuration.json"
+        >
+          ⚙
         </button>
         <button onClick={handleRefresh} disabled={!conceptionPath()}>
           Refresh

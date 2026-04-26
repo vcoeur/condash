@@ -287,3 +287,14 @@
   border-bottom-color: var(--warn);
 }
 
+.md-rendered.raw-text {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  max-width: none;
+}
+

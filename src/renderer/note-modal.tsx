@@ -13,9 +13,19 @@ import 'highlight.js/styles/github.css';
 export type ModalState = {
   path: string;
   title?: string;
+  /** Force edit mode on open (used by the preferences modal). */
+  initialMode?: 'view' | 'edit';
 } | null;
 
 type Mode = 'view' | 'edit';
+
+function inferLanguage(path: string): 'markdown' | 'json' {
+  return path.toLowerCase().endsWith('.json') ? 'json' : 'markdown';
+}
+
+function isMarkdown(path: string): boolean {
+  return path.toLowerCase().endsWith('.md');
+}
 
 export function NoteModal(props: {
   state: ModalState;
@@ -23,7 +33,12 @@ export function NoteModal(props: {
   onOpenInEditor: (path: string) => void;
   onWikilink: (slug: string) => void;
 }) {
-  const [mode, setMode] = createSignal<Mode>('view');
+  const [mode, setMode] = createSignal<Mode>(props.state?.initialMode ?? 'view');
+
+  createEffect(() => {
+    if (props.state?.initialMode) setMode(props.state.initialMode);
+    else if (props.state && !isMarkdown(props.state.path)) setMode('edit');
+  });
   const [draft, setDraft] = createSignal('');
   const [dirty, setDirty] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -56,7 +71,7 @@ export function NoteModal(props: {
       editor = mountEditor({
         parent: editorParent,
         initial: text,
-        language: 'markdown',
+        language: props.state ? inferLanguage(props.state.path) : 'markdown',
         onSave: () => void save(),
         onChange: (next) => {
           setDraft(next);
@@ -124,6 +139,16 @@ export function NoteModal(props: {
     const expected = content() ?? '';
     const next = draft();
     setError(null);
+
+    if (props.state.path.toLowerCase().endsWith('.json')) {
+      try {
+        JSON.parse(next);
+      } catch (err) {
+        setError(`Invalid JSON: ${(err as Error).message}`);
+        return;
+      }
+    }
+
     try {
       await window.condash.writeNote(props.state.path, expected, next);
       mutateContent(next);
@@ -307,8 +332,27 @@ export function NoteModal(props: {
               <button class="modal-button" onClick={() => void reload()}>Reload</button>
             </div>
           </Show>
-          <Show when={!content.loading && !content.error && mode() === 'view'}>
+          <Show
+            when={
+              !content.loading &&
+              !content.error &&
+              mode() === 'view' &&
+              props.state &&
+              isMarkdown(props.state.path)
+            }
+          >
             <article class="md-rendered" innerHTML={html()} />
+          </Show>
+          <Show
+            when={
+              !content.loading &&
+              !content.error &&
+              mode() === 'view' &&
+              props.state &&
+              !isMarkdown(props.state.path)
+            }
+          >
+            <pre class="md-rendered raw-text">{content() ?? ''}</pre>
           </Show>
           <Show when={!content.loading && !content.error && mode() === 'edit'}>
             <div class="cm-host" ref={(el) => (editorParent = el)} />

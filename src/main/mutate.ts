@@ -65,7 +65,13 @@ export async function writeNote(
   newContent: string,
 ): Promise<void> {
   return withFileQueue(path, async () => {
-    const onDisk = await fs.readFile(path, 'utf8');
+    let onDisk = '';
+    try {
+      onDisk = await fs.readFile(path, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      // File doesn't exist yet — expected baseline must also be empty.
+    }
     if (onDisk !== expectedContent) {
       throw new Error('File on disk has drifted; reload before saving');
     }
