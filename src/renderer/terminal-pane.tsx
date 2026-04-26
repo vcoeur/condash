@@ -17,15 +17,18 @@ export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
   /** Add a fresh user shell tab to "My terms". */
-  spawnUserShell(): Promise<string>;
+  spawnUserShell(launcherCommand?: string | null): Promise<string>;
   /** Move the active tab within its side strip. */
   moveActiveTab(direction: -1 | 1): void;
+  /** Type a literal string into the active terminal (no shell parsing). */
+  typeIntoActive(text: string): void;
 }
 
 export function TerminalPane(props: {
   open: boolean;
   onClose: () => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
+  launcherCommand?: string | null;
 }) {
   const [side, setSide] = createSignal<TermSide>('my');
   const [tabs, setTabs] = createSignal<Tab[]>([]);
@@ -81,9 +84,10 @@ export function TerminalPane(props: {
     return id;
   };
 
-  const spawnUserShell = async (): Promise<string> => {
+  const spawnUserShell = async (launcherCommand?: string | null): Promise<string> => {
     const stamp = new Date().toLocaleTimeString();
-    return spawn({ side: 'my' }, `shell · ${stamp}`);
+    const label = launcherCommand?.trim() ? `${launcherCommand} · ${stamp}` : `shell · ${stamp}`;
+    return spawn({ side: 'my', command: launcherCommand?.trim() || undefined }, label);
   };
 
   const onTermData = window.condash.onTermData(({ id, data }) => {
@@ -182,6 +186,11 @@ export function TerminalPane(props: {
       setActiveFor(sd, ids[nextIdx]);
       queueMicrotask(focusActive);
     },
+    typeIntoActive: (text) => {
+      const id = activeId();
+      if (!id) return;
+      void window.condash.termWrite(id, text);
+    },
   };
 
   onMount(() => props.registerHandle(handle));
@@ -243,8 +252,10 @@ export function TerminalPane(props: {
             <Show when={side() === 'my'}>
               <button
                 class="terminal-tab-add"
-                onClick={() => void spawnUserShell()}
-                title="New shell tab"
+                onClick={() => void spawnUserShell(props.launcherCommand)}
+                title={
+                  props.launcherCommand ? `New tab (${props.launcherCommand})` : 'New shell tab'
+                }
               >
                 +
               </button>

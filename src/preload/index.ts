@@ -33,6 +33,8 @@ const api: CondashApi = {
   termWrite: (id, data) => ipcRenderer.invoke('term.write', id, data),
   termResize: (id, cols, rows) => ipcRenderer.invoke('term.resize', id, cols, rows),
   termClose: (id) => ipcRenderer.invoke('term.close', id),
+  termGetPrefs: () => ipcRenderer.invoke('term.getPrefs'),
+  termLatestScreenshot: (dir) => ipcRenderer.invoke('term.latestScreenshot', dir),
   onTermData: (callback) => {
     const handler = (_: unknown, msg: TermDataMessage): void => callback(msg);
     ipcRenderer.on('term.data', handler);

@@ -191,6 +191,42 @@ export function closeSession(id: string): void {
   sessions.delete(id);
 }
 
+export async function getTerminalPrefs(
+  conceptionPath: string | null,
+): Promise<RawConfigShape['terminal']> {
+  if (!conceptionPath) return {};
+  const config = await readRawConfig(conceptionPath);
+  return config.terminal ?? {};
+}
+
+/**
+ * Find the most recently modified file under `dir` (top-level only). Returns
+ * null when the directory is missing or empty.
+ */
+export async function latestScreenshot(dir: string): Promise<string | null> {
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  let best: { path: string; mtime: number } | null = null;
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const path = join(dir, entry.name);
+    let stat;
+    try {
+      stat = await fs.stat(path);
+    } catch {
+      continue;
+    }
+    if (!best || stat.mtimeMs > best.mtime) {
+      best = { path, mtime: stat.mtimeMs };
+    }
+  }
+  return best?.path ?? null;
+}
+
 export function killAll(forWebContents?: WebContents): void {
   for (const [id, session] of sessions) {
     if (forWebContents && session.webContents !== forWebContents) continue;

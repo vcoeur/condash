@@ -10,6 +10,7 @@ import type {
   Step,
   StepCounts,
   StepMarker,
+  TerminalPrefs,
   Theme,
   TreeEvent,
 } from '@shared/types';
@@ -139,6 +140,43 @@ function sectionGroups(buckets: Map<string, Project[]>, section: Section): Group
   return out;
 }
 
+interface Shortcut {
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+  key: string;
+}
+
+function parseShortcut(spec: string | undefined): Shortcut | null {
+  if (!spec) return null;
+  const parts = spec
+    .split('+')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  const out: Shortcut = { ctrl: false, shift: false, alt: false, meta: false, key: '' };
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    if (lower === 'ctrl' || lower === 'control') out.ctrl = true;
+    else if (lower === 'shift') out.shift = true;
+    else if (lower === 'alt' || lower === 'option') out.alt = true;
+    else if (lower === 'cmd' || lower === 'meta' || lower === 'super') out.meta = true;
+    else out.key = part.length === 1 ? part.toLowerCase() : part;
+  }
+  return out.key ? out : null;
+}
+
+function matchesShortcut(event: KeyboardEvent, shortcut: Shortcut | null): boolean {
+  if (!shortcut) return false;
+  if (shortcut.ctrl !== event.ctrlKey) return false;
+  if (shortcut.shift !== event.shiftKey) return false;
+  if (shortcut.alt !== event.altKey) return false;
+  if (shortcut.meta !== event.metaKey) return false;
+  const eventKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  return eventKey === shortcut.key;
+}
+
 function App() {
   const [conceptionPath, setConceptionPath] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
@@ -215,6 +253,14 @@ function App() {
     },
   );
 
+  const [terminalPrefs] = createResource(
+    () => [conceptionPath(), refreshKey()] as const,
+    async ([path]) => {
+      if (!path) return {} as TerminalPrefs;
+      return window.condash.termGetPrefs();
+    },
+  );
+
   const handleLaunch = async (slot: OpenWithSlotKey, path: string) => {
     try {
       await window.condash.launchOpenWith(slot, path);
@@ -236,6 +282,67 @@ function App() {
   const ensureTerminalOpen = (): void => {
     if (!terminalOpen()) setTerminalOpen(true);
   };
+
+  const handleGlobalKeyDown = (event: KeyboardEvent): void => {
+    const target = event.target as HTMLElement | null;
+    // Don't grab keystrokes from text inputs / editor / inside the xterm host —
+    // the xterm canvas swallows printable keys via its own listener already.
+    if (target?.closest('.xterm-host, input, textarea, .cm-editor, [contenteditable=true]')) {
+      // The pane-toggle shortcut is the one exception: the user expects it
+      // to work from inside the active terminal too.
+    }
+
+    const prefs = terminalPrefs() ?? {};
+    const toggle = parseShortcut(prefs.shortcut ?? 'Ctrl+`');
+    if (matchesShortcut(event, toggle)) {
+      event.preventDefault();
+      setTerminalOpen((v) => !v);
+      return;
+    }
+
+    // Move-tab shortcuts only fire when the pane is open.
+    if (!terminalOpen() || !terminalHandle) return;
+    const left = parseShortcut(prefs.move_tab_left_shortcut ?? 'Ctrl+Left');
+    const right = parseShortcut(prefs.move_tab_right_shortcut ?? 'Ctrl+Right');
+    if (matchesShortcut(event, left)) {
+      event.preventDefault();
+      terminalHandle.moveActiveTab(-1);
+      return;
+    }
+    if (matchesShortcut(event, right)) {
+      event.preventDefault();
+      terminalHandle.moveActiveTab(1);
+      return;
+    }
+    const paste = parseShortcut(prefs.screenshot_paste_shortcut);
+    if (matchesShortcut(event, paste)) {
+      event.preventDefault();
+      void handleScreenshotPaste();
+    }
+  };
+
+  const handleScreenshotPaste = async (): Promise<void> => {
+    const prefs = terminalPrefs() ?? {};
+    const dir = prefs.screenshot_dir;
+    if (!dir) {
+      flashToast('No terminal.screenshot_dir set in configuration.json');
+      return;
+    }
+    const latest = await window.condash.termLatestScreenshot(dir);
+    if (!latest) {
+      flashToast(`No files under ${dir}`);
+      return;
+    }
+    if (!terminalHandle) return;
+    terminalHandle.typeIntoActive(latest);
+  };
+
+  onMount(() => {
+    document.addEventListener('keydown', handleGlobalKeyDown);
+  });
+  onCleanup(() => {
+    document.removeEventListener('keydown', handleGlobalKeyDown);
+  });
 
   const handleRunRepo = async (repo: RepoEntry) => {
     if (!terminalHandle) {
@@ -573,6 +680,7 @@ function App() {
       <TerminalPane
         open={terminalOpen()}
         onClose={() => setTerminalOpen(false)}
+        launcherCommand={terminalPrefs()?.launcher_command ?? null}
         registerHandle={(handle) => {
           terminalHandle = handle;
         }}

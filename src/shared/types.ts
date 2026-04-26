@@ -87,6 +87,16 @@ export interface RepoEntry {
 
 export type TermSide = 'my' | 'code';
 
+export interface TerminalPrefs {
+  shell?: string;
+  shortcut?: string;
+  screenshot_dir?: string;
+  screenshot_paste_shortcut?: string;
+  launcher_command?: string;
+  move_tab_left_shortcut?: string;
+  move_tab_right_shortcut?: string;
+}
+
 export interface TermSpawnRequest {
   side: TermSide;
   /** When set, looks up the repo's `run:` and uses its cwd. */

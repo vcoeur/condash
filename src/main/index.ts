@@ -10,7 +10,15 @@ import { readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
 import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
-import { closeSession, killAll, resizeTerminal, spawnTerminal, writeTerminal } from './terminals';
+import {
+  closeSession,
+  getTerminalPrefs,
+  killAll,
+  latestScreenshot,
+  resizeTerminal,
+  spawnTerminal,
+  writeTerminal,
+} from './terminals';
 import type {
   OpenWithSlotKey,
   Project,
@@ -138,6 +146,15 @@ function registerIpc(): void {
 
   ipcMain.handle('term.close', (_, id: string) => {
     closeSession(id);
+  });
+
+  ipcMain.handle('term.getPrefs', async () => {
+    const { conceptionPath } = await readSettings();
+    return (await getTerminalPrefs(conceptionPath)) ?? {};
+  });
+
+  ipcMain.handle('term.latestScreenshot', async (_, dir: string) => {
+    return latestScreenshot(dir);
   });
 
   ipcMain.handle('openInEditor', async (_, path: string) => {

@@ -9,6 +9,7 @@ import type {
   TermDataMessage,
   TermExitMessage,
   TermSpawnRequest,
+  TerminalPrefs,
   Theme,
   TreeEvent,
 } from './types';
@@ -46,6 +47,8 @@ export interface CondashApi {
   termWrite(id: string, data: string): Promise<void>;
   termResize(id: string, cols: number, rows: number): Promise<void>;
   termClose(id: string): Promise<void>;
+  termGetPrefs(): Promise<TerminalPrefs>;
+  termLatestScreenshot(dir: string): Promise<string | null>;
   onTermData(callback: (msg: TermDataMessage) => void): () => void;
   onTermExit(callback: (msg: TermExitMessage) => void): () => void;
 }
