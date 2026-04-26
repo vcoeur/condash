@@ -22,8 +22,10 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* Dark theme — applied either by OS preference (when no [data-theme] override)
+   or explicitly via [data-theme="dark"]. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #161618;
     --bg-elevated: #1f1f23;
     --bg-hover: #2a2a2f;
@@ -31,14 +33,23 @@
     --text-muted: #8a8a93;
     --border: #2c2c33;
     --accent: #6fa7d9;
+    color-scheme: dark;
   }
+}
+
+[data-theme='dark'] {
+  --bg: #161618;
+  --bg-elevated: #1f1f23;
+  --bg-hover: #2a2a2f;
+  --text: #ececf1;
+  --text-muted: #8a8a93;
+  --border: #2c2c33;
+  --accent: #6fa7d9;
+  color-scheme: dark;
 }
 
 [data-theme='light'] {
   color-scheme: light;
-}
-[data-theme='dark'] {
-  color-scheme: dark;
 }
 
 * {

@@ -1,8 +1,24 @@
 import { render } from 'solid-js/web';
 import { createResource, createSignal, For, onCleanup, Show, Suspense } from 'solid-js';
-import type { Project, StepCounts } from '@shared/types';
+import type { Project, StepCounts, Theme } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import './styles.css';
+
+const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
+const THEME_LABEL: Record<Theme, string> = {
+  system: '◐ system',
+  light: '☀ light',
+  dark: '☾ dark',
+};
+
+function applyTheme(theme: Theme): void {
+  const root = document.documentElement;
+  if (theme === 'system') {
+    root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', theme);
+  }
+}
 
 function hasSteps(c: StepCounts): boolean {
   return c.todo + c.doing + c.done + c.dropped > 0;
@@ -49,13 +65,26 @@ function groupByStatus(items: Project[]): Group[] {
 function App() {
   const [conceptionPath, setConceptionPath] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
+  const [theme, setTheme] = createSignal<Theme>('system');
 
   void window.condash.getConceptionPath().then(setConceptionPath);
+  void window.condash.getTheme().then((t) => {
+    setTheme(t);
+    applyTheme(t);
+  });
 
   const unsubscribe = window.condash.onTreeChanged(() => {
     setRefreshKey((k) => k + 1);
   });
   onCleanup(unsubscribe);
+
+  const cycleTheme = () => {
+    const idx = THEME_CYCLE.indexOf(theme());
+    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+    setTheme(next);
+    applyTheme(next);
+    void window.condash.setTheme(next);
+  };
 
   const [projects] = createResource(
     () => [conceptionPath(), refreshKey()] as const,
@@ -84,6 +113,9 @@ function App() {
       <header class="toolbar">
         <h1>condash</h1>
         <span class="path">{conceptionPath() ?? '(no conception path)'}</span>
+        <button onClick={cycleTheme} title="Cycle theme">
+          {THEME_LABEL[theme()]}
+        </button>
         <button onClick={handleRefresh} disabled={!conceptionPath()}>
           Refresh
         </button>

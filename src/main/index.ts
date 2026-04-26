@@ -4,8 +4,10 @@ import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
-import type { Project } from '../shared/types';
+import type { Project, Theme } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
+
+const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
 const DEV_URL = 'http://localhost:5600';
 const isDev = !app.isPackaged;
@@ -66,6 +68,18 @@ function registerIpc(): void {
   ipcMain.handle('getConceptionPath', async () => {
     const { conceptionPath } = await readSettings();
     return conceptionPath;
+  });
+
+  ipcMain.handle('getTheme', async () => {
+    const { theme } = await readSettings();
+    return theme;
+  });
+
+  ipcMain.handle('setTheme', async (_, theme: Theme) => {
+    if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`);
+    const next = await readSettings();
+    next.theme = theme;
+    await writeSettings(next);
   });
 
   ipcMain.handle('pickConceptionPath', async () => {

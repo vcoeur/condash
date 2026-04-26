@@ -30,6 +30,9 @@ export interface Project {
   deliverableCount: number;
 }
 
+export type Theme = 'light' | 'dark' | 'system';
+
 export interface Settings {
   conceptionPath: string | null;
+  theme: Theme;
 }
