@@ -167,6 +167,20 @@ button:hover {
 .column[data-status='done'] .column-header { --col-status: var(--col-done); }
 .column[data-status='?'] .column-header { --col-status: var(--col-unknown); }
 
+.column.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
+}
+
+.row[draggable='true'] {
+  cursor: grab;
+}
+
+.row[draggable='true']:active {
+  cursor: grabbing;
+}
+
 .column-header .name {
   font-weight: 600;
   text-transform: capitalize;

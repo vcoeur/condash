@@ -81,6 +81,12 @@ function countSteps(steps: readonly Step[]): StepCounts {
   return c;
 }
 
+function applyStatus(items: Project[], path: string, status: string): Project[] {
+  return items.map((p) => (p.path === path ? { ...p, status } : p));
+}
+
+const DRAG_MIME = 'application/x-condash-project-path';
+
 type Group = { status: string; items: Project[] };
 
 const UNKNOWN = '?';
@@ -168,6 +174,22 @@ function App() {
     }
   };
 
+  const handleDropOnColumn = async (path: string, newStatus: string) => {
+    const items = projects() ?? [];
+    const project = items.find((p) => p.path === path);
+    if (!project) return;
+    if (project.status === newStatus) return;
+
+    const previous = project.status;
+    mutate((current) => applyStatus(current ?? [], path, newStatus));
+    try {
+      await window.condash.setStatus(path, newStatus);
+    } catch (err) {
+      mutate((current) => applyStatus(current ?? [], path, previous));
+      flashToast(`Status change failed: ${(err as Error).message}`);
+    }
+  };
+
   return (
     <div class="app">
       <header class="toolbar">
@@ -201,23 +223,12 @@ function App() {
             <div class="columns">
               <For each={groupByStatus(projects() ?? [])}>
                 {(group) => (
-                  <section class="column" data-status={group.status}>
-                    <header class="column-header">
-                      <span class="name">{group.status}</span>
-                      <span class="count">{group.items.length}</span>
-                    </header>
-                    <div class="column-body">
-                      <For each={group.items}>
-                        {(item) => (
-                          <Card
-                            item={item}
-                            onOpen={handleOpen}
-                            onToggleStep={handleToggleStep}
-                          />
-                        )}
-                      </For>
-                    </div>
-                  </section>
+                  <Column
+                    group={group}
+                    onOpen={handleOpen}
+                    onToggleStep={handleToggleStep}
+                    onDropProject={handleDropOnColumn}
+                  />
                 )}
               </For>
             </div>
@@ -234,6 +245,68 @@ function App() {
   );
 }
 
+function Column(props: {
+  group: Group;
+  onOpen: (path: string) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+  onDropProject: (path: string, newStatus: string) => void;
+}) {
+  const [over, setOver] = createSignal(false);
+
+  const isAcceptable = (event: DragEvent): boolean => {
+    const types = event.dataTransfer?.types;
+    return types ? Array.from(types).includes(DRAG_MIME) : false;
+  };
+
+  const handleDragEnter = (e: DragEvent) => {
+    if (!isAcceptable(e)) return;
+    e.preventDefault();
+    setOver(true);
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    if (!isAcceptable(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDragLeave = (e: DragEvent) => {
+    if (e.currentTarget === e.target) setOver(false);
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    if (!isAcceptable(e)) return;
+    e.preventDefault();
+    setOver(false);
+    const path = e.dataTransfer?.getData(DRAG_MIME);
+    if (path) props.onDropProject(path, props.group.status);
+  };
+
+  return (
+    <section
+      class="column"
+      classList={{ 'drag-over': over() }}
+      data-status={props.group.status}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <header class="column-header">
+        <span class="name">{props.group.status}</span>
+        <span class="count">{props.group.items.length}</span>
+      </header>
+      <div class="column-body">
+        <For each={props.group.items}>
+          {(item) => (
+            <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />
+          )}
+        </For>
+      </div>
+    </section>
+  );
+}
+
 function Card(props: {
   item: Project;
   onOpen: (path: string) => void;
@@ -246,8 +319,19 @@ function Card(props: {
     props.onOpen(props.item.path);
   };
 
+  const handleDragStart = (event: DragEvent) => {
+    if (!event.dataTransfer) return;
+    event.dataTransfer.setData(DRAG_MIME, props.item.path);
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
   return (
-    <article class="row" title={props.item.path}>
+    <article
+      class="row"
+      title={props.item.path}
+      draggable={true}
+      onDragStart={handleDragStart}
+    >
       <div class="row-head" onClick={handleHeaderClick}>
         <span class="title">{props.item.title}</span>
         <Show when={props.item.summary}>
