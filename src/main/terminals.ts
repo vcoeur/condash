@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
@@ -13,6 +14,8 @@ interface Session {
   webContents: WebContents;
   /** Optional repo this session was spawned for (Run button). */
   repo?: string;
+  /** Captured at spawn time so Stop doesn't need conceptionPath at kill time. */
+  forceStop?: string;
   /** Rolling tail of stdout/stderr — replayed when a freshly-loaded renderer
    * re-attaches via term.attach. Capped at MAX_BUFFER bytes. */
   buffer: string;
@@ -102,10 +105,13 @@ function defaultShell(configured?: string): string {
   return '/bin/bash';
 }
 
-function findRepoEntry(
-  config: RawConfigShape,
-  name: string,
-): { run?: string; cwd?: string } | null {
+interface RepoEntryResolved {
+  run?: string;
+  cwd?: string;
+  forceStop?: string;
+}
+
+function findRepoEntry(config: RawConfigShape, name: string): RepoEntryResolved | null {
   const workspace = config.workspace_path;
   const all = [...(config.repositories?.primary ?? []), ...(config.repositories?.secondary ?? [])];
   return walk(all, name, workspace, undefined);
@@ -116,7 +122,7 @@ function walk(
   target: string,
   workspace: string | undefined,
   parent: string | undefined,
-): { run?: string; cwd?: string } | null {
+): RepoEntryResolved | null {
   for (const entry of entries) {
     if (typeof entry === 'string') {
       if (entry === target) {
@@ -125,12 +131,19 @@ function walk(
       continue;
     }
     if (entry === null || typeof entry !== 'object') continue;
-    const e = entry as { name?: unknown; run?: unknown; submodules?: unknown };
+    const e = entry as {
+      name?: unknown;
+      run?: unknown;
+      force_stop?: unknown;
+      submodules?: unknown;
+    };
     if (typeof e.name === 'string') {
       const display = parent ? `${parent}/${e.name}` : e.name;
       if (display === target || e.name === target) {
         return {
           run: typeof e.run === 'string' ? e.run : undefined,
+          forceStop:
+            typeof e.force_stop === 'string' && e.force_stop.trim() ? e.force_stop : undefined,
           cwd: resolveCwd(workspace, parent, e.name),
         };
       }
@@ -166,6 +179,7 @@ export async function spawnTerminal(
   let cwd = request.cwd ?? process.env.HOME ?? '/';
   let argv: string[] = [];
   let program = shell;
+  let forceStop: string | undefined;
 
   if (request.repo && conceptionPath) {
     const entry = findRepoEntry(config, request.repo);
@@ -181,9 +195,21 @@ export async function spawnTerminal(
       program = shell;
       argv = ['-l', '-c', entry.run];
     }
+    forceStop = entry.forceStop;
   } else if (request.command) {
     program = shell;
     argv = ['-l', '-c', request.command];
+  }
+
+  // One run per repo: kill any prior code-side session for the same repo
+  // before we spawn. Awaited so renderer reactions stay clean
+  // (term.sessions snapshot drops the old entry first, then we add the new
+  // one), and so the dev port is freed before the new run binds.
+  if (request.side === 'code' && request.repo) {
+    const stale = [...sessions.values()].filter(
+      (s) => s.side === 'code' && s.repo === request.repo,
+    );
+    await Promise.all(stale.map((s) => stopSession(s.id)));
   }
 
   const cols = request.cols ?? 80;
@@ -204,6 +230,7 @@ export async function spawnTerminal(
     pty: ptyProcess,
     webContents,
     repo: request.repo,
+    forceStop,
     buffer: '',
   };
   sessions.set(id, session);
@@ -248,18 +275,100 @@ export function resizeTerminal(id: string, cols: number, rows: number): void {
   }
 }
 
-export function closeSession(id: string): void {
+/** Send SIGTERM to the pty's process group. node-pty allocates a session
+ * leader (setsid), so the negative pid form reaches the wrapping shell AND
+ * everything it spawned (e.g. `make dev` → `vite` → child workers). The
+ * unix-only sentinel `-pid` form is portable across linux/macOS; on Windows,
+ * node-pty manages termination via a different code path inside `pty.kill()`,
+ * so we fall back to that there. */
+function killTree(p: pty.IPty | null, signal: 'SIGTERM' | 'SIGKILL'): void {
+  if (!p) return;
+  if (process.platform === 'win32') {
+    try {
+      p.kill();
+    } catch {
+      /* gone */
+    }
+    return;
+  }
+  try {
+    process.kill(-p.pid, signal);
+  } catch {
+    /* gone */
+  }
+}
+
+function isAlive(p: pty.IPty | null): boolean {
+  if (!p) return false;
+  if (process.platform === 'win32') return true;
+  try {
+    process.kill(-p.pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runForceStop(command: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const child = spawn(command, {
+      detached: true,
+      stdio: 'ignore',
+      shell: true,
+    });
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    child.on('error', finish);
+    child.on('exit', finish);
+  });
+}
+
+interface StopOpts {
+  /** Run the configured force_stop: command after SIGTERM. Default true. */
+  runForceStop?: boolean;
+  /** Remove the session entry from the map and broadcast. Default true. The
+   * killAll path passes false so it can clear the map in one shot. */
+  removeEntry?: boolean;
+}
+
+/** Terminate a session's process tree via the parity-batch-7 pipeline:
+ * SIGTERM the process group → run force_stop: → SIGKILL fallback after a
+ * 500 ms grace if the leader is still alive. Resolves once the kill is
+ * issued — does not wait for the pty's onExit callback. */
+async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
   const session = sessions.get(id);
   if (!session) return;
-  if (session.pty) {
+  const runFs = opts.runForceStop !== false;
+  const removeEntry = opts.removeEntry !== false;
+
+  const p = session.pty;
+  killTree(p, 'SIGTERM');
+
+  if (runFs && session.forceStop) {
     try {
-      session.pty.kill();
+      await runForceStop(session.forceStop);
     } catch {
-      /* already gone */
+      /* surfaced via toast at the renderer; don't block the kill */
     }
   }
-  sessions.delete(id);
-  broadcastSessions();
+
+  if (isAlive(p)) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+    if (isAlive(p)) killTree(p, 'SIGKILL');
+  }
+
+  if (removeEntry) {
+    sessions.delete(id);
+    broadcastSessions();
+  }
+}
+
+export function closeSession(id: string): Promise<void> {
+  return stopSession(id);
 }
 
 export async function getTerminalPrefs(
@@ -298,18 +407,24 @@ export async function latestScreenshot(dir: string): Promise<string | null> {
   return best?.path ?? null;
 }
 
-export function killAll(forWebContents?: WebContents): void {
-  for (const [id, session] of sessions) {
-    if (forWebContents && session.webContents !== forWebContents) continue;
-    if (session.pty) {
-      try {
-        session.pty.kill();
-      } catch {
-        /* ignore */
-      }
-    }
-    sessions.delete(id);
-  }
+/** Kill every session (or every session attached to `forWebContents`) via the
+ * full Stop pipeline — process-group SIGTERM, force_stop if configured,
+ * SIGKILL fallback. Bounded to ~1 s aggregate so the window can actually
+ * close even if one repo's force_stop hangs. */
+export async function killAll(forWebContents?: WebContents): Promise<void> {
+  const targets = [...sessions.entries()].filter(
+    ([, s]) => !forWebContents || s.webContents === forWebContents,
+  );
+  if (targets.length === 0) return;
+
+  const stops = targets.map(([id]) => stopSession(id, { removeEntry: false }));
+  await Promise.race([
+    Promise.allSettled(stops),
+    new Promise((resolve) => setTimeout(resolve, 1000)),
+  ]);
+
+  for (const [id] of targets) sessions.delete(id);
+  broadcastSessions();
 }
 
 export function _broadcastWindowsClosed(): void {

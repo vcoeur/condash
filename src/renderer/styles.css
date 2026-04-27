@@ -967,7 +967,12 @@ button:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
-  contain: layout paint;
+  /* `layout` keeps repaints scoped without forming a paint context — the
+   * branch overflow ▾ menu (`.branch-action-menu`, position:absolute, z-index:5)
+   * needs to draw above sibling cards when it opens, which `contain: paint`
+   * would clip to this card's box. Browsers (chromium 124+) still get most
+   * of the perf win from layout containment alone. */
+  contain: layout;
 }
 
 .repo-row::before {
@@ -1160,6 +1165,26 @@ button:hover {
 
 .repo-action.warn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--warn) 12%, var(--bg));
+}
+
+/* Destructive Stop affordance: shared by the Active-Run row's ⏹ and the
+ * per-card header ⏹. Reads as "this kills a running process" the moment
+ * you see it. */
+.repo-action.stop {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+
+.repo-action.stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg));
+  border-color: var(--warn);
+}
+
+.repo-stop-button {
+  margin-left: 4px;
+  padding: 1px 7px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .modal-button.warn {
