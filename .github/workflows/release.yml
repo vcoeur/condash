@@ -1,27 +1,26 @@
 name: release
 
 # Build unsigned cross-platform installers + publish them (and the
-# `latest*.yml` channel files electron-updater needs) to the GitHub Release
-# tied to the pushed `v*` tag.
+# `latest*.yml` channel files electron-updater needs) to a single
+# GitHub Release tied to the pushed `v*` tag.
 #
 # Triggered by tags only — `git push origin v2.0.0`. The workflow does NOT
 # create the tag itself; humans cut the tag locally with `git tag -a vX`
 # after a clean main and push it.
 #
-# Why the `release-init` job exists, and why it pre-creates a *prerelease*
-# instead of a *draft*: when three matrix jobs hit electron-builder's
-# "find or create release for this tag" path simultaneously, they each
-# lose the find-or-create race and create their own release for the same
-# tag — assets fragment across two or three duplicate releases (we hit
-# this on v2.0.0-rc.1 and the condash-tauri v1.8.8 release). Pre-creating
-# the release once would fix this — except `GET /repos/:owner/:repo/
-# releases/tags/:tag` returns **404 for draft releases**, so a pre-
-# created draft is invisible to electron-builder's lookup and it creates
-# a duplicate anyway (we hit this on v2.0.0-rc.2). Pre-creating as a
-# *prerelease* is visible to the by-tag lookup; electron-builder finds
-# it and appends. Prereleases are public but excluded from
-# `releases/latest`, which is electron-updater's default channel, so
-# shipped users aren't auto-updated to rc bundles.
+# Why this isn't matrix-publishes-directly: GitHub's API is inconsistent
+# between the by-tag lookup, the by-id lookup, and the list endpoint
+# (verified live: a freshly-created prerelease was findable by id/tag but
+# absent from /releases?per_page=100 for several minutes). electron-builder's
+# release lookup loses the race against this lag — it doesn't find the
+# pre-existing release and tries to create its own, fragmenting assets
+# across N drafts/prereleases per matrix job.
+#
+# Bulletproof pattern: each matrix job builds locally with `--publish
+# never`, uploads its `release/` directory as a workflow artifact, and a
+# final `publish` job downloads all of them and runs a single `gh release
+# upload` against one release. Only one process ever talks to the GH
+# Release API.
 
 on:
   push:
@@ -29,46 +28,13 @@ on:
       - 'v*'
 
 permissions:
-  # contents:write is required for release-init to create the GH Release
-  # and for electron-builder in each matrix job to upload assets, all via
-  # the workflow's GITHUB_TOKEN.
+  # contents:write is required for the publish job to create the GH
+  # Release and upload assets via the workflow's GITHUB_TOKEN.
   contents: write
 
 jobs:
-  release-init:
-    name: Create prerelease
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Idempotent. `gh api -X POST` instead of `gh release create` so
-      # there's no subsecond list-query lag between create + lookup. If
-      # the release already exists (re-run, retry), reuse it.
-      - name: Ensure prerelease exists for tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          existing=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id 2>/dev/null || true)
-          if [[ -n "$existing" ]]; then
-            echo "Release for $TAG already exists (id=$existing); matrix jobs will append."
-            exit 0
-          fi
-          BODY=$'Unsigned Electron build of condash. Auto-update channel served from this release via `electron-updater`.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
-          gh api -X POST "repos/$GH_REPO/releases" \
-            -f tag_name="$TAG" \
-            -F draft=false \
-            -F prerelease=true \
-            -f name="condash $TAG" \
-            -f body="$BODY" \
-            --jq '"Created prerelease " + (.id|tostring) + " for " + .tag_name'
-
   build:
     name: Build (${{ matrix.os }})
-    needs: release-init
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -93,15 +59,83 @@ jobs:
       - name: Build renderer + main
         run: npm run build
 
-      # electron-builder produces installers for the current OS, finds
-      # the prerelease created by release-init via the by-tag lookup, and
-      # appends its bundles plus the matching `latest*.yml` channel file
-      # to it. With the prerelease pre-existing, no two matrix jobs race
-      # to create one.
-      - name: Build installers + publish to GitHub Release
+      # `--publish never` builds the installers and emits the matching
+      # `latest*.yml` channel file under `release/` without touching the
+      # GH Release API. Upload happens in the `publish` job below.
+      - name: Build installers
+        run: npx electron-builder --publish never
+
+      # Capture only the installer bundles + channel files. Skip the
+      # `linux-unpacked/`, `mac/`, `win-unpacked/` working directories,
+      # the `builder-debug.yml`, and the `.blockmap` artifacts ship as
+      # standalone files (no skip needed). `if-no-files-found: error` so
+      # an empty release dir fails the matrix job loudly instead of
+      # silently producing an empty publish.
+      - name: Upload installers as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.dmg
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-staging
+          # Without merge-multiple, each matrix's artifact lands under
+          # release-staging/installers-<os>/. With it, they all merge
+          # into release-staging/. We use merge-multiple so the upload
+          # glob is one flat directory.
+          merge-multiple: true
+
+      - name: List staged release files
+        run: ls -la release-staging/
+
+      - name: Create or reuse prerelease for tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # electron-builder reads GH_TOKEN; set both for compatibility
-          # with the older `electron-builder-publish` lookup.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --publish always
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id >/dev/null 2>&1; then
+            echo "Prerelease for $TAG already exists; uploading into it."
+          else
+            BODY=$'Unsigned Electron build of condash. Auto-update channel served from this release via `electron-updater`.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
+            gh api -X POST "repos/$GH_REPO/releases" \
+              -f tag_name="$TAG" \
+              -F draft=false \
+              -F prerelease=true \
+              -f name="condash $TAG" \
+              -f body="$BODY" \
+              --jq '"Created prerelease " + (.id|tostring) + " for " + .tag_name'
+          fi
+
+      # Single uploader, no race. `--clobber` so a re-run replaces existing
+      # assets cleanly without 422'ing on duplicate filenames.
+      - name: Upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release-staging/*)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No assets staged — nothing to upload" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" --repo "$GH_REPO" --clobber "${assets[@]}"
