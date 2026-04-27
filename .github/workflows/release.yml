@@ -76,6 +76,13 @@ jobs:
       # switch to take effect. The .deb path keeps the sandbox: it
       # installs chrome-sandbox at /opt/condash/ where the SUID bit is
       # honoured, so this patch only touches the AppImage.
+      # appimagetool 1.9.0 calls `desktop-file-validate` on the bundle
+      # contents during repack and aborts if it's missing. Not on the
+      # default ubuntu-latest image.
+      - name: Install desktop-file-utils (for appimagetool repack)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
+
       - name: Inject --no-sandbox into AppImage AppRun
         if: matrix.os == 'ubuntu-latest'
         env:
