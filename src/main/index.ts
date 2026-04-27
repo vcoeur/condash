@@ -12,10 +12,12 @@ import { search } from './search';
 import { listRepos } from './repos';
 import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
 import {
+  attachTerminal,
   closeSession,
   getTerminalPrefs,
   killAll,
   latestScreenshot,
+  listTerminalSessions,
   resizeTerminal,
   spawnTerminal,
   writeTerminal,
@@ -151,6 +153,10 @@ function registerIpc(): void {
   ipcMain.handle('term.close', (_, id: string) => {
     closeSession(id);
   });
+
+  ipcMain.handle('term.list', () => listTerminalSessions());
+
+  ipcMain.handle('term.attach', (_, id: string) => attachTerminal(id));
 
   ipcMain.handle('term.getPrefs', async () => {
     const { conceptionPath } = await readSettings();

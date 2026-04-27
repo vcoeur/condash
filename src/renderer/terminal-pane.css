@@ -67,11 +67,28 @@
   opacity: 0.65;
 }
 
+.terminal-tab.renaming {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
 .terminal-tab-label {
   font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.terminal-tab-rename {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  width: 140px;
+  min-width: 60px;
 }
 
 .terminal-tab-close,

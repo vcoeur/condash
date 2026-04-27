@@ -11,21 +11,20 @@ test('terminal pane opens and a My-terms shell tab spawns a session', async () =
     expect(typeof session.id).toBe('string');
     expect(session.id.length).toBeGreaterThan(0);
 
-    // Wait for the prompt or the echo to come back via the data channel.
-    const sawData = await booted.window.evaluate((id) => {
-      return new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 2000);
-        const off = window.condash.onTermData((msg) => {
-          if (msg.id !== id) return;
-          if (msg.data.length > 0) {
-            clearTimeout(timeout);
-            off();
-            resolve(true);
-          }
-        });
-      });
-    }, session.id);
-    expect(sawData).toBe(true);
+    // The pty may have flushed and exited by the time this CDP roundtrip
+    // returns, so prefer the buffered tail (term.attach) over racing
+    // term.data. Allow a brief settle for the echo to land in the buffer.
+    let attached: { output: string; exited?: number } | null = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      attached = await booted.window.evaluate(
+        (id) => window.condash.termAttach(id),
+        session.id,
+      );
+      if (attached?.output && attached.output.length > 0) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(attached).not.toBeNull();
+    expect(attached!.output).toContain('ready');
 
     await booted.window.evaluate((id) => window.condash.termClose(id), session.id);
   } finally {

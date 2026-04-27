@@ -9,6 +9,7 @@ import type {
   StepMarker,
   TermDataMessage,
   TermExitMessage,
+  TermSession,
   TermSpawnRequest,
   TerminalPrefs,
   Theme,
@@ -58,8 +59,15 @@ export interface CondashApi {
   termClose(id: string): Promise<void>;
   termGetPrefs(): Promise<TerminalPrefs>;
   termLatestScreenshot(dir: string): Promise<string | null>;
+  /** Snapshot of currently-tracked sessions (live or recently exited). */
+  termList(): Promise<TermSession[]>;
+  /** Pull the buffered output for an existing session, used on renderer
+   * mount to replay history into a freshly-created xterm. */
+  termAttach(id: string): Promise<{ output: string; exited?: number } | null>;
   onTermData(callback: (msg: TermDataMessage) => void): () => void;
   onTermExit(callback: (msg: TermExitMessage) => void): () => void;
+  /** Sessions changed (spawn / exit / close). Receives the full snapshot. */
+  onTermSessions(callback: (sessions: TermSession[]) => void): () => void;
 }
 
 declare global {

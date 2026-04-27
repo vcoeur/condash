@@ -16,21 +16,19 @@ test('Run on a configured repo spawns the run: command and emits its output', as
     );
     expect(typeof session.id).toBe('string');
 
-    const output = await booted.window.evaluate((id) => {
-      return new Promise<string>((resolve) => {
-        let acc = '';
-        const timeout = setTimeout(() => resolve(acc), 3000);
-        const off = window.condash.onTermData((msg) => {
-          if (msg.id !== id) return;
-          acc += msg.data;
-          if (acc.includes('hi-from-runner')) {
-            clearTimeout(timeout);
-            off();
-            resolve(acc);
-          }
-        });
-      });
-    }, session.id);
+    // `echo` finishes fast and the pty may exit before a renderer-side
+    // term.data listener can attach. Poll term.attach (which serves the
+    // buffered tail kept in main) until the runner output shows up.
+    let output = '';
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const attached = await booted.window.evaluate(
+        (id) => window.condash.termAttach(id),
+        session.id,
+      );
+      output = attached?.output ?? '';
+      if (output.includes('hi-from-runner')) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
     expect(output).toContain('hi-from-runner');
 
     await booted.window.evaluate((id) => window.condash.termClose(id), session.id);

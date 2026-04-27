@@ -2,17 +2,59 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
-import type { TermSide, TermSpawnRequest } from '../shared/types';
+import type { TermSession, TermSide, TermSpawnRequest } from '../shared/types';
 
 interface Session {
   id: string;
   side: TermSide;
-  pty: pty.IPty;
+  /** Live pty handle. Set to null after the process exits — the session row
+   * lingers (with `exited` populated) until the renderer explicitly closes it. */
+  pty: pty.IPty | null;
   webContents: WebContents;
+  /** Optional repo this session was spawned for (Run button). */
+  repo?: string;
+  /** Rolling tail of stdout/stderr — replayed when a freshly-loaded renderer
+   * re-attaches via term.attach. Capped at MAX_BUFFER bytes. */
+  buffer: string;
+  /** Process exit code; undefined while live. */
+  exited?: number;
 }
 
+const MAX_BUFFER = 64_000;
 const sessions = new Map<string, Session>();
 let nextId = 1;
+
+function appendBuffer(session: Session, data: string): void {
+  session.buffer = (session.buffer + data).slice(-MAX_BUFFER);
+}
+
+function snapshot(): TermSession[] {
+  return [...sessions.values()].map((s) => ({
+    id: s.id,
+    side: s.side,
+    repo: s.repo,
+    exited: s.exited,
+  }));
+}
+
+function broadcastSessions(): void {
+  const snap = snapshot();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send('term.sessions', snap);
+    }
+  }
+}
+
+export function listTerminalSessions(): TermSession[] {
+  return snapshot();
+}
+
+export function attachTerminal(id: string): { output: string; exited?: number } | null {
+  const s = sessions.get(id);
+  if (!s) return null;
+  return { output: s.buffer, exited: s.exited };
+}
 
 function makeId(): string {
   return `t${Date.now().toString(36)}-${nextId++}`;
@@ -143,36 +185,49 @@ export async function spawnTerminal(
   });
 
   const id = makeId();
-  const session: Session = { id, side: request.side, pty: ptyProcess, webContents };
+  const session: Session = {
+    id,
+    side: request.side,
+    pty: ptyProcess,
+    webContents,
+    repo: request.repo,
+    buffer: '',
+  };
   sessions.set(id, session);
 
   ptyProcess.onData((data) => {
+    appendBuffer(session, data);
     if (webContents.isDestroyed()) return;
     webContents.send('term.data', { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {
+    session.exited = exitCode;
+    session.pty = null;
     if (!webContents.isDestroyed()) {
       webContents.send('term.exit', { id, code: exitCode });
     }
-    sessions.delete(id);
+    // Keep the entry around (with `exited` set) so renderers that reload
+    // can still see it via termList — closeSession removes it on demand.
+    broadcastSessions();
   });
 
   webContents.once('destroyed', () => {
     closeSession(id);
   });
 
+  broadcastSessions();
   return { id, cwd };
 }
 
 export function writeTerminal(id: string, data: string): void {
   const session = sessions.get(id);
-  if (!session) return;
+  if (!session?.pty) return;
   session.pty.write(data);
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number): void {
   const session = sessions.get(id);
-  if (!session) return;
+  if (!session?.pty) return;
   try {
     session.pty.resize(Math.max(1, cols), Math.max(1, rows));
   } catch {
@@ -183,12 +238,15 @@ export function resizeTerminal(id: string, cols: number, rows: number): void {
 export function closeSession(id: string): void {
   const session = sessions.get(id);
   if (!session) return;
-  try {
-    session.pty.kill();
-  } catch {
-    /* already gone */
+  if (session.pty) {
+    try {
+      session.pty.kill();
+    } catch {
+      /* already gone */
+    }
   }
   sessions.delete(id);
+  broadcastSessions();
 }
 
 export async function getTerminalPrefs(
@@ -230,10 +288,12 @@ export async function latestScreenshot(dir: string): Promise<string | null> {
 export function killAll(forWebContents?: WebContents): void {
   for (const [id, session] of sessions) {
     if (forWebContents && session.webContents !== forWebContents) continue;
-    try {
-      session.pty.kill();
-    } catch {
-      /* ignore */
+    if (session.pty) {
+      try {
+        session.pty.kill();
+      } catch {
+        /* ignore */
+      }
     }
     sessions.delete(id);
   }

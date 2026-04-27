@@ -1,5 +1,14 @@
 import { render } from 'solid-js/web';
-import { createResource, createSignal, For, onCleanup, onMount, Show, Suspense } from 'solid-js';
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  Suspense,
+} from 'solid-js';
 import type {
   Deliverable,
   KnowledgeNode,
@@ -59,6 +68,12 @@ function applyTheme(theme: Theme): void {
 
 function hasSteps(c: StepCounts): boolean {
   return c.todo + c.doing + c.done + c.dropped > 0;
+}
+
+/** First step whose marker is not 'x' (done). Returns undefined if every step
+ * is done — the card body collapses in that case. */
+function nextOpenStep(item: Project): Step | undefined {
+  return item.steps.find((s) => s.marker !== 'x');
 }
 
 function StepProgress(props: { counts: StepCounts }) {
@@ -221,15 +236,10 @@ type Group = { status: string; items: Project[] };
 
 const UNKNOWN = '?';
 
-const ACTIVE_STATUSES = ['now', 'review'] as const;
-const PIPELINE_STATUSES = ['soon', 'later', 'backlog'] as const;
-
-type ProjectColumn = { name: string; statuses: readonly string[]; includeUnknown: boolean };
-
-const PROJECT_COLUMNS: readonly ProjectColumn[] = [
-  { name: 'Active', statuses: ACTIVE_STATUSES, includeUnknown: false },
-  { name: 'Pipeline', statuses: PIPELINE_STATUSES, includeUnknown: true },
-];
+/** Order of stacked sections on the Projects tab. `backlog` and `done`
+ * render collapsed-by-default — heavy buckets the user usually skips past. */
+const PROJECT_SECTION_ORDER = ['now', 'review', 'soon', 'later', 'backlog', 'done'] as const;
+const COLLAPSED_BY_DEFAULT = new Set<string>(['backlog', 'done']);
 
 function groupByStatus(items: Project[]): Map<string, Project[]> {
   const buckets = new Map<string, Project[]>();
@@ -243,15 +253,13 @@ function groupByStatus(items: Project[]): Map<string, Project[]> {
   return buckets;
 }
 
-function columnGroups(buckets: Map<string, Project[]>, column: ProjectColumn): Group[] {
+function projectsTabGroups(buckets: Map<string, Project[]>): Group[] {
   const out: Group[] = [];
-  for (const status of column.statuses) {
+  for (const status of PROJECT_SECTION_ORDER) {
     out.push({ status, items: buckets.get(status) ?? [] });
   }
-  if (column.includeUnknown) {
-    const unknown = buckets.get(UNKNOWN) ?? [];
-    if (unknown.length > 0) out.push({ status: UNKNOWN, items: unknown });
-  }
+  const unknown = buckets.get(UNKNOWN) ?? [];
+  if (unknown.length > 0) out.push({ status: UNKNOWN, items: unknown });
   return out;
 }
 
@@ -347,6 +355,28 @@ function App() {
   });
   onCleanup(unsubscribe);
 
+  // Track live (un-exited) terminal sessions by repo name so the Code tab
+  // can light up a LIVE badge while a `make run` (or similar) is alive.
+  const [liveRepos, setLiveRepos] = createSignal<ReadonlySet<string>>(new Set<string>());
+  const offTermSessions = window.condash.onTermSessions((sessions) => {
+    const live = new Set<string>();
+    for (const s of sessions) {
+      if (s.repo && s.exited === undefined) live.add(s.repo);
+    }
+    setLiveRepos(live);
+  });
+  // Seed once on mount — onTermSessions only fires on changes, so without
+  // this initial pull, repos with sessions inherited from a prior renderer
+  // would render as not-live until the next spawn/exit.
+  void window.condash.termList().then((sessions) => {
+    const live = new Set<string>();
+    for (const s of sessions) {
+      if (s.repo && s.exited === undefined) live.add(s.repo);
+    }
+    setLiveRepos(live);
+  });
+  onCleanup(offTermSessions);
+
   const cycleTheme = () => {
     const idx = THEME_CYCLE.indexOf(theme());
     const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
@@ -389,6 +419,8 @@ function App() {
       return window.condash.listRepos();
     },
   );
+
+  const repoGroups = createMemo(() => groupRepos(repos() ?? []));
 
   const [openWithSlots] = createResource(
     () => [conceptionPath(), refreshKey()] as const,
@@ -710,11 +742,11 @@ function App() {
           </button>
           <button
             class="tab"
-            classList={{ active: tab() === 'history' }}
-            onClick={() => setTab('history')}
+            classList={{ active: tab() === 'code' }}
+            onClick={() => setTab('code')}
             disabled={!conceptionPath()}
           >
-            History
+            Code
           </button>
           <button
             class="tab"
@@ -726,19 +758,19 @@ function App() {
           </button>
           <button
             class="tab"
+            classList={{ active: tab() === 'history' }}
+            onClick={() => setTab('history')}
+            disabled={!conceptionPath()}
+          >
+            History
+          </button>
+          <button
+            class="tab"
             classList={{ active: tab() === 'search' }}
             onClick={() => setTab('search')}
             disabled={!conceptionPath()}
           >
             Search
-          </button>
-          <button
-            class="tab"
-            classList={{ active: tab() === 'code' }}
-            onClick={() => setTab('code')}
-            disabled={!conceptionPath()}
-          >
-            Code
           </button>
         </nav>
         <span class="path">{conceptionPath() ?? '(no conception path)'}</span>
@@ -827,16 +859,30 @@ function App() {
               }
             >
               <div class="repos-pane">
-                <For each={repos() ?? []}>
-                  {(repo) => (
-                    <RepoRow
-                      repo={repo}
-                      slots={openWithSlots() ?? {}}
-                      onOpen={handleOpenInEditor}
-                      onLaunch={(slot, path) => void handleLaunch(slot, path)}
-                      onForceStop={(r) => void handleForceStop(r)}
-                      onRun={(r) => void handleRunRepo(r)}
-                    />
+                <For each={repoGroups()}>
+                  {(group) => (
+                    <section class="repos-group" data-group={group.id}>
+                      <h2 class="repos-group-header">
+                        <span class="name">{group.label}</span>
+                        <span class="count">{group.entries.length}</span>
+                        <span class="rule" />
+                      </h2>
+                      <div class="repos-grid">
+                        <For each={group.entries}>
+                          {(repo) => (
+                            <RepoRow
+                              repo={repo}
+                              slots={openWithSlots() ?? {}}
+                              live={liveRepos().has(repo.name)}
+                              onOpen={handleOpenInEditor}
+                              onLaunch={(slot, path) => void handleLaunch(slot, path)}
+                              onForceStop={(r) => void handleForceStop(r)}
+                              onRun={(r) => void handleRunRepo(r)}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </section>
                   )}
                 </For>
               </div>
@@ -926,13 +972,46 @@ function ProjectsView(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
 }) {
+  const [filter, setFilter] = createSignal('');
+  const matches = (item: Project, q: string): boolean => {
+    if (!q) return true;
+    const needle = q.toLowerCase();
+    return (
+      item.title.toLowerCase().includes(needle) ||
+      item.slug.toLowerCase().includes(needle) ||
+      (item.summary?.toLowerCase().includes(needle) ?? false) ||
+      (item.apps?.toLowerCase().includes(needle) ?? false)
+    );
+  };
+  const filteredBuckets = (): Map<string, Project[]> => {
+    const q = filter().trim();
+    if (!q) return props.buckets;
+    const out = new Map<string, Project[]>();
+    for (const [status, items] of props.buckets) {
+      out.set(
+        status,
+        items.filter((it) => matches(it, q)),
+      );
+    }
+    return out;
+  };
   return (
-    <div class="projects-columns">
-      <For each={PROJECT_COLUMNS}>
-        {(col) => (
-          <ProjectsColumn
-            name={col.name}
-            groups={columnGroups(props.buckets, col)}
+    <div class="projects-stack">
+      <div class="projects-filter">
+        <input
+          class="projects-filter-input"
+          type="search"
+          placeholder="Filter projects (title, slug, app, summary)…"
+          value={filter()}
+          onInput={(e) => setFilter(e.currentTarget.value)}
+        />
+      </div>
+      <For each={projectsTabGroups(filteredBuckets())}>
+        {(group) => (
+          <GroupBlock
+            group={group}
+            collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
+            forceOpen={filter().trim().length > 0 && group.items.length > 0}
             onOpen={props.onOpen}
             onToggleStep={props.onToggleStep}
             onDropProject={props.onDropProject}
@@ -943,43 +1022,25 @@ function ProjectsView(props: {
   );
 }
 
-function ProjectsColumn(props: {
-  name: string;
-  groups: Group[];
-  onOpen: (project: Project) => void;
-  onToggleStep: (project: Project, step: Step) => void;
-  onDropProject: (path: string, newStatus: string) => void;
-}) {
-  const totalCount = (): number => props.groups.reduce((acc, g) => acc + g.items.length, 0);
-  return (
-    <section class="projects-column">
-      <header class="projects-column-header">
-        <span class="name">{props.name}</span>
-        <span class="count">{totalCount()}</span>
-      </header>
-      <div class="projects-column-body">
-        <For each={props.groups}>
-          {(group) => (
-            <GroupBlock
-              group={group}
-              onOpen={props.onOpen}
-              onToggleStep={props.onToggleStep}
-              onDropProject={props.onDropProject}
-            />
-          )}
-        </For>
-      </div>
-    </section>
-  );
-}
-
 function GroupBlock(props: {
   group: Group;
+  /** When true, the section starts collapsed and shows an expand affordance. */
+  collapsedByDefault?: boolean;
+  /** Override collapsed state — e.g. when a search filter is active and the
+   * group has matches, force it open so results aren't hidden. */
+  forceOpen?: boolean;
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
 }) {
   const [over, setOver] = createSignal(false);
+  const [userExpanded, setUserExpanded] = createSignal<boolean | null>(null);
+  const isOpen = (): boolean => {
+    if (props.forceOpen) return true;
+    const ux = userExpanded();
+    if (ux !== null) return ux;
+    return !props.collapsedByDefault;
+  };
 
   const isAcceptable = (event: DragEvent): boolean => {
     const types = event.dataTransfer?.types;
@@ -1013,24 +1074,33 @@ function GroupBlock(props: {
   return (
     <section
       class="group-block"
-      classList={{ 'drag-over': over() }}
+      classList={{ 'drag-over': over(), collapsed: !isOpen() }}
       data-status={props.group.status}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <header class="group-header">
+      <header
+        class="group-header"
+        onClick={() => setUserExpanded(!isOpen())}
+        title={isOpen() ? 'Collapse section' : 'Expand section'}
+      >
+        <span class="caret" aria-hidden="true">
+          {isOpen() ? '▾' : '▸'}
+        </span>
         <span class="dot" aria-hidden="true" />
         <span class="name">{props.group.status}</span>
         <span class="count">{props.group.items.length}</span>
         <span class="rule" aria-hidden="true" />
       </header>
-      <div class="group-body">
-        <For each={props.group.items}>
-          {(item) => <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />}
-        </For>
-      </div>
+      <Show when={isOpen()}>
+        <div class="group-body">
+          <For each={props.group.items}>
+            {(item) => <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />}
+          </For>
+        </div>
+      </Show>
     </section>
   );
 }
@@ -1100,35 +1170,30 @@ function Card(props: {
       onDragStart={isDraggable() ? handleDragStart : undefined}
     >
       <div class="row-head" onClick={handleHeaderClick}>
-        <span class="title">{props.item.title}</span>
-        <Show when={props.item.summary}>
-          <p class="summary">{props.item.summary}</p>
-        </Show>
-        <div class="meta">
+        <h3 class="title">
           <Show when={props.item.kind !== 'unknown'}>
-            <span class="meta-icon kind" data-kind={props.item.kind} title={props.item.kind}>
+            <span class="title-kind" data-kind={props.item.kind} title={props.item.kind}>
               <KindIcon kind={props.item.kind} />
-              {props.item.kind}
             </span>
           </Show>
+          <span class="title-text">{props.item.title}</span>
+        </h3>
+        <Show when={nextOpenStep(props.item)} keyed>
+          {(step) => (
+            <p class="summary next-step" data-marker={markerClass(step.marker)}>
+              <span class="next-step-marker" aria-hidden="true">
+                {step.marker === '~' ? '◐' : step.marker === '-' ? '⨯' : '○'}
+              </span>
+              {step.text}
+            </p>
+          )}
+        </Show>
+        <div class="meta">
           <Show when={props.item.apps}>
             <span class="meta-icon apps" title={props.item.apps}>
               <AppsIcon />
               {props.item.apps}
             </span>
-          </Show>
-          <Show when={hasSteps(props.item.stepCounts)}>
-            <button
-              class="meta-icon expander"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded((v) => !v);
-              }}
-              title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
-            >
-              <StepProgress counts={props.item.stepCounts} />
-              <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
-            </button>
           </Show>
           <Show when={props.item.deliverableCount > 0}>
             <span class="meta-icon" title="deliverables">
@@ -1142,9 +1207,20 @@ function Card(props: {
               {props.item.status}
             </span>
           </Show>
-          <span class="slug" style={{ 'margin-left': 'auto' }}>
-            {props.item.slug}
-          </span>
+          <span class="slug">{props.item.slug}</span>
+          <Show when={hasSteps(props.item.stepCounts)}>
+            <button
+              class="meta-icon expander step-bar-right"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+              title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
+            >
+              <StepProgress counts={props.item.stepCounts} />
+              <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
+            </button>
+          </Show>
         </div>
       </div>
       <Show when={expanded() && props.item.steps.length > 0}>
@@ -1224,37 +1300,102 @@ function KnowledgeNodeView(props: {
   );
 }
 
+type RepoGroup = { id: string; label: string; entries: RepoEntry[] };
+
+function groupRepos(repos: readonly RepoEntry[]): RepoGroup[] {
+  const childrenByParent = new Map<string, RepoEntry[]>();
+  for (const r of repos) {
+    if (!r.parent) continue;
+    const arr = childrenByParent.get(r.parent) ?? [];
+    arr.push(r);
+    childrenByParent.set(r.parent, arr);
+  }
+  const primary: RepoEntry[] = [];
+  const secondary: RepoEntry[] = [];
+  const submoduleParents: { parent: RepoEntry; children: RepoEntry[] }[] = [];
+  for (const r of repos) {
+    if (r.parent) continue;
+    const kids = childrenByParent.get(r.name);
+    if (kids && kids.length > 0) {
+      submoduleParents.push({ parent: r, children: kids });
+    } else if (r.kind === 'primary') {
+      primary.push(r);
+    } else {
+      secondary.push(r);
+    }
+  }
+  const groups: RepoGroup[] = [];
+  if (primary.length > 0) groups.push({ id: 'primary', label: 'PRIMARY', entries: primary });
+  for (const { parent, children } of submoduleParents) {
+    groups.push({
+      id: parent.name,
+      label: parent.name.toUpperCase(),
+      entries: [parent, ...children],
+    });
+  }
+  if (secondary.length > 0)
+    groups.push({ id: 'secondary', label: 'SECONDARY', entries: secondary });
+  return groups;
+}
+
+type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
+
+function repoStatus(repo: RepoEntry): RepoStatus {
+  if (repo.missing) return 'missing';
+  if (repo.dirty == null) return 'unknown';
+  return repo.dirty === 0 ? 'clean' : 'dirty';
+}
+
 function RepoRow(props: {
   repo: RepoEntry;
   slots: OpenWithSlots;
+  /** True when at least one terminal session is currently running for this repo. */
+  live?: boolean;
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
   onRun: (repo: RepoEntry) => void;
 }) {
-  const dirtyLabel = (): string => {
-    if (props.repo.missing) return 'missing';
-    if (props.repo.dirty == null) return '?';
-    if (props.repo.dirty === 0) return 'clean';
-    return `${props.repo.dirty} dirty`;
+  const status = (): RepoStatus => repoStatus(props.repo);
+  const statusLabel = (): string => {
+    const s = status();
+    if (s === 'missing') return 'MISSING';
+    if (s === 'unknown') return '?';
+    if (s === 'clean') return 'CLEAN';
+    return `${props.repo.dirty} DIRTY`;
+  };
+  const displayName = (): string => {
+    if (props.repo.parent && props.repo.name.startsWith(`${props.repo.parent}/`)) {
+      return props.repo.name.slice(props.repo.parent.length + 1);
+    }
+    return props.repo.name;
   };
 
   return (
     <article
       class="repo-row"
-      classList={{ missing: props.repo.missing, dirty: !!props.repo.dirty }}
+      classList={{
+        missing: props.repo.missing,
+        dirty: !!props.repo.dirty,
+        submodule: !!props.repo.parent,
+      }}
+      data-status={status()}
     >
       <div class="repo-head">
-        <span class="repo-name">{props.repo.name}</span>
-        <span class="badge" data-kind={props.repo.kind}>
-          {props.repo.kind}
+        <span class="repo-name">{displayName()}</span>
+        <Show when={props.live}>
+          <span class="repo-live-badge" title="A terminal session is running for this repo">
+            LIVE
+          </span>
+        </Show>
+        <span class="repo-status-badge" data-status={status()}>
+          {statusLabel()}
         </span>
-        <span class="repo-dirty">{dirtyLabel()}</span>
       </div>
       <span class="repo-path">{props.repo.path}</span>
       <div class="repo-actions">
         <button
-          class="modal-button"
+          class="repo-action"
           onClick={() => props.onOpen(props.repo.path)}
           disabled={props.repo.missing}
           title="Open in OS file manager"
@@ -1262,7 +1403,7 @@ function RepoRow(props: {
           Open
         </button>
         <button
-          class="modal-button"
+          class="repo-action run"
           onClick={() => props.onRun(props.repo)}
           disabled={props.repo.missing}
           title="Run in terminal pane"
@@ -1273,7 +1414,7 @@ function RepoRow(props: {
           {(slot) => (
             <Show when={props.slots[slot]}>
               <button
-                class="modal-button"
+                class="repo-action icon"
                 onClick={() => props.onLaunch(slot, props.repo.path)}
                 disabled={props.repo.missing}
                 title={props.slots[slot]!.label}
@@ -1285,7 +1426,7 @@ function RepoRow(props: {
         </For>
         <Show when={props.repo.hasForceStop}>
           <button
-            class="modal-button warn"
+            class="repo-action icon warn"
             onClick={() => props.onForceStop(props.repo)}
             disabled={props.repo.missing}
             title="Force-stop (runs configured force_stop:)"
@@ -1303,7 +1444,7 @@ function RepoRow(props: {
                 <span class="worktree-path">{wt.path}</span>
                 <div class="worktree-actions">
                   <button
-                    class="modal-button"
+                    class="repo-action"
                     onClick={() => props.onOpen(wt.path)}
                     title="Open worktree in OS file manager"
                   >
@@ -1313,7 +1454,7 @@ function RepoRow(props: {
                     {(slot) => (
                       <Show when={props.slots[slot]}>
                         <button
-                          class="modal-button"
+                          class="repo-action icon"
                           onClick={() => props.onLaunch(slot, wt.path)}
                           title={props.slots[slot]!.label}
                         >
