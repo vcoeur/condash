@@ -1,6 +1,6 @@
 .project-preview {
-  width: min(720px, 100%);
-  max-height: min(80vh, 800px);
+  width: min(1100px, 100%);
+  max-height: min(85vh, 900px);
 }
 
 .preview-body {
