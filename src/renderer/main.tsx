@@ -1,6 +1,7 @@
 import { render } from 'solid-js/web';
 import { createResource, createSignal, For, onCleanup, onMount, Show, Suspense } from 'solid-js';
 import type {
+  Deliverable,
   KnowledgeNode,
   OpenWithSlotKey,
   OpenWithSlots,
@@ -16,13 +17,15 @@ import type {
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
+import { ProjectPreview } from './project-preview';
 import { resetMermaidTheme } from './markdown';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { buildSlugIndex } from './wikilinks';
 import './styles.css';
 import './note-modal.css';
+import './project-preview.css';
 
-type Tab = 'projects' | 'knowledge' | 'search' | 'code';
+type Tab = 'projects' | 'history' | 'knowledge' | 'search' | 'code';
 
 const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
 const THEME_LABEL: Record<Theme, string> = {
@@ -58,17 +61,124 @@ function hasSteps(c: StepCounts): boolean {
   return c.todo + c.doing + c.done + c.dropped > 0;
 }
 
-function StepBadge(props: { counts: StepCounts }) {
+function StepProgress(props: { counts: StepCounts }) {
   const total = (): number =>
     props.counts.todo + props.counts.doing + props.counts.done + props.counts.dropped;
+  const ratio = (): number => {
+    const t = total();
+    return t === 0 ? 0 : Math.min(1, props.counts.done / t);
+  };
   const title = (): string =>
     `${props.counts.todo} todo, ${props.counts.doing} doing, ${props.counts.done} done, ${props.counts.dropped} dropped`;
   return (
-    <span class="badge steps" title={title()}>
-      <span class="step-done">{props.counts.done}</span>
-      <span class="step-sep">/</span>
-      <span class="step-total">{total()}</span>
+    <span class="step-progress-inner" title={title()}>
+      <span class="progress-track">
+        <span class="progress-fill" style={{ width: `${ratio() * 100}%` }} />
+      </span>
+      <span class="progress-text">
+        {props.counts.done}/{total()}
+      </span>
     </span>
+  );
+}
+
+const KIND_ICON: Record<string, () => any> = {
+  project: () => (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 1.5L14.5 8 8 14.5 1.5 8z" />
+    </svg>
+  ),
+  incident: () => (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2L14.5 13.5h-13z" />
+      <path d="M8 6.5v3" />
+      <circle cx="8" cy="11.5" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  document: () => (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 1.5h6L13 5v9.5H3.5z" />
+      <path d="M9.5 1.5V5H13" />
+      <path d="M5.5 8h5M5.5 10.5h5M5.5 5.5h2" />
+    </svg>
+  ),
+};
+
+function KindIcon(props: { kind: string }) {
+  const Icon = KIND_ICON[props.kind];
+  if (!Icon) return null;
+  return <Icon />;
+}
+
+function AppsIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 4.5l6-3 6 3-6 3z" />
+      <path d="M2 8l6 3 6-3" />
+      <path d="M2 11.5l6 3 6-3" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2v8" />
+      <path d="M4.5 7L8 10.5 11.5 7" />
+      <path d="M2.5 13.5h11" />
+    </svg>
+  );
+}
+
+function WarnIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M8 5v3.5" />
+      <circle cx="8" cy="11" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 
@@ -111,10 +221,15 @@ type Group = { status: string; items: Project[] };
 
 const UNKNOWN = '?';
 
-const CURRENT_STATUSES = ['now', 'review', 'soon'] as const;
-const PLANNING_STATUSES = ['later', 'backlog', 'done'] as const;
+const ACTIVE_STATUSES = ['now', 'review'] as const;
+const PIPELINE_STATUSES = ['soon', 'later', 'backlog'] as const;
 
-type Section = { name: string; statuses: readonly string[] };
+type ProjectColumn = { name: string; statuses: readonly string[]; includeUnknown: boolean };
+
+const PROJECT_COLUMNS: readonly ProjectColumn[] = [
+  { name: 'Active', statuses: ACTIVE_STATUSES, includeUnknown: false },
+  { name: 'Pipeline', statuses: PIPELINE_STATUSES, includeUnknown: true },
+];
 
 function groupByStatus(items: Project[]): Map<string, Project[]> {
   const buckets = new Map<string, Project[]>();
@@ -128,16 +243,45 @@ function groupByStatus(items: Project[]): Map<string, Project[]> {
   return buckets;
 }
 
-function sectionGroups(buckets: Map<string, Project[]>, section: Section): Group[] {
+function columnGroups(buckets: Map<string, Project[]>, column: ProjectColumn): Group[] {
   const out: Group[] = [];
-  for (const status of section.statuses) {
+  for (const status of column.statuses) {
     out.push({ status, items: buckets.get(status) ?? [] });
   }
-  if (section.name === 'Planning') {
+  if (column.includeUnknown) {
     const unknown = buckets.get(UNKNOWN) ?? [];
     if (unknown.length > 0) out.push({ status: UNKNOWN, items: unknown });
   }
   return out;
+}
+
+function monthFromPath(path: string): string {
+  // projects/YYYY-MM/YYYY-MM-DD-slug/ → "YYYY-MM"
+  const parts = path.split('/');
+  const idx = parts.indexOf('projects');
+  if (idx >= 0 && idx + 1 < parts.length) return parts[idx + 1];
+  return '????-??';
+}
+
+type MonthGroup = { month: string; items: Project[] };
+
+function groupDoneByMonth(items: Project[]): MonthGroup[] {
+  const map = new Map<string, Project[]>();
+  for (const p of items) {
+    if (p.status !== 'done') continue;
+    const key = monthFromPath(p.path);
+    let bucket = map.get(key);
+    if (!bucket) {
+      bucket = [];
+      map.set(key, bucket);
+    }
+    bucket.push(p);
+  }
+  const months = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
+  return months.map((month) => ({
+    month,
+    items: (map.get(month) ?? []).slice().sort((a, b) => b.slug.localeCompare(a.slug)),
+  }));
 }
 
 interface Shortcut {
@@ -184,6 +328,7 @@ function App() {
   const [toast, setToast] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>('projects');
   const [modal, setModal] = createSignal<ModalState>(null);
+  const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [terminalOpen, setTerminalOpen] = createSignal(false);
   let terminalHandle: TerminalPaneHandle | null = null;
@@ -439,11 +584,30 @@ function App() {
   };
 
   const handleOpenProject = (project: Project) => {
+    setPreviewPath(project.path);
+  };
+
+  const previewProject = (): Project | null => {
+    const path = previewPath();
+    if (!path) return null;
+    return (projects() ?? []).find((p) => p.path === path) ?? null;
+  };
+
+  const handleOpenReadmeFromPreview = (project: Project) => {
+    setPreviewPath(null);
     setModal({
       path: project.path,
       title: project.title,
       deliverables: project.deliverables,
     });
+  };
+
+  const handleOpenDeliverableFromPreview = (deliverable: Deliverable) => {
+    if (deliverable.path.toLowerCase().endsWith('.pdf')) {
+      setPdfPath(deliverable.path);
+    } else {
+      void window.condash.openInEditor(deliverable.path);
+    }
   };
 
   const handleOpenKnowledgeFile = (path: string) => {
@@ -486,6 +650,36 @@ function App() {
     }
   };
 
+  const handleEditStepText = async (project: Project, step: Step, newText: string) => {
+    try {
+      await window.condash.editStepText(project.path, step.lineIndex, step.text, newText);
+      // Watcher fires a 'change' event for the README; the renderer patches in
+      // place. No optimistic update — the line index could shift if anything
+      // else changed in the file between read and write.
+    } catch (err) {
+      flashToast(`Edit step failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleAddStep = async (project: Project, text: string) => {
+    try {
+      await window.condash.addStep(project.path, text);
+    } catch (err) {
+      flashToast(`Add step failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleOpenFileFromPreview = (path: string) => {
+    if (path.toLowerCase().endsWith('.md')) {
+      setPreviewPath(null);
+      setModal({ path });
+    } else if (path.toLowerCase().endsWith('.pdf')) {
+      setPdfPath(path);
+    } else {
+      void window.condash.openInEditor(path);
+    }
+  };
+
   const handleDropOnColumn = async (path: string, newStatus: string) => {
     const items = projects() ?? [];
     const project = items.find((p) => p.path === path);
@@ -513,6 +707,14 @@ function App() {
             onClick={() => setTab('projects')}
           >
             Projects
+          </button>
+          <button
+            class="tab"
+            classList={{ active: tab() === 'history' }}
+            onClick={() => setTab('history')}
+            disabled={!conceptionPath()}
+          >
+            History
           </button>
           <button
             class="tab"
@@ -588,6 +790,16 @@ function App() {
           </Suspense>
         </Show>
 
+        <Show when={tab() === 'history'}>
+          <Suspense fallback={<div class="empty">Loading…</div>}>
+            <HistoryView
+              months={groupDoneByMonth(projects() ?? [])}
+              onOpen={handleOpenProject}
+              onToggleStep={handleToggleStep}
+            />
+          </Suspense>
+        </Show>
+
         <Show when={tab() === 'knowledge'}>
           <Suspense fallback={<div class="empty">Loading…</div>}>
             <Show
@@ -659,6 +871,19 @@ function App() {
         </Show>
       </Show>
 
+      <ProjectPreview
+        project={previewProject()}
+        onClose={() => setPreviewPath(null)}
+        onToggleStep={handleToggleStep}
+        onEditStepText={handleEditStepText}
+        onAddStep={handleAddStep}
+        onChangeStatus={(p, s) => void handleDropOnColumn(p.path, s)}
+        onOpenReadme={handleOpenReadmeFromPreview}
+        onOpenFile={handleOpenFileFromPreview}
+        onOpenInEditor={handleOpenInEditor}
+        onOpenDeliverable={handleOpenDeliverableFromPreview}
+      />
+
       <Show when={modal()}>
         <NoteModal
           state={modal()}
@@ -695,11 +920,6 @@ function App() {
   );
 }
 
-const SECTIONS: Section[] = [
-  { name: 'Current Projects', statuses: CURRENT_STATUSES },
-  { name: 'Planning', statuses: PLANNING_STATUSES },
-];
-
 function ProjectsView(props: {
   buckets: Map<string, Project[]>;
   onOpen: (project: Project) => void;
@@ -707,12 +927,12 @@ function ProjectsView(props: {
   onDropProject: (path: string, newStatus: string) => void;
 }) {
   return (
-    <div class="projects-view">
-      <For each={SECTIONS}>
-        {(section) => (
-          <ProjectsSection
-            name={section.name}
-            groups={sectionGroups(props.buckets, section)}
+    <div class="projects-columns">
+      <For each={PROJECT_COLUMNS}>
+        {(col) => (
+          <ProjectsColumn
+            name={col.name}
+            groups={columnGroups(props.buckets, col)}
             onOpen={props.onOpen}
             onToggleStep={props.onToggleStep}
             onDropProject={props.onDropProject}
@@ -723,20 +943,24 @@ function ProjectsView(props: {
   );
 }
 
-function ProjectsSection(props: {
+function ProjectsColumn(props: {
   name: string;
   groups: Group[];
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
 }) {
+  const totalCount = (): number => props.groups.reduce((acc, g) => acc + g.items.length, 0);
   return (
-    <section class="projects-section">
-      <header class="projects-section-header">{props.name}</header>
-      <div class="projects-section-body" style={{ '--columns': props.groups.length }}>
+    <section class="projects-column">
+      <header class="projects-column-header">
+        <span class="name">{props.name}</span>
+        <span class="count">{totalCount()}</span>
+      </header>
+      <div class="projects-column-body">
         <For each={props.groups}>
           {(group) => (
-            <Column
+            <GroupBlock
               group={group}
               onOpen={props.onOpen}
               onToggleStep={props.onToggleStep}
@@ -749,7 +973,7 @@ function ProjectsSection(props: {
   );
 }
 
-function Column(props: {
+function GroupBlock(props: {
   group: Group;
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
@@ -788,7 +1012,7 @@ function Column(props: {
 
   return (
     <section
-      class="column"
+      class="group-block"
       classList={{ 'drag-over': over() }}
       data-status={props.group.status}
       onDragEnter={handleDragEnter}
@@ -796,11 +1020,13 @@ function Column(props: {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <header class="column-header">
+      <header class="group-header">
+        <span class="dot" aria-hidden="true" />
         <span class="name">{props.group.status}</span>
         <span class="count">{props.group.items.length}</span>
+        <span class="rule" aria-hidden="true" />
       </header>
-      <div class="column-body">
+      <div class="group-body">
         <For each={props.group.items}>
           {(item) => <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />}
         </For>
@@ -809,10 +1035,46 @@ function Column(props: {
   );
 }
 
+function HistoryView(props: {
+  months: MonthGroup[];
+  onOpen: (project: Project) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+}) {
+  return (
+    <div class="history-pane">
+      <Show when={props.months.length > 0} fallback={<div class="empty">No done items yet.</div>}>
+        <For each={props.months}>
+          {(group) => (
+            <section class="history-month">
+              <header class="history-month-header">
+                <span class="name">{group.month}</span>
+                <span class="count">{group.items.length}</span>
+              </header>
+              <div class="history-month-body">
+                <For each={group.items}>
+                  {(item) => (
+                    <Card
+                      item={item}
+                      onOpen={props.onOpen}
+                      onToggleStep={props.onToggleStep}
+                      draggable={false}
+                    />
+                  )}
+                </For>
+              </div>
+            </section>
+          )}
+        </For>
+      </Show>
+    </div>
+  );
+}
+
 function Card(props: {
   item: Project;
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
+  draggable?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(false);
 
@@ -827,42 +1089,62 @@ function Card(props: {
     event.dataTransfer.effectAllowed = 'move';
   };
 
+  const isDraggable = (): boolean => props.draggable !== false;
+
   return (
-    <article class="row" title={props.item.path} draggable={true} onDragStart={handleDragStart}>
+    <article
+      class="row"
+      title={props.item.path}
+      data-status-card={props.item.status}
+      draggable={isDraggable()}
+      onDragStart={isDraggable() ? handleDragStart : undefined}
+    >
       <div class="row-head" onClick={handleHeaderClick}>
         <span class="title">{props.item.title}</span>
         <Show when={props.item.summary}>
           <p class="summary">{props.item.summary}</p>
         </Show>
         <div class="meta">
-          <span class="slug">{props.item.slug}</span>
           <Show when={props.item.kind !== 'unknown'}>
-            <span class="badge">{props.item.kind}</span>
+            <span class="meta-icon kind" data-kind={props.item.kind} title={props.item.kind}>
+              <KindIcon kind={props.item.kind} />
+              {props.item.kind}
+            </span>
           </Show>
           <Show when={props.item.apps}>
-            <span class="badge">{props.item.apps}</span>
+            <span class="meta-icon apps" title={props.item.apps}>
+              <AppsIcon />
+              {props.item.apps}
+            </span>
           </Show>
           <Show when={hasSteps(props.item.stepCounts)}>
             <button
-              class="badge steps expander"
+              class="meta-icon expander"
               onClick={(e) => {
                 e.stopPropagation();
                 setExpanded((v) => !v);
               }}
               title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
             >
-              <StepBadge counts={props.item.stepCounts} />
+              <StepProgress counts={props.item.stepCounts} />
               <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
             </button>
           </Show>
           <Show when={props.item.deliverableCount > 0}>
-            <span class="badge" title="deliverables">
-              ⬇ {props.item.deliverableCount}
+            <span class="meta-icon" title="deliverables">
+              <DownloadIcon />
+              {props.item.deliverableCount}
             </span>
           </Show>
           <Show when={!(KNOWN_STATUSES as readonly string[]).includes(props.item.status)}>
-            <span class="badge warn">!? {props.item.status}</span>
+            <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
+              <WarnIcon />
+              {props.item.status}
+            </span>
           </Show>
+          <span class="slug" style={{ 'margin-left': 'auto' }}>
+            {props.item.slug}
+          </span>
         </div>
       </div>
       <Show when={expanded() && props.item.steps.length > 0}>

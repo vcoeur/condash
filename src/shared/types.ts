@@ -52,6 +52,15 @@ export interface Project {
   deliverableCount: number;
 }
 
+export interface ProjectFileEntry {
+  /** Absolute path on disk. */
+  path: string;
+  /** Path relative to the project directory (e.g. "README.md", "notes/01-foo.md"). */
+  relPath: string;
+  /** Last segment of relPath. */
+  name: string;
+}
+
 export type Theme = 'light' | 'dark' | 'system';
 
 export interface Settings {

@@ -4,7 +4,8 @@ import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
-import { setStatus, toggleStep, writeNote } from './mutate';
+import { addStep, editStepText, setStatus, toggleStep, writeNote } from './mutate';
+import { listProjectFiles } from './files';
 import { readKnowledgeTree } from './knowledge';
 import { readNote } from './note';
 import { search } from './search';
@@ -187,6 +188,16 @@ function registerIpc(): void {
     (_, path: string, lineIndex: number, expectedMarker: StepMarker, newMarker: StepMarker) =>
       toggleStep(path, lineIndex, expectedMarker, newMarker),
   );
+
+  ipcMain.handle(
+    'editStepText',
+    (_, path: string, lineIndex: number, expectedText: string, newText: string) =>
+      editStepText(path, lineIndex, expectedText, newText),
+  );
+
+  ipcMain.handle('addStep', (_, path: string, text: string) => addStep(path, text));
+
+  ipcMain.handle('listProjectFiles', (_, path: string) => listProjectFiles(path));
 
   ipcMain.handle('setStatus', (_, path: string, newStatus: string) => setStatus(path, newStatus));
 

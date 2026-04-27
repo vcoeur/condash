@@ -12,14 +12,20 @@ function settingsPath(): string {
 }
 
 export async function readSettings(): Promise<Settings> {
+  let onDisk: Settings;
   try {
     const raw = await fs.readFile(settingsPath(), 'utf8');
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...empty, ...parsed };
+    onDisk = { ...empty, ...parsed };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ...empty };
-    throw err;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') onDisk = { ...empty };
+    else throw err;
   }
+  // CONDASH_CONCEPTION_PATH wins for the session — one-shot override
+  // matching the Tauri build's behaviour.
+  const envOverride = process.env.CONDASH_CONCEPTION_PATH;
+  if (envOverride) return { ...onDisk, conceptionPath: envOverride };
+  return onDisk;
 }
 
 export async function writeSettings(next: Settings): Promise<void> {

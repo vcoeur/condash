@@ -3,6 +3,7 @@ import type {
   OpenWithSlotKey,
   OpenWithSlots,
   Project,
+  ProjectFileEntry,
   RepoEntry,
   SearchHit,
   StepMarker,
@@ -34,6 +35,14 @@ export interface CondashApi {
     expectedMarker: StepMarker,
     newMarker: StepMarker,
   ): Promise<void>;
+  editStepText(
+    path: string,
+    lineIndex: number,
+    expectedText: string,
+    newText: string,
+  ): Promise<void>;
+  addStep(path: string, text: string): Promise<void>;
+  listProjectFiles(path: string): Promise<ProjectFileEntry[]>;
   setStatus(path: string, newStatus: string): Promise<void>;
   readNote(path: string): Promise<string>;
   writeNote(path: string, expectedContent: string, newContent: string): Promise<void>;

@@ -18,6 +18,10 @@ const api: CondashApi = {
   setTheme: (theme) => ipcRenderer.invoke('setTheme', theme),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
     ipcRenderer.invoke('toggleStep', path, lineIndex, expectedMarker, newMarker),
+  editStepText: (path, lineIndex, expectedText, newText) =>
+    ipcRenderer.invoke('editStepText', path, lineIndex, expectedText, newText),
+  addStep: (path, text) => ipcRenderer.invoke('addStep', path, text),
+  listProjectFiles: (path) => ipcRenderer.invoke('listProjectFiles', path),
   setStatus: (path, newStatus) => ipcRenderer.invoke('setStatus', path, newStatus),
   readNote: (path) => ipcRenderer.invoke('readNote', path),
   writeNote: (path, expectedContent, newContent) =>
