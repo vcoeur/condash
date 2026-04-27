@@ -2,13 +2,21 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join } from 'node:path';
 
-// AppImage extracts to /tmp/.mount_*/, and most distros mount /tmp `nosuid`
-// — so Chromium's SUID sandbox helper can't keep its SUID bit and refuses
-// to run. The `.deb` install lays chrome-sandbox down at /opt/condash/
-// where SUID is honoured, so this only affects the AppImage path. Detect
-// via $APPIMAGE (set by the AppImage runtime) and disable the SUID
-// sandbox; Chromium falls back to the namespace sandbox where available.
-if (process.env.APPIMAGE) {
+// Disable Chromium's sandbox on packaged Linux builds. Two reasons we
+// can't rely on it for our distribution shape:
+//   1. AppImage extracts to /tmp/.mount_*/, typically mounted `nosuid` —
+//      so chrome-sandbox can't keep its SUID bit and Chromium aborts with
+//      "SUID sandbox helper binary was found, but is not configured
+//      correctly" before main even runs.
+//   2. Ubuntu 23.10+ ships an AppArmor profile that blocks unprivileged
+//      user namespaces, so the namespace-sandbox fallback also fails on
+//      a chunk of our user base.
+// `$APPIMAGE` was tried first as a tighter conditional but didn't reach
+// the main process at the right moment (Electron reads commandLine very
+// early). Apply unconditionally for packaged Linux; .deb users lose
+// nominal sandboxing too — fine for a developer-tools app, revisit when
+// distribution scale warrants per-channel tuning.
+if (process.platform === 'linux' && app.isPackaged) {
   app.commandLine.appendSwitch('no-sandbox');
 }
 import { readSettings, writeSettings } from './settings';
