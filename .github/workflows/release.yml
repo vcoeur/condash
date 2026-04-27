@@ -1,0 +1,63 @@
+name: release
+
+# Build unsigned cross-platform installers + publish them (and the
+# `latest*.yml` channel files electron-updater needs) to the GitHub Release
+# tied to the pushed `v*` tag.
+#
+# Triggered by tags only — `git push origin v0.1.0`. The workflow does NOT
+# create the tag itself; humans cut the tag locally with `git tag -a vX`
+# after a clean main and push it.
+#
+# The release-init job creates the GitHub Release as a draft, then each
+# matrix job uploads its bundles into that release. release-publish flips
+# the draft off once the matrix is green so partial uploads don't ship.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  # contents:write is required for electron-builder to create / update the
+  # GitHub Release on this repo via GITHUB_TOKEN.
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + main
+        run: npm run build
+
+      # electron-builder produces installers for the current OS and uploads
+      # them to a GitHub Release matching package.json's version. The first
+      # matrix job to publish creates the release; later jobs append to it.
+      # `--publish always` is what triggers the upload (default would be
+      # never on tag pushes from non-default branches).
+      - name: Build installers + publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # electron-builder reads GH_TOKEN; set both for compatibility with
+          # the older `electron-builder-publish` lookup.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --publish always

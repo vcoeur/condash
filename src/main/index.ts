@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { join } from 'node:path';
 import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
@@ -247,6 +248,17 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Auto-update: only in packaged builds. electron-updater pulls
+  // latest{,-mac,-linux}.yml from the GitHub Release matching package.json's
+  // version. Failures (no network, GH down, no newer release) log and
+  // exit silently — never block app startup.
+  if (app.isPackaged) {
+    autoUpdater.autoDownload = true;
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.warn('[updater]', err);
+    });
+  }
 });
 
 app.on('window-all-closed', () => {

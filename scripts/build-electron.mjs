@@ -28,6 +28,12 @@ const EXTERNAL = [
   'node-pty',
   'fsevents',
   'better-sqlite3',
+  // electron-updater pulls in `lzma-native`, `7zip-bin`, and reaches for
+  // `original-fs` (an Electron-internal module). Inlining the whole graph
+  // explodes the bundle and breaks runtime loading; keep it external so it
+  // resolves from node_modules at runtime.
+  'electron-updater',
+  'original-fs',
 ];
 
 /** @type {import('esbuild').BuildOptions} */
