@@ -115,6 +115,21 @@
   font-weight: 600;
 }
 
+.terminal-tab-add.launcher {
+  width: auto;
+  padding: 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.terminal-tab[draggable='true'] {
+  cursor: grab;
+}
+
+.terminal-tab[draggable='true']:active {
+  cursor: grabbing;
+}
+
 .terminal-host {
   flex: 1;
   position: relative;

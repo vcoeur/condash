@@ -20,11 +20,13 @@ import type {
   Step,
   StepCounts,
   StepMarker,
+  TermSession,
   TerminalPrefs,
   Theme,
   TreeEvent,
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
+import { CodeRunRows } from './code-runs';
 import { NoteModal, type ModalState } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { resetMermaidTheme } from './markdown';
@@ -34,7 +36,7 @@ import './styles.css';
 import './note-modal.css';
 import './project-preview.css';
 
-type Tab = 'projects' | 'history' | 'knowledge' | 'search' | 'code';
+type Tab = 'projects' | 'knowledge' | 'search' | 'code';
 
 const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
 const THEME_LABEL: Record<Theme, string> = {
@@ -263,35 +265,6 @@ function projectsTabGroups(buckets: Map<string, Project[]>): Group[] {
   return out;
 }
 
-function monthFromPath(path: string): string {
-  // projects/YYYY-MM/YYYY-MM-DD-slug/ → "YYYY-MM"
-  const parts = path.split('/');
-  const idx = parts.indexOf('projects');
-  if (idx >= 0 && idx + 1 < parts.length) return parts[idx + 1];
-  return '????-??';
-}
-
-type MonthGroup = { month: string; items: Project[] };
-
-function groupDoneByMonth(items: Project[]): MonthGroup[] {
-  const map = new Map<string, Project[]>();
-  for (const p of items) {
-    if (p.status !== 'done') continue;
-    const key = monthFromPath(p.path);
-    let bucket = map.get(key);
-    if (!bucket) {
-      bucket = [];
-      map.set(key, bucket);
-    }
-    bucket.push(p);
-  }
-  const months = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
-  return months.map((month) => ({
-    month,
-    items: (map.get(month) ?? []).slice().sort((a, b) => b.slug.localeCompare(a.slug)),
-  }));
-}
-
 interface Shortcut {
   ctrl: boolean;
   shift: boolean;
@@ -355,26 +328,27 @@ function App() {
   });
   onCleanup(unsubscribe);
 
-  // Track live (un-exited) terminal sessions by repo name so the Code tab
-  // can light up a LIVE badge while a `make run` (or similar) is alive.
-  const [liveRepos, setLiveRepos] = createSignal<ReadonlySet<string>>(new Set<string>());
-  const offTermSessions = window.condash.onTermSessions((sessions) => {
+  // Track every live-or-exited session — Code tab uses code-side ones for
+  // its inline runner rows, and the LIVE badge on repo cards is derived
+  // from the same snapshot.
+  const [allSessions, setAllSessions] = createSignal<readonly TermSession[]>([]);
+  const liveRepos = createMemo<ReadonlySet<string>>(() => {
     const live = new Set<string>();
-    for (const s of sessions) {
+    for (const s of allSessions()) {
       if (s.repo && s.exited === undefined) live.add(s.repo);
     }
-    setLiveRepos(live);
+    return live;
+  });
+  const codeRunSessions = createMemo<readonly TermSession[]>(() =>
+    allSessions().filter((s) => s.side === 'code'),
+  );
+  const offTermSessions = window.condash.onTermSessions((sessions) => {
+    setAllSessions(sessions);
   });
   // Seed once on mount — onTermSessions only fires on changes, so without
-  // this initial pull, repos with sessions inherited from a prior renderer
-  // would render as not-live until the next spawn/exit.
-  void window.condash.termList().then((sessions) => {
-    const live = new Set<string>();
-    for (const s of sessions) {
-      if (s.repo && s.exited === undefined) live.add(s.repo);
-    }
-    setLiveRepos(live);
-  });
+  // this initial pull, sessions inherited from a prior renderer would not
+  // surface until the next spawn/exit.
+  void window.condash.termList().then(setAllSessions);
   onCleanup(offTermSessions);
 
   const cycleTheme = () => {
@@ -758,14 +732,6 @@ function App() {
           </button>
           <button
             class="tab"
-            classList={{ active: tab() === 'history' }}
-            onClick={() => setTab('history')}
-            disabled={!conceptionPath()}
-          >
-            History
-          </button>
-          <button
-            class="tab"
             classList={{ active: tab() === 'search' }}
             onClick={() => setTab('search')}
             disabled={!conceptionPath()}
@@ -822,16 +788,6 @@ function App() {
           </Suspense>
         </Show>
 
-        <Show when={tab() === 'history'}>
-          <Suspense fallback={<div class="empty">Loading…</div>}>
-            <HistoryView
-              months={groupDoneByMonth(projects() ?? [])}
-              onOpen={handleOpenProject}
-              onToggleStep={handleToggleStep}
-            />
-          </Suspense>
-        </Show>
-
         <Show when={tab() === 'knowledge'}>
           <Suspense fallback={<div class="empty">Loading…</div>}>
             <Show
@@ -840,9 +796,7 @@ function App() {
                 <div class="empty">No knowledge/ directory under the selected conception path.</div>
               }
             >
-              <div class="knowledge-pane">
-                <KnowledgeTree node={knowledge()!} onOpen={handleOpenKnowledgeFile} />
-              </div>
+              <KnowledgeView root={knowledge()!} onOpen={handleOpenKnowledgeFile} />
             </Show>
           </Suspense>
         </Show>
@@ -859,6 +813,17 @@ function App() {
               }
             >
               <div class="repos-pane">
+                <CodeRunRows
+                  sessions={codeRunSessions()}
+                  repos={repos() ?? []}
+                  onPopOut={(id) => {
+                    void window.condash.termSetSide(id, 'my').then(() => {
+                      setTerminalOpen(true);
+                      terminalHandle?.switchTo('my', id);
+                    });
+                  }}
+                  onClose={(id) => void window.condash.termClose(id)}
+                />
                 <For each={repoGroups()}>
                   {(group) => (
                     <section class="repos-group" data-group={group.id}>
@@ -952,6 +917,7 @@ function App() {
         open={terminalOpen()}
         onClose={() => setTerminalOpen(false)}
         launcherCommand={terminalPrefs()?.launcher_command ?? null}
+        cwd={conceptionPath()}
         registerHandle={(handle) => {
           terminalHandle = handle;
         }}
@@ -966,6 +932,16 @@ function App() {
   );
 }
 
+function projectMatches(item: Project, needle: string): boolean {
+  if (!needle) return true;
+  return (
+    item.title.toLowerCase().includes(needle) ||
+    item.slug.toLowerCase().includes(needle) ||
+    (item.summary?.toLowerCase().includes(needle) ?? false) ||
+    (item.apps?.toLowerCase().includes(needle) ?? false)
+  );
+}
+
 function ProjectsView(props: {
   buckets: Map<string, Project[]>;
   onOpen: (project: Project) => void;
@@ -973,28 +949,20 @@ function ProjectsView(props: {
   onDropProject: (path: string, newStatus: string) => void;
 }) {
   const [filter, setFilter] = createSignal('');
-  const matches = (item: Project, q: string): boolean => {
-    if (!q) return true;
-    const needle = q.toLowerCase();
-    return (
-      item.title.toLowerCase().includes(needle) ||
-      item.slug.toLowerCase().includes(needle) ||
-      (item.summary?.toLowerCase().includes(needle) ?? false) ||
-      (item.apps?.toLowerCase().includes(needle) ?? false)
-    );
-  };
-  const filteredBuckets = (): Map<string, Project[]> => {
-    const q = filter().trim();
-    if (!q) return props.buckets;
-    const out = new Map<string, Project[]>();
-    for (const [status, items] of props.buckets) {
-      out.set(
+  const trimmedQuery = createMemo(() => filter().trim().toLowerCase());
+  const filteredGroups = createMemo<Group[]>(() => {
+    const q = trimmedQuery();
+    const buckets = props.buckets;
+    if (!q) return projectsTabGroups(buckets);
+    const filtered = new Map<string, Project[]>();
+    for (const [status, items] of buckets) {
+      filtered.set(
         status,
-        items.filter((it) => matches(it, q)),
+        items.filter((it) => projectMatches(it, q)),
       );
     }
-    return out;
-  };
+    return projectsTabGroups(filtered);
+  });
   return (
     <div class="projects-stack">
       <div class="projects-filter">
@@ -1006,12 +974,12 @@ function ProjectsView(props: {
           onInput={(e) => setFilter(e.currentTarget.value)}
         />
       </div>
-      <For each={projectsTabGroups(filteredBuckets())}>
+      <For each={filteredGroups()}>
         {(group) => (
           <GroupBlock
             group={group}
             collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
-            forceOpen={filter().trim().length > 0 && group.items.length > 0}
+            forceOpen={trimmedQuery().length > 0 && group.items.length > 0}
             onOpen={props.onOpen}
             onToggleStep={props.onToggleStep}
             onDropProject={props.onDropProject}
@@ -1102,41 +1070,6 @@ function GroupBlock(props: {
         </div>
       </Show>
     </section>
-  );
-}
-
-function HistoryView(props: {
-  months: MonthGroup[];
-  onOpen: (project: Project) => void;
-  onToggleStep: (project: Project, step: Step) => void;
-}) {
-  return (
-    <div class="history-pane">
-      <Show when={props.months.length > 0} fallback={<div class="empty">No done items yet.</div>}>
-        <For each={props.months}>
-          {(group) => (
-            <section class="history-month">
-              <header class="history-month-header">
-                <span class="name">{group.month}</span>
-                <span class="count">{group.items.length}</span>
-              </header>
-              <div class="history-month-body">
-                <For each={group.items}>
-                  {(item) => (
-                    <Card
-                      item={item}
-                      onOpen={props.onOpen}
-                      onToggleStep={props.onToggleStep}
-                      draggable={false}
-                    />
-                  )}
-                </For>
-              </div>
-            </section>
-          )}
-        </For>
-      </Show>
-    </div>
   );
 }
 
@@ -1248,11 +1181,51 @@ function Card(props: {
   );
 }
 
-function KnowledgeTree(props: { node: KnowledgeNode; onOpen: (path: string) => void }) {
+/** Prune `node` to only the subtree where some descendant title or path
+ * matches `needle`. Returns null when nothing in the subtree matches. */
+function filterKnowledgeTree(node: KnowledgeNode, needle: string): KnowledgeNode | null {
+  if (!needle) return node;
+  const titleHit = node.title.toLowerCase().includes(needle);
+  const pathHit = node.path.toLowerCase().includes(needle);
+  if (node.kind === 'file') {
+    return titleHit || pathHit ? node : null;
+  }
+  const children = (node.children ?? [])
+    .map((c) => filterKnowledgeTree(c, needle))
+    .filter((c): c is KnowledgeNode => c !== null);
+  if (children.length === 0 && !titleHit && !pathHit) return null;
+  return { ...node, children };
+}
+
+function KnowledgeView(props: { root: KnowledgeNode; onOpen: (path: string) => void }) {
+  const [filter, setFilter] = createSignal('');
+  const trimmed = createMemo(() => filter().trim().toLowerCase());
+  const filteredRoot = createMemo<KnowledgeNode | null>(() =>
+    filterKnowledgeTree(props.root, trimmed()),
+  );
   return (
-    <ul class="knowledge-tree knowledge-tree-root">
-      <KnowledgeNodeView node={props.node} depth={0} onOpen={props.onOpen} initiallyExpanded />
-    </ul>
+    <div class="knowledge-pane">
+      <div class="projects-filter">
+        <input
+          class="projects-filter-input"
+          type="search"
+          placeholder="Filter knowledge (title, path)…"
+          value={filter()}
+          onInput={(e) => setFilter(e.currentTarget.value)}
+        />
+      </div>
+      <Show when={filteredRoot()} fallback={<div class="empty">No knowledge entries match.</div>}>
+        <ul class="knowledge-tree knowledge-tree-root">
+          <KnowledgeNodeView
+            node={filteredRoot()!}
+            depth={0}
+            onOpen={props.onOpen}
+            initiallyExpanded
+            forceExpand={trimmed().length > 0}
+          />
+        </ul>
+      </Show>
+    </div>
   );
 }
 
@@ -1261,8 +1234,12 @@ function KnowledgeNodeView(props: {
   depth: number;
   onOpen: (path: string) => void;
   initiallyExpanded?: boolean;
+  /** When true, ignore the local toggle and expand — used so a search filter
+   * surfaces matches no matter how the user previously collapsed branches. */
+  forceExpand?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(props.initiallyExpanded ?? props.depth === 0);
+  const isExpanded = (): boolean => props.forceExpand || expanded();
 
   return (
     <li class="knowledge-node" data-kind={props.node.kind}>
@@ -1280,17 +1257,22 @@ function KnowledgeNodeView(props: {
         }
       >
         <button class="knowledge-dir" onClick={() => setExpanded((v) => !v)}>
-          <span class="knowledge-icon">{expanded() ? '▾' : '▸'}</span>
+          <span class="knowledge-icon">{isExpanded() ? '▾' : '▸'}</span>
           <span class="knowledge-title">{props.node.title}</span>
           <Show when={props.node.children}>
             <span class="knowledge-count">{props.node.children!.length}</span>
           </Show>
         </button>
-        <Show when={expanded() && props.node.children}>
+        <Show when={isExpanded() && props.node.children}>
           <ul class="knowledge-tree">
             <For each={props.node.children}>
               {(child) => (
-                <KnowledgeNodeView node={child} depth={props.depth + 1} onOpen={props.onOpen} />
+                <KnowledgeNodeView
+                  node={child}
+                  depth={props.depth + 1}
+                  onOpen={props.onOpen}
+                  forceExpand={props.forceExpand}
+                />
               )}
             </For>
           </ul>

@@ -41,6 +41,7 @@ const api: CondashApi = {
   termLatestScreenshot: (dir) => ipcRenderer.invoke('term.latestScreenshot', dir),
   termList: () => ipcRenderer.invoke('term.list'),
   termAttach: (id) => ipcRenderer.invoke('term.attach', id),
+  termSetSide: (id, side) => ipcRenderer.invoke('term.setSide', id, side),
   onTermData: (callback) => {
     const handler = (_: unknown, msg: TermDataMessage): void => callback(msg);
     ipcRenderer.on('term.data', handler);

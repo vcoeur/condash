@@ -19,6 +19,7 @@ import {
   latestScreenshot,
   listTerminalSessions,
   resizeTerminal,
+  setSessionSide,
   spawnTerminal,
   writeTerminal,
 } from './terminals';
@@ -157,6 +158,8 @@ function registerIpc(): void {
   ipcMain.handle('term.list', () => listTerminalSessions());
 
   ipcMain.handle('term.attach', (_, id: string) => attachTerminal(id));
+
+  ipcMain.handle('term.setSide', (_, id: string, side: 'my' | 'code') => setSessionSide(id, side));
 
   ipcMain.handle('term.getPrefs', async () => {
     const { conceptionPath } = await readSettings();
