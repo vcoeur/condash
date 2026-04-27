@@ -75,6 +75,9 @@ export interface Worktree {
   branch: string | null;
   /** True when this worktree is the primary checkout (the one in `repositories`). */
   primary: boolean;
+  /** Count of modified + staged + untracked files in this worktree; null
+   * when git status couldn't run for any reason. */
+  dirty?: number | null;
 }
 
 export interface RepoEntry {

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { simpleGit } from 'simple-git';
 import type { Worktree } from '../shared/types';
 
 const exec = promisify(execFile);
@@ -14,6 +15,10 @@ const exec = promisify(execFile);
  *   (or `detached`)
  *
  * blocks are separated by blank lines.
+ *
+ * Per-worktree dirty counts are filled in via a fan-out `git status` call so
+ * the Code-tab UI can show "main CLEAN" alongside "parity-batch-5 74 dirty"
+ * without the user clicking through each branch.
  */
 export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
   let stdout = '';
@@ -56,5 +61,18 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
       primary: out.length === 0,
     });
   }
+
+  // Fan out a per-worktree git status. We swallow individual failures so a
+  // single broken worktree doesn't blank out the whole list.
+  await Promise.all(
+    out.map(async (wt) => {
+      try {
+        const status = await simpleGit({ baseDir: wt.path }).status();
+        wt.dirty = status.files.length;
+      } catch {
+        wt.dirty = null;
+      }
+    }),
+  );
   return out;
 }

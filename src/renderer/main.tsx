@@ -24,6 +24,7 @@ import type {
   TerminalPrefs,
   Theme,
   TreeEvent,
+  Worktree,
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { CodeRunRows } from './code-runs';
@@ -590,6 +591,10 @@ function App() {
   };
 
   const handleOpenProject = (project: Project) => {
+    // Opening a fresh preview from a card resets any pending back-link from
+    // a previously-opened file modal — the user has explicitly chosen a new
+    // starting point.
+    setPreviewBackPath(null);
     setPreviewPath(project.path);
   };
 
@@ -675,14 +680,32 @@ function App() {
     }
   };
 
+  // When a file is opened from inside the project preview, remember which
+  // project we came from so the user can navigate back to the card view
+  // after closing the file. Cleared whenever the user opens a fresh
+  // preview directly from a card.
+  const [previewBackPath, setPreviewBackPath] = createSignal<string | null>(null);
+
   const handleOpenFileFromPreview = (path: string) => {
     if (path.toLowerCase().endsWith('.md')) {
+      setPreviewBackPath(previewPath());
       setPreviewPath(null);
       setModal({ path });
     } else if (path.toLowerCase().endsWith('.pdf')) {
+      setPreviewBackPath(previewPath());
       setPdfPath(path);
     } else {
+      // Non-md, non-pdf — opens externally, preview stays in place.
       void window.condash.openInEditor(path);
+    }
+  };
+
+  const closeChildModal = (clear: () => void) => {
+    clear();
+    const back = previewBackPath();
+    if (back) {
+      setPreviewBackPath(null);
+      setPreviewPath(back);
     }
   };
 
@@ -898,7 +921,7 @@ function App() {
       <Show when={modal()}>
         <NoteModal
           state={modal()}
-          onClose={() => setModal(null)}
+          onClose={() => closeChildModal(() => setModal(null))}
           onOpenInEditor={handleOpenInEditor}
           onOpenDeliverable={handleOpenDeliverable}
           onWikilink={handleWikilink}
@@ -908,7 +931,7 @@ function App() {
       <Show when={pdfPath()}>
         <PdfModal
           path={pdfPath()!}
-          onClose={() => setPdfPath(null)}
+          onClose={() => closeChildModal(() => setPdfPath(null))}
           onOpenInOs={handleOpenInEditor}
         />
       </Show>
@@ -1322,10 +1345,49 @@ function groupRepos(repos: readonly RepoEntry[]): RepoGroup[] {
 
 type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
 
-function repoStatus(repo: RepoEntry): RepoStatus {
+/** Synthesise the primary checkout as a Worktree-shaped row when the data
+ * layer didn't return any worktrees (e.g. repo missing or git failed). The
+ * branch is unknown so we leave it null. */
+function ensureWorktrees(repo: RepoEntry): Worktree[] {
+  if (repo.worktrees && repo.worktrees.length > 0) return repo.worktrees;
+  return [
+    {
+      path: repo.path,
+      branch: null,
+      primary: true,
+      dirty: repo.dirty,
+    },
+  ];
+}
+
+/** Sort: primary checkout first, then worktrees alphabetically. */
+function orderedWorktrees(repo: RepoEntry): Worktree[] {
+  const list = ensureWorktrees(repo).slice();
+  list.sort((a, b) => {
+    if (a.primary !== b.primary) return a.primary ? -1 : 1;
+    return (a.branch ?? '').localeCompare(b.branch ?? '');
+  });
+  return list;
+}
+
+/** Per-card status pill text — collapses worktree dirtiness into one of:
+ * "CLEAN", "1 BRANCH DIRTY", "N BRANCHES DIRTY", "MISSING", "?". */
+function cardStatusLabel(repo: RepoEntry): string {
+  if (repo.missing) return 'MISSING';
+  const wts = ensureWorktrees(repo);
+  const dirtyCount = wts.filter((w) => (w.dirty ?? 0) > 0).length;
+  if (dirtyCount === 0) {
+    if (wts.every((w) => w.dirty === null || w.dirty === undefined)) return '?';
+    return 'CLEAN';
+  }
+  return dirtyCount === 1 ? '1 BRANCH DIRTY' : `${dirtyCount} BRANCHES DIRTY`;
+}
+
+function cardStatus(repo: RepoEntry): RepoStatus {
   if (repo.missing) return 'missing';
-  if (repo.dirty == null) return 'unknown';
-  return repo.dirty === 0 ? 'clean' : 'dirty';
+  const wts = ensureWorktrees(repo);
+  if (wts.every((w) => w.dirty === null || w.dirty === undefined)) return 'unknown';
+  return wts.some((w) => (w.dirty ?? 0) > 0) ? 'dirty' : 'clean';
 }
 
 function RepoRow(props: {
@@ -1338,14 +1400,7 @@ function RepoRow(props: {
   onForceStop: (repo: RepoEntry) => void;
   onRun: (repo: RepoEntry) => void;
 }) {
-  const status = (): RepoStatus => repoStatus(props.repo);
-  const statusLabel = (): string => {
-    const s = status();
-    if (s === 'missing') return 'MISSING';
-    if (s === 'unknown') return '?';
-    if (s === 'clean') return 'CLEAN';
-    return `${props.repo.dirty} DIRTY`;
-  };
+  const status = (): RepoStatus => cardStatus(props.repo);
   const displayName = (): string => {
     if (props.repo.parent && props.repo.name.startsWith(`${props.repo.parent}/`)) {
       return props.repo.name.slice(props.repo.parent.length + 1);
@@ -1353,104 +1408,101 @@ function RepoRow(props: {
     return props.repo.name;
   };
 
+  const branchStatus = (wt: Worktree): RepoStatus => {
+    if (props.repo.missing) return 'missing';
+    if (wt.dirty == null) return 'unknown';
+    return wt.dirty === 0 ? 'clean' : 'dirty';
+  };
+
   return (
     <article
       class="repo-row"
       classList={{
         missing: props.repo.missing,
-        dirty: !!props.repo.dirty,
         submodule: !!props.repo.parent,
       }}
       data-status={status()}
     >
-      <div class="repo-head">
+      <header class="repo-head">
         <span class="repo-name">{displayName()}</span>
+        <span class="repo-status-badge" data-status={status()}>
+          {cardStatusLabel(props.repo)}
+        </span>
         <Show when={props.live}>
           <span class="repo-live-badge" title="A terminal session is running for this repo">
             LIVE
           </span>
         </Show>
-        <span class="repo-status-badge" data-status={status()}>
-          {statusLabel()}
+        <span class="spacer" />
+        <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>
+          {props.repo.parent ? 'SUB' : 'REPO'}
         </span>
-      </div>
-      <span class="repo-path">{props.repo.path}</span>
-      <div class="repo-actions">
-        <button
-          class="repo-action"
-          onClick={() => props.onOpen(props.repo.path)}
-          disabled={props.repo.missing}
-          title="Open in OS file manager"
-        >
-          Open
-        </button>
-        <button
-          class="repo-action run"
-          onClick={() => props.onRun(props.repo)}
-          disabled={props.repo.missing}
-          title="Run in terminal pane"
-        >
-          ▶ Run
-        </button>
-        <For each={LAUNCHER_SLOTS}>
-          {(slot) => (
-            <Show when={props.slots[slot]}>
-              <button
-                class="repo-action icon"
-                onClick={() => props.onLaunch(slot, props.repo.path)}
-                disabled={props.repo.missing}
-                title={props.slots[slot]!.label}
-              >
-                {LAUNCHER_GLYPH[slot]}
-              </button>
-            </Show>
+      </header>
+      <ul class="branches">
+        <For each={orderedWorktrees(props.repo)}>
+          {(wt) => (
+            <li class="branch-row" data-status={branchStatus(wt)}>
+              <span class="branch-dot" aria-hidden="true" />
+              <span class="branch-name">{wt.branch ?? '(detached)'}</span>
+              <span class="branch-role">{wt.primary ? 'CHECKOUT' : 'WORKTREE'}</span>
+              <Show when={(wt.dirty ?? 0) > 0}>
+                <span class="branch-dirty">{wt.dirty} dirty</span>
+              </Show>
+              <Show when={wt.primary && props.live}>
+                <span class="branch-live-dot" title="Running" aria-label="Running" />
+              </Show>
+              <span class="spacer" />
+              <div class="branch-actions">
+                <Show when={wt.primary}>
+                  <button
+                    class="repo-action run"
+                    onClick={() => props.onRun(props.repo)}
+                    disabled={props.repo.missing}
+                    title="Run configured run: command"
+                  >
+                    ▶
+                  </button>
+                  <Show when={props.repo.hasForceStop}>
+                    <button
+                      class="repo-action icon warn"
+                      onClick={() => props.onForceStop(props.repo)}
+                      disabled={props.repo.missing}
+                      title="Force-stop"
+                    >
+                      ⏹
+                    </button>
+                  </Show>
+                </Show>
+                <button
+                  class="repo-action icon"
+                  onClick={() => props.onOpen(wt.path)}
+                  disabled={props.repo.missing}
+                  title="Open in OS file manager"
+                >
+                  📁
+                </button>
+                <For each={LAUNCHER_SLOTS}>
+                  {(slot) => (
+                    <Show when={props.slots[slot]}>
+                      <button
+                        class="repo-action icon"
+                        onClick={() => props.onLaunch(slot, wt.path)}
+                        disabled={props.repo.missing}
+                        title={props.slots[slot]!.label}
+                      >
+                        {LAUNCHER_GLYPH[slot]}
+                      </button>
+                    </Show>
+                  )}
+                </For>
+              </div>
+            </li>
           )}
         </For>
-        <Show when={props.repo.hasForceStop}>
-          <button
-            class="repo-action icon warn"
-            onClick={() => props.onForceStop(props.repo)}
-            disabled={props.repo.missing}
-            title="Force-stop (runs configured force_stop:)"
-          >
-            ⏹
-          </button>
-        </Show>
-      </div>
-      <Show when={props.repo.worktrees && props.repo.worktrees.length > 1}>
-        <ul class="worktrees">
-          <For each={props.repo.worktrees!.filter((w) => !w.primary)}>
-            {(wt) => (
-              <li class="worktree-row">
-                <span class="worktree-branch">{wt.branch ?? '(detached)'}</span>
-                <span class="worktree-path">{wt.path}</span>
-                <div class="worktree-actions">
-                  <button
-                    class="repo-action"
-                    onClick={() => props.onOpen(wt.path)}
-                    title="Open worktree in OS file manager"
-                  >
-                    Open
-                  </button>
-                  <For each={LAUNCHER_SLOTS}>
-                    {(slot) => (
-                      <Show when={props.slots[slot]}>
-                        <button
-                          class="repo-action icon"
-                          onClick={() => props.onLaunch(slot, wt.path)}
-                          title={props.slots[slot]!.label}
-                        >
-                          {LAUNCHER_GLYPH[slot]}
-                        </button>
-                      </Show>
-                    )}
-                  </For>
-                </div>
-              </li>
-            )}
-          </For>
-        </ul>
-      </Show>
+      </ul>
+      <span class="repo-path" title={props.repo.path}>
+        {props.repo.path}
+      </span>
     </article>
   );
 }

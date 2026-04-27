@@ -440,25 +440,60 @@ export function TerminalPane(props: {
   });
 
   // ---- drag-to-reorder + drag-between-columns ----
+  // Track the in-flight drag so the source tab can dim, the hovered target
+  // can show a drop indicator, and the strip itself can highlight when the
+  // user is hovering over empty space.
+  const [draggingId, setDraggingId] = createSignal<string | null>(null);
+  const [dropTarget, setDropTarget] = createSignal<{
+    id: string | null;
+    column: Column | null;
+  }>({ id: null, column: null });
+  const clearDragState = () => {
+    setDraggingId(null);
+    setDropTarget({ id: null, column: null });
+  };
+
   const onDragStart = (e: DragEvent, id: string) => {
     if (!e.dataTransfer) return;
     e.dataTransfer.setData(DRAG_MIME, id);
     e.dataTransfer.effectAllowed = 'move';
+    setDraggingId(id);
   };
-  const onDragOverTab = (e: DragEvent) => {
+  const onDragEndTab = () => clearDragState();
+  const onDragOverTab = (e: DragEvent, targetId: string, targetColumn: Column) => {
     if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ id: targetId, column: targetColumn });
+  };
+  const onDragOverStrip = (e: DragEvent, column: Column) => {
+    if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    // Set the column-level target only if we're not over a specific tab.
+    if (dropTarget().id === null || dropTarget().column !== column) {
+      setDropTarget({ id: null, column });
+    }
+  };
+  const onDragLeaveStrip = (e: DragEvent, column: Column) => {
+    // Only clear when actually leaving the strip element (not just moving
+    // between its children).
+    const related = e.relatedTarget as HTMLElement | null;
+    const strip = e.currentTarget as HTMLElement;
+    if (related && strip.contains(related)) return;
+    if (dropTarget().column === column) setDropTarget({ id: null, column: null });
   };
   const onDropOnTab = (e: DragEvent, targetId: string, targetColumn: Column) => {
     e.preventDefault();
     const srcId = e.dataTransfer?.getData(DRAG_MIME);
+    clearDragState();
     if (!srcId || srcId === targetId) return;
     moveTab(srcId, { beforeId: targetId, column: targetColumn });
   };
   const onDropOnStrip = (e: DragEvent, column: Column) => {
     e.preventDefault();
     const srcId = e.dataTransfer?.getData(DRAG_MIME);
+    clearDragState();
     if (!srcId) return;
     moveTab(srcId, { column });
   };
@@ -533,7 +568,12 @@ export function TerminalPane(props: {
       <div class="terminal-column" classList={{ active: isActiveCol() }}>
         <div
           class="terminal-tabs"
-          onDragOver={onDragOverTab}
+          classList={{
+            'drop-strip-target':
+              draggingId() !== null && dropTarget().column === col && dropTarget().id === null,
+          }}
+          onDragOver={(e) => onDragOverStrip(e, col)}
+          onDragLeave={(e) => onDragLeaveStrip(e, col)}
           onDrop={(e) => onDropOnStrip(e, col)}
           onClick={() => setActiveColumn(col)}
         >
@@ -545,10 +585,14 @@ export function TerminalPane(props: {
                   active: tab.id === activeIdIn(col),
                   exited: tab.exited !== undefined,
                   renaming: tab.id === renamingId(),
+                  dragging: draggingId() === tab.id,
+                  'drop-before':
+                    dropTarget().id === tab.id && draggingId() !== null && draggingId() !== tab.id,
                 }}
                 draggable={tab.id !== renamingId()}
                 onDragStart={(e) => onDragStart(e, tab.id)}
-                onDragOver={onDragOverTab}
+                onDragEnd={onDragEndTab}
+                onDragOver={(e) => onDragOverTab(e, tab.id, col)}
                 onDrop={(e) => onDropOnTab(e, tab.id, col)}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -619,8 +663,9 @@ export function TerminalPane(props: {
                 void spawnUserShell(props.launcherCommand, 'my');
               }}
               title={`New ${props.launcherCommand} tab (cwd: conception)`}
+              aria-label={`New ${props.launcherCommand} tab`}
             >
-              +{props.launcherCommand}
+              λ
             </button>
           </Show>
         </div>
@@ -644,13 +689,14 @@ export function TerminalPane(props: {
           onMouseDown={(e) => startHeightDrag(e)}
           title="Drag to resize"
         />
-        <header class="terminal-toolbar">
-          <span class="terminal-toolbar-title">Terminals</span>
-          <span class="spacer" />
-          <button class="modal-button" onClick={props.onClose} title="Close pane">
-            ×
-          </button>
-        </header>
+        <button
+          class="terminal-pane-close"
+          onClick={props.onClose}
+          title="Close pane"
+          aria-label="Close pane"
+        >
+          ×
+        </button>
         <div
           class="terminal-columns"
           ref={(el) => (columnsRoot = el)}

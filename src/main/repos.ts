@@ -131,7 +131,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
           dirty: status.files.length,
           missing: false,
           hasForceStop,
-          worktrees: worktrees.length > 1 ? worktrees : undefined,
+          worktrees: worktrees.length > 0 ? worktrees : undefined,
         } satisfies RepoEntry;
       } catch {
         const worktrees = await worktreesPromise;
@@ -143,7 +143,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
           dirty: null,
           missing: false,
           hasForceStop,
-          worktrees: worktrees.length > 1 ? worktrees : undefined,
+          worktrees: worktrees.length > 0 ? worktrees : undefined,
         } satisfies RepoEntry;
       }
     }),
