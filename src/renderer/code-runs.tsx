@@ -3,7 +3,7 @@
 // repo / branch metadata, a collapsible mini xterm (~20 lines), and a pop-out
 // button that re-sides the session to "my" so it lives in the bottom pane.
 
-import { createSignal, createMemo, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createSignal, createMemo, For, onCleanup, Show } from 'solid-js';
 import type { TermSession, RepoEntry, Worktree } from '@shared/types';
 import { mountXterm } from './xterm-mount';
 
@@ -61,28 +61,47 @@ function CodeRunRow(props: {
 }) {
   const [expanded, setExpanded] = createSignal(true);
   const meta = createMemo(() => repoMeta(props.repos, props.session.repo));
+
+  // Build the xterm element once and re-park it under the row's host every
+  // time the row is expanded. Disposing on collapse loses the live stream
+  // and the scrollback — which the previous version did, leaving an empty
+  // terminal after expand/collapse cycles.
+  const xtermElement = document.createElement('div');
+  xtermElement.className = 'xterm-host';
   let host: HTMLDivElement | undefined;
   let mounted: ReturnType<typeof mountXterm> | null = null;
+  let mountPromise: Promise<void> | null = null;
 
-  // Mount xterm lazily when first expanded; replay buffered tail from main.
-  const ensureMounted = async () => {
-    if (mounted || !host) return;
-    const attach = await window.condash.termAttach(props.session.id);
-    mounted = mountXterm(host, props.session.id, {
-      replay: attach?.output,
-    });
-    // Layout settles next frame; fit then so xterm picks up real cols/rows.
-    requestAnimationFrame(() => {
-      try {
-        mounted?.fit.fit();
-      } catch {
-        /* host not laid out yet */
-      }
-    });
+  const ensureMounted = (): Promise<void> => {
+    if (mounted) return Promise.resolve();
+    if (mountPromise) return mountPromise;
+    mountPromise = (async () => {
+      const attach = await window.condash.termAttach(props.session.id);
+      mounted = mountXterm(xtermElement, props.session.id, { replay: attach?.output });
+    })();
+    return mountPromise;
   };
 
-  // Stream live data into the local xterm (only when this row owns the
-  // session — i.e. before pop-out re-sides it).
+  // Re-attach the xterm element to whichever host node is currently mounted.
+  // createEffect re-runs when expanded() flips back on.
+  createEffect(() => {
+    if (!expanded() || !host) return;
+    void ensureMounted().then(() => {
+      if (host && xtermElement.parentElement !== host) {
+        host.appendChild(xtermElement);
+      }
+      requestAnimationFrame(() => {
+        try {
+          mounted?.fit.fit();
+        } catch {
+          /* host not laid out yet */
+        }
+      });
+    });
+  });
+
+  // Stream live data into the local xterm. Buffered output is in main; the
+  // live stream goes through onTermData regardless of expand state.
   const offData = window.condash.onTermData(({ id, data }) => {
     if (id !== props.session.id) return;
     mounted?.term.write(data);
@@ -97,6 +116,7 @@ function CodeRunRow(props: {
     offExit();
     mounted?.dispose();
     mounted = null;
+    xtermElement.remove();
   });
 
   return (
@@ -149,7 +169,6 @@ function CodeRunRow(props: {
           class="code-run-host"
           ref={(el) => {
             host = el;
-            void ensureMounted();
           }}
         />
       </Show>

@@ -1,11 +1,27 @@
 .terminal-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
-  height: 320px;
   flex-shrink: 0;
   contain: layout paint;
+  /* Height controlled inline via the resize handle. */
+}
+
+.terminal-pane-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 2;
+  background: transparent;
+}
+
+.terminal-pane-resize:hover {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .terminal-toolbar {
@@ -15,34 +31,71 @@
   padding: 4px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
+  flex-shrink: 0;
 }
 
-.terminal-side-toggle {
+.terminal-toolbar-title {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.terminal-toolbar .spacer {
+  flex: 1;
+}
+
+.terminal-columns {
+  flex: 1;
+  display: grid;
+  /* grid-template-columns set inline from splitRatio. */
+  min-height: 0;
+}
+
+.terminal-column {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-elevated);
+  border-right: 1px solid transparent;
+  position: relative;
 }
 
-.terminal-side-toggle .modal-button {
-  width: auto;
-  padding: 0 8px;
-  height: 24px;
-  font-size: 11px;
-  font-weight: 500;
+.terminal-column.active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  pointer-events: none;
 }
 
-.terminal-side-toggle .modal-button.active {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-  color: var(--accent);
+.terminal-splitter {
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 100ms ease;
+}
+
+.terminal-splitter:hover {
+  background: var(--accent);
 }
 
 .terminal-tabs {
   display: flex;
-  flex: 1;
   gap: 4px;
   align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
   overflow-x: auto;
   scrollbar-width: thin;
+  flex-shrink: 0;
+  min-height: 32px;
 }
 
 .terminal-tab {
@@ -56,6 +109,7 @@
   cursor: pointer;
   background: var(--bg-elevated);
   max-width: 220px;
+  flex-shrink: 0;
 }
 
 .terminal-tab.active {
@@ -134,6 +188,7 @@
   flex: 1;
   position: relative;
   background: var(--bg-elevated);
+  min-height: 0;
 }
 
 .xterm-host {
