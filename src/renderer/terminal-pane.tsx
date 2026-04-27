@@ -1,8 +1,8 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { TermSide, TermSpawnRequest } from '@shared/types';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import '@xterm/xterm/css/xterm.css';
+import type { Terminal } from '@xterm/xterm';
+import type { FitAddon } from '@xterm/addon-fit';
+import { mountXterm } from './xterm-mount';
 import './terminal-pane.css';
 
 export interface Tab {
@@ -68,7 +68,12 @@ export function TerminalPane(props: {
   open: boolean;
   onClose: () => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
+  /** Optional launcher command (e.g. `claude`). When set, a second `+` button
+   * spawns a shell that runs this command. */
   launcherCommand?: string | null;
+  /** Working directory passed to spawned user shells (typically the
+   * conception path). Defaults to $HOME on the main side. */
+  cwd?: string | null;
 }) {
   const [side, setSide] = createSignal<TermSide>('my');
   const [tabs, setTabs] = createSignal<Tab[]>([]);
@@ -99,40 +104,21 @@ export function TerminalPane(props: {
     setActive((prev) => ({ ...prev, [sd]: id }));
   };
 
-  const visibleTabs = (): Tab[] => tabs().filter((t) => t.side === side());
+  /** Bottom pane is "My terms"-only. Code-side sessions are surfaced on
+   * the Code tab as inline runner rows; they don't appear here. */
+  const visibleTabs = (): Tab[] => tabs().filter((t) => t.side === 'my');
 
-  const activeId = (): string | null => active()[side()];
+  const activeId = (): string | null => active().my;
 
-  /** Build a freshly-mounted xterm for a session id. Used by both spawn (new
-   * pty) and re-attach (existing pty surviving a renderer reload). */
-  const mountXterm = (id: string, replay?: string): { fit: FitAddon } => {
-    const term = new Terminal({
-      fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-      fontSize: 12,
-      theme: themeFromCss(),
-      cursorBlink: true,
-      scrollback: 4000,
-      allowProposedApi: true,
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-
+  /** Mount an xterm in the bottom pane for a session id. */
+  const mountForSession = (id: string, replay?: string): { fit: FitAddon } => {
     const element = document.createElement('div');
     element.className = 'xterm-host';
     element.style.display = 'none';
     if (host) host.appendChild(element);
-    term.open(element);
-    if (replay) term.write(replay);
-
-    term.onData((data) => {
-      void window.condash.termWrite(id, data);
-    });
-    term.onResize(({ cols, rows }) => {
-      void window.condash.termResize(id, cols, rows);
-    });
-
-    xterms.set(id, { term, fit, element });
-    return { fit };
+    const handle = mountXterm(element, id, { replay });
+    xterms.set(id, { term: handle.term, fit: handle.fit, element });
+    return { fit: handle.fit };
   };
 
   const spawn = async (request: TermSpawnRequest, label: string): Promise<string> => {
@@ -141,18 +127,21 @@ export function TerminalPane(props: {
     setTabs((prev) => [...prev, newTab]);
     setMeta(id, { label });
 
-    mountXterm(id);
-    setActiveFor(request.side, id);
-    setSide(request.side);
-    queueMicrotask(() => focusActive());
+    if (request.side === 'my') {
+      mountForSession(id);
+      setActiveFor('my', id);
+      setSide('my');
+      queueMicrotask(() => focusActive());
+    }
     return id;
   };
 
-  /** Re-attach to ptys that survived a renderer reload. Reads tab metadata
-   * from localStorage and replays the buffered output that main has been
-   * holding for us. Runs once on mount. */
+  /** Re-attach to my-side ptys that survived a renderer reload. Reads tab
+   * metadata from localStorage and replays the buffered output that main
+   * has been holding for us. Code-side sessions are owned by the Code tab
+   * (CodeRunRow) and are not mounted here. */
   const reattachExistingSessions = async (): Promise<void> => {
-    const sessions = await window.condash.termList();
+    const sessions = (await window.condash.termList()).filter((s) => s.side === 'my');
     if (sessions.length === 0) return;
     const meta = readMeta();
     for (const s of sessions) {
@@ -167,29 +156,89 @@ export function TerminalPane(props: {
       };
       setTabs((prev) => [...prev, tab]);
       const attach = await window.condash.termAttach(s.id);
-      mountXterm(s.id, attach?.output);
+      mountForSession(s.id, attach?.output);
     }
-    // Restore the last-active selections per side, if any of those ids are
-    // still around. Otherwise fall back to the most recent tab.
     setSide('my');
-    const myTabs = sessions.filter((s) => s.side === 'my');
-    const codeTabs = sessions.filter((s) => s.side === 'code');
-    setActiveFor('my', myTabs.at(-1)?.id ?? null);
-    setActiveFor('code', codeTabs.at(-1)?.id ?? null);
+    setActiveFor('my', sessions.at(-1)?.id ?? null);
     queueMicrotask(focusActive);
   };
+
+  // When a code-side session is "popped out" to my-side from the Code tab,
+  // main re-broadcasts the session list with the new side. Pick up any
+  // newly-my sessions whose tab we don't yet have, mount their xterms, and
+  // replay the buffered tail.
+  const offTermSessions = window.condash.onTermSessions((snap) => {
+    void (async () => {
+      const known = new Set(tabs().map((t) => t.id));
+      for (const s of snap) {
+        if (s.side !== 'my' || known.has(s.id)) continue;
+        const meta = readMeta()[s.id];
+        const label = meta?.label ?? (s.repo ? `${s.repo} (run)` : 'shell');
+        const tab: Tab = {
+          id: s.id,
+          side: 'my',
+          label,
+          customName: meta?.customName,
+          exited: s.exited,
+        };
+        setTabs((prev) => [...prev, tab]);
+        const attach = await window.condash.termAttach(s.id);
+        mountForSession(s.id, attach?.output);
+        setActiveFor('my', s.id);
+        queueMicrotask(focusActive);
+      }
+      // Drop tabs whose session has switched to 'code' (e.g. send-to-Code,
+      // not a current feature but symmetric with pop-out) or has been
+      // closed entirely.
+      const live = new Set(snap.map((s) => s.id));
+      for (const t of tabs()) {
+        const stillMy = snap.find((s) => s.id === t.id && s.side === 'my');
+        if (live.has(t.id) && stillMy) continue;
+        // Session vanished or moved to code-side: drop the tab + xterm here.
+        const handle = xterms.get(t.id);
+        handle?.term.dispose();
+        handle?.element.remove();
+        xterms.delete(t.id);
+        setTabs((prev) => prev.filter((x) => x.id !== t.id));
+        if (active().my === t.id) {
+          const remaining = tabs().filter((x) => x.id !== t.id);
+          setActiveFor('my', remaining.at(-1)?.id ?? null);
+        }
+      }
+    })();
+  });
+  onCleanup(offTermSessions);
 
   onMount(() => {
     void reattachExistingSessions();
   });
 
+  /** Disambiguate `shell`, `shell (2)`, `shell (3)` etc. when several plain
+   * shell tabs are open at once. */
+  const uniqueLabel = (base: string): string => {
+    const taken = new Set(tabs().map((t) => t.label));
+    if (!taken.has(base)) return base;
+    for (let i = 2; i < 1000; i++) {
+      const candidate = `${base} (${i})`;
+      if (!taken.has(candidate)) return candidate;
+    }
+    return base;
+  };
+
   const spawnUserShell = async (
     launcherCommand?: string | null,
     sd: TermSide = 'my',
   ): Promise<string> => {
-    const stamp = new Date().toLocaleTimeString();
-    const label = launcherCommand?.trim() ? `${launcherCommand} · ${stamp}` : `shell · ${stamp}`;
-    return spawn({ side: sd, command: launcherCommand?.trim() || undefined }, label);
+    const base = launcherCommand?.trim() || 'shell';
+    const label = uniqueLabel(base);
+    return spawn(
+      {
+        side: sd,
+        command: launcherCommand?.trim() || undefined,
+        cwd: props.cwd ?? undefined,
+      },
+      label,
+    );
   };
 
   const onTermData = window.condash.onTermData(({ id, data }) => {
@@ -301,32 +350,36 @@ export function TerminalPane(props: {
   onMount(() => props.registerHandle(handle));
   onCleanup(() => props.registerHandle(null));
 
+  const onDragStart = (e: DragEvent, id: string) => {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData('application/x-condash-term-tab', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const onDragOverTab = (e: DragEvent) => {
+    if (!e.dataTransfer?.types.includes('application/x-condash-term-tab')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+  const onDropOnTab = (e: DragEvent, targetId: string) => {
+    e.preventDefault();
+    const srcId = e.dataTransfer?.getData('application/x-condash-term-tab');
+    if (!srcId || srcId === targetId) return;
+    setTabs((prev) => {
+      const list = prev.slice();
+      const srcIdx = list.findIndex((t) => t.id === srcId);
+      const tgtIdx = list.findIndex((t) => t.id === targetId);
+      if (srcIdx === -1 || tgtIdx === -1) return prev;
+      const [moved] = list.splice(srcIdx, 1);
+      const insertAt = list.findIndex((t) => t.id === targetId);
+      list.splice(insertAt, 0, moved);
+      return list;
+    });
+  };
+
   return (
     <Show when={props.open}>
       <section class="terminal-pane">
         <header class="terminal-toolbar">
-          <div class="terminal-side-toggle" data-active-side={side()}>
-            <button
-              class="modal-button"
-              classList={{ active: side() === 'my' }}
-              onClick={() => {
-                setSide('my');
-                queueMicrotask(focusActive);
-              }}
-            >
-              My terms
-            </button>
-            <button
-              class="modal-button"
-              classList={{ active: side() === 'code' }}
-              onClick={() => {
-                setSide('code');
-                queueMicrotask(focusActive);
-              }}
-            >
-              Code run terms
-            </button>
-          </div>
           <div class="terminal-tabs">
             <For each={visibleTabs()}>
               {(tab) => (
@@ -337,6 +390,10 @@ export function TerminalPane(props: {
                     exited: tab.exited !== undefined,
                     renaming: tab.id === renamingId(),
                   }}
+                  draggable={tab.id !== renamingId()}
+                  onDragStart={(e) => onDragStart(e, tab.id)}
+                  onDragOver={onDragOverTab}
+                  onDrop={(e) => onDropOnTab(e, tab.id)}
                   onClick={() => setActiveFor(tab.side, tab.id)}
                   onDblClick={(e) => {
                     if ((e.target as HTMLElement).closest('.terminal-tab-close')) return;
@@ -382,20 +439,20 @@ export function TerminalPane(props: {
             </For>
             <button
               class="terminal-tab-add"
-              onClick={() => {
-                if (side() === 'my') void spawnUserShell(props.launcherCommand);
-                else void spawnUserShell(props.launcherCommand, 'code');
-              }}
-              title={
-                side() === 'my'
-                  ? props.launcherCommand
-                    ? `New tab (${props.launcherCommand})`
-                    : 'New shell tab'
-                  : 'New code-side shell tab'
-              }
+              onClick={() => void spawnUserShell(null, 'my')}
+              title="New shell tab (cwd: conception)"
             >
               +
             </button>
+            <Show when={props.launcherCommand?.trim()}>
+              <button
+                class="terminal-tab-add launcher"
+                onClick={() => void spawnUserShell(props.launcherCommand, 'my')}
+                title={`New ${props.launcherCommand} tab (cwd: conception)`}
+              >
+                +{props.launcherCommand}
+              </button>
+            </Show>
           </div>
           <button class="modal-button" onClick={props.onClose} title="Close pane">
             ×
@@ -405,12 +462,4 @@ export function TerminalPane(props: {
       </section>
     </Show>
   );
-}
-
-function themeFromCss(): { background: string; foreground: string } {
-  const css = getComputedStyle(document.documentElement);
-  return {
-    background: css.getPropertyValue('--bg-elevated').trim() || '#1f1f23',
-    foreground: css.getPropertyValue('--text').trim() || '#ececf1',
-  };
 }

@@ -56,6 +56,15 @@ export function attachTerminal(id: string): { output: string; exited?: number } 
   return { output: s.buffer, exited: s.exited };
 }
 
+/** Move a session between the "my" and "code" sides. Used by the Code tab's
+ * pop-out button to surface a running dev server in the bottom pane. */
+export function setSessionSide(id: string, side: TermSide): void {
+  const s = sessions.get(id);
+  if (!s || s.side === side) return;
+  s.side = side;
+  broadcastSessions();
+}
+
 function makeId(): string {
   return `t${Date.now().toString(36)}-${nextId++}`;
 }

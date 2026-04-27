@@ -64,6 +64,9 @@ export interface CondashApi {
   /** Pull the buffered output for an existing session, used on renderer
    * mount to replay history into a freshly-created xterm. */
   termAttach(id: string): Promise<{ output: string; exited?: number } | null>;
+  /** Re-side a session — used by the Code-tab pop-out button to surface a
+   * running dev server in the bottom "My terms" pane. */
+  termSetSide(id: string, side: 'my' | 'code'): Promise<void>;
   onTermData(callback: (msg: TermDataMessage) => void): () => void;
   onTermExit(callback: (msg: TermExitMessage) => void): () => void;
   /** Sessions changed (spawn / exit / close). Receives the full snapshot. */
