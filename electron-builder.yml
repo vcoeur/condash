@@ -16,10 +16,17 @@ asar: true
 # Auto-update channel: latest*.yml is uploaded next to the bundles in the
 # GitHub Release tied to the current `v*` tag. App reads it at runtime via
 # electron-updater.
+#
+# `releaseType: prerelease` tells electron-builder to look for (and, if
+# missing, create) a prerelease for the tag. Drafts are invisible to the
+# `releases/tags/:tag` API endpoint electron-builder uses to find the
+# release, so a pre-created draft would be missed and electron-builder
+# would create a duplicate — see release.yml for the long version.
 publish:
   provider: github
   owner: vcoeur
   repo: condash
+  releaseType: prerelease
 
 linux:
   target:
