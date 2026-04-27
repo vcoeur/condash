@@ -250,6 +250,13 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  killAll();
+  void killAll();
   if (process.platform !== 'darwin') app.quit();
+});
+
+// Cmd-Q on macOS bypasses window-all-closed; before-quit covers it. Linux/
+// Windows hit before-quit too, so killAll runs idempotent-cheap on the
+// already-empty session map there.
+app.on('before-quit', () => {
+  void killAll();
 });

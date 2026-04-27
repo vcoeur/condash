@@ -431,6 +431,18 @@ function App() {
     }
   };
 
+  // Per-card ⏹ — close the live code-side session for this repo, which now
+  // routes through the full Stop pipeline (process-group SIGTERM, force_stop,
+  // SIGKILL fallback) in main/terminals.ts. No window.confirm: the button is
+  // only visible when the repo is live, and the icon reads as destructive.
+  const handleStopRepo = (repo: RepoEntry): void => {
+    const live = allSessions().find(
+      (s) => s.side === 'code' && s.repo === repo.name && s.exited === undefined,
+    );
+    if (!live) return;
+    void window.condash.termClose(live.id);
+  };
+
   const ensureTerminalOpen = (): void => {
     if (!terminalOpen()) setTerminalOpen(true);
   };
@@ -882,6 +894,7 @@ function App() {
                               onOpen={handleOpenInEditor}
                               onLaunch={(slot, path) => void handleLaunch(slot, path)}
                               onForceStop={(r) => void handleForceStop(r)}
+                              onStop={handleStopRepo}
                               onRun={(r, wt) => void handleRunRepo(r, wt)}
                             />
                           )}
@@ -1415,6 +1428,7 @@ function RepoRow(props: {
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
+  onStop: (repo: RepoEntry) => void;
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
 }) {
   const status = (): RepoStatus => cardStatus(props.repo);
@@ -1451,6 +1465,16 @@ function RepoRow(props: {
           <span class="repo-live-badge" title="A terminal session is running for this repo">
             LIVE
           </span>
+        </Show>
+        <Show when={props.live && props.repo.hasForceStop}>
+          <button
+            class="repo-action stop repo-stop-button"
+            onClick={() => props.onStop(props.repo)}
+            title={`Stop the running session for ${props.repo.name} (runs force_stop)`}
+            aria-label={`Stop ${props.repo.name}`}
+          >
+            ⏹
+          </button>
         </Show>
         <span class="spacer" />
         <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>

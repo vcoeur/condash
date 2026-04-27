@@ -154,14 +154,15 @@ function CodeRunRow(props: {
           ↓ pop out
         </button>
         <button
-          class="repo-action"
+          class="repo-action stop"
           onClick={(e) => {
             e.stopPropagation();
             props.onClose();
           }}
-          title="Close session"
+          title="Stop and close row"
+          aria-label="Stop"
         >
-          ✕
+          ⏹
         </button>
       </header>
       <Show when={expanded()}>
