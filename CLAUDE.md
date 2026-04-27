@@ -1,8 +1,8 @@
-# CLAUDE.md — condash-electron
+# CLAUDE.md — condash (Electron)
 
-Electron rewrite of `condash`. The Tauri build at `vcoeur/condash-tauri` (snapshot of `condash` v1.8.1) remains canonical until parity is reached.
+Electron build of condash. As of 2026-04-27 this **is** the canonical condash — it lives at `vcoeur/condash` after the swap that moved the Tauri lineage to `vcoeur/condash-tauri`. The Tauri build remains buildable at that repo for as long as bug fixes are warranted.
 
-Project tracking + per-feature specs live in `vcoeur/conception/projects/2026-04/2026-04-26-condash-electron-port/`.
+Project tracking + per-feature specs live in `vcoeur/conception/projects/2026-04/2026-04-26-condash-electron-port/` (closed) and `vcoeur/conception/projects/2026-04/2026-04-26-condash-electron-parity/` (closed). Active work is under `vcoeur/conception/projects/2026-04/2026-04-27-condash-packaging/`.
 
 ## Stack
 
@@ -55,7 +55,7 @@ When changing the dev port, update **every** file:
 
 ## Configuration
 
-- **Per-machine**: `${XDG_CONFIG_HOME:-~/.config}/condash-electron/settings.json`. Owned by Electron's `app.getPath('userData')`. JSON only — no YAML.
+- **Per-machine**: `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`. Owned by Electron's `app.getPath('userData')`, derived from `package.json`'s `name` field. JSON only — no YAML.
 - **Tree-level (post-MVP-0)**: `<conception>/configuration.json`. New file, JSON. Coexists with the Tauri build's `<conception>/configuration.yml` until Tauri is deprecated.
 - `CONDASH_CONCEPTION_PATH` env var override: not yet wired. Add when needed.
 

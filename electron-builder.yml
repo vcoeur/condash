@@ -1,4 +1,4 @@
-appId: com.vcoeur.condash-electron
+appId: com.vcoeur.condash
 productName: condash
 copyright: "MIT — Alice Voland"
 
@@ -13,6 +13,14 @@ files:
 
 asar: true
 
+# Auto-update channel: latest*.yml is uploaded next to the bundles in the
+# GitHub Release tied to the current `v*` tag. App reads it at runtime via
+# electron-updater.
+publish:
+  provider: github
+  owner: vcoeur
+  repo: condash
+
 linux:
   target:
     - AppImage
@@ -23,7 +31,12 @@ mac:
   target:
     - dmg
   category: public.app-category.developer-tools
+  # No code-signing cert: ship unsigned. End users dismiss the Gatekeeper
+  # warning. macOS notarization also disabled — both gated on cert posture.
+  identity: null
 
 win:
   target:
     - nsis
+  # No code-signing cert. SmartScreen will warn on first install; users
+  # click "More info" → "Run anyway".

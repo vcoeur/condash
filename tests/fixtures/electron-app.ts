@@ -40,10 +40,12 @@ export async function bootApp(options: { extraConfig?: Record<string, unknown> }
   );
 
   // Pre-seed the per-machine settings.json so the app boots straight onto the
-  // dashboard view (no folder picker required).
-  await mkdir(join(userDataDir, 'condash-electron'), { recursive: true });
+  // dashboard view (no folder picker required). The subdir matches
+  // package.json's `name` field — that's how Electron picks
+  // `app.getPath('userData')`.
+  await mkdir(join(userDataDir, 'condash'), { recursive: true });
   await writeFile(
-    join(userDataDir, 'condash-electron', 'settings.json'),
+    join(userDataDir, 'condash', 'settings.json'),
     JSON.stringify({ conceptionPath: conceptionDir, theme: 'system' }, null, 2) + '\n',
     'utf8',
   );

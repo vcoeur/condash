@@ -1,9 +1,20 @@
 {
-  "name": "condash-electron",
-  "version": "0.0.1",
-  "description": "Markdown project dashboard, Electron rewrite",
+  "name": "condash",
+  "version": "0.0.1-rc.1",
+  "description": "Markdown project dashboard for the conception tree (Electron build)",
   "private": true,
   "main": "dist-electron/main/index.js",
+  "homepage": "https://github.com/vcoeur/condash",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vcoeur/condash.git"
+  },
+  "bugs": "https://github.com/vcoeur/condash/issues",
+  "author": {
+    "name": "Alice Voland",
+    "email": "alice@vcoeur.com"
+  },
+  "license": "MIT",
   "scripts": {
     "dev:main": "node scripts/build-electron.mjs --watch",
     "dev:renderer": "vite",
@@ -30,6 +41,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "chokidar": "^4.0.3",
+    "electron-updater": "^6.6.0",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
     "markdown-it-anchor": "^9.2.0",

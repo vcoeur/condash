@@ -1,10 +1,10 @@
-# condash-electron
+# condash
 
-Electron rewrite of [condash](https://github.com/vcoeur/condash). Markdown project dashboard for the conception convention — every project, incident, and document lives as a plain `.md` file under `projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md`, and condash renders the live dashboard view.
+Markdown project dashboard for the conception convention — every project, incident, and document lives as a plain `.md` file under `projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md`, and condash renders the live dashboard view.
 
-The Tauri implementation lives at [`vcoeur/condash-tauri`](https://github.com/vcoeur/condash-tauri) (snapshot of `vcoeur/condash` at v1.8.1) and remains the canonical build until this rewrite reaches feature parity.
+This repo is the **Electron build**, canonical as of 2026-04-27. The Tauri lineage lives on at [`vcoeur/condash-tauri`](https://github.com/vcoeur/condash-tauri) (last release: v1.8.8) and remains buildable as long as bug fixes are warranted.
 
-**Status**: pre-alpha. MVP-0 only lists projects.
+**Status**: parity reached against Tauri v1.8.1 daily-driver surface; packaging + first published release tracked in [`conception/projects/2026-04/2026-04-27-condash-packaging`](https://github.com/vcoeur/conception/tree/main/projects/2026-04/2026-04-27-condash-packaging).
 
 ## Why a rewrite
 
