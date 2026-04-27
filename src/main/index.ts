@@ -1,6 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join } from 'node:path';
+
+// AppImage extracts to /tmp/.mount_*/, and most distros mount /tmp `nosuid`
+// — so Chromium's SUID sandbox helper can't keep its SUID bit and refuses
+// to run. The `.deb` install lays chrome-sandbox down at /opt/condash/
+// where SUID is honoured, so this only affects the AppImage path. Detect
+// via $APPIMAGE (set by the AppImage runtime) and disable the SUID
+// sandbox; Chromium falls back to the namespace sandbox where available.
+if (process.env.APPIMAGE) {
+  app.commandLine.appendSwitch('no-sandbox');
+}
 import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
