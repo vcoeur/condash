@@ -8,6 +8,7 @@ const api: CondashApi = {
   readKnowledgeTree: () => ipcRenderer.invoke('readKnowledgeTree'),
   search: (query) => ipcRenderer.invoke('search', query),
   listRepos: () => ipcRenderer.invoke('listRepos'),
+  invalidateGitStatus: () => ipcRenderer.invoke('invalidateGitStatus'),
   listOpenWith: () => ipcRenderer.invoke('listOpenWith'),
   launchOpenWith: (slot, path) => ipcRenderer.invoke('launchOpenWith', slot, path),
   forceStopRepo: (repoName) => ipcRenderer.invoke('forceStopRepo', repoName),

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { simpleGit } from 'simple-git';
 import type { RepoEntry } from '../shared/types';
+import { getDirtyCount } from './git-status-cache';
 import { listWorktrees } from './worktrees';
 
 /**
@@ -120,32 +120,17 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
         entry.kind === 'primary' && !entry.parent
           ? listWorktrees(path).catch(() => [])
           : Promise.resolve([]);
-      try {
-        const git = simpleGit({ baseDir: path });
-        const [status, worktrees] = await Promise.all([git.status(), worktreesPromise]);
-        return {
-          name: display,
-          path,
-          kind: entry.kind,
-          parent: entry.parent,
-          dirty: status.files.length,
-          missing: false,
-          hasForceStop,
-          worktrees: worktrees.length > 0 ? worktrees : undefined,
-        } satisfies RepoEntry;
-      } catch {
-        const worktrees = await worktreesPromise;
-        return {
-          name: display,
-          path,
-          kind: entry.kind,
-          parent: entry.parent,
-          dirty: null,
-          missing: false,
-          hasForceStop,
-          worktrees: worktrees.length > 0 ? worktrees : undefined,
-        } satisfies RepoEntry;
-      }
+      const [dirty, worktrees] = await Promise.all([getDirtyCount(path), worktreesPromise]);
+      return {
+        name: display,
+        path,
+        kind: entry.kind,
+        parent: entry.parent,
+        dirty,
+        missing: false,
+        hasForceStop,
+        worktrees: worktrees.length > 0 ? worktrees : undefined,
+      } satisfies RepoEntry;
     }),
   );
 }

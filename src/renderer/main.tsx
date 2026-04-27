@@ -496,7 +496,7 @@ function App() {
     document.removeEventListener('keydown', handleGlobalKeyDown);
   });
 
-  const handleRunRepo = async (repo: RepoEntry) => {
+  const handleRunRepo = async (repo: RepoEntry, worktree?: Worktree) => {
     if (!terminalHandle) {
       ensureTerminalOpen();
       // Wait one tick so the pane mounts and registers its handle.
@@ -504,8 +504,20 @@ function App() {
     }
     if (!terminalHandle) return;
     ensureTerminalOpen();
+    // Pass the worktree path as the cwd override when running on a
+    // non-primary branch — main/terminals.ts honours request.cwd over the
+    // configured primary cwd when both are set.
+    const isPrimary = !worktree || worktree.primary;
+    const label = isPrimary ? repo.name : `${repo.name} · ${worktree.branch ?? '(detached)'}`;
     try {
-      await terminalHandle.spawn({ side: 'code', repo: repo.name }, repo.name);
+      await terminalHandle.spawn(
+        {
+          side: 'code',
+          repo: repo.name,
+          cwd: isPrimary ? undefined : worktree.path,
+        },
+        label,
+      );
     } catch (err) {
       flashToast(`Run failed: ${(err as Error).message}`);
     }
@@ -534,7 +546,12 @@ function App() {
     }
   };
 
-  const handleRefresh = () => setRefreshKey((k) => k + 1);
+  const handleRefresh = () => {
+    // Drop the per-worktree git status cache before bumping refreshKey, so
+    // the next listRepos() really does re-run `git status` everywhere.
+    void window.condash.invalidateGitStatus();
+    setRefreshKey((k) => k + 1);
+  };
 
   const handleTreeEvents = async (events: TreeEvent[]): Promise<void> => {
     let knowledgeOrConfigDirty = false;
@@ -865,7 +882,7 @@ function App() {
                               onOpen={handleOpenInEditor}
                               onLaunch={(slot, path) => void handleLaunch(slot, path)}
                               onForceStop={(r) => void handleForceStop(r)}
-                              onRun={(r) => void handleRunRepo(r)}
+                              onRun={(r, wt) => void handleRunRepo(r, wt)}
                             />
                           )}
                         </For>
@@ -1398,7 +1415,7 @@ function RepoRow(props: {
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
-  onRun: (repo: RepoEntry) => void;
+  onRun: (repo: RepoEntry, worktree?: Worktree) => void;
 }) {
   const status = (): RepoStatus => cardStatus(props.repo);
   const displayName = (): string => {
@@ -1413,6 +1430,8 @@ function RepoRow(props: {
     if (wt.dirty == null) return 'unknown';
     return wt.dirty === 0 ? 'clean' : 'dirty';
   };
+
+  const hasRun = (): boolean => !props.repo.missing;
 
   return (
     <article
@@ -1452,50 +1471,16 @@ function RepoRow(props: {
                 <span class="branch-live-dot" title="Running" aria-label="Running" />
               </Show>
               <span class="spacer" />
-              <div class="branch-actions">
-                <Show when={wt.primary}>
-                  <button
-                    class="repo-action run"
-                    onClick={() => props.onRun(props.repo)}
-                    disabled={props.repo.missing}
-                    title="Run configured run: command"
-                  >
-                    ▶
-                  </button>
-                  <Show when={props.repo.hasForceStop}>
-                    <button
-                      class="repo-action icon warn"
-                      onClick={() => props.onForceStop(props.repo)}
-                      disabled={props.repo.missing}
-                      title="Force-stop"
-                    >
-                      ⏹
-                    </button>
-                  </Show>
-                </Show>
-                <button
-                  class="repo-action icon"
-                  onClick={() => props.onOpen(wt.path)}
-                  disabled={props.repo.missing}
-                  title="Open in OS file manager"
-                >
-                  📁
-                </button>
-                <For each={LAUNCHER_SLOTS}>
-                  {(slot) => (
-                    <Show when={props.slots[slot]}>
-                      <button
-                        class="repo-action icon"
-                        onClick={() => props.onLaunch(slot, wt.path)}
-                        disabled={props.repo.missing}
-                        title={props.slots[slot]!.label}
-                      >
-                        {LAUNCHER_GLYPH[slot]}
-                      </button>
-                    </Show>
-                  )}
-                </For>
-              </div>
+              <BranchActions
+                repo={props.repo}
+                worktree={wt}
+                slots={props.slots}
+                hasRun={hasRun()}
+                onOpen={props.onOpen}
+                onLaunch={props.onLaunch}
+                onForceStop={props.onForceStop}
+                onRun={props.onRun}
+              />
             </li>
           )}
         </For>
@@ -1504,6 +1489,108 @@ function RepoRow(props: {
         {props.repo.path}
       </span>
     </article>
+  );
+}
+
+/** Per-branch action group: a primary Run + Open pair always visible, plus
+ * the editor / terminal launchers and force_stop tucked behind a ▼ menu so
+ * the row stays compact at narrower card widths. */
+function BranchActions(props: {
+  repo: RepoEntry;
+  worktree: Worktree;
+  slots: OpenWithSlots;
+  hasRun: boolean;
+  onOpen: (path: string) => void;
+  onLaunch: (slot: OpenWithSlotKey, path: string) => void;
+  onForceStop: (repo: RepoEntry) => void;
+  onRun: (repo: RepoEntry, worktree?: Worktree) => void;
+}) {
+  const [menuOpen, setMenuOpen] = createSignal(false);
+  let menuRoot: HTMLDivElement | undefined;
+
+  const onDocClick = (e: MouseEvent) => {
+    if (!menuOpen()) return;
+    if (menuRoot && !menuRoot.contains(e.target as Node)) setMenuOpen(false);
+  };
+  onMount(() => document.addEventListener('click', onDocClick, true));
+  onCleanup(() => document.removeEventListener('click', onDocClick, true));
+
+  const showForceStop = (): boolean => props.worktree.primary && !!props.repo.hasForceStop;
+  const launcherEntries = (): OpenWithSlotKey[] =>
+    LAUNCHER_SLOTS.filter((slot) => !!props.slots[slot]);
+  const hasOverflow = (): boolean => showForceStop() || launcherEntries().length > 0;
+
+  return (
+    <div class="branch-actions" ref={(el) => (menuRoot = el)}>
+      <Show when={props.hasRun}>
+        <button
+          class="repo-action run"
+          onClick={() => props.onRun(props.repo, props.worktree)}
+          disabled={props.repo.missing}
+          title={
+            props.worktree.primary
+              ? 'Run configured run: command'
+              : `Run configured run: command in ${props.worktree.branch ?? '(detached)'}`
+          }
+        >
+          ▶
+        </button>
+      </Show>
+      <button
+        class="repo-action icon"
+        onClick={() => props.onOpen(props.worktree.path)}
+        disabled={props.repo.missing}
+        title="Open in OS file manager"
+      >
+        📁
+      </button>
+      <Show when={hasOverflow()}>
+        <button
+          class="repo-action icon"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((v) => !v);
+          }}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen()}
+          title="More actions"
+        >
+          ▾
+        </button>
+      </Show>
+      <Show when={menuOpen() && hasOverflow()}>
+        <div class="branch-action-menu" role="menu">
+          <For each={launcherEntries()}>
+            {(slot) => (
+              <button
+                class="branch-action-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  props.onLaunch(slot, props.worktree.path);
+                }}
+              >
+                <span class="glyph">{LAUNCHER_GLYPH[slot]}</span>
+                <span>{props.slots[slot]!.label}</span>
+              </button>
+            )}
+          </For>
+          <Show when={showForceStop()}>
+            <button
+              class="branch-action-menu-item warn"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                props.onForceStop(props.repo);
+              }}
+            >
+              <span class="glyph">⏹</span>
+              <span>Force-stop</span>
+            </button>
+          </Show>
+        </div>
+      </Show>
+    </div>
   );
 }
 

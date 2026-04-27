@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { simpleGit } from 'simple-git';
+import { getDirtyCount } from './git-status-cache';
 import type { Worktree } from '../shared/types';
 
 const exec = promisify(execFile);
@@ -62,16 +62,12 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
     });
   }
 
-  // Fan out a per-worktree git status. We swallow individual failures so a
-  // single broken worktree doesn't blank out the whole list.
+  // Fan out a per-worktree dirty lookup through the shared cache, so rapid
+  // re-renders (Refresh button + chokidar tree-event + tab switch) don't
+  // each fire ~30 git status calls.
   await Promise.all(
     out.map(async (wt) => {
-      try {
-        const status = await simpleGit({ baseDir: wt.path }).status();
-        wt.dirty = status.files.length;
-      } catch {
-        wt.dirty = null;
-      }
+      wt.dirty = await getDirtyCount(wt.path);
     }),
   );
   return out;

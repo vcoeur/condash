@@ -22,6 +22,10 @@ export interface CondashApi {
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
   search(query: string): Promise<SearchHit[]>;
   listRepos(): Promise<RepoEntry[]>;
+  /** Drop the in-memory git-status cache. Use from Refresh so the next
+   * listRepos() runs `git status` everywhere instead of returning TTL-
+   * cached values. */
+  invalidateGitStatus(): Promise<void>;
   listOpenWith(): Promise<OpenWithSlots>;
   launchOpenWith(slot: OpenWithSlotKey, path: string): Promise<void>;
   forceStopRepo(repoName: string): Promise<void>;
