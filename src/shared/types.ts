@@ -78,12 +78,14 @@ export interface Worktree {
 }
 
 export interface RepoEntry {
-  /** Display name (typically the repo directory name). */
+  /** Display name (typically the repo directory name; submodules use `parent/child`). */
   name: string;
   /** Absolute path on disk. */
   path: string;
   /** primary | secondary — matches the configuration.json layout. */
   kind: 'primary' | 'secondary';
+  /** When set, this entry is a submodule of the named parent repo. */
+  parent?: string;
   /** Count of modified+staged+untracked files; null if git status couldn't run. */
   dirty: number | null;
   /** True when path doesn't exist or isn't a git repo. */
@@ -104,6 +106,19 @@ export interface TerminalPrefs {
   launcher_command?: string;
   move_tab_left_shortcut?: string;
   move_tab_right_shortcut?: string;
+}
+
+/** Snapshot of a live (or recently-exited) terminal session, broadcast on
+ * spawn/exit/close so renderers can keep their tab strip and Code-tab LIVE
+ * badges in sync without polling. */
+export interface TermSession {
+  id: string;
+  side: TermSide;
+  /** When the session was launched via the Run button on a repo, the repo
+   * display name (e.g. `condash`, `PaintingManager/app`). */
+  repo?: string;
+  /** Process exit code if the pty has terminated; undefined while live. */
+  exited?: number;
 }
 
 export interface TermSpawnRequest {

@@ -8,16 +8,56 @@ import './terminal-pane.css';
 export interface Tab {
   id: string;
   side: TermSide;
+  /** Default label (auto-derived from spawn — e.g. repo name or shell). */
   label: string;
+  /** User-renamed label, if any. Persisted by id in localStorage. */
+  customName?: string;
   /** Set when the underlying pty has exited; the tab can still be cleared via close. */
   exited?: number;
+}
+
+/** Per-session metadata persisted across renderer reloads. Keyed by session id. */
+interface PersistedTabMeta {
+  label: string;
+  customName?: string;
+}
+
+const META_KEY = 'condash-term-meta';
+
+function readMeta(): Record<string, PersistedTabMeta> {
+  try {
+    const raw = localStorage.getItem(META_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, PersistedTabMeta>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMeta(meta: Record<string, PersistedTabMeta>): void {
+  try {
+    localStorage.setItem(META_KEY, JSON.stringify(meta));
+  } catch {
+    /* ignore */
+  }
+}
+
+function setMeta(id: string, value: PersistedTabMeta): void {
+  const map = readMeta();
+  map[id] = value;
+  writeMeta(map);
+}
+
+function deleteMeta(id: string): void {
+  const map = readMeta();
+  delete map[id];
+  writeMeta(map);
 }
 
 export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
   /** Add a fresh user shell tab to "My terms". */
-  spawnUserShell(launcherCommand?: string | null): Promise<string>;
+  spawnUserShell(launcherCommand?: string | null, side?: TermSide): Promise<string>;
   /** Move the active tab within its side strip. */
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
@@ -36,6 +76,21 @@ export function TerminalPane(props: {
     my: null,
     code: null,
   });
+  const [renamingId, setRenamingId] = createSignal<string | null>(null);
+
+  const commitRename = (id: string, value: string) => {
+    const trimmed = value.trim();
+    setTabs((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, customName: trimmed || undefined } : t)),
+    );
+    const tab = tabs().find((t) => t.id === id);
+    if (tab) {
+      setMeta(id, { label: tab.label, customName: trimmed || undefined });
+    }
+    setRenamingId(null);
+  };
+
+  const tabDisplayLabel = (tab: Tab): string => tab.customName ?? tab.label;
 
   let host: HTMLDivElement | undefined;
   const xterms = new Map<string, { term: Terminal; fit: FitAddon; element: HTMLDivElement }>();
@@ -48,11 +103,9 @@ export function TerminalPane(props: {
 
   const activeId = (): string | null => active()[side()];
 
-  const spawn = async (request: TermSpawnRequest, label: string): Promise<string> => {
-    const { id } = await window.condash.termSpawn(request);
-    const newTab: Tab = { id, side: request.side, label };
-    setTabs((prev) => [...prev, newTab]);
-
+  /** Build a freshly-mounted xterm for a session id. Used by both spawn (new
+   * pty) and re-attach (existing pty surviving a renderer reload). */
+  const mountXterm = (id: string, replay?: string): { fit: FitAddon } => {
     const term = new Terminal({
       fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
       fontSize: 12,
@@ -69,6 +122,7 @@ export function TerminalPane(props: {
     element.style.display = 'none';
     if (host) host.appendChild(element);
     term.open(element);
+    if (replay) term.write(replay);
 
     term.onData((data) => {
       void window.condash.termWrite(id, data);
@@ -78,16 +132,64 @@ export function TerminalPane(props: {
     });
 
     xterms.set(id, { term, fit, element });
+    return { fit };
+  };
+
+  const spawn = async (request: TermSpawnRequest, label: string): Promise<string> => {
+    const { id } = await window.condash.termSpawn(request);
+    const newTab: Tab = { id, side: request.side, label };
+    setTabs((prev) => [...prev, newTab]);
+    setMeta(id, { label });
+
+    mountXterm(id);
     setActiveFor(request.side, id);
     setSide(request.side);
     queueMicrotask(() => focusActive());
     return id;
   };
 
-  const spawnUserShell = async (launcherCommand?: string | null): Promise<string> => {
+  /** Re-attach to ptys that survived a renderer reload. Reads tab metadata
+   * from localStorage and replays the buffered output that main has been
+   * holding for us. Runs once on mount. */
+  const reattachExistingSessions = async (): Promise<void> => {
+    const sessions = await window.condash.termList();
+    if (sessions.length === 0) return;
+    const meta = readMeta();
+    for (const s of sessions) {
+      const persisted = meta[s.id];
+      const label = persisted?.label ?? (s.repo ? `${s.repo} (run)` : 'shell');
+      const tab: Tab = {
+        id: s.id,
+        side: s.side,
+        label,
+        customName: persisted?.customName,
+        exited: s.exited,
+      };
+      setTabs((prev) => [...prev, tab]);
+      const attach = await window.condash.termAttach(s.id);
+      mountXterm(s.id, attach?.output);
+    }
+    // Restore the last-active selections per side, if any of those ids are
+    // still around. Otherwise fall back to the most recent tab.
+    setSide('my');
+    const myTabs = sessions.filter((s) => s.side === 'my');
+    const codeTabs = sessions.filter((s) => s.side === 'code');
+    setActiveFor('my', myTabs.at(-1)?.id ?? null);
+    setActiveFor('code', codeTabs.at(-1)?.id ?? null);
+    queueMicrotask(focusActive);
+  };
+
+  onMount(() => {
+    void reattachExistingSessions();
+  });
+
+  const spawnUserShell = async (
+    launcherCommand?: string | null,
+    sd: TermSide = 'my',
+  ): Promise<string> => {
     const stamp = new Date().toLocaleTimeString();
     const label = launcherCommand?.trim() ? `${launcherCommand} · ${stamp}` : `shell · ${stamp}`;
-    return spawn({ side: 'my', command: launcherCommand?.trim() || undefined }, label);
+    return spawn({ side: sd, command: launcherCommand?.trim() || undefined }, label);
   };
 
   const onTermData = window.condash.onTermData(({ id, data }) => {
@@ -103,8 +205,10 @@ export function TerminalPane(props: {
   onCleanup(() => {
     onTermData();
     onTermExit();
-    for (const [id, { term, element }] of xterms) {
-      void window.condash.termClose(id);
+    // Dispose the renderer-side xterm widgets but do *not* call termClose —
+    // the underlying ptys are owned by main and survive renderer reloads, so
+    // a freshly-loaded tab strip can re-attach via reattachExistingSessions.
+    for (const [, { term, element }] of xterms) {
       term.dispose();
       element.remove();
     }
@@ -113,6 +217,7 @@ export function TerminalPane(props: {
 
   const closeTab = (id: string) => {
     void window.condash.termClose(id);
+    deleteMeta(id);
     const handle = xterms.get(id);
     handle?.term.dispose();
     handle?.element.remove();
@@ -200,7 +305,7 @@ export function TerminalPane(props: {
     <Show when={props.open}>
       <section class="terminal-pane">
         <header class="terminal-toolbar">
-          <div class="terminal-side-toggle">
+          <div class="terminal-side-toggle" data-active-side={side()}>
             <button
               class="modal-button"
               classList={{ active: side() === 'my' }}
@@ -230,12 +335,38 @@ export function TerminalPane(props: {
                   classList={{
                     active: tab.id === activeId(),
                     exited: tab.exited !== undefined,
+                    renaming: tab.id === renamingId(),
                   }}
                   onClick={() => setActiveFor(tab.side, tab.id)}
+                  onDblClick={(e) => {
+                    if ((e.target as HTMLElement).closest('.terminal-tab-close')) return;
+                    setRenamingId(tab.id);
+                  }}
+                  title={tabDisplayLabel(tab) === tab.label ? tab.label : `${tab.label} (renamed)`}
                 >
-                  <span class="terminal-tab-label" title={tab.label}>
-                    {tab.label}
-                  </span>
+                  <Show
+                    when={tab.id === renamingId()}
+                    fallback={<span class="terminal-tab-label">{tabDisplayLabel(tab)}</span>}
+                  >
+                    <input
+                      class="terminal-tab-rename"
+                      type="text"
+                      value={tabDisplayLabel(tab)}
+                      ref={(el) => queueMicrotask(() => el && (el.focus(), el.select()))}
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => commitRename(tab.id, e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitRename(tab.id, e.currentTarget.value);
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setRenamingId(null);
+                        }
+                        e.stopPropagation();
+                      }}
+                    />
+                  </Show>
                   <button
                     class="terminal-tab-close"
                     onClick={(e) => {
@@ -249,17 +380,22 @@ export function TerminalPane(props: {
                 </div>
               )}
             </For>
-            <Show when={side() === 'my'}>
-              <button
-                class="terminal-tab-add"
-                onClick={() => void spawnUserShell(props.launcherCommand)}
-                title={
-                  props.launcherCommand ? `New tab (${props.launcherCommand})` : 'New shell tab'
-                }
-              >
-                +
-              </button>
-            </Show>
+            <button
+              class="terminal-tab-add"
+              onClick={() => {
+                if (side() === 'my') void spawnUserShell(props.launcherCommand);
+                else void spawnUserShell(props.launcherCommand, 'code');
+              }}
+              title={
+                side() === 'my'
+                  ? props.launcherCommand
+                    ? `New tab (${props.launcherCommand})`
+                    : 'New shell tab'
+                  : 'New code-side shell tab'
+              }
+            >
+              +
+            </button>
           </div>
           <button class="modal-button" onClick={props.onClose} title="Close pane">
             ×

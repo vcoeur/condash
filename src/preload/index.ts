@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi } from '../shared/api';
-import type { TermDataMessage, TermExitMessage, TreeEvent } from '../shared/types';
+import type { TermDataMessage, TermExitMessage, TermSession, TreeEvent } from '../shared/types';
 
 const api: CondashApi = {
   listProjects: () => ipcRenderer.invoke('listProjects'),
@@ -39,6 +39,8 @@ const api: CondashApi = {
   termClose: (id) => ipcRenderer.invoke('term.close', id),
   termGetPrefs: () => ipcRenderer.invoke('term.getPrefs'),
   termLatestScreenshot: (dir) => ipcRenderer.invoke('term.latestScreenshot', dir),
+  termList: () => ipcRenderer.invoke('term.list'),
+  termAttach: (id) => ipcRenderer.invoke('term.attach', id),
   onTermData: (callback) => {
     const handler = (_: unknown, msg: TermDataMessage): void => callback(msg);
     ipcRenderer.on('term.data', handler);
@@ -48,6 +50,11 @@ const api: CondashApi = {
     const handler = (_: unknown, msg: TermExitMessage): void => callback(msg);
     ipcRenderer.on('term.exit', handler);
     return () => ipcRenderer.removeListener('term.exit', handler);
+  },
+  onTermSessions: (callback) => {
+    const handler = (_: unknown, sessions: TermSession[]): void => callback(sessions);
+    ipcRenderer.on('term.sessions', handler);
+    return () => ipcRenderer.removeListener('term.sessions', handler);
   },
 };
 
