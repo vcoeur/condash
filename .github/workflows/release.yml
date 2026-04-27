@@ -65,6 +65,83 @@ jobs:
       - name: Build installers
         run: npx electron-builder --publish never
 
+      # Patch the AppImage's AppRun launcher to exec Electron with
+      # `--no-sandbox`. Without this the AppImage aborts on launch with
+      # "SUID sandbox helper binary was found, but is not configured
+      # correctly" because AppImage extracts to /tmp/.mount_*/, which
+      # most distros mount `nosuid` — so chrome-sandbox loses its SUID
+      # bit. `app.commandLine.appendSwitch('no-sandbox')` from main.ts
+      # was tried first and verified to ship in the asar, but Chromium
+      # reads its sandbox config too early in init for the JS-level
+      # switch to take effect. The .deb path keeps the sandbox: it
+      # installs chrome-sandbox at /opt/condash/ where the SUID bit is
+      # honoured, so this patch only touches the AppImage.
+      - name: Inject --no-sandbox into AppImage AppRun
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          # Pinned appimagetool release — moving off `continuous` so a
+          # silent upstream change doesn't break release day.
+          APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          matches=(release/condash-*.AppImage)
+          shopt -u nullglob
+          if [[ ${#matches[@]} -eq 0 ]]; then
+            echo "No AppImage found to patch" >&2
+            exit 1
+          fi
+          APPIMAGE="${matches[0]}"
+          echo "Patching $APPIMAGE"
+
+          WORK=$(mktemp -d)
+          cp "$APPIMAGE" "$WORK/original.AppImage"
+          chmod +x "$WORK/original.AppImage"
+          ( cd "$WORK" && ./original.AppImage --appimage-extract >/dev/null )
+
+          # Rewrite the two `exec "$BIN" …` lines in AppRun's atexit
+          # function to insert --no-sandbox before forwarded args.
+          # Using a Python rewrite (rather than sed) so the substitution
+          # is exact and can be re-asserted in the verify step below.
+          # Lines are indented 6 spaces in electron-builder's stock
+          # AppRun template; the literal whitespace must match.
+          python3 - "$WORK/squashfs-root/AppRun" <<'PY'
+          import sys, pathlib
+          p = pathlib.Path(sys.argv[1])
+          src = p.read_text()
+          replacements = [
+              ('      exec "$BIN"\n',              '      exec "$BIN" --no-sandbox\n'),
+              ('      exec "$BIN" "${args[@]}"\n', '      exec "$BIN" --no-sandbox "${args[@]}"\n'),
+          ]
+          for old, new in replacements:
+              if old not in src:
+                  raise SystemExit(f"AppRun does not contain expected line: {old!r}")
+              src = src.replace(old, new)
+          p.write_text(src)
+          print("AppRun patched.")
+          PY
+
+          # Repack with a pinned appimagetool release. Run it via
+          # --appimage-extract-and-run so the runner doesn't need
+          # fuse / libfuse2.
+          curl -sSL -o "$WORK/appimagetool" "$APPIMAGETOOL_URL"
+          chmod +x "$WORK/appimagetool"
+          ARCH=x86_64 "$WORK/appimagetool" --appimage-extract-and-run \
+              "$WORK/squashfs-root" "$APPIMAGE"
+          chmod +x "$APPIMAGE"
+
+          # Verify: extract the repacked AppImage and confirm AppRun
+          # exec lines now carry --no-sandbox.
+          VERIFY=$(mktemp -d)
+          cp "$APPIMAGE" "$VERIFY/out.AppImage"
+          chmod +x "$VERIFY/out.AppImage"
+          ( cd "$VERIFY" && ./out.AppImage --appimage-extract >/dev/null )
+          if ! grep -q 'exec "\$BIN" --no-sandbox' "$VERIFY/squashfs-root/AppRun"; then
+              echo "Patch verification failed — repacked AppRun missing --no-sandbox" >&2
+              exit 1
+          fi
+          echo "AppImage AppRun patch verified."
+
       # Capture only the installer bundles + channel files. Skip the
       # `linux-unpacked/`, `mac/`, `win-unpacked/` working directories,
       # the `builder-debug.yml`, and the `.blockmap` artifacts ship as
