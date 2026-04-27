@@ -1265,6 +1265,57 @@ button:hover {
 .branch-actions {
   display: flex;
   gap: 4px;
+  position: relative;
+}
+
+.branch-action-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  min-width: 200px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lift);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.branch-action-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.branch-action-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.branch-action-menu-item .glyph {
+  width: 18px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.branch-action-menu-item.warn {
+  color: var(--warn);
+}
+
+.branch-action-menu-item.warn .glyph {
+  color: var(--warn);
 }
 
 .repo-kind-tag {

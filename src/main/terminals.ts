@@ -170,7 +170,11 @@ export async function spawnTerminal(
   if (request.repo && conceptionPath) {
     const entry = findRepoEntry(config, request.repo);
     if (!entry) throw new Error(`Repo '${request.repo}' not found in configuration.json`);
-    if (entry.cwd) cwd = entry.cwd;
+    // Honour an explicit request.cwd (worktree path from the Code-tab Run
+    // button on a non-primary branch) over the entry's resolved primary
+    // checkout. Without this, every Run lands on the primary checkout
+    // regardless of which branch row the user clicked.
+    if (!request.cwd && entry.cwd) cwd = entry.cwd;
     // Wrap the configured run: command in `bash -lc` so user-supplied shells
     // like `make dev && tail -f log` keep their pipes/&&/operators.
     if (entry.run) {

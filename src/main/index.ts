@@ -10,6 +10,7 @@ import { readKnowledgeTree } from './knowledge';
 import { readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
+import { invalidateAll } from './git-status-cache';
 import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
 import {
   attachTerminal,
@@ -119,6 +120,11 @@ function registerIpc(): void {
     if (!conceptionPath) return [];
     return listRepos(conceptionPath);
   });
+
+  // Drop the per-worktree git status cache. Wired to the renderer's Refresh
+  // button so explicit user requests always see fresh data, while ambient
+  // re-renders (tab switch, tree-events) still benefit from the TTL cache.
+  ipcMain.handle('invalidateGitStatus', () => invalidateAll());
 
   ipcMain.handle('listOpenWith', async () => {
     const { conceptionPath } = await readSettings();
