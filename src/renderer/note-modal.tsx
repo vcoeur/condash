@@ -28,12 +28,39 @@ function isMarkdown(path: string): boolean {
   return path.toLowerCase().endsWith('.md');
 }
 
+function isConfigurationJson(path: string): boolean {
+  return path.toLowerCase().endsWith('/configuration.json');
+}
+
+const CONFIG_SUMMARY: { key: string; purpose: string }[] = [
+  { key: 'workspace_path', purpose: 'Base directory for non-absolute repo entries.' },
+  { key: 'worktrees_path', purpose: 'Where new git worktrees are created (informational).' },
+  {
+    key: 'repositories.primary / .secondary',
+    purpose:
+      'Repos shown on the Code tab. Each entry: name, optional run / force_stop / submodules.',
+  },
+  {
+    key: 'open_with',
+    purpose:
+      'IDE / terminal launchers (main_ide, secondary_ide, terminal). {path} substitutes the target.',
+  },
+  {
+    key: 'terminal',
+    purpose:
+      'Pane preferences: shell, shortcut, screenshot_dir, screenshot_paste_shortcut, launcher_command.',
+  },
+];
+
 export function NoteModal(props: {
   state: ModalState;
   onClose: () => void;
   onOpenInEditor: (path: string) => void;
   onOpenDeliverable: (path: string) => void;
   onWikilink: (slug: string) => void;
+  /** Open a bundled help doc — used by the configuration.json reference panel
+   * to expand into the full doc. */
+  onOpenHelp?: (doc: 'architecture' | 'configuration' | 'non-goals' | 'index') => void;
 }) {
   const [mode, setMode] = createSignal<Mode>(props.state?.initialMode ?? 'view');
 
@@ -353,6 +380,9 @@ export function NoteModal(props: {
         </Show>
 
         <div class="modal-body" ref={(el) => (bodyRef = el)} onClick={handleBodyClick}>
+          <Show when={props.state && isConfigurationJson(props.state.path)}>
+            <ConfigSummaryPanel onOpenFullDoc={() => props.onOpenHelp?.('configuration')} />
+          </Show>
           <Show when={content.loading}>
             <div class="empty">Loading…</div>
           </Show>
@@ -482,4 +512,38 @@ function focusFindMatch(container: HTMLElement, index: number): void {
   if (!target) return;
   target.classList.add(FIND_CURRENT_CLASS);
   target.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
+}
+
+function ConfigSummaryPanel(props: { onOpenFullDoc: () => void }) {
+  const [open, setOpen] = createSignal(true);
+  return (
+    <details
+      class="config-summary-panel"
+      open={open()}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary>
+        Reference — top-level keys
+        <button
+          class="modal-button config-summary-link"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            props.onOpenFullDoc();
+          }}
+          title="Open the full configuration reference"
+        >
+          Full reference →
+        </button>
+      </summary>
+      <ul class="config-summary-list">
+        {CONFIG_SUMMARY.map((row) => (
+          <li>
+            <code>{row.key}</code>
+            <span> — {row.purpose}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
 }

@@ -1,0 +1,79 @@
+import { createEffect, createResource, onCleanup, onMount, Show } from 'solid-js';
+import { renderMarkdown, runMermaidIn } from './markdown';
+import 'highlight.js/styles/github.css';
+
+export type HelpDoc = 'architecture' | 'configuration' | 'non-goals' | 'index';
+
+const TITLE: Record<HelpDoc, string> = {
+  architecture: 'Architecture',
+  configuration: 'Configuration reference',
+  'non-goals': 'Non-goals',
+  index: 'Documentation index',
+};
+
+/**
+ * Read-only modal for the bundled docs/. Pulls the markdown from main via
+ * helpReadDoc, renders it through the same pipeline as the note modal
+ * (markdown-it + mermaid + highlight.js), and shows it in a centred dialog.
+ *
+ * Distinct from NoteModal because help docs are non-editable, never
+ * deliverable-bearing, and shouldn't share the "open in editor" affordance —
+ * the file lives inside the app bundle, not on disk.
+ */
+export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
+  let bodyRef: HTMLDivElement | undefined;
+
+  const handleKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      props.onClose();
+    }
+  };
+  onMount(() => document.addEventListener('keydown', handleKey, true));
+  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
+
+  const [content] = createResource(
+    () => props.doc,
+    async (doc) => {
+      try {
+        return await window.condash.helpReadDoc(doc);
+      } catch (err) {
+        return `# Error\n\nCould not load \`${doc}.md\`: ${(err as Error).message}`;
+      }
+    },
+  );
+
+  const html = (): string => {
+    const raw = content();
+    if (raw === undefined) return '';
+    return renderMarkdown(raw);
+  };
+
+  createEffect(() => {
+    if (content() && bodyRef) {
+      void runMermaidIn(bodyRef);
+    }
+  });
+
+  return (
+    <div class="modal-backdrop" onClick={props.onClose}>
+      <div
+        class="modal note-modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header class="modal-head">
+          <span class="modal-title">{TITLE[props.doc]}</span>
+          <span class="modal-path">condash docs/</span>
+          <button class="modal-button" onClick={props.onClose} title="Close (Esc)">
+            ×
+          </button>
+        </header>
+        <Show when={content()} fallback={<div class="modal-body modal-empty">Loading…</div>}>
+          <div class="modal-body markdown-body" ref={(el) => (bodyRef = el)} innerHTML={html()} />
+        </Show>
+      </div>
+    </div>
+  );
+}

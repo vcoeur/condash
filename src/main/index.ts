@@ -26,6 +26,7 @@ import {
   writeTerminal,
 } from './terminals';
 import { latestScreenshot } from './screenshot';
+import { readHelpDoc } from './help';
 import type {
   OpenWithSlotKey,
   Project,
@@ -177,6 +178,8 @@ function registerIpc(): void {
   ipcMain.handle('term.latestScreenshot', async (_, dir: string) => {
     return latestScreenshot(dir);
   });
+
+  ipcMain.handle('helpReadDoc', (_, name: string) => readHelpDoc(name));
 
   ipcMain.handle('openInEditor', async (_, path: string) => {
     const error = await shell.openPath(path);

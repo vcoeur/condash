@@ -27,6 +27,7 @@ const api: CondashApi = {
   readNote: (path) => ipcRenderer.invoke('readNote', path),
   writeNote: (path, expectedContent, newContent) =>
     ipcRenderer.invoke('writeNote', path, expectedContent, newContent),
+  helpReadDoc: (name) => ipcRenderer.invoke('helpReadDoc', name),
   onTreeEvents: (callback) => {
     const handler = (_: unknown, events: TreeEvent[]): void => callback(events);
     ipcRenderer.on('tree-events', handler);

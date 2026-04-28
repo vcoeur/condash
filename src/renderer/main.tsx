@@ -30,6 +30,7 @@ import { resetMermaidTheme } from './markdown';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { buildSlugIndex } from './wikilinks';
 import { PdfModal } from './pdf-modal';
+import { HelpModal, type HelpDoc } from './help-modal';
 import {
   applyStatus,
   applyStepMarker,
@@ -108,6 +109,8 @@ function App() {
   const [modal, setModal] = createSignal<ModalState>(null);
   const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
+  const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
+  const [helpMenuOpen, setHelpMenuOpen] = createSignal(false);
   const [terminalOpen, setTerminalOpen] = createSignal(false);
   let terminalHandle: TerminalPaneHandle | null = null;
   const [searchQuery, setSearchQuery] = createSignal('');
@@ -304,6 +307,13 @@ function App() {
     document.removeEventListener('keydown', handleGlobalKeyDown);
   });
 
+  // Click anywhere outside the help-menu wrapper closes the dropdown.
+  const closeHelpMenu = () => {
+    if (helpMenuOpen()) setHelpMenuOpen(false);
+  };
+  onMount(() => document.addEventListener('click', closeHelpMenu));
+  onCleanup(() => document.removeEventListener('click', closeHelpMenu));
+
   const handleRunRepo = async (repo: RepoEntry, worktree?: Worktree) => {
     if (!terminalHandle) {
       ensureTerminalOpen();
@@ -448,6 +458,11 @@ function App() {
 
   const handleOpenKnowledgeFile = (path: string) => {
     setModal({ path });
+  };
+
+  const handleOpenHelp = (doc: HelpDoc) => {
+    setHelpMenuOpen(false);
+    setHelpDoc(doc);
   };
 
   const handleOpenPreferences = () => {
@@ -605,6 +620,33 @@ function App() {
         >
           ⚙
         </button>
+        <span class="help-menu-wrap">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setHelpMenuOpen((v) => !v);
+            }}
+            title="Help / docs"
+          >
+            ?
+          </button>
+          <Show when={helpMenuOpen()}>
+            <div class="help-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+              <button class="help-menu-item" onClick={() => handleOpenHelp('architecture')}>
+                Architecture
+              </button>
+              <button class="help-menu-item" onClick={() => handleOpenHelp('configuration')}>
+                Configuration reference
+              </button>
+              <button class="help-menu-item" onClick={() => handleOpenHelp('non-goals')}>
+                Non-goals
+              </button>
+              <button class="help-menu-item" onClick={() => handleOpenHelp('index')}>
+                Documentation index
+              </button>
+            </div>
+          </Show>
+        </span>
         <button onClick={handleRefresh} disabled={!conceptionPath()}>
           Refresh
         </button>
@@ -751,7 +793,12 @@ function App() {
           onOpenInEditor={handleOpenInEditor}
           onOpenDeliverable={handleOpenDeliverable}
           onWikilink={handleWikilink}
+          onOpenHelp={handleOpenHelp}
         />
+      </Show>
+
+      <Show when={helpDoc()}>
+        <HelpModal doc={helpDoc()!} onClose={() => setHelpDoc(null)} />
       </Show>
 
       <Show when={pdfPath()}>
