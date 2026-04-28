@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { OpenWithSlots, OpenWithSlotKey } from '../shared/types';
+import { findRepoEntry, type ConfigShape } from './config-walk';
 
 interface RawSlot {
   label: string;
@@ -9,7 +10,7 @@ interface RawSlot {
   commands?: string[];
 }
 
-interface RawConfigShape {
+interface RawConfigShape extends ConfigShape {
   open_with?: Partial<Record<OpenWithSlotKey, RawSlot>>;
 }
 
@@ -105,10 +106,10 @@ export async function launchOpenWith(
 
 export async function forceStopRepo(conceptionPath: string, repoName: string): Promise<void> {
   const config = await readRawConfig(conceptionPath);
-  const command = findForceStop(config, repoName);
-  if (!command) throw new Error(`No force_stop configured for ${repoName}`);
+  const entry = findRepoEntry(config, repoName);
+  if (!entry?.forceStop) throw new Error(`No force_stop configured for ${repoName}`);
 
-  const child = spawn(command, {
+  const child = spawn(entry.forceStop, {
     detached: true,
     stdio: 'ignore',
     shell: true,
@@ -117,31 +118,4 @@ export async function forceStopRepo(conceptionPath: string, repoName: string): P
     child.on('error', (err) => reject(err));
     child.on('exit', () => resolve());
   });
-}
-
-function findForceStop(config: RawConfigShape, repoName: string): string | null {
-  const fullConfig = config as RawConfigShape & {
-    repositories?: { primary?: unknown[]; secondary?: unknown[] };
-  };
-  const all = [
-    ...(fullConfig.repositories?.primary ?? []),
-    ...(fullConfig.repositories?.secondary ?? []),
-  ];
-  return walkForceStop(all, repoName);
-}
-
-function walkForceStop(entries: unknown[], target: string): string | null {
-  for (const entry of entries) {
-    if (typeof entry === 'string') continue;
-    if (entry === null || typeof entry !== 'object') continue;
-    const e = entry as { name?: unknown; force_stop?: unknown; submodules?: unknown };
-    if (typeof e.name === 'string' && e.name === target) {
-      if (typeof e.force_stop === 'string' && e.force_stop.trim()) return e.force_stop;
-    }
-    if (Array.isArray(e.submodules)) {
-      const nested = walkForceStop(e.submodules, target);
-      if (nested) return nested;
-    }
-  }
-  return null;
 }

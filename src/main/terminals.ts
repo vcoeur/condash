@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type { TermSession, TermSide, TermSpawnRequest } from '../shared/types';
+import { findRepoEntry, type ConfigShape } from './config-walk';
 
 interface Session {
   id: string;
@@ -72,20 +73,12 @@ function makeId(): string {
   return `t${Date.now().toString(36)}-${nextId++}`;
 }
 
-export interface TerminalConfig {
-  shell?: string;
-  launcherCommand?: string;
-  screenshotDir?: string;
-}
-
-interface RawConfigShape {
+interface RawConfigShape extends ConfigShape {
   terminal?: {
     shell?: string;
     launcher_command?: string;
     screenshot_dir?: string;
   };
-  workspace_path?: string;
-  repositories?: { primary?: unknown[]; secondary?: unknown[] };
 }
 
 async function readRawConfig(conceptionPath: string): Promise<RawConfigShape> {
@@ -103,69 +96,6 @@ function defaultShell(configured?: string): string {
   if (process.env.SHELL) return process.env.SHELL;
   if (process.platform === 'win32') return 'cmd.exe';
   return '/bin/bash';
-}
-
-interface RepoEntryResolved {
-  run?: string;
-  cwd?: string;
-  forceStop?: string;
-}
-
-function findRepoEntry(config: RawConfigShape, name: string): RepoEntryResolved | null {
-  const workspace = config.workspace_path;
-  const all = [...(config.repositories?.primary ?? []), ...(config.repositories?.secondary ?? [])];
-  return walk(all, name, workspace, undefined);
-}
-
-function walk(
-  entries: unknown[],
-  target: string,
-  workspace: string | undefined,
-  parent: string | undefined,
-): RepoEntryResolved | null {
-  for (const entry of entries) {
-    if (typeof entry === 'string') {
-      if (entry === target) {
-        return { cwd: resolveCwd(workspace, parent, entry) };
-      }
-      continue;
-    }
-    if (entry === null || typeof entry !== 'object') continue;
-    const e = entry as {
-      name?: unknown;
-      run?: unknown;
-      force_stop?: unknown;
-      submodules?: unknown;
-    };
-    if (typeof e.name === 'string') {
-      const display = parent ? `${parent}/${e.name}` : e.name;
-      if (display === target || e.name === target) {
-        return {
-          run: typeof e.run === 'string' ? e.run : undefined,
-          forceStop:
-            typeof e.force_stop === 'string' && e.force_stop.trim() ? e.force_stop : undefined,
-          cwd: resolveCwd(workspace, parent, e.name),
-        };
-      }
-      if (Array.isArray(e.submodules)) {
-        const nested = walk(e.submodules, target, workspace, e.name);
-        if (nested) return nested;
-      }
-    }
-  }
-  return null;
-}
-
-function resolveCwd(
-  workspace: string | undefined,
-  parent: string | undefined,
-  name: string,
-): string {
-  const segments: string[] = [];
-  if (workspace) segments.push(workspace);
-  if (parent) segments.push(parent);
-  segments.push(name);
-  return segments.length === 1 ? segments[0] : join(...segments);
 }
 
 export async function spawnTerminal(
@@ -379,34 +309,6 @@ export async function getTerminalPrefs(
   return config.terminal ?? {};
 }
 
-/**
- * Find the most recently modified file under `dir` (top-level only). Returns
- * null when the directory is missing or empty.
- */
-export async function latestScreenshot(dir: string): Promise<string | null> {
-  let entries;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return null;
-  }
-  let best: { path: string; mtime: number } | null = null;
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const path = join(dir, entry.name);
-    let stat;
-    try {
-      stat = await fs.stat(path);
-    } catch {
-      continue;
-    }
-    if (!best || stat.mtimeMs > best.mtime) {
-      best = { path, mtime: stat.mtimeMs };
-    }
-  }
-  return best?.path ?? null;
-}
-
 /** Kill every session (or every session attached to `forWebContents`) via the
  * full Stop pipeline — process-group SIGTERM, force_stop if configured,
  * SIGKILL fallback. Bounded to ~1 s aggregate so the window can actually
@@ -425,10 +327,4 @@ export async function killAll(forWebContents?: WebContents): Promise<void> {
 
   for (const [id] of targets) sessions.delete(id);
   broadcastSessions();
-}
-
-export function _broadcastWindowsClosed(): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    void win;
-  }
 }

@@ -19,13 +19,13 @@ import {
   closeSession,
   getTerminalPrefs,
   killAll,
-  latestScreenshot,
   listTerminalSessions,
   resizeTerminal,
   setSessionSide,
   spawnTerminal,
   writeTerminal,
 } from './terminals';
+import { latestScreenshot } from './screenshot';
 import type {
   OpenWithSlotKey,
   Project,
