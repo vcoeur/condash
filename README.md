@@ -56,7 +56,7 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 
 macOS and Windows don't need any of this.
 
-## Architecture (MVP-0)
+## Architecture
 
 ```
 src/
@@ -67,6 +67,14 @@ src/
 ```
 
 No HTTP server, no SSE, no fingerprint poll, no Rust. Renderer talks to main via the typed `CondashApi` interface in `src/shared/api.ts`.
+
+## Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — load-bearing invariants (drift-checked mutations, atomic-rename writes, the per-file write queue, the TTL git-status cache, the SIGTERM → force_stop → SIGKILL pty pipeline, the IPC contract).
+- [`docs/configuration.md`](docs/configuration.md) — `<conception>/configuration.json` reference: every key, with examples and edit paths.
+- [`docs/non-goals.md`](docs/non-goals.md) — what condash will deliberately not do.
+
+The same docs are available inside the running app via the `?` button in the toolbar.
 
 ## License
 
