@@ -81,6 +81,15 @@ macOS and Windows are unaffected.
 - IPC contract is the single typed `CondashApi` interface in `src/shared/api.ts`. Functions, not URLs. Promises for request/response; events only for chokidar push (when wired).
 - Hard interaction-to-paint budget: **≤ 16 ms** for any user-initiated action. Optimistic UI is the default; rollback on IPC failure.
 
+## Pointers
+
+- [`docs/index.md`](docs/index.md) — top of the documentation tree.
+- [`docs/architecture.md`](docs/architecture.md) — invariants: drift checks, atomic writes, write queue, TTL cache, pty kill pipeline, IPC contract.
+- [`docs/configuration.md`](docs/configuration.md) — `configuration.json` schema + per-key reference.
+- [`docs/non-goals.md`](docs/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
+
+When changing app behaviour, update the matching `docs/` file in the same commit. The schema in `src/main/config-schema.ts` and the doc in `docs/configuration.md` must agree on every release.
+
 ## What's deliberately not here (yet)
 
 Until each feature has its own spec under `conception/projects/2026-04/2026-04-26-condash-electron-port/notes/specs/`:

@@ -19,13 +19,14 @@ import {
   closeSession,
   getTerminalPrefs,
   killAll,
-  latestScreenshot,
   listTerminalSessions,
   resizeTerminal,
   setSessionSide,
   spawnTerminal,
   writeTerminal,
 } from './terminals';
+import { latestScreenshot } from './screenshot';
+import { readHelpDoc } from './help';
 import type {
   OpenWithSlotKey,
   Project,
@@ -178,6 +179,8 @@ function registerIpc(): void {
     return latestScreenshot(dir);
   });
 
+  ipcMain.handle('help.readDoc', (_, name: string) => readHelpDoc(name));
+
   ipcMain.handle('openInEditor', async (_, path: string) => {
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
@@ -201,26 +204,26 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(
-    'toggleStep',
+    'step.toggle',
     (_, path: string, lineIndex: number, expectedMarker: StepMarker, newMarker: StepMarker) =>
       toggleStep(path, lineIndex, expectedMarker, newMarker),
   );
 
   ipcMain.handle(
-    'editStepText',
+    'step.editText',
     (_, path: string, lineIndex: number, expectedText: string, newText: string) =>
       editStepText(path, lineIndex, expectedText, newText),
   );
 
-  ipcMain.handle('addStep', (_, path: string, text: string) => addStep(path, text));
+  ipcMain.handle('step.add', (_, path: string, text: string) => addStep(path, text));
 
   ipcMain.handle('listProjectFiles', (_, path: string) => listProjectFiles(path));
 
   ipcMain.handle('setStatus', (_, path: string, newStatus: string) => setStatus(path, newStatus));
 
-  ipcMain.handle('readNote', (_, path: string) => readNote(path));
+  ipcMain.handle('note.read', (_, path: string) => readNote(path));
 
-  ipcMain.handle('writeNote', (_, path: string, expectedContent: string, newContent: string) =>
+  ipcMain.handle('note.write', (_, path: string, expectedContent: string, newContent: string) =>
     writeNote(path, expectedContent, newContent),
   );
 

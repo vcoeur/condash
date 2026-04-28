@@ -52,6 +52,11 @@ export interface CondashApi {
   readNote(path: string): Promise<string>;
   writeNote(path: string, expectedContent: string, newContent: string): Promise<void>;
   /**
+   * Read one of the bundled help docs (`docs/<name>.md`). The main process
+   * whitelists the four shipped names; anything else rejects.
+   */
+  helpReadDoc(name: 'architecture' | 'configuration' | 'non-goals' | 'index'): Promise<string>;
+  /**
    * Subscribe to per-path tree events emitted by the main-process file watcher.
    * Each callback receives a debounced batch. Returns an unsubscribe function.
    */
