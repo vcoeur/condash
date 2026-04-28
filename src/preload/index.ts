@@ -18,16 +18,16 @@ const api: CondashApi = {
   getTheme: () => ipcRenderer.invoke('getTheme'),
   setTheme: (theme) => ipcRenderer.invoke('setTheme', theme),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
-    ipcRenderer.invoke('toggleStep', path, lineIndex, expectedMarker, newMarker),
+    ipcRenderer.invoke('step.toggle', path, lineIndex, expectedMarker, newMarker),
   editStepText: (path, lineIndex, expectedText, newText) =>
-    ipcRenderer.invoke('editStepText', path, lineIndex, expectedText, newText),
-  addStep: (path, text) => ipcRenderer.invoke('addStep', path, text),
+    ipcRenderer.invoke('step.editText', path, lineIndex, expectedText, newText),
+  addStep: (path, text) => ipcRenderer.invoke('step.add', path, text),
   listProjectFiles: (path) => ipcRenderer.invoke('listProjectFiles', path),
   setStatus: (path, newStatus) => ipcRenderer.invoke('setStatus', path, newStatus),
-  readNote: (path) => ipcRenderer.invoke('readNote', path),
+  readNote: (path) => ipcRenderer.invoke('note.read', path),
   writeNote: (path, expectedContent, newContent) =>
-    ipcRenderer.invoke('writeNote', path, expectedContent, newContent),
-  helpReadDoc: (name) => ipcRenderer.invoke('helpReadDoc', name),
+    ipcRenderer.invoke('note.write', path, expectedContent, newContent),
+  helpReadDoc: (name) => ipcRenderer.invoke('help.readDoc', name),
   onTreeEvents: (callback) => {
     const handler = (_: unknown, events: TreeEvent[]): void => callback(events);
     ipcRenderer.on('tree-events', handler);
