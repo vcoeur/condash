@@ -1,0 +1,38 @@
+{
+  "$schema_doc": "Source of truth for condash. See docs/configuration.md for the full schema.",
+  "workspace_path": "/path/to/workspace",
+  "worktrees_path": "/path/to/workspace/../worktrees",
+  "repositories": {
+    "primary": [],
+    "secondary": []
+  },
+  "open_with": {
+    "main_ide": {
+      "label": "Open in main IDE",
+      "commands": ["code {path}"]
+    },
+    "secondary_ide": {
+      "label": "Open in secondary IDE",
+      "commands": ["codium {path}"]
+    },
+    "terminal": {
+      "label": "Open terminal here",
+      "commands": [
+        "gnome-terminal --working-directory {path}",
+        "konsole --workdir {path}",
+        "x-terminal-emulator --working-directory {path}",
+        "xterm -e bash -c 'cd \"{path}\" && exec bash'"
+      ]
+    }
+  },
+  "pdf_viewer": [],
+  "terminal": {
+    "shell": "",
+    "shortcut": "Ctrl+T",
+    "screenshot_dir": "",
+    "screenshot_paste_shortcut": "Ctrl+Shift+V",
+    "launcher_command": "",
+    "move_tab_left_shortcut": "Ctrl+Left",
+    "move_tab_right_shortcut": "Ctrl+Right"
+  }
+}
