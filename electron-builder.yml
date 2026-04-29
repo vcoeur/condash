@@ -15,6 +15,13 @@ files:
 
 asar: true
 
+# Linux-only: wrap the Electron binary with a bash launcher that exports
+# ELECTRON_OZONE_PLATFORM_HINT=wayland when XDG_SESSION_TYPE=wayland. Without
+# this, the packaged AppImage / .deb falls back to XWayland and renders blurry
+# on fractional-scaled monitors. See build/after-pack.cjs for the full why +
+# projects/2026-04/2026-04-29-condash-appimage-wayland-env/.
+afterPack: build/after-pack.cjs
+
 # Auto-update channel: latest*.yml is uploaded next to the bundles in the
 # GitHub Release tied to the current `v*` tag. App reads it at runtime via
 # electron-updater.
