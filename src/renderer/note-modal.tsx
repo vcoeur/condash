@@ -157,6 +157,10 @@ export function NoteModal(props: {
   /** Open a bundled help doc — used by the configuration.json reference panel
    * to expand into the full doc. */
   onOpenHelp?: (doc: 'architecture' | 'configuration' | 'non-goals' | 'index') => void;
+  /** Pop one entry off the in-modal navigation history. When provided, the
+   * back-button click routes here instead of straight to onClose, so the
+   * user steps back through the chain instead of dismissing the whole stack. */
+  onBack?: () => void;
 }) {
   const [mode, setMode] = createSignal<Mode>(props.state?.initialMode ?? 'view');
 
@@ -384,6 +388,12 @@ export function NoteModal(props: {
     props.onClose();
   };
 
+  const handleBackClick = () => {
+    if (dirty() && !window.confirm('Unsaved changes — leave anyway?')) return;
+    if (props.onBack) props.onBack();
+    else props.onClose();
+  };
+
   return (
     <div class="modal-backdrop" onClick={handleBackdropClose}>
       <div
@@ -396,8 +406,8 @@ export function NoteModal(props: {
           <Show when={props.state?.backLabel}>
             <button
               class="modal-back-button"
-              onClick={handleBackdropClose}
-              title="Back (Esc)"
+              onClick={handleBackClick}
+              title="Back"
               aria-label={`Back to ${props.state?.backLabel}`}
             >
               <span class="modal-back-arrow" aria-hidden="true">

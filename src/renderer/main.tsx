@@ -101,6 +101,10 @@ function App() {
   const [toast, setToast] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>('projects');
   const [modal, setModal] = createSignal<ModalState>(null);
+  // In-modal navigation history. Each entry is the modal state we were
+  // showing before the user clicked a relative .md link or wikilink. The
+  // back button pops one off; close (× / Esc) clears the whole stack.
+  const [modalStack, setModalStack] = createSignal<NonNullable<ModalState>[]>([]);
   const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
@@ -587,7 +591,7 @@ function App() {
       return;
     }
     const target = matches[0];
-    setModal({ path: target.path, title: target.title });
+    navigateInModal({ path: target.path, title: target.title });
     if (matches.length > 1) {
       flashToast(`[[${slug}]] matched ${matches.length} items — opening the first`);
     }
@@ -646,11 +650,49 @@ function App() {
 
   const closeChildModal = (clear: () => void) => {
     clear();
+    // Any close (× / Esc) is an explicit "leave the reading thread" — wipe
+    // the in-modal history along with the modal itself.
+    setModalStack([]);
     const back = previewBackPath();
     if (back) {
       setPreviewBackPath(null);
       setPreviewPath(back);
     }
+  };
+
+  // Display label for a modal state — used to render "← Back to <X>" on
+  // the next note's back button when the user navigates deeper.
+  const modalLabel = (m: NonNullable<ModalState>): string => {
+    if (m.title) return m.title;
+    const base = m.path.split('/').pop();
+    return base && base.length > 0 ? base : m.path;
+  };
+
+  // Push the current modal onto the history stack and open `next` in its
+  // place. `next.backLabel` is filled in from the previous modal so the
+  // chain unwinds with sensible labels.
+  const navigateInModal = (next: NonNullable<ModalState>) => {
+    const cur = modal();
+    if (cur) {
+      setModalStack((s) => [...s, cur]);
+      setModal({ ...next, backLabel: next.backLabel ?? modalLabel(cur) });
+    } else {
+      setModal(next);
+    }
+  };
+
+  // Pop one entry off the in-modal history. If empty, fall through to the
+  // existing close-then-restore-preview path so the back button still
+  // works for items opened directly from a project preview.
+  const handleModalBack = () => {
+    const stack = modalStack();
+    if (stack.length === 0) {
+      closeChildModal(() => setModal(null));
+      return;
+    }
+    const prev = stack[stack.length - 1];
+    setModalStack(stack.slice(0, -1));
+    setModal(prev);
   };
 
   const handleDropOnColumn = async (path: string, newStatus: string) => {
@@ -881,7 +923,8 @@ function App() {
           onOpenInEditor={handleOpenInEditor}
           onOpenDeliverable={handleOpenDeliverable}
           onWikilink={handleWikilink}
-          onOpenMarkdown={(path) => setModal({ path })}
+          onOpenMarkdown={(path) => navigateInModal({ path })}
+          onBack={handleModalBack}
           onOpenPdf={(path) => setPdfPath(path)}
           onOpenHelp={handleOpenHelp}
         />
