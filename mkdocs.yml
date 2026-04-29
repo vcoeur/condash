@@ -115,12 +115,3 @@ nav:
     - Non-goals: explanation/non-goals.md
 
   - Legal: legal.md
-
-# Files served by the in-app Help menu (read out of the asar at runtime by
-# `helpReadDoc` in src/main/help.ts). Kept in `docs/` so the mkdocs build
-# still picks them up if anyone deep-links them, but excluded from the
-# public nav — the structured Diátaxis tree above is what we point users at.
-not_in_nav: |
-  /architecture.md
-  /configuration.md
-  /non-goals.md
