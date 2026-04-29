@@ -1,20 +1,67 @@
-# condash documentation
+---
+title: condash — Markdown project dashboard
+description: Live desktop dashboard for a Markdown-first project-tracking convention. Your projects, incidents, and documents are plain .md files you already edit; condash gives you the polished view on top.
+---
 
-Reference material for the condash (Electron) build. The CLAUDE.md at the repo root is the operating-instructions surface; this directory is for the durable architectural and configuration knowledge that informs day-to-day work.
+# condash
 
-## Contents
+<p class="tagline">A dashboard for the Markdown you already write.</p>
 
-- [`architecture.md`](architecture.md) — load-bearing invariants: drift-checked mutations, atomic-rename writes, the per-file write queue, the TTL git-status cache, the SIGTERM → force_stop → SIGKILL pty pipeline, the IPC contract.
-- [`configuration.md`](configuration.md) — `<conception>/configuration.json` reference: every key, with examples and edit paths.
-- [`non-goals.md`](non-goals.md) — what condash will deliberately not do. Read before adding "while we're at it" features.
+`condash` is a single-user desktop app that renders a live dashboard of a directory tree of **projects**, **incidents**, and **documents** written as plain Markdown. No database, no sync server, no account — the Markdown files are the source of truth, and `condash` is the view layer.
 
-## Why a `docs/` tree
+![condash dashboard overview](assets/screenshots/dashboard-overview-light.png#only-light)
+![condash dashboard overview](assets/screenshots/dashboard-overview-dark.png#only-dark)
 
-condash is shipped with `electron-builder`; users don't get a source tree, only the packaged app. The `docs/` files are bundled into the asar at package time so the in-app Help menu can render them through the existing markdown pipeline. The same files also serve as the public reference for anyone hand-editing `configuration.json` or contributing to the codebase.
+## Install
 
-## Editing rules
+**Linux, macOS, Windows** — download the installer for your OS from the latest GitHub Release:
 
-- Every code change that touches a behaviour described here updates the relevant doc in the same commit. The repo `CLAUDE.md` enforces this.
-- `architecture.md` describes invariants, not the implementation. If you need to update it after a refactor, the change is probably wrong — refactors should preserve the invariants.
-- `configuration.md` is the public contract for `configuration.json`. Removing or renaming a key is a breaking change; add migration notes if you must.
-- `non-goals.md` is append-only. Don't soften an existing non-goal; open an issue if you think one needs revisiting.
+→ **[github.com/vcoeur/condash/releases/latest](https://github.com/vcoeur/condash/releases/latest)**
+
+| OS | File to download |
+|---|---|
+| Linux | `condash-<version>.AppImage` (or `condash_<version>_amd64.deb`) |
+| macOS | `condash-<version>.dmg` |
+| Windows | `condash Setup <version>.exe` |
+
+Debian/Ubuntu users can skip the manual download and use the apt repository — see **[Install → Linux apt](get-started/install.md#linux-apt-repository-recommended)**.
+
+The builds are **unsigned** — each OS asks you to confirm once on first launch. Full walkthrough: **[Install →](get-started/install.md)**.
+
+Building from source (need [Node.js 20+](https://nodejs.org) and, on Linux, the libraries Electron's chrome-sandbox links against — `libnss3`, `libatk-bridge2.0-0`, `libgtk-3-0`):
+
+```bash
+git clone https://github.com/vcoeur/condash.git
+cd condash
+make install    # one-off — npm install
+make dev        # watch mode: tsc + vite + electron
+```
+
+## Start here
+
+<div class="grid cards" markdown>
+
+-   **New? [Tutorials](tutorials/index.md)**
+
+    Work through the three learning paths: install and first run, your first project, then a full day using condash end-to-end.
+
+-   **Solve a specific problem? [Guides](guides/index.md)**
+
+    Task-focused how-tos: the embedded terminal, wikilinks, the knowledge tree, multi-machine setup, and more.
+
+-   **Looking something up? [Reference](reference/index.md)**
+
+    Every CLI flag, every config key, every README field, and every action the dashboard takes on your files.
+
+-   **Want the why? [Explanation](explanation/index.md)**
+
+    Why Markdown-first, and how the parser, config, and native-window rendering work under the hood.
+
+</div>
+
+## Links
+
+- [Source on GitHub](https://github.com/vcoeur/condash)
+- [Latest release](https://github.com/vcoeur/condash/releases/latest)
+- [All releases](https://github.com/vcoeur/condash/releases)
+- [Author](https://vcoeur.com)

@@ -83,12 +83,14 @@ macOS and Windows are unaffected.
 
 ## Pointers
 
-- [`docs/index.md`](docs/index.md) — top of the documentation tree.
-- [`docs/architecture.md`](docs/architecture.md) — invariants: drift checks, atomic writes, write queue, TTL cache, pty kill pipeline, IPC contract.
-- [`docs/configuration.md`](docs/configuration.md) — `configuration.json` schema + per-key reference.
-- [`docs/non-goals.md`](docs/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
+- **Public site**: [`condash.vcoeur.com`](https://condash.vcoeur.com) — built from `docs/` + `mkdocs.yml` by `.github/workflows/docs.yml` on every published release. Includes a signed apt repo at `condash.vcoeur.com/apt/` rebuilt from every release's `.deb` assets.
+- [`docs/index.md`](docs/index.md) — landing page of both the in-app Help menu and the public mkdocs site.
+- [`docs/explanation/internals.md`](docs/explanation/internals.md) — invariants: drift checks, atomic writes, write queue, TTL cache, pty kill pipeline, IPC contract.
+- [`docs/reference/config.md`](docs/reference/config.md) — `configuration.json` + `settings.json` schema + per-key reference.
+- [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
+- [`docs/architecture.md`](docs/architecture.md), [`docs/configuration.md`](docs/configuration.md), [`docs/non-goals.md`](docs/non-goals.md) — kept at root because the in-app Help menu reads them out of the asar by exact filename (`src/main/help.ts`'s allowlist). Same content as the structured pages above; update both together until the help loader migrates.
 
-When changing app behaviour, update the matching `docs/` file in the same commit. The schema in `src/main/config-schema.ts` and the doc in `docs/configuration.md` must agree on every release.
+When changing app behaviour, update the matching `docs/` file in the same commit. The schema in `src/main/config-schema.ts`, the in-app Help file (`docs/configuration.md`), and the public reference (`docs/reference/config.md`) must all agree on every release.
 
 ## What's deliberately not here (yet)
 
