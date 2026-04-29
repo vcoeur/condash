@@ -17,8 +17,16 @@ name: Pages (docs + apt repo)
 # Pages deploy can be recovered by re-running the workflow.
 
 on:
-  release:
-    types: [published]
+  # `workflow_run` instead of `release: [published]` because release.yml
+  # creates the prerelease via the workflow's own GITHUB_TOKEN — and
+  # release events fired by GITHUB_TOKEN do NOT cascade into other
+  # workflows (documented GitHub anti-loop rule). workflow_run is the
+  # one trigger that DOES cascade across that boundary, and it lets us
+  # gate on release.yml succeeding so we never publish apt metadata for
+  # a release that didn't finish uploading its .debs.
+  workflow_run:
+    workflows: [release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -38,6 +46,10 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Skip when the upstream release run failed. workflow_dispatch fires
+    # without a workflow_run context, so the conclusion check evaluates
+    # to '' — we accept that case too.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
