@@ -6,6 +6,23 @@ import type { Worktree } from '../shared/types';
 const exec = promisify(execFile);
 
 /**
+ * Current branch for a checkout, or null when HEAD is genuinely detached
+ * (or the path is not inside a git repo). Used for sub-repos and secondary
+ * repos that aren't queried via `git worktree list`.
+ */
+export async function getCurrentBranch(repoPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await exec('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
+      cwd: repoPath,
+    });
+    const branch = stdout.trim();
+    return branch.length > 0 ? branch : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `git worktree list --porcelain` parser. Returns an empty list when the path
  * is not a git repository. Each worktree block looks like:
  *

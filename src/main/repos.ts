@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { RepoEntry } from '../shared/types';
 import { getDirtyCount } from './git-status-cache';
-import { listWorktrees } from './worktrees';
+import { getCurrentBranch, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
 
 interface FlatRepo extends RepoLookup {
@@ -52,11 +52,17 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
           hasForceStop,
         } satisfies RepoEntry;
       }
-      // Worktrees only meaningful for primary checkouts (top-level repos).
-      const worktreesPromise =
-        entry.kind === 'primary' && !entry.parent
-          ? listWorktrees(entry.cwd).catch(() => [])
-          : Promise.resolve([]);
+      // Top-level repos may have multiple worktrees, so we query them via
+      // `git worktree list`. Sub entries live inside the parent's git tree
+      // — `worktree list` from there would return the parent's path, which
+      // would break action buttons that target `worktree.path` — so we
+      // just resolve the current branch and synthesize a single row keyed
+      // on `entry.cwd`.
+      const worktreesPromise: Promise<import('../shared/types').Worktree[]> = entry.parent
+        ? getCurrentBranch(entry.cwd)
+            .catch(() => null)
+            .then((branch) => [{ path: entry.cwd, branch, primary: true }])
+        : listWorktrees(entry.cwd).catch(() => []);
       // Submodule entries (those with a `parent`) often live inside the
       // parent repo's git tree — without `-- .` scoping, `git status` would
       // surface the parent repo's dirty entries on the submodule card.
