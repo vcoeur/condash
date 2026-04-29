@@ -9,6 +9,16 @@
   /* Height controlled inline via the resize handle. */
 }
 
+/* Mounted-but-collapsed state: the pane stays in the DOM (so renderer-level
+ * spawn handlers always have a TerminalPaneHandle) but takes no height and
+ * is invisible. */
+.terminal-pane.closed {
+  height: 0 !important;
+  border-top: none;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .terminal-pane-resize {
   position: absolute;
   top: 0;
@@ -52,8 +62,41 @@
 .terminal-columns {
   flex: 1;
   display: grid;
-  /* grid-template-columns set inline from splitRatio. */
+  /* grid-template-columns set inline from splitRatio when split; default to a
+   * single full-width column otherwise. */
+  grid-template-columns: 100%;
   min-height: 0;
+  position: relative;
+}
+
+.terminal-columns.split {
+  /* grid-template-columns set inline from splitRatio. */
+}
+
+/* Drop-to-split zone: thin overlay on the right edge during a tab drag so the
+ * user can promote the single-column layout to split by dropping there. */
+.terminal-split-dropzone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-left: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  pointer-events: auto;
+  z-index: 4;
+}
+
+.terminal-split-dropzone.hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-left-style: solid;
 }
 
 .terminal-column {
@@ -212,6 +255,54 @@
 
 .terminal-tab[draggable='true']:active {
   cursor: grabbing;
+}
+
+.terminal-tab-strip-spacer {
+  flex: 1;
+}
+
+/* In-pane find bar (xterm @xterm/addon-search). Bound to Ctrl+F when a tab is
+ * focused; floats over the bottom of the pane. */
+.terminal-search-bar {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.terminal-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-width: 220px;
+}
+
+.terminal-search-action {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.terminal-search-action:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 .terminal-host {

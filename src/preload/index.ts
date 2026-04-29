@@ -62,6 +62,9 @@ const api: CondashApi = {
     return () => ipcRenderer.removeListener('term.sessions', handler);
   },
   openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
+  openExternal: (target: string) => ipcRenderer.invoke('openExternal', target),
+  createProjectNote: (projectPath: string, slug: string) =>
+    ipcRenderer.invoke('project.createNote', projectPath, slug),
   quitApp: () => ipcRenderer.invoke('quitApp'),
   onMenuCommand: (callback) => {
     const handler = (_: unknown, command: MenuCommand): void => callback(command);

@@ -35,6 +35,48 @@ const openWithSlot = z
   })
   .strict();
 
+const xtermColors = z
+  .object({
+    foreground: z.string().optional(),
+    background: z.string().optional(),
+    cursor: z.string().optional(),
+    cursor_accent: z.string().optional(),
+    selection_background: z.string().optional(),
+    black: z.string().optional(),
+    red: z.string().optional(),
+    green: z.string().optional(),
+    yellow: z.string().optional(),
+    blue: z.string().optional(),
+    magenta: z.string().optional(),
+    cyan: z.string().optional(),
+    white: z.string().optional(),
+    bright_black: z.string().optional(),
+    bright_red: z.string().optional(),
+    bright_green: z.string().optional(),
+    bright_yellow: z.string().optional(),
+    bright_blue: z.string().optional(),
+    bright_magenta: z.string().optional(),
+    bright_cyan: z.string().optional(),
+    bright_white: z.string().optional(),
+  })
+  .strict();
+
+const xtermSettings = z
+  .object({
+    font_family: z.string().optional(),
+    font_size: z.number().int().positive().optional(),
+    line_height: z.number().positive().optional(),
+    letter_spacing: z.number().optional(),
+    font_weight: z.union([z.string(), z.number()]).optional(),
+    font_weight_bold: z.union([z.string(), z.number()]).optional(),
+    cursor_style: z.enum(['block', 'underline', 'bar']).optional(),
+    cursor_blink: z.boolean().optional(),
+    scrollback: z.number().int().nonnegative().optional(),
+    ligatures: z.boolean().optional(),
+    colors: xtermColors.optional(),
+  })
+  .strict();
+
 const terminalSettings = z
   .object({
     shell: z.string().optional(),
@@ -44,8 +86,12 @@ const terminalSettings = z
     launcher_command: z.string().optional(),
     move_tab_left_shortcut: z.string().optional(),
     move_tab_right_shortcut: z.string().optional(),
+    xterm: xtermSettings.optional(),
   })
   .strict();
+
+export type XtermSettings = z.infer<typeof xtermSettings>;
+export type XtermColors = z.infer<typeof xtermColors>;
 
 export const configSchema = z
   .object({

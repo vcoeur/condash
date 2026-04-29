@@ -327,16 +327,11 @@ function App() {
   onCleanup(() => document.removeEventListener('click', closeHelpMenu));
 
   const handleRunRepo = async (repo: RepoEntry, worktree?: Worktree) => {
-    if (!terminalHandle) {
-      ensureTerminalOpen();
-      // Wait one tick so the pane mounts and registers its handle.
-      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
-    }
+    // The Code-tab Run button spawns a `side: 'code'` session that renders in
+    // the inline CodeRunRow inside the Code tab — *not* in the bottom terminal
+    // pane. So we no longer auto-open the pane on Run; the pane stays mounted
+    // (but visually collapsed) so terminalHandle is still available for spawn.
     if (!terminalHandle) return;
-    ensureTerminalOpen();
-    // Pass the worktree path as the cwd override when running on a
-    // non-primary branch — main/terminals.ts honours request.cwd over the
-    // configured primary cwd when both are set.
     const isPrimary = !worktree || worktree.primary;
     const label = isPrimary ? repo.name : `${repo.name} · ${worktree.branch ?? '(detached)'}`;
     try {
@@ -472,6 +467,29 @@ function App() {
       }
     }
     terminalHandle.typeIntoActive(text);
+  };
+
+  const handleCreateProjectNote = async (project: Project) => {
+    const slug = window.prompt(
+      `New note for "${project.title}".\n\n` +
+        'Slug (lowercase, hyphenated). Will be saved as notes/NN-<slug>.md.',
+      '',
+    );
+    if (slug === null) return;
+    const trimmed = slug.trim();
+    if (!trimmed) {
+      flashToast('Empty slug — note not created.');
+      return;
+    }
+    try {
+      const path = await window.condash.createProjectNote(project.path, trimmed);
+      const filename = path.split('/').pop() ?? path;
+      flashToast(`Created ${filename}.`);
+      // Open the new note in the in-app modal editor straight away.
+      setModal({ path, title: filename });
+    } catch (err) {
+      flashToast(`Could not create note: ${(err as Error).message}`);
+    }
   };
 
   const handleOpenProject = (project: Project) => {
@@ -736,6 +754,7 @@ function App() {
                 onToggleStep={handleToggleStep}
                 onDropProject={handleDropOnColumn}
                 onWorkOn={(p) => void handleWorkOn(p)}
+                onCreateNote={(p) => void handleCreateProjectNote(p)}
               />
             </Show>
           </Suspense>
@@ -820,6 +839,7 @@ function App() {
                         <CodeRunRows
                           sessions={groupSessions()}
                           repos={repos() ?? []}
+                          xtermPrefs={terminalPrefs()?.xterm}
                           onClose={(id) => void window.condash.termClose(id)}
                         />
                       </section>
@@ -874,6 +894,7 @@ function App() {
         onClose={() => setTerminalOpen(false)}
         launcherCommand={terminalPrefs()?.launcher_command ?? null}
         cwd={conceptionPath()}
+        xtermPrefs={terminalPrefs()?.xterm}
         registerHandle={(handle) => {
           terminalHandle = handle;
         }}

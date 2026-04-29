@@ -5,17 +5,24 @@
 //   adds / removes Tab rows + xterms. Local spawn() just calls termSpawn and
 //   stashes a label in localStorage; the broadcast that follows fills in the
 //   tab. This avoids the duplicate-tab race that the previous version had.
-// - Two columns ("left" and "right"). Each column has its own tab strip and
-//   xterm host. New tabs default to "left" (configurable per-tab; persisted
-//   in localStorage). The user can drag a tab to the other column to move it.
-// - A draggable splitter sets the column width ratio.
+// - Single-column default: the bottom pane shows one tab strip + one xterm
+//   host. The right column only materialises when at least one tab lives in
+//   it (created from the right's `+` button or dragged across from the left).
+// - Cross-column drag-and-drop. While dragging, a drop strip appears on the
+//   right edge so the user can promote a single-column layout to split.
+// - The pane is **always mounted** even when collapsed, so spawn() callers
+//   from elsewhere in the renderer always have a `terminalHandle` available.
+//   Visual collapse is just a CSS `closed` modifier that hides the body.
+// - A draggable splitter sets the column width ratio (only when split).
 // - A draggable handle on the pane's top edge sets the pane height.
 
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { TermSide, TermSpawnRequest } from '@shared/types';
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import type { TermSide, TermSpawnRequest, TerminalPrefs, TerminalXtermPrefs } from '@shared/types';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
-import { mountXterm } from './xterm-mount';
+import type { SearchAddon } from '@xterm/addon-search';
+import type { SerializeAddon } from '@xterm/addon-serialize';
+import { mountXterm, type MountedTerm } from './xterm-mount';
 import './terminal-pane.css';
 
 export type Column = 'left' | 'right';
@@ -31,6 +38,9 @@ export interface Tab {
   label: string;
   /** User-renamed label, if any. Persisted by id in localStorage. */
   customName?: string;
+  /** Most recent cwd reported via OSC 7 (`file://host/path`). Used for the
+   *  display label when the user hasn't supplied a custom name. */
+  cwd?: string;
   /** Process exit code; the tab can still be cleared via close. */
   exited?: number;
 }
@@ -117,6 +127,17 @@ export interface TerminalPaneHandle {
 
 const DRAG_MIME = 'application/x-condash-term-tab';
 
+/** Display name for a tab. Custom rename wins; otherwise the cwd basename if
+ *  the shell emitted OSC 7; otherwise the spawn-time label. */
+function displayName(tab: Tab): string {
+  if (tab.customName) return tab.customName;
+  if (tab.cwd) {
+    const basename = tab.cwd.split('/').filter(Boolean).pop();
+    if (basename) return basename;
+  }
+  return tab.label;
+}
+
 export function TerminalPane(props: {
   open: boolean;
   onClose: () => void;
@@ -127,6 +148,9 @@ export function TerminalPane(props: {
   /** Working directory passed to spawned user shells (typically the
    * conception path). */
   cwd?: string | null;
+  /** User-configured xterm preferences (font, colours, scrollback, …). Pulled
+   *  from configuration.json under `terminal.xterm`. Undefined = defaults. */
+  xtermPrefs?: TerminalXtermPrefs;
 }) {
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [activeIds, setActiveIds] = createSignal<{ left: string | null; right: string | null }>({
@@ -139,6 +163,11 @@ export function TerminalPane(props: {
   const initialLayout = readLayout();
   const [paneHeight, setPaneHeight] = createSignal(initialLayout.paneHeight);
   const [splitRatio, setSplitRatio] = createSignal(initialLayout.splitRatio);
+
+  // In-flight search bar state.
+  const [searchOpen, setSearchOpen] = createSignal(false);
+  const [searchQuery, setSearchQuery] = createSignal('');
+
   // Track the column where the next default-spawn should land — set when the
   // user clicks a `+` button so that the right column's `+` lands a tab in
   // the right column, not always 'left'.
@@ -146,7 +175,15 @@ export function TerminalPane(props: {
 
   const xterms = new Map<
     string,
-    { term: Terminal; fit: FitAddon; element: HTMLDivElement; column: Column }
+    {
+      term: Terminal;
+      fit: FitAddon;
+      search: SearchAddon;
+      serialize: SerializeAddon;
+      mounted: MountedTerm;
+      element: HTMLDivElement;
+      column: Column;
+    }
   >();
   let leftHost: HTMLDivElement | undefined;
   let rightHost: HTMLDivElement | undefined;
@@ -157,7 +194,8 @@ export function TerminalPane(props: {
   const setActiveIn = (col: Column, id: string | null) =>
     setActiveIds((prev) => ({ ...prev, [col]: id }));
 
-  const tabDisplayLabel = (tab: Tab): string => tab.customName ?? tab.label;
+  // The right column appears only when at least one tab lives in it.
+  const isSplit = createMemo<boolean>(() => tabsIn('right').length > 0);
 
   const hostFor = (col: Column): HTMLDivElement | undefined =>
     col === 'left' ? leftHost : rightHost;
@@ -170,8 +208,37 @@ export function TerminalPane(props: {
     element.style.display = 'none';
     const host = hostFor(column);
     if (host) host.appendChild(element);
-    const handle = mountXterm(element, id, { replay });
-    xterms.set(id, { term: handle.term, fit: handle.fit, element, column });
+    const mounted = mountXterm(element, id, {
+      replay,
+      prefs: props.xtermPrefs,
+      onCustomKey: (ev) => handleXtermKey(ev, id),
+    });
+    const handleEntry = {
+      term: mounted.term,
+      fit: mounted.fit,
+      search: mounted.search,
+      serialize: mounted.serialize,
+      mounted,
+      element,
+      column,
+    };
+    xterms.set(id, handleEntry);
+    // Promote this tab to active when the user clicks/focuses inside the
+    // xterm (otherwise typing into it works but the tab strip's "active"
+    // styling stays on whichever tab last got a click).
+    const promote = () => {
+      // `xterms.get(id)?.column` so a tab that's been moved between columns
+      // still resolves to its current side.
+      const col = xterms.get(id)?.column ?? column;
+      if (activeIdIn(col) !== id) setActiveIn(col, id);
+      if (activeColumn() !== col) setActiveColumn(col);
+    };
+    element.addEventListener('focusin', promote);
+    element.addEventListener('mousedown', promote);
+    // Track cwd updates from OSC 7 → reflect in the tab label.
+    mounted.onCwdChange((cwd) => {
+      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, cwd } : t)));
+    });
   };
 
   /** Move an existing xterm element to a new column's host (used when the
@@ -211,19 +278,39 @@ export function TerminalPane(props: {
     }
   };
 
+  /** Custom-key hook for xterm — handles Ctrl+F (search), Ctrl+Up/Down (jump
+   *  to prompt) before the bytes hit the shell. */
+  const handleXtermKey = (ev: KeyboardEvent, _id: string): boolean => {
+    const ctrl = ev.ctrlKey && !ev.metaKey && !ev.altKey;
+    if (!ctrl || ev.type !== 'keydown') return true;
+    if (!ev.shiftKey && (ev.key === 'f' || ev.key === 'F')) {
+      ev.preventDefault();
+      setSearchOpen(true);
+      queueMicrotask(() => searchInputRef?.focus());
+      return false;
+    }
+    if (!ev.shiftKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
+      const id = activeIdIn(activeColumn());
+      const handle = id ? xterms.get(id) : null;
+      if (handle) {
+        ev.preventDefault();
+        handle.mounted.jumpToPrompt(ev.key === 'ArrowUp' ? -1 : 1);
+        return false;
+      }
+    }
+    return true;
+  };
+
   // ---- onTermSessions: single source of truth for adds/removes ----
   const reconcile = async (
     snap: readonly { id: string; side: TermSide; exited?: number; repo?: string }[],
   ) => {
-    // Add new my-side sessions.
     const known = new Set(tabs().map((t) => t.id));
     for (const s of snap) {
       if (s.side !== 'my' || known.has(s.id)) continue;
       const meta = readMeta()[s.id];
       const label = meta?.label ?? (s.repo ? `${s.repo} (run)` : 'shell');
       const column: Column = meta?.column ?? nextSpawnColumn;
-      // Reset spawn-target after consumption so subsequent automatic
-      // spawns (e.g. session pop-out from Code tab) default to 'left'.
       nextSpawnColumn = 'left';
       const tab: Tab = {
         id: s.id,
@@ -234,7 +321,6 @@ export function TerminalPane(props: {
         exited: s.exited,
       };
       setTabs((prev) => [...prev, tab]);
-      // Persist column choice so a renderer reload restores the layout.
       setMeta(s.id, { label, customName: meta?.customName, column });
       const attach = await window.condash.termAttach(s.id);
       mountForSession(s.id, column, attach?.output);
@@ -242,14 +328,12 @@ export function TerminalPane(props: {
       setActiveColumn(column);
       queueMicrotask(focusActive);
     }
-    // Update exited markers for sessions we already track.
     setTabs((prev) =>
       prev.map((t) => {
         const s = snap.find((x) => x.id === t.id);
         return s ? { ...t, exited: s.exited } : t;
       }),
     );
-    // Drop tabs whose session has switched to 'code' or vanished.
     const stillMyById = new Map<string, boolean>();
     for (const s of snap) stillMyById.set(s.id, s.side === 'my');
     const toDrop = tabs()
@@ -257,7 +341,7 @@ export function TerminalPane(props: {
       .map((t) => t.id);
     for (const id of toDrop) {
       const handle = xterms.get(id);
-      handle?.term.dispose();
+      handle?.mounted.dispose();
       handle?.element.remove();
       xterms.delete(id);
     }
@@ -267,7 +351,6 @@ export function TerminalPane(props: {
         left: toDrop.includes(prev.left ?? '') ? null : prev.left,
         right: toDrop.includes(prev.right ?? '') ? null : prev.right,
       }));
-      // Pick a fallback active per column if we cleared one.
       for (const col of ['left', 'right'] as Column[]) {
         if (activeIdIn(col)) continue;
         const fallback = tabsIn(col).at(-1)?.id ?? null;
@@ -297,8 +380,6 @@ export function TerminalPane(props: {
 
   const spawn = async (request: TermSpawnRequest, label: string): Promise<string> => {
     const { id } = await window.condash.termSpawn(request);
-    // Persist a label hint so reconcile() can pick it up on the broadcast
-    // that lands right after the IPC reply.
     setMeta(id, { label, column: nextSpawnColumn });
     return id;
   };
@@ -324,17 +405,19 @@ export function TerminalPane(props: {
     const handle = xterms.get(id);
     handle?.term.write(data);
   });
-  const offTermExit = window.condash.onTermExit(({ id, code }) => {
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: code } : t)));
-    const handle = xterms.get(id);
-    if (handle) handle.term.write(`\r\n\x1b[33m[process exited ${code}]\x1b[0m\r\n`);
+  const offTermExit = window.condash.onTermExit(({ id, code: _code }) => {
+    // Auto-close the tab on process exit — the previous "[process exited N]"
+    // marker stayed around forever and forced a manual click on the close
+    // button. If the user wants to inspect the buffer, the Save-buffer
+    // button on the tab strip dumps it to a .txt before close lands.
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: _code } : t)));
+    closeTab(id);
   });
   onCleanup(() => {
     offTermData();
     offTermExit();
-    // Dispose renderer-side widgets only — main owns the ptys.
-    for (const [, { term, element }] of xterms) {
-      term.dispose();
+    for (const [, { mounted, element }] of xterms) {
+      mounted.dispose();
       element.remove();
     }
     xterms.clear();
@@ -343,7 +426,6 @@ export function TerminalPane(props: {
   const closeTab = (id: string) => {
     void window.condash.termClose(id);
     deleteMeta(id);
-    // reconcile() (driven by onTermSessions broadcast) will dispose the xterm.
   };
 
   const commitRename = (id: string, value: string) => {
@@ -374,8 +456,6 @@ export function TerminalPane(props: {
       const ratio = (e.clientX - rect.left) / rect.width;
       const clamped = Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO, ratio));
       setSplitRatio(clamped);
-      // Re-fit both column xterms while dragging — keeps the cols/rows in
-      // sync with the visible area.
       for (const { fit } of xterms.values()) {
         try {
           fit.fit();
@@ -399,7 +479,7 @@ export function TerminalPane(props: {
     const startHeight = paneHeight();
     const maxHeight = Math.floor(window.innerHeight * MAX_PANE_HEIGHT_VH);
     const onMove = (e: MouseEvent) => {
-      const delta = startY - e.clientY; // dragging up grows the pane
+      const delta = startY - e.clientY;
       const next = Math.max(MIN_PANE_HEIGHT, Math.min(maxHeight, startHeight + delta));
       setPaneHeight(next);
       for (const { fit } of xterms.values()) {
@@ -419,7 +499,6 @@ export function TerminalPane(props: {
     window.addEventListener('mouseup', onUp);
   };
 
-  // Re-fit on window resize.
   const onWindowResize = (): void => {
     for (const { fit } of xterms.values()) {
       try {
@@ -435,6 +514,7 @@ export function TerminalPane(props: {
   createEffect(() => {
     void activeIds();
     void activeColumn();
+    void isSplit();
     queueMicrotask(focusActive);
   });
   createEffect(() => {
@@ -442,9 +522,6 @@ export function TerminalPane(props: {
   });
 
   // ---- drag-to-reorder + drag-between-columns ----
-  // Track the in-flight drag so the source tab can dim, the hovered target
-  // can show a drop indicator, and the strip itself can highlight when the
-  // user is hovering over empty space.
   const [draggingId, setDraggingId] = createSignal<string | null>(null);
   const [dropTarget, setDropTarget] = createSignal<{
     id: string | null;
@@ -472,14 +549,11 @@ export function TerminalPane(props: {
     if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    // Set the column-level target only if we're not over a specific tab.
     if (dropTarget().id === null || dropTarget().column !== column) {
       setDropTarget({ id: null, column });
     }
   };
   const onDragLeaveStrip = (e: DragEvent, column: Column) => {
-    // Only clear when actually leaving the strip element (not just moving
-    // between its children).
     const related = e.relatedTarget as HTMLElement | null;
     const strip = e.currentTarget as HTMLElement;
     if (related && strip.contains(related)) return;
@@ -522,14 +596,53 @@ export function TerminalPane(props: {
       }
       return list;
     });
-    // Re-host xterm if column changed; persist column choice.
-    movemount(srcId, target.column);
-    const tab = tabs().find((t) => t.id === srcId);
-    if (tab)
-      setMeta(srcId, { label: tab.label, customName: tab.customName, column: target.column });
-    // Make the target column's active tab the dropped one if no other choice.
-    setActiveIn(target.column, srcId);
-    setActiveColumn(target.column);
+    // Wait for the right column to mount if it didn't exist before (split just
+    // got promoted by this drop) — host elements register on render.
+    queueMicrotask(() => {
+      movemount(srcId, target.column);
+      const tab = tabs().find((t) => t.id === srcId);
+      if (tab)
+        setMeta(srcId, { label: tab.label, customName: tab.customName, column: target.column });
+      setActiveIn(target.column, srcId);
+      setActiveColumn(target.column);
+      queueMicrotask(focusActive);
+    });
+  };
+
+  // ---- save buffer ("export run output") ----
+  const saveActiveBuffer = (): void => {
+    const id = activeIdIn(activeColumn());
+    if (!id) return;
+    const handle = xterms.get(id);
+    if (!handle) return;
+    const text = handle.serialize.serialize();
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const tab = tabs().find((t) => t.id === id);
+    a.download = `${(tab && displayName(tab)) || 'terminal'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // ---- in-pane search (xterm addon-search) ----
+  let searchInputRef: HTMLInputElement | undefined;
+  const runSearch = (direction: 'next' | 'prev'): void => {
+    const id = activeIdIn(activeColumn());
+    if (!id) return;
+    const handle = xterms.get(id);
+    if (!handle) return;
+    const q = searchQuery();
+    if (!q) return;
+    if (direction === 'next') handle.search.findNext(q);
+    else handle.search.findPrevious(q);
+  };
+  const closeSearch = (): void => {
+    setSearchOpen(false);
+    setSearchQuery('');
     queueMicrotask(focusActive);
   };
 
@@ -606,16 +719,22 @@ export function TerminalPane(props: {
                   if ((e.target as HTMLElement).closest('.terminal-tab-close')) return;
                   setRenamingId(tab.id);
                 }}
-                title={tabDisplayLabel(tab) === tab.label ? tab.label : `${tab.label} (renamed)`}
+                title={
+                  tab.cwd
+                    ? `${displayName(tab)} — ${tab.cwd}`
+                    : displayName(tab) === tab.label
+                      ? tab.label
+                      : `${tab.label} (renamed)`
+                }
               >
                 <Show
                   when={tab.id === renamingId()}
-                  fallback={<span class="terminal-tab-label">{tabDisplayLabel(tab)}</span>}
+                  fallback={<span class="terminal-tab-label">{displayName(tab)}</span>}
                 >
                   <input
                     class="terminal-tab-rename"
                     type="text"
-                    value={tabDisplayLabel(tab)}
+                    value={displayName(tab)}
                     ref={(el) => queueMicrotask(() => el && (el.focus(), el.select()))}
                     onClick={(e) => e.stopPropagation()}
                     onBlur={(e) => commitRename(tab.id, e.currentTarget.value)}
@@ -671,6 +790,32 @@ export function TerminalPane(props: {
               λ
             </button>
           </Show>
+          <span class="terminal-tab-strip-spacer" />
+          <button
+            class="terminal-tab-add"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveColumn(col);
+              saveActiveBuffer();
+            }}
+            title="Save the active terminal buffer to a file"
+            aria-label="Save buffer"
+          >
+            ⤓
+          </button>
+          <button
+            class="terminal-tab-add"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveColumn(col);
+              setSearchOpen(true);
+              queueMicrotask(() => searchInputRef?.focus());
+            }}
+            title="Find in buffer (Ctrl+F)"
+            aria-label="Find"
+          >
+            ⌕
+          </button>
         </div>
         <div
           class="terminal-host"
@@ -684,38 +829,121 @@ export function TerminalPane(props: {
   };
 
   let columnsRoot: HTMLDivElement | undefined;
+
   return (
-    <Show when={props.open}>
-      <section class="terminal-pane" style={{ height: `${paneHeight()}px` }}>
-        <div
-          class="terminal-pane-resize"
-          onMouseDown={(e) => startHeightDrag(e)}
-          title="Drag to resize"
-        />
-        <button
-          class="terminal-pane-close"
-          onClick={props.onClose}
-          title="Close pane"
-          aria-label="Close pane"
-        >
-          ×
-        </button>
-        <div
-          class="terminal-columns"
-          ref={(el) => (columnsRoot = el)}
-          style={{
-            'grid-template-columns': `${splitRatio() * 100}% 4px ${(1 - splitRatio()) * 100}%`,
-          }}
-        >
-          {renderColumn('left')}
+    <section
+      class="terminal-pane"
+      classList={{ closed: !props.open }}
+      style={{ height: `${paneHeight()}px` }}
+    >
+      <div
+        class="terminal-pane-resize"
+        onMouseDown={(e) => startHeightDrag(e)}
+        title="Drag to resize"
+      />
+      <button
+        class="terminal-pane-close"
+        onClick={props.onClose}
+        title="Close pane"
+        aria-label="Close pane"
+      >
+        ×
+      </button>
+      <div
+        class="terminal-columns"
+        ref={(el) => (columnsRoot = el)}
+        classList={{ split: isSplit() }}
+        style={
+          isSplit()
+            ? {
+                'grid-template-columns': `${splitRatio() * 100}% 4px ${(1 - splitRatio()) * 100}%`,
+              }
+            : undefined
+        }
+      >
+        {renderColumn('left')}
+        <Show when={isSplit()}>
           <div
             class="terminal-splitter"
             onMouseDown={(e) => columnsRoot && startSplitterDrag(e, columnsRoot)}
             title="Drag to resize columns"
           />
           {renderColumn('right')}
+        </Show>
+        {/* When unsplit and a tab is being dragged, expose a thin drop zone on
+            the right edge — dropping there promotes the layout to split. */}
+        <Show when={!isSplit() && draggingId() !== null}>
+          <div
+            class="terminal-split-dropzone"
+            classList={{
+              hover: dropTarget().column === 'right',
+            }}
+            onDragOver={(e) => {
+              if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              setDropTarget({ id: null, column: 'right' });
+            }}
+            onDragLeave={() => {
+              if (dropTarget().column === 'right' && dropTarget().id === null) {
+                setDropTarget({ id: null, column: null });
+              }
+            }}
+            onDrop={(e) => onDropOnStrip(e, 'right')}
+          >
+            <span>Drop to split →</span>
+          </div>
+        </Show>
+      </div>
+      <Show when={searchOpen()}>
+        <div class="terminal-search-bar">
+          <input
+            ref={(el) => (searchInputRef = el)}
+            class="terminal-search-input"
+            type="text"
+            placeholder="Find in buffer…"
+            value={searchQuery()}
+            onInput={(e) => setSearchQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                closeSearch();
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                runSearch(e.shiftKey ? 'prev' : 'next');
+              }
+              e.stopPropagation();
+            }}
+          />
+          <button
+            class="terminal-search-action"
+            onClick={() => runSearch('prev')}
+            title="Previous match (Shift+Enter)"
+            aria-label="Previous match"
+          >
+            ↑
+          </button>
+          <button
+            class="terminal-search-action"
+            onClick={() => runSearch('next')}
+            title="Next match (Enter)"
+            aria-label="Next match"
+          >
+            ↓
+          </button>
+          <button
+            class="terminal-search-action"
+            onClick={closeSearch}
+            title="Close (Esc)"
+            aria-label="Close find"
+          >
+            ×
+          </button>
         </div>
-      </section>
-    </Show>
+      </Show>
+    </section>
   );
 }
+
+// Re-export for callers that destructure both surface types together.
+export type { TerminalPrefs };
