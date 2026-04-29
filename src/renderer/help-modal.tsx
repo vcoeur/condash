@@ -1,5 +1,6 @@
 import { createEffect, createResource, onCleanup, onMount, Show } from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
+import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import 'highlight.js/styles/github.css';
 
 export type HelpDoc = 'architecture' | 'configuration' | 'non-goals' | 'index';
@@ -55,6 +56,18 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
     }
   });
 
+  // Help docs live in the app bundle, not on disk — relative-path resolution
+  // would lie. We only act on http(s)/mailto and in-page anchors; everything
+  // else is preventDefault-only so a stray link can't blank the renderer.
+  const handleBodyClick = (e: MouseEvent) => {
+    routeMarkdownClick(e, null, {
+      onExternal: (url) => void window.condash.openExternal(url),
+      onAnchor: (id) => {
+        if (bodyRef) scrollToAnchor(bodyRef, id);
+      },
+    });
+  };
+
   return (
     <div class="modal-backdrop" onClick={props.onClose}>
       <div
@@ -71,7 +84,12 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
           </button>
         </header>
         <Show when={content()} fallback={<div class="modal-body modal-empty">Loading…</div>}>
-          <div class="modal-body markdown-body" ref={(el) => (bodyRef = el)} innerHTML={html()} />
+          <div
+            class="modal-body markdown-body"
+            ref={(el) => (bodyRef = el)}
+            innerHTML={html()}
+            onClick={handleBodyClick}
+          />
         </Show>
       </div>
     </div>

@@ -120,6 +120,24 @@ async function createWindow(initialPath: string | null): Promise<BrowserWindow> 
     event.preventDefault();
   });
 
+  // Defensive backstop: a stray <a href> click in rendered markdown must never
+  // replace the renderer with a blank file:// page. The renderer-side click
+  // routers in note-modal / help-modal handle every link type explicitly; this
+  // catches anything that slips through and routes http(s)/mailto out to the
+  // OS browser instead of letting Chromium navigate the BrowserWindow itself.
+  win.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (/^(https?|mailto):/i.test(url)) {
+      void shell.openExternal(url);
+    }
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^(https?|mailto):/i.test(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
   win.once('ready-to-show', () => win.show());
 
   if (isDev) {

@@ -1,5 +1,6 @@
 import { createEffect, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
+import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
 import 'highlight.js/styles/github.css';
 
@@ -148,6 +149,11 @@ export function NoteModal(props: {
   onOpenInEditor: (path: string) => void;
   onOpenDeliverable: (path: string) => void;
   onWikilink: (slug: string) => void;
+  /** Open a markdown file referenced by a relative `[text](path.md)` link in
+   * the rendered body — replaces the current note in the same modal. */
+  onOpenMarkdown: (path: string) => void;
+  /** Open a PDF referenced by a relative link in the rendered body. */
+  onOpenPdf: (path: string) => void;
   /** Open a bundled help doc — used by the configuration.json reference panel
    * to expand into the full doc. */
   onOpenHelp?: (doc: 'architecture' | 'configuration' | 'non-goals' | 'index') => void;
@@ -235,13 +241,17 @@ export function NoteModal(props: {
   });
 
   const handleBodyClick = (e: MouseEvent) => {
-    const target = e.target as HTMLElement | null;
-    const link = target?.closest('a.wikilink');
-    if (link) {
-      e.preventDefault();
-      const slug = link.getAttribute('data-slug');
-      if (slug) props.onWikilink(slug);
-    }
+    const currentPath = props.state?.path ?? null;
+    routeMarkdownClick(e, currentPath ? { path: currentPath } : null, {
+      onWikilink: (slug) => props.onWikilink(slug),
+      onExternal: (url) => void window.condash.openExternal(url),
+      onAnchor: (id) => {
+        if (bodyRef) scrollToAnchor(bodyRef, id);
+      },
+      onMarkdown: (path) => props.onOpenMarkdown(path),
+      onPdf: (path) => props.onOpenPdf(path),
+      onOtherFile: (path) => props.onOpenInEditor(path),
+    });
   };
 
   // Re-run find whenever the view-mode HTML or the query changes.
