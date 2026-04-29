@@ -79,6 +79,11 @@ export function groupByStatus(items: Project[]): Map<string, Project[]> {
     const key = (KNOWN_STATUSES as readonly string[]).includes(item.status) ? item.status : UNKNOWN;
     buckets.get(key)!.push(item);
   }
+  // Sort each bucket most-recent-first. Slugs are `YYYY-MM-DD-…` so descending
+  // alpha sort is equivalent to descending date.
+  for (const list of buckets.values()) {
+    list.sort((a, b) => (a.slug < b.slug ? 1 : a.slug > b.slug ? -1 : 0));
+  }
   return buckets;
 }
 
