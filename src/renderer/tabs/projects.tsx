@@ -213,6 +213,24 @@ function TerminalIcon() {
   );
 }
 
+function NewNoteIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 2.5h6L12.5 6v7a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" />
+      <path d="M9 2.5V6h3.5" />
+      <path d="M7.25 8v4" />
+      <path d="M5.25 10h4" />
+    </svg>
+  );
+}
+
 function OpenIcon() {
   return (
     <svg
@@ -253,6 +271,7 @@ export function ProjectsView(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
+  onCreateNote?: (project: Project) => void;
 }) {
   const [filter, setFilter] = createSignal('');
   const trimmedQuery = createMemo(() => filter().trim().toLowerCase());
@@ -290,6 +309,7 @@ export function ProjectsView(props: {
             onToggleStep={props.onToggleStep}
             onDropProject={props.onDropProject}
             onWorkOn={props.onWorkOn}
+            onCreateNote={props.onCreateNote}
           />
         )}
       </For>
@@ -308,6 +328,7 @@ function GroupBlock(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
+  onCreateNote?: (project: Project) => void;
 }) {
   const [over, setOver] = createSignal(false);
   const [userExpanded, setUserExpanded] = createSignal<boolean | null>(null);
@@ -379,6 +400,7 @@ function GroupBlock(props: {
                 onOpen={props.onOpen}
                 onToggleStep={props.onToggleStep}
                 onWorkOn={props.onWorkOn}
+                onCreateNote={props.onCreateNote}
               />
             )}
           </For>
@@ -393,6 +415,7 @@ function Card(props: {
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onWorkOn: (project: Project) => void;
+  onCreateNote?: (project: Project) => void;
   draggable?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(false);
@@ -464,6 +487,19 @@ function Card(props: {
             >
               <StepProgress counts={props.item.stepCounts} />
               <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
+            </button>
+          </Show>
+          <Show when={props.onCreateNote && props.item.kind === 'project'}>
+            <button
+              class="row-action new-note"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onCreateNote?.(props.item);
+              }}
+              title="Add a new note to this project"
+              aria-label="New note"
+            >
+              <NewNoteIcon />
             </button>
           </Show>
           <button

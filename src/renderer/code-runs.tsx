@@ -4,12 +4,13 @@
 // button that re-sides the session to "my" so it lives in the bottom pane.
 
 import { createEffect, createSignal, createMemo, For, onCleanup, Show } from 'solid-js';
-import type { TermSession, RepoEntry, Worktree } from '@shared/types';
+import type { TermSession, RepoEntry, TerminalXtermPrefs, Worktree } from '@shared/types';
 import { mountXterm } from './xterm-mount';
 
 interface CodeRunRowsProps {
   sessions: readonly TermSession[];
   repos: readonly RepoEntry[];
+  xtermPrefs?: TerminalXtermPrefs;
   onClose: (id: string) => void;
 }
 
@@ -28,6 +29,7 @@ export function CodeRunRows(props: CodeRunRowsProps) {
               <CodeRunRow
                 session={session}
                 repos={props.repos}
+                xtermPrefs={props.xtermPrefs}
                 onClose={() => props.onClose(session.id)}
               />
             )}
@@ -54,6 +56,7 @@ function repoMeta(
 function CodeRunRow(props: {
   session: TermSession;
   repos: readonly RepoEntry[];
+  xtermPrefs?: TerminalXtermPrefs;
   onClose: () => void;
 }) {
   // Active-run rows start collapsed — the user may have many running, and an
@@ -77,7 +80,10 @@ function CodeRunRow(props: {
     if (mountPromise) return mountPromise;
     mountPromise = (async () => {
       const attach = await window.condash.termAttach(props.session.id);
-      mounted = mountXterm(xtermElement, props.session.id, { replay: attach?.output });
+      mounted = mountXterm(xtermElement, props.session.id, {
+        replay: attach?.output,
+        prefs: props.xtermPrefs,
+      });
     })();
     return mountPromise;
   };

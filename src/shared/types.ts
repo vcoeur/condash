@@ -101,6 +101,44 @@ export interface RepoEntry {
 
 export type TermSide = 'my' | 'code';
 
+export interface TerminalXtermColors {
+  foreground?: string;
+  background?: string;
+  cursor?: string;
+  cursor_accent?: string;
+  selection_background?: string;
+  black?: string;
+  red?: string;
+  green?: string;
+  yellow?: string;
+  blue?: string;
+  magenta?: string;
+  cyan?: string;
+  white?: string;
+  bright_black?: string;
+  bright_red?: string;
+  bright_green?: string;
+  bright_yellow?: string;
+  bright_blue?: string;
+  bright_magenta?: string;
+  bright_cyan?: string;
+  bright_white?: string;
+}
+
+export interface TerminalXtermPrefs {
+  font_family?: string;
+  font_size?: number;
+  line_height?: number;
+  letter_spacing?: number;
+  font_weight?: string | number;
+  font_weight_bold?: string | number;
+  cursor_style?: 'block' | 'underline' | 'bar';
+  cursor_blink?: boolean;
+  scrollback?: number;
+  ligatures?: boolean;
+  colors?: TerminalXtermColors;
+}
+
 export interface TerminalPrefs {
   shell?: string;
   shortcut?: string;
@@ -109,6 +147,7 @@ export interface TerminalPrefs {
   launcher_command?: string;
   move_tab_left_shortcut?: string;
   move_tab_right_shortcut?: string;
+  xterm?: TerminalXtermPrefs;
 }
 
 /** Snapshot of a live (or recently-exited) terminal session, broadcast on

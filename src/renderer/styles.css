@@ -611,6 +611,11 @@ button:hover {
   border-color: var(--accent);
 }
 
+.row .row-action.new-note:hover {
+  color: var(--col-soon);
+  border-color: var(--col-soon);
+}
+
 .row .meta-icon {
   display: inline-flex;
   align-items: center;
@@ -1521,6 +1526,12 @@ button:hover {
   cursor: pointer;
   font: inherit;
   color: inherit;
+  flex-shrink: 0;
+}
+
+.search-result,
+.search-project-files li {
+  flex-shrink: 0;
 }
 
 .search-row:hover {
@@ -1762,8 +1773,6 @@ button:hover {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 .search-project-files .search-row {
@@ -1848,6 +1857,67 @@ button:hover {
 .search-snippets li.snippet-meta,
 .search-snippets li.snippet-h1 {
   font-weight: 500;
+}
+
+/* ---- Settings: Terminal tab ------------------------------------------- */
+
+.settings-terminal h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  margin: 14px 0 6px;
+  font-weight: 600;
+}
+
+.settings-terminal h3:first-of-type {
+  margin-top: 4px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 14px;
+}
+
+.settings-grid label,
+.settings-color {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.settings-grid input,
+.settings-grid select,
+.settings-color input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.settings-grid input:focus,
+.settings-grid select:focus,
+.settings-color input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px !important;
+}
+
+.settings-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px 14px;
 }
 
 /* ---- Settings modal ---------------------------------------------------- */

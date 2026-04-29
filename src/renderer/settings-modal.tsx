@@ -1,5 +1,6 @@
 import {
   createEffect,
+  createMemo,
   createResource,
   createSignal,
   For,
@@ -7,7 +8,7 @@ import {
   onMount,
   Show,
 } from 'solid-js';
-import type { Theme } from '@shared/types';
+import type { TerminalXtermPrefs, Theme } from '@shared/types';
 import type { MountedEditor } from './editor';
 
 /**
@@ -23,7 +24,42 @@ import type { MountedEditor } from './editor';
  * The configuration tab wires through the same note.read / note.write IPC the
  * NoteModal used so persistence behaviour and validation are unchanged.
  */
-type Tab = 'general' | 'config' | 'shortcuts';
+type Tab = 'general' | 'terminal' | 'config' | 'shortcuts';
+
+interface ColorEntry {
+  key: keyof NonNullable<TerminalXtermPrefs['colors']>;
+  label: string;
+}
+
+const TERMINAL_COLORS: ColorEntry[] = [
+  { key: 'foreground', label: 'Foreground' },
+  { key: 'background', label: 'Background' },
+  { key: 'cursor', label: 'Cursor' },
+  { key: 'cursor_accent', label: 'Cursor accent' },
+  { key: 'selection_background', label: 'Selection bg' },
+  { key: 'black', label: 'ANSI black' },
+  { key: 'red', label: 'ANSI red' },
+  { key: 'green', label: 'ANSI green' },
+  { key: 'yellow', label: 'ANSI yellow' },
+  { key: 'blue', label: 'ANSI blue' },
+  { key: 'magenta', label: 'ANSI magenta' },
+  { key: 'cyan', label: 'ANSI cyan' },
+  { key: 'white', label: 'ANSI white' },
+  { key: 'bright_black', label: 'Bright black' },
+  { key: 'bright_red', label: 'Bright red' },
+  { key: 'bright_green', label: 'Bright green' },
+  { key: 'bright_yellow', label: 'Bright yellow' },
+  { key: 'bright_blue', label: 'Bright blue' },
+  { key: 'bright_magenta', label: 'Bright magenta' },
+  { key: 'bright_cyan', label: 'Bright cyan' },
+  { key: 'bright_white', label: 'Bright white' },
+];
+
+const CURSOR_STYLES: { value: 'block' | 'underline' | 'bar'; label: string }[] = [
+  { value: 'block', label: 'Block' },
+  { value: 'underline', label: 'Underline' },
+  { value: 'bar', label: 'Bar' },
+];
 
 const THEME_OPTIONS: { value: Theme; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -175,6 +211,66 @@ export function SettingsModal(props: {
     }
   };
 
+  // Parse `terminal.xterm` from the live config so the Terminal tab can edit
+  // it without going through the JSON editor. Updates round-trip through the
+  // same `note.write` IPC the configuration tab uses.
+  const xtermPrefs = createMemo<TerminalXtermPrefs>(() => {
+    const text = content();
+    if (!text) return {};
+    try {
+      const parsed = JSON.parse(text) as { terminal?: { xterm?: TerminalXtermPrefs } };
+      return parsed.terminal?.xterm ?? {};
+    } catch {
+      return {};
+    }
+  });
+
+  /** Apply a partial update to `terminal.xterm` and persist to disk. */
+  const updateXterm = async (patch: Partial<TerminalXtermPrefs>): Promise<void> => {
+    const text = content() ?? '';
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
+    } catch (err) {
+      setError(`Invalid JSON in configuration.json — fix it before editing terminal settings.`);
+      return;
+    }
+    const terminal = (parsed.terminal as Record<string, unknown> | undefined) ?? {};
+    const xterm = (terminal.xterm as TerminalXtermPrefs | undefined) ?? {};
+    const merged: TerminalXtermPrefs = { ...xterm, ...patch };
+    if (patch.colors) {
+      merged.colors = { ...(xterm.colors ?? {}), ...patch.colors };
+    }
+    // Drop empty/undefined leaves so the JSON file stays clean.
+    for (const k of Object.keys(merged) as (keyof TerminalXtermPrefs)[]) {
+      const v = merged[k];
+      if (v === undefined || v === '' || v === null) delete merged[k];
+    }
+    if (merged.colors) {
+      for (const k of Object.keys(merged.colors)) {
+        const v = (merged.colors as Record<string, string | undefined>)[k];
+        if (v === undefined || v === '') delete (merged.colors as Record<string, unknown>)[k];
+      }
+      if (Object.keys(merged.colors).length === 0) delete merged.colors;
+    }
+    const nextTerminal = { ...terminal, xterm: merged };
+    if (Object.keys(merged).length === 0) delete (nextTerminal as Record<string, unknown>).xterm;
+    const next = { ...parsed, terminal: nextTerminal };
+    const serialised = JSON.stringify(next, null, 2) + '\n';
+    setError(null);
+    try {
+      await window.condash.writeNote(props.configurationPath, text, serialised);
+      mutateContent(serialised);
+      setSavedAt(Date.now());
+      setTimeout(() => setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t)), 1500);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const updateColor = (key: ColorEntry['key'], value: string) =>
+    void updateXterm({ colors: { [key]: value || undefined } as never });
+
   return (
     <div class="modal-backdrop" onClick={handleBackdropClose}>
       <div
@@ -218,6 +314,15 @@ export function SettingsModal(props: {
           </button>
           <button
             class="settings-tab"
+            classList={{ active: tab() === 'terminal' }}
+            role="tab"
+            aria-selected={tab() === 'terminal'}
+            onClick={() => setTab('terminal')}
+          >
+            Terminal
+          </button>
+          <button
+            class="settings-tab"
             classList={{ active: tab() === 'config' }}
             role="tab"
             aria-selected={tab() === 'config'}
@@ -253,6 +358,173 @@ export function SettingsModal(props: {
                         onChange={() => props.onChangeTheme(opt.value)}
                       />
                       <span>{opt.label}</span>
+                    </label>
+                  )}
+                </For>
+              </div>
+            </section>
+          </Show>
+          <Show when={tab() === 'terminal'}>
+            <section class="settings-section settings-terminal">
+              <p class="settings-hint">
+                Live-edits the <code>terminal.xterm</code> block in configuration.json. Changes
+                apply to <strong>new</strong> terminal tabs; existing tabs keep their original
+                settings until they're closed and reopened.
+              </p>
+              <h3>Font</h3>
+              <div class="settings-grid">
+                <label>
+                  <span>Font family</span>
+                  <input
+                    type="text"
+                    value={xtermPrefs().font_family ?? ''}
+                    placeholder="ui-monospace, Menlo, Consolas, monospace"
+                    onChange={(e) => void updateXterm({ font_family: e.currentTarget.value })}
+                  />
+                </label>
+                <label>
+                  <span>Font size (px)</span>
+                  <input
+                    type="number"
+                    min="6"
+                    max="48"
+                    value={xtermPrefs().font_size ?? ''}
+                    placeholder="12"
+                    onChange={(e) =>
+                      void updateXterm({
+                        font_size: e.currentTarget.value
+                          ? Number(e.currentTarget.value)
+                          : undefined,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Line height</span>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0.8"
+                    max="2"
+                    value={xtermPrefs().line_height ?? ''}
+                    placeholder="1.0"
+                    onChange={(e) =>
+                      void updateXterm({
+                        line_height: e.currentTarget.value
+                          ? Number(e.currentTarget.value)
+                          : undefined,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Letter spacing (px)</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={xtermPrefs().letter_spacing ?? ''}
+                    placeholder="0"
+                    onChange={(e) =>
+                      void updateXterm({
+                        letter_spacing: e.currentTarget.value
+                          ? Number(e.currentTarget.value)
+                          : undefined,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Font weight</span>
+                  <input
+                    type="text"
+                    value={String(xtermPrefs().font_weight ?? '')}
+                    placeholder="normal | 400 | 500"
+                    onChange={(e) =>
+                      void updateXterm({ font_weight: e.currentTarget.value || undefined })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Bold weight</span>
+                  <input
+                    type="text"
+                    value={String(xtermPrefs().font_weight_bold ?? '')}
+                    placeholder="bold | 600 | 700"
+                    onChange={(e) =>
+                      void updateXterm({ font_weight_bold: e.currentTarget.value || undefined })
+                    }
+                  />
+                </label>
+              </div>
+              <h3>Cursor & buffer</h3>
+              <div class="settings-grid">
+                <label>
+                  <span>Cursor style</span>
+                  <select
+                    value={xtermPrefs().cursor_style ?? 'block'}
+                    onChange={(e) =>
+                      void updateXterm({
+                        cursor_style: e.currentTarget.value as 'block' | 'underline' | 'bar',
+                      })
+                    }
+                  >
+                    <For each={CURSOR_STYLES}>
+                      {(opt) => <option value={opt.value}>{opt.label}</option>}
+                    </For>
+                  </select>
+                </label>
+                <label class="settings-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={xtermPrefs().cursor_blink !== false}
+                    onChange={(e) => void updateXterm({ cursor_blink: e.currentTarget.checked })}
+                  />
+                  <span>Cursor blink</span>
+                </label>
+                <label>
+                  <span>Scrollback (lines)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100000"
+                    value={xtermPrefs().scrollback ?? ''}
+                    placeholder="10000"
+                    onChange={(e) =>
+                      void updateXterm({
+                        scrollback: e.currentTarget.value
+                          ? Number(e.currentTarget.value)
+                          : undefined,
+                      })
+                    }
+                  />
+                </label>
+                <label class="settings-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={xtermPrefs().ligatures === true}
+                    onChange={(e) =>
+                      void updateXterm({ ligatures: e.currentTarget.checked || undefined })
+                    }
+                  />
+                  <span>Programming-font ligatures</span>
+                </label>
+              </div>
+              <h3>Colours</h3>
+              <p class="settings-hint">
+                Leave a field blank to inherit the active theme. Values are CSS colours (hex, named,{' '}
+                <code>color-mix(...)</code>).
+              </p>
+              <div class="settings-color-grid">
+                <For each={TERMINAL_COLORS}>
+                  {(entry) => (
+                    <label class="settings-color">
+                      <span>{entry.label}</span>
+                      <input
+                        type="text"
+                        value={xtermPrefs().colors?.[entry.key] ?? ''}
+                        placeholder="—"
+                        onChange={(e) => updateColor(entry.key, e.currentTarget.value)}
+                      />
                     </label>
                   )}
                 </For>

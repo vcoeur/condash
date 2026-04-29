@@ -11,7 +11,7 @@ import { setWatchedConception } from './watcher';
 import { addStep, editStepText, setStatus, toggleStep, writeNote } from './mutate';
 import { listProjectFiles } from './files';
 import { readKnowledgeTree } from './knowledge';
-import { readNote } from './note';
+import { createProjectNote, readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
 import { invalidateAll } from './git-status-cache';
@@ -376,6 +376,19 @@ function registerIpc(): void {
     if (!conceptionPath) return;
     const error = await shell.openPath(conceptionPath);
     if (error) throw new Error(error);
+  });
+
+  ipcMain.handle('openExternal', async (_, target: string) => {
+    if (typeof target !== 'string' || target.length === 0) return;
+    // shell.openExternal already filters non-http/https on most platforms but
+    // we additionally clamp to safe schemes here so a hostile pty can't pop a
+    // file:// or jar: handler.
+    if (!/^(https?|mailto):/i.test(target)) return;
+    await shell.openExternal(target);
+  });
+
+  ipcMain.handle('project.createNote', async (_, projectPath: string, slug: string) => {
+    return createProjectNote(projectPath, slug);
   });
 
   ipcMain.handle('quitApp', () => {

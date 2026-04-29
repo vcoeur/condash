@@ -88,6 +88,13 @@ export interface CondashApi {
 
   /** Open the configured conception directory in the OS file manager. */
   openConceptionDirectory(): Promise<void>;
+  /** Open an arbitrary URL or file path with the OS default handler.
+   *  Used by the xterm web-links addon and any future external-link UI. */
+  openExternal(target: string): Promise<void>;
+  /** Create a new note file under <projectPath>/notes/. The slug is sanitised
+   *  and prefixed with the next zero-padded NN- counter. Returns the absolute
+   *  path of the new file (always created — caller can then open it). */
+  createProjectNote(projectPath: string, slug: string): Promise<string>;
   /** Trigger app quit. Renderer is responsible for any user confirmation. */
   quitApp(): Promise<void>;
   /**
