@@ -449,6 +449,29 @@ function App() {
     }
   };
 
+  // Per-card "work on" button — pastes "work on <slug>" into the focused
+  // terminal. Opens the terminal pane and spawns a shell first if neither
+  // exists, so the action never silently no-ops. Does not press Enter — the
+  // user reviews + sends.
+  const handleWorkOn = async (project: Project) => {
+    const text = `work on ${project.slug}`;
+    if (!terminalHandle) {
+      ensureTerminalOpen();
+      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+    }
+    if (!terminalHandle) return;
+    ensureTerminalOpen();
+    if (!terminalHandle.hasActive()) {
+      try {
+        await terminalHandle.spawnUserShell(terminalPrefs()?.launcher_command ?? null, 'my');
+      } catch (err) {
+        flashToast(`Could not open a shell: ${(err as Error).message}`);
+        return;
+      }
+    }
+    terminalHandle.typeIntoActive(text);
+  };
+
   const handleOpenProject = (project: Project) => {
     // Opening a fresh preview from a card resets any pending back-link from
     // a previously-opened file modal — the user has explicitly chosen a new
@@ -464,11 +487,15 @@ function App() {
   };
 
   const handleOpenReadmeFromPreview = (project: Project) => {
+    // Set the back-path so the modal's onClose / "← Back" button returns to
+    // the card popup view instead of just dismissing.
+    setPreviewBackPath(project.path);
     setPreviewPath(null);
     setModal({
       path: project.path,
       title: project.title,
       deliverables: project.deliverables,
+      backLabel: project.title,
     });
   };
 
@@ -551,10 +578,11 @@ function App() {
   const [previewBackPath, setPreviewBackPath] = createSignal<string | null>(null);
 
   const handleOpenFileFromPreview = (path: string) => {
+    const back = previewProject()?.title;
     if (path.toLowerCase().endsWith('.md')) {
       setPreviewBackPath(previewPath());
       setPreviewPath(null);
-      setModal({ path });
+      setModal({ path, backLabel: back });
     } else if (path.toLowerCase().endsWith('.pdf')) {
       setPreviewBackPath(previewPath());
       setPdfPath(path);
@@ -697,6 +725,7 @@ function App() {
                 onOpen={handleOpenProject}
                 onToggleStep={handleToggleStep}
                 onDropProject={handleDropOnColumn}
+                onWorkOn={(p) => void handleWorkOn(p)}
               />
             </Show>
           </Suspense>
@@ -808,6 +837,7 @@ function App() {
         onOpenFile={handleOpenFileFromPreview}
         onOpenInEditor={handleOpenInEditor}
         onOpenDeliverable={handleOpenDeliverableFromPreview}
+        onWorkOn={(p) => void handleWorkOn(p)}
       />
 
       <Show when={modal()}>

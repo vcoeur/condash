@@ -16,9 +16,99 @@ export type ModalState = {
   initialMode?: 'view' | 'edit';
   /** Deliverables to surface as a section above the rendered body, when known. */
   deliverables?: { label: string; path: string; description?: string }[];
+  /** When set, render a leading "← Back to <label>" button in the modal head.
+   * Clicking it calls onClose, which the parent routes back to the originating
+   * preview via the previewBackPath plumbing. */
+  backLabel?: string;
 } | null;
 
 type Mode = 'view' | 'edit';
+
+function IconEdit() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11.5 2.5l2 2-7.5 7.5H4v-2z" />
+      <path d="M10 4l2 2" />
+    </svg>
+  );
+}
+
+function IconView() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
+      <circle cx="8" cy="8" r="1.6" />
+    </svg>
+  );
+}
+
+function IconSave() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 2.5h8.5L13.5 5v8.5h-11z" />
+      <path d="M5 2.5v3h5v-3" />
+      <rect x="4.5" y="9" width="7" height="4.5" />
+    </svg>
+  );
+}
+
+function IconExternal() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5.5 3h-3v10h10v-3" />
+      <path d="M9 2.5h4.5V7" />
+      <path d="M7 9l6.5-6.5" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
 
 function inferLanguage(path: string): 'markdown' | 'json' {
   return path.toLowerCase().endsWith('.json') ? 'json' : 'markdown';
@@ -293,15 +383,28 @@ export function NoteModal(props: {
         onClick={(e) => e.stopPropagation()}
       >
         <header class="modal-head">
+          <Show when={props.state?.backLabel}>
+            <button
+              class="modal-back-button"
+              onClick={handleBackdropClose}
+              title="Back (Esc)"
+              aria-label={`Back to ${props.state?.backLabel}`}
+            >
+              <span class="modal-back-arrow" aria-hidden="true">
+                ←
+              </span>
+              <span class="modal-back-label">Back to {props.state?.backLabel}</span>
+            </button>
+          </Show>
           <span class="modal-title">{props.state?.title ?? props.state?.path ?? ''}</span>
-          <span class="modal-path">{props.state?.path ?? ''}</span>
+          <span class="modal-head-spacer" />
           <Show when={dirty()}>
-            <span class="modal-dirty" title="Unsaved changes">
+            <span class="modal-dirty" title="Unsaved changes" aria-label="Unsaved changes">
               ●
             </span>
           </Show>
           <Show when={savedAt() !== null}>
-            <span class="modal-saved" title="Saved">
+            <span class="modal-saved" title="Saved" aria-label="Saved">
               ✓
             </span>
           </Show>
@@ -310,8 +413,9 @@ export function NoteModal(props: {
             classList={{ active: mode() === 'edit' }}
             onClick={() => setMode((m) => (m === 'edit' ? 'view' : 'edit'))}
             title={mode() === 'edit' ? 'View (Ctrl+E)' : 'Edit (Ctrl+E)'}
+            aria-label={mode() === 'edit' ? 'Switch to view mode' : 'Switch to edit mode'}
           >
-            {mode() === 'edit' ? '⤺' : '✎'}
+            {mode() === 'edit' ? <IconView /> : <IconEdit />}
           </button>
           <Show when={mode() === 'edit'}>
             <button
@@ -319,19 +423,26 @@ export function NoteModal(props: {
               onClick={() => void save()}
               disabled={!dirty()}
               title="Save (Ctrl+S)"
+              aria-label="Save"
             >
-              💾
+              <IconSave />
             </button>
           </Show>
           <button
             class="modal-button"
             onClick={() => props.state && props.onOpenInEditor(props.state.path)}
             title="Open in $EDITOR"
+            aria-label="Open in external editor"
           >
-            ↗
+            <IconExternal />
           </button>
-          <button class="modal-button" onClick={handleBackdropClose} title="Close (Esc)">
-            ×
+          <button
+            class="modal-button"
+            onClick={handleBackdropClose}
+            title="Close (Esc)"
+            aria-label="Close"
+          >
+            <IconClose />
           </button>
         </header>
 

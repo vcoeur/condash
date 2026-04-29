@@ -196,7 +196,7 @@ function AppsIcon() {
   );
 }
 
-function DownloadIcon() {
+function TerminalIcon() {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -206,9 +206,26 @@ function DownloadIcon() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M8 2v8" />
-      <path d="M4.5 7L8 10.5 11.5 7" />
-      <path d="M2.5 13.5h11" />
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+      <path d="M4 6l2.5 2L4 10" />
+      <path d="M8.5 10.5h3.5" />
+    </svg>
+  );
+}
+
+function OpenIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5.5 3h-3v10h10v-3" />
+      <path d="M9 2.5h4.5V7" />
+      <path d="M7 9l6.5-6.5" />
     </svg>
   );
 }
@@ -235,6 +252,7 @@ export function ProjectsView(props: {
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
+  onWorkOn: (project: Project) => void;
 }) {
   const [filter, setFilter] = createSignal('');
   const trimmedQuery = createMemo(() => filter().trim().toLowerCase());
@@ -271,6 +289,7 @@ export function ProjectsView(props: {
             onOpen={props.onOpen}
             onToggleStep={props.onToggleStep}
             onDropProject={props.onDropProject}
+            onWorkOn={props.onWorkOn}
           />
         )}
       </For>
@@ -288,6 +307,7 @@ function GroupBlock(props: {
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
+  onWorkOn: (project: Project) => void;
 }) {
   const [over, setOver] = createSignal(false);
   const [userExpanded, setUserExpanded] = createSignal<boolean | null>(null);
@@ -353,7 +373,14 @@ function GroupBlock(props: {
       <Show when={isOpen()}>
         <div class="group-body">
           <For each={props.group.items}>
-            {(item) => <Card item={item} onOpen={props.onOpen} onToggleStep={props.onToggleStep} />}
+            {(item) => (
+              <Card
+                item={item}
+                onOpen={props.onOpen}
+                onToggleStep={props.onToggleStep}
+                onWorkOn={props.onWorkOn}
+              />
+            )}
           </For>
         </div>
       </Show>
@@ -365,12 +392,13 @@ function Card(props: {
   item: Project;
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
+  onWorkOn: (project: Project) => void;
   draggable?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(false);
 
   const handleHeaderClick = (event: MouseEvent) => {
-    if ((event.target as HTMLElement).closest('.step-toggle, .expander')) return;
+    if ((event.target as HTMLElement).closest('.step-toggle, .expander, .row-action')) return;
     props.onOpen(props.item);
   };
 
@@ -381,6 +409,8 @@ function Card(props: {
   };
 
   const isDraggable = (): boolean => props.draggable !== false;
+  const statusUnknown = (): boolean =>
+    !(KNOWN_STATUSES as readonly string[]).includes(props.item.status);
 
   return (
     <article
@@ -416,22 +446,16 @@ function Card(props: {
               {props.item.apps}
             </span>
           </Show>
-          <Show when={props.item.deliverableCount > 0}>
-            <span class="meta-icon" title="deliverables">
-              <DownloadIcon />
-              {props.item.deliverableCount}
-            </span>
-          </Show>
-          <Show when={!(KNOWN_STATUSES as readonly string[]).includes(props.item.status)}>
+          <Show when={statusUnknown()}>
             <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
               <WarnIcon />
               {props.item.status}
             </span>
           </Show>
-          <span class="slug">{props.item.slug}</span>
+          <span class="meta-spacer" />
           <Show when={hasSteps(props.item.stepCounts)}>
             <button
-              class="meta-icon expander step-bar-right"
+              class="meta-icon expander"
               onClick={(e) => {
                 e.stopPropagation();
                 setExpanded((v) => !v);
@@ -442,6 +466,28 @@ function Card(props: {
               <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
             </button>
           </Show>
+          <button
+            class="row-action work-on"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onWorkOn(props.item);
+            }}
+            title={`Paste 'work on ${props.item.slug}' into the focused terminal`}
+            aria-label={`Paste 'work on ${props.item.slug}' into the focused terminal`}
+          >
+            <TerminalIcon />
+          </button>
+          <button
+            class="row-action open"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onOpen(props.item);
+            }}
+            title="Open card details"
+            aria-label="Open card details"
+          >
+            <OpenIcon />
+          </button>
         </div>
       </div>
       <Show when={expanded() && props.item.steps.length > 0}>

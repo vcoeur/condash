@@ -221,6 +221,21 @@
   margin: 0;
 }
 
+.preview-steps .step {
+  font-size: 14px;
+  line-height: 1.5;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.preview-steps .step-toggle {
+  font-size: 16px;
+}
+
+.preview-steps .step-text-editable {
+  padding: 1px 4px;
+}
+
 .preview-empty {
   margin: 0;
   font-size: 12px;

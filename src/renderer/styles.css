@@ -1,3 +1,68 @@
+/* Vendored variable fonts — Figtree (UI/body) + Newsreader (display/serif).
+   Sourced from fontsource (jsdelivr) as woff2 variable-axis files; loaded
+   per-subset via unicode-range so the browser only fetches what's needed. */
+@font-face {
+  font-family: 'Figtree Variable';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('./vendor/fonts/figtree-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Figtree Variable';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('./vendor/fonts/figtree-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Newsreader Variable';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('./vendor/fonts/newsreader-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Newsreader Variable';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('./vendor/fonts/newsreader-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Newsreader Variable';
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('./vendor/fonts/newsreader-latin-italic.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Newsreader Variable';
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('./vendor/fonts/newsreader-latin-ext-italic.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root {
   /* Warm-paper light theme — feels like an editorial page. */
   --bg: #faf9f5;
@@ -29,11 +94,11 @@
   --shadow-lift: 0 4px 14px rgba(20, 18, 12, 0.08), 0 2px 4px rgba(20, 18, 12, 0.04);
 
   --font-display:
-    'Iowan Old Style', 'Palatino Linotype', Palatino, 'Sitka Text', 'Charter', 'DejaVu Serif',
-    Georgia, serif;
+    'Newsreader Variable', 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Sitka Text',
+    'Charter', 'DejaVu Serif', Georgia, serif;
   --font-ui:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue',
-    'Liberation Sans', system-ui, sans-serif;
+    'Figtree Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Helvetica Neue', 'Liberation Sans', system-ui, sans-serif;
   --font-mono:
     ui-monospace, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
 }
@@ -344,8 +409,8 @@ button:hover {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px 12px 18px;
+  gap: 10px;
+  padding: 14px 14px 12px 20px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-elevated);
@@ -402,13 +467,16 @@ button:hover {
   margin: 0;
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
+  font-family: var(--font-display);
   font-weight: 600;
-  font-size: 14.5px;
-  line-height: 1.32;
+  font-size: 17px;
+  line-height: 1.28;
   color: var(--text);
   word-break: break-word;
   letter-spacing: -0.005em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 .row .title-kind {
@@ -465,9 +533,9 @@ button:hover {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-body);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
 }
 
 .row .summary.next-step .next-step-marker {
@@ -492,7 +560,7 @@ button:hover {
 .row-head {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .row .meta {
@@ -500,20 +568,59 @@ button:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 10px;
-  margin-top: 3px;
+  margin-top: 4px;
   font-size: 11px;
   color: var(--text-muted);
 }
 
-.row .step-bar-right {
-  margin-left: auto;
+.row .meta-spacer {
+  flex: 1;
+  min-width: 0;
 }
 
-.row .slug {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-faint);
-  letter-spacing: 0.01em;
+.row .row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-body);
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease,
+    transform 100ms ease;
+}
+
+.row .row-action svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.7;
+}
+
+.row .row-action:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.row .row-action:active {
+  transform: scale(0.96);
+}
+
+.row .row-action.work-on:hover {
+  color: var(--col-now);
+  border-color: var(--col-now);
+}
+
+.row .row-action.open:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .row .meta-icon {

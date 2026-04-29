@@ -111,6 +111,8 @@ export interface TerminalPaneHandle {
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
   typeIntoActive(text: string): void;
+  /** True when there is an active session in the active column. */
+  hasActive(): boolean;
 }
 
 const DRAG_MIME = 'application/x-condash-term-tab';
@@ -557,6 +559,7 @@ export function TerminalPane(props: {
       if (!id) return;
       void window.condash.termWrite(id, text);
     },
+    hasActive: () => Boolean(activeIdIn(activeColumn())),
   };
   onMount(() => props.registerHandle(handle));
   onCleanup(() => props.registerHandle(null));
