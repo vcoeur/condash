@@ -1,0 +1,126 @@
+site_name: condash
+site_url: https://condash.vcoeur.com/
+site_description: Standalone Electron desktop dashboard for markdown-based projects, incidents, and documents — live-rendered from the files you edit by hand.
+site_author: Alice Voland
+copyright: 'Developed by Alice Voland &middot; <a href="https://vcoeur.com">vcoeur.com</a> &middot; <a href="/legal/">Legal</a>'
+
+repo_url: https://github.com/vcoeur/condash
+repo_name: vcoeur/condash
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  font: false
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vcoeur/condash
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+
+  - Get started:
+    - get-started/index.md
+    - Install: get-started/install.md
+    - Releases: get-started/releases.md
+    - First launch: get-started/first-launch.md
+
+  - Tutorials:
+    - tutorials/index.md
+    - First run: tutorials/first-run.md
+    - Your first project: tutorials/first-project.md
+    - A day with condash: tutorials/daily-loop.md
+
+  - Guides:
+    - guides/index.md
+    - Configure the conception path: guides/configure-conception-path.md
+    - Repositories and open-with buttons: guides/repositories-and-open-with.md
+    - Use the embedded terminal: guides/terminal.md
+    - Link items with wikilinks: guides/wikilinks.md
+    - The knowledge tree: guides/knowledge-tree.md
+    - Search your history: guides/search.md
+    - Deliverables and PDFs: guides/deliverables.md
+    - Multi-machine setup: guides/multi-machine.md
+    - Extend the management skill: guides/skill-extensions.md
+
+  - Reference:
+    - reference/index.md
+    - CLI: reference/cli.md
+    - Config files: reference/config.md
+    - README format: reference/readme-format.md
+    - Status, steps, deliverables: reference/conception-convention.md
+    - Mutation model: reference/mutations.md
+    - Inline dev-server runner: reference/inline-runner.md
+    - IPC API: reference/ipc-api.md
+    - Keyboard shortcuts: reference/shortcuts.md
+    - Environment variables: reference/env.md
+    - Management skill: reference/skill.md
+
+  - Explanation:
+    - explanation/index.md
+    - Why Markdown-first: explanation/why-markdown.md
+    - Internals: explanation/internals.md
+    - Non-goals: explanation/non-goals.md
+
+  - Legal: legal.md
+
+# Files served by the in-app Help menu (read out of the asar at runtime by
+# `helpReadDoc` in src/main/help.ts). Kept in `docs/` so the mkdocs build
+# still picks them up if anyone deep-links them, but excluded from the
+# public nav — the structured Diátaxis tree above is what we point users at.
+not_in_nav: |
+  /architecture.md
+  /configuration.md
+  /non-goals.md
