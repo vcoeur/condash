@@ -213,7 +213,7 @@ export function TerminalPane(props: {
       prefs: props.xtermPrefs,
       onCustomKey: (ev) => handleXtermKey(ev, id),
     });
-    xterms.set(id, {
+    const handleEntry = {
       term: mounted.term,
       fit: mounted.fit,
       search: mounted.search,
@@ -221,7 +221,20 @@ export function TerminalPane(props: {
       mounted,
       element,
       column,
-    });
+    };
+    xterms.set(id, handleEntry);
+    // Promote this tab to active when the user clicks/focuses inside the
+    // xterm (otherwise typing into it works but the tab strip's "active"
+    // styling stays on whichever tab last got a click).
+    const promote = () => {
+      // `xterms.get(id)?.column` so a tab that's been moved between columns
+      // still resolves to its current side.
+      const col = xterms.get(id)?.column ?? column;
+      if (activeIdIn(col) !== id) setActiveIn(col, id);
+      if (activeColumn() !== col) setActiveColumn(col);
+    };
+    element.addEventListener('focusin', promote);
+    element.addEventListener('mousedown', promote);
     // Track cwd updates from OSC 7 → reflect in the tab label.
     mounted.onCwdChange((cwd) => {
       setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, cwd } : t)));
@@ -392,10 +405,13 @@ export function TerminalPane(props: {
     const handle = xterms.get(id);
     handle?.term.write(data);
   });
-  const offTermExit = window.condash.onTermExit(({ id, code }) => {
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: code } : t)));
-    const handle = xterms.get(id);
-    if (handle) handle.term.write(`\r\n\x1b[33m[process exited ${code}]\x1b[0m\r\n`);
+  const offTermExit = window.condash.onTermExit(({ id, code: _code }) => {
+    // Auto-close the tab on process exit — the previous "[process exited N]"
+    // marker stayed around forever and forced a manual click on the close
+    // button. If the user wants to inspect the buffer, the Save-buffer
+    // button on the tab strip dumps it to a .txt before close lands.
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: _code } : t)));
+    closeTab(id);
   });
   onCleanup(() => {
     offTermData();
