@@ -1,6 +1,6 @@
 {
   "name": "condash",
-  "version": "2.0.0-rc.8",
+  "version": "2.0.0-rc.9",
   "description": "Markdown project dashboard for the conception tree (Electron build)",
   "private": true,
   "main": "dist-electron/main/index.js",
@@ -18,7 +18,7 @@
   "scripts": {
     "dev:main": "node scripts/build-electron.mjs --watch",
     "dev:renderer": "vite",
-    "dev:electron": "wait-on tcp:5600 && wait-on dist-electron/main/index.js && electron --no-sandbox .",
+    "dev:electron": "wait-on tcp:5600 && wait-on dist-electron/main/index.js && ELECTRON_OZONE_PLATFORM_HINT=wayland electron --no-sandbox . 2>&1 | grep --line-buffered -vE 'GdkPixbuf-(CRITICAL|WARNING)|GetVSyncParametersIfAvailable\\(\\) failed' || true",
     "dev": "node scripts/build-electron.mjs --dev && concurrently -k -n main,renderer,electron -c blue,green,magenta \"npm:dev:main\" \"npm:dev:renderer\" \"npm:dev:electron\"",
     "build:main": "node scripts/build-electron.mjs",
     "build:renderer": "vite build",

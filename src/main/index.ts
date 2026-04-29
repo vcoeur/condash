@@ -39,6 +39,45 @@ import { KNOWN_STATUSES } from '../shared/types';
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
+// Wayland fractional-scaling fix.
+//
+// Without these flags, Electron renders at integer scale (1x) and the Wayland
+// compositor up-scales the pixel buffer to the real fractional scale (1.25,
+// 1.5, …) — text and icons end up blurry. The fix is twofold:
+//
+// 1. Force the Wayland Ozone backend so Chromium talks the Wayland protocols
+//    directly (vs. running through XWayland, which always blits at 1x).
+// 2. Enable WaylandFractionalScaleV1 + WaylandPerSurfaceScale so Chromium
+//    negotiates wp_fractional_scale_v1 with the compositor and renders the
+//    real scale per-surface.
+//
+// We only apply this when XDG_SESSION_TYPE=wayland — on X11 Linux sessions,
+// forcing the Wayland backend would crash. The flags MUST be appended before
+// app.whenReady(); putting them at module-top makes that obvious.
+//
+// Override hatch: CONDASH_FORCE_DEVICE_SCALE_FACTOR=<n> falls back to a fixed
+// integer scale (Chromium then renders at that scale and the compositor
+// down-scales) — useful as a last-ditch escape if a specific compositor still
+// renders blurry.
+if (process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland') {
+  // Strongly prefer native Wayland over XWayland — XWayland always blits at
+  // integer scale, which produces blurry text on fractional-scaled monitors
+  // (1.25, 1.5, …). The `wayland` hint (vs. `auto`) is more reliable in
+  // Electron 33 when both DISPLAY and WAYLAND_DISPLAY are exported. We also
+  // set ELECTRON_OZONE_PLATFORM_HINT in package.json's dev script as a
+  // belt-and-suspenders — some Electron paths read the env earlier than the
+  // cmdline switch.
+  app.commandLine.appendSwitch('ozone-platform-hint', 'wayland');
+  app.commandLine.appendSwitch(
+    'enable-features',
+    'UseOzonePlatform,WaylandFractionalScaleV1,WaylandWindowDecorations',
+  );
+}
+const forcedScale = process.env.CONDASH_FORCE_DEVICE_SCALE_FACTOR;
+if (forcedScale) {
+  app.commandLine.appendSwitch('force-device-scale-factor', forcedScale);
+}
+
 const DEV_URL = 'http://localhost:5600';
 // Treat the build as "dev" when not packaged AND not explicitly forced into
 // production mode. CONDASH_FORCE_PROD=1 is set by the Playwright fixture so

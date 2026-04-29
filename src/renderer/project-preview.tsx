@@ -18,6 +18,76 @@ const MARKER_LABEL: Record<StepMarker, string> = {
 
 const STATUS_OPTIONS: readonly string[] = ['now', 'review', 'soon', 'later', 'backlog', 'done'];
 
+function IconTerminal() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+      <path d="M4.5 6.5l2 1.5-2 1.5" />
+      <path d="M8.5 10h3" />
+    </svg>
+  );
+}
+
+function IconReadme() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 1.5h6L13 5v9.5H3.5z" />
+      <path d="M9.5 1.5V5H13" />
+      <path d="M5.5 8h5M5.5 10.5h4" />
+    </svg>
+  );
+}
+
+function IconExternal() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5.5 3h-3v10h10v-3" />
+      <path d="M9 2.5h4.5V7" />
+      <path d="M7 9l6.5-6.5" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
 function markerClass(m: StepMarker): string {
   if (m === ' ') return 'todo';
   if (m === '~') return 'doing';
@@ -77,6 +147,7 @@ export function ProjectPreview(props: {
   onOpenFile: (path: string) => void;
   onOpenInEditor: (path: string) => void;
   onOpenDeliverable: (deliverable: Deliverable) => void;
+  onWorkOn: (project: Project) => void;
 }) {
   const [statusMenu, setStatusMenu] = createSignal(false);
   const [editingLineIndex, setEditingLineIndex] = createSignal<number | null>(null);
@@ -180,23 +251,38 @@ export function ProjectPreview(props: {
           >
             <header class="modal-head">
               <span class="modal-title">{project().title}</span>
-              <span class="modal-path">{project().path}</span>
+              <span class="modal-head-spacer" />
+              <button
+                class="modal-button work-on-button"
+                onClick={() => props.onWorkOn(project())}
+                title={`Paste 'work on ${project().slug}' into the focused terminal`}
+                aria-label="Paste work-on command into focused terminal"
+              >
+                <IconTerminal />
+              </button>
               <button
                 class="modal-button"
                 onClick={() => props.onOpenReadme(project())}
                 title="Open README"
+                aria-label="Open README"
               >
-                ✎
+                <IconReadme />
               </button>
               <button
                 class="modal-button"
                 onClick={() => props.onOpenInEditor(project().path)}
                 title="Open folder in OS"
+                aria-label="Open folder in OS"
               >
-                ↗
+                <IconExternal />
               </button>
-              <button class="modal-button" onClick={props.onClose} title="Close (Esc)">
-                ×
+              <button
+                class="modal-button"
+                onClick={props.onClose}
+                title="Close (Esc)"
+                aria-label="Close"
+              >
+                <IconClose />
               </button>
             </header>
 
