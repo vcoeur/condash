@@ -9,12 +9,19 @@ import { join } from 'node:path';
  */
 export type HelpDocName = 'architecture' | 'configuration' | 'non-goals' | 'index';
 
-const ALLOWED: ReadonlySet<HelpDocName> = new Set<HelpDocName>([
-  'architecture',
-  'configuration',
-  'non-goals',
-  'index',
-]);
+/**
+ * Maps the renderer-facing slug to the actual file inside `docs/`. The slugs
+ * stay short and stable for IPC; the paths point at the canonical Diátaxis
+ * pages (`explanation/internals.md`, `reference/config.md`,
+ * `explanation/non-goals.md`) so the in-app Help modal and the public docs
+ * site read from the same source.
+ */
+const PATHS: Record<HelpDocName, string> = {
+  index: 'index.md',
+  architecture: 'explanation/internals.md',
+  configuration: 'reference/config.md',
+  'non-goals': 'explanation/non-goals.md',
+};
 
 /**
  * Resolve the docs/ directory. In a packaged build it sits inside the asar at
@@ -27,8 +34,9 @@ function docsDir(): string {
 }
 
 export async function readHelpDoc(name: string): Promise<string> {
-  if (!ALLOWED.has(name as HelpDocName)) {
+  const path = PATHS[name as HelpDocName];
+  if (!path) {
     throw new Error(`Unknown help doc: ${name}`);
   }
-  return fs.readFile(join(docsDir(), `${name}.md`), 'utf8');
+  return fs.readFile(join(docsDir(), path), 'utf8');
 }

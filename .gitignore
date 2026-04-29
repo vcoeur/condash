@@ -6,6 +6,8 @@ release/
 .cache/
 test-results/
 playwright-report/
+tests/screenshots-out/
+site/
 *.log
 .DS_Store
 .claude/*

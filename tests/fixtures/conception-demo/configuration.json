@@ -1,0 +1,35 @@
+{
+  "$schema_doc": "Demo conception fixture for the screenshot harness. Values are plausible but pointed at /tmp so nothing here touches real repos.",
+  "workspace_path": "/tmp/conception-demo-workspace",
+  "worktrees_path": "/tmp/conception-demo-worktrees",
+  "repositories": {
+    "primary": [
+      {
+        "name": "helio",
+        "run": "cargo watch -x 'run -- serve'",
+        "submodules": [
+          { "name": "crates/parser" },
+          { "name": "crates/search", "run": "cargo watch -p search -x test" }
+        ]
+      },
+      { "name": "helio-web", "run": "npm run dev" },
+      "helio-docs"
+    ],
+    "secondary": []
+  },
+  "open_with": {
+    "main_ide": { "label": "Open in main IDE", "command": "idea {path}" },
+    "secondary_ide": { "label": "Open in secondary IDE", "command": "code {path}" },
+    "terminal": { "label": "Open terminal here", "command": "ghostty --working-directory={path}" }
+  },
+  "pdf_viewer": ["xdg-open {path}"],
+  "terminal": {
+    "shell": "",
+    "shortcut": "Ctrl+T",
+    "screenshot_dir": "/tmp/conception-demo-screenshots",
+    "screenshot_paste_shortcut": "Ctrl+Shift+V",
+    "launcher_command": "echo demo",
+    "move_tab_left_shortcut": "Ctrl+Left",
+    "move_tab_right_shortcut": "Ctrl+Right"
+  }
+}
