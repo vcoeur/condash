@@ -15,6 +15,9 @@ interface Session {
   webContents: WebContents;
   /** Optional repo this session was spawned for (Run button). */
   repo?: string;
+  /** Resolved cwd of the spawned pty. Surfaced in the broadcast snapshot
+   * so the Code tab can match a session to the worktree it was started in. */
+  cwd: string;
   /** Captured at spawn time so Stop doesn't need conceptionPath at kill time. */
   forceStop?: string;
   /** Rolling tail of stdout/stderr — replayed when a freshly-loaded renderer
@@ -37,6 +40,7 @@ function snapshot(): TermSession[] {
     id: s.id,
     side: s.side,
     repo: s.repo,
+    cwd: s.cwd,
     exited: s.exited,
   }));
 }
@@ -145,12 +149,23 @@ export async function spawnTerminal(
   const cols = request.cols ?? 80;
   const rows = request.rows ?? 24;
 
+  // Electron itself runs through whatever shell the user launched it from,
+  // which on systems with a global npm install at /usr/local sets
+  // `npm_config_prefix=/usr/local` in the env. nvm refuses to load when that
+  // is set ("nvm is not compatible with the npm_config_prefix environment
+  // variable"), so user shells spawned here would dump that error on every
+  // boot. Strip the npm-cli leakage so spawned shells start clean.
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, TERM: 'xterm-256color' };
+  delete childEnv.npm_config_prefix;
+  delete childEnv.npm_config_globalconfig;
+  delete childEnv.npm_config_userconfig;
+
   const ptyProcess = pty.spawn(program, argv, {
     name: 'xterm-256color',
     cols,
     rows,
     cwd,
-    env: { ...process.env, TERM: 'xterm-256color' },
+    env: childEnv,
   });
 
   const id = makeId();
@@ -160,6 +175,7 @@ export async function spawnTerminal(
     pty: ptyProcess,
     webContents,
     repo: request.repo,
+    cwd,
     forceStop,
     buffer: '',
   };

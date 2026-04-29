@@ -61,8 +61,6 @@ Three slots: `main_ide`, `secondary_ide`, `terminal`. Each:
 | `label` | Shown in the per-branch dropdown. |
 | `command` | Argv template. `{path}` is replaced at the *argument* level (no shell injection). Quotes group whitespace tokens. |
 
-Legacy form `commands: [...]` is still accepted on read; saved files are migrated to the canonical `command:` form.
-
 ## `terminal`
 
 Pane preferences and shortcuts:

@@ -57,7 +57,14 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
         entry.kind === 'primary' && !entry.parent
           ? listWorktrees(entry.cwd).catch(() => [])
           : Promise.resolve([]);
-      const [dirty, worktrees] = await Promise.all([getDirtyCount(entry.cwd), worktreesPromise]);
+      // Submodule entries (those with a `parent`) often live inside the
+      // parent repo's git tree — without `-- .` scoping, `git status` would
+      // surface the parent repo's dirty entries on the submodule card.
+      const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
+      const [dirty, worktrees] = await Promise.all([
+        getDirtyCount(entry.cwd, dirtyOpts),
+        worktreesPromise,
+      ]);
       return {
         name: entry.display,
         path: entry.cwd,

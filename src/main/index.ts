@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join } from 'node:path';
 
@@ -84,12 +85,24 @@ const DEV_URL = 'http://localhost:5600';
 // tests load the real file:// build instead of the Vite dev URL.
 const isDev = !app.isPackaged && process.env.CONDASH_FORCE_PROD !== '1';
 
-async function createWindow(): Promise<BrowserWindow> {
+let mainWindow: BrowserWindow | null = null;
+
+function windowTitleFor(path: string | null): string {
+  return path ? `Condash - ${path}` : 'Condash';
+}
+
+function updateWindowTitle(path: string | null): void {
+  if (!mainWindow) return;
+  mainWindow.setTitle(windowTitleFor(path));
+}
+
+async function createWindow(initialPath: string | null): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     backgroundColor: '#1a1a1a',
     show: false,
+    title: windowTitleFor(initialPath),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -99,6 +112,12 @@ async function createWindow(): Promise<BrowserWindow> {
       // separately and only loads `file://` URLs we control.
       webviewTag: true,
     },
+  });
+
+  // Electron resets the title to the page <title> on load — pin our path-aware
+  // title against any such update.
+  win.on('page-title-updated', (event) => {
+    event.preventDefault();
   });
 
   win.once('ready-to-show', () => win.show());
@@ -111,6 +130,68 @@ async function createWindow(): Promise<BrowserWindow> {
   }
 
   return win;
+}
+
+/**
+ * Build the application menu. We keep it intentionally small — File-only —
+ * with no Quit accelerator: Ctrl+Q is too easy to hit by accident, and
+ * `File → Quit` routes through a renderer-side confirmation modal instead.
+ */
+function buildMenu(): void {
+  const fileSubmenu: MenuItemConstructorOptions[] = [
+    {
+      label: 'Search…',
+      accelerator: 'CommandOrControl+Shift+F',
+      click: () => {
+        mainWindow?.webContents.send('menu-command', 'search');
+      },
+    },
+    {
+      label: 'Open conception directory',
+      click: () => {
+        mainWindow?.webContents.send('menu-command', 'open-conception');
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      // No accelerator on purpose — see the comment above buildMenu().
+      click: () => {
+        mainWindow?.webContents.send('menu-command', 'request-quit');
+      },
+    },
+  ];
+
+  const template: MenuItemConstructorOptions[] = [
+    { label: 'File', submenu: fileSubmenu },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function statusOrder(status: string): number {
@@ -286,7 +367,19 @@ function registerIpc(): void {
     next.conceptionPath = picked;
     await writeSettings(next);
     await setWatchedConception(picked);
+    updateWindowTitle(picked);
     return picked;
+  });
+
+  ipcMain.handle('openConceptionDirectory', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return;
+    const error = await shell.openPath(conceptionPath);
+    if (error) throw new Error(error);
+  });
+
+  ipcMain.handle('quitApp', () => {
+    app.quit();
   });
 }
 
@@ -294,10 +387,20 @@ app.whenReady().then(async () => {
   registerIpc();
   const { conceptionPath } = await readSettings();
   await setWatchedConception(conceptionPath);
-  await createWindow();
+  buildMenu();
+  mainWindow = await createWindow(conceptionPath);
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  app.on('activate', async () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const settings = await readSettings();
+      mainWindow = await createWindow(settings.conceptionPath);
+      mainWindow.on('closed', () => {
+        mainWindow = null;
+      });
+    }
   });
 
   // Auto-update: only in packaged builds. electron-updater pulls

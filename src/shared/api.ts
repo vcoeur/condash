@@ -6,7 +6,7 @@ import type {
   Project,
   ProjectFileEntry,
   RepoEntry,
-  SearchHit,
+  SearchResults,
   StepMarker,
   TermDataMessage,
   TermExitMessage,
@@ -21,7 +21,7 @@ export interface CondashApi {
   listProjects(): Promise<Project[]>;
   getProject(path: string): Promise<Project | null>;
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
-  search(query: string): Promise<SearchHit[]>;
+  search(query: string): Promise<SearchResults>;
   listRepos(): Promise<RepoEntry[]>;
   /** Drop the in-memory git-status cache. Use from Refresh so the next
    * listRepos() runs `git status` everywhere instead of returning TTL-
@@ -85,7 +85,19 @@ export interface CondashApi {
   onTermExit(callback: (msg: TermExitMessage) => void): () => void;
   /** Sessions changed (spawn / exit / close). Receives the full snapshot. */
   onTermSessions(callback: (sessions: TermSession[]) => void): () => void;
+
+  /** Open the configured conception directory in the OS file manager. */
+  openConceptionDirectory(): Promise<void>;
+  /** Trigger app quit. Renderer is responsible for any user confirmation. */
+  quitApp(): Promise<void>;
+  /**
+   * Subscribe to commands sent by the application menu (File → Search,
+   * File → Open conception directory, File → Quit). Returns an unsubscribe.
+   */
+  onMenuCommand(callback: (command: MenuCommand) => void): () => void;
 }
+
+export type MenuCommand = 'search' | 'open-conception' | 'request-quit';
 
 declare global {
   interface Window {
