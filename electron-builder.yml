@@ -43,6 +43,16 @@ linux:
     - deb
   category: Development
 
+# Override the stock deb postinst. The default template only sets SUID on
+# /opt/<app>/chrome-sandbox when `unshare --user true` fails — which on
+# Ubuntu 23.10+ is the wrong signal: the kernel feature is on (unshare
+# succeeds) but AppArmor's apparmor_restrict_unprivileged_userns=1 blocks
+# Chromium's userns sandbox, leaving it with no working sandbox path and
+# aborting at startup. Our script always chmod 4755 chrome-sandbox so the
+# SUID-sandbox fallback is available regardless.
+deb:
+  afterInstall: build/linux-after-install.sh
+
 mac:
   target:
     - dmg
