@@ -42,6 +42,13 @@ linux:
     - AppImage
     - deb
   category: Development
+  # PNG ladder generated from build/icon.svg (the vcoeur-family hub mark —
+  # cream + purple heart + three rose satellites, originally shipped on the
+  # retired Python build per projects/2026-04-21-condash-icon-redesign/).
+  # Without this, electron-builder ships its default placeholder, so the
+  # .deb / AppImage launcher and the running window's task-switcher entry
+  # show the generic Electron diamond.
+  icon: build/icons
 
 # Override the stock deb postinst. The default template only sets SUID on
 # /opt/<app>/chrome-sandbox when `unshare --user true` fails — which on
