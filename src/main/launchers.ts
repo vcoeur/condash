@@ -6,8 +6,7 @@ import { findRepoEntry, type ConfigShape } from './config-walk';
 
 interface RawSlot {
   label: string;
-  command?: string;
-  commands?: string[];
+  command: string;
 }
 
 interface RawConfigShape extends ConfigShape {
@@ -26,21 +25,13 @@ async function readRawConfig(conceptionPath: string): Promise<RawConfigShape> {
   }
 }
 
-function canonicaliseCommand(slot: RawSlot | undefined): string | null {
-  if (!slot) return null;
-  if (typeof slot.command === 'string' && slot.command.trim()) return slot.command;
-  if (Array.isArray(slot.commands) && slot.commands.length > 0) return slot.commands[0];
-  return null;
-}
-
 export async function listOpenWith(conceptionPath: string): Promise<OpenWithSlots> {
   const config = await readRawConfig(conceptionPath);
   const out: OpenWithSlots = {};
   for (const key of SLOT_KEYS) {
     const slot = config.open_with?.[key];
-    const command = canonicaliseCommand(slot);
-    if (slot && command) {
-      out[key] = { label: slot.label, command };
+    if (slot && typeof slot.command === 'string' && slot.command.trim()) {
+      out[key] = { label: slot.label, command: slot.command };
     }
   }
   return out;
@@ -86,7 +77,7 @@ export async function launchOpenWith(
   path: string,
 ): Promise<void> {
   const config = await readRawConfig(conceptionPath);
-  const command = canonicaliseCommand(config.open_with?.[slot]);
+  const command = config.open_with?.[slot]?.command;
   if (!command) throw new Error(`open_with.${slot} is not configured`);
 
   const argv = tokenise(command, path);

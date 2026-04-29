@@ -15,7 +15,6 @@ import type {
   OpenWithSlots,
   Project,
   RepoEntry,
-  SearchHit,
   Step,
   TermSession,
   TerminalPrefs,
@@ -40,19 +39,13 @@ import {
 } from './tabs/projects';
 import { KnowledgeView } from './tabs/knowledge';
 import { groupRepos, RepoRow } from './tabs/code';
-import { SearchResult } from './tabs/search';
+import { SearchModal } from './search-modal';
+import { SettingsModal } from './settings-modal';
 import './styles.css';
 import './note-modal.css';
 import './project-preview.css';
 
-type Tab = 'projects' | 'knowledge' | 'search' | 'code';
-
-const THEME_CYCLE: Theme[] = ['system', 'light', 'dark'];
-const THEME_LABEL: Record<Theme, string> = {
-  system: '◐ system',
-  light: '☀ light',
-  dark: '☾ dark',
-};
+type Tab = 'projects' | 'knowledge' | 'code';
 
 function applyTheme(theme: Theme): void {
   const root = document.documentElement;
@@ -112,10 +105,10 @@ function App() {
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
   const [helpMenuOpen, setHelpMenuOpen] = createSignal(false);
   const [terminalOpen, setTerminalOpen] = createSignal(false);
+  const [searchModalOpen, setSearchModalOpen] = createSignal(false);
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   let terminalHandle: TerminalPaneHandle | null = null;
-  const [searchQuery, setSearchQuery] = createSignal('');
-  const [searchInput, setSearchInput] = createSignal('');
-  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   void window.condash.getConceptionPath().then(setConceptionPath);
   void window.condash.getTheme().then((t) => {
@@ -139,6 +132,18 @@ function App() {
     }
     return live;
   });
+  // Track the branch each live repo session is running on so the Code-tab
+  // card face can label it ("running on main") without expanding the card.
+  // We match the session's cwd against the repo's worktree paths to pick
+  // the right branch.
+  const liveSessionCwds = createMemo<ReadonlyMap<string, string>>(() => {
+    const out = new Map<string, string>();
+    for (const s of allSessions()) {
+      if (!s.repo || s.exited !== undefined) continue;
+      if (s.cwd) out.set(s.repo, s.cwd);
+    }
+    return out;
+  });
   const codeRunSessions = createMemo<readonly TermSession[]>(() =>
     allSessions().filter((s) => s.side === 'code'),
   );
@@ -151,9 +156,7 @@ function App() {
   void window.condash.termList().then(setAllSessions);
   onCleanup(offTermSessions);
 
-  const cycleTheme = () => {
-    const idx = THEME_CYCLE.indexOf(theme());
-    const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+  const handleThemeChange = (next: Theme) => {
     setTheme(next);
     applyTheme(next);
     resetMermaidTheme();
@@ -171,18 +174,8 @@ function App() {
   const [knowledge] = createResource(
     () => [conceptionPath(), refreshKey(), tab()] as const,
     async ([path, , currentTab]) => {
-      if (!path || (currentTab !== 'knowledge' && currentTab !== 'search')) return null;
+      if (!path || currentTab !== 'knowledge') return null;
       return window.condash.readKnowledgeTree();
-    },
-  );
-
-  const [searchResults] = createResource(
-    () => [conceptionPath(), tab(), searchQuery()] as const,
-    async ([path, currentTab, query]) => {
-      if (!path || currentTab !== 'search' || query.trim().length === 0) {
-        return [] as SearchHit[];
-      }
-      return window.condash.search(query);
     },
   );
 
@@ -307,6 +300,25 @@ function App() {
     document.removeEventListener('keydown', handleGlobalKeyDown);
   });
 
+  // Application menu → renderer plumbing.
+  const offMenu = window.condash.onMenuCommand((command) => {
+    if (command === 'search') {
+      setSearchModalOpen(true);
+      return;
+    }
+    if (command === 'open-conception') {
+      void window.condash.openConceptionDirectory().catch((err) => {
+        flashToast(`Open failed: ${(err as Error).message}`);
+      });
+      return;
+    }
+    if (command === 'request-quit') {
+      setQuitConfirmOpen(true);
+      return;
+    }
+  });
+  onCleanup(offMenu);
+
   // Click anywhere outside the help-menu wrapper closes the dropdown.
   const closeHelpMenu = () => {
     if (helpMenuOpen()) setHelpMenuOpen(false);
@@ -340,16 +352,6 @@ function App() {
       flashToast(`Run failed: ${(err as Error).message}`);
     }
   };
-
-  const onSearchInput = (value: string): void => {
-    setSearchInput(value);
-    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-    searchDebounceTimer = setTimeout(() => setSearchQuery(value), 200);
-  };
-
-  onCleanup(() => {
-    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-  });
 
   const flashToast = (msg: string) => {
     setToast(msg);
@@ -517,13 +519,37 @@ function App() {
   };
 
   const handleOpenPreferences = () => {
-    const cp = conceptionPath();
-    if (!cp) return;
-    setModal({
-      path: `${cp}/configuration.json`,
-      title: 'Preferences (configuration.json)',
-      initialMode: 'edit',
-    });
+    if (!conceptionPath()) return;
+    setSettingsOpen(true);
+  };
+
+  const handleConfirmQuit = () => {
+    setQuitConfirmOpen(false);
+    void window.condash.quitApp();
+  };
+
+  const handleOpenInTerm = async (repo: RepoEntry, worktree: Worktree) => {
+    if (!terminalHandle) {
+      ensureTerminalOpen();
+      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+    }
+    if (!terminalHandle) return;
+    ensureTerminalOpen();
+    const branchSuffix = worktree.branch ? `· ${worktree.branch}` : '';
+    const label = `${repo.name}${branchSuffix ? ` ${branchSuffix}` : ''}`;
+    try {
+      // No `repo`/`command` → spawns the user's default shell at the worktree
+      // path inside the existing terminal pane (no popup window).
+      await terminalHandle.spawn(
+        {
+          side: 'my',
+          cwd: worktree.path,
+        },
+        label,
+      );
+    } catch (err) {
+      flashToast(`Open in term failed: ${(err as Error).message}`);
+    }
   };
 
   const slugIndex = () => buildSlugIndex(projects() ?? [], knowledge() ?? null);
@@ -620,8 +646,7 @@ function App() {
   return (
     <div class="app">
       <header class="toolbar">
-        <h1>condash</h1>
-        <nav class="tabs">
+        <nav class="tabs main-tabs">
           <button
             class="tab"
             classList={{ active: tab() === 'projects' }}
@@ -645,19 +670,8 @@ function App() {
           >
             Knowledge
           </button>
-          <button
-            class="tab"
-            classList={{ active: tab() === 'search' }}
-            onClick={() => setTab('search')}
-            disabled={!conceptionPath()}
-          >
-            Search
-          </button>
         </nav>
-        <span class="path">{conceptionPath() ?? '(no conception path)'}</span>
-        <button onClick={cycleTheme} title="Cycle theme">
-          {THEME_LABEL[theme()]}
-        </button>
+        <span class="spacer" />
         <button
           onClick={() => setTerminalOpen((v) => !v)}
           classList={{ active: terminalOpen() }}
@@ -665,11 +679,7 @@ function App() {
         >
           ▤
         </button>
-        <button
-          onClick={handleOpenPreferences}
-          disabled={!conceptionPath()}
-          title="Edit configuration.json"
-        >
+        <button onClick={handleOpenPreferences} disabled={!conceptionPath()} title="Settings">
           ⚙
         </button>
         <span class="help-menu-wrap">
@@ -756,73 +766,69 @@ function App() {
               }
             >
               <div class="repos-pane">
-                <CodeRunRows
-                  sessions={codeRunSessions()}
-                  repos={repos() ?? []}
-                  onPopOut={(id) => {
-                    void window.condash.termSetSide(id, 'my').then(() => {
-                      setTerminalOpen(true);
-                      terminalHandle?.switchTo('my', id);
-                    });
-                  }}
-                  onClose={(id) => void window.condash.termClose(id)}
-                />
                 <For each={repoGroups()}>
-                  {(group) => (
-                    <section class="repos-group" data-group={group.id}>
-                      <h2 class="repos-group-header">
-                        <span class="name">{group.label}</span>
-                        <span class="count">{group.entries.length}</span>
-                        <span class="rule" />
-                      </h2>
-                      <div class="repos-grid">
-                        <For each={group.entries}>
-                          {(repo) => (
-                            <RepoRow
-                              repo={repo}
-                              slots={openWithSlots() ?? {}}
-                              live={liveRepos().has(repo.name)}
-                              onOpen={handleOpenInEditor}
-                              onLaunch={(slot, path) => void handleLaunch(slot, path)}
-                              onForceStop={(r) => void handleForceStop(r)}
-                              onStop={handleStopRepo}
-                              onRun={(r, wt) => void handleRunRepo(r, wt)}
-                            />
-                          )}
-                        </For>
-                      </div>
-                    </section>
-                  )}
+                  {(group) => {
+                    // Active runs for this group only, sorted to mirror the
+                    // section's repo order so what's running for "condash"
+                    // appears below the "condash" card and so on.
+                    const groupSessions = (): readonly TermSession[] => {
+                      const order = new Map(group.entries.map((e, i) => [e.name, i]));
+                      return codeRunSessions()
+                        .filter((s) => s.repo && order.has(s.repo))
+                        .slice()
+                        .sort((a, b) => (order.get(a.repo!) ?? 0) - (order.get(b.repo!) ?? 0));
+                    };
+                    return (
+                      <section class="repos-group" data-group={group.id}>
+                        <h2 class="repos-group-header">
+                          <span class="name">{group.label}</span>
+                          <span class="count">{group.entries.length}</span>
+                          <span class="rule" />
+                        </h2>
+                        <div class="repos-grid">
+                          <For each={group.entries}>
+                            {(repo) => {
+                              const liveBranch = (): string | null => {
+                                const cwd = liveSessionCwds().get(repo.name);
+                                if (!cwd) return null;
+                                const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
+                                if (wt) return wt.branch ?? '(detached)';
+                                // Fallback: cwd matches the repo's primary path.
+                                if (cwd === repo.path) {
+                                  const primary = (repo.worktrees ?? []).find((w) => w.primary);
+                                  return primary?.branch ?? null;
+                                }
+                                return null;
+                              };
+                              return (
+                                <RepoRow
+                                  repo={repo}
+                                  slots={openWithSlots() ?? {}}
+                                  live={liveRepos().has(repo.name)}
+                                  liveBranch={liveBranch()}
+                                  onOpen={handleOpenInEditor}
+                                  onLaunch={(slot, path) => void handleLaunch(slot, path)}
+                                  onForceStop={(r) => void handleForceStop(r)}
+                                  onStop={handleStopRepo}
+                                  onRun={(r, wt) => void handleRunRepo(r, wt)}
+                                  onOpenInTerm={(r, wt) => void handleOpenInTerm(r, wt)}
+                                />
+                              );
+                            }}
+                          </For>
+                        </div>
+                        <CodeRunRows
+                          sessions={groupSessions()}
+                          repos={repos() ?? []}
+                          onClose={(id) => void window.condash.termClose(id)}
+                        />
+                      </section>
+                    );
+                  }}
                 </For>
               </div>
             </Show>
           </Suspense>
-        </Show>
-
-        <Show when={tab() === 'search'}>
-          <div class="search-pane">
-            <input
-              class="search-input"
-              type="search"
-              placeholder="Search projects + knowledge…"
-              value={searchInput()}
-              onInput={(e) => onSearchInput(e.currentTarget.value)}
-            />
-            <Show when={searchInput().trim().length > 0}>
-              <Suspense fallback={<div class="empty">Searching…</div>}>
-                <Show
-                  when={(searchResults() ?? []).length > 0}
-                  fallback={<div class="empty">No matches.</div>}
-                >
-                  <ul class="search-results">
-                    <For each={searchResults() ?? []}>
-                      {(hit) => <SearchResult hit={hit} onOpen={handleOpenKnowledgeFile} />}
-                    </For>
-                  </ul>
-                </Show>
-              </Suspense>
-            </Show>
-          </div>
         </Show>
       </Show>
 
@@ -872,6 +878,56 @@ function App() {
           terminalHandle = handle;
         }}
       />
+
+      <Show when={searchModalOpen()}>
+        <SearchModal
+          onClose={() => setSearchModalOpen(false)}
+          onOpenProject={(projectDir) => {
+            // ProjectPreview is keyed on the README path (matching
+            // Project.path), but search returns the project directory —
+            // map back to the README so the preview lookup hits.
+            setPreviewBackPath(null);
+            setPreviewPath(`${projectDir}/README.md`);
+          }}
+          onOpenFile={handleOpenKnowledgeFile}
+        />
+      </Show>
+
+      <Show when={settingsOpen() && conceptionPath()}>
+        <SettingsModal
+          configurationPath={`${conceptionPath()}/configuration.json`}
+          theme={theme()}
+          onChangeTheme={handleThemeChange}
+          onClose={() => setSettingsOpen(false)}
+        />
+      </Show>
+
+      <Show when={quitConfirmOpen()}>
+        <div class="modal-backdrop" onClick={() => setQuitConfirmOpen(false)}>
+          <div
+            class="modal quit-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Quit Condash"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header class="modal-head">
+              <span class="modal-title">Quit Condash?</span>
+            </header>
+            <div class="quit-confirm-body">
+              <p>Any running terminal sessions will be terminated.</p>
+              <div class="quit-confirm-actions">
+                <button class="modal-button" onClick={() => setQuitConfirmOpen(false)}>
+                  Cancel
+                </button>
+                <button class="modal-button warn" onClick={handleConfirmQuit} autofocus>
+                  Quit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Show>
 
       <Show when={toast()}>
         <div class="toast" role="status">

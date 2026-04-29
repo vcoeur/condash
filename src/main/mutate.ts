@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { StepMarker } from '../shared/types';
-import { canonicaliseOpenWith, configSchema } from './config-schema';
+import { configSchema } from './config-schema';
 
 const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s.*)$/;
 const STEP_LINE_FULL_RE = /^(\s*-\s\[)([ ~x-])(\]\s)(.*)$/;
@@ -197,8 +197,7 @@ function validateAndCanonicaliseConfig(json: string): string {
     const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
     throw new Error(`configuration.json: ${where} — ${issue.message}`);
   }
-  // Migrate `commands → command` while we're here.
-  return JSON.stringify(canonicaliseOpenWith(result.data), null, 2) + '\n';
+  return JSON.stringify(result.data, null, 2) + '\n';
 }
 
 export async function setStatus(path: string, newStatus: string): Promise<void> {

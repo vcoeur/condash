@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Schema for `<conception>/configuration.json`. Used to reject malformed shapes
- * on save; the runtime readers in repos.ts and launchers.ts still coerce the
- * legacy `commands: string[]` form for backward compatibility.
+ * Schema for `<conception>/configuration.json`. Used to reject malformed
+ * shapes on save. The shape is canonical — `open_with.{slot}` is a single
+ * `{label, command}` per method, no list fallback.
  */
 const repoEntry: z.ZodType<RawRepo> = z.lazy(() =>
   z.union([
@@ -31,13 +31,9 @@ export type RawRepo =
 const openWithSlot = z
   .object({
     label: z.string(),
-    command: z.string().optional(),
-    commands: z.array(z.string()).optional(),
+    command: z.string().min(1),
   })
-  .strict()
-  .refine((v) => v.command !== undefined || (v.commands && v.commands.length > 0), {
-    message: 'either "command" or non-empty "commands" must be set',
-  });
+  .strict();
 
 const terminalSettings = z
   .object({
@@ -77,22 +73,3 @@ export const configSchema = z
   .strict();
 
 export type Config = z.infer<typeof configSchema>;
-
-/**
- * Migrate a parsed `open_with` slot to the canonical `{ command }` form.
- * Reader-side helper used after a successful save.
- */
-export function canonicaliseOpenWith(config: Config): Config {
-  if (!config.open_with) return config;
-  const next = { ...config, open_with: { ...config.open_with } };
-  for (const key of ['main_ide', 'secondary_ide', 'terminal'] as const) {
-    const slot = next.open_with![key];
-    if (!slot) continue;
-    if (slot.command) {
-      next.open_with![key] = { label: slot.label, command: slot.command };
-    } else if (slot.commands && slot.commands.length > 0) {
-      next.open_with![key] = { label: slot.label, command: slot.commands[0] };
-    }
-  }
-  return next;
-}

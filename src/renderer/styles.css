@@ -201,30 +201,14 @@ button:hover {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 10px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
 }
 
-.toolbar h1 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 500;
-  font-style: italic;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-
-.toolbar .path {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 12px;
+.toolbar .spacer {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .empty {
@@ -391,7 +375,11 @@ button:hover {
 
 .group-body {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+  /* Cards stay one-per-row until the grid can fit two ≥650px-wide cards.
+   * Below that breakpoint the single column expands to fill the pane (the
+   * `1fr` upper bound), so there's no awkward shrunken card on narrow
+   * windows. */
+  grid-template-columns: repeat(auto-fill, minmax(min(650px, 100%), 1fr));
   gap: 12px;
   padding: 0;
 }
@@ -830,6 +818,43 @@ button:hover {
   cursor: not-allowed;
 }
 
+/* Main app tabs (Projects / Code / Knowledge) — pill-style buttons. The
+ * underline-on-active style was too tall for the toolbar; this version is
+ * compact and reads as a button group. */
+.tabs.main-tabs {
+  gap: 4px;
+}
+
+.tabs.main-tabs .tab {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 5px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+
+.tabs.main-tabs .tab:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.tabs.main-tabs .tab.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* Suppress the underline accent the base `.tab.active::after` pulls in —
+ * the pill background already signals selection. */
+.tabs.main-tabs .tab.active::after {
+  display: none;
+}
+
 .knowledge-pane {
   flex: 1;
   overflow-y: auto;
@@ -940,7 +965,11 @@ button:hover {
 
 .repos-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+  /* Cards stay one-per-row until the grid can fit two ≥650px-wide cards.
+   * Below that breakpoint the single column expands to fill the pane (the
+   * `1fr` upper bound), so there's no awkward shrunken card on narrow
+   * windows. */
+  grid-template-columns: repeat(auto-fill, minmax(min(650px, 100%), 1fr));
   gap: 12px;
 }
 
@@ -1074,12 +1103,6 @@ button:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
-  /* `layout` keeps repaints scoped without forming a paint context — the
-   * branch overflow ▾ menu (`.branch-action-menu`, position:absolute, z-index:5)
-   * needs to draw above sibling cards when it opens, which `contain: paint`
-   * would clip to this card's box. Browsers (chromium 124+) still get most
-   * of the perf win from layout containment alone. */
-  contain: layout;
 }
 
 .repo-row::before {
@@ -1108,10 +1131,6 @@ button:hover {
 
 .repo-row.missing {
   opacity: 0.65;
-}
-
-.repo-row.submodule {
-  margin-left: 14px;
 }
 
 .repo-head {
@@ -1552,6 +1571,456 @@ button:hover {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
   font-size: 12px;
   max-width: 80vw;
+}
+
+/* ---- Code-tab card additions ------------------------------------------- */
+
+.repo-live-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--col-soon);
+  background: color-mix(in srgb, var(--col-soon) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-soon) 30%, transparent);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-live-dot-inline {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--col-soon);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-soon) 22%, transparent);
+  flex-shrink: 0;
+}
+
+.repo-live-branch-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.repo-killswitch {
+  font-size: 12px;
+  padding: 1px 7px;
+  line-height: 1.4;
+}
+
+/* Render the open_with menu as a portal-style overlay. Anchored coordinates
+ * come from the trigger's getBoundingClientRect — `position: fixed` lifts the
+ * menu out of the parent card's stacking context entirely, so it always
+ * paints above neighbouring cards regardless of grid order. */
+.branch-action-menu.portal {
+  position: fixed;
+  top: auto;
+  right: auto;
+  transform: translateX(-100%);
+  z-index: 1000;
+}
+
+/* ---- Search modal ------------------------------------------------------ */
+
+/* Top-anchored backdrop — the modal hugs the top of the viewport (command-
+ * palette feel) and only grows downward as results come in. The double-
+ * class selector beats `.modal-backdrop`'s single-class default centring,
+ * which lives in note-modal.css and loads after this file. */
+.modal-backdrop.search-modal-backdrop {
+  align-items: flex-start;
+  padding-top: 6vh;
+}
+
+.search-modal {
+  width: min(820px, 92vw);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.search-modal-head {
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.search-modal-input {
+  flex: 1;
+  font-size: 14px;
+  padding: 8px 12px;
+}
+
+.search-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.search-modal-body .search-results {
+  overflow-y: auto;
+  max-height: 64vh;
+  min-height: 0;
+}
+
+.search-results-grouped {
+  gap: 10px;
+}
+
+/* Lift result rows above the modal's `--bg-elevated` background so they read
+ * as distinct cards. Without this they share the modal's bg and only the
+ * borders survive — which is what made results look "empty". */
+.search-modal-body .search-row {
+  background: var(--bg-subtle);
+}
+
+.search-modal-body .search-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Per-token highlight palette. The mark element ships token-index-modulo-4
+ * variants so multi-word queries paint each token a distinct colour. The
+ * `dim` modifier lowers the saturation for the path-line highlight so the
+ * (much shorter) path doesn't compete with body snippets. */
+.search-mark {
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--col-later) 35%, transparent);
+}
+.search-mark-0 {
+  background: color-mix(in srgb, var(--col-later) 35%, transparent);
+}
+.search-mark-1 {
+  background: color-mix(in srgb, var(--col-soon) 28%, transparent);
+}
+.search-mark-2 {
+  background: color-mix(in srgb, var(--col-now) 22%, transparent);
+}
+.search-mark-3 {
+  background: color-mix(in srgb, var(--col-review) 22%, transparent);
+}
+.search-mark.dim {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.badge-project {
+  background: color-mix(in srgb, var(--col-now) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-now) 30%, transparent);
+  color: var(--col-now);
+}
+
+.search-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* Inside a project group, the per-row override at `.search-modal-body
+ * .search-row` would otherwise stack on top of the group's own bg. Reset
+ * them back to transparent so the group card has one continuous surface. */
+.search-modal-body .search-project-header,
+.search-modal-body .search-project-files .search-row {
+  background: transparent;
+}
+
+.search-modal-body .search-project-header:hover,
+.search-modal-body .search-project-files .search-row:hover {
+  background: var(--bg-hover);
+}
+
+.search-project-header {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-project-header:hover {
+  background: var(--bg-hover);
+}
+
+.search-row-hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.search-project-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-project-files .search-row {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 6px 14px 8px 28px;
+}
+
+.search-project-files .search-row:hover {
+  background: var(--bg-hover);
+}
+
+.search-project-files li + li .search-row {
+  border-top: 1px dashed var(--border);
+}
+
+.search-file-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.search-tips {
+  padding: 12px 8px 4px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.search-tips h4 {
+  margin: 0 0 6px;
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.search-tips ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-tips code {
+  background: var(--bg-subtle);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+
+.search-truncated-hint {
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+/* "where in the file" tags surfaced before each snippet — tiny chip that
+ * tells the user the snippet came from the meta block / title / heading. */
+.snippet-region-tag {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.search-snippets li.snippet-meta,
+.search-snippets li.snippet-h1 {
+  font-weight: 500;
+}
+
+/* ---- Settings modal ---------------------------------------------------- */
+
+.settings-modal {
+  width: min(880px, 92vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.settings-tab {
+  background: transparent;
+  border: none;
+  padding: 8px 14px 9px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.settings-section h3 {
+  margin: 0 0 10px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-radio-group {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.settings-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.settings-radio input[type='radio'] {
+  margin: 0;
+}
+
+.settings-config {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.settings-config-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-config-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.settings-cm-host {
+  flex: 1;
+  min-height: 280px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.settings-cm-host .cm-editor {
+  height: 100%;
+}
+
+.settings-shortcuts {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.settings-shortcuts th {
+  text-align: left;
+  padding: 6px 12px 6px 0;
+  font-weight: 500;
+  color: var(--text-muted);
+  width: 50%;
+}
+
+.settings-shortcuts td {
+  padding: 6px 0;
+}
+
+.settings-shortcuts code {
+  background: var(--bg-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.settings-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---- Quit-confirm modal ------------------------------------------------ */
+
+.quit-confirm-modal {
+  width: min(420px, 90vw);
+}
+
+.quit-confirm-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.quit-confirm-body p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.quit-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .row .slug {

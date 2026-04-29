@@ -10,7 +10,6 @@ import { mountXterm } from './xterm-mount';
 interface CodeRunRowsProps {
   sessions: readonly TermSession[];
   repos: readonly RepoEntry[];
-  onPopOut: (id: string) => void;
   onClose: (id: string) => void;
 }
 
@@ -29,7 +28,6 @@ export function CodeRunRows(props: CodeRunRowsProps) {
               <CodeRunRow
                 session={session}
                 repos={props.repos}
-                onPopOut={() => props.onPopOut(session.id)}
                 onClose={() => props.onClose(session.id)}
               />
             )}
@@ -56,10 +54,12 @@ function repoMeta(
 function CodeRunRow(props: {
   session: TermSession;
   repos: readonly RepoEntry[];
-  onPopOut: () => void;
   onClose: () => void;
 }) {
-  const [expanded, setExpanded] = createSignal(true);
+  // Active-run rows start collapsed — the user may have many running, and an
+  // auto-expanded xterm grabs vertical space they didn't ask for. Click the
+  // header to peek in.
+  const [expanded, setExpanded] = createSignal(false);
   const meta = createMemo(() => repoMeta(props.repos, props.session.repo));
 
   // Build the xterm element once and re-park it under the row's host every
@@ -143,16 +143,6 @@ function CodeRunRow(props: {
           <span class="status status-live">running</span>
         </Show>
         <span class="spacer" />
-        <button
-          class="repo-action"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onPopOut();
-          }}
-          title="Move to bottom pane (My terms)"
-        >
-          ↓ pop out
-        </button>
         <button
           class="repo-action stop"
           onClick={(e) => {

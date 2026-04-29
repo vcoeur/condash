@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { CondashApi } from '../shared/api';
+import type { CondashApi, MenuCommand } from '../shared/api';
 import type { TermDataMessage, TermExitMessage, TermSession, TreeEvent } from '../shared/types';
 
 const api: CondashApi = {
@@ -60,6 +60,13 @@ const api: CondashApi = {
     const handler = (_: unknown, sessions: TermSession[]): void => callback(sessions);
     ipcRenderer.on('term.sessions', handler);
     return () => ipcRenderer.removeListener('term.sessions', handler);
+  },
+  openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
+  quitApp: () => ipcRenderer.invoke('quitApp'),
+  onMenuCommand: (callback) => {
+    const handler = (_: unknown, command: MenuCommand): void => callback(command);
+    ipcRenderer.on('menu-command', handler);
+    return () => ipcRenderer.removeListener('menu-command', handler);
   },
 };
 

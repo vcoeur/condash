@@ -73,38 +73,21 @@ function orderedWorktrees(repo: RepoEntry): Worktree[] {
   return list;
 }
 
-/** Per-card status pill text — collapses worktree dirtiness into one of:
- * "CLEAN", "1 BRANCH DIRTY", "N BRANCHES DIRTY", "MISSING", "?". */
-function cardStatusLabel(repo: RepoEntry): string {
-  if (repo.missing) return 'MISSING';
-  const wts = ensureWorktrees(repo);
-  const dirtyCount = wts.filter((w) => (w.dirty ?? 0) > 0).length;
-  if (dirtyCount === 0) {
-    if (wts.every((w) => w.dirty === null || w.dirty === undefined)) return '?';
-    return 'CLEAN';
-  }
-  return dirtyCount === 1 ? '1 BRANCH DIRTY' : `${dirtyCount} BRANCHES DIRTY`;
-}
-
-function cardStatus(repo: RepoEntry): RepoStatus {
-  if (repo.missing) return 'missing';
-  const wts = ensureWorktrees(repo);
-  if (wts.every((w) => w.dirty === null || w.dirty === undefined)) return 'unknown';
-  return wts.some((w) => (w.dirty ?? 0) > 0) ? 'dirty' : 'clean';
-}
-
 export function RepoRow(props: {
   repo: RepoEntry;
   slots: OpenWithSlots;
   /** True when at least one terminal session is currently running for this repo. */
   live?: boolean;
+  /** Branch name of the live session, when known — surfaced on the card face
+   * so the user can see what's running at a glance. */
+  liveBranch?: string | null;
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
   onStop: (repo: RepoEntry) => void;
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
+  onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
 }) {
-  const status = (): RepoStatus => cardStatus(props.repo);
   const displayName = (): string => {
     if (props.repo.parent && props.repo.name.startsWith(`${props.repo.parent}/`)) {
       return props.repo.name.slice(props.repo.parent.length + 1);
@@ -120,36 +103,54 @@ export function RepoRow(props: {
 
   const hasRun = (): boolean => !props.repo.missing;
 
+  const liveBranchLabel = (): string | null => {
+    if (!props.live) return null;
+    if (props.liveBranch) return props.liveBranch;
+    // No branch known — fall back to a generic running marker so the card
+    // still surfaces the live state on the face.
+    return '(running)';
+  };
+
   return (
     <article
       class="repo-row"
       classList={{
         missing: props.repo.missing,
-        submodule: !!props.repo.parent,
       }}
-      data-status={status()}
     >
       <header class="repo-head">
         <span class="repo-name">{displayName()}</span>
-        <span class="repo-status-badge" data-status={status()}>
-          {cardStatusLabel(props.repo)}
-        </span>
-        <Show when={props.live}>
-          <span class="repo-live-badge" title="A terminal session is running for this repo">
-            LIVE
+        <Show when={liveBranchLabel()}>
+          <span
+            class="repo-live-branch"
+            title={`Running: ${liveBranchLabel()}`}
+            aria-label={`Running on ${liveBranchLabel()}`}
+          >
+            <span class="repo-live-dot-inline" aria-hidden="true" />
+            <span class="repo-live-branch-label">{liveBranchLabel()}</span>
           </span>
         </Show>
-        <Show when={props.live && props.repo.hasForceStop}>
+        <span class="spacer" />
+        <Show when={props.live}>
           <button
             class="repo-action stop repo-stop-button"
             onClick={() => props.onStop(props.repo)}
-            title={`Stop the running session for ${props.repo.name} (runs force_stop)`}
+            title={`Stop the running session for ${props.repo.name}`}
             aria-label={`Stop ${props.repo.name}`}
           >
             ⏹
           </button>
         </Show>
-        <span class="spacer" />
+        <Show when={props.repo.hasForceStop}>
+          <button
+            class="repo-action warn repo-killswitch"
+            onClick={() => props.onForceStop(props.repo)}
+            title={`Run ${props.repo.name} force_stop (free its port)`}
+            aria-label={`Force-stop ${props.repo.name}`}
+          >
+            ⛒
+          </button>
+        </Show>
         <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>
           {props.repo.parent ? 'SUB' : 'REPO'}
         </span>
@@ -160,11 +161,10 @@ export function RepoRow(props: {
             <li class="branch-row" data-status={branchStatus(wt)}>
               <span class="branch-dot" aria-hidden="true" />
               <span class="branch-name">{wt.branch ?? '(detached)'}</span>
-              <span class="branch-role">{wt.primary ? 'CHECKOUT' : 'WORKTREE'}</span>
               <Show when={(wt.dirty ?? 0) > 0}>
                 <span class="branch-dirty">{wt.dirty} dirty</span>
               </Show>
-              <Show when={wt.primary && props.live}>
+              <Show when={props.live && (props.liveBranch ?? null) === (wt.branch ?? null)}>
                 <span class="branch-live-dot" title="Running" aria-label="Running" />
               </Show>
               <span class="spacer" />
@@ -173,25 +173,27 @@ export function RepoRow(props: {
                 worktree={wt}
                 slots={props.slots}
                 hasRun={hasRun()}
-                onOpen={props.onOpen}
                 onLaunch={props.onLaunch}
-                onForceStop={props.onForceStop}
                 onRun={props.onRun}
+                onOpenInTerm={props.onOpenInTerm}
+                onOpen={props.onOpen}
               />
             </li>
           )}
         </For>
       </ul>
-      <span class="repo-path" title={props.repo.path}>
-        {props.repo.path}
-      </span>
     </article>
   );
 }
 
-/** Per-branch action group: a primary Run + Open pair always visible, plus
- * the editor / terminal launchers and force_stop tucked behind a ▼ menu so
- * the row stays compact at narrower card widths. */
+/**
+ * Per-branch action group. Three primary direct icons — Run ▶, Open in
+ * condash term tab ⌗, and a triangle that toggles the open_with menu —
+ * plus a file-manager affordance. The open_with dropdown is rendered as
+ * a `position: fixed` overlay (anchored to the trigger button) to escape
+ * the parent's stacking context, fixing the long-standing "menu hides
+ * under neighbouring cards" bug.
+ */
 function BranchActions(props: {
   repo: RepoEntry;
   worktree: Worktree;
@@ -199,26 +201,59 @@ function BranchActions(props: {
   hasRun: boolean;
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
-  onForceStop: (repo: RepoEntry) => void;
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
+  onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false);
-  let menuRoot: HTMLDivElement | undefined;
+  const [menuAnchor, setMenuAnchor] = createSignal<{ top: number; left: number } | null>(null);
+  let triggerRef: HTMLButtonElement | undefined;
+  let menuRef: HTMLDivElement | undefined;
 
-  const onDocClick = (e: MouseEvent) => {
-    if (!menuOpen()) return;
-    if (menuRoot && !menuRoot.contains(e.target as Node)) setMenuOpen(false);
-  };
-  onMount(() => document.addEventListener('click', onDocClick, true));
-  onCleanup(() => document.removeEventListener('click', onDocClick, true));
-
-  const showForceStop = (): boolean => props.worktree.primary && !!props.repo.hasForceStop;
   const launcherEntries = (): OpenWithSlotKey[] =>
     LAUNCHER_SLOTS.filter((slot) => !!props.slots[slot]);
-  const hasOverflow = (): boolean => showForceStop() || launcherEntries().length > 0;
+  const hasLaunchers = (): boolean => launcherEntries().length > 0;
+
+  const positionMenu = (): void => {
+    if (!triggerRef) return;
+    const rect = triggerRef.getBoundingClientRect();
+    setMenuAnchor({ top: rect.bottom + 4, left: rect.right });
+  };
+
+  const onDocClick = (e: MouseEvent): void => {
+    if (!menuOpen()) return;
+    const target = e.target as Node;
+    if (triggerRef?.contains(target)) return;
+    if (menuRef?.contains(target)) return;
+    setMenuOpen(false);
+  };
+
+  const onScrollOrResize = (): void => {
+    if (menuOpen()) positionMenu();
+  };
+
+  onMount(() => {
+    document.addEventListener('click', onDocClick, true);
+    window.addEventListener('resize', onScrollOrResize, true);
+    window.addEventListener('scroll', onScrollOrResize, true);
+  });
+  onCleanup(() => {
+    document.removeEventListener('click', onDocClick, true);
+    window.removeEventListener('resize', onScrollOrResize, true);
+    window.removeEventListener('scroll', onScrollOrResize, true);
+  });
+
+  const toggleMenu = (e: MouseEvent): void => {
+    e.stopPropagation();
+    if (menuOpen()) {
+      setMenuOpen(false);
+      return;
+    }
+    positionMenu();
+    setMenuOpen(true);
+  };
 
   return (
-    <div class="branch-actions" ref={(el) => (menuRoot = el)}>
+    <div class="branch-actions">
       <Show when={props.hasRun}>
         <button
           class="repo-action run"
@@ -229,34 +264,51 @@ function BranchActions(props: {
               ? 'Run configured run: command'
               : `Run configured run: command in ${props.worktree.branch ?? '(detached)'}`
           }
+          aria-label="Run"
         >
           ▶
         </button>
       </Show>
       <button
         class="repo-action icon"
+        onClick={() => props.onOpenInTerm(props.repo, props.worktree)}
+        disabled={props.repo.missing}
+        title="Open shell in condash terminal tab"
+        aria-label="Open in terminal tab"
+      >
+        ⌗
+      </button>
+      <button
+        class="repo-action icon"
         onClick={() => props.onOpen(props.worktree.path)}
         disabled={props.repo.missing}
         title="Open in OS file manager"
+        aria-label="Open in file manager"
       >
         📁
       </button>
-      <Show when={hasOverflow()}>
+      <Show when={hasLaunchers()}>
         <button
+          ref={(el) => (triggerRef = el)}
           class="repo-action icon"
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen((v) => !v);
-          }}
+          onClick={toggleMenu}
           aria-haspopup="menu"
           aria-expanded={menuOpen()}
-          title="More actions"
+          title="Open with…"
         >
           ▾
         </button>
       </Show>
-      <Show when={menuOpen() && hasOverflow()}>
-        <div class="branch-action-menu" role="menu">
+      <Show when={menuOpen() && hasLaunchers() && menuAnchor()}>
+        <div
+          ref={(el) => (menuRef = el)}
+          class="branch-action-menu portal"
+          role="menu"
+          style={{
+            top: `${menuAnchor()!.top}px`,
+            left: `${menuAnchor()!.left}px`,
+          }}
+        >
           <For each={launcherEntries()}>
             {(slot) => (
               <button
@@ -272,19 +324,6 @@ function BranchActions(props: {
               </button>
             )}
           </For>
-          <Show when={showForceStop()}>
-            <button
-              class="branch-action-menu-item warn"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                props.onForceStop(props.repo);
-              }}
-            >
-              <span class="glyph">⏹</span>
-              <span>Force-stop</span>
-            </button>
-          </Show>
         </div>
       </Show>
     </div>
