@@ -881,6 +881,8 @@ function App() {
           onOpenInEditor={handleOpenInEditor}
           onOpenDeliverable={handleOpenDeliverable}
           onWikilink={handleWikilink}
+          onOpenMarkdown={(path) => setModal({ path })}
+          onOpenPdf={(path) => setPdfPath(path)}
           onOpenHelp={handleOpenHelp}
         />
       </Show>
