@@ -358,9 +358,33 @@ function App() {
 
   const handlePick = async () => {
     const picked = await window.condash.pickConceptionPath();
-    if (picked) {
-      setConceptionPath(picked);
-      setRefreshKey((k) => k + 1);
+    if (!picked) return;
+    setConceptionPath(picked);
+    setRefreshKey((k) => k + 1);
+
+    // Surface the bundled-template init when the picked folder lacks the
+    // conception markers (projects/ + configuration.json). Init never
+    // overwrites — existing files stay put.
+    try {
+      const state = await window.condash.detectConceptionState(picked);
+      if (state.pathExists && !state.looksInitialised) {
+        const missing: string[] = [];
+        if (!state.hasProjects) missing.push('projects/');
+        if (!state.hasConfiguration) missing.push('configuration.json');
+        const ok = window.confirm(
+          `This folder is missing ${missing.join(' and ')}.\n\n` +
+            'Initialise it from the bundled conception template? ' +
+            'Skill files, seed indexes, and example config will be laid down. ' +
+            'Existing files are left alone.',
+        );
+        if (ok) {
+          const { created } = await window.condash.initConception(picked);
+          flashToast(`Initialised conception template — ${created.length} files created.`);
+          setRefreshKey((k) => k + 1);
+        }
+      }
+    } catch (err) {
+      flashToast(`Init check failed: ${(err as Error).message}`);
     }
   };
 

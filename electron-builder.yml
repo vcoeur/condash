@@ -10,6 +10,7 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - docs/**/*
+  - conception-template/**/*
   - package.json
 
 asar: true

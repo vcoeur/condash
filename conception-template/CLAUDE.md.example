@@ -1,0 +1,22 @@
+# CLAUDE.md — conception
+
+A **systems documentation tree**, not a code project. Everything here is Markdown.
+
+## Pointers
+
+- `/projects` — create / read / update / close items (projects, incidents, documents); regenerate the projects index; manage worktrees. Canonical rules: [`projects/SKILL.md`](.claude/skills/projects/SKILL.md).
+- `/knowledge` — retrieve, update body files (with citation + stamp discipline), regenerate the knowledge index, verify stale stamps. Canonical rules: [`knowledge/SKILL.md`](.claude/skills/knowledge/SKILL.md).
+- `/pr` — open a GitHub PR with project-aware Branch/Base resolution and timeline-append. Body shape comes from the user's personal `~/.claude/skills/pr/` if present, otherwise prompted inline.
+- Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
+- [`configuration.json`](configuration.json) — workspace + preferences config read by condash.
+
+## Workflow
+
+- **Autonomy**: when the next action is obvious from context, proceed. Ask when the call is genuinely ambiguous or the action is hard to reverse.
+- **Auto-memory**: this tree does not use the harness auto-memory. Durable rules surfaced in session go into [`knowledge/conventions.md`](knowledge/conventions.md) (or another `knowledge/` file if topic-specific).
+- **Cross-project updates**: when editing files in another project under the workspace, read that project's `CLAUDE.md` first.
+
+## Critical context
+
+- **Branch isolation** — when an item has a `**Branch**` field, edit code under `<worktrees_path>/<branch>/<repo>/`, never `<workspace_path>/<repo>/`. The conception tree itself has no per-item branches; edit directly.
+- **Dirty-index markers**: `projects/.index-dirty` and `knowledge/.index-dirty` (gitignored) signal that the corresponding tree's index is stale. Touched by `/projects create|close|update` (Kind/Status change) and `/knowledge update` (add/rename/scope change). Cleared by `/projects index` and `/knowledge index`. `/projects close` auto-refreshes when they're set.

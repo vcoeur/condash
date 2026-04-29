@@ -1,4 +1,5 @@
 import type {
+  ConceptionInitState,
   KnowledgeNode,
   OpenWithSlotKey,
   OpenWithSlots,
@@ -32,6 +33,10 @@ export interface CondashApi {
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;
+  /** Probe a candidate workspace path: does it have projects/ and configuration.json? */
+  detectConceptionState(path: string): Promise<ConceptionInitState>;
+  /** Lay the bundled conception-template/ tree into `path`. Existing files preserved. */
+  initConception(path: string): Promise<{ created: string[] }>;
   getTheme(): Promise<Theme>;
   setTheme(theme: Theme): Promise<void>;
   toggleStep(

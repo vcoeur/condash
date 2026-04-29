@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join } from 'node:path';
 
+import { detectConceptionState, initConception } from './conception-init';
 import { readSettings, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
@@ -226,6 +227,13 @@ function registerIpc(): void {
   ipcMain.handle('note.write', (_, path: string, expectedContent: string, newContent: string) =>
     writeNote(path, expectedContent, newContent),
   );
+
+  ipcMain.handle('detectConceptionState', (_, path: string) => detectConceptionState(path));
+
+  ipcMain.handle('initConception', async (_, path: string) => {
+    const created = await initConception(path);
+    return { created };
+  });
 
   ipcMain.handle('pickConceptionPath', async () => {
     const result = await dialog.showOpenDialog({

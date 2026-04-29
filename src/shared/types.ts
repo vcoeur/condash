@@ -188,3 +188,16 @@ export interface KnowledgeNode {
   /** Children (only for directories). Sorted: directories first, then files, both alphabetical. */
   children?: KnowledgeNode[];
 }
+
+/**
+ * Result of probing a candidate conception path. The renderer uses this to
+ * decide whether to surface the bundled-template init prompt after the user
+ * picks a folder.
+ */
+export interface ConceptionInitState {
+  pathExists: boolean;
+  hasProjects: boolean;
+  hasConfiguration: boolean;
+  /** Both projects/ and configuration.json present. */
+  looksInitialised: boolean;
+}

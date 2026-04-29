@@ -1,0 +1,18 @@
+# Sentinels: signal that the matching index tree is stale. /projects index
+# and /knowledge index clear them. Never commit.
+projects/.index-dirty
+knowledge/.index-dirty
+
+# Per-item scratch directory next to notes/ — raw inputs, intermediate
+# renders, generator scripts. Deliverables live under notes/, not here.
+projects/*/*/local/
+projects/*/*/local/**
+
+# Local Claude scratch files. Global gitignore convention is **/.claude/*.local.*
+.claude/*.local.*
+
+# Common OS / editor cruft.
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
