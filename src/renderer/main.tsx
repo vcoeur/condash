@@ -30,6 +30,7 @@ import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { buildSlugIndex } from './wikilinks';
 import { PdfModal } from './pdf-modal';
 import { HelpModal, type HelpDoc } from './help-modal';
+import { PromptModal, type PromptModalState } from './prompt-modal';
 import {
   applyStatus,
   applyStepMarker,
@@ -108,6 +109,12 @@ function App() {
   const [searchModalOpen, setSearchModalOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
+  const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
+
+  const openPrompt = (init: Omit<PromptModalState, 'resolve'>): Promise<string | null> =>
+    new Promise<string | null>((resolve) => {
+      setPromptState({ ...init, resolve });
+    });
   let terminalHandle: TerminalPaneHandle | null = null;
 
   void window.condash.getConceptionPath().then(setConceptionPath);
@@ -470,11 +477,12 @@ function App() {
   };
 
   const handleCreateProjectNote = async (project: Project) => {
-    const slug = window.prompt(
-      `New note for "${project.title}".\n\n` +
-        'Slug (lowercase, hyphenated). Will be saved as notes/NN-<slug>.md.',
-      '',
-    );
+    const slug = await openPrompt({
+      title: `New note for "${project.title}"`,
+      message: 'Slug (lowercase, hyphenated). Saved as notes/NN-<slug>.md.',
+      placeholder: 'my-new-note',
+      confirmLabel: 'Create',
+    });
     if (slug === null) return;
     const trimmed = slug.trim();
     if (!trimmed) {
@@ -880,6 +888,8 @@ function App() {
       <Show when={helpDoc()}>
         <HelpModal doc={helpDoc()!} onClose={() => setHelpDoc(null)} />
       </Show>
+
+      <PromptModal state={promptState()} onClose={() => setPromptState(null)} />
 
       <Show when={pdfPath()}>
         <PdfModal

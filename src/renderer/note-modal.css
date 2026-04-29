@@ -21,6 +21,7 @@
 }
 
 .note-modal {
+  width: min(85vw, 1600px);
   height: 100%;
 }
 
@@ -516,4 +517,50 @@
 }
 .help-menu-item:hover {
   background: var(--bg-hover);
+}
+
+.prompt-modal {
+  width: min(480px, 100%);
+}
+
+.prompt-body {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prompt-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.prompt-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+}
+
+.prompt-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.prompt-actions .modal-button {
+  width: auto;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
 }

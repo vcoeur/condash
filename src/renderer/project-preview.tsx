@@ -88,6 +88,11 @@ function IconClose() {
   );
 }
 
+/** Project.path is the README path; the directory is its parent. */
+function projectDir(readmePath: string): string {
+  return readmePath.replace(/\/README\.md$/i, '');
+}
+
 function markerClass(m: StepMarker): string {
   if (m === ' ') return 'todo';
   if (m === '~') return 'doing';
@@ -270,7 +275,7 @@ export function ProjectPreview(props: {
               </button>
               <button
                 class="modal-button"
-                onClick={() => props.onOpenInEditor(project().path)}
+                onClick={() => props.onOpenInEditor(projectDir(project().path))}
                 title="Open folder in OS"
                 aria-label="Open folder in OS"
               >

@@ -1,5 +1,5 @@
 .project-preview {
-  width: min(1100px, 100%);
+  width: min(85vw, 1600px);
   max-height: min(85vh, 900px);
 }
 
