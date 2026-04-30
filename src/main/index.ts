@@ -152,33 +152,78 @@ async function createWindow(initialPath: string | null): Promise<BrowserWindow> 
 }
 
 /**
- * Build the application menu. We keep it intentionally small — File-only —
- * with no Quit accelerator: Ctrl+Q is too easy to hit by accident, and
- * `File → Quit` routes through a renderer-side confirmation modal instead.
+ * Build the application menu. The toolbar in the renderer is stripped to
+ * just the tab bar — every previously-toolbar action lives here as a
+ * proper menu item with an accelerator. No Quit accelerator on purpose:
+ * Ctrl+Q is too easy to hit by accident, and `File → Quit` routes through
+ * a renderer-side confirmation modal anyway.
  */
 function buildMenu(): void {
+  const send = (command: string): void => {
+    mainWindow?.webContents.send('menu-command', command);
+  };
+
   const fileSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: 'Search…',
-      accelerator: 'CommandOrControl+Shift+F',
-      click: () => {
-        mainWindow?.webContents.send('menu-command', 'search');
-      },
+      label: 'Open…',
+      accelerator: 'CommandOrControl+O',
+      click: () => send('open-folder'),
     },
     {
       label: 'Open conception directory',
-      click: () => {
-        mainWindow?.webContents.send('menu-command', 'open-conception');
-      },
+      click: () => send('open-conception'),
+    },
+    { type: 'separator' },
+    {
+      label: 'Settings',
+      accelerator: 'CommandOrControl+,',
+      click: () => send('open-settings'),
+    },
+    {
+      label: 'Search…',
+      accelerator: 'CommandOrControl+Shift+F',
+      click: () => send('search'),
     },
     { type: 'separator' },
     {
       label: 'Quit',
       // No accelerator on purpose — see the comment above buildMenu().
-      click: () => {
-        mainWindow?.webContents.send('menu-command', 'request-quit');
-      },
+      click: () => send('request-quit'),
     },
+  ];
+
+  const viewSubmenu: MenuItemConstructorOptions[] = [
+    {
+      label: 'Show Terminal',
+      accelerator: 'CommandOrControl+`',
+      click: () => send('toggle-terminal'),
+    },
+    {
+      label: 'Refresh',
+      accelerator: 'F5',
+      click: () => send('refresh'),
+    },
+    { type: 'separator' },
+    { role: 'reload', label: 'Reload window' },
+    { role: 'toggleDevTools' },
+    { type: 'separator' },
+    { role: 'resetZoom' },
+    { role: 'zoomIn' },
+    { role: 'zoomOut' },
+    { type: 'separator' },
+    { role: 'togglefullscreen' },
+  ];
+
+  const helpSubmenu: MenuItemConstructorOptions[] = [
+    {
+      label: 'About Condash',
+      click: () => send('about'),
+    },
+    { type: 'separator' },
+    { label: 'Architecture', click: () => send('help-architecture') },
+    { label: 'Configuration reference', click: () => send('help-configuration') },
+    { label: 'Non-goals', click: () => send('help-non-goals') },
+    { label: 'Documentation index', click: () => send('help-index') },
   ];
 
   const template: MenuItemConstructorOptions[] = [
@@ -195,19 +240,8 @@ function buildMenu(): void {
         { role: 'selectAll' },
       ],
     },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-      ],
-    },
+    { label: 'View', submenu: viewSubmenu },
+    { label: 'Help', role: 'help', submenu: helpSubmenu },
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -420,6 +454,14 @@ function registerIpc(): void {
   ipcMain.handle('quitApp', () => {
     app.quit();
   });
+
+  ipcMain.handle('getAppInfo', () => ({
+    name: app.getName(),
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+  }));
 }
 
 app.whenReady().then(async () => {

@@ -2,11 +2,11 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 8px;
   padding: 22px 28px 28px;
   min-height: 0;
   overflow-y: auto;
-  background: var(--bg);
+  background: var(--bg-panel);
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
@@ -18,14 +18,14 @@
 .projects-stack::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 4px;
-  border: 2px solid var(--bg);
+  border: 2px solid var(--bg-panel);
 }
 
 .projects-filter {
   position: sticky;
   top: -22px;
   z-index: 3;
-  background: var(--bg);
+  background: var(--bg-panel);
   padding: 12px 0 8px;
   margin: -22px 0 0;
 }
@@ -58,15 +58,38 @@
   contain: layout paint;
   transition: background 120ms ease;
   padding: 4px 0 16px;
-  border-bottom: 1px solid var(--border);
 }
 
-.group-block:last-child {
-  border-bottom: none;
+/* Section spacing comes from negative space, not from a horizontal rule.
+ * Non-empty sections get extra breathing room above so each block reads
+ * as its own group without needing a graphic separator. */
+.group-block:not([data-empty='true']) {
+  margin-top: 16px;
+}
+
+.group-block:first-child {
+  margin-top: 0;
 }
 
 .group-block.collapsed {
   padding-bottom: 8px;
+}
+
+/* Empty sections collapse to a single dim line — no body, no expand
+ * affordance, no horizontal rule. Keeps the status enum visible without
+ * giving zero-count buckets the same vertical weight as populated ones. */
+.group-block[data-empty='true'] {
+  padding: 2px 0;
+  opacity: 0.45;
+}
+
+.group-block[data-empty='true'] .group-header {
+  cursor: default;
+  padding: 2px 6px;
+}
+
+.group-block[data-empty='true'] .group-header .caret {
+  visibility: hidden;
 }
 
 .group-block.drag-over {
@@ -141,12 +164,10 @@
   letter-spacing: 0.04em;
 }
 
-.group-header .rule {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-  margin-left: 4px;
-}
+/* The horizontal rule that used to extend from the section title to the
+ * right edge has been removed (was visual noise, especially with several
+ * empty sections stacked). Section identity now comes from the dot +
+ * uppercase name + count alone, separated by negative space below. */
 
 .group-body {
   display: grid;
@@ -177,12 +198,14 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-card);
+  /* No resting shadow — the panel↔card tonal step does the lifting now
+   * that --bg-panel sits between page and cards. Hover brightens the card
+   * surface (no lift transform) for a calmer feel. */
+  box-shadow: none;
   cursor: pointer;
   contain: layout paint;
   transition:
-    transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 140ms ease,
+    background-color 140ms ease,
     border-color 140ms ease;
 }
 
@@ -193,9 +216,12 @@
   top: 8px;
   bottom: 8px;
   width: 4px;
-  border-radius: 0 3px 3px 0;
+  /* Rounded both ends so the stripe reads as an indicator, not a tab
+   * stuck onto the side of the card. Slight fade so it's a hint rather
+   * than a shout — the kind glyph carries the strong identity now. */
+  border-radius: 3px;
   background: var(--row-stripe);
-  opacity: 1;
+  opacity: 0.7;
 }
 
 [data-status-card='now'] {
@@ -222,53 +248,119 @@
 
 .row:hover {
   border-color: var(--border-strong);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-lift);
+  background: var(--bg-hover);
+}
+
+/* Search-result row variant — same chrome as a normal card. The body is
+ * replaced by a snippets list (rendered inside `.row-head`) plus a small
+ * score chip in the title-actions slot. */
+.row.search-result-row .row-head {
+  cursor: pointer;
+}
+
+.search-result-row .search-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.search-result-snippets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-body);
+}
+
+.search-result-snippets li {
+  /* Each snippet on one line — long matches get ellipsed. The full text
+   * lives in the file; the card just hints at *where* the match landed. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "results" header above the search-driven flat list — leans on the
+ * existing .group-header chrome but skips the toggle/caret since it isn't
+ * a collapsible status section. */
+.search-results-block .group-header {
+  cursor: default;
+}
+
+.search-results-block .group-header .dot {
+  background: var(--accent);
+}
+
+.projects-empty {
+  padding: 14px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* Top row of every card: title (with a leading kind glyph) on the left,
+ * action cluster on the right. The title can wrap to two lines; the
+ * action cluster stays anchored top-right via flex-shrink: 0. */
+.row .title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.row .title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  /* Nudge so the work-on button visually centres on the title's first
+   * line of text — the button is 28 px tall, the title cap height
+   * sits a couple of pixels below the box top. */
+  margin-top: -1px;
 }
 
 .row .title {
   margin: 0;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 9px;
+  flex: 1 1 auto;
+  min-width: 0;
   font-family: var(--font-display);
-  font-weight: 600;
+  /* Weight bumped to 700 with a tighter tracking now that --font-display
+   * is the same sans as --font-ui — gives card titles enough display
+   * presence without leaning on a serif. */
+  font-weight: 700;
   font-size: 17px;
-  line-height: 1.28;
+  line-height: 1.25;
   color: var(--text);
   word-break: break-word;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.012em;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
-.row .title-kind {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  margin-top: 2px;
-  color: var(--col-now);
-  background: color-mix(in srgb, var(--col-now) 14%, transparent);
-}
-
-.row .title-kind[data-kind='incident'] {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 16%, transparent);
-}
-
-.row .title-kind[data-kind='document'] {
-  color: var(--col-later);
-  background: color-mix(in srgb, var(--col-later) 14%, transparent);
-}
-
-.row .title-kind svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 1.8;
+.row .title .kind-glyph {
+  /* Glyph is em-sized (1.15em of the 17 px title), so its top sits
+   * naturally on the cap-height line; no margin nudge needed. The
+   * left edge aligns with the next-step-marker on the row below. */
 }
 
 .row .title-text {
@@ -303,15 +395,26 @@
 
 .row .summary.next-step .next-step-marker {
   flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Fixed 16 × 16 — same pixel box as .kind-glyph so the two icons'
+   * left edges are pixel-aligned across rows. Slight margin-top
+   * centres the marker on the body text's cap-height line. */
+  width: 16px;
+  height: 16px;
   margin-top: 2px;
   color: var(--text-muted);
 }
 
+.row .summary.next-step .next-step-marker svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.5;
+}
+
 .row .summary.next-step[data-marker='doing'] .next-step-marker {
-  color: var(--col-now);
+  color: var(--col-soon);
 }
 
 .row .summary.next-step[data-marker='dropped'] {
@@ -348,10 +451,14 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--border-strong);
+  /* Resting state: just a tinted fill on transparent border so the three
+   * action buttons don't form a visual block competing with the title.
+   * Border (and per-action colour cue) returns on hover, see :hover rules
+   * below. */
+  border: 1px solid transparent;
   border-radius: 6px;
   background: var(--bg-subtle);
-  color: var(--text-body);
+  color: var(--text-faint);
   cursor: pointer;
   transition:
     background 100ms ease,
@@ -416,24 +523,6 @@
   stroke-width: 1.6;
 }
 
-.row .meta-icon.kind {
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: capitalize;
-}
-
-.row .meta-icon.kind[data-kind='project'] {
-  color: var(--col-now);
-}
-.row .meta-icon.kind[data-kind='incident'] {
-  color: var(--warn);
-}
-.row .meta-icon.kind[data-kind='document'] {
-  color: var(--col-later);
-}
-
 .row .meta-icon.apps {
   color: var(--text-muted);
 }
@@ -445,6 +534,19 @@
 .row .meta-icon.expander:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+/* When every step has been resolved (done or dropped, no todo/doing
+ * left) the counter dims so a finished card stops competing visually
+ * with cards that still have open work. The bar fill drops to a faint
+ * grey too — green at 100% reads as "celebrate", which isn't what we
+ * want when scanning a Done bucket. */
+.row .meta-icon.expander[data-complete='true'] {
+  opacity: 0.55;
+}
+
+.row .meta-icon.expander[data-complete='true'] .progress-fill {
+  background: var(--text-faint);
 }
 
 .row .step-progress-inner {
@@ -507,37 +609,57 @@
 .step {
   display: flex;
   gap: 6px;
-  align-items: baseline;
+  align-items: center;
   font-size: 12px;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
+/* Step toggle is a clickable SVG. Sizing is em-relative so the icon
+ * scales with the surrounding step text — same component renders at
+ * 12 px in the card, 14 px in the popup, without any per-context CSS. */
 .step-toggle {
   background: transparent;
   border: none;
   padding: 0;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1;
+  width: 1.15em;
+  height: 1.15em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.step-toggle svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: 1.5;
 }
 
 .step-toggle:hover {
   color: var(--accent);
 }
 
+/* Strikethrough is reserved for "dropped" steps — work that won't happen.
+ * "Done" steps stay legible (just dimmed) so the reader can read what the
+ * project has accomplished without fighting a line through every entry. */
 .step-marker-done .step-text {
   color: var(--text-muted);
-  text-decoration: line-through;
 }
 
 .step-marker-dropped .step-text {
   color: var(--text-muted);
   opacity: 0.6;
   text-decoration: line-through;
+  text-decoration-color: var(--text-faint);
 }
 
+/* Unified step-state palette — same colours render in the card and the
+ * popup so a step's status reads identically wherever it appears. The
+ * card's "next-step" line uses the same --col-soon for "doing" too.
+ * "Done" keeps a slate fill so the negative-space check mark inside the
+ * filled square has enough contrast against --bg-elevated to read. */
 .step-marker-doing .step-toggle {
   color: var(--col-soon);
 }
@@ -547,7 +669,7 @@
 }
 
 .step-marker-dropped .step-toggle {
-  color: var(--col-unknown);
+  color: var(--text-faint);
 }
 .row .slug {
   font-family: var(--font-mono);

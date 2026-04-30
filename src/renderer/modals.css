@@ -455,3 +455,71 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* About modal — Help → About Condash. Compact info card with the app
+ * name, tagline, runtime versions (Electron / Chrome / Node) and a link
+ * to the upstream repo. Same modal shell vocabulary as the help / search
+ * modals; just a leaner body. */
+.about-modal {
+  width: 360px;
+  max-width: calc(100vw - 32px);
+}
+
+.about-modal-body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.about-app-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.about-tagline {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.about-versions {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.about-versions dt {
+  color: var(--text-faint);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  align-self: center;
+}
+
+.about-versions dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.about-links {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.about-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-links a:hover {
+  text-decoration: underline;
+}

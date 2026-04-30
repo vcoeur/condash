@@ -6,6 +6,7 @@
 import { createEffect, createSignal, createMemo, For, onCleanup, Show } from 'solid-js';
 import type { TermSession, RepoEntry, TerminalXtermPrefs, Worktree } from '@shared/types';
 import { mountXterm } from './xterm-mount';
+import { StopIcon } from './icons';
 
 interface CodeRunRowsProps {
   sessions: readonly TermSession[];
@@ -43,14 +44,18 @@ export function CodeRunRows(props: CodeRunRowsProps) {
 function repoMeta(
   repos: readonly RepoEntry[],
   name: string | undefined,
-): { repo?: RepoEntry; branch?: string } {
+): { repo?: RepoEntry; branch?: string; displayName?: string } {
   if (!name) return {};
   const repo = repos.find((r) => r.name === name);
   if (!repo) return {};
   // The "primary" worktree is the one that lives at the configured repo
   // path. Its branch is the active checkout shown next to the repo name.
   const primary: Worktree | undefined = repo.worktrees?.find((w) => w.primary);
-  return { repo, branch: primary?.branch ?? undefined };
+  // Prefer the configured label (`configuration.json`) so the active-run
+  // row matches the title used on the repo card; fall back to the repo
+  // directory name when no label is set.
+  const displayName = repo.label ?? repo.name;
+  return { repo, branch: primary?.branch ?? undefined, displayName };
 }
 
 function CodeRunRow(props: {
@@ -138,7 +143,7 @@ function CodeRunRow(props: {
           {expanded() ? '▾' : '▸'}
         </span>
         <span class="dot" aria-hidden="true" />
-        <span class="repo">{props.session.repo ?? '(detached)'}</span>
+        <span class="repo">{meta().displayName ?? props.session.repo ?? '(detached)'}</span>
         <Show when={meta().branch}>
           <span class="branch">{meta().branch}</span>
         </Show>
@@ -158,7 +163,7 @@ function CodeRunRow(props: {
           title="Stop and close row"
           aria-label="Stop"
         >
-          ⏹
+          <StopIcon />
         </button>
       </header>
       <Show when={expanded()}>

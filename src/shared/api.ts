@@ -102,6 +102,14 @@ export interface CondashApi {
   createProjectNote(projectPath: string, slug: string): Promise<string>;
   /** Trigger app quit. Renderer is responsible for any user confirmation. */
   quitApp(): Promise<void>;
+  /** App version + bundled release metadata used by the About modal. */
+  getAppInfo(): Promise<{
+    name: string;
+    version: string;
+    electron: string;
+    chrome: string;
+    node: string;
+  }>;
   /**
    * Subscribe to commands sent by the application menu (File → Search,
    * File → Open conception directory, File → Quit). Returns an unsubscribe.
@@ -109,7 +117,19 @@ export interface CondashApi {
   onMenuCommand(callback: (command: MenuCommand) => void): () => void;
 }
 
-export type MenuCommand = 'search' | 'open-conception' | 'request-quit';
+export type MenuCommand =
+  | 'search'
+  | 'open-folder'
+  | 'open-conception'
+  | 'open-settings'
+  | 'request-quit'
+  | 'toggle-terminal'
+  | 'refresh'
+  | 'about'
+  | 'help-architecture'
+  | 'help-configuration'
+  | 'help-non-goals'
+  | 'help-index';
 
 declare global {
   interface Window {

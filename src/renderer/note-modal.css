@@ -74,9 +74,9 @@
 
 .modal-title {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 17px;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.012em;
   flex-shrink: 1;
   min-width: 0;
   max-width: 60%;
@@ -101,14 +101,76 @@
   min-width: 0;
 }
 
-.modal-button {
-  background: transparent;
-  border: 1px solid var(--border);
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  cursor: pointer;
+/* Steps progress mini — sits in the modal head between title and the
+ * action cluster. Reads as "X/Y resolved" with a thin track-and-fill
+ * bar matching the card's expander bar. Dims at 100 % via
+ * data-complete (see selector below). */
+.head-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-body);
+  flex-shrink: 0;
+}
+
+.head-progress-text {
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.head-progress-track {
+  width: 60px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-faint) 32%, transparent);
+  overflow: hidden;
+  position: relative;
+}
+
+.head-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--col-soon);
+  border-radius: 2px;
+  transition: width 200ms ease;
+}
+
+.head-progress[data-complete='true'] {
+  opacity: 0.55;
+}
+
+.head-progress[data-complete='true'] .head-progress-fill {
+  background: var(--text-faint);
+}
+
+/* Project date — small mono label sitting just left of the head action
+ * cluster. Quiet, scannable. */
+.head-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--text-muted);
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
+}
+
+.modal-button {
+  /* Modal-head action buttons — chunkier than the card's row-actions
+   * because the modal head needs the icons to read clearly without
+   * crowding the title. Slightly larger square + larger SVG, with a
+   * tinted hover that picks up an action-specific colour cue. */
+  background: var(--bg-subtle);
+  border: 1px solid transparent;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-body);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -120,8 +182,10 @@
 }
 
 .modal-button svg {
-  width: 16px;
-  height: 16px;
+  /* SVG is sized to fill 80% of the 32 px button so the icon content
+   * reads at full presence, not as a tiny glyph in a big box. */
+  width: 26px;
+  height: 26px;
 }
 
 .modal-button:hover {
@@ -138,6 +202,11 @@
 .modal-button.work-on-button:hover {
   color: var(--col-now);
   border-color: var(--col-now);
+}
+
+.modal-button.modal-close:hover {
+  color: var(--warn);
+  border-color: var(--warn);
 }
 
 .modal-body {

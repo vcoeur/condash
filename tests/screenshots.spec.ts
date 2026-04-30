@@ -217,13 +217,10 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //     renders in the note modal.
     if (theme === 'light') {
       await clickTab(page, 'Knowledge');
-      // Expand `internal/` to reveal helio.md.
-      const internal = page.locator('.knowledge-dir', { hasText: /^▸?\s*internal/i }).first();
-      if (await internal.count()) {
-        await internal.click();
-        await settle(page);
-      }
-      const helio = page.locator('.knowledge-leaf', { hasText: /helio/i }).first();
+      // Card list is flat — click the helio card directly. The Knowledge
+      // tab used to be a tree (`.knowledge-dir` / `.knowledge-leaf`) and
+      // needed an expand step; cards make that obsolete.
+      const helio = page.locator('.knowledge-card', { hasText: /helio/i }).first();
       if (await helio.count()) {
         await helio.click();
         await settle(page);

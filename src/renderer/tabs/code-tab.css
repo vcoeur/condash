@@ -104,8 +104,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--col-soon);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-soon) 22%, transparent);
+  background: var(--col-running);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running) 22%, transparent);
 }
 
 .code-run-row.exited .code-run-head .dot {
@@ -119,12 +119,18 @@
 }
 
 .code-run-head .branch {
+  /* Match `.repo-live-branch` on the repo card so the branch reads the
+   * same in both places — same hue (--col-running pink), same pill
+   * silhouette. The branch *is* the running thing, so the chroma sits
+   * on it rather than on a separate neutral chip. */
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-weight: 600;
+  color: var(--col-running);
+  background: color-mix(in srgb, var(--col-running) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-running) 30%, transparent);
+  padding: 1px 8px;
+  border-radius: 999px;
 }
 
 .code-run-head .status {
@@ -138,9 +144,9 @@
 }
 
 .code-run-head .status-live {
-  color: var(--col-soon);
-  background: color-mix(in srgb, var(--col-soon) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--col-soon) 30%, transparent);
+  color: var(--col-running);
+  background: color-mix(in srgb, var(--col-running) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-running) 30%, transparent);
 }
 
 .code-run-head .status-exited {
@@ -200,7 +206,7 @@
   --repo-stripe: var(--col-soon);
 }
 .repo-row[data-status='dirty'] {
-  --repo-stripe: var(--col-later);
+  --repo-stripe: var(--col-dirty);
 }
 .repo-row[data-status='missing'] {
   --repo-stripe: var(--col-unknown);
@@ -254,8 +260,8 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--bg-elevated);
-  background: var(--col-soon);
-  border: 1px solid var(--col-soon);
+  background: var(--col-running);
+  border: 1px solid var(--col-running);
   position: relative;
 }
 
@@ -300,9 +306,9 @@
 }
 
 .repo-status-badge[data-status='dirty'] {
-  color: var(--col-later);
-  background: color-mix(in srgb, var(--col-later) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--col-later) 30%, transparent);
+  color: var(--col-dirty);
+  background: color-mix(in srgb, var(--col-dirty) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-dirty) 30%, transparent);
 }
 
 .repo-status-badge[data-status='missing'] {
@@ -369,13 +375,21 @@
   min-width: 26px;
 }
 
+/* SVG icon sizing inside any .repo-action — matches the projects-tab
+ * .row-action svg rule so both tabs share one icon scale. */
+.repo-action svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.7;
+}
+
 .repo-action.run {
-  color: var(--col-soon);
-  border-color: color-mix(in srgb, var(--col-soon) 35%, transparent);
+  color: var(--col-running);
+  border-color: color-mix(in srgb, var(--col-running) 35%, transparent);
 }
 
 .repo-action.run:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--col-soon) 10%, var(--bg));
+  background: color-mix(in srgb, var(--col-running) 10%, var(--bg));
 }
 
 .repo-action.warn {
@@ -454,7 +468,7 @@
   background: var(--col-soon);
 }
 .branch-row[data-status='dirty'] .branch-dot {
-  background: var(--col-later);
+  background: var(--col-dirty);
 }
 .branch-row[data-status='missing'] .branch-dot {
   background: var(--col-unknown);
@@ -467,7 +481,7 @@
 }
 
 .branch-row[data-status='dirty'] .branch-name {
-  color: var(--col-later);
+  color: var(--col-dirty);
 }
 
 .branch-role {
@@ -485,7 +499,7 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
-  color: var(--col-later);
+  color: var(--col-dirty);
   /* Reset button defaults — the badge is rendered as a `<button>` so it can
    * open the click-to-inspect popover, but should still read as a small
    * inline pill rather than an OS-styled control. */
@@ -498,11 +512,11 @@
 }
 
 .branch-dirty:hover {
-  background: color-mix(in srgb, var(--col-later) 14%, transparent);
+  background: color-mix(in srgb, var(--col-dirty) 14%, transparent);
 }
 
 .branch-dirty:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--col-later) 60%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--col-dirty) 60%, transparent);
   outline-offset: 1px;
 }
 
@@ -573,7 +587,7 @@
 .branch-dirty-popover-code {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--col-later);
+  color: var(--col-dirty);
   white-space: pre;
 }
 
@@ -614,12 +628,14 @@
   font-style: italic;
 }
 
+/* Per-branch live dot — small pulsing dot next to the branch name when
+ * a session is running on that worktree. Pink (--col-running). */
 .branch-live-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--col-soon);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-soon) 20%, transparent);
+  background: var(--col-running);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running) 20%, transparent);
   animation: branch-live-pulse 1.6s ease-in-out infinite;
 }
 
@@ -675,10 +691,19 @@
 }
 
 .branch-action-menu-item .glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   text-align: center;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.branch-action-menu-item .glyph svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.7;
 }
 
 .branch-action-menu-item.warn {
@@ -791,9 +816,9 @@
   border-radius: 999px;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--col-soon);
-  background: color-mix(in srgb, var(--col-soon) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--col-soon) 30%, transparent);
+  color: var(--col-running);
+  background: color-mix(in srgb, var(--col-running) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-running) 30%, transparent);
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -804,8 +829,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--col-soon);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-soon) 22%, transparent);
+  background: var(--col-running);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running) 22%, transparent);
   flex-shrink: 0;
 }
 

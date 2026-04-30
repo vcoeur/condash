@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import './code-tab.css';
 import type {
   DirtyDetails,
@@ -10,6 +10,7 @@ import type {
   Worktree,
 } from '@shared/types';
 import { CodeRunRows } from '../code-runs';
+import { ChevronDownIcon, FolderIcon, KillIcon, RunIcon, StopIcon, TerminalIcon } from '../icons';
 
 type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
 
@@ -166,7 +167,7 @@ export function RepoRow(props: {
             title={`Stop the running session for ${props.repo.name}`}
             aria-label={`Stop ${props.repo.name}`}
           >
-            ⏹
+            <StopIcon />
           </button>
         </Show>
         <Show when={props.repo.hasForceStop}>
@@ -176,7 +177,7 @@ export function RepoRow(props: {
             title={`Run ${props.repo.name} force_stop (free its port)`}
             aria-label={`Force-stop ${props.repo.name}`}
           >
-            ⛒
+            <KillIcon />
           </button>
         </Show>
         <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>
@@ -215,12 +216,13 @@ export function RepoRow(props: {
 }
 
 /**
- * Per-branch action group. Three primary direct icons — Run ▶, Open in
- * condash term tab ⌗, and a triangle that toggles the open_with menu —
- * plus a file-manager affordance. The open_with dropdown is rendered as
- * a `position: fixed` overlay (anchored to the trigger button) to escape
- * the parent's stacking context, fixing the long-standing "menu hides
- * under neighbouring cards" bug.
+ * Per-branch action group. Two direct buttons — Run and Open shell in the
+ * condash terminal tab — plus a chevron that toggles the open_with menu.
+ * The menu carries every configured launcher (main IDE, secondary IDE,
+ * external terminal) plus the OS file manager entry. The dropdown is
+ * rendered as a `position: fixed` overlay anchored to the trigger to
+ * escape the parent's stacking context, fixing the long-standing "menu
+ * hides under neighbouring cards" bug.
  */
 function BranchActions(props: {
   repo: RepoEntry;
@@ -239,12 +241,22 @@ function BranchActions(props: {
 
   const launcherEntries = (): OpenWithSlotKey[] =>
     LAUNCHER_SLOTS.filter((slot) => !!props.slots[slot]);
-  const hasLaunchers = (): boolean => launcherEntries().length > 0;
 
+  /** Anchor the menu below the trigger by default, but flip above when
+   * the rendered menu would overflow the viewport bottom. The first call
+   * (before the menu has mounted) positions optimistically below; the
+   * menu's ref callback re-runs this once `menuRef` is set, at which
+   * point we know the actual height and can flip if needed. */
   const positionMenu = (): void => {
     if (!triggerRef) return;
     const rect = triggerRef.getBoundingClientRect();
-    setMenuAnchor({ top: rect.bottom + 4, left: rect.right });
+    const margin = 8;
+    let top = rect.bottom + 4;
+    const menuH = menuRef?.getBoundingClientRect().height ?? 0;
+    if (menuH > 0 && top + menuH > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - 4 - menuH);
+    }
+    setMenuAnchor({ top, left: rect.right });
   };
 
   const onDocClick = (e: MouseEvent): void => {
@@ -294,7 +306,7 @@ function BranchActions(props: {
           }
           aria-label="Run"
         >
-          ▶
+          <RunIcon />
         </button>
       </Show>
       <button
@@ -304,32 +316,28 @@ function BranchActions(props: {
         title="Open shell in condash terminal tab"
         aria-label="Open in terminal tab"
       >
-        ⌗
+        <TerminalIcon />
       </button>
       <button
+        ref={(el) => (triggerRef = el)}
         class="repo-action icon"
-        onClick={() => props.onOpen(props.worktree.path)}
-        disabled={props.repo.missing}
-        title="Open in OS file manager"
-        aria-label="Open in file manager"
+        onClick={toggleMenu}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen()}
+        title="Open with…"
+        aria-label="Open with…"
       >
-        📁
+        <ChevronDownIcon />
       </button>
-      <Show when={hasLaunchers()}>
-        <button
-          ref={(el) => (triggerRef = el)}
-          class="repo-action icon"
-          onClick={toggleMenu}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen()}
-          title="Open with…"
-        >
-          ▾
-        </button>
-      </Show>
-      <Show when={menuOpen() && hasLaunchers() && menuAnchor()}>
+      <Show when={menuOpen() && menuAnchor()}>
         <div
-          ref={(el) => (menuRef = el)}
+          ref={(el) => {
+            menuRef = el;
+            // Re-position with the actual rendered height so we can flip
+            // above the trigger when the menu would otherwise spill below
+            // the viewport (e.g. card sitting near the bottom of the page).
+            if (el) requestAnimationFrame(positionMenu);
+          }}
           class="branch-action-menu portal"
           role="menu"
           style={{
@@ -352,6 +360,20 @@ function BranchActions(props: {
               </button>
             )}
           </For>
+          <button
+            class="branch-action-menu-item"
+            role="menuitem"
+            disabled={props.repo.missing}
+            onClick={() => {
+              setMenuOpen(false);
+              props.onOpen(props.worktree.path);
+            }}
+          >
+            <span class="glyph">
+              <FolderIcon />
+            </span>
+            <span>Open in file manager</span>
+          </button>
         </div>
       </Show>
     </div>
@@ -372,10 +394,20 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
   let triggerRef: HTMLButtonElement | undefined;
   let popoverRef: HTMLDivElement | undefined;
 
+  /** Anchor the popover below the badge by default, but flip above when
+   * the rendered popover would overflow the viewport bottom. The popover
+   * fetches `git status` async, so its height changes after the first
+   * paint — the ref callback re-runs this once the content lands. */
   const positionPopover = (): void => {
     if (!triggerRef) return;
     const rect = triggerRef.getBoundingClientRect();
-    setAnchor({ top: rect.bottom + 4, left: rect.left });
+    const margin = 8;
+    let top = rect.bottom + 4;
+    const popH = popoverRef?.getBoundingClientRect().height ?? 0;
+    if (popH > 0 && top + popH > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - 4 - popH);
+    }
+    setAnchor({ top, left: rect.left });
   };
 
   const close = (): void => {
@@ -410,6 +442,15 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
     document.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('resize', onScrollOrResize, true);
     window.removeEventListener('scroll', onScrollOrResize, true);
+  });
+
+  // The popover content grows after the async git-status fetch lands.
+  // Re-position once details / error change so the flip-above check runs
+  // against the final height, not the empty skeleton.
+  createEffect(() => {
+    details();
+    error();
+    if (open() && popoverRef) requestAnimationFrame(positionPopover);
   });
 
   const toggle = async (e: MouseEvent): Promise<void> => {
@@ -447,7 +488,13 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
       </button>
       <Show when={open() && anchor()}>
         <div
-          ref={(el) => (popoverRef = el)}
+          ref={(el) => {
+            popoverRef = el;
+            // Re-position with the actual rendered height so we can flip
+            // above the trigger when the popover would otherwise spill
+            // below the viewport.
+            if (el) requestAnimationFrame(positionPopover);
+          }}
           class="branch-dirty-popover"
           role="dialog"
           aria-label={`Dirty files in ${props.worktree.branch ?? '(detached)'}`}

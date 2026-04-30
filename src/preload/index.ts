@@ -67,6 +67,7 @@ const api: CondashApi = {
   createProjectNote: (projectPath: string, slug: string) =>
     ipcRenderer.invoke('project.createNote', projectPath, slug),
   quitApp: () => ipcRenderer.invoke('quitApp'),
+  getAppInfo: () => ipcRenderer.invoke('getAppInfo'),
   onMenuCommand: (callback) => {
     const handler = (_: unknown, command: MenuCommand): void => callback(command);
     ipcRenderer.on('menu-command', handler);

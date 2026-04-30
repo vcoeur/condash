@@ -82,3 +82,29 @@
 .tabs.main-tabs .tab.active::after {
   display: none;
 }
+
+/* Search input — sits to the right of the tabs on the same row, fills
+ * the remaining width. The per-tab search panes used to render this
+ * input themselves; lifting it into the toolbar saves a row of vertical
+ * space and gives the user a more app-bar-like feel. */
+.toolbar-search {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.toolbar-search::placeholder {
+  color: var(--text-faint);
+}
+
+.toolbar-search:focus {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
