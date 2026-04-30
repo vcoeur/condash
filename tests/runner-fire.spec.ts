@@ -6,7 +6,11 @@ test('Run on a configured repo spawns the run: command and emits its output', as
     extraConfig: {
       workspace_path: '/tmp',
       repositories: {
-        primary: [{ name: '.', run: 'echo hi-from-runner' }],
+        // `echo` exits immediately; once the renderer's TerminalPane sees
+        // term.exit it auto-closes the tab via termClose, and termAttach
+        // then returns null because the session is gone. Trail with
+        // `sleep 5` so the pty is alive while the test polls for output.
+        primary: [{ name: '.', run: 'echo hi-from-runner; sleep 5' }],
       },
     },
   });
@@ -16,9 +20,7 @@ test('Run on a configured repo spawns the run: command and emits its output', as
     );
     expect(typeof session.id).toBe('string');
 
-    // `echo` finishes fast and the pty may exit before a renderer-side
-    // term.data listener can attach. Poll term.attach (which serves the
-    // buffered tail kept in main) until the runner output shows up.
+    // The CDP roundtrip can still beat the pty's first write, so we poll.
     let output = '';
     for (let attempt = 0; attempt < 30; attempt++) {
       const attached = await booted.window.evaluate(
