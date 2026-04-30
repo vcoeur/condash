@@ -1,5 +1,6 @@
 import { Show } from 'solid-js';
 import type { HelpDoc } from './help-modal';
+import './toolbar.css';
 
 export type Tab = 'projects' | 'knowledge' | 'code';
 

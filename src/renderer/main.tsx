@@ -45,6 +45,7 @@ import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
 import { QuitConfirmModal, type Tab, Toolbar } from './toolbar';
 import './styles.css';
+import './modals.css';
 import './note-modal.css';
 import './project-preview.css';
 

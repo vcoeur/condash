@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import './code-tab.css';
 import type {
   DirtyDetails,
   OpenWithSlotKey,

@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { KnowledgeNode } from '@shared/types';
+import './knowledge-tab.css';
 
 /** Prune `node` to only the subtree where some descendant title or path
  * matches `needle`. Returns null when nothing in the subtree matches. */

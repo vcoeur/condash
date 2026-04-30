@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { Project, Step, StepCounts, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
+import './projects-tab.css';
 
 const MARKER_GLYPH: Record<StepMarker, string> = {
   ' ': '☐',
