@@ -1,6 +1,5 @@
 import { render } from 'solid-js/web';
 import {
-  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -403,22 +402,6 @@ function App() {
     void window.condash.invalidateGitStatus();
     setRefreshKey((k) => k + 1);
   };
-
-  // Periodic auto-refresh while the Code tab is visible. Drops the
-  // git-status cache and bumps refreshKey on a fixed interval so the
-  // per-branch dirty count + running indicators don't go stale silently.
-  // Pauses (clears the interval) the moment the user switches away —
-  // re-creates a fresh interval on the next visit so the first tick after
-  // switching back lands within CODE_TAB_REFRESH_MS, not later.
-  const CODE_TAB_REFRESH_MS = 15_000;
-  createEffect(() => {
-    if (tab() !== 'code') return;
-    const id = window.setInterval(() => {
-      void window.condash.invalidateGitStatus();
-      setRefreshKey((k) => k + 1);
-    }, CODE_TAB_REFRESH_MS);
-    onCleanup(() => window.clearInterval(id));
-  });
 
   const handleTreeEvents = async (events: TreeEvent[]): Promise<void> => {
     let knowledgeOrConfigDirty = false;
