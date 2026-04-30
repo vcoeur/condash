@@ -2,11 +2,11 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 8px;
   padding: 22px 28px 28px;
   min-height: 0;
   overflow-y: auto;
-  background: var(--bg);
+  background: var(--bg-panel);
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
@@ -18,14 +18,14 @@
 .projects-stack::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 4px;
-  border: 2px solid var(--bg);
+  border: 2px solid var(--bg-panel);
 }
 
 .projects-filter {
   position: sticky;
   top: -22px;
   z-index: 3;
-  background: var(--bg);
+  background: var(--bg-panel);
   padding: 12px 0 8px;
   margin: -22px 0 0;
 }
@@ -58,15 +58,38 @@
   contain: layout paint;
   transition: background 120ms ease;
   padding: 4px 0 16px;
-  border-bottom: 1px solid var(--border);
 }
 
-.group-block:last-child {
-  border-bottom: none;
+/* Section spacing comes from negative space, not from a horizontal rule.
+ * Non-empty sections get extra breathing room above so each block reads
+ * as its own group without needing a graphic separator. */
+.group-block:not([data-empty='true']) {
+  margin-top: 16px;
+}
+
+.group-block:first-child {
+  margin-top: 0;
 }
 
 .group-block.collapsed {
   padding-bottom: 8px;
+}
+
+/* Empty sections collapse to a single dim line — no body, no expand
+ * affordance, no horizontal rule. Keeps the status enum visible without
+ * giving zero-count buckets the same vertical weight as populated ones. */
+.group-block[data-empty='true'] {
+  padding: 2px 0;
+  opacity: 0.45;
+}
+
+.group-block[data-empty='true'] .group-header {
+  cursor: default;
+  padding: 2px 6px;
+}
+
+.group-block[data-empty='true'] .group-header .caret {
+  visibility: hidden;
 }
 
 .group-block.drag-over {
@@ -141,12 +164,10 @@
   letter-spacing: 0.04em;
 }
 
-.group-header .rule {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-  margin-left: 4px;
-}
+/* The horizontal rule that used to extend from the section title to the
+ * right edge has been removed (was visual noise, especially with several
+ * empty sections stacked). Section identity now comes from the dot +
+ * uppercase name + count alone, separated by negative space below. */
 
 .group-body {
   display: grid;
@@ -177,7 +198,9 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-card);
+  /* No resting shadow — the panel↔card tonal step does the lifting now
+   * that --bg-panel sits between page and cards. The hover shadow remains. */
+  box-shadow: none;
   cursor: pointer;
   contain: layout paint;
   transition:
@@ -193,9 +216,12 @@
   top: 8px;
   bottom: 8px;
   width: 4px;
-  border-radius: 0 3px 3px 0;
+  /* Rounded both ends so the stripe reads as an indicator, not a tab
+   * stuck onto the side of the card. Slight fade so it's a hint rather
+   * than a shout — the kind glyph carries the strong identity now. */
+  border-radius: 3px;
   background: var(--row-stripe);
-  opacity: 1;
+  opacity: 0.7;
 }
 
 [data-status-card='now'] {
@@ -247,10 +273,10 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  margin-top: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  margin-top: 1px;
   color: var(--col-now);
   background: color-mix(in srgb, var(--col-now) 14%, transparent);
 }
@@ -266,8 +292,8 @@
 }
 
 .row .title-kind svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   stroke-width: 1.8;
 }
 
@@ -348,10 +374,14 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--border-strong);
+  /* Resting state: just a tinted fill on transparent border so the three
+   * action buttons don't form a visual block competing with the title.
+   * Border (and per-action colour cue) returns on hover, see :hover rules
+   * below. */
+  border: 1px solid transparent;
   border-radius: 6px;
   background: var(--bg-subtle);
-  color: var(--text-body);
+  color: var(--text-faint);
   cursor: pointer;
   transition:
     background 100ms ease,
@@ -414,24 +444,6 @@
   height: 12px;
   flex-shrink: 0;
   stroke-width: 1.6;
-}
-
-.row .meta-icon.kind {
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: capitalize;
-}
-
-.row .meta-icon.kind[data-kind='project'] {
-  color: var(--col-now);
-}
-.row .meta-icon.kind[data-kind='incident'] {
-  color: var(--warn);
-}
-.row .meta-icon.kind[data-kind='document'] {
-  color: var(--col-later);
 }
 
 .row .meta-icon.apps {

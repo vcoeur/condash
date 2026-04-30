@@ -415,11 +415,13 @@ function GroupBlock(props: {
     if (path) props.onDropProject(path, props.group.status);
   };
 
+  const isEmpty = (): boolean => props.group.items.length === 0;
   return (
     <section
       class="group-block"
       classList={{ 'drag-over': over(), collapsed: !isOpen() }}
       data-status={props.group.status}
+      data-empty={isEmpty() ? 'true' : 'false'}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -427,8 +429,8 @@ function GroupBlock(props: {
     >
       <header
         class="group-header"
-        onClick={toggle}
-        title={isOpen() ? 'Collapse section' : 'Expand section'}
+        onClick={isEmpty() ? undefined : toggle}
+        title={isEmpty() ? undefined : isOpen() ? 'Collapse section' : 'Expand section'}
       >
         <span class="caret" aria-hidden="true">
           {isOpen() ? '▾' : '▸'}
@@ -436,9 +438,8 @@ function GroupBlock(props: {
         <span class="dot" aria-hidden="true" />
         <span class="name">{props.group.status}</span>
         <span class="count">{props.group.items.length}</span>
-        <span class="rule" aria-hidden="true" />
       </header>
-      <Show when={isOpen()}>
+      <Show when={isOpen() && !isEmpty()}>
         <div class="group-body">
           <For each={props.group.items}>
             {(item) => (
