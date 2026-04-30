@@ -3,13 +3,47 @@
   max-height: min(85vh, 900px);
 }
 
+/* Two-column body — sidebar (apps, summary, files) on the left,
+ * main pane (steps + deliverables) on the right. The sidebar is a
+ * fixed 280 px column; main fills the remaining space. */
 .preview-body {
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px 20px;
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.preview-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
+  min-width: 0;
+}
+
+.preview-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.sidebar-block {
+  margin: 0;
+}
+
+.sidebar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sidebar-row .apps-pills {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .preview-meta {
@@ -45,88 +79,124 @@
   color: var(--text-muted);
 }
 
-.status-chip {
+/* Status select — sits in the modal head, picks up the status's colour
+ * for its dot, label, and bg tint. Pill-shaped with a clear chevron;
+ * the menu opens just below with matching dotted entries. */
+.status-select {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 3px;
-  border: 1px solid var(--border);
-  background: var(--bg);
+  gap: 7px;
+  padding: 5px 8px 5px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--col-status, var(--text-muted)) 40%, transparent);
+  background: color-mix(in srgb, var(--col-status, var(--text-muted)) 12%, transparent);
+  color: var(--col-status, var(--text-muted));
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
-  text-transform: capitalize;
-  user-select: none;
-}
-
-.status-chip:hover {
-  background: var(--bg-hover);
-}
-
-.status-chip.warn {
-  border-color: var(--warn);
-  color: var(--warn);
   font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  user-select: none;
+  flex-shrink: 0;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease;
 }
 
-.status-chip-arrow {
-  font-size: 9px;
-  color: var(--text-muted);
+.status-select:hover,
+.status-select.open {
+  background: color-mix(in srgb, var(--col-status, var(--text-muted)) 20%, transparent);
+  border-color: color-mix(in srgb, var(--col-status, var(--text-muted)) 60%, transparent);
 }
 
-.status-chip.status-now {
-  border-color: var(--col-now);
-  color: var(--col-now);
+.status-select-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--col-status, var(--text-muted));
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-status, var(--text-muted)) 22%, transparent);
 }
-.status-chip.status-review {
-  border-color: var(--col-review);
-  color: var(--col-review);
+
+.status-select-label {
+  /* Inherits color from .status-select. */
 }
-.status-chip.status-soon {
-  border-color: var(--col-soon);
-  color: var(--col-soon);
+
+.status-select-chevron {
+  display: inline-flex;
+  align-items: center;
+  margin-left: -1px;
+  opacity: 0.85;
 }
-.status-chip.status-later {
-  border-color: var(--col-later);
-  color: var(--col-later);
+
+.status-select-chevron svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 1.7;
 }
-.status-chip.status-backlog {
-  border-color: var(--col-backlog);
-  color: var(--col-backlog);
+
+.status-select.warn {
+  --col-status: var(--warn);
+  font-weight: 700;
 }
-.status-chip.status-done {
-  border-color: var(--col-done);
-  color: var(--col-done);
+
+.status-select.status-now {
+  --col-status: var(--col-now);
+}
+.status-select.status-review {
+  --col-status: var(--col-review);
+}
+.status-select.status-soon {
+  --col-status: var(--col-soon);
+}
+.status-select.status-later {
+  --col-status: var(--col-later);
+}
+.status-select.status-backlog {
+  --col-status: var(--col-backlog);
+}
+.status-select.status-done {
+  --col-status: var(--col-done);
 }
 
 .status-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   left: 0;
   z-index: 10;
   display: flex;
   flex-direction: column;
+  padding: 4px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-  min-width: 110px;
-  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+  min-width: 132px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .status-menu-item {
   background: transparent;
   border: none;
-  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 10px;
+  border-radius: 5px;
   cursor: pointer;
   font: inherit;
-  color: inherit;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
-  text-transform: capitalize;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-body);
 }
 
 .status-menu-item:hover {
@@ -134,26 +204,39 @@
 }
 
 .status-menu-item.active {
-  font-weight: 700;
+  background: color-mix(in srgb, var(--col-item, var(--text-muted)) 14%, transparent);
+}
+
+.status-menu-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--col-item, var(--text-muted));
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-item, var(--text-muted)) 22%, transparent);
+}
+
+.status-menu-label {
+  color: var(--col-item, var(--text-body));
 }
 
 .status-menu-item.status-now {
-  color: var(--col-now);
+  --col-item: var(--col-now);
 }
 .status-menu-item.status-review {
-  color: var(--col-review);
+  --col-item: var(--col-review);
 }
 .status-menu-item.status-soon {
-  color: var(--col-soon);
+  --col-item: var(--col-soon);
 }
 .status-menu-item.status-later {
-  color: var(--col-later);
+  --col-item: var(--col-later);
 }
 .status-menu-item.status-backlog {
-  color: var(--col-backlog);
+  --col-item: var(--col-backlog);
 }
 .status-menu-item.status-done {
-  color: var(--col-done);
+  --col-item: var(--col-done);
 }
 
 .apps-pills {
@@ -295,66 +378,233 @@
   text-align: center;
 }
 
+/* File tree — recursive list with collapsible folders. Indent uses the
+ * --tree-depth custom property so each level adds 14 px of padding-left
+ * without needing nested <ul>s. README.md is rendered separately above
+ * the Steps section in the main column, so the tree only carries the
+ * other files and folders. */
 .files-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  --tree-indent: 14px;
+}
+
+.file-row,
+.file-group-head {
+  margin: 0;
+  padding-left: calc(var(--tree-depth, 0) * var(--tree-indent));
 }
 
 .file-group-head {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  padding: 6px 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.file-row {
-  margin: 0;
+.file-group-toggle {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-body);
+  text-align: left;
+  min-width: 0;
 }
 
-.file-row-readme .file-button {
-  border-color: var(--accent);
+.file-group-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.file-group-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+  flex-shrink: 0;
+}
+
+.file-group-chevron.open {
+  transform: rotate(90deg);
+}
+
+.file-group-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.file-group-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Inline "+" sitting next to the notes/ folder head — adds a new note
+ * to the project. Small enough to be quiet but coloured on hover so
+ * it's obviously interactive. */
+.file-group-add {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
+}
+
+.file-group-add svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.7;
+}
+
+.file-group-add:hover {
+  color: var(--kind-project);
+  border-color: color-mix(in srgb, var(--kind-project) 50%, transparent);
+  background: color-mix(in srgb, var(--kind-project) 14%, transparent);
 }
 
 .file-button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
   text-align: left;
   background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 6px;
   cursor: pointer;
   font: inherit;
-  color: inherit;
+  font-size: 12px;
+  color: var(--text-body);
+  min-width: 0;
 }
 
 .file-button:hover {
   background: var(--bg-hover);
 }
 
-.file-icon {
-  font-size: 13px;
+.file-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.file-row-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .file-name {
-  font-size: 13px;
-}
-
-.file-rel {
-  margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+
+/* README quick-link — sits above the Steps section in the main column.
+ * A real button (not a tree row) so it reads as a primary action; gets
+ * a faint border + hover state. The README is the canonical entry
+ * point for a project's narrative, so it earns prominence. */
+.preview-readme-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 4px 10px 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease;
+}
+
+.preview-readme-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.preview-readme-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.preview-readme-link-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.6;
+}
+
+.preview-readme-link-label {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+}
+
+.preview-readme-link-arrow {
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+
+.preview-readme-link-arrow svg {
+  width: 12px;
+  height: 12px;
+}
+
+.preview-readme-link:hover .preview-readme-link-arrow {
+  transform: translateX(2px);
+  color: var(--accent);
 }
 
 .deliverables-list {

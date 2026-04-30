@@ -42,21 +42,28 @@
   --accent: #4f46e5;
   --warn: #c0392b;
 
-  /* Status palette — "aurora arc" from primary periwinkle through orchid,
-   * jade, and tan to cool slate. Each stop has distinct character but
-   * the saturation/brightness step is even, so no single section shouts.
-   * Sequence is now → review → soon → later → backlog → done, reading
-   * as warm-to-cool / active-to-archived. `now` is the calm primary
-   * (so the Project kind chip still reads as primary blue). Used for
-   * section dots, card stripes, kind chips, and step icons. Light-mode
-   * values; dark-mode mirrors below. */
-  --col-now: #8a5cc4;
-  --col-review: #4f5fdc;
-  --col-soon: #2a87a0;
-  --col-later: #b07840;
-  --col-backlog: #5d6878;
-  --col-done: #404652;
+  /* Status palette — single-axis gradient from warm pink (now) through
+   * violet and blue to cool gray (done). One hue arc instead of six
+   * unrelated tones, so the status enum reads as a temperature/heat
+   * scale rather than a tutti-frutti rainbow. Used for section dots,
+   * card stripes, and step-state colours. Light-mode values; dark-mode
+   * mirrors below. */
+  --col-now: #b85a82;
+  --col-review: #946598;
+  --col-soon: #6b5fa0;
+  --col-later: #4a648f;
+  --col-backlog: #4f5f70;
+  --col-done: #4a4f5a;
   --col-unknown: #c0392b;
+
+  /* Kind colours — completely outside the status palette so a kind
+   * glyph never reads as a status indicator. Warm ink-stamp tones:
+   * project = green (focused work, "go"), incident = orange (alert
+   * without going to status-warn red), document = yellow (paper,
+   * highlight, archival). */
+  --kind-project: #2d7755;
+  --kind-incident: #a8501f;
+  --kind-document: #87761d;
 
   --pad: 8px;
   --radius: 6px;
@@ -101,18 +108,23 @@
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
     --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-    /* Dark-mode aurora arc — calm periwinkle → orchid → jade → tan →
-     * slate → deeper slate. Same intent as the light values above. */
-    --col-now: #b58fd8;
-    --col-review: #7c8df0;
-    --col-soon: #6cb4cd;
-    --col-later: #d4a574;
-    --col-backlog: #7d8896;
-    --col-done: #5d6370;
-    /* Warn / unknown reads as a lighter coral on dark bg — pure #c0392b
-     * (used in light mode) muddies against --bg-elevated. */
+    /* Dark-mode status gradient: warm pink → violet → blue → cool gray.
+     * Same single-axis arc as light, lifted in value for contrast
+     * against --bg-elevated. */
+    --col-now: #e8a3c0;
+    --col-review: #c89cd0;
+    --col-soon: #a094d8;
+    --col-later: #7d96d4;
+    --col-backlog: #788ca0;
+    --col-done: #6e7480;
+    /* Warn / unknown stays a distinct coral so an "unknown status"
+     * pops against the gradient. */
     --warn: #e87b6b;
     --col-unknown: #e87b6b;
+    /* Dark-mode kind colours — green / orange / yellow. */
+    --kind-project: #5fa982;
+    --kind-incident: #d68a4a;
+    --kind-document: #c9b35a;
     color-scheme: dark;
   }
 }
@@ -127,22 +139,26 @@
   --bg-hover: #2e2e34;
   --text: #f1efe8;
   --text-body: #d6d3c8;
-  --text-muted: #9b988e;
-  --text-faint: #6a6862;
+  --text-muted: #a3a098;
+  --text-faint: #837f76;
   --border: #2c2f37;
   --border-strong: #3b3f4a;
   --accent: #818cf8;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-  --col-now: #7c8df0;
-  --col-review: #b58fd8;
-  --col-soon: #5cb494;
-  --col-later: #d4a574;
-  --col-backlog: #7d8896;
-  --col-done: #5d6370;
+  --col-now: #e8a3c0;
+  --col-review: #c89cd0;
+  --col-soon: #a094d8;
+  --col-later: #7d96d4;
+  --col-backlog: #788ca0;
+  --col-done: #6e7480;
   --warn: #e87b6b;
   --col-unknown: #e87b6b;
+
+  --kind-project: #5fa982;
+  --kind-incident: #d68a4a;
+  --kind-document: #c9b35a;
   color-scheme: dark;
 }
 
@@ -173,13 +189,13 @@
 }
 
 .kind-glyph[data-kind='project'] {
-  --kind-color: var(--col-now);
+  --kind-color: var(--kind-project);
 }
 .kind-glyph[data-kind='incident'] {
-  --kind-color: var(--warn);
+  --kind-color: var(--kind-incident);
 }
 .kind-glyph[data-kind='document'] {
-  --kind-color: var(--col-later);
+  --kind-color: var(--kind-document);
 }
 
 * {
