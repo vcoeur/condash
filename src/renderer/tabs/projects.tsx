@@ -1,8 +1,25 @@
-import { createMemo, createSignal, For, Show } from 'solid-js';
-import type { Project, Step, StepCounts, StepMarker } from '@shared/types';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import type {
+  Project,
+  SearchHit,
+  SearchResults,
+  SearchSnippet,
+  Step,
+  StepCounts,
+  StepMarker,
+} from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { TerminalIcon } from '../icons';
+import { HighlightedText } from '../search/highlight';
+import { groupHits, type ProjectGroup } from '../search/grouping';
 import './projects-tab.css';
+
+const EMPTY_SEARCH_RESULTS: SearchResults = {
+  hits: [],
+  terms: [],
+  totalBeforeCap: 0,
+  truncated: false,
+};
 
 /* StepIcon — single shape vocabulary for the four step states. Drawn as a
  * 16×16 SVG so the same component renders the card's next-step marker, the
@@ -218,16 +235,6 @@ function projectsTabGroups(buckets: Map<string, Project[]>): Group[] {
   return out;
 }
 
-function projectMatches(item: Project, needle: string): boolean {
-  if (!needle) return true;
-  return (
-    item.title.toLowerCase().includes(needle) ||
-    item.slug.toLowerCase().includes(needle) ||
-    (item.summary?.toLowerCase().includes(needle) ?? false) ||
-    (item.apps?.toLowerCase().includes(needle) ?? false)
-  );
-}
-
 function markerClass(m: StepMarker): string {
   if (m === ' ') return 'todo';
   if (m === '~') return 'doing';
@@ -406,46 +413,247 @@ export function ProjectsView(props: {
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
 }) {
-  const [filter, setFilter] = createSignal('');
-  const trimmedQuery = createMemo(() => filter().trim().toLowerCase());
-  const filteredGroups = createMemo<Group[]>(() => {
-    const q = trimmedQuery();
-    const buckets = props.buckets;
-    if (!q) return projectsTabGroups(buckets);
-    const filtered = new Map<string, Project[]>();
-    for (const [status, items] of buckets) {
-      filtered.set(
-        status,
-        items.filter((it) => projectMatches(it, q)),
-      );
-    }
-    return projectsTabGroups(filtered);
+  const [input, setInput] = createSignal('');
+  const [query, setQuery] = createSignal('');
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const onInput = (value: string): void => {
+    setInput(value);
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => setQuery(value), 200);
+  };
+  onCleanup(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
   });
+
+  // Empty query → render the existing status-grouped view. Non-empty
+  // query → route to the global-search backend so the user gets the same
+  // ranked AND/phrase semantics, region weighting, and snippet highlights
+  // as the ⌘K modal — restricted to project-side hits.
+  //
+  // Using a manual signal-based fetch (not createResource) on purpose: the
+  // parent Suspense boundary in main.tsx would otherwise catch every
+  // re-fetch and unmount this view + the input on each keystroke. Manual
+  // signals keep the input mounted so focus survives typing.
+  const [searchResults, setSearchResults] = createSignal<SearchResults>(EMPTY_SEARCH_RESULTS);
+  const [searching, setSearching] = createSignal(false);
+
+  createEffect(() => {
+    const q = query();
+    if (q.trim().length === 0) {
+      setSearchResults(EMPTY_SEARCH_RESULTS);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    let cancelled = false;
+    void window.condash.search(q).then((r) => {
+      if (cancelled) return;
+      setSearchResults(r);
+      setSearching(false);
+    });
+    onCleanup(() => {
+      cancelled = true;
+    });
+  });
+
+  /** Lookup map: absolute project directory path → loaded Project. Drives
+   * mapping from search-result project groups (which know `projectPath`,
+   * the directory) back to the rich Project object the cards render from.
+   * `Project.path` points at the README.md, so we strip the filename to
+   * key by the project dir — that matches how the search backend reports
+   * `hit.projectPath`. */
+  const projectsByPath = createMemo<Map<string, Project>>(() => {
+    const out = new Map<string, Project>();
+    for (const items of props.buckets.values()) {
+      for (const p of items) {
+        const dir = p.path.replace(/\/README\.md$/i, '');
+        out.set(dir, p);
+      }
+    }
+    return out;
+  });
+
+  const projectGroups = createMemo<ProjectGroup[]>(() => {
+    const grouped = groupHits(searchResults().hits);
+    return grouped.projects;
+  });
+
+  const isSearching = (): boolean => input().trim().length > 0;
+
   return (
     <div class="projects-stack">
       <div class="projects-filter">
         <input
           class="projects-filter-input"
           type="search"
-          placeholder="Filter projects (title, slug, app, summary)…"
-          value={filter()}
-          onInput={(e) => setFilter(e.currentTarget.value)}
+          placeholder='Search projects — multi-word AND, "phrases" stay together'
+          value={input()}
+          onInput={(e) => onInput(e.currentTarget.value)}
         />
       </div>
-      <For each={filteredGroups()}>
-        {(group) => (
-          <GroupBlock
-            group={group}
-            collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
-            forceOpen={trimmedQuery().length > 0 && group.items.length > 0}
-            onOpen={props.onOpen}
-            onToggleStep={props.onToggleStep}
-            onDropProject={props.onDropProject}
-            onWorkOn={props.onWorkOn}
-          />
-        )}
-      </For>
+      <Show
+        when={isSearching()}
+        fallback={
+          <For each={projectsTabGroups(props.buckets)}>
+            {(group) => (
+              <GroupBlock
+                group={group}
+                collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
+                onOpen={props.onOpen}
+                onToggleStep={props.onToggleStep}
+                onDropProject={props.onDropProject}
+                onWorkOn={props.onWorkOn}
+              />
+            )}
+          </For>
+        }
+      >
+        <Show when={searching() && projectGroups().length === 0}>
+          <div class="projects-empty">Searching…</div>
+        </Show>
+        <Show when={!searching() && projectGroups().length === 0}>
+          <div class="projects-empty">No matches.</div>
+        </Show>
+        <Show when={projectGroups().length > 0}>
+          <section class="group-block search-results-block">
+            <header class="group-header">
+              <span class="dot" aria-hidden="true" />
+              <span class="name">results</span>
+              <span class="count">{projectGroups().length}</span>
+            </header>
+            <div class="group-body">
+              <For each={projectGroups()}>
+                {(group) => {
+                  const project = (): Project | undefined =>
+                    projectsByPath().get(group.projectPath);
+                  return (
+                    <Show when={project()}>
+                      {(p) => (
+                        <SearchResultCard
+                          item={p()}
+                          group={group}
+                          onOpen={props.onOpen}
+                          onWorkOn={props.onWorkOn}
+                        />
+                      )}
+                    </Show>
+                  );
+                }}
+              </For>
+            </div>
+          </section>
+        </Show>
+      </Show>
     </div>
+  );
+}
+
+/** Search-result variant of Card. Shares the `.row` chrome (stripe, hover
+ * brightness, kind glyph, work-on action) so a search result and a normal
+ * card sit next to each other comfortably, but the body is replaced by a
+ * snippet list (meta / heading / body — backend-prioritised) plus an
+ * optional dimmed path line. The h1 snippet's match offsets carry over to
+ * the title so its highlights line up with the global search modal. */
+function SearchResultCard(props: {
+  item: Project;
+  group: ProjectGroup;
+  onOpen: (project: Project) => void;
+  onWorkOn: (project: Project) => void;
+}) {
+  const handleHeaderClick = (event: MouseEvent) => {
+    if ((event.target as HTMLElement).closest('.row-action')) return;
+    props.onOpen(props.item);
+  };
+
+  const headerHit = (): SearchHit | undefined => props.group.header;
+  const titleSnippet = (): SearchSnippet | undefined =>
+    headerHit()?.snippets.find((s) => s.region === 'h1');
+
+  /** Snippets to surface on the card. Take the README's non-h1 snippets
+   * first (highest-signal — meta, headings, body), then a few from notes
+   * files. Cap the total so a project with many matches doesn't blow up
+   * the card's height. */
+  const cardSnippets = (): { snippet: SearchSnippet; from?: string }[] => {
+    const out: { snippet: SearchSnippet; from?: string }[] = [];
+    const header = headerHit();
+    if (header) {
+      for (const s of header.snippets) {
+        if (s.region === 'h1') continue;
+        out.push({ snippet: s });
+      }
+    }
+    for (const file of props.group.files) {
+      const tail = file.relPath.split('/').pop() ?? file.relPath;
+      for (const s of file.snippets) {
+        out.push({ snippet: s, from: tail });
+      }
+    }
+    return out.slice(0, 4);
+  };
+
+  return (
+    <article
+      class="row search-result-row"
+      title={props.item.path}
+      data-status-card={props.item.status}
+    >
+      <div class="row-head" onClick={handleHeaderClick}>
+        <div class="title-row">
+          <h3 class="title">
+            <Show when={props.item.kind !== 'unknown'}>
+              <KindGlyph kind={props.item.kind} />
+            </Show>
+            <span class="title-text">
+              <Show when={titleSnippet()} fallback={props.item.title}>
+                {(s) => <HighlightedText text={s().text} matches={s().matches} />}
+              </Show>
+            </span>
+          </h3>
+          <div class="title-actions">
+            <span class="search-score" title={`Match score ${props.group.totalScore}`}>
+              {props.group.totalScore}
+            </span>
+            <button
+              class="row-action work-on"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onWorkOn(props.item);
+              }}
+              title={`Paste 'work on ${props.item.slug}' into the focused terminal`}
+              aria-label={`Paste 'work on ${props.item.slug}' into the focused terminal`}
+            >
+              <TerminalIcon />
+            </button>
+          </div>
+        </div>
+        <Show when={cardSnippets().length > 0}>
+          <ul class="search-result-snippets">
+            <For each={cardSnippets()}>
+              {(entry) => (
+                <li
+                  classList={{
+                    'snippet-meta': entry.snippet.region === 'meta',
+                    'snippet-heading': entry.snippet.region === 'heading',
+                  }}
+                >
+                  <Show when={entry.snippet.region === 'meta'}>
+                    <span class="snippet-region-tag">meta</span>
+                  </Show>
+                  <Show when={entry.snippet.region === 'heading'}>
+                    <span class="snippet-region-tag">heading</span>
+                  </Show>
+                  <Show when={entry.from}>
+                    <span class="snippet-region-tag">{entry.from}</span>
+                  </Show>
+                  <HighlightedText text={entry.snippet.text} matches={entry.snippet.matches} />
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+      </div>
+    </article>
   );
 }
 

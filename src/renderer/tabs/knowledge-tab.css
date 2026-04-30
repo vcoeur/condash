@@ -221,6 +221,51 @@
   font-weight: 600;
 }
 
+/* Search-result variant — same card silhouette, but the lead caption is
+ * replaced by a list of backend snippets (meta / heading / body, in score
+ * order) and the matched path tail is shown as a dimmed line at the
+ * bottom. The `<mark>` highlights from `HighlightedText` use the global
+ * `.search-mark-*` palette so the colours line up with the global search
+ * modal — same query, same colours wherever it lands. */
+.knowledge-card-result {
+  gap: 6px;
+}
+
+.knowledge-card-snippets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-body);
+}
+
+.knowledge-card-snippets li {
+  /* Each snippet is one line — clamp so a long meta line doesn't blow
+   * the card's height; the full body lives in the file, the card is just
+   * a hint at where in the file the match landed. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-card-path-line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-card-result[data-bucket='search']::before {
+  background: var(--accent);
+}
+
 .knowledge-pane .empty {
   padding: 14px 16px;
   color: var(--text-muted);

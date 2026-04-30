@@ -251,6 +251,69 @@
   background: var(--bg-hover);
 }
 
+/* Search-result row variant — same chrome as a normal card. The body is
+ * replaced by a snippets list (rendered inside `.row-head`) plus a small
+ * score chip in the title-actions slot. */
+.row.search-result-row .row-head {
+  cursor: pointer;
+}
+
+.search-result-row .search-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.search-result-snippets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-body);
+}
+
+.search-result-snippets li {
+  /* Each snippet on one line — long matches get ellipsed. The full text
+   * lives in the file; the card just hints at *where* the match landed. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "results" header above the search-driven flat list — leans on the
+ * existing .group-header chrome but skips the toggle/caret since it isn't
+ * a collapsible status section. */
+.search-results-block .group-header {
+  cursor: default;
+}
+
+.search-results-block .group-header .dot {
+  background: var(--accent);
+}
+
+.projects-empty {
+  padding: 14px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
 /* Top row of every card: title (with a leading kind glyph) on the left,
  * action cluster on the right. The title can wrap to two lines; the
  * action cluster stays anchored top-right via flex-shrink: 0. */
