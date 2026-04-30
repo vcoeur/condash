@@ -408,20 +408,24 @@ function WarnIcon() {
 
 export function ProjectsView(props: {
   buckets: Map<string, Project[]>;
+  /** Live search-input value, owned by the toolbar. Debounced internally
+   * to a `query` signal that drives the actual backend fetch. */
+  searchInput: string;
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
 }) {
-  const [input, setInput] = createSignal('');
   const [query, setQuery] = createSignal('');
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const onInput = (value: string): void => {
-    setInput(value);
+  // Debounce the toolbar-owned input value into a local query signal so
+  // we don't fire a fetch on every keystroke.
+  createEffect(() => {
+    const value = props.searchInput;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => setQuery(value), 200);
-  };
+  });
   onCleanup(() => {
     if (debounceTimer) clearTimeout(debounceTimer);
   });
@@ -479,19 +483,10 @@ export function ProjectsView(props: {
     return grouped.projects;
   });
 
-  const isSearching = (): boolean => input().trim().length > 0;
+  const isSearching = (): boolean => props.searchInput.trim().length > 0;
 
   return (
     <div class="projects-stack">
-      <div class="projects-filter">
-        <input
-          class="projects-filter-input"
-          type="search"
-          placeholder='Search projects — multi-word AND, "phrases" stay together'
-          value={input()}
-          onInput={(e) => onInput(e.currentTarget.value)}
-        />
-      </div>
       <Show
         when={isSearching()}
         fallback={

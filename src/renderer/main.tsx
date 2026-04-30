@@ -44,6 +44,7 @@ import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
 import { QuitConfirmModal, type Tab, Toolbar } from './toolbar';
+import { AboutModal } from './about-modal';
 import './styles.css';
 import './modals.css';
 import './note-modal.css';
@@ -68,10 +69,14 @@ function App() {
   const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
-  const [helpMenuOpen, setHelpMenuOpen] = createSignal(false);
   const [terminalOpen, setTerminalOpen] = createSignal(false);
   const [searchModalOpen, setSearchModalOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [aboutOpen, setAboutOpen] = createSignal(false);
+  // Shared search input — owned here so the Toolbar (which renders the
+  // box) and the active tab view (which consumes the value) read from one
+  // place. Empty value → tabs render their default grouped layout.
+  const [searchInput, setSearchInput] = createSignal('');
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
 
@@ -283,25 +288,49 @@ function App() {
       setSearchModalOpen(true);
       return;
     }
+    if (command === 'open-folder') {
+      void handlePick();
+      return;
+    }
     if (command === 'open-conception') {
       void window.condash.openConceptionDirectory().catch((err) => {
         flashToast(`Open failed: ${(err as Error).message}`);
       });
       return;
     }
+    if (command === 'open-settings') {
+      if (conceptionPath()) setSettingsOpen(true);
+      return;
+    }
     if (command === 'request-quit') {
       setQuitConfirmOpen(true);
       return;
     }
+    if (command === 'toggle-terminal') {
+      setTerminalOpen((v) => !v);
+      return;
+    }
+    if (command === 'refresh') {
+      handleRefresh();
+      return;
+    }
+    if (command === 'about') {
+      setAboutOpen(true);
+      return;
+    }
+    if (
+      command === 'help-architecture' ||
+      command === 'help-configuration' ||
+      command === 'help-non-goals' ||
+      command === 'help-index'
+    ) {
+      // Strip the `help-` prefix to get the HelpDoc name.
+      const doc = command.slice('help-'.length) as HelpDoc;
+      setHelpDoc(doc);
+      return;
+    }
   });
   onCleanup(offMenu);
-
-  // Click anywhere outside the help-menu wrapper closes the dropdown.
-  const closeHelpMenu = () => {
-    if (helpMenuOpen()) setHelpMenuOpen(false);
-  };
-  onMount(() => document.addEventListener('click', closeHelpMenu));
-  onCleanup(() => document.removeEventListener('click', closeHelpMenu));
 
   const handleRunRepo = async (repo: RepoEntry, worktree?: Worktree) => {
     // The Code-tab Run button spawns a `side: 'code'` session that renders in
@@ -443,13 +472,7 @@ function App() {
   };
 
   const handleOpenHelp = (doc: HelpDoc) => {
-    setHelpMenuOpen(false);
     setHelpDoc(doc);
-  };
-
-  const handleOpenPreferences = () => {
-    if (!conceptionPath()) return;
-    setSettingsOpen(true);
   };
 
   const handleConfirmQuit = () => {
@@ -538,18 +561,9 @@ function App() {
       <Toolbar
         tab={tab()}
         conceptionPath={conceptionPath()}
-        terminalOpen={terminalOpen()}
-        helpMenuOpen={helpMenuOpen()}
+        searchValue={searchInput()}
+        onSearchInput={setSearchInput}
         onTabChange={setTab}
-        onToggleTerminal={() => setTerminalOpen((v) => !v)}
-        onOpenSettings={handleOpenPreferences}
-        onToggleHelpMenu={(e) => {
-          e.stopPropagation();
-          setHelpMenuOpen((v) => !v);
-        }}
-        onOpenHelp={handleOpenHelp}
-        onRefresh={handleRefresh}
-        onPickFolder={handlePick}
       />
 
       <Show
@@ -569,6 +583,7 @@ function App() {
             >
               <ProjectsView
                 buckets={groupByStatus(projects() ?? [])}
+                searchInput={searchInput()}
                 onOpen={handleOpenProject}
                 onToggleStep={handleToggleStep}
                 onDropProject={handleDropOnColumn}
@@ -586,7 +601,11 @@ function App() {
                 <div class="empty">No knowledge/ directory under the selected conception path.</div>
               }
             >
-              <KnowledgeView root={knowledge()!} onOpen={handleOpenKnowledgeFile} />
+              <KnowledgeView
+                root={knowledge()!}
+                searchInput={searchInput()}
+                onOpen={handleOpenKnowledgeFile}
+              />
             </Show>
           </Suspense>
         </Show>
@@ -654,6 +673,10 @@ function App() {
 
       <Show when={helpDoc()}>
         <HelpModal doc={helpDoc()!} onClose={() => setHelpDoc(null)} />
+      </Show>
+
+      <Show when={aboutOpen()}>
+        <AboutModal onClose={() => setAboutOpen(false)} />
       </Show>
 
       <PromptModal state={promptState()} onClose={() => setPromptState(null)} />

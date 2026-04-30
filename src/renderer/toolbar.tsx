@@ -1,25 +1,31 @@
 import { Show } from 'solid-js';
-import type { HelpDoc } from './help-modal';
 import './toolbar.css';
 
 export type Tab = 'projects' | 'knowledge' | 'code';
 
-/** Top-of-window toolbar: tab buttons (Projects / Code / Knowledge),
- *  pane toggle, settings, help-menu dropdown, refresh, and the conception
- *  folder picker. Pure presentation — every button is a callback. */
+/** Top-of-window toolbar — tab buttons + the search input for the active
+ * tab (Projects / Knowledge only).
+ *
+ * Other actions (Show Terminal, Refresh, Settings, Open conception
+ * folder, About / Help docs) live in the application menu now. The
+ * toolbar's job is workspace navigation + the per-tab search box. */
 export function Toolbar(props: {
   tab: Tab;
   conceptionPath: string | null;
-  terminalOpen: boolean;
-  helpMenuOpen: boolean;
+  searchValue: string;
+  onSearchInput: (value: string) => void;
   onTabChange: (tab: Tab) => void;
-  onToggleTerminal: () => void;
-  onOpenSettings: () => void;
-  onToggleHelpMenu: (e: MouseEvent) => void;
-  onOpenHelp: (doc: HelpDoc) => void;
-  onRefresh: () => void;
-  onPickFolder: () => void;
 }) {
+  const placeholder = (): string => {
+    if (props.tab === 'projects')
+      return 'Search projects — multi-word AND, "phrases" stay together';
+    if (props.tab === 'knowledge')
+      return 'Search knowledge — multi-word AND, "phrases" stay together';
+    return '';
+  };
+  const showSearch = (): boolean =>
+    !!props.conceptionPath && (props.tab === 'projects' || props.tab === 'knowledge');
+
   return (
     <header class="toolbar">
       <nav class="tabs main-tabs">
@@ -47,44 +53,15 @@ export function Toolbar(props: {
           Knowledge
         </button>
       </nav>
-      <span class="spacer" />
-      <button
-        onClick={props.onToggleTerminal}
-        classList={{ active: props.terminalOpen }}
-        title="Toggle terminal pane (Ctrl+`)"
-      >
-        ▤
-      </button>
-      <button onClick={props.onOpenSettings} disabled={!props.conceptionPath} title="Settings">
-        ⚙
-      </button>
-      <span class="help-menu-wrap">
-        <button onClick={props.onToggleHelpMenu} title="Help / docs">
-          ?
-        </button>
-        <Show when={props.helpMenuOpen}>
-          <div class="help-menu" role="menu" onClick={(e) => e.stopPropagation()}>
-            <button class="help-menu-item" onClick={() => props.onOpenHelp('architecture')}>
-              Architecture
-            </button>
-            <button class="help-menu-item" onClick={() => props.onOpenHelp('configuration')}>
-              Configuration reference
-            </button>
-            <button class="help-menu-item" onClick={() => props.onOpenHelp('non-goals')}>
-              Non-goals
-            </button>
-            <button class="help-menu-item" onClick={() => props.onOpenHelp('index')}>
-              Documentation index
-            </button>
-          </div>
-        </Show>
-      </span>
-      <button onClick={props.onRefresh} disabled={!props.conceptionPath}>
-        Refresh
-      </button>
-      <button onClick={props.onPickFolder}>
-        {props.conceptionPath ? 'Change…' : 'Choose folder…'}
-      </button>
+      <Show when={showSearch()}>
+        <input
+          class="toolbar-search"
+          type="search"
+          placeholder={placeholder()}
+          value={props.searchValue}
+          onInput={(e) => props.onSearchInput(e.currentTarget.value)}
+        />
+      </Show>
     </header>
   );
 }

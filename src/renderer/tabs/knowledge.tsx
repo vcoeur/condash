@@ -131,17 +131,19 @@ function freshnessOf(verifiedAt: string | undefined, todayISO: string): string {
 
 export function KnowledgeView(props: {
   root: KnowledgeNode;
+  /** Live search-input value, owned by the toolbar. Debounced internally
+   * to a `query` signal that drives the actual backend fetch. */
+  searchInput: string;
   onOpen: (path: string, title?: string) => void;
 }) {
-  const [input, setInput] = createSignal('');
   const [query, setQuery] = createSignal('');
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const onInput = (value: string): void => {
-    setInput(value);
+  createEffect(() => {
+    const value = props.searchInput;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => setQuery(value), 200);
-  };
+  });
   onCleanup(() => {
     if (debounceTimer) clearTimeout(debounceTimer);
   });
@@ -186,19 +188,10 @@ export function KnowledgeView(props: {
     results().hits.filter((h) => h.source === 'knowledge'),
   );
 
-  const isSearching = (): boolean => input().trim().length > 0;
+  const isSearching = (): boolean => props.searchInput.trim().length > 0;
 
   return (
     <div class="knowledge-pane">
-      <div class="projects-filter">
-        <input
-          class="projects-filter-input"
-          type="search"
-          placeholder='Search knowledge — multi-word AND, "phrases" stay together'
-          value={input()}
-          onInput={(e) => onInput(e.currentTarget.value)}
-        />
-      </div>
       <Show
         when={isSearching()}
         fallback={<DirectoryView sections={sections()} todayISO={todayISO} onOpen={props.onOpen} />}
