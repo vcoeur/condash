@@ -16,101 +16,29 @@
 // - A draggable splitter sets the column width ratio (only when split).
 // - A draggable handle on the pane's top edge sets the pane height.
 
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import type { TermSide, TermSpawnRequest, TerminalPrefs, TerminalXtermPrefs } from '@shared/types';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import { mountXterm, type MountedTerm } from './xterm-mount';
+import { TerminalColumn } from './terminal-pane/column';
+import { createDragDropController, DRAG_MIME } from './terminal-pane/drag-drop';
+import {
+  DEFAULT_PANE_HEIGHT,
+  DEFAULT_SPLIT_RATIO,
+  deleteMeta,
+  readLayout,
+  readMeta,
+  setMeta,
+} from './terminal-pane/persistence';
+import { createResizeHandlers } from './terminal-pane/resize';
+import { createSearchController } from './terminal-pane/search';
+import { type Column, displayName, type Tab } from './terminal-pane/types';
 import './terminal-pane.css';
 
-export type Column = 'left' | 'right';
-
-export interface Tab {
-  id: string;
-  /** Server-side `my` for tabs in this pane (code-side sessions live on the
-   * Code tab). Kept on the Tab object so the structure stays mirror-able. */
-  side: TermSide;
-  /** Renderer-only column choice within the bottom pane. */
-  column: Column;
-  /** Default label (auto-derived from spawn — e.g. repo name or shell). */
-  label: string;
-  /** User-renamed label, if any. Persisted by id in localStorage. */
-  customName?: string;
-  /** Most recent cwd reported via OSC 7 (`file://host/path`). Used for the
-   *  display label when the user hasn't supplied a custom name. */
-  cwd?: string;
-  /** Process exit code; the tab can still be cleared via close. */
-  exited?: number;
-}
-
-interface PersistedTabMeta {
-  label: string;
-  customName?: string;
-  column: Column;
-}
-
-interface PersistedLayout {
-  paneHeight: number;
-  splitRatio: number;
-}
-
-const META_KEY = 'condash-term-meta';
-const LAYOUT_KEY = 'condash-term-layout';
-const DEFAULT_PANE_HEIGHT = 280;
-const DEFAULT_SPLIT_RATIO = 0.5;
-const MIN_PANE_HEIGHT = 120;
-const MAX_PANE_HEIGHT_VH = 0.85;
-const MIN_SPLIT_RATIO = 0.15;
-const MAX_SPLIT_RATIO = 0.85;
-
-function readMeta(): Record<string, PersistedTabMeta> {
-  try {
-    const raw = localStorage.getItem(META_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, PersistedTabMeta>) : {};
-  } catch {
-    return {};
-  }
-}
-function writeMeta(meta: Record<string, PersistedTabMeta>): void {
-  try {
-    localStorage.setItem(META_KEY, JSON.stringify(meta));
-  } catch {
-    /* ignore */
-  }
-}
-function setMeta(id: string, value: PersistedTabMeta): void {
-  const map = readMeta();
-  map[id] = value;
-  writeMeta(map);
-}
-function deleteMeta(id: string): void {
-  const map = readMeta();
-  delete map[id];
-  writeMeta(map);
-}
-
-function readLayout(): PersistedLayout {
-  try {
-    const raw = localStorage.getItem(LAYOUT_KEY);
-    if (!raw) return { paneHeight: DEFAULT_PANE_HEIGHT, splitRatio: DEFAULT_SPLIT_RATIO };
-    const parsed = JSON.parse(raw) as Partial<PersistedLayout>;
-    return {
-      paneHeight: typeof parsed.paneHeight === 'number' ? parsed.paneHeight : DEFAULT_PANE_HEIGHT,
-      splitRatio: typeof parsed.splitRatio === 'number' ? parsed.splitRatio : DEFAULT_SPLIT_RATIO,
-    };
-  } catch {
-    return { paneHeight: DEFAULT_PANE_HEIGHT, splitRatio: DEFAULT_SPLIT_RATIO };
-  }
-}
-function writeLayout(layout: PersistedLayout): void {
-  try {
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
-  } catch {
-    /* ignore */
-  }
-}
+export type { Column, Tab } from './terminal-pane/types';
 
 export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string): Promise<string>;
@@ -123,19 +51,6 @@ export interface TerminalPaneHandle {
   typeIntoActive(text: string): void;
   /** True when there is an active session in the active column. */
   hasActive(): boolean;
-}
-
-const DRAG_MIME = 'application/x-condash-term-tab';
-
-/** Display name for a tab. Custom rename wins; otherwise the cwd basename if
- *  the shell emitted OSC 7; otherwise the spawn-time label. */
-function displayName(tab: Tab): string {
-  if (tab.customName) return tab.customName;
-  if (tab.cwd) {
-    const basename = tab.cwd.split('/').filter(Boolean).pop();
-    if (basename) return basename;
-  }
-  return tab.label;
 }
 
 export function TerminalPane(props: {
@@ -163,10 +78,6 @@ export function TerminalPane(props: {
   const initialLayout = readLayout();
   const [paneHeight, setPaneHeight] = createSignal(initialLayout.paneHeight);
   const [splitRatio, setSplitRatio] = createSignal(initialLayout.splitRatio);
-
-  // In-flight search bar state.
-  const [searchOpen, setSearchOpen] = createSignal(false);
-  const [searchQuery, setSearchQuery] = createSignal('');
 
   // Track the column where the next default-spawn should land — set when the
   // user clicks a `+` button so that the right column's `+` lands a tab in
@@ -278,6 +189,14 @@ export function TerminalPane(props: {
     }
   };
 
+  const search = createSearchController({
+    getActiveSearch: () => {
+      const id = activeIdIn(activeColumn());
+      return id ? (xterms.get(id)?.search ?? null) : null;
+    },
+    focusActive,
+  });
+
   /** Custom-key hook for xterm — handles Ctrl+F (search), Ctrl+Up/Down (jump
    *  to prompt) before the bytes hit the shell. */
   const handleXtermKey = (ev: KeyboardEvent, _id: string): boolean => {
@@ -285,8 +204,7 @@ export function TerminalPane(props: {
     if (!ctrl || ev.type !== 'keydown') return true;
     if (!ev.shiftKey && (ev.key === 'f' || ev.key === 'F')) {
       ev.preventDefault();
-      setSearchOpen(true);
-      queueMicrotask(() => searchInputRef?.focus());
+      search.openSearch();
       return false;
     }
     if (!ev.shiftKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
@@ -445,71 +363,15 @@ export function TerminalPane(props: {
   };
 
   // ---- column / pane resize ----
-  const persistLayout = () => {
-    writeLayout({ paneHeight: paneHeight(), splitRatio: splitRatio() });
-  };
-
-  const startSplitterDrag = (startEvent: MouseEvent, container: HTMLElement) => {
-    startEvent.preventDefault();
-    const rect = container.getBoundingClientRect();
-    const onMove = (e: MouseEvent) => {
-      const ratio = (e.clientX - rect.left) / rect.width;
-      const clamped = Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO, ratio));
-      setSplitRatio(clamped);
-      for (const { fit } of xterms.values()) {
-        try {
-          fit.fit();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      persistLayout();
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  const startHeightDrag = (startEvent: MouseEvent) => {
-    startEvent.preventDefault();
-    const startY = startEvent.clientY;
-    const startHeight = paneHeight();
-    const maxHeight = Math.floor(window.innerHeight * MAX_PANE_HEIGHT_VH);
-    const onMove = (e: MouseEvent) => {
-      const delta = startY - e.clientY;
-      const next = Math.max(MIN_PANE_HEIGHT, Math.min(maxHeight, startHeight + delta));
-      setPaneHeight(next);
-      for (const { fit } of xterms.values()) {
-        try {
-          fit.fit();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      persistLayout();
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  const onWindowResize = (): void => {
-    for (const { fit } of xterms.values()) {
-      try {
-        fit.fit();
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-  onMount(() => window.addEventListener('resize', onWindowResize));
-  onCleanup(() => window.removeEventListener('resize', onWindowResize));
+  const resize = createResizeHandlers({
+    paneHeight,
+    setPaneHeight,
+    splitRatio,
+    setSplitRatio,
+    fitAddons: () => Array.from(xterms.values(), (h) => h.fit),
+  });
+  onMount(() => window.addEventListener('resize', resize.onWindowResize));
+  onCleanup(() => window.removeEventListener('resize', resize.onWindowResize));
 
   createEffect(() => {
     void activeIds();
@@ -522,92 +384,14 @@ export function TerminalPane(props: {
   });
 
   // ---- drag-to-reorder + drag-between-columns ----
-  const [draggingId, setDraggingId] = createSignal<string | null>(null);
-  const [dropTarget, setDropTarget] = createSignal<{
-    id: string | null;
-    column: Column | null;
-  }>({ id: null, column: null });
-  const clearDragState = () => {
-    setDraggingId(null);
-    setDropTarget({ id: null, column: null });
-  };
-
-  const onDragStart = (e: DragEvent, id: string) => {
-    if (!e.dataTransfer) return;
-    e.dataTransfer.setData(DRAG_MIME, id);
-    e.dataTransfer.effectAllowed = 'move';
-    setDraggingId(id);
-  };
-  const onDragEndTab = () => clearDragState();
-  const onDragOverTab = (e: DragEvent, targetId: string, targetColumn: Column) => {
-    if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDropTarget({ id: targetId, column: targetColumn });
-  };
-  const onDragOverStrip = (e: DragEvent, column: Column) => {
-    if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dropTarget().id === null || dropTarget().column !== column) {
-      setDropTarget({ id: null, column });
-    }
-  };
-  const onDragLeaveStrip = (e: DragEvent, column: Column) => {
-    const related = e.relatedTarget as HTMLElement | null;
-    const strip = e.currentTarget as HTMLElement;
-    if (related && strip.contains(related)) return;
-    if (dropTarget().column === column) setDropTarget({ id: null, column: null });
-  };
-  const onDropOnTab = (e: DragEvent, targetId: string, targetColumn: Column) => {
-    e.preventDefault();
-    const srcId = e.dataTransfer?.getData(DRAG_MIME);
-    clearDragState();
-    if (!srcId || srcId === targetId) return;
-    moveTab(srcId, { beforeId: targetId, column: targetColumn });
-  };
-  const onDropOnStrip = (e: DragEvent, column: Column) => {
-    e.preventDefault();
-    const srcId = e.dataTransfer?.getData(DRAG_MIME);
-    clearDragState();
-    if (!srcId) return;
-    moveTab(srcId, { column });
-  };
-
-  /** Move tab `srcId`. If `beforeId` set, insert before that tab; else append
-   * to the end of `column`'s strip. Updates xterm host parent if the column
-   * changed. */
-  const moveTab = (srcId: string, target: { beforeId?: string; column: Column }) => {
-    setTabs((prev) => {
-      const list = prev.slice();
-      const srcIdx = list.findIndex((t) => t.id === srcId);
-      if (srcIdx === -1) return prev;
-      const [moved] = list.splice(srcIdx, 1);
-      const repositioned: Tab = { ...moved, column: target.column };
-      if (target.beforeId) {
-        const tgtIdx = list.findIndex((t) => t.id === target.beforeId);
-        if (tgtIdx === -1) {
-          list.push(repositioned);
-        } else {
-          list.splice(tgtIdx, 0, repositioned);
-        }
-      } else {
-        list.push(repositioned);
-      }
-      return list;
-    });
-    // Wait for the right column to mount if it didn't exist before (split just
-    // got promoted by this drop) — host elements register on render.
-    queueMicrotask(() => {
-      movemount(srcId, target.column);
-      const tab = tabs().find((t) => t.id === srcId);
-      if (tab)
-        setMeta(srcId, { label: tab.label, customName: tab.customName, column: target.column });
-      setActiveIn(target.column, srcId);
-      setActiveColumn(target.column);
-      queueMicrotask(focusActive);
-    });
-  };
+  const dnd = createDragDropController({
+    tabs,
+    setTabs,
+    moveMount: movemount,
+    setActiveIn,
+    setActiveColumn,
+    focusActive,
+  });
 
   // ---- save buffer ("export run output") ----
   const saveActiveBuffer = (): void => {
@@ -626,24 +410,6 @@ export function TerminalPane(props: {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  };
-
-  // ---- in-pane search (xterm addon-search) ----
-  let searchInputRef: HTMLInputElement | undefined;
-  const runSearch = (direction: 'next' | 'prev'): void => {
-    const id = activeIdIn(activeColumn());
-    if (!id) return;
-    const handle = xterms.get(id);
-    if (!handle) return;
-    const q = searchQuery();
-    if (!q) return;
-    if (direction === 'next') handle.search.findNext(q);
-    else handle.search.findPrevious(q);
-  };
-  const closeSearch = (): void => {
-    setSearchOpen(false);
-    setSearchQuery('');
-    queueMicrotask(focusActive);
   };
 
   // ---- exposed handle ----
@@ -677,156 +443,43 @@ export function TerminalPane(props: {
   onMount(() => props.registerHandle(handle));
   onCleanup(() => props.registerHandle(null));
 
-  // ---- render helpers ----
-  const renderColumn = (col: Column) => {
-    const isActiveCol = (): boolean => activeColumn() === col;
-    return (
-      <div class="terminal-column" classList={{ active: isActiveCol() }}>
-        <div
-          class="terminal-tabs"
-          classList={{
-            'drop-strip-target':
-              draggingId() !== null && dropTarget().column === col && dropTarget().id === null,
-          }}
-          onDragOver={(e) => onDragOverStrip(e, col)}
-          onDragLeave={(e) => onDragLeaveStrip(e, col)}
-          onDrop={(e) => onDropOnStrip(e, col)}
-          onClick={() => setActiveColumn(col)}
-        >
-          <For each={tabsIn(col)}>
-            {(tab) => (
-              <div
-                class="terminal-tab"
-                classList={{
-                  active: tab.id === activeIdIn(col),
-                  exited: tab.exited !== undefined,
-                  renaming: tab.id === renamingId(),
-                  dragging: draggingId() === tab.id,
-                  'drop-before':
-                    dropTarget().id === tab.id && draggingId() !== null && draggingId() !== tab.id,
-                }}
-                draggable={tab.id !== renamingId()}
-                onDragStart={(e) => onDragStart(e, tab.id)}
-                onDragEnd={onDragEndTab}
-                onDragOver={(e) => onDragOverTab(e, tab.id, col)}
-                onDrop={(e) => onDropOnTab(e, tab.id, col)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveIn(col, tab.id);
-                  setActiveColumn(col);
-                }}
-                onDblClick={(e) => {
-                  if ((e.target as HTMLElement).closest('.terminal-tab-close')) return;
-                  setRenamingId(tab.id);
-                }}
-                title={
-                  tab.cwd
-                    ? `${displayName(tab)} — ${tab.cwd}`
-                    : displayName(tab) === tab.label
-                      ? tab.label
-                      : `${tab.label} (renamed)`
-                }
-              >
-                <Show
-                  when={tab.id === renamingId()}
-                  fallback={<span class="terminal-tab-label">{displayName(tab)}</span>}
-                >
-                  <input
-                    class="terminal-tab-rename"
-                    type="text"
-                    value={displayName(tab)}
-                    ref={(el) => queueMicrotask(() => el && (el.focus(), el.select()))}
-                    onClick={(e) => e.stopPropagation()}
-                    onBlur={(e) => commitRename(tab.id, e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        commitRename(tab.id, e.currentTarget.value);
-                      } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        setRenamingId(null);
-                      }
-                      e.stopPropagation();
-                    }}
-                  />
-                </Show>
-                <button
-                  class="terminal-tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                  title="Close tab"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-          </For>
-          <button
-            class="terminal-tab-add"
-            onClick={(e) => {
-              e.stopPropagation();
-              nextSpawnColumn = col;
-              setActiveColumn(col);
-              void spawnUserShell(null, 'my');
-            }}
-            title="New shell tab (cwd: conception)"
-          >
-            +
-          </button>
-          <Show when={props.launcherCommand?.trim()}>
-            <button
-              class="terminal-tab-add launcher"
-              onClick={(e) => {
-                e.stopPropagation();
-                nextSpawnColumn = col;
-                setActiveColumn(col);
-                void spawnUserShell(props.launcherCommand, 'my');
-              }}
-              title={`New ${props.launcherCommand} tab (cwd: conception)`}
-              aria-label={`New ${props.launcherCommand} tab`}
-            >
-              λ
-            </button>
-          </Show>
-          <span class="terminal-tab-strip-spacer" />
-          <button
-            class="terminal-tab-add"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveColumn(col);
-              saveActiveBuffer();
-            }}
-            title="Save the active terminal buffer to a file"
-            aria-label="Save buffer"
-          >
-            ⤓
-          </button>
-          <button
-            class="terminal-tab-add"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveColumn(col);
-              setSearchOpen(true);
-              queueMicrotask(() => searchInputRef?.focus());
-            }}
-            title="Find in buffer (Ctrl+F)"
-            aria-label="Find"
-          >
-            ⌕
-          </button>
-        </div>
-        <div
-          class="terminal-host"
-          ref={(el) => {
-            if (col === 'left') leftHost = el;
-            else rightHost = el;
-          }}
-        />
-      </div>
-    );
-  };
+  const renderColumn = (col: Column) => (
+    <TerminalColumn
+      col={col}
+      tabs={tabsIn(col)}
+      activeId={activeIdIn(col)}
+      isActiveColumn={activeColumn() === col}
+      renamingId={renamingId()}
+      launcherCommand={props.launcherCommand}
+      dnd={dnd}
+      registerHost={(c, el) => {
+        if (c === 'left') leftHost = el;
+        else rightHost = el;
+      }}
+      onActivateColumn={setActiveColumn}
+      onActivateTab={(c, id) => {
+        setActiveIn(c, id);
+        setActiveColumn(c);
+      }}
+      onRequestRename={setRenamingId}
+      onCommitRename={commitRename}
+      onCancelRename={() => setRenamingId(null)}
+      onCloseTab={closeTab}
+      onSpawnShell={(c, launcher) => {
+        nextSpawnColumn = c;
+        setActiveColumn(c);
+        void spawnUserShell(launcher ? props.launcherCommand : null, 'my');
+      }}
+      onSaveBuffer={(c) => {
+        setActiveColumn(c);
+        saveActiveBuffer();
+      }}
+      onOpenSearch={(c) => {
+        setActiveColumn(c);
+        search.openSearch();
+      }}
+    />
+  );
 
   let columnsRoot: HTMLDivElement | undefined;
 
@@ -838,7 +491,7 @@ export function TerminalPane(props: {
     >
       <div
         class="terminal-pane-resize"
-        onMouseDown={(e) => startHeightDrag(e)}
+        onMouseDown={(e) => resize.startHeightDrag(e)}
         title="Drag to resize"
       />
       <button
@@ -865,85 +518,43 @@ export function TerminalPane(props: {
         <Show when={isSplit()}>
           <div
             class="terminal-splitter"
-            onMouseDown={(e) => columnsRoot && startSplitterDrag(e, columnsRoot)}
+            onMouseDown={(e) => columnsRoot && resize.startSplitterDrag(e, columnsRoot)}
             title="Drag to resize columns"
           />
           {renderColumn('right')}
         </Show>
         {/* When unsplit and a tab is being dragged, expose a thin drop zone on
             the right edge — dropping there promotes the layout to split. */}
-        <Show when={!isSplit() && draggingId() !== null}>
+        <Show when={!isSplit() && dnd.draggingId() !== null}>
           <div
             class="terminal-split-dropzone"
             classList={{
-              hover: dropTarget().column === 'right',
+              hover: dnd.dropTarget().column === 'right',
             }}
             onDragOver={(e) => {
               if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = 'move';
-              setDropTarget({ id: null, column: 'right' });
+              dnd.setDropTarget({ id: null, column: 'right' });
             }}
             onDragLeave={() => {
-              if (dropTarget().column === 'right' && dropTarget().id === null) {
-                setDropTarget({ id: null, column: null });
+              if (dnd.dropTarget().column === 'right' && dnd.dropTarget().id === null) {
+                dnd.setDropTarget({ id: null, column: null });
               }
             }}
-            onDrop={(e) => onDropOnStrip(e, 'right')}
+            onDrop={(e) => dnd.onDropOnStrip(e, 'right')}
           >
             <span>Drop to split →</span>
           </div>
         </Show>
       </div>
-      <Show when={searchOpen()}>
-        <div class="terminal-search-bar">
-          <input
-            ref={(el) => (searchInputRef = el)}
-            class="terminal-search-input"
-            type="text"
-            placeholder="Find in buffer…"
-            value={searchQuery()}
-            onInput={(e) => setSearchQuery(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                closeSearch();
-              } else if (e.key === 'Enter') {
-                e.preventDefault();
-                runSearch(e.shiftKey ? 'prev' : 'next');
-              }
-              e.stopPropagation();
-            }}
-          />
-          <button
-            class="terminal-search-action"
-            onClick={() => runSearch('prev')}
-            title="Previous match (Shift+Enter)"
-            aria-label="Previous match"
-          >
-            ↑
-          </button>
-          <button
-            class="terminal-search-action"
-            onClick={() => runSearch('next')}
-            title="Next match (Enter)"
-            aria-label="Next match"
-          >
-            ↓
-          </button>
-          <button
-            class="terminal-search-action"
-            onClick={closeSearch}
-            title="Close (Esc)"
-            aria-label="Close find"
-          >
-            ×
-          </button>
-        </div>
-      </Show>
+      {search.SearchBar()}
     </section>
   );
 }
 
 // Re-export for callers that destructure both surface types together.
 export type { TerminalPrefs };
+
+// Defaults re-exported for unit tests that need to reach for them.
+export { DEFAULT_PANE_HEIGHT, DEFAULT_SPLIT_RATIO };
