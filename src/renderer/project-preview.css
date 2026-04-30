@@ -35,22 +35,11 @@
   font-weight: 600;
 }
 
-.kind-badge {
-  text-transform: capitalize;
-}
-
-.kind-badge[data-kind='project'] {
-  border-color: var(--col-now);
-  color: var(--col-now);
-}
-.kind-badge[data-kind='incident'] {
-  border-color: var(--col-review);
-  color: var(--col-review);
-}
-.kind-badge[data-kind='document'] {
-  border-color: var(--col-soon);
-  color: var(--col-soon);
-}
+/* The popup's old .kind-badge has been replaced by the shared <KindChip>
+ * component (defined in styles.css). The old text-only badge had its
+ * own colour mapping (project=indigo, incident=purple, document=green)
+ * that no longer matches the icon system; KindChip uses a more
+ * semantic palette: project=indigo, incident=red, document=amber. */
 
 .slug-badge {
   color: var(--text-muted);
@@ -228,9 +217,9 @@
   padding: 2px 0;
 }
 
-.preview-steps .step-toggle {
-  font-size: 16px;
-}
+/* Step toggle sizes itself with em (1.15em of the surrounding step text)
+ * — popup steps use 14 px text, so the icon renders at 16 px without any
+ * popup-specific override. */
 
 .preview-steps .step-text-editable {
   padding: 1px 4px;

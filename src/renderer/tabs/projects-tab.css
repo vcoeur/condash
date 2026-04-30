@@ -252,49 +252,53 @@
   box-shadow: var(--shadow-lift);
 }
 
+/* Top row of every card: title (with a leading kind glyph) on the left,
+ * action cluster on the right. The title can wrap to two lines; the
+ * action cluster stays anchored top-right via flex-shrink: 0. */
+.row .title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.row .title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  /* Nudge so the work-on button visually centres on the title's first
+   * line of text — the button is 28 px tall, the title cap height
+   * sits a couple of pixels below the box top. */
+  margin-top: -1px;
+}
+
 .row .title {
   margin: 0;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 9px;
+  flex: 1 1 auto;
+  min-width: 0;
   font-family: var(--font-display);
-  font-weight: 600;
+  /* Weight bumped to 700 with a tighter tracking now that --font-display
+   * is the same sans as --font-ui — gives card titles enough display
+   * presence without leaning on a serif. */
+  font-weight: 700;
   font-size: 17px;
-  line-height: 1.28;
+  line-height: 1.25;
   color: var(--text);
   word-break: break-word;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.012em;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
-.row .title-kind {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  margin-top: 1px;
-  color: var(--col-now);
-  background: color-mix(in srgb, var(--col-now) 14%, transparent);
-}
-
-.row .title-kind[data-kind='incident'] {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 16%, transparent);
-}
-
-.row .title-kind[data-kind='document'] {
-  color: var(--col-later);
-  background: color-mix(in srgb, var(--col-later) 14%, transparent);
-}
-
-.row .title-kind svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 1.8;
+.row .title .kind-glyph {
+  /* Glyph is em-sized (1.15em of the 17 px title), so its top sits
+   * naturally on the cap-height line; no margin nudge needed. The
+   * left edge aligns with the next-step-marker on the row below. */
 }
 
 .row .title-text {
@@ -329,15 +333,26 @@
 
 .row .summary.next-step .next-step-marker {
   flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Fixed 16 × 16 — same pixel box as .kind-glyph so the two icons'
+   * left edges are pixel-aligned across rows. Slight margin-top
+   * centres the marker on the body text's cap-height line. */
+  width: 16px;
+  height: 16px;
   margin-top: 2px;
   color: var(--text-muted);
 }
 
+.row .summary.next-step .next-step-marker svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.5;
+}
+
 .row .summary.next-step[data-marker='doing'] .next-step-marker {
-  color: var(--col-now);
+  color: var(--col-soon);
 }
 
 .row .summary.next-step[data-marker='dropped'] {
@@ -459,6 +474,19 @@
   color: var(--text);
 }
 
+/* When every step has been resolved (done or dropped, no todo/doing
+ * left) the counter dims so a finished card stops competing visually
+ * with cards that still have open work. The bar fill drops to a faint
+ * grey too — green at 100% reads as "celebrate", which isn't what we
+ * want when scanning a Done bucket. */
+.row .meta-icon.expander[data-complete='true'] {
+  opacity: 0.55;
+}
+
+.row .meta-icon.expander[data-complete='true'] .progress-fill {
+  background: var(--text-faint);
+}
+
 .row .step-progress-inner {
   display: inline-flex;
   align-items: center;
@@ -519,37 +547,57 @@
 .step {
   display: flex;
   gap: 6px;
-  align-items: baseline;
+  align-items: center;
   font-size: 12px;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
+/* Step toggle is a clickable SVG. Sizing is em-relative so the icon
+ * scales with the surrounding step text — same component renders at
+ * 12 px in the card, 14 px in the popup, without any per-context CSS. */
 .step-toggle {
   background: transparent;
   border: none;
   padding: 0;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1;
+  width: 1.15em;
+  height: 1.15em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.step-toggle svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: 1.5;
 }
 
 .step-toggle:hover {
   color: var(--accent);
 }
 
+/* Strikethrough is reserved for "dropped" steps — work that won't happen.
+ * "Done" steps stay legible (just dimmed) so the reader can read what the
+ * project has accomplished without fighting a line through every entry. */
 .step-marker-done .step-text {
   color: var(--text-muted);
-  text-decoration: line-through;
 }
 
 .step-marker-dropped .step-text {
   color: var(--text-muted);
   opacity: 0.6;
   text-decoration: line-through;
+  text-decoration-color: var(--text-faint);
 }
 
+/* Unified step-state palette — same colours render in the card and the
+ * popup so a step's status reads identically wherever it appears. The
+ * card's "next-step" line uses the same --col-soon for "doing" too.
+ * "Done" keeps a slate fill so the negative-space check mark inside the
+ * filled square has enough contrast against --bg-elevated to read. */
 .step-marker-doing .step-toggle {
   color: var(--col-soon);
 }
@@ -559,7 +607,7 @@
 }
 
 .step-marker-dropped .step-toggle {
-  color: var(--col-unknown);
+  color: var(--text-faint);
 }
 .row .slug {
   font-family: var(--font-mono);

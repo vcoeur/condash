@@ -1,13 +1,7 @@
 import { For, Show, createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import type { Deliverable, Project, ProjectFileEntry, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
-
-const MARKER_GLYPH: Record<StepMarker, string> = {
-  ' ': '☐',
-  '~': '◐',
-  x: '☑',
-  '-': '✕',
-};
+import { KindGlyph, NewNoteIcon, StepIcon } from './tabs/projects';
 
 const MARKER_LABEL: Record<StepMarker, string> = {
   ' ': 'todo',
@@ -17,6 +11,12 @@ const MARKER_LABEL: Record<StepMarker, string> = {
 };
 
 const STATUS_OPTIONS: readonly string[] = ['now', 'review', 'soon', 'later', 'backlog', 'done'];
+
+/* Popup icons mirror the shapes in src/renderer/tabs/projects.tsx (Terminal,
+ * external link, document KindIcon) so the card and popup speak the same
+ * visual language. Stroke-width is the only divergence — popup uses 1.5
+ * across the board for tighter modal density. NewNoteIcon and KindChip
+ * are imported directly from the card so there is one source of truth. */
 
 function IconTerminal() {
   return (
@@ -29,9 +29,9 @@ function IconTerminal() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-      <path d="M4.5 6.5l2 1.5-2 1.5" />
-      <path d="M8.5 10h3" />
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1.75" />
+      <path d="M4 6.25L6.5 8.25 4 10.25" />
+      <rect x="8.25" y="9.5" width="3.5" height="1.5" rx="0.4" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -48,8 +48,8 @@ function IconReadme() {
       aria-hidden="true"
     >
       <path d="M3.5 1.5h6L13 5v9.5H3.5z" />
-      <path d="M9.5 1.5V5H13" />
-      <path d="M5.5 8h5M5.5 10.5h4" />
+      <path d="M9.5 1.5L13 5h-3.5z" fill="currentColor" fill-opacity="0.22" stroke="currentColor" />
+      <path d="M5.75 8.75h4.5M5.75 11.25h2.75" />
     </svg>
   );
 }
@@ -65,9 +65,9 @@ function IconExternal() {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path d="M5.5 3h-3v10h10v-3" />
+      <path d="M5.25 3.25h-2.75v10.25H12.75V11" />
       <path d="M9 2.5h4.5V7" />
-      <path d="M7 9l6.5-6.5" />
+      <path d="M13.25 2.75L7.5 8.5" />
     </svg>
   );
 }
@@ -153,6 +153,7 @@ export function ProjectPreview(props: {
   onOpenInEditor: (path: string) => void;
   onOpenDeliverable: (deliverable: Deliverable) => void;
   onWorkOn: (project: Project) => void;
+  onCreateNote?: (project: Project) => void;
 }) {
   const [statusMenu, setStatusMenu] = createSignal(false);
   const [editingLineIndex, setEditingLineIndex] = createSignal<number | null>(null);
@@ -265,6 +266,16 @@ export function ProjectPreview(props: {
               >
                 <IconTerminal />
               </button>
+              <Show when={props.onCreateNote && project().kind === 'project'}>
+                <button
+                  class="modal-button"
+                  onClick={() => props.onCreateNote?.(project())}
+                  title="Add a new note to this project"
+                  aria-label="New note"
+                >
+                  <NewNoteIcon />
+                </button>
+              </Show>
               <button
                 class="modal-button"
                 onClick={() => props.onOpenReadme(project())}
@@ -294,9 +305,7 @@ export function ProjectPreview(props: {
             <div class="preview-body">
               <div class="preview-meta">
                 <Show when={project().kind !== 'unknown'}>
-                  <span class="badge kind-badge" data-kind={project().kind}>
-                    {project().kind}
-                  </span>
+                  <KindGlyph kind={project().kind} />
                 </Show>
 
                 <span
@@ -383,7 +392,7 @@ export function ProjectPreview(props: {
                             }}
                             title={MARKER_LABEL[step.marker]}
                           >
-                            {MARKER_GLYPH[step.marker]}
+                            <StepIcon marker={step.marker} />
                           </button>
                           <Show
                             when={editingLineIndex() === step.lineIndex}
@@ -435,7 +444,9 @@ export function ProjectPreview(props: {
                   }
                 >
                   <div class="add-step-form">
-                    <span class="step-toggle-placeholder">☐</span>
+                    <span class="step-toggle-placeholder" aria-hidden="true">
+                      <StepIcon marker={' '} />
+                    </span>
                     <input
                       class="step-edit-input"
                       type="text"

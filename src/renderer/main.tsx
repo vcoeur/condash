@@ -570,7 +570,6 @@ function App() {
                 onToggleStep={handleToggleStep}
                 onDropProject={handleDropOnColumn}
                 onWorkOn={(p) => void bridge.handleWorkOn(p)}
-                onCreateNote={(p) => void handleCreateProjectNote(p)}
               />
             </Show>
           </Suspense>
@@ -633,6 +632,7 @@ function App() {
         onOpenInEditor={handleOpenInEditor}
         onOpenDeliverable={handleOpenDeliverableFromPreview}
         onWorkOn={(p) => void bridge.handleWorkOn(p)}
+        onCreateNote={(p) => void handleCreateProjectNote(p)}
       />
 
       <Show when={modal()}>

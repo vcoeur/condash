@@ -1,6 +1,9 @@
-/* Vendored variable fonts — Figtree (UI/body) + Newsreader (display/serif).
+/* Vendored variable font — Figtree (used for UI, body, and display).
    Sourced from fontsource (jsdelivr) as woff2 variable-axis files; loaded
-   per-subset via unicode-range so the browser only fetches what's needed. */
+   per-subset via unicode-range so the browser only fetches what's needed.
+   Newsreader (the previous serif display face) has been retired in favour
+   of a single legible sans across the app — easier to read at small UI
+   sizes. The .woff2 files are still in vendor/fonts/ for reference. */
 @font-face {
   font-family: 'Figtree Variable';
   font-style: normal;
@@ -22,47 +25,6 @@
     U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-@font-face {
-  font-family: 'Newsreader Variable';
-  font-style: normal;
-  font-weight: 200 800;
-  font-display: swap;
-  src: url('./vendor/fonts/newsreader-latin.woff2') format('woff2');
-  unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
-    U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'Newsreader Variable';
-  font-style: normal;
-  font-weight: 200 800;
-  font-display: swap;
-  src: url('./vendor/fonts/newsreader-latin-ext.woff2') format('woff2');
-  unicode-range:
-    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F,
-    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-  font-family: 'Newsreader Variable';
-  font-style: italic;
-  font-weight: 200 800;
-  font-display: swap;
-  src: url('./vendor/fonts/newsreader-latin-italic.woff2') format('woff2');
-  unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
-    U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'Newsreader Variable';
-  font-style: italic;
-  font-weight: 200 800;
-  font-display: swap;
-  src: url('./vendor/fonts/newsreader-latin-ext-italic.woff2') format('woff2');
-  unicode-range:
-    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F,
-    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-
 :root {
   /* Warm-paper light theme — feels like an editorial page. */
   --bg: #ece9dd;
@@ -73,19 +35,27 @@
   --text: #1a1a1c;
   --text-body: #3a3933;
   --text-muted: #6b6960;
-  --text-faint: #a09c91;
+  /* Bumped from #a09c91 — that was ~2.6:1 over bg, failing AA. */
+  --text-faint: #807c70;
   --border: #e8e3d6;
   --border-strong: #d6cfbf;
   --accent: #4f46e5;
   --warn: #c0392b;
 
-  /* Status hues: jewel tones, slightly desaturated so cards don't shout. */
-  --col-now: #4f46e5;
-  --col-soon: #16a34a;
-  --col-later: #d97706;
-  --col-backlog: #64748b;
-  --col-review: #9333ea;
-  --col-done: #334155;
+  /* Status palette — "aurora arc" from primary periwinkle through orchid,
+   * jade, and tan to cool slate. Each stop has distinct character but
+   * the saturation/brightness step is even, so no single section shouts.
+   * Sequence is now → review → soon → later → backlog → done, reading
+   * as warm-to-cool / active-to-archived. `now` is the calm primary
+   * (so the Project kind chip still reads as primary blue). Used for
+   * section dots, card stripes, kind chips, and step icons. Light-mode
+   * values; dark-mode mirrors below. */
+  --col-now: #8a5cc4;
+  --col-review: #4f5fdc;
+  --col-soon: #2a87a0;
+  --col-later: #b07840;
+  --col-backlog: #5d6878;
+  --col-done: #404652;
   --col-unknown: #c0392b;
 
   --pad: 8px;
@@ -94,9 +64,12 @@
   --shadow-card: 0 1px 2px rgba(20, 18, 12, 0.04), 0 1px 0 rgba(20, 18, 12, 0.02);
   --shadow-lift: 0 4px 14px rgba(20, 18, 12, 0.08), 0 2px 4px rgba(20, 18, 12, 0.04);
 
+  /* --font-display now points at the same Figtree stack as --font-ui;
+   * card and modal titles use weight 700 to reclaim the display feel that
+   * the serif previously carried. */
   --font-display:
-    'Newsreader Variable', 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Sitka Text',
-    'Charter', 'DejaVu Serif', Georgia, serif;
+    'Figtree Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Helvetica Neue', 'Liberation Sans', system-ui, sans-serif;
   --font-ui:
     'Figtree Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     'Helvetica Neue', 'Liberation Sans', system-ui, sans-serif;
@@ -120,20 +93,26 @@
     --bg-hover: #2e2e34;
     --text: #f1efe8;
     --text-body: #d6d3c8;
-    --text-muted: #9b988e;
-    --text-faint: #6a6862;
+    --text-muted: #a3a098;
+    --text-faint: #837f76;
     --border: #2c2f37;
     --border-strong: #3b3f4a;
     --accent: #818cf8;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
     --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-    --col-now: #818cf8;
-    --col-soon: #4ade80;
-    --col-later: #fbbf24;
-    --col-backlog: #94a3b8;
-    --col-review: #c084fc;
-    --col-done: #94a3b8;
+    /* Dark-mode aurora arc — calm periwinkle → orchid → jade → tan →
+     * slate → deeper slate. Same intent as the light values above. */
+    --col-now: #b58fd8;
+    --col-review: #7c8df0;
+    --col-soon: #6cb4cd;
+    --col-later: #d4a574;
+    --col-backlog: #7d8896;
+    --col-done: #5d6370;
+    /* Warn / unknown reads as a lighter coral on dark bg — pure #c0392b
+     * (used in light mode) muddies against --bg-elevated. */
+    --warn: #e87b6b;
+    --col-unknown: #e87b6b;
     color-scheme: dark;
   }
 }
@@ -156,17 +135,51 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-  --col-now: #818cf8;
-  --col-soon: #4ade80;
-  --col-later: #fbbf24;
-  --col-backlog: #94a3b8;
-  --col-review: #c084fc;
-  --col-done: #94a3b8;
+  --col-now: #7c8df0;
+  --col-review: #b58fd8;
+  --col-soon: #5cb494;
+  --col-later: #d4a574;
+  --col-backlog: #7d8896;
+  --col-done: #5d6370;
+  --warn: #e87b6b;
+  --col-unknown: #e87b6b;
   color-scheme: dark;
 }
 
 [data-theme='light'] {
   color-scheme: light;
+}
+
+/* Kind glyph — inline coloured SVG (no tile, no chrome) used at the
+ * start of a card title or inline in the popup metadata row. Fixed at
+ * exactly 16 × 16 px (matching the next-step marker's pixel size) so
+ * the two icons share their left edge perfectly across rows — no
+ * em-derived sub-pixel drift. */
+.kind-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--kind-color, var(--text-muted));
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.kind-glyph svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.5;
+  flex-shrink: 0;
+}
+
+.kind-glyph[data-kind='project'] {
+  --kind-color: var(--col-now);
+}
+.kind-glyph[data-kind='incident'] {
+  --kind-color: var(--warn);
+}
+.kind-glyph[data-kind='document'] {
+  --kind-color: var(--col-later);
 }
 
 * {

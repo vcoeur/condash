@@ -74,9 +74,9 @@
 
 .modal-title {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 17px;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.012em;
   flex-shrink: 1;
   min-width: 0;
   max-width: 60%;
