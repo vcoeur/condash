@@ -20,9 +20,16 @@ The xterm pane has two roles, and only two:
 1. **Log view** for dev apps started by the Run button — see the output of `make dev` without context-switching.
 2. **Project-scoped shell** so the user can interact with Claude / scripts in the right cwd without leaving condash.
 
-Features that would push it toward "competing with your real terminal" — pane splitting, advanced multiplexing, shell-history search, theme picker, ligature configuration, GPU-acceleration tuning — are out of scope. The user already has Konsole / iTerm / Wezterm / etc. configured via `open_with.terminal`.
+Features that would push it toward "competing with your real terminal" — **nested splits** (beyond the 2-column dock), advanced multiplexing, **shell-history *text* search**, theme picker, GPU-acceleration tuning — are out of scope. The user already has Konsole / iTerm / Wezterm / etc. configured via `open_with.terminal`.
 
-**Why**: terminal emulators are a mature product category. Reinventing one inside an Electron renderer is a poor trade. The pane exists because *embedding* unlocks the live runner badge, the per-repo Stop button, and the bottom-of-window status board — none of which a launched-out terminal can provide.
+What *is* in scope, even though one could argue it edges toward "real terminal":
+
+- **A 2-column dock** with cross-column tab drag-and-drop. The user often works two projects at once and wants to see both shells side-by-side without launching out. No further nesting — at most two columns.
+- **Output search inside the live session** (Ctrl+F via `addon-search`). The searchable buffer is the visible session output, not a multi-session history database.
+- **Prompt-jump navigation** (Ctrl+↑/↓ on OSC 133 marks). Moves between prompts within the current session — a navigation aid for long output, not a history grep.
+- **Programming-font ligatures** as a single on/off toggle in the settings modal. One binary preference, not a configuration surface; ligatures off by default.
+
+**Why**: terminal emulators are a mature product category. Reinventing one inside an Electron renderer is a poor trade. The pane exists because *embedding* unlocks the live runner badge, the per-repo Stop button, and the bottom-of-window status board — none of which a launched-out terminal can provide. The four in-scope items above are the ones that make the *embedded* dock usable for its two roles; everything beyond them is the user's real terminal's job.
 
 ## No JSON-format migration
 
@@ -66,6 +73,16 @@ The Electron build talks IPC end-to-end. There is no embedded HTTP server, no `c
 
 **Why**: a dual front door (HTTP + IPC) is twice the surface to keep coherent. The Tauri build needed HTTP because Tauri *is* an HTTP server wrapped in a webview; Electron has direct IPC, so the cost-benefit collapses.
 
+## Revision log
+
+### 2026-04-30 — terminal pane scope revision
+
+The "No general-purpose terminal" entry was rewritten. The four post-`v2.0.0` features that the original prose forbade — 2-column dock, cross-column tab DnD, in-pane output search (Ctrl+F), and the ligature toggle — were not silent drift. They each serve the dock's two roles (log view + project-scoped shell) inside the embedded constraint, and the user explicitly wants them. The revised entry lists them as *in-scope* with the constraint that any further expansion (nested splits, multi-session search, theme picker, etc.) remains out.
+
+OSC 133 prompt-jump (Ctrl+↑/↓) was added at the same time as the revamp; it navigates landmarks inside the current session and is therefore on-pillar with "log view", not a history grep.
+
+The "no shell-history search" bullet was sharpened to "no shell-history *text* search" so that prompt-jump and live-output Ctrl+F aren't ambiguous.
+
 ## How to update this document
 
-This file is *append-only in spirit*: don't soften an existing non-goal. If you think one needs revisiting, open an issue with a concrete user story, get sign-off, and only then edit. Removing a non-goal is a deliberate scope expansion, not a cleanup.
+This file is *append-only in spirit*: don't soften an existing non-goal silently. If you think one needs revisiting, open an issue with a concrete user story, get sign-off, then edit the entry **and** add a dated paragraph to the Revision log explaining what changed and why. Removing a non-goal is a deliberate scope expansion, not a cleanup.

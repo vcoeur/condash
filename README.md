@@ -70,11 +70,14 @@ No HTTP server, no SSE, no fingerprint poll, no Rust. Renderer talks to main via
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — load-bearing invariants (drift-checked mutations, atomic-rename writes, the per-file write queue, the TTL git-status cache, the SIGTERM → force_stop → SIGKILL pty pipeline, the IPC contract).
-- [`docs/configuration.md`](docs/configuration.md) — `<conception>/configuration.json` reference: every key, with examples and edit paths.
-- [`docs/non-goals.md`](docs/non-goals.md) — what condash will deliberately not do.
+The full documentation tree is at [`docs/`](docs/) (Diátaxis layout):
 
-The same docs are available inside the running app via the `?` button in the toolbar.
+- [`docs/index.md`](docs/index.md) — landing page with links into every section.
+- [`docs/explanation/internals.md`](docs/explanation/internals.md) — load-bearing invariants (drift-checked mutations, atomic-rename writes, the per-file write queue, the TTL git-status cache, the SIGTERM → force_stop → SIGKILL pty pipeline, the IPC contract).
+- [`docs/reference/config.md`](docs/reference/config.md) — `<conception>/configuration.json` reference: every key, with examples and edit paths.
+- [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — what condash will deliberately not do.
+
+The same docs are available inside the running app via the `?` button in the toolbar (the in-app loader maps `architecture` / `configuration` / `non-goals` to the Diátaxis paths above — see `src/main/help.ts`).
 
 ## License
 
