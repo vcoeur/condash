@@ -101,6 +101,19 @@ export function RepoRow(props: {
     return props.repo.name;
   };
 
+  /** Card title — prefers `label` from `configuration.json` when set, falls
+   * back to the directory name. */
+  const cardTitle = (): string => props.repo.label ?? displayName();
+
+  /** Secondary directory-name pill: only when a label is set AND it actually
+   * differs from the directory name (otherwise the pill would just repeat the
+   * title). */
+  const secondaryName = (): string | null => {
+    if (!props.repo.label) return null;
+    const name = displayName();
+    return props.repo.label === name ? null : name;
+  };
+
   const branchStatus = (wt: Worktree): RepoStatus => {
     if (props.repo.missing) return 'missing';
     if (wt.dirty == null) return 'unknown';
@@ -125,10 +138,10 @@ export function RepoRow(props: {
       }}
     >
       <header class="repo-head">
-        <span class="repo-name">{displayName()}</span>
-        <Show when={props.repo.label}>
-          <span class="repo-label" title={props.repo.label}>
-            {props.repo.label}
+        <span class="repo-name">{cardTitle()}</span>
+        <Show when={secondaryName()}>
+          <span class="repo-dirname" title={`Directory: ${displayName()}`}>
+            {secondaryName()}
           </span>
         </Show>
         <Show when={liveBranchLabel()}>
