@@ -95,6 +95,10 @@ export interface RepoEntry {
   missing: boolean;
   /** True when configuration.json sets a `force_stop:` for this entry. */
   hasForceStop?: boolean;
+  /** True when configuration.json sets a `run:` for this entry. The renderer
+   * uses this to decide whether to render the per-branch run button — REPO
+   * cards without a configured run target should not surface it. */
+  hasRun?: boolean;
   /** Worktrees attached to this repo (always includes the primary checkout). */
   worktrees?: Worktree[];
 }

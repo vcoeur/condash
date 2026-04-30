@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
-import type { RepoEntry } from '../shared/types';
+import { join, relative } from 'node:path';
+import type { RepoEntry, Worktree } from '../shared/types';
 import { getDirtyCount } from './git-status-cache';
 import { getCurrentBranch, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
@@ -37,10 +37,31 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
     flat.push({ ...entry, kind });
   });
 
+  // Resolve every parent (top-level) entry's worktree list once. Submodule
+  // entries inherit this list — each parent worktree carries its own checkout
+  // of the submodule at `<parent_wt>/<sub_relative>`, so the SUB card lists
+  // the same branch set as its REPO card with paths re-rooted.
+  const parentByName = new Map<string, FlatRepo>();
+  for (const entry of flat) {
+    if (!entry.parent) parentByName.set(entry.name, entry);
+  }
+  const parentWorktrees = new Map<string, Worktree[]>();
+  await Promise.all(
+    Array.from(parentByName.entries()).map(async ([name, parent]) => {
+      const exists = await pathExists(parent.cwd);
+      if (!exists) {
+        parentWorktrees.set(name, []);
+        return;
+      }
+      parentWorktrees.set(name, await listWorktrees(parent.cwd).catch(() => []));
+    }),
+  );
+
   return Promise.all(
     flat.map(async (entry) => {
       const exists = await pathExists(entry.cwd);
       const hasForceStop = !!entry.forceStop;
+      const hasRun = !!entry.run;
       if (!exists) {
         return {
           name: entry.display,
@@ -50,27 +71,17 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
           dirty: null,
           missing: true,
           hasForceStop,
+          hasRun,
         } satisfies RepoEntry;
       }
-      // Top-level repos may have multiple worktrees, so we query them via
-      // `git worktree list`. Sub entries live inside the parent's git tree
-      // — `worktree list` from there would return the parent's path, which
-      // would break action buttons that target `worktree.path` — so we
-      // just resolve the current branch and synthesize a single row keyed
-      // on `entry.cwd`.
-      const worktreesPromise: Promise<import('../shared/types').Worktree[]> = entry.parent
-        ? getCurrentBranch(entry.cwd)
-            .catch(() => null)
-            .then((branch) => [{ path: entry.cwd, branch, primary: true }])
-        : listWorktrees(entry.cwd).catch(() => []);
+      const worktrees = entry.parent
+        ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
+        : await listWorktrees(entry.cwd).catch(() => []);
       // Submodule entries (those with a `parent`) often live inside the
       // parent repo's git tree — without `-- .` scoping, `git status` would
       // surface the parent repo's dirty entries on the submodule card.
       const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
-      const [dirty, worktrees] = await Promise.all([
-        getDirtyCount(entry.cwd, dirtyOpts),
-        worktreesPromise,
-      ]);
+      const dirty = await getDirtyCount(entry.cwd, dirtyOpts);
       return {
         name: entry.display,
         path: entry.cwd,
@@ -79,8 +90,45 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
         dirty,
         missing: false,
         hasForceStop,
+        hasRun,
         worktrees: worktrees.length > 0 ? worktrees : undefined,
       } satisfies RepoEntry;
     }),
   );
+}
+
+/**
+ * Build the worktree list for a SUB entry by re-rooting its parent's
+ * worktrees onto the submodule's relative subpath. For each parent worktree
+ * at `<parent_wt>/`, the SUB checkout lives at `<parent_wt>/<sub_relative>`;
+ * dirty counts are queried subtree-scoped because the SUB shares its git
+ * directory with the parent's worktree.
+ *
+ * Falls back to a single synthetic row (the SUB's primary cwd + current
+ * branch) when the parent has no listable worktrees — e.g. the parent is
+ * missing or `git worktree list` failed.
+ */
+async function deriveSubWorktrees(
+  entry: FlatRepo,
+  parentByName: Map<string, FlatRepo>,
+  parentWorktrees: Map<string, Worktree[]>,
+): Promise<Worktree[]> {
+  const parent = entry.parent ? parentByName.get(entry.parent) : undefined;
+  const parentList = entry.parent ? (parentWorktrees.get(entry.parent) ?? []) : [];
+  if (!parent || parentList.length === 0) {
+    const branch = await getCurrentBranch(entry.cwd).catch(() => null);
+    return [{ path: entry.cwd, branch, primary: true }];
+  }
+  const subRelative = relative(parent.cwd, entry.cwd);
+  const rerooted: Worktree[] = parentList.map((wt) => ({
+    path: subRelative ? join(wt.path, subRelative) : wt.path,
+    branch: wt.branch,
+    primary: wt.primary,
+  }));
+  await Promise.all(
+    rerooted.map(async (wt) => {
+      wt.dirty = await getDirtyCount(wt.path, { scopeToSubtree: true });
+    }),
+  );
+  return rerooted;
 }
