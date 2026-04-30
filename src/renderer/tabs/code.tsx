@@ -101,7 +101,7 @@ export function RepoRow(props: {
     return wt.dirty === 0 ? 'clean' : 'dirty';
   };
 
-  const hasRun = (): boolean => !props.repo.missing;
+  const hasRun = (): boolean => !props.repo.missing && !!props.repo.hasRun;
 
   const liveBranchLabel = (): string | null => {
     if (!props.live) return null;
