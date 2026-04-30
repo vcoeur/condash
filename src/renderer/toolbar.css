@@ -1,0 +1,84 @@
+.tabs {
+  display: flex;
+  gap: 2px;
+  position: relative;
+}
+
+.tab {
+  position: relative;
+  background: transparent;
+  border: none;
+  padding: 6px 12px 8px;
+  border-radius: 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  transition: color 120ms ease;
+}
+
+.tab:hover {
+  background: transparent;
+  color: var(--text);
+}
+
+.tab.active {
+  background: transparent;
+  color: var(--text);
+  border: none;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  background: var(--text);
+  border-radius: 1px;
+}
+
+.tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Main app tabs (Projects / Code / Knowledge) — pill-style buttons. The
+ * underline-on-active style was too tall for the toolbar; this version is
+ * compact and reads as a button group. */
+.tabs.main-tabs {
+  gap: 4px;
+}
+
+.tabs.main-tabs .tab {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 5px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+
+.tabs.main-tabs .tab:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.tabs.main-tabs .tab.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* Suppress the underline accent the base `.tab.active::after` pulls in —
+ * the pill background already signals selection. */
+.tabs.main-tabs .tab.active::after {
+  display: none;
+}

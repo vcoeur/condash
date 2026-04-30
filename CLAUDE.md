@@ -88,9 +88,10 @@ macOS and Windows are unaffected.
 - [`docs/explanation/internals.md`](docs/explanation/internals.md) — invariants: drift checks, atomic writes, write queue, TTL cache, pty kill pipeline, IPC contract.
 - [`docs/reference/config.md`](docs/reference/config.md) — `configuration.json` + `settings.json` schema + per-key reference.
 - [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
-- [`docs/architecture.md`](docs/architecture.md), [`docs/configuration.md`](docs/configuration.md), [`docs/non-goals.md`](docs/non-goals.md) — kept at root because the in-app Help menu reads them out of the asar by exact filename (`src/main/help.ts`'s allowlist). Same content as the structured pages above; update both together until the help loader migrates.
 
-When changing app behaviour, update the matching `docs/` file in the same commit. The schema in `src/main/config-schema.ts`, the in-app Help file (`docs/configuration.md`), and the public reference (`docs/reference/config.md`) must all agree on every release.
+The in-app Help menu reads files out of the asar via the allowlist in `src/main/help.ts`, which maps the legacy short names (`architecture`, `configuration`, `non-goals`) to the Diátaxis paths above. There is no separate copy at the repo root — the migration shipped in `v2.0.6`.
+
+When changing app behaviour, update the matching `docs/` file in the same commit. The schema in `src/main/config-schema.ts` and the public reference (`docs/reference/config.md`) must agree on every release.
 
 ## What's deliberately not here (yet)
 

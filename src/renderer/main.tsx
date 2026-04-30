@@ -3,7 +3,6 @@ import {
   createMemo,
   createResource,
   createSignal,
-  For,
   onCleanup,
   onMount,
   Show,
@@ -19,10 +18,8 @@ import type {
   TermSession,
   TerminalPrefs,
   Theme,
-  TreeEvent,
   Worktree,
 } from '@shared/types';
-import { CodeRunRows } from './code-runs';
 import { NoteModal, type ModalState } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { resetMermaidTheme } from './markdown';
@@ -39,14 +36,18 @@ import {
   ProjectsView,
 } from './tabs/projects';
 import { KnowledgeView } from './tabs/knowledge';
-import { groupRepos, RepoRow } from './tabs/code';
+import { CodeView, groupRepos } from './tabs/code';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
+import { matchesShortcut, parseShortcut } from './keymap';
+import { createModalRouter } from './modal-router';
+import { createTerminalBridge } from './terminal-bridge';
+import { applyTreeEvents } from './tree-events';
+import { QuitConfirmModal, type Tab, Toolbar } from './toolbar';
 import './styles.css';
+import './modals.css';
 import './note-modal.css';
 import './project-preview.css';
-
-type Tab = 'projects' | 'knowledge' | 'code';
 
 function applyTheme(theme: Theme): void {
   const root = document.documentElement;
@@ -57,43 +58,6 @@ function applyTheme(theme: Theme): void {
   }
 }
 
-interface Shortcut {
-  ctrl: boolean;
-  shift: boolean;
-  alt: boolean;
-  meta: boolean;
-  key: string;
-}
-
-function parseShortcut(spec: string | undefined): Shortcut | null {
-  if (!spec) return null;
-  const parts = spec
-    .split('+')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return null;
-  const out: Shortcut = { ctrl: false, shift: false, alt: false, meta: false, key: '' };
-  for (const part of parts) {
-    const lower = part.toLowerCase();
-    if (lower === 'ctrl' || lower === 'control') out.ctrl = true;
-    else if (lower === 'shift') out.shift = true;
-    else if (lower === 'alt' || lower === 'option') out.alt = true;
-    else if (lower === 'cmd' || lower === 'meta' || lower === 'super') out.meta = true;
-    else out.key = part.length === 1 ? part.toLowerCase() : part;
-  }
-  return out.key ? out : null;
-}
-
-function matchesShortcut(event: KeyboardEvent, shortcut: Shortcut | null): boolean {
-  if (!shortcut) return false;
-  if (shortcut.ctrl !== event.ctrlKey) return false;
-  if (shortcut.shift !== event.shiftKey) return false;
-  if (shortcut.alt !== event.altKey) return false;
-  if (shortcut.meta !== event.metaKey) return false;
-  const eventKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-  return eventKey === shortcut.key;
-}
-
 function App() {
   const [conceptionPath, setConceptionPath] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
@@ -101,10 +65,6 @@ function App() {
   const [toast, setToast] = createSignal<string | null>(null);
   const [tab, setTab] = createSignal<Tab>('projects');
   const [modal, setModal] = createSignal<ModalState>(null);
-  // In-modal navigation history. Each entry is the modal state we were
-  // showing before the user clicked a relative .md link or wikilink. The
-  // back button pops one off; close (× / Esc) clears the whole stack.
-  const [modalStack, setModalStack] = createSignal<NonNullable<ModalState>[]>([]);
   const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
@@ -114,6 +74,11 @@ function App() {
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
+
+  const flashToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000);
+  };
 
   const openPrompt = (init: Omit<PromptModalState, 'resolve'>): Promise<string | null> =>
     new Promise<string | null>((resolve) => {
@@ -128,7 +93,10 @@ function App() {
   });
 
   const unsubscribe = window.condash.onTreeEvents((events) => {
-    void handleTreeEvents(events);
+    void applyTreeEvents(events, {
+      mutate,
+      bumpRefreshKey: () => setRefreshKey((k) => k + 1),
+    });
   });
   onCleanup(unsubscribe);
 
@@ -216,6 +184,24 @@ function App() {
     },
   );
 
+  const ensureTerminalOpen = (): void => {
+    if (!terminalOpen()) setTerminalOpen(true);
+  };
+
+  const router = createModalRouter({
+    modal,
+    setModal,
+    setPdfPath,
+    setPreviewPath,
+  });
+
+  const bridge = createTerminalBridge({
+    terminalHandle: () => terminalHandle,
+    ensureTerminalOpen,
+    terminalPrefs,
+    flashToast,
+  });
+
   const handleLaunch = async (slot: OpenWithSlotKey, path: string) => {
     try {
       await window.condash.launchOpenWith(slot, path);
@@ -244,10 +230,6 @@ function App() {
     );
     if (!live) return;
     void window.condash.termClose(live.id);
-  };
-
-  const ensureTerminalOpen = (): void => {
-    if (!terminalOpen()) setTerminalOpen(true);
   };
 
   const handleGlobalKeyDown = (event: KeyboardEvent): void => {
@@ -284,24 +266,8 @@ function App() {
     const paste = parseShortcut(prefs.screenshot_paste_shortcut);
     if (matchesShortcut(event, paste)) {
       event.preventDefault();
-      void handleScreenshotPaste();
+      void bridge.handleScreenshotPaste();
     }
-  };
-
-  const handleScreenshotPaste = async (): Promise<void> => {
-    const prefs = terminalPrefs() ?? {};
-    const dir = prefs.screenshot_dir;
-    if (!dir) {
-      flashToast('No terminal.screenshot_dir set in configuration.json');
-      return;
-    }
-    const latest = await window.condash.termLatestScreenshot(dir);
-    if (!latest) {
-      flashToast(`No files under ${dir}`);
-      return;
-    }
-    if (!terminalHandle) return;
-    terminalHandle.typeIntoActive(latest);
   };
 
   onMount(() => {
@@ -359,11 +325,6 @@ function App() {
     }
   };
 
-  const flashToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000);
-  };
-
   const handlePick = async () => {
     const picked = await window.condash.pickConceptionPath();
     if (!picked) return;
@@ -403,48 +364,6 @@ function App() {
     setRefreshKey((k) => k + 1);
   };
 
-  const handleTreeEvents = async (events: TreeEvent[]): Promise<void> => {
-    let knowledgeOrConfigDirty = false;
-    let unknownSeen = false;
-
-    for (const event of events) {
-      if (event.kind === 'unknown') {
-        unknownSeen = true;
-        break;
-      }
-      if (event.kind === 'config' || event.kind === 'knowledge') {
-        knowledgeOrConfigDirty = true;
-        continue;
-      }
-      // Per-project patch.
-      try {
-        if (event.op === 'unlink') {
-          mutate((items) => (items ?? []).filter((p) => p.path !== event.path));
-          continue;
-        }
-        const project = await window.condash.getProject(event.path);
-        if (!project) {
-          mutate((items) => (items ?? []).filter((p) => p.path !== event.path));
-          continue;
-        }
-        mutate((items) => {
-          const list = items ?? [];
-          const idx = list.findIndex((p) => p.path === project.path);
-          if (idx === -1) return [...list, project];
-          const next = list.slice();
-          next[idx] = project;
-          return next;
-        });
-      } catch {
-        unknownSeen = true;
-      }
-    }
-
-    if (unknownSeen || knowledgeOrConfigDirty) {
-      setRefreshKey((k) => k + 1);
-    }
-  };
-
   const handleOpenInEditor = (path: string) => {
     void window.condash.openInEditor(path);
   };
@@ -455,29 +374,6 @@ function App() {
     } else {
       void window.condash.openInEditor(path);
     }
-  };
-
-  // Per-card "work on" button — pastes "work on <slug>" into the focused
-  // terminal. Opens the terminal pane and spawns a shell first if neither
-  // exists, so the action never silently no-ops. Does not press Enter — the
-  // user reviews + sends.
-  const handleWorkOn = async (project: Project) => {
-    const text = `work on ${project.slug}`;
-    if (!terminalHandle) {
-      ensureTerminalOpen();
-      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
-    }
-    if (!terminalHandle) return;
-    ensureTerminalOpen();
-    if (!terminalHandle.hasActive()) {
-      try {
-        await terminalHandle.spawnUserShell(terminalPrefs()?.launcher_command ?? null, 'my');
-      } catch (err) {
-        flashToast(`Could not open a shell: ${(err as Error).message}`);
-        return;
-      }
-    }
-    terminalHandle.typeIntoActive(text);
   };
 
   const handleCreateProjectNote = async (project: Project) => {
@@ -508,7 +404,7 @@ function App() {
     // Opening a fresh preview from a card resets any pending back-link from
     // a previously-opened file modal — the user has explicitly chosen a new
     // starting point.
-    setPreviewBackPath(null);
+    router.setPreviewBackPath(null);
     setPreviewPath(project.path);
   };
 
@@ -521,7 +417,7 @@ function App() {
   const handleOpenReadmeFromPreview = (project: Project) => {
     // Set the back-path so the modal's onClose / "← Back" button returns to
     // the card popup view instead of just dismissing.
-    setPreviewBackPath(project.path);
+    router.setPreviewBackPath(project.path);
     setPreviewPath(null);
     setModal({
       path: project.path,
@@ -558,30 +454,6 @@ function App() {
     void window.condash.quitApp();
   };
 
-  const handleOpenInTerm = async (repo: RepoEntry, worktree: Worktree) => {
-    if (!terminalHandle) {
-      ensureTerminalOpen();
-      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
-    }
-    if (!terminalHandle) return;
-    ensureTerminalOpen();
-    const branchSuffix = worktree.branch ? `· ${worktree.branch}` : '';
-    const label = `${repo.name}${branchSuffix ? ` ${branchSuffix}` : ''}`;
-    try {
-      // No `repo`/`command` → spawns the user's default shell at the worktree
-      // path inside the existing terminal pane (no popup window).
-      await terminalHandle.spawn(
-        {
-          side: 'my',
-          cwd: worktree.path,
-        },
-        label,
-      );
-    } catch (err) {
-      flashToast(`Open in term failed: ${(err as Error).message}`);
-    }
-  };
-
   const slugIndex = () => buildSlugIndex(projects() ?? [], knowledge() ?? null);
 
   const handleWikilink = (slug: string) => {
@@ -591,7 +463,7 @@ function App() {
       return;
     }
     const target = matches[0];
-    navigateInModal({ path: target.path, title: target.title });
+    router.navigateInModal({ path: target.path, title: target.title });
     if (matches.length > 1) {
       flashToast(`[[${slug}]] matched ${matches.length} items — opening the first`);
     }
@@ -627,72 +499,19 @@ function App() {
     }
   };
 
-  // When a file is opened from inside the project preview, remember which
-  // project we came from so the user can navigate back to the card view
-  // after closing the file. Cleared whenever the user opens a fresh
-  // preview directly from a card.
-  const [previewBackPath, setPreviewBackPath] = createSignal<string | null>(null);
-
   const handleOpenFileFromPreview = (path: string) => {
     const back = previewProject()?.title;
     if (path.toLowerCase().endsWith('.md')) {
-      setPreviewBackPath(previewPath());
+      router.setPreviewBackPath(previewPath());
       setPreviewPath(null);
       setModal({ path, backLabel: back });
     } else if (path.toLowerCase().endsWith('.pdf')) {
-      setPreviewBackPath(previewPath());
+      router.setPreviewBackPath(previewPath());
       setPdfPath(path);
     } else {
       // Non-md, non-pdf — opens externally, preview stays in place.
       void window.condash.openInEditor(path);
     }
-  };
-
-  const closeChildModal = (clear: () => void) => {
-    clear();
-    // Any close (× / Esc) is an explicit "leave the reading thread" — wipe
-    // the in-modal history along with the modal itself.
-    setModalStack([]);
-    const back = previewBackPath();
-    if (back) {
-      setPreviewBackPath(null);
-      setPreviewPath(back);
-    }
-  };
-
-  // Display label for a modal state — used to render "← Back to <X>" on
-  // the next note's back button when the user navigates deeper.
-  const modalLabel = (m: NonNullable<ModalState>): string => {
-    if (m.title) return m.title;
-    const base = m.path.split('/').pop();
-    return base && base.length > 0 ? base : m.path;
-  };
-
-  // Push the current modal onto the history stack and open `next` in its
-  // place. `next.backLabel` is filled in from the previous modal so the
-  // chain unwinds with sensible labels.
-  const navigateInModal = (next: NonNullable<ModalState>) => {
-    const cur = modal();
-    if (cur) {
-      setModalStack((s) => [...s, cur]);
-      setModal({ ...next, backLabel: next.backLabel ?? modalLabel(cur) });
-    } else {
-      setModal(next);
-    }
-  };
-
-  // Pop one entry off the in-modal history. If empty, fall through to the
-  // existing close-then-restore-preview path so the back button still
-  // works for items opened directly from a project preview.
-  const handleModalBack = () => {
-    const stack = modalStack();
-    if (stack.length === 0) {
-      closeChildModal(() => setModal(null));
-      return;
-    }
-    const prev = stack[stack.length - 1];
-    setModalStack(stack.slice(0, -1));
-    setModal(prev);
   };
 
   const handleDropOnColumn = async (path: string, newStatus: string) => {
@@ -713,75 +532,22 @@ function App() {
 
   return (
     <div class="app">
-      <header class="toolbar">
-        <nav class="tabs main-tabs">
-          <button
-            class="tab"
-            classList={{ active: tab() === 'projects' }}
-            onClick={() => setTab('projects')}
-          >
-            Projects
-          </button>
-          <button
-            class="tab"
-            classList={{ active: tab() === 'code' }}
-            onClick={() => setTab('code')}
-            disabled={!conceptionPath()}
-          >
-            Code
-          </button>
-          <button
-            class="tab"
-            classList={{ active: tab() === 'knowledge' }}
-            onClick={() => setTab('knowledge')}
-            disabled={!conceptionPath()}
-          >
-            Knowledge
-          </button>
-        </nav>
-        <span class="spacer" />
-        <button
-          onClick={() => setTerminalOpen((v) => !v)}
-          classList={{ active: terminalOpen() }}
-          title="Toggle terminal pane (Ctrl+`)"
-        >
-          ▤
-        </button>
-        <button onClick={handleOpenPreferences} disabled={!conceptionPath()} title="Settings">
-          ⚙
-        </button>
-        <span class="help-menu-wrap">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setHelpMenuOpen((v) => !v);
-            }}
-            title="Help / docs"
-          >
-            ?
-          </button>
-          <Show when={helpMenuOpen()}>
-            <div class="help-menu" role="menu" onClick={(e) => e.stopPropagation()}>
-              <button class="help-menu-item" onClick={() => handleOpenHelp('architecture')}>
-                Architecture
-              </button>
-              <button class="help-menu-item" onClick={() => handleOpenHelp('configuration')}>
-                Configuration reference
-              </button>
-              <button class="help-menu-item" onClick={() => handleOpenHelp('non-goals')}>
-                Non-goals
-              </button>
-              <button class="help-menu-item" onClick={() => handleOpenHelp('index')}>
-                Documentation index
-              </button>
-            </div>
-          </Show>
-        </span>
-        <button onClick={handleRefresh} disabled={!conceptionPath()}>
-          Refresh
-        </button>
-        <button onClick={handlePick}>{conceptionPath() ? 'Change…' : 'Choose folder…'}</button>
-      </header>
+      <Toolbar
+        tab={tab()}
+        conceptionPath={conceptionPath()}
+        terminalOpen={terminalOpen()}
+        helpMenuOpen={helpMenuOpen()}
+        onTabChange={setTab}
+        onToggleTerminal={() => setTerminalOpen((v) => !v)}
+        onOpenSettings={handleOpenPreferences}
+        onToggleHelpMenu={(e) => {
+          e.stopPropagation();
+          setHelpMenuOpen((v) => !v);
+        }}
+        onOpenHelp={handleOpenHelp}
+        onRefresh={handleRefresh}
+        onPickFolder={handlePick}
+      />
 
       <Show
         when={conceptionPath()}
@@ -803,7 +569,7 @@ function App() {
                 onOpen={handleOpenProject}
                 onToggleStep={handleToggleStep}
                 onDropProject={handleDropOnColumn}
-                onWorkOn={(p) => void handleWorkOn(p)}
+                onWorkOn={(p) => void bridge.handleWorkOn(p)}
                 onCreateNote={(p) => void handleCreateProjectNote(p)}
               />
             </Show>
@@ -834,69 +600,22 @@ function App() {
                 </div>
               }
             >
-              <div class="repos-pane">
-                <For each={repoGroups()}>
-                  {(group) => {
-                    // Active runs for this group only, sorted to mirror the
-                    // section's repo order so what's running for "condash"
-                    // appears below the "condash" card and so on.
-                    const groupSessions = (): readonly TermSession[] => {
-                      const order = new Map(group.entries.map((e, i) => [e.name, i]));
-                      return codeRunSessions()
-                        .filter((s) => s.repo && order.has(s.repo))
-                        .slice()
-                        .sort((a, b) => (order.get(a.repo!) ?? 0) - (order.get(b.repo!) ?? 0));
-                    };
-                    return (
-                      <section class="repos-group" data-group={group.id}>
-                        <h2 class="repos-group-header">
-                          <span class="name">{group.label}</span>
-                          <span class="count">{group.entries.length}</span>
-                          <span class="rule" />
-                        </h2>
-                        <div class="repos-grid">
-                          <For each={group.entries}>
-                            {(repo) => {
-                              const liveBranch = (): string | null => {
-                                const cwd = liveSessionCwds().get(repo.name);
-                                if (!cwd) return null;
-                                const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
-                                if (wt) return wt.branch ?? '(detached)';
-                                // Fallback: cwd matches the repo's primary path.
-                                if (cwd === repo.path) {
-                                  const primary = (repo.worktrees ?? []).find((w) => w.primary);
-                                  return primary?.branch ?? null;
-                                }
-                                return null;
-                              };
-                              return (
-                                <RepoRow
-                                  repo={repo}
-                                  slots={openWithSlots() ?? {}}
-                                  live={liveRepos().has(repo.name)}
-                                  liveBranch={liveBranch()}
-                                  onOpen={handleOpenInEditor}
-                                  onLaunch={(slot, path) => void handleLaunch(slot, path)}
-                                  onForceStop={(r) => void handleForceStop(r)}
-                                  onStop={handleStopRepo}
-                                  onRun={(r, wt) => void handleRunRepo(r, wt)}
-                                  onOpenInTerm={(r, wt) => void handleOpenInTerm(r, wt)}
-                                />
-                              );
-                            }}
-                          </For>
-                        </div>
-                        <CodeRunRows
-                          sessions={groupSessions()}
-                          repos={repos() ?? []}
-                          xtermPrefs={terminalPrefs()?.xterm}
-                          onClose={(id) => void window.condash.termClose(id)}
-                        />
-                      </section>
-                    );
-                  }}
-                </For>
-              </div>
+              <CodeView
+                repos={repos() ?? []}
+                groups={repoGroups()}
+                slots={openWithSlots() ?? {}}
+                liveRepos={liveRepos()}
+                liveSessionCwds={liveSessionCwds()}
+                codeRunSessions={codeRunSessions()}
+                xtermPrefs={terminalPrefs()?.xterm}
+                onOpen={handleOpenInEditor}
+                onLaunch={(slot, path) => void handleLaunch(slot, path)}
+                onForceStop={(r) => void handleForceStop(r)}
+                onStop={handleStopRepo}
+                onRun={(r, wt) => void handleRunRepo(r, wt)}
+                onOpenInTerm={(r, wt) => void bridge.handleOpenInTerm(r, wt)}
+                onCloseSession={(id) => void window.condash.termClose(id)}
+              />
             </Show>
           </Suspense>
         </Show>
@@ -913,18 +632,18 @@ function App() {
         onOpenFile={handleOpenFileFromPreview}
         onOpenInEditor={handleOpenInEditor}
         onOpenDeliverable={handleOpenDeliverableFromPreview}
-        onWorkOn={(p) => void handleWorkOn(p)}
+        onWorkOn={(p) => void bridge.handleWorkOn(p)}
       />
 
       <Show when={modal()}>
         <NoteModal
           state={modal()}
-          onClose={() => closeChildModal(() => setModal(null))}
+          onClose={() => router.closeChildModal(() => setModal(null))}
           onOpenInEditor={handleOpenInEditor}
           onOpenDeliverable={handleOpenDeliverable}
           onWikilink={handleWikilink}
-          onOpenMarkdown={(path) => navigateInModal({ path })}
-          onBack={handleModalBack}
+          onOpenMarkdown={(path) => router.navigateInModal({ path })}
+          onBack={router.handleModalBack}
           onOpenPdf={(path) => setPdfPath(path)}
           onOpenHelp={handleOpenHelp}
         />
@@ -939,7 +658,7 @@ function App() {
       <Show when={pdfPath()}>
         <PdfModal
           path={pdfPath()!}
-          onClose={() => closeChildModal(() => setPdfPath(null))}
+          onClose={() => router.closeChildModal(() => setPdfPath(null))}
           onOpenInOs={handleOpenInEditor}
         />
       </Show>
@@ -962,7 +681,7 @@ function App() {
             // ProjectPreview is keyed on the README path (matching
             // Project.path), but search returns the project directory —
             // map back to the README so the preview lookup hits.
-            setPreviewBackPath(null);
+            router.setPreviewBackPath(null);
             setPreviewPath(`${projectDir}/README.md`);
           }}
           onOpenFile={handleOpenKnowledgeFile}
@@ -979,30 +698,10 @@ function App() {
       </Show>
 
       <Show when={quitConfirmOpen()}>
-        <div class="modal-backdrop" onClick={() => setQuitConfirmOpen(false)}>
-          <div
-            class="modal quit-confirm-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Quit Condash"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <header class="modal-head">
-              <span class="modal-title">Quit Condash?</span>
-            </header>
-            <div class="quit-confirm-body">
-              <p>Any running terminal sessions will be terminated.</p>
-              <div class="quit-confirm-actions">
-                <button class="modal-button" onClick={() => setQuitConfirmOpen(false)}>
-                  Cancel
-                </button>
-                <button class="modal-button warn" onClick={handleConfirmQuit} autofocus>
-                  Quit
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <QuitConfirmModal
+          onCancel={() => setQuitConfirmOpen(false)}
+          onConfirm={handleConfirmQuit}
+        />
       </Show>
 
       <Show when={toast()}>
