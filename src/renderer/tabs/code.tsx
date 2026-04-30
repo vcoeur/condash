@@ -4,8 +4,11 @@ import type {
   OpenWithSlotKey,
   OpenWithSlots,
   RepoEntry,
+  TermSession,
+  TerminalXtermPrefs,
   Worktree,
 } from '@shared/types';
+import { CodeRunRows } from '../code-runs';
 
 type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
 
@@ -493,5 +496,91 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
         </div>
       </Show>
     </>
+  );
+}
+
+/** Top-level Code-tab view. Renders one section per group (PRIMARY,
+ *  per-submodule parents, SECONDARY) with the repo cards and any inline
+ *  CodeRunRow sessions slotted under their owning group. */
+export function CodeView(props: {
+  repos: readonly RepoEntry[];
+  groups: readonly RepoGroup[];
+  slots: OpenWithSlots;
+  liveRepos: ReadonlySet<string>;
+  liveSessionCwds: ReadonlyMap<string, string>;
+  codeRunSessions: readonly TermSession[];
+  xtermPrefs: TerminalXtermPrefs | undefined;
+  onOpen: (path: string) => void;
+  onLaunch: (slot: OpenWithSlotKey, path: string) => void;
+  onForceStop: (repo: RepoEntry) => void;
+  onStop: (repo: RepoEntry) => void;
+  onRun: (repo: RepoEntry, worktree?: Worktree) => void;
+  onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
+  onCloseSession: (id: string) => void;
+}) {
+  return (
+    <div class="repos-pane">
+      <For each={props.groups}>
+        {(group) => {
+          // Active runs for this group only, sorted to mirror the section's
+          // repo order so what's running for "condash" appears below the
+          // "condash" card and so on.
+          const groupSessions = (): readonly TermSession[] => {
+            const order = new Map(group.entries.map((e, i) => [e.name, i]));
+            return props.codeRunSessions
+              .filter((s) => s.repo && order.has(s.repo))
+              .slice()
+              .sort((a, b) => (order.get(a.repo!) ?? 0) - (order.get(b.repo!) ?? 0));
+          };
+          return (
+            <section class="repos-group" data-group={group.id}>
+              <h2 class="repos-group-header">
+                <span class="name">{group.label}</span>
+                <span class="count">{group.entries.length}</span>
+                <span class="rule" />
+              </h2>
+              <div class="repos-grid">
+                <For each={group.entries}>
+                  {(repo) => {
+                    const liveBranch = (): string | null => {
+                      const cwd = props.liveSessionCwds.get(repo.name);
+                      if (!cwd) return null;
+                      const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
+                      if (wt) return wt.branch ?? '(detached)';
+                      // Fallback: cwd matches the repo's primary path.
+                      if (cwd === repo.path) {
+                        const primary = (repo.worktrees ?? []).find((w) => w.primary);
+                        return primary?.branch ?? null;
+                      }
+                      return null;
+                    };
+                    return (
+                      <RepoRow
+                        repo={repo}
+                        slots={props.slots}
+                        live={props.liveRepos.has(repo.name)}
+                        liveBranch={liveBranch()}
+                        onOpen={props.onOpen}
+                        onLaunch={props.onLaunch}
+                        onForceStop={props.onForceStop}
+                        onStop={props.onStop}
+                        onRun={props.onRun}
+                        onOpenInTerm={props.onOpenInTerm}
+                      />
+                    );
+                  }}
+                </For>
+              </div>
+              <CodeRunRows
+                sessions={groupSessions()}
+                repos={props.repos}
+                xtermPrefs={props.xtermPrefs}
+                onClose={props.onCloseSession}
+              />
+            </section>
+          );
+        }}
+      </For>
+    </div>
   );
 }
