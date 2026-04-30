@@ -117,14 +117,28 @@ function visitOne(
  * Find a single repo entry by name. Matches both the bare name and the
  * `parent/child` display form so callers don't have to know which one came
  * from the renderer.
+ *
+ * When the search is a bare name (e.g. `foo`) and the config contains both a
+ * top-level repo `foo` and a sibling submodule `alpha/foo`, the top-level
+ * entry wins. Reaching the submodule requires the qualified `alpha/foo` form.
+ * Match priority:
+ *   1. `entry.display === name`         — exact, including qualified
+ *   2. `entry.name === name && !parent` — bare name on a top-level entry
+ *   3. `entry.name === name && parent`  — bare name on a submodule (last)
  */
 export function findRepoEntry(config: ConfigShape, name: string): RepoLookup | null {
-  let found: RepoLookup | null = null;
+  let topLevelByName: RepoLookup | null = null;
+  let submoduleByName: RepoLookup | null = null;
+  let exactByDisplay: RepoLookup | null = null;
   walkRepos(config, (entry) => {
-    if (entry.name === name || entry.display === name) {
-      found = entry;
-      return false; // stop the walk
+    if (entry.display === name) {
+      exactByDisplay = entry;
+      return false; // best possible match — stop the walk
+    }
+    if (entry.name === name) {
+      if (!entry.parent && !topLevelByName) topLevelByName = entry;
+      else if (entry.parent && !submoduleByName) submoduleByName = entry;
     }
   });
-  return found;
+  return exactByDisplay ?? topLevelByName ?? submoduleByName;
 }
