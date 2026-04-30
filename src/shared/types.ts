@@ -104,6 +104,10 @@ export interface Worktree {
 export interface RepoEntry {
   /** Display name (typically the repo directory name; submodules use `parent/child`). */
   name: string;
+  /** Optional human-friendly label from `configuration.json`. Rendered as a
+   * small subtitle on the card when present — useful when the directory name
+   * is a slug and a friendlier descriptor is wanted alongside it. */
+  label?: string;
   /** Absolute path on disk. */
   path: string;
   /** primary | secondary — matches the configuration.json layout. */

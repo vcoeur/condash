@@ -126,6 +126,11 @@ export function RepoRow(props: {
     >
       <header class="repo-head">
         <span class="repo-name">{displayName()}</span>
+        <Show when={props.repo.label}>
+          <span class="repo-label" title={props.repo.label}>
+            {props.repo.label}
+          </span>
+        </Show>
         <Show when={liveBranchLabel()}>
           <span
             class="repo-live-branch"

@@ -65,6 +65,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
       if (!exists) {
         return {
           name: entry.display,
+          label: entry.label,
           path: entry.cwd,
           kind: entry.kind,
           parent: entry.parent,
@@ -84,6 +85,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
       const dirty = await getDirtyCount(entry.cwd, dirtyOpts);
       return {
         name: entry.display,
+        label: entry.label,
         path: entry.cwd,
         kind: entry.kind,
         parent: entry.parent,

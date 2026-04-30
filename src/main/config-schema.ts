@@ -11,6 +11,7 @@ const repoEntry: z.ZodType<RawRepo> = z.lazy(() =>
     z
       .object({
         name: z.string(),
+        label: z.string().min(1).optional(),
         run: z.string().optional(),
         force_stop: z.string().optional(),
         submodules: z.array(repoEntry).optional(),
@@ -23,6 +24,7 @@ export type RawRepo =
   | string
   | {
       name: string;
+      label?: string;
       run?: string;
       force_stop?: string;
       submodules?: RawRepo[];

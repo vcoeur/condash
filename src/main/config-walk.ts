@@ -12,6 +12,7 @@ export type RawRepo =
   | string
   | {
       name: string;
+      label?: string;
       run?: string;
       force_stop?: string;
       submodules?: RawRepo[];
@@ -30,6 +31,8 @@ export interface RepoLookup {
   display: string;
   /** Bare entry name (no parent prefix). */
   name: string;
+  /** Optional human-friendly label. Surfaced as a card subtitle when set. */
+  label?: string;
   /** Parent name when this entry is a submodule. */
   parent?: string;
   /** Resolved absolute cwd. */
@@ -99,6 +102,7 @@ function visitOne(
   const lookup: RepoLookup = {
     display: parent ? `${parent}/${entry.name}` : entry.name,
     name: entry.name,
+    label: entry.label,
     parent,
     cwd: resolveCwd(workspace, parent, entry.name),
     run: entry.run,
