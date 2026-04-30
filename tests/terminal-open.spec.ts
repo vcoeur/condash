@@ -4,16 +4,20 @@ import { bootApp } from './fixtures/electron-app';
 test('terminal pane opens and a My-terms shell tab spawns a session', async () => {
   const booted = await bootApp();
   try {
-    // Spawn a session via IPC and assert the session id comes back.
+    // Use a long-running command so the pty stays alive until we explicitly
+    // termClose at the end. A bare `echo` exits immediately, which races
+    // with the renderer's auto-close-on-exit in the bottom-pane TerminalPane —
+    // when the renderer wins, `attachTerminal` returns null because the
+    // session has already been deleted in main.
     const session = await booted.window.evaluate(() =>
-      window.condash.termSpawn({ side: 'my', command: 'echo ready' }),
+      window.condash.termSpawn({ side: 'my', command: 'printf ready; sleep 5' }),
     );
     expect(typeof session.id).toBe('string');
     expect(session.id.length).toBeGreaterThan(0);
 
-    // The pty may have flushed and exited by the time this CDP roundtrip
-    // returns, so prefer the buffered tail (term.attach) over racing
-    // term.data. Allow a brief settle for the echo to land in the buffer.
+    // Buffered tail (term.attach) over racing term.data — `printf` flushes
+    // synchronously but the CDP roundtrip can still beat the pty's first
+    // write, so we poll briefly.
     let attached: { output: string; exited?: number } | null = null;
     for (let attempt = 0; attempt < 20; attempt++) {
       attached = await booted.window.evaluate(
