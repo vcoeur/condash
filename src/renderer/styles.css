@@ -1150,9 +1150,21 @@ button:hover {
 }
 
 .repo-name {
-  font-weight: 600;
-  font-size: 13.5px;
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.005em;
   color: var(--text);
+}
+
+.repo-label {
+  font-weight: 500;
+  font-size: 11.5px;
+  color: var(--text-muted, var(--text-faint));
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-subtle, transparent);
+  border: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .repo-live-badge {

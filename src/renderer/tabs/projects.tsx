@@ -25,6 +25,39 @@ const UNKNOWN = '?';
 const PROJECT_SECTION_ORDER = ['now', 'review', 'soon', 'later', 'backlog', 'done'] as const;
 const COLLAPSED_BY_DEFAULT = new Set<string>(['backlog', 'done']);
 
+/** localStorage key for the per-status collapse map. Stores a sparse object
+ * `{ status: boolean }` — true means user-expanded, false means user-collapsed.
+ * Statuses missing from the map fall back to `COLLAPSED_BY_DEFAULT`. */
+const COLLAPSE_STORAGE_KEY = 'condash:projects:section-collapse';
+
+function readCollapseMap(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'boolean') out[k] = v;
+      }
+      return out;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCollapseEntry(status: string, expanded: boolean): void {
+  try {
+    const current = readCollapseMap();
+    current[status] = expanded;
+    window.localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // localStorage unavailable / quota — best-effort, drop silently.
+  }
+}
+
 export type Group = { status: string; items: Project[] };
 
 export function nextMarker(current: StepMarker): StepMarker {
@@ -336,12 +369,20 @@ function GroupBlock(props: {
   onCreateNote?: (project: Project) => void;
 }) {
   const [over, setOver] = createSignal(false);
-  const [userExpanded, setUserExpanded] = createSignal<boolean | null>(null);
+  const initialStored = readCollapseMap()[props.group.status];
+  const [userExpanded, setUserExpanded] = createSignal<boolean | null>(
+    typeof initialStored === 'boolean' ? initialStored : null,
+  );
   const isOpen = (): boolean => {
     if (props.forceOpen) return true;
     const ux = userExpanded();
     if (ux !== null) return ux;
     return !props.collapsedByDefault;
+  };
+  const toggle = (): void => {
+    const next = !isOpen();
+    setUserExpanded(next);
+    writeCollapseEntry(props.group.status, next);
   };
 
   const isAcceptable = (event: DragEvent): boolean => {
@@ -385,7 +426,7 @@ function GroupBlock(props: {
     >
       <header
         class="group-header"
-        onClick={() => setUserExpanded(!isOpen())}
+        onClick={toggle}
         title={isOpen() ? 'Collapse section' : 'Expand section'}
       >
         <span class="caret" aria-hidden="true">
