@@ -9,6 +9,7 @@ const api: CondashApi = {
   search: (query) => ipcRenderer.invoke('search', query),
   listRepos: () => ipcRenderer.invoke('listRepos'),
   invalidateGitStatus: () => ipcRenderer.invoke('invalidateGitStatus'),
+  getDirtyDetails: (path, opts) => ipcRenderer.invoke('getDirtyDetails', path, opts),
   listOpenWith: () => ipcRenderer.invoke('listOpenWith'),
   launchOpenWith: (slot, path) => ipcRenderer.invoke('launchOpenWith', slot, path),
   forceStopRepo: (repoName) => ipcRenderer.invoke('forceStopRepo', repoName),

@@ -1,5 +1,11 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { OpenWithSlotKey, OpenWithSlots, RepoEntry, Worktree } from '@shared/types';
+import type {
+  DirtyDetails,
+  OpenWithSlotKey,
+  OpenWithSlots,
+  RepoEntry,
+  Worktree,
+} from '@shared/types';
 
 type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
 
@@ -162,7 +168,7 @@ export function RepoRow(props: {
               <span class="branch-dot" aria-hidden="true" />
               <span class="branch-name">{wt.branch ?? '(detached)'}</span>
               <Show when={(wt.dirty ?? 0) > 0}>
-                <span class="branch-dirty">{wt.dirty} dirty</span>
+                <DirtyBadge worktree={wt} subtreeScoped={!!props.repo.parent} />
               </Show>
               <Show when={props.live && (props.liveBranch ?? null) === (wt.branch ?? null)}>
                 <span class="branch-live-dot" title="Running" aria-label="Running" />
@@ -327,5 +333,147 @@ function BranchActions(props: {
         </div>
       </Show>
     </div>
+  );
+}
+
+/**
+ * Per-branch dirty pill that opens a popover listing every dirty path
+ * (`git status -s`) plus a `git diff --stat HEAD` snippet. The popover is
+ * a portaled `position: fixed` overlay so it always paints above
+ * neighbouring cards (same recipe as the open_with menu).
+ */
+function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
+  const [open, setOpen] = createSignal(false);
+  const [details, setDetails] = createSignal<DirtyDetails | null>(null);
+  const [anchor, setAnchor] = createSignal<{ top: number; left: number } | null>(null);
+  const [error, setError] = createSignal<string | null>(null);
+  let triggerRef: HTMLButtonElement | undefined;
+  let popoverRef: HTMLDivElement | undefined;
+
+  const positionPopover = (): void => {
+    if (!triggerRef) return;
+    const rect = triggerRef.getBoundingClientRect();
+    setAnchor({ top: rect.bottom + 4, left: rect.left });
+  };
+
+  const close = (): void => {
+    setOpen(false);
+    setError(null);
+  };
+
+  const onDocClick = (e: MouseEvent): void => {
+    if (!open()) return;
+    const target = e.target as Node;
+    if (triggerRef?.contains(target)) return;
+    if (popoverRef?.contains(target)) return;
+    close();
+  };
+
+  const onScrollOrResize = (): void => {
+    if (open()) positionPopover();
+  };
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && open()) close();
+  };
+
+  onMount(() => {
+    document.addEventListener('click', onDocClick, true);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onScrollOrResize, true);
+    window.addEventListener('scroll', onScrollOrResize, true);
+  });
+  onCleanup(() => {
+    document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('resize', onScrollOrResize, true);
+    window.removeEventListener('scroll', onScrollOrResize, true);
+  });
+
+  const toggle = async (e: MouseEvent): Promise<void> => {
+    e.stopPropagation();
+    if (open()) {
+      close();
+      return;
+    }
+    positionPopover();
+    setOpen(true);
+    setError(null);
+    try {
+      const next = await window.condash.getDirtyDetails(props.worktree.path, {
+        scopeToSubtree: props.subtreeScoped,
+      });
+      setDetails(next);
+      if (!next) setError('git status failed for this path');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={(el) => (triggerRef = el)}
+        type="button"
+        class="branch-dirty"
+        onClick={(e) => void toggle(e)}
+        aria-haspopup="dialog"
+        aria-expanded={open()}
+        title="Show dirty files"
+      >
+        {props.worktree.dirty} dirty
+      </button>
+      <Show when={open() && anchor()}>
+        <div
+          ref={(el) => (popoverRef = el)}
+          class="branch-dirty-popover"
+          role="dialog"
+          aria-label={`Dirty files in ${props.worktree.branch ?? '(detached)'}`}
+          style={{
+            top: `${anchor()!.top}px`,
+            left: `${anchor()!.left}px`,
+          }}
+        >
+          <header class="branch-dirty-popover-head">
+            <span class="branch-dirty-popover-branch">{props.worktree.branch ?? '(detached)'}</span>
+            <span class="branch-dirty-popover-path" title={props.worktree.path}>
+              {props.worktree.path}
+            </span>
+          </header>
+          <Show when={error()}>
+            <p class="branch-dirty-popover-error">{error()}</p>
+          </Show>
+          <Show when={details()}>
+            {(d) => (
+              <>
+                <Show
+                  when={d().files.length > 0}
+                  fallback={<p class="branch-dirty-popover-empty">No dirty files.</p>}
+                >
+                  <ul class="branch-dirty-popover-files">
+                    <For each={d().files}>
+                      {(f) => (
+                        <li>
+                          <span class="branch-dirty-popover-code">{f.code}</span>
+                          <span class="branch-dirty-popover-file">{f.path}</span>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Show>
+                <Show when={d().diffstat}>
+                  <pre class="branch-dirty-popover-diffstat">
+                    {d().diffstat}
+                    <Show when={d().diffstatTruncated}>
+                      <span class="branch-dirty-popover-truncated">{'\n… (truncated)'}</span>
+                    </Show>
+                  </pre>
+                </Show>
+              </>
+            )}
+          </Show>
+        </div>
+      </Show>
+    </>
   );
 }
