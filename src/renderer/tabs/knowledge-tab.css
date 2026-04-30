@@ -1,62 +1,231 @@
 .knowledge-pane {
   flex: 1;
   overflow-y: auto;
-  padding: 22px 28px 28px;
+  padding: 14px 18px 22px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   background: var(--bg);
 }
 
-.knowledge-tree {
-  list-style: none;
+/* Section header — same capsule + count + rule treatment used by the
+ * Code-tab `.repos-group-header` so the three tabs share one chrome
+ * vocabulary. Defined locally here (rather than promoted to a shared
+ * class) to keep tab-CSS changes scoped. The optional [INDEX] button
+ * sits between the count and the rule. */
+.knowledge-section-header {
   margin: 0;
-  padding-left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-.knowledge-tree-root {
-  padding-left: 0;
+.knowledge-section-header .name {
+  color: var(--text);
 }
 
-.knowledge-node {
-  margin: 1px 0;
+.knowledge-section-header .count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
 }
 
-.knowledge-dir,
-.knowledge-leaf {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  padding: 2px 6px;
+/* INDEX badge — opens the section's directory index.md. Uses the global
+ * accent so it pops against the muted section header without competing
+ * with the Code-tab pink/orange semantic palette. */
+.knowledge-section-index {
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  padding: 1px 7px;
   border-radius: 3px;
   cursor: pointer;
-  color: inherit;
-  font: inherit;
-  text-align: left;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease;
 }
 
-.knowledge-dir {
+.knowledge-section-index:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent);
+}
+
+.knowledge-section-header .rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.knowledge-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Same two-up grid as the Code-tab `.repos-grid` — single column under
+ * 520 px so a narrow pane never holds an awkward shrunken card. */
+.knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  gap: 10px;
+}
+
+.knowledge-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 14px 10px 18px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.knowledge-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+/* Per-bucket stripe — echoes the projects-tab `.row::before` indicator
+ * so each card carries a subtle scope cue without needing a coloured
+ * header pill. Bucket palette stays cool so the Code tab's warm
+ * pink / orange semantic accents keep their meaning. */
+.knowledge-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 3px;
+  opacity: 0.7;
+  background: var(--bucket-stripe, var(--border-strong));
+}
+
+.knowledge-card[data-bucket='general'] {
+  --bucket-stripe: var(--col-soon);
+}
+.knowledge-card[data-bucket='internal'] {
+  --bucket-stripe: var(--col-review);
+}
+.knowledge-card[data-bucket='topics'] {
+  --bucket-stripe: var(--col-later);
+}
+.knowledge-card[data-bucket='external'] {
+  --bucket-stripe: var(--col-backlog);
+}
+
+.knowledge-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.knowledge-card-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.knowledge-card-glyph svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.5;
+}
+
+.knowledge-card-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "First few words" caption — what sits in the slot the breadcrumb pill
+ * used to occupy. Single-line clamp + dimmer body colour so it reads as a
+ * glance preview rather than a full paragraph. The complete text is in
+ * the file; the card's job is to identify, not to summarise. */
+.knowledge-card-summary {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Verified pill — neutral by default, dimmer when stale, warn-tinted when
+ * older than a year. Sits on the right of the card head; the title gets
+ * `flex: 1` so the pill is right-anchored. */
+.knowledge-card-verified {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.knowledge-card-verified[data-fresh='fresh'] {
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border-color: var(--border);
+}
+
+.knowledge-card-verified[data-fresh='stale'] {
+  color: var(--text-faint);
+  background: var(--bg-subtle);
+  border-color: var(--border);
+}
+
+.knowledge-card-verified[data-fresh='old'] {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+}
+
+.knowledge-card-verified-label {
+  letter-spacing: 0.04em;
+}
+
+.knowledge-card-verified-date {
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 
-.knowledge-dir:hover,
-.knowledge-leaf:hover {
-  background: var(--bg-hover);
-}
-
-.knowledge-icon {
-  width: 14px;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: 11px;
+.knowledge-pane .empty {
+  padding: 14px 16px;
   color: var(--text-muted);
-}
-
-.knowledge-count {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  margin-left: 6px;
+  font-size: 13px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
 }

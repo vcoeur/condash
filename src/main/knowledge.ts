@@ -17,12 +17,15 @@ export async function readKnowledgeTree(conceptionPath: string): Promise<Knowled
 async function walk(absPath: string, relPath: string, name: string): Promise<KnowledgeNode> {
   const stat = await fs.stat(absPath);
   if (stat.isFile()) {
+    const meta = await readFileMeta(absPath, name);
     return {
       relPath,
       path: absPath,
       name,
-      title: await readFileTitle(absPath, name),
+      title: meta.title,
       kind: 'file',
+      summary: meta.summary,
+      verifiedAt: meta.verifiedAt,
     };
   }
 
@@ -56,25 +59,96 @@ async function walk(absPath: string, relPath: string, name: string): Promise<Kno
   };
 }
 
-async function readFileTitle(path: string, fallback: string): Promise<string> {
+interface FileMeta {
+  title: string;
+  summary?: string;
+  verifiedAt?: string;
+}
+
+/** Parse the head of a markdown file for the card view: title (first h1),
+ * a one-paragraph summary (first prose paragraph after the heading), and
+ * the verification stamp date (`**Verified:** YYYY-MM-DD …`). Reads up to
+ * 8 KB so we capture the verified line even when it sits below a long
+ * lead paragraph. Best-effort — any failure falls back to the directory
+ * name as title and leaves summary / verifiedAt undefined. */
+async function readFileMeta(path: string, fallback: string): Promise<FileMeta> {
   try {
     const handle = await fs.open(path);
     try {
       const { buffer, bytesRead } = await handle.read({
-        buffer: Buffer.alloc(2048),
+        buffer: Buffer.alloc(8192),
         position: 0,
       });
       const head = buffer.subarray(0, bytesRead).toString('utf8');
-      for (const line of head.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        return trimmed.replace(/^#+\s*/, '').trim() || fallback;
-      }
+      return parseHead(head, fallback);
     } finally {
       await handle.close();
     }
   } catch {
-    /* fall through */
+    return { title: fallback };
   }
-  return fallback;
+}
+
+const VERIFIED_RE = /^\*\*Verified:\*\*\s+(\d{4}-\d{2}-\d{2})/;
+
+export function parseHead(head: string, fallback: string): FileMeta {
+  const lines = head.split(/\r?\n/);
+  let title: string | null = null;
+  let verifiedAt: string | undefined;
+  const summaryParts: string[] = [];
+  let summaryDone = false;
+  let inFence = false;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    const verifiedMatch = VERIFIED_RE.exec(line);
+    if (verifiedMatch) {
+      verifiedAt = verifiedMatch[1];
+      if (summaryParts.length > 0) summaryDone = true;
+      continue;
+    }
+    if (line === '') {
+      if (summaryParts.length > 0) summaryDone = true;
+      continue;
+    }
+    if (line.startsWith('#')) {
+      if (title === null) title = line.replace(/^#+\s*/, '').trim() || null;
+      if (summaryParts.length > 0) summaryDone = true;
+      continue;
+    }
+    if (/^(-\s|\*\s|>\s?|\|)/.test(line)) {
+      // Lists, blockquotes, tables — skip; we only want the lead prose.
+      // `\*\s` rather than `\*` so `**Bold**:` keys don't trigger this.
+      if (summaryParts.length > 0) summaryDone = true;
+      continue;
+    }
+    if (!summaryDone) summaryParts.push(line);
+  }
+
+  // Strip inline markdown markers from the summary so the card reads cleanly.
+  const rawSummary = summaryParts.join(' ').trim();
+  const cleanSummary = rawSummary
+    ? rawSummary
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    : undefined;
+
+  const trimmedSummary =
+    cleanSummary && cleanSummary.length > 240
+      ? `${cleanSummary.slice(0, 237).trimEnd()}…`
+      : cleanSummary;
+
+  return {
+    title: title ?? fallback,
+    summary: trimmedSummary,
+    verifiedAt,
+  };
 }

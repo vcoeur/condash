@@ -102,6 +102,31 @@ export function ChevronDownIcon() {
   );
 }
 
+// Book — open codex with a centred binding line and a soft duotone wash
+// across both pages. The Knowledge-tab card glyph: literary, archival,
+// distinct from the Document kind glyph (single-page) and the Folder
+// (file-manager) icon.
+export function BookIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path
+        d="M2 3.5h4.25c.7 0 1.25.55 1.25 1.25V13c0-.7-.55-1.25-1.25-1.25H2zM14 3.5H9.75c-.7 0-1.25.55-1.25 1.25V13c0-.7.55-1.25 1.25-1.25H14z"
+        fill="currentColor"
+        fill-opacity="0.18"
+      />
+      <path d="M2 3.5h4.25c.7 0 1.25.55 1.25 1.25V13c0-.7-.55-1.25-1.25-1.25H2zM14 3.5H9.75c-.7 0-1.25.55-1.25 1.25V13c0-.7.55-1.25 1.25-1.25H14z" />
+      <path d="M8 4.75v8" stroke-opacity="0.5" />
+    </svg>
+  );
+}
+
 // Folder — tabbed silhouette with a soft duotone fill. The "open in file
 // manager" entry uses this in the open_with menu, replacing the standalone
 // 📁 button on the card face.

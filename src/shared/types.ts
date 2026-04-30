@@ -315,6 +315,10 @@ export interface KnowledgeNode {
   kind: 'directory' | 'file';
   /** Children (only for directories). Sorted: directories first, then files, both alphabetical. */
   children?: KnowledgeNode[];
+  /** First non-heading paragraph, trimmed to ~240 chars. Files only. */
+  summary?: string;
+  /** ISO date (YYYY-MM-DD) extracted from a `**Verified:**` line, when present. Files only. */
+  verifiedAt?: string;
 }
 
 /**

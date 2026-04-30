@@ -435,8 +435,11 @@ function App() {
     }
   };
 
-  const handleOpenKnowledgeFile = (path: string) => {
-    setModal({ path });
+  const handleOpenKnowledgeFile = (path: string, title?: string) => {
+    // Pass the .md's h1 (or fallback) so the modal head doesn't fall back
+    // to displaying the absolute filesystem path — long, low-contrast,
+    // and not what the user wants to read at the top of a note.
+    setModal({ path, title });
   };
 
   const handleOpenHelp = (doc: HelpDoc) => {
