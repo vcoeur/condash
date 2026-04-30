@@ -56,6 +56,15 @@
   --col-done: #4a4f5a;
   --col-unknown: #c0392b;
 
+  /* Code-tab semantic accents — separate from the status gradient so a
+   * "running" or "dirty" indicator never collides with a project status.
+   *   running = pink (live, active — same hue as --col-now but a Code-
+   *             tab token so the two domains stay decoupled).
+   *   dirty   = warm orange — clearly warmer than the cool blue of
+   *             --col-later, distinct from --col-unknown's red. */
+  --col-running: #b85a82;
+  --col-dirty: #b87035;
+
   /* Kind colours — completely outside the status palette so a kind
    * glyph never reads as a status indicator. Warm ink-stamp tones:
    * project = green (focused work, "go"), incident = orange (alert
@@ -121,6 +130,9 @@
      * pops against the gradient. */
     --warn: #e87b6b;
     --col-unknown: #e87b6b;
+    /* Code-tab semantic accents (see light-mode block for rationale). */
+    --col-running: #e8a3c0;
+    --col-dirty: #e8a878;
     /* Dark-mode kind colours — green / orange / yellow. */
     --kind-project: #5fa982;
     --kind-incident: #d68a4a;
@@ -155,6 +167,8 @@
   --col-done: #6e7480;
   --warn: #e87b6b;
   --col-unknown: #e87b6b;
+  --col-running: #e8a3c0;
+  --col-dirty: #e8a878;
 
   --kind-project: #5fa982;
   --kind-incident: #d68a4a;

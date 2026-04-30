@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { Project, Step, StepCounts, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
+import { TerminalIcon } from '../icons';
 import './projects-tab.css';
 
 /* StepIcon — single shape vocabulary for the four step states. Drawn as a
@@ -301,12 +302,7 @@ const KIND_ICON: Record<string, () => any> = {
       stroke-linejoin="round"
       aria-hidden="true"
     >
-      <path
-        d="M8 3L13.5 13.5h-11z"
-        fill="currentColor"
-        fill-opacity="0.18"
-        stroke="currentColor"
-      />
+      <path d="M8 3L13.5 13.5h-11z" fill="currentColor" fill-opacity="0.18" stroke="currentColor" />
       <path d="M8 6.75v3" />
       <circle cx="8" cy="11.5" r="0.7" fill="currentColor" stroke="none" />
     </svg>
@@ -325,12 +321,7 @@ const KIND_ICON: Record<string, () => any> = {
       aria-hidden="true"
     >
       <path d="M2.5 2h6L12 5.5v9H2.5z" />
-      <path
-        d="M8.5 2L12 5.5h-3.5z"
-        fill="currentColor"
-        fill-opacity="0.28"
-        stroke="currentColor"
-      />
+      <path d="M8.5 2L12 5.5h-3.5z" fill="currentColor" fill-opacity="0.28" stroke="currentColor" />
       <path d="M4.75 9h4.5M4.75 11.5h2.75" />
     </svg>
   ),
@@ -364,26 +355,6 @@ export function KindGlyph(props: { kind: string }) {
     >
       <KindIcon kind={props.kind} />
     </span>
-  );
-}
-
-// Terminal — rounded window, chunky `>` chevron, and a filled cursor block
-// (instead of the previous underscore). Reads as "command line with a live
-// cursor", more specific than a generic prompt.
-function TerminalIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1.75" />
-      <path d="M4 6.25L6.5 8.25 4 10.25" />
-      <rect x="8.25" y="9.5" width="3.5" height="1.5" rx="0.4" fill="currentColor" stroke="none" />
-    </svg>
   );
 }
 
