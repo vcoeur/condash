@@ -68,6 +68,27 @@ export interface Settings {
   theme: Theme;
 }
 
+/** One row of `git status --porcelain=v1` output, normalised for the renderer. */
+export interface DirtyFile {
+  /** Two-character porcelain status (e.g. ` M`, `??`, `R `). Whitespace
+   * preserved so the renderer can render the column verbatim. */
+  code: string;
+  /** Path relative to the worktree root. Rename arrows are collapsed to the
+   * new path (rename targets are usually the more interesting filename). */
+  path: string;
+}
+
+/** Click-to-inspect payload for the per-branch dirty badge. */
+export interface DirtyDetails {
+  files: DirtyFile[];
+  /** `git diff --stat HEAD` output (truncated to a fixed line cap so the
+   * popover doesn't blow up on huge changesets). Empty when no tracked
+   * files have changed; the renderer hides the block in that case. */
+  diffstat: string;
+  /** True when the diffstat had to be truncated to fit the line cap. */
+  diffstatTruncated: boolean;
+}
+
 export interface Worktree {
   /** Absolute path on disk. */
   path: string;

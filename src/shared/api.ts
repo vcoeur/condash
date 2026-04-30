@@ -1,5 +1,6 @@
 import type {
   ConceptionInitState,
+  DirtyDetails,
   KnowledgeNode,
   OpenWithSlotKey,
   OpenWithSlots,
@@ -27,6 +28,10 @@ export interface CondashApi {
    * listRepos() runs `git status` everywhere instead of returning TTL-
    * cached values. */
   invalidateGitStatus(): Promise<void>;
+  /** Detailed `git status -s` + `git diff --stat HEAD` for a worktree path.
+   * Powers the click-to-inspect popover on the per-branch `N dirty` badge.
+   * Returns null when the path is missing or not a git repo. */
+  getDirtyDetails(path: string, opts?: { scopeToSubtree?: boolean }): Promise<DirtyDetails | null>;
   listOpenWith(): Promise<OpenWithSlots>;
   launchOpenWith(slot: OpenWithSlotKey, path: string): Promise<void>;
   forceStopRepo(repoName: string): Promise<void>;

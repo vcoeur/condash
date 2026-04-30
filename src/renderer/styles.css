@@ -1397,6 +1397,132 @@ button:hover {
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--col-later);
+  /* Reset button defaults — the badge is rendered as a `<button>` so it can
+   * open the click-to-inspect popover, but should still read as a small
+   * inline pill rather than an OS-styled control. */
+  background: transparent;
+  border: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.branch-dirty:hover {
+  background: color-mix(in srgb, var(--col-later) 14%, transparent);
+}
+
+.branch-dirty:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--col-later) 60%, transparent);
+  outline-offset: 1px;
+}
+
+/* Click-to-inspect popover anchored to the dirty badge. Same `position: fixed`
+ * portal recipe as the open_with menu so it always paints above neighbouring
+ * cards, but wider and with a scrollable file list. */
+.branch-dirty-popover {
+  position: fixed;
+  z-index: 1000;
+  width: min(440px, calc(100vw - 24px));
+  max-height: min(440px, calc(100vh - 80px));
+  overflow: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-lift);
+  padding: 8px 10px 10px;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.branch-dirty-popover-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.branch-dirty-popover-branch {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.branch-dirty-popover-path {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-dirty-popover-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.branch-dirty-popover-files li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.branch-dirty-popover-files li:nth-child(odd) {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.branch-dirty-popover-code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--col-later);
+  white-space: pre;
+}
+
+.branch-dirty-popover-file {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.branch-dirty-popover-empty {
+  margin: 6px 4px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.branch-dirty-popover-error {
+  margin: 0 4px 6px;
+  font-size: 11px;
+  color: var(--warn);
+}
+
+.branch-dirty-popover-diffstat {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.branch-dirty-popover-truncated {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .branch-live-dot {

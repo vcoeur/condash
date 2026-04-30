@@ -15,6 +15,7 @@ import { createProjectNote, readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
 import { invalidateAll } from './git-status-cache';
+import { getDirtyDetails } from './git-details';
 import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
 import {
   attachTerminal,
@@ -267,6 +268,13 @@ function registerIpc(): void {
   // button so explicit user requests always see fresh data, while ambient
   // re-renders (tab switch, tree-events) still benefit from the TTL cache.
   ipcMain.handle('invalidateGitStatus', () => invalidateAll());
+
+  // Click-to-inspect on the per-branch dirty badge. Returns the parsed
+  // `git status` line set + a `git diff --stat HEAD` snippet so the user
+  // can see what's dirty without dropping into a shell.
+  ipcMain.handle('getDirtyDetails', (_, path: string, opts?: { scopeToSubtree?: boolean }) =>
+    getDirtyDetails(path, opts ?? {}),
+  );
 
   ipcMain.handle('listOpenWith', async () => {
     const { conceptionPath } = await readSettings();
