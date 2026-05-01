@@ -102,25 +102,37 @@ export interface Settings {
   welcome?: { dismissed?: boolean };
 }
 
-/** One row of `git status --porcelain=v1` output, normalised for the renderer. */
+/** One row of `git status --porcelain=v1` output, joined with the
+ *  matching `git diff --numstat HEAD` row when present. */
 export interface DirtyFile {
-  /** Two-character porcelain status (e.g. ` M`, `??`, `R `). Whitespace
+  /** Two-character porcelain status (e.g. ` M`, `??`, `D `). Whitespace
    * preserved so the renderer can render the column verbatim. */
   code: string;
   /** Path relative to the worktree root. Rename arrows are collapsed to the
    * new path (rename targets are usually the more interesting filename). */
   path: string;
+  /** Lines added per `git diff --numstat HEAD`. Null when the file is
+   *  untracked, binary, or numstat had no row for it (fresh repo, etc.). */
+  added: number | null;
+  /** Lines deleted. Same null semantics as `added`. */
+  deleted: number | null;
+  /** True when numstat reports the path as binary (`- - <path>`). */
+  binary: boolean;
 }
 
-/** Click-to-inspect payload for the per-branch dirty badge. */
+/** Click-to-inspect payload for the per-branch dirty badge. One row per
+ *  dirty file (capped at a fixed file limit) with totals for the footer. */
 export interface DirtyDetails {
   files: DirtyFile[];
-  /** `git diff --stat HEAD` output (truncated to a fixed line cap so the
-   * popover doesn't blow up on huge changesets). Empty when no tracked
-   * files have changed; the renderer hides the block in that case. */
-  diffstat: string;
-  /** True when the diffstat had to be truncated to fit the line cap. */
-  diffstatTruncated: boolean;
+  /** Aggregate `+` count across the returned files. Untracked / binary
+   *  files contribute 0. */
+  totalAdded: number;
+  /** Aggregate `-` count across the returned files. */
+  totalDeleted: number;
+  /** True when the file list was truncated to fit the fixed limit. */
+  truncated: boolean;
+  /** Total number of dirty files before truncation. */
+  totalCount: number;
 }
 
 export interface Worktree {

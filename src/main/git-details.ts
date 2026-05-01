@@ -2,40 +2,49 @@
 //
 // `getDirtyCount` (in `git-status-cache.ts`) returns the badge number; this
 // module returns the full breakdown shown when the user clicks that badge:
-// every porcelain-v1 line parsed into `{code, path}`, plus a `git diff --stat`
-// snippet so the user can see roughly *how big* each tracked change is
-// without leaving the dashboard.
+// every porcelain-v1 file enriched with its `git diff --numstat HEAD` row,
+// so the renderer can show "what / where / how much" on a single line per
+// file (status code, path, +N -N counts, scaled +/- bar).
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
 
-const DIFFSTAT_LINE_LIMIT = 20;
+const FILE_LIMIT = 20;
 
 export interface DirtyFile {
-  /** Two-character porcelain status (e.g. ` M`, `??`, `R `). Whitespace
+  /** Two-character porcelain status (e.g. ` M`, `??`, `D `). Whitespace
    * preserved so the renderer can pad / colour by index/worktree column. */
   code: string;
   /** Path relative to the worktree root. Rename arrows (`old -> new`) are
    * collapsed to the new path. */
   path: string;
+  /** Lines added (per `git diff --numstat HEAD`). Null when the file is
+   *  untracked, binary, or numstat has no row for it (fresh repo, etc.). */
+  added: number | null;
+  /** Lines deleted. Same null semantics as `added`. */
+  deleted: number | null;
+  /** True when numstat reports this path as binary (`- - <path>`). */
+  binary: boolean;
 }
 
 export interface DirtyDetails {
   files: DirtyFile[];
-  /** Truncated `git diff --stat HEAD` output. Empty when there are no
-   * tracked changes (only untracked files), which the renderer can
-   * detect to skip the diffstat block entirely. */
-  diffstat: string;
-  /** True when the diffstat had to be truncated to fit DIFFSTAT_LINE_LIMIT
-   * lines. Renderer surfaces a "+N more" hint. */
-  diffstatTruncated: boolean;
+  /** Aggregate `+` count across the returned files. Untracked and binary
+   *  files contribute 0. The renderer renders the footer line off these. */
+  totalAdded: number;
+  /** Aggregate `-` count across the returned files. */
+  totalDeleted: number;
+  /** True when the file list was truncated to `FILE_LIMIT`. */
+  truncated: boolean;
+  /** Total number of dirty files before truncation. */
+  totalCount: number;
 }
 
 interface DirtyDetailsOptions {
   /** Mirror `getDirtyCount`'s scopeToSubtree: when true, both `git status`
-   * and `git diff --stat` are restricted to `.` so a submodule entry that
-   * shares its .git with the parent doesn't bleed parent-repo paths. */
+   * and `git diff --numstat` are restricted to `.` so a submodule entry
+   * that shares its .git with the parent doesn't bleed parent-repo paths. */
   scopeToSubtree?: boolean;
 }
 
@@ -54,13 +63,46 @@ async function isZeroByteUntracked(line: string, cwd: string): Promise<boolean> 
   }
 }
 
-function parseFile(line: string): DirtyFile {
+interface ParsedPorcelain {
+  code: string;
+  path: string;
+}
+
+function parsePorcelain(line: string): ParsedPorcelain {
   const code = line.slice(0, 2);
   let rest = line.slice(3);
   // Renames look like `R  old -> new`; collapse to the new path.
   const arrow = rest.indexOf(' -> ');
   if (arrow !== -1) rest = rest.slice(arrow + 4);
   return { code, path: rest };
+}
+
+interface NumstatRow {
+  added: number | null;
+  deleted: number | null;
+  binary: boolean;
+}
+
+function parseNumstat(out: string): Map<string, NumstatRow> {
+  const map = new Map<string, NumstatRow>();
+  for (const line of out.split('\n')) {
+    if (!line) continue;
+    // numstat columns are tab-separated: "<added>\t<deleted>\t<path>".
+    // Binary files report "-\t-\t<path>".
+    const parts = line.split('\t');
+    if (parts.length < 3) continue;
+    const [aRaw, dRaw, ...pathParts] = parts;
+    const path = pathParts.join('\t');
+    const binary = aRaw === '-' && dRaw === '-';
+    const added = binary ? null : Number.parseInt(aRaw, 10);
+    const deleted = binary ? null : Number.parseInt(dRaw, 10);
+    map.set(path, {
+      added: Number.isFinite(added) ? (added as number) : null,
+      deleted: Number.isFinite(deleted) ? (deleted as number) : null,
+      binary,
+    });
+  }
+  return map;
 }
 
 export async function getDirtyDetails(
@@ -70,39 +112,57 @@ export async function getDirtyDetails(
   try {
     const git = simpleGit({ baseDir: path });
     const statusArgs = ['status', '--porcelain=v1'];
-    const diffArgs = ['diff', '--stat', 'HEAD'];
+    // `--no-renames` keeps numstat paths aligned with porcelain (which we
+    // also collapse to the new path on rename) so the join below is by
+    // exact-string match.
+    const numstatArgs = ['diff', '--numstat', '--no-renames', 'HEAD'];
     if (opts.scopeToSubtree) {
       statusArgs.push('--', '.');
-      diffArgs.push('--', '.');
+      numstatArgs.push('--', '.');
     }
 
     const statusOut = await git.raw(statusArgs);
-    const files: DirtyFile[] = [];
+    const porcelain: ParsedPorcelain[] = [];
     for (const line of statusOut.split('\n')) {
       if (line.length === 0) continue;
       if (await isZeroByteUntracked(line, path)) continue;
-      files.push(parseFile(line));
+      porcelain.push(parsePorcelain(line));
     }
 
-    let diffstat = '';
-    let diffstatTruncated = false;
-    // `git diff --stat HEAD` is meaningless when HEAD doesn't exist (fresh
-    // repo) or when nothing tracked has changed; swallow the error / empty
-    // output, the renderer just hides the block.
+    // `git diff --numstat HEAD` is empty / errors when HEAD is missing
+    // (fresh repo) or no tracked file changed; fall through with an empty
+    // map so untracked-only states still show.
+    let numstat = new Map<string, NumstatRow>();
     try {
-      const diffOut = await git.raw(diffArgs);
-      const lines = diffOut.split('\n').filter((l) => l.length > 0);
-      if (lines.length > DIFFSTAT_LINE_LIMIT) {
-        diffstat = lines.slice(0, DIFFSTAT_LINE_LIMIT).join('\n');
-        diffstatTruncated = true;
-      } else {
-        diffstat = lines.join('\n');
-      }
+      const numstatOut = await git.raw(numstatArgs);
+      numstat = parseNumstat(numstatOut);
     } catch {
-      diffstat = '';
+      numstat = new Map();
     }
 
-    return { files, diffstat, diffstatTruncated };
+    const totalCount = porcelain.length;
+    const truncated = totalCount > FILE_LIMIT;
+    const slice = truncated ? porcelain.slice(0, FILE_LIMIT) : porcelain;
+
+    const files: DirtyFile[] = slice.map((p) => {
+      const row = numstat.get(p.path);
+      return {
+        code: p.code,
+        path: p.path,
+        added: row?.added ?? null,
+        deleted: row?.deleted ?? null,
+        binary: row?.binary ?? false,
+      };
+    });
+
+    let totalAdded = 0;
+    let totalDeleted = 0;
+    for (const f of files) {
+      if (f.added) totalAdded += f.added;
+      if (f.deleted) totalDeleted += f.deleted;
+    }
+
+    return { files, totalAdded, totalDeleted, truncated, totalCount };
   } catch {
     return null;
   }

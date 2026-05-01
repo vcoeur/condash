@@ -2,6 +2,7 @@ import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid
 import './code-tab.css';
 import type {
   DirtyDetails,
+  DirtyFile,
   OpenWithSlotKey,
   OpenWithSlots,
   RepoEntry,
@@ -492,11 +493,63 @@ function BranchActions(props: {
   );
 }
 
+/** Bar width (chars) for the +/- visual on each dirty row. Single-file
+ *  diffs map line count → bar width 1:1 up to BAR_WIDTH; bigger diffs
+ *  scale proportionally so a 200-line edit and a 2000-line edit both fill
+ *  the bar but keep their `+`/`-` ratio readable. */
+const BAR_WIDTH = 10;
+
+function buildBar(added: number, deleted: number): string {
+  const total = added + deleted;
+  if (total === 0) return '';
+  if (total <= BAR_WIDTH) {
+    return '+'.repeat(added) + '-'.repeat(deleted);
+  }
+  let plus = Math.round((BAR_WIDTH * added) / total);
+  // Don't render an empty bar for a non-zero `added` (or vice versa) just
+  // because rounding pushed it to 0. The opposite side gives up one cell.
+  if (added > 0 && plus === 0) plus = 1;
+  if (deleted > 0 && plus === BAR_WIDTH) plus = BAR_WIDTH - 1;
+  return '+'.repeat(plus) + '-'.repeat(BAR_WIDTH - plus);
+}
+
+function DirtyFileRow(props: { file: DirtyFile }) {
+  const counts = (): string => {
+    const f = props.file;
+    if (f.binary) return '(bin)';
+    if (f.added === null && f.deleted === null) return '(new)';
+    const a = f.added ?? 0;
+    const d = f.deleted ?? 0;
+    if (a > 0 && d > 0) return `+${a} −${d}`;
+    if (a > 0) return `+${a}`;
+    if (d > 0) return `−${d}`;
+    return '';
+  };
+  const bar = (): string => {
+    const f = props.file;
+    if (f.binary) return '';
+    return buildBar(f.added ?? 0, f.deleted ?? 0);
+  };
+  return (
+    <li class="branch-dirty-popover-row" data-status={props.file.code.trim() || 'mod'}>
+      <span class="branch-dirty-popover-code">{props.file.code}</span>
+      <span class="branch-dirty-popover-file" title={props.file.path}>
+        {props.file.path}
+      </span>
+      <span class="branch-dirty-popover-counts">{counts()}</span>
+      <span class="branch-dirty-popover-bar" aria-hidden="true">
+        {bar()}
+      </span>
+    </li>
+  );
+}
+
 /**
- * Per-branch dirty pill that opens a popover listing every dirty path
- * (`git status -s`) plus a `git diff --stat HEAD` snippet. The popover is
- * a portaled `position: fixed` overlay so it always paints above
- * neighbouring cards (same recipe as the open_with menu).
+ * Per-branch dirty pill that opens a popover listing every dirty path with
+ * its status code, +N/−N counts and a scaled `+`/`-` bar — derived from
+ * `git status --porcelain=v1` joined with `git diff --numstat HEAD`. The
+ * popover is a portaled `position: fixed` overlay so it always paints
+ * above neighbouring cards (same recipe as the open_with menu).
  */
 function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
   const [open, setOpen] = createSignal(false);
@@ -632,23 +685,24 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
                   fallback={<p class="branch-dirty-popover-empty">No dirty files.</p>}
                 >
                   <ul class="branch-dirty-popover-files">
-                    <For each={d().files}>
-                      {(f) => (
-                        <li>
-                          <span class="branch-dirty-popover-code">{f.code}</span>
-                          <span class="branch-dirty-popover-file">{f.path}</span>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                </Show>
-                <Show when={d().diffstat}>
-                  <pre class="branch-dirty-popover-diffstat">
-                    {d().diffstat}
-                    <Show when={d().diffstatTruncated}>
-                      <span class="branch-dirty-popover-truncated">{'\n… (truncated)'}</span>
+                    <For each={d().files}>{(f) => <DirtyFileRow file={f} />}</For>
+                    <Show when={d().truncated}>
+                      <li class="branch-dirty-popover-truncated">
+                        … +{d().totalCount - d().files.length} more
+                      </li>
                     </Show>
-                  </pre>
+                  </ul>
+                  <Show when={d().totalAdded > 0 || d().totalDeleted > 0}>
+                    <footer class="branch-dirty-popover-totals">
+                      {`${d().totalCount} file${d().totalCount === 1 ? '' : 's'} changed`}
+                      <Show when={d().totalAdded > 0}>
+                        <span class="branch-dirty-popover-added">{`, +${d().totalAdded}`}</span>
+                      </Show>
+                      <Show when={d().totalDeleted > 0}>
+                        <span class="branch-dirty-popover-deleted">{`, −${d().totalDeleted}`}</span>
+                      </Show>
+                    </footer>
+                  </Show>
                 </Show>
               </>
             )}
