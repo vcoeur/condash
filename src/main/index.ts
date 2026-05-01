@@ -68,7 +68,13 @@ const CLI_NOUNS: ReadonlySet<string> = new Set([
 function isCliInvocation(): boolean {
   for (let i = 1; i < process.argv.length; i++) {
     const arg = process.argv[i];
-    if (!arg || arg.startsWith('-')) continue;
+    if (!arg) continue;
+    // Top-level --help / --version / short forms are CLI signals — they
+    // should print the CLI's help/version text, not open the GUI.
+    if (arg === '--help' || arg === '-h' || arg === '--version' || arg === '-v') {
+      return true;
+    }
+    if (arg.startsWith('-')) continue;
     return CLI_NOUNS.has(arg);
   }
   return false;

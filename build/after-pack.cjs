@@ -38,13 +38,13 @@ const WRAPPER_SCRIPT = `#!/usr/bin/env bash
 DIR="$(dirname -- "$(readlink -f -- "$0")")"
 BIN="$DIR/__BIN_NAME__"
 
-# Detect a CLI noun in args. Skip flag tokens, then test the first positional
-# against the known set. Anything not on this list (or no positional at all)
-# falls through to GUI mode.
+# Detect CLI invocation: either a known noun, or a top-level --help / -h /
+# --version / -v flag (those should print CLI text, not open the GUI).
+# Other flag tokens (--no-sandbox, etc.) are skipped so a flag-only Electron
+# invocation still falls through to the GUI.
 for arg in "$@"; do
   case "$arg" in
-    -*) continue ;;
-    projects|knowledge|skills|search|repos|worktrees|dirty|config|help)
+    --help|-h|--version|-v|projects|knowledge|skills|search|repos|worktrees|dirty|config|help)
       CLI_BUNDLE="$DIR/resources/app.asar.unpacked/dist-cli/condash.cjs"
       if [ -f "$CLI_BUNDLE" ]; then
         export ELECTRON_RUN_AS_NODE=1
@@ -55,6 +55,7 @@ for arg in "$@"; do
       # belt-and-braces fallback.
       break
       ;;
+    -*) continue ;;
     *) break ;;
   esac
 done
