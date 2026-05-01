@@ -4,7 +4,7 @@ import { autoUpdater } from 'electron-updater';
 import { join } from 'node:path';
 
 import { detectConceptionState, initConception } from './conception-init';
-import { readSettings, settingsPath, writeSettings } from './settings';
+import { DEFAULT_LAYOUT, readSettings, settingsPath, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
@@ -33,6 +33,7 @@ import {
 import { latestScreenshot } from './screenshot';
 import { readHelpDoc } from './help';
 import type {
+  LayoutState,
   OpenWithSlotKey,
   Project,
   StepMarker,
@@ -154,13 +155,16 @@ async function createWindow(initialPath: string | null): Promise<BrowserWindow> 
 }
 
 /**
- * Build the application menu. The toolbar in the renderer is stripped to
- * just the tab bar — every previously-toolbar action lives here as a
- * proper menu item with an accelerator. No Quit accelerator on purpose:
- * Ctrl+Q is too easy to hit by accident, and `File → Quit` routes through
- * a renderer-side confirmation modal anyway.
+ * Build the application menu. The View submenu mirrors the unified
+ * layout's pane-visibility state — Show/Hide Projects + Show/Hide
+ * Terminal as toggles, plus a three-state group (Code | Knowledge |
+ * neither) for the right-slot working surface. Pass the current layout
+ * so check marks line up with what's actually shown; rebuild the menu
+ * after any layout change so the marks refresh. No Quit accelerator on
+ * purpose: Ctrl+Q is too easy to hit by accident, and File → Quit
+ * routes through a renderer-side confirmation modal anyway.
  */
-function buildMenu(): void {
+function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
   const send = (command: string): void => {
     mainWindow?.webContents.send('menu-command', command);
   };
@@ -196,10 +200,36 @@ function buildMenu(): void {
 
   const viewSubmenu: MenuItemConstructorOptions[] = [
     {
+      label: 'Show Projects',
+      type: 'checkbox',
+      checked: layout.projects,
+      click: () => send('toggle-projects'),
+    },
+    {
+      label: 'Show Code',
+      type: 'checkbox',
+      checked: layout.working === 'code',
+      click: () => send('show-code'),
+    },
+    {
+      label: 'Show Knowledge',
+      type: 'checkbox',
+      checked: layout.working === 'knowledge',
+      click: () => send('show-knowledge'),
+    },
+    {
+      label: 'Hide working surface',
+      enabled: layout.working !== null,
+      click: () => send('hide-working'),
+    },
+    {
       label: 'Show Terminal',
+      type: 'checkbox',
+      checked: layout.terminal,
       accelerator: 'CommandOrControl+`',
       click: () => send('toggle-terminal'),
     },
+    { type: 'separator' },
     {
       label: 'Refresh',
       accelerator: 'F5',
@@ -394,6 +424,20 @@ function registerIpc(): void {
     await writeSettings(next);
   });
 
+  ipcMain.handle('getLayout', async () => {
+    const { layout } = await readSettings();
+    return layout ?? DEFAULT_LAYOUT;
+  });
+
+  ipcMain.handle('setLayout', async (_, layout: LayoutState) => {
+    const next = await readSettings();
+    next.layout = layout;
+    await writeSettings(next);
+    // Application menu reflects layout state — rebuild so the View
+    // submenu's check marks line up with the new state.
+    buildMenu(layout);
+  });
+
   ipcMain.handle(
     'step.toggle',
     (_, path: string, lineIndex: number, expectedMarker: StepMarker, newMarker: StepMarker) =>
@@ -481,9 +525,9 @@ app.whenReady().then(async () => {
   // the data. Runs before window creation so the renderer's first
   // term.getPrefs always sees the post-migration state.
   await migrateTerminalFromConfigIfNeeded();
-  const { conceptionPath } = await readSettings();
+  const { conceptionPath, layout } = await readSettings();
   await setWatchedConception(conceptionPath);
-  buildMenu();
+  buildMenu(layout ?? DEFAULT_LAYOUT);
   mainWindow = await createWindow(conceptionPath);
   mainWindow.on('closed', () => {
     mainWindow = null;

@@ -10,6 +10,7 @@ import {
 } from 'solid-js';
 import type {
   Deliverable,
+  LayoutState,
   OpenWithSlotKey,
   OpenWithSlots,
   Project,
@@ -18,6 +19,7 @@ import type {
   TermSession,
   TerminalPrefs,
   Theme,
+  WorkingSurface,
   Worktree,
 } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
@@ -43,7 +45,7 @@ import { matchesShortcut, parseShortcut } from './keymap';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
-import { QuitConfirmModal, type Tab, Toolbar } from './toolbar';
+import { QuitConfirmModal } from './toolbar';
 import { AboutModal } from './about-modal';
 import './styles.css';
 import './modals.css';
@@ -64,19 +66,22 @@ function App() {
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [theme, setTheme] = createSignal<Theme>('system');
   const [toast, setToast] = createSignal<string | null>(null);
-  const [tab, setTab] = createSignal<Tab>('projects');
+  // Composite-layout state — replaces the prior single-`tab` selector.
+  // Default mirrors the persisted server-side default until the real
+  // value loads (avoids a frame of empty UI).
+  const [layout, setLayoutState] = createSignal<LayoutState>({
+    projects: true,
+    working: 'code',
+    terminal: true,
+    projectsWidth: 320,
+  });
   const [modal, setModal] = createSignal<ModalState>(null);
   const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
-  const [terminalOpen, setTerminalOpen] = createSignal(false);
   const [searchModalOpen, setSearchModalOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [aboutOpen, setAboutOpen] = createSignal(false);
-  // Shared search input — owned here so the Toolbar (which renders the
-  // box) and the active tab view (which consumes the value) read from one
-  // place. Empty value → tabs render their default grouped layout.
-  const [searchInput, setSearchInput] = createSignal('');
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
 
@@ -96,6 +101,22 @@ function App() {
     setTheme(t);
     applyTheme(t);
   });
+  void window.condash.getLayout().then(setLayoutState);
+
+  /** Apply a layout patch and persist it. The persistence is fire-and-
+   * forget: any settings.json write failure surfaces as a toast but the
+   * UI state is the source of truth for the session. */
+  const updateLayout = (patch: Partial<LayoutState>): void => {
+    const next = { ...layout(), ...patch };
+    setLayoutState(next);
+    void window.condash.setLayout(next).catch((err) => {
+      flashToast(`Could not persist layout: ${(err as Error).message}`);
+    });
+  };
+
+  const toggleProjects = (): void => updateLayout({ projects: !layout().projects });
+  const toggleTerminal = (): void => updateLayout({ terminal: !layout().terminal });
+  const selectWorking = (next: WorkingSurface): void => updateLayout({ working: next });
 
   const unsubscribe = window.condash.onTreeEvents((events) => {
     void applyTreeEvents(events, {
@@ -156,17 +177,17 @@ function App() {
   );
 
   const [knowledge] = createResource(
-    () => [conceptionPath(), refreshKey(), tab()] as const,
-    async ([path, , currentTab]) => {
-      if (!path || currentTab !== 'knowledge') return null;
+    () => [conceptionPath(), refreshKey(), layout().working] as const,
+    async ([path, , working]) => {
+      if (!path || working !== 'knowledge') return null;
       return window.condash.readKnowledgeTree();
     },
   );
 
   const [repos] = createResource(
-    () => [conceptionPath(), refreshKey(), tab()] as const,
-    async ([path, , currentTab]) => {
-      if (!path || currentTab !== 'code') return [] as RepoEntry[];
+    () => [conceptionPath(), refreshKey(), layout().working] as const,
+    async ([path, , working]) => {
+      if (!path || working !== 'code') return [] as RepoEntry[];
       return window.condash.listRepos();
     },
   );
@@ -190,7 +211,7 @@ function App() {
   );
 
   const ensureTerminalOpen = (): void => {
-    if (!terminalOpen()) setTerminalOpen(true);
+    if (!layout().terminal) updateLayout({ terminal: true });
   };
 
   const router = createModalRouter({
@@ -250,12 +271,12 @@ function App() {
     const toggle = parseShortcut(prefs.shortcut ?? 'Ctrl+`');
     if (matchesShortcut(event, toggle)) {
       event.preventDefault();
-      setTerminalOpen((v) => !v);
+      toggleTerminal();
       return;
     }
 
     // Move-tab shortcuts only fire when the pane is open.
-    if (!terminalOpen() || !terminalHandle) return;
+    if (!layout().terminal || !terminalHandle) return;
     const left = parseShortcut(prefs.move_tab_left_shortcut ?? 'Ctrl+Left');
     const right = parseShortcut(prefs.move_tab_right_shortcut ?? 'Ctrl+Right');
     if (matchesShortcut(event, left)) {
@@ -307,7 +328,23 @@ function App() {
       return;
     }
     if (command === 'toggle-terminal') {
-      setTerminalOpen((v) => !v);
+      toggleTerminal();
+      return;
+    }
+    if (command === 'toggle-projects') {
+      toggleProjects();
+      return;
+    }
+    if (command === 'show-code') {
+      selectWorking(layout().working === 'code' ? null : 'code');
+      return;
+    }
+    if (command === 'show-knowledge') {
+      selectWorking(layout().working === 'knowledge' ? null : 'knowledge');
+      return;
+    }
+    if (command === 'hide-working') {
+      selectWorking(null);
       return;
     }
     if (command === 'refresh') {
@@ -556,91 +593,221 @@ function App() {
     }
   };
 
+  // The top band visibility is "any of the three top-band panes is on"
+  // — when all three are off, only the Terminal renders, and the top
+  // band collapses entirely.
+  const topBandVisible = (): boolean => layout().projects || layout().working !== null;
+
+  // Grid columns inside the top band. Three states:
+  //   - both Projects and working surface visible: split with the user-
+  //     resizable Projects width on the left.
+  //   - one of them hidden: the other fills.
+  //   - none visible: top band is collapsed (handled at the wrapper).
+  const topBandStyle = (): Record<string, string> => {
+    const l = layout();
+    if (l.projects && l.working !== null) {
+      return { 'grid-template-columns': `${l.projectsWidth}px 4px 1fr` };
+    }
+    return { 'grid-template-columns': '1fr' };
+  };
+
+  // Drag the Projects ↔ working-surface splitter. We resize against the
+  // top-band element's left edge, clamped to a sensible range so the
+  // user can't drag a pane below its minimum visible width.
+  let topBandRef: HTMLDivElement | undefined;
+  const startSplitterDrag = (event: MouseEvent): void => {
+    if (!topBandRef) return;
+    event.preventDefault();
+    const rect = topBandRef.getBoundingClientRect();
+    const min = 160;
+    const onMove = (e: MouseEvent): void => {
+      const desired = e.clientX - rect.left;
+      const clamped = Math.max(min, Math.min(rect.width - min - 4, desired));
+      updateLayout({ projectsWidth: Math.round(clamped) });
+    };
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const onCodeHandleClick = (): void => {
+    selectWorking(layout().working === 'code' ? null : 'code');
+  };
+  const onKnowledgeHandleClick = (): void => {
+    selectWorking(layout().working === 'knowledge' ? null : 'knowledge');
+  };
+  const handlesEnabled = (): boolean => !!conceptionPath();
+
   return (
     <div class="app">
-      <Toolbar
-        tab={tab()}
-        conceptionPath={conceptionPath()}
-        searchValue={searchInput()}
-        onSearchInput={setSearchInput}
-        onTabChange={setTab}
+      <div class="workspace">
+        {/* Left strip — Projects handle. Always visible so a hidden
+            pane can be summoned back. Disabled until a conception path
+            is picked, since there is no Projects content to show. */}
+        <aside class="edge-strip edge-strip-left">
+          <button
+            class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().projects }}
+            aria-pressed={layout().projects}
+            onClick={toggleProjects}
+            disabled={!handlesEnabled()}
+            title={layout().projects ? 'Hide Projects' : 'Show Projects'}
+          >
+            <span class="edge-handle-label">Projects</span>
+          </button>
+        </aside>
+
+        <div class="workspace-center">
+          <Show
+            when={conceptionPath()}
+            fallback={
+              <div class="empty">
+                <p>Pick a conception directory to list its projects.</p>
+                <button onClick={handlePick}>Choose folder…</button>
+              </div>
+            }
+          >
+            <Show when={topBandVisible()}>
+              <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
+                <Show when={layout().projects}>
+                  <section class="pane pane-projects">
+                    <Suspense fallback={<div class="empty">Loading…</div>}>
+                      <Show
+                        when={(projects() ?? []).length > 0}
+                        fallback={<div class="empty">No projects found under projects/.</div>}
+                      >
+                        <ProjectsView
+                          buckets={groupByStatus(projects() ?? [])}
+                          searchInput=""
+                          onOpen={handleOpenProject}
+                          onToggleStep={handleToggleStep}
+                          onDropProject={handleDropOnColumn}
+                          onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                        />
+                      </Show>
+                    </Suspense>
+                  </section>
+                </Show>
+
+                <Show when={layout().projects && layout().working !== null}>
+                  <div
+                    class="top-band-splitter"
+                    onMouseDown={startSplitterDrag}
+                    title="Drag to resize"
+                  />
+                </Show>
+
+                <Show when={layout().working === 'knowledge'}>
+                  <section class="pane pane-working">
+                    <Suspense fallback={<div class="empty">Loading…</div>}>
+                      <Show
+                        when={knowledge()}
+                        fallback={
+                          <div class="empty">
+                            No knowledge/ directory under the selected conception path.
+                          </div>
+                        }
+                      >
+                        <KnowledgeView
+                          root={knowledge()!}
+                          searchInput=""
+                          onOpen={handleOpenKnowledgeFile}
+                        />
+                      </Show>
+                    </Suspense>
+                  </section>
+                </Show>
+
+                <Show when={layout().working === 'code'}>
+                  <section class="pane pane-working">
+                    <Suspense fallback={<div class="empty">Loading…</div>}>
+                      <Show
+                        when={(repos() ?? []).length > 0}
+                        fallback={
+                          <div class="empty">
+                            No repositories listed. Add <code>repositories.primary</code> /{' '}
+                            <code>secondary</code> to <code>configuration.json</code> via the gear.
+                          </div>
+                        }
+                      >
+                        <CodeView
+                          repos={repos() ?? []}
+                          groups={repoGroups()}
+                          slots={openWithSlots() ?? {}}
+                          liveRepos={liveRepos()}
+                          liveSessionCwds={liveSessionCwds()}
+                          codeRunSessions={codeRunSessions()}
+                          xtermPrefs={terminalPrefs()?.xterm}
+                          onOpen={handleOpenInEditor}
+                          onLaunch={(slot, path) => void handleLaunch(slot, path)}
+                          onForceStop={(r) => void handleForceStop(r)}
+                          onStop={handleStopRepo}
+                          onRun={(r, wt) => void handleRunRepo(r, wt)}
+                          onOpenInTerm={(r, wt) => void bridge.handleOpenInTerm(r, wt)}
+                          onCloseSession={(id) => void window.condash.termClose(id)}
+                        />
+                      </Show>
+                    </Suspense>
+                  </section>
+                </Show>
+              </div>
+            </Show>
+          </Show>
+        </div>
+
+        {/* Right strip — Code + Knowledge handles. Mutually exclusive
+            in the working-surface slot; clicking the active one hides
+            the slot, clicking the other swaps. */}
+        <aside class="edge-strip edge-strip-right">
+          <button
+            class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().working === 'code' }}
+            aria-pressed={layout().working === 'code'}
+            onClick={onCodeHandleClick}
+            disabled={!handlesEnabled()}
+            title={layout().working === 'code' ? 'Hide Code' : 'Show Code'}
+          >
+            <span class="edge-handle-label">Code</span>
+          </button>
+          <button
+            class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().working === 'knowledge' }}
+            aria-pressed={layout().working === 'knowledge'}
+            onClick={onKnowledgeHandleClick}
+            disabled={!handlesEnabled()}
+            title={layout().working === 'knowledge' ? 'Hide Knowledge' : 'Show Knowledge'}
+          >
+            <span class="edge-handle-label">Knowledge</span>
+          </button>
+        </aside>
+      </div>
+
+      {/* TerminalPane is always mounted at full window width, below the
+          workspace row. Its own tab strip carries the persistent
+          Terminal handle on the left — clicking the handle toggles
+          the body open/closed. When closed, only the strip remains
+          visible (height collapses to the strip height); when open,
+          the body grows to its persisted height above the strip. The
+          left / right edge strips above end where this pane begins,
+          so the bottom band is genuinely full width. */}
+      <TerminalPane
+        open={layout().terminal}
+        onClose={() => updateLayout({ terminal: false })}
+        onTogglePane={toggleTerminal}
+        launcherCommand={terminalPrefs()?.launcher_command ?? null}
+        cwd={conceptionPath()}
+        xtermPrefs={terminalPrefs()?.xterm}
+        registerHandle={(handle) => {
+          terminalHandle = handle;
+        }}
       />
-
-      <Show
-        when={conceptionPath()}
-        fallback={
-          <div class="empty">
-            <p>Pick a conception directory to list its projects.</p>
-            <button onClick={handlePick}>Choose folder…</button>
-          </div>
-        }
-      >
-        <Show when={tab() === 'projects'}>
-          <Suspense fallback={<div class="empty">Loading…</div>}>
-            <Show
-              when={(projects() ?? []).length > 0}
-              fallback={<div class="empty">No projects found under projects/.</div>}
-            >
-              <ProjectsView
-                buckets={groupByStatus(projects() ?? [])}
-                searchInput={searchInput()}
-                onOpen={handleOpenProject}
-                onToggleStep={handleToggleStep}
-                onDropProject={handleDropOnColumn}
-                onWorkOn={(p) => void bridge.handleWorkOn(p)}
-              />
-            </Show>
-          </Suspense>
-        </Show>
-
-        <Show when={tab() === 'knowledge'}>
-          <Suspense fallback={<div class="empty">Loading…</div>}>
-            <Show
-              when={knowledge()}
-              fallback={
-                <div class="empty">No knowledge/ directory under the selected conception path.</div>
-              }
-            >
-              <KnowledgeView
-                root={knowledge()!}
-                searchInput={searchInput()}
-                onOpen={handleOpenKnowledgeFile}
-              />
-            </Show>
-          </Suspense>
-        </Show>
-
-        <Show when={tab() === 'code'}>
-          <Suspense fallback={<div class="empty">Loading…</div>}>
-            <Show
-              when={(repos() ?? []).length > 0}
-              fallback={
-                <div class="empty">
-                  No repositories listed. Add <code>repositories.primary</code> /{' '}
-                  <code>secondary</code> to <code>configuration.json</code> via the gear.
-                </div>
-              }
-            >
-              <CodeView
-                repos={repos() ?? []}
-                groups={repoGroups()}
-                slots={openWithSlots() ?? {}}
-                liveRepos={liveRepos()}
-                liveSessionCwds={liveSessionCwds()}
-                codeRunSessions={codeRunSessions()}
-                xtermPrefs={terminalPrefs()?.xterm}
-                onOpen={handleOpenInEditor}
-                onLaunch={(slot, path) => void handleLaunch(slot, path)}
-                onForceStop={(r) => void handleForceStop(r)}
-                onStop={handleStopRepo}
-                onRun={(r, wt) => void handleRunRepo(r, wt)}
-                onOpenInTerm={(r, wt) => void bridge.handleOpenInTerm(r, wt)}
-                onCloseSession={(id) => void window.condash.termClose(id)}
-              />
-            </Show>
-          </Suspense>
-        </Show>
-      </Show>
 
       <ProjectPreview
         project={previewProject()}
@@ -688,17 +855,6 @@ function App() {
           onOpenInOs={handleOpenInEditor}
         />
       </Show>
-
-      <TerminalPane
-        open={terminalOpen()}
-        onClose={() => setTerminalOpen(false)}
-        launcherCommand={terminalPrefs()?.launcher_command ?? null}
-        cwd={conceptionPath()}
-        xtermPrefs={terminalPrefs()?.xterm}
-        registerHandle={(handle) => {
-          terminalHandle = handle;
-        }}
-      />
 
       <Show when={searchModalOpen()}>
         <SearchModal

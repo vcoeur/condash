@@ -1,59 +1,33 @@
 import { Show } from 'solid-js';
+import type { LayoutState } from '@shared/types';
 import './toolbar.css';
 
-export type Tab = 'projects' | 'knowledge' | 'code';
-
-/** Top-of-window toolbar — tab buttons + the search input for the active
- * tab (Projects / Knowledge only).
+/** Top-of-window toolbar — only the search input now.
  *
- * Other actions (Show Terminal, Refresh, Settings, Open conception
- * folder, About / Help docs) live in the application menu now. The
- * toolbar's job is workspace navigation + the per-tab search box. */
+ * Pane visibility is toggled from the edge handles around the workspace
+ * (see `.edge-strip-*` in main.tsx). The toolbar's job is the per-pane
+ * search box; placeholder text adapts to whichever searchable panes are
+ * visible (Projects and / or Knowledge). */
 export function Toolbar(props: {
-  tab: Tab;
+  layout: LayoutState;
   conceptionPath: string | null;
   searchValue: string;
   onSearchInput: (value: string) => void;
-  onTabChange: (tab: Tab) => void;
 }) {
-  const placeholder = (): string => {
-    if (props.tab === 'projects')
-      return 'Search projects — multi-word AND, "phrases" stay together';
-    if (props.tab === 'knowledge')
-      return 'Search knowledge — multi-word AND, "phrases" stay together';
-    return '';
-  };
   const showSearch = (): boolean =>
-    !!props.conceptionPath && (props.tab === 'projects' || props.tab === 'knowledge');
+    !!props.conceptionPath && (props.layout.projects || props.layout.working === 'knowledge');
+
+  const placeholder = (): string => {
+    const tokens: string[] = [];
+    if (props.layout.projects) tokens.push('projects');
+    if (props.layout.working === 'knowledge') tokens.push('knowledge');
+    if (tokens.length === 0) return '';
+    return `Search ${tokens.join(' + ')} — multi-word AND, "phrases" stay together`;
+  };
 
   return (
     <header class="toolbar">
-      <nav class="tabs main-tabs">
-        <button
-          class="tab"
-          classList={{ active: props.tab === 'projects' }}
-          onClick={() => props.onTabChange('projects')}
-        >
-          Projects
-        </button>
-        <button
-          class="tab"
-          classList={{ active: props.tab === 'code' }}
-          onClick={() => props.onTabChange('code')}
-          disabled={!props.conceptionPath}
-        >
-          Code
-        </button>
-        <button
-          class="tab"
-          classList={{ active: props.tab === 'knowledge' }}
-          onClick={() => props.onTabChange('knowledge')}
-          disabled={!props.conceptionPath}
-        >
-          Knowledge
-        </button>
-      </nav>
-      <Show when={showSearch()}>
+      <Show when={showSearch()} fallback={<div class="toolbar-spacer" />}>
         <input
           class="toolbar-search"
           type="search"

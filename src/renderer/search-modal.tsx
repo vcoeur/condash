@@ -27,6 +27,12 @@ const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, t
  * references (declaring them inside SearchModal means each render call
  * re-creates the function identity, which trips Solid's reactive tracking).
  */
+/** Which source bucket(s) to surface in the result list. `all` shows
+ * both — projects (with their notes) and knowledge files. The pill
+ * filter sits on the search modal header. The backend doesn't know
+ * about the filter; we just hide non-matching buckets in the UI. */
+type SourceFilter = 'all' | 'projects' | 'knowledge';
+
 export function SearchModal(props: {
   onClose: () => void;
   onOpenProject: (projectPath: string) => void;
@@ -34,6 +40,7 @@ export function SearchModal(props: {
 }) {
   const [input, setInput] = createSignal('');
   const [query, setQuery] = createSignal('');
+  const [sourceFilter, setSourceFilter] = createSignal<SourceFilter>('all');
   let inputEl: HTMLInputElement | undefined;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -45,6 +52,26 @@ export function SearchModal(props: {
   const grouped = createMemo(() => groupHits(results()?.hits ?? []));
   const truncated = createMemo(() => !!results()?.truncated);
   const totalBeforeCap = createMemo(() => results()?.totalBeforeCap ?? 0);
+
+  // Counts shown on the filter pills — derived from the unfiltered
+  // groups so each pill always reflects "how many hits I'd see if I
+  // picked this filter," even while a different one is selected.
+  const projectCount = createMemo(() =>
+    grouped().projects.reduce((acc, g) => acc + 1 + g.files.length, 0),
+  );
+  const knowledgeCount = createMemo(() => grouped().knowledge.length);
+  const totalCount = createMemo(() => projectCount() + knowledgeCount());
+
+  const showProjects = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'projects';
+  const showKnowledge = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'knowledge';
+
+  // Visible-results count under the active filter — drives the
+  // "no matches in this source" empty state.
+  const visibleCount = createMemo(() => {
+    if (sourceFilter() === 'projects') return projectCount();
+    if (sourceFilter() === 'knowledge') return knowledgeCount();
+    return totalCount();
+  });
 
   const onInput = (value: string): void => {
     setInput(value);
@@ -104,23 +131,67 @@ export function SearchModal(props: {
             ×
           </button>
         </header>
+        <Show when={input().trim().length > 0}>
+          <div class="search-source-filter" role="radiogroup" aria-label="Filter by source">
+            <button
+              class="search-source-pill"
+              classList={{ active: sourceFilter() === 'all' }}
+              role="radio"
+              aria-checked={sourceFilter() === 'all'}
+              onClick={() => setSourceFilter('all')}
+            >
+              All <span class="search-source-count">{totalCount()}</span>
+            </button>
+            <button
+              class="search-source-pill"
+              classList={{ active: sourceFilter() === 'projects' }}
+              role="radio"
+              aria-checked={sourceFilter() === 'projects'}
+              onClick={() => setSourceFilter('projects')}
+            >
+              Projects <span class="search-source-count">{projectCount()}</span>
+            </button>
+            <button
+              class="search-source-pill"
+              classList={{ active: sourceFilter() === 'knowledge' }}
+              role="radio"
+              aria-checked={sourceFilter() === 'knowledge'}
+              onClick={() => setSourceFilter('knowledge')}
+            >
+              Knowledge <span class="search-source-count">{knowledgeCount()}</span>
+            </button>
+          </div>
+        </Show>
         <div class="search-modal-body">
           <Show when={input().trim().length > 0} fallback={<SearchTips />}>
             <Suspense fallback={<div class="empty">Searching…</div>}>
-              <Show when={grouped().total > 0} fallback={<div class="empty">No matches.</div>}>
+              <Show
+                when={visibleCount() > 0}
+                fallback={
+                  <div class="empty">
+                    {grouped().total === 0
+                      ? 'No matches.'
+                      : `No matches in ${sourceFilter() === 'projects' ? 'projects' : 'knowledge'}.`}
+                  </div>
+                }
+              >
                 <ul class="search-results search-results-grouped">
-                  <For each={grouped().projects}>
-                    {(g) => (
-                      <ProjectGroupRow
-                        group={g}
-                        onOpenProject={openProjectAndClose}
-                        onOpenFile={openFileAndClose}
-                      />
-                    )}
-                  </For>
-                  <For each={grouped().knowledge}>
-                    {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
-                  </For>
+                  <Show when={showProjects()}>
+                    <For each={grouped().projects}>
+                      {(g) => (
+                        <ProjectGroupRow
+                          group={g}
+                          onOpenProject={openProjectAndClose}
+                          onOpenFile={openFileAndClose}
+                        />
+                      )}
+                    </For>
+                  </Show>
+                  <Show when={showKnowledge()}>
+                    <For each={grouped().knowledge}>
+                      {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                    </For>
+                  </Show>
                 </ul>
                 <Show when={truncated()}>
                   <div class="search-truncated-hint">

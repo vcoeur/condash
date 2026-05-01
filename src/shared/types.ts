@@ -63,12 +63,35 @@ export interface ProjectFileEntry {
 
 export type Theme = 'light' | 'dark' | 'system';
 
+/** Right-slot working surface — picks which of Code / Knowledge is shown
+ * in the top-band right pane, or `null` to leave it hidden. The two are
+ * mutually exclusive: showing one swaps the other out. */
+export type WorkingSurface = 'code' | 'knowledge' | null;
+
+/** Composite-layout state. The unified window has a top band (Projects on
+ * the left, working surface on the right) and a bottom band (Terminal).
+ * Each band can be hidden independently; the working surface is also
+ * tristate. Sizes are persisted alongside visibility so re-showing a pane
+ * restores its previous dimensions. */
+export interface LayoutState {
+  projects: boolean;
+  /** Code / Knowledge / hidden — single right-slot tristate. */
+  working: WorkingSurface;
+  terminal: boolean;
+  /** Width of the Projects pane in CSS pixels when both Projects and the
+   * working surface are visible. The working surface fills the rest. */
+  projectsWidth: number;
+}
+
 export interface Settings {
   conceptionPath: string | null;
   theme: Theme;
   /** Per-machine terminal prefs. Moved here from configuration.json so each
    * laptop carries its own font/screenshot/keybinding choices. */
   terminal?: TerminalPrefs;
+  /** Composite-layout visibility + sizes. Persisted globally (per-machine)
+   * so a fresh launch reopens with the last layout. */
+  layout?: LayoutState;
 }
 
 /** One row of `git status --porcelain=v1` output, normalised for the renderer. */

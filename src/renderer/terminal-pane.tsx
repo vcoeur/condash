@@ -56,6 +56,9 @@ export interface TerminalPaneHandle {
 export function TerminalPane(props: {
   open: boolean;
   onClose: () => void;
+  /** Toggle the pane open / closed. Used by the in-strip Terminal
+   *  handle which is visible whether the body is shown or not. */
+  onTogglePane: () => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
   /** Optional launcher command (e.g. `claude`). When set, a second `+` button
    * spawns a shell that runs this command. */
@@ -451,6 +454,7 @@ export function TerminalPane(props: {
       isActiveColumn={activeColumn() === col}
       renamingId={renamingId()}
       launcherCommand={props.launcherCommand}
+      paneOpen={props.open}
       dnd={dnd}
       registerHost={(c, el) => {
         if (c === 'left') leftHost = el;
@@ -478,6 +482,7 @@ export function TerminalPane(props: {
         setActiveColumn(c);
         search.openSearch();
       }}
+      onTogglePane={() => props.onTogglePane()}
     />
   );
 
@@ -489,19 +494,13 @@ export function TerminalPane(props: {
       classList={{ closed: !props.open }}
       style={{ height: `${paneHeight()}px` }}
     >
-      <div
-        class="terminal-pane-resize"
-        onMouseDown={(e) => resize.startHeightDrag(e)}
-        title="Drag to resize"
-      />
-      <button
-        class="terminal-pane-close"
-        onClick={props.onClose}
-        title="Close pane"
-        aria-label="Close pane"
-      >
-        ×
-      </button>
+      <Show when={props.open}>
+        <div
+          class="terminal-pane-resize"
+          onMouseDown={(e) => resize.startHeightDrag(e)}
+          title="Drag to resize"
+        />
+      </Show>
       <div
         class="terminal-columns"
         ref={(el) => (columnsRoot = el)}

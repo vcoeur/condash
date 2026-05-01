@@ -251,6 +251,150 @@ button:hover {
   height: 100%;
 }
 
+/* Workspace — flex row holding the left edge strip, the center stack
+ * (top band + TerminalPane + bottom strip), and the right edge strip.
+ * Edge strips host the persistent pane handles; the center hosts the
+ * actual content. */
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.workspace-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Edge strip — narrow always-visible bar that hosts one or two pane
+ * handles. The handle is a vertical (or horizontal for the bottom)
+ * button doubling as a label and a toggle. Always present so a hidden
+ * pane can be summoned back. */
+.edge-strip {
+  display: flex;
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.edge-strip-left,
+.edge-strip-right {
+  width: 28px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 8px 0;
+  gap: 4px;
+}
+
+.edge-strip-left {
+  border-right: 1px solid var(--border);
+}
+
+.edge-strip-right {
+  border-left: 1px solid var(--border);
+}
+
+/* Edge handle — the clickable badge inside an edge strip. Carries the
+ * pane name as vertical text on the side strips; horizontal text on
+ * the bottom strip. Active state mirrors the toolbar's old pill style:
+ * elevated background + strong border. */
+.edge-handle {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 6px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.edge-handle:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.edge-handle.active {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.edge-handle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Vertical handles (left + right edges) — text reads top-to-bottom.
+ * Sized to fill the strip width minus a few pixels of breathing room. */
+.edge-handle-vertical {
+  width: 100%;
+  flex: 0 0 auto;
+  padding: 8px 0;
+}
+
+.edge-handle-vertical .edge-handle-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Unified-layout top band — Projects + working surface (Code or
+ * Knowledge), side-by-side. The grid template is set inline from the
+ * persisted Projects width when both panes are visible; with one pane
+ * hidden it collapses to a single column. The band itself only renders
+ * when at least one of its panes is on; otherwise TerminalPane below
+ * fills the window. */
+.top-band {
+  flex: 1;
+  display: grid;
+  min-height: 0;
+  /* grid-template-columns set inline — see topBandStyle() in main.tsx. */
+}
+
+/* Vertical handle between Projects and the working surface. The same
+ * pattern as .terminal-splitter (col-resize, accent-on-hover) so the two
+ * resizers feel related. */
+.top-band-splitter {
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 100ms ease;
+}
+
+.top-band-splitter:hover {
+  background: var(--accent);
+}
+
+/* Common pane wrapper. Each pane manages its own internal scroll; the
+ * wrapper just provides a flex column with min-height: 0 so children
+ * can shrink properly inside the grid cell. */
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.pane-projects {
+  border-right: 1px solid var(--border);
+}
+
 .toolbar {
   display: flex;
   align-items: center;

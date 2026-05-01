@@ -9,14 +9,16 @@
   /* Height controlled inline via the resize handle. */
 }
 
-/* Mounted-but-collapsed state: the pane stays in the DOM (so renderer-level
- * spawn handlers always have a TerminalPaneHandle) but takes no height and
- * is invisible. */
+/* Closed state — the body collapses but the tab strip stays visible
+ * (carrying the persistent Terminal handle, the spawn buttons, and
+ * the live tabs). The whole pane shrinks to the strip's natural
+ * height (~32px), so the strip behaves as a permanent bottom bar
+ * with the same component as when the pane is expanded. */
 .terminal-pane.closed {
-  height: 0 !important;
-  border-top: none;
-  visibility: hidden;
-  pointer-events: none;
+  height: auto !important;
+}
+.terminal-pane.closed .terminal-host {
+  display: none;
 }
 
 .terminal-pane-resize {
@@ -34,29 +36,48 @@
   background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
-.terminal-pane-close {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  z-index: 3;
-  width: 22px;
+/* "Terminal" pill — sits inline at the left of the tab strip, in the
+ * left column only. Acts as the persistent toggle for the pane: when
+ * the pane is closed, the strip is the only thing visible at the
+ * bottom of the window and clicking the pill expands the body; when
+ * open, clicking the pill collapses the body. Active styling marks
+ * the pill while the body is showing. Matches the Projects / Code /
+ * Knowledge edge handles in shape. */
+.terminal-pane-handle {
+  flex-shrink: 0;
   height: 22px;
+  padding: 0 12px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--text-muted);
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   line-height: 1;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin-right: 4px;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
-.terminal-pane-close:hover {
+.terminal-pane-handle:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+.terminal-pane-handle.active {
+  background: var(--bg-elevated);
+  color: var(--text);
   border-color: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 .terminal-columns {
