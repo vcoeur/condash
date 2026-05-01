@@ -44,6 +44,9 @@ export interface CondashApi {
   initConception(path: string): Promise<{ created: string[] }>;
   getTheme(): Promise<Theme>;
   setTheme(theme: Theme): Promise<void>;
+  /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
+   * for the settings modal's "Open externally" button. */
+  getSettingsPath(): Promise<string>;
   toggleStep(
     path: string,
     lineIndex: number,
@@ -77,6 +80,9 @@ export interface CondashApi {
   termResize(id: string, cols: number, rows: number): Promise<void>;
   termClose(id: string): Promise<void>;
   termGetPrefs(): Promise<TerminalPrefs>;
+  /** Replace the persisted terminal prefs in settings.json. The patch is a
+   * full replacement; pass `{}` to clear back to defaults. */
+  termSetPrefs(prefs: TerminalPrefs): Promise<void>;
   termLatestScreenshot(dir: string): Promise<string | null>;
   /** Snapshot of currently-tracked sessions (live or recently exited). */
   termList(): Promise<TermSession[]>;

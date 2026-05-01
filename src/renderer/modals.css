@@ -222,29 +222,318 @@
   font-weight: 500;
 }
 
-/* ---- Settings: Terminal tab ------------------------------------------- */
+/* ---- Settings modal (full-viewport revamp) ----------------------------- */
 
-.settings-terminal h3 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-faint);
-  margin: 14px 0 6px;
-  font-weight: 600;
+/* The Settings modal owns the whole window — backdrop has no padding so the
+ * panel can fill 100vw / 100vh, and the close (Esc / outside-click) still
+ * works because the backdrop captures clicks outside the panel. */
+.modal-backdrop.settings-modal-backdrop {
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
 }
 
-.settings-terminal h3:first-of-type {
-  margin-top: 4px;
+/* Two-class selector raises specificity above the base `.modal` rule that
+ * caps width at min(1100px, 100%) — note-modal.css loads after modals.css,
+ * so without the doubled class it wins on source order. */
+.settings-modal.settings-modal--full {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.settings-head {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-back:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.settings-back-arrow {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.settings-head-spacer {
+  flex: 1;
+}
+
+.modal-saving {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.settings-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.settings-rail {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 14px 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.settings-rail-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-rail-group + .settings-rail-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-rail-group-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 14px 6px;
+}
+
+.settings-rail-group-label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.settings-rail-group-heading code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.settings-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-rail-list li {
+  margin: 0;
+  padding: 0;
+}
+
+.settings-rail-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  padding: 7px 14px 7px 22px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-rail-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.settings-rail-item.active {
+  background: var(--bg-subtle);
+  color: var(--text);
+  border-left-color: var(--accent);
+}
+
+.settings-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 28px 64px;
+  background: var(--bg);
+}
+
+/* Cap content for readability on ultrawide displays — the scroll viewport
+ * still spans the full window (so the scrollbar hugs the right edge), but
+ * dividers / sections / forms stay left-aligned and don't grow past 1200 px
+ * of useful column width. */
+.settings-scroll > * {
+  max-width: 1200px;
+}
+
+.settings-group-divider {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 18px 18px 12px;
+  margin: 28px 0 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: relative;
+}
+
+.settings-group-divider::before {
+  content: '';
+  position: absolute;
+  left: -28px;
+  right: 0;
+  top: -16px;
+  height: 1px;
+  background: var(--border);
+}
+
+.settings-group-divider:first-of-type {
+  margin-top: 0;
+}
+
+.settings-group-divider:first-of-type::before {
+  display: none;
+}
+
+.settings-group-divider h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  text-transform: none;
+}
+
+.settings-group-divider code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.settings-group-divider-hint {
+  color: var(--text-faint);
+  font-size: 12px;
+  flex-basis: 100%;
+}
+
+.settings-group-divider-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  align-items: center;
+}
+
+.settings-section {
+  padding: 8px 0 32px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 16px;
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+}
+
+.settings-section h2 {
+  margin: 0 0 14px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text);
+}
+
+.settings-section h3 {
+  margin: 18px 0 8px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-section h3:first-of-type {
+  margin-top: 6px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-field-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.settings-field-hint {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.settings-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 8px 14px;
+  gap: 10px 14px;
+}
+
+.settings-grid--wide {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .settings-grid label,
-.settings-color {
+.settings-color,
+.settings-open-with {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -254,7 +543,10 @@
 
 .settings-grid input,
 .settings-grid select,
-.settings-color input {
+.settings-color input,
+.settings-open-with input,
+.settings-list-row input,
+.settings-repo-row input {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -262,11 +554,15 @@
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 12px;
+  min-width: 0;
 }
 
 .settings-grid input:focus,
 .settings-grid select:focus,
-.settings-color input:focus {
+.settings-color input:focus,
+.settings-open-with input:focus,
+.settings-list-row input:focus,
+.settings-repo-row input:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -281,65 +577,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 6px 14px;
-}
-
-/* ---- Settings modal ---------------------------------------------------- */
-
-.settings-modal {
-  width: min(880px, 92vw);
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.settings-tabs {
-  display: flex;
-  gap: 0;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-  flex-shrink: 0;
-}
-
-.settings-tab {
-  background: transparent;
-  border: none;
-  padding: 8px 14px 9px;
-  margin-bottom: -1px;
-  cursor: pointer;
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: 12.5px;
-  font-weight: 500;
-  border-bottom: 2px solid transparent;
-}
-
-.settings-tab:hover {
-  color: var(--text);
-}
-
-.settings-tab.active {
-  color: var(--text);
-  border-bottom-color: var(--text);
-}
-
-.settings-body {
-  flex: 1;
-  min-height: 320px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 16px;
-}
-
-.settings-section h3 {
-  margin: 0 0 10px;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 .settings-radio-group {
@@ -360,74 +597,146 @@
   margin: 0;
 }
 
-.settings-config {
-  flex: 1;
+/* Repositories ----------------------------------------------------------- */
+
+.settings-bucket {
+  margin-bottom: 16px;
+}
+
+.settings-repo-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  padding: 8px;
+  margin-bottom: 6px;
   display: flex;
   flex-direction: column;
-  min-height: 280px;
   gap: 8px;
-  overflow: hidden;
 }
 
-.settings-config-toolbar {
+.settings-repo-row-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-.settings-config-path {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-left: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60%;
-}
-
-.settings-cm-host {
+.settings-repo-name {
   flex: 1;
-  min-height: 280px;
+  min-width: 0;
+}
+
+.settings-repo-row-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 14px;
+  padding: 4px 4px 2px;
+}
+
+.settings-repo-submodules {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 0 18px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.settings-repo-submodules > .settings-field-label {
+  margin-bottom: 2px;
+}
+
+.settings-repo-submodules .settings-repo-row {
+  background: var(--bg-subtle);
+}
+
+.settings-repo-row-detail label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.settings-list-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.settings-list-row input {
+  flex: 1;
+}
+
+.settings-list-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Text-bearing buttons inside the settings modal need the natural-width
+ * variant — `.modal-button` defaults to a 32 × 32 icon square (note-modal
+ * head action), which clips multi-word labels like "+ with run / label". */
+.settings-modal--full .settings-list-actions .modal-button,
+.settings-modal--full .settings-group-divider-actions .modal-button,
+.settings-modal--full .settings-confirm-actions .modal-button,
+.settings-modal--full .settings-conception-path .modal-button {
+  width: auto;
+  height: auto;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* Open-with rows: label + command stacked */
+.settings-open-with input + input {
+  margin-top: 4px;
+}
+
+/* Close-confirm overlay (3-button inline modal inside settings) */
+.settings-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.settings-confirm {
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
+  width: min(420px, 90vw);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.settings-cm-host .cm-editor {
-  height: 100%;
+.settings-confirm h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.settings-shortcuts {
-  border-collapse: collapse;
-  width: 100%;
+.settings-confirm p {
+  margin: 0;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
-.settings-shortcuts th {
-  text-align: left;
-  padding: 6px 12px 6px 0;
-  font-weight: 500;
-  color: var(--text-muted);
-  width: 50%;
-}
-
-.settings-shortcuts td {
-  padding: 6px 0;
-}
-
-.settings-shortcuts code {
-  background: var(--bg-subtle);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.settings-hint {
-  margin: 0 0 12px;
-  font-size: 12px;
-  color: var(--text-muted);
+.settings-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* ---- Quit-confirm modal ------------------------------------------------ */

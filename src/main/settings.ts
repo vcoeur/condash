@@ -5,9 +5,9 @@ import type { Settings } from '../shared/types';
 
 const FILE_NAME = 'settings.json';
 
-const empty: Settings = { conceptionPath: null, theme: 'system' };
+const empty: Settings = { conceptionPath: null, theme: 'system', terminal: {} };
 
-function settingsPath(): string {
+export function settingsPath(): string {
   return join(app.getPath('userData'), FILE_NAME);
 }
 
