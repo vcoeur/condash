@@ -115,7 +115,9 @@ export const configSchema = z
       })
       .strict()
       .optional(),
-    pdf_viewer: z.array(z.string()).optional(),
+    /** @deprecated Terminal preferences live in settings.json now. Kept here
+     * so existing files validate during the boot-time migration; do not
+     * read or write this block from new code. */
     terminal: terminalSettings.optional(),
   })
   .strict();

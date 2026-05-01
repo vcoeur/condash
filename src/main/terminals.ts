@@ -3,8 +3,9 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
-import type { TermSession, TermSide, TermSpawnRequest } from '../shared/types';
+import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../shared/types';
 import { findRepoEntry, type ConfigShape } from './config-walk';
+import { readSettings, writeSettings } from './settings';
 
 interface Session {
   id: string;
@@ -77,18 +78,10 @@ function makeId(): string {
   return `t${Date.now().toString(36)}-${nextId++}`;
 }
 
-interface RawConfigShape extends ConfigShape {
-  terminal?: {
-    shell?: string;
-    launcher_command?: string;
-    screenshot_dir?: string;
-  };
-}
-
-async function readRawConfig(conceptionPath: string): Promise<RawConfigShape> {
+async function readRawConfig(conceptionPath: string): Promise<ConfigShape> {
   try {
     const raw = await fs.readFile(join(conceptionPath, 'configuration.json'), 'utf8');
-    return JSON.parse(raw) as RawConfigShape;
+    return JSON.parse(raw) as ConfigShape;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
     throw err;
@@ -108,7 +101,8 @@ export async function spawnTerminal(
   request: TermSpawnRequest,
 ): Promise<{ id: string; cwd: string }> {
   const config = conceptionPath ? await readRawConfig(conceptionPath) : {};
-  const shell = defaultShell(config.terminal?.shell);
+  const settings = await readSettings();
+  const shell = defaultShell(settings.terminal?.shell);
 
   let cwd = request.cwd ?? process.env.HOME ?? '/';
   let argv: string[] = [];
@@ -317,12 +311,51 @@ export function closeSession(id: string): Promise<void> {
   return stopSession(id);
 }
 
-export async function getTerminalPrefs(
-  conceptionPath: string | null,
-): Promise<RawConfigShape['terminal']> {
-  if (!conceptionPath) return {};
-  const config = await readRawConfig(conceptionPath);
-  return config.terminal ?? {};
+/** Read terminal prefs from settings.json. As of 2026-05-01 these live
+ * per-machine, not in the conception's configuration.json — the boot-time
+ * migration in main/index.ts copies any pre-existing block. */
+export async function getTerminalPrefs(): Promise<TerminalPrefs> {
+  const settings = await readSettings();
+  return settings.terminal ?? {};
+}
+
+/** Replace the persisted terminal prefs in settings.json. The patch is a
+ * full merge against the existing block; pass `{}` to clear. */
+export async function setTerminalPrefs(patch: TerminalPrefs): Promise<void> {
+  const settings = await readSettings();
+  settings.terminal = patch;
+  await writeSettings(settings);
+}
+
+/** One-shot migration: if settings.json has no terminal block but the
+ * pre-existing configuration.json carries one, copy it over and strip
+ * configuration.json. Idempotent — does nothing once settings.json owns
+ * the data. */
+export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
+  const settings = await readSettings();
+  if (settings.terminal && Object.keys(settings.terminal).length > 0) return;
+  if (!settings.conceptionPath) return;
+  const configFile = join(settings.conceptionPath, 'configuration.json');
+  let raw: string;
+  try {
+    raw = await fs.readFile(configFile, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  const legacy = parsed.terminal as TerminalPrefs | undefined;
+  if (!legacy || Object.keys(legacy).length === 0) return;
+  settings.terminal = legacy;
+  await writeSettings(settings);
+  delete parsed.terminal;
+  const next = JSON.stringify(parsed, null, 2) + '\n';
+  await fs.writeFile(configFile, next, 'utf8');
 }
 
 /** Kill every session (or every session attached to `forWebContents`) via the

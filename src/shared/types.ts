@@ -66,6 +66,9 @@ export type Theme = 'light' | 'dark' | 'system';
 export interface Settings {
   conceptionPath: string | null;
   theme: Theme;
+  /** Per-machine terminal prefs. Moved here from configuration.json so each
+   * laptop carries its own font/screenshot/keybinding choices. */
+  terminal?: TerminalPrefs;
 }
 
 /** One row of `git status --porcelain=v1` output, normalised for the renderer. */

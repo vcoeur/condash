@@ -4,7 +4,7 @@ import { autoUpdater } from 'electron-updater';
 import { join } from 'node:path';
 
 import { detectConceptionState, initConception } from './conception-init';
-import { readSettings, writeSettings } from './settings';
+import { readSettings, settingsPath, writeSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
@@ -23,8 +23,10 @@ import {
   getTerminalPrefs,
   killAll,
   listTerminalSessions,
+  migrateTerminalFromConfigIfNeeded,
   resizeTerminal,
   setSessionSide,
+  setTerminalPrefs,
   spawnTerminal,
   writeTerminal,
 } from './terminals';
@@ -352,8 +354,14 @@ function registerIpc(): void {
   ipcMain.handle('term.setSide', (_, id: string, side: 'my' | 'code') => setSessionSide(id, side));
 
   ipcMain.handle('term.getPrefs', async () => {
-    const { conceptionPath } = await readSettings();
-    return (await getTerminalPrefs(conceptionPath)) ?? {};
+    return (await getTerminalPrefs()) ?? {};
+  });
+
+  ipcMain.handle('term.setPrefs', async (_, prefs: unknown) => {
+    if (!prefs || typeof prefs !== 'object') {
+      throw new Error('term.setPrefs: payload must be an object');
+    }
+    await setTerminalPrefs(prefs as Parameters<typeof setTerminalPrefs>[0]);
   });
 
   ipcMain.handle('term.latestScreenshot', async (_, dir: string) => {
@@ -376,6 +384,8 @@ function registerIpc(): void {
     const { theme } = await readSettings();
     return theme;
   });
+
+  ipcMain.handle('getSettingsPath', () => settingsPath());
 
   ipcMain.handle('setTheme', async (_, theme: Theme) => {
     if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`);
@@ -466,6 +476,11 @@ function registerIpc(): void {
 
 app.whenReady().then(async () => {
   registerIpc();
+  // One-shot: copy any pre-existing terminal block out of configuration.json
+  // and into settings.json. Idempotent — does nothing once settings owns
+  // the data. Runs before window creation so the renderer's first
+  // term.getPrefs always sees the post-migration state.
+  await migrateTerminalFromConfigIfNeeded();
   const { conceptionPath } = await readSettings();
   await setWatchedConception(conceptionPath);
   buildMenu();

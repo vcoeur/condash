@@ -20,6 +20,7 @@ const api: CondashApi = {
   initConception: (path) => ipcRenderer.invoke('initConception', path),
   getTheme: () => ipcRenderer.invoke('getTheme'),
   setTheme: (theme) => ipcRenderer.invoke('setTheme', theme),
+  getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
     ipcRenderer.invoke('step.toggle', path, lineIndex, expectedMarker, newMarker),
   editStepText: (path, lineIndex, expectedText, newText) =>
@@ -43,6 +44,7 @@ const api: CondashApi = {
   termResize: (id, cols, rows) => ipcRenderer.invoke('term.resize', id, cols, rows),
   termClose: (id) => ipcRenderer.invoke('term.close', id),
   termGetPrefs: () => ipcRenderer.invoke('term.getPrefs'),
+  termSetPrefs: (prefs) => ipcRenderer.invoke('term.setPrefs', prefs),
   termLatestScreenshot: (dir) => ipcRenderer.invoke('term.latestScreenshot', dir),
   termList: () => ipcRenderer.invoke('term.list'),
   termAttach: (id) => ipcRenderer.invoke('term.attach', id),
