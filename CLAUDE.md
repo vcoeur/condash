@@ -77,7 +77,7 @@ macOS and Windows are unaffected.
 
 - Run `make format` after every code change.
 - All UI must work without per-OS CSS branches (Electron + Chromium = same renderer everywhere).
-- File-path conventions stay POSIX-shaped in main-process code; convert at the boundary with `path.join`.
+- File-path conventions: every path crossing the IPC boundary is normalised to forward-slash form via `toPosix(p)` from `src/shared/path.ts`. Internal `fs` calls keep the native separator (use `path.join`); the renderer can then split on `/` without per-OS branches. Cross-OS shell wrapping (`bash -lc` / `cmd.exe /d /s /c` / `pwsh -Command`) lives in `src/main/terminals.ts`'s `wrapForShell`.
 - IPC contract is the single typed `CondashApi` interface in `src/shared/api.ts`. Functions, not URLs. Promises for request/response; events only for chokidar push (when wired).
 - Hard interaction-to-paint budget: **≤ 16 ms** for any user-initiated action. Optimistic UI is the default; rollback on IPC failure.
 

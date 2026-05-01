@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { RepoEntry, Worktree } from '../shared/types';
+import { toPosix } from '../shared/path';
 import { getDirtyCount } from './git-status-cache';
 import { getCurrentBranch, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
@@ -66,7 +67,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
         return {
           name: entry.display,
           label: entry.label,
-          path: entry.cwd,
+          path: toPosix(entry.cwd),
           kind: entry.kind,
           parent: entry.parent,
           dirty: null,
@@ -86,7 +87,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
       return {
         name: entry.display,
         label: entry.label,
-        path: entry.cwd,
+        path: toPosix(entry.cwd),
         kind: entry.kind,
         parent: entry.parent,
         dirty,
@@ -119,11 +120,15 @@ async function deriveSubWorktrees(
   const parentList = entry.parent ? (parentWorktrees.get(entry.parent) ?? []) : [];
   if (!parent || parentList.length === 0) {
     const branch = await getCurrentBranch(entry.cwd).catch(() => null);
-    return [{ path: entry.cwd, branch, primary: true }];
+    return [{ path: toPosix(entry.cwd), branch, primary: true }];
   }
-  const subRelative = relative(parent.cwd, entry.cwd);
+  // `wt.path` already comes from `listWorktrees` in POSIX form (see
+  // worktrees.ts), and `entry.cwd` was resolved via `path.join` so on
+  // Windows it would carry `\` separators. Normalise the relative
+  // computation in POSIX-space to avoid mixing separators.
+  const subRelative = toPosix(relative(parent.cwd, entry.cwd));
   const rerooted: Worktree[] = parentList.map((wt) => ({
-    path: subRelative ? join(wt.path, subRelative) : wt.path,
+    path: subRelative ? `${wt.path}/${subRelative}` : wt.path,
     branch: wt.branch,
     primary: wt.primary,
   }));

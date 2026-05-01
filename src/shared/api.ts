@@ -5,6 +5,7 @@ import type {
   LayoutState,
   OpenWithSlotKey,
   OpenWithSlots,
+  Platform,
   Project,
   ProjectFileEntry,
   RepoEntry,
@@ -113,14 +114,21 @@ export interface CondashApi {
   createProjectNote(projectPath: string, slug: string): Promise<string>;
   /** Trigger app quit. Renderer is responsible for any user confirmation. */
   quitApp(): Promise<void>;
-  /** App version + bundled release metadata used by the About modal. */
+  /** App version + bundled release metadata used by the About modal.
+   *  `platform` is the Node platform string (`linux`/`darwin`/`win32`) used
+   *  by the renderer to pick OS-appropriate placeholders. */
   getAppInfo(): Promise<{
     name: string;
     version: string;
     electron: string;
     chrome: string;
     node: string;
+    platform: Platform;
   }>;
+  /** Build a `file://` URL for a local path (handles Windows drive letters
+   *  and percent-encoding). Returns the URL plus the basename so the
+   *  renderer can render it without doing its own POSIX-only path split. */
+  pdfToFileUrl(path: string): Promise<{ url: string; filename: string }>;
   /**
    * Subscribe to commands sent by the application menu (File → Search,
    * File → Open conception directory, File → Quit). Returns an unsubscribe.

@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { toPosix } from '../shared/path';
 
 /**
  * Find the most recently modified file under `dir` (top-level only). Returns
@@ -28,5 +29,5 @@ export async function latestScreenshot(dir: string): Promise<string | null> {
       best = { path, mtime: stat.mtimeMs };
     }
   }
-  return best?.path ?? null;
+  return best ? toPosix(best.path) : null;
 }

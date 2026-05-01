@@ -1,5 +1,6 @@
 import { join, relative } from 'node:path';
 import type { SearchResults } from '../../shared/types';
+import { toPosix } from '../../shared/path';
 import { collectKnowledgeFiles, collectProjectFiles } from './walk';
 import { matchFile, type MatchOutput } from './match';
 import { parseQuery } from './query';
@@ -34,10 +35,10 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
   for (const file of projectFiles) {
     matchPromises.push(
       matchFile({
-        path: file.path,
-        relPath: relative(conceptionPath, file.path),
+        path: toPosix(file.path),
+        relPath: toPosix(relative(conceptionPath, file.path)),
         source: 'project',
-        projectPath: file.projectPath,
+        projectPath: toPosix(file.projectPath),
         terms,
       }),
     );
@@ -46,8 +47,8 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
   for (const path of knowledgeFiles) {
     matchPromises.push(
       matchFile({
-        path,
-        relPath: relative(conceptionPath, path),
+        path: toPosix(path),
+        relPath: toPosix(relative(conceptionPath, path)),
         source: 'knowledge',
         terms,
       }),

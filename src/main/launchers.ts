@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { OpenWithSlots, OpenWithSlotKey } from '../shared/types';
 import { findRepoEntry, type ConfigShape } from './config-walk';
@@ -40,7 +41,10 @@ export async function listOpenWith(conceptionPath: string): Promise<OpenWithSlot
 /**
  * Tokenise a command template into argv, substituting `{path}` at the arg
  * level (no shell parsing). Quotes are honoured for tokens that contain
- * literal whitespace (e.g. `idea "{path}"`).
+ * literal whitespace (e.g. `idea "{path}"`). A leading `~/` in any token
+ * is expanded to the user's home directory — without this, configs that
+ * reference `~/bin/foo` silently fail to spawn (the literal `~` doesn't
+ * resolve outside a shell).
  */
 function tokenise(command: string, path: string): string[] {
   const tokens: string[] = [];
@@ -68,7 +72,15 @@ function tokenise(command: string, path: string): string[] {
   }
   if (buf.length > 0) tokens.push(buf);
 
-  return tokens.map((tok) => tok.split('{path}').join(path));
+  return tokens.map((tok) => expandTilde(tok.split('{path}').join(path)));
+}
+
+function expandTilde(token: string): string {
+  if (token === '~') return homedir();
+  if (token.startsWith('~/') || token.startsWith('~\\')) {
+    return join(homedir(), token.slice(2));
+  }
+  return token;
 }
 
 export async function launchOpenWith(
