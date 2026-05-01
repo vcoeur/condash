@@ -160,25 +160,8 @@ export function RepoRow(props: {
           </span>
         </Show>
         <span class="spacer" />
-        <Show when={props.live}>
-          <button
-            class="repo-action stop repo-stop-button"
-            onClick={() => props.onStop(props.repo)}
-            title={`Stop the running session for ${props.repo.name}`}
-            aria-label={`Stop ${props.repo.name}`}
-          >
-            <StopIcon />
-          </button>
-        </Show>
         <Show when={props.repo.hasForceStop}>
-          <button
-            class="repo-action warn repo-killswitch"
-            onClick={() => props.onForceStop(props.repo)}
-            title={`Run ${props.repo.name} force_stop (free its port)`}
-            aria-label={`Force-stop ${props.repo.name}`}
-          >
-            <KillIcon />
-          </button>
+          <RepoCardMenu repo={props.repo} onForceStop={props.onForceStop} />
         </Show>
         <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>
           {props.repo.parent ? 'SUB' : 'REPO'}
@@ -202,8 +185,10 @@ export function RepoRow(props: {
                 worktree={wt}
                 slots={props.slots}
                 hasRun={hasRun()}
+                running={!!props.live && (props.liveBranch ?? null) === (wt.branch ?? null)}
                 onLaunch={props.onLaunch}
                 onRun={props.onRun}
+                onStop={props.onStop}
                 onOpenInTerm={props.onOpenInTerm}
                 onOpen={props.onOpen}
               />
@@ -212,6 +197,114 @@ export function RepoRow(props: {
         </For>
       </ul>
     </article>
+  );
+}
+
+/**
+ * Card-level menu for per-repo actions. Sits at the right of the card
+ * header. Currently carries one entry — Force-stop — which runs the
+ * repo's configured `force_stop:` shell command. Future per-repo actions
+ * land in the same dropdown. The menu is portaled (position: fixed) so
+ * it always paints above neighbouring cards.
+ */
+function RepoCardMenu(props: { repo: RepoEntry; onForceStop: (repo: RepoEntry) => void }) {
+  const [menuOpen, setMenuOpen] = createSignal(false);
+  const [menuAnchor, setMenuAnchor] = createSignal<{ top: number; left: number } | null>(null);
+  let triggerRef: HTMLButtonElement | undefined;
+  let menuRef: HTMLDivElement | undefined;
+
+  // Same anchoring recipe as BranchActions: anchor `left` at the trigger's
+  // right edge; the `.branch-action-menu.portal` CSS rule applies a
+  // `translateX(-100%)` so the menu's right edge lines up with the
+  // trigger's right edge (keeps right-column cards inside the viewport).
+  // Flip above when the rendered menu would overflow the viewport bottom.
+  const positionMenu = (): void => {
+    if (!triggerRef) return;
+    const rect = triggerRef.getBoundingClientRect();
+    const margin = 8;
+    let top = rect.bottom + 4;
+    const menuH = menuRef?.getBoundingClientRect().height ?? 0;
+    if (menuH > 0 && top + menuH > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - 4 - menuH);
+    }
+    setMenuAnchor({ top, left: rect.right });
+  };
+
+  const onDocClick = (e: MouseEvent): void => {
+    if (!menuOpen()) return;
+    const target = e.target as Node;
+    if (triggerRef?.contains(target)) return;
+    if (menuRef?.contains(target)) return;
+    setMenuOpen(false);
+  };
+
+  const onScrollOrResize = (): void => {
+    if (menuOpen()) positionMenu();
+  };
+
+  onMount(() => {
+    document.addEventListener('click', onDocClick, true);
+    window.addEventListener('resize', onScrollOrResize, true);
+    window.addEventListener('scroll', onScrollOrResize, true);
+  });
+  onCleanup(() => {
+    document.removeEventListener('click', onDocClick, true);
+    window.removeEventListener('resize', onScrollOrResize, true);
+    window.removeEventListener('scroll', onScrollOrResize, true);
+  });
+
+  const toggleMenu = (e: MouseEvent): void => {
+    e.stopPropagation();
+    if (menuOpen()) {
+      setMenuOpen(false);
+      return;
+    }
+    positionMenu();
+    setMenuOpen(true);
+  };
+
+  return (
+    <>
+      <button
+        ref={(el) => (triggerRef = el)}
+        class="repo-action icon repo-card-menu-trigger"
+        onClick={toggleMenu}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen()}
+        title="Repo actions"
+        aria-label={`Actions for ${props.repo.name}`}
+      >
+        <ChevronDownIcon />
+      </button>
+      <Show when={menuOpen() && menuAnchor()}>
+        <div
+          ref={(el) => {
+            menuRef = el;
+            if (el) requestAnimationFrame(positionMenu);
+          }}
+          class="branch-action-menu portal repo-card-menu"
+          role="menu"
+          style={{
+            top: `${menuAnchor()!.top}px`,
+            left: `${menuAnchor()!.left}px`,
+          }}
+        >
+          <button
+            class="branch-action-menu-item warn"
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              props.onForceStop(props.repo);
+            }}
+          >
+            <span class="glyph">
+              <KillIcon />
+            </span>
+            <span>Force-stop {props.repo.name}</span>
+          </button>
+        </div>
+      </Show>
+    </>
   );
 }
 
@@ -229,9 +322,14 @@ function BranchActions(props: {
   worktree: Worktree;
   slots: OpenWithSlots;
   hasRun: boolean;
+  /** True when this branch row owns the currently live session — drives
+   * the run-vs-stop swap so the user controls the running process from
+   * the row that actually represents it. */
+  running: boolean;
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
+  onStop: (repo: RepoEntry) => void;
   onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -295,19 +393,33 @@ function BranchActions(props: {
   return (
     <div class="branch-actions">
       <Show when={props.hasRun}>
-        <button
-          class="repo-action run"
-          onClick={() => props.onRun(props.repo, props.worktree)}
-          disabled={props.repo.missing}
-          title={
-            props.worktree.primary
-              ? 'Run configured run: command'
-              : `Run configured run: command in ${props.worktree.branch ?? '(detached)'}`
+        <Show
+          when={props.running}
+          fallback={
+            <button
+              class="repo-action run"
+              onClick={() => props.onRun(props.repo, props.worktree)}
+              disabled={props.repo.missing}
+              title={
+                props.worktree.primary
+                  ? 'Run configured run: command'
+                  : `Run configured run: command in ${props.worktree.branch ?? '(detached)'}`
+              }
+              aria-label="Run"
+            >
+              <RunIcon />
+            </button>
           }
-          aria-label="Run"
         >
-          <RunIcon />
-        </button>
+          <button
+            class="repo-action stop"
+            onClick={() => props.onStop(props.repo)}
+            title={`Stop the running session for ${props.repo.name}`}
+            aria-label={`Stop ${props.repo.name}`}
+          >
+            <StopIcon />
+          </button>
+        </Show>
       </Show>
       <button
         class="repo-action icon"

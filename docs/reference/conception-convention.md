@@ -44,15 +44,14 @@ The flat-month layout was a deliberate simplification of an earlier `projects/<s
 
 ## Status model
 
-Six ordered values, highest-urgency first:
+Five ordered values, highest-urgency first:
 
 | Value | Meaning |
 |---|---|
 | `now` | Actively being worked on this week |
-| `soon` | Next up; starts within a week or two |
+| `review` | Work done, awaiting review or verification |
 | `later` | Agreed to do, not scheduled |
 | `backlog` | Possible; worth keeping, not committed |
-| `review` | Work done, awaiting review or verification |
 | `done` | Closed. Stays in its `YYYY-MM/` folder indefinitely. |
 
 The parser normalises the value to lowercase and falls back to `backlog` for anything unrecognised. Unknown values also log a parser warning and make the card sprout a red `!? <value>` badge next to its status pill so typos (`wip`, `active`, …) don't silently vanish into `backlog`; see [README format — Status](readme-format.md#status) for the full rule. Inside the dashboard, status changes via drag-and-drop rewrite the `**Status**:` line in place — see [mutations](mutations.md).

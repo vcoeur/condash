@@ -9,7 +9,7 @@ Trigger: `/projects list [kind=<k>] [status=<s>]`.
 1. **Enumerate.** Glob `${CLAUDE_PROJECT_DIR}/projects/*/README.md` — this yields every item's README across all months.
 2. **Parse header.** For each, read the first ~20 lines and extract `**Date**`, `**Kind**`, `**Status**`, `**Apps**`, `**Branch**`.
 3. **Filter.** Apply `kind=` and `status=` if passed. Multiple values are comma-separated (`kind=incident,document`).
-4. **Group.** Default grouping: by `Status` (urgency-first order `now → soon → review → later → backlog → done`), then by `Kind` within each status block.
+4. **Group.** Default grouping: by `Status` (urgency-first order `now → review → later → backlog → done`), then by `Kind` within each status block.
 5. **Output.** One line per item:
 
    ```
@@ -18,7 +18,7 @@ Trigger: `/projects list [kind=<k>] [status=<s>]`.
 
    Truncate title and apps to keep it one line each. If the list is long, print counts per status at the top.
 
-Fast path — no filters, no grouping, just "what's active": `/projects list status=now,soon,review` is usually what the user means.
+Fast path — no filters, no grouping, just "what's active": `/projects list status=now,review` is usually what the user means.
 
 ## `read`
 

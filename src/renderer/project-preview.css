@@ -149,9 +149,6 @@
 .status-select.status-review {
   --col-status: var(--col-review);
 }
-.status-select.status-soon {
-  --col-status: var(--col-soon);
-}
 .status-select.status-later {
   --col-status: var(--col-later);
 }
@@ -225,9 +222,6 @@
 }
 .status-menu-item.status-review {
   --col-item: var(--col-review);
-}
-.status-menu-item.status-soon {
-  --col-item: var(--col-soon);
 }
 .status-menu-item.status-later {
   --col-item: var(--col-later);

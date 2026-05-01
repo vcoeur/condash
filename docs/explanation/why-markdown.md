@@ -101,7 +101,7 @@ This is cheap writing. A SaaS with a rich editor and a separate comments section
 
 A Claude Code session can read, write, and edit Markdown files natively. No API, no webhook, no permissions model — the agent just edits files, you review in `git diff`, the dashboard picks up the change on the next poll.
 
-The shipped [`/conception-items` skill](../reference/skill.md) does exactly this. You say "create a project called add dark mode, Kind project, Status soon, Apps notes.vcoeur.com" and the agent writes `projects/2026-04/2026-04-18-add-dark-mode/README.md` with the right template. No integration layer. No OAuth. Just file I/O.
+The shipped [`/conception-items` skill](../reference/skill.md) does exactly this. You say "create a project called add dark mode, Kind project, Status later, Apps notes.vcoeur.com" and the agent writes `projects/2026-04/2026-04-18-add-dark-mode/README.md` with the right template. No integration layer. No OAuth. Just file I/O.
 
 For multi-project setups with branch isolation, deliverable generation, cross-item linking via [wikilinks](../guides/wikilinks.md), and a shared [knowledge tree](../guides/knowledge-tree.md), the agent-friendly nature compounds: every tool the agent knows (Read, Write, Edit, Grep) works on the same files that render in the dashboard.
 

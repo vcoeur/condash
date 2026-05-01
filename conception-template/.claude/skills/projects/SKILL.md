@@ -43,7 +43,7 @@ For a trivial read or appending one note, edit files directly — invoking the s
 
 **Date**: YYYY-MM-DD
 **Kind**: project | incident | document
-**Status**: now | soon | later | backlog | review | done
+**Status**: now | review | later | backlog | done
 **Apps**: `app1`, `app2/sub-path`
 **Branch**: `branch-name` (optional)
 **Base**: `branch-name` (optional)
@@ -52,10 +52,9 @@ For a trivial read or appending one note, edit files directly — invoking the s
 Status meanings:
 
 - `now` — actively being worked on.
-- `soon` — queued to start imminently; no work yet.
-- `later` — deferred; reason noted in the README.
-- `backlog` — acknowledged but not scheduled.
 - `review` — code shipped or proposal drafted; awaiting an external signal (PR merge, deploy, stakeholder ack) before the item can close. Closes on signal, or reverts to `now` if the signal is negative.
+- `later` — queued; will be picked up but not yet scheduled.
+- `backlog` — acknowledged but not scheduled.
 - `done` — finished. Under the flat layout, the folder does not move.
 
 Kind-specific additions (only when relevant):

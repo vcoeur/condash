@@ -34,7 +34,7 @@ Rules:
 - **Description** — italicised, ≤200 chars. Lifts the load-bearing nouns and constraints from the README (`# Title`, `## Goal` / `## Description` first line, and any `**Apps**` worth citing). Semicolons over sentences. For month entries, summarise the subtree in one line.
 - **Keyword tags** — 3–8 lowercase hyphenated terms, comma-separated inside backticks.
   - Always include the `**Kind**` (one of `project`, `incident`, `document`).
-  - Always include the `**Status**` (one of `now`, `soon`, `later`, `backlog`, `review`, `done`).
+  - Always include the `**Status**` (one of `now`, `review`, `later`, `backlog`, `done`).
   - Then app slugs and distinctive concept words. Skip terms already obvious from the folder name.
   - For month entries, aggregate the distinctive tags across the month's items (not just the month number).
 
@@ -43,7 +43,7 @@ Rules:
 Before regenerating any index, walk every `projects/YYYY-MM/YYYY-MM-DD-slug/` folder and parse its `README.md` header. Warn (do not block) on any of:
 
 - `**Date**` ≠ the `YYYY-MM-DD` prefix of the folder name.
-- `**Status**` not in `{now, soon, later, backlog, review, done}`.
+- `**Status**` not in `{now, review, later, backlog, done}`.
 - `**Kind**` not in `{project, incident, document}`.
 - Folder name does not match `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`.
 

@@ -119,7 +119,7 @@ const UNKNOWN = '?';
 
 /** Order of stacked sections on the Projects tab. `backlog` and `done`
  * render collapsed-by-default — heavy buckets the user usually skips past. */
-const PROJECT_SECTION_ORDER = ['now', 'review', 'soon', 'later', 'backlog', 'done'] as const;
+const PROJECT_SECTION_ORDER = ['now', 'review', 'later', 'backlog', 'done'] as const;
 const COLLAPSED_BY_DEFAULT = new Set<string>(['backlog', 'done']);
 
 /** localStorage key for the per-status collapse map. Stores a sparse object

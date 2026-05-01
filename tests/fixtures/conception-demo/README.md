@@ -4,7 +4,7 @@ A throwaway conception tree used purely to generate screenshots for the condash 
 
 The tree intentionally exercises every condash surface:
 
-- Projects across two months (`2026-03`, `2026-04`) covering all six statuses: `now`, `soon`, `later`, `backlog`, `review`, `done`.
+- Projects across two months (`2026-03`, `2026-04`) covering all five statuses: `now`, `review`, `later`, `backlog`, `done`.
 - All three item kinds: `project`, `incident`, `document`.
 - Items with and without `**Branch**`, single-app and multi-app.
 - Step lists combining `[ ]`, `[~]`, `[x]`, and `[-]` markers.

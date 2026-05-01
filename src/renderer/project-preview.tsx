@@ -10,7 +10,7 @@ const MARKER_LABEL: Record<StepMarker, string> = {
   '-': 'dropped',
 };
 
-const STATUS_OPTIONS: readonly string[] = ['now', 'review', 'soon', 'later', 'backlog', 'done'];
+const STATUS_OPTIONS: readonly string[] = ['now', 'review', 'later', 'backlog', 'done'];
 
 /* Popup icons mirror the shapes in src/renderer/tabs/projects.tsx (Terminal,
  * external link, plus, chevron-down, close). Stroke-width 1.5 across the

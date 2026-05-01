@@ -1,15 +1,8 @@
 export type ItemKind = 'project' | 'incident' | 'document' | 'unknown';
 
-export type KnownStatus = 'now' | 'soon' | 'later' | 'backlog' | 'review' | 'done';
+export type KnownStatus = 'now' | 'review' | 'later' | 'backlog' | 'done';
 
-export const KNOWN_STATUSES: readonly KnownStatus[] = [
-  'now',
-  'soon',
-  'later',
-  'backlog',
-  'review',
-  'done',
-];
+export const KNOWN_STATUSES: readonly KnownStatus[] = ['now', 'review', 'later', 'backlog', 'done'];
 
 export interface StepCounts {
   todo: number;

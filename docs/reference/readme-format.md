@@ -13,7 +13,7 @@ Every item lives at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. The first line
 |---|---|---|---|
 | `**Date**` | no | all | ISO `YYYY-MM-DD`. Defaults to the directory's date prefix when missing. |
 | `**Kind**` | no | all | `project` / `incident` / `document`. Defaults to `project`. |
-| `**Status**` | **yes** | all | `now` / `soon` / `later` / `backlog` / `review` / `done`. Unknown values coerce to `backlog`, log a parser warning, and surface a `!?` badge on the card. |
+| `**Status**` | **yes** | all | `now` / `review` / `later` / `backlog` / `done`. Unknown values coerce to `backlog`, log a parser warning, and surface a `!?` badge on the card. |
 | `**Apps**` | no | all | Comma-separated backtick-wrapped app names. Powers the per-app filter. |
 | `**Branch**` | no | projects | Git branch name. Hints the `/pr` skill + worktree isolation rules. |
 | `**Base**` | no | projects | Base branch for `/pr`. Defaults to `origin/HEAD`. |
@@ -120,10 +120,10 @@ First paragraph is the card summary. Keep it one sentence for the dashboard.
 
 ## Status
 
-Six values, in this exact order:
+Five values, in this exact order:
 
 ```
-now → soon → later → backlog → review → done
+now → review → later → backlog → done
 ```
 
 Anything outside this set is **coerced to `backlog`** with two side-effects so the typo doesn't slip past you:
