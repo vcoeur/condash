@@ -19,7 +19,7 @@ import { execFile } from 'node:child_process';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { findProjectReadmes } from './walk';
-import { readHeader } from '../cli/header';
+import { readHeader } from './header-fs';
 import { walkRepos, type ConfigShape } from './config-walk';
 
 const exec = promisify(execFile);

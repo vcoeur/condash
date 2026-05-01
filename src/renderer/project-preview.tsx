@@ -350,14 +350,7 @@ export function ProjectPreview(props: {
     document.removeEventListener('keydown', handleKey, true);
   });
 
-  const apps = (): string[] => {
-    const raw = props.project?.apps?.trim();
-    if (!raw) return [];
-    return raw
-      .split(/[,\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  };
+  const apps = (): string[] => props.project?.apps ?? [];
 
   const statusKnown = (s: string): boolean => (KNOWN_STATUSES as readonly string[]).includes(s);
 
