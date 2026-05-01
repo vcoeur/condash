@@ -7,7 +7,7 @@ import type { RawRepo } from '../main/config-schema';
  * Full-viewport Settings modal. Every persisted preference has its own
  * editable control — there is no in-modal JSON editor. Power users get a
  * single "Open configuration.json externally" button in the header that
- * shells out via `window.condash.openExternal`.
+ * shells out via `window.condash.openPath`.
  *
  * Writes are funnelled through `patchConfig`, which parses the live file,
  * applies a mutator, drops empty leaves, and round-trips through the
@@ -342,14 +342,14 @@ export function SettingsModal(props: {
   };
 
   const openConfigExternally = (): void => {
-    void window.condash.openExternal(props.configurationPath);
+    void window.condash.openPath(props.configurationPath);
   };
 
   const [settingsPath] = createResource(() => window.condash.getSettingsPath());
 
   const openSettingsExternally = (): void => {
     const path = settingsPath();
-    if (path) void window.condash.openExternal(path);
+    if (path) void window.condash.openPath(path);
   };
 
   // --- Draft-buffered text input -------------------------------------

@@ -70,6 +70,7 @@ const api: CondashApi = {
   },
   openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
   openExternal: (target: string) => ipcRenderer.invoke('openExternal', target),
+  openPath: (target: string) => ipcRenderer.invoke('openPath', target),
   createProjectNote: (projectPath: string, slug: string) =>
     ipcRenderer.invoke('project.createNote', projectPath, slug),
   quitApp: () => ipcRenderer.invoke('quitApp'),
