@@ -1,29 +1,32 @@
 /**
- * Per-repo FS watchers that drive in-place dirty-count updates on the
- * Code tab. One pair of chokidar watchers per repo working tree:
+ * Per-repo FS watchers that drive in-place dirty-count + upstream-state
+ * updates on the Code tab. One pair of chokidar watchers per repo working
+ * tree:
  *
  *   - the worktree root, ignoring `.git/`, `node_modules/`, `dist*`
  *     and `build*` directories — catches edits that don't touch the index;
- *   - `.git/index`, `.git/HEAD`, `.git/refs/heads/` — catches stage,
- *     unstage, checkout, branch-create operations that don't touch
- *     the worktree.
+ *   - `.git/index`, `.git/HEAD`, `.git/refs/heads/`, `.git/refs/remotes/`,
+ *     `.git/packed-refs`, `.git/FETCH_HEAD`, `.git/config` — catches
+ *     stage, unstage, checkout, branch-create operations, and (the new
+ *     paths) push, fetch, set-upstream so the upstream badge tracks
+ *     reality without F5.
  *
  * Events from either watcher debounce to a single recompute per path.
- * The recompute reuses `getDirtyCount` (and therefore the 3 s TTL cache)
- * so a burst of writes coalesces to one `git status` invocation.
+ * The recompute reuses `getDirtyCount` / `getUpstreamStatus` (and their
+ * TTL caches) so a burst of writes coalesces to one git invocation each.
  *
  * The output is a typed `RepoEvent` broadcast to every BrowserWindow.
  * The renderer's `applyRepoEvents` patches `RepoEntry.dirty` (or a
- * worktree's `dirty`) in place, leaving everything else — open
- * dropdowns, popovers, focus, scroll position — untouched. This is the
- * direct fix for the disruption the periodic 15 s refreshKey-bump
+ * worktree's `dirty` / `upstream`) in place, leaving everything else —
+ * open dropdowns, popovers, focus, scroll position — untouched. This is
+ * the direct fix for the disruption the periodic 15 s refreshKey-bump
  * approach (reverted in commit 0c36e2b) caused.
  */
 import chokidar, { type FSWatcher } from 'chokidar';
 import { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import type { RepoEntry, RepoEvent } from '../shared/types';
-import { getDirtyCount, invalidateForPath } from './git-status-cache';
+import { getDirtyCount, getUpstreamStatus, invalidateForPath } from './git-status-cache';
 
 const DEBOUNCE_MS = 500;
 
@@ -60,11 +63,17 @@ function broadcast(events: RepoEvent[]): void {
 
 async function recomputeAndEmit(target: WatchedPath): Promise<void> {
   invalidateForPath(target.path);
-  const dirty = await getDirtyCount(
-    target.path,
-    target.scopeToSubtree ? { scopeToSubtree: true } : {},
-  );
-  broadcast([{ kind: 'repo-dirty', path: target.path, dirty }]);
+  // Run dirty + upstream in parallel — they hit different git plumbing
+  // commands and don't share state. Both broadcasts go out together so
+  // the renderer patches once, not twice.
+  const [dirty, upstream] = await Promise.all([
+    getDirtyCount(target.path, target.scopeToSubtree ? { scopeToSubtree: true } : {}),
+    getUpstreamStatus(target.path),
+  ]);
+  broadcast([
+    { kind: 'repo-dirty', path: target.path, dirty },
+    { kind: 'repo-upstream', path: target.path, upstream },
+  ]);
 }
 
 function scheduleRecompute(target: WatchedPath): void {
@@ -113,6 +122,13 @@ export function setRepoWatchers(targets: WatchedPath[]): void {
         join(target.path, '.git/index'),
         join(target.path, '.git/HEAD'),
         join(target.path, '.git/refs/heads'),
+        // Upstream-tracking signals: push writes refs/remotes/<remote>/<branch>
+        // (plus packed-refs after gc); fetch additionally touches FETCH_HEAD;
+        // set-upstream/unset-upstream rewrites .git/config.
+        join(target.path, '.git/refs/remotes'),
+        join(target.path, '.git/packed-refs'),
+        join(target.path, '.git/FETCH_HEAD'),
+        join(target.path, '.git/config'),
       ],
       { ignoreInitial: true, persistent: true },
     );
@@ -148,23 +164,28 @@ export function watchTargetsFromRepos(repos: readonly RepoEntry[]): WatchedPath[
   return out;
 }
 
-/** Recompute dirty for every currently-watched path and broadcast. Called
- *  from the F5 Refresh path so the user gets fresh counts immediately
- *  without waiting for an FS event. */
+/** Recompute dirty + upstream for every currently-watched path and
+ *  broadcast. Called from the F5 Refresh path so the user gets fresh
+ *  counts immediately without waiting for an FS event. */
 export async function recomputeAllWatchedRepos(): Promise<void> {
   const targets = [...watchers.values()].map(({ path, scopeToSubtree }) => ({
     path,
     scopeToSubtree,
   }));
   if (targets.length === 0) return;
-  const results = await Promise.all(
+  const events: RepoEvent[] = [];
+  await Promise.all(
     targets.map(async (t) => {
       invalidateForPath(t.path);
-      const dirty = await getDirtyCount(t.path, t.scopeToSubtree ? { scopeToSubtree: true } : {});
-      return { kind: 'repo-dirty', path: t.path, dirty } as RepoEvent;
+      const [dirty, upstream] = await Promise.all([
+        getDirtyCount(t.path, t.scopeToSubtree ? { scopeToSubtree: true } : {}),
+        getUpstreamStatus(t.path),
+      ]);
+      events.push({ kind: 'repo-dirty', path: t.path, dirty });
+      events.push({ kind: 'repo-upstream', path: t.path, upstream });
     }),
   );
-  broadcast(results);
+  broadcast(events);
 }
 
 /** Tear down everything. Called on app quit and conception-path change. */

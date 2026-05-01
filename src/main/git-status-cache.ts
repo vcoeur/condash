@@ -16,11 +16,22 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
+import type { UpstreamStatus } from '../shared/types';
 
 interface CacheEntry {
   dirty: number | null;
   capturedAt: number;
 }
+
+/** Twin of `cache` for upstream lookups. Same TTL, separate map so the two
+ *  refresh paths (worktree edits vs. push/fetch) don't invalidate each
+ *  other unnecessarily. The value is `null` when the branch has no
+ *  upstream tracking ref or the lookup failed. */
+interface UpstreamCacheEntry {
+  upstream: UpstreamStatus | null;
+  capturedAt: number;
+}
+const upstreamCache = new Map<string, UpstreamCacheEntry>();
 
 interface DirtyCountOptions {
   /** When true, scope `git status` to the cwd subtree (`-- .`). Used for
@@ -98,6 +109,7 @@ export async function getDirtyCount(
  * explicit "I want fresh data" path. */
 export function invalidateAll(): void {
   cache.clear();
+  upstreamCache.clear();
 }
 
 /** Drop the entry whose working tree contains `path`. Useful when the
@@ -110,5 +122,56 @@ export function invalidateForPath(path: string): void {
   for (const key of [...cache.keys()]) {
     const wt = key.split('::')[0];
     if (path === wt || path.startsWith(`${wt}/`)) cache.delete(key);
+  }
+  for (const key of [...upstreamCache.keys()]) {
+    if (path === key || path.startsWith(`${key}/`)) upstreamCache.delete(key);
+  }
+}
+
+/** Look up upstream tracking summary for a working tree. Returns null when
+ *  the branch has no upstream (fresh local branch, detached HEAD) or when
+ *  git couldn't run. Cached for the same TTL as the dirty-count lookup —
+ *  invalidated by `invalidateForPath` (driven by FS-watcher signals on
+ *  `.git/refs/{heads,remotes}/`, `.git/packed-refs`, `.git/FETCH_HEAD`,
+ *  `.git/config`).
+ *
+ *  Two git calls per miss:
+ *    - `rev-parse --abbrev-ref --symbolic-full-name @{u}` for the ref name
+ *      (errors when no upstream is set — we treat that as null).
+ *    - `rev-list --count @{u}..HEAD` for the ahead count. */
+export async function getUpstreamStatus(path: string): Promise<UpstreamStatus | null> {
+  const now = Date.now();
+  const cached = upstreamCache.get(path);
+  if (cached && now - cached.capturedAt < TTL_MS) return cached.upstream;
+  try {
+    const git = simpleGit({ baseDir: path });
+    let upstreamRef: string | null = null;
+    try {
+      const out = await git.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
+      const trimmed = out.trim();
+      if (trimmed.length > 0 && trimmed !== '@{u}') upstreamRef = trimmed;
+    } catch {
+      // No upstream tracking — branch is local-only or detached HEAD.
+      upstreamCache.set(path, { upstream: null, capturedAt: now });
+      return null;
+    }
+    if (!upstreamRef) {
+      upstreamCache.set(path, { upstream: null, capturedAt: now });
+      return null;
+    }
+    let ahead = 0;
+    try {
+      const out = await git.raw(['rev-list', '--count', '@{u}..HEAD']);
+      const n = Number.parseInt(out.trim(), 10);
+      ahead = Number.isFinite(n) ? n : 0;
+    } catch {
+      ahead = 0;
+    }
+    const upstream: UpstreamStatus = { upstreamRef, ahead };
+    upstreamCache.set(path, { upstream, capturedAt: now });
+    return upstream;
+  } catch {
+    upstreamCache.set(path, { upstream: null, capturedAt: now });
+    return null;
   }
 }

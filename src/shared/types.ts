@@ -120,8 +120,32 @@ export interface DirtyFile {
   binary: boolean;
 }
 
+/** One unpushed commit on the local branch (i.e. on `HEAD` but not yet on
+ *  the upstream tracking ref). Surfaced in the dirty popover so the user
+ *  sees what's queued for the next push, not just the count. */
+export interface UnpushedCommit {
+  /** Short SHA (`%h`). */
+  sha: string;
+  /** Subject line (`%s`). */
+  subject: string;
+}
+
+/** Upstream tracking summary for one worktree. The badge needs only `ahead`
+ *  + the existence of an upstream; `upstreamRef` is shown in the popover so
+ *  the user knows which remote/branch they're being told about. */
+export interface UpstreamStatus {
+  /** Tracking ref shorthand, e.g. `origin/main`. Null only when the lookup
+   *  ran but git returned an unexpected shape — `hasUpstream:false` cases
+   *  return a top-level null instead of this struct. */
+  upstreamRef: string | null;
+  /** Commits on local but not on upstream (i.e. unpushed). */
+  ahead: number;
+}
+
 /** Click-to-inspect payload for the per-branch dirty badge. One row per
- *  dirty file (capped at a fixed file limit) with totals for the footer. */
+ *  dirty file (capped at a fixed file limit) with totals for the footer.
+ *  Also carries unpushed-commit context so the popover can list them in a
+ *  separate section without a second round-trip. */
 export interface DirtyDetails {
   files: DirtyFile[];
   /** Aggregate `+` count across the returned files. Untracked / binary
@@ -133,6 +157,13 @@ export interface DirtyDetails {
   truncated: boolean;
   /** Total number of dirty files before truncation. */
   totalCount: number;
+  /** Upstream summary (null when the branch has no tracking ref). */
+  upstream: UpstreamStatus | null;
+  /** Unpushed commits (newest first, capped at a fixed limit). Empty when
+   *  there's no upstream or the branch is in sync. */
+  unpushedCommits: UnpushedCommit[];
+  /** True when the unpushed-commit list was truncated to fit the cap. */
+  unpushedTruncated: boolean;
 }
 
 export interface Worktree {
@@ -145,6 +176,10 @@ export interface Worktree {
   /** Count of modified + staged + untracked files in this worktree; null
    * when git status couldn't run for any reason. */
   dirty?: number | null;
+  /** Upstream tracking summary; null when the branch has no upstream
+   *  (fresh local branch, detached HEAD, etc.). Drives the per-branch
+   *  upstream badge alongside `dirty`. */
+  upstream?: UpstreamStatus | null;
 }
 
 export interface RepoEntry {
@@ -351,9 +386,15 @@ export type TreeEvent =
 /** Repo-tree event broadcast by the per-repo FS watcher (worktree + .git/
  *  meta) so the renderer can patch one repo (or one worktree) in place
  *  without re-fetching the whole repo list. `path` matches a `RepoEntry.path`
- *  or one of its `worktrees[].path`. `dirty` is the freshly-recomputed count
- *  (or null when `git status` couldn't run). */
-export type RepoEvent = { kind: 'repo-dirty'; path: string; dirty: number | null };
+ *  or one of its `worktrees[].path`.
+ *
+ *  - `repo-dirty`: dirty-file count changed (or recomputed); null when git
+ *    couldn't run.
+ *  - `repo-upstream`: upstream tracking summary changed (push, fetch, local
+ *    commit, branch switch); null when the branch has no upstream. */
+export type RepoEvent =
+  | { kind: 'repo-dirty'; path: string; dirty: number | null }
+  | { kind: 'repo-upstream'; path: string; upstream: UpstreamStatus | null };
 
 export interface KnowledgeNode {
   /** Path relative to <conception>/knowledge/. Empty string for the root. */

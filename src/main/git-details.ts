@@ -5,12 +5,19 @@
 // every porcelain-v1 file enriched with its `git diff --numstat HEAD` row,
 // so the renderer can show "what / where / how much" on a single line per
 // file (status code, path, +N -N counts, scaled +/- bar).
+//
+// Also folds in the unpushed-commit list (`git log @{u}..HEAD`) so the
+// popover can render a separate section for commits queued for push, in
+// the same round-trip as the dirty-file list.
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
+import type { UnpushedCommit, UpstreamStatus } from '../shared/types';
+import { getUpstreamStatus } from './git-status-cache';
 
 const FILE_LIMIT = 20;
+const UNPUSHED_LIMIT = 20;
 
 export interface DirtyFile {
   /** Two-character porcelain status (e.g. ` M`, `??`, `D `). Whitespace
@@ -39,6 +46,12 @@ export interface DirtyDetails {
   truncated: boolean;
   /** Total number of dirty files before truncation. */
   totalCount: number;
+  /** Upstream summary; null when the branch has no tracking ref. */
+  upstream: UpstreamStatus | null;
+  /** Unpushed commits, newest first, capped at `UNPUSHED_LIMIT`. */
+  unpushedCommits: UnpushedCommit[];
+  /** True when the unpushed-commit list was truncated. */
+  unpushedTruncated: boolean;
 }
 
 interface DirtyDetailsOptions {
@@ -162,7 +175,45 @@ export async function getDirtyDetails(
       if (f.deleted) totalDeleted += f.deleted;
     }
 
-    return { files, totalAdded, totalDeleted, truncated, totalCount };
+    // Upstream + unpushed-commit list. The lookup runs against the
+    // worktree root regardless of `scopeToSubtree` — git's @{u} resolves
+    // against HEAD, not a subtree path. We only fetch the commit list
+    // when the upstream is set and we're actually ahead, so a synced
+    // branch costs only the cached `getUpstreamStatus` lookup.
+    const upstream = await getUpstreamStatus(path);
+    let unpushedCommits: UnpushedCommit[] = [];
+    let unpushedTruncated = false;
+    if (upstream && upstream.ahead > 0) {
+      try {
+        const out = await git.raw([
+          'log',
+          `--max-count=${UNPUSHED_LIMIT + 1}`,
+          '--pretty=%h%x09%s',
+          '@{u}..HEAD',
+        ]);
+        const lines = out.split('\n').filter((l) => l.length > 0);
+        unpushedTruncated = lines.length > UNPUSHED_LIMIT;
+        const slice = unpushedTruncated ? lines.slice(0, UNPUSHED_LIMIT) : lines;
+        unpushedCommits = slice.map((line) => {
+          const tab = line.indexOf('\t');
+          if (tab === -1) return { sha: line, subject: '' };
+          return { sha: line.slice(0, tab), subject: line.slice(tab + 1) };
+        });
+      } catch {
+        unpushedCommits = [];
+      }
+    }
+
+    return {
+      files,
+      totalAdded,
+      totalDeleted,
+      truncated,
+      totalCount,
+      upstream,
+      unpushedCommits,
+      unpushedTruncated,
+    };
   } catch {
     return null;
   }

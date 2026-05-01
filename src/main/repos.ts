@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { RepoEntry, Worktree } from '../shared/types';
 import { toPosix } from '../shared/path';
-import { getDirtyCount } from './git-status-cache';
+import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
 import { getCurrentBranch, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
 
@@ -134,7 +134,12 @@ async function deriveSubWorktrees(
   }));
   await Promise.all(
     rerooted.map(async (wt) => {
-      wt.dirty = await getDirtyCount(wt.path, { scopeToSubtree: true });
+      const [dirty, upstream] = await Promise.all([
+        getDirtyCount(wt.path, { scopeToSubtree: true }),
+        getUpstreamStatus(wt.path),
+      ]);
+      wt.dirty = dirty;
+      wt.upstream = upstream;
     }),
   );
   return rerooted;

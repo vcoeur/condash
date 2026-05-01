@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { normalize } from 'node:path';
 import { promisify } from 'node:util';
-import { getDirtyCount } from './git-status-cache';
+import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
 import { toPosix } from '../shared/path';
 import type { Worktree } from '../shared/types';
 
@@ -85,12 +85,17 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
     });
   }
 
-  // Fan out a per-worktree dirty lookup through the shared cache, so rapid
-  // re-renders (Refresh button + chokidar tree-event + tab switch) don't
-  // each fire ~30 git status calls.
+  // Fan out per-worktree dirty + upstream lookups through the shared
+  // caches, so rapid re-renders (Refresh button + chokidar tree-event +
+  // tab switch) don't each fire ~30 git invocations.
   await Promise.all(
     out.map(async (wt) => {
-      wt.dirty = await getDirtyCount(wt.path);
+      const [dirty, upstream] = await Promise.all([
+        getDirtyCount(wt.path),
+        getUpstreamStatus(wt.path),
+      ]);
+      wt.dirty = dirty;
+      wt.upstream = upstream;
     }),
   );
   // POSIX-shape every path before it crosses the IPC boundary.

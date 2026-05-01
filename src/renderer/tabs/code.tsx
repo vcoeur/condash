@@ -8,6 +8,7 @@ import type {
   RepoEntry,
   TermSession,
   TerminalXtermPrefs,
+  UnpushedCommit,
   Worktree,
 } from '@shared/types';
 import { CodeRunRows } from '../code-runs';
@@ -174,9 +175,7 @@ export function RepoRow(props: {
             <li class="branch-row" data-status={branchStatus(wt)}>
               <span class="branch-dot" aria-hidden="true" />
               <span class="branch-name">{wt.branch ?? '(detached)'}</span>
-              <Show when={(wt.dirty ?? 0) > 0}>
-                <DirtyBadge worktree={wt} subtreeScoped={!!props.repo.parent} />
-              </Show>
+              <BranchInfoBadges worktree={wt} subtreeScoped={!!props.repo.parent} />
               <Show when={props.live && (props.liveBranch ?? null) === (wt.branch ?? null)}>
                 <span class="branch-live-dot" title="Running" aria-label="Running" />
               </Show>
@@ -544,28 +543,62 @@ function DirtyFileRow(props: { file: DirtyFile }) {
   );
 }
 
+/** One unpushed-commit row in the branch popover. SHA + subject, monospace. */
+function UnpushedCommitRow(props: { commit: UnpushedCommit }) {
+  return (
+    <li class="branch-popover-commit-row">
+      <span class="branch-popover-commit-sha">{props.commit.sha}</span>
+      <span class="branch-popover-commit-subject" title={props.commit.subject}>
+        {props.commit.subject}
+      </span>
+    </li>
+  );
+}
+
 /**
- * Per-branch dirty pill that opens a popover listing every dirty path with
- * its status code, +N/−N counts and a scaled `+`/`-` bar — derived from
- * `git status --porcelain=v1` joined with `git diff --numstat HEAD`. The
- * popover is a portaled `position: fixed` overlay so it always paints
+ * Per-branch info badges + shared click-to-inspect popover. Renders up to
+ * two badges side by side on a branch row:
+ *
+ *   - **Dirty badge** — shown when the worktree has uncommitted changes
+ *     (`wt.dirty > 0`). Click opens the popover.
+ *   - **Upstream badge** — shown when the branch has an upstream tracking
+ *     ref (`wt.upstream != null`). Renders a count-bearing pill (`↑N`)
+ *     when ahead of upstream, or a faint `↑` glyph when in sync. Only
+ *     clickable when ahead > 0; the in-sync glyph is purely informational.
+ *
+ * Both badges share a single popover. The popover fetches a
+ * `DirtyDetails` payload — which carries both the dirty-file list and the
+ * unpushed-commit list — via one round-trip, then renders whichever
+ * sections are non-empty. Clicking either badge anchors the popover to
+ * that badge.
+ *
+ * The popover is a portaled `position: fixed` overlay so it always paints
  * above neighbouring cards (same recipe as the open_with menu).
  */
-function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
+function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean }) {
   const [open, setOpen] = createSignal(false);
   const [details, setDetails] = createSignal<DirtyDetails | null>(null);
   const [anchor, setAnchor] = createSignal<{ top: number; left: number } | null>(null);
   const [error, setError] = createSignal<string | null>(null);
-  let triggerRef: HTMLButtonElement | undefined;
+  let dirtyRef: HTMLButtonElement | undefined;
+  let upstreamRef: HTMLButtonElement | undefined;
+  let activeRef: HTMLButtonElement | undefined;
   let popoverRef: HTMLDivElement | undefined;
 
-  /** Anchor the popover below the badge by default, but flip above when
-   * the rendered popover would overflow the viewport bottom. The popover
-   * fetches `git status` async, so its height changes after the first
-   * paint — the ref callback re-runs this once the content lands. */
+  const hasDirty = (): boolean => (props.worktree.dirty ?? 0) > 0;
+  const upstream = (): Worktree['upstream'] => props.worktree.upstream ?? null;
+  const ahead = (): number => upstream()?.ahead ?? 0;
+  const upstreamShown = (): boolean => upstream() != null;
+  const upstreamClickable = (): boolean => ahead() > 0;
+
+  /** Anchor the popover below the active trigger by default, but flip
+   *  above when the rendered popover would overflow the viewport bottom.
+   *  The popover fetches `git status` async, so its height changes after
+   *  the first paint — the ref callback re-runs this once the content
+   *  lands. */
   const positionPopover = (): void => {
-    if (!triggerRef) return;
-    const rect = triggerRef.getBoundingClientRect();
+    if (!activeRef) return;
+    const rect = activeRef.getBoundingClientRect();
     const margin = 8;
     let top = rect.bottom + 4;
     const popH = popoverRef?.getBoundingClientRect().height ?? 0;
@@ -583,7 +616,8 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
   const onDocClick = (e: MouseEvent): void => {
     if (!open()) return;
     const target = e.target as Node;
-    if (triggerRef?.contains(target)) return;
+    if (dirtyRef?.contains(target)) return;
+    if (upstreamRef?.contains(target)) return;
     if (popoverRef?.contains(target)) return;
     close();
   };
@@ -609,17 +643,15 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
     window.removeEventListener('scroll', onScrollOrResize, true);
   });
 
-  // The popover content grows after the async git-status fetch lands.
-  // Re-position once details / error change so the flip-above check runs
-  // against the final height, not the empty skeleton.
   createEffect(() => {
     details();
     error();
     if (open() && popoverRef) requestAnimationFrame(positionPopover);
   });
 
-  const toggle = async (e: MouseEvent): Promise<void> => {
+  const toggle = async (which: 'dirty' | 'upstream', e: MouseEvent): Promise<void> => {
     e.stopPropagation();
+    activeRef = which === 'dirty' ? dirtyRef : upstreamRef;
     if (open()) {
       close();
       return;
@@ -640,29 +672,54 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
 
   return (
     <>
-      <button
-        ref={(el) => (triggerRef = el)}
-        type="button"
-        class="branch-dirty"
-        onClick={(e) => void toggle(e)}
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        title="Show dirty files"
-      >
-        {props.worktree.dirty} dirty
-      </button>
+      <Show when={hasDirty()}>
+        <button
+          ref={(el) => (dirtyRef = el)}
+          type="button"
+          class="branch-dirty"
+          onClick={(e) => void toggle('dirty', e)}
+          aria-haspopup="dialog"
+          aria-expanded={open()}
+          title="Show dirty files"
+        >
+          {props.worktree.dirty} dirty
+        </button>
+      </Show>
+      <Show when={upstreamShown()}>
+        <Show
+          when={upstreamClickable()}
+          fallback={
+            <span
+              class="branch-upstream insync"
+              title={`In sync with ${upstream()?.upstreamRef ?? 'upstream'}`}
+              aria-label={`In sync with ${upstream()?.upstreamRef ?? 'upstream'}`}
+            >
+              ↑
+            </span>
+          }
+        >
+          <button
+            ref={(el) => (upstreamRef = el)}
+            type="button"
+            class="branch-upstream ahead"
+            onClick={(e) => void toggle('upstream', e)}
+            aria-haspopup="dialog"
+            aria-expanded={open()}
+            title={`${ahead()} commit${ahead() === 1 ? '' : 's'} not pushed to ${upstream()?.upstreamRef ?? 'upstream'}`}
+          >
+            ↑{ahead()}
+          </button>
+        </Show>
+      </Show>
       <Show when={open() && anchor()}>
         <div
           ref={(el) => {
             popoverRef = el;
-            // Re-position with the actual rendered height so we can flip
-            // above the trigger when the popover would otherwise spill
-            // below the viewport.
             if (el) requestAnimationFrame(positionPopover);
           }}
           class="branch-dirty-popover"
           role="dialog"
-          aria-label={`Dirty files in ${props.worktree.branch ?? '(detached)'}`}
+          aria-label={`Branch info for ${props.worktree.branch ?? '(detached)'}`}
           style={{
             top: `${anchor()!.top}px`,
             left: `${anchor()!.left}px`,
@@ -680,10 +737,7 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
           <Show when={details()}>
             {(d) => (
               <>
-                <Show
-                  when={d().files.length > 0}
-                  fallback={<p class="branch-dirty-popover-empty">No dirty files.</p>}
-                >
+                <Show when={d().files.length > 0}>
                   <ul class="branch-dirty-popover-files">
                     <For each={d().files}>{(f) => <DirtyFileRow file={f} />}</For>
                     <Show when={d().truncated}>
@@ -703,6 +757,35 @@ function DirtyBadge(props: { worktree: Worktree; subtreeScoped: boolean }) {
                       </Show>
                     </footer>
                   </Show>
+                </Show>
+                <Show when={d().unpushedCommits.length > 0}>
+                  <section class="branch-popover-section">
+                    <h3 class="branch-popover-section-head">
+                      Unpushed commits
+                      <Show when={d().upstream}>
+                        <span class="branch-popover-section-sub">
+                          {' '}
+                          → {d().upstream!.upstreamRef}
+                        </span>
+                      </Show>
+                    </h3>
+                    <ul class="branch-popover-commits">
+                      <For each={d().unpushedCommits}>
+                        {(c) => <UnpushedCommitRow commit={c} />}
+                      </For>
+                      <Show when={d().unpushedTruncated}>
+                        <li class="branch-dirty-popover-truncated">
+                          … +{(d().upstream?.ahead ?? 0) - d().unpushedCommits.length} more
+                        </li>
+                      </Show>
+                    </ul>
+                  </section>
+                </Show>
+                <Show when={d().files.length === 0 && d().unpushedCommits.length === 0}>
+                  <p class="branch-dirty-popover-empty">
+                    No dirty files{' '}
+                    <Show when={d().upstream}>and in sync with {d().upstream!.upstreamRef}</Show>.
+                  </p>
                 </Show>
               </>
             )}

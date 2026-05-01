@@ -529,6 +529,49 @@
   outline-offset: 1px;
 }
 
+/* Per-branch upstream badge. Two visual modes:
+ *
+ *   - `.ahead`  — clickable pill `↑N` shown when local is ahead of upstream.
+ *                 Uses --col-running so the eye reads it as "queued / live"
+ *                 work rather than dirty (which carries its own warm hue).
+ *   - `.insync` — static muted glyph `↑` shown when local is in sync. No
+ *                 hover, no click — purely a positive-state indicator.
+ *
+ * Hidden entirely (rendered as nothing) when the branch has no upstream. */
+.branch-upstream {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.branch-upstream.ahead {
+  color: var(--col-running);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.branch-upstream.ahead:hover {
+  background: color-mix(in srgb, var(--col-running) 14%, transparent);
+}
+
+.branch-upstream.ahead:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--col-running) 60%, transparent);
+  outline-offset: 1px;
+}
+
+.branch-upstream.insync {
+  color: var(--text-faint);
+  cursor: default;
+  opacity: 0.65;
+}
+
 /* Click-to-inspect popover anchored to the dirty badge. Same `position: fixed`
  * portal recipe as the open_with menu so it always paints above neighbouring
  * cards, but wider and with a scrollable file list. */
@@ -669,6 +712,73 @@
 }
 .branch-dirty-popover-deleted {
   color: var(--col-removed, #f87171);
+}
+
+/* Unpushed-commits section in the branch popover. Sits below the dirty
+ * file list (when both are present), separated by a soft rule. The
+ * --col-running tint matches the upstream-badge hue so the popover reads
+ * as the same "ahead" affordance the user clicked. */
+.branch-popover-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.branch-popover-section-head {
+  margin: 0 0 6px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--col-running);
+}
+
+.branch-popover-section-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+.branch-popover-commits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.branch-popover-commit-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.branch-popover-commit-row:nth-child(odd) {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.branch-popover-commit-sha {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--col-running);
+  font-variant-numeric: tabular-nums;
+}
+
+.branch-popover-commit-subject {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Per-branch live dot — small pulsing dot next to the branch name when
