@@ -75,12 +75,12 @@ For each `edited` row, ask the user one question. Show:
 
 ### 4. Apply `accept shipped` choices
 
-The CLI's `--force` flag operates per skill, not per file. So if the user picked "accept shipped" for some files in `projects/` but "keep local" for others in the same skill, **don't run `--force` on `projects/`** — that would overwrite the keep-local files too.
+The CLI's `--force` flag operates per skill, not per file — using it risks overwriting "keep local" files in the same skill. To keep the decision boundary at the file level, **always use the per-file write path**, even when every `edited` row in a skill was "accept shipped":
 
-Two-tier handling:
+1. For each accept-shipped file: read the shipped content from the path in `condash skills list --json` (`data.skills[].files`-derived; the `sourceDir` is in the JSON), then `Write` it to the on-disk path.
+2. After all per-file writes, run `condash skills install <skill> --json` (no `--force`) once per touched skill so the manifest gets refreshed — the CLI will see local matches shipped and mark each file `Unchanged`.
 
-- **Whole-skill accept** (every `edited` row in the skill is "accept shipped"): run `condash skills install <skill> --force --json` once for the whole skill. Clean.
-- **Mixed within a skill**: for each accept-shipped file, get the shipped content via the path in `condash skills list --json` (`data.skills[].files`-derived; the `sourceDir` is in the JSON), then `Write` it to the on-disk path. Then run `condash skills install <skill> --json` (no `--force`) so the manifest gets refreshed — the CLI will see the local now matches shipped and mark it `Unchanged`.
+This loses the small efficiency of a single `--force` on whole-skill accepts, and gains correctness: the per-file branching state never has to be tracked across the prompt loop, and `--force` cannot leak into a mixed-decision skill.
 
 ### 5. Handle `missing` and `orphan`
 

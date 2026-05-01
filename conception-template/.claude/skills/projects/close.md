@@ -16,19 +16,33 @@ Trigger: `/projects close <slug>`.
 
    **Exception — intentional deferrals.** Treat as silently complete any step whose text carries `(outside this item)`, `(out of scope)`, `(follow-up)`, or `(tracked in <slug>)`.
 
-4. **Knowledge promotion scan.**
+4. **Knowledge promotion review.** Editorial step — Claude does the reading, the CLI is a backstop.
 
-   ```bash
-   condash projects scan-promotions <slug> --json
-   ```
+   a. **Read the README and every `notes/*.md` body** returned by step 2's `read --with-notes`. Do not skim. Durable findings often land outside the heuristic's reach: in `## Description`, `## Steps` prose, `## Timeline` entries, or notes phrased as observations rather than imperatives.
 
-   The CLI grep-walks the item's `notes/*.md` for the durable-finding heuristic and returns `data.candidates[]` with `relPath`, `line`, `match`, and the surrounding `paragraph`. Present each as a numbered candidate. For each, ask: *"Promote to `knowledge/`? (y / n / edit-first)"*.
+   b. **Apply the three-question durability test from `knowledge/conventions.md`** to every candidate paragraph you noticed:
 
-   - **y** → invoke `/knowledge update`, then **automatically** stamp the origin paragraph in the project note: `**Transferred:** YYYY-MM-DD → <knowledge-path>`.
-   - **edit-first** → refine, re-present, re-ask.
+      1. Does it hold beyond this task? (Not specific to the in-flight work.)
+      2. Does it apply to more than one app, or to the ecosystem? (Or: would a teammate touching another app want to find it.)
+      3. Does it stay true regardless of the current PR's outcome? (Survives both merge and abandonment.)
+
+      Three yes → keep as a candidate. Any no → silently drop. Do not present a candidate that fails the test.
+
+   c. **Run the heuristic backstop** to catch anything you missed:
+
+      ```bash
+      condash projects scan-promotions <slug> --json
+      ```
+
+      The CLI grep-walks `notes/*.md` for `always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects)` and returns `data.candidates[]` with `relPath`, `line`, `match`, and the surrounding `paragraph`. For each row, check whether you already have it in your candidate set; if not, re-apply the three-question test before adding it. Skip any paragraph already carrying a `**Transferred:**` stamp.
+
+   d. **Present surviving candidates** (yours + any new from the scan) as a numbered list, each with the origin `<file>:<line>` reference, the exact paragraph, and the proposed `knowledge/` location (use the bucket-picking rubric from `knowledge/SKILL.md`). For each, ask: *"Promote to `knowledge/<path>`? (y / n / edit-first)"*.
+
+   - **y** → invoke `/knowledge update`, then **automatically** stamp the origin paragraph (in the README or the note) with `**Transferred:** YYYY-MM-DD → <knowledge-path>`.
+   - **edit-first** → refine wording or target path, re-present, re-ask.
    - **n** → skip.
 
-   If `data.candidates` is empty: mention it, offer one manual prompt ("Any specific passage to promote?"), move on.
+   If your reading produced zero candidates and the scan also returned empty, say so and move on — don't synthesise a prompt to fish for one.
 
 5. **Flip status + append timeline:**
 

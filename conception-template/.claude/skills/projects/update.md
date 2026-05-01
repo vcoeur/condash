@@ -31,4 +31,12 @@ Trigger: `/projects update <slug>` or implicit ("add a note to <slug>", "change 
 
 ## Promoting durable knowledge
 
-Apply the three-question durability test from `knowledge/conventions.md`. Three yes → `/knowledge update`, link under `## Notes`, stamp the origin paragraph `**Transferred:** YYYY-MM-DD → <knowledge-path>`. `/projects close` performs this stamping automatically when a candidate is confirmed during its scan.
+After every notes write — not just at close — re-read the paragraph you just wrote and apply the durability test from `knowledge/conventions.md`:
+
+1. Does it hold beyond this task? (Not specific to the in-flight work.)
+2. Does it apply to more than one app, or to the ecosystem?
+3. Does it stay true regardless of the current PR's outcome?
+
+Three yes → invoke `/knowledge update` now (don't wait for `/projects close`), link the resulting body file under `## Notes` in the project README, and stamp the origin paragraph in the note: `**Transferred:** YYYY-MM-DD → <knowledge-path>`. Any no → leave it in `notes/` only.
+
+Catching durable findings at write-time keeps `knowledge/` fresh while context is loaded; deferring them all to `/projects close` risks losing the fact in heuristic-grep blind spots. `/projects close` still performs a final pass and stamping for anything that slipped through.
