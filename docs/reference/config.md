@@ -12,15 +12,16 @@ condash reads two JSON files. Both are optional in principle — the dashboard r
 | File | Path | Lifecycle | Owns |
 |------|------|-----------|------|
 | `configuration.json` | `<conception_path>/configuration.json` | Per-tree, versioned in git | `workspace_path`, `worktrees_path`, `repositories` (incl. `run` / `force_stop`) |
-| `settings.json` | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine | `conception_path`, `terminal`, `pdf_viewer`, `open_with`, `theme` |
+| `settings.json` | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine | `conception_path`, `terminal`, `open_with`, `theme` |
 
 The split is by **lifecycle**, not by feature: anything you'd commit so teammates pick it up automatically goes in `configuration.json`; anything that depends on this machine (your editor binary, your terminal emulator, your Pictures folder) goes in `settings.json`.
 
-`terminal`, `pdf_viewer`, and `open_with` are valid in **either** file — set them in `configuration.json` for tree-wide defaults teammates pick up automatically, or in `settings.json` for per-machine overrides. When the same key appears in both files, **`settings.json` wins**, merged field by field:
+`terminal` and `open_with` are valid in **either** file — set them in `configuration.json` for tree-wide defaults teammates pick up automatically, or in `settings.json` for per-machine overrides. When the same key appears in both files, **`settings.json` wins**, merged field by field:
 
 - `terminal.<field>` — each field set in `settings.json` replaces the tree's value; missing fields fall through.
-- `pdf_viewer` — a non-empty array in `settings.json` replaces the tree's; empty / missing falls through.
 - `open_with.<slot>` — merged per slot; the user's `command` and `label` replace the tree's; tree-only slots survive untouched.
+
+> PDF preview is in-renderer (Chromium `<webview>`) — there is **no** `pdf_viewer` config; the modal's "↗ Open in OS default viewer" button uses `shell.openPath`.
 
 Concretely: move any machine-specific preference from `configuration.json` into `settings.json` on each machine; leave tree-wide preferences in `configuration.json` and every teammate gets them automatically.
 
@@ -55,7 +56,6 @@ Lives at `<conception_path>/configuration.json`. Commit it. Every key is optiona
     "secondary_ide": { "label": "Open in secondary IDE", "command": "code {path}" },
     "terminal":      { "label": "Open terminal here",    "command": "ghostty --working-directory={path}" }
   },
-  "pdf_viewer": ["xdg-open {path}", "evince {path}"],
   "terminal": {
     "shell": "/bin/zsh",
     "shortcut": "Ctrl+T",
@@ -100,7 +100,7 @@ Two buckets, `primary` and `secondary`, each an array of repo entries. Entries t
 | `{"name": "repo"}` | Same as bare — the inline-object form coexists because a repo may want sibling keys. |
 | `{"name": "repo", "submodules": ["sub/a", "sub/b"]}` | Renders the repo as an expandable row. Each submodule gets its own dirty count and "open with" buttons. Useful for monorepos where subtrees are edited independently. Submodule entries follow the same shape as parent entries (string or object). |
 | `{"name": "repo", "run": "<cmd>"}` | Wires an [inline dev-server runner](inline-runner.md) into that row. `run` is independent of `submodules` — a parent's `run` is **not** inherited by its submodules; add `run` per submodule if they each have their own dev server. |
-| `{"name": "repo", "run": "<cmd>", "force_stop": "<cmd>"}` | Same as above plus a repo-level **force-stop** button. The button runs `force_stop` as a shell command, without going through condash's own process tracking — use it to free a port held by a server condash didn't start (stale process from a previous run, a server launched from another terminal, etc.). Typical values: `fuser -k 8300/tcp`, `pkill -f 'manage.py runserver'`, `lsof -ti :8300 \| xargs -r kill -9`. Same shell trust level as `run` — you're running these commands on your own machine, so a malicious tree is a malicious shell. |
+| `{"name": "repo", "run": "<cmd>", "force_stop": "<cmd>"}` | Same as above plus a repo-level **force-stop** button. The button runs `force_stop` as a shell command (`/bin/sh -c` on POSIX, `cmd.exe /d /s /c` on Windows), without going through condash's own process tracking — use it to free a port held by a server condash didn't start. **Per-OS recipes for "kill whatever is holding port 8300":** Linux `fuser -k 8300/tcp` or `pkill -f 'manage.py runserver'`; macOS `lsof -ti tcp:8300 \| xargs kill -9`; Windows `for /f "tokens=5" %a in ('netstat -ano ^| findstr :8300') do taskkill /F /PID %a`. Same shell trust level as `run` — you're running these commands on your own machine, so a malicious tree is a malicious shell. |
 | `{"name": "repo", "label": "<text>"}` | Optional human-friendly label. When set, the **label takes the card title slot** on the Code tab and the directory name moves to a small monospace pill alongside it (suppressed when `label === name`). Useful when the directory name is a slug (`alicepeintures.com`) and a friendlier descriptor (`Alice's site`) gives quicker context, while keeping the on-disk name visible. Works on both top-level entries and submodules; combinable with `run` / `force_stop` / `submodules`. |
 
 Anything under `workspace_path` not named in either bucket lands in a third `OTHERS` card.
@@ -134,15 +134,15 @@ Each slot takes a `label` (tooltip text) and a single `command` string.
 
 Built-in defaults reproduce common IntelliJ / VS Code / terminal behaviour, so a `configuration.json` with no `open_with` block still gives functional buttons. Override only the slots you want to customise.
 
-### `pdf_viewer`
+#### Per-OS recipes
 
-Bare array of shell-style commands for opening PDFs from deliverable links. `{path}` is replaced with the absolute path of the PDF. Tried in order.
+The `command` is invoked directly (not through a shell) — `~/` and `$VARS` are not expanded except for a leading `~/` which condash rewrites to the user's home. Pick a recipe matching your OS:
 
-```json
-{ "pdf_viewer": ["xdg-open {path}", "evince {path}"] }
-```
-
-Empty array or missing key → falls back to the OS default (`xdg-open` on Linux, `open` on macOS).
+| Slot | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| `main_ide` | `idea {path}` · `code {path}` | `open -na "IntelliJ IDEA" --args {path}` · `open -na "Visual Studio Code" --args {path}` | `idea64.exe {path}` · `code {path}` (after VS Code's "Add to PATH" installer step) |
+| `secondary_ide` | `codium {path}` · `zed {path}` | `open -na "VSCodium" --args {path}` · `zed {path}` | `code {path}` · `zed {path}` |
+| `terminal` | `gnome-terminal --working-directory {path}` · `konsole --workdir {path}` · `x-terminal-emulator --working-directory {path}` | `open -a Terminal {path}` · `open -a iTerm {path}` · `open -a Ghostty {path}` | `wt.exe -d "{path}"` (Windows Terminal) · `cmd.exe /K "cd /d {path}"` |
 
 ### `terminal`
 
@@ -223,7 +223,6 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
     "launcher_command": "claude",
     "screenshot_dir": "/home/you/Pictures/Screenshots"
   },
-  "pdf_viewer": ["xdg-open {path}", "evince {path}"],
   "open_with": {
     "main_ide":      { "label": "Open in main IDE",      "command": "idea {path}" },
     "secondary_ide": { "label": "Open in secondary IDE", "command": "code {path}" }
@@ -236,7 +235,6 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `conception_path` | Absolute path to the conception tree condash should render. |
 | `theme` | `light`, `dark`, or `auto`. Persisted by `setTheme`. |
 | `terminal.*` | Same keys as the tree-level `terminal` block above; any field set here overrides the tree value. Missing fields fall through. |
-| `pdf_viewer` | Fallback chain for opening PDFs. Non-empty array here replaces the tree's chain; empty or missing falls through. |
 | `open_with.<slot>.label`, `.command` | Merged per slot. The user's `command` replaces the tree's; the user's `label` replaces the tree's. Tree-only slots survive untouched. |
 
 Resolution order for the conception path, checked in sequence:
@@ -260,7 +258,7 @@ Changes that **do** need a restart:
 
 Changes that reload live without a restart:
 
-- Everything under `open_with`, `pdf_viewer`, `terminal`.
+- Everything under `open_with`, `terminal`.
 - `run` / `force_stop` on an existing repo entry.
 
 ## See also

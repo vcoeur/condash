@@ -1,7 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import { toPosix } from '../shared/path';
 
 import { detectConceptionState, initConception } from './conception-init';
 import { DEFAULT_LAYOUT, readSettings, settingsPath, writeSettings } from './settings';
@@ -407,7 +410,17 @@ function registerIpc(): void {
 
   ipcMain.handle('getConceptionPath', async () => {
     const { conceptionPath } = await readSettings();
-    return conceptionPath;
+    return conceptionPath ? toPosix(conceptionPath) : null;
+  });
+
+  ipcMain.handle('pdf.toFileUrl', (_, path: string) => {
+    if (typeof path !== 'string' || path.length === 0) {
+      throw new Error('pdf.toFileUrl: path must be a non-empty string');
+    }
+    return {
+      url: pathToFileURL(path).href,
+      filename: basename(path),
+    };
   });
 
   ipcMain.handle('getTheme', async () => {
@@ -415,7 +428,7 @@ function registerIpc(): void {
     return theme;
   });
 
-  ipcMain.handle('getSettingsPath', () => settingsPath());
+  ipcMain.handle('getSettingsPath', () => toPosix(settingsPath()));
 
   ipcMain.handle('setTheme', async (_, theme: Theme) => {
     if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`);
@@ -476,7 +489,7 @@ function registerIpc(): void {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
 
-    const picked = result.filePaths[0];
+    const picked = toPosix(result.filePaths[0]);
     const next = await readSettings();
     next.conceptionPath = picked;
     await writeSettings(next);
@@ -515,6 +528,7 @@ function registerIpc(): void {
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node,
+    platform: process.platform,
   }));
 }
 

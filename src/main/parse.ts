@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import type { Deliverable, ItemKind, Project, Step, StepCounts, StepMarker } from '../shared/types';
+import { toPosix } from '../shared/path';
 
 const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
 const HEADING2 = /^##\s+(.+)$/;
@@ -23,7 +24,7 @@ export async function parseReadme(path: string): Promise<Project> {
 
   return {
     slug,
-    path,
+    path: toPosix(path),
     title: title ?? slug,
     kind: normaliseKind(meta.get('kind')),
     status: (meta.get('status') ?? 'backlog').toLowerCase(),
@@ -152,7 +153,7 @@ function extractDeliverables(lines: readonly string[], itemDir: string): Deliver
     const absolute = isAbsolute(rawPath) ? rawPath : resolve(itemDir, rawPath);
     out.push({
       label: label.trim(),
-      path: absolute,
+      path: toPosix(absolute),
       description: description?.trim() || undefined,
     });
   }

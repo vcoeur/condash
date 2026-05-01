@@ -1,6 +1,7 @@
 import { promises as fs, type Dirent } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ProjectFileEntry } from '../shared/types';
+import { toPosix } from '../shared/path';
 
 /**
  * List files inside a project directory (the directory containing `readmePath`).
@@ -23,7 +24,7 @@ export async function listProjectFiles(readmePath: string): Promise<ProjectFileE
     if (entry.name.startsWith('.')) continue;
     const absolute = join(root, entry.name);
     if (entry.isFile()) {
-      out.push({ path: absolute, relPath: entry.name, name: entry.name });
+      out.push({ path: toPosix(absolute), relPath: entry.name, name: entry.name });
       continue;
     }
     if (!entry.isDirectory()) continue;
@@ -37,7 +38,7 @@ export async function listProjectFiles(readmePath: string): Promise<ProjectFileE
       if (child.name.startsWith('.')) continue;
       if (!child.isFile()) continue;
       out.push({
-        path: join(absolute, child.name),
+        path: toPosix(join(absolute, child.name)),
         relPath: `${entry.name}/${child.name}`,
         name: child.name,
       });

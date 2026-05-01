@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from 'solid-js';
+import { createResource, onCleanup, onMount, Show } from 'solid-js';
 
 export function PdfModal(props: {
   path: string;
@@ -19,15 +19,15 @@ export function PdfModal(props: {
     document.removeEventListener('keydown', handleKey, true);
   });
 
-  const fileUrl = (): string => {
-    const encoded = props.path
-      .split('/')
-      .map((seg) => encodeURIComponent(seg))
-      .join('/');
-    return `file://${encoded}`;
-  };
-
-  const fileName = (): string => props.path.split('/').pop() ?? props.path;
+  // Build the `file://` URL in main via `pathToFileURL`. That's the only
+  // path-to-URL conversion that handles Windows drive letters and percent-
+  // encoding correctly across all three OSes — doing it in the renderer
+  // would either require a Node module (not available in the sandbox) or
+  // re-implementing the rules by hand.
+  const [resolved] = createResource(
+    () => props.path,
+    (path) => window.condash.pdfToFileUrl(path),
+  );
 
   return (
     <div class="modal-backdrop" onClick={props.onClose}>
@@ -38,7 +38,7 @@ export function PdfModal(props: {
         onClick={(e) => e.stopPropagation()}
       >
         <header class="modal-head">
-          <span class="modal-title">{fileName()}</span>
+          <span class="modal-title">{resolved()?.filename ?? ''}</span>
           <span class="modal-path">{props.path}</span>
           <button
             class="modal-button"
@@ -52,7 +52,9 @@ export function PdfModal(props: {
           </button>
         </header>
         <div class="pdf-body">
-          <webview src={fileUrl()} partition="persist:pdf" class="pdf-webview" />
+          <Show when={resolved()?.url}>
+            {(url) => <webview src={url()} partition="persist:pdf" class="pdf-webview" />}
+          </Show>
         </div>
       </div>
     </div>

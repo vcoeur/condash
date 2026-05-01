@@ -1,3 +1,9 @@
+/** Subset of `NodeJS.Platform` we actually care about. The renderer doesn't
+ *  link `@types/node` so it can't reach the full union — we mirror the three
+ *  values that influence per-OS behaviour and leave a string fallback for
+ *  the rare exotic (`freebsd`, `aix`, ...). */
+export type Platform = 'linux' | 'darwin' | 'win32' | (string & {});
+
 export type ItemKind = 'project' | 'incident' | 'document' | 'unknown';
 
 export type KnownStatus = 'now' | 'review' | 'later' | 'backlog' | 'done';

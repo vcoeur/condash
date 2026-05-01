@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { toPosix } from '../shared/path';
 
 export async function readNote(path: string): Promise<string> {
   try {
@@ -49,9 +50,11 @@ async function nextNotePrefix(notesDir: string): Promise<string> {
  * project README path may also be passed; we coerce to its parent folder.
  * Returns the absolute path written. */
 export async function createProjectNote(projectPath: string, slug: string): Promise<string> {
-  const projectDir = projectPath.endsWith('README.md')
-    ? projectPath.slice(0, -'/README.md'.length)
-    : projectPath;
+  // Accepts either the project directory or the README inside it. Use
+  // `path.dirname` rather than slicing a fixed `'/README.md'.length` so
+  // Windows separators (`\README.md`) don't throw off the slice.
+  const projectDir =
+    basename(projectPath).toLowerCase() === 'readme.md' ? dirname(projectPath) : projectPath;
   const notesDir = join(projectDir, 'notes');
   await fs.mkdir(notesDir, { recursive: true });
   const cleaned = sanitiseSlug(slug);
@@ -67,5 +70,5 @@ export async function createProjectNote(projectPath: string, slug: string): Prom
   const projectName = basename(projectDir);
   const body = `# ${prefix} — ${title}\n\n> Created in ${projectName}.\n\n`;
   await fs.writeFile(path, body, { encoding: 'utf8', flag: 'wx' });
-  return path;
+  return toPosix(path);
 }
