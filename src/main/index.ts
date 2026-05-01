@@ -597,9 +597,18 @@ function registerIpc(): void {
     if (typeof target !== 'string' || target.length === 0) return;
     // shell.openExternal already filters non-http/https on most platforms but
     // we additionally clamp to safe schemes here so a hostile pty can't pop a
-    // file:// or jar: handler.
+    // file:// or jar: handler. Local paths must go through `openPath`.
     if (!/^(https?|mailto):/i.test(target)) return;
     await shell.openExternal(target);
+  });
+
+  ipcMain.handle('openPath', async (_, target: string) => {
+    if (typeof target !== 'string' || target.length === 0) return;
+    // Reject anything that looks like a URL — the renderer should call
+    // openExternal for those.
+    if (/^[a-z][a-z0-9+\-.]*:/i.test(target)) return;
+    const error = await shell.openPath(target);
+    if (error) throw new Error(error);
   });
 
   ipcMain.handle('project.createNote', async (_, projectPath: string, slug: string) => {
