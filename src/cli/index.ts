@@ -3,7 +3,14 @@ import { parseArgs, takeUniversalFlags, UsageError } from './parser';
 import { resolveConception } from './conception';
 import { runProjects } from './commands/projects';
 import { runKnowledge } from './commands/knowledge';
-import { runConfig, runDirty, runRepos, runSearch } from './commands/misc';
+import {
+  runAuditCommand,
+  runConfig,
+  runDirty,
+  runRepos,
+  runSearch,
+  runWorktrees,
+} from './commands/misc';
 import { runSkills } from './commands/skills';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
@@ -11,11 +18,13 @@ const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
 const TOP_HELP = `condash <noun> <verb> [args] [--flags]
 
 Nouns:
-  projects     list, read, resolve, search, validate, status get|set, close
-  knowledge    tree, verify, retrieve, stamp
+  projects     list, read, resolve, search, validate, status get|set, close,
+               index, create, scan-promotions
+  knowledge    tree, verify, retrieve, stamp, index
   search       cross-tree search (--scope all|projects|knowledge)
   repos        list configured repositories
-  worktrees    list (alias of: repos list --include-worktrees, filtered)
+  worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
+  audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
   dirty        list, touch <tree>, clear <tree|all>
   skills       list shipped skills; install [<name>...]; status
   config       conception-path, list, get <key>
@@ -130,11 +139,10 @@ async function dispatch(
       await runRepos(args.verb, args, ctx, conceptionPath);
       return ExitCodes.OK;
     case 'worktrees':
-      // Alias: project list filtered by branch. For now, route to repos list
-      // with --include-worktrees so the user gets something useful; richer
-      // surface is a follow-up.
-      args.flags['include-worktrees'] = true;
-      await runRepos('list', args, ctx, conceptionPath);
+      await runWorktrees(args.verb, args, ctx, conceptionPath);
+      return ExitCodes.OK;
+    case 'audit':
+      await runAuditCommand(args, ctx, conceptionPath);
       return ExitCodes.OK;
     case 'dirty':
       await runDirty(args.verb, args, ctx, conceptionPath);
