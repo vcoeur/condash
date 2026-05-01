@@ -2,6 +2,7 @@ import type {
   ConceptionInitState,
   DirtyDetails,
   KnowledgeNode,
+  LayoutState,
   OpenWithSlotKey,
   OpenWithSlots,
   Project,
@@ -44,6 +45,10 @@ export interface CondashApi {
   initConception(path: string): Promise<{ created: string[] }>;
   getTheme(): Promise<Theme>;
   setTheme(theme: Theme): Promise<void>;
+  /** Composite-layout state (which panes are shown + their sizes).
+   * Persisted in the global per-machine settings.json. */
+  getLayout(): Promise<LayoutState>;
+  setLayout(layout: LayoutState): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;
@@ -129,7 +134,11 @@ export type MenuCommand =
   | 'open-conception'
   | 'open-settings'
   | 'request-quit'
+  | 'toggle-projects'
   | 'toggle-terminal'
+  | 'show-code'
+  | 'show-knowledge'
+  | 'hide-working'
   | 'refresh'
   | 'about'
   | 'help-architecture'

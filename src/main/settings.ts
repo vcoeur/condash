@@ -1,11 +1,23 @@
 import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { Settings } from '../shared/types';
+import type { LayoutState, Settings } from '../shared/types';
 
 const FILE_NAME = 'settings.json';
 
-const empty: Settings = { conceptionPath: null, theme: 'system', terminal: {} };
+export const DEFAULT_LAYOUT: LayoutState = {
+  projects: true,
+  working: 'code',
+  terminal: true,
+  projectsWidth: 320,
+};
+
+const empty: Settings = {
+  conceptionPath: null,
+  theme: 'system',
+  terminal: {},
+  layout: DEFAULT_LAYOUT,
+};
 
 export function settingsPath(): string {
   return join(app.getPath('userData'), FILE_NAME);
@@ -16,7 +28,13 @@ export async function readSettings(): Promise<Settings> {
   try {
     const raw = await fs.readFile(settingsPath(), 'utf8');
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    onDisk = { ...empty, ...parsed };
+    // Layout is an object — shallow-merge with the default so an older
+    // settings file that lacks a freshly-added field still resolves.
+    onDisk = {
+      ...empty,
+      ...parsed,
+      layout: { ...DEFAULT_LAYOUT, ...(parsed.layout ?? {}) },
+    };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') onDisk = { ...empty };
     else throw err;

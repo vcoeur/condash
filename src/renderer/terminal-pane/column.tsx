@@ -11,6 +11,9 @@ export interface TerminalColumnProps {
   /** Optional launcher command (when set, the column gets a second `+`
    *  button labelled with the command name, e.g. `claude`). */
   launcherCommand?: string | null;
+  /** True when the surrounding pane is currently visible. Drives the
+   *  active state of the in-strip Terminal handle. */
+  paneOpen: boolean;
   dnd: DragDropController;
   /** Refs for the xterm host (one per column; the parent stashes them so
    *  it can re-parent xterm elements on column moves). */
@@ -24,6 +27,10 @@ export interface TerminalColumnProps {
   onSpawnShell: (col: Column, launcher: boolean) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
+  /** Toggle the pane open/closed. The Terminal handle in the strip
+   *  fires this. Only the left column renders the handle, so the pane
+   *  has exactly one toggle regardless of split state. */
+  onTogglePane: () => void;
 }
 
 /** One column of the bottom terminal pane: tab strip on top + xterm host
@@ -46,6 +53,23 @@ export function TerminalColumn(props: TerminalColumnProps) {
         onDrop={(e) => props.dnd.onDropOnStrip(e, props.col)}
         onClick={() => props.onActivateColumn(props.col)}
       >
+        {/* Terminal handle — only in the left column so the pane has
+         *  one toggle regardless of split state. Doubles as both
+         *  open-pane and hide-pane (active when open). */}
+        <Show when={props.col === 'left'}>
+          <button
+            class="terminal-pane-handle"
+            classList={{ active: props.paneOpen }}
+            aria-pressed={props.paneOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onTogglePane();
+            }}
+            title={props.paneOpen ? 'Hide Terminal' : 'Show Terminal'}
+          >
+            Terminal
+          </button>
+        </Show>
         <For each={props.tabs}>
           {(tab) => (
             <div

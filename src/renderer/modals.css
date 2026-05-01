@@ -38,6 +38,61 @@
   min-height: 0;
 }
 
+/* Source filter — pill-row that lets the user narrow results to
+ * Projects only, Knowledge only, or All. Sits between the search input
+ * and the result list. Counts on each pill always reflect the
+ * unfiltered result set, so the user can see what each option would
+ * yield without committing to it. */
+.search-source-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 8px;
+  flex-wrap: wrap;
+}
+
+.search-source-pill {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.search-source-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.search-source-pill.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.search-source-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-faint);
+  text-transform: none;
+}
+
 .search-modal-body .search-results {
   overflow-y: auto;
   max-height: 64vh;
