@@ -52,7 +52,7 @@ Inspect what you got:
 ├── configuration.json
 ├── projects/
 │   ├── 2026-03/         # items created last month (2 done)
-│   └── 2026-04/         # 7 items created this month (3 now, 1 review, 1 soon, 1 later, 1 backlog)
+│   └── 2026-04/         # 7 items created this month (3 now, 1 review, 2 later, 1 backlog)
 └── knowledge/
     ├── conventions.md
     ├── internal/
@@ -80,12 +80,14 @@ Electron opens a single `BrowserWindow` rendering the Solid SPA — same rendere
 
 The header shows four top-level tabs with counts: **Projects (9)**, **Code (3)**, **Knowledge (8)**, **History (9)**. Under **Projects**, the sub-tabs are **Current / Next / Backlog / Done**. The demo tree was built so every bucket has something in it.
 
+
+
 ## 5. Walk around
 
 Take two minutes to click through:
 
 - **Current** — 3 items with status `now` (one of each kind: document, incident, project) and 1 item with status `review`. Click the fuzzy-search-v2 row; the card expands, showing the README on the left and a step list on the right with all four marker states (`[x]`, `[~]`, `[ ]`, `[-]`).
-- **Next** — the soon bucket. One project (`json-export`).
+- **Next** — the later bucket. Two projects (`json-export` and one more).
 - **Backlog** — one project, parked.
 - **Done** — two archived items from the previous month.
 - **Code** — three repos: condash scanned `workspace_path: /tmp/conception-demo-workspace` from `configuration.json` and found one `.git/` per entry. (If the Code tab shows 0, the workspace path on your machine doesn't exist yet — we'll set that up properly in [Your first project](first-project.md).)

@@ -7,7 +7,7 @@
 
 ## Goal
 
-A deliberately-broken seed item for the docs site: `**Status**: wip` is **not** in the canonical enum (`now` / `soon` / `later` / `backlog` / `review` / `done`), so condash coerces it to `backlog`, logs a parser warning, and surfaces the red `!?` badge on this card. Point at this card when screenshotting the badge behaviour.
+A deliberately-broken seed item for the docs site: `**Status**: wip` is **not** in the canonical enum (`now` / `review` / `later` / `backlog` / `done`), so condash coerces it to `backlog`, logs a parser warning, and surfaces the red `!?` badge on this card. Point at this card when screenshotting the badge behaviour.
 
 Fix to remove the badge: change `wip` to `now` (or any valid value).
 

@@ -119,9 +119,6 @@
 .group-block[data-status='now'] {
   --col-status: var(--col-now);
 }
-.group-block[data-status='soon'] {
-  --col-status: var(--col-soon);
-}
 .group-block[data-status='later'] {
   --col-status: var(--col-later);
 }
@@ -226,9 +223,6 @@
 
 [data-status-card='now'] {
   --row-stripe: var(--col-now);
-}
-[data-status-card='soon'] {
-  --row-stripe: var(--col-soon);
 }
 [data-status-card='later'] {
   --row-stripe: var(--col-later);

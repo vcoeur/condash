@@ -42,4 +42,4 @@ Implement the plugin surface sketched in [[plugin-api-proposal|the plugin-api de
 
 ## Notes
 
-Deliberately in backlog, not soon: the proposal document is still in active review and we do not want to start implementation against a moving target. When that sign-off lands, promote this item to `now`.
+Deliberately in backlog, not later: the proposal document is still in active review and we do not want to start implementation against a moving target. When that sign-off lands, promote this item to `now`.

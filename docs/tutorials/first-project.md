@@ -7,7 +7,7 @@ description: Create an item, wire its steps, add a note, link to another item �
 
 **When to read this.** You finished [First run](first-run.md) and have condash running against the `conception-demo` tree. Now you want to do actual work in it — create an item, change its status, add and close steps, drop a note, cross-link items.
 
-By the end, you'll have added a new project to the tree, walked it from `soon` through `now` to `done`, and understood which actions live in the dashboard versus which live in your editor.
+By the end, you'll have added a new project to the tree, walked it from `later` through `now` to `done`, and understood which actions live in the dashboard versus which live in your editor.
 
 ## The two kinds of action
 
@@ -22,7 +22,7 @@ Projects live at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. Pick today's date
 **From the dashboard**: click the **`+`** button in the header (right of the terminal icon). A modal opens asking for the handful of fields condash's parser actually reads:
 
 - **Kind** — project, incident, or document.
-- **Status** — `now` / `soon` / `later` / `backlog` / `review` / `done`.
+- **Status** — `now` / `review` / `later` / `backlog` / `done`.
 - **Title** — becomes the `# H1` heading.
 - **Slug** — auto-derived from the title; edit it if you want a shorter handle.
 - **Apps** — comma-separated, rendered as a backticked list in the header.
@@ -39,7 +39,7 @@ cat > ~/conception-demo/projects/2026-04/2026-04-18-helio-benchmark-harness/READ
 
 **Date**: 2026-04-18
 **Kind**: project
-**Status**: soon
+**Status**: later
 **Apps**: `helio`
 
 ## Goal
@@ -79,16 +79,16 @@ perf regressions before release instead of during them.
 EOF
 ```
 
-Switch back to the condash window and click the refresh icon in the header. The project appears under **Next** with status `soon`.
+Switch back to the condash window and click the refresh icon in the header. The project appears under **Next** with status `later`.
 
-![Projects → Next shows the newly created soon-status item](../assets/screenshots/projects-next-light.png#only-light)
-![Projects → Next shows the newly created soon-status item](../assets/screenshots/projects-next-dark.png#only-dark)
+![Projects → Next shows the newly created later-status item](../assets/screenshots/projects-next-light.png#only-light)
+![Projects → Next shows the newly created later-status item](../assets/screenshots/projects-next-dark.png#only-dark)
 
 Notice the `[[fuzzy-search-v2|the fuzzy-search item]]` in the last step — that's a **wikilink** that will resolve to the existing fuzzy-search-v2 item. Click the step text once you've expanded the card; condash follows the link to that item's card.
 
 ## 2. Change its status from the dashboard
 
-Click into the project card to expand it. Somewhere in the header you'll see a status pill that currently reads **SOON**. Click-and-drag the whole item row to the **Current** sub-tab, or use the gear dropdown on the card. The dashboard rewrites the `**Status**:` line in the README.
+Click into the project card to expand it. Somewhere in the header you'll see a status pill that currently reads **LATER**. Click-and-drag the whole item row to the **Current** sub-tab, or use the gear dropdown on the card. The dashboard rewrites the `**Status**:` line in the README.
 
 Check with `git diff` in a second shell:
 
@@ -97,7 +97,7 @@ cd ~/conception-demo
 git diff projects/2026-04/2026-04-18-helio-benchmark-harness/README.md
 ```
 
-You'll see exactly one line changed: `-**Status**: soon` → `+**Status**: now`. That's the entire mutation.
+You'll see exactly one line changed: `-**Status**: later` → `+**Status**: now`. That's the entire mutation.
 
 ## 3. Toggle a step
 
