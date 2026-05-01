@@ -9,6 +9,7 @@ import type {
   StepMarker,
 } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
+import { countSteps } from '@shared/projects';
 import { TerminalIcon } from '../icons';
 import { HighlightedText } from '../search/highlight';
 import { groupHits, type ProjectGroup } from '../search/grouping';
@@ -177,17 +178,6 @@ export function applyStepMarker(
 
 export function applyStatus(items: Project[], path: string, status: string): Project[] {
   return items.map((p) => (p.path === path ? { ...p, status } : p));
-}
-
-function countSteps(steps: readonly Step[]): StepCounts {
-  const c: StepCounts = { todo: 0, doing: 0, done: 0, dropped: 0 };
-  for (const s of steps) {
-    if (s.marker === ' ') c.todo++;
-    else if (s.marker === '~') c.doing++;
-    else if (s.marker === 'x') c.done++;
-    else if (s.marker === '-') c.dropped++;
-  }
-  return c;
 }
 
 function hasSteps(c: StepCounts): boolean {
@@ -824,9 +814,9 @@ function Card(props: {
         {/* Row 3: meta — apps on the left, progress + warn (when status
             is unknown) on the right. */}
         <div class="meta">
-          <Show when={props.item.apps}>
-            <span class="meta-icon apps" title={props.item.apps}>
-              <span class="apps-text">{props.item.apps}</span>
+          <Show when={props.item.apps.length > 0}>
+            <span class="meta-icon apps" title={props.item.apps.join(', ')}>
+              <span class="apps-text">{props.item.apps.join(', ')}</span>
             </span>
           </Show>
           <Show when={statusUnknown()}>

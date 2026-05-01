@@ -7,6 +7,7 @@ import { search as searchAll } from '../../main/search';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { projectsStrategy } from '../../main/index-projects';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
+import { statusOrder } from '../../shared/projects';
 import { resolveSlug } from '../slug';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { parseHeader, readHeader, validateHeader, type HeaderFields } from '../header';
@@ -452,11 +453,6 @@ function makeSorter(sort: string): (a: ProjectListRow, b: ProjectListRow) => num
     if (orderA !== orderB) return orderA - orderB;
     return a.slug.localeCompare(b.slug);
   };
-}
-
-function statusOrder(status: string): number {
-  const idx = (KNOWN_STATUSES as readonly string[]).indexOf(status);
-  return idx === -1 ? KNOWN_STATUSES.length : idx;
 }
 
 function formatListHuman(rows: ProjectListRow[]): string {

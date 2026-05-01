@@ -1,10 +1,10 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
-import type { Deliverable, ItemKind, Project, Step, StepCounts, StepMarker } from '../shared/types';
+import type { Deliverable, ItemKind, Project, Step, StepMarker } from '../shared/types';
+import { HEADING2, parseHeader } from '../shared/header';
+import { countSteps } from '../shared/projects';
 import { toPosix } from '../shared/path';
 
-const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
-const HEADING2 = /^##\s+(.+)$/;
 const STEP_LINE = /^\s*-\s\[([ ~x-])\]\s+(.*)$/;
 const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
 const SUMMARY_MAX = 300;
@@ -13,8 +13,7 @@ export async function parseReadme(path: string): Promise<Project> {
   const raw = await fs.readFile(path, 'utf8');
   const lines = raw.split(/\r?\n/);
 
-  const title = extractTitle(lines);
-  const meta = extractMetadata(lines);
+  const header = parseHeader(raw);
   const summary = extractSummary(lines);
   const steps = extractSteps(lines);
   const stepCounts = countSteps(steps);
@@ -25,44 +24,16 @@ export async function parseReadme(path: string): Promise<Project> {
   return {
     slug,
     path: toPosix(path),
-    title: title ?? slug,
-    kind: normaliseKind(meta.get('kind')),
-    status: (meta.get('status') ?? 'backlog').toLowerCase(),
-    apps: meta.get('apps'),
+    title: header.title ?? slug,
+    kind: normaliseKind(header.kind),
+    status: (header.status ?? 'backlog').toLowerCase(),
+    apps: header.apps,
     summary,
     steps,
     stepCounts,
     deliverables,
     deliverableCount: deliverables.length,
   };
-}
-
-function extractTitle(lines: readonly string[]): string | null {
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    return trimmed.replace(/^#+\s*/, '').trim() || null;
-  }
-  return null;
-}
-
-function extractMetadata(lines: readonly string[]): Map<string, string> {
-  const out = new Map<string, string>();
-  let pastTitle = false;
-
-  for (const line of lines) {
-    if (HEADING2.test(line)) break;
-    if (!pastTitle) {
-      if (line.trim()) pastTitle = true;
-      continue;
-    }
-    const match = line.match(META_LINE);
-    if (match) {
-      const [, key, value] = match;
-      out.set(key.toLowerCase(), value);
-    }
-  }
-  return out;
 }
 
 function extractSummary(lines: readonly string[]): string | undefined {
@@ -115,27 +86,6 @@ function extractSteps(lines: readonly string[]): Step[] {
   return out;
 }
 
-function countSteps(steps: readonly Step[]): StepCounts {
-  const counts: StepCounts = { todo: 0, doing: 0, done: 0, dropped: 0 };
-  for (const step of steps) {
-    switch (step.marker) {
-      case ' ':
-        counts.todo++;
-        break;
-      case '~':
-        counts.doing++;
-        break;
-      case 'x':
-        counts.done++;
-        break;
-      case '-':
-        counts.dropped++;
-        break;
-    }
-  }
-  return counts;
-}
-
 function extractDeliverables(lines: readonly string[], itemDir: string): Deliverable[] {
   let inDeliverables = false;
   const out: Deliverable[] = [];
@@ -160,7 +110,7 @@ function extractDeliverables(lines: readonly string[], itemDir: string): Deliver
   return out;
 }
 
-function normaliseKind(value: string | undefined): ItemKind {
+function normaliseKind(value: string | null): ItemKind {
   switch ((value ?? '').toLowerCase()) {
     case 'project':
       return 'project';

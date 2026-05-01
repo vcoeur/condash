@@ -1,8 +1,9 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { itemFolderRegex } from '../shared/header';
 import { ambiguous, notFound } from './output';
 
-const FOLDER_NAME_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
+const FOLDER_NAME_RE = itemFolderRegex();
 
 export interface SlugCandidate {
   slug: string;
@@ -108,12 +109,5 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-export function isItemFolderName(name: string): boolean {
-  return FOLDER_NAME_RE.test(name);
-}
-
-export function itemFolderRegex(): RegExp {
-  return FOLDER_NAME_RE;
-}
-
+export { isItemFolderName, itemFolderRegex } from '../shared/header';
 export { dirname };

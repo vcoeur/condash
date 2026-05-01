@@ -20,7 +20,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import { findProjectReadmes } from './walk';
-import { parseHeader, validateHeader } from '../cli/header';
+import { parseHeader, validateHeader } from '../shared/header';
 import type { ChildInfo, DraftResult, IndexStrategy, ValidationWarning } from './index-tree';
 
 const MONTH_DIR_RE = /^\d{4}-\d{2}$/;

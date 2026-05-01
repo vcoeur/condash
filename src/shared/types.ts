@@ -43,7 +43,11 @@ export interface Project {
   title: string;
   kind: ItemKind;
   status: KnownStatus | string;
-  apps?: string;
+  /** Apps backticked on the **Apps** header line, parsed into the bare slugs
+   * (e.g. `[\`alicepeintures\`]` → `['alicepeintures']`). Empty when the line
+   * is missing or has no backticks — never `undefined`, so call sites can
+   * iterate without an existence guard. */
+  apps: string[];
   summary?: string;
   steps: Step[];
   stepCounts: StepCounts;

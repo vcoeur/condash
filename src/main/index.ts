@@ -43,7 +43,7 @@ import type {
   TermSpawnRequest,
   Theme,
 } from '../shared/types';
-import { KNOWN_STATUSES } from '../shared/types';
+import { statusOrder } from '../shared/projects';
 
 // CLI dispatch — when invoked with a known noun (e.g. `condash projects list`),
 // short-circuit the GUI and route through the CLI bundle instead. The packaged
@@ -357,11 +357,6 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-}
-
-function statusOrder(status: string): number {
-  const idx = (KNOWN_STATUSES as readonly string[]).indexOf(status);
-  return idx === -1 ? KNOWN_STATUSES.length : idx;
 }
 
 async function listProjects(): Promise<Project[]> {
