@@ -1,10 +1,13 @@
 # condash
 
-Markdown project dashboard for the conception convention — every project, incident, and document lives as a plain `.md` file under `projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md`, and condash renders the live dashboard view.
+A desktop dashboard for a directory of Markdown files — projects, incidents, and documents written as plain `.md` under `projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md`. The files are the source of truth; condash is the live view layer.
+
+→ **Documentation: [condash.vcoeur.com](https://condash.vcoeur.com)**
+
+If you're new, start at [Get started](https://condash.vcoeur.com/get-started/) — install, first launch, and a ten-minute first-run tutorial.
+If you want to contribute, read [Values](https://condash.vcoeur.com/explanation/values/), [Non-goals](https://condash.vcoeur.com/explanation/non-goals/), and [Contributing](https://condash.vcoeur.com/explanation/contributing/) before writing code.
 
 This repo is the **Electron build**, canonical as of 2026-04-27. The Tauri lineage lives on at [`vcoeur/condash-tauri`](https://github.com/vcoeur/condash-tauri) (last release: v1.8.8) and remains buildable as long as bug fixes are warranted.
-
-**Status**: parity reached against Tauri v1.8.1 daily-driver surface; packaging + first published release tracked in [`conception/projects/2026-04/2026-04-27-condash-packaging`](https://github.com/vcoeur/conception/tree/main/projects/2026-04/2026-04-27-condash-packaging).
 
 ## Why a rewrite
 
@@ -70,14 +73,16 @@ No HTTP server, no SSE, no fingerprint poll, no Rust. Renderer talks to main via
 
 ## Documentation
 
-The full documentation tree is at [`docs/`](docs/) (Diátaxis layout):
+The published site at [**condash.vcoeur.com**](https://condash.vcoeur.com) is built from [`docs/`](docs/) (Diátaxis layout) by the GitHub Pages workflow on every release.
 
-- [`docs/index.md`](docs/index.md) — landing page with links into every section.
-- [`docs/explanation/internals.md`](docs/explanation/internals.md) — load-bearing invariants (drift-checked mutations, atomic-rename writes, the per-file write queue, the TTL git-status cache, the SIGTERM → force_stop → SIGKILL pty pipeline, the IPC contract).
-- [`docs/reference/config.md`](docs/reference/config.md) — `<conception>/configuration.json` reference: every key, with examples and edit paths.
-- [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — what condash will deliberately not do.
+Headline pages:
 
-The same docs are available inside the running app via the `?` button in the toolbar (the in-app loader maps `architecture` / `configuration` / `non-goals` to the Diátaxis paths above — see `src/main/help.ts`).
+- [Get started](https://condash.vcoeur.com/get-started/) — install, first launch, releases.
+- [Tutorials](https://condash.vcoeur.com/tutorials/) — first run, first project, a day with condash.
+- [Reference](https://condash.vcoeur.com/reference/) — every CLI verb, config key, IPC verb, README field, mutation, shortcut, env var.
+- [Explanation](https://condash.vcoeur.com/explanation/) — values, non-goals, internals, contributing, why Markdown-first.
+
+The same docs ship **inside the running app** through the Help menu — Welcome / Install / First launch / Shortcuts / Configuration / CLI / Mutations / Architecture / Why Markdown-first / Values / Non-goals — backed by the allowlist in [`src/main/help.ts`](src/main/help.ts) reading from the asar-bundled `docs/` tree. External links from the in-app pages route to the public site through `openExternal`.
 
 ## License
 

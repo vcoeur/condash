@@ -91,6 +91,11 @@ export interface Settings {
   /** Composite-layout visibility + sizes. Persisted globally (per-machine)
    * so a fresh launch reopens with the last layout. */
   layout?: LayoutState;
+  /** First-launch welcome screen state. The screen shows automatically when
+   * the conception tree has no items and no knowledge entries; setting
+   * `dismissed` hides it permanently for users who manage trees entirely
+   * outside the dashboard. */
+  welcome?: { dismissed?: boolean };
 }
 
 /** One row of `git status --porcelain=v1` output, normalised for the renderer. */

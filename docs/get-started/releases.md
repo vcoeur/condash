@@ -1,9 +1,11 @@
 ---
 title: Releases · condash
-description: How to find the latest condash release, what the version scheme means, and what "unsigned draft release" looks like in practice.
+description: How to find the latest condash release, what the version scheme means, and how the auto-updater behaves.
 ---
 
 # Releases
+
+> **Audience.** New user and Daily user.
 
 condash is shipped as a pre-built desktop binary on GitHub Releases. This page is about **finding the right version** — one link above all else: **[releases/latest](https://github.com/vcoeur/condash/releases/latest)**.
 
@@ -45,8 +47,8 @@ If the [latest-release](https://github.com/vcoeur/condash/releases/latest) URL 4
 
 If you're waiting on a specific fix, the GitHub **Actions** tab shows the build progress; the release appears under **All releases** the moment the maintainer flips the draft to published.
 
-## No auto-updater, by design
+## Auto-update
 
-The desktop app does not check for or install updates on its own. See **[Install — Why no auto-update?](install.md#auto-update)** for the reasoning.
+condash ships with `electron-updater` wired against its GitHub Releases. On launch the packaged build checks the latest published release, downloads the matching artifact in the background, and prompts to restart when it's ready. See **[Install — Auto-update](install.md#auto-update)** for the per-OS behaviour and the apt-repository carve-out.
 
-Practical consequence: if you run condash daily and want to stay current, subscribe to the repo's **Releases** tab — GitHub will email you when a new version ships.
+If you'd rather track releases manually, subscribe to the repo's **Releases** tab on GitHub — you'll get an email when a new version ships.

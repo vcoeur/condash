@@ -5,7 +5,9 @@ description: Create an item, wire its steps, add a note, link to another item �
 
 # Your first project
 
-**When to read this.** You finished [First run](first-run.md) and have condash running against the `conception-demo` tree. Now you want to do actual work in it — create an item, change its status, add and close steps, drop a note, cross-link items.
+> **Audience.** New user — comfortable with the basics, ready to actually use the dashboard.
+
+**When to read this.** You finished [First run](first-run.md) and have condash open against your tree. Now you want to do actual work in it — create an item, change its status, add and close steps, drop a note, cross-link items.
 
 By the end, you'll have added a new project to the tree, walked it from `later` through `now` to `done`, and understood which actions live in the dashboard versus which live in your editor.
 
@@ -19,7 +21,7 @@ See the full list in [Mutation model](../reference/mutations.md).
 
 Projects live at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. Pick today's date and a slug.
 
-**From the dashboard**: click the **`+`** button in the header (right of the terminal icon). A modal opens asking for the handful of fields condash's parser actually reads:
+**From the dashboard**: click the **`+`** button in the header (right of the terminal icon), or use the *Create your first project* card on the Welcome screen. A modal opens asking for the handful of fields condash's parser actually reads:
 
 - **Kind** — project, incident, or document.
 - **Status** — `now` / `review` / `later` / `backlog` / `done`.
@@ -33,8 +35,8 @@ Click **Create item**. condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/RE
 **From the shell** (equivalent, useful when condash isn't running):
 
 ```bash
-mkdir -p ~/conception-demo/projects/2026-04/2026-04-18-helio-benchmark-harness/notes
-cat > ~/conception-demo/projects/2026-04/2026-04-18-helio-benchmark-harness/README.md <<'EOF'
+mkdir -p ~/src/conception/projects/2026-04/2026-04-18-helio-benchmark-harness/notes
+cat > ~/src/conception/projects/2026-04/2026-04-18-helio-benchmark-harness/README.md <<'EOF'
 # Helio benchmark harness
 
 **Date**: 2026-04-18
@@ -93,7 +95,7 @@ Click into the project card to expand it. Somewhere in the header you'll see a s
 Check with `git diff` in a second shell:
 
 ```bash
-cd ~/conception-demo
+cd ~/src/conception
 git diff projects/2026-04/2026-04-18-helio-benchmark-harness/README.md
 ```
 

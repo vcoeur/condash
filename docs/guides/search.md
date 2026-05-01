@@ -5,6 +5,8 @@ description: Use the History tab's full-text search, read the ranking, read the 
 
 # Search your history
 
+> **Audience.** Daily user.
+
 **When to read this.** You remember writing something — a note, a README paragraph, a step description — and you need to find it without grepping the tree by hand.
 
 The **History** tab is a full-text search across every item's README, every note file, and every knowledge file. It re-indexes on every query; there's no background job and no stale cache.

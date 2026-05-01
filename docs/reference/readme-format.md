@@ -5,6 +5,8 @@ description: The header fields condash reads from each item's README.md — type
 
 # README format
 
+> **Audience.** Daily user.
+
 ## At a glance
 
 Every item lives at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md`. The first line is the title (`# …`); everything from line 2 up to the first `##` heading is the **header**, a sequence of `**Key**: value` lines.

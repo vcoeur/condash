@@ -5,6 +5,8 @@ description: Open the PTY pane, manage tabs across two sides, use the launcher b
 
 # Use the embedded terminal
 
+> **Audience.** Daily user.
+
 **When to read this.** You want to stop alt-tabbing out to a separate terminal window while you work — or you tried the `>_` button in the header, opened the pane once, and couldn't find half the features.
 
 The embedded terminal is a real PTY driven by `node-pty` in the main process and rendered by `xterm.js` (locked to xterm 6.x with the recommended addon stack — search, web-links, clipboard, unicode11, webgl, serialize, image, ligatures) in the renderer.
@@ -120,6 +122,11 @@ See the [config reference](../reference/config.md) for the full key table with d
 
 Edit `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` directly — `settings.json` is hand-edited today; the gear modal only edits the tree-level `configuration.json`. Changes land on the next launch. To test a new shortcut quickly, set it, relaunch, and press the combination.
 
-## Platform note
+## Platform notes
 
-The terminal is Linux and macOS only. On Windows the pane opens with a "terminal only supported on Linux/macOS" error message — PTY support through WSL is on the backlog, not shipped.
+The terminal works on Linux, macOS, and Windows. The shell defaults differ by platform:
+
+- **Linux / macOS** — `$SHELL` (or `/bin/bash` if unset).
+- **Windows** — `%ComSpec%` (`cmd.exe` by default). Override with `terminal.shell = "C:\\Program Files\\PowerShell\\7\\pwsh.exe"` if you prefer PowerShell, or any `bash` from Git for Windows / MSYS2.
+
+Per-platform shell wrapping (so `terminal.run` strings reach the right shell) lives in `src/main/terminals.ts:wrapForShell`. Shell-integration snippets under `integrations/` cover bash, zsh, fish, and PowerShell.

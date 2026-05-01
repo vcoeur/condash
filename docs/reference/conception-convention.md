@@ -5,6 +5,8 @@ description: The content-level syntax condash reads out of each README body — 
 
 # Status, steps, deliverables
 
+> **Audience.** Daily user.
+
 ## At a glance
 
 Every item is a directory under `projects/YYYY-MM/YYYY-MM-DD-slug/` containing a `README.md`. There is no top-level `incidents/` or `documents/` folder — the `**Kind**` field in the header discriminates. Three body sections are parsed: `## Steps`, `## Deliverables`, and anything whose heading is used by the step-add-by-section flow (`## Timeline`, etc., are left alone).

@@ -1,71 +1,66 @@
 ---
 title: First run · condash
-description: Install condash, point it at the bundled demo tree, and get a rendered dashboard in ten minutes.
+description: Install condash, point it at a fresh conception tree, and get your first item rendered. Ten minutes.
 ---
 
 # First run
 
-**When to read this.** You've never used condash. You want to get to a working dashboard on your machine in one sitting, with a tree of realistic items to poke at before you commit to building your own.
+> **Audience.** New user — never used condash before. You have it installed; you want to see it working with your own tree.
 
-By the end, you'll have condash installed, running against the bundled `conception-demo` tree, and the `Projects`, `Code`, `Knowledge`, and `History` tabs will all render with content.
+By the end of this tutorial you'll have:
+
+- condash installed and launched.
+- A fresh conception tree with one project in it.
+- The dashboard rendering your project, with a Steps section, a Status pill, and a Notes folder you can read in your editor.
+
+Time: ten minutes if the install is already done; twenty if you're installing from scratch.
 
 ## 1. Install condash
 
-The fastest path is a prebuilt installer from the [GitHub Releases page](https://github.com/vcoeur/condash/releases). Each release ships a per-OS bundle:
+If you haven't already, install condash from the [GitHub Releases page](https://github.com/vcoeur/condash/releases) — `.AppImage` / `.deb` for Linux, `.dmg` for macOS, `.exe` for Windows. Each platform asks for a one-time bypass; the [Install](../get-started/install.md) page walks through the gesture per OS.
 
-| Platform | Artifact |
-|---|---|
-| Linux | `condash-<version>.AppImage` or `condash_<version>_amd64.deb` |
-| macOS | `condash-<version>.dmg` |
-| Windows | `condash Setup <version>.exe` |
-
-The builds are unsigned — your OS will ask you to confirm once on first launch. See [Install](../get-started/install.md) for the per-platform bypass.
-
-If you'd rather build from source, clone the repo and run:
+Verify the binary is on your `$PATH`:
 
 ```bash
-make install               # one-off, npm install
-make build                 # compile main + renderer
-make package               # produce the platform installer under release/
+condash --version
 ```
 
-That's the same pipeline CI uses. You'll need Node.js 20+ and, on Linux, the libraries Electron's chrome-sandbox links against (`libnss3`, `libatk-bridge2.0-0`, `libgtk-3-0`, `libgbm1`).
+You should see something like `condash 2.5.0`.
 
-## 2. Fetch the demo tree
+## 2. Create an empty tree
 
-The condash repo ships a realistic demo tree at [`examples/conception-demo/`](https://github.com/vcoeur/condash/tree/main/examples/conception-demo). It has nine items, all six statuses, a knowledge tree, and two deliverable PDFs — enough for every feature in the rest of the tutorials to have something to act on.
-
-Copy it into a working location:
+Pick any directory on your disk. We'll use `~/src/conception` for the rest of this tutorial — substitute your own path if you prefer.
 
 ```bash
-mkdir -p ~/conception-demo
-curl -fsSL https://codeload.github.com/vcoeur/condash/tar.gz/main \
-  | tar -xz --strip-components=2 -C ~/conception-demo \
-      condash-main/examples/conception-demo
+mkdir -p ~/src/conception/projects
 ```
 
-Inspect what you got:
+That's the minimum. condash also looks for an optional `knowledge/` sibling and a `configuration.json` at the root, but neither is required to boot.
 
-```
-~/conception-demo/
-├── README.md
-├── configuration.json
-├── projects/
-│   ├── 2026-03/         # items created last month (2 done)
-│   └── 2026-04/         # 7 items created this month (3 now, 1 review, 2 later, 1 backlog)
-└── knowledge/
-    ├── conventions.md
-    ├── internal/
-    └── topics/
+If you want to start with a more populated tree (a knowledge index, conventions, sample skills), copy the template that ships with condash:
+
+```bash
+# Locate the template inside the install
+condash skills install --help     # the same logic powers `skills install`
 ```
 
-Everything is plain Markdown. Open `projects/2026-04/2026-04-02-fuzzy-search-v2/README.md` in your editor to see the header format.
+The template lives at `<install_dir>/conception-template/`. The exact path depends on your installer — on Linux apt installs it's `/opt/condash/resources/app.asar/conception-template/`. The `condash skills install` verb (covered in [Multi-machine setup](../guides/multi-machine.md)) copies the skill subset into a tree on demand.
 
-## 3. Point condash at the tree
+## 3. Tell condash where the tree lives
 
-On first launch with no tree configured, condash opens a native folder picker and writes your choice to `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`. Pick `~/conception-demo` the first time and the next launches reuse it automatically.
+Two ways:
 
-To make a different tree the default, re-launch with the picker (delete `settings.json` first) or edit `conception_path` in `settings.json` by hand.
+**With the CLI** (one command, no GUI):
+
+```bash
+condash config conception-path ~/src/conception
+```
+
+This writes `conception_path` into your platform's `settings.json`. The next launch picks it up.
+
+**With the folder picker** (the friendly path):
+
+Just run `condash`. With no `conception_path` saved yet, the app opens a native folder picker. Select `~/src/conception` and click Open. condash writes the choice for you and continues.
 
 ## 4. Launch
 
@@ -73,40 +68,89 @@ To make a different tree the default, re-launch with the picker (delete `setting
 condash
 ```
 
-Electron opens a single `BrowserWindow` rendering the Solid SPA — same renderer everywhere (Chromium). You should see this:
+A single window opens. Because the tree is empty (no items in `projects/`, no entries in `knowledge/`), condash shows the **Welcome screen** instead of an empty dashboard:
 
-![Dashboard rendering the demo tree — Current tab selected](../assets/screenshots/dashboard-overview-light.png#only-light)
-![Dashboard rendering the demo tree — Current tab selected](../assets/screenshots/dashboard-overview-dark.png#only-dark)
+- *Create your first project* — opens the new-item modal.
+- *Take the tour* — opens the in-app Help with a short overview.
+- *Open the documentation* — opens [condash.vcoeur.com](https://condash.vcoeur.com) in your browser.
 
-The header shows four top-level tabs with counts: **Projects (9)**, **Code (3)**, **Knowledge (8)**, **History (9)**. Under **Projects**, the sub-tabs are **Current / Next / Backlog / Done**. The demo tree was built so every bucket has something in it.
+Click **Create your first project**.
 
+## 5. Create your first item
 
+The new-item modal asks for the handful of fields condash's parser actually reads:
 
-## 5. Walk around
+- **Kind** — pick `project`.
+- **Status** — pick `now` so the item lands in the Current sub-tab.
+- **Title** — anything; "Try condash" is fine.
+- **Slug** — auto-derived from the title; leave the default.
+- **Apps** — leave empty for this tutorial.
 
-Take two minutes to click through:
+Click **Create item**. condash:
 
-- **Current** — 3 items with status `now` (one of each kind: document, incident, project) and 1 item with status `review`. Click the fuzzy-search-v2 row; the card expands, showing the README on the left and a step list on the right with all four marker states (`[x]`, `[~]`, `[ ]`, `[-]`).
-- **Next** — the later bucket. Two projects (`json-export` and one more).
-- **Backlog** — one project, parked.
-- **Done** — two archived items from the previous month.
-- **Code** — three repos: condash scanned `workspace_path: /tmp/conception-demo-workspace` from `configuration.json` and found one `.git/` per entry. (If the Code tab shows 0, the workspace path on your machine doesn't exist yet — we'll set that up properly in [Your first project](first-project.md).)
-- **Knowledge** — the `knowledge/` tree rendered as an explorer: `conventions.md` at the root, `Internal` and `Topics` folders with index files.
-- **History** — full-text search across every item + note. Type `fuzzy` to see ranked matches.
+1. Creates `projects/<YYYY-MM>/<YYYY-MM-DD>-try-condash/README.md` with a minimal template.
+2. Creates an empty `notes/` sibling.
+3. Switches to the Current sub-tab and expands the new card.
 
-Click the gear icon in the top right to see the **Configuration** modal — a plain-text JSON editor backed by `conception-demo/configuration.json`. Save is atomic (temp file → rename). Per-machine preferences (`terminal`, `pdf_viewer`, `open_with`) live separately in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` and are hand-edited. You'll use this modal in the next tutorial.
+The Welcome screen disappears — you have content now.
 
-## 6. Close the window
+## 6. Walk around
 
-Closing the native window exits condash. Relaunch with `condash` whenever you want to come back — state lives in the files, not in the app.
+Take a minute to click through:
+
+- **Projects → Current** — your one item with status `now`. Click the row to expand.
+- **Code** — likely empty unless you set `workspace_path` in `configuration.json`. We'll cover that in the [next tutorial](first-project.md).
+- **Knowledge** — empty unless you copied the knowledge template earlier. The tab is hidden when the directory is missing.
+- **History** — full-text search across items + notes. Type the title of your project; it surfaces immediately.
+
+Click the **gear icon** in the header. The **Configuration** modal opens with a plain-text JSON editor backed by `<conception>/configuration.json`. The file doesn't exist yet — type `{}` and Save (atomic temp + rename); a minimal valid config is born. We'll fill it in next.
+
+## 7. Read what got created
+
+Switch to your editor and open the README condash just wrote:
+
+```bash
+$EDITOR ~/src/conception/projects/*/*/README.md
+```
+
+You'll see something like:
+
+```markdown
+# Try condash
+
+**Date**: 2026-05-01
+**Kind**: project
+**Status**: now
+
+## Goal
+
+(your goal here)
+
+## Steps
+
+- [ ] (your first step)
+
+## Timeline
+
+- 2026-05-01 — Project created.
+
+## Notes
+```
+
+That's the whole item. The dashboard reads this exact file; mutations (toggling a step, changing status) rewrite specific lines. The format is documented in [README format](../reference/readme-format.md).
+
+## 8. Close the window
+
+Closing the native window exits condash. State lives in your files; relaunch with `condash` whenever you want to come back.
 
 ## What you just learned
 
 - Installing condash is either a one-click installer from GitHub Releases or three `make` targets from source.
-- The first-launch folder picker is the whole setup flow. The conception-tree path is the only thing you must set.
-- The dashboard renders the files as-is. A chokidar watcher pushes file-change events into the renderer so external edits show up live, but there's no database, no cache, and no schema.
-- Configuration splits in two: tree-level (`<conception>/configuration.json`, team-shared) and per-machine (`${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`). We'll dig into that split in [Configure the conception path](../guides/configure-conception-path.md).
+- The conception path is the only thing condash needs to boot. Set it once with `condash config conception-path` or through the first-launch folder picker.
+- The Welcome screen meets you on an empty tree and offers a path forward — create an item, take the tour, or read the docs.
+- Items are filesystem directories with a `README.md` and optional `notes/`. The dashboard mutates a small set of lines in those files; everything else is yours to edit in your editor.
+- Configuration splits in two: tree-level (`<conception>/configuration.json`, team-shared) and per-machine (`settings.json`, hand-edited or written by the CLI / folder picker).
 
 ## Next
 
-**[Your first project →](first-project.md)** — create a real item, wire its steps, link it to another item, add a note.
+**[Your first project →](first-project.md)** — wire `workspace_path`, get the Code tab populated, edit a step, add a note, link to another item.

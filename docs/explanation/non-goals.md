@@ -5,6 +5,8 @@ description: Things condash will deliberately not do. Each entry has a why — r
 
 # Non-goals
 
+> **Audience.** Developer — anyone considering a change to condash.
+
 Things condash will deliberately not do. Each entry has a *why* — read it before opening a "while we're at it" PR.
 
 ## No code editing in condash

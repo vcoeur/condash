@@ -5,6 +5,8 @@ description: Sync a conception tree between machines via git. What goes in versi
 
 # Multi-machine setup
 
+> **Audience.** Daily user.
+
 **When to read this.** You work across two (or more) machines — a desktop and a laptop, your work box and a personal box — and you want the same tree on each, with per-machine tweaks that don't fight each other.
 
 condash was designed for this split from day one. One versioned JSON file at the tree root, one per-machine JSON file in your platform's user-config directory. The two layer at launch with clear precedence.

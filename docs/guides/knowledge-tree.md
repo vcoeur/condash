@@ -5,6 +5,8 @@ description: Put durable reference material under `knowledge/` and see it render
 
 # The knowledge tree
 
+> **Audience.** Daily user.
+
 **When to read this.** Your conception tree has grown, you keep writing the same note twice across items, and you want a place for durable reference material that outlives any one project.
 
 `knowledge/` is a sibling of `projects/` under your conception root. condash walks it recursively and renders it as the **Knowledge** tab — a plain file explorer for durable docs that don't belong to any single item.

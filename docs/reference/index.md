@@ -5,6 +5,8 @@ description: Exhaustive lookup for every command, config key, README field, muta
 
 # Reference
 
+> **Audience.** Daily user and Developer.
+
 Short pages, one per surface. Look things up here; learn them in the [Tutorials](../tutorials/index.md) and [Guides](../guides/index.md).
 
 - **[CLI](cli.md)** — launching condash, the dev workflow, and where flags don't apply.

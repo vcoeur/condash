@@ -3,13 +3,35 @@ import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import 'highlight.js/styles/github.css';
 
-export type HelpDoc = 'architecture' | 'configuration' | 'non-goals' | 'index';
+export type HelpDoc =
+  | 'welcome'
+  | 'getting-started'
+  | 'install'
+  | 'first-launch'
+  | 'shortcuts'
+  | 'configuration'
+  | 'cli'
+  | 'mutations'
+  | 'architecture'
+  | 'why-markdown'
+  | 'values'
+  | 'non-goals'
+  | 'index';
 
 const TITLE: Record<HelpDoc, string> = {
-  architecture: 'Architecture',
-  configuration: 'Configuration reference',
-  'non-goals': 'Non-goals',
+  welcome: 'Welcome to condash',
   index: 'Documentation index',
+  'getting-started': 'Getting started',
+  install: 'Install',
+  'first-launch': 'First launch',
+  shortcuts: 'Keyboard shortcuts',
+  configuration: 'Configuration reference',
+  cli: 'CLI reference',
+  mutations: 'Mutation model',
+  architecture: 'Architecture',
+  'why-markdown': 'Why Markdown-first',
+  values: 'Values',
+  'non-goals': 'Non-goals',
 };
 
 /**

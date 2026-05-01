@@ -89,7 +89,9 @@ macOS and Windows are unaffected.
 - [`docs/reference/config.md`](docs/reference/config.md) — `configuration.json` + `settings.json` schema + per-key reference.
 - [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
 
-The in-app Help menu reads files out of the asar via the allowlist in `src/main/help.ts`, which maps the legacy short names (`architecture`, `configuration`, `non-goals`) to the Diátaxis paths above. There is no separate copy at the repo root — the migration shipped in `v2.0.6`.
+The in-app Help menu reads files out of the asar via the allowlist in `src/main/help.ts`. As of the docs-overhaul pass (May 2026) it carries thirteen short names — `welcome`, `getting-started`, `install`, `first-launch`, `shortcuts`, `configuration`, `cli`, `mutations`, `architecture`, `why-markdown`, `values`, `non-goals`, `index` — all mapping to canonical Diátaxis paths under `docs/`. The OS-level Help submenu groups them in three blocks: Welcome / Getting started, Reference (configuration / CLI / mutations), Explanation (architecture / values / non-goals); separate items link out to `condash.vcoeur.com` and the issue tracker via `shell.openExternal`. There is no separate copy at the repo root — the migration shipped in `v2.0.6`.
+
+The first-launch **welcome screen** lives in `src/renderer/welcome-screen.tsx` and renders inside `workspace-center` when the conception path is set, the projects list is empty, and the knowledge tree is empty (and the user hasn't dismissed it). Dismiss state persists at `welcome.dismissed` in `settings.json` via the `getWelcomeDismissed` / `setWelcomeDismissed` IPC verbs.
 
 When changing app behaviour, update the matching `docs/` file in the same commit. The schema in `src/main/config-schema.ts` and the public reference (`docs/reference/config.md`) must agree on every release.
 

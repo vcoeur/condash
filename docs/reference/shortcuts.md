@@ -5,6 +5,8 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 
 # Keyboard shortcuts
 
+> **Audience.** Daily user.
+
 ## At a glance
 
 | Area | Count | Configurable? |

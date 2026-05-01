@@ -5,6 +5,8 @@ description: Open an existing item, edit code in the repo strip, run a build in 
 
 # A day with condash
 
+> **Audience.** New user becoming a daily user — you've finished the first two tutorials and want to see the realistic workflow.
+
 **When to read this.** You've done [First run](first-run.md) and [Your first project](first-project.md). You want to see the full workflow: not just "how do I create an item?", but "what does a day of real work look like when this tree is your work tracker?".
 
 By the end, you'll have walked through the loop most people use condash for — open item, open its repo, edit, build, document, push, close — and know which surface each step uses.
@@ -60,7 +62,7 @@ You get a `thread 'main' panicked at 'attempt to subtract with overflow'` — co
 
 The terminal has two useful quality-of-life features:
 
-- **Screenshot paste** — press `Ctrl+Shift+V` anywhere in the dashboard and condash inserts the absolute path of the newest file in your configured screenshot directory into the active terminal prompt. Useful for "take a screenshot of the crash → paste the path into an `ls -la` or a `cat`". Configure `terminal.screenshot_dir` in `settings.yaml` (see [Config reference](../reference/config.md)).
+- **Screenshot paste** — press `Ctrl+Shift+V` anywhere in the dashboard and condash inserts the absolute path of the newest file in your configured screenshot directory into the active terminal prompt. Useful for "take a screenshot of the crash → paste the path into an `ls -la` or a `cat`". Configure `terminal.screenshot_dir` in `settings.json` (see [Config reference](../reference/config.md)).
 - **Multiple tabs** — click the `+` in the terminal pane header to open a second tab; each tab keeps its own bash session and scrollback even when you toggle the pane closed.
 
 See [Use the embedded terminal](../guides/terminal.md) for the full feature set.
@@ -74,7 +76,7 @@ Fix the panic in your IDE (in this tutorial you don't have to — the helio repo
 Incidents ship with a `notes/` folder and often end up with a deliverable PDF in `deliverables/`. In the demo, `search-crash-large-logs/deliverables/incident-report.pdf` is a placeholder. Generate your real report from the README + notes:
 
 ```bash
-cd ~/conception-demo/projects/2026-04/2026-04-08-search-crash-large-logs
+cd ~/src/conception/projects/2026-04/2026-04-08-search-crash-large-logs
 bash ~/.claude/scripts/md_to_pdf.sh notes/investigation.md deliverables/incident-report.pdf
 ```
 

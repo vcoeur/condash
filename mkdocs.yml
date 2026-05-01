@@ -93,6 +93,7 @@ nav:
     - Search your history: guides/search.md
     - Deliverables and PDFs: guides/deliverables.md
     - Multi-machine setup: guides/multi-machine.md
+    - Troubleshooting: guides/troubleshooting.md
     - Extend the management skill: guides/skill-extensions.md
 
   - Reference:
@@ -111,7 +112,9 @@ nav:
   - Explanation:
     - explanation/index.md
     - Why Markdown-first: explanation/why-markdown.md
-    - Internals: explanation/internals.md
+    - Values: explanation/values.md
     - Non-goals: explanation/non-goals.md
+    - Internals: explanation/internals.md
+    - Contributing: explanation/contributing.md
 
   - Legal: legal.md

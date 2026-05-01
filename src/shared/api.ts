@@ -50,6 +50,10 @@ export interface CondashApi {
    * Persisted in the global per-machine settings.json. */
   getLayout(): Promise<LayoutState>;
   setLayout(layout: LayoutState): Promise<void>;
+  /** Whether the first-launch welcome screen was dismissed by the user.
+   * Stored as `welcome.dismissed` in settings.json. */
+  getWelcomeDismissed(): Promise<boolean>;
+  setWelcomeDismissed(value: boolean): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;
@@ -72,9 +76,9 @@ export interface CondashApi {
   writeNote(path: string, expectedContent: string, newContent: string): Promise<void>;
   /**
    * Read one of the bundled help docs (`docs/<name>.md`). The main process
-   * whitelists the four shipped names; anything else rejects.
+   * whitelists the shipped names; anything else rejects.
    */
-  helpReadDoc(name: 'architecture' | 'configuration' | 'non-goals' | 'index'): Promise<string>;
+  helpReadDoc(name: HelpDocName): Promise<string>;
   /**
    * Subscribe to per-path tree events emitted by the main-process file watcher.
    * Each callback receives a debounced batch. Returns an unsubscribe function.
@@ -149,10 +153,34 @@ export type MenuCommand =
   | 'hide-working'
   | 'refresh'
   | 'about'
-  | 'help-architecture'
+  | 'help-welcome'
+  | 'help-getting-started'
+  | 'help-install'
+  | 'help-first-launch'
+  | 'help-shortcuts'
   | 'help-configuration'
+  | 'help-cli'
+  | 'help-mutations'
+  | 'help-architecture'
+  | 'help-why-markdown'
+  | 'help-values'
   | 'help-non-goals'
   | 'help-index';
+
+export type HelpDocName =
+  | 'welcome'
+  | 'getting-started'
+  | 'install'
+  | 'first-launch'
+  | 'shortcuts'
+  | 'configuration'
+  | 'cli'
+  | 'mutations'
+  | 'architecture'
+  | 'why-markdown'
+  | 'values'
+  | 'non-goals'
+  | 'index';
 
 declare global {
   interface Window {

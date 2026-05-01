@@ -5,6 +5,8 @@ description: The case for a project tracker built on plain Markdown files in git
 
 # Why Markdown-first
 
+> **Audience.** New user evaluating condash, plus anyone curious about the design rationale.
+
 Every project tracker answers a few questions for you: what am I working on, what's its status, what did I decide and why, what's still open? There are plenty of good tools for this — Linear, GitHub Projects, Notion, Jira, Obsidian with a kanban plugin. `condash` exists because none of them give you all three of the following at the same time:
 
 1. **The files are yours.** Editable in the editor you already use, diffable in git, grep-able from a shell, readable by every tool that has ever spoken Markdown.
