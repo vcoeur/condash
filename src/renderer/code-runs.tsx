@@ -44,18 +44,30 @@ export function CodeRunRows(props: CodeRunRowsProps) {
 function repoMeta(
   repos: readonly RepoEntry[],
   name: string | undefined,
+  cwd: string | undefined,
 ): { repo?: RepoEntry; branch?: string; displayName?: string } {
   if (!name) return {};
   const repo = repos.find((r) => r.name === name);
   if (!repo) return {};
-  // The "primary" worktree is the one that lives at the configured repo
-  // path. Its branch is the active checkout shown next to the repo name.
-  const primary: Worktree | undefined = repo.worktrees?.find((w) => w.primary);
+  // Match the session back to the specific worktree it was spawned in via
+  // `cwd`, mirroring the repo-card resolution in `tabs/code.tsx`. Falling
+  // back to the primary worktree (as the previous version did) mislabels
+  // every non-default-branch run as the primary's branch.
+  const worktrees: readonly Worktree[] = repo.worktrees ?? [];
+  let branch: string | undefined;
+  if (cwd) {
+    const wt = worktrees.find((w) => w.path === cwd);
+    if (wt) {
+      branch = wt.branch ?? '(detached)';
+    } else if (cwd === repo.path) {
+      branch = worktrees.find((w) => w.primary)?.branch ?? undefined;
+    }
+  }
   // Prefer the configured label (`configuration.json`) so the active-run
   // row matches the title used on the repo card; fall back to the repo
   // directory name when no label is set.
   const displayName = repo.label ?? repo.name;
-  return { repo, branch: primary?.branch ?? undefined, displayName };
+  return { repo, branch, displayName };
 }
 
 function CodeRunRow(props: {
@@ -68,7 +80,7 @@ function CodeRunRow(props: {
   // auto-expanded xterm grabs vertical space they didn't ask for. Click the
   // header to peek in.
   const [expanded, setExpanded] = createSignal(false);
-  const meta = createMemo(() => repoMeta(props.repos, props.session.repo));
+  const meta = createMemo(() => repoMeta(props.repos, props.session.repo, props.session.cwd));
 
   // Build the xterm element once and re-park it under the row's host every
   // time the row is expanded. Disposing on collapse loses the live stream
