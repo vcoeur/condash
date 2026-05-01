@@ -72,6 +72,7 @@ const api: CondashApi = {
     ipcRenderer.invoke('project.createNote', projectPath, slug),
   quitApp: () => ipcRenderer.invoke('quitApp'),
   getAppInfo: () => ipcRenderer.invoke('getAppInfo'),
+  pdfToFileUrl: (path: string) => ipcRenderer.invoke('pdf.toFileUrl', path),
   onMenuCommand: (callback) => {
     const handler = (_: unknown, command: MenuCommand): void => callback(command);
     ipcRenderer.on('menu-command', handler);

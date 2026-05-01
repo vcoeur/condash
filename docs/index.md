@@ -28,6 +28,8 @@ Debian/Ubuntu users can skip the manual download and use the apt repository — 
 
 The builds are **unsigned** — each OS asks you to confirm once on first launch. Full walkthrough: **[Install →](get-started/install.md)**.
 
+> **Runtime requirement.** condash shells out to `git` for status and worktree information, so `git` must be on `PATH`. Linux distributions ship it; on macOS install Xcode Command Line Tools (`xcode-select --install`) or Homebrew git; on Windows install [Git for Windows](https://git-scm.com/download/win).
+
 Building from source (need [Node.js 20+](https://nodejs.org) and, on Linux, the libraries Electron's chrome-sandbox links against — `libnss3`, `libatk-bridge2.0-0`, `libgtk-3-0`):
 
 ```bash

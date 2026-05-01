@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { KnowledgeNode } from '../shared/types';
+import { toPosix } from '../shared/path';
 
 const HIDDEN_PREFIX = /^\./;
 
@@ -20,7 +21,7 @@ async function walk(absPath: string, relPath: string, name: string): Promise<Kno
     const meta = await readFileMeta(absPath, name);
     return {
       relPath,
-      path: absPath,
+      path: toPosix(absPath),
       name,
       title: meta.title,
       kind: 'file',
@@ -51,7 +52,7 @@ async function walk(absPath: string, relPath: string, name: string): Promise<Kno
 
   return {
     relPath,
-    path: absPath,
+    path: toPosix(absPath),
     name,
     title: relPath ? basename(absPath) : 'knowledge',
     kind: 'directory',

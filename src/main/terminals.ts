@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../shared/types';
@@ -90,9 +91,36 @@ async function readRawConfig(conceptionPath: string): Promise<ConfigShape> {
 
 function defaultShell(configured?: string): string {
   if (configured && configured.trim()) return configured;
-  if (process.env.SHELL) return process.env.SHELL;
-  if (process.platform === 'win32') return 'cmd.exe';
+  // SHELL is reliably set on POSIX. On Windows it is usually unset; fall
+  // through to ComSpec, then cmd.exe.
+  if (process.platform !== 'win32' && process.env.SHELL) return process.env.SHELL;
+  if (process.platform === 'win32') return process.env.ComSpec || 'cmd.exe';
   return '/bin/bash';
+}
+
+/** Build the argv for running `command` through `shell`. POSIX shells take
+ *  `-l -c <cmd>`; cmd.exe needs `/d /s /c <cmd>`; PowerShell needs
+ *  `-NoLogo -NonInteractive -Command <cmd>`. We detect by the basename of
+ *  the shell binary so a user-configured `pwsh.exe` or `git-bash.exe` is
+ *  routed correctly. */
+function wrapForShell(shell: string, command: string): string[] {
+  const name = basename(shell).toLowerCase();
+  if (process.platform === 'win32') {
+    if (name === 'cmd.exe' || name === 'cmd') {
+      return ['/d', '/s', '/c', command];
+    }
+    if (
+      name === 'powershell.exe' ||
+      name === 'powershell' ||
+      name === 'pwsh.exe' ||
+      name === 'pwsh'
+    ) {
+      return ['-NoLogo', '-NonInteractive', '-Command', command];
+    }
+    // Fall through for bash on Git-for-Windows et al.
+    return ['-c', command];
+  }
+  return ['-l', '-c', command];
 }
 
 export async function spawnTerminal(
@@ -104,7 +132,7 @@ export async function spawnTerminal(
   const settings = await readSettings();
   const shell = defaultShell(settings.terminal?.shell);
 
-  let cwd = request.cwd ?? process.env.HOME ?? '/';
+  let cwd = request.cwd ?? homedir();
   let argv: string[] = [];
   let program = shell;
   let forceStop: string | undefined;
@@ -117,16 +145,17 @@ export async function spawnTerminal(
     // checkout. Without this, every Run lands on the primary checkout
     // regardless of which branch row the user clicked.
     if (!request.cwd && entry.cwd) cwd = entry.cwd;
-    // Wrap the configured run: command in `bash -lc` so user-supplied shells
-    // like `make dev && tail -f log` keep their pipes/&&/operators.
+    // Wrap the configured run: command for the active shell so user-supplied
+    // shells like `make dev && tail -f log` keep their pipes / && / operators
+    // on every OS (POSIX -lc / cmd.exe /d /s /c / pwsh -Command).
     if (entry.run) {
       program = shell;
-      argv = ['-l', '-c', entry.run];
+      argv = wrapForShell(shell, entry.run);
     }
     forceStop = entry.forceStop;
   } else if (request.command) {
     program = shell;
-    argv = ['-l', '-c', request.command];
+    argv = wrapForShell(shell, request.command);
   }
 
   // One run per repo: kill any prior code-side session for the same repo

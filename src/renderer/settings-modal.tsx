@@ -1,6 +1,6 @@
 import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
-import type { TerminalPrefs, TerminalXtermPrefs, Theme } from '@shared/types';
+import type { Platform, TerminalPrefs, TerminalXtermPrefs, Theme } from '@shared/types';
 import type { RawRepo } from '../main/config-schema';
 
 /**
@@ -101,40 +101,80 @@ const OPEN_WITH_SLOTS: { key: 'main_ide' | 'secondary_ide' | 'terminal'; label: 
   { key: 'terminal', label: 'Terminal' },
 ];
 
-const TERMINAL_STRING_FIELDS: {
-  key:
-    | 'shell'
-    | 'shortcut'
-    | 'screenshot_dir'
-    | 'screenshot_paste_shortcut'
-    | 'launcher_command'
-    | 'move_tab_left_shortcut'
-    | 'move_tab_right_shortcut';
+type TerminalStringFieldKey =
+  | 'shell'
+  | 'shortcut'
+  | 'screenshot_dir'
+  | 'screenshot_paste_shortcut'
+  | 'launcher_command'
+  | 'move_tab_left_shortcut'
+  | 'move_tab_right_shortcut';
+
+interface TerminalStringField {
+  key: TerminalStringFieldKey;
   label: string;
-  placeholder: string;
+  /** Per-OS placeholder. `default` is used when the platform is unknown. */
+  placeholder: Partial<Record<Platform | 'default', string>>;
   hint?: string;
-}[] = [
-  { key: 'shell', label: 'Shell', placeholder: '/bin/bash' },
+}
+
+const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
+  {
+    key: 'shell',
+    label: 'Shell',
+    placeholder: { linux: '/bin/bash', darwin: '/bin/zsh', win32: 'cmd.exe', default: '/bin/bash' },
+  },
   {
     key: 'launcher_command',
     label: 'Launcher command',
-    placeholder: 'claude',
+    placeholder: { default: 'claude' },
     hint: 'Run on terminal-tab open before any user input.',
   },
   {
     key: 'screenshot_dir',
     label: 'Screenshot directory',
-    placeholder: '/home/alice/Pictures/Screenshots',
+    placeholder: {
+      linux: '/home/you/Pictures/Screenshots',
+      darwin: '~/Pictures/Screenshots',
+      win32: 'C:\\Users\\you\\Pictures\\Screenshots',
+      default: '~/Pictures/Screenshots',
+    },
   },
-  { key: 'shortcut', label: 'Toggle terminal pane', placeholder: 'Ctrl+`' },
+  { key: 'shortcut', label: 'Toggle terminal pane', placeholder: { default: 'Ctrl+`' } },
   {
     key: 'screenshot_paste_shortcut',
     label: 'Paste latest screenshot path',
-    placeholder: 'Ctrl+Shift+V',
+    placeholder: { default: 'Ctrl+Shift+V' },
   },
-  { key: 'move_tab_left_shortcut', label: 'Move tab left', placeholder: 'Ctrl+Left' },
-  { key: 'move_tab_right_shortcut', label: 'Move tab right', placeholder: 'Ctrl+Right' },
+  { key: 'move_tab_left_shortcut', label: 'Move tab left', placeholder: { default: 'Ctrl+Left' } },
+  {
+    key: 'move_tab_right_shortcut',
+    label: 'Move tab right',
+    placeholder: { default: 'Ctrl+Right' },
+  },
 ];
+
+const WORKSPACE_PLACEHOLDER: Partial<Record<Platform | 'default', string>> = {
+  linux: '/home/you/src/vcoeur',
+  darwin: '~/src/vcoeur',
+  win32: 'C:\\Users\\you\\src\\vcoeur',
+  default: '~/src/vcoeur',
+};
+
+const WORKTREES_PLACEHOLDER: Partial<Record<Platform | 'default', string>> = {
+  linux: '/home/you/src/worktrees',
+  darwin: '~/src/worktrees',
+  win32: 'C:\\Users\\you\\src\\worktrees',
+  default: '~/src/worktrees',
+};
+
+function pick(
+  table: Partial<Record<Platform | 'default', string>>,
+  platform: Platform | undefined,
+): string {
+  if (platform && table[platform]) return table[platform] as string;
+  return table.default ?? '';
+}
 
 interface RawConfig {
   $schema_doc?: string;
@@ -210,6 +250,14 @@ export function SettingsModal(props: {
     () => props.configurationPath,
     (path) => window.condash.readNote(path),
   );
+
+  // Used to pick OS-appropriate placeholder text for path / shell fields.
+  // Falls back to "default" entries until the IPC resolves.
+  const [appInfo] = createResource(
+    () => true,
+    () => window.condash.getAppInfo(),
+  );
+  const platform = (): Platform | undefined => appInfo()?.platform;
 
   const attemptClose = (): void => {
     if (isDirty()) {
@@ -646,7 +694,7 @@ export function SettingsModal(props: {
                       <span>{field.label}</span>
                       <input
                         type="text"
-                        placeholder={field.placeholder}
+                        placeholder={pick(field.placeholder, platform())}
                         {...bindText(
                           `terminal.${field.key}`,
                           () =>
@@ -875,7 +923,7 @@ export function SettingsModal(props: {
                   <span>Workspace path</span>
                   <input
                     type="text"
-                    placeholder="/home/you/src/vcoeur"
+                    placeholder={pick(WORKSPACE_PLACEHOLDER, platform())}
                     {...bindText('workspace_path', () => parsed().workspace_path, setWorkspacePath)}
                   />
                 </label>
@@ -883,7 +931,7 @@ export function SettingsModal(props: {
                   <span>Worktrees path</span>
                   <input
                     type="text"
-                    placeholder="/home/you/src/worktrees"
+                    placeholder={pick(WORKTREES_PLACEHOLDER, platform())}
                     {...bindText('worktrees_path', () => parsed().worktrees_path, setWorktreesPath)}
                   />
                 </label>

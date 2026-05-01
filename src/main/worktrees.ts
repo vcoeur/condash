@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
+import { normalize } from 'node:path';
 import { promisify } from 'node:util';
 import { getDirtyCount } from './git-status-cache';
+import { toPosix } from '../shared/path';
 import type { Worktree } from '../shared/types';
 
 const exec = promisify(execFile);
@@ -64,7 +66,11 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
       continue;
     }
     if (line.startsWith('worktree ')) {
-      current.path = line.slice('worktree '.length);
+      // git porcelain always reports POSIX `/` separators, even on Windows.
+      // Normalise to the native form first (so internal `path.join` /
+      // `path.relative` against this string don't mix separators), then
+      // re-normalise to POSIX at the IPC boundary below.
+      current.path = normalize(line.slice('worktree '.length));
     } else if (line.startsWith('branch refs/heads/')) {
       current.branch = line.slice('branch refs/heads/'.length);
     } else if (line === 'detached') {
@@ -87,5 +93,7 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
       wt.dirty = await getDirtyCount(wt.path);
     }),
   );
+  // POSIX-shape every path before it crosses the IPC boundary.
+  for (const wt of out) wt.path = toPosix(wt.path);
   return out;
 }
