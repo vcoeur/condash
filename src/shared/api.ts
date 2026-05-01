@@ -9,6 +9,7 @@ import type {
   Project,
   ProjectFileEntry,
   RepoEntry,
+  RepoEvent,
   SearchResults,
   StepMarker,
   TermDataMessage,
@@ -84,6 +85,14 @@ export interface CondashApi {
    * Each callback receives a debounced batch. Returns an unsubscribe function.
    */
   onTreeEvents(callback: (events: TreeEvent[]) => void): () => void;
+  /**
+   * Subscribe to per-repo events emitted when a repo's working tree or
+   * `.git/{index,HEAD,refs/heads}` changes. The renderer uses these to
+   * patch a single `RepoEntry.dirty` (or a worktree's dirty count) in
+   * place — no list refetch, no Suspense remount, dropdowns stay open.
+   * Returns an unsubscribe function.
+   */
+  onRepoEvents(callback: (events: RepoEvent[]) => void): () => void;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;

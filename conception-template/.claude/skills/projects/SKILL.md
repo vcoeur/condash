@@ -79,7 +79,8 @@ When no `**Branch**` field is set, the main checkouts at `<workspace_path>/<repo
 - Notes go in `notes/` as `NN-<descriptive-slug>.md` files.
 - Section headings always in English; body content in any language.
 - Do not commit or push.
-- `## Steps` stays high-level (3–8 milestones). Per-file work goes in `notes/`.
+- `## Steps` stays high-level (3–8 milestones). Per-file work goes in `notes/`. Each step line is **one short sentence** — the Projects tab card renders the steps verbatim, and verbose lines blow up the card height. Long-form scope, suggested wording, acceptance criteria belong in a dedicated `## Step details` section (or a notes file), not the step line itself.
+- **No links inside step lines.** No markdown `[label](path)` and no wikilinks (`[[…]]`) — the card renderer surfaces them as raw text and they wrap unhelpfully. Plain prose with a backticked code/path token is fine when essential. Move the link into `## Step details` or `## Notes` and have the step line refer to it by name.
 - **Transfer stamps** (`**Transferred:** YYYY-MM-DD → <knowledge-path>`) mark passages promoted to `knowledge/`. Historical, never expire.
 - Status markers in checklists: `[ ]`, `[~]`, `[x]`, `[!]`, `[-]`.
 - Each item may have an optional `local/` directory next to `notes/` — gitignored, for raw inputs and intermediate renders that are useful while active but not versioned.

@@ -6,6 +6,7 @@ import { setStatus } from '../../main/mutate';
 import { search as searchAll } from '../../main/search';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { projectsStrategy } from '../../main/index-projects';
+import { checkBranchState } from '../../main/worktree-ops';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
 import { statusOrder } from '../../shared/projects';
 import { resolveSlug } from '../slug';
@@ -787,6 +788,8 @@ async function closeProject(
     ? false
     : await touchDirtyMarker(conceptionPath, 'projects');
 
+  const warnings = await leftoverBranchWarnings(conceptionPath, header.branch);
+
   emit(
     ctx,
     {
@@ -799,7 +802,48 @@ async function closeProject(
     },
     (d) =>
       `Closed ${(d as { slug: string }).slug}: ${(d as { previousStatus: string }).previousStatus ?? '(none)'} → ${(d as { newStatus: string }).newStatus}\n`,
+    warnings,
   );
+}
+
+/**
+ * Probe the closed item's branch (when the header carries one) and surface
+ * a warning if the on-disk worktree or the local branch still exists. Closing
+ * an item only flips Status — the actual cleanup verbs are
+ * `condash worktrees remove <branch>` and `git branch -d <branch>`, and a
+ * silent close lets the miss go unnoticed (this exact thing happened during
+ * the parent simplify batch, May 1).
+ */
+async function leftoverBranchWarnings(
+  conceptionPath: string,
+  branch: string | null,
+): Promise<string[]> {
+  if (!branch) return [];
+  let state;
+  try {
+    state = await checkBranchState(conceptionPath, branch);
+  } catch {
+    // checkBranchState reads configuration.json + queries each repo; if the
+    // probe itself fails we'd rather close cleanly than crash the verb.
+    return [];
+  }
+  const lingeringWorktrees = state.repos.filter((r) => r.worktreeExists);
+  const lingeringBranches = state.repos.filter((r) => r.localBranchExists);
+  if (lingeringWorktrees.length === 0 && lingeringBranches.length === 0) return [];
+
+  const parts: string[] = [];
+  if (lingeringWorktrees.length > 0) {
+    const paths = lingeringWorktrees.map((r) => r.expectedWorktree).join(', ');
+    parts.push(`worktree(s) still on disk at ${paths}`);
+  }
+  if (lingeringBranches.length > 0) {
+    const repos = lingeringBranches.map((r) => r.name).join(', ');
+    parts.push(`local branch '${branch}' still exists in ${repos}`);
+  }
+  return [
+    `${parts.join('; ')} — run \`condash worktrees remove ${branch}\` ` +
+      `then \`git branch -d ${branch}\` to clean up.`,
+  ];
 }
 
 async function appendTimelineEntry(readmePath: string, line: string): Promise<void> {

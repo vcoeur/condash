@@ -46,6 +46,7 @@ import { matchesShortcut, parseShortcut } from './keymap';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
+import { applyRepoEvents } from './repo-events';
 import { QuitConfirmModal } from './toolbar';
 import { AboutModal } from './about-modal';
 import './styles.css';
@@ -126,6 +127,13 @@ function App() {
     void applyTreeEvents(events, {
       mutate,
       bumpRefreshKey: () => setRefreshKey((k) => k + 1),
+      // Repos no longer depend on refreshKey — refetch them explicitly when
+      // a config edit (potentially adding/removing repos) or an unknown event
+      // arrives. Dirty changes flow through `repo-events` instead and don't
+      // need this path.
+      refetchRepos: () => {
+        void refetchRepos();
+      },
     });
   });
   onCleanup(unsubscribe);
@@ -188,13 +196,24 @@ function App() {
     },
   );
 
-  const [repos] = createResource(
-    () => [conceptionPath(), refreshKey(), layout().working] as const,
-    async ([path, , working]) => {
+  // `repos` deliberately does NOT depend on `refreshKey` — the per-repo FS
+  // watcher in main feeds `repo-events` straight into `mutateRepos` below,
+  // so dirty counts stay live without a Suspense remount that would tear
+  // down open dropdowns / popovers. F5 still refreshes via main's
+  // `invalidateGitStatus` IPC, which now invalidates the cache + rebroadcasts
+  // every watched path through the same channel.
+  const [repos, { mutate: mutateRepos, refetch: refetchRepos }] = createResource(
+    () => [conceptionPath(), layout().working] as const,
+    async ([path, working]) => {
       if (!path || working !== 'code') return [] as RepoEntry[];
       return window.condash.listRepos();
     },
   );
+
+  const offRepoEvents = window.condash.onRepoEvents((events) => {
+    applyRepoEvents(events, { mutateRepos });
+  });
+  onCleanup(offRepoEvents);
 
   const repoGroups = createMemo(() => groupRepos(repos() ?? []));
 
