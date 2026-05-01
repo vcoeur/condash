@@ -47,7 +47,7 @@ b. **Read existing `D/index.md`** if present. Parse the current entry list (the 
 
 c. **Diff** the current entry list against the actual children and apply:
 
-   - **Existing entry, file/subdir still present** → keep the bullet verbatim. Do not touch description or keywords. (This is the idempotence guarantee for unchanged files.)
+   - **Existing entry, file/subdir still present** → keep the bullet verbatim. Do not touch description or keywords. (This is the idempotence guarantee for unchanged files. **Subdir entries**: §3 may still append keyword tags if the subtree below changed — that path overrides "verbatim" for subdir bullets only.)
    - **Existing entry, file/subdir gone** → drop the bullet. Report it.
    - **New child, no entry** → draft a new bullet:
      - For a file: read its first ~40 lines, derive description + keywords using the rules above. The user refines the draft on next read.
@@ -58,7 +58,10 @@ d. **Write `D/index.md`** with the updated entry list. New entries land under th
 
 ### 3 — Propagate upward
 
-If `D`'s entry list changed (add/drop), the parent index's entry for `D` may now be out of date — its description and aggregate keywords were chosen for the prior subtree shape. Flag the parent index for review. Do not auto-rewrite the parent's curated subdir summary; let the user refine.
+If `D`'s entry list changed (add/drop), the parent index's entry for `D` may now be out of date — its description and aggregate keywords were chosen for the prior subtree shape. This step overrides §2c's "verbatim" rule **for the parent's subdir bullet pointing at `D` only**, and only along the keyword axis. Two-tier behaviour:
+
+- **Aggregate keyword tags — auto-extend, additively.** Compute the set union of distinctive tags from every leaf entry inside `D` (recurse through subdir indexes). For each tag in that union not already on the parent's bullet, append it. **Never drop** a curated tag — the user may have included it deliberately even when no current leaf mentions it. Net effect: the tag set grows monotonically with the subtree; pruning stays manual. The 3–8 tag guideline becomes a *target* for hand-pruning; the skill won't enforce a cap.
+- **Italic description — flag, propose, do not write.** When the parent is flagged, draft a *proposed* replacement description (≤200 chars, semicolons over sentences, lifts the load-bearing nouns from the new leaf entries) and surface it in §5's report so the user can copy-paste it in. The bullet's description stays untouched until the user accepts. This preserves editorial voice — "what the subtree is *about*" — that mechanical extraction tends to flatten.
 
 ### 4 — Sanity checks
 
@@ -77,8 +80,10 @@ After all index writes succeed, `rm -f knowledge/.index-dirty` to signal the tre
 In this order:
 
 - Indexes created.
-- Indexes updated (with lines added / dropped, and "parent flagged for review" markers).
+- Indexes updated (with lines added / dropped, tags appended to subdir entries, and "parent flagged for review" markers).
 - New entries drafted from the body file (user refines on next read).
+- Proposed parent-description rewrites — one per flagged parent, format `<index-path>: <old> → <new>`. Copy-paste ready; the skill does not apply them.
+- Subdir entries over the 8-tag target — `<index-path>: <entry> (N tags)`. Surfaced for hand-pruning; the skill never drops tags on its own.
 - Suspected renames awaiting confirmation.
 - Other inconsistencies flagged but not fixed (missing description or keywords, dangling link, uncategorised placement).
 
@@ -99,13 +104,14 @@ Editing the *body* of an existing file does **not** by itself stale the index. B
 - **Removed file → bullet dropped.** Reported.
 - **Material body change** (scope, headings, name of central concept) → the user re-runs the skill and manually edits the affected entry. The skill will not touch it on its own.
 - **Rename** → skill flags, user confirms.
-- **Curated edit to a description or keyword set** → the skill preserves it on subsequent runs. Edit `D/index.md` directly; do not edit the body file expecting the index to follow.
+- **Curated edit to a description** → preserved on subsequent runs. Edit `D/index.md` directly; do not edit the body file expecting the index to follow.
+- **Curated keyword tag set** → preserved as a *floor*. The skill never drops a tag the user wrote, but it will append new tags surfaced by leaf entries inside the subtree (subdir entries only — leaf-bullet tags are preserved verbatim). To remove a tag, edit `D/index.md` directly; the skill treats the new state as the new floor. Bullets exceeding 8 tags surface in §5's report on every run, so pruning can be a deliberate batch.
 
 ## Conventions
 
 - **Description style** — italicised, terse, ≤200 chars; semicolons over full sentences; load-bearing keywords first. Never invent facts not in the body.
 - **Keyword style** — lowercase, hyphenated, 3–8 per entry, comma-separated inside backticks. Pick terms a future search would use, not synonyms of the filename.
-- **Preserve policy prose and curated entries.** Hand-written sections and bullet text are authoritative. The skill only mutates the entry *list* (add/drop), never existing bullet *text*.
+- **Preserve policy prose, group headings, and curated descriptions.** Hand-written sections, group headings, and italic descriptions are authoritative — never rewritten. The skill mutates: the entry *list* (add/drop on every bullet) and the *aggregate keyword tag set on subdir entries only* (append-only). Leaf-bullet tag sets are preserved verbatim.
 - **Do not move or rename body files.** Only `index.md` files are edited. Miscategorised body files → flag.
 - **Do not invent groupings.** Keep existing group headings; new entries go under the obvious fit or under `### Uncategorised` (and are flagged).
 

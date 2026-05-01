@@ -1,9 +1,12 @@
 {
   "name": "condash",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "description": "Markdown project dashboard for the conception tree (Electron build)",
   "private": true,
   "main": "dist-electron/main/index.js",
+  "bin": {
+    "condash": "dist-cli/condash.cjs"
+  },
   "homepage": "https://github.com/vcoeur/condash",
   "repository": {
     "type": "git",
@@ -22,7 +25,8 @@
     "dev": "node scripts/build-electron.mjs --dev && concurrently -k -n main,renderer,electron -c blue,green,magenta \"npm:dev:main\" \"npm:dev:renderer\" \"npm:dev:electron\"",
     "build:main": "node scripts/build-electron.mjs",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:renderer",
+    "build:cli": "node scripts/build-cli.mjs",
+    "build": "npm run build:main && npm run build:renderer && npm run build:cli",
     "start": "electron .",
     "package": "npm run build && electron-builder",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",

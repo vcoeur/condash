@@ -20,14 +20,49 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const WRAPPER_SCRIPT = `#!/usr/bin/env bash
-# Wayland Ozone hint — exported before the Electron binary so the C++ early
-# init picks the native Wayland backend instead of XWayland (which always
-# blits at integer scale and produces blurry text on fractional monitors).
-# No-op when the user is on X11 or any non-Wayland session.
+# Two-mode launcher: CLI fast-path or GUI launch.
+#
+# CLI fast-path: when the first non-flag arg is a known noun (projects /
+# knowledge / skills / search / repos / worktrees / dirty / config / help),
+# we skip Chromium init entirely and run the bundled Electron binary in
+# plain-Node mode via ELECTRON_RUN_AS_NODE=1. That path resolves the CLI
+# bundle from app.asar.unpacked/ (electron-builder unpacks dist-cli/ +
+# conception-template/ so plain Node fs can read them). Startup is ~50ms
+# vs. ~250ms for full Electron init.
+#
+# GUI launch: original behaviour. Wayland Ozone hint exported before the
+# Electron binary starts so the C++ early init picks the native Wayland
+# backend instead of XWayland (which always blits at integer scale and
+# produces blurry text on fractional monitors). No-op on X11 or non-Wayland.
+
+DIR="$(dirname -- "$(readlink -f -- "$0")")"
+BIN="$DIR/__BIN_NAME__"
+
+# Detect a CLI noun in args. Skip flag tokens, then test the first positional
+# against the known set. Anything not on this list (or no positional at all)
+# falls through to GUI mode.
+for arg in "$@"; do
+  case "$arg" in
+    -*) continue ;;
+    projects|knowledge|skills|search|repos|worktrees|dirty|config|help)
+      CLI_BUNDLE="$DIR/resources/app.asar.unpacked/dist-cli/condash.cjs"
+      if [ -f "$CLI_BUNDLE" ]; then
+        export ELECTRON_RUN_AS_NODE=1
+        exec "$BIN" "$CLI_BUNDLE" "$@"
+      fi
+      # Fall through: if the unpacked bundle is missing for some reason,
+      # let the GUI binary start; main/index.ts has its own dispatch as a
+      # belt-and-braces fallback.
+      break
+      ;;
+    *) break ;;
+  esac
+done
+
 if [ "\${XDG_SESSION_TYPE:-}" = "wayland" ] && [ -z "\${ELECTRON_OZONE_PLATFORM_HINT:-}" ]; then
   export ELECTRON_OZONE_PLATFORM_HINT=wayland
 fi
-exec "$(dirname -- "$(readlink -f -- "$0")")/__BIN_NAME__" "$@"
+exec "$BIN" "$@"
 `;
 
 exports.default = async function afterPack(context) {

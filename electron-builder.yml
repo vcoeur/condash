@@ -9,11 +9,23 @@ directories:
 files:
   - dist/**/*
   - dist-electron/**/*
+  - dist-cli/**/*
   - docs/**/*
   - conception-template/**/*
   - package.json
 
 asar: true
+
+# Unpack the CLI bundle + the conception template so the bash wrapper can
+# `exec` them via plain Node (ELECTRON_RUN_AS_NODE=1). Files inside the
+# asar archive are only readable through Electron's wrapped fs; plain Node
+# can't open them. Unpacking is per-file — the rest of the app stays inside
+# app.asar. The CLI's `__dirname`-based lookup (skills install reads
+# conception-template/.claude/skills/ relative to dist-cli/condash.cjs) only
+# resolves correctly when both directories are unpacked together.
+asarUnpack:
+  - dist-cli/**/*
+  - conception-template/**/*
 
 # Linux-only: wrap the Electron binary with a bash launcher that exports
 # ELECTRON_OZONE_PLATFORM_HINT=wayland when XDG_SESSION_TYPE=wayland. Without
