@@ -41,7 +41,7 @@ Anything else about the body — title style, mandatory sections, prohibited tra
    | Source | Check |
    |--------|-------|
    | User call-site override | "`/pr base=develop`", "open PR to `release-4.2`", etc. |
-   | Project `**Base**` field | Search `${CLAUDE_PROJECT_DIR}/projects/*/*/README.md` for the current branch in the `**Branch**` field (first backticked token authoritative). If exactly one project matches and has a `**Base**: \`<branch>\`` line, use that value. |
+   | Project `**Base**` field | `condash projects list --branch <current-branch> --json` returns one row per matching project with parsed `branch` / `base`. If exactly one match has a non-empty `base`, use that value. |
    | `origin/HEAD` on main checkout | `git rev-parse --git-common-dir` to find the main checkout; `git -C "$main" symbolic-ref refs/remotes/origin/HEAD` for the default. If unset, try `git remote set-head origin -a` once, then ask the user. |
 
    Sanity-check: `git log --oneline <base>..HEAD` must be a clean non-empty diff. Re-ask if it's empty or enormous.
@@ -71,7 +71,7 @@ Anything else about the body — title style, mandatory sections, prohibited tra
 
 8. **Report the URL** in plain text.
 
-9. **Link back to the driving project** (unless the user passed `--no-project-link`). Search `${CLAUDE_PROJECT_DIR}/projects/*/*/README.md` for the current branch in the `**Branch**` field:
+9. **Link back to the driving project** (unless the user passed `--no-project-link`). Run `condash projects list --branch <current-branch> --json` to find every project declaring this branch:
 
    - **One match** → append `- YYYY-MM-DD — Opened PR <url>.` to that README's timeline. Confirm in chat: *"Logged PR to `<slug>`."*.
    - **Zero matches** → say so; the user may want to create an item.

@@ -12,32 +12,46 @@ Use `/knowledge update` when the fact being recorded is:
 - **Load-bearing** — a future Claude session should find it when asked about the topic.
 - **Not already** in an app's `CLAUDE.md` (for app internals, write there instead).
 
-If the fact is in-flight project work or a point-in-time finding, write it to the item's `notes/` instead via `/projects update`.
+If the fact is in-flight project work or a point-in-time finding, it goes under the item's `notes/` via `/projects update`.
 
 ## Steps
 
-1. **Confirm the target location** using the "When to create vs. extend" rules from `SKILL.md`:
-
-   - durable team rule surfaced in session → `conventions.md` (root-level)
-   - third-party service → `external/<system>.md`
-   - shared self-hosted service → `internal/<service>.md`
-   - cross-cutting topic → `topics/<slug>.md`
-   - new app → create `internal/<app>.md` (short pointer to the app's `CLAUDE.md` + any conception-side knowledge) and add an entry to `internal/index.md`
-   - single-app detail → route to that app's `CLAUDE.md`, not here
+1. **Confirm target location** using the bucket-picking rubric in `SKILL.md`.
 
 2. **Read the target file** (if it exists) before writing. Check existing structure, headings, and stamp dates.
 
-3. **Draft or edit the content.** Enforce the core rules from `SKILL.md` (one topic per file, citations, verification stamps). `<where>` values for stamps are also defined there.
+3. **Draft or edit the content.** Enforce the core rules from `SKILL.md` (one topic per file, citations, verification stamps).
 
-4. **Cross-link.** Link the body file to the `projects/` item (if any) that produced the knowledge. From the item, link back — update its `## Notes` section (all kinds). If invoked from inside a `/projects close` flow, the stamping of `**Transferred:** YYYY-MM-DD → <path>` on the origin paragraph happens automatically; otherwise stamp it manually.
+   For the verification stamp, use the CLI rather than hand-templating the line — it's idempotent (replaces an existing stamp or inserts a new one):
 
-5. **Dirty the knowledge index** when the change is index-relevant. `touch knowledge/.index-dirty` if this action **added**, **renamed**, or **substantially rewrote the scope** of a body file. Pure body edits that don't change scope (no new heading, no renamed concept) do **not** stale the index — skip the touch. `/knowledge index` clears the marker; `/projects close` auto-refreshes when the marker is set. Remind the user in chat — the index is not auto-triggered; the user runs it when the batch of edits is finalised.
+   ```bash
+   condash knowledge stamp <path> --where "<app>@<sha> on <branch>" [--date YYYY-MM-DD]
+   ```
+
+   `--date` defaults to today; pass it only when backstamping. To compute `<sha>` and `<branch>`:
+
+   ```bash
+   git -C <workspace_path>/<app> rev-parse --short HEAD
+   git -C <workspace_path>/<app> rev-parse --abbrev-ref HEAD
+   ```
+
+   `<workspace_path>` comes from `condash config get workspace_path`.
+
+4. **Cross-link.** Link the body file to the `projects/` item (if any) that produced the knowledge. Update the item's `## Notes` section.
+
+5. **Dirty the knowledge index** when the change is index-relevant:
+
+   ```bash
+   condash dirty touch knowledge --json
+   ```
+
+   Run when the action **added**, **renamed**, or **substantially rewrote the scope** of a body file. Pure body edits that don't change scope (no new heading, no renamed concept) do **not** stale the index — skip the call. `/knowledge index` clears the marker. Remind the user — the index is not auto-triggered.
 
 ## Rules
 
-- **Core rules live in `SKILL.md`** (durable only, one topic per file, no duplicate app internals, stamp discipline). Don't restate them here — read them before writing.
-- **Preserve citations on edits.** When refactoring existing prose, keep existing `([source]…)` and `(`path:line`…)` citations anchored to the right claims.
-- **Do not commit.** Write the file; user commits when ready.
+- Core rules live in `SKILL.md` — read before writing.
+- Preserve citations on edits. When refactoring existing prose, keep `([source]…)` and `(`path:line`…)` citations anchored to the right claims.
+- Do not commit. Write the file; user commits when ready.
 
 ## After writing
 
@@ -45,4 +59,4 @@ Mention:
 
 - The path written.
 - Whether `/knowledge index` needs running (anything other than a pure body edit → yes).
-- Any existing projects/items that should cross-link back to the new knowledge file.
+- Any existing projects/items that should cross-link back.

@@ -4,11 +4,20 @@ import { findProjectReadmes } from '../../main/walk';
 import { parseReadme } from '../../main/parse';
 import { setStatus } from '../../main/mutate';
 import { search as searchAll } from '../../main/search';
+import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
+import { projectsStrategy } from '../../main/index-projects';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
 import { resolveSlug } from '../slug';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { parseHeader, readHeader, validateHeader, type HeaderFields } from '../header';
 import type { ParsedArgs } from '../parser';
+
+const ITEM_KINDS = ['project', 'incident', 'document'] as const;
+const SEVERITIES = ['low', 'medium', 'high'] as const;
+const ENVIRONMENTS = ['PROD', 'STAGING', 'DEV'] as const;
+const SLUG_TAIL_RE = /^[a-z0-9-]+$/;
+const PROMOTION_RE =
+  /(^|\b)(always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects))\b/i;
 
 interface ProjectListRow {
   slug: string;
@@ -48,8 +57,342 @@ export async function runProjects(
       return await statusCommand(args, ctx, conceptionPath);
     case 'close':
       return await closeProject(args, ctx, conceptionPath);
+    case 'index':
+      return await indexCommand(args, ctx, conceptionPath);
+    case 'create':
+      return await createCommand(args, ctx, conceptionPath);
+    case 'scan-promotions':
+      return await scanPromotionsCommand(args, ctx, conceptionPath);
     default:
       throw new CliError(ExitCodes.USAGE, `Unknown projects verb: ${verb}`);
+  }
+}
+
+async function indexCommand(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const dryRun = args.flags['dry-run'] === true;
+  const report = await regenerateIndex(conceptionPath, projectsStrategy, { dryRun });
+  emit(ctx, report, formatIndexReport);
+}
+
+function formatIndexReport(report: IndexRegenReport): string {
+  const lines: string[] = [];
+  lines.push(
+    `Index regeneration: ${report.tree}/  (${report.dryRun ? 'dry-run' : 'wrote changes'})`,
+  );
+  if (report.created.length > 0) {
+    lines.push(`Created (${report.created.length}):`);
+    for (const p of report.created) lines.push(`  + ${p}`);
+  }
+  if (report.updated.length > 0) {
+    lines.push(`Updated (${report.updated.length}):`);
+    for (const u of report.updated) {
+      const parts: string[] = [];
+      if (u.added.length > 0) parts.push(`added ${u.added.length}`);
+      if (u.dropped.length > 0) parts.push(`dropped ${u.dropped.length}`);
+      if (u.tagsAdded.length > 0) parts.push(`tags+ ${u.tagsAdded.length}`);
+      lines.push(`  ~ ${u.indexPath}  (${parts.join(', ')})`);
+    }
+  }
+  if (report.unchanged.length > 0) {
+    lines.push(`Unchanged: ${report.unchanged.length}`);
+  }
+  if (report.flaggedRenames.length > 0) {
+    lines.push(`Suspected renames (${report.flaggedRenames.length}):`);
+    for (const r of report.flaggedRenames) {
+      lines.push(`  ? ${r.indexPath}  ${r.oldName}  →  ${r.newName}`);
+    }
+  }
+  if (report.overTagTarget.length > 0) {
+    lines.push(`Over-target tag count (${report.overTagTarget.length}):`);
+    for (const o of report.overTagTarget) {
+      lines.push(`  · ${o.indexPath}  ${o.entry}  ${o.tagCount} tags`);
+    }
+  }
+  if (report.validationWarnings.length > 0) {
+    lines.push(`Item validation (${report.validationWarnings.length}):`);
+    for (const w of report.validationWarnings) {
+      lines.push(
+        `  [${w.severity}] ${relativeIfPossible(w.path, report.rootPath)}  ${w.field}: ${w.message}`,
+      );
+    }
+  }
+  if (report.dirtyClear) lines.push('Dirty marker cleared.');
+  return lines.join('\n') + '\n';
+}
+
+function relativeIfPossible(path: string, rootPath: string): string {
+  // rootPath is .../projects or .../knowledge; show paths relative to its
+  // parent (the conception root) when possible.
+  return path.startsWith(rootPath) ? path : path;
+}
+
+async function createCommand(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const kind = String(args.flags.kind ?? '').toLowerCase();
+  if (!ITEM_KINDS.includes(kind as (typeof ITEM_KINDS)[number])) {
+    validation(`--kind must be one of {${ITEM_KINDS.join(', ')}}; got '${kind || '(missing)'}'`);
+  }
+  const slug = String(args.flags.slug ?? '').trim();
+  if (!slug || !SLUG_TAIL_RE.test(slug)) {
+    validation(`--slug must match ^[a-z0-9-]+$; got '${slug}'`);
+  }
+  const title = String(args.flags.title ?? '').trim();
+  if (!title) validation(`--title is required`);
+  const apps = parseCsvFlag(args.flags.apps) ?? [];
+  if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
+
+  const branch = typeof args.flags.branch === 'string' ? args.flags.branch.trim() || null : null;
+  const base = typeof args.flags.base === 'string' ? args.flags.base.trim() || null : null;
+  const date = typeof args.flags.date === 'string' ? args.flags.date.trim() : isoToday();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    validation(`--date must be YYYY-MM-DD; got '${date}'`);
+  }
+  const month = date.slice(0, 7);
+
+  let severity: string | null = null;
+  let severityImpact: string | null = null;
+  let environment: string | null = null;
+  if (kind === 'incident') {
+    severity = String(args.flags.severity ?? '').toLowerCase();
+    if (!SEVERITIES.includes(severity as (typeof SEVERITIES)[number])) {
+      validation(
+        `--severity must be one of {${SEVERITIES.join(', ')}} for incidents; got '${severity || '(missing)'}'`,
+      );
+    }
+    severityImpact = String(args.flags['severity-impact'] ?? '').trim() || null;
+    environment =
+      String(args.flags.environment ?? '')
+        .trim()
+        .toUpperCase() || null;
+    if (environment && !ENVIRONMENTS.includes(environment as (typeof ENVIRONMENTS)[number])) {
+      validation(`--environment must be one of {${ENVIRONMENTS.join(', ')}}; got '${environment}'`);
+    }
+  }
+
+  const folderName = `${date}-${slug}`;
+  const itemDir = join(conceptionPath, 'projects', month, folderName);
+  if (await pathExists(itemDir)) {
+    throw new CliError(
+      ExitCodes.VALIDATION,
+      `Item already exists at projects/${month}/${folderName}`,
+    );
+  }
+
+  const readmeBody = renderTemplate({
+    kind: kind as (typeof ITEM_KINDS)[number],
+    title,
+    date,
+    apps,
+    branch,
+    base,
+    severity,
+    severityImpact,
+    environment,
+  });
+
+  await fs.mkdir(join(itemDir, 'notes'), { recursive: true });
+  const readmePath = join(itemDir, 'README.md');
+  await fs.writeFile(readmePath, readmeBody, 'utf8');
+
+  // Mark the projects index dirty so a follow-up `condash projects index` is
+  // surfaced to the user.
+  await touchDirtyMarker(conceptionPath, 'projects');
+
+  emit(
+    ctx,
+    {
+      slug: folderName,
+      path: itemDir,
+      relPath: relative(conceptionPath, itemDir),
+      readme: readmePath,
+      kind,
+      title,
+      date,
+      apps,
+      branch,
+      base,
+    },
+    (data) => {
+      const d = data as { relPath: string; readme: string };
+      return `Created ${d.relPath}\n  README: ${d.readme}\n`;
+    },
+  );
+}
+
+interface TemplateInputs {
+  kind: (typeof ITEM_KINDS)[number];
+  title: string;
+  date: string;
+  apps: string[];
+  branch: string | null;
+  base: string | null;
+  severity: string | null;
+  severityImpact: string | null;
+  environment: string | null;
+}
+
+function renderTemplate(input: TemplateInputs): string {
+  const lines: string[] = [];
+  lines.push(`# ${input.title}`);
+  lines.push('');
+  lines.push(`**Date**: ${input.date}`);
+  lines.push(`**Kind**: ${input.kind}`);
+  lines.push(`**Status**: now`);
+  lines.push(`**Apps**: ${input.apps.map((a) => `\`${a}\``).join(', ')}`);
+  if (input.branch) lines.push(`**Branch**: \`${input.branch}\``);
+  if (input.base) lines.push(`**Base**: \`${input.base}\``);
+  if (input.kind === 'incident') {
+    if (input.environment) lines.push(`**Environment**: ${input.environment}`);
+    if (input.severity) {
+      const tail = input.severityImpact ? ` — ${input.severityImpact}` : '';
+      lines.push(`**Severity**: ${input.severity}${tail}`);
+    }
+  }
+  lines.push('');
+  if (input.kind === 'project') {
+    lines.push('## Goal');
+    lines.push('');
+    lines.push('<What this project aims to achieve — the user-facing outcome.>');
+    lines.push('');
+    lines.push('## Scope');
+    lines.push('');
+    lines.push('<What is in scope and what is explicitly out of scope.>');
+    lines.push('');
+    lines.push('## Steps');
+    lines.push('');
+    lines.push('- [ ] <first task>');
+    lines.push('');
+    lines.push('## Timeline');
+    lines.push('');
+    lines.push(`- ${input.date} — Project created.`);
+    lines.push('');
+    lines.push('## Notes');
+    lines.push('');
+  } else if (input.kind === 'incident') {
+    lines.push('## Description');
+    lines.push('');
+    lines.push('<What happened — observable symptoms, scope, when it started.>');
+    lines.push('');
+    lines.push('## Symptoms');
+    lines.push('');
+    lines.push('<Bullet list of error messages, user-facing effects, log patterns.>');
+    lines.push('');
+    lines.push('## Analysis');
+    lines.push('');
+    lines.push('<Investigation findings, hypotheses, references to `notes/`.>');
+    lines.push('');
+    lines.push('## Root cause');
+    lines.push('');
+    lines.push('_Not yet identified._');
+    lines.push('');
+    lines.push('## Steps');
+    lines.push('');
+    lines.push('- [ ] <action items>');
+    lines.push('');
+    lines.push('## Timeline');
+    lines.push('');
+    lines.push(`- ${input.date} — Incident created.`);
+    lines.push('');
+    lines.push('## Notes');
+    lines.push('');
+  } else {
+    lines.push('## Goal');
+    lines.push('');
+    lines.push('<Purpose — what this document aims to achieve or answer.>');
+    lines.push('');
+    lines.push('## Steps');
+    lines.push('');
+    lines.push('- [ ] Step 1');
+    lines.push('');
+    lines.push('## Timeline');
+    lines.push('');
+    lines.push(`- ${input.date} — Created.`);
+    lines.push('');
+    lines.push('## Notes');
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+async function scanPromotionsCommand(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const slug = args.positional[0];
+  if (!slug) {
+    throw new CliError(ExitCodes.USAGE, 'Usage: condash projects scan-promotions <slug>');
+  }
+  const candidate = await resolveSlug(conceptionPath, slug);
+  const notesDir = join(candidate.itemDir, 'notes');
+  let entries: string[];
+  try {
+    entries = (await fs.readdir(notesDir)).filter((n) => n.toLowerCase().endsWith('.md')).sort();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') entries = [];
+    else throw err;
+  }
+  const candidates: { relPath: string; line: number; paragraph: string; match: string }[] = [];
+  for (const name of entries) {
+    const abs = join(notesDir, name);
+    const raw = await fs.readFile(abs, 'utf8');
+    const lines = raw.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const m = PROMOTION_RE.exec(lines[i]);
+      if (!m) continue;
+      const paragraph = extractParagraph(lines, i);
+      candidates.push({
+        relPath: `notes/${name}`,
+        line: i + 1,
+        paragraph,
+        match: m[0],
+      });
+    }
+  }
+  emit(
+    ctx,
+    {
+      slug: candidate.slug,
+      path: candidate.itemDir,
+      candidates,
+    },
+    (data) => {
+      const d = data as typeof data & { candidates: typeof candidates };
+      if (d.candidates.length === 0) return '(no promotion candidates found)\n';
+      const out: string[] = [];
+      for (const c of d.candidates) {
+        out.push(`${c.relPath}:${c.line}  [${c.match}]`);
+        for (const para of c.paragraph.split('\n')) out.push(`  ${para}`);
+      }
+      return out.join('\n') + '\n';
+    },
+  );
+}
+
+function extractParagraph(lines: string[], hitIndex: number): string {
+  let start = hitIndex;
+  while (start > 0 && lines[start - 1].trim() !== '') start--;
+  let end = hitIndex;
+  while (end < lines.length - 1 && lines[end + 1].trim() !== '') end++;
+  return lines
+    .slice(start, end + 1)
+    .join('\n')
+    .trim();
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -549,13 +892,16 @@ function printSubHelp(): void {
       'condash projects <verb> [args]',
       '',
       'Verbs:',
-      '  list        List projects (filters: --status --kind --apps --branch).',
-      '  read        Read a project README + metadata.',
-      '  resolve     Resolve a slug to its absolute path.',
-      '  search      Search project READMEs and notes.',
-      '  validate    Validate header(s) against canonical enums.',
-      '  status      get|set the **Status** field.',
-      '  close       Flip status to done + append closing timeline entry.',
+      '  list             List projects (filters: --status --kind --apps --branch).',
+      '  read             Read a project README + metadata.',
+      '  resolve          Resolve a slug to its absolute path.',
+      '  search           Search project READMEs and notes.',
+      '  validate         Validate header(s) against canonical enums.',
+      '  status           get|set the **Status** field.',
+      '  close            Flip status to done + append closing timeline entry.',
+      '  index            Regenerate projects/index.md + month indexes.',
+      '  create           Create a new item: --kind --slug --apps --title [--branch …].',
+      '  scan-promotions  Surface durable-finding candidates inside an item’s notes/.',
       '',
     ].join('\n'),
   );

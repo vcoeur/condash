@@ -1,153 +1,59 @@
 # /projects — create
 
-Create a new item (project / incident / document) in the current month's bucket.
+Create a new item (project / incident / document) in the current month's bucket. The CLI owns the templates, slug regex, date↔folder invariant, canonical Status/Kind enum, and atomic directory creation — the skill just gathers fields and reports.
 
 Trigger: `/projects create <kind>` with kind ∈ {`project`, `incident`, `document`}.
 
 ## Steps
 
-1. **Confirm kind.** Must be one of `project`, `incident`, `document`. If the user omitted it, ask:
+1. **Confirm kind.** If the user omitted it, ask with one `AskUserQuestion`:
 
    - project — new feature or planned behaviour change.
    - incident — bug, outage, unexpected behaviour.
-   - document — plan, report, investigation, audit. Use this only when neither "project" nor "incident" fits.
+   - document — plan, report, investigation, audit (use only when neither "project" nor "incident" fits).
 
-2. **Gather core fields** with one `AskUserQuestion` round unless the user already said them:
+2. **Gather core fields** in one `AskUserQuestion` round unless the user already supplied them:
 
    - Title (becomes the H1 heading).
-   - Short slug (lowercase, hyphen-separated; will be prefixed with today's date).
+   - Short slug (`^[a-z0-9-]+$`; CLI rejects violations).
    - Apps (comma-separated, e.g. `condash, conception`).
    - Branch (optional).
+   - Base (optional, only when targeting a non-default base branch).
    - Kind-specific:
-     - incident → Environment (`PROD` / `STAGING` / `DEV`) + Severity (`low` / `medium` / `high` — one-line impact).
+     - incident → Environment (`PROD` / `STAGING` / `DEV`) + Severity (`low` / `medium` / `high`) + a one-line impact.
 
-3. **Compute the path.**
-
-   - Date: today's date.
-   - Month: today's `YYYY-MM`.
-   - Folder: `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/`.
-   - If the folder already exists, flag to the user and ask for a different slug.
-
-4. **Create the directories.**
+3. **Shell out:**
 
    ```bash
-   mkdir -p ~/src/vcoeur/conception/projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/notes
+   condash projects create \
+     --kind <project|incident|document> \
+     --slug <slug> \
+     --title "<Title>" \
+     --apps "<a,b,c>" \
+     [--branch <branch>] [--base <base>] \
+     [--severity <low|medium|high>] [--severity-impact "<text>"] \
+     [--environment <PROD|STAGING|DEV>] \
+     --json
    ```
 
-5. **Write the README** using the matching template below. Substitute all `<placeholder>` values. The first timeline entry is `<today> — Created.`.
+   The CLI:
+   - validates slug + enums + date↔folder invariant,
+   - rejects collisions (item already exists),
+   - creates `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/{README.md, notes/}`,
+   - writes the matching template (kind-specific sections, header fields, first timeline entry),
+   - touches `projects/.index-dirty`.
 
-   **project:**
+   On success, parse the envelope's `data.path` and `data.relPath`.
 
-   ```markdown
-   # <Project title>
+4. **Worktree check.** If `**Branch**` was provided, run `condash worktrees check <branch> --json`:
+   - If `data.repos[].worktreeExists` is true everywhere expected, remind the user that code edits go through the worktree paths.
+   - Otherwise, offer `/projects worktree setup <branch>`.
 
-   **Date**: YYYY-MM-DD
-   **Kind**: project
-   **Status**: now
-   **Apps**: <list of affected apps/repos>
-   **Branch**: <branch name, if applicable>
-   <!-- **Base**: <branch> — optional, override default PR base branch -->
-
-   ## Goal
-
-   <What this project aims to achieve — the user-facing outcome.>
-
-   ## Scope
-
-   <What is in scope and what is explicitly out of scope.>
-
-   ## Steps
-
-   - [ ] <first task>
-
-   ## Timeline
-
-   - YYYY-MM-DD — Project created.
-
-   ## Notes
-   ```
-
-   **incident:**
-
-   ```markdown
-   # <Incident title>
-
-   **Date**: YYYY-MM-DD
-   **Kind**: incident
-   **Status**: now
-   **Apps**: <list of affected apps/repos>
-   **Branch**: <branch name, if applicable>
-   <!-- **Base**: <branch> — optional, override default PR base branch -->
-   **Environment**: <PROD/STAGING/DEV, pod/service name>
-   **Severity**: <low/medium/high — one-line impact summary>
-
-   ## Description
-
-   <What happened — observable symptoms, scope, when it started.>
-
-   ## Symptoms
-
-   <Bullet list of error messages, user-facing effects, log patterns.>
-
-   ## Analysis
-
-   <Investigation findings, hypotheses, references to `notes/`.>
-
-   ## Root cause
-
-   _Not yet identified._
-
-   ## Steps
-
-   - [ ] <action items>
-
-   ## Timeline
-
-   - YYYY-MM-DD — Incident created.
-
-   ## Notes
-   ```
-
-   **document:**
-
-   ```markdown
-   # <Title>
-
-   **Date**: YYYY-MM-DD
-   **Kind**: document
-   **Status**: now
-   **Apps**: <list of affected apps/repos>
-   **Branch**: <branch name, if applicable>
-   <!-- **Base**: <branch> — optional, override default PR base branch -->
-
-   ## Goal
-
-   <Purpose — what this document aims to achieve or answer.>
-
-   ## Steps
-
-   - [ ] Step 1
-   - [ ] Step 2
-
-   ## Timeline
-
-   - YYYY-MM-DD — Created.
-
-   ## Notes
-   ```
-
-6. **Worktree check.** If `**Branch**` was provided:
-
-   - If worktrees exist at `<worktrees_path>/<branch>/`, remind the user that code edits must go through the worktree paths.
-   - Otherwise, offer to run `/projects worktree setup <branch>` right now.
-
-7. **Dirty the projects index.** `touch projects/.index-dirty` — this sentinel signals that `projects/index.md` and the month index are now stale. `/projects index` clears it. `/projects close` auto-refreshes when set. Do **not** regenerate indexes automatically from create.
-
-8. **Report** the path created and the next sensible action (usually: fill in `## Goal` / `## Description`, add a first note, or run `/projects worktree setup`).
+5. **Report** the path created and the next sensible action (usually: fill in `## Goal` / `## Description`, add a first note, or set up worktrees).
 
 ## Rules
 
-- The creation date and month are always **today**, not a date the user gives you. If they want to backdate an item, that is a `git mv` + README edit, not a create — ask what they're trying to do.
-- Never create an item at the top level of `projects/` (i.e. outside a month directory). The layout is strict.
-- **Folder name must match** `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`. Reject at create time — the index regenerator only warns after the fact.
-- **Status must be in the canonical enum** — see `SKILL.md`. Reject near-misses (`active`, `wip`, `in-progress`, …); condash's parser silently coerces unknowns to `backlog`.
+- The creation date and month are always **today** (CLI default), not a date the user gives. Backdating an item is a `git mv` + README edit, not a create.
+- Folder name must match `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` — CLI rejects violations.
+- Status / Kind values must be in the canonical enums — CLI rejects near-misses.
+- Never edit the README templates by hand. They live in the CLI; if a template needs to change, change it there and ship a new condash release.

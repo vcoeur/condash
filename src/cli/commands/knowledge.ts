@@ -1,6 +1,8 @@
 import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
 import { readKnowledgeTree } from '../../main/knowledge';
+import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
+import { knowledgeStrategy } from '../../main/index-knowledge';
 import type { KnowledgeNode } from '../../shared/types';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import type { ParsedArgs } from '../parser';
@@ -25,9 +27,57 @@ export async function runKnowledge(
       return await retrieveCommand(args, ctx, conceptionPath);
     case 'stamp':
       return await stampCommand(args, ctx, conceptionPath);
+    case 'index':
+      return await indexCommand(args, ctx, conceptionPath);
     default:
       throw new CliError(ExitCodes.USAGE, `Unknown knowledge verb: ${verb}`);
   }
+}
+
+async function indexCommand(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const dryRun = args.flags['dry-run'] === true;
+  const report = await regenerateIndex(conceptionPath, knowledgeStrategy, { dryRun });
+  emit(ctx, report, formatIndexReport);
+}
+
+function formatIndexReport(report: IndexRegenReport): string {
+  const lines: string[] = [];
+  lines.push(
+    `Index regeneration: ${report.tree}/  (${report.dryRun ? 'dry-run' : 'wrote changes'})`,
+  );
+  if (report.created.length > 0) {
+    lines.push(`Created (${report.created.length}):`);
+    for (const p of report.created) lines.push(`  + ${p}`);
+  }
+  if (report.updated.length > 0) {
+    lines.push(`Updated (${report.updated.length}):`);
+    for (const u of report.updated) {
+      const parts: string[] = [];
+      if (u.added.length > 0) parts.push(`added ${u.added.length}`);
+      if (u.dropped.length > 0) parts.push(`dropped ${u.dropped.length}`);
+      if (u.tagsAdded.length > 0) parts.push(`tags+ ${u.tagsAdded.length}`);
+      lines.push(`  ~ ${u.indexPath}  (${parts.join(', ')})`);
+    }
+  }
+  if (report.unchanged.length > 0) lines.push(`Unchanged: ${report.unchanged.length}`);
+  if (report.flaggedRenames.length > 0) {
+    lines.push(`Suspected renames (${report.flaggedRenames.length}):`);
+    for (const r of report.flaggedRenames) {
+      lines.push(`  ? ${r.indexPath}  ${r.oldName}  →  ${r.newName}`);
+    }
+  }
+  if (report.overTagTarget.length > 0) {
+    lines.push(`Over-target tag count (${report.overTagTarget.length}):`);
+    for (const o of report.overTagTarget) {
+      lines.push(`  · ${o.indexPath}  ${o.entry}  ${o.tagCount} tags`);
+    }
+  }
+  if (report.dirtyClear) lines.push('Dirty marker cleared.');
+  return lines.join('\n') + '\n';
 }
 
 async function treeCommand(
@@ -437,6 +487,7 @@ function printSubHelp(): void {
       '  verify      Audit **Verified:** stamps older than --max-age (default 30).',
       '  retrieve    Match a query against index.md keywords; falls back to grep.',
       '  stamp       Idempotently write a **Verified:** line into a file.',
+      '  index       Regenerate every knowledge/**/index.md.',
       '',
     ].join('\n'),
   );
