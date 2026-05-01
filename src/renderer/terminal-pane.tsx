@@ -440,6 +440,11 @@ export function TerminalPane(props: {
       const id = activeIdIn(activeColumn());
       if (!id) return;
       void window.condash.termWrite(id, text);
+      // Drive focus into the active xterm so the next keystroke lands in the
+      // shell — callers (Work on, screenshot paste) all want this. Without it
+      // the click that triggered typeIntoActive leaves focus on the dashboard
+      // button and the user has to click the pane again before typing.
+      queueMicrotask(focusActive);
     },
     hasActive: () => Boolean(activeIdIn(activeColumn())),
   };

@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi, MenuCommand } from '../shared/api';
-import type { TermDataMessage, TermExitMessage, TermSession, TreeEvent } from '../shared/types';
+import type {
+  RepoEvent,
+  TermDataMessage,
+  TermExitMessage,
+  TermSession,
+  TreeEvent,
+} from '../shared/types';
 
 const api: CondashApi = {
   listProjects: () => ipcRenderer.invoke('listProjects'),
@@ -41,6 +47,13 @@ const api: CondashApi = {
     ipcRenderer.on('tree-events', handler);
     return () => {
       ipcRenderer.removeListener('tree-events', handler);
+    };
+  },
+  onRepoEvents: (callback) => {
+    const handler = (_: unknown, events: RepoEvent[]): void => callback(events);
+    ipcRenderer.on('repo-events', handler);
+    return () => {
+      ipcRenderer.removeListener('repo-events', handler);
     };
   },
   termSpawn: (request) => ipcRenderer.invoke('term.spawn', request),

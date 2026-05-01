@@ -18,6 +18,12 @@ import { createProjectNote, readNote } from './note';
 import { search } from './search';
 import { listRepos } from './repos';
 import { invalidateAll } from './git-status-cache';
+import {
+  disposeRepoWatchers,
+  recomputeAllWatchedRepos,
+  setRepoWatchers,
+  watchTargetsFromRepos,
+} from './repo-watchers';
 import { getDirtyDetails } from './git-details';
 import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
 import {
@@ -402,13 +408,23 @@ function registerIpc(): void {
   ipcMain.handle('listRepos', async () => {
     const { conceptionPath } = await readSettings();
     if (!conceptionPath) return [];
-    return listRepos(conceptionPath);
+    const repos = await listRepos(conceptionPath);
+    // Sync the per-repo FS watchers to the live repo set: a config edit
+    // that adds or removes a repo is reflected here, since this handler
+    // re-runs on every renderer-driven repos refresh.
+    setRepoWatchers(watchTargetsFromRepos(repos));
+    return repos;
   });
 
-  // Drop the per-worktree git status cache. Wired to the renderer's Refresh
-  // button so explicit user requests always see fresh data, while ambient
-  // re-renders (tab switch, tree-events) still benefit from the TTL cache.
-  ipcMain.handle('invalidateGitStatus', () => invalidateAll());
+  // Drop the per-worktree git status cache + force-recompute every watched
+  // repo and broadcast `repo-events`. Wired to the renderer's F5 / Refresh
+  // path so the user sees fresh counts without waiting for an FS event,
+  // and without the renderer needing to refetch the whole repo list (which
+  // would tear down dropdowns/popovers).
+  ipcMain.handle('invalidateGitStatus', async () => {
+    invalidateAll();
+    await recomputeAllWatchedRepos();
+  });
 
   // Click-to-inspect on the per-branch dirty badge. Returns the parsed
   // `git status` line set + a `git diff --stat HEAD` snippet so the user
@@ -673,5 +689,6 @@ if (!IS_CLI) {
   // already-empty session map there.
   app.on('before-quit', () => {
     void killAll();
+    void disposeRepoWatchers();
   });
 }

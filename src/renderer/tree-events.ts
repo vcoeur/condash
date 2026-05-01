@@ -6,8 +6,14 @@ type Mutator = (next: (items: Project[] | undefined) => Project[]) => void;
 export interface TreeEventsDeps {
   /** SolidJS resource mutator for the projects list. */
   mutate: Mutator;
-  /** Bump the renderer's `refreshKey` to force a full re-fetch. */
+  /** Bump the renderer's `refreshKey` to force a full re-fetch of the
+   *  resources still keyed on it (knowledge, openWithSlots, terminalPrefs). */
   bumpRefreshKey: () => void;
+  /** Trigger a refetch of the repos resource. Repos dropped their
+   *  `refreshKey` dependency in v2.8.0 (in-place updates flow through
+   *  `repo-events` instead) so config / unknown events that may have
+   *  changed the repo list need an explicit nudge. */
+  refetchRepos: () => void;
 }
 
 /** Apply chokidar-driven tree events to the projects resource. Handles
@@ -52,6 +58,7 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
 
   if (unknownSeen || knowledgeOrConfigDirty) {
     deps.bumpRefreshKey();
+    deps.refetchRepos();
   }
 }
 

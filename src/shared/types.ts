@@ -336,6 +336,13 @@ export type TreeEvent =
   | { kind: 'config'; path: string }
   | { kind: 'unknown' };
 
+/** Repo-tree event broadcast by the per-repo FS watcher (worktree + .git/
+ *  meta) so the renderer can patch one repo (or one worktree) in place
+ *  without re-fetching the whole repo list. `path` matches a `RepoEntry.path`
+ *  or one of its `worktrees[].path`. `dirty` is the freshly-recomputed count
+ *  (or null when `git status` couldn't run). */
+export type RepoEvent = { kind: 'repo-dirty'; path: string; dirty: number | null };
+
 export interface KnowledgeNode {
   /** Path relative to <conception>/knowledge/. Empty string for the root. */
   relPath: string;
