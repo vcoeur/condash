@@ -45,6 +45,54 @@ import type {
 } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
 
+// CLI dispatch — when invoked with a known noun (e.g. `condash projects list`),
+// short-circuit the GUI and route through the CLI bundle instead. The packaged
+// `condash` binary on PATH is the same launcher whether the user wants the
+// dashboard or a CLI call; detecting here means a deb / AppImage install
+// works for both without a separate `condash-cli` binary.
+//
+// Detection rule: scan args for the first non-flag token; if it's a CLI noun,
+// we're in CLI mode. Electron's own switches (--no-sandbox, --enable-features
+// from afterPack, …) start with `-` and are skipped.
+const CLI_NOUNS: ReadonlySet<string> = new Set([
+  'projects',
+  'knowledge',
+  'search',
+  'repos',
+  'worktrees',
+  'dirty',
+  'skills',
+  'config',
+  'help',
+]);
+function isCliInvocation(): boolean {
+  for (let i = 1; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (!arg || arg.startsWith('-')) continue;
+    return CLI_NOUNS.has(arg);
+  }
+  return false;
+}
+const IS_CLI = isCliInvocation();
+if (IS_CLI) {
+  // dist-cli/condash.cjs is a sibling of dist-electron/. From this file
+  // (dist-electron/main/index.js post-build), `../../dist-cli/condash.cjs`
+  // resolves to that bundle in both dev and packaged builds. The CLI sets
+  // process.exitCode itself when its async dispatcher resolves; we leave
+  // node running until the promise settles, and we gate every Electron-
+  // side-effect block below on !IS_CLI so no window ever opens.
+  //
+  // The require path is constructed at runtime — a literal
+  // `require('../../dist-cli/condash.cjs')` would be statically followed
+  // by esbuild and the entire CLI bundle would be inlined into this main
+  // bundle, which (a) doubles the file size and (b) breaks every
+  // `__dirname`-based lookup inside the CLI (the CLI walks up from its
+  // own __dirname to find conception-template/, so it must be loaded
+  // from its own file).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require(`${__dirname}/../../dist-cli/condash.cjs`);
+}
+
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
 // Wayland fractional-scaling fix.
@@ -67,7 +115,7 @@ const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 // integer scale (Chromium then renders at that scale and the compositor
 // down-scales) — useful as a last-ditch escape if a specific compositor still
 // renders blurry.
-if (process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland') {
+if (!IS_CLI && process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland') {
   // Strongly prefer native Wayland over XWayland — XWayland always blits at
   // integer scale, which produces blurry text on fractional-scaled monitors
   // (1.25, 1.5, …). The `wayland` hint (vs. `auto`) is more reliable in
@@ -81,7 +129,7 @@ if (process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland') 
     'UseOzonePlatform,WaylandFractionalScaleV1,WaylandWindowDecorations',
   );
 }
-const forcedScale = process.env.CONDASH_FORCE_DEVICE_SCALE_FACTOR;
+const forcedScale = !IS_CLI ? process.env.CONDASH_FORCE_DEVICE_SCALE_FACTOR : undefined;
 if (forcedScale) {
   app.commandLine.appendSwitch('force-device-scale-factor', forcedScale);
 }
@@ -532,51 +580,54 @@ function registerIpc(): void {
   }));
 }
 
-app.whenReady().then(async () => {
-  registerIpc();
-  // One-shot: copy any pre-existing terminal block out of configuration.json
-  // and into settings.json. Idempotent — does nothing once settings owns
-  // the data. Runs before window creation so the renderer's first
-  // term.getPrefs always sees the post-migration state.
-  await migrateTerminalFromConfigIfNeeded();
-  const { conceptionPath, layout } = await readSettings();
-  await setWatchedConception(conceptionPath);
-  buildMenu(layout ?? DEFAULT_LAYOUT);
-  mainWindow = await createWindow(conceptionPath);
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+if (!IS_CLI)
+  app.whenReady().then(async () => {
+    registerIpc();
+    // One-shot: copy any pre-existing terminal block out of configuration.json
+    // and into settings.json. Idempotent — does nothing once settings owns
+    // the data. Runs before window creation so the renderer's first
+    // term.getPrefs always sees the post-migration state.
+    await migrateTerminalFromConfigIfNeeded();
+    const { conceptionPath, layout } = await readSettings();
+    await setWatchedConception(conceptionPath);
+    buildMenu(layout ?? DEFAULT_LAYOUT);
+    mainWindow = await createWindow(conceptionPath);
+    mainWindow.on('closed', () => {
+      mainWindow = null;
+    });
 
-  app.on('activate', async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      const settings = await readSettings();
-      mainWindow = await createWindow(settings.conceptionPath);
-      mainWindow.on('closed', () => {
-        mainWindow = null;
+    app.on('activate', async () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        const settings = await readSettings();
+        mainWindow = await createWindow(settings.conceptionPath);
+        mainWindow.on('closed', () => {
+          mainWindow = null;
+        });
+      }
+    });
+
+    // Auto-update: only in packaged builds. electron-updater pulls
+    // latest{,-mac,-linux}.yml from the GitHub Release matching package.json's
+    // version. Failures (no network, GH down, no newer release) log and
+    // exit silently — never block app startup.
+    if (app.isPackaged) {
+      autoUpdater.autoDownload = true;
+      autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+        console.warn('[updater]', err);
       });
     }
   });
 
-  // Auto-update: only in packaged builds. electron-updater pulls
-  // latest{,-mac,-linux}.yml from the GitHub Release matching package.json's
-  // version. Failures (no network, GH down, no newer release) log and
-  // exit silently — never block app startup.
-  if (app.isPackaged) {
-    autoUpdater.autoDownload = true;
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.warn('[updater]', err);
-    });
-  }
-});
+if (!IS_CLI) {
+  app.on('window-all-closed', () => {
+    void killAll();
+    if (process.platform !== 'darwin') app.quit();
+  });
 
-app.on('window-all-closed', () => {
-  void killAll();
-  if (process.platform !== 'darwin') app.quit();
-});
-
-// Cmd-Q on macOS bypasses window-all-closed; before-quit covers it. Linux/
-// Windows hit before-quit too, so killAll runs idempotent-cheap on the
-// already-empty session map there.
-app.on('before-quit', () => {
-  void killAll();
-});
+  // Cmd-Q on macOS bypasses window-all-closed; before-quit covers it. Linux/
+  // Windows hit before-quit too, so killAll runs idempotent-cheap on the
+  // already-empty session map there.
+  app.on('before-quit', () => {
+    void killAll();
+  });
+}

@@ -1,7 +1,7 @@
-import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { LayoutState, Settings } from '../shared/types';
+import { userDataDir } from './user-data-dir';
 
 const FILE_NAME = 'settings.json';
 
@@ -20,7 +20,7 @@ const empty: Settings = {
 };
 
 export function settingsPath(): string {
-  return join(app.getPath('userData'), FILE_NAME);
+  return join(userDataDir(), FILE_NAME);
 }
 
 export async function readSettings(): Promise<Settings> {

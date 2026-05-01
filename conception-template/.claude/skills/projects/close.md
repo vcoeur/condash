@@ -43,7 +43,13 @@ Trigger: `/projects close <slug>`.
    - YYYY-MM-DD — Closed. <one-line summary of the outcome>.
    ```
 
-7. **Offer worktree cleanup.** If the item has a `**Branch**` field, check for a worktree at `<worktrees_path>/<branch>/` — **branches contain slashes** (`feature/colored-layers`, `fix/inner-rounding`), so `<branch>` nests directories. Check the full path with `ls -d <worktrees_path>/<branch>/ 2>/dev/null` (or `test -d`), not by listing the worktrees root and eyeballing — a top-level `feature/` entry only tells you *some* `feature/*` branch has a worktree, not whether **this** one does. Cross-check against the git-authoritative list: `git -C <workspace_path>/<repo> worktree list`. If a worktree is found, ask whether to run `/projects worktree remove <branch>`. Only do it if the user confirms and no other active item shares that branch (`/projects list` filtered by the same branch).
+7. **Worktree + branch cleanup.** If the item has a `**Branch**` field, run the post-merge cleanup mandated by [`knowledge/conventions.md` → Project lifecycle](../../../knowledge/conventions.md#delete-the-feature-branch-and-worktree-at-projects-close). The cleanup is **per-app, not per-branch** — multiple items can share a branch with different `**Apps**`, so closing one item must not yank worktrees out from under another.
+   1. **Locate the worktree root.** `<worktrees_path>/<branch>/`. **Branches contain slashes** (`feature/colored-layers`, `fix/inner-rounding`), so `<branch>` nests directories. Check the full path with `test -d <worktrees_path>/<branch>/`, not by listing the worktrees root and eyeballing — a top-level `feature/` entry only tells you *some* `feature/*` branch has a worktree, not whether **this** one does. Cross-check against `git -C <workspace_path>/<repo> worktree list` for each repo in `**Apps**`.
+   2. **Resolve sharers.** `/projects list` filtered by the same `**Branch**` value, with this item excluded. Note the union of their `**Apps**` as the *protected set* — those repos must keep their worktree and local branch.
+   3. **Confirm with the user** before any deletion: list the worktree dirs about to go (`<worktrees_path>/<branch>/<repo>/` for each `<repo>` in this item's `**Apps**` and **not** in the protected set) and the local branches to delete in those repos. Only proceed on `y`.
+   4. **Remove worktrees** per app: `git -C <workspace_path>/<repo> worktree remove <worktrees_path>/<branch>/<repo>` for each `<repo>` in the cleanup list. Do not invoke `/projects worktree remove <branch>` here — that helper is branch-wide and would also yank protected repos. After the per-repo removals, if the `<worktrees_path>/<branch>/` parent directory is empty, `rmdir` it; otherwise leave it standing for the still-active sharers.
+   5. **Delete local branches.** `git -C <workspace_path>/<repo> branch -d <branch>` for each repo just cleaned. Always lower-case `-d` (refuses to delete a branch that isn't merged into its upstream — the safety net for "we thought it was merged but it wasn't"). If `-d` refuses, surface the message to the user and **stop**: don't fall back to `-D`. Skip the branch deletion entirely in repos still in the protected set.
+   6. **Don't touch the remote branch.** `origin/<branch>` is GitHub's responsibility (the "Delete branch" button on the merged PR). Don't `git push --delete`.
 
 8. **Refresh dirty indexes.** Check for sentinel files:
 
@@ -59,14 +65,15 @@ Trigger: `/projects close <slug>`.
 
    Knowledge promoted: <list of knowledge/<path> entries with the **Transferred:** stamps just written, or "none">.
    Indexes refreshed: <"projects", "knowledge", "both", or "none">.
-   Worktree: <"removed <branch>", "kept <branch>", or "none">.
+   Worktrees removed: <comma-separated list of `<branch>/<repo>` paths actually removed, or "none">.
+   Branches deleted: <comma-separated list of `<branch>` (in `<repo>`) entries actually deleted, or "none">.
    ```
 
-   All three lines use the literal `"none"` for the empty case so the template parses consistently.
+   All four lines use the literal `"none"` for the empty case so the template parses consistently.
 
    The global `/commit` skill then has enough to write an informative subject + body without reading the whole diff. Never auto-push. If `n`, leave the working tree dirty for the user.
 
-10. **Report** what changed. List: status change, knowledge promotions (with target paths), worktree removed (if any), indexes refreshed (if any), commit created (if any). Do not commit beyond step 9.
+10. **Report** what changed. List: status change, knowledge promotions (with target paths), per-app worktrees removed and local branches deleted (if any), indexes refreshed (if any), commit created (if any). Do not commit beyond step 9.
 
 ## Rules
 
