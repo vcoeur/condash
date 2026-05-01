@@ -9,16 +9,22 @@ Read-only lookup over the `knowledge/` tree. Two flavours:
 
 Trigger: `/knowledge retrieve <query>`, or any "check knowledge for …" ask.
 
-1. **Read `knowledge/index.md`** first. Match the query against the subdir descriptions + keyword tags.
-2. **Open the matching subdir's `index.md`** (`internal/`, `external/`, or `topics/`). Match the query against per-file descriptions + tags.
-3. **Open the body file** only when an entry clearly matches. Never act on a one-liner alone.
-4. **Quote** the relevant passage back to the user with a file:line reference.
+```bash
+condash knowledge retrieve "<query>" --mode both --json
+```
+
+The CLI walks `knowledge/index.md` and the matching subdir indexes, scoring each entry's keyword tags + description against the query, and falls through to a body-file grep when triage returns zero matches. Returns:
+
+- `data.triageMatches[]` — `{path, title, description, keywords, matchedKeywords, verifiedAt, verifiedStale}` per matching index entry. `verifiedStale` is `true` when the body file's `**Verified:**` stamp is older than 30 days — surface that to the user when quoting.
+- `data.grepMatches[]` — `{path, line, snippet, section}` per body-file hit (only populated when triage came back empty).
+
+Then **open the body file** of the strongest match and **quote** the relevant passage back to the user with a `file:line` reference.
 
 Rules:
 
-- Use keyword tags for triage (canonical search vocabulary) and descriptions for disambiguation when several entries share a tag.
-- Most lookups should resolve at the index level: read every relevant `index.md` top-to-bottom, match on descriptions + tags, only open a body when a match is confirmed.
-- If no index entry matches, fall through to grep.
+- Use the `matchedKeywords` array as the triage signal (canonical search vocabulary). Descriptions disambiguate when several entries share a tag.
+- Most lookups should resolve in the triage layer; only open a body file when one entry clearly matches.
+- If a `verifiedStale: true` entry is the only relevant hit, quote it but flag the staleness and suggest `/knowledge verify`.
 
 Non-exhaustive triggers — always consult `knowledge/` before editing or advising:
 
@@ -31,9 +37,11 @@ Non-exhaustive triggers — always consult `knowledge/` before editing or advisi
 
 Trigger: `/knowledge retrieve grep <pattern>` or when the triage walk comes back empty.
 
-1. **Grep** `knowledge/**/*.md` (excluding `index.md` files — those are pointers, not sources).
-2. **Report** `<subdir>/<file>:<line>: <snippet>` per match.
-3. **Open** the matching body file and quote the relevant passage.
+```bash
+condash knowledge retrieve "<pattern>" --mode grep --json
+```
+
+Skips the index walk and goes straight to a body-file grep (excluding `index.md` files — those are pointers, not sources). Report `<subdir>/<file>:<line>: <snippet>` per match. Open the strongest match and quote the relevant passage back to the user.
 
 ## Rules
 

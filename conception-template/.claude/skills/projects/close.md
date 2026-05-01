@@ -35,15 +35,15 @@ Trigger: `/projects close <slug>`.
 
    If the grep yields zero hits, mention it to the user: the scan is a best-effort candidate finder, not exhaustive. Offer one manual prompt ("Any specific passage you want promoted before we close?") and move on if the answer is no.
 
-5. **Edit the README header**: `**Status**: done`. Then `touch projects/.index-dirty` — the Status change stales the month index's tag set.
+5. **Flip status + append timeline entry** in one CLI call:
 
-6. **Append a closing timeline entry** using today's date:
-
-   ```markdown
-   - YYYY-MM-DD — Closed. <one-line summary of the outcome>.
+   ```bash
+   condash projects close <slug> --summary "<one-line outcome>"
    ```
 
-7. **Worktree + branch cleanup.** If the item has a `**Branch**` field, run the post-merge cleanup mandated by [`knowledge/conventions.md` → Project lifecycle](../../../knowledge/conventions.md#delete-the-feature-branch-and-worktree-at-projects-close). The cleanup is **per-app, not per-branch** — multiple items can share a branch with different `**Apps**`, so closing one item must not yank worktrees out from under another.
+   The CLI sets `**Status**: done`, appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline` (creates the section if absent), and `touch`es `projects/.index-dirty`. Returns the previous status, the appended line, and the marker state in JSON when `--json` is set. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.` and edit the line afterwards.
+
+6. **Worktree + branch cleanup.** If the item has a `**Branch**` field, run the post-merge cleanup mandated by [`knowledge/conventions.md` → Project lifecycle](../../../knowledge/conventions.md#delete-the-feature-branch-and-worktree-at-projects-close). The cleanup is **per-app, not per-branch** — multiple items can share a branch with different `**Apps**`, so closing one item must not yank worktrees out from under another.
    1. **Locate the worktree root.** `<worktrees_path>/<branch>/`. **Branches contain slashes** (`feature/colored-layers`, `fix/inner-rounding`), so `<branch>` nests directories. Check the full path with `test -d <worktrees_path>/<branch>/`, not by listing the worktrees root and eyeballing — a top-level `feature/` entry only tells you *some* `feature/*` branch has a worktree, not whether **this** one does. Cross-check against `git -C <workspace_path>/<repo> worktree list` for each repo in `**Apps**`.
    2. **Resolve sharers.** `/projects list` filtered by the same `**Branch**` value, with this item excluded. Note the union of their `**Apps**` as the *protected set* — those repos must keep their worktree and local branch.
    3. **Confirm with the user** before any deletion: list the worktree dirs about to go (`<worktrees_path>/<branch>/<repo>/` for each `<repo>` in this item's `**Apps**` and **not** in the protected set) and the local branches to delete in those repos. Only proceed on `y`.
@@ -51,14 +51,14 @@ Trigger: `/projects close <slug>`.
    5. **Delete local branches.** `git -C <workspace_path>/<repo> branch -d <branch>` for each repo just cleaned. Always lower-case `-d` (refuses to delete a branch that isn't merged into its upstream — the safety net for "we thought it was merged but it wasn't"). If `-d` refuses, surface the message to the user and **stop**: don't fall back to `-D`. Skip the branch deletion entirely in repos still in the protected set.
    6. **Don't touch the remote branch.** `origin/<branch>` is GitHub's responsibility (the "Delete branch" button on the merged PR). Don't `git push --delete`.
 
-8. **Refresh dirty indexes.** Check for sentinel files:
+7. **Refresh dirty indexes.** Check via `condash dirty list --json`:
 
-   - If `projects/.index-dirty` exists, run `/projects index`.
-   - If `knowledge/.index-dirty` exists, run `/knowledge index`.
+   - If `data.projects.present` is true, run `/projects index`.
+   - If `data.knowledge.present` is true, run `/knowledge index`.
 
    Each index skill clears its own marker on success. If the markers are absent, the indexes are current — skip this step.
 
-9. **Commit prompt.** After all edits are settled, ask: *"Run `/commit` now? (y / n)"*. If `y`, invoke `/commit` with a context summary built from the closing timeline entry + the mechanical actions that just ran. Use this exact template as the argument to the `/commit` skill:
+8. **Commit prompt.** After all edits are settled, ask the user whether to commit. Run `git status` + `git diff --stat` and propose a commit message inline using this context summary:
 
    ```
    Close <slug>. Outcome: <one-line outcome from the closing timeline entry>.
@@ -69,11 +69,9 @@ Trigger: `/projects close <slug>`.
    Branches deleted: <comma-separated list of `<branch>` (in `<repo>`) entries actually deleted, or "none">.
    ```
 
-   All four lines use the literal `"none"` for the empty case so the template parses consistently.
+   All four lines use the literal `"none"` for the empty case so a downstream parser stays consistent. Never auto-push. If the user declines, leave the working tree dirty for them.
 
-   The global `/commit` skill then has enough to write an informative subject + body without reading the whole diff. Never auto-push. If `n`, leave the working tree dirty for the user.
-
-10. **Report** what changed. List: status change, knowledge promotions (with target paths), per-app worktrees removed and local branches deleted (if any), indexes refreshed (if any), commit created (if any). Do not commit beyond step 9.
+9. **Report** what changed. List: status change, knowledge promotions (with target paths), per-app worktrees removed and local branches deleted (if any), indexes refreshed (if any), commit created (if any). Do not commit beyond step 8.
 
 ## Rules
 
