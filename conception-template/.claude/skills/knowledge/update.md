@@ -39,13 +39,13 @@ If the fact is in-flight project work or a point-in-time finding, it goes under 
 
 4. **Cross-link.** Link the body file to the `projects/` item (if any) that produced the knowledge. Update the item's `## Notes` section.
 
-5. **Dirty the knowledge index** when the change is index-relevant:
+5. **Dirty the knowledge index.** Default to running:
 
    ```bash
    condash dirty touch knowledge --json
    ```
 
-   Run when the action **added**, **renamed**, or **substantially rewrote the scope** of a body file. Pure body edits that don't change scope (no new heading, no renamed concept) do **not** stale the index — skip the call. `/knowledge index` clears the marker. Remind the user — the index is not auto-triggered.
+   Skip only on a literal one-line typo or wording fix to existing prose. Anything that adds, renames, restructures, or rewrites a paragraph dirties the index — when in doubt, touch it. Cost of a false-positive is one quick `/knowledge index` run; cost of a false-negative is stale tags / descriptions teammates rely on for triage. `/knowledge index` clears the marker; the index is not auto-triggered, so remind the user to run it.
 
 ## Rules
 
