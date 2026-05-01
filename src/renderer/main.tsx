@@ -29,6 +29,7 @@ import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { buildSlugIndex } from './wikilinks';
 import { PdfModal } from './pdf-modal';
 import { HelpModal, type HelpDoc } from './help-modal';
+import { WelcomeScreen } from './welcome-screen';
 import { PromptModal, type PromptModalState } from './prompt-modal';
 import {
   applyStatus,
@@ -51,6 +52,7 @@ import './styles.css';
 import './modals.css';
 import './note-modal.css';
 import './project-preview.css';
+import './welcome-screen.css';
 
 function applyTheme(theme: Theme): void {
   const root = document.documentElement;
@@ -84,6 +86,8 @@ function App() {
   const [aboutOpen, setAboutOpen] = createSignal(false);
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
+  const [welcomeDismissed, setWelcomeDismissed] = createSignal<boolean>(false);
+  void window.condash.getWelcomeDismissed().then(setWelcomeDismissed);
 
   const flashToast = (msg: string) => {
     setToast(msg);
@@ -355,12 +359,7 @@ function App() {
       setAboutOpen(true);
       return;
     }
-    if (
-      command === 'help-architecture' ||
-      command === 'help-configuration' ||
-      command === 'help-non-goals' ||
-      command === 'help-index'
-    ) {
+    if (command.startsWith('help-')) {
       // Strip the `help-` prefix to get the HelpDoc name.
       const doc = command.slice('help-'.length) as HelpDoc;
       setHelpDoc(doc);
@@ -515,6 +514,44 @@ function App() {
   const handleConfirmQuit = () => {
     setQuitConfirmOpen(false);
     void window.condash.quitApp();
+  };
+
+  const knowledgeIsEmpty = (): boolean => {
+    const k = knowledge();
+    if (k === null || k === undefined) return true;
+    if (Array.isArray((k as { children?: unknown[] }).children)) {
+      return (k as { children: unknown[] }).children.length === 0;
+    }
+    return false;
+  };
+
+  // Welcome screen shows on a tree with no items and no knowledge entries,
+  // unless the user dismissed it. Once content lands, it stops appearing
+  // automatically; the dismiss is for users who never want to see it again.
+  const shouldShowWelcome = (): boolean => {
+    if (welcomeDismissed()) return false;
+    if (!conceptionPath()) return false;
+    if (projects.loading) return false;
+    if ((projects() ?? []).length > 0) return false;
+    if (!knowledgeIsEmpty()) return false;
+    return true;
+  };
+
+  const handleWelcomeOpenTree = () => {
+    void window.condash.openConceptionDirectory();
+  };
+
+  const handleWelcomeTakeTour = () => {
+    setHelpDoc('welcome');
+  };
+
+  const handleWelcomeOpenDocs = () => {
+    void window.condash.openExternal('https://condash.vcoeur.com');
+  };
+
+  const handleWelcomeDismiss = () => {
+    setWelcomeDismissed(true);
+    void window.condash.setWelcomeDismissed(true);
   };
 
   const slugIndex = () => buildSlugIndex(projects() ?? [], knowledge() ?? null);
@@ -674,6 +711,16 @@ function App() {
               </div>
             }
           >
+            <Show when={shouldShowWelcome()}>
+              <WelcomeScreen
+                conceptionPath={conceptionPath()!}
+                onOpenTree={handleWelcomeOpenTree}
+                onTakeTour={handleWelcomeTakeTour}
+                onOpenDocs={handleWelcomeOpenDocs}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onDismiss={handleWelcomeDismiss}
+              />
+            </Show>
             <Show when={topBandVisible()}>
               <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
                 <Show when={layout().projects}>

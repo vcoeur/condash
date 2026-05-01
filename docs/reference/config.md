@@ -5,6 +5,8 @@ description: The two JSON files condash reads (per-tree and per-machine) and wha
 
 # Config files
 
+> **Audience.** Daily user.
+
 condash reads two JSON files. Both are optional in principle — the dashboard runs with sensible defaults — but in practice you set at least the conception path on first launch.
 
 ## At a glance

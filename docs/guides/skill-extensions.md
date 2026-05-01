@@ -5,6 +5,8 @@ description: Three realistic extension patterns for the shipped `/conception-ite
 
 # Extend the management skill
 
+> **Audience.** Daily user and Developer.
+
 **When to read this.** You installed the shipped `/conception-items` skill, used it for a week, and hit "I wish this also did X". This page shows three concrete patterns that cover the 90% of what teams actually add on top.
 
 The shipped skill is minimal on purpose. Every extension here is a ten-minute change to a single `SKILL.md` file — there's no plugin API, no hook registration; you're editing a Markdown prompt file and relying on Claude Code to read your updated instructions.

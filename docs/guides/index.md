@@ -5,6 +5,8 @@ description: Task-focused how-tos for the parts of condash you probably won't di
 
 # Guides
 
+> **Audience.** Daily user.
+
 Each guide answers one specific question. They assume you've worked through the [Tutorials](../tutorials/index.md) and know the basic shape of the tool.
 
 **Configuration**
@@ -20,6 +22,7 @@ Each guide answers one specific question. They assume you've worked through the 
 - [The knowledge tree](knowledge-tree.md)
 - [Search your history](search.md)
 - [Deliverables and PDFs](deliverables.md)
+- [Troubleshooting](troubleshooting.md)
 
 **Extending**
 

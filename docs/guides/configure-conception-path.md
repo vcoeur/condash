@@ -5,6 +5,8 @@ description: Point condash at the directory it should render — persistently or
 
 # Configure the conception path
 
+> **Audience.** New user and Daily user.
+
 **When to read this.** You want condash to render a tree other than the one it's using now, or you want to know all the ways that path can be set.
 
 The conception path is the only piece of configuration condash needs before it can start. Everything else has a sensible default.
@@ -31,17 +33,26 @@ Delete the file to force the folder picker on the next launch.
 
 On startup condash checks, in order:
 
-1. `conception_path` in `settings.json`.
-2. First-launch folder picker. Writes the choice back to `settings.json`.
-3. Hard error — condash refuses to start.
+1. `CONDASH_CONCEPTION_PATH` environment variable (one-shot override).
+2. `conception_path` in `settings.json`.
+3. First-launch folder picker. Writes the choice back to `settings.json`.
+4. Hard error — condash refuses to start.
 
-> **Note.** The Electron build does not yet honour an environment-variable override (the Tauri build read `CONDASH_CONCEPTION_PATH`). To switch trees today, edit `settings.json` or relaunch the picker. Drop a request in [issues](https://github.com/vcoeur/condash/issues) if you need an env-var hook for scripted demos.
+### Option 3 — `CONDASH_CONCEPTION_PATH` for a one-off
+
+A session-scoped override:
+
+```bash
+CONDASH_CONCEPTION_PATH=/tmp/scratch-tree condash
+```
+
+The env var wins over `settings.json` for that launch only. It is **not** persisted, so the next plain `condash` falls back to the saved path. Useful for demos and scratch trees.
 
 ## When to use a scratch tree
 
 A scratch tree is any directory with a minimal `projects/YYYY-MM/` layout that you point condash at temporarily. Common reasons:
 
-- **Learning** — the bundled `conception-demo` tree, fetched in [First run](../tutorials/first-run.md).
+- **Learning** — a fresh tree you create yourself, walked through in [First run](../tutorials/first-run.md).
 - **Onboarding a teammate** — fork a small sample tree, have them point condash at it, walk them through creating their first item, then point them at the team tree.
 - **Snapshot of a bug** — reduce a broken tree to a minimal reproducer, commit it, and file the issue with the snapshot path in the repro steps.
 

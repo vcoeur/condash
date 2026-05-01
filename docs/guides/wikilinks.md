@@ -5,6 +5,8 @@ description: Cross-link items with `[[slug]]` syntax, resolve by short name or b
 
 # Link items with wikilinks
 
+> **Audience.** Daily user.
+
 **When to read this.** You want one item's README or note to point at another item, without copy-pasting a path that breaks the moment the item moves.
 
 condash resolves `[[slug]]`-style wikilinks (Obsidian-style) inside README bodies and inside notes. The resolver is deliberately narrow: it works on item slugs, not on arbitrary paths, so the link survives a move between months.

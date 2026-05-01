@@ -5,6 +5,8 @@ description: The exhaustive list of every action the dashboard takes on your fil
 
 # Mutation model
 
+> **Audience.** Daily user and Developer.
+
 ## At a glance
 
 The dashboard's **write surface is small**. It touches three places only:

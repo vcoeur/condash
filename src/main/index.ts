@@ -309,10 +309,33 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
       click: () => send('about'),
     },
     { type: 'separator' },
-    { label: 'Architecture', click: () => send('help-architecture') },
+    { label: 'Welcome / documentation index', click: () => send('help-welcome') },
+    { label: 'Getting started', click: () => send('help-getting-started') },
+    { label: 'Install', click: () => send('help-install') },
+    { label: 'First launch', click: () => send('help-first-launch') },
+    { label: 'Keyboard shortcuts', click: () => send('help-shortcuts') },
+    { type: 'separator' },
     { label: 'Configuration reference', click: () => send('help-configuration') },
+    { label: 'CLI reference', click: () => send('help-cli') },
+    { label: 'Mutation model', click: () => send('help-mutations') },
+    { type: 'separator' },
+    { label: 'Architecture', click: () => send('help-architecture') },
+    { label: 'Why Markdown-first', click: () => send('help-why-markdown') },
+    { label: 'Values', click: () => send('help-values') },
     { label: 'Non-goals', click: () => send('help-non-goals') },
-    { label: 'Documentation index', click: () => send('help-index') },
+    { type: 'separator' },
+    {
+      label: 'Open documentation site',
+      click: () => {
+        void shell.openExternal('https://condash.vcoeur.com');
+      },
+    },
+    {
+      label: 'Open issue tracker',
+      click: () => {
+        void shell.openExternal('https://github.com/vcoeur/condash/issues');
+      },
+    },
   ];
 
   const template: MenuItemConstructorOptions[] = [
@@ -503,6 +526,17 @@ function registerIpc(): void {
     // Application menu reflects layout state — rebuild so the View
     // submenu's check marks line up with the new state.
     buildMenu(layout);
+  });
+
+  ipcMain.handle('getWelcomeDismissed', async () => {
+    const { welcome } = await readSettings();
+    return welcome?.dismissed === true;
+  });
+
+  ipcMain.handle('setWelcomeDismissed', async (_, value: boolean) => {
+    const next = await readSettings();
+    next.welcome = { ...(next.welcome ?? {}), dismissed: value };
+    await writeSettings(next);
   });
 
   ipcMain.handle(

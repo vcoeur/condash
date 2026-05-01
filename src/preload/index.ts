@@ -22,6 +22,8 @@ const api: CondashApi = {
   setTheme: (theme) => ipcRenderer.invoke('setTheme', theme),
   getLayout: () => ipcRenderer.invoke('getLayout'),
   setLayout: (layout) => ipcRenderer.invoke('setLayout', layout),
+  getWelcomeDismissed: () => ipcRenderer.invoke('getWelcomeDismissed'),
+  setWelcomeDismissed: (value) => ipcRenderer.invoke('setWelcomeDismissed', value),
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
     ipcRenderer.invoke('step.toggle', path, lineIndex, expectedMarker, newMarker),

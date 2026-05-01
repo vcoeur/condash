@@ -5,6 +5,8 @@ description: The per-repo Run/Stop button, the `run:` field, and the single-sess
 
 # Inline dev-server runner
 
+> **Audience.** Daily user.
+
 Since v0.13.0, each row in the Code tab — every repo and every declared sub-repo — can carry an inline dev-server runner. Click **Run** and condash spawns the command under a PTY; an xterm mounts right under the row streaming live output. The running server survives tab switches, terminal toggles, and even dashboard reloads (the registry lives server-side).
 
 ## When to reach for it

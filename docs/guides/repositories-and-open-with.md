@@ -5,6 +5,8 @@ description: Point condash at your workspace, group repos into primary / seconda
 
 # Repositories and open-with buttons
 
+> **Audience.** Daily user.
+
 **When to read this.** The **Code** tab shows the wrong repos, or the wrong repos are in the primary card, or the "open in IDE" button launches the wrong thing (or nothing).
 
 Everything on this page lives in `<conception_path>/configuration.json`. This file is versioned with the tree — changes propagate to every teammate who pulls. Per-machine overrides go in `settings.json` (see [Multi-machine setup](multi-machine.md)).

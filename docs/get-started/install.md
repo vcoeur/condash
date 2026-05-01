@@ -5,6 +5,8 @@ description: Download and launch the unsigned Electron build of condash on Linux
 
 # Install
 
+> **Audience.** New user — never used condash before, want it on your machine.
+
 **When to read this.** You downloaded condash from the GitHub Releases page and your OS is asking whether to trust it.
 
 The Electron builds of condash are **unsigned on purpose**. Signing Windows and macOS binaries costs $180–400/year in cert fees, and condash is a single-developer tool. Each OS asks you to confirm the download once on first launch; this page walks through the gesture per platform.

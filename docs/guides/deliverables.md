@@ -5,6 +5,8 @@ description: The `## Deliverables` section syntax, filename conventions, PDF gen
 
 # Deliverables and PDFs
 
+> **Audience.** Daily user.
+
 **When to read this.** Your item produces a tangible output — a report, a design doc, an incident post-mortem — and you want it to show up on the card with a download link and an embedded viewer.
 
 Deliverables are a first-class concept: a `## Deliverables` section in a README lists one or more PDF files, and condash renders a download badge on the card plus a viewer in the expanded card.
