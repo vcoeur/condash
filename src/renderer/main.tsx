@@ -1,5 +1,6 @@
 import { render } from 'solid-js/web';
 import {
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -8,6 +9,7 @@ import {
   Show,
   Suspense,
 } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 import type {
   Deliverable,
   LayoutState,
@@ -132,7 +134,7 @@ function App() {
       // arrives. Dirty changes flow through `repo-events` instead and don't
       // need this path.
       refetchRepos: () => {
-        void refetchRepos();
+        void reloadRepos();
       },
     });
   });
@@ -196,26 +198,44 @@ function App() {
     },
   );
 
-  // `repos` deliberately does NOT depend on `refreshKey` — the per-repo FS
-  // watcher in main feeds `repo-events` straight into `mutateRepos` below,
-  // so dirty counts stay live without a Suspense remount that would tear
-  // down open dropdowns / popovers. F5 still refreshes via main's
-  // `invalidateGitStatus` IPC, which now invalidates the cache + rebroadcasts
-  // every watched path through the same channel.
-  const [repos, { mutate: mutateRepos, refetch: refetchRepos }] = createResource(
-    () => [conceptionPath(), layout().working] as const,
-    async ([path, working]) => {
-      if (!path || working !== 'code') return [] as RepoEntry[];
-      return window.condash.listRepos();
-    },
-  );
+  // `repos` is a Solid store rather than a `createResource`. Per-repo FS
+  // watcher events flow into path-shaped `setRepos(...)` writes in
+  // `repo-events.ts`, so a single dirty change invalidates only the cells
+  // that actually read it — `repoGroups` and other whole-list readers stay
+  // quiet. Reconcile keys on `path` so a full reload (tab-switch, F5,
+  // config edit) preserves row identity, keeping open dropdowns/popovers
+  // alive across the swap. Forgetting `key: 'path'` would silently
+  // reintroduce the v2.8.0 disruption bug.
+  const [repos, setRepos] = createStore<RepoEntry[]>([]);
+
+  const reloadRepos = async (): Promise<void> => {
+    const path = conceptionPath();
+    if (!path) {
+      setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
+      return;
+    }
+    const list = await window.condash.listRepos();
+    setRepos(reconcile(list, { key: 'path' }));
+  };
+
+  // Mirror the prior resource semantics: load when the user is on the Code
+  // tab, clear otherwise. Side-effect-light — no Suspense, no remount.
+  createEffect(() => {
+    const path = conceptionPath();
+    const working = layout().working;
+    if (!path || working !== 'code') {
+      setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
+      return;
+    }
+    void reloadRepos();
+  });
 
   const offRepoEvents = window.condash.onRepoEvents((events) => {
-    applyRepoEvents(events, { mutateRepos });
+    applyRepoEvents(events, { repos, setRepos });
   });
   onCleanup(offRepoEvents);
 
-  const repoGroups = createMemo(() => groupRepos(repos() ?? []));
+  const repoGroups = createMemo(() => groupRepos(repos));
 
   const [openWithSlots] = createResource(
     () => [conceptionPath(), refreshKey()] as const,
@@ -814,7 +834,7 @@ function App() {
                   <section class="pane pane-working">
                     <Suspense fallback={<div class="empty">Loading…</div>}>
                       <Show
-                        when={(repos() ?? []).length > 0}
+                        when={repos.length > 0}
                         fallback={
                           <div class="empty">
                             No repositories listed. Add <code>repositories.primary</code> /{' '}
@@ -823,7 +843,7 @@ function App() {
                         }
                       >
                         <CodeView
-                          repos={repos() ?? []}
+                          repos={repos}
                           groups={repoGroups()}
                           slots={openWithSlots() ?? {}}
                           liveRepos={liveRepos()}
