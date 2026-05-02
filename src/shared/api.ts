@@ -30,6 +30,11 @@ export interface CondashApi {
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
   search(query: string): Promise<SearchResults>;
   listRepos(): Promise<RepoEntry[]>;
+  /** Per-primary partial reload — returns the primary's `RepoEntry` plus
+   * its submodule children freshly re-read. Driven by the structural
+   * FS-watcher event `repo-worktrees-changed`. Empty array when the
+   * primary is no longer in `configuration.json`. */
+  listReposForPrimary(primaryName: string): Promise<RepoEntry[]>;
   /** Drop the in-memory git-status cache. Use from Refresh so the next
    * listRepos() runs `git status` everywhere instead of returning TTL-
    * cached values. */

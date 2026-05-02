@@ -101,6 +101,15 @@ A single watcher rooted at `<conception>/`, debounced 250 ms. Events are classif
 
 A burst of `unknown` events collapses to a single `unknown` event before the renderer is notified.
 
+### 6a. Code-panel refresh: scalar vs. set membership
+
+The Code panel's data has two refresh axes; conflating them caused the v2.7-era F5-disruption regression and the v2.10.0 stale-worktree regression. They live in `src/main/repo-watchers.ts` (push) and `src/renderer/repo-events.ts` + `src/renderer/main.tsx` (apply):
+
+- **Scalar push** — `dirty` count and `upstream` status changes flow as `repo-dirty` / `repo-upstream` events. Per-repo chokidar watches the worktree root + most `.git/*` paths; debounce 500 ms; renderer applies path-shaped `setRepos` writes that touch one cell each. Open dropdowns and popovers stay alive.
+- **Set membership** — worktree add/remove and primary checkout branch switch flow as `repo-worktrees-changed { repoPath }`. A second per-primary watcher on `.git/HEAD` + `.git/worktrees/` fires this; debounce 250 ms; renderer responds with `listReposForPrimary` (per-primary partial reload) merged via `reconcile({ key: 'path' })`. Open popovers still survive thanks to the `path`-keyed reconcile contract.
+
+F5 / View → Refresh covers both: it drops the git-status TTL cache, recomputes scalar fields for every watched path, bumps the renderer's `refreshKey` for projects/knowledge/openWith/terminalPrefs, and calls the full `reloadRepos()` so any out-of-app worktree mutation is visible immediately.
+
 ### 7. IPC contract
 
 `CondashApi` in `src/shared/api.ts` is the *whole* IPC surface. The preload (`src/preload/index.ts`) implements every verb as a one-line `ipcRenderer.invoke`; the main process (`src/main/index.ts:registerIpc`) registers one handler per verb. No string-mux'd actions, no implicit channels.

@@ -30,74 +30,119 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
-export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
-  const config = await readConfig(conceptionPath);
-
+function flatRepos(config: ConfigShape): FlatRepo[] {
   const flat: FlatRepo[] = [];
   walkRepos(config, (entry, kind) => {
     flat.push({ ...entry, kind });
   });
+  return flat;
+}
 
-  // Resolve every parent (top-level) entry's worktree list once. Submodule
-  // entries inherit this list — each parent worktree carries its own checkout
-  // of the submodule at `<parent_wt>/<sub_relative>`, so the SUB card lists
-  // the same branch set as its REPO card with paths re-rooted.
-  const parentByName = new Map<string, FlatRepo>();
+/** Map every top-level repo to itself. Submodule entries are excluded;
+ *  callers find them via `parent` lookups. */
+function parentByNameMap(flat: FlatRepo[]): Map<string, FlatRepo> {
+  const map = new Map<string, FlatRepo>();
   for (const entry of flat) {
-    if (!entry.parent) parentByName.set(entry.name, entry);
+    if (!entry.parent) map.set(entry.name, entry);
   }
-  const parentWorktrees = new Map<string, Worktree[]>();
+  return map;
+}
+
+/** Resolve worktree lists for a set of parent (top-level) repos in
+ *  parallel. Empty array for missing parents — `buildEntry` then falls
+ *  back to a synthesised primary row. */
+async function resolveParentWorktrees(
+  parents: Iterable<FlatRepo>,
+): Promise<Map<string, Worktree[]>> {
+  const out = new Map<string, Worktree[]>();
   await Promise.all(
-    Array.from(parentByName.entries()).map(async ([name, parent]) => {
+    Array.from(parents).map(async (parent) => {
       const exists = await pathExists(parent.cwd);
       if (!exists) {
-        parentWorktrees.set(name, []);
+        out.set(parent.name, []);
         return;
       }
-      parentWorktrees.set(name, await listWorktrees(parent.cwd).catch(() => []));
+      out.set(parent.name, await listWorktrees(parent.cwd).catch(() => []));
     }),
   );
+  return out;
+}
 
-  return Promise.all(
-    flat.map(async (entry) => {
-      const exists = await pathExists(entry.cwd);
-      const hasForceStop = !!entry.forceStop;
-      const hasRun = !!entry.run;
-      if (!exists) {
-        return {
-          name: entry.display,
-          label: entry.label,
-          path: toPosix(entry.cwd),
-          kind: entry.kind,
-          parent: entry.parent,
-          dirty: null,
-          missing: true,
-          hasForceStop,
-          hasRun,
-        } satisfies RepoEntry;
-      }
-      const worktrees = entry.parent
-        ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
-        : await listWorktrees(entry.cwd).catch(() => []);
-      // Submodule entries (those with a `parent`) often live inside the
-      // parent repo's git tree — without `-- .` scoping, `git status` would
-      // surface the parent repo's dirty entries on the submodule card.
-      const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
-      const dirty = await getDirtyCount(entry.cwd, dirtyOpts);
-      return {
-        name: entry.display,
-        label: entry.label,
-        path: toPosix(entry.cwd),
-        kind: entry.kind,
-        parent: entry.parent,
-        dirty,
-        missing: false,
-        hasForceStop,
-        hasRun,
-        worktrees: worktrees.length > 0 ? worktrees : undefined,
-      } satisfies RepoEntry;
-    }),
-  );
+async function buildEntry(
+  entry: FlatRepo,
+  parentByName: Map<string, FlatRepo>,
+  parentWorktrees: Map<string, Worktree[]>,
+): Promise<RepoEntry> {
+  const exists = await pathExists(entry.cwd);
+  const hasForceStop = !!entry.forceStop;
+  const hasRun = !!entry.run;
+  if (!exists) {
+    return {
+      name: entry.display,
+      label: entry.label,
+      path: toPosix(entry.cwd),
+      kind: entry.kind,
+      parent: entry.parent,
+      dirty: null,
+      missing: true,
+      hasForceStop,
+      hasRun,
+    } satisfies RepoEntry;
+  }
+  const worktrees = entry.parent
+    ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
+    : await listWorktrees(entry.cwd).catch(() => []);
+  // Submodule entries (those with a `parent`) often live inside the
+  // parent repo's git tree — without `-- .` scoping, `git status` would
+  // surface the parent repo's dirty entries on the submodule card.
+  const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
+  const dirty = await getDirtyCount(entry.cwd, dirtyOpts);
+  return {
+    name: entry.display,
+    label: entry.label,
+    path: toPosix(entry.cwd),
+    kind: entry.kind,
+    parent: entry.parent,
+    dirty,
+    missing: false,
+    hasForceStop,
+    hasRun,
+    worktrees: worktrees.length > 0 ? worktrees : undefined,
+  } satisfies RepoEntry;
+}
+
+export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
+  const config = await readConfig(conceptionPath);
+  const flat = flatRepos(config);
+  const parentByName = parentByNameMap(flat);
+  const parentWorktrees = await resolveParentWorktrees(parentByName.values());
+  return Promise.all(flat.map((entry) => buildEntry(entry, parentByName, parentWorktrees)));
+}
+
+/**
+ * Per-primary partial reload. Returns the primary's `RepoEntry` plus
+ * every submodule child re-rooted on the primary's freshly-listed
+ * worktrees. Empty array if the primary is no longer in
+ * `configuration.json` (e.g. config was edited concurrently).
+ *
+ * Used by the structural FS watcher path: when a primary's
+ * `.git/HEAD` or `.git/worktrees/` changes, the renderer asks for just
+ * this one primary's data instead of re-reading the whole repo list,
+ * so the rest of the panel doesn't need to re-paint.
+ */
+export async function listReposForPrimary(
+  conceptionPath: string,
+  primaryName: string,
+): Promise<RepoEntry[]> {
+  const config = await readConfig(conceptionPath);
+  const flat = flatRepos(config);
+  const primary = flat.find((e) => !e.parent && e.name === primaryName);
+  if (!primary) return [];
+  const parentByName = parentByNameMap(flat);
+  const parentWorktrees = await resolveParentWorktrees([primary]);
+  // The primary plus every submodule child of it (in flat-config order).
+  const affected = flat.filter((e) => e === primary || e.parent === primaryName);
+  return Promise.all(affected.map((e) => buildEntry(e, parentByName, parentWorktrees)));
 }
 
 /**

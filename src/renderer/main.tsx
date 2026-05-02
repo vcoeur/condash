@@ -200,14 +200,22 @@ function App() {
     },
   );
 
-  // `repos` is a Solid store rather than a `createResource`. Per-repo FS
-  // watcher events flow into path-shaped `setRepos(...)` writes in
-  // `repo-events.ts`, so a single dirty change invalidates only the cells
-  // that actually read it — `repoGroups` and other whole-list readers stay
-  // quiet. Reconcile keys on `path` so a full reload (tab-switch, F5,
-  // config edit) preserves row identity, keeping open dropdowns/popovers
-  // alive across the swap. Forgetting `key: 'path'` would silently
-  // reintroduce the v2.8.0 disruption bug.
+  // `repos` is a Solid store rather than a `createResource`. The Code
+  // panel's data has two refresh axes — keep them mentally separate or
+  // the bug at the end of v2.7 keeps coming back:
+  //
+  //   1. **Scalar** (dirty, upstream) — push events from
+  //      `repo-watchers.ts` flow through `repo-events.ts` into path-
+  //      shaped `setRepos(...)` writes. Only the cells that actually
+  //      read each value re-evaluate — `repoGroups` and other whole-
+  //      list readers stay quiet on a single dirty tick.
+  //   2. **Set membership** (worktree add/remove, primary checkout
+  //      branch switch, configuration.json edit) — `reloadRepos` (full
+  //      list) or `reloadPrimaryByPath` (per-primary subset) replaces
+  //      rows. `reconcile` keyed on `path` preserves row identity, so
+  //      open dropdowns / popovers survive the swap. Do not remove the
+  //      `key: 'path'` argument — without it, the v2.7-era
+  //      "F5 nukes my popover" disruption bug returns.
   const [repos, setRepos] = createStore<RepoEntry[]>([]);
 
   const reloadRepos = async (): Promise<void> => {
@@ -219,6 +227,53 @@ function App() {
     const list = await window.condash.listRepos();
     setRepos(reconcile(list, { key: 'path' }));
   };
+
+  /** Per-primary partial reload. Looks up the primary entry by `path`
+   *  in the current store, calls `listReposForPrimary`, and merges the
+   *  result row-by-row keyed on `path`. Falls back to a full
+   *  `reloadRepos()` if the primary isn't in the store (defensive — a
+   *  structural event for an unknown primary is unexpected). */
+  const reloadPrimaryByPath = async (repoPath: string): Promise<void> => {
+    if (!conceptionPath()) return;
+    const primary = repos.find((r) => !r.parent && r.path === repoPath);
+    if (!primary) {
+      void reloadRepos();
+      return;
+    }
+    const updated = await window.condash.listReposForPrimary(primary.name);
+    if (updated.length === 0) {
+      // Primary disappeared from configuration.json between the watcher
+      // event and this fetch — reload everything to reconcile.
+      void reloadRepos();
+      return;
+    }
+    // Build the next snapshot: keep rows outside this primary's family,
+    // append the freshly-fetched rows. Reconcile keyed on `path` does
+    // the diff/merge, preserving row identity for unaffected rows and
+    // any popovers anchored on them.
+    const familyPaths = new Set(updated.map((e) => e.path));
+    const survivors = repos.filter((r) => !familyPaths.has(r.path) && r.parent !== primary.name);
+    setRepos(reconcile([...survivors, ...updated], { key: 'path' }));
+  };
+
+  // Per-primary reload debouncer. Coalesces bursts of structural events
+  // for the same primary (e.g. several FS writes during one `git
+  // worktree add`). 250 ms is short enough to feel instant and long
+  // enough to absorb the burst.
+  const primaryReloadTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const schedulePrimaryReload = (repoPath: string): void => {
+    const existing = primaryReloadTimers.get(repoPath);
+    if (existing) clearTimeout(existing);
+    const t = setTimeout(() => {
+      primaryReloadTimers.delete(repoPath);
+      void reloadPrimaryByPath(repoPath);
+    }, 250);
+    primaryReloadTimers.set(repoPath, t);
+  };
+  onCleanup(() => {
+    for (const t of primaryReloadTimers.values()) clearTimeout(t);
+    primaryReloadTimers.clear();
+  });
 
   // Mirror the prior resource semantics: load when the user is on the Code
   // tab, clear otherwise. Side-effect-light — no Suspense, no remount.
@@ -233,7 +288,11 @@ function App() {
   });
 
   const offRepoEvents = window.condash.onRepoEvents((events) => {
-    applyRepoEvents(events, { repos, setRepos });
+    applyRepoEvents(events, {
+      repos,
+      setRepos,
+      onWorktreesChanged: schedulePrimaryReload,
+    });
   });
   onCleanup(offRepoEvents);
 
@@ -464,10 +523,19 @@ function App() {
   };
 
   const handleRefresh = () => {
-    // Drop the per-worktree git status cache before bumping refreshKey, so
-    // the next listRepos() really does re-run `git status` everywhere.
+    // F5 / View → Refresh covers both axes:
+    //   1. Drop the per-worktree git-status cache + force-recompute
+    //      every watched path so dirty/upstream are fresh.
+    //   2. Bump refreshKey so projects, knowledge, openWith, terminal
+    //      prefs all re-fetch.
+    //   3. Re-list repos so any worktree add/remove that happened
+    //      outside the running app (CLI worktree mutation, manual git
+    //      worktree add) is reflected immediately. The reconcile-with-
+    //      key contract on the repos store keeps open popovers /
+    //      dropdowns alive across the swap.
     void window.condash.invalidateGitStatus();
     setRefreshKey((k) => k + 1);
+    void reloadRepos();
   };
 
   const handleOpenInEditor = (path: string) => {
