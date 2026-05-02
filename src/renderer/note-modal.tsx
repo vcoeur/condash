@@ -156,7 +156,7 @@ export function NoteModal(props: {
   onOpenPdf: (path: string) => void;
   /** Open a bundled help doc — used by the configuration.json reference panel
    * to expand into the full doc. */
-  onOpenHelp?: (doc: 'architecture' | 'configuration' | 'non-goals' | 'index') => void;
+  onOpenHelp?: (doc: 'configuration' | 'welcome') => void;
   /** Pop one entry off the in-modal navigation history. When provided, the
    * back-button click routes here instead of straight to onClose, so the
    * user steps back through the chain instead of dismissing the whole stack. */

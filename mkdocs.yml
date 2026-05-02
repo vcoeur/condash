@@ -74,46 +74,45 @@ nav:
   - Get started:
     - get-started/index.md
     - Install: get-started/install.md
-    - Releases: get-started/releases.md
     - First launch: get-started/first-launch.md
+    - Walkthrough — first run: tutorials/first-run.md
+    - Walkthrough — first project: tutorials/first-project.md
 
-  - Tutorials:
-    - tutorials/index.md
-    - First run: tutorials/first-run.md
-    - Your first project: tutorials/first-project.md
-    - A day with condash: tutorials/daily-loop.md
-
-  - Guides:
+  - Use:
     - guides/index.md
     - Configure the conception path: guides/configure-conception-path.md
     - Repositories and open-with buttons: guides/repositories-and-open-with.md
-    - Use the embedded terminal: guides/terminal.md
-    - Link items with wikilinks: guides/wikilinks.md
+    - Embedded terminal: guides/terminal.md
+    - Wikilinks between items: guides/wikilinks.md
     - The knowledge tree: guides/knowledge-tree.md
-    - Search your history: guides/search.md
-    - Deliverables and PDFs: guides/deliverables.md
-    - Multi-machine setup: guides/multi-machine.md
     - Troubleshooting: guides/troubleshooting.md
-    - Extend the management skill: guides/skill-extensions.md
+    - More:
+      - A day with condash: tutorials/daily-loop.md
+      - Search your history: guides/search.md
+      - Deliverables and PDFs: guides/deliverables.md
+      - Multi-machine setup: guides/multi-machine.md
+      - Extend the management skill: guides/skill-extensions.md
 
   - Reference:
     - reference/index.md
     - CLI: reference/cli.md
     - Config files: reference/config.md
+    - Keyboard shortcuts: reference/shortcuts.md
     - README format: reference/readme-format.md
     - Status, steps, deliverables: reference/conception-convention.md
-    - Mutation model: reference/mutations.md
-    - Inline dev-server runner: reference/inline-runner.md
-    - IPC API: reference/ipc-api.md
-    - Keyboard shortcuts: reference/shortcuts.md
-    - Environment variables: reference/env.md
-    - Management skill: reference/skill.md
+    - Advanced:
+      - Mutation model: reference/mutations.md
+      - Inline dev-server runner: reference/inline-runner.md
+      - IPC API: reference/ipc-api.md
+      - Environment variables: reference/env.md
+      - Management skill: reference/skill.md
+      - Releases workflow: get-started/releases.md
 
-  - Explanation:
+  - Background:
     - explanation/index.md
     - Why Markdown-first: explanation/why-markdown.md
-    - Values: explanation/values.md
     - Non-goals: explanation/non-goals.md
+    - Values: explanation/values.md
     - Internals: explanation/internals.md
     - Contributing: explanation/contributing.md
 

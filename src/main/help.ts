@@ -6,42 +6,26 @@ import { join } from 'node:path';
  * Names of the doc files exposed to the renderer through `helpReadDoc`.
  * The whitelist is the only path-traversal defence — the renderer can pass
  * any string, but only these resolve to a file.
+ *
+ * Help docs live under `docs/help/` and are intentionally short and
+ * self-contained — no relative wikilinks. Each one ends with a pointer
+ * to the matching section on the public docs site.
  */
 export type HelpDocName =
   | 'welcome'
-  | 'getting-started'
-  | 'install'
-  | 'first-launch'
+  | 'quick-start'
   | 'shortcuts'
   | 'configuration'
   | 'cli'
-  | 'mutations'
-  | 'architecture'
-  | 'why-markdown'
-  | 'values'
-  | 'non-goals'
-  | 'index';
+  | 'why-markdown';
 
-/**
- * Maps the renderer-facing slug to the actual file inside `docs/`. Keeping the
- * slugs short and stable lets the IPC contract stay tiny while the canonical
- * Diátaxis paths can move freely. The Help modal and the public docs site
- * read the same files — the asar bundles the entire `docs/` tree.
- */
 const PATHS: Record<HelpDocName, string> = {
-  welcome: 'index.md',
-  index: 'index.md',
-  'getting-started': 'get-started/index.md',
-  install: 'get-started/install.md',
-  'first-launch': 'get-started/first-launch.md',
-  shortcuts: 'reference/shortcuts.md',
-  configuration: 'reference/config.md',
-  cli: 'reference/cli.md',
-  mutations: 'reference/mutations.md',
-  architecture: 'explanation/internals.md',
-  'why-markdown': 'explanation/why-markdown.md',
-  values: 'explanation/values.md',
-  'non-goals': 'explanation/non-goals.md',
+  welcome: 'help/welcome.md',
+  'quick-start': 'help/quick-start.md',
+  shortcuts: 'help/shortcuts.md',
+  configuration: 'help/configuration.md',
+  cli: 'help/cli.md',
+  'why-markdown': 'help/why-markdown.md',
 };
 
 /**
