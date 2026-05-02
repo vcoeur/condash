@@ -57,8 +57,10 @@ async function boot(theme: Theme): Promise<Booted> {
   await page.waitForLoadState('domcontentloaded');
   // Pin viewport so the captured PNG is exactly 3200×2200 at scale-factor 2.
   await page.setViewportSize({ width: 1600, height: 1100 });
-  // Wait for the toolbar so we know the renderer mounted.
-  await page.locator('.toolbar').first().waitFor({ state: 'visible', timeout: 10_000 });
+  // Wait for the left edge strip so we know the renderer mounted. The strip
+  // is always rendered (it hosts the Projects handle), so it's a stable
+  // mount landmark independent of whether a conception path is loaded.
+  await page.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
   // Ensure the persisted theme has actually been applied to <html data-theme>.
   await page.evaluate((t) => {
     const root = document.documentElement;
@@ -94,17 +96,42 @@ async function shoot(page: Page, theme: Theme, name: string): Promise<void> {
   }
 }
 
-async function clickTab(page: Page, label: 'Projects' | 'Code' | 'Knowledge'): Promise<void> {
-  await page.locator(`.main-tabs button.tab`, { hasText: label }).click();
-  await settle(page);
+/** Send a menu-command IPC to the renderer. The composite layout has no
+ *  in-window tab strip — pane visibility is driven by the application menu
+ *  ('toggle-projects', 'show-code', 'show-knowledge', 'hide-working',
+ *  'open-settings', 'toggle-terminal', 'search'), so screenshot prep goes
+ *  through the same channel a real menu click would. */
+async function sendMenu(app: ElectronApplication, command: string): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, cmd) => {
+    const w = BrowserWindow.getAllWindows()[0];
+    w.webContents.send('menu-command', cmd);
+  }, command);
+}
+
+/** Show one pane in the working-surface slot. Mirrors the menu's
+ *  Show Projects / Show Code / Show Knowledge items — the renderer makes
+ *  Code and Knowledge mutually exclusive in that slot. */
+async function showPane(b: Booted, label: 'Projects' | 'Code' | 'Knowledge'): Promise<void> {
+  if (label === 'Projects') {
+    // toggle-projects is idempotent only against the live state; check the
+    // edge handle's aria-pressed and toggle only when Projects is hidden.
+    const handle = b.page.locator('.edge-strip-left .edge-handle').first();
+    const pressed = (await handle.getAttribute('aria-pressed')) === 'true';
+    if (!pressed) await sendMenu(b.app, 'toggle-projects');
+  } else if (label === 'Code') {
+    await sendMenu(b.app, 'show-code');
+  } else {
+    await sendMenu(b.app, 'show-knowledge');
+  }
+  await settle(b.page);
 }
 
 async function captureForTheme(theme: Theme): Promise<void> {
   const b = await boot(theme);
   const { page } = b;
   try {
-    // 1. dashboard-overview / projects-current — landing view with the Projects tab active.
-    await clickTab(page, 'Projects');
+    // 1. dashboard-overview / projects-current — landing view with the Projects pane visible.
+    await showPane(b, 'Projects');
     await shoot(page, theme, 'dashboard-overview');
     await shoot(page, theme, 'projects-current');
 
@@ -125,25 +152,25 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await settle(page);
 
     // 3. code-tab.
-    await clickTab(page, 'Code');
+    await showPane(b, 'Code');
     await shoot(page, theme, 'code-tab');
 
     // 4. knowledge-tab.
-    await clickTab(page, 'Knowledge');
+    await showPane(b, 'Knowledge');
     await shoot(page, theme, 'knowledge-tab');
 
     // 5. history-tab — Electron has no History tab. Capture the Projects view as
     //    the closest analog so the PNG slot stays populated; the docs page that
     //    references it will be rewritten in the same PR.
-    await clickTab(page, 'Projects');
+    await showPane(b, 'Projects');
     await shoot(page, theme, 'history-tab');
 
-    // 6. gear-modal* — open Settings (gear icon in toolbar). The Electron build
-    //    has tabs General / Terminal / configuration.json / Shortcuts; we map
-    //    the Tauri-era "preferences" → Terminal (the live-edit per-user prefs)
-    //    and "repositories" → configuration.json (the editor that owns the
-    //    repositories[] block of the JSON).
-    await page.locator('.toolbar button[title="Settings"]').click();
+    // 6. gear-modal* — open Settings via the File → Settings menu command.
+    //    The Electron build has tabs General / Terminal / configuration.json /
+    //    Shortcuts; we map the Tauri-era "preferences" → Terminal (the
+    //    live-edit per-user prefs) and "repositories" → configuration.json
+    //    (the editor that owns the repositories[] block of the JSON).
+    await sendMenu(b.app, 'open-settings');
     await settle(page);
     await shoot(page, theme, 'gear-modal');
     const termTab = page.locator('.settings-tabs .settings-tab', { hasText: /^Terminal$/ }).first();
@@ -163,21 +190,17 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await page.keyboard.press('Escape');
     await settle(page);
 
-    // 7. terminal — toggle the terminal pane.
-    const termBtn = page.locator('.toolbar button[title^="Toggle terminal"]').first();
-    await termBtn.click();
+    // 7. terminal — toggle the terminal pane via the View → Show Terminal menu.
+    await sendMenu(b.app, 'toggle-terminal');
     await settle(page);
     await shoot(page, theme, 'terminal');
     // Close it again.
-    await termBtn.click();
+    await sendMenu(b.app, 'toggle-terminal');
     await settle(page);
 
-    // 8. item-fuzzy-search — the search modal opens via the File menu's
-    //    `menu-command` IPC ('search'). Send it through the main process.
-    await b.app.evaluate(({ BrowserWindow }) => {
-      const w = BrowserWindow.getAllWindows()[0];
-      w.webContents.send('menu-command', 'search');
-    });
+    // 8. item-fuzzy-search — open the search modal via the File menu's
+    //    `menu-command` IPC ('search').
+    await sendMenu(b.app, 'search');
     await settle(page);
     const searchInput = page.locator('.search-modal input, .search-input, input[placeholder*="search" i]').first();
     if (await searchInput.count()) {
@@ -192,7 +215,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
     // 9. item-document-with-pdf — open a document item that has a PDF deliverable.
     //    The demo fixture's `2026-04-10-plugin-api-proposal/deliverables/` ships
     //    a PDF; click that card to open the note modal.
-    await clickTab(page, 'Projects');
+    await showPane(b, 'Projects');
     const docCard = page.locator('.row', { hasText: /plugin API proposal/i }).first();
     if (await docCard.count()) {
       await docCard.click();
@@ -216,7 +239,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //     a knowledge note that contains a [[wikilink]] so the resolved link
     //     renders in the note modal.
     if (theme === 'light') {
-      await clickTab(page, 'Knowledge');
+      await showPane(b, 'Knowledge');
       // Card list is flat — click the helio card directly. The Knowledge
       // tab used to be a tree (`.knowledge-dir` / `.knowledge-leaf`) and
       // needed an expand step; cards make that obsolete.
