@@ -8,6 +8,13 @@ import { toPosix } from '../shared/path';
 const STEP_LINE = /^\s*-\s\[([ ~x-])\]\s+(.*)$/;
 const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
 const SUMMARY_MAX = 300;
+/** Matches a Timeline list item recording a close, e.g.
+ *    - 2026-05-02 — Closed.
+ *    - 2026-05-02 — Closed. Shipped in v2.9.4.
+ * Used by extractClosedAt to find the latest close date. The trailing class
+ * tolerates the bare form, an end-of-line, or a space (allowing the optional
+ * summary that condash projects close --summary writes). */
+const CLOSED_LINE = /^\s*-\s+(\d{4}-\d{2}-\d{2})\s+—\s+Closed(\.|$|\s)/;
 
 export async function parseReadme(path: string): Promise<Project> {
   const raw = await fs.readFile(path, 'utf8');
@@ -18,6 +25,7 @@ export async function parseReadme(path: string): Promise<Project> {
   const steps = extractSteps(lines);
   const stepCounts = countSteps(steps);
   const deliverables = extractDeliverables(lines, dirname(path));
+  const closedAt = extractClosedAt(lines);
 
   const slug = basename(dirname(path));
 
@@ -33,7 +41,32 @@ export async function parseReadme(path: string): Promise<Project> {
     stepCounts,
     deliverables,
     deliverableCount: deliverables.length,
+    closedAt,
   };
+}
+
+/* Last close date from `## Timeline`, or null when the section is missing or
+ * carries no Closed line. Scans the section bottom-up so a reopened project
+ * (Closed → reopened → Closed again) yields the most recent date. */
+function extractClosedAt(lines: readonly string[]): string | null {
+  let timelineStart = -1;
+  let timelineEnd = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    const heading = lines[i].match(HEADING2);
+    if (!heading) continue;
+    if (heading[1].trim().toLowerCase() === 'timeline') {
+      timelineStart = i + 1;
+    } else if (timelineStart !== -1) {
+      timelineEnd = i;
+      break;
+    }
+  }
+  if (timelineStart === -1) return null;
+  for (let i = timelineEnd - 1; i >= timelineStart; i--) {
+    const m = lines[i].match(CLOSED_LINE);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 function extractSummary(lines: readonly string[]): string | undefined {

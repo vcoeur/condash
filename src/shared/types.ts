@@ -53,6 +53,12 @@ export interface Project {
   stepCounts: StepCounts;
   deliverables: Deliverable[];
   deliverableCount: number;
+  /** ISO date `YYYY-MM-DD` of the most recent `## Timeline` line matching
+   * `- <date> — Closed.`. `null` when no such line exists (the project was
+   * never closed, or its timeline pre-dates the convention). Populated for
+   * every project, not only `status === 'done'`, so a reopened-then-reclosed
+   * item retains the date the latest close left behind. */
+  closedAt: string | null;
 }
 
 export interface ProjectFileEntry {

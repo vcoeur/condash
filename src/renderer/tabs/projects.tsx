@@ -156,6 +156,83 @@ function writeCollapseEntry(status: string, expanded: boolean): void {
   }
 }
 
+/** First 10 chars of a project slug = its creation date in ISO. The CLI's
+ * regex (`^\d{4}-\d{2}-\d{2}-…`) makes this slice safe for every persisted
+ * project, so callers never need to validate. */
+function slugDate(slug: string): string {
+  return slug.slice(0, 10);
+}
+
+/** Date displayed on the card's meta row. Prefers `closedAt` for done items
+ * (the "when did this finish" question matters more than "when was it
+ * created" once a project is shipped), falls back to slug date for both
+ * non-done items and the long tail of done items closed before the
+ * `## Timeline` convention took hold. */
+function cardDate(p: Project): string {
+  if (p.status === 'done' && p.closedAt) return p.closedAt;
+  return slugDate(p.slug);
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export interface DoneSubgroup {
+  /** Storage / display month, ISO `YYYY-MM`. */
+  month: string;
+  projects: Project[];
+}
+
+export interface DoneGrouping {
+  /** Done projects whose effective close date is within the last 7 days.
+   * Sliding window — these projects also appear in their own month subgroup
+   * below, on purpose. Empty array when nothing closed recently. */
+  recent: Project[];
+  /** Per-close-month subgroups, descending. Empty months omitted. */
+  byMonth: DoneSubgroup[];
+  /** The month that should be expanded by default on first render: the
+   * current calendar month if it has any done items, otherwise the most
+   * recent month that does, otherwise null. User toggles override. */
+  defaultExpandMonth: string | null;
+}
+
+/** Split a Done bucket into the Recent window + per-close-month subgroups.
+ * `today` is injected so tests can pin time without mocking Date. */
+export function groupDone(done: readonly Project[], today: string): DoneGrouping {
+  const sevenDaysAgo = (() => {
+    const d = new Date(today + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 7);
+    return d.toISOString().slice(0, 10);
+  })();
+  const recent = done.filter((p) => cardDate(p) >= sevenDaysAgo);
+  const byMonthMap = new Map<string, Project[]>();
+  for (const p of done) {
+    const month = cardDate(p).slice(0, 7);
+    let bucket = byMonthMap.get(month);
+    if (!bucket) {
+      bucket = [];
+      byMonthMap.set(month, bucket);
+    }
+    bucket.push(p);
+  }
+  const sortDesc = (a: Project, b: Project): number => {
+    const da = cardDate(a);
+    const db = cardDate(b);
+    if (da !== db) return da < db ? 1 : -1;
+    return a.slug < b.slug ? 1 : a.slug > b.slug ? -1 : 0;
+  };
+  recent.sort(sortDesc);
+  for (const list of byMonthMap.values()) list.sort(sortDesc);
+  const byMonth: DoneSubgroup[] = [...byMonthMap.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+    .map(([month, projects]) => ({ month, projects }));
+  const currentMonth = today.slice(0, 7);
+  const defaultExpandMonth = byMonthMap.has(currentMonth)
+    ? currentMonth
+    : (byMonth[0]?.month ?? null);
+  return { recent, byMonth, defaultExpandMonth };
+}
+
 export type Group = { status: string; items: Project[] };
 
 export function nextMarker(current: StepMarker): StepMarker {
@@ -481,16 +558,60 @@ export function ProjectsView(props: {
         when={isSearching()}
         fallback={
           <For each={projectsTabGroups(props.buckets)}>
-            {(group) => (
-              <GroupBlock
-                group={group}
-                collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
-                onOpen={props.onOpen}
-                onToggleStep={props.onToggleStep}
-                onDropProject={props.onDropProject}
-                onWorkOn={props.onWorkOn}
-              />
-            )}
+            {(group) => {
+              if (group.status === 'done' && group.items.length > 0) {
+                const grouping = groupDone(group.items, todayIso());
+                return (
+                  <GroupBlock
+                    group={group}
+                    collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
+                    onOpen={props.onOpen}
+                    onToggleStep={props.onToggleStep}
+                    onDropProject={props.onDropProject}
+                    onWorkOn={props.onWorkOn}
+                    bodySlot={() => (
+                      <div class="group-body subgroups">
+                        <Show when={grouping.recent.length > 0}>
+                          <SubGroup
+                            label="recent (7 days)"
+                            items={grouping.recent}
+                            storageKey="done.recent"
+                            defaultExpanded={true}
+                            hint="Sliding window — these projects also appear in their close month below."
+                            onOpen={props.onOpen}
+                            onToggleStep={props.onToggleStep}
+                            onWorkOn={props.onWorkOn}
+                          />
+                        </Show>
+                        <For each={grouping.byMonth}>
+                          {(sub) => (
+                            <SubGroup
+                              label={sub.month}
+                              items={sub.projects}
+                              storageKey={`done.${sub.month}`}
+                              defaultExpanded={sub.month === grouping.defaultExpandMonth}
+                              onOpen={props.onOpen}
+                              onToggleStep={props.onToggleStep}
+                              onWorkOn={props.onWorkOn}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    )}
+                  />
+                );
+              }
+              return (
+                <GroupBlock
+                  group={group}
+                  collapsedByDefault={COLLAPSED_BY_DEFAULT.has(group.status)}
+                  onOpen={props.onOpen}
+                  onToggleStep={props.onToggleStep}
+                  onDropProject={props.onDropProject}
+                  onWorkOn={props.onWorkOn}
+                />
+              );
+            }}
           </For>
         }
       >
@@ -649,6 +770,11 @@ function GroupBlock(props: {
   /** Override collapsed state — e.g. when a search filter is active and the
    * group has matches, force it open so results aren't hidden. */
   forceOpen?: boolean;
+  /** Optional body override. When provided, replaces the default cards loop
+   * — used by the Done section to render per-month subgroups instead of a
+   * flat card list. The outer header / collapse / drag-drop chrome is
+   * unchanged. */
+  bodySlot?: () => any;
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
@@ -725,8 +851,77 @@ function GroupBlock(props: {
         <span class="count">{props.group.items.length}</span>
       </header>
       <Show when={isOpen() && !isEmpty()}>
+        <Show
+          when={props.bodySlot}
+          fallback={
+            <div class="group-body">
+              <For each={props.group.items}>
+                {(item) => (
+                  <Card
+                    item={item}
+                    onOpen={props.onOpen}
+                    onToggleStep={props.onToggleStep}
+                    onWorkOn={props.onWorkOn}
+                  />
+                )}
+              </For>
+            </div>
+          }
+        >
+          {props.bodySlot!()}
+        </Show>
+      </Show>
+    </section>
+  );
+}
+
+/** Nested collapsible block used inside the Done section for the "Recent
+ * (last 7 days)" pinned window and the per-close-month subgroups. Reuses
+ * the GroupBlock chrome (caret, name, count) and the same persisted-collapse
+ * map keyed under names like `done.recent` and `done.2026-05`, so user
+ * toggles survive page reloads exactly like the outer status sections. */
+function SubGroup(props: {
+  label: string;
+  items: Project[];
+  storageKey: string;
+  defaultExpanded: boolean;
+  /** Title attribute on the header — used to explain non-obvious shapes
+   * like the Recent window's deliberate overlap with the month subgroups. */
+  hint?: string;
+  onOpen: (project: Project) => void;
+  onToggleStep: (project: Project, step: Step) => void;
+  onWorkOn: (project: Project) => void;
+}) {
+  const initialStored = readCollapseMap()[props.storageKey];
+  const [userExpanded, setUserExpanded] = createSignal<boolean | null>(
+    typeof initialStored === 'boolean' ? initialStored : null,
+  );
+  const isOpen = (): boolean => {
+    const ux = userExpanded();
+    if (ux !== null) return ux;
+    return props.defaultExpanded;
+  };
+  const toggle = (): void => {
+    const next = !isOpen();
+    setUserExpanded(next);
+    writeCollapseEntry(props.storageKey, next);
+  };
+  return (
+    <section class="group-block subgroup" classList={{ collapsed: !isOpen() }} data-status="done">
+      <header
+        class="group-header"
+        onClick={toggle}
+        title={props.hint ?? (isOpen() ? 'Collapse' : 'Expand')}
+      >
+        <span class="caret" aria-hidden="true">
+          {isOpen() ? '▾' : '▸'}
+        </span>
+        <span class="name">{props.label}</span>
+        <span class="count">{props.items.length}</span>
+      </header>
+      <Show when={isOpen()}>
         <div class="group-body">
-          <For each={props.group.items}>
+          <For each={props.items}>
             {(item) => (
               <Card
                 item={item}
@@ -811,9 +1006,19 @@ function Card(props: {
           )}
         </Show>
 
-        {/* Row 3: meta — apps on the left, progress + warn (when status
-            is unknown) on the right. */}
+        {/* Row 3: meta — date + apps on the left, progress + warn (when
+            status is unknown) on the right. */}
         <div class="meta">
+          <span
+            class="meta-icon date"
+            title={
+              props.item.status === 'done' && props.item.closedAt
+                ? `closed ${props.item.closedAt}`
+                : `created ${slugDate(props.item.slug)}`
+            }
+          >
+            {cardDate(props.item)}
+          </span>
           <Show when={props.item.apps.length > 0}>
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
               <span class="apps-text">{props.item.apps.join(', ')}</span>

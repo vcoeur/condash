@@ -32,6 +32,7 @@ interface ProjectListRow {
   branch: string | null;
   base: string | null;
   date: string | null;
+  closedAt: string | null;
   stepCounts: { todo: number; doing: number; done: number; dropped: number };
   deliverableCount: number;
   headerWarnings: { field: string; message: string }[];
@@ -435,6 +436,7 @@ async function listProjects(
       branch,
       base: headerFields.base,
       date: headerFields.date,
+      closedAt: project.closedAt,
       stepCounts: project.stepCounts,
       deliverableCount: project.deliverableCount,
       headerWarnings,
@@ -494,6 +496,7 @@ async function readProject(
     kind: project.kind,
     status: project.status,
     date: header.date,
+    closedAt: project.closedAt,
     apps: header.apps,
     branch: header.branch,
     base: header.base,
