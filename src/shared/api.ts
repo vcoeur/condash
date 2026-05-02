@@ -7,6 +7,8 @@ import type {
   OpenWithSlots,
   Platform,
   Project,
+  ProjectCreateInput,
+  ProjectCreateResult,
   ProjectFileEntry,
   RepoEntry,
   RepoEvent,
@@ -18,6 +20,7 @@ import type {
   TermSpawnRequest,
   TerminalPrefs,
   Theme,
+  TransitionResult,
   TreeEvent,
 } from './types';
 
@@ -72,7 +75,28 @@ export interface CondashApi {
   ): Promise<void>;
   addStep(path: string, text: string): Promise<void>;
   listProjectFiles(path: string): Promise<ProjectFileEntry[]>;
-  setStatus(path: string, newStatus: string): Promise<void>;
+  /**
+   * Set a project's `**Status**` field. On done-edges (close: prev != done →
+   * done; reopen: done → prev != done) also append a `Closed.` /
+   * `Reopened.` entry to `## Timeline`. Other transitions only edit the
+   * header. The returned `TransitionResult.timelineAppended` is non-null
+   * exactly when a timeline line was written, so the renderer can refresh
+   * the popup's timeline pane and show a leftover-branch toast on close.
+   */
+  setStatus(
+    path: string,
+    newStatus: string,
+    opts?: { summary?: string },
+  ): Promise<TransitionResult>;
+  /**
+   * Create a new project / incident / document under
+   * `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/`. The renderer's "+ New
+   * project" form dispatches here with the minimal field set (Apps stays
+   * empty for now, the user fills it in later by editing the README or
+   * via the popup). Returns the new directory and README paths so the
+   * caller can refresh the list and auto-open the popup.
+   */
+  createProject(input: ProjectCreateInput): Promise<ProjectCreateResult>;
   readNote(path: string): Promise<string>;
   /**
    * Atomically write `newContent` if disk still matches `expectedContent`.

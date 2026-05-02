@@ -44,6 +44,7 @@ import { KnowledgeView } from './tabs/knowledge';
 import { CodeView, groupRepos } from './tabs/code';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
+import { NewProjectModal } from './new-project-modal';
 import { matchesShortcut, parseShortcut } from './keymap';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
@@ -86,6 +87,7 @@ function App() {
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
   const [searchModalOpen, setSearchModalOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [newProjectOpen, setNewProjectOpen] = createSignal(false);
   const [aboutOpen, setAboutOpen] = createSignal(false);
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
@@ -662,7 +664,16 @@ function App() {
     const previous = project.status;
     mutate((current) => applyStatus(current ?? [], path, newStatus));
     try {
-      await window.condash.setStatus(path, newStatus);
+      const result = await window.condash.setStatus(path, newStatus);
+      // The main process appended a Closed./Reopened. timeline entry on
+      // done-edges; bump the refresh key so the popup's timeline pane and
+      // the card's last-date both pick up the new entry.
+      if (result.timelineAppended) {
+        setRefreshKey((k) => k + 1);
+      }
+      if (result.branchWarning) {
+        flashToast(result.branchWarning);
+      }
     } catch (err) {
       mutate((current) => applyStatus(current ?? [], path, previous));
       flashToast(`Status change failed: ${(err as Error).message}`);
@@ -795,6 +806,7 @@ function App() {
                           onToggleStep={handleToggleStep}
                           onDropProject={handleDropOnColumn}
                           onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                          onNewProject={() => setNewProjectOpen(true)}
                         />
                       </Show>
                     </Suspense>
@@ -981,6 +993,22 @@ function App() {
           theme={theme()}
           onChangeTheme={handleThemeChange}
           onClose={() => setSettingsOpen(false)}
+        />
+      </Show>
+
+      <Show when={newProjectOpen()}>
+        <NewProjectModal
+          onClose={() => setNewProjectOpen(false)}
+          onCreated={(result) => {
+            setNewProjectOpen(false);
+            // Refresh the project list and prime the popup. The popup
+            // resolves the Project object via `previewProject()`, which
+            // re-reads `projects()`, so the popup mounts as soon as the
+            // resource refetch settles.
+            setRefreshKey((k) => k + 1);
+            setPreviewPath(result.readme);
+            flashToast(`Created ${result.relPath}`);
+          }}
         />
       </Show>
 

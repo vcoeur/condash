@@ -470,6 +470,35 @@
   min-width: 0;
 }
 
+/* Card body has two stacked meta rows now:
+ *   .meta-context — apps + branch (top one, only rendered when there's
+ *     anything to show).
+ *   .meta-bottom  — step progress + dates (always rendered when there's
+ *     either, dates pinned to the right).
+ * The shared `.meta` rules above (flex, gap, font-size) cover layout;
+ * these only tweak spacing between the two rows. */
+.row .meta-context {
+  margin-top: 4px;
+}
+
+.row .meta-bottom {
+  margin-top: 2px;
+}
+
+.row .meta-icon.branch {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.01em;
+}
+
+.row .meta-icon.branch .branch-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
 .row .row-action {
   display: inline-flex;
   align-items: center;
@@ -702,4 +731,43 @@
   font-size: 10.5px;
   color: var(--text-faint);
   letter-spacing: 0.01em;
+}
+
+/* "+ New project" button — top-of-tab CTA above the status sections. */
+.projects-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 8px 0;
+}
+
+.new-project-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease;
+}
+
+.new-project-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.new-project-button-plus {
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
 }

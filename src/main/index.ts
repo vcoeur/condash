@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import { promises as fsp } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { parseHeader } from '../shared/header';
 
 import { toPosix } from '../shared/path';
 
@@ -11,7 +13,9 @@ import { DEFAULT_LAYOUT, readSettings, settingsPath, writeSettings } from './set
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
-import { addStep, editStepText, setStatus, toggleStep, writeNote } from './mutate';
+import { addStep, editStepText, transitionStatus, toggleStep, writeNote } from './mutate';
+import { createProjectCore } from '../cli/commands/projects';
+import { checkBranchState } from './worktree-ops';
 import { listProjectFiles } from './files';
 import { readKnowledgeTree } from './knowledge';
 import { createProjectNote, readNote } from './note';
@@ -45,6 +49,8 @@ import type {
   LayoutState,
   OpenWithSlotKey,
   Project,
+  ProjectCreateInput,
+  ProjectCreateResult,
   StepMarker,
   TermSpawnRequest,
   Theme,
@@ -379,6 +385,46 @@ async function listProjects(): Promise<Project[]> {
   });
 }
 
+async function readBranchFromReadme(readmePath: string): Promise<string | null> {
+  try {
+    const raw = await fsp.readFile(readmePath, 'utf8');
+    return parseHeader(raw).branch;
+  } catch {
+    return null;
+  }
+}
+
+async function touchDirtyMarker(
+  conceptionPath: string,
+  tree: 'projects' | 'knowledge',
+): Promise<void> {
+  const path = join(conceptionPath, tree, '.index-dirty');
+  try {
+    await fsp.utimes(path, new Date(), new Date());
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      await fsp.writeFile(path, '', 'utf8');
+    } else throw err;
+  }
+}
+
+function buildBranchWarning(
+  branch: string,
+  lingeringWorktrees: { expectedWorktree: string }[],
+  lingeringBranches: { name: string }[],
+): string {
+  const parts: string[] = [];
+  if (lingeringWorktrees.length > 0) {
+    const paths = lingeringWorktrees.map((r) => r.expectedWorktree).join(', ');
+    parts.push(`worktree(s) still on disk at ${paths}`);
+  }
+  if (lingeringBranches.length > 0) {
+    const repos = lingeringBranches.map((r) => r.name).join(', ');
+    parts.push(`local branch '${branch}' still exists in ${repos}`);
+  }
+  return `${parts.join('; ')} — run \`condash worktrees remove ${branch}\` then \`git branch -d ${branch}\` to clean up.`;
+}
+
 async function getProject(path: string): Promise<Project | null> {
   try {
     return await parseReadme(path);
@@ -566,7 +612,78 @@ function registerIpc(): void {
 
   ipcMain.handle('listProjectFiles', (_, path: string) => listProjectFiles(path));
 
-  ipcMain.handle('setStatus', (_, path: string, newStatus: string) => setStatus(path, newStatus));
+  ipcMain.handle(
+    'setStatus',
+    async (_, path: string, newStatus: string, opts?: { summary?: string }) => {
+      const result = await transitionStatus(path, newStatus, opts);
+      // Touch the dirty marker so a follow-up `condash projects index` is
+      // surfaced. Best-effort: if the conception path isn't set we just
+      // skip it — the in-memory list rebuild still happens via the watcher.
+      const { conceptionPath } = await readSettings();
+      if (conceptionPath) {
+        await touchDirtyMarker(conceptionPath, 'projects').catch(() => undefined);
+        // On close (done-edge: prev !== done, new === done), surface any
+        // leftover-branch warnings so the GUI can toast them — silently
+        // swallowing the miss let the same broken cleanup ship twice in
+        // April. Keep the call best-effort so a failed probe never blocks
+        // the close itself.
+        if (result.timelineAppended && /^- .* — Closed/.test(result.timelineAppended)) {
+          const branch = await readBranchFromReadme(path);
+          if (branch) {
+            try {
+              const state = await checkBranchState(conceptionPath, branch);
+              const lingeringWorktrees = state.repos.filter((r) => r.worktreeExists);
+              const lingeringBranches = state.repos.filter((r) => r.localBranchExists);
+              if (lingeringWorktrees.length > 0 || lingeringBranches.length > 0) {
+                result.branchWarning = buildBranchWarning(
+                  branch,
+                  lingeringWorktrees,
+                  lingeringBranches,
+                );
+              }
+            } catch {
+              // Best-effort probe — never block the close on its own failure.
+            }
+          }
+        }
+      }
+      return result;
+    },
+  );
+
+  ipcMain.handle(
+    'createProject',
+    async (_, input: ProjectCreateInput): Promise<ProjectCreateResult> => {
+      const { conceptionPath } = await readSettings();
+      if (!conceptionPath) throw new Error('No conception path set');
+      const result = await createProjectCore(conceptionPath, {
+        kind: input.kind,
+        slug: input.slug,
+        title: input.title,
+        // Apps stays empty for the GUI quick-create form; users fill it in
+        // by editing the README or via the popup.
+        apps: [],
+        branch: null,
+        base: null,
+        severity: input.severity ?? null,
+        severityImpact: input.severityImpact ?? null,
+        environment: input.environment ?? null,
+      });
+      // The renderer asked for status `now | review | later | backlog`, but
+      // createProjectCore always renders `Status: now`. If the user picked
+      // anything else, flip it now via the same transitionStatus primitive
+      // — that keeps the status-write path single-source.
+      if (input.status !== 'now') {
+        await transitionStatus(result.readme, input.status);
+      }
+      return {
+        slug: result.slug,
+        path: result.path,
+        relPath: result.relPath,
+        readme: result.readme,
+      };
+    },
+  );
 
   ipcMain.handle('note.read', (_, path: string) => readNote(path));
 
