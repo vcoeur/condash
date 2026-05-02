@@ -674,18 +674,37 @@ function App() {
   const startSplitterDrag = (event: MouseEvent): void => {
     if (!topBandRef) return;
     event.preventDefault();
-    const rect = topBandRef.getBoundingClientRect();
+    const band = topBandRef;
+    const rect = band.getBoundingClientRect();
     const min = 160;
-    const onMove = (e: MouseEvent): void => {
-      const desired = e.clientX - rect.left;
+    // Coalesce mousemove updates: write grid columns straight to the DOM at
+    // most once per frame, and skip the Solid signal entirely during the
+    // drag. Re-running topBandStyle() per mousemove triggers a full reflow
+    // of both panes (Projects + Knowledge/Code) and pushes INP > 300 ms on
+    // a heavily-populated page. We commit the final width to layout state
+    // on mouseup, so persistence still works.
+    let pendingX: number | null = null;
+    let rafId: number | null = null;
+    let lastWidth = layout().projectsWidth;
+    const flush = (): void => {
+      rafId = null;
+      if (pendingX === null) return;
+      const desired = pendingX - rect.left;
       const clamped = Math.max(min, Math.min(rect.width - min - 4, desired));
-      updateLayout({ projectsWidth: Math.round(clamped) });
+      lastWidth = Math.round(clamped);
+      band.style.gridTemplateColumns = `${lastWidth}px 4px 1fr`;
+    };
+    const onMove = (e: MouseEvent): void => {
+      pendingX = e.clientX;
+      if (rafId === null) rafId = requestAnimationFrame(flush);
     };
     const onUp = (): void => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      if (rafId !== null) cancelAnimationFrame(rafId);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      updateLayout({ projectsWidth: lastWidth });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
