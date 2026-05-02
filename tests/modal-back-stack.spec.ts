@@ -29,13 +29,13 @@ test('closing the README modal restores the project preview popover', async () =
     await win.waitForSelector('.modal.project-preview', { state: 'visible' });
 
     // Open the README modal from inside the preview.
-    await win.click('button[aria-label="Open README"]');
+    await win.click('button[title="Open README"]');
     await win.waitForSelector('.modal.note-modal', { state: 'visible' });
 
     // Closing the README modal must restore the project preview popover —
     // *not* leave the user on the bare dashboard. This is the regression
     // case that prompted the back-path tracking in rc.9.
-    await win.click('.modal.note-modal button[aria-label="Close"]');
+    await win.click('.modal.note-modal .modal-head button[aria-label="Close"]');
     await win.waitForSelector('.modal.note-modal', { state: 'detached' });
 
     const previewVisible = await win.isVisible('.modal.project-preview');
@@ -53,7 +53,7 @@ test('Esc on the README modal also restores the project preview', async () => {
     await win.waitForSelector('.row', { state: 'visible', timeout: 5000 });
     await win.click('.row .title');
     await win.waitForSelector('.modal.project-preview', { state: 'visible' });
-    await win.click('button[aria-label="Open README"]');
+    await win.click('button[title="Open README"]');
     await win.waitForSelector('.modal.note-modal', { state: 'visible' });
 
     // Click the markdown body so focus is inside the modal, then Esc.

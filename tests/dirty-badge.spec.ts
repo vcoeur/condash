@@ -20,7 +20,7 @@ async function seedRepo(dir: string): Promise<void> {
   await exec('git', ['-C', dir, 'commit', '-q', '-m', 'init']);
 }
 
-test('getDirtyDetails returns parsed file list + diffstat for a dirty worktree', async () => {
+test('getDirtyDetails returns parsed file list + numstat for a dirty worktree', async () => {
   const repoDir = await mkdtemp(join(tmpdir(), 'condash-dirty-badge-'));
   try {
     await seedRepo(repoDir);
@@ -47,16 +47,23 @@ test('getDirtyDetails returns parsed file list + diffstat for a dirty worktree',
       expect(readme).toBeDefined();
       // Modified-but-not-staged shows up as ` M` in `git status --porcelain`.
       expect(readme!.code.trim()).toBe('M');
+      // The tracked edit (one added line) shows up in numstat as +1/-0.
+      expect(readme!.added).toBe(1);
+      expect(readme!.deleted).toBe(0);
+      expect(readme!.binary).toBe(false);
 
       const untracked = files.find((f) => f.path === 'note.txt');
       expect(untracked).toBeDefined();
       expect(untracked!.code).toBe('??');
+      // Untracked files have no numstat row — added/deleted are null.
+      expect(untracked!.added).toBeNull();
+      expect(untracked!.deleted).toBeNull();
 
-      // diffstat covers tracked changes only — README.md should appear there;
-      // untracked files do not.
-      expect(details!.diffstat).toMatch(/README\.md/);
-      expect(details!.diffstat).not.toMatch(/note\.txt/);
-      expect(typeof details!.diffstatTruncated).toBe('boolean');
+      // Aggregates cover tracked changes only; the README's +1 is the only contribution.
+      expect(details!.totalAdded).toBe(1);
+      expect(details!.totalDeleted).toBe(0);
+      expect(details!.truncated).toBe(false);
+      expect(details!.totalCount).toBe(2);
     } finally {
       await booted.cleanup();
     }
@@ -78,7 +85,10 @@ test('getDirtyDetails returns an empty list for a clean worktree', async () => {
       );
       expect(details).not.toBeNull();
       expect(details!.files).toEqual([]);
-      expect(details!.diffstat).toBe('');
+      expect(details!.totalAdded).toBe(0);
+      expect(details!.totalDeleted).toBe(0);
+      expect(details!.truncated).toBe(false);
+      expect(details!.totalCount).toBe(0);
     } finally {
       await booted.cleanup();
     }
