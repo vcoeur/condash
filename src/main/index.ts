@@ -20,7 +20,7 @@ import { listProjectFiles } from './files';
 import { readKnowledgeTree } from './knowledge';
 import { createProjectNote, readNote } from './note';
 import { search } from './search';
-import { listRepos } from './repos';
+import { listRepos, listReposForPrimary } from './repos';
 import { invalidateAll } from './git-status-cache';
 import {
   disposeRepoWatchers,
@@ -460,6 +460,26 @@ function registerIpc(): void {
     // re-runs on every renderer-driven repos refresh.
     setRepoWatchers(watchTargetsFromRepos(repos));
     return repos;
+  });
+
+  // Per-primary partial reload — driven by the structural FS watcher when
+  // `.git/HEAD` or `.git/worktrees/` changes. Returns the primary's
+  // RepoEntry plus its submodule children, freshly re-read. Watchers are
+  // re-synced for the affected paths so a freshly-added worktree gets a
+  // scalar watcher pair right away (and a freshly-removed one is dropped).
+  ipcMain.handle('listReposForPrimary', async (_, primaryName: string) => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return [];
+    const entries = await listReposForPrimary(conceptionPath, primaryName);
+    // Re-list the *full* watcher set: the simplest correct way to make sure
+    // an added or removed worktree under this primary is reflected in the
+    // watch set without diffing the per-primary subset against the global
+    // one. The cost is one extra `listRepos` call on a structural event,
+    // which is rare (worktree mutation, branch checkout) — far cheaper
+    // than getting the watch-set delta logic wrong.
+    const repos = await listRepos(conceptionPath);
+    setRepoWatchers(watchTargetsFromRepos(repos));
+    return entries;
   });
 
   // Drop the per-worktree git status cache + force-recompute every watched

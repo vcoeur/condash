@@ -1,10 +1,22 @@
 /**
  * Apply per-repo FS-watcher events to the repos store. Mirror of
- * `tree-events.ts` but for the Code tab. Path-shaped `setRepos` writes
- * mean only the cells actually read by a component re-evaluate — the
- * top-level array reference and unaffected rows stay stable, so
- * whole-list readers (e.g. `repoGroups`) don't re-run on a single
- * dirty tick.
+ * `tree-events.ts` but for the Code tab.
+ *
+ * Two axes:
+ *
+ *   - **Scalar** (`repo-dirty`, `repo-upstream`): path-shaped `setRepos`
+ *     writes. Only the cells actually read by a component re-evaluate —
+ *     the top-level array reference and unaffected rows stay stable, so
+ *     whole-list readers (e.g. `repoGroups`) don't re-run on a single
+ *     dirty tick.
+ *
+ *   - **Set membership** (`repo-worktrees-changed`): the worktree list
+ *     for a primary changed (worktree add/remove) or its checkout
+ *     switched branches. We don't try to compute the patch here — we
+ *     hand the `repoPath` off to a deps callback that does a per-primary
+ *     reload via `listReposForPrimary` IPC and merges the result. The
+ *     reconcile-with-key contract on the renderer's store keeps any
+ *     open dropdowns/popovers alive across the merge.
  */
 import type { RepoEntry, RepoEvent, UpstreamStatus } from '@shared/types';
 import type { SetStoreFunction } from 'solid-js/store';
@@ -15,6 +27,10 @@ export interface RepoEventsDeps {
   repos: readonly RepoEntry[];
   /** Path-shaped store setter. */
   setRepos: SetStoreFunction<RepoEntry[]>;
+  /** Called when a `repo-worktrees-changed` event arrives. The caller is
+   *  expected to do a per-primary reload (debounced — multiple events
+   *  for the same primary in a short window should coalesce). */
+  onWorktreesChanged: (repoPath: string) => void;
 }
 
 /** Shallow equality for `UpstreamStatus` so we can short-circuit when the
@@ -28,13 +44,15 @@ function sameUpstream(a: UpstreamStatus | null | undefined, b: UpstreamStatus | 
 
 export function applyRepoEvents(events: RepoEvent[], deps: RepoEventsDeps): void {
   if (events.length === 0) return;
-  const { repos, setRepos } = deps;
+  const { repos, setRepos, onWorktreesChanged } = deps;
 
   for (const event of events) {
     if (event.kind === 'repo-dirty') {
       applyDirty(repos, setRepos, event.path, event.dirty);
     } else if (event.kind === 'repo-upstream') {
       applyUpstream(repos, setRepos, event.path, event.upstream);
+    } else if (event.kind === 'repo-worktrees-changed') {
+      onWorktreesChanged(event.repoPath);
     }
   }
 }

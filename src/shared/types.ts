@@ -415,10 +415,16 @@ export type TreeEvent =
  *  - `repo-dirty`: dirty-file count changed (or recomputed); null when git
  *    couldn't run.
  *  - `repo-upstream`: upstream tracking summary changed (push, fetch, local
- *    commit, branch switch); null when the branch has no upstream. */
+ *    commit, branch switch); null when the branch has no upstream.
+ *  - `repo-worktrees-changed`: structural change for a primary repo — a
+ *    worktree was added/removed, or the primary checkout itself switched
+ *    branches. The renderer responds by reloading just this primary
+ *    (and its submodule children) rather than the whole repo list.
+ *    `repoPath` is the primary's `RepoEntry.path`. */
 export type RepoEvent =
   | { kind: 'repo-dirty'; path: string; dirty: number | null }
-  | { kind: 'repo-upstream'; path: string; upstream: UpstreamStatus | null };
+  | { kind: 'repo-upstream'; path: string; upstream: UpstreamStatus | null }
+  | { kind: 'repo-worktrees-changed'; repoPath: string };
 
 export interface KnowledgeNode {
   /** Path relative to <conception>/knowledge/. Empty string for the root. */
