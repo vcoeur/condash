@@ -71,12 +71,7 @@ markdown_extensions:
 nav:
   - Home: index.md
 
-  - Get started:
-    - get-started/index.md
-    - Install: get-started/install.md
-    - First launch: get-started/first-launch.md
-    - Walkthrough — first run: tutorials/first-run.md
-    - Walkthrough — first project: tutorials/first-project.md
+  - Get started: get-started/index.md
 
   - Use:
     - guides/index.md
@@ -112,8 +107,9 @@ nav:
     - explanation/index.md
     - Why Markdown-first: explanation/why-markdown.md
     - Non-goals: explanation/non-goals.md
-    - Values: explanation/values.md
-    - Internals: explanation/internals.md
-    - Contributing: explanation/contributing.md
+    - Advanced:
+      - Values: explanation/values.md
+      - Internals: explanation/internals.md
+      - Contributing: explanation/contributing.md
 
   - Legal: legal.md

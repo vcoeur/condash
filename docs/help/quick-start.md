@@ -1,6 +1,6 @@
 # Quick start
 
-Three steps: install, point at a folder, start working.
+Three steps: install, point at a folder, create an item.
 
 ## 1. Install
 
@@ -26,36 +26,45 @@ sudo apt update && sudo apt install condash
 
 The builds are unsigned. Each OS asks you to confirm the download once
 on first launch (right-click → Open on macOS; "More info → Run anyway"
-on Windows; nothing extra on Linux). Full per-OS walkthrough is online.
+on Windows; nothing extra on Linux).
 
 `git` must be on `PATH` — condash shells out to it for repo status.
 
-## 2. First launch — pick a conception folder
+## 2. First launch
 
-The first time you launch condash, a folder picker opens. Choose (or
-create) a directory that will hold your Markdown items, for example
-`~/conception/`. condash stores that path and reuses it next time.
+The first time you run `condash`, a **native folder picker** opens and
+asks which conception tree to render. Pick (or create) a directory, for
+example `~/conception/`. condash writes the choice into `settings.json`
+and reuses it next time.
 
-What goes in that folder:
+Don't have a folder yet? The minimum is:
 
-- `projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md` — one folder per item
-  (project, incident, or document).
-- `knowledge/` — your reference notes, organised as a tree.
-- `configuration.json` — workspace + preferences (see "Configuration"
-  in this Help menu).
+```bash
+mkdir -p ~/conception/projects
+```
 
-The dashboard auto-creates `projects/` and `knowledge/` if they don't
-exist. `configuration.json` is created with sensible defaults the first
-time you open the gear modal and save.
+If the folder is empty, condash shows a **Welcome screen** with three
+buttons:
 
-## 3. Create your first item
+- **Create your first project** — opens the new-item modal.
+- **Take the tour** — opens this Help modal.
+- **Open the documentation** — opens condash.vcoeur.com in your browser.
 
-Easiest path: in the **Projects** tab, click **Create** in the toolbar,
-fill in title + slug, pick a status. condash writes a `README.md` with
-the right header and opens it for editing.
+To switch to a different folder later: **File → Open…** (`Ctrl+O`)
+opens the folder picker again.
 
-You can also create items by hand — just make a folder under
-`projects/<YYYY-MM>/` and drop a `README.md` with this header:
+## 3. Create an item
+
+Click **Create your first project** on the Welcome screen, or use the
+**Create** button on the Projects toolbar. Fill in:
+
+- **Kind** — `project`, `incident`, or `document`.
+- **Status** — `now` so it lands in Current.
+- **Title** + **Slug** — the slug is auto-derived from the title.
+- **Apps** — optional.
+
+condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` with
+this template:
 
 ```markdown
 # My title
@@ -63,12 +72,40 @@ You can also create items by hand — just make a folder under
 **Date**: 2026-05-02
 **Kind**: project
 **Status**: now
-**Apps**: `myapp`
+
+## Goal
+
+## Steps
+
+- [ ] (your first step)
+
+## Timeline
+
+- 2026-05-02 — Project created.
+
+## Notes
 ```
 
-condash picks it up on the next file-system event.
+You can also hand-create items — just `mkdir` the folder and drop a
+README with that header. condash picks it up live.
+
+## Editing settings
+
+**File → Settings…** (`Ctrl+,`) opens a tabbed modal:
+
+- **General** — theme.
+- **Terminal** — shell, shortcuts, xterm.js settings.
+- **`configuration.json`** — full JSON editor for the per-tree config
+  (atomic save, validated against the schema).
+- **Shortcuts** — keyboard reference.
+
+Per-tree config (`<conception>/configuration.json`) is shared with
+teammates via git — workspace path, repos, launcher commands. Per-machine
+config (`settings.json`) is local to this laptop — your editor binary,
+your terminal, your theme.
 
 ## More
 
-- **Tutorials** (online): https://condash.vcoeur.com/tutorials/
-- **Guides** (online, per-feature how-tos): https://condash.vcoeur.com/guides/
+Full docs (tutorials, per-feature guides, reference) live online at
+**https://condash.vcoeur.com**. The Help menu has an **Open documentation
+site** entry.

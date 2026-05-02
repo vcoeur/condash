@@ -61,12 +61,19 @@ of the repo, worktree, or directory being opened.
 
 ## Editing in the app
 
-Click the gear icon in the header. The modal opens a JSON editor for
-`configuration.json` (validated on save, atomic write). The Terminal
-tab and theme toggle write to `settings.json`.
+**File → Settings…** (`Ctrl+,`) — or the gear icon in the header —
+opens a tabbed modal:
 
-`settings.json` has no full-file editor — hand-edit it if you need the
-extra keys. condash re-reads on next launch.
+- **General** — theme.
+- **Terminal** — embedded terminal preferences. Writes to `settings.json`.
+- **`configuration.json`** — full JSON editor for the per-tree file
+  (atomic save, validated against the schema; malformed shapes are
+  rejected before the write lands on disk).
+- **Shortcuts** — keyboard reference.
+
+`settings.json` has no full-file editor beyond the General + Terminal
+tabs — hand-edit it if you need keys outside those surfaces. condash
+re-reads on next launch.
 
 ## When changes apply
 
