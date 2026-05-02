@@ -1,18 +1,23 @@
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
+import { promisify } from 'node:util';
 import { findProjectReadmes } from '../../main/walk';
 import { parseReadme } from '../../main/parse';
-import { setStatus } from '../../main/mutate';
+import { appendTimelineEntry, parseTimelineEntries, transitionStatus } from '../../main/mutate';
 import { search as searchAll } from '../../main/search';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { projectsStrategy } from '../../main/index-projects';
 import { checkBranchState } from '../../main/worktree-ops';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
 import { statusOrder } from '../../shared/projects';
+import { isValidSlugTail } from '../../shared/slug';
 import { resolveSlug } from '../slug';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { parseHeader, readHeader, validateHeader, type HeaderFields } from '../header';
 import type { ParsedArgs } from '../parser';
+
+const execFileP = promisify(execFile);
 
 const ITEM_KINDS = ['project', 'incident', 'document'] as const;
 const SEVERITIES = ['low', 'medium', 'high'] as const;
@@ -60,6 +65,10 @@ export async function runProjects(
       return await statusCommand(args, ctx, conceptionPath);
     case 'close':
       return await closeProject(args, ctx, conceptionPath);
+    case 'reopen':
+      return await reopenProject(args, ctx, conceptionPath);
+    case 'backfill-closed':
+      return await backfillClosed(args, ctx, conceptionPath);
     case 'index':
       return await indexCommand(args, ctx, conceptionPath);
     case 'create':
@@ -138,22 +147,88 @@ async function createCommand(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const kind = String(args.flags.kind ?? '').toLowerCase();
+  const apps = parseCsvFlag(args.flags.apps) ?? [];
+  if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
+  const result = await createProjectCore(conceptionPath, {
+    kind: String(args.flags.kind ?? '').toLowerCase(),
+    slug: String(args.flags.slug ?? '').trim(),
+    title: String(args.flags.title ?? '').trim(),
+    apps,
+    branch: typeof args.flags.branch === 'string' ? args.flags.branch.trim() || null : null,
+    base: typeof args.flags.base === 'string' ? args.flags.base.trim() || null : null,
+    date: typeof args.flags.date === 'string' ? args.flags.date.trim() : undefined,
+    severity:
+      typeof args.flags.severity === 'string' ? args.flags.severity.toLowerCase() || null : null,
+    severityImpact:
+      typeof args.flags['severity-impact'] === 'string'
+        ? String(args.flags['severity-impact']).trim() || null
+        : null,
+    environment:
+      typeof args.flags.environment === 'string'
+        ? args.flags.environment.trim().toUpperCase() || null
+        : null,
+  });
+  emit(ctx, result, (data) => {
+    const d = data as { relPath: string; readme: string };
+    return `Created ${d.relPath}\n  README: ${d.readme}\n`;
+  });
+}
+
+export interface CreateProjectInput {
+  kind: string;
+  slug: string;
+  title: string;
+  apps: string[];
+  branch: string | null;
+  base: string | null;
+  /** ISO YYYY-MM-DD; defaults to today. */
+  date?: string;
+  severity: string | null;
+  severityImpact: string | null;
+  environment: string | null;
+}
+
+export interface CreateProjectResult {
+  slug: string;
+  path: string;
+  relPath: string;
+  readme: string;
+  kind: string;
+  title: string;
+  date: string;
+  apps: string[];
+  branch: string | null;
+  base: string | null;
+}
+
+/**
+ * Validate input, write the README from the canonical template, touch the
+ * dirty marker, and report what was created. Shared between `condash
+ * projects create` and the Electron main process's `createProject` IPC so
+ * the GUI's "+ New project" button writes byte-identical files to the CLI.
+ */
+export async function createProjectCore(
+  conceptionPath: string,
+  input: CreateProjectInput,
+): Promise<CreateProjectResult> {
+  const kind = input.kind;
   if (!ITEM_KINDS.includes(kind as (typeof ITEM_KINDS)[number])) {
     validation(`--kind must be one of {${ITEM_KINDS.join(', ')}}; got '${kind || '(missing)'}'`);
   }
-  const slug = String(args.flags.slug ?? '').trim();
+  const slug = input.slug;
   if (!slug || !SLUG_TAIL_RE.test(slug)) {
     validation(`--slug must match ^[a-z0-9-]+$; got '${slug}'`);
   }
-  const title = String(args.flags.title ?? '').trim();
+  const title = input.title;
   if (!title) validation(`--title is required`);
-  const apps = parseCsvFlag(args.flags.apps) ?? [];
-  if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
+  // Apps may be empty here — the GUI's quick-create form intentionally
+  // omits Apps so the form stays minimal. The CLI's `create` verb still
+  // requires `--apps` (validated in createCommand before this call).
+  const apps = input.apps;
 
-  const branch = typeof args.flags.branch === 'string' ? args.flags.branch.trim() || null : null;
-  const base = typeof args.flags.base === 'string' ? args.flags.base.trim() || null : null;
-  const date = typeof args.flags.date === 'string' ? args.flags.date.trim() : isoToday();
+  const branch = input.branch;
+  const base = input.base;
+  const date = input.date && input.date.length > 0 ? input.date : isoToday();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     validation(`--date must be YYYY-MM-DD; got '${date}'`);
   }
@@ -163,17 +238,14 @@ async function createCommand(
   let severityImpact: string | null = null;
   let environment: string | null = null;
   if (kind === 'incident') {
-    severity = String(args.flags.severity ?? '').toLowerCase();
+    severity = (input.severity ?? '').toLowerCase();
     if (!SEVERITIES.includes(severity as (typeof SEVERITIES)[number])) {
       validation(
         `--severity must be one of {${SEVERITIES.join(', ')}} for incidents; got '${severity || '(missing)'}'`,
       );
     }
-    severityImpact = String(args.flags['severity-impact'] ?? '').trim() || null;
-    environment =
-      String(args.flags.environment ?? '')
-        .trim()
-        .toUpperCase() || null;
+    severityImpact = input.severityImpact?.trim() || null;
+    environment = input.environment ?? null;
     if (environment && !ENVIRONMENTS.includes(environment as (typeof ENVIRONMENTS)[number])) {
       validation(`--environment must be one of {${ENVIRONMENTS.join(', ')}}; got '${environment}'`);
     }
@@ -204,30 +276,23 @@ async function createCommand(
   const readmePath = join(itemDir, 'README.md');
   await fs.writeFile(readmePath, readmeBody, 'utf8');
 
-  // Mark the projects index dirty so a follow-up `condash projects index` is
-  // surfaced to the user.
   await touchDirtyMarker(conceptionPath, 'projects');
 
-  emit(
-    ctx,
-    {
-      slug: folderName,
-      path: itemDir,
-      relPath: relative(conceptionPath, itemDir),
-      readme: readmePath,
-      kind,
-      title,
-      date,
-      apps,
-      branch,
-      base,
-    },
-    (data) => {
-      const d = data as { relPath: string; readme: string };
-      return `Created ${d.relPath}\n  README: ${d.readme}\n`;
-    },
-  );
+  return {
+    slug: folderName,
+    path: itemDir,
+    relPath: relative(conceptionPath, itemDir),
+    readme: readmePath,
+    kind,
+    title,
+    date,
+    apps,
+    branch,
+    base,
+  };
 }
+
+export { isValidSlugTail };
 
 interface TemplateInputs {
   kind: (typeof ITEM_KINDS)[number];
@@ -743,22 +808,24 @@ async function statusCommand(
     if (!(KNOWN_STATUSES as readonly string[]).includes(value)) {
       validation(`Status '${value}' not in {${KNOWN_STATUSES.join(', ')}}`);
     }
+    const summary = typeof args.flags.summary === 'string' ? args.flags.summary.trim() : undefined;
     const candidate = await resolveSlug(conceptionPath, slug);
-    const header = await readHeader(candidate.readmePath);
-    const previous = header.status ?? null;
-    await setStatus(candidate.readmePath, value);
+    const transition = await transitionStatus(candidate.readmePath, value, { summary });
     const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
     emit(
       ctx,
       {
         slug: candidate.slug,
         path: candidate.readmePath,
-        previousStatus: previous,
-        newStatus: value,
+        previousStatus: transition.previousStatus,
+        newStatus: transition.newStatus,
+        timelineAppended: transition.timelineAppended,
         dirtyMarkerTouched: dirtyMarker,
       },
-      (d) =>
-        `${(d as { previousStatus: string }).previousStatus ?? '(none)'} → ${(d as { newStatus: string }).newStatus}\n`,
+      (d) => {
+        const data = d as { previousStatus: string | null; newStatus: string };
+        return `${data.previousStatus ?? '(none)'} → ${data.newStatus}\n`;
+      },
     );
     return;
   }
@@ -780,12 +847,7 @@ async function closeProject(
 
   const candidate = await resolveSlug(conceptionPath, slug);
   const header = await readHeader(candidate.readmePath);
-  const previous = header.status ?? null;
-
-  await setStatus(candidate.readmePath, newStatus);
-  const today = isoToday();
-  const timelineLine = summary ? `- ${today} — Closed. ${summary}.` : `- ${today} — Closed.`;
-  await appendTimelineEntry(candidate.readmePath, timelineLine);
+  const transition = await transitionStatus(candidate.readmePath, newStatus, { summary });
 
   const dirtyMarker = args.flags['no-touch-dirty']
     ? false
@@ -798,15 +860,174 @@ async function closeProject(
     {
       slug: candidate.slug,
       path: candidate.readmePath,
-      previousStatus: previous,
-      newStatus,
-      timelineAppended: timelineLine,
+      previousStatus: transition.previousStatus,
+      newStatus: transition.newStatus,
+      timelineAppended: transition.timelineAppended,
       dirtyMarkerTouched: dirtyMarker,
     },
-    (d) =>
-      `Closed ${(d as { slug: string }).slug}: ${(d as { previousStatus: string }).previousStatus ?? '(none)'} → ${(d as { newStatus: string }).newStatus}\n`,
+    (d) => {
+      const data = d as { slug: string; previousStatus: string | null; newStatus: string };
+      return `Closed ${data.slug}: ${data.previousStatus ?? '(none)'} → ${data.newStatus}\n`;
+    },
     warnings,
   );
+}
+
+async function reopenProject(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const slug = args.positional[0];
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects reopen <slug>');
+  const target = (args.flags.status as string | undefined) ?? 'now';
+  if (!(KNOWN_STATUSES as readonly string[]).includes(target)) {
+    validation(`Status '${target}' not in {${KNOWN_STATUSES.join(', ')}}`);
+  }
+  if (target === 'done') {
+    validation(`reopen target cannot be 'done' — use \`condash projects close\` instead`);
+  }
+  const candidate = await resolveSlug(conceptionPath, slug);
+  const header = await readHeader(candidate.readmePath);
+  const previous = (header.status ?? '').toLowerCase();
+  if (previous !== 'done') {
+    throw new CliError(
+      ExitCodes.VALIDATION,
+      `Cannot reopen ${candidate.slug}: previous status is '${previous || '(none)'}', expected 'done'`,
+    );
+  }
+  const transition = await transitionStatus(candidate.readmePath, target);
+  const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
+  emit(
+    ctx,
+    {
+      slug: candidate.slug,
+      path: candidate.readmePath,
+      previousStatus: transition.previousStatus,
+      newStatus: transition.newStatus,
+      timelineAppended: transition.timelineAppended,
+      dirtyMarkerTouched: dirtyMarker,
+    },
+    (d) => {
+      const data = d as { slug: string; previousStatus: string | null; newStatus: string };
+      return `Reopened ${data.slug}: ${data.previousStatus ?? '(none)'} → ${data.newStatus}\n`;
+    },
+  );
+}
+
+interface BackfillEntry {
+  slug: string;
+  readme: string;
+  date: string;
+  source: 'git' | 'mtime';
+  appended: boolean;
+}
+
+/**
+ * One-shot migration: walk every `Status: done` README; for any one that has
+ * no `- <date> — Closed.` line in its `## Timeline`, append one with a date
+ * derived from `git log -1` on the README (cheap heuristic — last touch
+ * usually corresponds to the close), falling back to file mtime when git
+ * fails (untracked file, no repo, etc.). Run with `--dry-run` to preview.
+ *
+ * The appended line carries a trailing `(backfill)` marker so backfilled
+ * entries are distinguishable from organic close entries.
+ */
+async function backfillClosed(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const dryRun = args.flags['dry-run'] === true;
+  const readmes = await findProjectReadmes(conceptionPath);
+  const candidates: BackfillEntry[] = [];
+  const skipped: { slug: string; reason: string }[] = [];
+  for (const readme of readmes) {
+    const raw = await fs.readFile(readme, 'utf8');
+    const header = parseHeader(raw);
+    if ((header.status ?? '').toLowerCase() !== 'done') continue;
+    const entries = parseTimelineEntries(raw);
+    if (entries.some((e) => /^Closed\b/.test(e.text))) {
+      skipped.push({ slug: basenameOf(readme), reason: 'already has Closed entry' });
+      continue;
+    }
+    let date: string | null = null;
+    let source: 'git' | 'mtime' = 'mtime';
+    try {
+      const { stdout } = await execFileP(
+        'git',
+        ['log', '-1', '--format=%ad', '--date=short', '--', readme],
+        { cwd: dirname(readme) },
+      );
+      const trimmed = stdout.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        date = trimmed;
+        source = 'git';
+      }
+    } catch {
+      // git log failed — fall through to mtime.
+    }
+    if (!date) {
+      try {
+        const stat = await fs.stat(readme);
+        date = stat.mtime.toISOString().slice(0, 10);
+      } catch {
+        skipped.push({ slug: basenameOf(readme), reason: 'no date source' });
+        continue;
+      }
+    }
+    candidates.push({
+      slug: basenameOf(readme),
+      readme,
+      date,
+      source,
+      appended: false,
+    });
+  }
+
+  if (!dryRun) {
+    for (const c of candidates) {
+      const line = `- ${c.date} — Closed. (backfill)`;
+      await appendTimelineEntry(c.readme, line);
+      c.appended = true;
+    }
+    if (candidates.length > 0) await touchDirtyMarker(conceptionPath, 'projects');
+  }
+
+  emit(
+    ctx,
+    {
+      dryRun,
+      candidates,
+      skipped,
+      totalScanned: readmes.length,
+    },
+    (data) => {
+      const d = data as { dryRun: boolean; candidates: BackfillEntry[] };
+      const lines: string[] = [];
+      if (d.candidates.length === 0) {
+        lines.push(
+          d.dryRun ? '(no backfill candidates)' : '(no backfill candidates — nothing written)',
+        );
+      } else {
+        lines.push(
+          d.dryRun
+            ? `Would append (${d.candidates.length}):`
+            : `Appended (${d.candidates.length}):`,
+        );
+        for (const c of d.candidates) {
+          lines.push(`  ${c.slug}: ${c.date} (${c.source})`);
+        }
+      }
+      return lines.join('\n') + '\n';
+    },
+  );
+}
+
+function basenameOf(readmePath: string): string {
+  const dir = dirname(readmePath);
+  const parts = dir.split(/[\\/]/);
+  return parts[parts.length - 1] ?? '';
 }
 
 /**
@@ -847,49 +1068,6 @@ async function leftoverBranchWarnings(
     `${parts.join('; ')} — run \`condash worktrees remove ${branch}\` ` +
       `then \`git branch -d ${branch}\` to clean up.`,
   ];
-}
-
-async function appendTimelineEntry(readmePath: string, line: string): Promise<void> {
-  const raw = await fs.readFile(readmePath, 'utf8');
-  const lines = raw.split(/\r?\n/);
-  let timelineHeading = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^##\s+(.+)$/);
-    if (m && m[1].trim().toLowerCase() === 'timeline') {
-      timelineHeading = i;
-      break;
-    }
-  }
-  if (timelineHeading === -1) {
-    // Append a new ## Timeline section at the end.
-    if (lines[lines.length - 1] !== '') lines.push('');
-    lines.push('## Timeline');
-    lines.push('');
-    lines.push(line);
-    if (lines[lines.length - 1] !== '') lines.push('');
-    await atomicWrite(readmePath, lines.join('\n'));
-    return;
-  }
-  // Find the end of the Timeline section (next ## or end of file).
-  let end = lines.length;
-  for (let i = timelineHeading + 1; i < lines.length; i++) {
-    if (/^##\s+/.test(lines[i])) {
-      end = i;
-      break;
-    }
-  }
-  let insertAt = end;
-  while (insertAt - 1 > timelineHeading && lines[insertAt - 1].trim() === '') {
-    insertAt--;
-  }
-  lines.splice(insertAt, 0, line);
-  await atomicWrite(readmePath, lines.join('\n'));
-}
-
-async function atomicWrite(path: string, content: string): Promise<void> {
-  const tmp = `${path}.${Date.now()}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, content, 'utf8');
-  await fs.rename(tmp, path);
 }
 
 function isoToday(): string {
@@ -940,11 +1118,13 @@ function printSubHelp(): void {
       '  resolve          Resolve a slug to its absolute path.',
       '  search           Search project READMEs and notes.',
       '  validate         Validate header(s) against canonical enums.',
-      '  status           get|set the **Status** field.',
-      '  close            Flip status to done + append closing timeline entry.',
+      '  status           get|set the **Status** field. set: --summary appends to ## Timeline on done-edges.',
+      '  close            Flip status to done + append closing timeline entry. --summary "..." annotates the entry.',
+      '  reopen           Flip status from done back to --status (default now) + append reopen entry.',
+      '  backfill-closed  One-shot: append `Closed.` timeline entries to legacy done items missing one. --dry-run previews.',
       '  index            Regenerate projects/index.md + month indexes.',
       '  create           Create a new item: --kind --slug --apps --title [--branch …].',
-      '  scan-promotions  Surface durable-finding candidates inside an item’s notes/.',
+      "  scan-promotions  Surface durable-finding candidates inside an item's notes/.",
       '',
     ].join('\n'),
   );

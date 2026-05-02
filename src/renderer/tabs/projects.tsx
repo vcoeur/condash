@@ -173,6 +173,34 @@ function cardDate(p: Project): string {
   return slugDate(p.slug);
 }
 
+/** First date for the card / popup timeline header. Always the slug's
+ * creation date — the project's start is canonical and not subject to
+ * timeline edits. */
+export function firstDate(p: Project): string {
+  return slugDate(p.slug);
+}
+
+/** Last date for the card / popup timeline header. Most recent entry's
+ * date in `## Timeline`; falls back to the slug date when the timeline
+ * is empty (legacy items pre-template). */
+export function lastDate(p: Project): string {
+  if (!p.timeline || p.timeline.length === 0) return slugDate(p.slug);
+  let max = p.timeline[0].date;
+  for (const e of p.timeline) {
+    if (e.date > max) max = e.date;
+  }
+  return max;
+}
+
+/** Render the first/last range as a single date when they coincide, an
+ * en-dash range otherwise. Drives both the card meta row and the popup
+ * Timeline pane's collapsed header. */
+export function dateRangeLabel(p: Project): string {
+  const first = firstDate(p);
+  const last = lastDate(p);
+  return first === last ? first : `${first} – ${last}`;
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -482,6 +510,10 @@ export function ProjectsView(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
+  /** Open the "+ New project" modal. Rendered as a top-of-tab button when
+   * the user isn't searching. Optional so consumers that don't expose the
+   * create flow keep working unchanged. */
+  onNewProject?: () => void;
 }) {
   const [query, setQuery] = createSignal('');
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -554,6 +586,21 @@ export function ProjectsView(props: {
 
   return (
     <div class="projects-stack">
+      <Show when={!isSearching() && props.onNewProject}>
+        <div class="projects-toolbar">
+          <button
+            type="button"
+            class="new-project-button"
+            onClick={() => props.onNewProject?.()}
+            title="Create a new project / incident / document"
+          >
+            <span class="new-project-button-plus" aria-hidden="true">
+              +
+            </span>
+            <span>New project</span>
+          </button>
+        </div>
+      </Show>
       <Show
         when={isSearching()}
         fallback={
@@ -1006,31 +1053,28 @@ function Card(props: {
           )}
         </Show>
 
-        {/* Row 3: meta — date + apps on the left, progress + warn (when
-            status is unknown) on the right. */}
-        <div class="meta">
-          <span
-            class="meta-icon date"
-            title={
-              props.item.status === 'done' && props.item.closedAt
-                ? `closed ${props.item.closedAt}`
-                : `created ${slugDate(props.item.slug)}`
-            }
-          >
-            {cardDate(props.item)}
-          </span>
-          <Show when={props.item.apps.length > 0}>
-            <span class="meta-icon apps" title={props.item.apps.join(', ')}>
-              <span class="apps-text">{props.item.apps.join(', ')}</span>
-            </span>
-          </Show>
-          <Show when={statusUnknown()}>
-            <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
-              <WarnIcon />
-              {props.item.status}
-            </span>
-          </Show>
-          <span class="meta-spacer" />
+        {/* Row 3: apps + branch — the project's where/in. Pulled out of
+            the packed meta row so the card has a clean "context" line
+            independent of step progress. */}
+        <Show when={props.item.apps.length > 0 || props.item.branch}>
+          <div class="meta meta-context">
+            <Show when={props.item.apps.length > 0}>
+              <span class="meta-icon apps" title={props.item.apps.join(', ')}>
+                <span class="apps-text">{props.item.apps.join(', ')}</span>
+              </span>
+            </Show>
+            <Show when={props.item.branch}>
+              <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
+                <span class="branch-text">{props.item.branch}</span>
+              </span>
+            </Show>
+          </div>
+        </Show>
+
+        {/* Row 4: step completion (left) + first/last dates (right).
+            Last row on the card. The dates come from the slug
+            (creation) and the most recent ## Timeline entry. */}
+        <div class="meta meta-bottom">
           <Show when={hasSteps(props.item.stepCounts)}>
             <button
               class="meta-icon expander"
@@ -1045,6 +1089,19 @@ function Card(props: {
               <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
             </button>
           </Show>
+          <Show when={statusUnknown()}>
+            <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
+              <WarnIcon />
+              {props.item.status}
+            </span>
+          </Show>
+          <span class="meta-spacer" />
+          <span
+            class="meta-icon date"
+            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
+          >
+            {dateRangeLabel(props.item)}
+          </span>
         </div>
       </div>
       <Show when={expanded() && props.item.steps.length > 0}>

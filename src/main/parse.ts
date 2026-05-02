@@ -4,6 +4,7 @@ import type { Deliverable, ItemKind, Project, Step, StepMarker } from '../shared
 import { HEADING2, parseHeader } from '../shared/header';
 import { countSteps } from '../shared/projects';
 import { toPosix } from '../shared/path';
+import { parseTimelineEntries } from './mutate';
 
 const STEP_LINE = /^\s*-\s\[([ ~x-])\]\s+(.*)$/;
 const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
@@ -26,6 +27,7 @@ export async function parseReadme(path: string): Promise<Project> {
   const stepCounts = countSteps(steps);
   const deliverables = extractDeliverables(lines, dirname(path));
   const closedAt = extractClosedAt(lines);
+  const timeline = parseTimelineEntries(raw);
 
   const slug = basename(dirname(path));
 
@@ -36,12 +38,14 @@ export async function parseReadme(path: string): Promise<Project> {
     kind: normaliseKind(header.kind),
     status: (header.status ?? 'backlog').toLowerCase(),
     apps: header.apps,
+    branch: header.branch,
     summary,
     steps,
     stepCounts,
     deliverables,
     deliverableCount: deliverables.length,
     closedAt,
+    timeline,
   };
 }
 

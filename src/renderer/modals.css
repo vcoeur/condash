@@ -887,3 +887,162 @@
 .about-links a:hover {
   text-decoration: underline;
 }
+
+/* "+ New project" modal — minimal-info form. Title + Kind + Status,
+ * with live-derived slug preview and incident-only extras. */
+.new-project-modal {
+  width: min(560px, 100%);
+}
+
+.new-project-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px 18px;
+}
+
+.new-project-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.new-project-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.new-project-input {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  outline: none;
+  transition: border-color 100ms ease;
+}
+
+.new-project-input:focus {
+  border-color: var(--accent);
+}
+
+.new-project-slug-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.new-project-slug-code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-body);
+  word-break: break-all;
+}
+
+.new-project-slug-empty {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.new-project-slug-edit {
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.new-project-slug-edit:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.new-project-slug-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.new-project-slug-input {
+  font-family: var(--font-mono);
+  flex: 1;
+}
+
+.new-project-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.new-project-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  cursor: pointer;
+  font-size: 12.5px;
+  user-select: none;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease;
+}
+
+.new-project-radio:hover {
+  background: var(--bg-hover);
+}
+
+.new-project-radio input[type='radio'] {
+  margin: 0;
+}
+
+.new-project-radio:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.new-project-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--col-warn, #c66);
+  border-radius: 6px;
+  background: rgba(255, 80, 80, 0.08);
+  color: var(--col-warn, #c66);
+  font-size: 12px;
+}
+
+.new-project-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.new-project-submit {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-elevated);
+  font-weight: 600;
+}
+
+.new-project-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
