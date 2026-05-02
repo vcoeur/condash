@@ -213,10 +213,12 @@ export interface DoneSubgroup {
 
 export interface DoneGrouping {
   /** Done projects whose effective close date is within the last 7 days.
-   * Sliding window — these projects also appear in their own month subgroup
-   * below, on purpose. Empty array when nothing closed recently. */
+   * Sliding window — these projects are excluded from `byMonth` so each
+   * project appears in exactly one subgroup. Empty array when nothing
+   * closed recently. */
   recent: Project[];
-  /** Per-close-month subgroups, descending. Empty months omitted. */
+  /** Per-close-month subgroups, descending. Empty months omitted. Excludes
+   * projects already shown in `recent`. */
   byMonth: DoneSubgroup[];
   /** The month that should be expanded by default on first render: the
    * current calendar month if it has any done items, otherwise the most
@@ -232,10 +234,15 @@ export function groupDone(done: readonly Project[], today: string): DoneGrouping
     d.setUTCDate(d.getUTCDate() - 7);
     return d.toISOString().slice(0, 10);
   })();
-  const recent = done.filter((p) => cardDate(p) >= sevenDaysAgo);
+  const recent: Project[] = [];
   const byMonthMap = new Map<string, Project[]>();
   for (const p of done) {
-    const month = cardDate(p).slice(0, 7);
+    const date = cardDate(p);
+    if (date >= sevenDaysAgo) {
+      recent.push(p);
+      continue;
+    }
+    const month = date.slice(0, 7);
     let bucket = byMonthMap.get(month);
     if (!bucket) {
       bucket = [];
@@ -624,7 +631,7 @@ export function ProjectsView(props: {
                             items={grouping.recent}
                             storageKey="done.recent"
                             defaultExpanded={true}
-                            hint="Sliding window — these projects also appear in their close month below."
+                            hint="Sliding window — projects move into their close month after 7 days."
                             onOpen={props.onOpen}
                             onToggleStep={props.onToggleStep}
                             onWorkOn={props.onWorkOn}
