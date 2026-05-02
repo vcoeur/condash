@@ -187,24 +187,32 @@ jobs:
       - name: List staged release files
         run: ls -la release-staging/
 
-      - name: Create or reuse prerelease for tag
+      - name: Create or reuse release for tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id >/dev/null 2>&1; then
-            echo "Prerelease for $TAG already exists; uploading into it."
+          if REL_ID=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id 2>/dev/null); then
+            # Promote an existing release (likely a prerelease from a prior
+            # run on this tag) to the latest non-prerelease release, so a
+            # re-run after the rename doesn't leave it stuck as prerelease.
+            gh api -X PATCH "repos/$GH_REPO/releases/$REL_ID" \
+              -F draft=false \
+              -F prerelease=false \
+              -F make_latest=true >/dev/null
+            echo "Release for $TAG already exists ($REL_ID); promoted to latest, uploading into it."
           else
             BODY=$'Unsigned Electron build of condash. Auto-update channel served from this release via `electron-updater`.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
             gh api -X POST "repos/$GH_REPO/releases" \
               -f tag_name="$TAG" \
               -F draft=false \
-              -F prerelease=true \
+              -F prerelease=false \
+              -F make_latest=true \
               -f name="condash $TAG" \
               -f body="$BODY" \
-              --jq '"Created prerelease " + (.id|tostring) + " for " + .tag_name'
+              --jq '"Created release " + (.id|tostring) + " for " + .tag_name'
           fi
 
       # Single uploader, no race. `--clobber` so a re-run replaces existing
