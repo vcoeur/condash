@@ -201,7 +201,7 @@ jobs:
             gh api -X PATCH "repos/$GH_REPO/releases/$REL_ID" \
               -F draft=false \
               -F prerelease=false \
-              -F make_latest=true >/dev/null
+              -f make_latest=true >/dev/null
             echo "Release for $TAG already exists ($REL_ID); promoted to latest, uploading into it."
           else
             BODY=$'Unsigned Electron build of condash. Auto-update channel served from this release via `electron-updater`.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
@@ -209,7 +209,7 @@ jobs:
               -f tag_name="$TAG" \
               -F draft=false \
               -F prerelease=false \
-              -F make_latest=true \
+              -f make_latest=true \
               -f name="condash $TAG" \
               -f body="$BODY" \
               --jq '"Created release " + (.id|tostring) + " for " + .tag_name'
