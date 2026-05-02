@@ -9,21 +9,31 @@ are still on disk; delete condash and the files don't move.
 
 ## What you'll see
 
-- **Projects** — items grouped by status (Current / Next / Backlog / Done).
-- **Code** — your repos, their dirty state, and quick launch buttons.
-- **Knowledge** — your reference notes, organised as a tree.
-- **History** — full-text search across everything you've ever written.
+- **Projects** (left pane) — items grouped by status (Current / Next /
+  Backlog / Done).
+- **Code** (right pane) — your repos, dirty state, run / open-with
+  buttons.
+- **Knowledge** (right pane, alternate) — your reference notes as cards.
+- **Terminal** — toggle with `` Ctrl+` ``.
+- **Search** — `Ctrl+Shift+F` for cross-tree fuzzy search.
+
+## Changing the conception folder
+
+**File → Open…** (`Ctrl+O`) opens the native folder picker again.
+
+**File → Settings…** (`Ctrl+,`) opens a tabbed editor for theme, the
+embedded terminal, and `configuration.json`.
 
 ## Where to go next
 
 This Help menu has the essentials, written to be read on their own:
 
-- **Quick start** — install, first launch, picking a folder.
+- **Quick start** — install, first launch, your first project.
 - **Keyboard shortcuts** — the few you'll use every day.
-- **Configuration (configuration.json)** — what the file controls.
+- **Configuration** — what the JSON files control.
 - **CLI overview** — the `condash` command line.
 - **Why Markdown-first** — the design pitch.
 
-Full documentation, with tutorials and per-feature guides, is online at
-**https://condash.vcoeur.com** — pressing the toolbar **?** also opens a
-button labelled "Open documentation site" in the Help menu.
+Full documentation lives at **https://condash.vcoeur.com**. The Help
+menu has an **Open documentation site** entry that opens it in your
+browser.

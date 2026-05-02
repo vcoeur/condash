@@ -38,9 +38,26 @@ async function boot(theme: Theme): Promise<Booted> {
   await cp(fixtureSrc, conceptionDir, { recursive: true });
 
   await mkdir(join(userDataDir, 'condash'), { recursive: true });
+  // Layout: projects + code visible at 50/50 (798px each + 4px splitter on
+  // the 1600px viewport) so the documentation screenshots show both panes
+  // with comparable weight. Terminal off by default — individual shots
+  // toggle it on as needed.
   await writeFile(
     join(userDataDir, 'condash', 'settings.json'),
-    JSON.stringify({ conceptionPath: conceptionDir, theme }, null, 2) + '\n',
+    JSON.stringify(
+      {
+        conceptionPath: conceptionDir,
+        theme,
+        layout: {
+          projects: true,
+          working: 'code',
+          terminal: false,
+          projectsWidth: 798,
+        },
+      },
+      null,
+      2,
+    ) + '\n',
     'utf8',
   );
 

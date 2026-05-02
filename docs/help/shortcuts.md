@@ -2,34 +2,41 @@
 
 The few you'll actually use.
 
-## Global
+## File / window
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+R` / `Cmd+R` | Reload window |
-| `F5` | Refresh data (re-read files) |
+| `Ctrl+O` | **Open…** — pick a different conception folder |
+| `Ctrl+,` | **Settings…** — open the configuration modal |
+| `Ctrl+Shift+F` | **Search…** — cross-tree fuzzy search |
+| `Ctrl+R` / `F5` | Reload window |
 | `Ctrl+Shift+I` | Toggle DevTools |
-| `Ctrl+0` / `Cmd+0` | Reset zoom |
-| `Ctrl+ +/-` | Zoom in/out |
+| `Ctrl+0` / `Ctrl+ +` / `Ctrl+ -` | Zoom reset / in / out |
 | `F11` | Toggle fullscreen |
-| `Ctrl+Q` / `Cmd+Q` | Quit |
 
-## Modals
-
-| Shortcut | Action |
-|---|---|
-| `Esc` | Close any modal (Help, note editor, gear) |
-| `Ctrl+Enter` | Save and close (note modal) |
-
-## Search (History tab)
+## Terminal pane
 
 | Shortcut | Action |
 |---|---|
-| `/` | Focus the search box (when not in an input) |
-| `Esc` | Clear search |
+| `` Ctrl+` `` | Toggle the terminal pane |
+| `Ctrl+Shift+V` | Paste path of the most recent screenshot |
+| `Ctrl+Left` / `Ctrl+Right` | Move the active terminal tab between left/right panes |
+| `Ctrl+F` (in xterm) | In-pane output search |
+| `Ctrl+Up` / `Ctrl+Down` | Jump between OSC 133 prompts (needs shell integration) |
 
-## Notes
+The terminal toggle, screenshot-paste, and move-tab shortcuts are
+configurable via the **Terminal** tab in **File → Settings…**.
 
-The exact set of shortcuts may grow between releases — see the online
-reference at **https://condash.vcoeur.com/reference/shortcuts/** for the
-current full list.
+## Note modal
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+F` | Open the find bar (view mode only) |
+| `Ctrl+E` | Toggle between view and edit |
+| `Ctrl+S` | Save (refuses if the file drifted on disk) |
+| `Esc` | Close the find bar, then close the modal |
+
+## More
+
+The full reference (config keys, focus rules, scope per shortcut) lives
+online at **https://condash.vcoeur.com/reference/shortcuts/**.
