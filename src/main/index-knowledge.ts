@@ -13,6 +13,7 @@
 
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
+import { filterTags } from './index-tag-filter';
 import type { DraftResult, IndexStrategy } from './index-tree';
 
 export const knowledgeStrategy: IndexStrategy = {
@@ -155,21 +156,17 @@ function deriveFileKeywords(filename: string, head: string): string[] {
       }
     }
   }
-  // Dedupe preserving order, cap at 8.
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const c of candidates) {
-    if (seen.has(c)) continue;
-    if (c.length < 3) continue;
-    seen.add(c);
-    out.push(c);
-    if (out.length >= 8) break;
+  // Apply the shared tag-quality filter (drops stop-words, dates, UUIDs, etc.)
+  // and dedupe; then cap at 8.
+  const cleaned = filterTags(candidates).slice(0, 8);
+  if (cleaned.length === 0) {
+    // Backstop: include the filename itself so the bullet has at least one
+    // tag. We still pass it through the filter so junk filenames don't sneak
+    // back in.
+    const fallback = filename.replace(/\.md$/, '').toLowerCase();
+    return filterTags([fallback]);
   }
-  if (out.length < 3) {
-    // Backstop: include the filename itself so the bullet has at least one tag.
-    out.push(filename.replace(/\.md$/, '').toLowerCase());
-  }
-  return out;
+  return cleaned;
 }
 
 function deriveSubdirKeywords(head: string): string[] {

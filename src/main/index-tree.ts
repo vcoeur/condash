@@ -15,12 +15,20 @@
  *
  * Idempotence guarantees:
  *  - Same tree contents → zero diff. Every existing entry whose target still
- *    exists is kept verbatim (description and tags untouched).
+ *    exists is kept verbatim (description and tags untouched) when curated.
  *  - Curated description / keyword edits survive across runs. To change them,
  *    edit the index entry directly; the engine never overwrites.
- *  - Subdir bullets get keyword-aggregation: tags surfaced by descendants
- *    are appended to the subdir bullet's tag list (set union, no drops).
- *    Curated tags are floors, not ceilings.
+ *  - Drafted-vs-curated distinction: every bullet the engine writes carries
+ *    a trailing `<!-- draft -->` HTML-comment marker. Removing the marker
+ *    promotes the bullet to "curated" — the engine stops touching it. Adding
+ *    or keeping the marker keeps the bullet under engine ownership: tags are
+ *    re-derived from the current source on every run, junk is filtered out,
+ *    and the aggregated tag list is capped at 8 (`TARGET_MAX`). Surplus
+ *    candidates are reported via `overTagDropped`.
+ *  - `--rewrite-aggregated` mode (one-shot migration): treats every existing
+ *    subdir bullet as drafted for the duration of the run, then re-derives
+ *    its tags from current source and adds the marker. Used to clean a tree
+ *    that was polluted by the legacy "set union, no drops" aggregator.
  *
  * Strategy interface plugs in the per-tree drafting heuristic (how to read a
  * new file's body and propose a description + keywords) and the optional
@@ -29,6 +37,14 @@
 
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
+import { isLowQualityTag } from './index-tag-filter';
+
+/** Per-bullet aggregated-tag cap. Surplus is dropped and surfaced in overTagDropped. */
+const TARGET_MAX = 8;
+
+/** HTML-comment marker rendered on every engine-drafted bullet. */
+const DRAFT_MARKER = '<!-- draft -->';
+const DRAFT_MARKER_RE = /\s+<!--\s*draft\s*-->\s*$/;
 
 // ---------------------------------------------------------------------------
 // Public report shape.
@@ -48,12 +64,15 @@ export interface IndexRegenReport {
   flaggedRenames: RenameFlag[];
   /** Per-tree validation warnings (currently: project header drift). */
   validationWarnings: ValidationWarning[];
-  /** Subdir bullets with > 8 tags after aggregation — for hand-pruning. */
-  overTagTarget: { indexPath: string; entry: string; tagCount: number }[];
+  /** Subdir bullets that hit the `TARGET_MAX` aggregation cap; lists the
+   * tags that didn't make the cut so a human can promote one to curated. */
+  overTagDropped: { indexPath: string; entry: string; dropped: string[] }[];
   /** Whether the tree's `.index-dirty` marker was cleared. */
   dirtyClear: boolean;
   /** True when called with --dry-run; nothing was written. */
   dryRun: boolean;
+  /** True when called with --rewrite-aggregated; surfaces in CLI output. */
+  rewriteAggregated: boolean;
 }
 
 export interface UpdateRow {
@@ -147,6 +166,9 @@ interface BulletEntry {
   tags: string[];
   /** Section heading the bullet currently lives under. */
   sectionHeading: string;
+  /** True when the bullet carries a trailing `<!-- draft -->` marker — the
+   * engine owns it and may rewrite tags on subsequent runs. False = curated. */
+  draft: boolean;
 }
 
 interface IndexFileShape {
@@ -189,22 +211,29 @@ const HEADING2_RE = /^##\s+(.+?)\s*$/;
 
 function matchBullet(
   line: string,
-): { name: string; link: string; desc: string; tags: string } | null {
-  const a = line.match(BULLET_WITH_TAGS_RE);
+): { name: string; link: string; desc: string; tags: string; draft: boolean } | null {
+  // Detect (and strip) a trailing `<!-- draft -->` marker before running the
+  // existing bullet regexes — keeps the regexes blissfully unaware of the
+  // marker.
+  const draft = DRAFT_MARKER_RE.test(line);
+  const stripped = draft ? line.replace(DRAFT_MARKER_RE, '') : line;
+  const a = stripped.match(BULLET_WITH_TAGS_RE);
   if (a)
     return {
       name: (a.groups as { name: string }).name,
       link: (a.groups as { link: string }).link,
       desc: (a.groups as { desc: string }).desc,
       tags: (a.groups as { tags: string }).tags,
+      draft,
     };
-  const b = line.match(BULLET_NO_TAGS_RE);
+  const b = stripped.match(BULLET_NO_TAGS_RE);
   if (b)
     return {
       name: (b.groups as { name: string }).name,
       link: (b.groups as { link: string }).link,
       desc: (b.groups as { desc: string }).desc,
       tags: '',
+      draft,
     };
   return null;
 }
@@ -218,9 +247,10 @@ function matchBullet(
 export async function regenerateIndex(
   conceptionPath: string,
   strategy: IndexStrategy,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; rewriteAggregated?: boolean } = {},
 ): Promise<IndexRegenReport> {
   const dryRun = options.dryRun === true;
+  const rewriteAggregated = options.rewriteAggregated === true;
   const rootPath = join(conceptionPath, strategy.rootDirName);
 
   const report: IndexRegenReport = {
@@ -231,9 +261,10 @@ export async function regenerateIndex(
     unchanged: [],
     flaggedRenames: [],
     validationWarnings: [],
-    overTagTarget: [],
+    overTagDropped: [],
     dirtyClear: false,
     dryRun,
+    rewriteAggregated,
   };
 
   try {
@@ -251,8 +282,10 @@ export async function regenerateIndex(
   const allDirs = await listAllDirectories(rootPath);
   allDirs.sort((a, b) => b.length - a.length); // deepest first
 
-  // Per-subtree aggregated keyword set, populated bottom-up.
-  const aggregatedKeywords = new Map<string, Set<string>>();
+  // Per-subtree aggregated keyword frequency map, populated bottom-up. The
+  // count tracks how many descendant bullets surfaced the tag — used to rank
+  // candidates when the cap forces us to drop some.
+  const aggregatedKeywords = new Map<string, Map<string, number>>();
 
   for (const dir of allDirs) {
     const result = await processDirectory(
@@ -261,6 +294,7 @@ export async function regenerateIndex(
       strategy,
       aggregatedKeywords,
       dryRun,
+      rewriteAggregated,
     );
 
     if (result.created) report.created.push(result.indexPath);
@@ -275,7 +309,7 @@ export async function regenerateIndex(
       report.unchanged.push(result.indexPath);
     }
     report.flaggedRenames.push(...result.renames);
-    report.overTagTarget.push(...result.overTags);
+    report.overTagDropped.push(...result.overTagDropped);
   }
 
   // Clear dirty marker on success.
@@ -304,15 +338,16 @@ interface DirResult {
   dropped: string[];
   tagsAdded: { entry: string; tags: string[] }[];
   renames: RenameFlag[];
-  overTags: { indexPath: string; entry: string; tagCount: number }[];
+  overTagDropped: { indexPath: string; entry: string; dropped: string[] }[];
 }
 
 async function processDirectory(
   dirAbsPath: string,
   conceptionPath: string,
   strategy: IndexStrategy,
-  aggregatedKeywords: Map<string, Set<string>>,
+  aggregatedKeywords: Map<string, Map<string, number>>,
   dryRun: boolean,
+  rewriteAggregated: boolean,
 ): Promise<DirResult> {
   const indexPath = join(dirAbsPath, 'index.md');
   const indexRel = relative(conceptionPath, indexPath);
@@ -325,7 +360,7 @@ async function processDirectory(
     dropped: [],
     tagsAdded: [],
     renames: [],
-    overTags: [],
+    overTagDropped: [],
   };
 
   // Enumerate immediate children, classified.
@@ -370,70 +405,105 @@ async function processDirectory(
     shape.bullets.delete(dropped.name);
   }
 
-  // Draft new entries for on-disk children that have no bullet yet.
+  // Draft new entries for on-disk children that have no bullet yet. New
+  // entries are always emitted with the `<!-- draft -->` marker so the human
+  // can spot them and curate before they ossify into "permanent" bullets.
   const newEntries: BulletEntry[] = [];
   for (const child of children) {
     const canonical = canonicalName(child);
     if (shape.bullets.has(canonical)) continue;
     if (result.renames.some((r) => r.newName === canonical)) continue;
 
-    const draft =
-      child.kind === 'file'
-        ? await strategy.draftFileEntry(dirAbsPath, child)
-        : await strategy.draftSubdirEntry(dirAbsPath, child, [
-            ...(aggregatedKeywords.get(child.absPath) ?? new Set<string>()),
-          ]);
+    let draft: DraftResult;
+    if (child.kind === 'file') {
+      draft = await strategy.draftFileEntry(dirAbsPath, child);
+    } else {
+      const ranked = rankAggregatedTags(aggregatedKeywords.get(child.absPath) ?? new Map());
+      draft = await strategy.draftSubdirEntry(dirAbsPath, child, ranked.kept);
+      if (ranked.dropped.length > 0) {
+        result.overTagDropped.push({
+          indexPath: indexRel,
+          entry: canonical,
+          dropped: ranked.dropped,
+        });
+      }
+    }
 
     const sectionHeading = pickBucketHeading(shape, child);
     const link = strategy.formatChildLink(dirAbsPath, child);
     const linkName = child.kind === 'directory' ? `${child.name}/` : child.name;
-    const bullet = formatBullet(linkName, link, draft);
+    const bullet = formatBullet(linkName, link, draft, /* isDraft */ true);
     newEntries.push({
       name: canonical,
       raw: bullet,
       tags: draft.keywords,
       sectionHeading,
+      draft: true,
     });
     result.added.push(canonical);
   }
 
-  // Aggregate this directory's keyword footprint upward (used by the parent
-  // pass for subdir-bullet keyword unions). Includes tags from kept bullets,
-  // dropped bullets are excluded.
-  const myAggregate = new Set<string>();
+  // Aggregate this directory's keyword footprint upward — frequency-counted
+  // so the parent pass can rank candidates when the cap forces drops. Tags
+  // from kept (curated *and* drafted) bullets here count as 1 each; descendant
+  // contributions add their own counts.
+  const myAggregate = new Map<string, number>();
+  const bumpTag = (tag: string, by = 1): void => {
+    myAggregate.set(tag, (myAggregate.get(tag) ?? 0) + by);
+  };
   for (const bullet of shape.bullets.values()) {
-    for (const t of bullet.tags) myAggregate.add(t);
+    for (const t of bullet.tags) bumpTag(t);
   }
   for (const bullet of newEntries) {
-    for (const t of bullet.tags) myAggregate.add(t);
+    for (const t of bullet.tags) bumpTag(t);
   }
   // Also fold descendants (already populated since we go deepest-first).
-  for (const [path, set] of aggregatedKeywords) {
+  for (const [path, freq] of aggregatedKeywords) {
     if (path.startsWith(dirAbsPath + '/')) {
-      for (const t of set) myAggregate.add(t);
+      for (const [t, n] of freq) bumpTag(t, n);
     }
   }
   aggregatedKeywords.set(dirAbsPath, myAggregate);
 
-  // For *existing* subdir bullets, append any newly-surfaced tags from
-  // descendant aggregations. Curated tags stay; we only ever append.
+  // For *existing* subdir bullets, re-derive tags from the descendant
+  // aggregate when (a) the bullet is drafted (engine-owned), or (b) we're in
+  // --rewrite-aggregated migration mode. Curated bullets are left alone.
   for (const child of children) {
     if (child.kind !== 'directory') continue;
     const canonical = canonicalName(child);
     const bullet = shape.bullets.get(canonical);
     if (!bullet) continue;
-    const childAggregate = aggregatedKeywords.get(child.absPath) ?? new Set();
-    const additions = [...childAggregate].filter((t) => !bullet.tags.includes(t));
-    if (additions.length === 0) continue;
-    const newTags = [...bullet.tags, ...additions];
-    const newRaw = replaceTagsInBullet(bullet.raw, newTags);
+    const isEngineOwned = bullet.draft || rewriteAggregated;
+    if (!isEngineOwned) continue;
+
+    const childFreq = aggregatedKeywords.get(child.absPath) ?? new Map();
+    const ranked = rankAggregatedTags(childFreq);
+    const newTags = ranked.kept;
+
+    // Compute the diff for the change report.
+    const additions = newTags.filter((t) => !bullet.tags.includes(t));
+    const removals = bullet.tags.filter((t) => !newTags.includes(t));
+
+    // Promote a curated-but-rewritten bullet to drafted: --rewrite-aggregated
+    // is the explicit "I want the engine to own this from now on" signal.
+    const becameDraft = !bullet.draft;
+    const willBeDraft = bullet.draft || rewriteAggregated;
+    const newRaw = replaceTagsInBullet(bullet.raw, newTags, willBeDraft);
+
     if (newRaw !== bullet.raw) {
       bullet.tags = newTags;
       bullet.raw = newRaw;
-      result.tagsAdded.push({ entry: canonical, tags: additions });
+      bullet.draft = willBeDraft;
+      if (additions.length > 0 || removals.length > 0 || becameDraft) {
+        result.tagsAdded.push({ entry: canonical, tags: additions });
+      }
     }
-    if (newTags.length > 8) {
-      result.overTags.push({ indexPath: indexRel, entry: canonical, tagCount: newTags.length });
+    if (ranked.dropped.length > 0) {
+      result.overTagDropped.push({
+        indexPath: indexRel,
+        entry: canonical,
+        dropped: ranked.dropped,
+      });
     }
   }
 
@@ -555,6 +625,7 @@ function parseIndex(raw: string): IndexFileShape {
         raw: line,
         tags,
         sectionHeading: section.heading,
+        draft: m.draft,
       });
     }
     if (dirCount === 0 && fileCount === 0) section.kind = 'empty';
@@ -776,19 +847,49 @@ function parseTagList(raw: string): string[] {
     .filter(Boolean);
 }
 
-function formatBullet(linkName: string, link: string, draft: DraftResult): string {
-  const desc = draft.description.replace(/\.$/, '');
-  const tags = draft.keywords.length > 0 ? ` \`[${draft.keywords.join(', ')}]\`` : '';
-  return `- [\`${linkName}\`](${link}) — *${desc}.*${tags}`;
+/**
+ * Rank aggregated tag candidates from a frequency map. Drops low-quality
+ * entries (stop-words, dates, UUIDs, etc.), then sorts by descending frequency
+ * with a name tiebreaker for stable output, then caps at `TARGET_MAX`. Returns
+ * the kept set plus any candidates that couldn't fit the cap (so the CLI can
+ * surface them via `overTagDropped`).
+ */
+function rankAggregatedTags(freq: Map<string, number>): { kept: string[]; dropped: string[] } {
+  const candidates: { tag: string; count: number }[] = [];
+  for (const [tag, count] of freq) {
+    if (isLowQualityTag(tag)) continue;
+    candidates.push({ tag, count });
+  }
+  candidates.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  const kept = candidates.slice(0, TARGET_MAX).map((c) => c.tag);
+  const dropped = candidates.slice(TARGET_MAX).map((c) => c.tag);
+  return { kept, dropped };
 }
 
-function replaceTagsInBullet(raw: string, tags: string[]): string {
-  // The bullet ends with ` `[t1, t2, …]` `. If absent, append.
+function formatBullet(
+  linkName: string,
+  link: string,
+  draft: DraftResult,
+  isDraft: boolean,
+): string {
+  const desc = draft.description.replace(/\.$/, '');
+  const tags = draft.keywords.length > 0 ? ` \`[${draft.keywords.join(', ')}]\`` : '';
+  const marker = isDraft ? ` ${DRAFT_MARKER}` : '';
+  return `- [\`${linkName}\`](${link}) — *${desc}.*${tags}${marker}`;
+}
+
+function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): string {
+  // Strip any trailing draft marker first so the tag-block regex sees clean
+  // input; we re-append the marker (if requested) at the end.
+  const stripped = raw.replace(DRAFT_MARKER_RE, '');
   const tagBlock = ` \`[${tags.join(', ')}]\``;
-  if (/\s*`?\[[^\]]*\]`?\s*$/.test(raw)) {
-    return raw.replace(/\s*`?\[[^\]]*\]`?\s*$/, '') + tagBlock;
+  let body: string;
+  if (/\s*`?\[[^\]]*\]`?\s*$/.test(stripped)) {
+    body = stripped.replace(/\s*`?\[[^\]]*\]`?\s*$/, '') + tagBlock;
+  } else {
+    body = stripped + tagBlock;
   }
-  return raw + tagBlock;
+  return isDraft ? `${body} ${DRAFT_MARKER}` : body;
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {

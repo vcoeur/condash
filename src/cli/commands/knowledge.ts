@@ -40,7 +40,11 @@ async function indexCommand(
   conceptionPath: string,
 ): Promise<void> {
   const dryRun = args.flags['dry-run'] === true;
-  const report = await regenerateIndex(conceptionPath, knowledgeStrategy, { dryRun });
+  const rewriteAggregated = args.flags['rewrite-aggregated'] === true;
+  const report = await regenerateIndex(conceptionPath, knowledgeStrategy, {
+    dryRun,
+    rewriteAggregated,
+  });
   emit(ctx, report, formatIndexReport);
 }
 
@@ -70,11 +74,14 @@ function formatIndexReport(report: IndexRegenReport): string {
       lines.push(`  ? ${r.indexPath}  ${r.oldName}  →  ${r.newName}`);
     }
   }
-  if (report.overTagTarget.length > 0) {
-    lines.push(`Over-target tag count (${report.overTagTarget.length}):`);
-    for (const o of report.overTagTarget) {
-      lines.push(`  · ${o.indexPath}  ${o.entry}  ${o.tagCount} tags`);
+  if (report.overTagDropped.length > 0) {
+    lines.push(`Cap reached, dropped surplus tags (${report.overTagDropped.length}):`);
+    for (const o of report.overTagDropped) {
+      lines.push(`  · ${o.indexPath}  ${o.entry}  dropped: ${o.dropped.join(', ')}`);
     }
+  }
+  if (report.rewriteAggregated) {
+    lines.push('Mode: --rewrite-aggregated (subdir bullets re-derived from descendants).');
   }
   if (report.dirtyClear) lines.push('Dirty marker cleared.');
   return lines.join('\n') + '\n';
@@ -488,6 +495,8 @@ function printSubHelp(): void {
       '  retrieve    Match a query against index.md keywords; falls back to grep.',
       '  stamp       Idempotently write a **Verified:** line into a file.',
       '  index       Regenerate every knowledge/**/index.md.',
+      '              Flags: --dry-run, --rewrite-aggregated (one-shot migration:',
+      '              re-derive every subdir bullet from descendants, mark drafted).',
       '',
     ].join('\n'),
   );

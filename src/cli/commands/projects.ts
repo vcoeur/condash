@@ -86,7 +86,11 @@ async function indexCommand(
   conceptionPath: string,
 ): Promise<void> {
   const dryRun = args.flags['dry-run'] === true;
-  const report = await regenerateIndex(conceptionPath, projectsStrategy, { dryRun });
+  const rewriteAggregated = args.flags['rewrite-aggregated'] === true;
+  const report = await regenerateIndex(conceptionPath, projectsStrategy, {
+    dryRun,
+    rewriteAggregated,
+  });
   emit(ctx, report, formatIndexReport);
 }
 
@@ -118,10 +122,10 @@ function formatIndexReport(report: IndexRegenReport): string {
       lines.push(`  ? ${r.indexPath}  ${r.oldName}  →  ${r.newName}`);
     }
   }
-  if (report.overTagTarget.length > 0) {
-    lines.push(`Over-target tag count (${report.overTagTarget.length}):`);
-    for (const o of report.overTagTarget) {
-      lines.push(`  · ${o.indexPath}  ${o.entry}  ${o.tagCount} tags`);
+  if (report.overTagDropped.length > 0) {
+    lines.push(`Cap reached, dropped surplus tags (${report.overTagDropped.length}):`);
+    for (const o of report.overTagDropped) {
+      lines.push(`  · ${o.indexPath}  ${o.entry}  dropped: ${o.dropped.join(', ')}`);
     }
   }
   if (report.validationWarnings.length > 0) {
