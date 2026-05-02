@@ -867,6 +867,22 @@
   color: var(--warn);
 }
 
+.branch-action-menu-item.disabled,
+.branch-action-menu-item:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.branch-action-menu-item.disabled .glyph,
+.branch-action-menu-item:disabled .glyph {
+  color: var(--text-faint);
+}
+
+.branch-action-menu-item.disabled:hover,
+.branch-action-menu-item:disabled:hover {
+  background: transparent;
+}
+
 .repo-kind-tag {
   font-family: var(--font-ui);
   font-size: 9px;

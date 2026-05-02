@@ -162,9 +162,7 @@ export function RepoRow(props: {
           </span>
         </Show>
         <span class="spacer" />
-        <Show when={props.repo.hasForceStop}>
-          <RepoCardMenu repo={props.repo} onForceStop={props.onForceStop} />
-        </Show>
+        <RepoCardMenu repo={props.repo} onForceStop={props.onForceStop} />
         <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>
           {props.repo.parent ? 'SUB' : 'REPO'}
         </span>
@@ -202,10 +200,11 @@ export function RepoRow(props: {
 
 /**
  * Card-level menu for per-repo actions. Sits at the right of the card
- * header. Currently carries one entry — Force-stop — which runs the
- * repo's configured `force_stop:` shell command. Future per-repo actions
- * land in the same dropdown. The menu is portaled (position: fixed) so
- * it always paints above neighbouring cards.
+ * header — always rendered for layout consistency, even when no entry
+ * is currently actionable. Carries one entry today (Force-stop), which
+ * is disabled when the repo has no `force_stop:` configured. Future
+ * per-repo actions land in the same dropdown. Portaled (position:
+ * fixed) so it always paints above neighbouring cards.
  */
 function RepoCardMenu(props: { repo: RepoEntry; onForceStop: (repo: RepoEntry) => void }) {
   const [menuOpen, setMenuOpen] = createSignal(false);
@@ -291,8 +290,16 @@ function RepoCardMenu(props: { repo: RepoEntry; onForceStop: (repo: RepoEntry) =
         >
           <button
             class="branch-action-menu-item warn"
+            classList={{ disabled: !props.repo.hasForceStop }}
             role="menuitem"
+            disabled={!props.repo.hasForceStop}
+            title={
+              props.repo.hasForceStop
+                ? undefined
+                : 'No force_stop: configured for this repo in configuration.json'
+            }
             onClick={() => {
+              if (!props.repo.hasForceStop) return;
               setMenuOpen(false);
               props.onForceStop(props.repo);
             }}
