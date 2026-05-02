@@ -175,6 +175,10 @@ export function NoteModal(props: {
   const [findOpen, setFindOpen] = createSignal(false);
   const [findQuery, setFindQuery] = createSignal('');
   const [findMatch, setFindMatch] = createSignal<{ index: number; total: number } | null>(null);
+  // Toggling out of edit mode tears down the CodeMirror instance, so any
+  // unsaved draft is gone the moment we flip to view. Hold the request in this
+  // signal until the user picks Save or Discard.
+  const [pendingViewSwitch, setPendingViewSwitch] = createSignal(false);
 
   const [content, { mutate: mutateContent, refetch: refetchContent }] = createResource(
     () => props.state?.path,
@@ -287,8 +291,8 @@ export function NoteModal(props: {
     focusFindMatch(bodyRef, next);
   };
 
-  const save = async () => {
-    if (!props.state) return;
+  const save = async (): Promise<boolean> => {
+    if (!props.state) return false;
     const expected = content() ?? '';
     const next = draft();
     setError(null);
@@ -298,7 +302,7 @@ export function NoteModal(props: {
         JSON.parse(next);
       } catch (err) {
         setError(`Invalid JSON: ${(err as Error).message}`);
-        return;
+        return false;
       }
     }
 
@@ -309,9 +313,47 @@ export function NoteModal(props: {
       setSavedAt(Date.now());
       // Snap the saved-at flag back after a moment so the indicator is transient.
       setTimeout(() => setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t)), 1500);
+      return true;
     } catch (err) {
       setError((err as Error).message);
+      return false;
     }
+  };
+
+  // Request a switch to view mode. If the editor is dirty, defer until the
+  // user resolves the Save / Discard / Cancel dialog so edits aren't silently
+  // lost when CodeMirror unmounts.
+  const requestViewMode = () => {
+    if (mode() !== 'edit') {
+      setMode('edit');
+      return;
+    }
+    if (dirty()) {
+      setPendingViewSwitch(true);
+      return;
+    }
+    setMode('view');
+    setFindOpen(false);
+  };
+
+  const confirmSaveAndSwitch = async () => {
+    const ok = await save();
+    if (!ok) return;
+    setPendingViewSwitch(false);
+    setMode('view');
+    setFindOpen(false);
+  };
+
+  const confirmDiscardAndSwitch = () => {
+    setDraft('');
+    setDirty(false);
+    setPendingViewSwitch(false);
+    setMode('view');
+    setFindOpen(false);
+  };
+
+  const cancelViewSwitch = () => {
+    setPendingViewSwitch(false);
   };
 
   const reload = async () => {
@@ -329,6 +371,11 @@ export function NoteModal(props: {
     if (!props.state) return;
 
     if (e.key === 'Escape') {
+      if (pendingViewSwitch()) {
+        e.preventDefault();
+        cancelViewSwitch();
+        return;
+      }
       if (findOpen()) {
         e.preventDefault();
         setFindOpen(false);
@@ -350,8 +397,7 @@ export function NoteModal(props: {
 
     if (mod && e.key.toLowerCase() === 'e') {
       e.preventDefault();
-      setMode((m) => (m === 'edit' ? 'view' : 'edit'));
-      setFindOpen(false);
+      requestViewMode();
       return;
     }
 
@@ -431,7 +477,7 @@ export function NoteModal(props: {
           <button
             class="modal-button"
             classList={{ active: mode() === 'edit' }}
-            onClick={() => setMode((m) => (m === 'edit' ? 'view' : 'edit'))}
+            onClick={requestViewMode}
             title={mode() === 'edit' ? 'View (Ctrl+E)' : 'Edit (Ctrl+E)'}
             aria-label={mode() === 'edit' ? 'Switch to view mode' : 'Switch to edit mode'}
           >
@@ -508,6 +554,29 @@ export function NoteModal(props: {
 
         <Show when={error()}>
           <div class="modal-error">{error()}</div>
+        </Show>
+
+        <Show when={pendingViewSwitch()}>
+          <div class="modal-confirm" role="alertdialog" aria-label="Unsaved changes">
+            <span class="modal-confirm-message">Unsaved changes — switch to view mode?</span>
+            <button
+              class="modal-button"
+              onClick={() => void confirmSaveAndSwitch()}
+              title="Save and switch to view"
+            >
+              Save
+            </button>
+            <button
+              class="modal-button"
+              onClick={confirmDiscardAndSwitch}
+              title="Discard changes and switch to view"
+            >
+              Discard
+            </button>
+            <button class="modal-button" onClick={cancelViewSwitch} title="Stay in edit mode">
+              Cancel
+            </button>
+          </div>
         </Show>
 
         <div class="modal-body" ref={(el) => (bodyRef = el)} onClick={handleBodyClick}>
