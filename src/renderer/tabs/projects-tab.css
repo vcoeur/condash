@@ -177,6 +177,38 @@
   padding: 0;
 }
 
+/* Subgroup container — vertical stack of nested SubGroup blocks inside
+ * Done. Overrides the cards-grid layout that .group-body would otherwise
+ * impose, so subgroups stack one per row. */
+.group-body.subgroups {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Subgroup — nested collapsible block (Recent / per-month) inside Done.
+ * Lighter chrome than the outer status group: no top margin between
+ * siblings, a smaller header, and a subtle left rail to read as nested. */
+.group-block.subgroup {
+  margin-top: 0;
+  padding: 2px 0 8px 12px;
+  border-left: 1px solid var(--border);
+}
+
+.group-block.subgroup:first-child {
+  margin-top: 0;
+}
+
+.group-block.subgroup .group-header {
+  padding: 6px 6px 8px;
+}
+
+.group-block.subgroup .group-header .name {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
 .row[draggable='true'] {
   cursor: grab;
 }
