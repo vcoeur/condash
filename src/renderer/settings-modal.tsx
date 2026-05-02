@@ -330,8 +330,12 @@ export function SettingsModal(props: {
     setError(null);
     setPending(true);
     try {
-      await window.condash.writeNote(props.configurationPath, text, next);
-      mutateContent(next);
+      // configuration.json is canonicalised through the Zod schema on the
+      // main side, so the bytes that reach disk can differ from `next`
+      // (e.g. Zod reorders new keys into schema order). Cache the actual
+      // written content so the next save's CAS baseline matches disk.
+      const written = await window.condash.writeNote(props.configurationPath, text, next);
+      mutateContent(written);
       setSavedAt(Date.now());
       setTimeout(() => setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t)), 1500);
     } catch (err) {

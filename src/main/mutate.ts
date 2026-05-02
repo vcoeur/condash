@@ -163,7 +163,7 @@ export async function writeNote(
   path: string,
   expectedContent: string,
   newContent: string,
-): Promise<void> {
+): Promise<string> {
   return withFileQueue(path, async () => {
     let onDisk = '';
     try {
@@ -181,6 +181,7 @@ export async function writeNote(
         ? validateAndCanonicaliseConfig(newContent)
         : newContent;
     await atomicWrite(path, finalContent);
+    return finalContent;
   });
 }
 

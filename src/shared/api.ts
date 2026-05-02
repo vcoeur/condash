@@ -74,7 +74,15 @@ export interface CondashApi {
   listProjectFiles(path: string): Promise<ProjectFileEntry[]>;
   setStatus(path: string, newStatus: string): Promise<void>;
   readNote(path: string): Promise<string>;
-  writeNote(path: string, expectedContent: string, newContent: string): Promise<void>;
+  /**
+   * Atomically write `newContent` if disk still matches `expectedContent`.
+   * For `configuration.json`, the main process canonicalises the JSON
+   * through the Zod schema before writing — so the bytes that hit disk can
+   * differ from `newContent` (e.g. Zod reorders object keys to schema
+   * order). Returns whatever was actually written so the caller can keep
+   * its CAS baseline aligned with disk.
+   */
+  writeNote(path: string, expectedContent: string, newContent: string): Promise<string>;
   /**
    * Read one of the bundled help docs (`docs/<name>.md`). The main process
    * whitelists the shipped names; anything else rejects.
