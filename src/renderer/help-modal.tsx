@@ -5,33 +5,19 @@ import 'highlight.js/styles/github.css';
 
 export type HelpDoc =
   | 'welcome'
-  | 'getting-started'
-  | 'install'
-  | 'first-launch'
+  | 'quick-start'
   | 'shortcuts'
   | 'configuration'
   | 'cli'
-  | 'mutations'
-  | 'architecture'
-  | 'why-markdown'
-  | 'values'
-  | 'non-goals'
-  | 'index';
+  | 'why-markdown';
 
 const TITLE: Record<HelpDoc, string> = {
   welcome: 'Welcome to condash',
-  index: 'Documentation index',
-  'getting-started': 'Getting started',
-  install: 'Install',
-  'first-launch': 'First launch',
+  'quick-start': 'Quick start',
   shortcuts: 'Keyboard shortcuts',
-  configuration: 'Configuration reference',
-  cli: 'CLI reference',
-  mutations: 'Mutation model',
-  architecture: 'Architecture',
+  configuration: 'Configuration',
+  cli: 'CLI overview',
   'why-markdown': 'Why Markdown-first',
-  values: 'Values',
-  'non-goals': 'Non-goals',
 };
 
 /**

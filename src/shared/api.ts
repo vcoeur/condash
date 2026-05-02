@@ -205,33 +205,19 @@ export type MenuCommand =
   | 'refresh'
   | 'about'
   | 'help-welcome'
-  | 'help-getting-started'
-  | 'help-install'
-  | 'help-first-launch'
+  | 'help-quick-start'
   | 'help-shortcuts'
   | 'help-configuration'
   | 'help-cli'
-  | 'help-mutations'
-  | 'help-architecture'
-  | 'help-why-markdown'
-  | 'help-values'
-  | 'help-non-goals'
-  | 'help-index';
+  | 'help-why-markdown';
 
 export type HelpDocName =
   | 'welcome'
-  | 'getting-started'
-  | 'install'
-  | 'first-launch'
+  | 'quick-start'
   | 'shortcuts'
   | 'configuration'
   | 'cli'
-  | 'mutations'
-  | 'architecture'
-  | 'why-markdown'
-  | 'values'
-  | 'non-goals'
-  | 'index';
+  | 'why-markdown';
 
 declare global {
   interface Window {

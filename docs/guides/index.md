@@ -1,31 +1,32 @@
 ---
-title: Guides · condash
+title: Use · condash
 description: Task-focused how-tos for the parts of condash you probably won't discover by browsing.
 ---
 
-# Guides
+# Use
 
 > **Audience.** Daily user.
 
-Each guide answers one specific question. They assume you've worked through the [Tutorials](../tutorials/index.md) and know the basic shape of the tool.
+Each guide answers one specific question.
 
-**Configuration**
+**Setup**
 
 - [Configure the conception path](configure-conception-path.md)
 - [Repositories and open-with buttons](repositories-and-open-with.md)
-- [Multi-machine setup](multi-machine.md)
 
-**Daily use**
+**Daily**
 
-- [Use the embedded terminal](terminal.md)
-- [Link items with wikilinks](wikilinks.md)
+- [Embedded terminal](terminal.md)
+- [Wikilinks between items](wikilinks.md)
 - [The knowledge tree](knowledge-tree.md)
-- [Search your history](search.md)
-- [Deliverables and PDFs](deliverables.md)
 - [Troubleshooting](troubleshooting.md)
 
-**Extending**
+**More**
 
+- [A day with condash](../tutorials/daily-loop.md)
+- [Search your history](search.md)
+- [Deliverables and PDFs](deliverables.md)
+- [Multi-machine setup](multi-machine.md)
 - [Extend the management skill](skill-extensions.md)
 
 Looking to look something up rather than do something? Go to the [Reference](../reference/index.md).

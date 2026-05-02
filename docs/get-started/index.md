@@ -1,16 +1,18 @@
 ---
 title: Get started · condash
-description: Install condash, find the right release for your OS, launch it for the first time.
+description: Install condash, launch it for the first time, and walk through your first project.
 ---
 
 # Get started
 
 > **Audience.** New user.
 
-Three steps to a working condash install. Each takes about a minute if the download is fast.
+Three steps to a working condash install:
 
-1. **[Install](install.md)** — download the installer for your OS, bypass the unsigned-binary warning, and launch condash.
-2. **[Find a release](releases.md)** — how to check for updates, what each version tag means, and how the auto-updater behaves.
-3. **[First launch](first-launch.md)** — pick your conception tree on first open; condash remembers it from then on.
+1. **[Install](install.md)** — download for your OS and bypass the unsigned-binary warning.
+2. **[First launch](first-launch.md)** — point condash at the folder it should render.
+3. **[Walkthrough — first run](../tutorials/first-run.md)** — a guided tour of the dashboard against the demo tree.
 
-Once condash is running, the **[Tutorials](../tutorials/index.md)** take you through your first project, and the **[Guides](../guides/index.md)** cover task-focused how-tos.
+Then **[Walkthrough — first project](../tutorials/first-project.md)** for creating items by hand.
+
+Once condash is running, the **[Use](../guides/index.md)** section covers task-focused how-tos and the **[Reference](../reference/index.md)** has every key, flag, and field.
