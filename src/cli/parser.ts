@@ -25,6 +25,7 @@ const BOOL_FLAGS = new Set([
   'version',
   'with-notes',
   'dry-run',
+  'rewrite-aggregated',
   'all',
   'include-worktrees',
   'header',
