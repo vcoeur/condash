@@ -93,9 +93,11 @@ Commands are parsed shell-style, so quoting works the way you'd expect: `"/Appli
 
 Built-in defaults for the three slots reproduce the previous IntelliJ / VS Code / terminal behaviour, so a `configuration.json` without any `open_with` section still gives functional buttons. Override only the slots you want to customise.
 
-## Editing via the gear modal
+## Editing via the Settings modal
 
-Click the gear icon in the header to open a plain-text JSON editor backed by `configuration.json`. Save is atomic (`tmp` → `fsync` → `rename`) and runs through the strict zod schema before the write lands on disk; changes to `open_with` / `pdf_viewer` / `terminal` reload the dashboard live, while `workspace_path`, `worktrees_path`, and the `repositories` list need a restart.
+Open **File → Settings…** (`Ctrl+,`) and pick the **Workspace**, **Repositories**, or **Open with** tab — each has form fields backed by `configuration.json`. There is no in-modal JSON editor; for keys outside the modal (e.g. nested `repositories.primary[].submodules` shapes, `pdf_viewer`), use the **Open configuration.json externally** button in the header to edit the raw JSON in your `$EDITOR`. Either path runs through the same atomic save + strict zod schema.
+
+Changes to `open_with` and `terminal` reload the dashboard live; `workspace_path`, `worktrees_path`, and the `repositories` list need a restart.
 
 Prefer overriding IDE launcher paths per machine? Put the override in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` instead — `settings.json` wins on overlap.
 

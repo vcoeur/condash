@@ -61,19 +61,26 @@ of the repo, worktree, or directory being opened.
 
 ## Editing in the app
 
-**File → Settings…** (`Ctrl+,`) — or the gear icon in the header —
-opens a tabbed modal:
+**File → Settings…** (`Ctrl+,`) opens a tabbed modal. There is no
+in-modal JSON editor — each preference has its own form control,
+grouped by which file it writes to.
 
-- **General** — theme.
-- **Terminal** — embedded terminal preferences. Writes to `settings.json`.
-- **`configuration.json`** — full JSON editor for the per-tree file
-  (atomic save, validated against the schema; malformed shapes are
-  rejected before the write lands on disk).
-- **Shortcuts** — keyboard reference.
+**Global Condash Settings** (write to `settings.json`):
 
-`settings.json` has no full-file editor beyond the General + Terminal
-tabs — hand-edit it if you need keys outside those surfaces. condash
-re-reads on next launch.
+- **Appearance** — theme.
+- **Terminal** — embedded terminal preferences (shell, shortcuts,
+  xterm.js fonts and colours).
+
+**Conception Configuration** (write to `configuration.json`):
+
+- **Workspace** — `workspace_path`, `worktrees_path`.
+- **Repositories** — primary / secondary list, per-repo `run` /
+  `force_stop`.
+- **Open with** — slot labels and commands.
+
+Power users can hit **Open configuration.json externally** in the
+header to edit the raw JSON in their `$EDITOR`. Modal writes round-trip
+through the same atomic save + schema validation path either way.
 
 ## When changes apply
 

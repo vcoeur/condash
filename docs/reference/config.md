@@ -256,9 +256,22 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 ## Editing from the dashboard
 
-Click the gear icon in the header. A modal opens with a plain-text JSON editor showing the contents of `configuration.json` — the tree-level file. Save is atomic (`tmp` → `fsync` → `rename`), so a crash during save never corrupts the file. Save runs the JSON through the [strict zod schema](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) — malformed shapes are rejected before the write lands on disk and the modal surfaces the validation error.
+**File → Settings…** (`Ctrl+,`) opens a tabbed modal. There is no in-modal JSON editor: each persisted preference has its own form control, grouped by which file it writes to.
 
-Editing `settings.json` is hand-edit only today — no UI surface beyond the first-launch folder picker and the theme toggle. Use your editor of choice; condash re-reads it on the next launch.
+**Global Condash Settings** (write to `settings.json`):
+
+- **Appearance** — theme.
+- **Terminal** — embedded terminal preferences (shell, shortcuts, xterm.js fonts and colours).
+
+**Conception Configuration** (write to `configuration.json`):
+
+- **Workspace** — `workspace_path`, `worktrees_path`.
+- **Repositories** — primary / secondary list, per-repo `run` / `force_stop`.
+- **Open with** — slot labels and commands.
+
+A header button — **Open configuration.json externally** — shells out via `window.condash.openPath` so power users can edit the raw JSON in their `$EDITOR` instead. Writes that go through the modal are funnelled through `patchConfig`, which parses the live file, applies a mutator, drops empty leaves, and round-trips through the `note.write` IPC's atomic CAS — same path as the in-modal forms — so the [strict zod schema](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) is enforced both ways.
+
+Keys not surfaced in the modal — `pdf_viewer`, the full `open_with` shape across both files when you want overrides — still need a hand-edit. See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
 
 Changes that **do** need a restart:
 

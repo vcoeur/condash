@@ -32,7 +32,7 @@ Per line:
 - **Path** — relative to the item's directory. Must end in `.pdf`.
 - **Description** (optional, after ` — `) — a one-line note shown under the label.
 
-Multiple deliverables per item are fine; each gets its own card row.
+Multiple deliverables per item are fine; each renders as its own row in the Deliverables section of the item modal.
 
 ## Filename convention
 
@@ -40,17 +40,16 @@ Place PDFs under `<item>/deliverables/`. The directory exists for exactly this: 
 
 Slug the filename to match the item: `<item-slug>.pdf` for the primary deliverable, `<item-slug>-<suffix>.pdf` for secondary ones. This keeps them discoverable in bare `ls` listings without peeking inside each item.
 
-## What the card looks like
+## What the modal looks like
 
-![An item card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-light.png#only-light)
-![An item card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-dark.png#only-dark)
+![An item modal with a Deliverables section and a PDF entry](../assets/screenshots/item-document-with-pdf-light.png#only-light)
+![An item modal with a Deliverables section and a PDF entry](../assets/screenshots/item-document-with-pdf-dark.png#only-dark)
 
-- A **PDF badge** on the collapsed card tells you "this item has a deliverable".
-- Expanded, the **Deliverables** section lists every entry with its label and description.
-- Clicking a label opens the file in an embedded PDF viewer modal.
-- A **Download** icon next to the label saves the PDF to your OS.
+- Open the item modal (click the card). Below the body, the **Deliverables** section lists every entry with its label, description, and resolved path.
+- Click a row to open the PDF in an embedded viewer modal.
+- The viewer's header has an **↗ Open in OS default viewer** button (`shell.openPath`, so whichever app your OS associates with `.pdf`) and an **× Close** button.
 
-The embedded viewer uses pdf.js, vendored under `frontend/vendor/pdfjs/`. No external dependency; the viewer works offline.
+The embedded viewer is an Electron `<webview>` pointed at a `file://` URL — Chrome's built-in PDF rendering does the work. No bundled pdf.js, no external dependency, works offline.
 
 ## Generating the PDF
 
@@ -68,24 +67,11 @@ The script handles heading-level shifts, section numbering, Mermaid diagrams, an
 
 Refresh the dashboard; the PDF badge lights up and the viewer picks up the file. No extra registration step.
 
-## Overriding the viewer
+## Opening PDFs in your OS viewer
 
-If you'd rather open PDFs in your OS-native viewer (Evince, Okular, Preview, Sumatra, …), configure the `pdf_viewer` fallback chain in `settings.json`:
+Click **↗** in the embedded viewer's header. condash hands the file to `shell.openPath()`, which uses whatever app your OS has registered for `.pdf` (Evince / Okular on Linux, Preview on macOS, the bundled Reader / Acrobat on Windows). On Linux you can change that default through `xdg-mime default`; condash itself does no path resolution.
 
-```json
-{
-  "pdf_viewer": ["xdg-open {path}", "evince {path}"]
-}
-```
-
-Rules:
-
-- The value is a **bare list** of `"<command> {path}"` strings. Not `pdf_viewer.commands = [...]` — that shape was considered and rejected; condash errors on startup if it sees a nested object.
-- Commands are tried in order; the first one whose binary resolves on `$PATH` wins.
-- `{path}` is the absolute path of the PDF.
-- With `pdf_viewer` set, clicking the label still opens the embedded viewer, but the viewer's **Open externally** button uses your chain. If you set `pdf_viewer` to an empty list (or omit it), the button falls back to `xdg-open` / OS default.
-
-To remove the embedded viewer entirely and go straight to the external chain: not currently supported — the embedded viewer is the default and you go external on a per-click basis.
+> **Note.** `configuration.json` accepts a `pdf_viewer: string[]` key (a fallback chain like `["xdg-open {path}", "evince {path}"]`) — but it is currently parsed and ignored. The OS default wins regardless. If you want the chain honoured, file an issue or open a PR; the schema slot is already there.
 
 ## Deliverable lifecycle
 
