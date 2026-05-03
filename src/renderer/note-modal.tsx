@@ -2,7 +2,7 @@ import { createEffect, createResource, createSignal, onCleanup, onMount, Show } 
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
-import 'highlight.js/styles/github.css';
+import './code-theme.css';
 
 let editorModulePromise: Promise<typeof import('./editor')> | null = null;
 function loadEditor(): Promise<typeof import('./editor')> {
