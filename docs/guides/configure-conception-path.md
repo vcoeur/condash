@@ -17,7 +17,11 @@ On first launch with no tree configured, condash opens a native folder picker. P
 
 This is the right setup for your main tree — the path you work in every day.
 
-## Option 2 — edit `settings.json` by hand
+## Option 2 — File → Open…
+
+After the first launch, **File → Open…** (shortcut `Ctrl+O`) reopens the same native folder picker. Pick a different directory and condash reloads against it without restarting; the new path is written to `settings.json`. This is the friendly way to switch between two trees you both use regularly.
+
+## Option 3 — edit `settings.json` by hand
 
 Change the saved path without re-launching the picker by editing `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` directly:
 
@@ -29,16 +33,7 @@ Change the saved path without re-launching the picker by editing `${XDG_CONFIG_H
 
 Delete the file to force the folder picker on the next launch.
 
-## Resolution order
-
-On startup condash checks, in order:
-
-1. `CONDASH_CONCEPTION_PATH` environment variable (one-shot override).
-2. `conception_path` in `settings.json`.
-3. First-launch folder picker. Writes the choice back to `settings.json`.
-4. Hard error — condash refuses to start.
-
-### Option 3 — `CONDASH_CONCEPTION_PATH` for a one-off
+## Option 4 — `CONDASH_CONCEPTION_PATH` for a one-off
 
 A session-scoped override:
 
@@ -48,11 +43,22 @@ CONDASH_CONCEPTION_PATH=/tmp/scratch-tree condash
 
 The env var wins over `settings.json` for that launch only. It is **not** persisted, so the next plain `condash` falls back to the saved path. Useful for demos and scratch trees.
 
+## Resolution order
+
+On startup condash checks, in order:
+
+1. `CONDASH_CONCEPTION_PATH` environment variable (one-shot override).
+2. `conception_path` in `settings.json`.
+3. First-launch folder picker. Writes the choice back to `settings.json`.
+4. Hard error — condash refuses to start.
+
+**File → Open…** doesn't fit this list because it runs after startup: it triggers the same picker as step 3 on demand, then stores its result the same way.
+
 ## When to use a scratch tree
 
 A scratch tree is any directory with a minimal `projects/YYYY-MM/` layout that you point condash at temporarily. Common reasons:
 
-- **Learning** — a fresh tree you create yourself, walked through in [First run](../tutorials/first-run.md).
+- **Learning** — a fresh tree you create yourself, walked through in [Get started](../get-started/index.md#first-launch).
 - **Onboarding a teammate** — fork a small sample tree, have them point condash at it, walk them through creating their first item, then point them at the team tree.
 - **Snapshot of a bug** — reduce a broken tree to a minimal reproducer, commit it, and file the issue with the snapshot path in the repro steps.
 

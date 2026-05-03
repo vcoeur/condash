@@ -87,24 +87,7 @@ If the folder you picked is empty, condash shows a **Welcome screen** with three
 - **Take the tour** — opens the in-app Help.
 - **Open the documentation** — `condash.vcoeur.com` in your browser.
 
-### Changing the folder later
-
-Three ways:
-
-- **Menu** — **File → Open…** opens the folder picker again. (Shortcut: `Ctrl+O`.)
-- **CLI** — `condash config conception-path /path/to/other-tree`.
-- **Hand-edit** — `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux), `~/Library/Application Support/condash/settings.json` (macOS), `%APPDATA%\condash\settings.json` (Windows). Set `conception_path` and relaunch.
-
-### Editing settings without leaving the app
-
-**File → Settings…** (`Ctrl+,`) opens a tabbed modal:
-
-- **General** — theme.
-- **Terminal** — embedded terminal preferences (shell, shortcuts, xterm.js settings).
-- **`configuration.json`** — full JSON editor for the per-tree config (atomic save, validated against the schema).
-- **Shortcuts** — keyboard reference.
-
-Per-tree config (`<conception>/configuration.json`) is for things teammates share — workspace path, repo list, launcher commands. Per-machine config (`settings.json`) is for things specific to this laptop — your editor binary, your terminal emulator, your theme. See **[Config files reference](../reference/config.md)** for every key.
+→ To switch trees later, edit settings, or use a one-off path: **[Configure the conception path](../guides/configure-conception-path.md)**.
 
 ## Your first project
 

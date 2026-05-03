@@ -51,23 +51,65 @@ URLs in the buffer are clickable thanks to the web-links addon — clicking open
 
 ## Shell integration { #shell-integration }
 
-Drop-in snippets for bash, zsh, and fish under `integrations/` make the terminal render **semantic prompts** — a coloured gutter mark next to each prompt boundary (green = exit 0, red = non-zero) and `Ctrl+Up` / `Ctrl+Down` to jump between them. They emit two standard OSC sequences:
+Drop-in snippets for bash, zsh, and fish make the terminal render **semantic prompts** — a coloured gutter mark next to each prompt boundary (green = exit 0, red = non-zero) and `Ctrl+Up` / `Ctrl+Down` to jump between them. They emit two standard OSC sequences:
 
 - **OSC 133** — prompt-boundary protocol (`A` prompt-start, `B` prompt-end, `C` command-start, `D;<exit>` command-end with exit code). Same protocol used by iTerm2, WezTerm, kitty, and Warp.
 - **OSC 7** — current working directory (`file://host/path`). Drives the cwd-basename tab label.
 
-Source the file matching your shell from your rc:
+### Where the snippets live
+
+The three files — `osc133.bash`, `osc133.zsh`, `osc133.fish` — sit in the condash source tree under [`integrations/`](https://github.com/vcoeur/condash/tree/main/integrations). They are **not** included in the .deb / AppImage / .dmg / .exe installers, since shell rc files are user-owned. Either:
+
+- Clone the repo somewhere stable and source from that path, e.g. `~/src/condash/integrations/osc133.zsh`.
+- Download just the file you need with `curl` / `wget` from the link above (raw view) and drop it next to your rc, e.g. `~/.config/condash/osc133.zsh`.
+
+Substitute `<path>` below with whichever location you used.
+
+### Source it from your rc
+
+Pick the line that matches your shell. Each snippet is idempotent (the `[[ -f ... ]]` / `test -f` guard skips silently if the file is missing, so the rc is safe to commit even on machines where condash isn't installed).
+
+**bash — `~/.bashrc`**
 
 ```bash
-# ~/.bashrc, ~/.zshrc, or ~/.config/fish/config.fish
-source /path/to/condash/integrations/osc133.bash
+[[ -f <path>/osc133.bash ]] && source <path>/osc133.bash
 ```
 
-Snippets sourced from a non-condash terminal print invisible escape sequences only — they do not modify the prompt's visible appearance. See `integrations/README.md` for the verification recipe.
+**zsh — `~/.zshrc`**
+
+```zsh
+[[ -f <path>/osc133.zsh ]] && source <path>/osc133.zsh
+```
+
+**fish — `~/.config/fish/config.fish`**
+
+```fish
+test -f <path>/osc133.fish; and source <path>/osc133.fish
+```
+
+Open a fresh tab (`+` in the terminal pane) so the new rc is picked up. Existing tabs need to be reloaded — the snippet only takes effect for processes spawned after the source.
+
+### Verifying
+
+In a fresh tab, run:
+
+```bash
+printf '\e]133;A\a'
+```
+
+That sends a manual prompt-start mark. condash should paint a small accent-coloured gutter dot on that line. Then run a failing command:
+
+```bash
+false
+```
+
+The gutter mark for the next prompt should switch to red (exit 1). If neither paints, the snippet didn't load — check the path you substituted, and that you reopened the tab.
+
+A snippet sourced from a non-condash terminal (gnome-terminal, iTerm2, …) emits the same invisible escape sequences and is silently ignored — there is no visible change in those terminals, so it is safe to leave the line in your shared rc.
 
 ## Live theming and font tweaks (Settings → Terminal)
 
-The gear modal's **Terminal** tab live-edits `terminal.xterm` in `configuration.json`: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. Changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
+**File → Settings… → Terminal** (`Ctrl+,`, then the **Terminal** tab) live-edits the `terminal.xterm` block: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. The Terminal tab sits under **Global Condash Settings**, so it writes to `settings.json` (per-machine). For a tree-wide default that teammates pick up automatically, hand-edit `terminal.xterm` in `configuration.json` instead. Either way, changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
 
 See [`terminal.xterm` in the config reference](../reference/config.md#terminalxterm) for the full key table.
 
@@ -120,7 +162,7 @@ See the [config reference](../reference/config.md) for the full key table with d
 
 ## Editing shortcuts
 
-Edit `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` directly — `settings.json` is hand-edited today; the gear modal only edits the tree-level `configuration.json`. Changes land on the next launch. To test a new shortcut quickly, set it, relaunch, and press the combination.
+The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `launcher_command`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed.
 
 ## Platform notes
 
