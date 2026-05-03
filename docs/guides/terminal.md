@@ -7,7 +7,7 @@ description: Open the PTY pane, manage tabs across two sides, use the launcher b
 
 > **Audience.** Daily user.
 
-**When to read this.** You want to stop alt-tabbing out to a separate terminal window while you work — or you tried the `>_` button in the header, opened the pane once, and couldn't find half the features.
+**When to read this.** You want to stop alt-tabbing out to a separate terminal window while you work — or you've toggled the pane open once and couldn't find half the features.
 
 The embedded terminal is a real PTY driven by `node-pty` in the main process and rendered by `xterm.js` (locked to xterm 6.x with the recommended addon stack — search, web-links, clipboard, unicode11, webgl, serialize, image, ligatures) in the renderer.
 
@@ -15,7 +15,7 @@ The embedded terminal is a real PTY driven by `node-pty` in the main process and
 
 Two ways:
 
-- Click the `>_` icon in the dashboard header.
+- **View → Show Terminal** in the menu bar.
 - Press the configured toggle shortcut. Default is `` Ctrl+` ``; change it under `terminal.shortcut` in `settings.json`.
 
 ![Terminal pane open beneath the dashboard](../assets/screenshots/terminal-light.png#only-light)

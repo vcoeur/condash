@@ -17,7 +17,7 @@ description: Live desktop dashboard for a Markdown-first project-tracking conven
 ## Sections
 
 - **[Get started](get-started/index.md)** — install, first launch, first walkthrough.
-- **[Use](guides/index.md)** — task-focused how-tos.
+- **[Guides](guides/index.md)** — task-focused how-tos.
 - **[Reference](reference/index.md)** — every key, flag, and file format.
 - **[Background](explanation/index.md)** — why condash is shaped this way.
 

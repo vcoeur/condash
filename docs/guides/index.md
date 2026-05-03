@@ -1,9 +1,9 @@
 ---
-title: Use · condash
+title: Guides · condash
 description: Task-focused how-tos for the parts of condash you probably won't discover by browsing.
 ---
 
-# Use
+# Guides
 
 Each guide answers one specific question.
 
@@ -24,7 +24,6 @@ Each guide answers one specific question.
 - [A day with condash](../tutorials/daily-loop.md)
 - [Search your history](search.md)
 - [Deliverables and PDFs](deliverables.md)
-- [Multi-machine setup](multi-machine.md)
 - [Extend the management skill](skill-extensions.md)
 
 → Looking up rather than doing? **[Reference](../reference/index.md)**.

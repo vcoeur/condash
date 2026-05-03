@@ -73,7 +73,7 @@ nav:
 
   - Get started: get-started/index.md
 
-  - Use:
+  - Guides:
     - guides/index.md
     - Configure the conception path: guides/configure-conception-path.md
     - Repositories and open-with buttons: guides/repositories-and-open-with.md
@@ -85,7 +85,6 @@ nav:
       - A day with condash: tutorials/daily-loop.md
       - Search your history: guides/search.md
       - Deliverables and PDFs: guides/deliverables.md
-      - Multi-machine setup: guides/multi-machine.md
       - Extend the management skill: guides/skill-extensions.md
 
   - Reference:
