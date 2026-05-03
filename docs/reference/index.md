@@ -7,7 +7,7 @@ description: Exhaustive lookup for every command, config key, README field, muta
 
 > **Audience.** Daily user and Developer.
 
-Short pages, one per surface. Look things up here; learn them in **[Get started](../get-started/index.md)** and **[Use](../guides/index.md)**.
+Short pages, one per surface. Look things up here; learn them in **[Get started](../get-started/index.md)** and **[Guides](../guides/index.md)**.
 
 **Essentials**
 

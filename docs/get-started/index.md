@@ -11,7 +11,7 @@ Three things in one page:
 - [First launch](#first-launch) — pick a folder; condash remembers it.
 - [Your first project](#your-first-project) — create an item via the Welcome screen.
 
-→ For deeper how-tos, jump to **[Use](../guides/index.md)**. For lookups, **[Reference](../reference/index.md)**.
+→ For deeper how-tos, jump to **[Guides](../guides/index.md)**. For lookups, **[Reference](../reference/index.md)**.
 
 ## Install
 
@@ -154,6 +154,6 @@ You can also create items by hand — just `mkdir projects/<YYYY-MM>/<YYYY-MM-DD
 
 ## Next
 
-- **[Use](../guides/index.md)** — embedded terminal, repos, wikilinks, knowledge tree, multi-machine setup.
+- **[Guides](../guides/index.md)** — embedded terminal, repos, wikilinks, knowledge tree.
 - **[Reference](../reference/index.md)** — every CLI verb, config key, README field, mutation, shortcut.
 - **[Background](../explanation/index.md)** — why condash is shaped this way.

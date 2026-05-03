@@ -9,7 +9,7 @@ description: Point condash at your workspace, group repos into primary / seconda
 
 **When to read this.** The **Code** tab shows the wrong repos, or the wrong repos are in the primary card, or the "open in IDE" button launches the wrong thing (or nothing).
 
-Everything on this page lives in `<conception_path>/configuration.json`. This file is versioned with the tree — changes propagate to every teammate who pulls. Per-machine overrides go in `settings.json` (see [Multi-machine setup](multi-machine.md)).
+Everything on this page lives in `<conception_path>/configuration.json`. Per-machine overrides go in `settings.json` and win on overlap.
 
 ## Workspace and worktrees paths
 
@@ -41,7 +41,7 @@ Names are bare directory names (not paths) matched against whatever was found un
 ![Code tab — three repos organised into primary, secondary, others](../assets/screenshots/code-tab-light.png#only-light)
 ![Code tab — three repos organised into primary, secondary, others](../assets/screenshots/code-tab-dark.png#only-dark)
 
-Inside a card, each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it — see [Multi-machine setup](multi-machine.md) for where worktrees come from.
+Inside a card, each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it.
 
 The grouping is a UX signal, nothing more — every group behaves the same (same dirty counts, same launcher buttons). Use it to keep the repos you actually touch today at eye level.
 
@@ -87,7 +87,7 @@ Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **termina
 - **`label`** — the tooltip text shown on hover.
 - **`command`** — a single shell-style command. The literal `{path}` is replaced with the absolute path of the repo (or submodule row) being opened.
 
-> **No fallback chain.** The Electron build takes a single `command` string per slot — there is no `commands` list with sequential trial. If you need machine-specific fallbacks (`idea` then `idea.sh`), wrap them in a small launcher script that does the trial-and-fall-through itself, or override the slot per-machine in `settings.json` (see [Multi-machine setup](multi-machine.md)).
+> **No fallback chain.** The Electron build takes a single `command` string per slot — there is no `commands` list with sequential trial. If you need machine-specific fallbacks (`idea` then `idea.sh`), wrap them in a small launcher script that does the trial-and-fall-through itself, or override the slot per-machine in `settings.json`.
 
 Commands are parsed shell-style, so quoting works the way you'd expect: `"/Applications/JetBrains Toolbox/idea.app" {path}` is a single argv[0] + `{path}`.
 
@@ -97,7 +97,7 @@ Built-in defaults for the three slots reproduce the previous IntelliJ / VS Code 
 
 Click the gear icon in the header to open a plain-text JSON editor backed by `configuration.json`. Save is atomic (`tmp` → `fsync` → `rename`) and runs through the strict zod schema before the write lands on disk; changes to `open_with` / `pdf_viewer` / `terminal` reload the dashboard live, while `workspace_path`, `worktrees_path`, and the `repositories` list need a restart.
 
-Prefer overriding IDE launcher paths per machine? Put the override in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` instead — `settings.json` wins on overlap. See [Multi-machine setup](multi-machine.md).
+Prefer overriding IDE launcher paths per machine? Put the override in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` instead — `settings.json` wins on overlap.
 
 ## Starting a dev server from the row
 

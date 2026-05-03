@@ -66,4 +66,4 @@ Then either edit `settings.json` to point at `/tmp/scratch-tree`, or delete `set
 
 ## Multiple machines pointed at the same tree
 
-If you sync the conception tree between machines via git, each machine keeps its own `conception_path` in `settings.json` — the absolute path typically differs (different users, different mount points). The tree itself carries the team-shared config in `configuration.json`; per-machine preferences live in each machine's `settings.json`. See [Multi-machine setup](multi-machine.md) for the full split.
+`conception_path` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `configuration.json` at its root; per-machine preferences stay in `settings.json`.
