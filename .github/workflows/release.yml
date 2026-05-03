@@ -194,22 +194,36 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Tag-driven prerelease decision: `vX.Y.Z-rc.N`, `-alpha*`, and
+          # `-beta*` ship as GitHub prereleases (not surfaced as `latest`
+          # by the API). Plain `vX.Y.Z` ships as a stable release marked
+          # latest, so docs sites + clients calling /releases/latest see
+          # it immediately.
+          if [[ "$TAG" == *-rc.* || "$TAG" == *-alpha* || "$TAG" == *-beta* ]]; then
+            IS_PRE=true
+            MAKE_LATEST=false
+            echo "Tag $TAG matches prerelease pattern; publishing as prerelease."
+          else
+            IS_PRE=false
+            MAKE_LATEST=true
+            echo "Tag $TAG is a stable tag; publishing as latest release."
+          fi
           if REL_ID=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id 2>/dev/null); then
-            # Promote an existing release (likely a prerelease from a prior
-            # run on this tag) to the latest non-prerelease release, so a
-            # re-run after the rename doesn't leave it stuck as prerelease.
+            # Existing release for this tag (e.g. prior run on the same
+            # tag): re-assert the desired prerelease/latest state so a
+            # re-run can't leave it stuck in the wrong status.
             gh api -X PATCH "repos/$GH_REPO/releases/$REL_ID" \
               -F draft=false \
-              -F prerelease=false \
-              -f make_latest=true >/dev/null
-            echo "Release for $TAG already exists ($REL_ID); promoted to latest, uploading into it."
+              -F prerelease=$IS_PRE \
+              -f make_latest=$MAKE_LATEST >/dev/null
+            echo "Release for $TAG already exists ($REL_ID); state re-asserted, uploading into it."
           else
             BODY=$'Unsigned Electron build of condash. Auto-update channel served from this release via `electron-updater`.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
             gh api -X POST "repos/$GH_REPO/releases" \
               -f tag_name="$TAG" \
               -F draft=false \
-              -F prerelease=false \
-              -f make_latest=true \
+              -F prerelease=$IS_PRE \
+              -f make_latest=$MAKE_LATEST \
               -f name="condash $TAG" \
               -f body="$BODY" \
               --jq '"Created release " + (.id|tostring) + " for " + .tag_name'

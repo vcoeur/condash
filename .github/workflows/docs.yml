@@ -4,12 +4,12 @@ name: Pages (docs + apt repo)
 #   - mkdocs site at the root
 #   - Debian apt repository under /apt/
 #
-# Trigger: a GitHub Release (or prerelease) is published by
-# release.yml on tag push, or manual dispatch. The release.yml
-# pipeline creates a prerelease directly — there is no draft to
-# promote, so this workflow includes prereleases in the apt scan.
-# Drafts are still skipped (no assets visible to gh release
-# download).
+# Trigger: a GitHub Release is published by release.yml on tag push,
+# or manual dispatch. release.yml ships plain `vX.Y.Z` as a stable
+# release and `vX.Y.Z-rc.N` / `-alpha*` / `-beta*` as a prerelease.
+# Both kinds carry .deb assets, so the apt scan below includes
+# prereleases (and skips drafts, whose assets aren't reachable via
+# gh release download).
 #
 # The apt repo is rebuilt deterministically from scratch on every
 # run by re-fetching every .deb from every published GitHub
