@@ -580,9 +580,7 @@ export function ProjectPreview(props: {
                         depth={0}
                         onOpenFile={(file) => props.onOpenFile(file.path)}
                         onCreateNote={
-                          props.onCreateNote && project().kind === 'project'
-                            ? () => props.onCreateNote?.(project())
-                            : undefined
+                          props.onCreateNote ? () => props.onCreateNote?.(project()) : undefined
                         }
                       />
                     </ul>

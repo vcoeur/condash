@@ -162,10 +162,10 @@ export function RepoRow(props: {
           </span>
         </Show>
         <span class="spacer" />
-        <RepoCardMenu repo={props.repo} onForceStop={props.onForceStop} />
         <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>
           {props.repo.parent ? 'SUB' : 'REPO'}
         </span>
+        <RepoCardMenu repo={props.repo} onForceStop={props.onForceStop} />
       </header>
       <ul class="branches">
         <For each={orderedWorktrees(props.repo)}>
