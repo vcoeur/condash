@@ -1,7 +1,7 @@
 import { createEffect, createResource, onCleanup, onMount, Show } from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
-import 'highlight.js/styles/github.css';
+import './code-theme.css';
 
 export type HelpDoc =
   | 'welcome'
