@@ -23,18 +23,21 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
 4. **Run setup:**
 
    ```bash
-   condash worktrees setup <branch> [--copy-env] [--install] --json
+   condash worktrees setup <branch> [--copy-env] [--install] [--base <ref>] --json
    ```
 
-   `--copy-env` copies `.env` / `.env.local` from each repo's primary into the new worktree (gitignored, not part of the checkout).
+   **Per-repo `env: [...]`** in `configuration.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the new worktree. Applied unconditionally when set. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration.
 
    `--install` runs the optional `install:` command from `configuration.json`'s `repositories.{primary,secondary}[]` entry, in each fresh worktree (npm/pnpm/uv/etc.). Skipped per-repo when no `install:` is set.
+
+   **Base ref.** The CLI reads `**Base**` from every item declaring `<branch>` and uses it as the start point for new branches. All declaring items must agree on the base (the call fails with the disagreeing slugs otherwise). `--base <ref>` overrides the README field for one-shot setups. When no item declares `**Base**` and `--base` isn't passed, new branches are created off the repo's default tip.
 
    The CLI:
    - reads `**Apps**` from every item declaring `<branch>` and unions the top-level repos,
    - skips repos with `pinned_branch:` (those track a different axis),
-   - calls `git worktree add` per repo (creates the branch with `-b` if absent),
-   - returns `{created[], alreadyPresent[], blocked[], envCopied[], installRan[]}`.
+   - calls `git worktree add` per repo (creates the branch with `-b <branch> <base>` when missing),
+   - blocks any repo whose declared `<base>` doesn't resolve locally — the reason field tells you to `git fetch` or create the base first,
+   - returns `{created[], alreadyPresent[], blocked[], envCopied[], installRan[], base}`.
 
 5. **Final report.** End with the absolute worktree path on its own line, ready to paste:
 
