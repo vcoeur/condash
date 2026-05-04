@@ -16,7 +16,7 @@
 
 import { promises as fs } from 'node:fs';
 import { execFile } from 'node:child_process';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { findProjectReadmes } from './walk';
 import { readHeader } from './header-fs';
@@ -32,6 +32,9 @@ interface RawRepoExtended {
   name: string;
   pinned_branch?: string;
   install?: string;
+  /** Files to copy from the primary into a new worktree on setup. Applied
+   *  unconditionally when present (no CLI flag needed). */
+  env?: string[];
   submodules?: { name: string }[];
 }
 
@@ -69,7 +72,10 @@ export interface BranchCheckResult {
 export interface SetupOptions {
   /** Optional explicit repo allow-list (overrides Apps-derivation). */
   repos?: string[];
-  /** Copy `.env` / `.env.local` from the primary into the new worktree. */
+  /** Legacy opportunistic copy of `.env` / `.env.local` from the primary
+   *  into the new worktree. Repos with `env:` declared in
+   *  `configuration.json` always have those files copied; this flag only
+   *  affects repos *without* an `env:` declaration. */
   copyEnv?: boolean;
   /** Run the optional `install:` from configuration.json after creation. */
   install?: boolean;
@@ -262,8 +268,14 @@ export async function setupBranchWorktrees(
       });
       continue;
     }
-    if (options.copyEnv) {
-      const copied = await copyEnvFiles(lookup.cwd, target);
+    // Copy declared env files. Per-repo `env: [...]` is the canonical source —
+    // applied unconditionally so a forgotten `--copy-env` no longer leaves a
+    // Vite SPA reading `import.meta.env.VITE_*` as undefined (#82). The legacy
+    // `--copy-env` flag remains an opportunistic blanket fallback for repos
+    // without `env:` declared, kept for one minor for compat.
+    const filesToCopy = lookup.env ?? (options.copyEnv ? ['.env', '.env.local'] : []);
+    if (filesToCopy.length > 0) {
+      const copied = await copyDeclaredFiles(lookup.cwd, target, filesToCopy);
       if (copied.length > 0) result.envCopied.push({ repo: name, files: copied });
     }
     if (options.install && lookup.install) {
@@ -415,6 +427,7 @@ interface RepoLookupExtended {
   cwd: string;
   install?: string;
   pinnedBranch?: string;
+  env?: string[];
 }
 
 function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupExtended> {
@@ -423,8 +436,8 @@ function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupExtended>
     if (entry.parent) return; // ignore submodules — worktrees are per top-level repo
     map.set(entry.name, { name: entry.name, cwd: entry.cwd });
   });
-  // Re-walk the raw config to pick up `pinned_branch` and `install` (those
-  // aren't currently in the RepoLookup shape).
+  // Re-walk the raw config to pick up `pinned_branch`, `install`, and `env`
+  // (those aren't currently in the RepoLookup shape).
   const primary = config.repositories?.primary ?? [];
   const secondary = config.repositories?.secondary ?? [];
   for (const raw of [...primary, ...secondary]) {
@@ -434,6 +447,9 @@ function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupExtended>
     const ext = raw as unknown as RawRepoExtended;
     if (typeof ext.pinned_branch === 'string') lookup.pinnedBranch = ext.pinned_branch;
     if (typeof ext.install === 'string') lookup.install = ext.install;
+    if (Array.isArray(ext.env) && ext.env.length > 0) {
+      lookup.env = ext.env.filter((s) => typeof s === 'string' && s.length > 0);
+    }
   }
   return map;
 }
@@ -491,19 +507,46 @@ function rootRepoFromApp(app: string): string {
   return app.split('/')[0];
 }
 
-async function copyEnvFiles(source: string, target: string): Promise<string[]> {
+/**
+ * Copy each declared file from the primary checkout to the new worktree.
+ * Best-effort: missing files are silently skipped (typical: `.env.local`
+ * not present), but anything declared with a path-traversal segment is
+ * rejected outright. Returns the list of files actually copied (each as
+ * the relative path declared in `env:`).
+ */
+async function copyDeclaredFiles(
+  source: string,
+  target: string,
+  files: readonly string[],
+): Promise<string[]> {
   const out: string[] = [];
-  for (const candidate of ['.env', '.env.local']) {
-    const src = join(source, candidate);
+  for (const rel of files) {
+    if (!isSafeRelativePath(rel)) continue;
+    const src = join(source, rel);
     if (!(await pathExists(src))) continue;
     try {
-      await fs.copyFile(src, join(target, candidate));
-      out.push(candidate);
+      const dest = join(target, rel);
+      await fs.mkdir(dirname(dest), { recursive: true });
+      await fs.copyFile(src, dest);
+      out.push(rel);
     } catch {
       // best-effort
     }
   }
   return out;
+}
+
+/**
+ * Reject anything that could escape the worktree on copy: absolute paths,
+ * `..` segments, NUL. Forward and backslash separators are both checked
+ * because a Windows config could carry either.
+ */
+function isSafeRelativePath(rel: string): boolean {
+  if (!rel || rel.includes('\0')) return false;
+  if (rel.startsWith('/') || rel.startsWith('\\')) return false;
+  if (/^[A-Za-z]:[\\/]/.test(rel)) return false; // Windows drive prefix
+  const segments = rel.split(/[\\/]/);
+  return !segments.some((s) => s === '..' || s === '.');
 }
 
 async function runInstall(cwd: string, command: string): Promise<boolean> {

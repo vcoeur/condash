@@ -948,7 +948,9 @@ export function SettingsModal(props: {
               <p class="settings-hint">
                 Each entry is either just a name (resolved against <code>workspace_path</code>) or
                 an object with optional <code>label</code>, <code>run</code>,{' '}
-                <code>force_stop</code>, and <code>submodules</code>.
+                <code>force_stop</code>, <code>install</code>, <code>env</code>, and{' '}
+                <code>submodules</code>. <code>env</code> lists files copied from the primary into a
+                new worktree on <code>condash worktrees setup</code>.
               </p>
               <For each={['primary', 'secondary'] as const}>
                 {(bucket) => (
@@ -1164,6 +1166,36 @@ function RepoRow(props: {
               `${props.idPrefix}.force_stop`,
               () => obj().force_stop,
               (v) => patchObj({ force_stop: v || undefined }),
+            )}
+          />
+        </label>
+        <label>
+          <span>Install command</span>
+          <input
+            type="text"
+            placeholder="npm install"
+            {...props.bindText(
+              `${props.idPrefix}.install`,
+              () => obj().install,
+              (v) => patchObj({ install: v || undefined }),
+            )}
+          />
+        </label>
+        <label>
+          <span>Env files (comma-separated)</span>
+          <input
+            type="text"
+            placeholder=".env, .env.local"
+            {...props.bindText(
+              `${props.idPrefix}.env`,
+              () => (obj().env ?? []).join(', '),
+              async (v) => {
+                const list = v
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                await patchObj({ env: list.length > 0 ? list : undefined });
+              },
             )}
           />
         </label>
