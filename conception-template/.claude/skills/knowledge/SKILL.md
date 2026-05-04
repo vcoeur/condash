@@ -22,7 +22,7 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 | `index`     | `/knowledge index`                   | [index.md](index.md)       |
 | `verify`    | `/knowledge verify`                  | [verify.md](verify.md)     |
 
-For a one-off lookup or a small edit to a file you already know, use `Read` and `Edit` directly.
+For a one-off lookup or a small edit to a file you already know, use `Read` and `Edit` directly. The `condash knowledge stamp` verb (described under "Verification stamps" below) is also callable on its own when refreshing a single fact's `**Verified:**` line.
 
 ## Core rules
 

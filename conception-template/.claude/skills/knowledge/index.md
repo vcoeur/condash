@@ -22,7 +22,7 @@ Trigger: `/knowledge index`.
    - `data.updated[]` — index files rewritten. Each row carries `added[]`, `dropped[]`, `tagsAdded[]` (subdir bullets that gained aggregate tags from descendants).
    - `data.unchanged` — count of indexes with zero diff (proves idempotence).
    - `data.flaggedRenames[]` — bullets whose target disappeared while a similar new on-disk entry appeared. **Ask the user** before treating any as a rename.
-   - `data.overTagTarget[]` — subdir bullets with > 8 tags after aggregation. Surface for hand-pruning; the engine never drops a curated tag.
+   - `data.overTagDropped[]` — surplus aggregated tags the engine had to drop to fit the 8-tag cap. Each row carries `indexPath`, `entry`, and `dropped[]`. Surface for hand-pruning the parent's curated tag set.
    - `data.dirtyClear` — whether the `.index-dirty` marker was cleared.
 
 ## Contract recap

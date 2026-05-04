@@ -15,6 +15,8 @@ Trigger: `/knowledge verify`.
 
    Stamps are owned by `condash knowledge verify` (returns `data.stale[]`, `data.fresh`, `data.unstamped[]`, `data.maxAge`). Everything else lives under `condash audit` (returns `{summary, issues[]}` with one entry per finding). Both are pure read-only.
 
+   `condash audit` is the umbrella verb. `--include` accepts any subset of `lfs,binaries,cross-repo,worktrees,index`; the default (no flag) runs all checks. Use a narrower `--include` when iterating on a single class of finding.
+
 2. **Triage by check and severity.**
 
    `condash audit` issues carry severity `error` (essential file missing — investigate first) > `warn` (real drift) > `info` (heuristic or freshness signal, defer unless asked).

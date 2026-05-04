@@ -16,33 +16,31 @@ Trigger: `/projects close <slug>`.
 
    **Exception — intentional deferrals.** Treat as silently complete any step whose text carries `(outside this item)`, `(out of scope)`, `(follow-up)`, or `(tracked in <slug>)`.
 
-4. **Knowledge promotion review.** Editorial step — Claude does the reading, the CLI is a backstop.
+4. **Knowledge promotion review.** Editorial step — Claude reads, the CLI is a backstop.
 
-   a. **Read the README and every `notes/*.md` body** returned by step 2's `read --with-notes`. Do not skim. Durable findings often land outside the heuristic's reach: in `## Description`, `## Steps` prose, `## Timeline` entries, or notes phrased as observations rather than imperatives.
+   a. **Read the README and every `notes/*.md` body** returned by step 2's `read --with-notes`, and apply the three-question durability test from `knowledge/conventions.md` to each candidate paragraph:
 
-   b. **Apply the three-question durability test from `knowledge/conventions.md`** to every candidate paragraph you noticed:
+      1. Holds beyond this task? (Not specific to the in-flight work.)
+      2. Applies to more than one app, or to the ecosystem?
+      3. Stays true regardless of this PR's outcome? (Survives both merge and abandonment.)
 
-      1. Does it hold beyond this task? (Not specific to the in-flight work.)
-      2. Does it apply to more than one app, or to the ecosystem? (Or: would a teammate touching another app want to find it.)
-      3. Does it stay true regardless of the current PR's outcome? (Survives both merge and abandonment.)
+      Three yes → keep. Any no → drop silently. Findings often hide outside the heuristic's reach — `## Description`, `## Steps` prose, `## Timeline`, or observation-phrased notes — so don't rely on the backstop alone.
 
-      Three yes → keep as a candidate. Any no → silently drop. Do not present a candidate that fails the test.
-
-   c. **Run the heuristic backstop** to catch anything you missed:
+   b. **Run the heuristic backstop:**
 
       ```bash
       condash projects scan-promotions <slug> --json
       ```
 
-      The CLI grep-walks `notes/*.md` for `always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects)` and returns `data.candidates[]` with `relPath`, `line`, `match`, and the surrounding `paragraph`. For each row, check whether you already have it in your candidate set; if not, re-apply the three-question test before adding it. Skip any paragraph already carrying a `**Transferred:**` stamp.
+      Grep-walks `notes/*.md` for `always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects)` and returns `data.candidates[]` with `relPath`, `line`, `match`, and the surrounding `paragraph`. Re-apply the three-question test on anything new. Skip paragraphs already carrying a `**Transferred:**` stamp.
 
-   d. **Present surviving candidates** (yours + any new from the scan) as a numbered list, each with the origin `<file>:<line>` reference, the exact paragraph, and the proposed `knowledge/` location (use the bucket-picking rubric from `knowledge/SKILL.md`). For each, ask: *"Promote to `knowledge/<path>`? (y / n / edit-first)"*.
+   c. **Present surviving candidates** (yours + new) as a numbered list with `<file>:<line>`, the exact paragraph, and the proposed `knowledge/` location (bucket-picking rubric in `knowledge/SKILL.md`). Per row: *"Promote to `knowledge/<path>`? (y / n / edit-first)"*.
 
-   - **y** → invoke `/knowledge update`, then **automatically** stamp the origin paragraph (in the README or the note) with `**Transferred:** YYYY-MM-DD → <knowledge-path>`.
-   - **edit-first** → refine wording or target path, re-present, re-ask.
+   - **y** → `/knowledge update`, then stamp the origin paragraph with `**Transferred:** YYYY-MM-DD → <knowledge-path>`.
+   - **edit-first** → refine wording or target, re-present, re-ask.
    - **n** → skip.
 
-   If your reading produced zero candidates and the scan also returned empty, say so and move on — don't synthesise a prompt to fish for one.
+   Zero candidates from both reading and scan → say so and move on. Don't synthesise a prompt to fish for one.
 
 5. **Flip status + append timeline:**
 
@@ -78,7 +76,7 @@ Trigger: `/projects close <slug>`.
    - If `data.projects.present` is true → `condash projects index --json`.
    - If `data.knowledge.present` is true → `condash knowledge index --json`.
 
-8. **Commit prompt.** Ask the user whether to commit. Run `git status` + `git diff --stat` and propose a commit message inline using:
+8. **Commit prompt.** Ask the user whether to commit — invoke `/commit` if they have it, otherwise run `git status` + `git diff --stat` and propose a commit message inline using:
 
    ```
    Close <slug>. Outcome: <one-line outcome from the closing timeline entry>.
@@ -97,3 +95,13 @@ Trigger: `/projects close <slug>`.
 
 - **No folder move.** Done items stay in their creation-month bucket.
 - **Transfer stamps are historical.** They never expire; no `/verify` action checks them.
+
+## Reopen
+
+Trigger: `/projects reopen <slug>` or "reopen <slug>".
+
+```bash
+condash projects reopen <slug> [--status <now|review|later|backlog>] --summary "<reason>" --json
+```
+
+Default target status is `now`. The CLI flips `**Status**`, appends `- YYYY-MM-DD — Reopened. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. If the item carried a `**Branch**` whose worktrees were torn down at close time, offer `/projects worktree setup <branch>` afterwards — reopen is a status edit only, it never re-creates worktrees.

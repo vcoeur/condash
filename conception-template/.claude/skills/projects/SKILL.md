@@ -20,13 +20,17 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 | `list`     | `/projects list [kind=<k>] [status=<s>] [apps=<a>] [branch=<b>]`            | [retrieve.md](retrieve.md) |
 | `read`     | `/projects read <slug>`                                                     | [retrieve.md](retrieve.md) |
 | `search`   | `/projects search <keyword>`                                                | [retrieve.md](retrieve.md) |
+| `validate` | `/projects validate [<slug>]` — header sanity check                         | [retrieve.md](retrieve.md) |
 | `create`   | `/projects create <kind>` — kind ∈ {project, incident, document}            | [create.md](create.md)     |
 | `update`   | `/projects update <slug>`                                                   | [update.md](update.md)     |
 | `close`    | `/projects close <slug>`                                                    | [close.md](close.md)       |
+| `reopen`   | `/projects reopen <slug>` — done → now (or `--status <s>`)                  | [close.md](close.md)       |
 | `index`    | `/projects index`                                                           | [index.md](index.md)       |
 | `worktree` | `/projects worktree <setup\|remove\|check\|list\|status> [branch]`          | [worktree.md](worktree.md) |
 
-For a trivial read or appending one note, edit files directly. The skill is mainly worth invoking for `create`, `close`, `index`, `search`, and any `worktree` action.
+For a trivial read or appending one note, edit files directly. The skill is mainly worth invoking for `create`, `close`, `reopen`, `index`, `search`, and any `worktree` action.
+
+One-off CLI verb without a skill action: `condash projects backfill-closed [--dry-run]` appends a `Closed.` timeline entry to legacy done items missing one. Run by hand on a tree-wide migration; the action isn't surfaced because it's not part of the day-to-day flow.
 
 ## README header
 
@@ -69,7 +73,7 @@ When an item has a `**Branch**` field:
 
 1. Code edits go through the worktree at `<worktrees_path>/<branch>/<repo>/`. Both paths come from `configuration.json` at the conception root (`condash config get worktrees_path`, `condash config get workspace_path`).
 2. **Never edit code in `<workspace_path>/<repo>/`** — those are the main checkouts on different branches.
-3. Use `condash worktrees check <branch>` to inspect state, `condash worktrees setup <branch>` to create, `condash worktrees remove <branch>` to clean up.
+3. Use `condash worktrees check <branch>` to inspect state, `condash worktrees setup <branch>` to create, `condash worktrees remove <branch>` to clean up. `condash worktrees mismatch` lists every active item declaring a `**Branch**` that has no on-disk worktree — run it when something feels off.
 
 When no `**Branch**` field is set, the main checkouts at `<workspace_path>/<repo>/` are fine.
 

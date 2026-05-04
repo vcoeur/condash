@@ -52,6 +52,18 @@ The CLI runs the same scoring/snippet engine the dashboard uses, scoped to proje
 
 `--kind=` / `--status=` filters apply against the item's parsed header before reporting.
 
+## `validate`
+
+Trigger: `/projects validate [<slug>]` or "is the header valid?".
+
+```bash
+condash projects validate [<slug>] --json
+```
+
+With a slug, validates one item's header against the canonical Status/Kind enums and the date↔folder invariant. Without a slug, walks the whole tree and reports every header with drift. Returns `{errors[], warnings[]}` per file: errors are exit-3-worthy (enum miss, regex miss), warnings are surfaced but never fail the call (missing field, soft date drift).
+
+Use this when a user asks "did I write the header right?" or before a tree-wide migration.
+
 ## Notes on performance
 
-The CLI shells out once and parses once across the whole tree — no repeated globs, no per-hit re-parses. If a folder layout violation surfaces (item directly under `projects/` with no month dir), the CLI's validation pass will report it through `headerWarnings`; surface that to the user and suggest moving the folder into the right month bucket before continuing.
+The CLI shells out once and parses once across the whole tree — no repeated globs, no per-hit re-parses. If a folder layout violation surfaces (item directly under `projects/` with no month dir), `list`/`read` report it through `headerWarnings`; surface that to the user and suggest moving the folder into the right month bucket before continuing.
