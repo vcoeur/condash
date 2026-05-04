@@ -188,7 +188,9 @@ export function NoteModal(props: {
   const html = (): string => {
     const text = content();
     if (text == null) return '';
-    return renderMarkdown(text);
+    const path = props.state?.path ?? null;
+    const baseDir = path ? path.replace(/\/[^/]*$/, '') : undefined;
+    return renderMarkdown(text, { baseDir });
   };
 
   let bodyRef: HTMLDivElement | undefined;

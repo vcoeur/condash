@@ -32,6 +32,8 @@ const BOOL_FLAGS = new Set([
   'force',
   'diff',
   'no-touch-dirty',
+  'copy-env',
+  'install',
 ]);
 
 /**

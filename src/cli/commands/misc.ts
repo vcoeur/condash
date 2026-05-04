@@ -150,19 +150,27 @@ async function worktreeSetup(
   if (!branch) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash worktrees setup <branch> [--repo <r>...] [--copy-env] [--install]',
+      'Usage: condash worktrees setup <branch> [--repo <r>...] [--copy-env] [--install] [--base <ref>]',
     );
   }
   const repos = parseRepoFlag(args.flags.repo);
   const copyEnv = args.flags['copy-env'] === true;
   const install = args.flags.install === true;
-  const result = await setupBranchWorktrees(conceptionPath, branch, { repos, copyEnv, install });
+  const baseFlag = args.flags.base;
+  const base = typeof baseFlag === 'string' && baseFlag.length > 0 ? baseFlag : undefined;
+  const result = await setupBranchWorktrees(conceptionPath, branch, {
+    repos,
+    copyEnv,
+    install,
+    base,
+  });
   emit(ctx, result, formatSetupResult);
 }
 
 function formatSetupResult(result: SetupResult): string {
   const lines: string[] = [];
   lines.push(`Setup branch: ${result.branch}`);
+  if (result.base) lines.push(`Base ref: ${result.base}`);
   if (result.created.length > 0) {
     lines.push(`Created (${result.created.length}):`);
     for (const c of result.created) lines.push(`  + ${c.repo}  →  ${c.path}`);
@@ -230,7 +238,8 @@ function printWorktreesHelp(): void {
       '  check <branch>   Per-repo state for one branch (declaring items, on-disk worktrees, local branches).',
       '  mismatch         Items declaring **Branch** but missing on-disk worktrees.',
       '  setup <branch>   Create worktrees for every repo in the union of **Apps** declaring this branch.',
-      '                   Flags: --repo <r>... (override) --copy-env --install',
+      '                   Flags: --repo <r>... (override) --copy-env --install --base <ref>',
+      '                   Base ref defaults to the **Base** field on declaring item READMEs (must agree).',
       '  remove <branch>  Remove worktrees for this branch, protected-set aware.',
       '                   Flags: --repo <r>... (override).',
       '',

@@ -73,6 +73,8 @@ export interface SetupOptions {
   copyEnv?: boolean;
   /** Run the optional `install:` from configuration.json after creation. */
   install?: boolean;
+  /** Explicit base branch override; takes precedence over README `**Base**`. */
+  base?: string;
 }
 
 export interface SetupResult {
@@ -87,6 +89,9 @@ export interface SetupResult {
   envCopied: { repo: string; files: string[] }[];
   /** Install commands run. */
   installRan: { repo: string; command: string; ok: boolean }[];
+  /** Base ref new branches were created from (null when no base was resolved
+   *  and the repo's default tip was used). */
+  base: string | null;
 }
 
 export interface RemoveOptions {
@@ -179,10 +184,17 @@ export async function setupBranchWorktrees(
   branch: string,
   options: SetupOptions = {},
 ): Promise<SetupResult> {
+  validateBranchName(branch);
   const config = await readConfig(conceptionPath);
   const worktreesRoot = config.worktrees_path ?? defaultWorktreesPath();
   const reposByName = repoLookupMap(config);
   const wanted = await resolveTargetRepos(conceptionPath, branch, options.repos, reposByName);
+
+  // Resolve the base ref: explicit --base wins; otherwise read **Base** from
+  // every item declaring this branch and require unanimity. Disagreement is a
+  // hard error — silently picking one would mask the misconfiguration.
+  const declaring = await findItemsDeclaringBranch(conceptionPath, branch);
+  const base = resolveBase(branch, options.base, declaring);
 
   const result: SetupResult = {
     branch,
@@ -191,6 +203,7 @@ export async function setupBranchWorktrees(
     blocked: [],
     envCopied: [],
     installRan: [],
+    base: base ?? null,
   };
 
   await fs.mkdir(join(worktreesRoot, branch), { recursive: true });
@@ -222,11 +235,24 @@ export async function setupBranchWorktrees(
       continue;
     }
     const branchOk = await branchExists(lookup.cwd, branch);
+    if (!branchOk && base) {
+      // New branch + base specified: the base must exist as a ref in this
+      // repo. Fail loudly rather than fall back to the repo default — that's
+      // exactly the silent-wrong-base behaviour issue #81 is about.
+      if (!(await refExists(lookup.cwd, base))) {
+        result.blocked.push({
+          repo: name,
+          reason: `base ref '${base}' not found in ${lookup.cwd} — run \`git fetch\` or create it locally first`,
+        });
+        continue;
+      }
+    }
     try {
       const args = ['worktree', 'add'];
       if (!branchOk) args.push('-b', branch);
       args.push(target);
       if (branchOk) args.push(branch);
+      else if (base) args.push(base);
       await exec('git', args, { cwd: lookup.cwd });
       result.created.push({ repo: name, path: target });
     } catch (err) {
@@ -249,6 +275,35 @@ export async function setupBranchWorktrees(
   return result;
 }
 
+/**
+ * Pick the base ref. Explicit `--base` wins. Otherwise collect every distinct
+ * `**Base**` value across declaring items: 0 → null (current behaviour), 1 →
+ * use it, ≥2 → throw with the disagreeing items so the user can reconcile.
+ */
+function resolveBase(
+  branch: string,
+  explicit: string | undefined,
+  items: { slug: string; base: string | null }[],
+): string | undefined {
+  if (explicit) return explicit;
+  const byBase = new Map<string, string[]>();
+  for (const item of items) {
+    if (!item.base) continue;
+    const list = byBase.get(item.base) ?? [];
+    list.push(item.slug);
+    byBase.set(item.base, list);
+  }
+  if (byBase.size === 0) return undefined;
+  if (byBase.size === 1) return [...byBase.keys()][0];
+  const summary = [...byBase.entries()]
+    .map(([base, slugs]) => `${base} (${slugs.join(', ')})`)
+    .join('; ');
+  throw new Error(
+    `Items declaring branch '${branch}' disagree on **Base**: ${summary}. ` +
+      `Reconcile the headers or pass --base explicitly.`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Remove.
 // ---------------------------------------------------------------------------
@@ -258,6 +313,7 @@ export async function removeBranchWorktrees(
   branch: string,
   options: RemoveOptions = {},
 ): Promise<RemoveResult> {
+  validateBranchName(branch);
   const config = await readConfig(conceptionPath);
   const worktreesRoot = config.worktrees_path ?? defaultWorktreesPath();
   const reposByName = repoLookupMap(config);
@@ -319,13 +375,29 @@ export async function removeBranchWorktrees(
     }
   }
 
-  // If the parent dir is now empty, rmdir it.
+  // If the parent dir is now empty, rmdir it. We only ever rmdir
+  // `<worktreesRoot>/<branch>` — branch names with path separators are
+  // rejected upfront by validateBranchName, and a realpath check below
+  // ensures we don't follow a symlink out of the worktrees root onto an
+  // unrelated directory. Issue #84 reported a sibling branch dir vanishing
+  // after `worktrees remove`; the path check makes that impossible by
+  // construction.
   const branchRoot = join(worktreesRoot, branch);
   try {
-    const remaining = await fs.readdir(branchRoot);
-    if (remaining.length === 0) {
-      await fs.rmdir(branchRoot);
-      result.parentRemoved = true;
+    const expected = await fs.realpath(branchRoot).catch(() => branchRoot);
+    const expectedParent = await fs.realpath(worktreesRoot).catch(() => worktreesRoot);
+    const expectedChild = join(expectedParent, branch);
+    if (expected !== expectedChild) {
+      // Don't rmdir something the user pointed elsewhere via a symlink.
+      // Surface this rather than silently skip — it's a config oddity worth
+      // knowing about.
+      result.parentRemoved = false;
+    } else {
+      const remaining = await fs.readdir(branchRoot);
+      if (remaining.length === 0) {
+        await fs.rmdir(branchRoot);
+        result.parentRemoved = true;
+      }
     }
   } catch {
     // ENOENT after the per-repo removals is fine.
@@ -387,8 +459,16 @@ async function resolveTargetRepos(
 async function findItemsDeclaringBranch(
   conceptionPath: string,
   branch: string,
-): Promise<{ slug: string; readme: string; status: string; apps: string[] }[]> {
-  const out: { slug: string; readme: string; status: string; apps: string[] }[] = [];
+): Promise<
+  { slug: string; readme: string; status: string; apps: string[]; base: string | null }[]
+> {
+  const out: {
+    slug: string;
+    readme: string;
+    status: string;
+    apps: string[];
+    base: string | null;
+  }[] = [];
   const readmes = await findProjectReadmes(conceptionPath);
   for (const readme of readmes) {
     const header = await readHeader(readme).catch(() => null);
@@ -399,6 +479,7 @@ async function findItemsDeclaringBranch(
       readme,
       status: header.status ?? 'unknown',
       apps: header.apps,
+      base: header.base,
     });
   }
   return out;
@@ -481,6 +562,39 @@ async function branchExists(repo: string, branch: string): Promise<boolean> {
     await exec('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], {
       cwd: repo,
     });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hard-reject branch names that could let `join(worktreesRoot, branch)`
+ * escape the worktrees root. Git itself accepts a wide range of names; what
+ * we care about here is that the result of `join(root, branch)` always lands
+ * exactly one directory below `root`. Path separators, `..`, and NUL are the
+ * only ways to break that invariant on POSIX.
+ */
+function validateBranchName(branch: string): void {
+  if (!branch) {
+    throw new Error('Branch name must not be empty.');
+  }
+  if (branch.includes('/') || branch.includes('\\')) {
+    throw new Error(`Branch name '${branch}' contains a path separator — refusing.`);
+  }
+  if (branch === '.' || branch === '..') {
+    throw new Error(`Branch name '${branch}' is a path component — refusing.`);
+  }
+  if (branch.includes('\0')) {
+    throw new Error('Branch name contains NUL — refusing.');
+  }
+}
+
+/** True when `ref` resolves in the repo — works for local branches,
+ *  remote-tracking refs (`origin/foo`), tags, and short SHAs. */
+async function refExists(repo: string, ref: string): Promise<boolean> {
+  try {
+    await exec('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: repo });
     return true;
   } catch {
     return false;

@@ -231,5 +231,38 @@ describe('regenerateIndex (knowledge strategy)', () => {
         '- [`sandbox-testing.md`](sandbox-testing.md) — *Curated description.* `[curated-a, curated-b]`',
       );
     });
+
+    it('matches a bullet that carries a trailing curated HTML comment (no duplicate)', async () => {
+      // Repro for issue #83: a curated bullet ending in `<!-- TBC -->` was
+      // not recognised by the parser, so a re-run drafted a duplicate entry.
+      await writeFile(
+        'knowledge/topics/index.md',
+        '# Topics\n\nIntro.\n\n## Current files\n\n- [`sandbox-testing.md`](sandbox-testing.md) — *Curated description.* `[curated-a]` <!-- TBC -->\n',
+      );
+      await writeFile(
+        'knowledge/topics/sandbox-testing.md',
+        '# Sandbox testing\n\nBody.\n\n## Recipe\n\nText.\n',
+      );
+
+      const report = await regenerateIndex(conceptionDir, knowledgeStrategy, { dryRun: true });
+      // Dry-run must not surface `sandbox-testing.md` as `added` — the
+      // existing entry matches in spite of the trailing HTML comment.
+      const addedToTopics = report.updated
+        .filter((u) => u.indexPath === 'knowledge/topics/index.md')
+        .flatMap((u) => u.added);
+      expect(addedToTopics).toEqual([]);
+
+      // Real run: the curated bullet (with the trailing comment) is preserved
+      // verbatim, no duplicate is introduced.
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const index = await readFile('knowledge/topics/index.md');
+      expect(index).toContain(
+        '- [`sandbox-testing.md`](sandbox-testing.md) — *Curated description.* `[curated-a]` <!-- TBC -->',
+      );
+      // Only one bullet for this file.
+      const occurrences = index.match(/sandbox-testing\.md/g) ?? [];
+      // One in the link text, one in the URL → two on the single bullet line.
+      expect(occurrences.length).toBe(2);
+    });
   });
 });

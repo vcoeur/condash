@@ -33,8 +33,63 @@ md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
   return defaultFence(tokens, idx, options, env, slf);
 };
 
-export function renderMarkdown(input: string): string {
-  return md.render(input);
+// Rewrite relative `<img src>` to a `condash-file:///abs-path` URL so the
+// custom protocol handler in main/index.ts can serve it. Without this, the
+// renderer's CSP + Chromium's cross-origin file:// policy silently drops the
+// image and falls back to alt text — see issue #85.
+const defaultImage = md.renderer.rules.image!;
+md.renderer.rules.image = (tokens, idx, options, env, slf) => {
+  const token = tokens[idx];
+  const baseDir = (env as { baseDir?: string }).baseDir;
+  if (baseDir) {
+    const srcIdx = token.attrIndex('src');
+    if (srcIdx >= 0 && token.attrs) {
+      const src = token.attrs[srcIdx][1];
+      if (isRelativeAssetPath(src)) {
+        token.attrs[srcIdx][1] = relativeToCondashFile(baseDir, src);
+      }
+    }
+  }
+  return defaultImage(tokens, idx, options, env, slf);
+};
+
+function isRelativeAssetPath(src: string): boolean {
+  if (!src) return false;
+  // Skip URLs with a scheme, protocol-relative URLs, root-anchored paths,
+  // and inline data:/blob: payloads. Everything else is a relative path
+  // we should resolve against the note's directory.
+  if (/^[a-z][a-z0-9+\-.]*:/i.test(src)) return false;
+  if (src.startsWith('//')) return false;
+  if (src.startsWith('/')) return false;
+  if (src.startsWith('#')) return false;
+  return true;
+}
+
+function relativeToCondashFile(baseDir: string, src: string): string {
+  // baseDir is the absolute path to the note's directory. We posix-join the
+  // relative src against it (paths crossing the IPC boundary are normalised
+  // to forward-slash form already), URI-encode each segment, and emit a
+  // `condash-file:///<abs>` URL. The triple-slash means "no host" so the
+  // pathname carries the full absolute path.
+  const segments = src.split('/').filter((s) => s !== '' && s !== '.');
+  const baseSegments = baseDir.replace(/\\/g, '/').split('/').filter(Boolean);
+  for (const seg of segments) {
+    if (seg === '..') baseSegments.pop();
+    else baseSegments.push(seg);
+  }
+  const encoded = baseSegments.map((s) => encodeURIComponent(s)).join('/');
+  return `condash-file:///${encoded}`;
+}
+
+export interface RenderMarkdownOptions {
+  /** Absolute path of the directory the markdown lives in. When set, relative
+   *  image srcs are rewritten to `condash-file://` so images outside the
+   *  renderer's origin can load. Wikilinks/markdown links are unaffected. */
+  baseDir?: string;
+}
+
+export function renderMarkdown(input: string, options: RenderMarkdownOptions = {}): string {
+  return md.render(input, { baseDir: options.baseDir });
 }
 
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;

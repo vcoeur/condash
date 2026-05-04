@@ -45,6 +45,10 @@ const TARGET_MAX = 8;
 /** HTML-comment marker rendered on every engine-drafted bullet. */
 const DRAFT_MARKER = '<!-- draft -->';
 const DRAFT_MARKER_RE = /\s+<!--\s*draft\s*-->\s*$/;
+/** Catch-all for any trailing `<!-- ... -->` HTML comment a curator might
+ * have appended (e.g. `<!-- TBC -->`). Stripped before the bullet regex
+ * runs so the entry still matches; preserved via `bullet.raw` on re-render. */
+const TRAILING_COMMENT_RE = /\s+<!--[^]*?-->\s*$/;
 
 // ---------------------------------------------------------------------------
 // Public report shape.
@@ -214,9 +218,14 @@ function matchBullet(
 ): { name: string; link: string; desc: string; tags: string; draft: boolean } | null {
   // Detect (and strip) a trailing `<!-- draft -->` marker before running the
   // existing bullet regexes — keeps the regexes blissfully unaware of the
-  // marker.
+  // marker. Any other trailing HTML comment (e.g. `<!-- TBC -->`) is also
+  // stripped so the bullet still matches; the comment lives in `bullet.raw`
+  // and survives re-render verbatim.
   const draft = DRAFT_MARKER_RE.test(line);
-  const stripped = draft ? line.replace(DRAFT_MARKER_RE, '') : line;
+  let stripped = draft ? line.replace(DRAFT_MARKER_RE, '') : line;
+  while (TRAILING_COMMENT_RE.test(stripped)) {
+    stripped = stripped.replace(TRAILING_COMMENT_RE, '');
+  }
   const a = stripped.match(BULLET_WITH_TAGS_RE);
   if (a)
     return {
@@ -879,9 +888,17 @@ function formatBullet(
 }
 
 function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): string {
-  // Strip any trailing draft marker first so the tag-block regex sees clean
-  // input; we re-append the marker (if requested) at the end.
-  const stripped = raw.replace(DRAFT_MARKER_RE, '');
+  // Strip any trailing draft marker plus any other trailing HTML comments
+  // (e.g. a curated `<!-- TBC -->`) so the tag-block regex sees clean input.
+  // The non-draft trailing comments are preserved and re-appended after the
+  // tag block — same position relative to the bullet body.
+  let stripped = raw.replace(DRAFT_MARKER_RE, '');
+  const trailingComments: string[] = [];
+  let m: RegExpMatchArray | null;
+  while ((m = stripped.match(TRAILING_COMMENT_RE))) {
+    trailingComments.unshift(m[0].trim());
+    stripped = stripped.replace(TRAILING_COMMENT_RE, '');
+  }
   const tagBlock = ` \`[${tags.join(', ')}]\``;
   let body: string;
   if (/\s*`?\[[^\]]*\]`?\s*$/.test(stripped)) {
@@ -889,7 +906,8 @@ function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): str
   } else {
     body = stripped + tagBlock;
   }
-  return isDraft ? `${body} ${DRAFT_MARKER}` : body;
+  const preservedTrail = trailingComments.length > 0 ? ' ' + trailingComments.join(' ') : '';
+  return isDraft ? `${body} ${DRAFT_MARKER}${preservedTrail}` : `${body}${preservedTrail}`;
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { promises as fsp } from 'node:fs';
@@ -150,6 +150,21 @@ if (!IS_CLI && process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 
 const forcedScale = !IS_CLI ? process.env.CONDASH_FORCE_DEVICE_SCALE_FACTOR : undefined;
 if (forcedScale) {
   app.commandLine.appendSwitch('force-device-scale-factor', forcedScale);
+}
+
+// Register a custom scheme for serving local files (images embedded in note
+// markdown via relative paths). The renderer is loaded over file:// (prod) or
+// http:// (dev), neither of which can resolve cross-directory file:// images
+// under our CSP. The custom scheme is restricted to files inside the active
+// conception path and is the only way relative-path images surface in note
+// view. See `renderMarkdown` for the matching renderer-side rewrite.
+if (!IS_CLI) {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: 'condash-file',
+      privileges: { standard: true, supportFetchAPI: true, secure: true, bypassCSP: false },
+    },
+  ]);
 }
 
 const DEV_URL = 'http://localhost:5600';
@@ -425,6 +440,39 @@ async function getProject(path: string): Promise<Project | null> {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
   }
+}
+
+/**
+ * Serve files referenced from note-view markdown (images via relative path)
+ * over a `condash-file:///abs/path` URL. Sandboxed: the requested path must
+ * resolve under the current conception path. The renderer rewrites relative
+ * `<img src="…">` to this scheme; see `renderer/markdown.ts`.
+ */
+function registerNoteAssetProtocol(): void {
+  protocol.handle('condash-file', async (request) => {
+    const url = new URL(request.url);
+    // The renderer formats URLs as `condash-file:///<abs-path>` so the path
+    // is the URL pathname. URL decodes percent-escapes for us.
+    const requested = decodeURIComponent(url.pathname);
+    const settings = await readSettings();
+    const root = settings.conceptionPath;
+    if (!root) return new Response('no conception path', { status: 403 });
+    // Require the resolved path to live inside the conception tree. This
+    // blocks both absolute-path tricks (`condash-file:///etc/passwd`) and
+    // `..`-traversal attempts.
+    const resolved = await fsp.realpath(requested).catch(() => null);
+    const rootResolved = await fsp.realpath(root).catch(() => root);
+    if (!resolved || !isPathUnder(resolved, rootResolved)) {
+      return new Response('forbidden', { status: 403 });
+    }
+    return net.fetch(pathToFileURL(resolved).toString());
+  });
+}
+
+function isPathUnder(child: string, parent: string): boolean {
+  const c = child.endsWith('/') ? child : child + '/';
+  const p = parent.endsWith('/') ? parent : parent + '/';
+  return c === p || c.startsWith(p);
 }
 
 function registerIpc(): void {
@@ -773,6 +821,7 @@ function registerIpc(): void {
 if (!IS_CLI)
   app.whenReady().then(async () => {
     registerIpc();
+    registerNoteAssetProtocol();
     // One-shot: copy any pre-existing terminal block out of configuration.json
     // and into settings.json. Idempotent — does nothing once settings owns
     // the data. Runs before window creation so the renderer's first
