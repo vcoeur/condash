@@ -49,6 +49,6 @@ If you're waiting on a specific fix, the GitHub **Actions** tab shows the build 
 
 ## Auto-update
 
-condash ships with `electron-updater` wired against its GitHub Releases. On launch the packaged build checks the latest published release, downloads the matching artifact in the background, and prompts to restart when it's ready. See **[Install — Auto-update](install.md#auto-update)** for the per-OS behaviour and the apt-repository carve-out.
+condash ships with `electron-updater` wired against its GitHub Releases. On launch the packaged build checks the latest published release, downloads the matching artifact in the background, and prompts to restart when it's ready. See **[Install — Auto-update](releases.md)** for the per-OS behaviour and the apt-repository carve-out.
 
 If you'd rather track releases manually, subscribe to the repo's **Releases** tab on GitHub — you'll get an email when a new version ships.

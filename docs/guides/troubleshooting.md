@@ -13,11 +13,11 @@ If you hit something not on this page, file an [issue](https://github.com/vcoeur
 
 ### "App can't be opened — developer cannot be verified" (macOS)
 
-condash is unsigned on purpose. macOS asks you to confirm the download once. The bypass differs between Sonoma and Sequoia — see **[Install — macOS Gatekeeper bypass](../get-started/install.md#macos-gatekeeper-bypass)**.
+condash is unsigned on purpose. macOS asks you to confirm the download once. The bypass differs between Sonoma and Sequoia — see **[Install — macOS Gatekeeper bypass](../get-started/index.md#macos)**.
 
 ### "Windows protected your PC" (Windows)
 
-Click **More info → Run anyway**. SmartScreen flags every unsigned binary the first time it sees it. See **[Install — Windows SmartScreen bypass](../get-started/install.md#windows-smartscreen-bypass)**.
+Click **More info → Run anyway**. SmartScreen flags every unsigned binary the first time it sees it. See **[Install — Windows SmartScreen bypass](../get-started/index.md#windows)**.
 
 ### AppImage exits silently with no window (Linux)
 
@@ -42,7 +42,7 @@ condash should remember the conception path you picked. If the picker reappears 
 cat ${XDG_CONFIG_HOME:-~/.config}/condash/settings.json
 ```
 
-If `conception_path` is not set or points to a directory that no longer exists, condash falls back to the picker. Edit the file by hand to fix it, or pick the right path through the picker once more — condash writes the choice on success.
+If `conceptionPath` is not set or points to a directory that no longer exists, condash falls back to the picker. Edit the file by hand to fix it, or pick the right path through the picker once more — condash writes the choice on success.
 
 ## Empty dashboard
 

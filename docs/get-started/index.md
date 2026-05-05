@@ -81,11 +81,13 @@ Don't have one yet? The minimum is one empty subdirectory:
 mkdir -p ~/src/conception/projects
 ```
 
-If the folder you picked is empty, condash shows a **Welcome screen** with three buttons:
+If the folder you picked is empty, condash shows a **Welcome screen** with three cards:
 
-- **Create your first project** — opens the new-item modal.
-- **Take the tour** — opens the in-app Help.
-- **Open the documentation** — `condash.vcoeur.com` in your browser.
+- **Open my tree** — opens the conception folder in your OS file manager so you can drop existing Markdown items into `projects/` or `knowledge/`.
+- **Read the welcome doc** — opens the in-app `welcome.md` Help page.
+- **Open the documentation site** — `condash.vcoeur.com` in your browser.
+
+The screen disappears the first time you create or open an item; the **Don't show this again** link below the cards persists the dismissal in `settings.json` (key `welcome.dismissed`).
 
 → To switch trees later, edit settings, or use a one-off path: **[Configure the conception path](../guides/configure-conception-path.md)**.
 

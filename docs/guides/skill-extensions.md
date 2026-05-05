@@ -1,138 +1,119 @@
 ---
-title: Extend the management skill · condash guide
-description: Three realistic extension patterns for the shipped `/conception-items` skill — branch isolation on create, deliverable generation on close, notes indexing on add-note.
+title: Extend the management skills · condash guide
+description: How to fork or wrap the shipped /projects, /knowledge, /skills, /pr Claude Code skills with team-specific behaviour.
 ---
 
-# Extend the management skill
+# Extend the management skills
 
 > **Audience.** Daily user and Developer.
 
-**When to read this.** You installed the shipped `/conception-items` skill, used it for a week, and hit "I wish this also did X". This page shows three concrete patterns that cover the 90% of what teams actually add on top.
+**When to read this.** You ran `condash skills install` to drop the shipped skills into `<conception>/.claude/skills/`, used them for a week, and hit "I wish this also did X". This page shows how to add team-specific behaviour without losing access to upstream updates.
 
-The shipped skill is minimal on purpose. Every extension here is a ten-minute change to a single `SKILL.md` file — there's no plugin API, no hook registration; you're editing a Markdown prompt file and relying on Claude Code to read your updated instructions.
+The shipped skills are intentionally minimal — they cover the conception convention itself, not your team's workflow on top of it. Two extension paths exist; pick whichever matches your update cadence.
 
-For the full skill reference — every action, every argument, every prompt variable — see [the management skill reference](../reference/skill.md).
+For the base reference (every action, every CLI verb each one wraps), see [the management skills reference](../reference/skill.md).
 
-## Where the skill lives
+## Where the skills live
 
 ```bash
-# Globally available
-~/.claude/skills/conception-items/SKILL.md
-
-# Or project-local, auto-loaded only inside a specific repo
-<your-project>/.claude/skills/conception-items/SKILL.md
+# After running `condash skills install`
+<conception>/.claude/skills/projects/
+<conception>/.claude/skills/knowledge/
+<conception>/.claude/skills/skills/
+<conception>/.claude/skills/pr/
 ```
 
-Extensions are edits to whichever copy you want to modify. Keep the global copy baseline-minimal and put team-specific extensions in the project-local copy — that way fork per tree, not per machine.
+Each directory contains a `SKILL.md` (the entry point) plus per-action detail files (e.g. `create.md`, `close.md` for `/projects`).
 
-## Pattern 1 — Branch isolation on create
+The manifest at `<conception>/.claude/skills/.condash-skills.json` tracks the shipped version + SHA256 per file. `condash skills install` walks the diff one file at a time and asks for confirmation when local content differs — your customisations don't get clobbered silently.
 
-**Problem.** Your projects-that-touch-code need to work in a git worktree, not the main checkout, so concurrent items don't step on each other. The shipped skill creates the README and stops; you want it to also scaffold the worktree.
+## Path 1 — fork the shipped files
 
-**Extension.** Add a `Branch` header field to the template, and a post-create hook that sets up the worktree:
+The simplest extension: edit the file in place. Add a section to `SKILL.md`, change a step in `create.md`, override a default flag in `close.md`. Next `condash skills install` will detect the drift, show you the diff, and ask whether to overwrite — answer "no" to keep your local copy.
+
+This is the right path when:
+
+- The change is small (a few lines).
+- The change is universally appropriate for your team.
+- You're willing to manually re-merge upstream changes once or twice a year.
+
+It is the wrong path when the change is large or speculative — those go in path 2.
+
+## Path 2 — wrap with a custom skill
+
+Write a separate `/my-team-projects` (or whatever name) skill that runs your extra logic and then delegates to the shipped one. Example shape:
 
 ```markdown
-## Extended create action
+# /my-team-projects — wrapper
 
-After writing the new README, if `Apps` mentions a known code app (`helio`,
-`helio-web`, `helio-docs`), append a `**Branch**:` header field with a
-proposed branch name (`feature/<item-slug>`).
+Trigger: `/my-team-projects <action> [args]`
 
-Then, if the user confirms, run:
+When invoked, run the team-specific pre-step (below), then dispatch to the shipped `/projects` skill for the base operation.
 
-    cd ~/src/<app>
-    git fetch origin
-    git worktree add ~/src/worktrees/<branch> -b <branch> origin/main
+## Action: create
 
-And report the worktree path so the user knows where to cd into.
-
-Never run this without explicit confirmation — worktree creation has side
-effects outside the conception tree.
+1. Ask the user the standard fields plus the team-specific `**Linear ID**:` header.
+2. Run `/projects create` with the gathered fields.
+3. After creation, append the Linear ID line to the README header, between `**Apps**` and `## Goal`.
+4. Open the matching Linear ticket in the browser via `condash openExternal`.
 ```
 
-Key points:
+This keeps upstream `/projects` updates painless: the shipped skill evolves without touching your wrapper.
 
-- Keep the worktree creation gated behind confirmation. The skill can write files freely; it should not run git commands silently.
-- Put the app-list mapping in a small table at the top of `SKILL.md` so it's editable without hunting through prose.
-- Leave the shipped create behaviour as the fallback when `Apps` doesn't match any known app.
+It is the right path when:
 
-## Pattern 2 — Deliverable generation on close
+- The change is large or has side effects (creating tickets, posting Slack, generating PDFs).
+- The change is project-specific (you don't want it loaded in every conception).
+- You want to share the wrapper as a separate package or repo.
 
-**Problem.** When a `document` kind item closes, you want its deliverable PDF regenerated from the latest notes without anyone remembering to run the pandoc command.
+## Worked extensions
 
-**Extension.** Extend the `close` action:
+The patterns below are realistic shapes — copy and adapt to your tree.
 
-```markdown
-## Extended close action
+### Branch isolation on create
 
-Before setting **Status**: done, if the item has **Kind**: document:
+**Problem.** Your projects-that-touch-code need to work in a git worktree, not the main checkout. The shipped `/projects create` writes the README and stops; you want it to also scaffold the worktree when the item declares a `**Branch**:`.
 
-1. Look for `notes/<primary>.md` (the README points at it via a wikilink
-   in the Deliverables section, or it's whichever note has the longest body).
-2. Regenerate the PDF:
+**Wrapper sketch.** After `/projects create` returns:
 
-       bash ~/.claude/scripts/md_to_pdf.sh notes/<primary>.md deliverables/<item-slug>.pdf
-
-3. Verify the file exists and is non-empty.
-4. Update the timeline with "- <date> — Regenerated deliverable on close."
-
-Then set **Status**: done as usual.
-
-If the regeneration fails, report the error and stop — do not mark the
-item as done with a stale PDF.
+```bash
+condash worktrees setup <branch> --copy-env
 ```
 
-Key points:
+Run it only when the new item has a `**Branch**:` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash worktrees setup` itself is the canonical path — it knows where worktrees live (`<configuration.json>.worktrees_path`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
 
-- Fail loudly. A stale deliverable in a `done` item is worse than an item stuck in `review` — the former looks authoritative, the latter is obviously in progress.
-- Only do this for `document` kind items. `project` and `incident` items rarely have a single canonical deliverable, so the heuristic would pick the wrong file.
-- See [Deliverables and PDFs](deliverables.md) for the filename convention this assumes.
+### Deliverable generation on close
 
-## Pattern 3 — Notes index on add-note
+**Problem.** When a `document` kind item closes, you want the deliverable PDF regenerated from the latest notes without anyone remembering.
 
-**Problem.** Items accumulate notes. Without an index, the only way to discover what's in the notes folder is the Files panel in the expanded card. You want the README to maintain a `## Notes` section with one line per note, auto-updated.
+**Wrapper sketch.** Override the `close` action: before calling `/projects close`, locate the canonical note (look for a `## Deliverables` line pointing at a `.md` source, or fall back to the longest note body) and run your `md_to_pdf` pipeline. Verify the output is non-empty, then delegate to `/projects close`. Fail loudly if the PDF generation fails — a stale deliverable in a `done` item is worse than an item stuck in `review`.
 
-**Extension.** Add or extend the `add-note` action:
+This pattern only fits `document`-kind items; `project` and `incident` items rarely have a single canonical deliverable.
 
-```markdown
-## Extended add-note action
+### Notes index on add-note
 
-After creating `<item>/notes/<name>.md`:
+**Problem.** Items accumulate notes. Without an index, the only way to discover what's in the `notes/` folder is the Files panel.
 
-1. Open the item's README.
-2. Locate the `## Notes` section. If absent, append one at the end of the
-   file (before ## Timeline if it exists, otherwise at end).
-3. Append a bullet:
-       - [<name>.md](notes/<name>.md) — <first paragraph of the note, trimmed to 80 chars>
-4. If the note already has a bullet, update its description instead of
-   appending a duplicate.
+**Wrapper sketch.** After creating a note (the shipped `/projects` skill does this via `condash`'s `createProjectNote` IPC verb), edit the README:
 
-Keep bullets in alphabetical order by filename.
-```
+1. Locate `## Notes`. If absent, append one before `## Timeline`.
+2. Add a bullet `- [filename](notes/filename.md) — <first 80 chars of body>`.
+3. Keep bullets in alphabetical order; update existing bullets in place rather than duplicating.
 
-Key points:
+Don't touch hand-written bullets for other files — only manage the bullet for the file you just created.
 
-- Use the first paragraph of the note as the description, not the filename — the filename is already visible as the link text.
-- Order matters: alphabetical keeps diffs small when notes are added out of sequence.
-- Don't touch `## Notes` bullets written by hand for other files. Only touch the bullet for the file you just created.
+## Why not ship these by default
 
-## Why not ship these by default?
+Each pattern assumes something the conception convention itself doesn't:
 
-Every extension on this page assumes something about the team's workflow:
+- Branch isolation assumes you have a `worktrees_path` configured and that `**Branch**:` is part of your workflow.
+- Deliverable generation assumes a specific `md_to_pdf` pipeline is available and that `document` items have a canonical note.
+- Notes index assumes the README has a `## Notes` section and that notes have first-paragraph summaries.
 
-- Pattern 1 assumes a `~/src/worktrees/` convention and a specific list of apps.
-- Pattern 2 assumes `md_to_pdf.sh` is available and that `document` items have a single canonical note.
-- Pattern 3 assumes the README has a `## Notes` section and that notes have a first-paragraph summary.
-
-None of these are universal. The shipped skill stays at the intersection of what every conception tree needs (create / list / update / close); team-specific conventions are one fork away.
-
-## Adapting without forking
-
-If you'd rather not maintain a forked `SKILL.md`, an alternative is to write a separate `/my-team-items` skill that wraps `/conception-items` — runs your extra logic, then delegates to the shipped skill for the base actions. This keeps upstream updates painless at the cost of one extra indirection layer.
-
-Either approach works. Pick the one that fits your update cadence.
+None of these are universal. The shipped skills stay at the intersection of what every conception tree needs; team-specific conventions are one fork (or one wrapper) away.
 
 ## Reference
 
-- [Management skill reference](../reference/skill.md) — exhaustive list of actions, arguments, and prompt variables.
-- [Your first project](../tutorials/first-project.md) — the skill in use from a tutorial perspective.
+- [Management skills reference](../reference/skill.md) — every shipped action and the CLI verb it wraps.
+- [Get started — your first project](../get-started/index.md#your-first-project) — the skills in use end to end.
+- [CLI reference](../reference/cli.md) — every CLI verb a skill could shell out to.

@@ -1,27 +1,20 @@
 ---
-title: Search your history · condash guide
-description: Use the History tab's full-text search, read the ranking, read the snippets, find the note you wrote six months ago.
+title: Search · condash guide
+description: Use the search modal's full-text search across every README, note, and knowledge file. Read the ranking, read the snippets, find what you wrote six months ago.
 ---
 
-# Search your history
+# Search
 
 > **Audience.** Daily user.
 
 **When to read this.** You remember writing something — a note, a README paragraph, a step description — and you need to find it without grepping the tree by hand.
 
-The **History** tab is a full-text search across every item's README, every note file, and every knowledge file. It re-indexes on every query; there's no background job and no stale cache.
+condash's search is a **modal**, not a tab. It's available from anywhere in the app:
 
-## The tab
+- **`Ctrl+Shift+F`** / **`Cmd+Shift+F`** — opens the modal.
+- **File → Search…** — same.
 
-![History tab — ranked search results with snippets](../assets/screenshots/history-tab-light.png#only-light)
-![History tab — ranked search results with snippets](../assets/screenshots/history-tab-dark.png#only-dark)
-
-Click **History** in the top bar. A search box captures focus; start typing. Results render live as you type, ranked and grouped by item.
-
-Each result has:
-
-- The **item title and kind badge** — click to open that item's card.
-- One or more **hit rows** underneath, each showing the source (readme / note / filename / title), the path or label, and a snippet with the matched token highlighted.
+The query box takes focus the moment the modal opens. Start typing; results render live, ranked and grouped by item. `Esc` closes the modal.
 
 ## What's indexed
 
@@ -65,7 +58,7 @@ Case is ignored.
 
 ## Snippets
 
-Each hit row carries a snippet — the body text around the earliest token hit, with `<mark>` highlighting:
+Each hit row carries a snippet — the body text around the earliest token hit, with the matched substrings highlighted:
 
 > …to index the **corpus** with the same format as the parser's real input.
 
@@ -75,22 +68,18 @@ Rules:
 - The snippet snaps to word boundaries (no mid-word cuts).
 - Whitespace collapses to single spaces.
 - Ellipses indicate truncation on either side.
-- Every occurrence of every query token inside the snippet is marked, not just the anchor.
+- Every occurrence of every query token inside the snippet is highlighted, not just the anchor.
 
 An empty snippet means the match was in a field without a rich body (e.g. the slug or a filename); the hit still shows, labelled by its source.
 
-## Focus and keyboard flow
+## Result layout
 
-The search box takes focus automatically when you open the History tab. `Esc` clears the query; clicking an item opens its card (the tab switches to Projects); `Ctrl+L` style focus-grab is not wired — use the tab switch.
+Each result has:
 
-There are no keyboard shortcuts to move between results — click to open.
+- The **item title and kind badge** — click to open that item's card.
+- One or more **hit rows** underneath, each showing the source (readme / note / filename / title), the path or label, and a snippet with the matched token highlighted.
 
-## Practical patterns
-
-- **"Where did I write about X?"** — type `X`. Titles and filenames will surface first; body matches follow.
-- **"What did I say about X in the Y project?"** — type `X Y`. Both tokens must match; results narrow to items that mention both.
-- **"Find the note about the config migration"** — type `config migration`. If both words are in a filename (e.g. `notes/config-migration-decision.md`), filename weight (3) dominates the ranking.
-- **"What's our convention for X?"** — knowledge files surface in the same ranking; a match in `knowledge/conventions.md` shows alongside item hits.
+Click any result to close the modal and jump to the corresponding card or knowledge file.
 
 ## What isn't searched
 
@@ -100,3 +89,21 @@ There are no keyboard shortcuts to move between results — click to open.
 - `deliverables/` PDF **text** — the path is indexed, but condash doesn't extract PDF content.
 
 If you need to search inside deliverable PDFs, grep them with an external tool or generate a searchable Markdown alongside the PDF (see [Deliverables and PDFs](deliverables.md)).
+
+## Practical patterns
+
+- **"Where did I write about X?"** — type `X`. Titles and filenames will surface first; body matches follow.
+- **"What did I say about X in the Y project?"** — type `X Y`. Both tokens must match; results narrow to items that mention both.
+- **"Find the note about the config migration"** — type `config migration`. If both words are in a filename (e.g. `notes/config-migration-decision.md`), filename weight (3) dominates the ranking.
+- **"What's our convention for X?"** — knowledge files surface in the same ranking; a match in `knowledge/conventions.md` shows alongside item hits.
+
+## CLI parity
+
+The same search engine is exposed by `condash search`:
+
+```bash
+condash search "session cookie" --scope all --limit 20
+condash search fuzz --json | jq '.data.hits[].path'
+```
+
+`--scope` accepts `all`, `projects`, `knowledge` (default `all`). See [CLI reference — search](../reference/cli.md#search).

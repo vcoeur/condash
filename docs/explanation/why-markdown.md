@@ -13,7 +13,7 @@ Every project tracker answers a few questions for you: what am I working on, wha
 2. **The dashboard is a view, not a second database.** Close the dashboard and the files don't go anywhere. Delete the dashboard and the files don't go anywhere.
 3. **Writing is cheap.** No form to fill, no modal to open, no required fields, no schema migration. You type Markdown.
 
-This page is the pitch. Read [tutorials/first-run](../tutorials/first-run.md) for how to actually install the thing.
+This page is the pitch. Read [tutorials/first-run](../get-started/index.md) for how to actually install the thing.
 
 ## Your project tracker should be plain files in git
 
@@ -130,4 +130,4 @@ Listing these keeps everyone honest:
 - Three good-fit scenarios: solo dev across apps, engineering logbook, AI-agent workspace, post-mortem tracker.
 - Not a fit when you need multi-user, web-hosted, or a proper project-management product.
 
-If that sounds right, start with [First run](../tutorials/first-run.md).
+If that sounds right, start with [First run](../get-started/index.md).

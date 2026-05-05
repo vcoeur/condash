@@ -11,7 +11,7 @@ description: The short list of environment variables condash reads.
 
 | Name | Purpose | Default | Accepted values |
 |---|---|---|---|
-| `CONDASH_CONCEPTION_PATH` | One-shot conception-path override | unset | Any absolute path |
+| `CONDASH_CONCEPTION` | One-shot conception-path override | unset | Any absolute path |
 | `CONDASH_FORCE_DEVICE_SCALE_FACTOR` | Force a fixed integer scale (Wayland fallback) | unset | Positive number |
 | `CONDASH_FORCE_PROD` | Force the renderer to load the packaged build (Playwright fixture) | unset | `1` or unset |
 | `SHELL` | Fallback for `terminal.shell` | `/bin/bash` | Absolute path to an interactive shell |
@@ -32,13 +32,13 @@ macOS and Windows ignore this variable — they use `~/Library/Application Suppo
 
 ## `ELECTRON_DISABLE_SANDBOX`
 
-Set by Electron itself when launched with `--no-sandbox` (the dev script in `package.json:dev:electron` does exactly this; the AppImage's patched `AppRun` does the same — see [Install](../get-started/install.md#linux-appimage)).
+Set by Electron itself when launched with `--no-sandbox` (the dev script in `package.json:dev:electron` does exactly this; the AppImage's patched `AppRun` does the same — see [Install](../get-started/index.md#linux-appimage)).
 
 You should not set this manually for the production `.deb` build — it installs `chrome-sandbox` SUID-root at `/opt/condash/`, and disabling the sandbox there is a net regression.
 
-## `CONDASH_CONCEPTION_PATH`
+## `CONDASH_CONCEPTION`
 
-A one-shot override for the conception path. When set, it wins over the `conception_path` value in `settings.json`. Useful for:
+A one-shot override for the conception path. When set, it wins over the `conceptionPath` value in `settings.json`. Useful for:
 
 - Pointing condash at a scratch tree without editing settings.
 - Demoing against a specific tree from a script.
