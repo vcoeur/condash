@@ -12,10 +12,17 @@ export async function readKnowledgeTree(conceptionPath: string): Promise<Knowled
   } catch {
     return null;
   }
-  return walk(root, '', 'knowledge');
+  // Track every directory's realpath as we descend. A symlink loop
+  // (`a → b/`, `b/a → ../`) would otherwise hang the main process.
+  return walk(root, '', 'knowledge', new Set<string>());
 }
 
-async function walk(absPath: string, relPath: string, name: string): Promise<KnowledgeNode> {
+async function walk(
+  absPath: string,
+  relPath: string,
+  name: string,
+  visitedDirs: Set<string>,
+): Promise<KnowledgeNode> {
   const stat = await fs.stat(absPath);
   if (stat.isFile()) {
     const meta = await readFileMeta(absPath, name);
@@ -30,6 +37,27 @@ async function walk(absPath: string, relPath: string, name: string): Promise<Kno
     };
   }
 
+  // Directory: dedupe by canonical path so a symlink that loops back into
+  // an ancestor renders as an empty directory instead of recursing forever.
+  let canonical = absPath;
+  try {
+    canonical = await fs.realpath(absPath);
+  } catch {
+    /* fall through with the lexical path */
+  }
+  if (visitedDirs.has(canonical)) {
+    return {
+      relPath,
+      path: toPosix(absPath),
+      name,
+      title: relPath ? basename(absPath) : 'knowledge',
+      kind: 'directory',
+      children: [],
+    };
+  }
+  const nextVisited = new Set(visitedDirs);
+  nextVisited.add(canonical);
+
   const entries = await fs.readdir(absPath, { withFileTypes: true });
   const accepted = entries.filter((e) => {
     if (HIDDEN_PREFIX.test(e.name)) return false;
@@ -41,7 +69,7 @@ async function walk(absPath: string, relPath: string, name: string): Promise<Kno
     accepted.map(async (entry) => {
       const childAbs = join(absPath, entry.name);
       const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
-      return walk(childAbs, childRel, entry.name);
+      return walk(childAbs, childRel, entry.name, nextVisited);
     }),
   );
 

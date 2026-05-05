@@ -64,11 +64,18 @@ export function parseHeader(raw: string): HeaderFields {
   const meta = new Map<string, string>();
   let title: string | null = null;
   let pastTitle = false;
+  let metaStarted = false;
 
   for (const line of lines) {
     if (HEADING2.test(line)) break;
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed) {
+      // Blank line: tolerate inside the H1 → meta gap; once meta has started,
+      // the next blank ends the header. This stops a stray paragraph after
+      // the meta block from leaking into `extra`.
+      if (metaStarted) break;
+      continue;
+    }
     if (!pastTitle) {
       if (trimmed.startsWith('#')) {
         title = trimmed.replace(/^#+\s*/, '').trim() || null;
@@ -77,7 +84,14 @@ export function parseHeader(raw: string): HeaderFields {
       continue;
     }
     const m = trimmed.match(META_LINE);
-    if (m) meta.set(m[1].toLowerCase(), m[2]);
+    if (m) {
+      meta.set(m[1].toLowerCase(), m[2]);
+      metaStarted = true;
+      continue;
+    }
+    // Past the title and not a meta line: if we already saw meta, we're done;
+    // otherwise tolerate (e.g. a TOC paragraph before the meta block).
+    if (metaStarted) break;
   }
 
   const apps = extractBackticked(meta.get('apps') ?? '');

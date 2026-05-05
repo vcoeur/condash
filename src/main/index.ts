@@ -8,7 +8,7 @@ import { parseHeader } from '../shared/header';
 import { toPosix } from '../shared/path';
 
 import { detectConceptionState, initConception } from './conception-init';
-import { DEFAULT_LAYOUT, readSettings, settingsPath, writeSettings } from './settings';
+import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
@@ -463,6 +463,12 @@ function registerNoteAssetProtocol(): void {
     const settings = await readSettings();
     const root = settings.conceptionPath;
     if (!root) return new Response('no conception path', { status: 403 });
+    // Reject `..` traversal at the URL layer before we touch the filesystem.
+    // realpath() alone could resolve a symlink that escapes the conception,
+    // so this also catches the `<conception>/foo → /etc` symlink case.
+    if (requested.split(/[/\\]/).some((seg) => seg === '..')) {
+      return new Response('forbidden', { status: 403 });
+    }
     // Require the resolved path to live inside the conception tree. This
     // blocks both absolute-path tricks (`condash-file:///etc/passwd`) and
     // `..`-traversal attempts.
@@ -475,9 +481,17 @@ function registerNoteAssetProtocol(): void {
   });
 }
 
+// `child.startsWith(parent + sep)` test that handles both `/` and `\` so a
+// Windows realpath result with backslashes still gets the trailing-separator
+// terminator that prevents `/foo-evil/` from matching `/foo`.
 function isPathUnder(child: string, parent: string): boolean {
-  const c = child.endsWith('/') ? child : child + '/';
-  const p = parent.endsWith('/') ? parent : parent + '/';
+  const trail = (s: string): string => {
+    if (s.endsWith('/') || s.endsWith('\\')) return s;
+    // sep('\\') only matters on Windows; on POSIX the realpath always uses '/'.
+    return process.platform === 'win32' ? s + '\\' : s + '/';
+  };
+  const c = trail(child);
+  const p = trail(parent);
   return c === p || c.startsWith(p);
 }
 
@@ -633,9 +647,7 @@ function registerIpc(): void {
 
   ipcMain.handle('setTheme', async (_, theme: Theme) => {
     if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`);
-    const next = await readSettings();
-    next.theme = theme;
-    await writeSettings(next);
+    await updateSettings((cur) => ({ ...cur, theme }));
   });
 
   ipcMain.handle('getLayout', async () => {
@@ -644,9 +656,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('setLayout', async (_, layout: LayoutState) => {
-    const next = await readSettings();
-    next.layout = layout;
-    await writeSettings(next);
+    await updateSettings((cur) => ({ ...cur, layout }));
     // Application menu reflects layout state — rebuild so the View
     // submenu's check marks line up with the new state.
     buildMenu(layout);
@@ -658,9 +668,10 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('setWelcomeDismissed', async (_, value: boolean) => {
-    const next = await readSettings();
-    next.welcome = { ...(next.welcome ?? {}), dismissed: value };
-    await writeSettings(next);
+    await updateSettings((cur) => ({
+      ...cur,
+      welcome: { ...(cur.welcome ?? {}), dismissed: value },
+    }));
   });
 
   ipcMain.handle(
@@ -773,9 +784,7 @@ function registerIpc(): void {
     if (result.canceled || result.filePaths.length === 0) return null;
 
     const picked = toPosix(result.filePaths[0]);
-    const next = await readSettings();
-    next.conceptionPath = picked;
-    await writeSettings(next);
+    await updateSettings((cur) => ({ ...cur, conceptionPath: picked }));
     await setWatchedConception(picked);
     updateWindowTitle(picked);
     return picked;

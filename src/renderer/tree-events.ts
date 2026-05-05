@@ -25,8 +25,13 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
 
   for (const event of events) {
     if (event.kind === 'unknown') {
+      // Unknown events trigger the bumpRefreshKey/refetchRepos full-refresh
+      // path below — but keep iterating so per-project patches in the same
+      // burst still apply. Otherwise a single unknown in the middle of a
+      // batch drops every later event and the UI flashes back to pre-event
+      // state until the resource refetch resolves.
       unknownSeen = true;
-      break;
+      continue;
     }
     if (event.kind === 'config' || event.kind === 'knowledge') {
       knowledgeOrConfigDirty = true;

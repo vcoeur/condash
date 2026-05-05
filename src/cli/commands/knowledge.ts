@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { readKnowledgeTree } from '../../main/knowledge';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { knowledgeStrategy } from '../../main/index-knowledge';
@@ -402,6 +402,18 @@ async function stampCommand(
     validation(`--date must be YYYY-MM-DD; got '${date}'`);
   }
   const targetPath = isAbsoluteLike(target) ? target : join(conceptionPath, target);
+  // The stamp writes a body file — refuse anywhere outside the conception
+  // tree so a `--target ../../etc/passwd` argument can't prepend a Verified
+  // line wherever fs lets us. Resolves both absolute and relative paths.
+  const resolvedTarget = resolve(targetPath);
+  const resolvedRoot = resolve(conceptionPath);
+  const rel = relative(resolvedRoot, resolvedTarget);
+  if (rel.startsWith('..') || resolve(resolvedRoot, rel) !== resolvedTarget) {
+    throw new CliError(
+      ExitCodes.VALIDATION,
+      `--target must resolve inside the conception tree: ${target}`,
+    );
+  }
   const raw = await fs.readFile(targetPath, 'utf8');
   const stampLine = `**Verified:** ${date} ${where.trim()}`;
   const lines = raw.split(/\r?\n/);
