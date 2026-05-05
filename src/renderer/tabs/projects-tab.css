@@ -669,15 +669,18 @@
   line-height: 1.4;
 }
 
-/* Step toggle is a clickable SVG. Sizing is em-relative so the icon
- * scales with the surrounding step text — same component renders at
- * 12 px in the card, 14 px in the popup, without any per-context CSS. */
+/* Step toggle is a clickable SVG. The icon stays em-relative so it
+ * scales with the surrounding text, but the click target is padded out
+ * to ~28 px so the row is comfortable to hit on a trackpad / touch
+ * screen without changing visual density (the box stays transparent). */
 .step-toggle {
   background: transparent;
   border: none;
-  padding: 0;
-  width: 1.15em;
-  height: 1.15em;
+  padding: 6px;
+  margin: -6px;
+  border-radius: var(--radius-sm);
+  width: calc(1.15em + 12px);
+  height: calc(1.15em + 12px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -687,13 +690,18 @@
 }
 
 .step-toggle svg {
-  width: 100%;
-  height: 100%;
+  width: 1.15em;
+  height: 1.15em;
   stroke-width: 1.5;
 }
 
 .step-toggle:hover {
   color: var(--accent);
+}
+
+.step-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Strikethrough is reserved for "dropped" steps — work that won't happen.
