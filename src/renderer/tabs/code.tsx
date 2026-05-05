@@ -162,9 +162,14 @@ export function RepoRow(props: {
           </span>
         </Show>
         <span class="spacer" />
-        <span class="repo-kind-tag" title={`Configured under repositories.${props.repo.kind}`}>
-          {props.repo.parent ? 'SUB' : 'REPO'}
-        </span>
+        <Show when={props.repo.parent}>
+          <span
+            class="repo-kind-tag"
+            title={`Submodule, configured under repositories.${props.repo.kind}`}
+          >
+            submodule
+          </span>
+        </Show>
         <RepoCardMenu repo={props.repo} onForceStop={props.onForceStop} />
       </header>
       <ul class="branches">
@@ -172,7 +177,16 @@ export function RepoRow(props: {
           {(wt) => (
             <li class="branch-row" data-status={branchStatus(wt)}>
               <span class="branch-dot" aria-hidden="true" />
-              <span class="branch-name">{wt.branch ?? '(detached)'}</span>
+              <span
+                class="branch-name"
+                title={
+                  wt.branch
+                    ? wt.branch
+                    : 'Detached HEAD — git is on a specific commit, not a branch'
+                }
+              >
+                {wt.branch ?? '(no branch)'}
+              </span>
               <BranchInfoBadges worktree={wt} subtreeScoped={!!props.repo.parent} />
               <Show when={props.live && (props.liveBranch ?? null) === (wt.branch ?? null)}>
                 <span class="branch-live-dot" title="Running" aria-label="Running" />
@@ -410,7 +424,7 @@ function BranchActions(props: {
               title={
                 props.worktree.primary
                   ? 'Run configured run: command'
-                  : `Run configured run: command in ${props.worktree.branch ?? '(detached)'}`
+                  : `Run configured run: command in ${props.worktree.branch ?? '(no branch)'}`
               }
               aria-label="Run"
             >
@@ -726,14 +740,16 @@ function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean })
           }}
           class="branch-dirty-popover"
           role="dialog"
-          aria-label={`Branch info for ${props.worktree.branch ?? '(detached)'}`}
+          aria-label={`Branch info for ${props.worktree.branch ?? '(no branch)'}`}
           style={{
             top: `${anchor()!.top}px`,
             left: `${anchor()!.left}px`,
           }}
         >
           <header class="branch-dirty-popover-head">
-            <span class="branch-dirty-popover-branch">{props.worktree.branch ?? '(detached)'}</span>
+            <span class="branch-dirty-popover-branch">
+              {props.worktree.branch ?? '(no branch)'}
+            </span>
             <span class="branch-dirty-popover-path" title={props.worktree.path}>
               {props.worktree.path}
             </span>
@@ -850,7 +866,7 @@ export function CodeView(props: {
                       const cwd = props.liveSessionCwds.get(repo.name);
                       if (!cwd) return null;
                       const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
-                      if (wt) return wt.branch ?? '(detached)';
+                      if (wt) return wt.branch ?? '(no branch)';
                       // Fallback: cwd matches the repo's primary path.
                       if (cwd === repo.path) {
                         const primary = (repo.worktrees ?? []).find((w) => w.primary);
