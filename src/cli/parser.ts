@@ -173,6 +173,17 @@ export function takeUniversalFlags(args: ParsedArgs): UniversalFlags {
   return out;
 }
 
+/**
+ * Parse a positive-integer flag value, falling back to `fallback` when the
+ * value is missing, non-string, or not a positive int. Four byte-identical
+ * copies used to live across the command files.
+ */
+export function parseIntFlag(value: string | boolean | undefined, fallback: number): number {
+  if (typeof value !== 'string') return fallback;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 export interface UniversalFlags {
   json: boolean;
   ndjson: boolean;

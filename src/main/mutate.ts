@@ -1,6 +1,8 @@
 import { promises as fs } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename } from 'node:path';
 import type { StepMarker, TransitionResult } from '../shared/types';
+import { isoToday } from '../shared/iso-today';
+import { atomicWrite } from './atomic-write';
 import { configSchema } from './config-schema';
 
 const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s.*)$/;
@@ -39,21 +41,6 @@ async function withFileQueue<T>(path: string, work: () => Promise<T>): Promise<T
     }),
   );
   return next;
-}
-
-// `tmp → fsync → rename`: an unsynced rename can leave a zero-length file on
-// power-loss, which we'd surface as "Status field missing" the next time we
-// parse the README. Sync the temp file's data and metadata before swap.
-async function atomicWrite(path: string, content: string): Promise<void> {
-  const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
-  const fh = await fs.open(tmp, 'w');
-  try {
-    await fh.writeFile(content, 'utf8');
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
-  await fs.rename(tmp, path);
 }
 
 export async function toggleStep(
@@ -422,12 +409,4 @@ export function parseTimelineEntries(raw: string): { date: string; text: string 
     out.push({ date: m[1], text: m[2] });
   }
   return out;
-}
-
-function isoToday(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
 }

@@ -23,14 +23,11 @@
  */
 
 import { promises as fs } from 'node:fs';
-import { execFile } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
-import { promisify } from 'node:util';
 import { findProjectReadmes } from './walk';
 import { readHeader } from './header-fs';
+import { exec } from './exec';
 import type { ConfigShape } from './config-walk';
-
-const exec = promisify(execFile);
 
 export type AuditCheckName = 'lfs' | 'binaries' | 'cross-repo' | 'worktrees' | 'index';
 
