@@ -74,19 +74,21 @@ nav:
 
   - Get started: get-started/index.md
 
+  - Tutorials:
+    - tutorials/index.md
+    - A day with condash: tutorials/daily-loop.md
+
   - Guides:
     - guides/index.md
     - Configure the conception path: guides/configure-conception-path.md
     - Repositories and open-with buttons: guides/repositories-and-open-with.md
     - Embedded terminal: guides/terminal.md
+    - Search your history: guides/search.md
     - Wikilinks between items: guides/wikilinks.md
     - The knowledge tree: guides/knowledge-tree.md
+    - Deliverables and PDFs: guides/deliverables.md
+    - Extend the management skill: guides/skill-extensions.md
     - Troubleshooting: guides/troubleshooting.md
-    - More:
-      - A day with condash: tutorials/daily-loop.md
-      - Search your history: guides/search.md
-      - Deliverables and PDFs: guides/deliverables.md
-      - Extend the management skill: guides/skill-extensions.md
 
   - Reference:
     - reference/index.md

@@ -1,135 +1,108 @@
 ---
-title: Management skill · condash reference
-description: Reference for the shipped /conception-items Claude Code skill — actions, arguments, and the files each action writes.
+title: Management skills · condash reference
+description: Reference for the four shipped Claude Code skills — /projects, /knowledge, /skills, /pr — and how they shell out to the condash CLI.
 ---
 
-# Management skill
+# Management skills
 
 > **Audience.** Daily user.
 
 ## At a glance
 
-`condash` renders items but does not create them. The shipped **[`/conception-items`](https://github.com/vcoeur/condash/tree/main/examples/skills/conception-items)** Claude Code skill covers the creation + update + close lifecycle by editing files directly. It has **no knowledge of the condash CLI or HTTP server** — the two tools meet at the filesystem and nowhere else.
+condash ships four [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.claude/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.claude/skills) in the repo and land at `<conception>/.claude/skills/` after running `condash skills install` (or `/skills install` from a session).
 
-For the learn-by-doing walkthrough, see [tutorials/first-project](../tutorials/first-project.md). For the extension patterns, see [guides/skill-extensions](../guides/skill-extensions.md).
-
-## Actions
-
-Every action is a natural-language verb that the skill parses and translates into a small set of file operations.
-
-| Action | What it writes | Typical arguments |
+| Skill | Scope | What it does |
 |---|---|---|
-| `create` | New `projects/YYYY-MM/YYYY-MM-DD-slug/README.md` with header + goal + empty `## Steps` + seeded `## Timeline` | title, `Kind`, `Status`, optional `Apps`, optional `Branch` |
-| `list` | — (read-only) | filter: `Kind`, `Status`, `Apps`, or a keyword |
-| `add-note` | New `projects/<...>/notes/<slug>.md` (creates `notes/` if missing); optionally appends a link to the README's `## Notes` section | parent item, note slug |
-| `update` | Line-level edits to `README.md`: step text, step marker, `**Status**:`, appending to `## Timeline` | item slug, update kind |
-| `close` | Sets `**Status**: done`, appends a closing line to `## Timeline` | item slug |
+| **`/projects`** | items + worktrees | Create / read / update / close projects, incidents, and documents. Manage worktrees per branch. |
+| **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. |
+| **`/skills`** | meta | Install or update the shipped skills themselves — wraps `condash skills install`. |
+| **`/pr`** | git | Open a GitHub PR from the current branch with the project README's timeline-append rule applied. |
 
-The skill deliberately does **not** delete items, does not rename directories, and does not move files between months. Those are manual operations — reviewable in `git diff`.
+The skills are **editorial only**. Every mechanical step shells out to `condash`, so the dashboard, the CLI, and the skills always see the same canonical view of the tree. A skill never re-implements parsing or validation in `bash + grep + sed`.
+
+## `/projects`
+
+Manage items in `projects/YYYY-MM/YYYY-MM-DD-slug/`. The skill drives the matching CLI verbs through `condash projects ...`.
+
+| Action | Trigger | Wraps |
+|---|---|---|
+| `list` | `/projects list [kind=…] [status=…] [apps=…] [branch=…]` | `condash projects list` |
+| `read` | `/projects read <slug>` | `condash projects read` |
+| `search` | `/projects search <keyword>` | `condash projects search` |
+| `validate` | `/projects validate [<slug>]` | `condash projects validate` |
+| `create` | `/projects create <kind>` (project / incident / document) | `condash projects create` |
+| `update` | `/projects update <slug>` | direct file edits, drift-checked |
+| `close` | `/projects close <slug>` | `condash projects close` |
+| `reopen` | `/projects reopen <slug>` | `condash projects reopen` |
+| `index` | `/projects index` | `condash projects index` |
+| `worktree` | `/projects worktree {setup\|remove\|check\|list\|status} [branch]` | `condash worktrees …` |
+
+The `create` action enforces the canonical kind templates and the `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` slug regex. The `close` action appends the `Closed.` timeline entry; `reopen` appends `Reopened.`.
+
+## `/knowledge`
+
+Manage durable reference material in `<conception>/knowledge/`.
+
+| Action | Trigger | Wraps |
+|---|---|---|
+| `retrieve` | `/knowledge retrieve <query>` — triage walk (names / bodies / both) | `condash knowledge retrieve` |
+| `update` | `/knowledge update <path>` — add or edit a body file with citation + verification stamp | direct file edits + `condash knowledge stamp` |
+| `index` | `/knowledge index` — regenerate every `knowledge/**/index.md` | `condash knowledge index` |
+| `verify` | `/knowledge verify` — audit stale `**Verified:** YYYY-MM-DD` stamps + tree audits | `condash knowledge verify` |
+
+Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones older than the freshness threshold.
+
+## `/skills`
+
+Install or refresh the shipped skills. Use it after upgrading condash to pull updated skill content while keeping local edits.
+
+| Action | Trigger | Wraps |
+|---|---|---|
+| `status` | `/skills status` | `condash skills status` (compare local vs shipped via SHA256) |
+| `install` | `/skills install` | `condash skills install` (per-file diff + confirmation walk) |
+
+The manifest at `<conception>/.claude/skills/.condash-skills.json` tracks the shipped version + SHA256 per file so updates can detect local edits.
+
+## `/pr`
+
+Open a GitHub PR from the current branch with condash's standard PR shape: title stating the objective, a short Summary, a Changes list, and the optional Impact / Watchpoints sections when relevant. Project-level wrappers (e.g. conception's `/pr`) defer body shape to this skill — read it before drafting.
 
 ## Install
 
-The skill file ships in the repo at [`examples/skills/conception-items/SKILL.md`](https://github.com/vcoeur/condash/tree/main/examples/skills/conception-items). Copy it to one of the Claude Code skill locations:
-
 ```bash
-# Global — available in every session
-mkdir -p ~/.claude/skills/conception-items
-curl -fsSL https://raw.githubusercontent.com/vcoeur/condash/main/examples/skills/conception-items/SKILL.md \
-  -o ~/.claude/skills/conception-items/SKILL.md
+# Once per conception, after first install
+condash skills install
 
-# Project-local — auto-loaded inside a specific repo
-mkdir -p <repo>/.claude/skills/conception-items
-curl -fsSL https://raw.githubusercontent.com/vcoeur/condash/main/examples/skills/conception-items/SKILL.md \
-  -o <repo>/.claude/skills/conception-items/SKILL.md
+# After upgrading condash (walks the diff for files you may have edited)
+condash skills install
 ```
 
-Reload skills (or start a new session) and `/conception-items` becomes available.
+The skills land at `<conception>/.claude/skills/`. Reload Claude Code (or start a new session) and `/projects`, `/knowledge`, `/skills`, `/pr` are available.
 
-Set the `CONCEPTION_PATH` environment variable so the skill knows which tree to operate on:
+`condash skills install` writes one file at a time and asks for confirmation per file when local content differs from the shipped version — your customisations don't get clobbered silently.
 
-```bash
-export CONCEPTION_PATH=~/conception
-```
+## Conception-path resolution
 
-(condash itself does not read `CONCEPTION_PATH` — only the skill does. See [env vars](env.md).)
+The skills resolve the conception path the same way the CLI does:
 
-## Files written per action
+1. `--conception <path>` flag (when invoked with explicit args).
+2. The `CONDASH_CONCEPTION` environment variable.
+3. `conceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`.
+4. Walk-up from the current working directory looking for a `configuration.json` next to a `projects/` directory.
 
-| Action | File | Operation |
-|---|---|---|
-| `create` | `projects/YYYY-MM/YYYY-MM-DD-slug/README.md` | `Write` (whole file, from template) |
-| `create` | `projects/YYYY-MM/YYYY-MM-DD-slug/notes/` | `mkdir` (empty directory) |
-| `list` | — | none |
-| `add-note` | `projects/<...>/notes/<slug>.md` | `Write` |
-| `add-note` | `projects/<...>/README.md` | `Edit` (appends to `## Notes` if present; no-op otherwise) |
-| `update` (step toggle) | `projects/<...>/README.md` | `Edit` (rewrites one `- [<marker>] <text>` line) |
-| `update` (status) | `projects/<...>/README.md` | `Edit` (rewrites `**Status**:` line) |
-| `update` (timeline) | `projects/<...>/README.md` | `Edit` (appends a dated line to `## Timeline`) |
-| `close` | `projects/<...>/README.md` | `Edit` × 2 — status to `done`, append `## Timeline` entry |
+See [Environment variables](env.md) for the full list.
 
-Every operation uses Claude Code's `Write` / `Edit` tools — no shell, no CLI, no direct git. The user reviews changes in `git diff` before committing.
-
-## Slug generation
-
-`create` derives the slug from the title:
-
-1. Lowercase.
-2. Replace spaces with dashes.
-3. Strip everything outside `[a-z0-9-]`.
-4. Prepend today's date: `YYYY-MM-DD-<slug>`.
-5. Place under `projects/YYYY-MM/` using today's month.
-
-If the resulting path collides with an existing item, the skill appends `-2`, `-3`, … until it's unique.
-
-## Header emitted by `create`
-
-```markdown
-# <Title>
-
-**Date**: <today>
-**Kind**: <project | incident | document>
-**Status**: <status>
-**Apps**: <apps, if provided>
-**Branch**: <branch, if provided>
-
-## Goal
-
-<prompt the user for one paragraph>
-
-## Scope
-
-## Steps
-
-## Timeline
-
-- <today> — Project created
-```
-
-`## Notes` is not seeded by default — it's added by the first `add-note` call when appending the index link.
-
-## What the skill does not do
+## What the skills do **not** do
 
 | Not included | Why |
 |---|---|
-| Generate PDFs | Deliverable generation is out of scope — use the [deliverables guide](../guides/deliverables.md) or a dedicated skill. |
-| Run `condash`-level CLI commands | The two tools are orthogonal; the skill has no dependency on condash being installed. |
+| Generate PDFs | Out of scope. Use [`scripts/md_to_pdf.sh`](https://github.com/vcoeur/condash/tree/main/scripts) or your own pipeline. |
 | Move or archive items | Items live at `projects/YYYY-MM/YYYY-MM-DD-slug/` for life. Status flips, directories don't. |
-| Create a git branch | Branch isolation is the user's call. Add that as an extension — see [guides/skill-extensions](../guides/skill-extensions.md). |
-| Edit the config | Use the dashboard's gear modal, or edit `<conception_path>/config/*.yml` with your editor. |
-
-## Extending the shipped skill
-
-The shipped version is intentionally minimal. Typical extensions:
-
-- **Per-kind templates.** Replace the body builder with per-Kind variants (richer for documents, flatter for incidents).
-- **Branch + worktree provisioning.** For projects with `**Branch**`, set up a git worktree under `worktrees_path` so the code lives apart from the main checkout.
-- **Deliverable generation.** A `generate-deliverable` verb for documents — render Markdown to PDF, update `## Deliverables` to link it.
-- **Notes auto-index.** Keep the `## Notes` section in sync with the contents of the `notes/` subdirectory.
-
-Each is a ten-minute extension on top of the base skill. See [guides/skill-extensions](../guides/skill-extensions.md) for worked examples.
+| Edit `configuration.json` | Use the dashboard's Settings modal or your editor. |
+| Push to a remote without confirmation | The `/pr` skill always confirms before `git push`. |
 
 ## Related
 
-- [Tutorials — first project](../tutorials/first-project.md) — learn-by-doing walkthrough.
-- [Guides — extending the skill](../guides/skill-extensions.md) — concrete extension patterns.
-- [Mutation model](mutations.md) — the **dashboard's** mutation surface; disjoint from the skill's.
+- [Get started](../get-started/index.md) — install + first-launch + first project.
+- [Guides — extending the skills](../guides/skill-extensions.md) — concrete extension patterns.
+- [Mutation model](mutations.md) — the **dashboard's** mutation surface; disjoint from the skills'.

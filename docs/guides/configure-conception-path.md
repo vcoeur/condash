@@ -27,7 +27,7 @@ Change the saved path without re-launching the picker by editing `${XDG_CONFIG_H
 
 ```json
 {
-  "conception_path": "/home/you/another-tree"
+  "conceptionPath": "/home/you/another-tree"
 }
 ```
 
@@ -48,7 +48,7 @@ The env var wins over `settings.json` for that launch only. It is **not** persis
 On startup condash checks, in order:
 
 1. `CONDASH_CONCEPTION_PATH` environment variable (one-shot override).
-2. `conception_path` in `settings.json`.
+2. `conceptionPath` in `settings.json`.
 3. First-launch folder picker. Writes the choice back to `settings.json`.
 4. Hard error — condash refuses to start.
 
@@ -72,4 +72,4 @@ Then either edit `settings.json` to point at `/tmp/scratch-tree`, or delete `set
 
 ## Multiple machines pointed at the same tree
 
-`conception_path` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `configuration.json` at its root; per-machine preferences stay in `settings.json`.
+`conceptionPath` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `configuration.json` at its root; per-machine preferences stay in `settings.json`.

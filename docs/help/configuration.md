@@ -40,8 +40,8 @@ gives a kill button that frees a stuck port (e.g. `fuser -k 8200/tcp`).
 
 ```json
 {
-  "conception_path": "/home/you/conception",
-  "theme": "auto",
+  "conceptionPath": "/home/you/conception",
+  "theme": "system",
   "terminal": {
     "shell": "/bin/zsh",
     "shortcut": "Ctrl+T",
@@ -53,7 +53,7 @@ gives a kill button that frees a stuck port (e.g. `fuser -k 8200/tcp`).
 }
 ```
 
-The first-launch folder picker writes `conception_path` for you. Theme
+The first-launch folder picker writes `conceptionPath` for you. Theme
 follows the OS unless you set it explicitly via the toolbar toggle.
 
 `{path}` in any `open_with` command is replaced with the absolute path

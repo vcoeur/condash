@@ -7,7 +7,7 @@ description: Open an existing item, edit code in the repo strip, run a build in 
 
 > **Audience.** New user becoming a daily user — you've finished the first two tutorials and want to see the realistic workflow.
 
-**When to read this.** You've done [First run](first-run.md) and [Your first project](first-project.md). You want to see the full workflow: not just "how do I create an item?", but "what does a day of real work look like when this tree is your work tracker?".
+**When to read this.** You've worked through [Get started](../get-started/index.md). You want to see the full workflow: not just "how do I create an item?", but "what does a day of real work look like when this tree is your work tracker?".
 
 By the end, you'll have walked through the loop most people use condash for — open item, open its repo, edit, build, document, push, close — and know which surface each step uses.
 
@@ -85,7 +85,7 @@ Refresh the dashboard; the `PDF` badge on the item row lights up and the Deliver
 ![A card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-light.png#only-light)
 ![A card with a Deliverables section and a PDF download link](../assets/screenshots/item-document-with-pdf-dark.png#only-dark)
 
-Clicking the link opens the vendored PDF viewer in a modal — no OS handler involved.
+Clicking the link opens the PDF in an in-app modal that hosts a Chromium `<webview>` — no OS handler involved.
 
 ## 6. Push a PR
 
@@ -118,10 +118,7 @@ Check Done sub-tab — the item is there alongside last month's archived entries
 
 ## 8. Find it again later
 
-The item stays where it was created. Open the **History** tab and type `overflow` — the incident's README and your updated stack-trace note surface together, ranked by relevance.
-
-![History tab — ranked search results across items and notes](../assets/screenshots/history-tab-light.png#only-light)
-![History tab — ranked search results across items and notes](../assets/screenshots/history-tab-dark.png#only-dark)
+The item stays where it was created. Press `Ctrl+Shift+F` to open the **search modal** and type `overflow` — the incident's README and your updated stack-trace note surface together, ranked by relevance.
 
 ## What you just learned
 

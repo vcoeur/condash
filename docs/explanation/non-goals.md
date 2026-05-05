@@ -61,7 +61,7 @@ A single `BrowserWindow`. Modals (note, PDF, help) are in-renderer overlays. The
 
 condash ships unsigned `.deb`, `.AppImage`, `.dmg`, and `.exe` builds. Code-signing certificates and the App Store / Microsoft Store funnels are out of scope until there's a clear request from a user blocked by signature requirements.
 
-**Why**: cost (certs, store fees, review cycles) without a current audience. Re-evaluate when someone hits a blocker that the [SmartScreen / Gatekeeper bypass](../get-started/install.md) doesn't solve.
+**Why**: cost (certs, store fees, review cycles) without a current audience. Re-evaluate when someone hits a blocker that the [SmartScreen / Gatekeeper bypass](../get-started/index.md#install) doesn't solve.
 
 ## No telemetry / usage reporting
 

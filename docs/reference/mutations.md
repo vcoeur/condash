@@ -25,14 +25,15 @@ All operate on the item's `README.md` in place. Paths are validated against the 
 
 | Action | IPC verb | Trigger | Effect on `README.md` |
 |---|---|---|---|
-| Toggle step | `step.toggle` | Click a checkbox | Rewrites one `- [<marker>] <text>` line. Drift-checked: `expectedMarker` must match the on-disk marker or the write is refused. |
-| Add step | `step.add` | Click "+" in the Steps section | Inserts `- [ ] <text>` at the end of the `## Steps` section |
-| Edit step | `step.editText` | Click the pencil on a step | Rewrites the `<text>` portion. Drift-checked: `expectedText` must match the on-disk text. |
-| Change status | `setStatus` | Drag card between kanban columns | Rewrites the `**Status**: <value>` line in the metadata block. Refuses if the line is missing. |
+| Toggle step | `toggleStep` | Click a checkbox | Rewrites one `- [<marker>] <text>` line. Drift-checked: `expectedMarker` must match the on-disk marker or the write is refused. Markers are `[ ]`, `[~]`, `[x]`, `[-]`. |
+| Add step | `addStep` | Click "+" in the Steps section | Inserts `- [ ] <text>` at the end of the `## Steps` section |
+| Edit step | `editStepText` | Click the pencil on a step | Rewrites the `<text>` portion. Drift-checked: `expectedText` must match the on-disk text. |
+| Change status | `setStatus` | Drag card between kanban columns | Rewrites the `**Status**: <value>` line in the metadata block. On done-edges (close: prev → done, reopen: done → prev) also appends a `Closed.` / `Reopened.` line to `## Timeline`. Refuses if the `**Status**:` line is missing. |
+| Create item | `createProject` | Submit the new-project modal | Allocates `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/` from the canonical kind template (project / incident / document) and writes the README. |
 
 All mutation verbs are routed through [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts), which:
 
-- Validates the path is inside `conception_path`.
+- Validates the path is inside `conceptionPath`.
 - Acquires the per-file write queue (`withFileQueue`) so concurrent toggles on the same file never interleave.
 - Performs the drift check (compare the expected marker / text / content against what's on disk).
 - Writes via `tmp` → `fsync` → `rename`.
@@ -45,8 +46,9 @@ All paths live under an item's directory (`projects/YYYY-MM/YYYY-MM-DD-slug/...`
 
 | Action | IPC verb | Trigger | Effect |
 |---|---|---|---|
-| Read a note | `note.read` | Click a file in the card | Returns plain bytes — no write |
-| Overwrite a note | `note.write` | Save in the note editor | Atomic rewrite via `.tmp` + rename. Full-content drift check refuses stale overwrites. |
+| Read a note | `readNote` | Click a file in the card | Returns plain bytes — no write |
+| Overwrite a note | `writeNote` | Save in the note editor | Atomic rewrite via `.tmp` + rename. Full-content drift check refuses stale overwrites. For `configuration.json`, the bytes written may differ from the input (Zod canonicalisation reorders keys). |
+| Create a note | `createProjectNote` | Click "+ Note" in the card | Creates `<projectPath>/notes/NN-<slug>.md` with the next zero-padded counter; returns the new path. |
 | List item files | `listProjectFiles` | Open the notes panel | Lists files under the item's `notes/` directory — no write |
 
 The `note.write` verb takes `(path, expectedContent, newContent)`. If `expectedContent` no longer matches what's on disk, the renderer surfaces a "reload before saving" toast and the write is refused. No merge — the user re-opens the note and redoes their edit.
@@ -57,7 +59,7 @@ The tree-level `<conception_path>/configuration.json` is editable through the ge
 
 The watcher fires a `config` event on `tree-events`, the renderer bumps `refreshKey`, and most changes reload live. Structural changes (`workspace_path`, `worktrees_path`, the `repositories` list shape) require a restart for paths to be re-resolved.
 
-`settings.json` (per-user, per-machine — `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`) is **not** written by any IPC verb. Edit it by hand; condash reads it on the next launch. The exceptions are the first-launch `pickConceptionPath` and `setTheme` verbs, which write narrow keys (`conception_path`, `theme`) into `settings.json`.
+`settings.json` (per-user, per-machine — `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`) is partially written by the IPC layer: `pickConceptionPath`, `setTheme`, `setLayout`, `setWelcomeDismissed`, and `termSetPrefs` each touch a single narrow key (`conceptionPath`, `theme`, `layout`, `welcome.dismissed`, `terminal`). Anything else still needs a hand-edit; condash reads the file on the next launch.
 
 See [Config files](config.md) for the full key schema and which file owns which key.
 
@@ -67,26 +69,27 @@ The launcher verbs spawn an external process. These **do not** write to the conc
 
 | Action | IPC verb | Accepted path | Command run |
 |---|---|---|---|
-| Open in IDE / terminal | `launchOpenWith(slot, path)` | Must resolve under `workspace_path` **or** `worktrees_path` | One of the `open_with.<slot>.commands` chain, tried in order |
-| Open in editor | `openInEditor(path)` | Must resolve under `conception_path` | The configured editor (or the OS default for non-text files) |
-| Open conception root | `openConceptionDirectory()` | Always `conception_path` | OS default file manager |
+| Open in IDE / terminal | `launchOpenWith(slot, path)` | Must resolve under `workspace_path` **or** `worktrees_path` | The `open_with.<slot>.command` template, with `{path}` substituted at the argv level (no shell expansion) |
+| Open in editor | `openInEditor(path)` | Must resolve under `conceptionPath` | The configured editor (or the OS default for non-text files) |
+| Open conception root | `openConceptionDirectory()` | Always `conceptionPath` | OS default file manager |
+| Open a local path | `openPath(target)` | Absolute path, OS-validated | OS default handler — used by the Settings modal "Open externally" buttons |
+| Open an external URL | `openExternal(target)` | Scheme must be `http:`, `https:`, or `mailto:` | OS default handler |
 | Force-stop a repo | `forceStopRepo(repoName)` | Repo must be in `configuration.json` | The repo's `force_stop:` shell command — no path argument |
 
 Paths outside the configured sandbox are rejected **before the shell sees them**. The validation lives in [`src/main/launchers.ts`](https://github.com/vcoeur/condash/blob/main/src/main/launchers.ts) (path checks) and the per-verb handlers in [`src/main/index.ts`](https://github.com/vcoeur/condash/blob/main/src/main/index.ts).
 
-The embedded terminal (`term.spawn`) takes a `cwd` field that goes through the same path-validation check, so a spawned shell can only start inside `workspace_path` or `worktrees_path`.
+The embedded terminal (`termSpawn`) takes a `cwd` field that goes through the same path-validation check, so a spawned shell can only start inside `workspace_path` or `worktrees_path`.
 
 ## What the dashboard never writes
 
 | Never | Why |
 |---|---|
 | Anything under `.git/` | Out of scope. Use your editor / CLI. |
-| Anything outside `conception_path` | Path validation rejects escapes. |
+| Anything outside `conceptionPath` | Path validation rejects escapes. |
 | Item directory renames / moves | The flat-month layout means items stay put for life; slug / date changes need `git mv` in the user's shell. |
-| Item creation | The Electron build does not yet expose a `createItem` verb (the Tauri build did). New items are created in the user's editor, optionally via the `/projects create` skill. |
-| `knowledge/` tree | Read-only from the dashboard. Edit in your editor. |
+| `knowledge/` tree | Read-only from the dashboard. Edit in your editor (or via the `/knowledge` skill). |
 | Caches or indices | There are none — the tree is re-parsed on each call, with chokidar pushing events for staleness only. |
-| Lock files | Concurrent edits are detected via the drift check on `step.*` and `note.write`; there's no advisory lock. |
+| Lock files | Concurrent edits are detected via the drift check on `toggleStep` / `editStepText` / `writeNote`; there's no advisory lock. |
 
 ## Skill-invoked edits
 
@@ -94,6 +97,6 @@ The [`/projects` and `/knowledge`](skill.md) management skills invoke plain file
 
 ## Concurrency
 
-Every write is atomic at the OS level (`.tmp` file + `rename` after `fsync`). Concurrency between the dashboard and an external editor is handled by the drift check on every `step.*` verb and `note.write`: if the on-disk content doesn't match the renderer's snapshot, the write is refused and the UI surfaces a conflict banner. No merge — the user re-opens the file and redoes their edit.
+Every write is atomic at the OS level (`.tmp` file + `rename` after `fsync`). Concurrency between the dashboard and an external editor is handled by the drift check on `toggleStep` / `editStepText` / `writeNote`: if the on-disk content doesn't match the renderer's snapshot, the write is refused and the UI surfaces a conflict banner. No merge — the user re-opens the file and redoes their edit.
 
 Concurrent writes from within condash are serialised by the per-file write queue in [`mutate.ts:withFileQueue`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — concurrent toggles on the same file never interleave, and a failure in one write doesn't poison the queue.

@@ -44,19 +44,21 @@ mkdir -p ~/conception/projects
 ```
 
 If the folder is empty, condash shows a **Welcome screen** with three
-buttons:
+cards:
 
-- **Create your first project** — opens the new-item modal.
-- **Take the tour** — opens this Help modal.
-- **Open the documentation** — opens condash.vcoeur.com in your browser.
+- **Open my tree** — opens the conception folder in your OS file manager.
+- **Read the welcome doc** — opens the in-app `welcome.md` Help page.
+- **Open the documentation site** — opens condash.vcoeur.com in your browser.
+
+A **Don't show this again** link below the cards persists the dismissal in `settings.json` (key `welcome.dismissed`).
 
 To switch to a different folder later: **File → Open…** (`Ctrl+O`)
 opens the folder picker again.
 
 ## 3. Create an item
 
-Click **Create your first project** on the Welcome screen, or use the
-**Create** button on the Projects toolbar. Fill in:
+Use the **Create** button on the Projects toolbar (or the **+** in the
+toolbar of an empty Projects pane). Fill in:
 
 - **Kind** — `project`, `incident`, or `document`.
 - **Status** — `now` so it lands in Current.

@@ -11,18 +11,40 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 
 | Area | Count | Configurable? |
 |---|---|---|
+| Application menu (File / View) | 7 | no |
 | Dashboard global | 1 | no |
 | Note modal | 4 | no |
 | Terminal — pane | 3 | yes (`[terminal]`) |
 | Terminal — xterm | 4 | no |
 
+## Application menu
+
+The OS menu bar carries every system-level shortcut. Each item also dispatches an internal `MenuCommand` (see [`src/shared/api.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/api.ts) `MenuCommand`) so the renderer can hook the same intent without going through the menu.
+
+| Menu | Item | Shortcut | What it does |
+|---|---|---|---|
+| File | Open… | `Ctrl+O` / `Cmd+O` | Reopen the conception folder picker. |
+| File | Open conception directory | — | Reveal the current conception in the OS file manager. |
+| File | Settings | `Ctrl+,` / `Cmd+,` | Open the Settings modal. |
+| File | Search… | `Ctrl+Shift+F` / `Cmd+Shift+F` | Open the global search modal. |
+| File | Quit | (no accelerator) | Trigger the quit-confirm flow. |
+| View | Show Projects | — | Toggle the Projects pane on the left edge. |
+| View | Show Code | — | Show the Code pane in the working slot. |
+| View | Show Knowledge | — | Show the Knowledge pane in the working slot. |
+| View | Hide working surface | — | Hide whichever pane (Code or Knowledge) is in the working slot. |
+| View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
+| View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
+| Help | About / Welcome / Quick start / … | — | Open the matching `docs/` page in the in-app Help modal. |
+
+The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items.
+
 ## Dashboard global
 
 | Shortcut | Action | Configurable |
 |---|---|---|
-| `Escape` | Close the topmost modal (note preview, then config modal) | no |
+| `Escape` | Close the topmost modal | no |
 
-Search, tab switching, and item focus are pointer-driven — there is no global "focus search" or "switch tab" shortcut. The history-tab search field autofocuses when the tab is selected.
+Item focus and tab switching are pointer-driven — there is no "switch tab" shortcut. The search modal takes over the keyboard once it opens.
 
 ## Note modal
 
@@ -96,7 +118,7 @@ The pane-level shortcuts skip keystrokes where all of the following are true:
 - The event target is an `<input>`, `<textarea>`, or `contenteditable` element.
 - The shortcut has no non-shift modifier (so a bare `Tab` or single-letter key in an input never steals focus).
 
-This keeps `` Ctrl+` `` from firing while you're typing in the history-tab search, but lets `Ctrl+Left` and `` Ctrl+` `` still work everywhere because they carry a modifier.
+This keeps `` Ctrl+` `` from firing while you're typing in the search modal, but lets `Ctrl+Left` and `` Ctrl+` `` still work everywhere because they carry a modifier.
 
 ## Reloading shortcut changes
 

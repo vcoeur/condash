@@ -33,7 +33,7 @@ The CLI exists because skills (`/projects`, `/knowledge`) and shell scripts need
 CLI nouns:
 
 ```
-projects   knowledge   search   repos   worktrees   dirty   skills   config   help
+projects   knowledge   search   repos   worktrees   audit   dirty   skills   config   help
 ```
 
 Top-level `--help`, `-h`, `--version`, and `-v` always route to the CLI (they print help/version text instead of opening a window).
@@ -75,7 +75,7 @@ Code 5 means the CLI could not resolve a conception path — pass `--conception 
 The CLI honours the same chain as the GUI, minus the folder picker:
 
 1. `--conception <path>` flag.
-2. `conception_path` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or platform equivalent).
+2. `conceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or platform equivalent).
 3. Hard error (exit 5).
 
 `condash config conception-path` and `condash config conception-path <path>` read or write the saved value.
@@ -92,9 +92,14 @@ Item lifecycle and reads.
 | `read <slug>` | Read one item by slug or path |
 | `resolve <slug>` | Resolve a slug to its absolute path |
 | `search <query>` | Full-text search across items, optional `--status` / `--kind` / `--limit` |
-| `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree |
+| `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree, or `--path <readme>` to check one file outside the resolved conception |
 | `status get <slug>` / `status set <slug> <new-status>` | Read or change the `**Status**` field |
 | `close <slug>` | Set status to `done` (or `--status <name>`) and append a `Closed.` timeline entry |
+| `reopen <slug>` | Move `done` back to `now` (or `--status <s>`) and append a `Reopened.` timeline entry |
+| `backfill-closed [--dry-run]` | Append a `Closed.` timeline entry to legacy `done` items missing one |
+| `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
+| `create --kind <k> --slug <s> --title "<t>" --apps "<a>"` | Create a new project / incident / document folder + README from the canonical template. Incidents add `--severity` + `--severity-impact` + `--environment` |
+| `scan-promotions [--limit N]` | Walk closed items for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
 
 Slug forms accepted:
 
@@ -111,7 +116,8 @@ Knowledge-tree operations.
 | `tree` | Render the knowledge index as a tree, depth-limited via `--depth` |
 | `verify` | Audit verification stamps (`**Verified:** YYYY-MM-DD`) and report stale ones |
 | `retrieve <query>` | Triage walk — find relevant knowledge files for a topic, by `--mode` (`names`, `bodies`, `both`) |
-| `stamp <path>` | Add or refresh a verification stamp on a knowledge file, optionally `--where <field>` and `--date <iso>` |
+| `stamp <path>` | Add or refresh a verification stamp on a knowledge file, optionally `--where <field>` and `--date <iso>`. `<path>` must resolve inside the conception tree |
+| `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `knowledge/**/index.md` from the on-disk tree; clear `knowledge/.index-dirty` |
 
 ### `search`
 
@@ -134,7 +140,34 @@ condash repos list --include-worktrees   # add worktrees in <worktrees_path>/
 
 ### `worktrees`
 
-Alias for `repos list --include-worktrees`, filtered to worktree entries. Richer surface (per-branch grouping, dirty status) is on the roadmap.
+Worktree-centric operations on top of `configuration.json`'s repositories. Both `repos list --include-worktrees` and these verbs share the same per-repo dirty/upstream cache.
+
+| Verb | What it does |
+|---|---|
+| `list` | Print every worktree, grouped by primary, with branch + dirty status |
+| `check <branch>` | Per-branch state: which items declare it, per-repo `worktree✓`/`branch✓`/`primary-on-branch`/`pinned` flags, missing or orphan dirs |
+| `mismatch` | Report worktrees referenced by an item's `**Branch**` field that don't exist on disk (or vice versa) |
+| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` copies `.env*` from the main checkout; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook; `--base <ref>` branches off `<ref>` instead of the repo's default branch |
+| `remove <branch> [--repo <r>...]` | Tear down `<branch>` worktrees and (if safe) the local branch |
+
+### `audit`
+
+Tree-wide health checks. Bundles the same passes the GUI exposes via the gear modal's "Audit" button.
+
+```bash
+condash audit                       # run every check
+condash audit --include lfs,binaries
+```
+
+| Check | What it flags |
+|---|---|
+| `lfs` | Files that should probably live in Git LFS but are tracked as blobs |
+| `binaries` | Binary files (PDF, .docx, images > size threshold) that may need migrating |
+| `cross-repo` | Cross-repo wikilinks or relative paths that escape the conception |
+| `worktrees` | Same shape as `worktrees mismatch` — items declaring a `**Branch**` with no on-disk worktree, or vice versa |
+| `index` | `index.md` files out of sync with the on-disk tree |
+
+`--include <list>` restricts to a comma-separated subset.
 
 ### `dirty`
 
@@ -244,7 +277,7 @@ macOS and Windows are unaffected.
 
 - **Headless GUI mode.** The CLI never opens a window. There's no embedded HTTP server and no browser-friendly URL to point Playwright at.
 - **A daemon / background watcher.** The CLI is one-shot per invocation. The chokidar watcher runs only when the GUI is open.
-- **Mutating items beyond `status set` / `status close`.** Step toggles, note edits, and config edits are GUI-only today. Use the [`/projects` skill](skill.md) from a Claude Code session for anything richer.
+- **Step toggles and note edits.** Status changes (`status set`, `close`, `reopen`), creation (`create`), and timeline backfills (`backfill-closed`) are wired into the CLI. Step toggles, note bodies, and config-file edits stay GUI-only — use the [`/projects` skill](skill.md) from a Claude Code session for anything richer.
 - **A multi-user / server mode.** condash is single-user on purpose — see [Non-goals](../explanation/non-goals.md).
 
 ## See also

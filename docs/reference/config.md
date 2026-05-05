@@ -13,18 +13,14 @@ condash reads two JSON files. Both are optional in principle — the dashboard r
 
 | File                 | Path                                                                                                                                                                        | Lifecycle                  | Owns                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
-| `configuration.json` | `<conception_path>/configuration.json`                                                                                                                                      | Per-tree, versioned in git | `workspace_path`, `worktrees_path`, `repositories` (incl. `run` / `force_stop`) |
-| `settings.json`      | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `conception_path`, `terminal`, `open_with`, `pdf_viewer`, `theme`               |
+| `configuration.json` | `<conception_path>/configuration.json`                                                                                                                                      | Per-tree, versioned in git | `workspace_path`, `worktrees_path`, `repositories`, `open_with`, `pdf_viewer`   |
+| `settings.json`      | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `conceptionPath`, `theme`, `terminal`, `layout`, `welcome`                      |
 
-The split is by **lifecycle**, not by feature: anything you'd commit so teammates pick it up automatically goes in `configuration.json`; anything that depends on this machine (your editor binary, your terminal emulator, your Pictures folder) goes in `settings.json`.
+The split is by **lifecycle**, not by feature. Each key lives in exactly one file:
 
-`terminal`, `open_with`, and `pdf_viewer` are valid in **either** file — set them in `configuration.json` for tree-wide defaults teammates pick up automatically, or in `settings.json` for per-machine overrides. When the same key appears in both files, **`settings.json` wins**, merged field by field:
-
-- `terminal.<field>` — each field set in `settings.json` replaces the tree's value; missing fields fall through.
-- `open_with.<slot>` — merged per slot; the user's `command` and `label` replace the tree's; tree-only slots survive untouched.
-- `pdf_viewer` — a non-empty array in `settings.json` replaces the tree's chain; empty or missing falls through.
-
-Concretely: move any machine-specific preference from `configuration.json` into `settings.json` on each machine; leave tree-wide preferences in `configuration.json` and every teammate gets them automatically.
+- `open_with` and `pdf_viewer` live only in `configuration.json` — they're tree-wide so teammates pick them up automatically. Per-machine overrides aren't supported; if your editor differs across machines, edit the tree's `open_with` per-machine.
+- `terminal` lives only in `settings.json`. The `terminal` block in `configuration.json` is **deprecated** and present only so the boot-time migration can lift legacy values out of it into `settings.json`. Don't set it in new files.
+- `theme`, `layout` (composite-layout state — see [LayoutState](#layoutstate)), `welcome` (first-launch dismissal flag), and `conceptionPath` are all per-machine.
 
 ## `configuration.json` (per-tree, versioned)
 
@@ -57,19 +53,13 @@ Lives at `<conception_path>/configuration.json`. Commit it. Every key is optiona
     "secondary_ide": { "label": "Open in secondary IDE", "command": "code {path}" },
     "terminal": { "label": "Open terminal here", "command": "ghostty --working-directory={path}" }
   },
-  "terminal": {
-    "shell": "/bin/zsh",
-    "shortcut": "Ctrl+T",
-    "screenshot_dir": "/home/you/Pictures/Screenshots",
-    "screenshot_paste_shortcut": "Ctrl+Shift+V",
-    "launcher_command": "claude",
-    "move_tab_left_shortcut": "Ctrl+Left",
-    "move_tab_right_shortcut": "Ctrl+Right"
-  }
+  "pdf_viewer": ["zathura", "okular", "evince"]
 }
 ```
 
 Paths may use `~` (expanded to `$HOME`) or absolute paths. JSON does not carry comments — keep prose documentation in the project README or the per-tree `CLAUDE.md`.
+
+A `terminal` block at this level still validates for backward-compat, but it is **deprecated** — the boot-time migration lifts it into `settings.json` on first launch and ignores it afterwards. New trees should not set it.
 
 ### Workspace keys
 
@@ -227,31 +217,50 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 
 ```json
 {
-  "conception_path": "/home/you/src/vcoeur/conception",
-  "theme": "auto",
+  "conceptionPath": "/home/you/src/vcoeur/conception",
+  "theme": "system",
   "terminal": {
     "shell": "/bin/zsh",
     "shortcut": "Ctrl+T",
     "launcher_command": "claude",
     "screenshot_dir": "/home/you/Pictures/Screenshots"
   },
-  "open_with": {
-    "main_ide": { "label": "Open in main IDE", "command": "idea {path}" },
-    "secondary_ide": { "label": "Open in secondary IDE", "command": "code {path}" }
-  }
+  "layout": {
+    "projects": true,
+    "working": "code",
+    "terminal": false,
+    "projectsWidth": 420
+  },
+  "welcome": { "dismissed": true }
 }
 ```
 
-| Key                                  | Meaning                                                                                                                               |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `conception_path`                    | Absolute path to the conception tree condash should render.                                                                           |
-| `theme`                              | `light`, `dark`, or `auto`. Persisted by `setTheme`.                                                                                  |
-| `terminal.*`                         | Same keys as the tree-level `terminal` block above; any field set here overrides the tree value. Missing fields fall through.         |
-| `open_with.<slot>.label`, `.command` | Merged per slot. The user's `command` replaces the tree's; the user's `label` replaces the tree's. Tree-only slots survive untouched. |
+| Key              | Meaning                                                                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conceptionPath` | Absolute path to the conception tree condash should render.                                                                                     |
+| `theme`          | `light`, `dark`, or `system`. Persisted by `setTheme`.                                                                                          |
+| `terminal.*`     | Embedded-terminal preferences. See [Terminal preferences](#terminal-preferences) above for every sub-key.                                       |
+| `layout`         | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                  |
+| `welcome`        | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                         |
+
+`open_with`, `pdf_viewer`, and `repositories` are intentionally **not** valid in `settings.json` — they live tree-side in `configuration.json`. Setting them here is silently ignored.
+
+### LayoutState
+
+`settings.json` carries the composite-layout snapshot so a fresh launch reopens with the last layout.
+
+| Field           | Type                              | Meaning                                                                                          |
+| --------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `projects`      | bool                              | Show or hide the Projects pane on the left edge.                                                 |
+| `working`       | `'code' \| 'knowledge' \| null`   | Tristate. `'code'` shows the Code pane in the working slot, `'knowledge'` shows Knowledge, `null` hides both. |
+| `terminal`      | bool                              | Show or hide the Terminal pane at the bottom.                                                    |
+| `projectsWidth` | non-negative int                  | Pixel width of the Projects pane after the user drags the splitter.                              |
+
+The IPC verbs `getLayout` / `setLayout` read and write this block atomically — toggling a pane via the View menu (or its keyboard shortcut) round-trips through `setLayout` so the change survives a restart.
 
 Resolution order for the conception path, checked in sequence:
 
-1. `conception_path` in this file.
+1. `conceptionPath` in this file.
 2. The first-launch folder picker. The picker writes the chosen path back into `settings.json` so the next launch picks it up automatically.
 3. Hard error — condash refuses to start without a conception path.
 
@@ -274,7 +283,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 A header button — **Open configuration.json externally** — shells out via `window.condash.openPath` so power users can edit the raw JSON in their `$EDITOR` instead. Writes that go through the modal are funnelled through `patchConfig`, which parses the live file, applies a mutator, drops empty leaves, and round-trips through the `note.write` IPC's atomic CAS — same path as the in-modal forms — so the [strict zod schema](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) is enforced both ways.
 
-Keys not surfaced in the modal — `pdf_viewer`, the full `open_with` shape across both files when you want overrides — still need a hand-edit. See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
+Keys not surfaced in the modal — `pdf_viewer`, the `welcome.dismissed` flag — still need a hand-edit. See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
 
 Changes that **do** need a restart:
 

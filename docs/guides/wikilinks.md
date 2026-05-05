@@ -93,7 +93,7 @@ Two wikilinks, both short-form, both resolve. The pipe-label variant keeps the s
 
 ## Interaction with Markdown syntax
 
-Wikilinks are a preprocessing step that runs before pandoc sees the body — each `[[…]]` match is rewritten to a raw-HTML `<a class="wikilink">` anchor, which pandoc's GFM reader passes through untouched. Consequences:
+Wikilinks are handled by a markdown-it plugin (`src/renderer/wikilinks.ts`) that runs before the body reaches the renderer — each `[[…]]` match is rewritten to an `<a class="wikilink">` anchor, which markdown-it's renderer passes through untouched. Consequences:
 
 - You can freely mix `[regular markdown](links)` and `[[wikilinks]]` on the same line.
 - You can't escape `[[` inside a wikilink target — if you need literal `[[` somewhere, wrap it in a code span (`` `[[not a link]]` ``).
@@ -101,5 +101,5 @@ Wikilinks are a preprocessing step that runs before pandoc sees the body — eac
 
 ## Next
 
-- Cross-linking is most useful in notes; see [Your first project](../tutorials/first-project.md) for the full notes-editing surface.
+- Cross-linking is most useful in notes; see [Your first project](../get-started/index.md#your-first-project) for the full notes-editing surface.
 - To link out to specific reference material instead of other items, see [The knowledge tree](knowledge-tree.md).

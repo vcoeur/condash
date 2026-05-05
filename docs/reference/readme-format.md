@@ -27,7 +27,7 @@ Field names are case-insensitive; values are trimmed. Order inside the header bl
 
 ## Header parsing
 
-The parser ([`crates/condash-parser/src/readme.rs`](https://github.com/vcoeur/condash/blob/main/crates/condash-parser/src/readme.rs)) scans every line between the title and the first `##` heading. A line is treated as metadata if it matches `**<Key>**: <value>`. The first blank line is not a terminator — only the first `##` heading is.
+The parser ([`src/main/parse.ts`](https://github.com/vcoeur/condash/blob/main/src/main/parse.ts) and [`src/shared/header.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/header.ts)) scans every line between the title and the first `##` heading. A line is treated as metadata if it matches `**<Key>**: <value>`. The first blank line is not a terminator — only the first `##` heading is.
 
 ```markdown
 # Helio benchmark harness
