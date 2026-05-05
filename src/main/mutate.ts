@@ -100,8 +100,10 @@ export async function editStepText(
 
 /**
  * Append a new `- [ ] text` line to the `## Steps` section. Inserts after
- * the last existing step in that section; if there are no steps yet, appends
- * at the end of the section (or end of file when the section is the last one).
+ * the last existing step in that section; if the section has no steps yet,
+ * inserts directly under the heading and (if needed) leaves a blank line
+ * separating the new step from the next section. Creates the section at
+ * end-of-file when the README has no `## Steps` heading at all.
  */
 export async function addStep(path: string, text: string): Promise<void> {
   const trimmed = text.trim();
@@ -130,8 +132,22 @@ export async function addStep(path: string, text: string): Promise<void> {
       }
     }
 
+    const newLine = `- [ ] ${trimmed}`;
+
     if (stepsStart === -1) {
-      throw new Error('No "## Steps" section found');
+      // No `## Steps` section yet. Append one at the end of the file. Leave
+      // a blank line above the new heading if the file doesn't already end
+      // with one, so the section doesn't glue itself to whatever came before.
+      while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+        lines.pop();
+      }
+      if (lines.length > 0) lines.push('');
+      lines.push('## Steps');
+      lines.push('');
+      lines.push(newLine);
+      lines.push('');
+      await atomicWrite(path, lines.join('\n'));
+      return;
     }
 
     let insertAt = -1;
@@ -142,19 +158,28 @@ export async function addStep(path: string, text: string): Promise<void> {
       }
     }
     if (insertAt === -1) {
-      // No step yet — drop the new step right under the heading, with a
-      // blank line of breathing room if the next line isn't already blank.
-      insertAt = stepsStart + 1;
-      while (insertAt < stepsEnd && lines[insertAt].trim() === '') insertAt++;
+      // Section has no step yet — collapse any blank lines between the
+      // heading and the next section, then re-emit `<blank>, step, <blank>`
+      // so the new step sits one line below `## Steps` and one above
+      // whatever follows.
+      let blankRunEnd = stepsStart + 1;
+      while (blankRunEnd < stepsEnd && lines[blankRunEnd].trim() === '') {
+        blankRunEnd++;
+      }
+      const replacement: string[] = ['', newLine];
+      // If a sibling section follows (rather than EOF), keep a blank line
+      // separator. EOF doesn't need a trailing blank — `lines.join('\n')`
+      // emits the final newline already if the file ended with one.
+      if (blankRunEnd < lines.length) replacement.push('');
+      lines.splice(stepsStart + 1, blankRunEnd - (stepsStart + 1), ...replacement);
     } else {
       // Trim trailing blank lines so the insert sits flush with the existing list.
       while (insertAt - 1 > stepsStart && lines[insertAt - 1].trim() === '') {
         insertAt--;
       }
+      lines.splice(insertAt, 0, newLine);
     }
 
-    const newLine = `- [ ] ${trimmed}`;
-    lines.splice(insertAt, 0, newLine);
     await atomicWrite(path, lines.join('\n'));
   });
 }

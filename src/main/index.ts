@@ -1,6 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import { promises as fsp } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -451,9 +450,16 @@ async function getProject(path: string): Promise<Project | null> {
 function registerNoteAssetProtocol(): void {
   protocol.handle('condash-file', async (request) => {
     const url = new URL(request.url);
-    // The renderer formats URLs as `condash-file:///<abs-path>` so the path
-    // is the URL pathname. URL decodes percent-escapes for us.
-    const requested = decodeURIComponent(url.pathname);
+    // The renderer formats URLs as `condash-file:///<abs-path>` (triple
+    // slash, empty host). Chromium's URL parser for standard schemes can't
+    // hold an empty host though — it shifts the first path segment into the
+    // host slot, so what we get back is `condash-file://<seg0>/<seg1>/…`.
+    // Re-stitch host + pathname to recover the original absolute path. Both
+    // shapes are decoded individually to handle %-escaped segments uniformly,
+    // then joined with the leading `/` re-added by the pathname itself.
+    const host = decodeURIComponent(url.host);
+    const path = decodeURIComponent(url.pathname);
+    const requested = host ? `/${host}${path}` : path;
     const settings = await readSettings();
     const root = settings.conceptionPath;
     if (!root) return new Response('no conception path', { status: 403 });
@@ -845,16 +851,10 @@ if (!IS_CLI)
       }
     });
 
-    // Auto-update: only in packaged builds. electron-updater pulls
-    // latest{,-mac,-linux}.yml from the GitHub Release matching package.json's
-    // version. Failures (no network, GH down, no newer release) log and
-    // exit silently — never block app startup.
-    if (app.isPackaged) {
-      autoUpdater.autoDownload = true;
-      autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-        console.warn('[updater]', err);
-      });
-    }
+    // Auto-update is disabled. The dashboard is installed/upgraded
+    // out-of-band (apt / dpkg / make install) so the in-app updater would
+    // race against the system package manager; left here as a no-op so
+    // electron-updater stays a tracked dependency without firing on launch.
   });
 
 if (!IS_CLI) {

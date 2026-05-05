@@ -77,8 +77,13 @@ export interface SetupOptions {
    *  `configuration.json` always have those files copied; this flag only
    *  affects repos *without* an `env:` declaration. */
   copyEnv?: boolean;
-  /** Run the optional `install:` from configuration.json after creation. */
-  install?: boolean;
+  /** Skip env-file copy for repos that declare `env:` in configuration.json.
+   *  Per-repo `env:` is otherwise applied unconditionally. Closes #87. */
+  skipEnv?: boolean;
+  /** Skip running the per-repo `install:` from configuration.json. The
+   *  install step otherwise runs unconditionally for repos that declare
+   *  `install:`. Closes #87. */
+  skipInstall?: boolean;
   /** Explicit base branch override; takes precedence over README `**Base**`. */
   base?: string;
 }
@@ -268,17 +273,21 @@ export async function setupBranchWorktrees(
       });
       continue;
     }
-    // Copy declared env files. Per-repo `env: [...]` is the canonical source —
-    // applied unconditionally so a forgotten `--copy-env` no longer leaves a
-    // Vite SPA reading `import.meta.env.VITE_*` as undefined (#82). The legacy
-    // `--copy-env` flag remains an opportunistic blanket fallback for repos
-    // without `env:` declared, kept for one minor for compat.
-    const filesToCopy = lookup.env ?? (options.copyEnv ? ['.env', '.env.local'] : []);
+    // Copy declared env files. Per-repo `env: [...]` is the canonical source
+    // and applied unconditionally so a forgotten flag no longer leaves a Vite
+    // SPA reading `import.meta.env.VITE_*` as undefined (#82, #87). Pass
+    // --no-env to skip. Repos without `env:` declared can still opt into the
+    // legacy `.env` / `.env.local` blanket copy via --copy-env.
+    const filesToCopy = options.skipEnv
+      ? []
+      : (lookup.env ?? (options.copyEnv ? ['.env', '.env.local'] : []));
     if (filesToCopy.length > 0) {
       const copied = await copyDeclaredFiles(lookup.cwd, target, filesToCopy);
       if (copied.length > 0) result.envCopied.push({ repo: name, files: copied });
     }
-    if (options.install && lookup.install) {
+    // Per-repo `install:` runs unconditionally now (#87) — the presence of
+    // the field is the user already asking for it. --no-install skips.
+    if (lookup.install && !options.skipInstall) {
       const ok = await runInstall(target, lookup.install);
       result.installRan.push({ repo: name, command: lookup.install, ok });
     }

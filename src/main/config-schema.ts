@@ -15,7 +15,8 @@ const repoEntry: z.ZodType<RawRepo> = z.lazy(() =>
         run: z.string().optional(),
         force_stop: z.string().optional(),
         /** Install command run after `condash worktrees setup` creates the
-         *  worktree, gated by `--install` on the CLI. */
+         *  worktree. Applied unconditionally when set (#87) — pass
+         *  `--no-install` on the CLI to skip. */
         install: z.string().optional(),
         /** Pin: keep this repo on a fixed branch; `worktrees setup` skips it. */
         pinned_branch: z.string().optional(),

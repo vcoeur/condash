@@ -328,6 +328,11 @@ export function ProjectPreview(props: {
   const [addText, setAddText] = createSignal('');
   const [busy, setBusy] = createSignal(false);
 
+  // When a project has no steps yet, expose the new-step input row directly
+  // instead of hiding it behind a "+ Add step" button — the empty section
+  // is a strong signal the user wants to add one (#88).
+  const showAddForm = () => adding() || (props.project?.steps.length ?? 0) === 0;
+
   const [files] = createResource(
     () => props.project?.path ?? null,
     async (path) => (path ? await window.condash.listProjectFiles(path) : []),
@@ -651,7 +656,7 @@ export function ProjectPreview(props: {
                     </ul>
                   </Show>
                   <Show
-                    when={adding()}
+                    when={showAddForm()}
                     fallback={
                       <button
                         class="add-step-button"
@@ -692,9 +697,11 @@ export function ProjectPreview(props: {
                       >
                         Add
                       </button>
-                      <button class="modal-button" onClick={cancelAdd} disabled={busy()}>
-                        Cancel
-                      </button>
+                      <Show when={project().steps.length > 0}>
+                        <button class="modal-button" onClick={cancelAdd} disabled={busy()}>
+                          Cancel
+                        </button>
+                      </Show>
                     </div>
                   </Show>
                 </section>

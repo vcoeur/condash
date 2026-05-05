@@ -150,18 +150,25 @@ async function worktreeSetup(
   if (!branch) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash worktrees setup <branch> [--repo <r>...] [--copy-env] [--install] [--base <ref>]',
+      'Usage: condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
     );
   }
   const repos = parseRepoFlag(args.flags.repo);
   const copyEnv = args.flags['copy-env'] === true;
-  const install = args.flags.install === true;
+  const skipEnv = args.flags['no-env'] === true;
+  const skipInstall = args.flags['no-install'] === true;
+  if (args.flags.install === true) {
+    process.stderr.write(
+      '[deprecated] --install is now the default for repos that declare install: in configuration.json. Use --no-install to skip.\n',
+    );
+  }
   const baseFlag = args.flags.base;
   const base = typeof baseFlag === 'string' && baseFlag.length > 0 ? baseFlag : undefined;
   const result = await setupBranchWorktrees(conceptionPath, branch, {
     repos,
     copyEnv,
-    install,
+    skipEnv,
+    skipInstall,
     base,
   });
   emit(ctx, result, formatSetupResult);
@@ -238,10 +245,11 @@ function printWorktreesHelp(): void {
       '  check <branch>   Per-repo state for one branch (declaring items, on-disk worktrees, local branches).',
       '  mismatch         Items declaring **Branch** but missing on-disk worktrees.',
       '  setup <branch>   Create worktrees for every repo in the union of **Apps** declaring this branch.',
-      '                   Flags: --repo <r>... (override) --copy-env --install --base <ref>',
+      '                   Flags: --repo <r>... (override) --no-env --no-install --copy-env --base <ref>',
       '                   Base ref defaults to the **Base** field on declaring item READMEs (must agree).',
-      '                   Repos with `env: [...]` in configuration.json have those files copied unconditionally',
-      '                   on setup; --copy-env is the legacy opportunistic .env / .env.local copy for repos',
+      '                   Repos with `env: [...]` in configuration.json have those files copied by default;',
+      '                   --no-env opts out. Repos with `install: <cmd>` have it run by default; --no-install',
+      '                   opts out. --copy-env is the legacy opportunistic .env / .env.local copy for repos',
       '                   without `env:` declared.',
       '  remove <branch>  Remove worktrees for this branch, protected-set aware.',
       '                   Flags: --repo <r>... (override).',

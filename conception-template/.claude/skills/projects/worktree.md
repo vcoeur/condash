@@ -23,12 +23,12 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
 4. **Run setup:**
 
    ```bash
-   condash worktrees setup <branch> [--copy-env] [--install] [--base <ref>] --json
+   condash worktrees setup <branch> [--no-env] [--no-install] [--copy-env] [--base <ref>] --json
    ```
 
-   **Per-repo `env: [...]`** in `configuration.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the new worktree. Applied unconditionally when set. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration.
+   **Per-repo `env: [...]`** in `configuration.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the new worktree. Applied **unconditionally when set** — pass `--no-env` to skip. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration.
 
-   `--install` runs the optional `install:` command from `configuration.json`'s `repositories.{primary,secondary}[]` entry, in each fresh worktree (npm/pnpm/uv/etc.). Skipped per-repo when no `install:` is set.
+   **Per-repo `install: <cmd>`** in `configuration.json` runs after the worktree is created (npm/pnpm/uv/etc.). Run **unconditionally when set** — pass `--no-install` to skip. Repos without an `install:` declaration are silently no-op.
 
    **Base ref.** The CLI reads `**Base**` from every item declaring `<branch>` and uses it as the start point for new branches. All declaring items must agree on the base (the call fails with the disagreeing slugs otherwise). `--base <ref>` overrides the README field for one-shot setups. When no item declares `**Base**` and `--base` isn't passed, new branches are created off the repo's default tip.
 
