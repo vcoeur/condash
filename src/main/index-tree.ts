@@ -912,6 +912,12 @@ function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): str
 
 async function atomicWrite(path: string, content: string): Promise<void> {
   const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
-  await fs.writeFile(tmp, content, 'utf8');
+  const fh = await fs.open(tmp, 'w');
+  try {
+    await fh.writeFile(content, 'utf8');
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
   await fs.rename(tmp, path);
 }

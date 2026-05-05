@@ -42,6 +42,7 @@ export function createResizeHandlers(deps: ResizeDeps): {
   };
 
   const startSplitterDrag = (startEvent: MouseEvent, container: HTMLElement): void => {
+    if (startEvent.button !== 0) return;
     startEvent.preventDefault();
     const rect = container.getBoundingClientRect();
     const onMove = (e: MouseEvent) => {
@@ -60,6 +61,7 @@ export function createResizeHandlers(deps: ResizeDeps): {
   };
 
   const startHeightDrag = (startEvent: MouseEvent): void => {
+    if (startEvent.button !== 0) return;
     startEvent.preventDefault();
     const startY = startEvent.clientY;
     const startHeight = deps.paneHeight();

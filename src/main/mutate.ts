@@ -5,31 +5,54 @@ import { configSchema } from './config-schema';
 
 const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s.*)$/;
 const STEP_LINE_FULL_RE = /^(\s*-\s\[)([ ~x-])(\]\s)(.*)$/;
-const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)([^\s]+)\s*$/i;
+const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)(\S+)\s*$/i;
 const HEADING2_RE = /^##\s+(.+)$/;
+
+/**
+ * Detect the line ending used in `raw`. Files authored on Windows with
+ * `core.autocrlf=false` ship CRLF; rejoining with `\n` would flip the entire
+ * file on every step toggle and the user would see a whole-file diff in
+ * `git status`. Returns `'\r\n'` if any CRLF is present, otherwise `'\n'`.
+ */
+function detectEol(raw: string): '\n' | '\r\n' {
+  return /\r\n/.test(raw) ? '\r\n' : '\n';
+}
 
 const queues = new Map<string, Promise<unknown>>();
 
 /**
  * Serialise writes per file path so concurrent toggles don't fight each other.
- * The IPC handler awaits the returned promise; the renderer sees a clean error if
- * one mutation fails in the queue.
+ * A failure in `work` doesn't poison the queue — the next caller re-runs against
+ * fresh state — but each caller still sees its own error. The renderer surfaces
+ * a clean message either way.
  */
 async function withFileQueue<T>(path: string, work: () => Promise<T>): Promise<T> {
   const prev = queues.get(path) ?? Promise.resolve();
-  const next = prev.then(work, work);
+  // Swallow the previous run's error for queueing purposes (so a failed mutation
+  // doesn't block subsequent ones), then run our own work and rethrow any error
+  // the caller cares about.
+  const next: Promise<T> = prev.catch(() => undefined).then(work);
   queues.set(
     path,
     next.finally(() => {
       if (queues.get(path) === next) queues.delete(path);
     }),
   );
-  return next as Promise<T>;
+  return next;
 }
 
+// `tmp → fsync → rename`: an unsynced rename can leave a zero-length file on
+// power-loss, which we'd surface as "Status field missing" the next time we
+// parse the README. Sync the temp file's data and metadata before swap.
 async function atomicWrite(path: string, content: string): Promise<void> {
   const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
-  await fs.writeFile(tmp, content, 'utf8');
+  const fh = await fs.open(tmp, 'w');
+  try {
+    await fh.writeFile(content, 'utf8');
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
   await fs.rename(tmp, path);
 }
 
@@ -41,6 +64,7 @@ export async function toggleStep(
 ): Promise<void> {
   return withFileQueue(path, async () => {
     const raw = await fs.readFile(path, 'utf8');
+    const eol = detectEol(raw);
     const lines = raw.split(/\r?\n/);
 
     if (lineIndex < 0 || lineIndex >= lines.length) {
@@ -58,7 +82,7 @@ export async function toggleStep(
     }
 
     lines[lineIndex] = `${match[1]}${newMarker}${match[3]}`;
-    await atomicWrite(path, lines.join('\n'));
+    await atomicWrite(path, lines.join(eol));
   });
 }
 
@@ -77,6 +101,7 @@ export async function editStepText(
   }
   return withFileQueue(path, async () => {
     const raw = await fs.readFile(path, 'utf8');
+    const eol = detectEol(raw);
     const lines = raw.split(/\r?\n/);
 
     if (lineIndex < 0 || lineIndex >= lines.length) {
@@ -94,7 +119,7 @@ export async function editStepText(
     }
 
     lines[lineIndex] = `${match[1]}${match[2]}${match[3]}${trimmed}`;
-    await atomicWrite(path, lines.join('\n'));
+    await atomicWrite(path, lines.join(eol));
   });
 }
 
@@ -115,11 +140,21 @@ export async function addStep(path: string, text: string): Promise<void> {
   }
   return withFileQueue(path, async () => {
     const raw = await fs.readFile(path, 'utf8');
+    const eol = detectEol(raw);
     const lines = raw.split(/\r?\n/);
 
     let stepsStart = -1;
     let stepsEnd = lines.length;
+    let inFence = false;
     for (let i = 0; i < lines.length; i++) {
+      // Triple-backtick or triple-tilde fenced code blocks can contain `##`
+      // lines that aren't headings (a Markdown example, a shell prompt).
+      // Track fence state so we don't pick those up as section anchors.
+      if (/^\s*(```|~~~)/.test(lines[i])) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
       const heading = lines[i].match(HEADING2_RE);
       if (!heading) continue;
       if (stepsStart === -1 && heading[1].trim().toLowerCase() === 'steps') {
@@ -146,7 +181,7 @@ export async function addStep(path: string, text: string): Promise<void> {
       lines.push('');
       lines.push(newLine);
       lines.push('');
-      await atomicWrite(path, lines.join('\n'));
+      await atomicWrite(path, lines.join(eol));
       return;
     }
 
@@ -180,7 +215,7 @@ export async function addStep(path: string, text: string): Promise<void> {
       lines.splice(insertAt, 0, newLine);
     }
 
-    await atomicWrite(path, lines.join('\n'));
+    await atomicWrite(path, lines.join(eol));
   });
 }
 
@@ -256,6 +291,7 @@ export async function transitionStatus(
 ): Promise<TransitionResult> {
   return withFileQueue(readmePath, async () => {
     const raw = await fs.readFile(readmePath, 'utf8');
+    const eol = detectEol(raw);
     let lines = raw.split(/\r?\n/);
 
     let previous: string | null = null;
@@ -285,7 +321,7 @@ export async function transitionStatus(
       lines = appendTimelineLines(lines, timelineAppended);
     }
 
-    await atomicWrite(readmePath, lines.join('\n'));
+    await atomicWrite(readmePath, lines.join(eol));
     return { previousStatus: previous, newStatus, timelineAppended };
   });
 }

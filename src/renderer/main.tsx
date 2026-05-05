@@ -94,10 +94,21 @@ function App() {
   const [welcomeDismissed, setWelcomeDismissed] = createSignal<boolean>(false);
   void window.condash.getWelcomeDismissed().then(setWelcomeDismissed);
 
+  // Track the active dismiss timer so a fast burst of flashes — or app
+  // teardown within the 4 s window — doesn't leave a callback running
+  // against a disposed signal.
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
   const flashToast = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 4000);
+    if (toastTimer !== null) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toastTimer = null;
+      setToast((cur) => (cur === msg ? null : cur));
+    }, 4000);
   };
+  onCleanup(() => {
+    if (toastTimer !== null) clearTimeout(toastTimer);
+  });
 
   const openPrompt = (init: Omit<PromptModalState, 'resolve'>): Promise<string | null> =>
     new Promise<string | null>((resolve) => {
@@ -364,20 +375,24 @@ function App() {
 
   const handleGlobalKeyDown = (event: KeyboardEvent): void => {
     const target = event.target as HTMLElement | null;
-    // Don't grab keystrokes from text inputs / editor / inside the xterm host —
-    // the xterm canvas swallows printable keys via its own listener already.
-    if (target?.closest('.xterm-host, input, textarea, .cm-editor, [contenteditable=true]')) {
-      // The pane-toggle shortcut is the one exception: the user expects it
-      // to work from inside the active terminal too.
-    }
+    const insideEditable = !!target?.closest(
+      '.xterm-host, input, textarea, .cm-editor, [contenteditable=true]',
+    );
 
     const prefs = terminalPrefs() ?? {};
     const toggle = parseShortcut(prefs.shortcut ?? 'Ctrl+`');
+    // Pane-toggle is the one shortcut that always wins, even from inside a
+    // text input or the active xterm — users expect it to summon/dismiss the
+    // pane unconditionally.
     if (matchesShortcut(event, toggle)) {
       event.preventDefault();
       toggleTerminal();
       return;
     }
+
+    // Every other shortcut yields to text inputs / xterm so we don't steal
+    // arrow keys, paste, etc. from someone who's typing.
+    if (insideEditable) return;
 
     // Move-tab shortcuts only fire when the pane is open.
     if (!layout().terminal || !terminalHandle) return;
@@ -776,6 +791,9 @@ function App() {
   let topBandRef: HTMLDivElement | undefined;
   const startSplitterDrag = (event: MouseEvent): void => {
     if (!topBandRef) return;
+    // Left mouse only — right-click + middle-click should fall through to
+    // the OS context menu / paste, not start a resize.
+    if (event.button !== 0) return;
     event.preventDefault();
     const band = topBandRef;
     const rect = band.getBoundingClientRect();

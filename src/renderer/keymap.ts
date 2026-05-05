@@ -8,8 +8,28 @@ export interface Shortcut {
   key: string;
 }
 
+// Browsers emit `event.key === 'ArrowLeft'` for arrow keys; users write
+// `Ctrl+Left` in the shortcut spec. Normalise both ends so the docs
+// keep their natural form and matchesShortcut still compares apples to
+// apples.
+const KEY_ALIASES: Record<string, string> = {
+  Left: 'ArrowLeft',
+  Right: 'ArrowRight',
+  Up: 'ArrowUp',
+  Down: 'ArrowDown',
+  Esc: 'Escape',
+  Space: ' ',
+};
+
+function canonicaliseKey(key: string): string {
+  if (key.length === 1) return key.toLowerCase();
+  return KEY_ALIASES[key] ?? key;
+}
+
 /** Parse a `Ctrl+Shift+P`-style spec. Returns null when the spec is empty
- *  or has no key portion. Aliases: Control=Ctrl, Option=Alt, Cmd/Super=Meta. */
+ *  or has no key portion. Aliases: Control=Ctrl, Option=Alt, Cmd/Super=Meta.
+ *  Arrow-key shorthands `Left`/`Right`/`Up`/`Down` are expanded to the
+ *  matching `Arrow*` value `KeyboardEvent.key` reports. */
 export function parseShortcut(spec: string | undefined): Shortcut | null {
   if (!spec) return null;
   const parts = spec
@@ -24,7 +44,7 @@ export function parseShortcut(spec: string | undefined): Shortcut | null {
     else if (lower === 'shift') out.shift = true;
     else if (lower === 'alt' || lower === 'option') out.alt = true;
     else if (lower === 'cmd' || lower === 'meta' || lower === 'super') out.meta = true;
-    else out.key = part.length === 1 ? part.toLowerCase() : part;
+    else out.key = canonicaliseKey(part);
   }
   return out.key ? out : null;
 }
@@ -36,6 +56,6 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: Shortcut | null)
   if (shortcut.shift !== event.shiftKey) return false;
   if (shortcut.alt !== event.altKey) return false;
   if (shortcut.meta !== event.metaKey) return false;
-  const eventKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const eventKey = canonicaliseKey(event.key);
   return eventKey === shortcut.key;
 }

@@ -148,7 +148,11 @@ export function reportError(ctx: OutputContext, err: unknown): ExitCode {
           ...err.details,
         },
       };
-      process.stdout.write(JSON.stringify(envelope) + '\n');
+      // Error envelope on stderr: JSON-mode consumers piping `condash X --json`
+      // into `jq` should not have failure envelopes interleaved with success
+      // data on stdout. The exit code is still the contract; the envelope is
+      // just the human-readable side. Match human-mode by routing to stderr.
+      process.stderr.write(JSON.stringify(envelope) + '\n');
     } else {
       process.stderr.write(`error: ${err.message}\n`);
       const detailLines = humanDetails(err.details);
@@ -167,7 +171,7 @@ export function reportError(ctx: OutputContext, err: unknown): ExitCode {
       warnings: [],
       error: { code: 'RUNTIME', message },
     };
-    process.stdout.write(JSON.stringify(envelope) + '\n');
+    process.stderr.write(JSON.stringify(envelope) + '\n');
   } else {
     process.stderr.write(`error: ${message}\n`);
     if (process.env.CONDASH_CLI_DEBUG && err instanceof Error && err.stack) {

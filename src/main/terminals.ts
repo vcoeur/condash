@@ -6,7 +6,7 @@ import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../shared/types';
 import { findRepoEntry, type ConfigShape } from './config-walk';
-import { readSettings, writeSettings } from './settings';
+import { readSettings, updateSettings } from './settings';
 
 interface Session {
   id: string;
@@ -120,7 +120,11 @@ function wrapForShell(shell: string, command: string): string[] {
     // Fall through for bash on Git-for-Windows et al.
     return ['-c', command];
   }
-  return ['-l', '-c', command];
+  // Non-login shell on POSIX: a login shell would re-source ~/.profile and
+  // re-set PYTHONHOME/PYTHONPATH/PERLLIB/etc., undoing the env-scrub the
+  // pty spawn already applied. Users who want login behaviour can prefix
+  // their `run:` field with `bash -lc` themselves.
+  return ['-c', command];
 }
 
 export async function spawnTerminal(
@@ -327,7 +331,12 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
 
   if (isAlive(p)) {
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
-    if (isAlive(p)) killTree(p, 'SIGKILL');
+    // Re-check session state before SIGKILL: if the original pty exited
+    // during the 500 ms grace and the OS recycled its PID for another
+    // process, killTree(p, 'SIGKILL') would target the foreign group.
+    // Bail out unless the same pty handle is still tracked.
+    const stillSamePty = session.pty?.pid === p?.pid && session.exited === undefined;
+    if (stillSamePty && isAlive(p)) killTree(p, 'SIGKILL');
   }
 
   if (removeEntry) {
@@ -349,11 +358,9 @@ export async function getTerminalPrefs(): Promise<TerminalPrefs> {
 }
 
 /** Replace the persisted terminal prefs in settings.json. The patch is a
- * full merge against the existing block; pass `{}` to clear. */
+ * full replacement; pass `{}` to clear back to defaults. */
 export async function setTerminalPrefs(patch: TerminalPrefs): Promise<void> {
-  const settings = await readSettings();
-  settings.terminal = patch;
-  await writeSettings(settings);
+  await updateSettings((cur) => ({ ...cur, terminal: patch }));
 }
 
 /** One-shot migration: if settings.json has no terminal block but the
@@ -380,8 +387,7 @@ export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
   }
   const legacy = parsed.terminal as TerminalPrefs | undefined;
   if (!legacy || Object.keys(legacy).length === 0) return;
-  settings.terminal = legacy;
-  await writeSettings(settings);
+  await updateSettings((cur) => ({ ...cur, terminal: legacy }));
   delete parsed.terminal;
   const next = JSON.stringify(parsed, null, 2) + '\n';
   await fs.writeFile(configFile, next, 'utf8');
