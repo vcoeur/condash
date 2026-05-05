@@ -3,9 +3,11 @@ import { join, relative, resolve } from 'node:path';
 import { readKnowledgeTree } from '../../main/knowledge';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { knowledgeStrategy } from '../../main/index-knowledge';
+import { atomicWrite } from '../../main/atomic-write';
+import { isoToday } from '../../shared/iso-today';
 import type { KnowledgeNode } from '../../shared/types';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
-import type { ParsedArgs } from '../parser';
+import { parseIntFlag, type ParsedArgs } from '../parser';
 
 const DEFAULT_MAX_AGE_DAYS = 30;
 
@@ -477,23 +479,6 @@ function escapeRegex(s: string): string {
 
 function isAbsoluteLike(p: string): boolean {
   return p.startsWith('/') || /^[A-Za-z]:\\/.test(p);
-}
-
-function isoToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-async function atomicWrite(path: string, content: string): Promise<void> {
-  const tmp = `${path}.${Date.now()}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, content, 'utf8');
-  await fs.rename(tmp, path);
-}
-
-function parseIntFlag(value: string | boolean | undefined, fallback: number): number {
-  if (typeof value !== 'string') return fallback;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 function printSubHelp(): void {

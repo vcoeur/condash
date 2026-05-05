@@ -15,14 +15,11 @@
  */
 
 import { promises as fs } from 'node:fs';
-import { execFile } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
-import { promisify } from 'node:util';
 import { findProjectReadmes } from './walk';
 import { readHeader } from './header-fs';
+import { exec } from './exec';
 import { walkRepos, type ConfigShape } from './config-walk';
-
-const exec = promisify(execFile);
 
 interface ConfigWithPaths extends ConfigShape {
   worktrees_path?: string;

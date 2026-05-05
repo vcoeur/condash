@@ -1,7 +1,5 @@
-import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { promisify } from 'node:util';
 import { findProjectReadmes } from '../../main/walk';
 import { parseReadme } from '../../main/parse';
 import { appendTimelineEntry, parseTimelineEntries, transitionStatus } from '../../main/mutate';
@@ -9,15 +7,16 @@ import { search as searchAll } from '../../main/search';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { projectsStrategy } from '../../main/index-projects';
 import { checkBranchState } from '../../main/worktree-ops';
+import { exec } from '../../main/exec';
+import { touchDirtyMarker } from '../../main/dirty';
+import { isoToday } from '../../shared/iso-today';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
 import { statusOrder } from '../../shared/projects';
 import { isValidSlugTail } from '../../shared/slug';
 import { resolveSlug } from '../slug';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { parseHeader, readHeader, validateHeader, type HeaderFields } from '../header';
-import type { ParsedArgs } from '../parser';
-
-const execFileP = promisify(execFile);
+import { parseIntFlag, type ParsedArgs } from '../parser';
 
 const ITEM_KINDS = ['project', 'incident', 'document'] as const;
 const SEVERITIES = ['low', 'medium', 'high'] as const;
@@ -142,8 +141,11 @@ function formatIndexReport(report: IndexRegenReport): string {
 
 function relativeIfPossible(path: string, rootPath: string): string {
   // rootPath is .../projects or .../knowledge; show paths relative to its
-  // parent (the conception root) when possible.
-  return path.startsWith(rootPath) ? path : path;
+  // parent (the conception root) when possible. Falls back to the absolute
+  // path when the file lives outside the root (e.g. `--path` overrides).
+  if (!path.startsWith(rootPath)) return path;
+  const conceptionRoot = dirname(rootPath);
+  return relative(conceptionRoot, path) || path;
 }
 
 async function createCommand(
@@ -958,7 +960,7 @@ async function backfillClosed(
     let date: string | null = null;
     let source: 'git' | 'mtime' = 'mtime';
     try {
-      const { stdout } = await execFileP(
+      const { stdout } = await exec(
         'git',
         ['log', '-1', '--format=%ad', '--date=short', '--', readme],
         { cwd: dirname(readme) },
@@ -1074,41 +1076,12 @@ async function leftoverBranchWarnings(
   ];
 }
 
-function isoToday(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-async function touchDirtyMarker(
-  conceptionPath: string,
-  tree: 'projects' | 'knowledge',
-): Promise<boolean> {
-  const path = join(conceptionPath, tree, '.index-dirty');
-  try {
-    await fs.utimes(path, new Date(), new Date());
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      await fs.writeFile(path, '', 'utf8');
-    } else throw err;
-  }
-  return true;
-}
-
 function parseCsvFlag(value: string | boolean | undefined): string[] | null {
   if (typeof value !== 'string') return null;
   return value
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-}
-
-function parseIntFlag(value: string | boolean | undefined, fallback: number): number {
-  if (typeof value !== 'string') return fallback;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 function printSubHelp(): void {

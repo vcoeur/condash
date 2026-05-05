@@ -11,9 +11,10 @@ import {
   type RemoveResult,
   type SetupResult,
 } from '../../main/worktree-ops';
+import { touchDirtyMarker } from '../../main/dirty';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
-import type { ParsedArgs } from '../parser';
+import { parseIntFlag, type ParsedArgs } from '../parser';
 
 const ALL_AUDIT_CHECKS: AuditCheckName[] = ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index'];
 
@@ -369,14 +370,8 @@ export async function runDirty(
     if (tree !== 'projects' && tree !== 'knowledge') {
       throw new CliError(ExitCodes.USAGE, 'Usage: condash dirty touch <projects|knowledge>');
     }
+    await touchDirtyMarker(conceptionPath, tree);
     const path = join(conceptionPath, tree, '.index-dirty');
-    try {
-      await fs.utimes(path, new Date(), new Date());
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        await fs.writeFile(path, '', 'utf8');
-      } else throw err;
-    }
     emit(ctx, { tree, path, present: true }, (d) => `touched ${(d as { path: string }).path}\n`);
     return;
   }
@@ -478,10 +473,4 @@ async function readMarker(path: string): Promise<MarkerInfo> {
     }
     throw err;
   }
-}
-
-function parseIntFlag(value: string | boolean | undefined, fallback: number): number {
-  if (typeof value !== 'string') return fallback;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
 }

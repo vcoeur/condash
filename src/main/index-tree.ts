@@ -36,7 +36,8 @@
  */
 
 import { promises as fs } from 'node:fs';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
+import { atomicWrite } from './atomic-write';
 import { isLowQualityTag } from './index-tag-filter';
 
 /** Per-bullet aggregated-tag cap. Surplus is dropped and surfaced in overTagDropped. */
@@ -908,16 +909,4 @@ function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): str
   }
   const preservedTrail = trailingComments.length > 0 ? ' ' + trailingComments.join(' ') : '';
   return isDraft ? `${body} ${DRAFT_MARKER}${preservedTrail}` : `${body}${preservedTrail}`;
-}
-
-async function atomicWrite(path: string, content: string): Promise<void> {
-  const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
-  const fh = await fs.open(tmp, 'w');
-  try {
-    await fh.writeFile(content, 'utf8');
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
-  await fs.rename(tmp, path);
 }

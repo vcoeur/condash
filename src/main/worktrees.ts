@@ -1,11 +1,8 @@
-import { execFile } from 'node:child_process';
 import { normalize } from 'node:path';
-import { promisify } from 'node:util';
+import { exec } from './exec';
 import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
 import { toPosix } from '../shared/path';
 import type { Worktree } from '../shared/types';
-
-const exec = promisify(execFile);
 
 /**
  * Current branch for a checkout, or null when HEAD is genuinely detached
