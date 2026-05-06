@@ -46,7 +46,7 @@ export async function listOpenWith(conceptionPath: string): Promise<OpenWithSlot
  * reference `~/bin/foo` silently fail to spawn (the literal `~` doesn't
  * resolve outside a shell).
  */
-function tokenise(command: string, path: string): string[] {
+export function tokenise(command: string, path: string): string[] {
   const tokens: string[] = [];
   let buf = '';
   let quote: '"' | "'" | null = null;

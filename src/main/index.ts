@@ -14,7 +14,7 @@ import { touchDirtyMarker } from './dirty';
 import { createProjectCore } from '../cli/commands/projects';
 import { checkBranchState } from './worktree-ops';
 import { listProjectFiles } from './files';
-import { requirePathUnder } from './path-bounds';
+import { requirePathUnder, requirePathUnderWorkspace } from './path-bounds';
 import { readKnowledgeTree } from './knowledge';
 import { readResourcesTree } from './resources';
 import { readSkillsTree } from './skills';
@@ -594,9 +594,15 @@ function registerIpc(): void {
 
   // Click-to-inspect on the per-branch dirty badge. Returns the parsed
   // `git status` line set + a `git diff --stat HEAD` snippet so the user
-  // can see what's dirty without dropping into a shell.
-  ipcMain.handle('getDirtyDetails', (_, path: string, opts?: { scopeToSubtree?: boolean }) =>
-    getDirtyDetails(path, opts ?? {}),
+  // can see what's dirty without dropping into a shell. Bound to the
+  // workspace + worktrees roots so a compromised renderer can't drive a
+  // shell-out `git status` against an arbitrary directory on disk.
+  ipcMain.handle(
+    'getDirtyDetails',
+    async (_, path: string, opts?: { scopeToSubtree?: boolean }) => {
+      const realPath = await requirePathUnderWorkspace(path);
+      return getDirtyDetails(realPath, opts ?? {});
+    },
   );
 
   ipcMain.handle('listOpenWith', async () => {
@@ -608,7 +614,11 @@ function registerIpc(): void {
   ipcMain.handle('launchOpenWith', async (_, slot: OpenWithSlotKey, path: string) => {
     const { conceptionPath } = await readSettings();
     if (!conceptionPath) throw new Error('No conception path set');
-    return launchOpenWith(conceptionPath, slot, path);
+    // Bound to workspace + worktrees + conception so the renderer can
+    // launch the user's IDE on a project README, a workspace repo, or a
+    // worktree — but not on `/etc/passwd` or `~/.ssh/`.
+    const realPath = await requirePathUnderWorkspace(path);
+    return launchOpenWith(conceptionPath, slot, realPath);
   });
 
   ipcMain.handle('forceStopRepo', async (_, repoName: string) => {

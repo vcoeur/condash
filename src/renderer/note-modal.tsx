@@ -200,6 +200,17 @@ export function NoteModal(props: {
   // unsaved draft is gone the moment we flip to view. Hold the request in this
   // signal until the user picks Save or Discard.
   const [pendingViewSwitch, setPendingViewSwitch] = createSignal(false);
+  let savedAtTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleSavedAtClear = (): void => {
+    if (savedAtTimer !== null) clearTimeout(savedAtTimer);
+    savedAtTimer = setTimeout(() => {
+      setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t));
+      savedAtTimer = null;
+    }, 1500);
+  };
+  onCleanup(() => {
+    if (savedAtTimer !== null) clearTimeout(savedAtTimer);
+  });
 
   // Mirror the dirty flag out to the host. createEffect, not a wrapped
   // setDirty: covers every flip including the resets fired below on path
@@ -389,8 +400,10 @@ export function NoteModal(props: {
       mutateContent(next);
       setDirty(false);
       setSavedAt(Date.now());
-      // Snap the saved-at flag back after a moment so the indicator is transient.
-      setTimeout(() => setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t)), 1500);
+      // Snap the saved-at flag back after a moment so the indicator is
+      // transient. Track the timer ID and clear in onCleanup so a modal
+      // closed mid-grace doesn't fire setSavedAt on a disposed scope.
+      scheduleSavedAtClear();
       return true;
     } catch (err) {
       setError((err as Error).message);

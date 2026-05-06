@@ -20,6 +20,7 @@ import { findProjectReadmes } from './walk';
 import { readHeader } from './header-io';
 import { exec } from './exec';
 import { walkRepos, type ConfigShape } from './config-walk';
+import { pathExists } from './fs-helpers';
 
 interface ConfigWithPaths extends ConfigShape {
   worktrees_path?: string;
@@ -584,15 +585,6 @@ async function readConfig(conceptionPath: string): Promise<ConfigWithPaths> {
 
 function defaultWorktreesPath(): string {
   return join(process.env.HOME ?? '', 'src', 'worktrees');
-}
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function currentBranch(repo: string): Promise<string | null> {

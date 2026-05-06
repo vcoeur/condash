@@ -108,6 +108,21 @@ export function SettingsModal(props: {
   onMount(() => document.addEventListener('keydown', handleKeydown, true));
   onCleanup(() => document.removeEventListener('keydown', handleKeydown, true));
 
+  // Saved-at indicator timer — shared by patchConfig + patchTerminal so we
+  // only ever have one pending clear in-flight, and so closing the modal
+  // mid-grace doesn't fire setSavedAt on a disposed scope.
+  let savedAtTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleSavedAtClear = (): void => {
+    if (savedAtTimer !== null) clearTimeout(savedAtTimer);
+    savedAtTimer = setTimeout(() => {
+      setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t));
+      savedAtTimer = null;
+    }, 1500);
+  };
+  onCleanup(() => {
+    if (savedAtTimer !== null) clearTimeout(savedAtTimer);
+  });
+
   const parsed = createMemo<RawConfig>(() => {
     const text = content();
     if (!text) return {};
@@ -164,7 +179,7 @@ export function SettingsModal(props: {
       const written = await window.condash.writeNote(props.configurationPath, text, next);
       mutateContent(written);
       setSavedAt(Date.now());
-      setTimeout(() => setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t)), 1500);
+      scheduleSavedAtClear();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -352,7 +367,7 @@ export function SettingsModal(props: {
       await window.condash.termSetPrefs(pruned);
       mutateTerminal(pruned);
       setSavedAt(Date.now());
-      setTimeout(() => setSavedAt((t) => (t && Date.now() - t > 1200 ? null : t)), 1500);
+      scheduleSavedAtClear();
     } catch (err) {
       setError((err as Error).message);
     } finally {
