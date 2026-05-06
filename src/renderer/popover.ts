@@ -85,7 +85,11 @@ export function createPositionedPopover(opts: PopoverOptions): PositionedPopover
   };
 
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape' && open()) opts.onClose();
+    if (e.key === 'Escape' && open()) {
+      // Stop the same Esc from also firing on a stacked modal underneath.
+      e.stopPropagation();
+      opts.onClose();
+    }
   };
 
   onMount(() => {

@@ -13,6 +13,7 @@ import { addStep, editStepText, transitionStatus, toggleStep, writeNote } from '
 import { createProjectCore } from '../cli/commands/projects';
 import { checkBranchState } from './worktree-ops';
 import { listProjectFiles } from './files';
+import { requirePathUnder } from './path-bounds';
 import { readKnowledgeTree } from './knowledge';
 import { readResourcesTree } from './resources';
 import { readSkillsTree } from './skills';
@@ -394,6 +395,24 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/**
+ * Defence-in-depth: every IPC handler that accepts a `path` from the
+ * renderer and reads or writes the filesystem at that path runs through
+ * here first. Realpathed bound check against the current conception
+ * root via shared/path-bounds — pass-4..6 deferred this sweep, pass-7
+ * lands the conception-bound subset (note read/write, step ops,
+ * getProject, listProjectFiles, project.createNote). Repos /
+ * worktrees / screenshot_dir handlers stay open for now because their
+ * threat model targets a different bound.
+ */
+async function assertUnderConception(path: string): Promise<void> {
+  const { conceptionPath } = await readSettings();
+  if (!conceptionPath) {
+    throw new Error('no conception path is set');
+  }
+  await requirePathUnder(path, conceptionPath);
+}
+
 async function listProjects(): Promise<Project[]> {
   const { conceptionPath } = await readSettings();
   if (!conceptionPath) return [];
@@ -514,7 +533,10 @@ function isPathUnder(child: string, parent: string): boolean {
 function registerIpc(): void {
   ipcMain.handle('listProjects', () => listProjects());
 
-  ipcMain.handle('getProject', (_, path: string) => getProject(path));
+  ipcMain.handle('getProject', async (_, path: string) => {
+    await assertUnderConception(path);
+    return getProject(path);
+  });
 
   ipcMain.handle('readKnowledgeTree', async () => {
     const { conceptionPath } = await readSettings();
@@ -614,19 +636,35 @@ function registerIpc(): void {
 
   ipcMain.handle(
     'step.toggle',
-    (_, path: string, lineIndex: number, expectedMarker: StepMarker, newMarker: StepMarker) =>
-      toggleStep(path, lineIndex, expectedMarker, newMarker),
+    async (
+      _,
+      path: string,
+      lineIndex: number,
+      expectedMarker: StepMarker,
+      newMarker: StepMarker,
+    ) => {
+      await assertUnderConception(path);
+      return toggleStep(path, lineIndex, expectedMarker, newMarker);
+    },
   );
 
   ipcMain.handle(
     'step.editText',
-    (_, path: string, lineIndex: number, expectedText: string, newText: string) =>
-      editStepText(path, lineIndex, expectedText, newText),
+    async (_, path: string, lineIndex: number, expectedText: string, newText: string) => {
+      await assertUnderConception(path);
+      return editStepText(path, lineIndex, expectedText, newText);
+    },
   );
 
-  ipcMain.handle('step.add', (_, path: string, text: string) => addStep(path, text));
+  ipcMain.handle('step.add', async (_, path: string, text: string) => {
+    await assertUnderConception(path);
+    return addStep(path, text);
+  });
 
-  ipcMain.handle('listProjectFiles', (_, path: string) => listProjectFiles(path));
+  ipcMain.handle('listProjectFiles', async (_, path: string) => {
+    await assertUnderConception(path);
+    return listProjectFiles(path);
+  });
 
   ipcMain.handle(
     'setStatus',
@@ -703,13 +741,21 @@ function registerIpc(): void {
     },
   );
 
-  ipcMain.handle('note.read', (_, path: string) => readNote(path));
+  ipcMain.handle('note.read', async (_, path: string) => {
+    await assertUnderConception(path);
+    return readNote(path);
+  });
 
-  ipcMain.handle('note.write', (_, path: string, expectedContent: string, newContent: string) =>
-    writeNote(path, expectedContent, newContent),
+  ipcMain.handle(
+    'note.write',
+    async (_, path: string, expectedContent: string, newContent: string) => {
+      await assertUnderConception(path);
+      return writeNote(path, expectedContent, newContent);
+    },
   );
 
   ipcMain.handle('project.createNote', async (_, projectPath: string, slug: string) => {
+    await assertUnderConception(projectPath);
     return createProjectNote(projectPath, slug);
   });
 }
