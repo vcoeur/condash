@@ -17,7 +17,7 @@ import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { parseHeader, validateHeader, type HeaderFields } from '../../shared/header';
 import { readHeader } from '../../main/header-io';
-import { parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
 
 const ITEM_KINDS = ['project', 'incident', 'document'] as const;
 const SEVERITIES = ['low', 'medium', 'high'] as const;
@@ -87,6 +87,9 @@ async function indexCommand(
 ): Promise<void> {
   const dryRun = args.flags['dry-run'] === true;
   const rewriteAggregated = args.flags['rewrite-aggregated'] === true;
+  delete args.flags['dry-run'];
+  delete args.flags['rewrite-aggregated'];
+  assertNoExtraFlags(args);
   const report = await regenerateIndex(conceptionPath, projectsStrategy, {
     dryRun,
     rewriteAggregated,
@@ -156,7 +159,7 @@ async function createCommand(
 ): Promise<void> {
   const apps = parseCsvFlag(args.flags.apps) ?? [];
   if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
-  const result = await createProjectCore(conceptionPath, {
+  const input = {
     kind: String(args.flags.kind ?? '').toLowerCase(),
     slug: String(args.flags.slug ?? '').trim(),
     title: String(args.flags.title ?? '').trim(),
@@ -174,7 +177,23 @@ async function createCommand(
       typeof args.flags.environment === 'string'
         ? args.flags.environment.trim().toUpperCase() || null
         : null,
-  });
+  };
+  for (const k of [
+    'apps',
+    'kind',
+    'slug',
+    'title',
+    'branch',
+    'base',
+    'date',
+    'severity',
+    'severity-impact',
+    'environment',
+  ]) {
+    delete args.flags[k];
+  }
+  assertNoExtraFlags(args);
+  const result = await createProjectCore(conceptionPath, input);
   emit(ctx, result, (data) => {
     const d = data as { relPath: string; readme: string };
     return `Created ${d.relPath}\n  README: ${d.readme}\n`;
@@ -409,6 +428,7 @@ async function scanPromotionsCommand(
   if (!slug) {
     throw new CliError(ExitCodes.USAGE, 'Usage: condash projects scan-promotions <slug>');
   }
+  assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   const notesDir = join(candidate.itemDir, 'notes');
   let entries: string[];
@@ -485,6 +505,8 @@ async function listProjects(
   const appsFilter = parseCsvFlag(args.flags.apps);
   const branchFilter = typeof args.flags.branch === 'string' ? args.flags.branch : null;
   const sort = (args.flags.sort as string | undefined) ?? 'status';
+  for (const k of ['status', 'kind', 'apps', 'branch', 'sort']) delete args.flags[k];
+  assertNoExtraFlags(args);
 
   const readmes = await findProjectReadmes(conceptionPath);
   const rows: ProjectListRow[] = [];
@@ -583,7 +605,10 @@ async function readProject(
     deliverableCount: project.deliverableCount,
     extra: header.extra,
   };
-  if (args.flags['with-notes']) {
+  const withNotes = args.flags['with-notes'] === true;
+  delete args.flags['with-notes'];
+  assertNoExtraFlags(args);
+  if (withNotes) {
     const notesDir = join(candidate.itemDir, 'notes');
     data.notes = await readNotesDir(notesDir);
   }
@@ -635,6 +660,7 @@ async function resolveCommand(
 ): Promise<void> {
   const slug = args.positional[0];
   if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects resolve <slug>');
+  assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   emit(
     ctx,
@@ -658,6 +684,8 @@ async function searchProjects(
   const limit = parseIntFlag(args.flags.limit, 50);
   const statusFilter = parseCsvFlag(args.flags.status);
   const kindFilter = parseCsvFlag(args.flags.kind);
+  for (const k of ['limit', 'status', 'kind']) delete args.flags[k];
+  assertNoExtraFlags(args);
 
   const results = await searchAll(conceptionPath, query);
   const projectHits = results.hits.filter((h) => h.source === 'project');
@@ -730,6 +758,8 @@ async function validateCommand(
   const all = args.flags.all === true;
   const explicitPath = typeof args.flags.path === 'string' ? args.flags.path : null;
   const slug = args.positional[0];
+  for (const k of ['all', 'path']) delete args.flags[k];
+  assertNoExtraFlags(args);
 
   let readmes: string[];
   if (all) {
@@ -822,6 +852,7 @@ async function statusCommand(
   if (sub === 'get') {
     const slug = args.positional[1];
     if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects status get <slug>');
+    assertNoExtraFlags(args);
     const candidate = await resolveSlug(conceptionPath, slug);
     const header = await readHeader(candidate.readmePath);
     emit(
@@ -841,6 +872,8 @@ async function statusCommand(
       validation(`Status '${value}' not in {${KNOWN_STATUSES.join(', ')}}`);
     }
     const summary = typeof args.flags.summary === 'string' ? args.flags.summary.trim() : undefined;
+    delete args.flags.summary;
+    assertNoExtraFlags(args);
     const candidate = await resolveSlug(conceptionPath, slug);
     const transition = await transitionStatus(candidate.readmePath, value, { summary });
     const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
@@ -876,14 +909,15 @@ async function closeProject(
     validation(`Status '${newStatus}' not in {${KNOWN_STATUSES.join(', ')}}`);
   }
   const summary = (args.flags.summary as string | undefined)?.trim();
+  const noTouchDirty = args.flags['no-touch-dirty'] === true;
+  for (const k of ['status', 'summary', 'no-touch-dirty']) delete args.flags[k];
+  assertNoExtraFlags(args);
 
   const candidate = await resolveSlug(conceptionPath, slug);
   const header = await readHeader(candidate.readmePath);
   const transition = await transitionStatus(candidate.readmePath, newStatus, { summary });
 
-  const dirtyMarker = args.flags['no-touch-dirty']
-    ? false
-    : await touchDirtyMarker(conceptionPath, 'projects');
+  const dirtyMarker = noTouchDirty ? false : await touchDirtyMarker(conceptionPath, 'projects');
 
   const warnings = await leftoverBranchWarnings(conceptionPath, header.branch);
 
@@ -919,6 +953,8 @@ async function reopenProject(
   if (target === 'done') {
     validation(`reopen target cannot be 'done' — use \`condash projects close\` instead`);
   }
+  delete args.flags.status;
+  assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   const header = await readHeader(candidate.readmePath);
   const previous = (header.status ?? '').toLowerCase();
@@ -971,6 +1007,8 @@ async function backfillClosed(
   conceptionPath: string,
 ): Promise<void> {
   const dryRun = args.flags['dry-run'] === true;
+  delete args.flags['dry-run'];
+  assertNoExtraFlags(args);
   const readmes = await findProjectReadmes(conceptionPath);
   const candidates: BackfillEntry[] = [];
   const skipped: { slug: string; reason: string }[] = [];

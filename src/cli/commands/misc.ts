@@ -14,7 +14,7 @@ import {
 import { touchDirtyMarker } from '../../main/dirty';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
-import { parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
 
 const ALL_AUDIT_CHECKS: AuditCheckName[] = ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index'];
 
@@ -30,6 +30,8 @@ export async function runSearch(
     throw new CliError(ExitCodes.USAGE, '--scope must be all|projects|knowledge');
   }
   const limit = parseIntFlag(args.flags.limit, 50);
+  for (const k of ['scope', 'limit']) delete args.flags[k];
+  assertNoExtraFlags(args);
 
   const results = await searchAll(conceptionPath, query);
   const filtered = scope === 'all' ? results.hits : results.hits.filter((h) => h.source === scope);
@@ -96,6 +98,7 @@ async function worktreeCheck(
   if (!branch) {
     throw new CliError(ExitCodes.USAGE, 'Usage: condash worktrees check <branch>');
   }
+  assertNoExtraFlags(args);
   const result = await checkBranchState(conceptionPath, branch);
   emit(ctx, result, formatBranchCheck);
 }
@@ -173,6 +176,10 @@ async function worktreeSetup(
   }
   const baseFlag = args.flags.base;
   const base = typeof baseFlag === 'string' && baseFlag.length > 0 ? baseFlag : undefined;
+  for (const k of ['repo', 'copy-env', 'no-env', 'no-install', 'install', 'base']) {
+    delete args.flags[k];
+  }
+  assertNoExtraFlags(args);
   const result = await setupBranchWorktrees(conceptionPath, branch, {
     repos,
     copyEnv,
@@ -222,6 +229,8 @@ async function worktreeRemove(
     throw new CliError(ExitCodes.USAGE, 'Usage: condash worktrees remove <branch> [--repo <r>...]');
   }
   const repos = parseCsvFlag(args.flags.repo) ?? undefined;
+  delete args.flags.repo;
+  assertNoExtraFlags(args);
   const result = await removeBranchWorktrees(conceptionPath, branch, { repos });
   emit(ctx, result, formatRemoveResult);
 }
@@ -287,6 +296,8 @@ export async function runAuditCommand(
       );
     }
   }
+  delete args.flags.include;
+  assertNoExtraFlags(args);
   const report = await runAudit(conceptionPath, include as AuditCheckName[]);
   emit(ctx, report, formatAuditPretty, [], { streamField: 'issues' });
 }
@@ -319,8 +330,11 @@ export async function runRepos(
   conceptionPath: string,
 ): Promise<void> {
   if (verb === null || verb === 'list') {
+    const includeWorktrees = args.flags['include-worktrees'] === true;
+    delete args.flags['include-worktrees'];
+    assertNoExtraFlags(args);
     const repos = await listRepos(conceptionPath);
-    if (!args.flags['include-worktrees']) {
+    if (!includeWorktrees) {
       // Strip worktrees to match the documented default (faster, no per-repo
       // git status shell-out beyond what listRepos already paid for).
       for (const r of repos) delete r.worktrees;
@@ -348,6 +362,7 @@ export async function runDirty(
   conceptionPath: string,
 ): Promise<void> {
   if (verb === null || verb === 'list') {
+    assertNoExtraFlags(args);
     const data = {
       projects: await readMarker(join(conceptionPath, 'projects', '.index-dirty')),
       knowledge: await readMarker(join(conceptionPath, 'knowledge', '.index-dirty')),
@@ -370,6 +385,7 @@ export async function runDirty(
     if (tree !== 'projects' && tree !== 'knowledge') {
       throw new CliError(ExitCodes.USAGE, 'Usage: condash dirty touch <projects|knowledge>');
     }
+    assertNoExtraFlags(args);
     await touchDirtyMarker(conceptionPath, tree);
     const path = join(conceptionPath, tree, '.index-dirty');
     emit(ctx, { tree, path, present: true }, (d) => `touched ${(d as { path: string }).path}\n`);
@@ -380,6 +396,7 @@ export async function runDirty(
     if (which !== 'projects' && which !== 'knowledge' && which !== 'all') {
       throw new CliError(ExitCodes.USAGE, 'Usage: condash dirty clear <projects|knowledge|all>');
     }
+    assertNoExtraFlags(args);
     const targets = which === 'all' ? ['projects', 'knowledge'] : [which];
     const cleared: string[] = [];
     for (const t of targets) {
@@ -415,6 +432,7 @@ export async function runConfig(
   conceptionPath: string,
 ): Promise<void> {
   if (verb === 'conception-path') {
+    assertNoExtraFlags(args);
     const resolved = await resolveConception(undefined);
     emit(
       ctx,
@@ -424,6 +442,7 @@ export async function runConfig(
     return;
   }
   if (verb === null || verb === 'list') {
+    assertNoExtraFlags(args);
     const path = join(conceptionPath, 'configuration.json');
     const raw = await fs.readFile(path, 'utf8');
     const config = JSON.parse(raw);
@@ -433,6 +452,7 @@ export async function runConfig(
   if (verb === 'get') {
     const key = args.positional[0];
     if (!key) throw new CliError(ExitCodes.USAGE, 'Usage: condash config get <key>');
+    assertNoExtraFlags(args);
     const path = join(conceptionPath, 'configuration.json');
     const raw = await fs.readFile(path, 'utf8');
     const config = JSON.parse(raw);
