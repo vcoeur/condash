@@ -559,3 +559,11 @@ button:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* `info` is the default kind — give it a subtle accent border so it
+ * still reads as a notification (not a divider) but doesn't compete
+ * with success / error for attention. */
+.toast[data-kind='info'] {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+  color: var(--text-primary);
+}

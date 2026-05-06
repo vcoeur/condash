@@ -165,9 +165,14 @@
   letter-spacing: 0.04em;
   padding: 3px 7px;
   border-radius: 3px;
+  /* Bump rest-state visual weight so the buttons don't read as static
+   * text — the previous text-muted-on-bg-base combo was below the
+   * "this is clickable" threshold. Soft accent-tinted background plus
+   * primary text gets enough contrast without competing with the
+   * card body. */
   border: 1px solid var(--border-subtle);
-  background: var(--bg-base);
-  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-base));
+  color: var(--text-primary);
   cursor: pointer;
   transition:
     background 100ms,
