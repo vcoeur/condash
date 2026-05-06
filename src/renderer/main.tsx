@@ -54,7 +54,7 @@ import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
 import { applyRepoEvents } from './repo-events';
-import { QuitConfirmModal } from './toolbar';
+import { QuitConfirmModal } from './quit-confirm-modal';
 import { AboutModal } from './about-modal';
 import { ConfirmModal } from './confirm-modal';
 import { ShortcutsOverlay } from './shortcuts-overlay';
@@ -1067,7 +1067,6 @@ function App() {
                       >
                         <ProjectsView
                           buckets={projectsTabGroups()}
-                          searchInput=""
                           onOpen={handleOpenProject}
                           onToggleStep={handleToggleStep}
                           onDropProject={handleDropOnColumn}
@@ -1098,11 +1097,7 @@ function App() {
                           </div>
                         }
                       >
-                        <KnowledgeView
-                          root={knowledge()!}
-                          searchInput=""
-                          onOpen={handleOpenKnowledgeFile}
-                        />
+                        <KnowledgeView root={knowledge()!} onOpen={handleOpenKnowledgeFile} />
                       </Show>
                     </Suspense>
                   </section>
@@ -1111,11 +1106,7 @@ function App() {
                 <Show when={layout().working === 'resources'}>
                   <section class="pane pane-working">
                     <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <ResourcesView
-                        root={resources() ?? null}
-                        searchInput=""
-                        actions={resourcesActions}
-                      />
+                      <ResourcesView root={resources() ?? null} actions={resourcesActions} />
                     </Suspense>
                   </section>
                 </Show>
@@ -1123,11 +1114,7 @@ function App() {
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <SkillsView
-                        root={skills() ?? null}
-                        searchInput=""
-                        onOpen={handleOpenSkillFile}
-                      />
+                      <SkillsView root={skills() ?? null} onOpen={handleOpenSkillFile} />
                     </Suspense>
                   </section>
                 </Show>

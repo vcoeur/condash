@@ -269,10 +269,12 @@
   background: var(--accent);
 }
 
+/* Knowledge variant of .empty — overrides the centered flex with a dashed
+ * "card-shaped" placeholder so the empty state reads as inline help, not
+ * "we couldn't find your tree". Keep here, not in styles.css, because the
+ * dashed-border treatment is pane-specific design. */
 .knowledge-pane .empty {
   padding: 14px 16px;
-  color: var(--text-muted);
-  font-size: 13px;
   background: var(--bg-elevated);
   border: 1px dashed var(--border);
   border-radius: var(--radius);

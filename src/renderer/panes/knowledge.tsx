@@ -1,23 +1,14 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
-import type { KnowledgeNode, SearchHit, SearchResults, SearchSnippet } from '@shared/types';
+import { createMemo, For, Show } from 'solid-js';
+import type { KnowledgeNode } from '@shared/types';
 import { BookIcon } from '../icons';
-import { useSearchDebounce } from '../search-debounce';
-import { HighlightedText } from '../search/highlight';
-import { formatSectionLabel, isSearching as isSearchingShared } from './pane-utils';
+import { formatSectionLabel } from './pane-utils';
 import './knowledge-pane.css';
 
 /* Knowledge pane — flat card list grouped one section per directory. The
  * chrome (section header capsule, card silhouette, hover-brighten) mirrors
  * the Code and Projects panes so the three panes feel like one app. The
  * directory's `index.md` (when present) is surfaced as an [INDEX] badge
- * on the section header — clicking it opens the index file.
- *
- * Filter: an empty query renders the directory groupings. A non-empty
- * query routes to the global-search backend (`window.condash.search`) so
- * the user gets the same ranked AND/phrase semantics, region weighting,
- * and snippet highlights as the ⌘K modal — restricted to knowledge hits. */
-
-const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
+ * on the section header — clicking it opens the index file. */
 
 type BucketId = 'general' | 'internal' | 'topics' | 'external';
 
@@ -103,23 +94,6 @@ function buildSections(root: KnowledgeNode | null): KnowledgeSection[] {
   return out.concat(rest);
 }
 
-/** Walk the tree and emit every file node by absolute path so search hits
- * (which know `hit.path` only) can be mapped back to the loaded
- * KnowledgeNode that already has summary + verifiedAt extracted. */
-function indexNodesByPath(root: KnowledgeNode | null): Map<string, KnowledgeNode> {
-  const out = new Map<string, KnowledgeNode>();
-  if (!root) return out;
-  const visit = (node: KnowledgeNode): void => {
-    if (node.kind === 'file') {
-      out.set(node.path, node);
-      return;
-    }
-    for (const c of node.children ?? []) visit(c);
-  };
-  visit(root);
-  return out;
-}
-
 function freshnessOf(verifiedAt: string | undefined, todayISO: string): string {
   if (!verifiedAt) return 'none';
   const t = Date.parse(`${todayISO}T00:00:00Z`);
@@ -133,98 +107,14 @@ function freshnessOf(verifiedAt: string | undefined, todayISO: string): string {
 
 export function KnowledgeView(props: {
   root: KnowledgeNode;
-  /** Live search-input value, owned by the toolbar. Debounced internally
-   * to a `query` signal that drives the actual backend fetch. */
-  searchInput: string;
   onOpen: (path: string, title?: string) => void;
 }) {
-  const query = useSearchDebounce(() => props.searchInput);
-
   const todayISO = new Date().toISOString().slice(0, 10);
-
-  // Manual signal-based fetch (not createResource): the parent Suspense
-  // boundary in main.tsx would otherwise catch every re-fetch and unmount
-  // this view + the input on each keystroke, killing focus mid-typing.
-  const [results, setResults] = createSignal<SearchResults>(EMPTY_RESULTS);
-  const [searching, setSearching] = createSignal(false);
-
-  createEffect(() => {
-    const q = query();
-    if (q.trim().length === 0) {
-      setResults(EMPTY_RESULTS);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    let cancelled = false;
-    void window.condash.search(q).then((r) => {
-      if (cancelled) return;
-      setResults(r);
-      setSearching(false);
-    });
-    onCleanup(() => {
-      cancelled = true;
-      // Without this, a query change that supersedes an in-flight search
-      // leaves `searching(true)` set forever — the resolved-but-cancelled
-      // promise no-ops on its setSearching(false), and the next keystroke
-      // sets it true again on top.
-      setSearching(false);
-    });
-  });
-
   const sections = createMemo<KnowledgeSection[]>(() => buildSections(props.root));
-  const nodesByPath = createMemo<Map<string, KnowledgeNode>>(() => indexNodesByPath(props.root));
-
-  /** Knowledge-only hits (skip project hits) — already score-sorted by the
-   * backend. We map each hit back to the loaded KnowledgeNode so the card
-   * can carry the same summary / verified pill that the unfiltered view
-   * shows; if the hit has no loaded node (e.g. a freshly added file the
-   * tree hasn't refreshed for yet) we fall back to a card synthesised
-   * from the hit's title + relPath. */
-  const knowledgeHits = createMemo<SearchHit[]>(() =>
-    results().hits.filter((h) => h.source === 'knowledge'),
-  );
-
-  const isSearching = (): boolean => isSearchingShared(props.searchInput);
 
   return (
     <div class="knowledge-pane">
-      <Show
-        when={isSearching()}
-        fallback={<DirectoryView sections={sections()} todayISO={todayISO} onOpen={props.onOpen} />}
-      >
-        <Show when={searching() && knowledgeHits().length === 0}>
-          <div class="empty">Searching…</div>
-        </Show>
-        <Show
-          when={knowledgeHits().length > 0}
-          fallback={
-            <Show when={!searching()}>
-              <div class="empty">No matches.</div>
-            </Show>
-          }
-        >
-          <section class="knowledge-group" data-bucket="search">
-            <h2 class="knowledge-section-header">
-              <span class="name">RESULTS</span>
-              <span class="count">{knowledgeHits().length}</span>
-              <span class="rule" />
-            </h2>
-            <div class="knowledge-grid">
-              <For each={knowledgeHits()}>
-                {(hit) => (
-                  <SearchKnowledgeCard
-                    hit={hit}
-                    node={nodesByPath().get(hit.path)}
-                    todayISO={todayISO}
-                    onOpen={() => props.onOpen(hit.path, hit.title)}
-                  />
-                )}
-              </For>
-            </div>
-          </section>
-        </Show>
-      </Show>
+      <DirectoryView sections={sections()} todayISO={todayISO} onOpen={props.onOpen} />
     </div>
   );
 }
@@ -301,89 +191,6 @@ function KnowledgeCard(props: { file: KnowledgeFile; todayISO: string; onOpen: (
       </header>
       <Show when={props.file.node.summary}>
         <p class="knowledge-card-summary">{props.file.node.summary}</p>
-      </Show>
-    </article>
-  );
-}
-
-/** Search-result variant of KnowledgeCard: same shell, but the title gets
- * `<mark>`-style highlights from `hit.snippets[*].matches` (when the title
- * region matched) and the body shows backend snippets in score order
- * instead of the lead-paragraph caption. */
-function SearchKnowledgeCard(props: {
-  hit: SearchHit;
-  node: KnowledgeNode | undefined;
-  todayISO: string;
-  onOpen: () => void;
-}) {
-  const bucket = (): BucketId => bucketOf(props.hit.relPath.replace(/^knowledge\//, ''));
-  const verifiedAt = (): string | undefined => props.node?.verifiedAt;
-  const fresh = (): string => freshnessOf(verifiedAt(), props.todayISO);
-  // The h1 snippet (when present) carries the title's match offsets; reuse
-  // them on the card head so the search highlight colour matches the body.
-  const titleSnippet = (): SearchSnippet | undefined =>
-    props.hit.snippets.find((s) => s.region === 'h1');
-  const bodySnippets = (): SearchSnippet[] =>
-    props.hit.snippets.filter((s) => s.region !== 'h1').slice(0, 3);
-
-  return (
-    <article
-      class="knowledge-card knowledge-card-result"
-      data-bucket={bucket()}
-      title={props.hit.path}
-      onClick={() => props.onOpen()}
-    >
-      <header class="knowledge-card-head">
-        <span class="knowledge-card-glyph" aria-hidden="true">
-          <BookIcon />
-        </span>
-        <h3 class="knowledge-card-title">
-          <Show when={titleSnippet()} fallback={props.hit.title}>
-            {(s) => <HighlightedText text={s().text} matches={s().matches} />}
-          </Show>
-        </h3>
-        <Show when={verifiedAt()}>
-          <span
-            class="knowledge-card-verified"
-            data-fresh={fresh()}
-            title={`Verified ${verifiedAt()}`}
-          >
-            <span class="knowledge-card-verified-label">Verified</span>{' '}
-            <span class="knowledge-card-verified-date">{verifiedAt()}</span>
-          </span>
-        </Show>
-      </header>
-      <Show when={bodySnippets().length > 0}>
-        <ul class="knowledge-card-snippets">
-          <For each={bodySnippets()}>
-            {(s) => (
-              <li
-                classList={{
-                  'snippet-meta': s.region === 'meta',
-                  'snippet-heading': s.region === 'heading',
-                  'snippet-path': s.region === 'path',
-                }}
-              >
-                <Show when={s.region === 'meta'}>
-                  <span class="snippet-region-tag">meta</span>
-                </Show>
-                <Show when={s.region === 'heading'}>
-                  <span class="snippet-region-tag">heading</span>
-                </Show>
-                <HighlightedText text={s.text} matches={s.matches} />
-              </li>
-            )}
-          </For>
-        </ul>
-      </Show>
-      <Show when={props.hit.pathMatches && props.hit.pathMatches.length > 0}>
-        <p class="knowledge-card-path-line">
-          <HighlightedText
-            text={props.hit.relPath}
-            matches={props.hit.pathMatches!}
-            markClass="dim"
-          />
-        </p>
       </Show>
     </article>
   );
