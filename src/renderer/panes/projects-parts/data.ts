@@ -1,0 +1,247 @@
+import type { Project, SearchResults, Step, StepCounts, StepMarker } from '@shared/types';
+import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
+import { countSteps } from '@shared/projects';
+
+export const EMPTY_SEARCH_RESULTS: SearchResults = {
+  hits: [],
+  terms: [],
+  totalBeforeCap: 0,
+  truncated: false,
+};
+
+export const MARKER_LABEL: Record<StepMarker, string> = {
+  ' ': 'todo',
+  '~': 'doing',
+  x: 'done',
+  '-': 'dropped',
+};
+
+export const DRAG_MIME = 'application/x-condash-project-path';
+
+export const UNKNOWN = '?';
+
+/** Order of stacked sections on the Projects pane. `backlog` and `done`
+ * render collapsed-by-default — heavy buckets the user usually skips past. */
+export const PROJECT_SECTION_ORDER = ['now', 'review', 'later', 'backlog', 'done'] as const;
+export const COLLAPSED_BY_DEFAULT = new Set<string>(['backlog', 'done']);
+
+/** localStorage key for the per-status collapse map. Stores a sparse object
+ * `{ status: boolean }` — true means user-expanded, false means user-collapsed.
+ * Statuses missing from the map fall back to `COLLAPSED_BY_DEFAULT`. */
+const COLLAPSE_STORAGE_KEY = 'condash:projects:section-collapse';
+
+export function readCollapseMap(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'boolean') out[k] = v;
+      }
+      return out;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeCollapseEntry(status: string, expanded: boolean): void {
+  try {
+    const current = readCollapseMap();
+    current[status] = expanded;
+    window.localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // localStorage unavailable / quota — best-effort, drop silently.
+  }
+}
+
+/** First 10 chars of a project slug = its creation date in ISO. The CLI's
+ * regex (`^\d{4}-\d{2}-\d{2}-…`) makes this slice safe for every persisted
+ * project, so callers never need to validate. */
+function slugDate(slug: string): string {
+  return slug.slice(0, 10);
+}
+
+/** Date displayed on the card's meta row. Prefers `closedAt` for done items
+ * (the "when did this finish" question matters more than "when was it
+ * created" once a project is shipped), falls back to slug date for both
+ * non-done items and the long tail of done items closed before the
+ * `## Timeline` convention took hold. */
+function cardDate(p: Project): string {
+  if (p.status === 'done' && p.closedAt) return p.closedAt;
+  return slugDate(p.slug);
+}
+
+/** First date for the card / popup timeline header. Always the slug's
+ * creation date — the project's start is canonical and not subject to
+ * timeline edits. */
+export function firstDate(p: Project): string {
+  return slugDate(p.slug);
+}
+
+/** Last date for the card / popup timeline header. Most recent entry's
+ * date in `## Timeline`; falls back to the slug date when the timeline
+ * is empty (legacy items pre-template). */
+export function lastDate(p: Project): string {
+  if (!p.timeline || p.timeline.length === 0) return slugDate(p.slug);
+  let max = p.timeline[0].date;
+  for (const e of p.timeline) {
+    if (e.date > max) max = e.date;
+  }
+  return max;
+}
+
+/** Render the first/last range as a single date when they coincide, an
+ * en-dash range otherwise. Drives both the card meta row and the popup
+ * Timeline pane's collapsed header. */
+export function dateRangeLabel(p: Project): string {
+  const first = firstDate(p);
+  const last = lastDate(p);
+  return first === last ? first : `${first} – ${last}`;
+}
+
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export interface DoneSubgroup {
+  /** Storage / display month, ISO `YYYY-MM`. */
+  month: string;
+  projects: Project[];
+}
+
+export interface DoneGrouping {
+  /** Done projects whose effective close date is within the last 7 days.
+   * Sliding window — these projects are excluded from `byMonth` so each
+   * project appears in exactly one subgroup. Empty array when nothing
+   * closed recently. */
+  recent: Project[];
+  /** Per-close-month subgroups, descending. Empty months omitted. Excludes
+   * projects already shown in `recent`. */
+  byMonth: DoneSubgroup[];
+  /** The month that should be expanded by default on first render: the
+   * current calendar month if it has any done items, otherwise the most
+   * recent month that does, otherwise null. User toggles override. */
+  defaultExpandMonth: string | null;
+}
+
+/** Split a Done bucket into the Recent window + per-close-month subgroups.
+ * `today` is injected so tests can pin time without mocking Date. */
+export function groupDone(done: readonly Project[], today: string): DoneGrouping {
+  const sevenDaysAgo = (() => {
+    const d = new Date(today + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 7);
+    return d.toISOString().slice(0, 10);
+  })();
+  const recent: Project[] = [];
+  const byMonthMap = new Map<string, Project[]>();
+  for (const p of done) {
+    const date = cardDate(p);
+    if (date >= sevenDaysAgo) {
+      recent.push(p);
+      continue;
+    }
+    const month = date.slice(0, 7);
+    let bucket = byMonthMap.get(month);
+    if (!bucket) {
+      bucket = [];
+      byMonthMap.set(month, bucket);
+    }
+    bucket.push(p);
+  }
+  const sortDesc = (a: Project, b: Project): number => {
+    const da = cardDate(a);
+    const db = cardDate(b);
+    if (da !== db) return da < db ? 1 : -1;
+    return a.slug < b.slug ? 1 : a.slug > b.slug ? -1 : 0;
+  };
+  recent.sort(sortDesc);
+  for (const list of byMonthMap.values()) list.sort(sortDesc);
+  const byMonth: DoneSubgroup[] = [...byMonthMap.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+    .map(([month, projects]) => ({ month, projects }));
+  const currentMonth = today.slice(0, 7);
+  const defaultExpandMonth = byMonthMap.has(currentMonth)
+    ? currentMonth
+    : (byMonth[0]?.month ?? null);
+  return { recent, byMonth, defaultExpandMonth };
+}
+
+export type Group = { status: string; items: Project[] };
+
+export function nextMarker(current: StepMarker): StepMarker {
+  const idx = STEP_MARKERS.indexOf(current);
+  return STEP_MARKERS[(idx + 1) % STEP_MARKERS.length];
+}
+
+export function applyStepMarker(
+  items: Project[],
+  path: string,
+  lineIndex: number,
+  marker: StepMarker,
+): Project[] {
+  return items.map((p) => {
+    if (p.path !== path) return p;
+    const steps = p.steps.map((s) => (s.lineIndex === lineIndex ? { ...s, marker } : s));
+    return { ...p, steps, stepCounts: countSteps(steps) };
+  });
+}
+
+export function applyStatus(items: Project[], path: string, status: string): Project[] {
+  return items.map((p) => (p.path === path ? { ...p, status } : p));
+}
+
+export function hasSteps(c: StepCounts): boolean {
+  return c.todo + c.doing + c.done + c.dropped > 0;
+}
+
+/** True when no step is still open (todo or doing). Resolved-by-drop
+ * counts as "done enough" to dim the expander — the bar reaches 100%
+ * the moment every step has been decided one way or the other. */
+export function isStepCountsComplete(c: StepCounts): boolean {
+  const total = c.todo + c.doing + c.done + c.dropped;
+  return total > 0 && c.todo === 0 && c.doing === 0;
+}
+
+/** First step whose marker is not 'x' (done). Returns undefined if every step
+ * is done — the card body collapses in that case. */
+export function nextOpenStep(item: Project): Step | undefined {
+  return item.steps.find((s) => s.marker !== 'x');
+}
+
+export function groupByStatus(items: Project[]): Map<string, Project[]> {
+  const buckets = new Map<string, Project[]>();
+  for (const status of KNOWN_STATUSES) buckets.set(status, []);
+  buckets.set(UNKNOWN, []);
+
+  for (const item of items) {
+    const key = (KNOWN_STATUSES as readonly string[]).includes(item.status) ? item.status : UNKNOWN;
+    buckets.get(key)!.push(item);
+  }
+  // Sort each bucket most-recent-first. Slugs are `YYYY-MM-DD-…` so descending
+  // alpha sort is equivalent to descending date.
+  for (const list of buckets.values()) {
+    list.sort((a, b) => (a.slug < b.slug ? 1 : a.slug > b.slug ? -1 : 0));
+  }
+  return buckets;
+}
+
+export function projectsTabGroups(buckets: Map<string, Project[]>): Group[] {
+  const out: Group[] = [];
+  for (const status of PROJECT_SECTION_ORDER) {
+    out.push({ status, items: buckets.get(status) ?? [] });
+  }
+  const unknown = buckets.get(UNKNOWN) ?? [];
+  if (unknown.length > 0) out.push({ status: UNKNOWN, items: unknown });
+  return out;
+}
+
+export function markerClass(m: StepMarker): string {
+  if (m === ' ') return 'todo';
+  if (m === '~') return 'doing';
+  if (m === 'x') return 'done';
+  return 'dropped';
+}
