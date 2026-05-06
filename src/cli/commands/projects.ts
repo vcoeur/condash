@@ -13,10 +13,11 @@ import { isoToday } from '../../shared/iso-today';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
 import { statusOrder } from '../../shared/projects';
 import { isValidSlugTail } from '../../shared/slug';
-import { resolveSlug } from '../slug';
+import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
-import { parseHeader, readHeader, validateHeader, type HeaderFields } from '../header';
-import { parseIntFlag, type ParsedArgs } from '../parser';
+import { parseHeader, validateHeader, type HeaderFields } from '../../shared/header';
+import { readHeader } from '../../main/header-io';
+import { parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
 
 const ITEM_KINDS = ['project', 'incident', 'document'] as const;
 const SEVERITIES = ['low', 'medium', 'high'] as const;
@@ -313,86 +314,90 @@ interface TemplateInputs {
 }
 
 function renderTemplate(input: TemplateInputs): string {
-  const lines: string[] = [];
-  lines.push(`# ${input.title}`);
-  lines.push('');
-  lines.push(`**Date**: ${input.date}`);
-  lines.push(`**Kind**: ${input.kind}`);
-  lines.push(`**Status**: now`);
-  lines.push(`**Apps**: ${input.apps.map((a) => `\`${a}\``).join(', ')}`);
-  if (input.branch) lines.push(`**Branch**: \`${input.branch}\``);
-  if (input.base) lines.push(`**Base**: \`${input.base}\``);
+  const apps = input.apps.map((a) => `\`${a}\``).join(', ');
+  const headerLines: string[] = [
+    `# ${input.title}`,
+    '',
+    `**Date**: ${input.date}`,
+    `**Kind**: ${input.kind}`,
+    `**Status**: now`,
+    `**Apps**: ${apps}`,
+  ];
+  if (input.branch) headerLines.push(`**Branch**: \`${input.branch}\``);
+  if (input.base) headerLines.push(`**Base**: \`${input.base}\``);
   if (input.kind === 'incident') {
-    if (input.environment) lines.push(`**Environment**: ${input.environment}`);
+    if (input.environment) headerLines.push(`**Environment**: ${input.environment}`);
     if (input.severity) {
       const tail = input.severityImpact ? ` — ${input.severityImpact}` : '';
-      lines.push(`**Severity**: ${input.severity}${tail}`);
+      headerLines.push(`**Severity**: ${input.severity}${tail}`);
     }
   }
-  lines.push('');
+  const header = headerLines.join('\n');
+
+  let body: string;
   if (input.kind === 'project') {
-    lines.push('## Goal');
-    lines.push('');
-    lines.push('<What this project aims to achieve — the user-facing outcome.>');
-    lines.push('');
-    lines.push('## Scope');
-    lines.push('');
-    lines.push('<What is in scope and what is explicitly out of scope.>');
-    lines.push('');
-    lines.push('## Steps');
-    lines.push('');
-    lines.push('- [ ] <first task>');
-    lines.push('');
-    lines.push('## Timeline');
-    lines.push('');
-    lines.push(`- ${input.date} — Project created.`);
-    lines.push('');
-    lines.push('## Notes');
-    lines.push('');
+    body = `## Goal
+
+<What this project aims to achieve — the user-facing outcome.>
+
+## Scope
+
+<What is in scope and what is explicitly out of scope.>
+
+## Steps
+
+- [ ] <first task>
+
+## Timeline
+
+- ${input.date} — Project created.
+
+## Notes
+`;
   } else if (input.kind === 'incident') {
-    lines.push('## Description');
-    lines.push('');
-    lines.push('<What happened — observable symptoms, scope, when it started.>');
-    lines.push('');
-    lines.push('## Symptoms');
-    lines.push('');
-    lines.push('<Bullet list of error messages, user-facing effects, log patterns.>');
-    lines.push('');
-    lines.push('## Analysis');
-    lines.push('');
-    lines.push('<Investigation findings, hypotheses, references to `notes/`.>');
-    lines.push('');
-    lines.push('## Root cause');
-    lines.push('');
-    lines.push('_Not yet identified._');
-    lines.push('');
-    lines.push('## Steps');
-    lines.push('');
-    lines.push('- [ ] <action items>');
-    lines.push('');
-    lines.push('## Timeline');
-    lines.push('');
-    lines.push(`- ${input.date} — Incident created.`);
-    lines.push('');
-    lines.push('## Notes');
-    lines.push('');
+    body = `## Description
+
+<What happened — observable symptoms, scope, when it started.>
+
+## Symptoms
+
+<Bullet list of error messages, user-facing effects, log patterns.>
+
+## Analysis
+
+<Investigation findings, hypotheses, references to \`notes/\`.>
+
+## Root cause
+
+_Not yet identified._
+
+## Steps
+
+- [ ] <action items>
+
+## Timeline
+
+- ${input.date} — Incident created.
+
+## Notes
+`;
   } else {
-    lines.push('## Goal');
-    lines.push('');
-    lines.push('<Purpose — what this document aims to achieve or answer.>');
-    lines.push('');
-    lines.push('## Steps');
-    lines.push('');
-    lines.push('- [ ] Step 1');
-    lines.push('');
-    lines.push('## Timeline');
-    lines.push('');
-    lines.push(`- ${input.date} — Created.`);
-    lines.push('');
-    lines.push('## Notes');
-    lines.push('');
+    body = `## Goal
+
+<Purpose — what this document aims to achieve or answer.>
+
+## Steps
+
+- [ ] Step 1
+
+## Timeline
+
+- ${input.date} — Created.
+
+## Notes
+`;
   }
-  return lines.join('\n');
+  return `${header}\n\n${body}`;
 }
 
 async function scanPromotionsCommand(
@@ -1095,14 +1100,6 @@ async function leftoverBranchWarnings(
     `${parts.join('; ')} — run \`condash worktrees remove ${branch}\` ` +
       `then \`git branch -d ${branch}\` to clean up.`,
   ];
-}
-
-function parseCsvFlag(value: string | boolean | undefined): string[] | null {
-  if (typeof value !== 'string') return null;
-  return value
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 function printSubHelp(): void {

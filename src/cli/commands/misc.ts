@@ -14,7 +14,7 @@ import {
 import { touchDirtyMarker } from '../../main/dirty';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
-import { parseIntFlag, type ParsedArgs } from '../parser';
+import { parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
 
 const ALL_AUDIT_CHECKS: AuditCheckName[] = ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index'];
 
@@ -156,7 +156,7 @@ async function worktreeSetup(
       'Usage: condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
     );
   }
-  const repos = parseRepoFlag(args.flags.repo);
+  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
   const copyEnv = args.flags['copy-env'] === true;
   const skipEnv = args.flags['no-env'] === true;
   const skipInstall = args.flags['no-install'] === true;
@@ -215,7 +215,7 @@ async function worktreeRemove(
   if (!branch) {
     throw new CliError(ExitCodes.USAGE, 'Usage: condash worktrees remove <branch> [--repo <r>...]');
   }
-  const repos = parseRepoFlag(args.flags.repo);
+  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
   const result = await removeBranchWorktrees(conceptionPath, branch, { repos });
   emit(ctx, result, formatRemoveResult);
 }
@@ -259,14 +259,6 @@ function printWorktreesHelp(): void {
       '',
     ].join('\n'),
   );
-}
-
-function parseRepoFlag(value: string | boolean | undefined): string[] | undefined {
-  if (typeof value !== 'string') return undefined;
-  return value
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 export async function runAuditCommand(
