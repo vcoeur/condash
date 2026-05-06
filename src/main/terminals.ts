@@ -369,10 +369,13 @@ export async function setTerminalPrefs(patch: TerminalPrefs): Promise<void> {
  * configuration.json. Idempotent — does nothing once settings.json owns
  * the data. */
 export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
-  const settings = await readSettings();
-  if (settings.terminal && Object.keys(settings.terminal).length > 0) return;
-  if (!settings.conceptionPath) return;
-  const configFile = join(settings.conceptionPath, 'configuration.json');
+  // Initial read is just a fast-path bail; the authoritative check repeats
+  // inside updateSettings's mutator so concurrent setTheme/setLayout IPC
+  // can't race with this migration.
+  const initial = await readSettings();
+  if (initial.terminal && Object.keys(initial.terminal).length > 0) return;
+  if (!initial.conceptionPath) return;
+  const configFile = join(initial.conceptionPath, 'configuration.json');
   let raw: string;
   try {
     raw = await fs.readFile(configFile, 'utf8');
@@ -388,7 +391,16 @@ export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
   }
   const legacy = parsed.terminal as TerminalPrefs | undefined;
   if (!legacy || Object.keys(legacy).length === 0) return;
-  await updateSettings((cur) => ({ ...cur, terminal: legacy }));
+  // Atomic read-modify-write: skip the merge if cur.terminal is already
+  // populated (a concurrent IPC may have written it between the initial
+  // read and the queue head).
+  let migrated = false;
+  await updateSettings((cur) => {
+    if (cur.terminal && Object.keys(cur.terminal).length > 0) return cur;
+    migrated = true;
+    return { ...cur, terminal: legacy };
+  });
+  if (!migrated) return;
   delete parsed.terminal;
   const next = JSON.stringify(parsed, null, 2) + '\n';
   await atomicWrite(configFile, next);

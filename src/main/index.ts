@@ -58,6 +58,7 @@ const CLI_NOUNS: ReadonlySet<string> = new Set([
   'search',
   'repos',
   'worktrees',
+  'audit',
   'dirty',
   'skills',
   'config',

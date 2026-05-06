@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import './code-pane.css';
 import type {
   DirtyDetails,
@@ -689,14 +689,17 @@ export function CodeView(props: {
         {(group) => {
           // Active runs for this group only, sorted to mirror the section's
           // repo order so what's running for "condash" appears below the
-          // "condash" card and so on.
-          const groupSessions = (): readonly TermSession[] => {
+          // "condash" card and so on. Memoised so a parent re-render (e.g.
+          // a layout signal change) doesn't re-allocate the filtered+sorted
+          // array on every pass — without the memo, <For> below remounts
+          // every CodeRunRow on every render.
+          const groupSessions = createMemo<readonly TermSession[]>(() => {
             const order = new Map(group.entries.map((e, i) => [e.name, i]));
             return props.codeRunSessions
               .filter((s) => s.repo && order.has(s.repo))
               .slice()
               .sort((a, b) => (order.get(a.repo!) ?? 0) - (order.get(b.repo!) ?? 0));
-          };
+          });
           return (
             <section class="repos-group" data-group={group.id}>
               <h2 class="repos-group-header">

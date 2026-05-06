@@ -79,11 +79,20 @@ function applyTheme(theme: Theme): void {
  * partial prefs object falls back per-key automatically. */
 function applyCardMinWidth(prefs: Required<CardMinWidthPrefs>): void {
   const root = document.documentElement;
-  root.style.setProperty('--card-min-projects', `${prefs.projects}px`);
-  root.style.setProperty('--card-min-code', `${prefs.code}px`);
-  root.style.setProperty('--card-min-knowledge', `${prefs.knowledge}px`);
-  root.style.setProperty('--card-min-resources', `${prefs.resources}px`);
-  root.style.setProperty('--card-min-skills', `${prefs.skills}px`);
+  // Clamp to the documented [120, 2400] range — guards against a hand-edited
+  // settings.json with out-of-range values reaching the CSS variables and
+  // breaking the grid (e.g. `{ projects: 10 }` → unreadable).
+  const clamp = (n: number, fallback: number): number => {
+    if (!Number.isFinite(n)) return fallback;
+    if (n < 120) return 120;
+    if (n > 2400) return 2400;
+    return n;
+  };
+  root.style.setProperty('--card-min-projects', `${clamp(prefs.projects, 650)}px`);
+  root.style.setProperty('--card-min-code', `${clamp(prefs.code, 650)}px`);
+  root.style.setProperty('--card-min-knowledge', `${clamp(prefs.knowledge, 520)}px`);
+  root.style.setProperty('--card-min-resources', `${clamp(prefs.resources, 280)}px`);
+  root.style.setProperty('--card-min-skills', `${clamp(prefs.skills, 280)}px`);
 }
 
 function App() {
@@ -835,7 +844,7 @@ function App() {
     const target = matches[0];
     router.navigateInModal({ path: target.path, title: target.title });
     if (matches.length > 1) {
-      flashToast(`[[${slug}]] matched ${matches.length} items — opening the first`);
+      flashToast(`[[${slug}]] matched ${matches.length} items — opening the first`, 'info');
     }
   };
 
@@ -905,7 +914,7 @@ function App() {
         setRefreshKey((k) => k + 1);
       }
       if (result.branchWarning) {
-        flashToast(result.branchWarning);
+        flashToast(result.branchWarning, 'info');
       }
     } catch (err) {
       mutate((current) => applyStatus(current ?? [], path, previous));
@@ -1362,7 +1371,12 @@ function App() {
 
       <Show when={toast()}>
         {(t) => (
-          <div class="toast" data-kind={t().kind} role="status">
+          <div
+            class="toast"
+            data-kind={t().kind}
+            role={t().kind === 'error' ? 'alert' : 'status'}
+            aria-live={t().kind === 'error' ? 'assertive' : 'polite'}
+          >
             {t().msg}
           </div>
         )}

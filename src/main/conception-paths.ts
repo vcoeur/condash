@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, normalize } from 'node:path';
 import { DEFAULT_RESOURCES_PATH, DEFAULT_SKILLS_PATH } from './config-schema';
 
 /**
@@ -10,6 +10,11 @@ import { DEFAULT_RESOURCES_PATH, DEFAULT_SKILLS_PATH } from './config-schema';
  * Each tree reader needs only the two relative paths, so this helper
  * stays narrow rather than re-deriving the full config shape — which
  * keeps the readers free of any direct config-file knowledge.
+ *
+ * Path-traversal guard: a `..` segment or absolute-path value would let
+ * the watcher and the readers escape the conception tree, so anything
+ * that doesn't normalise to a clean relative path falls back to the
+ * default.
  */
 export async function resolveConceptionPaths(conceptionPath: string): Promise<{
   resources: string;
@@ -26,13 +31,20 @@ export async function resolveConceptionPaths(conceptionPath: string): Promise<{
   } catch {
     /* fall through with defaults */
   }
-  const resources =
-    typeof parsed.resources_path === 'string' && parsed.resources_path.length > 0
-      ? parsed.resources_path
-      : DEFAULT_RESOURCES_PATH;
-  const skills =
-    typeof parsed.skills_path === 'string' && parsed.skills_path.length > 0
-      ? parsed.skills_path
-      : DEFAULT_SKILLS_PATH;
-  return { resources, skills };
+  return {
+    resources: pickRelative(parsed.resources_path, DEFAULT_RESOURCES_PATH),
+    skills: pickRelative(parsed.skills_path, DEFAULT_SKILLS_PATH),
+  };
+}
+
+function pickRelative(value: unknown, fallback: string): string {
+  if (typeof value !== 'string' || value.length === 0) return fallback;
+  if (isAbsolute(value)) return fallback;
+  // path.normalize collapses `./foo/../bar` to `bar`; a leading `..` after
+  // normalisation means the value escapes the conception root.
+  const normalised = normalize(value);
+  if (normalised === '..' || normalised.startsWith(`..${'/'}`) || normalised.startsWith(`..\\`)) {
+    return fallback;
+  }
+  return normalised;
 }
