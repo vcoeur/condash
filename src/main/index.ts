@@ -11,7 +11,7 @@ import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
 import { addStep, editStepText, transitionStatus, toggleStep, writeNote } from './mutate';
 import { touchDirtyMarker } from './dirty';
-import { createProjectCore } from '../cli/commands/projects';
+import { createProjectCore } from './create-project';
 import { checkBranchState } from './worktree-ops';
 import { listProjectFiles } from './files';
 import { requirePathUnder, requirePathUnderWorkspace } from './path-bounds';
