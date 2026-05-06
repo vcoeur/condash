@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import type { SkillNode } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { parseHead } from './knowledge';
+import { readFileHead } from './read-file-head';
 import { buildShippedLookup, type ShippedLookup } from './skills-shipped';
 
 const HIDDEN_PREFIX = /^\./;
@@ -103,20 +104,8 @@ async function readMarkdownMeta(
   path: string,
   fallback: string,
 ): Promise<{ title: string; summary?: string }> {
-  try {
-    const handle = await fs.open(path);
-    try {
-      const { buffer, bytesRead } = await handle.read({
-        buffer: Buffer.alloc(8192),
-        position: 0,
-      });
-      const head = buffer.subarray(0, bytesRead).toString('utf8');
-      const meta = parseHead(head, fallback);
-      return { title: meta.title, summary: meta.summary };
-    } finally {
-      await handle.close();
-    }
-  } catch {
-    return { title: fallback };
-  }
+  const head = await readFileHead(path);
+  if (head === null) return { title: fallback };
+  const meta = parseHead(head, fallback);
+  return { title: meta.title, summary: meta.summary };
 }
