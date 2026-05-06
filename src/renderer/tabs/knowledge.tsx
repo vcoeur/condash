@@ -172,6 +172,11 @@ export function KnowledgeView(props: {
     });
     onCleanup(() => {
       cancelled = true;
+      // Without this, a query change that supersedes an in-flight search
+      // leaves `searching(true)` set forever — the resolved-but-cancelled
+      // promise no-ops on its setSearching(false), and the next keystroke
+      // sets it true again on top.
+      setSearching(false);
     });
   });
 

@@ -52,9 +52,7 @@ export function PdfModal(props: {
           </button>
         </header>
         <div class="pdf-body">
-          <Show when={resolved()?.url}>
-            {(url) => <webview src={url()} partition="persist:pdf" class="pdf-webview" />}
-          </Show>
+          <Show when={resolved()?.url}>{(url) => <webview src={url()} class="pdf-webview" />}</Show>
         </div>
       </div>
     </div>

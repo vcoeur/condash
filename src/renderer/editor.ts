@@ -18,6 +18,9 @@ export interface MountOptions {
   parent: HTMLElement;
   initial: string;
   language: EditorLanguage;
+  /** Initial dark/light hint for the CodeMirror theme. The host can flip
+   *  this later via `setDark()` without remounting the editor. */
+  dark?: boolean;
   onSave: () => void;
   onChange: (next: string) => void;
 }
@@ -26,15 +29,19 @@ export interface MountedEditor {
   view: EditorView;
   destroy: () => void;
   setValue: (next: string) => void;
+  setDark: (dark: boolean) => void;
 }
-
-const themeCompartment = new Compartment();
 
 function languageExtension(lang: EditorLanguage): Extension {
   return lang === 'json' ? json() : markdown();
 }
 
 export function mountEditor(opts: MountOptions): MountedEditor {
+  // Per-mount compartment: reconfigure() targets the View instance, so a
+  // module-level singleton would have all open editors share one mutation
+  // stream and an EditorView removed from the DOM would still receive
+  // dispatches. Per-instance keeps the wiring local.
+  const themeCompartment = new Compartment();
   const saveKey = {
     key: 'Mod-s',
     preventDefault: true,
@@ -61,7 +68,7 @@ export function mountEditor(opts: MountOptions): MountedEditor {
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       keymap.of([saveKey, ...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
       languageExtension(opts.language),
-      themeCompartment.of(EditorView.theme({}, { dark: false })),
+      themeCompartment.of(EditorView.theme({}, { dark: opts.dark === true })),
       EditorView.lineWrapping,
       updateListener,
     ],
@@ -78,6 +85,11 @@ export function mountEditor(opts: MountOptions): MountedEditor {
     setValue: (next: string) => {
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: next },
+      });
+    },
+    setDark: (dark: boolean) => {
+      view.dispatch({
+        effects: themeCompartment.reconfigure(EditorView.theme({}, { dark })),
       });
     },
   };

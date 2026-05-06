@@ -161,6 +161,14 @@ export function NoteModal(props: {
    * back-button click routes here instead of straight to onClose, so the
    * user steps back through the chain instead of dismissing the whole stack. */
   onBack?: () => void;
+  /** Notify the host whenever the editor's dirty flag flips. The host needs
+   * this to gate global "are you sure you want to quit?" prompts on a real
+   * unsaved-changes signal instead of guessing. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Resolved dark/light flag for the active app theme. Drives the
+   *  CodeMirror theme compartment so the cursor/selection/gutter colours
+   *  flip live when the user toggles theme without remounting the editor. */
+  dark?: boolean;
 }) {
   const [mode, setMode] = createSignal<Mode>(props.state?.initialMode ?? 'view');
 
@@ -179,6 +187,33 @@ export function NoteModal(props: {
   // unsaved draft is gone the moment we flip to view. Hold the request in this
   // signal until the user picks Save or Discard.
   const [pendingViewSwitch, setPendingViewSwitch] = createSignal(false);
+
+  // Mirror the dirty flag out to the host. createEffect, not a wrapped
+  // setDirty: covers every flip including the resets fired below on path
+  // change, so the host's "unsaved" view never lags the modal's.
+  createEffect(() => {
+    props.onDirtyChange?.(dirty());
+  });
+
+  // Switching to a different file (back/forward, in-modal navigation) must
+  // reset the per-file local state — otherwise an unsaved-edit pill from the
+  // previous file leaks onto the next, and the dirty diff compares against
+  // the wrong base content. The path-keyed createResource above already
+  // re-fetches `content`; we reset everything else explicitly here.
+  let lastPath: string | null = null;
+  createEffect(() => {
+    const path = props.state?.path ?? null;
+    if (path === lastPath) return;
+    lastPath = path;
+    setDraft('');
+    setDirty(false);
+    setError(null);
+    setSavedAt(null);
+    setFindOpen(false);
+    setFindQuery('');
+    setFindMatch(null);
+    setPendingViewSwitch(false);
+  });
 
   const [content, { mutate: mutateContent, refetch: refetchContent }] = createResource(
     () => props.state?.path,
@@ -221,6 +256,7 @@ export function NoteModal(props: {
             parent,
             initial,
             language,
+            dark: props.dark,
             onSave: () => void save(),
             onChange: (next) => {
               setDraft(next);
@@ -240,6 +276,13 @@ export function NoteModal(props: {
       editor.destroy();
       editor = null;
     }
+  });
+
+  // Live theme flip without remount: reconfigure the per-mount theme
+  // compartment when the host's `dark` prop changes.
+  createEffect(() => {
+    const dark = props.dark === true;
+    if (editor) editor.setDark(dark);
   });
 
   // Re-render Mermaid blocks any time the rendered HTML changes (view mode only).
@@ -264,11 +307,24 @@ export function NoteModal(props: {
     });
   };
 
-  // Re-run find whenever the view-mode HTML or the query changes.
+  // Re-run find whenever the view-mode HTML or the query changes. A
+  // 100 ms debounce keeps `runFind` off the keystroke critical path: every
+  // letter typed in the find bar would otherwise walk the DOM, splice text
+  // nodes, and re-highlight in line with the typing.
+  let findTimer: ReturnType<typeof setTimeout> | null = null;
   createEffect(() => {
-    if (mode() === 'view') {
+    void findQuery();
+    void findOpen();
+    void html();
+    if (mode() !== 'view') return;
+    if (findTimer !== null) clearTimeout(findTimer);
+    findTimer = setTimeout(() => {
+      findTimer = null;
       runFind();
-    }
+    }, 100);
+  });
+  onCleanup(() => {
+    if (findTimer !== null) clearTimeout(findTimer);
   });
 
   const runFind = () => {
@@ -670,7 +726,10 @@ function highlightFindMatches(container: HTMLElement, query: string): number {
     acceptNode(node) {
       const parent = node.parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
-      if (parent.closest('script, style, .find-bar')) return NodeFilter.FILTER_REJECT;
+      // Skip script/style/find-bar (UI noise) and SVG subtrees (mermaid
+      // diagrams render text as <text> nodes inside <svg>; replacing them
+      // with split <span> wrappers blows up the diagram's layout).
+      if (parent.closest('script, style, svg, .find-bar')) return NodeFilter.FILTER_REJECT;
       return node.nodeValue && node.nodeValue.toLowerCase().includes(lower)
         ? NodeFilter.FILTER_ACCEPT
         : NodeFilter.FILTER_REJECT;
