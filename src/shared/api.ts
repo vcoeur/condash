@@ -13,7 +13,9 @@ import type {
   ProjectFileEntry,
   RepoEntry,
   RepoEvent,
+  ResourceNode,
   SearchResults,
+  SkillNode,
   StepMarker,
   TermDataMessage,
   TermExitMessage,
@@ -29,6 +31,14 @@ export interface CondashApi {
   listProjects(): Promise<Project[]>;
   getProject(path: string): Promise<Project | null>;
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
+  /** Tree under <conception>/<resources_path> — every file (any extension),
+   * carrying mime + coarse category for the renderer's icon picker.
+   * Resolves to null when the directory is missing. */
+  readResourcesTree(): Promise<ResourceNode | null>;
+  /** Tree under <conception>/<skills_path> — `.md` files only, with
+   * shipped-SHA stamps populated from `.condash-skills.json` when present.
+   * Resolves to null when the directory is missing. */
+  readSkillsTree(): Promise<SkillNode | null>;
   search(query: string): Promise<SearchResults>;
   listRepos(): Promise<RepoEntry[]>;
   /** Per-primary partial reload — returns the primary's `RepoEntry` plus
@@ -211,6 +221,8 @@ export type MenuCommand =
   | 'toggle-terminal'
   | 'show-code'
   | 'show-knowledge'
+  | 'show-resources'
+  | 'show-skills'
   | 'hide-working'
   | 'refresh'
   | 'about'

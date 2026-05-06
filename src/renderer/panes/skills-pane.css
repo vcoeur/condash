@@ -1,0 +1,158 @@
+.skills-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px 24px;
+  background: var(--bg-base);
+}
+
+.skills-pane .empty {
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.skills-group {
+  margin-bottom: 22px;
+}
+
+.skills-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.skills-section-header .name {
+  white-space: nowrap;
+}
+
+.skills-section-header .count {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.skills-section-header .rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.skills-section-index {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.skills-section-index:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.skills-section-index.shipped::after {
+  content: ' · shipped';
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.skills-section-index.diverged {
+  border-color: var(--warn);
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
+.skills-section-index.diverged::after {
+  content: ' · diverged';
+  font-weight: 500;
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  gap: 8px;
+}
+
+.skills-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.skills-card:hover {
+  border-color: var(--border-strong);
+}
+
+.skills-card[data-shipped='diverged'] {
+  border-left: 2px solid var(--warn);
+}
+
+.skills-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-card-title {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-card-shipped {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.skills-card-shipped[data-state='clean'] {
+  color: var(--text-muted);
+}
+
+.skills-card-shipped[data-state='diverged'] {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+
+.skills-card-relpath {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-card-summary {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+}

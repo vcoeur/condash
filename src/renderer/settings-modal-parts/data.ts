@@ -168,6 +168,8 @@ export interface RawConfig {
   $schema_doc?: string;
   workspace_path?: string;
   worktrees_path?: string;
+  resources_path?: string;
+  skills_path?: string;
   repositories?: { primary?: RawRepo[]; secondary?: RawRepo[] };
   open_with?: Record<string, { label?: string; command?: string }>;
 }

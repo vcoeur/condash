@@ -13,6 +13,8 @@ export interface ProjectGroup {
 export interface GroupedResults {
   projects: ProjectGroup[];
   knowledge: SearchHit[];
+  resources: SearchHit[];
+  skills: SearchHit[];
   total: number;
 }
 
@@ -31,6 +33,8 @@ export interface GroupedResults {
 export function groupHits(hits: readonly SearchHit[]): GroupedResults {
   const groups = new Map<string, ProjectGroup>();
   const knowledge: SearchHit[] = [];
+  const resources: SearchHit[] = [];
+  const skills: SearchHit[] = [];
 
   for (const hit of hits) {
     if (hit.source === 'project' && hit.projectPath) {
@@ -46,6 +50,10 @@ export function groupHits(hits: readonly SearchHit[]): GroupedResults {
         group.files.push(hit);
       }
       group.totalScore += hit.score;
+    } else if (hit.source === 'resources') {
+      resources.push(hit);
+    } else if (hit.source === 'skills') {
+      skills.push(hit);
     } else {
       knowledge.push(hit);
     }
@@ -59,6 +67,8 @@ export function groupHits(hits: readonly SearchHit[]): GroupedResults {
   return {
     projects,
     knowledge,
-    total: projects.length + knowledge.length,
+    resources,
+    skills,
+    total: projects.length + knowledge.length + resources.length + skills.length,
   };
 }

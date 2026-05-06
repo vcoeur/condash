@@ -14,6 +14,9 @@ import { createProjectCore } from '../cli/commands/projects';
 import { checkBranchState } from './worktree-ops';
 import { listProjectFiles } from './files';
 import { readKnowledgeTree } from './knowledge';
+import { readResourcesTree } from './resources';
+import { readSkillsTree } from './skills';
+import { resolveConceptionPaths } from './conception-paths';
 import { createProjectNote, readNote } from './note';
 import { search } from './search';
 import { listRepos, listReposForPrimary } from './repos';
@@ -283,6 +286,20 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
       click: () => send('show-knowledge'),
     },
     {
+      label: 'Show Resources',
+      type: 'checkbox',
+      checked: layout.working === 'resources',
+      accelerator: 'CommandOrControl+R',
+      click: () => send('show-resources'),
+    },
+    {
+      label: 'Show Skills',
+      type: 'checkbox',
+      checked: layout.working === 'skills',
+      accelerator: 'CommandOrControl+L',
+      click: () => send('show-skills'),
+    },
+    {
       label: 'Hide working surface',
       enabled: layout.working !== null,
       click: () => send('hide-working'),
@@ -301,7 +318,15 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
       click: () => send('refresh'),
     },
     { type: 'separator' },
-    { role: 'reload', label: 'Reload window' },
+    {
+      role: 'reload',
+      label: 'Reload window',
+      // Reload normally lives at Ctrl+R, but we hand that accelerator to the
+      // Resources panel (more useful in day-to-day work). Reload moves to
+      // Ctrl+Shift+R, which still aligns with browser muscle memory for
+      // a hard reload.
+      accelerator: 'CommandOrControl+Shift+R',
+    },
     { role: 'toggleDevTools' },
     { type: 'separator' },
     { role: 'resetZoom' },
@@ -486,6 +511,20 @@ function registerIpc(): void {
     const { conceptionPath } = await readSettings();
     if (!conceptionPath) return null;
     return readKnowledgeTree(conceptionPath);
+  });
+
+  ipcMain.handle('readResourcesTree', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return null;
+    const { resources } = await resolveConceptionPaths(conceptionPath);
+    return readResourcesTree(conceptionPath, resources);
+  });
+
+  ipcMain.handle('readSkillsTree', async () => {
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) return null;
+    const { skills } = await resolveConceptionPaths(conceptionPath);
+    return readSkillsTree(conceptionPath, skills);
   });
 
   ipcMain.handle('search', async (_, query: string) => {

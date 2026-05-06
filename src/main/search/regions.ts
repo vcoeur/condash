@@ -33,7 +33,10 @@ interface Line {
   region: SearchRegion;
 }
 
-export function buildRegions(raw: string, source: 'project' | 'knowledge'): RegionLookup {
+export function buildRegions(
+  raw: string,
+  source: 'project' | 'knowledge' | 'resources' | 'skills',
+): RegionLookup {
   const lines: Line[] = [];
   let pos = 0;
   for (const line of raw.split('\n')) {

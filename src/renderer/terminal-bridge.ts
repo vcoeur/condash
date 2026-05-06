@@ -23,6 +23,11 @@ export interface TerminalBridge {
   /** Paste the most recent screenshot path (under `screenshot_dir`) into
    *  the active terminal. Triggered by the configured shortcut. */
   handleScreenshotPaste: () => Promise<void>;
+  /** Paste an arbitrary text fragment (typically a file path) into the
+   *  focused terminal session. Used by the Resources pane's
+   *  "Paste path → Term" button — re-uses the same "open pane, spawn
+   *  shell if needed" dance as `handleWorkOn`. Does not press Enter. */
+  handlePasteToTerm: (text: string) => Promise<void>;
 }
 
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
@@ -91,5 +96,27 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(latest);
   };
 
-  return { handleWorkOn, handleOpenInTerm, handleScreenshotPaste };
+  const handlePasteToTerm = async (text: string): Promise<void> => {
+    if (!deps.terminalHandle()) {
+      deps.ensureTerminalOpen();
+      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+    }
+    const handle = deps.terminalHandle();
+    if (!handle) {
+      deps.flashToast('Terminal pane not available.');
+      return;
+    }
+    deps.ensureTerminalOpen();
+    if (!handle.hasActive()) {
+      try {
+        await handle.spawnUserShell(deps.terminalPrefs()?.launcher_command ?? null, 'my');
+      } catch (err) {
+        deps.flashToast(`Could not open a shell: ${(err as Error).message}`);
+        return;
+      }
+    }
+    handle.typeIntoActive(text);
+  };
+
+  return { handleWorkOn, handleOpenInTerm, handleScreenshotPaste, handlePasteToTerm };
 }

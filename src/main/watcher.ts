@@ -3,17 +3,25 @@ import { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { toPosix } from '../shared/path';
 import type { TreeEvent } from '../shared/types';
+import { resolveConceptionPaths } from './conception-paths';
 
 const DEBOUNCE_MS = 250;
 
-const IGNORED = [
-  /(^|[/\\])\.[^/\\]+/,
-  /[/\\]node_modules[/\\]/,
-  /[/\\]dist[/\\]/,
-  /[/\\]target[/\\]/,
-];
+const NODE_MODULES_RE = /[/\\]node_modules[/\\]/;
+const DIST_RE = /[/\\]dist[/\\]/;
+const TARGET_RE = /[/\\]target[/\\]/;
+const DOTFILE_SEGMENT_RE = /(^|[/\\])\.[^/\\]+/;
 
-let current: { path: string; watcher: FSWatcher } | null = null;
+interface RootSet {
+  resources: string;
+  skills: string;
+}
+
+let current: {
+  path: string;
+  watcher: FSWatcher;
+  roots: RootSet;
+} | null = null;
 let timer: NodeJS.Timeout | null = null;
 let pending: TreeEvent[] = [];
 let pendingUnknown = false;
@@ -29,39 +37,94 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   pendingUnknown = false;
   if (!conceptionPath) return;
 
+  const { resources, skills } = await resolveConceptionPaths(conceptionPath);
+  const roots: RootSet = {
+    resources: toPosix(join(conceptionPath, resources)),
+    skills: toPosix(join(conceptionPath, skills)),
+  };
+
+  // The dotfile-segment pattern excludes paths like `.git/…` from the watch
+  // set. `skills_path` defaults to `.claude/skills`, which would normally
+  // be filtered out — bypass the rule for paths under the configured
+  // skills/resources roots so a `.claude/skills/foo.md` change still fires.
+  const ignored = (path: string): boolean => {
+    if (NODE_MODULES_RE.test(path) || DIST_RE.test(path) || TARGET_RE.test(path)) return true;
+    if (!DOTFILE_SEGMENT_RE.test(path)) return false;
+    const posix = toPosix(path);
+    if (posix === roots.resources || posix.startsWith(`${roots.resources}/`)) return false;
+    if (posix === roots.skills || posix.startsWith(`${roots.skills}/`)) return false;
+    return true;
+  };
+
   const watcher = chokidar.watch(
     [
       join(conceptionPath, 'projects'),
       join(conceptionPath, 'knowledge'),
+      join(conceptionPath, resources),
+      join(conceptionPath, skills),
       join(conceptionPath, 'configuration.json'),
       join(conceptionPath, 'configuration.yml'),
     ],
     {
-      ignored: IGNORED,
+      ignored,
       ignoreInitial: true,
       persistent: true,
       awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
     },
   );
 
-  watcher.on('all', (eventName, path) => onWatchEvent(conceptionPath, eventName, path));
+  watcher.on('all', (eventName, path) =>
+    onWatchEvent(conceptionPath, eventName, path, roots),
+  );
   watcher.on('error', (err) => {
     console.error('[watcher]', err);
   });
 
-  current = { path: conceptionPath, watcher };
+  current = { path: conceptionPath, watcher, roots };
+}
+
+/**
+ * Tear down the current watcher and rebuild it. Called after a
+ * `configuration.json` edit might have changed `resources_path` or
+ * `skills_path`, so the new roots are observed and the old ones aren't.
+ */
+export async function refreshWatchedConception(): Promise<void> {
+  if (!current) return;
+  const path = current.path;
+  await current.watcher.close().catch(() => undefined);
+  current = null;
+  pending = [];
+  pendingUnknown = false;
+  await setWatchedConception(path);
 }
 
 type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
 
-function onWatchEvent(conception: string, eventName: string, path: string): void {
-  const event = classify(conception, eventName as ChokidarEvent, path);
+function onWatchEvent(
+  conception: string,
+  eventName: string,
+  path: string,
+  roots: RootSet,
+): void {
+  const event = classify(conception, eventName as ChokidarEvent, path, roots);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);
+  // A configuration.json edit may have changed `resources_path` /
+  // `skills_path`. Rebuild the watcher so the new roots are observed and
+  // the old ones aren't. Fire-and-forget — the in-flight `tree-events`
+  // batch still flushes through `schedule()` for the renderer.
+  if (event.kind === 'config') {
+    void refreshWatchedConception();
+  }
   schedule();
 }
 
-function classify(conception: string, eventName: ChokidarEvent, path: string): TreeEvent {
+function classify(
+  conception: string,
+  eventName: ChokidarEvent,
+  path: string,
+  roots: RootSet,
+): TreeEvent {
   const op = chokidarToOp(eventName);
   if (!op) return { kind: 'unknown' };
 
@@ -92,6 +155,19 @@ function classify(conception: string, eventName: ChokidarEvent, path: string): T
   const knowledgePrefix = `${conceptionP}/knowledge/`;
   if (pathP.startsWith(knowledgePrefix) && pathP.toLowerCase().endsWith('.md')) {
     return { kind: 'knowledge', op, path };
+  }
+
+  // Resources: every file under the configured resources root.
+  if (pathP === roots.resources || pathP.startsWith(`${roots.resources}/`)) {
+    return { kind: 'resources', op, path };
+  }
+
+  // Skills: every `.md` file under the configured skills root.
+  if (
+    (pathP === roots.skills || pathP.startsWith(`${roots.skills}/`)) &&
+    (pathP.toLowerCase().endsWith('.md') || op === 'unlink')
+  ) {
+    return { kind: 'skills', op, path };
   }
 
   return { kind: 'unknown' };
