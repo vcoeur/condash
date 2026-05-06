@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { KnowledgeNode } from '../shared/types';
 import { toPosix } from '../shared/path';
+import { readFileHead } from './read-file-head';
 
 const HIDDEN_PREFIX = /^\./;
 
@@ -101,21 +102,9 @@ interface FileMeta {
  * lead paragraph. Best-effort — any failure falls back to the directory
  * name as title and leaves summary / verifiedAt undefined. */
 async function readFileMeta(path: string, fallback: string): Promise<FileMeta> {
-  try {
-    const handle = await fs.open(path);
-    try {
-      const { buffer, bytesRead } = await handle.read({
-        buffer: Buffer.alloc(8192),
-        position: 0,
-      });
-      const head = buffer.subarray(0, bytesRead).toString('utf8');
-      return parseHead(head, fallback);
-    } finally {
-      await handle.close();
-    }
-  } catch {
-    return { title: fallback };
-  }
+  const head = await readFileHead(path);
+  if (head === null) return { title: fallback };
+  return parseHead(head, fallback);
 }
 
 const VERIFIED_RE = /^\*\*Verified:\*\*\s+(\d{4}-\d{2}-\d{2})/;

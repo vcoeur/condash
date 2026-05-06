@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, Show } from 'solid-js';
 import './code-pane.css';
 import type {
   DirtyDetails,
@@ -12,6 +12,7 @@ import type {
   Worktree,
 } from '@shared/types';
 import { CodeRunRows } from '../code-runs';
+import { createDropdownMenu } from '../dropdown-menu';
 import { ChevronDownIcon, FolderIcon, KillIcon, RunIcon, StopIcon, TerminalIcon } from '../icons';
 import { createPositionedPopover } from '../popover';
 
@@ -222,85 +223,29 @@ export function RepoRow(props: {
  * fixed) so it always paints above neighbouring cards.
  */
 function RepoCardMenu(props: { repo: RepoEntry; onForceStop: (repo: RepoEntry) => void }) {
-  const [menuOpen, setMenuOpen] = createSignal(false);
-  const [menuAnchor, setMenuAnchor] = createSignal<{ top: number; left: number } | null>(null);
-  let triggerRef: HTMLButtonElement | undefined;
-  let menuRef: HTMLDivElement | undefined;
-
-  // Same anchoring recipe as BranchActions: anchor `left` at the trigger's
-  // right edge; the `.branch-action-menu.portal` CSS rule applies a
-  // `translateX(-100%)` so the menu's right edge lines up with the
-  // trigger's right edge (keeps right-column cards inside the viewport).
-  // Flip above when the rendered menu would overflow the viewport bottom.
-  const positionMenu = (): void => {
-    if (!triggerRef) return;
-    const rect = triggerRef.getBoundingClientRect();
-    const margin = 8;
-    let top = rect.bottom + 4;
-    const menuH = menuRef?.getBoundingClientRect().height ?? 0;
-    if (menuH > 0 && top + menuH > window.innerHeight - margin) {
-      top = Math.max(margin, rect.top - 4 - menuH);
-    }
-    setMenuAnchor({ top, left: rect.right });
-  };
-
-  const onDocClick = (e: MouseEvent): void => {
-    if (!menuOpen()) return;
-    const target = e.target as Node;
-    if (triggerRef?.contains(target)) return;
-    if (menuRef?.contains(target)) return;
-    setMenuOpen(false);
-  };
-
-  const onScrollOrResize = (): void => {
-    if (menuOpen()) positionMenu();
-  };
-
-  onMount(() => {
-    document.addEventListener('click', onDocClick, true);
-    window.addEventListener('resize', onScrollOrResize, true);
-    window.addEventListener('scroll', onScrollOrResize, true);
-  });
-  onCleanup(() => {
-    document.removeEventListener('click', onDocClick, true);
-    window.removeEventListener('resize', onScrollOrResize, true);
-    window.removeEventListener('scroll', onScrollOrResize, true);
-  });
-
-  const toggleMenu = (e: MouseEvent): void => {
-    e.stopPropagation();
-    if (menuOpen()) {
-      setMenuOpen(false);
-      return;
-    }
-    positionMenu();
-    setMenuOpen(true);
-  };
+  const menu = createDropdownMenu();
 
   return (
     <>
       <button
-        ref={(el) => (triggerRef = el)}
+        ref={menu.setTrigger}
         class="repo-action icon repo-card-menu-trigger"
-        onClick={toggleMenu}
+        onClick={menu.toggle}
         aria-haspopup="menu"
-        aria-expanded={menuOpen()}
+        aria-expanded={menu.isOpen()}
         title="Repo actions"
         aria-label={`Actions for ${props.repo.name}`}
       >
         <ChevronDownIcon />
       </button>
-      <Show when={menuOpen() && menuAnchor()}>
+      <Show when={menu.isOpen() && menu.anchor()}>
         <div
-          ref={(el) => {
-            menuRef = el;
-            if (el) requestAnimationFrame(positionMenu);
-          }}
+          ref={menu.setMenu}
           class="branch-action-menu portal repo-card-menu"
           role="menu"
           style={{
-            top: `${menuAnchor()!.top}px`,
-            left: `${menuAnchor()!.left}px`,
+            top: `${menu.anchor()!.top}px`,
+            left: `${menu.anchor()!.left}px`,
           }}
         >
           <button
@@ -315,7 +260,7 @@ function RepoCardMenu(props: { repo: RepoEntry; onForceStop: (repo: RepoEntry) =
             }
             onClick={() => {
               if (!props.repo.hasForceStop) return;
-              setMenuOpen(false);
+              menu.close();
               props.onForceStop(props.repo);
             }}
           >
@@ -354,63 +299,10 @@ function BranchActions(props: {
   onStop: (repo: RepoEntry) => void;
   onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
 }) {
-  const [menuOpen, setMenuOpen] = createSignal(false);
-  const [menuAnchor, setMenuAnchor] = createSignal<{ top: number; left: number } | null>(null);
-  let triggerRef: HTMLButtonElement | undefined;
-  let menuRef: HTMLDivElement | undefined;
+  const menu = createDropdownMenu();
 
   const launcherEntries = (): OpenWithSlotKey[] =>
     LAUNCHER_SLOTS.filter((slot) => !!props.slots[slot]);
-
-  /** Anchor the menu below the trigger by default, but flip above when
-   * the rendered menu would overflow the viewport bottom. The first call
-   * (before the menu has mounted) positions optimistically below; the
-   * menu's ref callback re-runs this once `menuRef` is set, at which
-   * point we know the actual height and can flip if needed. */
-  const positionMenu = (): void => {
-    if (!triggerRef) return;
-    const rect = triggerRef.getBoundingClientRect();
-    const margin = 8;
-    let top = rect.bottom + 4;
-    const menuH = menuRef?.getBoundingClientRect().height ?? 0;
-    if (menuH > 0 && top + menuH > window.innerHeight - margin) {
-      top = Math.max(margin, rect.top - 4 - menuH);
-    }
-    setMenuAnchor({ top, left: rect.right });
-  };
-
-  const onDocClick = (e: MouseEvent): void => {
-    if (!menuOpen()) return;
-    const target = e.target as Node;
-    if (triggerRef?.contains(target)) return;
-    if (menuRef?.contains(target)) return;
-    setMenuOpen(false);
-  };
-
-  const onScrollOrResize = (): void => {
-    if (menuOpen()) positionMenu();
-  };
-
-  onMount(() => {
-    document.addEventListener('click', onDocClick, true);
-    window.addEventListener('resize', onScrollOrResize, true);
-    window.addEventListener('scroll', onScrollOrResize, true);
-  });
-  onCleanup(() => {
-    document.removeEventListener('click', onDocClick, true);
-    window.removeEventListener('resize', onScrollOrResize, true);
-    window.removeEventListener('scroll', onScrollOrResize, true);
-  });
-
-  const toggleMenu = (e: MouseEvent): void => {
-    e.stopPropagation();
-    if (menuOpen()) {
-      setMenuOpen(false);
-      return;
-    }
-    positionMenu();
-    setMenuOpen(true);
-  };
 
   return (
     <div class="branch-actions">
@@ -453,30 +345,24 @@ function BranchActions(props: {
         <TerminalIcon />
       </button>
       <button
-        ref={(el) => (triggerRef = el)}
+        ref={menu.setTrigger}
         class="repo-action icon"
-        onClick={toggleMenu}
+        onClick={menu.toggle}
         aria-haspopup="menu"
-        aria-expanded={menuOpen()}
+        aria-expanded={menu.isOpen()}
         title="Open with…"
         aria-label="Open with…"
       >
         <ChevronDownIcon />
       </button>
-      <Show when={menuOpen() && menuAnchor()}>
+      <Show when={menu.isOpen() && menu.anchor()}>
         <div
-          ref={(el) => {
-            menuRef = el;
-            // Re-position with the actual rendered height so we can flip
-            // above the trigger when the menu would otherwise spill below
-            // the viewport (e.g. card sitting near the bottom of the page).
-            if (el) requestAnimationFrame(positionMenu);
-          }}
+          ref={menu.setMenu}
           class="branch-action-menu portal"
           role="menu"
           style={{
-            top: `${menuAnchor()!.top}px`,
-            left: `${menuAnchor()!.left}px`,
+            top: `${menu.anchor()!.top}px`,
+            left: `${menu.anchor()!.left}px`,
           }}
         >
           <For each={launcherEntries()}>
@@ -485,7 +371,7 @@ function BranchActions(props: {
                 class="branch-action-menu-item"
                 role="menuitem"
                 onClick={() => {
-                  setMenuOpen(false);
+                  menu.close();
                   props.onLaunch(slot, props.worktree.path);
                 }}
               >
@@ -499,7 +385,7 @@ function BranchActions(props: {
             role="menuitem"
             disabled={props.repo.missing}
             onClick={() => {
-              setMenuOpen(false);
+              menu.close();
               props.onOpen(props.worktree.path);
             }}
           >
