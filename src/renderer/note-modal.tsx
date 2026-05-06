@@ -2,6 +2,7 @@ import { createEffect, createResource, createSignal, onCleanup, onMount, Show } 
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
+import { ConfirmModal } from './confirm-modal';
 import './code-theme.css';
 
 let editorModulePromise: Promise<typeof import('./editor')> | null = null;
@@ -200,6 +201,24 @@ export function NoteModal(props: {
   // unsaved draft is gone the moment we flip to view. Hold the request in this
   // signal until the user picks Save or Discard.
   const [pendingViewSwitch, setPendingViewSwitch] = createSignal(false);
+
+  /** Pending dirty-discard prompt — set when the user attempts a navigation
+   * (Esc-close, backdrop-click, back-button) on a dirty note. The
+   * stacked ConfirmModal renders while this is non-null; on confirm, runs
+   * the captured action; on cancel, clears. Replaces the three
+   * window.confirm() sites that pass-9 deferred. */
+  const [pendingDirtyAction, setPendingDirtyAction] = createSignal<{
+    verb: 'close' | 'leave';
+    run: () => void;
+  } | null>(null);
+
+  const guardDirty = (verb: 'close' | 'leave', run: () => void): void => {
+    if (!dirty()) {
+      run();
+      return;
+    }
+    setPendingDirtyAction({ verb, run });
+  };
   let savedAtTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleSavedAtClear = (): void => {
     if (savedAtTimer !== null) clearTimeout(savedAtTimer);
@@ -478,16 +497,9 @@ export function NoteModal(props: {
         queueMicrotask(() => bodyRef?.focus());
         return;
       }
-      if (dirty()) {
-        if (!window.confirm('Unsaved changes — close anyway?')) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-      }
       e.preventDefault();
       e.stopPropagation();
-      props.onClose();
+      guardDirty('close', () => props.onClose());
       return;
     }
 
@@ -531,14 +543,14 @@ export function NoteModal(props: {
   });
 
   const handleBackdropClose = () => {
-    if (dirty() && !window.confirm('Unsaved changes — close anyway?')) return;
-    props.onClose();
+    guardDirty('close', () => props.onClose());
   };
 
   const handleBackClick = () => {
-    if (dirty() && !window.confirm('Unsaved changes — leave anyway?')) return;
-    if (props.onBack) props.onBack();
-    else props.onClose();
+    guardDirty('leave', () => {
+      if (props.onBack) props.onBack();
+      else props.onClose();
+    });
   };
 
   return (
@@ -768,6 +780,30 @@ export function NoteModal(props: {
           </Show>
         </div>
       </div>
+      <Show when={pendingDirtyAction()}>
+        {(action) => (
+          <ConfirmModal
+            title={
+              action().verb === 'leave'
+                ? 'Leave with unsaved changes?'
+                : 'Close with unsaved changes?'
+            }
+            body={
+              action().verb === 'leave'
+                ? 'You have unsaved edits. Leaving will discard them.'
+                : 'You have unsaved edits. Closing will discard them.'
+            }
+            confirmLabel="Discard changes"
+            destructive
+            onCancel={() => setPendingDirtyAction(null)}
+            onConfirm={() => {
+              const a = action();
+              setPendingDirtyAction(null);
+              a.run();
+            }}
+          />
+        )}
+      </Show>
     </div>
   );
 }

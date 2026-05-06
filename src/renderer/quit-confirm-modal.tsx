@@ -1,8 +1,15 @@
+import { Show } from 'solid-js';
 import { useModalEscHandler } from './modal-helpers';
 
 /** Confirm modal shown before quitting the app — terminates running pty
- *  sessions, so we want an explicit confirmation. */
-export function QuitConfirmModal(props: { onCancel: () => void; onConfirm: () => void }) {
+ *  sessions, so we want an explicit confirmation. When `noteDirty` is set,
+ *  surfaces an additional "unsaved note edits will be lost" warning so the
+ *  user sees both stakes inside one modal instead of two stacked confirms. */
+export function QuitConfirmModal(props: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  noteDirty?: boolean;
+}) {
   useModalEscHandler(props.onCancel);
 
   return (
@@ -28,6 +35,9 @@ export function QuitConfirmModal(props: { onCancel: () => void; onConfirm: () =>
         </header>
         <div class="quit-confirm-body">
           <p>Any running terminal sessions will be terminated.</p>
+          <Show when={props.noteDirty}>
+            <p class="quit-confirm-warn">Unsaved note edits will also be lost.</p>
+          </Show>
           <div class="quit-confirm-actions">
             <button class="modal-button" onClick={props.onCancel}>
               Cancel
