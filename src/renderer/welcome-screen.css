@@ -103,6 +103,17 @@
   outline-offset: 2px;
 }
 
+/* Primary CTA: tinted background + accent border so the eye lands on it
+ * before the secondary actions. Keeps the same hover/focus contract. */
+.welcome-card-primary {
+  background: var(--color-accent-soft, rgba(31, 111, 235, 0.08));
+  border-color: var(--color-accent, #1f6feb);
+}
+
+.welcome-card-primary .welcome-card-title {
+  color: var(--color-accent, #1f6feb);
+}
+
 .welcome-card-title {
   font-weight: 600;
   font-size: 1rem;

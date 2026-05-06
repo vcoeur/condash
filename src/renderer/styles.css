@@ -442,6 +442,78 @@ button:hover {
   text-align: center;
 }
 
+.empty p {
+  margin: 0;
+}
+
+/* Inline action button on empty-state cards — pre-2026-05 these cards
+ * said "edit configuration.json via the gear" with no affordance, so
+ * users had to know about the gear to recover. The CTA replaces that
+ * one-liner with a direct path into the matching settings rail. */
+.empty-cta {
+  margin-top: 6px;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.empty-cta:hover {
+  filter: brightness(1.05);
+}
+
+/* Helper card for the "user toggled every pane off" state — without it,
+ * the workspace renders as an empty rectangle and the user has to fish
+ * the View menu open to recover. Mirrors the .empty layout but with
+ * inline action buttons, one per pane. */
+.all-panes-hidden-helper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 12px;
+  padding: 24px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.all-panes-hidden-helper h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.all-panes-hidden-helper p {
+  margin: 0;
+}
+
+.all-panes-hidden-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.all-panes-hidden-actions button {
+  padding: 6px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.all-panes-hidden-actions button:hover {
+  border-color: var(--accent);
+}
+
 .toast {
   position: fixed;
   bottom: 16px;
