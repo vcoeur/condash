@@ -285,7 +285,7 @@ export interface TerminalPrefs {
 }
 
 /** Snapshot of a live (or recently-exited) terminal session, broadcast on
- * spawn/exit/close so renderers can keep their tab strip and Code-tab LIVE
+ * spawn/exit/close so renderers can keep their tab strip and Code-pane LIVE
  * badges in sync without polling. */
 export interface TermSession {
   id: string;
@@ -293,7 +293,7 @@ export interface TermSession {
   /** When the session was launched via the Run button on a repo, the repo
    * display name (e.g. `condash`, `PaintingManager/app`). */
   repo?: string;
-  /** Resolved cwd the pty was spawned in. The Code tab uses this to match a
+  /** Resolved cwd the pty was spawned in. The Code pane uses this to match a
    * live session back to a specific worktree (and therefore branch) so the
    * card face can label which branch is currently running. */
   cwd?: string;

@@ -58,18 +58,18 @@ Items at the wrong nesting depth (e.g. `projects/<slug>/` without a month direct
 
 Fix: `git mv` the items into the right shape, or use the [`condash projects`](../reference/cli.md) verbs to validate.
 
-### Code tab is empty / "Code (0)"
+### Code pane is empty / "Code (0)"
 
-The Code tab scans `workspace_path` from `configuration.json` for direct subdirectories containing a `.git/`. Two common reasons it's empty:
+The Code pane scans `workspace_path` from `configuration.json` for direct subdirectories containing a `.git/`. Two common reasons it's empty:
 
 - `workspace_path` is unset in `configuration.json`. Set it to the directory containing your repos.
 - `workspace_path` points at a parent directory whose direct children are *not* git repos (e.g. an extra nesting level — `~/src/` when your repos are in `~/src/projects/`). The scan is one level deep.
 
-Fix: open the gear modal and edit `workspace_path` to point at the right directory. The Code tab refreshes within a couple of seconds.
+Fix: open the gear modal and edit `workspace_path` to point at the right directory. The Code pane refreshes within a couple of seconds.
 
-### Knowledge tab is empty
+### Knowledge pane is empty
 
-Same shape: condash looks for `<conception_path>/knowledge/`. If the directory is missing, the tab is hidden. Create it with `mkdir knowledge && echo "# Knowledge" > knowledge/index.md` — the tab appears immediately.
+Same shape: condash looks for `<conception_path>/knowledge/`. If the directory is missing, the pane is hidden. Create it with `mkdir knowledge && echo "# Knowledge" > knowledge/index.md` — the pane appears immediately.
 
 ## Embedded terminal
 

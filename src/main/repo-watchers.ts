@@ -1,5 +1,5 @@
 /**
- * Per-repo FS watchers that drive Code-tab refresh on two distinct axes:
+ * Per-repo FS watchers that drive Code-pane refresh on two distinct axes:
  *
  *   1. **Scalar push**: dirty-count and upstream-status changes flow as
  *      typed `repo-dirty` / `repo-upstream` events. The renderer patches

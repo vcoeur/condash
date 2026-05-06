@@ -23,7 +23,7 @@ Launch condash if it isn't running:
 condash
 ```
 
-Click the **Current** sub-tab and click the `helio search` incident row. The card expands.
+Click the **Current** sub-pane and click the `helio search` incident row. The card expands.
 
 ![Incident card expanded with all four step markers visible](../assets/screenshots/item-fuzzy-search-light.png#only-light)
 ![Incident card expanded with all four step markers visible](../assets/screenshots/item-fuzzy-search-dark.png#only-dark)
@@ -34,10 +34,10 @@ Read the README. The summary points at a specific test corpus, and the `notes/st
 
 ## 2. Open the repo from the repo strip
 
-Switch to the **Code** tab. Three helio repos render as rows: `helio`, `helio-web`, `helio-docs`. The `helio` row has a `1 changed` pill — you left a WIP note there last week.
+Switch to the **Code** pane. Three helio repos render as rows: `helio`, `helio-web`, `helio-docs`. The `helio` row has a `1 changed` pill — you left a WIP note there last week.
 
-![Code tab — three repos, helio with a dirty-file indicator](../assets/screenshots/code-tab-light.png#only-light)
-![Code tab — three repos, helio with a dirty-file indicator](../assets/screenshots/code-tab-dark.png#only-dark)
+![Code pane — three repos, helio with a dirty-file indicator](../assets/screenshots/code-pane-light.png#only-light)
+![Code pane — three repos, helio with a dirty-file indicator](../assets/screenshots/code-pane-dark.png#only-dark)
 
 Each repo has four icon buttons: README preview, code browser, embedded terminal, and "open in main IDE". Click the IDE icon on `helio` — your main editor launches in that directory.
 
@@ -102,19 +102,19 @@ gh pr create --fill
 
 If you've installed the [`/pr` skill](https://github.com/vcoeur/conception/tree/main/.claude/skills/pr), the PR body will pull its structure from the item's README automatically. The incident is now **waiting on external signal** — the merge. Change the item's status from `now` to `review` by clicking its status pill. The dashboard rewrites the README's `**Status**:` line.
 
-In the Current sub-tab, the item moves from the `NOW` group to the `REVIEW` group. You can see exactly this split in the screenshot below — the `CLI config migration to layered TOML` item is already in review while three others are still under NOW.
+In the Current sub-pane, the item moves from the `NOW` group to the `REVIEW` group. You can see exactly this split in the screenshot below — the `CLI config migration to layered TOML` item is already in review while three others are still under NOW.
 
-![Current sub-tab with NOW and REVIEW groups side by side](../assets/screenshots/dashboard-overview-light.png#only-light)
-![Current sub-tab with NOW and REVIEW groups side by side](../assets/screenshots/dashboard-overview-dark.png#only-dark)
+![Current sub-pane with NOW and REVIEW groups side by side](../assets/screenshots/dashboard-overview-light.png#only-light)
+![Current sub-pane with NOW and REVIEW groups side by side](../assets/screenshots/dashboard-overview-dark.png#only-dark)
 
 ## 7. Close on merge
 
 The PR lands the next day. Open the item, tick the final step, change status from `review` to `done`.
 
-Check Done sub-tab — the item is there alongside last month's archived entries.
+Check Done sub-pane — the item is there alongside last month's archived entries.
 
-![Done sub-tab — closed items surface here](../assets/screenshots/projects-done-light.png#only-light)
-![Done sub-tab — closed items surface here](../assets/screenshots/projects-done-dark.png#only-dark)
+![Done sub-pane — closed items surface here](../assets/screenshots/projects-done-light.png#only-light)
+![Done sub-pane — closed items surface here](../assets/screenshots/projects-done-dark.png#only-dark)
 
 ## 8. Find it again later
 

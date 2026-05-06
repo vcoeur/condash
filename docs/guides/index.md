@@ -10,7 +10,7 @@ Each guide answers one specific question.
 **Setup**
 
 - **[Configure the conception path](configure-conception-path.md)** — change the folder condash renders, with the menu, the CLI, or by editing `settings.json`.
-- **[Repositories and open-with buttons](repositories-and-open-with.md)** — populate the Code tab and wire IDE/terminal launch slots.
+- **[Repositories and open-with buttons](repositories-and-open-with.md)** — populate the Code pane and wire IDE/terminal launch slots.
 
 **Daily**
 

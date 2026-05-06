@@ -1,4 +1,4 @@
-// Detailed dirty-status lookup for the Code-tab popover.
+// Detailed dirty-status lookup for the Code-pane popover.
 //
 // `getDirtyCount` (in `git-status-cache.ts`) returns the badge number; this
 // module returns the full breakdown shown when the user clicks that badge:

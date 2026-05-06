@@ -11,7 +11,7 @@ export type Column = 'left' | 'right';
 export interface Tab {
   id: string;
   /** Server-side `my` for tabs in this pane (code-side sessions live on the
-   * Code tab). Kept on the Tab object so the structure stays mirror-able. */
+   * Code pane). Kept on the Tab object so the structure stays mirror-able. */
   side: TermSide;
   /** Renderer-only column choice within the bottom pane. */
   column: Column;

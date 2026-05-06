@@ -60,7 +60,7 @@
   --col-done: #5a6068;
   --col-unknown: #8e44ad;
 
-  /* Code-tab semantic accents — separate from the status gradient so a
+  /* Code-pane semantic accents — separate from the status gradient so a
    * "running" or "dirty" indicator never collides with a project status.
    *   running = saturated green (live, "go") — separated from the new
    *             red --col-now so a running repo doesn't read as urgent.
@@ -150,7 +150,7 @@
      * doesn't visually merge with the now/review reds. */
     --warn: #d6748f;
     --col-unknown: #d6748f;
-    /* Code-tab semantic accents (see light-mode block for rationale). */
+    /* Code-pane semantic accents (see light-mode block for rationale). */
     --col-running: #5fc97f;
     --col-dirty: #e8a878;
     /* Dark-mode kind colours — green / orange / yellow. */

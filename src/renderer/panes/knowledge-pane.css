@@ -9,9 +9,9 @@
 }
 
 /* Section header — same capsule + count + rule treatment used by the
- * Code-tab `.repos-group-header` so the three tabs share one chrome
+ * Code-pane `.repos-group-header` so the three panes share one chrome
  * vocabulary. Defined locally here (rather than promoted to a shared
- * class) to keep tab-CSS changes scoped. The optional [INDEX] button
+ * class) to keep pane-CSS changes scoped. The optional [INDEX] button
  * sits between the count and the rule. */
 .knowledge-section-header {
   margin: 0;
@@ -39,7 +39,7 @@
 
 /* INDEX badge — opens the section's directory index.md. Uses the global
  * accent so it pops against the muted section header without competing
- * with the Code-tab pink/orange semantic palette. */
+ * with the Code-pane pink/orange semantic palette. */
 .knowledge-section-index {
   font: inherit;
   font-family: var(--font-ui);
@@ -74,7 +74,7 @@
   gap: 10px;
 }
 
-/* Same two-up grid as the Code-tab `.repos-grid` — single column under
+/* Same two-up grid as the Code-pane `.repos-grid` — single column under
  * 520 px so a narrow pane never holds an awkward shrunken card. */
 .knowledge-grid {
   display: grid;
@@ -102,9 +102,9 @@
   border-color: var(--border-strong);
 }
 
-/* Per-bucket stripe — echoes the projects-tab `.row::before` indicator
+/* Per-bucket stripe — echoes the projects-pane `.row::before` indicator
  * so each card carries a subtle scope cue without needing a coloured
- * header pill. Bucket palette stays cool so the Code tab's warm
+ * header pill. Bucket palette stays cool so the Code pane's warm
  * pink / orange semantic accents keep their meaning. */
 .knowledge-card::before {
   content: '';

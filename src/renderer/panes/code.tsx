@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import './code-tab.css';
+import './code-pane.css';
 import type {
   DirtyDetails,
   DirtyFile,
@@ -778,7 +778,7 @@ function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean })
   );
 }
 
-/** Top-level Code-tab view. Renders one section per group (PRIMARY,
+/** Top-level Code-pane view. Renders one section per group (PRIMARY,
  *  per-submodule parents, SECONDARY) with the repo cards and any inline
  *  CodeRunRow sessions slotted under their owning group. */
 export function CodeView(props: {

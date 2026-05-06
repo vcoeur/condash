@@ -1,10 +1,10 @@
-.tabs {
+.panes {
   display: flex;
   gap: 2px;
   position: relative;
 }
 
-.tab {
+.pane {
   position: relative;
   background: transparent;
   border: none;
@@ -19,18 +19,18 @@
   transition: color 120ms ease;
 }
 
-.tab:hover {
+.pane:hover {
   background: transparent;
   color: var(--text);
 }
 
-.tab.active {
+.pane.active {
   background: transparent;
   color: var(--text);
   border: none;
 }
 
-.tab.active::after {
+.pane.active::after {
   content: '';
   position: absolute;
   left: 12px;
@@ -41,19 +41,19 @@
   border-radius: 1px;
 }
 
-.tab:disabled {
+.pane:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* Main app tabs (Projects / Code / Knowledge) — pill-style buttons. The
+/* Main app panes (Projects / Code / Knowledge) — pill-style buttons. The
  * underline-on-active style was too tall for the toolbar; this version is
  * compact and reads as a button group. */
-.tabs.main-tabs {
+.panes.main-panes {
   gap: 4px;
 }
 
-.tabs.main-tabs .tab {
+.panes.main-panes .pane {
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 500;
@@ -65,26 +65,26 @@
   color: var(--text-muted);
 }
 
-.tabs.main-tabs .tab:hover:not(:disabled) {
+.panes.main-panes .pane:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text);
 }
 
-.tabs.main-tabs .tab.active {
+.panes.main-panes .pane.active {
   background: var(--bg-elevated);
   color: var(--text);
   border-color: var(--border-strong);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
-/* Suppress the underline accent the base `.tab.active::after` pulls in —
+/* Suppress the underline accent the base `.pane.active::after` pulls in —
  * the pill background already signals selection. */
-.tabs.main-tabs .tab.active::after {
+.panes.main-panes .pane.active::after {
   display: none;
 }
 
-/* Search input — sits to the right of the tabs on the same row, fills
- * the remaining width. The per-tab search panes used to render this
+/* Search input — sits to the right of the panes on the same row, fills
+ * the remaining width. The per-pane search inputs used to render this
  * input themselves; lifting it into the toolbar saves a row of vertical
  * space and gives the user a more app-bar-like feel. */
 .toolbar-search {

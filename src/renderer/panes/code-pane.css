@@ -391,8 +391,8 @@
   min-width: 26px;
 }
 
-/* SVG icon sizing inside any .repo-action — matches the projects-tab
- * .row-action svg rule so both tabs share one icon scale. */
+/* SVG icon sizing inside any .repo-action — matches the projects-pane
+ * .row-action svg rule so both panes share one icon scale. */
 .repo-action svg {
   width: 15px;
   height: 15px;

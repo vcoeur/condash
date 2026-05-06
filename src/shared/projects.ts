@@ -8,7 +8,7 @@ import { KNOWN_STATUSES, type Step, type StepCounts, type StepMarker } from './t
 
 /**
  * Index of `status` in `KNOWN_STATUSES`, with unknown statuses sorted last.
- * Mirrors how the on-screen Projects tab and the CLI both display "now"
+ * Mirrors how the on-screen Projects pane and the CLI both display "now"
  * before "review" before "later" before "backlog" before "done".
  */
 export function statusOrder(status: string): number {

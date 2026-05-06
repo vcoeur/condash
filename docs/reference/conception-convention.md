@@ -28,7 +28,7 @@ conception/
 │   └── 2026-03/
 │       └── 2026-03-22-ci-upgrade/
 │           └── README.md
-├── knowledge/                                ← optional, explorer tab
+├── knowledge/                                ← optional, explorer pane
 │   └── …
 └── configuration.json                         ← tree-level config
 ```
@@ -81,7 +81,7 @@ Markdown checklists inside any `##`-level section. The dashboard's default "add 
 | `[x]` or `[X]` | `done` | yes |
 | `[-]` | `abandoned` | yes |
 
-The dashboard's checkbox-click cycle is `open → progress → done → abandoned → open`, implemented in [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) (writer) and [`src/renderer/tabs/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/tabs/projects.tsx) (UI cycle order in `STEP_MARKERS`).
+The dashboard's checkbox-click cycle is `open → progress → done → abandoned → open`, implemented in [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) (writer) and [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx) (UI cycle order in `STEP_MARKERS`).
 
 ### Where to put steps
 

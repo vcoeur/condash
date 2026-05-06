@@ -2,11 +2,11 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 import type { KnowledgeNode, SearchHit, SearchResults, SearchSnippet } from '@shared/types';
 import { BookIcon } from '../icons';
 import { HighlightedText } from '../search/highlight';
-import './knowledge-tab.css';
+import './knowledge-pane.css';
 
-/* Knowledge tab — flat card list grouped one section per directory. The
+/* Knowledge pane — flat card list grouped one section per directory. The
  * chrome (section header capsule, card silhouette, hover-brighten) mirrors
- * the Code and Projects tabs so the three tabs feel like one app. The
+ * the Code and Projects panes so the three panes feel like one app. The
  * directory's `index.md` (when present) is surfaced as an [INDEX] badge
  * on the section header — clicking it opens the index file.
  *

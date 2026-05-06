@@ -1,6 +1,6 @@
 ---
 title: The knowledge tree · condash guide
-description: Put durable reference material under `knowledge/` and see it render as a browsable tab.
+description: Put durable reference material under `knowledge/` and see it render as a browsable pane.
 ---
 
 # The knowledge tree
@@ -9,7 +9,7 @@ description: Put durable reference material under `knowledge/` and see it render
 
 **When to read this.** Your conception tree has grown, you keep writing the same note twice across items, and you want a place for durable reference material that outlives any one project.
 
-`knowledge/` is a sibling of `projects/` under your conception root. condash walks it recursively and renders it as the **Knowledge** tab — a plain file explorer for durable docs that don't belong to any single item.
+`knowledge/` is a sibling of `projects/` under your conception root. condash walks it recursively and renders it as the **Knowledge** pane — a plain file explorer for durable docs that don't belong to any single item.
 
 ## What goes there
 
@@ -71,35 +71,35 @@ On every render condash walks `knowledge/` recursively:
 
 Titles come from the first `# Heading` line of the file. If the file has no top-level heading, the filename (minus extension, spaces for hyphens) is used.
 
-## The Knowledge tab
+## The Knowledge pane
 
-Open the **Knowledge** tab in the header. The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
+Open the **Knowledge** pane in the header. The explorer shows the tree's top level as tiles, with subdirectories as collapsible folders:
 
-![Knowledge tab — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-tab-light.png#only-light)
-![Knowledge tab — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-tab-dark.png#only-dark)
+![Knowledge pane — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-pane-light.png#only-light)
+![Knowledge pane — conventions.md tile plus Internal and Topics folders](../assets/screenshots/knowledge-pane-dark.png#only-dark)
 
 Click a tile to open the file in the right-hand pane. Click a folder to expand it; the folder's `index.md` (if any) renders as a summary tile at the top.
 
-The tab's header count is the total number of `.md` files across the tree. In the demo above: `Knowledge (8)` means eight files in total across the root, `internal/`, and `topics/`.
+The pane's header count is the total number of `.md` files across the tree. In the demo above: `Knowledge (8)` means eight files in total across the root, `internal/`, and `topics/`.
 
 ## Writing style
 
-Two conventions that make the knowledge tab usable at scale:
+Two conventions that make the knowledge pane usable at scale:
 
-- **Start every file with a one-sentence "what this is" line.** The search tab indexes README-like headers heavily, so a good first line surfaces the file from a keyword match.
+- **Start every file with a one-sentence "what this is" line.** The search modal indexes README-like headers heavily, so a good first line surfaces the file from a keyword match.
 - **Cross-link with wikilinks**, not absolute paths. `[[topics/pdf-pipeline]]` survives a rename of `knowledge/` (to e.g. `docs/`); a path like `../../knowledge/topics/pdf-pipeline.md` does not.
 
 Use `index.md` files as signposts, not walls of prose. Two lines of "what's here, pick the right subtree" is worth more than a comprehensive TOC — the explorer already shows the TOC visually.
 
 ## Optional tree
 
-If your conception root doesn't have a `knowledge/` directory, condash hides the tab entirely. There's no setup step to "enable knowledge mode" — the directory's presence is the signal.
+If your conception root doesn't have a `knowledge/` directory, condash hides the pane entirely. There's no setup step to "enable knowledge mode" — the directory's presence is the signal.
 
-To start: `mkdir -p <conception_path>/knowledge` and add a `conventions.md`. Refresh the dashboard. The tab appears.
+To start: `mkdir -p <conception_path>/knowledge` and add a `conventions.md`. Refresh the dashboard. The pane appears.
 
 ## Search
 
-Knowledge files are indexed by the **History** tab alongside items. A keyword match in a knowledge file surfaces as source `note` (same ranking weight as an item note). See [Search your history](search.md) for the ranking details.
+Knowledge files are indexed by the **History** pane alongside items. A keyword match in a knowledge file surfaces as source `note` (same ranking weight as an item note). See [Search your history](search.md) for the ranking details.
 
 ## Next
 

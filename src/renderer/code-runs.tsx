@@ -1,4 +1,4 @@
-// Inline runner rows for the Code tab. Each surfaces one code-side terminal
+// Inline runner rows for the Code pane. Each surfaces one code-side terminal
 // session — typically a `make run` started via the repo's Run button — with
 // repo / branch metadata, a collapsible mini xterm (~20 lines), and a pop-out
 // button that re-sides the session to "my" so it lives in the bottom pane.
@@ -50,7 +50,7 @@ function repoMeta(
   const repo = repos.find((r) => r.name === name);
   if (!repo) return {};
   // Match the session back to the specific worktree it was spawned in via
-  // `cwd`, mirroring the repo-card resolution in `tabs/code.tsx`. Falling
+  // `cwd`, mirroring the repo-card resolution in `panes/code.tsx`. Falling
   // back to the primary worktree (as the previous version did) mislabels
   // every non-default-branch run as the primary's branch.
   const worktrees: readonly Worktree[] = repo.worktrees ?? [];

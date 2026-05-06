@@ -21,7 +21,7 @@ Two ways:
 ![Terminal pane open beneath the dashboard](../assets/screenshots/terminal-light.png#only-light)
 ![Terminal pane open beneath the dashboard](../assets/screenshots/terminal-dark.png#only-dark)
 
-The pane pushes the dashboard up — it does not overlay. Toggling the pane closed suspends rendering but keeps every tab's PTY alive and its scrollback intact. Code-tab Run buttons no longer auto-open the pane — output stays in the per-row CodeRunRow inside the Code tab.
+The pane pushes the dashboard up — it does not overlay. Toggling the pane closed suspends rendering but keeps every tab's PTY alive and its scrollback intact. Code-pane Run buttons no longer auto-open the pane — output stays in the per-row CodeRunRow inside the Code pane.
 
 ## Single-column by default; drag to split
 

@@ -753,7 +753,7 @@
   letter-spacing: 0.01em;
 }
 
-/* "+ New project" button — top-of-tab CTA above the status sections. */
+/* "+ New project" button — top-of-pane CTA above the status sections. */
 .projects-toolbar {
   display: flex;
   align-items: center;
