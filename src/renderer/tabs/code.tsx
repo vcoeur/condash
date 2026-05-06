@@ -13,6 +13,7 @@ import type {
 } from '@shared/types';
 import { CodeRunRows } from '../code-runs';
 import { ChevronDownIcon, FolderIcon, KillIcon, RunIcon, StopIcon, TerminalIcon } from '../icons';
+import { createPositionedPopover } from '../popover';
 
 type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
 
@@ -597,13 +598,10 @@ function UnpushedCommitRow(props: { commit: UnpushedCommit }) {
  * above neighbouring cards (same recipe as the open_with menu).
  */
 function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean }) {
-  const [open, setOpen] = createSignal(false);
   const [details, setDetails] = createSignal<DirtyDetails | null>(null);
-  const [anchor, setAnchor] = createSignal<{ top: number; left: number } | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   let dirtyRef: HTMLButtonElement | undefined;
   let upstreamRef: HTMLButtonElement | undefined;
-  let activeRef: HTMLButtonElement | undefined;
   let popoverRef: HTMLDivElement | undefined;
 
   const hasDirty = (): boolean => (props.worktree.dirty ?? 0) > 0;
@@ -612,73 +610,34 @@ function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean })
   const upstreamShown = (): boolean => upstream() != null;
   const upstreamClickable = (): boolean => ahead() > 0;
 
-  /** Anchor the popover below the active trigger by default, but flip
-   *  above when the rendered popover would overflow the viewport bottom.
-   *  The popover fetches `git status` async, so its height changes after
-   *  the first paint — the ref callback re-runs this once the content
-   *  lands. */
-  const positionPopover = (): void => {
-    if (!activeRef) return;
-    const rect = activeRef.getBoundingClientRect();
-    const margin = 8;
-    let top = rect.bottom + 4;
-    const popH = popoverRef?.getBoundingClientRect().height ?? 0;
-    if (popH > 0 && top + popH > window.innerHeight - margin) {
-      top = Math.max(margin, rect.top - 4 - popH);
-    }
-    setAnchor({ top, left: rect.left });
-  };
-
-  const close = (): void => {
-    setOpen(false);
-    setError(null);
-  };
-
-  const onDocClick = (e: MouseEvent): void => {
-    if (!open()) return;
-    const target = e.target as Node;
-    if (dirtyRef?.contains(target)) return;
-    if (upstreamRef?.contains(target)) return;
-    if (popoverRef?.contains(target)) return;
-    close();
-  };
-
-  const onScrollOrResize = (): void => {
-    if (open()) positionPopover();
-  };
-
-  const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape' && open()) close();
-  };
-
-  onMount(() => {
-    document.addEventListener('click', onDocClick, true);
-    document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', onScrollOrResize, true);
-    window.addEventListener('scroll', onScrollOrResize, true);
-  });
-  onCleanup(() => {
-    document.removeEventListener('click', onDocClick, true);
-    document.removeEventListener('keydown', onKeyDown);
-    window.removeEventListener('resize', onScrollOrResize, true);
-    window.removeEventListener('scroll', onScrollOrResize, true);
+  const popover = createPositionedPopover({
+    popoverRef: () => popoverRef,
+    triggerRefs: () => [dirtyRef, upstreamRef],
+    onClose: () => {
+      popover.setOpen(false);
+      setError(null);
+    },
   });
 
+  // Re-anchor on async content arrival: the dirty-details fetch grows
+  // the popover after the first paint, and the flip-above check needs
+  // the real height to make the right call.
   createEffect(() => {
     details();
     error();
-    if (open() && popoverRef) requestAnimationFrame(positionPopover);
+    if (popover.open() && popoverRef) requestAnimationFrame(popover.reposition);
   });
 
   const toggle = async (which: 'dirty' | 'upstream', e: MouseEvent): Promise<void> => {
     e.stopPropagation();
-    activeRef = which === 'dirty' ? dirtyRef : upstreamRef;
-    if (open()) {
-      close();
+    popover.setActiveTrigger(which === 'dirty' ? (dirtyRef ?? null) : (upstreamRef ?? null));
+    if (popover.open()) {
+      popover.setOpen(false);
+      setError(null);
       return;
     }
-    positionPopover();
-    setOpen(true);
+    popover.reposition();
+    popover.setOpen(true);
     setError(null);
     try {
       const next = await window.condash.getDirtyDetails(props.worktree.path, {
@@ -700,7 +659,7 @@ function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean })
           class="branch-dirty"
           onClick={(e) => void toggle('dirty', e)}
           aria-haspopup="dialog"
-          aria-expanded={open()}
+          aria-expanded={popover.open()}
           title="Show dirty files"
         >
           {props.worktree.dirty} dirty
@@ -725,25 +684,25 @@ function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean })
             class="branch-upstream ahead"
             onClick={(e) => void toggle('upstream', e)}
             aria-haspopup="dialog"
-            aria-expanded={open()}
+            aria-expanded={popover.open()}
             title={`${ahead()} commit${ahead() === 1 ? '' : 's'} not pushed to ${upstream()?.upstreamRef ?? 'upstream'}`}
           >
             ↑{ahead()}
           </button>
         </Show>
       </Show>
-      <Show when={open() && anchor()}>
+      <Show when={popover.open() && popover.anchor()}>
         <div
           ref={(el) => {
             popoverRef = el;
-            if (el) requestAnimationFrame(positionPopover);
+            if (el) requestAnimationFrame(popover.reposition);
           }}
           class="branch-dirty-popover"
           role="dialog"
           aria-label={`Branch info for ${props.worktree.branch ?? '(no branch)'}`}
           style={{
-            top: `${anchor()!.top}px`,
-            left: `${anchor()!.left}px`,
+            top: `${popover.anchor()!.top}px`,
+            left: `${popover.anchor()!.left}px`,
           }}
         >
           <header class="branch-dirty-popover-head">
