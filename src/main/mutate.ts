@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import type { StepMarker, TransitionResult } from '../shared/types';
 import { isoToday } from '../shared/iso-today';
 import { atomicWrite } from './atomic-write';
-import { configSchema } from './config-schema';
+import { validateAndCanonicaliseConfig } from './config-schema';
 
 // One regex for both shapes: capture the step text in group 4 so callers
 // that need the body text use it; callers that only need the marker can
@@ -234,22 +234,6 @@ export async function writeNote(
     await atomicWrite(path, finalContent);
     return finalContent;
   });
-}
-
-function validateAndCanonicaliseConfig(json: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch (err) {
-    throw new Error(`Invalid JSON: ${(err as Error).message}`);
-  }
-  const result = configSchema.safeParse(parsed);
-  if (!result.success) {
-    const issue = result.error.issues[0];
-    const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-    throw new Error(`configuration.json: ${where} — ${issue.message}`);
-  }
-  return JSON.stringify(result.data, null, 2) + '\n';
 }
 
 export type { TransitionResult } from '../shared/types';

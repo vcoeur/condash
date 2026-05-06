@@ -137,3 +137,30 @@ export const configSchema = z
   .strict();
 
 export type Config = z.infer<typeof configSchema>;
+
+/**
+ * Parse → validate → re-serialise a `configuration.json` body.
+ *
+ * Lives next to the schema so the two stay in lock-step: any tightening
+ * of `configSchema` automatically tightens what callers can write back
+ * to disk via the renderer's NoteModal save path. Errors are formatted
+ * with a dotted path so the user can see which field tripped the schema.
+ *
+ * Returns the canonical 2-space JSON the project's existing
+ * `configuration.json` files use, with a trailing newline.
+ */
+export function validateAndCanonicaliseConfig(json: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (err) {
+    throw new Error(`Invalid JSON: ${(err as Error).message}`);
+  }
+  const result = configSchema.safeParse(parsed);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+    throw new Error(`configuration.json: ${where} — ${issue.message}`);
+  }
+  return JSON.stringify(result.data, null, 2) + '\n';
+}
