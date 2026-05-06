@@ -1,6 +1,6 @@
 # The Skills pane
 
-The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot. It reads the project-local `.claude/skills/` tree (or whatever you point `skills_path` at) and lets you view and edit skill markdown without leaving the dashboard.
+The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot (`Ctrl+L` to switch in). It reads the project-local `.claude/skills/` tree (or whatever you point `skills_path` at) and lets you view and edit skill markdown without leaving the dashboard.
 
 ## What it shows
 
@@ -23,7 +23,7 @@ The flags are informational only — local edits are never blocked. They exist s
 
 ## Configuration
 
-Set the directory by editing `configuration.json` at the conception root, or via **Settings → Workspace → Skills directory**.
+Set the directory by editing `configuration.json` at the conception root (per-tree, versioned with the conception), or via **Settings → Workspace → Skills directory**. The value is **not** in `settings.json` — it's tree-side so teammates see the same skills tree.
 
 ```json
 {

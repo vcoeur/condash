@@ -32,6 +32,8 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 | `getProject(path)` | `Project \| null` | Re-parse a single README — used to patch the in-memory list after a watcher event. |
 | `listProjectFiles(path)` | `ProjectFileEntry[]` | List files under a project directory (notes plus any other subdirectories). |
 | `readKnowledgeTree()` | `KnowledgeNode \| null` | Walk `knowledge/`, return the directory + file structure (or `null` if no `knowledge/` exists). |
+| `readResourcesTree()` | `ResourceNode \| null` | Walk the configured `resources_path` (default `resources/`), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
+| `readSkillsTree()` | `SkillNode \| null` | Walk the configured `skills_path` (default `.claude/skills/`), return markdown files only with title / summary parsed from the head, plus optional `shipped` / `diverged` chips driven by `.condash-skills.json`. `null` if the directory doesn't exist. |
 | `search(query)` | `SearchResults` | Full-text search across every project + knowledge file. Re-walks the tree each call (no index — see [Internals](../explanation/internals.md#why-no-search-index)). |
 
 ## Mutations
