@@ -53,6 +53,7 @@ import { applyRepoEvents } from './repo-events';
 import { QuitConfirmModal } from './toolbar';
 import { AboutModal } from './about-modal';
 import { ConfirmModal } from './confirm-modal';
+import { ShortcutsOverlay } from './shortcuts-overlay';
 import './styles.css';
 import './modals.css';
 import './note-modal.css';
@@ -92,6 +93,7 @@ function App() {
   const [aboutOpen, setAboutOpen] = createSignal(false);
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   const [noteDirty, setNoteDirty] = createSignal(false);
+  const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
   const [initConfirmState, setInitConfirmState] = createSignal<{
     path: string;
     missing: string[];
@@ -420,6 +422,15 @@ function App() {
     // Every other shortcut yields to text inputs / xterm so we don't steal
     // arrow keys, paste, etc. from someone who's typing.
     if (insideEditable) return;
+
+    // ?-overlay toggle. Bare `?` (no modifiers) so a shifted `?` from the
+    // user's keyboard layout still fires; the focused-input guard above
+    // already keeps it out of any text field.
+    if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      setShortcutsOpen((cur) => !cur);
+      return;
+    }
 
     // Move-tab shortcuts only fire when the pane is open.
     if (!layout().terminal || !terminalHandle) return;
@@ -1115,6 +1126,10 @@ function App() {
 
       <Show when={aboutOpen()}>
         <AboutModal onClose={() => setAboutOpen(false)} />
+      </Show>
+
+      <Show when={shortcutsOpen()}>
+        <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />
       </Show>
 
       <PromptModal state={promptState()} onClose={() => setPromptState(null)} />
