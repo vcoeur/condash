@@ -7,7 +7,7 @@ import { atomicWrite } from '../../main/atomic-write';
 import { isoToday } from '../../shared/iso-today';
 import type { KnowledgeNode } from '../../shared/types';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
-import { parseIntFlag, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, parseIntFlag, type ParsedArgs } from '../parser';
 
 const DEFAULT_MAX_AGE_DAYS = 30;
 
@@ -43,6 +43,9 @@ async function indexCommand(
 ): Promise<void> {
   const dryRun = args.flags['dry-run'] === true;
   const rewriteAggregated = args.flags['rewrite-aggregated'] === true;
+  delete args.flags['dry-run'];
+  delete args.flags['rewrite-aggregated'];
+  assertNoExtraFlags(args);
   const report = await regenerateIndex(conceptionPath, knowledgeStrategy, {
     dryRun,
     rewriteAggregated,
@@ -95,6 +98,8 @@ async function treeCommand(
   conceptionPath: string,
 ): Promise<void> {
   const depth = parseIntFlag(args.flags.depth, Infinity);
+  delete args.flags.depth;
+  assertNoExtraFlags(args);
   const root = await readKnowledgeTree(conceptionPath);
   if (!root) throw new CliError(ExitCodes.NOT_FOUND, 'No knowledge/ tree found');
   const trimmed = trimDepth(root, depth);
@@ -150,6 +155,8 @@ async function verifyCommand(
   conceptionPath: string,
 ): Promise<void> {
   const maxAge = parseIntFlag(args.flags['max-age'], DEFAULT_MAX_AGE_DAYS);
+  delete args.flags['max-age'];
+  assertNoExtraFlags(args);
   const knowledgeRoot = join(conceptionPath, 'knowledge');
   const files = await collectKnowledgeFiles(knowledgeRoot);
 
@@ -248,6 +255,8 @@ async function retrieveCommand(
   if (!['triage', 'grep', 'both'].includes(mode)) {
     throw new CliError(ExitCodes.USAGE, `--mode must be triage|grep|both`);
   }
+  delete args.flags.mode;
+  assertNoExtraFlags(args);
 
   const knowledgeRoot = join(conceptionPath, 'knowledge');
   const triage: TriageMatch[] = [];
@@ -413,6 +422,10 @@ async function stampCommand(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     validation(`--date must be YYYY-MM-DD; got '${date}'`);
   }
+  const insertAfter =
+    typeof args.flags['insert-after'] === 'string' ? (args.flags['insert-after'] as string) : null;
+  for (const k of ['where', 'date', 'insert-after']) delete args.flags[k];
+  assertNoExtraFlags(args);
   const targetPath = isAbsoluteLike(target) ? target : join(conceptionPath, target);
   // The stamp writes a body file — refuse anywhere outside the conception
   // tree so a `--target ../../etc/passwd` argument can't prepend a Verified
@@ -438,10 +451,6 @@ async function stampCommand(
     }
   }
   if (!replaced) {
-    const insertAfter =
-      typeof args.flags['insert-after'] === 'string'
-        ? (args.flags['insert-after'] as string)
-        : null;
     if (insertAfter) {
       let inserted = false;
       for (let i = 0; i < lines.length; i++) {

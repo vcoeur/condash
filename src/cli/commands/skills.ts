@@ -30,7 +30,7 @@ import { promises as fs } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
-import type { ParsedArgs } from '../parser';
+import { assertNoExtraFlags, type ParsedArgs } from '../parser';
 
 const MANIFEST_RELPATH = '.condash-skills.json';
 const MANIFEST_VERSION = 1;
@@ -82,6 +82,8 @@ export async function runSkills(
 async function listShipped(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const shipped = await readShippedSkills();
   const dest = await resolveDest(args).catch(() => null);
+  delete args.flags.dest;
+  assertNoExtraFlags(args);
   const manifest = dest ? await readManifest(dest) : null;
   const rows = shipped.map((s) => {
     const installedFiles = manifest?.skills[s.name]?.files;
@@ -147,6 +149,8 @@ async function installSkills(args: ParsedArgs, ctx: OutputContext): Promise<void
   const force = args.flags.force === true;
   const showDiff = args.flags.diff === true;
   const dryRun = args.flags['dry-run'] === true;
+  for (const k of ['dest', 'force', 'diff', 'dry-run']) delete args.flags[k];
+  assertNoExtraFlags(args);
   const shippedVersion = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
   const manifest = (await readManifest(dest)) ?? { version: MANIFEST_VERSION, skills: {} };
@@ -280,6 +284,8 @@ function formatInstallHuman(report: InstallReport): string {
 
 async function skillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const dest = await resolveDest(args);
+  delete args.flags.dest;
+  assertNoExtraFlags(args);
   const skillsRoot = join(dest, '.claude', 'skills');
   const shipped = await readShippedSkills();
   const manifest = (await readManifest(dest)) ?? { version: MANIFEST_VERSION, skills: {} };
