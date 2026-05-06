@@ -1,9 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
-import type { Project, SearchHit, SearchSnippet, Step } from '@shared/types';
+import type { Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { TerminalIcon } from '../../icons';
-import { HighlightedText } from '../../search/highlight';
-import type { ProjectGroup } from '../../search/grouping';
 import {
   DRAG_MIME,
   Group,
@@ -20,114 +18,6 @@ import {
   writeCollapseEntry,
 } from './data';
 import { KindGlyph, StepIcon, StepProgress, WarnIcon } from './icons';
-
-/** Search-result variant of Card. Shares the `.row` chrome (stripe, hover
- * brightness, kind glyph, work-on action) so a search result and a normal
- * card sit next to each other comfortably, but the body is replaced by a
- * snippet list (meta / heading / body — backend-prioritised) plus an
- * optional dimmed path line. The h1 snippet's match offsets carry over to
- * the title so its highlights line up with the global search modal. */
-export function SearchResultCard(props: {
-  item: Project;
-  group: ProjectGroup;
-  onOpen: (project: Project) => void;
-  onWorkOn: (project: Project) => void;
-}) {
-  const handleHeaderClick = (event: MouseEvent) => {
-    if ((event.target as HTMLElement).closest('.row-action')) return;
-    props.onOpen(props.item);
-  };
-
-  const headerHit = (): SearchHit | undefined => props.group.header;
-  const titleSnippet = (): SearchSnippet | undefined =>
-    headerHit()?.snippets.find((s) => s.region === 'h1');
-
-  /** Snippets to surface on the card. Take the README's non-h1 snippets
-   * first (highest-signal — meta, headings, body), then a few from notes
-   * files. Cap the total so a project with many matches doesn't blow up
-   * the card's height. */
-  const cardSnippets = (): { snippet: SearchSnippet; from?: string }[] => {
-    const out: { snippet: SearchSnippet; from?: string }[] = [];
-    const header = headerHit();
-    if (header) {
-      for (const s of header.snippets) {
-        if (s.region === 'h1') continue;
-        out.push({ snippet: s });
-      }
-    }
-    for (const file of props.group.files) {
-      const tail = file.relPath.split('/').pop() ?? file.relPath;
-      for (const s of file.snippets) {
-        out.push({ snippet: s, from: tail });
-      }
-    }
-    return out.slice(0, 4);
-  };
-
-  return (
-    <article
-      class="row search-result-row"
-      title={props.item.path}
-      data-status-card={props.item.status}
-    >
-      <div class="row-head" onClick={handleHeaderClick}>
-        <div class="title-row">
-          <h3 class="title">
-            <Show when={props.item.kind !== 'unknown'}>
-              <KindGlyph kind={props.item.kind} />
-            </Show>
-            <span class="title-text">
-              <Show when={titleSnippet()} fallback={props.item.title}>
-                {(s) => <HighlightedText text={s().text} matches={s().matches} />}
-              </Show>
-            </span>
-          </h3>
-          <div class="title-actions">
-            <span class="search-score" title={`Match score ${props.group.totalScore}`}>
-              {props.group.totalScore}
-            </span>
-            <button
-              class="row-action work-on"
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onWorkOn(props.item);
-              }}
-              title={`Paste 'work on ${props.item.slug}' into the focused terminal`}
-              aria-label={`Paste 'work on ${props.item.slug}' into the focused terminal`}
-            >
-              <TerminalIcon />
-            </button>
-          </div>
-        </div>
-        <Show when={cardSnippets().length > 0}>
-          <ul class="search-result-snippets">
-            <For each={cardSnippets()}>
-              {(entry) => (
-                <li
-                  classList={{
-                    'snippet-meta': entry.snippet.region === 'meta',
-                    'snippet-heading': entry.snippet.region === 'heading',
-                  }}
-                >
-                  <Show when={entry.snippet.region === 'meta'}>
-                    <span class="snippet-region-tag">meta</span>
-                  </Show>
-                  <Show when={entry.snippet.region === 'heading'}>
-                    <span class="snippet-region-tag">heading</span>
-                  </Show>
-                  <Show when={entry.from}>
-                    <span class="snippet-region-tag">{entry.from}</span>
-                  </Show>
-                  <HighlightedText text={entry.snippet.text} matches={entry.snippet.matches} />
-                </li>
-              )}
-            </For>
-          </ul>
-        </Show>
-      </div>
-    </article>
-  );
-}
 
 export function GroupBlock(props: {
   group: Group;

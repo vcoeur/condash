@@ -1,13 +1,6 @@
-import type { Project, SearchResults, Step, StepCounts, StepMarker } from '@shared/types';
+import type { Project, Step, StepCounts, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
 import { countSteps } from '@shared/projects';
-
-export const EMPTY_SEARCH_RESULTS: SearchResults = {
-  hits: [],
-  terms: [],
-  totalBeforeCap: 0,
-  truncated: false,
-};
 
 export const MARKER_LABEL: Record<StepMarker, string> = {
   ' ': 'todo',

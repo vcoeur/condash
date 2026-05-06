@@ -1,6 +1,5 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { ResourceCategory, ResourceNode } from '@shared/types';
-import { filterByQuery } from '../filter-by-query';
 import { formatSectionLabel } from './pane-utils';
 import './resources-pane.css';
 
@@ -71,41 +70,23 @@ export interface ResourcesViewActions {
   pasteToTerm: (path: string) => Promise<void>;
 }
 
-export function ResourcesView(props: {
-  root: ResourceNode | null;
-  searchInput: string;
-  actions: ResourcesViewActions;
-}) {
+export function ResourcesView(props: { root: ResourceNode | null; actions: ResourcesViewActions }) {
   const sections = createMemo<FlatSection[]>(() => buildSections(props.root));
-  const filteredSections = createMemo<FlatSection[]>(() => {
-    const q = props.searchInput;
-    if (q.trim().length === 0) return sections();
-    return sections()
-      .map((s) => ({ ...s, files: filterByQuery(s.files, q) }))
-      .filter((s) => s.files.length > 0);
-  });
 
   return (
     <div class="resources-pane">
       <Show
-        when={filteredSections().length > 0}
+        when={sections().length > 0}
         fallback={
           <div class="empty">
-            <Show
-              when={props.searchInput.trim().length > 0}
-              fallback={
-                <p>
-                  No resources directory yet — create <code>resources/</code> at the conception
-                  root, or change <code>resources_path</code> in settings.
-                </p>
-              }
-            >
-              <p>No matches.</p>
-            </Show>
+            <p>
+              No resources directory yet — create <code>resources/</code> at the conception root, or
+              change <code>resources_path</code> in settings.
+            </p>
           </div>
         }
       >
-        <For each={filteredSections()}>
+        <For each={sections()}>
           {(section) => (
             <section class="resources-group">
               <h2 class="resources-section-header">

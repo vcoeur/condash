@@ -1,6 +1,5 @@
 import { createMemo, For, Show } from 'solid-js';
 import type { SkillNode } from '@shared/types';
-import { filterByQuery } from '../filter-by-query';
 import { formatSectionLabel } from './pane-utils';
 import './skills-pane.css';
 
@@ -65,54 +64,26 @@ function buildSections(root: SkillNode | null): SkillSection[] {
   return out;
 }
 
-function indexMatches(index: SkillNode | undefined, q: string): boolean {
-  if (q.trim().length === 0) return true;
-  if (!index) return false;
-  return filterByQuery([index], q).length > 0;
-}
-
 export function SkillsView(props: {
   root: SkillNode | null;
-  searchInput: string;
   onOpen: (path: string, title: string, shipped?: SkillNode['shipped']) => void;
 }) {
   const sections = createMemo<SkillSection[]>(() => buildSections(props.root));
-  const filteredSections = createMemo<SkillSection[]>(() => {
-    const q = props.searchInput;
-    if (q.trim().length === 0) return sections();
-    return sections()
-      .map((s) => {
-        const files = filterByQuery(s.files, q);
-        const indexHit = indexMatches(s.index, q);
-        if (files.length === 0 && !indexHit) {
-          return { ...s, files, index: undefined };
-        }
-        return { ...s, files, index: indexHit ? s.index : undefined };
-      })
-      .filter((s) => s.files.length > 0 || s.index);
-  });
 
   return (
     <div class="skills-pane">
       <Show
-        when={filteredSections().length > 0}
+        when={sections().length > 0}
         fallback={
           <div class="empty">
-            <Show
-              when={props.searchInput.trim().length > 0}
-              fallback={
-                <p>
-                  No skills directory yet — install skills with <code>condash skills install</code>,
-                  or change <code>skills_path</code> in settings.
-                </p>
-              }
-            >
-              <p>No matches.</p>
-            </Show>
+            <p>
+              No skills directory yet — install skills with <code>condash skills install</code>, or
+              change <code>skills_path</code> in settings.
+            </p>
           </div>
         }
       >
-        <For each={filteredSections()}>
+        <For each={sections()}>
           {(section) => (
             <section class="skills-group">
               <h2 class="skills-section-header">
