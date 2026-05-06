@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import type { Project, SearchResults, Step } from '@shared/types';
 import { groupHits, type ProjectGroup } from '../search/grouping';
+import { useSearchDebounce } from '../search-debounce';
 import './projects-pane.css';
 import {
   COLLAPSED_BY_DEFAULT,
@@ -40,19 +41,10 @@ export function ProjectsView(props: {
    * create flow keep working unchanged. */
   onNewProject?: () => void;
 }) {
-  const [query, setQuery] = createSignal('');
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
   // Debounce the toolbar-owned input value into a local query signal so
-  // we don't fire a fetch on every keystroke.
-  createEffect(() => {
-    const value = props.searchInput;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => setQuery(value), 200);
-  });
-  onCleanup(() => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-  });
+  // we don't fire a fetch on every keystroke. Shared hook in
+  // `../search-debounce`; identical clamp lived here and in knowledge.tsx.
+  const query = useSearchDebounce(() => props.searchInput);
 
   // Empty query → render the existing status-grouped view. Non-empty
   // query → route to the global-search backend so the user gets the same
