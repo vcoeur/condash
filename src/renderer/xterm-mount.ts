@@ -190,13 +190,30 @@ export function mountXterm(
   term.open(hostElement);
 
   // ---- WebGL renderer (best-effort; falls back to DOM) ----
-  try {
-    const webgl = new WebglAddon();
-    webgl.onContextLoss(() => webgl.dispose());
-    term.loadAddon(webgl);
-  } catch {
-    /* GPU unavailable; keep the default DOM renderer */
-  }
+  // On context loss (GPU reset, tab visibility race, driver crash) the
+  // disposed-only path leaves the terminal stuck on a blank canvas — the
+  // DOM fallback never re-attaches because no addon is wired any more.
+  // Recover by remounting a fresh WebGL addon on the next frame; if that
+  // throws (driver still wedged, repeated loss), bail to the default DOM
+  // renderer for the lifetime of this terminal.
+  let webglRetries = 0;
+  const attachWebgl = (): void => {
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => {
+        webgl.dispose();
+        if (webglRetries >= 2) return;
+        webglRetries++;
+        // Defer one frame so the GPU process has a chance to settle before
+        // we ask for a fresh context.
+        requestAnimationFrame(attachWebgl);
+      });
+      term.loadAddon(webgl);
+    } catch {
+      /* GPU unavailable; keep the default DOM renderer */
+    }
+  };
+  attachWebgl();
 
   // ---- ligatures (gated; loads font-ligatures behind the scenes) ----
   if (prefs.ligatures) {

@@ -97,6 +97,7 @@ export function TerminalPane(props: {
       mounted: MountedTerm;
       element: HTMLDivElement;
       column: Column;
+      detachListeners?: () => void;
     }
   >();
   let leftHost: HTMLDivElement | undefined;
@@ -127,7 +128,16 @@ export function TerminalPane(props: {
       prefs: props.xtermPrefs,
       onCustomKey: (ev) => handleXtermKey(ev, id),
     });
-    const handleEntry = {
+    const handleEntry: {
+      term: Terminal;
+      fit: FitAddon;
+      search: SearchAddon;
+      serialize: SerializeAddon;
+      mounted: MountedTerm;
+      element: HTMLDivElement;
+      column: Column;
+      detachListeners?: () => void;
+    } = {
       term: mounted.term,
       fit: mounted.fit,
       search: mounted.search,
@@ -149,6 +159,14 @@ export function TerminalPane(props: {
     };
     element.addEventListener('focusin', promote);
     element.addEventListener('mousedown', promote);
+    // Stash a per-mount detacher so dispose() drops the listeners along
+    // with the rest of the xterm. Without it, repeated open/close churn
+    // leaves dead `promote` closures pinned to the host element via
+    // bubble-listener references the GC can't reach.
+    handleEntry.detachListeners = () => {
+      element.removeEventListener('focusin', promote);
+      element.removeEventListener('mousedown', promote);
+    };
     // Track cwd updates from OSC 7 → reflect in the tab label.
     mounted.onCwdChange((cwd) => {
       setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, cwd } : t)));
@@ -262,6 +280,7 @@ export function TerminalPane(props: {
       .map((t) => t.id);
     for (const id of toDrop) {
       const handle = xterms.get(id);
+      handle?.detachListeners?.();
       handle?.mounted.dispose();
       handle?.element.remove();
       xterms.delete(id);
@@ -337,7 +356,8 @@ export function TerminalPane(props: {
   onCleanup(() => {
     offTermData();
     offTermExit();
-    for (const [, { mounted, element }] of xterms) {
+    for (const [, { mounted, element, detachListeners }] of xterms) {
+      detachListeners?.();
       mounted.dispose();
       element.remove();
     }

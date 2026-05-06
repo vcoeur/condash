@@ -90,6 +90,28 @@ function App() {
   const [newProjectOpen, setNewProjectOpen] = createSignal(false);
   const [aboutOpen, setAboutOpen] = createSignal(false);
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
+  const [noteDirty, setNoteDirty] = createSignal(false);
+
+  // Resolved dark/light flag for the active app theme. Watches `theme()` plus
+  // the system colour-scheme media query so a system flip while the app is
+  // open also propagates to dependents (CodeMirror's theme compartment).
+  const [systemDark, setSystemDark] = createSignal(
+    typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches,
+  );
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    onCleanup(() => mq.removeEventListener('change', onChange));
+  }
+  const isDark = createMemo(() => {
+    const t = theme();
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return systemDark();
+  });
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
   const [welcomeDismissed, setWelcomeDismissed] = createSignal<boolean>(false);
   void window.condash.getWelcomeDismissed().then(setWelcomeDismissed);
@@ -636,6 +658,9 @@ function App() {
   };
 
   const handleConfirmQuit = () => {
+    if (noteDirty() && !window.confirm('Unsaved note edits will be lost. Quit anyway?')) {
+      return;
+    }
     setQuitConfirmOpen(false);
     void window.condash.quitApp();
   };
@@ -678,7 +703,12 @@ function App() {
     void window.condash.setWelcomeDismissed(true);
   };
 
-  const slugIndex = () => buildSlugIndex(projects() ?? [], knowledge() ?? null);
+  const slugIndex = createMemo(() => buildSlugIndex(projects() ?? [], knowledge() ?? null));
+  // Memoise the per-status grouping so a tap that doesn't actually reshuffle
+  // statuses (e.g. a step toggle) doesn't rebuild the four-bucket map for every
+  // dependent reader. `groupByStatus` itself is pure — referential equality on
+  // `projects()` is enough.
+  const projectsTabGroups = createMemo(() => groupByStatus(projects() ?? []));
 
   const handleWikilink = (slug: string) => {
     const matches = slugIndex().get(slug);
@@ -890,7 +920,7 @@ function App() {
                         fallback={<div class="empty">No projects found under projects/.</div>}
                       >
                         <ProjectsView
-                          buckets={groupByStatus(projects() ?? [])}
+                          buckets={projectsTabGroups()}
                           searchInput=""
                           onOpen={handleOpenProject}
                           onToggleStep={handleToggleStep}
@@ -1042,6 +1072,8 @@ function App() {
           onBack={router.handleModalBack}
           onOpenPdf={(path) => setPdfPath(path)}
           onOpenHelp={handleOpenHelp}
+          onDirtyChange={setNoteDirty}
+          dark={isDark()}
         />
       </Show>
 
