@@ -6,6 +6,7 @@ import { toPosix } from '../../shared/path';
 import { readSettings, updateSettings } from '../settings';
 import { detectConceptionState, initConception } from '../conception-init';
 import { setWatchedConception } from '../watcher';
+import { disposeRepoWatchers } from '../repo-watchers';
 import { readHelpDoc } from '../help';
 
 /**
@@ -78,6 +79,10 @@ export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => 
 
     const picked = toPosix(result.filePaths[0]);
     await updateSettings((cur) => ({ ...cur, conceptionPath: picked }));
+    // Tear down repo watchers from the previous conception before re-pointing
+    // them; otherwise stale `repo-events` carry paths the renderer no longer
+    // tracks until the next listRepos reconciles.
+    await disposeRepoWatchers();
     await setWatchedConception(picked);
     opts.onConceptionPicked(picked);
     return picked;

@@ -56,9 +56,6 @@ function buildSections(root: ResourceNode | null): FlatSection[] {
   return out;
 }
 
-/** Substring filter on title + relPath for the in-pane search input. */
-const filterFiles = (files: ResourceNode[], q: string): ResourceNode[] => filterByQuery(files, q);
-
 export interface ResourcesViewActions {
   /** Open via the user's main `open_with` slot. */
   openInEditor: (path: string) => void;
@@ -84,7 +81,7 @@ export function ResourcesView(props: {
     const q = props.searchInput;
     if (q.trim().length === 0) return sections();
     return sections()
-      .map((s) => ({ ...s, files: filterFiles(s.files, q) }))
+      .map((s) => ({ ...s, files: filterByQuery(s.files, q) }))
       .filter((s) => s.files.length > 0);
   });
 

@@ -387,9 +387,10 @@ export function appendTimelineLines(lines: readonly string[], line: string): str
 export async function appendTimelineEntry(readmePath: string, line: string): Promise<void> {
   return withFileQueue(readmePath, async () => {
     const raw = await fs.readFile(readmePath, 'utf8');
+    const eol = detectEol(raw);
     const lines = raw.split(/\r?\n/);
     const out = appendTimelineLines(lines, line);
-    await atomicWrite(readmePath, out.join('\n'));
+    await atomicWrite(readmePath, out.join(eol));
   });
 }
 
