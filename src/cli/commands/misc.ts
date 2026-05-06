@@ -53,6 +53,8 @@ export async function runSearch(
           .join('\n') + '\n'
       );
     },
+    [],
+    { streamField: 'hits' },
   );
 }
 

@@ -77,14 +77,17 @@ function matchesSlug(folderName: string, query: string): boolean {
   if (folderName === query) return true;
   // Full dated form passed without a month: glob-equivalent of `*/<query>`.
   if (FOLDER_NAME_RE.test(query) && folderName === query) return true;
-  // Short form: any part of the slug after the date prefix.
+  // Short form: word-boundary match on any segment of the slug after the
+  // date prefix. The previous `.includes(query)` returned true on
+  // arbitrary substring matches — `oo` matched `food`, `condash-review`
+  // matched `condash-review-followup`, and so on. Anchor on segment
+  // boundaries (`-`) so `condash-review` cleanly resolves to the parent
+  // and the followup project requires its own qualifier.
   const afterDate = folderName.replace(/^\d{4}-\d{2}-\d{2}-/, '');
-  return (
-    afterDate === query ||
-    afterDate.includes(`-${query}`) ||
-    afterDate.startsWith(`${query}-`) ||
-    afterDate.includes(query)
-  );
+  if (afterDate === query) return true;
+  if (afterDate.startsWith(`${query}-`)) return true;
+  if (afterDate.endsWith(`-${query}`)) return true;
+  return afterDate.includes(`-${query}-`);
 }
 
 async function readDirs(dir: string): Promise<string[]> {

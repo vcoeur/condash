@@ -67,11 +67,21 @@ async function main(): Promise<number> {
     throw err;
   }
 
+  // TTY-aware styling: respect the broader ecosystem signals (NO_COLOR
+  // and CLICOLOR=0 from https://no-color.org / https://bixense.com), and
+  // default to off when stdout isn't a TTY (pipes, file redirection,
+  // CI logs). The explicit --no-color flag still wins.
+  const noColor =
+    universal.noColor ||
+    !process.stdout.isTTY ||
+    Boolean(process.env.NO_COLOR) ||
+    process.env.CLICOLOR === '0';
+
   const ctx: OutputContext = {
     json: universal.json,
     ndjson: universal.ndjson,
     quiet: universal.quiet,
-    noColor: universal.noColor || !process.stdout.isTTY,
+    noColor,
   };
 
   if (universal.version) {
