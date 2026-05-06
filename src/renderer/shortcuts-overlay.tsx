@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from 'solid-js';
+import { For, onCleanup, onMount } from 'solid-js';
 
 interface ShortcutEntry {
   keys: string;
@@ -105,21 +105,25 @@ export function ShortcutsOverlay(props: { onClose: () => void }) {
           </button>
         </header>
         <div class="shortcuts-grid">
-          {GROUPS.map((group) => (
-            <section class="shortcuts-group">
-              <h3>{group.title}</h3>
-              <dl>
-                {group.entries.map((entry) => (
-                  <>
-                    <dt>
-                      <kbd>{entry.keys}</kbd>
-                    </dt>
-                    <dd>{entry.description}</dd>
-                  </>
-                ))}
-              </dl>
-            </section>
-          ))}
+          <For each={GROUPS}>
+            {(group) => (
+              <section class="shortcuts-group">
+                <h3>{group.title}</h3>
+                <dl>
+                  <For each={group.entries}>
+                    {(entry) => (
+                      <>
+                        <dt>
+                          <kbd>{entry.keys}</kbd>
+                        </dt>
+                        <dd>{entry.description}</dd>
+                      </>
+                    )}
+                  </For>
+                </dl>
+              </section>
+            )}
+          </For>
         </div>
       </div>
     </div>

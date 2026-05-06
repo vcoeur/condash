@@ -2,6 +2,7 @@ import { For, Show, createResource, createSignal, onCleanup, onMount } from 'sol
 import type { Deliverable, Project, ProjectFileEntry, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { dateRangeLabel, KindGlyph, StepIcon } from './panes/projects';
+import { ChevronDownIcon, IconClose, IconExternal, IconPlus } from './icons';
 
 const MARKER_LABEL: Record<StepMarker, string> = {
   ' ': 'todo',
@@ -35,72 +36,6 @@ function IconTerminal() {
       <rect x="1.25" y="2.25" width="13.5" height="11.5" rx="1.75" />
       <path d="M3.75 6L6.5 8 3.75 10" />
       <rect x="8" y="9.25" width="4" height="1.75" rx="0.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function IconExternal() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.8"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5 2.5H2.5v11h11V11" />
-      <path d="M9 2.5h4.5V7" />
-      <path d="M13.5 2.5L7 9" />
-    </svg>
-  );
-}
-
-function IconClose() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.8"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 3l10 10M13 3l-10 10" />
-    </svg>
-  );
-}
-
-function IconChevronDown() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 6.5l4 4 4-4" />
-    </svg>
-  );
-}
-
-function IconPlus() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 3.5v9M3.5 8h9" />
     </svg>
   );
 }
@@ -450,7 +385,7 @@ export function ProjectPreview(props: {
                   <span class="status-select-label">{project().status}</span>
                 </Show>
                 <span class="status-select-chevron" aria-hidden="true">
-                  <IconChevronDown />
+                  <ChevronDownIcon />
                 </span>
                 <Show when={statusMenu()}>
                   <div class="status-menu" role="listbox" onClick={(e) => e.stopPropagation()}>
