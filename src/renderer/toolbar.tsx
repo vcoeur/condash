@@ -54,6 +54,15 @@ export function QuitConfirmModal(props: { onCancel: () => void; onConfirm: () =>
       >
         <header class="modal-head">
           <span class="modal-title">Quit Condash?</span>
+          <span class="modal-head-spacer" />
+          <button
+            class="modal-button"
+            onClick={props.onCancel}
+            title="Cancel (Esc)"
+            aria-label="Cancel"
+          >
+            ×
+          </button>
         </header>
         <div class="quit-confirm-body">
           <p>Any running terminal sessions will be terminated.</p>

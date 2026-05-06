@@ -648,3 +648,18 @@
   font: inherit;
   font-size: 13px;
 }
+
+.prompt-slug-preview {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.prompt-slug-preview code {
+  font: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text);
+}
