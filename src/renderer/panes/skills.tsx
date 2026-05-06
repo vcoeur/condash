@@ -69,8 +69,7 @@ const filterFiles = (files: SkillNode[], q: string): SkillNode[] => filterByQuer
 function indexMatches(index: SkillNode | undefined, q: string): boolean {
   if (q.trim().length === 0) return true;
   if (!index) return false;
-  const lower = q.toLowerCase();
-  return index.title.toLowerCase().includes(lower) || index.relPath.toLowerCase().includes(lower);
+  return filterByQuery([index], q).length > 0;
 }
 
 export function SkillsView(props: {

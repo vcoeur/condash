@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import type { KnowledgeNode, SearchHit, SearchResults, SearchSnippet } from '@shared/types';
 import { BookIcon } from '../icons';
+import { useSearchDebounce } from '../search-debounce';
 import { HighlightedText } from '../search/highlight';
 import './knowledge-pane.css';
 
@@ -136,17 +137,7 @@ export function KnowledgeView(props: {
   searchInput: string;
   onOpen: (path: string, title?: string) => void;
 }) {
-  const [query, setQuery] = createSignal('');
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-  createEffect(() => {
-    const value = props.searchInput;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => setQuery(value), 200);
-  });
-  onCleanup(() => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-  });
+  const query = useSearchDebounce(() => props.searchInput);
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
