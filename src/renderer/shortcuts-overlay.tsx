@@ -24,11 +24,17 @@ const GROUPS: ShortcutGroup[] = [
   },
   {
     title: 'Panes',
+    entries: [{ keys: 'Ctrl + `', description: 'Toggle Terminal' }],
+  },
+  {
+    title: 'Project cards',
     entries: [
-      { keys: 'Ctrl + 1', description: 'Toggle Projects' },
-      { keys: 'Ctrl + 2', description: 'Show Code' },
-      { keys: 'Ctrl + 3', description: 'Show Knowledge' },
-      { keys: 'Ctrl + `', description: 'Toggle Terminal' },
+      { keys: 'Tab', description: 'Move focus between cards' },
+      { keys: 'Ctrl + 1', description: 'Set focused card status to now' },
+      { keys: 'Ctrl + 2', description: 'Set focused card status to review' },
+      { keys: 'Ctrl + 3', description: 'Set focused card status to later' },
+      { keys: 'Ctrl + 4', description: 'Set focused card status to backlog' },
+      { keys: 'Ctrl + 5', description: 'Set focused card status to done' },
     ],
   },
   {

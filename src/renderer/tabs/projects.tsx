@@ -635,6 +635,7 @@ export function ProjectsView(props: {
                             onOpen={props.onOpen}
                             onToggleStep={props.onToggleStep}
                             onWorkOn={props.onWorkOn}
+                            onChangeStatus={props.onDropProject}
                           />
                         </Show>
                         <For each={grouping.byMonth}>
@@ -647,6 +648,7 @@ export function ProjectsView(props: {
                               onOpen={props.onOpen}
                               onToggleStep={props.onToggleStep}
                               onWorkOn={props.onWorkOn}
+                              onChangeStatus={props.onDropProject}
                             />
                           )}
                         </For>
@@ -834,6 +836,9 @@ function GroupBlock(props: {
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
 }) {
+  // Keyboard alternative for the status drag — same callback as the drop,
+  // signature `(path, newStatus)`, so cards can call it directly.
+  const onChangeStatus = props.onDropProject;
   const [over, setOver] = createSignal(false);
   const initialStored = readCollapseMap()[props.group.status];
   const [userExpanded, setUserExpanded] = createSignal<boolean | null>(
@@ -916,6 +921,7 @@ function GroupBlock(props: {
                     onOpen={props.onOpen}
                     onToggleStep={props.onToggleStep}
                     onWorkOn={props.onWorkOn}
+                    onChangeStatus={onChangeStatus}
                   />
                 )}
               </For>
@@ -945,6 +951,9 @@ function SubGroup(props: {
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onWorkOn: (project: Project) => void;
+  /** Same shape as GroupBlock.onDropProject — threaded so cards in done
+   * subgroups still respond to the Cmd/Ctrl+1..N keyboard shortcut. */
+  onChangeStatus?: (path: string, newStatus: string) => void;
 }) {
   const initialStored = readCollapseMap()[props.storageKey];
   const [userExpanded, setUserExpanded] = createSignal<boolean | null>(
@@ -982,6 +991,7 @@ function SubGroup(props: {
                 onOpen={props.onOpen}
                 onToggleStep={props.onToggleStep}
                 onWorkOn={props.onWorkOn}
+                onChangeStatus={props.onChangeStatus}
               />
             )}
           </For>
@@ -996,6 +1006,12 @@ function Card(props: {
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onWorkOn: (project: Project) => void;
+  /** Keyboard alternative for the status drag: Cmd/Ctrl+1..N, where N is
+   * KNOWN_STATUSES.length, sets the focused card's status. Wired only when
+   * the parent group can also accept a drop (otherwise we'd let the user
+   * move done-only subgroup cards into states the surrounding view never
+   * reflects via drop). */
+  onChangeStatus?: (path: string, newStatus: string) => void;
   draggable?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(false);
@@ -1011,6 +1027,26 @@ function Card(props: {
     event.dataTransfer.effectAllowed = 'move';
   };
 
+  // Cmd/Ctrl+1..N maps to KNOWN_STATUSES[0..N-1]; ignore anything else so
+  // typing inside any focusable child (search inputs etc.) is unaffected.
+  // Also skip when an editable element is the actual event target.
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (!props.onChangeStatus) return;
+    if (!(event.metaKey || event.ctrlKey)) return;
+    if (event.altKey || event.shiftKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) {
+      return;
+    }
+    const digit = Number(event.key);
+    if (!Number.isInteger(digit) || digit < 1 || digit > KNOWN_STATUSES.length) return;
+    const next = KNOWN_STATUSES[digit - 1];
+    if (props.item.status === next) return;
+    event.preventDefault();
+    event.stopPropagation();
+    props.onChangeStatus(props.item.path, next);
+  };
+
   const isDraggable = (): boolean => props.draggable !== false;
   const statusUnknown = (): boolean =>
     !(KNOWN_STATUSES as readonly string[]).includes(props.item.status);
@@ -1021,7 +1057,9 @@ function Card(props: {
       title={props.item.path}
       data-status-card={props.item.status}
       draggable={isDraggable()}
+      tabIndex={0}
       onDragStart={isDraggable() ? handleDragStart : undefined}
+      onKeyDown={handleKeyDown}
     >
       <div class="row-head" onClick={handleHeaderClick}>
         {/* Row 1: kind glyph + title (left, can wrap to 2 lines) and the
