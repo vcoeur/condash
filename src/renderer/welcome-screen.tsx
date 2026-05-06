@@ -2,6 +2,7 @@ import type { JSX } from 'solid-js';
 
 interface WelcomeScreenProps {
   conceptionPath: string;
+  onCreateProject: () => void;
   onOpenTree: () => void;
   onTakeTour: () => void;
   onOpenDocs: () => void;
@@ -47,6 +48,19 @@ export function WelcomeScreen(props: WelcomeScreenProps): JSX.Element {
         </p>
 
         <div class="welcome-cards">
+          <button
+            type="button"
+            class="welcome-card welcome-card-primary"
+            onClick={props.onCreateProject}
+          >
+            <div class="welcome-card-title">Create your first project</div>
+            <div class="welcome-card-body">
+              Open the New project dialog. condash will lay down a
+              <code>projects/YYYY-MM/&lt;slug&gt;/README.md</code> with the canonical header and
+              section scaffolding for you to fill in.
+            </div>
+          </button>
+
           <button type="button" class="welcome-card" onClick={props.onOpenTree}>
             <div class="welcome-card-title">Open my tree</div>
             <div class="welcome-card-body">

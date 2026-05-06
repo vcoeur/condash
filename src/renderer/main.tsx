@@ -911,12 +911,25 @@ function App() {
             <Show when={shouldShowWelcome()}>
               <WelcomeScreen
                 conceptionPath={conceptionPath()!}
+                onCreateProject={() => setNewProjectOpen(true)}
                 onOpenTree={handleWelcomeOpenTree}
                 onTakeTour={handleWelcomeTakeTour}
                 onOpenDocs={handleWelcomeOpenDocs}
                 onOpenSettings={() => setSettingsOpen(true)}
                 onDismiss={handleWelcomeDismiss}
               />
+            </Show>
+            <Show when={!shouldShowWelcome() && !topBandVisible() && !layout().terminal}>
+              <div class="all-panes-hidden-helper">
+                <h2>All panes are hidden</h2>
+                <p>Bring one back to start working:</p>
+                <div class="all-panes-hidden-actions">
+                  <button onClick={toggleProjects}>Show Projects</button>
+                  <button onClick={() => selectWorking('code')}>Show Code</button>
+                  <button onClick={() => selectWorking('knowledge')}>Show Knowledge</button>
+                  <button onClick={toggleTerminal}>Show Terminal</button>
+                </div>
+              </div>
             </Show>
             <Show when={topBandVisible()}>
               <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
@@ -977,8 +990,19 @@ function App() {
                         when={repos.length > 0}
                         fallback={
                           <div class="empty">
-                            No repositories listed. Add <code>repositories.primary</code> /{' '}
-                            <code>secondary</code> to <code>configuration.json</code> via the gear.
+                            <p>No repositories configured.</p>
+                            <p>
+                              Add entries under <code>repositories.primary</code> or{' '}
+                              <code>repositories.secondary</code> in <code>configuration.json</code>
+                              .
+                            </p>
+                            <button
+                              type="button"
+                              class="empty-cta"
+                              onClick={() => setSettingsOpen(true)}
+                            >
+                              + Add repository
+                            </button>
                           </div>
                         }
                       >
