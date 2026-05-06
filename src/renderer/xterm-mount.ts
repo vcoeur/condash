@@ -34,6 +34,11 @@ export interface MountedTerm {
   promptLines: () => readonly number[];
   /** Scroll the active xterm to the previous (-1) or next (+1) prompt boundary. */
   jumpToPrompt(direction: -1 | 1): void;
+  /** Re-read the current CSS theme tokens (--bg-elevated / --text) and apply
+   * to this xterm. Called when the renderer flips light/dark so live terminals
+   * pick up the new palette without a re-attach. User color overrides from
+   * `XtermPrefs` win over the CSS fallback. */
+  refreshTheme(prefs?: XtermPrefs): void;
   /** Tear down the xterm. Idempotent — safe to call from both onCleanup and
    * an explicit detach (e.g. when re-siding a session). */
   dispose(): void;
@@ -54,6 +59,25 @@ interface MountOptions {
   /** Renderer-side custom key hook. Return false to swallow. Stacked with the
    * built-in copy/paste handler — built-ins still run first. */
   onCustomKey?: (ev: KeyboardEvent) => boolean;
+}
+
+// Renderer-global registry of every live MountedTerm. Populated by mountXterm
+// and pruned on dispose so a light/dark flip from main.tsx can repaint every
+// open terminal — both bottom-pane sessions and inline Code-pane runner rows
+// — without each call site wiring its own subscription.
+const liveTerms = new Set<MountedTerm>();
+
+/** Re-apply the current theme tokens to every live xterm. Called by main.tsx
+ * when the user toggles light/dark; without this, terminals mounted before
+ * the flip stay on the old palette until next attach. */
+export function refreshAllXtermThemes(): void {
+  for (const t of liveTerms) {
+    try {
+      t.refreshTheme();
+    } catch {
+      /* per-term failure shouldn't take down the rest */
+    }
+  }
 }
 
 export function themeFromCss(): { background: string; foreground: string } {
@@ -333,8 +357,16 @@ export function mountXterm(
     term.scrollToLine(Math.max(0, target - term.rows + 1));
   };
 
+  // Track the user-prefs override so refreshTheme can re-merge against the
+  // freshly-read CSS tokens after a light/dark flip.
+  let activePrefs: XtermPrefs = prefs;
+  const refreshTheme = (next?: XtermPrefs): void => {
+    if (next) activePrefs = next;
+    term.options.theme = buildTheme(activePrefs, themeFromCss());
+  };
+
   let disposed = false;
-  return {
+  const mounted: MountedTerm = {
     term,
     fit,
     search,
@@ -347,12 +379,16 @@ export function mountXterm(
     lastExitCode: () => lastExitCode,
     promptLines: () => promptLines,
     jumpToPrompt,
+    refreshTheme,
     dispose() {
       if (disposed) return;
       disposed = true;
+      liveTerms.delete(mounted);
       for (const d of customKeyDisposers) d.dispose();
       for (const d of promptDecorations) d.dispose();
       term.dispose();
     },
   };
+  liveTerms.add(mounted);
+  return mounted;
 }

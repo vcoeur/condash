@@ -2,6 +2,9 @@
 
 The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot (`Ctrl+L` to switch in). It reads the project-local `.claude/skills/` tree (or whatever you point `skills_path` at) and lets you view and edit skill markdown without leaving the dashboard.
 
+![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-light.png#only-light)
+![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-dark.png#only-dark)
+
 ## What it shows
 
 By default the pane reads from `<conception>/.claude/skills/`. Each directory under the root is treated as a skill — its `SKILL.md` is highlighted as the section index, and its body files (`create.md`, `update.md`, `index.md`, …) render as cards inside that section. The walker recurses to any depth, so nested helper directories render as their own sections.

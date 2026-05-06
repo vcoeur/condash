@@ -119,7 +119,21 @@ export async function createProjectCore(
 
   await fs.mkdir(join(itemDir, 'notes'), { recursive: true });
   const readmePath = join(itemDir, 'README.md');
-  await fs.writeFile(readmePath, readmeBody, 'utf8');
+  // `wx` flag (write-exclusive) closes the check-then-act race on the
+  // pre-flight `pathExists` above: if two concurrent creates pass that
+  // check, the second writeFile fails with EEXIST instead of clobbering
+  // the first one's content.
+  try {
+    await fs.writeFile(readmePath, readmeBody, { encoding: 'utf8', flag: 'wx' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new CliError(
+        ExitCodes.VALIDATION,
+        `Item already exists at projects/${month}/${folderName}`,
+      );
+    }
+    throw err;
+  }
 
   await touchDirtyMarker(conceptionPath, 'projects');
 

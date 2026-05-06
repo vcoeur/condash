@@ -429,11 +429,27 @@ async function stampCommand(
   const targetPath = isAbsoluteLike(target) ? target : join(conceptionPath, target);
   // The stamp writes a body file — refuse anywhere outside the conception
   // tree so a `--target ../../etc/passwd` argument can't prepend a Verified
-  // line wherever fs lets us. Resolves both absolute and relative paths.
+  // line wherever fs lets us. Lexical resolve isn't enough: a symlink under
+  // the tree pointing at /etc/passwd would pass the rel-check but fs would
+  // follow the symlink on write. realpath both sides; if the file doesn't
+  // exist yet, realpath the parent so the bound is still enforced.
   const resolvedTarget = resolve(targetPath);
-  const resolvedRoot = resolve(conceptionPath);
-  const rel = relative(resolvedRoot, resolvedTarget);
-  if (rel.startsWith('..') || resolve(resolvedRoot, rel) !== resolvedTarget) {
+  const resolvedRoot = await fs.realpath(resolve(conceptionPath));
+  let realTarget: string;
+  try {
+    realTarget = await fs.realpath(resolvedTarget);
+  } catch {
+    const parent = await fs.realpath(resolve(resolvedTarget, '..')).catch(() => null);
+    if (!parent) {
+      throw new CliError(
+        ExitCodes.VALIDATION,
+        `--target parent directory does not exist: ${target}`,
+      );
+    }
+    realTarget = join(parent, relative(resolve(resolvedTarget, '..'), resolvedTarget));
+  }
+  const relReal = relative(resolvedRoot, realTarget);
+  if (relReal.startsWith('..') || join(resolvedRoot, relReal) !== realTarget) {
     throw new CliError(
       ExitCodes.VALIDATION,
       `--target must resolve inside the conception tree: ${target}`,
