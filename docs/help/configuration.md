@@ -31,7 +31,7 @@ apply when keys are missing.
 |---|---|
 | `workspace_path` | Where condash scans for git repos. |
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
-| `repositories.primary` / `.secondary` | Repos to surface on the Code tab. Each entry is a string or an object with `name`, optional `submodules`, `run`, `force_stop`, `label`. |
+| `repositories.primary` / `.secondary` | Repos to surface on the Code pane. Each entry is a string or an object with `name`, optional `submodules`, `run`, `force_stop`, `label`. |
 
 A repo entry's `run` wires up an inline dev-server runner; `force_stop`
 gives a kill button that frees a stuck port (e.g. `fuser -k 8200/tcp`).

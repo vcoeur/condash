@@ -129,7 +129,7 @@ const CONFIG_SUMMARY: { key: string; purpose: string }[] = [
   {
     key: 'repositories.primary / .secondary',
     purpose:
-      'Repos shown on the Code tab. Each entry: name, optional run / force_stop / submodules.',
+      'Repos shown on the Code pane. Each entry: name, optional run / force_stop / submodules.',
   },
   {
     key: 'open_with',

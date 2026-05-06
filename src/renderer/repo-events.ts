@@ -1,6 +1,6 @@
 /**
  * Apply per-repo FS-watcher events to the repos store. Mirror of
- * `tree-events.ts` but for the Code tab.
+ * `tree-events.ts` but for the Code pane.
  *
  * Two axes:
  *

@@ -1,7 +1,7 @@
 // Tiny in-memory cache for `git status` results keyed by working-tree path.
 //
 // listRepos() ends up running `git status` once per repo + once per worktree
-// every time the Code tab refreshes. With ~10 repos and ~2 worktrees apiece
+// every time the Code pane refreshes. With ~10 repos and ~2 worktrees apiece
 // that's 30 git invocations on every render — fast on its own but adds up
 // when the user mashes Refresh or chokidar fires.
 //
@@ -72,7 +72,7 @@ async function isZeroByteUntracked(line: string, cwd: string): Promise<boolean> 
  *
  * Filters out zero-byte untracked files — those are typically sandbox
  * runtime artifacts (scratch logs, empty placeholder files) that the user
- * doesn't want surfacing as "dirty" on the Code tab. */
+ * doesn't want surfacing as "dirty" on the Code pane. */
 export async function getDirtyCount(
   path: string,
   opts: DirtyCountOptions = {},

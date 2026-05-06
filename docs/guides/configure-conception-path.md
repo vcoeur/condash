@@ -68,7 +68,7 @@ The cheapest way to make one:
 mkdir -p /tmp/scratch-tree/projects/2026-04
 ```
 
-Then either edit `settings.json` to point at `/tmp/scratch-tree`, or delete `settings.json` and pick the new path on the next launch. The Projects tab will be empty but the dashboard will render. Add README files under `projects/2026-04/` and they show up immediately — chokidar pushes the change into the renderer.
+Then either edit `settings.json` to point at `/tmp/scratch-tree`, or delete `settings.json` and pick the new path on the next launch. The Projects pane will be empty but the dashboard will render. Add README files under `projects/2026-04/` and they show up immediately — chokidar pushes the change into the renderer.
 
 ## Multiple machines pointed at the same tree
 

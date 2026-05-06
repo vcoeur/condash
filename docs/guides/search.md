@@ -9,7 +9,7 @@ description: Use the search modal's full-text search across every README, note, 
 
 **When to read this.** You remember writing something — a note, a README paragraph, a step description — and you need to find it without grepping the tree by hand.
 
-condash's search is a **modal**, not a tab. It's available from anywhere in the app:
+condash's search is a **modal**, not a pane. It's available from anywhere in the app:
 
 - **`Ctrl+Shift+F`** / **`Cmd+Shift+F`** — opens the modal.
 - **File → Search…** — same.

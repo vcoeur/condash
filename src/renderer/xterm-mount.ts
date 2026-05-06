@@ -1,5 +1,5 @@
 // Shared xterm mounting helper. Both the bottom "My terms" pane and the
-// Code tab's inline runner rows attach an xterm to a host element and stream
+// Code pane's inline runner rows attach an xterm to a host element and stream
 // data through the same termWrite / termResize / onTermData IPC. Putting the
 // setup in one place avoids drift between the two surfaces.
 
@@ -40,7 +40,7 @@ export interface MountedTerm {
 }
 
 interface MountOptions {
-  /** Pixel font size — bottom pane uses 12, inline Code-tab runners use 12 too
+  /** Pixel font size — bottom pane uses 12, inline Code-pane runners use 12 too
    * but expose this so future tweaks don't have to fork the helper. */
   fontSize?: number;
   /** Buffered tail to write before live data starts arriving. Comes from

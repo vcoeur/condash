@@ -1,7 +1,7 @@
 import { For, Show, createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import type { Deliverable, Project, ProjectFileEntry, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
-import { dateRangeLabel, KindGlyph, StepIcon } from './tabs/projects';
+import { dateRangeLabel, KindGlyph, StepIcon } from './panes/projects';
 
 const MARKER_LABEL: Record<StepMarker, string> = {
   ' ': 'todo',
@@ -12,7 +12,7 @@ const MARKER_LABEL: Record<StepMarker, string> = {
 
 const STATUS_OPTIONS: readonly string[] = ['now', 'review', 'later', 'backlog', 'done'];
 
-/* Popup icons mirror the shapes in src/renderer/tabs/projects.tsx (Terminal,
+/* Popup icons mirror the shapes in src/renderer/panes/projects.tsx (Terminal,
  * external link, plus, chevron-down, close). Stroke-width 1.5 across the
  * board to match the rest of the icon system. KindGlyph and StepIcon are
  * imported directly from the card so there is one source of truth. */

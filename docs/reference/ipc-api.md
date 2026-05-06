@@ -49,7 +49,7 @@ Every mutation carries the **expected** state of the region it's about to change
 | `writeNote(path, expectedContent, newContent)` | Full-file content compare. For `configuration.json`, the main process canonicalises the JSON through the Zod schema before writing — the bytes that hit disk can differ from `newContent`. Returns the bytes actually written so the caller can keep its CAS baseline aligned with disk. |
 | `readNote(path)` | Read a single file's contents. Path must resolve under the conception. |
 
-Step markers are `[ ]` (open), `[~]` (in-progress), `[x]` (done), `[-]` (abandoned). The dashboard cycle order is `open → progress → done → abandoned → open` (see [`src/renderer/tabs/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/tabs/projects.tsx)).
+Step markers are `[ ]` (open), `[~]` (in-progress), `[x]` (done), `[-]` (abandoned). The dashboard cycle order is `open → progress → done → abandoned → open` (see [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx)).
 
 All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate.ts:withFileQueue`) serialises concurrent writes to the same path.
 
@@ -80,9 +80,9 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `termWrite(id, data)` | Forward stdin bytes. |
 | `termResize(id, cols, rows)` | `TIOCSWINSZ` on the pty. |
 | `termClose(id)` | Run the kill pipeline: `SIGTERM` → optional `force_stop` → 500ms wait → `SIGKILL` on the process group. |
-| `termList()` | Snapshot of live (or recently-exited) sessions. Used by the panel rebuild on tab switch. |
+| `termList()` | Snapshot of live (or recently-exited) sessions. Used by the panel rebuild on pane switch. |
 | `termAttach(id)` | Pull the buffered output for an existing session, used on renderer mount to replay history into a freshly-created xterm. |
-| `termSetSide(id, side)` | Re-side a session — used by the Code-tab pop-out button to surface a running dev server in the bottom "My terms" pane. `side` is `'my'` or `'code'`. |
+| `termSetSide(id, side)` | Re-side a session — used by the Code-pane pop-out button to surface a running dev server in the bottom "My terms" pane. `side` is `'my'` or `'code'`. |
 | `termGetPrefs()` | Read `settings.json:terminal` (shell, shortcut, font, palette). |
 | `termSetPrefs(prefs)` | Replace the persisted terminal prefs in `settings.json`. The patch is a full replacement; pass `{}` to clear back to defaults. |
 | `termLatestScreenshot(dir)` | Find the newest `*.png` under `dir` (used by the screenshot-paste helper). |

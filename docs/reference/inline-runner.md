@@ -1,13 +1,13 @@
 ---
 title: Inline dev-server runner · condash reference
-description: The per-repo Run/Stop button, the `run:` field, and the single-session-per-repo lock that ties the Code tab to live dev servers.
+description: The per-repo Run/Stop button, the `run:` field, and the single-session-per-repo lock that ties the Code pane to live dev servers.
 ---
 
 # Inline dev-server runner
 
 > **Audience.** Daily user.
 
-Since v0.13.0, each row in the Code tab — every repo and every declared sub-repo — can carry an inline dev-server runner. Click **Run** and condash spawns the command under a PTY; an xterm mounts right under the row streaming live output. The running server survives tab switches, terminal toggles, and even dashboard reloads (the registry lives server-side).
+Since v0.13.0, each row in the Code pane — every repo and every declared sub-repo — can carry an inline dev-server runner. Click **Run** and condash spawns the command under a PTY; an xterm mounts right under the row streaming live output. The running server survives tab switches, terminal toggles, and even dashboard reloads (the registry lives server-side).
 
 ## When to reach for it
 
@@ -51,7 +51,7 @@ The gear modal's JSON editor lets you tweak `run` directly in `configuration.jso
 
 ## The Run button lifecycle
 
-Each Code-tab row with a configured `run` gets one of three button states, plus a green jump-arrow when a session is live somewhere else.
+Each Code-pane row with a configured `run` gets one of three button states, plus a green jump-arrow when a session is live somewhere else.
 
 | State | What you see | What Run does |
 |---|---|---|
@@ -81,12 +81,12 @@ See [IPC API — PTY sessions](ipc-api.md#pty-sessions) for the full surface.
 
 ## Live updates
 
-Runner state changes don't go through a polling loop — the main process pushes `term.sessions` events when a session starts, exits, or moves between checkouts, and the renderer's Code tab listens. There is no fingerprint-driven refresh; the Solid signals targeted at the affected row update without disturbing the rest of the UI.
+Runner state changes don't go through a polling loop — the main process pushes `term.sessions` events when a session starts, exits, or moves between checkouts, and the renderer's Code pane listens. There is no fingerprint-driven refresh; the Solid signals targeted at the affected row update without disturbing the rest of the UI.
 
 ## Lifetime
 
 - A session stays alive for as long as the child process is running, regardless of whether the renderer is attached.
-- On process exit, the corresponding tab in the bottom terminal pane **auto-closes** — there is no lingering "[process exited N]" placeholder. Use the toolbar's **Save buffer** button (powered by xterm's serialize addon) if you want the output before the tab disappears. CodeRunRow output inside the Code tab still surfaces the exit code so the runner state is never silently lost.
+- On process exit, the corresponding tab in the bottom terminal pane **auto-closes** — there is no lingering "[process exited N]" placeholder. Use the toolbar's **Save buffer** button (powered by xterm's serialize addon) if you want the output before the tab disappears. CodeRunRow output inside the Code pane still surfaces the exit code so the runner state is never silently lost.
 - On clean shutdown (window close, `quitApp` IPC, `SIGTERM` to the Electron main) every registered runner is reaped through the [PTY kill pipeline](../explanation/internals.md#pty-kill-pipeline): SIGTERM → optional `force_stop` → 500 ms wait → SIGKILL on the process group.
 - On a dirty crash (OOM, `kill -9` on Electron itself) the children are orphaned; you'll find them in `ps` under PID 1. This is the same footprint as the embedded terminal — condash does not install a double-fork sentinel.
 

@@ -18,7 +18,7 @@ interface Session {
   /** Optional repo this session was spawned for (Run button). */
   repo?: string;
   /** Resolved cwd of the spawned pty. Surfaced in the broadcast snapshot
-   * so the Code tab can match a session to the worktree it was started in. */
+   * so the Code pane can match a session to the worktree it was started in. */
   cwd: string;
   /** Captured at spawn time so Stop doesn't need conceptionPath at kill time. */
   forceStop?: string;
@@ -66,7 +66,7 @@ export function attachTerminal(id: string): { output: string; exited?: number } 
   return { output: s.buffer, exited: s.exited };
 }
 
-/** Move a session between the "my" and "code" sides. Used by the Code tab's
+/** Move a session between the "my" and "code" sides. Used by the Code pane's
  * pop-out button to surface a running dev server in the bottom pane. */
 export function setSessionSide(id: string, side: TermSide): void {
   const s = sessions.get(id);
@@ -144,7 +144,7 @@ export async function spawnTerminal(
   if (request.repo && conceptionPath) {
     const entry = findRepoEntry(config, request.repo);
     if (!entry) throw new Error(`Repo '${request.repo}' not found in configuration.json`);
-    // Honour an explicit request.cwd (worktree path from the Code-tab Run
+    // Honour an explicit request.cwd (worktree path from the Code-pane Run
     // button on a non-primary branch) over the entry's resolved primary
     // checkout. Without this, every Run lands on the primary checkout
     // regardless of which branch row the user clicked.

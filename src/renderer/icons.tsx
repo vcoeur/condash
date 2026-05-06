@@ -5,13 +5,13 @@
  * inside the stroked silhouette. Stroke weights come from CSS so the icons
  * read consistently across containers.
  *
- * The Projects tab established this vocabulary first (see projects.tsx for
- * its kind/step/warn icons); the Code tab pulls from the same shelf so the
- * two tabs feel like one app. */
+ * The Projects pane established this vocabulary first (see projects.tsx for
+ * its kind/step/warn icons); the Code pane pulls from the same shelf so the
+ * two panes feel like one app. */
 
 // Terminal — rounded window, chunky `>` chevron, and a filled cursor block.
-// Reads as "command line with a live cursor". Used for the projects-tab
-// "work on" action and the code-tab "open shell in terminal tab" action.
+// Reads as "command line with a live cursor". Used for the projects-pane
+// "work on" action and the code-pane "open shell in terminal tab" action.
 export function TerminalIcon() {
   return (
     <svg
@@ -30,7 +30,7 @@ export function TerminalIcon() {
 }
 
 // Run — chunky play triangle with a soft duotone fill. Drives the run:
-// command on the code-tab card.
+// command on the code-pane card.
 export function RunIcon() {
   return (
     <svg
@@ -103,7 +103,7 @@ export function ChevronDownIcon() {
 }
 
 // Book — open codex with a centred binding line and a soft duotone wash
-// across both pages. The Knowledge-tab card glyph: literary, archival,
+// across both pages. The Knowledge-pane card glyph: literary, archival,
 // distinct from the Document kind glyph (single-page) and the Folder
 // (file-manager) icon.
 export function BookIcon() {

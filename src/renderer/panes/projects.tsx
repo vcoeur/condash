@@ -13,7 +13,7 @@ import { countSteps } from '@shared/projects';
 import { TerminalIcon } from '../icons';
 import { HighlightedText } from '../search/highlight';
 import { groupHits, type ProjectGroup } from '../search/grouping';
-import './projects-tab.css';
+import './projects-pane.css';
 
 const EMPTY_SEARCH_RESULTS: SearchResults = {
   hits: [],
@@ -118,7 +118,7 @@ export const DRAG_MIME = 'application/x-condash-project-path';
 
 const UNKNOWN = '?';
 
-/** Order of stacked sections on the Projects tab. `backlog` and `done`
+/** Order of stacked sections on the Projects pane. `backlog` and `done`
  * render collapsed-by-default — heavy buckets the user usually skips past. */
 const PROJECT_SECTION_ORDER = ['now', 'review', 'later', 'backlog', 'done'] as const;
 const COLLAPSED_BY_DEFAULT = new Set<string>(['backlog', 'done']);
@@ -370,7 +370,7 @@ function StepProgress(props: { counts: StepCounts }) {
   );
 }
 
-/* Icon system — Projects tab.
+/* Icon system — Projects pane.
  *
  * All icons share a 16×16 viewBox, currentColor stroke, round caps and joins,
  * and a duotone accent (currentColor at fill-opacity 0.16-0.22) inside the
@@ -517,7 +517,7 @@ export function ProjectsView(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
-  /** Open the "+ New project" modal. Rendered as a top-of-tab button when
+  /** Open the "+ New project" modal. Rendered as a top-of-pane button when
    * the user isn't searching. Optional so consumers that don't expose the
    * create flow keep working unchanged. */
   onNewProject?: () => void;

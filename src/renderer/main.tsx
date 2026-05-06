@@ -39,9 +39,9 @@ import {
   groupByStatus,
   nextMarker,
   ProjectsView,
-} from './tabs/projects';
-import { KnowledgeView } from './tabs/knowledge';
-import { CodeView, groupRepos } from './tabs/code';
+} from './panes/projects';
+import { KnowledgeView } from './panes/knowledge';
+import { CodeView, groupRepos } from './panes/code';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { NewProjectModal } from './new-project-modal';
@@ -182,7 +182,7 @@ function App() {
   });
   onCleanup(unsubscribe);
 
-  // Track every live-or-exited session — Code tab uses code-side ones for
+  // Track every live-or-exited session — Code pane uses code-side ones for
   // its inline runner rows, and the LIVE badge on repo cards is derived
   // from the same snapshot.
   const [allSessions, setAllSessions] = createSignal<readonly TermSession[]>([]);
@@ -193,7 +193,7 @@ function App() {
     }
     return live;
   });
-  // Track the branch each live repo session is running on so the Code-tab
+  // Track the branch each live repo session is running on so the Code-pane
   // card face can label it ("running on main") without expanding the card.
   // We match the session's cwd against the repo's worktree paths to pick
   // the right branch.
@@ -316,7 +316,7 @@ function App() {
   });
 
   // Mirror the prior resource semantics: load when the user is on the Code
-  // tab, clear otherwise. Side-effect-light — no Suspense, no remount.
+  // pane, clear otherwise. Side-effect-light — no Suspense, no remount.
   createEffect(() => {
     const path = conceptionPath();
     const working = layout().working;
@@ -522,8 +522,8 @@ function App() {
   onCleanup(offMenu);
 
   const handleRunRepo = async (repo: RepoEntry, worktree?: Worktree) => {
-    // The Code-tab Run button spawns a `side: 'code'` session that renders in
-    // the inline CodeRunRow inside the Code tab — *not* in the bottom terminal
+    // The Code-pane Run button spawns a `side: 'code'` session that renders in
+    // the inline CodeRunRow inside the Code pane — *not* in the bottom terminal
     // pane. So we no longer auto-open the pane on Run; the pane stays mounted
     // (but visually collapsed) so terminalHandle is still available for spawn.
     if (!terminalHandle) return;

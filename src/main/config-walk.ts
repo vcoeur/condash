@@ -2,7 +2,7 @@ import { isAbsolute, join } from 'node:path';
 
 /**
  * Shared configuration-walk helpers. Both `repos.ts` (for the flat repo list
- * the Code tab renders) and `terminals.ts` / `launchers.ts` (for the per-name
+ * the Code pane renders) and `terminals.ts` / `launchers.ts` (for the per-name
  * lookup the Run / force_stop pipelines need) walk the same `repositories`
  * tree. This module owns the recursion + cwd-resolution rules so the rest of
  * the main process doesn't re-implement them.

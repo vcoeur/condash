@@ -200,15 +200,15 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await page.evaluate(() => window.scrollTo(0, 0));
     await settle(page);
 
-    // 3. code-tab.
+    // 3. code-pane.
     await showPane(b, 'Code');
-    await shoot(page, theme, 'code-tab');
+    await shoot(page, theme, 'code-pane');
 
-    // 4. knowledge-tab.
+    // 4. knowledge-pane.
     await showPane(b, 'Knowledge');
-    await shoot(page, theme, 'knowledge-tab');
+    await shoot(page, theme, 'knowledge-pane');
 
-    // 5. history-tab — the Electron build has no History tab. The Tauri-era
+    // 5. history-pane — the Electron build has no History pane. The Tauri-era
     //    PNG slot is no longer current — we now point the search-modal capture
     //    at the same docs slot rather than keep a knowledge dupe in its place.
     //    Drop the file from the output set; the docs page that references it

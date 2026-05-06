@@ -32,7 +32,7 @@ export async function getCurrentBranch(repoPath: string): Promise<string | null>
  * blocks are separated by blank lines.
  *
  * Per-worktree dirty counts are filled in via a fan-out `git status` call so
- * the Code-tab UI can show "main CLEAN" alongside "parity-batch-5 74 dirty"
+ * the Code-pane UI can show "main CLEAN" alongside "parity-batch-5 74 dirty"
  * without the user clicking through each branch.
  */
 export async function listWorktrees(repoPath: string): Promise<Worktree[]> {

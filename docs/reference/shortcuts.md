@@ -46,7 +46,7 @@ The View toggles round-trip through `getLayout` / `setLayout` — see [Config fi
 | `Escape` | Close the topmost modal | no |
 | `?` | Toggle the keyboard-shortcut cheat-sheet overlay | no |
 
-Item focus and tab switching are pointer-driven — there is no "switch tab" shortcut. The search modal takes over the keyboard once it opens.
+Item focus and pane switching are pointer-driven — there is no "switch pane" shortcut. The search modal takes over the keyboard once it opens.
 
 ## Project cards
 

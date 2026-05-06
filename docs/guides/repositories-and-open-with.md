@@ -7,7 +7,7 @@ description: Point condash at your workspace, group repos into primary / seconda
 
 > **Audience.** Daily user.
 
-**When to read this.** The **Code** tab shows the wrong repos, or the wrong repos are in the primary card, or the "open in IDE" button launches the wrong thing (or nothing).
+**When to read this.** The **Code** pane shows the wrong repos, or the wrong repos are in the primary card, or the "open in IDE" button launches the wrong thing (or nothing).
 
 Everything on this page lives in `<conception_path>/configuration.json`. Per-machine overrides go in `settings.json` and win on overlap.
 
@@ -20,10 +20,10 @@ Everything on this page lives in `<conception_path>/configuration.json`. Per-mac
 }
 ```
 
-- **`workspace_path`** — the directory condash scans for git repositories. Every direct subdirectory that contains a `.git/` becomes a row in the Code tab.
+- **`workspace_path`** — the directory condash scans for git repositories. Every direct subdirectory that contains a `.git/` becomes a row in the Code pane.
 - **`worktrees_path`** — an additional sandbox for the "open in IDE" launchers. Paths outside both roots are rejected before the shell sees the command.
 
-If `workspace_path` is unset, the Code tab disappears.
+If `workspace_path` is unset, the Code pane disappears.
 
 ## Grouping: primary, secondary, others
 
@@ -38,8 +38,8 @@ If `workspace_path` is unset, the Code tab disappears.
 
 Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. Every repo not listed in either group lands in an auto-generated **OTHERS** card. The three cards render as a single strip, in the order primary → secondary → others:
 
-![Code tab — three repos organised into primary, secondary, others](../assets/screenshots/code-tab-light.png#only-light)
-![Code tab — three repos organised into primary, secondary, others](../assets/screenshots/code-tab-dark.png#only-dark)
+![Code pane — three repos organised into primary, secondary, others](../assets/screenshots/code-pane-light.png#only-light)
+![Code pane — three repos organised into primary, secondary, others](../assets/screenshots/code-pane-dark.png#only-dark)
 
 Inside a card, each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it.
 
