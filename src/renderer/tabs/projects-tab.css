@@ -277,6 +277,18 @@
   background: var(--bg-hover);
 }
 
+/* Focus ring on cards. The card is tabIndex={0} so the user can land on
+ * one with Tab or click and then drive status with Cmd/Ctrl+1..N. The ring
+ * is the "you're operating on this card" contract for the keyboard path. */
+.row:focus {
+  outline: none;
+}
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--border-strong);
+}
+
 /* Search-result row variant — same chrome as a normal card. The body is
  * replaced by a snippets list (rendered inside `.row-head`) plus a small
  * score chip in the title-actions slot. */

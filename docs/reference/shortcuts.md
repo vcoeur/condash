@@ -12,7 +12,8 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 | Area | Count | Configurable? |
 |---|---|---|
 | Application menu (File / View) | 7 | no |
-| Dashboard global | 1 | no |
+| Dashboard global | 2 | no |
+| Project cards | 6 | no |
 | Note modal | 4 | no |
 | Terminal — pane | 3 | yes (`[terminal]`) |
 | Terminal — xterm | 4 | no |
@@ -43,8 +44,28 @@ The View toggles round-trip through `getLayout` / `setLayout` — see [Config fi
 | Shortcut | Action | Configurable |
 |---|---|---|
 | `Escape` | Close the topmost modal | no |
+| `?` | Toggle the keyboard-shortcut cheat-sheet overlay | no |
 
 Item focus and tab switching are pointer-driven — there is no "switch tab" shortcut. The search modal takes over the keyboard once it opens.
+
+## Project cards
+
+Each project card in the Projects pane is keyboard-focusable. Tab into a card (or click it once), then drive its status with the digit shortcuts. The focus ring shows which card the next keypress will affect.
+
+| Shortcut | Action |
+|---|---|
+| `Tab` / `Shift+Tab` | Move focus between cards (and other focusable elements). |
+| `Ctrl+1` / `Cmd+1` | Set the focused card's status to `now`. |
+| `Ctrl+2` / `Cmd+2` | Set the focused card's status to `review`. |
+| `Ctrl+3` / `Cmd+3` | Set the focused card's status to `later`. |
+| `Ctrl+4` / `Cmd+4` | Set the focused card's status to `backlog`. |
+| `Ctrl+5` / `Cmd+5` | Set the focused card's status to `done`. |
+
+The digit-to-status mapping follows `KNOWN_STATUSES` in `src/shared/types.ts` — `1..N` maps to position `0..N-1`. Pressing a digit equal to the card's current status is a no-op.
+
+The shortcut yields to text inputs, textareas, contenteditable surfaces, the embedded xterm, and the CodeMirror editor — typing `Ctrl+1` in the search modal or in a note's edit pane never steals it from the focused element.
+
+Status changes via the keyboard go through the same `setStatus` mutation as the drag-drop path, so they fire the timeline `Closed.` / `Reopened.` entries on done-edges and surface the same out-of-tree branch warning when the project's worktree disagrees with the new status.
 
 ## Note modal
 
