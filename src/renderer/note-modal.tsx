@@ -451,6 +451,9 @@ export function NoteModal(props: {
         e.preventDefault();
         setFindOpen(false);
         setFindQuery('');
+        // Restore focus to the note body so the user lands back where
+        // they were searching, not stranded on the now-hidden find input.
+        queueMicrotask(() => bodyRef?.focus());
         return;
       }
       if (dirty()) {
@@ -670,7 +673,12 @@ export function NoteModal(props: {
           </div>
         </Show>
 
-        <div class="modal-body" ref={(el) => (bodyRef = el)} onClick={handleBodyClick}>
+        <div
+          class="modal-body"
+          ref={(el) => (bodyRef = el)}
+          tabIndex={-1}
+          onClick={handleBodyClick}
+        >
           <Show when={props.state && isConfigurationJson(props.state.path)}>
             <ConfigSummaryPanel onOpenFullDoc={() => props.onOpenHelp?.('configuration')} />
           </Show>
