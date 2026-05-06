@@ -216,6 +216,7 @@ export type MenuCommand =
   | 'open-folder'
   | 'open-conception'
   | 'open-settings'
+  | 'new-project'
   | 'request-quit'
   | 'toggle-projects'
   | 'toggle-terminal'

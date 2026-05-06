@@ -65,13 +65,27 @@ export function createDropdownMenu(): DropdownMenu {
     if (open()) positionMenu();
   };
 
+  // Esc closes the open menu — keyboard-only users would otherwise be
+  // stuck after triggering the dropdown (no obvious way to cancel without
+  // a click outside). Capture phase + stopPropagation so we don't also
+  // fire the parent modal/popover's Esc handler when stacked.
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (!open()) return;
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(false);
+  };
+
   onMount(() => {
     document.addEventListener('click', onDocClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('resize', onScrollOrResize, true);
     window.addEventListener('scroll', onScrollOrResize, true);
   });
   onCleanup(() => {
     document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('keydown', onKeyDown, true);
     window.removeEventListener('resize', onScrollOrResize, true);
     window.removeEventListener('scroll', onScrollOrResize, true);
   });

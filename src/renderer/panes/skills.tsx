@@ -67,6 +67,11 @@ function buildSections(root: SkillNode | null): SkillSection[] {
 export function SkillsView(props: {
   root: SkillNode | null;
   onOpen: (path: string, title: string, shipped?: SkillNode['shipped']) => void;
+  /** Open Settings (so the user can adjust `skills_path`). */
+  onOpenSettings?: () => void;
+  /** Copy the install command to the clipboard so the user can paste into
+   *  the embedded terminal. */
+  onCopyInstallCommand?: () => void;
 }) {
   const sections = createMemo<SkillSection[]>(() => buildSections(props.root));
 
@@ -76,10 +81,27 @@ export function SkillsView(props: {
         when={sections().length > 0}
         fallback={
           <div class="empty">
+            <p>No skills installed.</p>
             <p>
-              No skills directory yet — install skills with <code>condash skills install</code>, or
-              change <code>skills_path</code> in settings.
+              Run <code>condash skills install</code> to lay down the bundled skills, or change{' '}
+              <code>skills_path</code> in Settings.
             </p>
+            <div class="empty-actions">
+              <Show when={props.onCopyInstallCommand}>
+                <button
+                  type="button"
+                  class="empty-cta"
+                  onClick={() => props.onCopyInstallCommand?.()}
+                >
+                  Copy install command
+                </button>
+              </Show>
+              <Show when={props.onOpenSettings}>
+                <button type="button" class="empty-cta" onClick={() => props.onOpenSettings?.()}>
+                  Edit settings
+                </button>
+              </Show>
+            </div>
           </div>
         }
       >

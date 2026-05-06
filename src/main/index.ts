@@ -254,6 +254,11 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
       label: 'Open conception directory',
       click: () => send('open-conception'),
     },
+    {
+      label: 'New project…',
+      accelerator: 'CommandOrControl+N',
+      click: () => send('new-project'),
+    },
     { type: 'separator' },
     {
       label: 'Settings',
@@ -261,6 +266,9 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
       click: () => send('open-settings'),
     },
     {
+      // Two accelerators for the same action — Electron menus only honour
+      // one accelerator per item, so the Ctrl+K binding is wired in the
+      // renderer's handleGlobalKeyDown (the cheat-sheet documents both).
       label: 'Search…',
       accelerator: 'CommandOrControl+Shift+F',
       click: () => send('search'),
@@ -284,12 +292,14 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
       label: 'Show Code',
       type: 'checkbox',
       checked: layout.working === 'code',
+      accelerator: 'CommandOrControl+Shift+C',
       click: () => send('show-code'),
     },
     {
       label: 'Show Knowledge',
       type: 'checkbox',
       checked: layout.working === 'knowledge',
+      accelerator: 'CommandOrControl+Shift+K',
       click: () => send('show-knowledge'),
     },
     {

@@ -520,6 +520,9 @@ export function NoteModal(props: {
 
   onMount(() => {
     document.addEventListener('keydown', handleKeydown, true);
+    // Focus the body on open so Tab order starts inside the modal — without
+    // this Tab walks back into whatever button triggered the modal.
+    queueMicrotask(() => bodyRef?.focus());
   });
 
   onCleanup(() => {

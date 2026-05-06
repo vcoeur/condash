@@ -125,6 +125,7 @@ function App() {
     path: string;
     missing: string[];
   } | null>(null);
+  const [forceStopState, setForceStopState] = createSignal<RepoEntry | null>(null);
 
   // Resolved dark/light flag for the active app theme. Watches `theme()` plus
   // the system colour-scheme media query so a system flip while the app is
@@ -448,8 +449,11 @@ function App() {
     }
   };
 
-  const handleForceStop = async (repo: RepoEntry) => {
-    if (!window.confirm(`Force-stop ${repo.name}?`)) return;
+  const handleForceStop = (repo: RepoEntry): void => {
+    setForceStopState(repo);
+  };
+
+  const runForceStop = async (repo: RepoEntry): Promise<void> => {
     try {
       await window.condash.forceStopRepo(repo.name);
       flashToast(`Force-stopped ${repo.name}`, 'success');
@@ -497,6 +501,16 @@ function App() {
     if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       setShortcutsOpen((cur) => !cur);
+      return;
+    }
+
+    // Ctrl+K → open search. The Search menu item already binds
+    // Ctrl+Shift+F (Electron menus accept one accelerator per item), but
+    // the cheat-sheet documents Ctrl+K as the primary; bind it here so
+    // muscle memory from VS Code / Linear / Slack works.
+    if ((event.ctrlKey || event.metaKey) && event.key === 'k' && !event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      setSearchModalOpen(true);
       return;
     }
 
@@ -550,6 +564,10 @@ function App() {
     }
     if (command === 'request-quit') {
       setQuitConfirmOpen(true);
+      return;
+    }
+    if (command === 'new-project') {
+      if (conceptionPath()) setNewProjectOpen(true);
       return;
     }
     if (command === 'toggle-terminal') {
@@ -1106,7 +1124,16 @@ function App() {
                 <Show when={layout().working === 'resources'}>
                   <section class="pane pane-working">
                     <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <ResourcesView root={resources() ?? null} actions={resourcesActions} />
+                      <ResourcesView
+                        root={resources() ?? null}
+                        actions={resourcesActions}
+                        onOpenSettings={() => setSettingsOpen(true)}
+                        onOpenConceptionDir={() => {
+                          void window.condash.openConceptionDirectory().catch((err) => {
+                            flashToast(`Open failed: ${(err as Error).message}`, 'error');
+                          });
+                        }}
+                      />
                     </Suspense>
                   </section>
                 </Show>
@@ -1114,7 +1141,19 @@ function App() {
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <SkillsView root={skills() ?? null} onOpen={handleOpenSkillFile} />
+                      <SkillsView
+                        root={skills() ?? null}
+                        onOpen={handleOpenSkillFile}
+                        onOpenSettings={() => setSettingsOpen(true)}
+                        onCopyInstallCommand={() => {
+                          void navigator.clipboard
+                            .writeText('condash skills install')
+                            .then(() => flashToast('Copied install command', 'success'))
+                            .catch((err) =>
+                              flashToast(`Copy failed: ${(err as Error).message}`, 'error'),
+                            );
+                        }}
+                      />
                     </Suspense>
                   </section>
                 </Show>
@@ -1177,7 +1216,9 @@ function App() {
             aria-pressed={layout().working === 'code'}
             onClick={onCodeHandleClick}
             disabled={!handlesEnabled()}
-            title={layout().working === 'code' ? 'Hide Code' : 'Show Code'}
+            title={
+              layout().working === 'code' ? 'Hide Code (Ctrl+Shift+C)' : 'Show Code (Ctrl+Shift+C)'
+            }
           >
             <span class="edge-handle-label">Code</span>
           </button>
@@ -1187,7 +1228,11 @@ function App() {
             aria-pressed={layout().working === 'knowledge'}
             onClick={onKnowledgeHandleClick}
             disabled={!handlesEnabled()}
-            title={layout().working === 'knowledge' ? 'Hide Knowledge' : 'Show Knowledge'}
+            title={
+              layout().working === 'knowledge'
+                ? 'Hide Knowledge (Ctrl+Shift+K)'
+                : 'Show Knowledge (Ctrl+Shift+K)'
+            }
           >
             <span class="edge-handle-label">Knowledge</span>
           </button>
@@ -1197,7 +1242,11 @@ function App() {
             aria-pressed={layout().working === 'resources'}
             onClick={onResourcesHandleClick}
             disabled={!handlesEnabled()}
-            title={layout().working === 'resources' ? 'Hide Resources' : 'Show Resources'}
+            title={
+              layout().working === 'resources'
+                ? 'Hide Resources (Ctrl+R)'
+                : 'Show Resources (Ctrl+R)'
+            }
           >
             <span class="edge-handle-label">Resources</span>
           </button>
@@ -1207,7 +1256,7 @@ function App() {
             aria-pressed={layout().working === 'skills'}
             onClick={onSkillsHandleClick}
             disabled={!handlesEnabled()}
-            title={layout().working === 'skills' ? 'Hide Skills' : 'Show Skills'}
+            title={layout().working === 'skills' ? 'Hide Skills (Ctrl+L)' : 'Show Skills (Ctrl+L)'}
           >
             <span class="edge-handle-label">Skills</span>
           </button>
@@ -1333,6 +1382,23 @@ function App() {
           onCancel={() => setQuitConfirmOpen(false)}
           onConfirm={handleConfirmQuit}
         />
+      </Show>
+
+      <Show when={forceStopState()}>
+        {(repo) => (
+          <ConfirmModal
+            title={`Force-stop ${repo().name}?`}
+            body="The repo's run command will be killed via the configured force_stop. Use only when the dev server is unresponsive."
+            confirmLabel="Force-stop"
+            destructive
+            onCancel={() => setForceStopState(null)}
+            onConfirm={() => {
+              const r = repo();
+              setForceStopState(null);
+              void runForceStop(r);
+            }}
+          />
+        )}
       </Show>
 
       <Show when={initConfirmState()}>
