@@ -42,6 +42,7 @@ export function NewProjectModal(props: {
     const target = event.target as HTMLElement | null;
     if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
     event.preventDefault();
+    event.stopPropagation();
     if (!busy()) props.onClose();
   };
 

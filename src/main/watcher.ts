@@ -33,8 +33,20 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
     await current.watcher.close().catch(() => undefined);
     current = null;
   }
+  // Cancel any in-flight debounce so a stale event from the old
+  // conception's chokidar emit doesn't fire `tree-events` against the
+  // new tree's renderer.
+  if (timer !== null) {
+    clearTimeout(timer);
+    timer = null;
+  }
   pending = [];
   pendingUnknown = false;
+  // Reset the refresh-serialisation chain — pass-5 added the per-event
+  // promise chain to serialise rebuilds within a conception, but the
+  // module-level state needs to reset across conceptions or a queued
+  // rebuild from the old tree could fire after we've swapped.
+  refreshChain = Promise.resolve();
   if (!conceptionPath) return;
 
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);

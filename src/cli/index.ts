@@ -19,7 +19,7 @@ const TOP_HELP = `condash <noun> <verb> [args] [--flags]
 
 Nouns:
   projects     list, read, resolve, search, validate, status get|set, close,
-               index, create, scan-promotions
+               reopen, backfill-closed, index, create, scan-promotions
   knowledge    tree, verify, retrieve, stamp, index
   search       cross-tree search (--scope all|projects|knowledge)
   repos        list configured repositories

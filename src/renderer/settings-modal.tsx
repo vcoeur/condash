@@ -96,6 +96,7 @@ export function SettingsModal(props: {
   const handleKeydown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       if (closeConfirm()) {
         setCloseConfirm(false);
         return;

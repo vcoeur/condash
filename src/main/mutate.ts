@@ -58,11 +58,14 @@ export async function toggleStep(
   // compile time but a hostile (or buggy) renderer could pass any string
   // through the IPC boundary, and the marker is written verbatim into
   // the README ("- [<m>] …"). Reject anything that's not in STEP_MARKERS.
+  // Don't echo the raw value in the error — it crossed the IPC boundary
+  // unvalidated; reflecting it back leaks renderer input shape into logs.
+  const markerHint = `(expected one of '${STEP_MARKERS.join("', '")}')`;
   if (!(STEP_MARKERS as readonly string[]).includes(expectedMarker)) {
-    throw new Error(`toggleStep: invalid expectedMarker ${JSON.stringify(expectedMarker)}`);
+    throw new Error(`toggleStep: invalid expectedMarker ${markerHint}`);
   }
   if (!(STEP_MARKERS as readonly string[]).includes(newMarker)) {
-    throw new Error(`toggleStep: invalid newMarker ${JSON.stringify(newMarker)}`);
+    throw new Error(`toggleStep: invalid newMarker ${markerHint}`);
   }
   return withFileQueue(path, async () => {
     const raw = await fs.readFile(path, 'utf8');
@@ -281,8 +284,7 @@ export async function transitionStatus(
   // boundary and corrupt the metadata block.
   if (!(KNOWN_STATUSES as readonly string[]).includes(newStatus)) {
     throw new Error(
-      `transitionStatus: unknown status ${JSON.stringify(newStatus)} ` +
-        `(expected one of ${KNOWN_STATUSES.join(', ')})`,
+      `transitionStatus: unknown status (expected one of ${KNOWN_STATUSES.join(', ')})`,
     );
   }
   return withFileQueue(readmePath, async () => {

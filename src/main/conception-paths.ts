@@ -45,10 +45,10 @@ function pickRelative(value: unknown, fallback: string): string {
   if (trimmed.length === 0) return fallback;
   if (isAbsolute(trimmed)) return fallback;
   // path.normalize collapses `./foo/../bar` to `bar`; a leading `..` after
-  // normalisation means the value escapes the conception root.
+  // normalisation means the value escapes the conception root. Single
+  // regex replaces the previous dual `'../'` / `'..\\'` startsWith checks
+  // so future Windows path-shape quirks don't slip through.
   const normalised = normalize(trimmed);
-  if (normalised === '..' || normalised.startsWith(`..${'/'}`) || normalised.startsWith(`..\\`)) {
-    return fallback;
-  }
+  if (/^\.\.([\\/]|$)/.test(normalised)) return fallback;
   return normalised;
 }
