@@ -42,27 +42,31 @@
   --accent: #4f46e5;
   --warn: #c0392b;
 
-  /* Status palette — single-axis gradient from warm pink (now) through
-   * violet and blue to cool gray (done). One hue arc instead of six
-   * unrelated tones, so the status enum reads as a temperature/heat
-   * scale rather than a tutti-frutti rainbow. Used for section dots,
-   * card stripes, and step-state colours. Light-mode values; dark-mode
-   * mirrors below. */
-  --col-now: #b85a82;
-  --col-review: #946598;
-  --col-soon: #6b5fa0;
-  --col-later: #4a648f;
-  --col-backlog: #4f5f70;
-  --col-done: #4a4f5a;
-  --col-unknown: #c0392b;
+  /* Status palette — saturated red→green temperature scale so the six
+   * statuses are still distinguishable at 8 px. The previous mauve-to-
+   * gray gradient read as one hue at small sizes. The arc:
+   *   now      = saturated red (urgent — work this now)
+   *   review   = orange (attention needed, next-up)
+   *   soon     = amber (queued for the near term)
+   *   later    = blue (cool, planned but parked)
+   *   backlog  = blue-gray (cold storage)
+   *   done     = neutral gray (archived)
+   * Light-mode values; dark-mode mirrors below. */
+  --col-now: #c0392b;
+  --col-review: #d97e2c;
+  --col-soon: #d6a31f;
+  --col-later: #3a78c2;
+  --col-backlog: #5b7088;
+  --col-done: #5a6068;
+  --col-unknown: #8e44ad;
 
   /* Code-tab semantic accents — separate from the status gradient so a
    * "running" or "dirty" indicator never collides with a project status.
-   *   running = pink (live, active — same hue as --col-now but a Code-
-   *             tab token so the two domains stay decoupled).
+   *   running = saturated green (live, "go") — separated from the new
+   *             red --col-now so a running repo doesn't read as urgent.
    *   dirty   = warm orange — clearly warmer than the cool blue of
-   *             --col-later, distinct from --col-unknown's red. */
-  --col-running: #b85a82;
+   *             --col-later, distinct from --col-now's red. */
+  --col-running: #2d8a4e;
   --col-dirty: #b87035;
 
   /* Kind colours — completely outside the status palette so a kind
@@ -133,21 +137,21 @@
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
     --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-    /* Dark-mode status gradient: warm pink → violet → blue → cool gray.
-     * Same single-axis arc as light, lifted in value for contrast
-     * against --bg-elevated. */
-    --col-now: #e8a3c0;
-    --col-review: #c89cd0;
-    --col-soon: #a094d8;
-    --col-later: #7d96d4;
-    --col-backlog: #788ca0;
-    --col-done: #6e7480;
-    /* Warn / unknown stays a distinct coral so an "unknown status"
-     * pops against the gradient. */
-    --warn: #e87b6b;
-    --col-unknown: #e87b6b;
+    /* Dark-mode status gradient: same red→amber→blue→gray temperature
+     * arc as light mode, lifted in value/desaturated slightly to keep
+     * contrast against --bg-elevated without going neon. */
+    --col-now: #f06b5d;
+    --col-review: #f0a05a;
+    --col-soon: #e8c25a;
+    --col-later: #6aa6e8;
+    --col-backlog: #7d92ad;
+    --col-done: #7d8290;
+    /* Warn pops a different hue (purple-pink) so an unknown status
+     * doesn't visually merge with the now/review reds. */
+    --warn: #d6748f;
+    --col-unknown: #d6748f;
     /* Code-tab semantic accents (see light-mode block for rationale). */
-    --col-running: #e8a3c0;
+    --col-running: #5fc97f;
     --col-dirty: #e8a878;
     /* Dark-mode kind colours — green / orange / yellow. */
     --kind-project: #5fa982;
@@ -175,15 +179,16 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
-  --col-now: #e8a3c0;
-  --col-review: #c89cd0;
-  --col-soon: #a094d8;
-  --col-later: #7d96d4;
-  --col-backlog: #788ca0;
-  --col-done: #6e7480;
-  --warn: #e87b6b;
-  --col-unknown: #e87b6b;
-  --col-running: #e8a3c0;
+  /* Same red→amber→blue→gray temperature arc the @media block applies. */
+  --col-now: #f06b5d;
+  --col-review: #f0a05a;
+  --col-soon: #e8c25a;
+  --col-later: #6aa6e8;
+  --col-backlog: #7d92ad;
+  --col-done: #7d8290;
+  --warn: #d6748f;
+  --col-unknown: #d6748f;
+  --col-running: #5fc97f;
   --col-dirty: #e8a878;
 
   --kind-project: #5fa982;
@@ -324,8 +329,12 @@ button:hover {
   border-radius: var(--radius);
   color: var(--text-muted);
   font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 500;
+  /* Bumped from 11 → 13 px so the side-strip labels don't disappear
+   * against busy content. The edge handles are the primary keyboard-
+   * free way to summon a hidden pane; making the affordance findable is
+   * worth two pixels of strip width. */
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   padding: 6px 0;
   cursor: pointer;
@@ -343,11 +352,14 @@ button:hover {
   color: var(--text);
 }
 
+/* Active = the matching pane is currently visible. Accent border (in
+ * addition to the existing inset shadow) so an open pane is obvious
+ * before the user counts panes. */
 .edge-handle.active {
   background: var(--bg);
   color: var(--text);
-  border-color: var(--border-strong);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .edge-handle:focus-visible {
