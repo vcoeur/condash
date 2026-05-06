@@ -47,7 +47,7 @@ async function indexCommand(
     dryRun,
     rewriteAggregated,
   });
-  emit(ctx, report, formatIndexReport);
+  emit(ctx, report, formatIndexReport, [], { streamField: 'updated' });
 }
 
 function formatIndexReport(report: IndexRegenReport): string {
@@ -190,19 +190,27 @@ async function verifyCommand(
     else fresh.push(report);
   }
 
-  emit(ctx, { stale, fresh: fresh.length, unstamped, maxAge }, (data) => {
-    const d = data as { stale: StampReport[]; fresh: number; unstamped: string[] };
-    const lines: string[] = [];
-    if (d.stale.length === 0) {
-      lines.push(`OK — ${d.fresh} stamp(s) within ${maxAge} days, ${d.unstamped.length} unstamped`);
-    } else {
-      lines.push(`${d.stale.length} stale stamp(s) (older than ${maxAge} days):`);
-      for (const s of d.stale) {
-        lines.push(`  ${s.relPath}:${s.line}  ${s.verifiedAt} (${s.ageDays}d ago)  ${s.where}`);
+  emit(
+    ctx,
+    { stale, fresh: fresh.length, unstamped, maxAge },
+    (data) => {
+      const d = data as { stale: StampReport[]; fresh: number; unstamped: string[] };
+      const lines: string[] = [];
+      if (d.stale.length === 0) {
+        lines.push(
+          `OK — ${d.fresh} stamp(s) within ${maxAge} days, ${d.unstamped.length} unstamped`,
+        );
+      } else {
+        lines.push(`${d.stale.length} stale stamp(s) (older than ${maxAge} days):`);
+        for (const s of d.stale) {
+          lines.push(`  ${s.relPath}:${s.line}  ${s.verifiedAt} (${s.ageDays}d ago)  ${s.where}`);
+        }
       }
-    }
-    return lines.join('\n') + '\n';
-  });
+      return lines.join('\n') + '\n';
+    },
+    [],
+    { streamField: 'stale' },
+  );
 }
 
 interface RetrieveResult {
@@ -278,7 +286,9 @@ async function retrieveCommand(
   }
 
   const result: RetrieveResult = { triageMatches: triage, grepMatches: grep, warnings: [] };
-  emit(ctx, result, (d) => formatRetrieveHuman(d as RetrieveResult));
+  emit(ctx, result, (d) => formatRetrieveHuman(d as RetrieveResult), [], {
+    streamField: 'triageMatches',
+  });
 }
 
 function formatRetrieveHuman(r: RetrieveResult): string {
