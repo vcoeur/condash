@@ -2,6 +2,24 @@ import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
 import type { Platform, TerminalPrefs, TerminalXtermPrefs, Theme } from '@shared/types';
 import type { RawRepo } from '../main/config-schema';
+import {
+  type ColorEntry,
+  CURSOR_STYLES,
+  GROUPS,
+  OPEN_WITH_SLOTS,
+  pick,
+  pruneEmpty,
+  type RawConfig,
+  type Section,
+  SECTIONS,
+  TERMINAL_COLORS,
+  TERMINAL_STRING_FIELDS,
+  THEME_OPTIONS,
+  WORKSPACE_PLACEHOLDER,
+  WORKTREES_PLACEHOLDER,
+  compactRepos,
+} from './settings-modal-parts/data';
+import { RepoRow } from './settings-modal-parts/repo-row';
 
 /**
  * Full-viewport Settings modal. Every persisted preference has its own
@@ -13,218 +31,13 @@ import type { RawRepo } from '../main/config-schema';
  * applies a mutator, drops empty leaves, and round-trips through the
  * `note.write` IPC's atomic CAS so the schema-validation path stays the
  * same.
+ *
+ * Module shape: types, constants, helpers, and the recursive `RepoRow`
+ * row component live in ./settings-modal-parts/. This file owns the
+ * SettingsModal shell — every persisted-state closure (drafts, patchConfig,
+ * bindText, scrollToSection, flushDrafts) lives here so the inline section
+ * markup can call them without prop-drilling.
  */
-type Section = 'workspace' | 'repositories' | 'open-with' | 'terminal' | 'appearance';
-
-type SectionGroup = 'config' | 'machine';
-
-interface SectionMeta {
-  id: Section;
-  label: string;
-  group: SectionGroup;
-}
-
-const SECTIONS: SectionMeta[] = [
-  { id: 'appearance', label: 'Appearance', group: 'machine' },
-  { id: 'terminal', label: 'Terminal', group: 'machine' },
-  { id: 'workspace', label: 'Workspace', group: 'config' },
-  { id: 'repositories', label: 'Repositories', group: 'config' },
-  { id: 'open-with', label: 'Open with', group: 'config' },
-];
-
-interface GroupMeta {
-  id: SectionGroup;
-  label: string;
-  file: string;
-  hint: string;
-}
-
-const GROUPS: GroupMeta[] = [
-  {
-    id: 'machine',
-    label: 'Global Condash Settings',
-    file: 'settings.json',
-    hint: 'Stored in ~/.config/condash/ on this machine only — not synced.',
-  },
-  {
-    id: 'config',
-    label: 'Conception Configuration',
-    file: 'configuration.json',
-    hint: 'Lives in the conception repo and is shared across machines.',
-  },
-];
-
-interface ColorEntry {
-  key: keyof NonNullable<TerminalXtermPrefs['colors']>;
-  label: string;
-}
-
-const TERMINAL_COLORS: ColorEntry[] = [
-  { key: 'foreground', label: 'Foreground' },
-  { key: 'background', label: 'Background' },
-  { key: 'cursor', label: 'Cursor' },
-  { key: 'cursor_accent', label: 'Cursor accent' },
-  { key: 'selection_background', label: 'Selection bg' },
-  { key: 'black', label: 'ANSI black' },
-  { key: 'red', label: 'ANSI red' },
-  { key: 'green', label: 'ANSI green' },
-  { key: 'yellow', label: 'ANSI yellow' },
-  { key: 'blue', label: 'ANSI blue' },
-  { key: 'magenta', label: 'ANSI magenta' },
-  { key: 'cyan', label: 'ANSI cyan' },
-  { key: 'white', label: 'ANSI white' },
-  { key: 'bright_black', label: 'Bright black' },
-  { key: 'bright_red', label: 'Bright red' },
-  { key: 'bright_green', label: 'Bright green' },
-  { key: 'bright_yellow', label: 'Bright yellow' },
-  { key: 'bright_blue', label: 'Bright blue' },
-  { key: 'bright_magenta', label: 'Bright magenta' },
-  { key: 'bright_cyan', label: 'Bright cyan' },
-  { key: 'bright_white', label: 'Bright white' },
-];
-
-const CURSOR_STYLES: { value: 'block' | 'underline' | 'bar'; label: string }[] = [
-  { value: 'block', label: 'Block' },
-  { value: 'underline', label: 'Underline' },
-  { value: 'bar', label: 'Bar' },
-];
-
-const THEME_OPTIONS: { value: Theme; label: string }[] = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-];
-
-const OPEN_WITH_SLOTS: { key: 'main_ide' | 'secondary_ide' | 'terminal'; label: string }[] = [
-  { key: 'main_ide', label: 'Main IDE' },
-  { key: 'secondary_ide', label: 'Secondary IDE' },
-  { key: 'terminal', label: 'Terminal' },
-];
-
-type TerminalStringFieldKey =
-  | 'shell'
-  | 'shortcut'
-  | 'screenshot_dir'
-  | 'screenshot_paste_shortcut'
-  | 'launcher_command'
-  | 'move_tab_left_shortcut'
-  | 'move_tab_right_shortcut';
-
-interface TerminalStringField {
-  key: TerminalStringFieldKey;
-  label: string;
-  /** Per-OS placeholder. `default` is used when the platform is unknown. */
-  placeholder: Partial<Record<Platform | 'default', string>>;
-  hint?: string;
-}
-
-const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
-  {
-    key: 'shell',
-    label: 'Shell',
-    placeholder: { linux: '/bin/bash', darwin: '/bin/zsh', win32: 'cmd.exe', default: '/bin/bash' },
-  },
-  {
-    key: 'launcher_command',
-    label: 'Launcher command',
-    placeholder: { default: 'claude' },
-    hint: 'Run on terminal-tab open before any user input.',
-  },
-  {
-    key: 'screenshot_dir',
-    label: 'Screenshot directory',
-    placeholder: {
-      linux: '/home/you/Pictures/Screenshots',
-      darwin: '~/Pictures/Screenshots',
-      win32: 'C:\\Users\\you\\Pictures\\Screenshots',
-      default: '~/Pictures/Screenshots',
-    },
-  },
-  { key: 'shortcut', label: 'Toggle terminal pane', placeholder: { default: 'Ctrl+`' } },
-  {
-    key: 'screenshot_paste_shortcut',
-    label: 'Paste latest screenshot path',
-    placeholder: { default: 'Ctrl+Shift+V' },
-  },
-  { key: 'move_tab_left_shortcut', label: 'Move tab left', placeholder: { default: 'Ctrl+Left' } },
-  {
-    key: 'move_tab_right_shortcut',
-    label: 'Move tab right',
-    placeholder: { default: 'Ctrl+Right' },
-  },
-];
-
-const WORKSPACE_PLACEHOLDER: Partial<Record<Platform | 'default', string>> = {
-  linux: '/home/you/src/vcoeur',
-  darwin: '~/src/vcoeur',
-  win32: 'C:\\Users\\you\\src\\vcoeur',
-  default: '~/src/vcoeur',
-};
-
-const WORKTREES_PLACEHOLDER: Partial<Record<Platform | 'default', string>> = {
-  linux: '/home/you/src/worktrees',
-  darwin: '~/src/worktrees',
-  win32: 'C:\\Users\\you\\src\\worktrees',
-  default: '~/src/worktrees',
-};
-
-function pick(
-  table: Partial<Record<Platform | 'default', string>>,
-  platform: Platform | undefined,
-): string {
-  if (platform && table[platform]) return table[platform] as string;
-  return table.default ?? '';
-}
-
-interface RawConfig {
-  $schema_doc?: string;
-  workspace_path?: string;
-  worktrees_path?: string;
-  repositories?: { primary?: RawRepo[]; secondary?: RawRepo[] };
-  open_with?: Record<string, { label?: string; command?: string }>;
-}
-
-/**
- * Repository entries that carry only `{ name }` (no label / run / force_stop /
- * submodules) collapse back to the bare-string shape on save. The full
- * editor renders both shapes the same way, but configuration.json keeps its
- * compact form for entries that don't need extra fields.
- */
-function compactRepos(repos: RawRepo[]): RawRepo[] {
-  return repos.map((entry) => {
-    if (typeof entry === 'string') return entry;
-    const copy: Exclude<RawRepo, string> = { ...entry };
-    if (copy.submodules) {
-      copy.submodules = compactRepos(copy.submodules);
-      if (copy.submodules.length === 0) delete copy.submodules;
-    }
-    const extras = (Object.keys(copy) as (keyof typeof copy)[]).filter(
-      (k) => k !== 'name' && copy[k] !== undefined && copy[k] !== '',
-    );
-    if (extras.length === 0) return copy.name;
-    return copy;
-  });
-}
-
-/** Strip undefined / empty-string / null leaves so the JSON file stays clean. */
-function pruneEmpty(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(pruneEmpty).filter((v) => v !== undefined);
-  }
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const pruned = pruneEmpty(v);
-      if (pruned === undefined || pruned === '' || pruned === null) continue;
-      if (typeof pruned === 'object' && !Array.isArray(pruned)) {
-        if (Object.keys(pruned as Record<string, unknown>).length === 0) continue;
-      }
-      out[k] = pruned;
-    }
-    return out;
-  }
-  return value;
-}
 
 export function SettingsModal(props: {
   configurationPath: string;
@@ -1055,187 +868,6 @@ export function SettingsModal(props: {
             </div>
           </div>
         </Show>
-      </div>
-    </div>
-  );
-}
-
-type BindTextFn = (
-  id: string,
-  persisted: () => string | undefined,
-  save: (value: string) => Promise<void>,
-) => {
-  value: string;
-  onInput: (e: InputEvent & { currentTarget: HTMLInputElement }) => void;
-  onChange: (e: Event & { currentTarget: HTMLInputElement }) => void;
-};
-
-function moveItem<T>(arr: T[], index: number, delta: -1 | 1): T[] {
-  const target = index + delta;
-  if (target < 0 || target >= arr.length) return arr;
-  const next = arr.slice();
-  const [removed] = next.splice(index, 1);
-  next.splice(target, 0, removed);
-  return next;
-}
-
-/**
- * One row in a repositories list. Always shows the full editable surface
- * (name, label, run, force_stop, sub repos) regardless of how the entry
- * is currently serialized — string-form entries are coerced to object on
- * render. The recursive `submodules` UI lets a parent repo carry its own
- * nested list with the same shape.
- */
-function RepoRow(props: {
-  entry: RawRepo;
-  idPrefix: string;
-  index: number;
-  total: number;
-  bindText: BindTextFn;
-  onMove: (delta: -1 | 1) => void;
-  onRemove: () => void;
-  onPatch: (next: RawRepo) => Promise<void>;
-}) {
-  const obj = (): Exclude<RawRepo, string> =>
-    typeof props.entry === 'string' ? { name: props.entry } : props.entry;
-
-  const patchObj = (patch: Partial<Exclude<RawRepo, string>>): Promise<void> =>
-    props.onPatch({ ...obj(), ...patch });
-
-  const submodules = (): RawRepo[] => obj().submodules ?? [];
-
-  const updateSubmodules = (mutate: (subs: RawRepo[]) => RawRepo[]): Promise<void> =>
-    patchObj({ submodules: mutate(submodules()) });
-
-  return (
-    <div class="settings-repo-row">
-      <div class="settings-repo-row-head">
-        <input
-          type="text"
-          class="settings-repo-name"
-          placeholder="repo-name"
-          {...props.bindText(
-            `${props.idPrefix}.name`,
-            () => obj().name,
-            (v) => patchObj({ name: v }),
-          )}
-        />
-        <button
-          class="modal-button"
-          title="Move up"
-          disabled={props.index === 0}
-          onClick={() => props.onMove(-1)}
-        >
-          ↑
-        </button>
-        <button
-          class="modal-button"
-          title="Move down"
-          disabled={props.index === props.total - 1}
-          onClick={() => props.onMove(1)}
-        >
-          ↓
-        </button>
-        <button class="modal-button" title="Remove" onClick={() => props.onRemove()}>
-          ×
-        </button>
-      </div>
-      <div class="settings-repo-row-detail">
-        <label>
-          <span>Label</span>
-          <input
-            type="text"
-            placeholder="Friendly subtitle"
-            {...props.bindText(
-              `${props.idPrefix}.label`,
-              () => obj().label,
-              (v) => patchObj({ label: v || undefined }),
-            )}
-          />
-        </label>
-        <label>
-          <span>Run command</span>
-          <input
-            type="text"
-            placeholder="make dev"
-            {...props.bindText(
-              `${props.idPrefix}.run`,
-              () => obj().run,
-              (v) => patchObj({ run: v || undefined }),
-            )}
-          />
-        </label>
-        <label>
-          <span>Force stop</span>
-          <input
-            type="text"
-            placeholder="fuser -k 5600/tcp"
-            {...props.bindText(
-              `${props.idPrefix}.force_stop`,
-              () => obj().force_stop,
-              (v) => patchObj({ force_stop: v || undefined }),
-            )}
-          />
-        </label>
-        <label>
-          <span>Install command</span>
-          <input
-            type="text"
-            placeholder="npm install"
-            {...props.bindText(
-              `${props.idPrefix}.install`,
-              () => obj().install,
-              (v) => patchObj({ install: v || undefined }),
-            )}
-          />
-        </label>
-        <label>
-          <span>Env files (comma-separated)</span>
-          <input
-            type="text"
-            placeholder=".env, .env.local"
-            {...props.bindText(
-              `${props.idPrefix}.env`,
-              () => (obj().env ?? []).join(', '),
-              async (v) => {
-                const list = v
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-                await patchObj({ env: list.length > 0 ? list : undefined });
-              },
-            )}
-          />
-        </label>
-      </div>
-      <Show when={submodules().length > 0}>
-        <div class="settings-repo-submodules">
-          <span class="settings-field-label">Sub repos</span>
-          <For each={submodules()}>
-            {(sub, idx) => (
-              <RepoRow
-                entry={sub}
-                idPrefix={`${props.idPrefix}.sub[${idx()}]`}
-                index={idx()}
-                total={submodules().length}
-                bindText={props.bindText}
-                onMove={(delta) => void updateSubmodules((all) => moveItem(all, idx(), delta))}
-                onRemove={() => void updateSubmodules((all) => all.filter((_, i) => i !== idx()))}
-                onPatch={(next) =>
-                  updateSubmodules((all) => all.map((e, i) => (i === idx() ? next : e)))
-                }
-              />
-            )}
-          </For>
-        </div>
-      </Show>
-      <div class="settings-list-actions">
-        <button
-          class="modal-button"
-          onClick={() => void updateSubmodules((all) => [...all, { name: '' }])}
-        >
-          + Add sub repo
-        </button>
       </div>
     </div>
   );
