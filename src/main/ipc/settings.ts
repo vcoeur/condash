@@ -6,7 +6,7 @@ import { DEFAULT_CARD_MIN_WIDTH } from '../../shared/types';
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
-const CARD_MIN_KEYS = ['projects', 'code', 'knowledge'] as const;
+const CARD_MIN_KEYS = ['projects', 'code', 'knowledge', 'resources', 'skills'] as const;
 type CardKey = (typeof CARD_MIN_KEYS)[number];
 
 /**
@@ -91,6 +91,14 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {
     const input = (raw ?? {}) as Record<string, unknown>;
+    // Reject unknown keys outright — silently dropping them used to mask
+    // typos like `{ projets: 200 }` in renderer code.
+    const allowed = new Set<string>(CARD_MIN_KEYS);
+    for (const key of Object.keys(input)) {
+      if (!allowed.has(key)) {
+        throw new Error(`setCardMinWidth: unknown key ${JSON.stringify(key)}`);
+      }
+    }
     const sanitised: CardMinWidthPrefs = {};
     for (const key of CARD_MIN_KEYS) {
       const v = clampMinWidth(input[key as CardKey]);

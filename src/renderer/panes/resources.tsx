@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { ResourceCategory, ResourceNode } from '@shared/types';
 import './resources-pane.css';
 
@@ -141,9 +141,21 @@ export function ResourcesView(props: {
 
 function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions }) {
   const cat = (): ResourceCategory => props.node.category ?? 'other';
+  // pasteToTerm is async — guard against rapid double-clicks queuing two
+  // pastes that may target different terminal sessions if focus shifts
+  // between them.
+  const [pasting, setPasting] = createSignal(false);
+  const pasteToTerm = async (): Promise<void> => {
+    if (pasting()) return;
+    setPasting(true);
+    try {
+      await props.actions.pasteToTerm(props.node.path);
+    } finally {
+      setPasting(false);
+    }
+  };
 
-  const canViewInline = (): boolean =>
-    cat() === 'markdown' || cat() === 'pdf' || cat() === 'text';
+  const canViewInline = (): boolean => cat() === 'markdown' || cat() === 'pdf' || cat() === 'text';
 
   const handleView = (): void => {
     const c = cat();
@@ -220,9 +232,10 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
         <button
           type="button"
           class="resources-card-action"
+          disabled={pasting()}
           onClick={(e) => {
             e.stopPropagation();
-            void props.actions.pasteToTerm(props.node.path);
+            void pasteToTerm();
           }}
           title="Paste path into the active terminal"
           aria-label="Paste path into the active terminal"

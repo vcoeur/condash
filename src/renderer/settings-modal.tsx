@@ -552,6 +552,14 @@ export function SettingsModal(props: {
                         key: 'knowledge',
                         label: 'Knowledge cards (Knowledge pane)',
                       },
+                      {
+                        key: 'resources',
+                        label: 'Resource cards (Resources pane)',
+                      },
+                      {
+                        key: 'skills',
+                        label: 'Skill cards (Skills pane)',
+                      },
                     ] as const
                   }
                 >
@@ -838,11 +846,7 @@ export function SettingsModal(props: {
                   <input
                     type="text"
                     placeholder="resources"
-                    {...bindText(
-                      'resources_path',
-                      () => parsed().resources_path,
-                      setResourcesPath,
-                    )}
+                    {...bindText('resources_path', () => parsed().resources_path, setResourcesPath)}
                   />
                   <span class="settings-field-hint">
                     Relative to the conception root. Browsed by the Resources pane.

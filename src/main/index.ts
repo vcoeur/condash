@@ -628,7 +628,9 @@ function registerIpc(): void {
       // skip it — the in-memory list rebuild still happens via the watcher.
       const { conceptionPath } = await readSettings();
       if (conceptionPath) {
-        await touchDirtyMarker(conceptionPath, 'projects').catch(() => undefined);
+        await touchDirtyMarker(conceptionPath, 'projects').catch((err) => {
+          console.error('[setStatus] touchDirtyMarker failed', err);
+        });
         // On close (done-edge: prev !== done, new === done), surface any
         // leftover-branch warnings so the GUI can toast them — silently
         // swallowing the miss let the same broken cleanup ship twice in

@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../shared/types';
+import { atomicWrite } from './atomic-write';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { readSettings, updateSettings } from './settings';
 
@@ -390,7 +391,7 @@ export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
   await updateSettings((cur) => ({ ...cur, terminal: legacy }));
   delete parsed.terminal;
   const next = JSON.stringify(parsed, null, 2) + '\n';
-  await fs.writeFile(configFile, next, 'utf8');
+  await atomicWrite(configFile, next);
 }
 
 /** Kill every session (or every session attached to `forWebContents`) via the

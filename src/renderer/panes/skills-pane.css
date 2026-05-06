@@ -59,6 +59,12 @@
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.skills-section-index:focus-visible,
+.skills-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .skills-section-index.shipped::after {
   content: ' · shipped';
   font-weight: 500;
@@ -78,7 +84,7 @@
 
 .skills-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-skills, 280px), 100%), 1fr));
   gap: 8px;
 }
 

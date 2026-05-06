@@ -217,27 +217,9 @@ const AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.o
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v']);
 
-const ARCHIVE_EXTS = new Set([
-  '.zip',
-  '.tar',
-  '.gz',
-  '.tgz',
-  '.bz2',
-  '.xz',
-  '.7z',
-  '.rar',
-]);
+const ARCHIVE_EXTS = new Set(['.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.rar']);
 
-const BINARY_EXTS = new Set([
-  '.exe',
-  '.dll',
-  '.so',
-  '.dylib',
-  '.bin',
-  '.dat',
-  '.iso',
-  '.dmg',
-]);
+const BINARY_EXTS = new Set(['.exe', '.dll', '.so', '.dylib', '.bin', '.dat', '.iso', '.dmg']);
 
 const MIME_TABLE: Record<string, string> = {
   '.md': 'text/markdown',
