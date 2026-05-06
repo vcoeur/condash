@@ -587,6 +587,14 @@ export function SettingsModal(props: {
             </span>
           </Show>
           <span class="settings-head-spacer" />
+          <button
+            class="modal-button"
+            onClick={attemptClose}
+            title="Close (Esc)"
+            aria-label="Close settings"
+          >
+            ×
+          </button>
         </header>
         <Show when={parseError()}>
           <div class="modal-error">

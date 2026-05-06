@@ -52,6 +52,7 @@ import { applyTreeEvents } from './tree-events';
 import { applyRepoEvents } from './repo-events';
 import { QuitConfirmModal } from './toolbar';
 import { AboutModal } from './about-modal';
+import { ConfirmModal } from './confirm-modal';
 import './styles.css';
 import './modals.css';
 import './note-modal.css';
@@ -91,6 +92,10 @@ function App() {
   const [aboutOpen, setAboutOpen] = createSignal(false);
   const [quitConfirmOpen, setQuitConfirmOpen] = createSignal(false);
   const [noteDirty, setNoteDirty] = createSignal(false);
+  const [initConfirmState, setInitConfirmState] = createSignal<{
+    path: string;
+    missing: string[];
+  } | null>(null);
 
   // Resolved dark/light flag for the active app theme. Watches `theme()` plus
   // the system colour-scheme media query so a system flip while the app is
@@ -535,27 +540,29 @@ function App() {
 
     // Surface the bundled-template init when the picked folder lacks the
     // conception markers (projects/ + configuration.json). Init never
-    // overwrites — existing files stay put.
+    // overwrites — existing files stay put. The ConfirmModal replaces
+    // window.confirm so the dialog stays inside the renderer (no native
+    // chrome flash, keyboard handling matches the rest of the app).
     try {
       const state = await window.condash.detectConceptionState(picked);
       if (state.pathExists && !state.looksInitialised) {
         const missing: string[] = [];
         if (!state.hasProjects) missing.push('projects/');
         if (!state.hasConfiguration) missing.push('configuration.json');
-        const ok = window.confirm(
-          `This folder is missing ${missing.join(' and ')}.\n\n` +
-            'Initialise it from the bundled conception template? ' +
-            'Skill files, seed indexes, and example config will be laid down. ' +
-            'Existing files are left alone.',
-        );
-        if (ok) {
-          const { created } = await window.condash.initConception(picked);
-          flashToast(`Initialised conception template — ${created.length} files created.`);
-          setRefreshKey((k) => k + 1);
-        }
+        setInitConfirmState({ path: picked, missing });
       }
     } catch (err) {
       flashToast(`Init check failed: ${(err as Error).message}`);
+    }
+  };
+
+  const runInit = async (path: string): Promise<void> => {
+    try {
+      const { created } = await window.condash.initConception(path);
+      flashToast(`Initialised conception template — ${created.length} files created.`);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      flashToast(`Init failed: ${(err as Error).message}`);
     }
   };
 
@@ -593,6 +600,7 @@ function App() {
       message: 'Slug (lowercase, hyphenated). Saved as notes/NN-<slug>.md.',
       placeholder: 'my-new-note',
       confirmLabel: 'Create',
+      slugPreview: true,
     });
     if (slug === null) return;
     const trimmed = slug.trim();
@@ -1139,6 +1147,27 @@ function App() {
           onCancel={() => setQuitConfirmOpen(false)}
           onConfirm={handleConfirmQuit}
         />
+      </Show>
+
+      <Show when={initConfirmState()}>
+        {(state) => (
+          <ConfirmModal
+            title="Initialise from template?"
+            body={
+              `This folder is missing ${state().missing.join(' and ')}.\n\n` +
+              'Initialise it from the bundled conception template? ' +
+              'Skill files, seed indexes, and example config will be laid down. ' +
+              'Existing files are left alone.'
+            }
+            confirmLabel="Initialise"
+            onCancel={() => setInitConfirmState(null)}
+            onConfirm={() => {
+              const path = state().path;
+              setInitConfirmState(null);
+              void runInit(path);
+            }}
+          />
+        )}
       </Show>
 
       <Show when={toast()}>

@@ -1,4 +1,5 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { slugify } from '@shared/slug';
 
 export interface PromptModalState {
   title: string;
@@ -6,6 +7,10 @@ export interface PromptModalState {
   placeholder?: string;
   initialValue?: string;
   confirmLabel?: string;
+  /** When true, render a `slugified-preview` line under the input so the
+   *  user can see the on-disk shape they're about to commit to. Mirrors
+   *  the NewProjectModal's title→slug preview. Off by default. */
+  slugPreview?: boolean;
   resolve: (value: string | null) => void;
 }
 
@@ -49,6 +54,15 @@ export function PromptModal(props: { state: PromptModalState | null; onClose: ()
     props.onClose();
   };
 
+  // Reuse the NewProjectModal's title→slug normalisation so the user sees
+  // exactly the on-disk tail the create command would produce. `slugify`
+  // returns '' on empty/no-alnum input — the preview hides itself in that
+  // case so the user isn't told their slug is "" before they've typed.
+  const slugPreviewValue = createMemo(() => {
+    if (!props.state?.slugPreview) return '';
+    return slugify(value());
+  });
+
   return (
     <Show when={props.state}>
       {(state) => (
@@ -61,6 +75,10 @@ export function PromptModal(props: { state: PromptModalState | null; onClose: ()
           >
             <header class="modal-head">
               <span class="modal-title">{state().title}</span>
+              <span class="modal-head-spacer" />
+              <button class="modal-button" onClick={cancel} title="Close (Esc)" aria-label="Close">
+                ×
+              </button>
             </header>
             <div class="prompt-body">
               <Show when={state().message}>
@@ -83,6 +101,11 @@ export function PromptModal(props: { state: PromptModalState | null; onClose: ()
                   }
                 }}
               />
+              <Show when={state().slugPreview && slugPreviewValue().length > 0}>
+                <p class="prompt-slug-preview">
+                  Slug: <code>{slugPreviewValue()}</code>
+                </p>
+              </Show>
               <div class="prompt-actions">
                 <button class="modal-button" onClick={cancel}>
                   Cancel
