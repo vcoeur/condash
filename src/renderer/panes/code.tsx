@@ -529,9 +529,14 @@ function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean })
       const next = await window.condash.getDirtyDetails(props.worktree.path, {
         scopeToSubtree: props.subtreeScoped,
       });
+      // The popover may have been dismissed (or this card unmounted)
+      // while getDirtyDetails was in flight — drop the late result so
+      // setDetails / setError don't write into a disposed scope.
+      if (!popover.open()) return;
       setDetails(next);
       if (!next) setError('git status failed for this path');
     } catch (err) {
+      if (!popover.open()) return;
       setError((err as Error).message);
     }
   };

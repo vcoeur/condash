@@ -201,12 +201,16 @@ async function createWindow(initialPath: string | null): Promise<BrowserWindow> 
   win.webContents.on('will-navigate', (event, url) => {
     event.preventDefault();
     if (/^(https?|mailto):/i.test(url)) {
-      void shell.openExternal(url);
+      void shell
+        .openExternal(url)
+        .catch((err) => console.error('[shell] openExternal failed', url, err));
     }
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^(https?|mailto):/i.test(url)) {
-      void shell.openExternal(url);
+      void shell
+        .openExternal(url)
+        .catch((err) => console.error('[shell] openExternal failed', url, err));
     }
     return { action: 'deny' };
   });
@@ -354,13 +358,17 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
     {
       label: 'Open documentation site',
       click: () => {
-        void shell.openExternal('https://condash.vcoeur.com');
+        void shell
+          .openExternal('https://condash.vcoeur.com')
+          .catch((err) => console.error('[menu] openExternal failed', err));
       },
     },
     {
       label: 'Open issue tracker',
       click: () => {
-        void shell.openExternal('https://github.com/vcoeur/condash/issues');
+        void shell
+          .openExternal('https://github.com/vcoeur/condash/issues')
+          .catch((err) => console.error('[menu] openExternal failed', err));
       },
     },
   ];

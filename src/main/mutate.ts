@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { basename } from 'node:path';
 import type { StepMarker, TransitionResult } from '../shared/types';
+import { KNOWN_STATUSES, STEP_MARKERS } from '../shared/types';
 import { isoToday } from '../shared/iso-today';
 import { atomicWrite } from './atomic-write';
 import { validateAndCanonicaliseConfig } from './config-schema';
@@ -53,6 +54,16 @@ export async function toggleStep(
   expectedMarker: StepMarker,
   newMarker: StepMarker,
 ): Promise<void> {
+  // Runtime-validate both markers — the StepMarker TS type narrows at
+  // compile time but a hostile (or buggy) renderer could pass any string
+  // through the IPC boundary, and the marker is written verbatim into
+  // the README ("- [<m>] …"). Reject anything that's not in STEP_MARKERS.
+  if (!(STEP_MARKERS as readonly string[]).includes(expectedMarker)) {
+    throw new Error(`toggleStep: invalid expectedMarker ${JSON.stringify(expectedMarker)}`);
+  }
+  if (!(STEP_MARKERS as readonly string[]).includes(newMarker)) {
+    throw new Error(`toggleStep: invalid newMarker ${JSON.stringify(newMarker)}`);
+  }
   return withFileQueue(path, async () => {
     const raw = await fs.readFile(path, 'utf8');
     const eol = detectEol(raw);
@@ -264,6 +275,16 @@ export async function transitionStatus(
   newStatus: string,
   opts: TransitionOpts = {},
 ): Promise<TransitionResult> {
+  // Runtime-validate the incoming status — written verbatim into the
+  // README's **Status** metadata line. Without this guard a hostile
+  // renderer could inject newlines or arbitrary bytes through the IPC
+  // boundary and corrupt the metadata block.
+  if (!(KNOWN_STATUSES as readonly string[]).includes(newStatus)) {
+    throw new Error(
+      `transitionStatus: unknown status ${JSON.stringify(newStatus)} ` +
+        `(expected one of ${KNOWN_STATUSES.join(', ')})`,
+    );
+  }
   return withFileQueue(readmePath, async () => {
     const raw = await fs.readFile(readmePath, 'utf8');
     const eol = detectEol(raw);

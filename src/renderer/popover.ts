@@ -90,13 +90,15 @@ export function createPositionedPopover(opts: PopoverOptions): PositionedPopover
 
   onMount(() => {
     document.addEventListener('click', onDocClick, true);
-    document.addEventListener('keydown', onKeyDown);
+    // Capture phase so the popover sees Esc before any inner input
+    // swallows it — matches the click listener and the modal handlers.
+    document.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('resize', onScrollOrResize, true);
     window.addEventListener('scroll', onScrollOrResize, true);
   });
   onCleanup(() => {
     document.removeEventListener('click', onDocClick, true);
-    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keydown', onKeyDown, true);
     window.removeEventListener('resize', onScrollOrResize, true);
     window.removeEventListener('scroll', onScrollOrResize, true);
   });

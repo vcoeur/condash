@@ -98,18 +98,27 @@ export async function refreshWatchedConception(): Promise<void> {
 
 type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
 
+// Promise chain so two rapid configuration.json edits queue their
+// rebuilds instead of racing — the second close() can otherwise land
+// while the first refresh is still reassigning `current`, leaking a
+// chokidar handle or losing a config event entirely.
+let refreshChain: Promise<void> = Promise.resolve();
+
 function onWatchEvent(conception: string, eventName: string, path: string, roots: RootSet): void {
   const event = classify(conception, eventName as ChokidarEvent, path, roots);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);
   // A configuration.json edit may have changed `resources_path` /
-  // `skills_path`. Rebuild the watcher so the new roots are observed and
-  // the old ones aren't. Fire-and-forget — the in-flight `tree-events`
+  // `skills_path`. Rebuild the watcher so the new roots are observed
+  // and the old ones aren't. Serialise via refreshChain so concurrent
+  // edits don't race the close+rebuild — the in-flight `tree-events`
   // batch still flushes through `schedule()` for the renderer.
   if (event.kind === 'config') {
-    void refreshWatchedConception().catch((err) => {
-      console.error('[watcher] refreshWatchedConception failed', err);
-    });
+    refreshChain = refreshChain
+      .then(() => refreshWatchedConception())
+      .catch((err) => {
+        console.error('[watcher] refreshWatchedConception failed', err);
+      });
   }
   schedule();
 }

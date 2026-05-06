@@ -38,11 +38,15 @@ export async function resolveConceptionPaths(conceptionPath: string): Promise<{
 }
 
 function pickRelative(value: unknown, fallback: string): string {
-  if (typeof value !== 'string' || value.length === 0) return fallback;
-  if (isAbsolute(value)) return fallback;
+  if (typeof value !== 'string') return fallback;
+  // Trim before the length check — a whitespace-only value was previously
+  // accepted and got join()ed into an unexpected (whitespace-named) directory.
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return fallback;
+  if (isAbsolute(trimmed)) return fallback;
   // path.normalize collapses `./foo/../bar` to `bar`; a leading `..` after
   // normalisation means the value escapes the conception root.
-  const normalised = normalize(value);
+  const normalised = normalize(trimmed);
   if (normalised === '..' || normalised.startsWith(`..${'/'}`) || normalised.startsWith(`..\\`)) {
     return fallback;
   }
