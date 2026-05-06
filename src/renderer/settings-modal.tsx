@@ -106,6 +106,9 @@ export function SettingsModal(props: {
   };
 
   let backButtonRef: HTMLButtonElement | undefined;
+  // rAF guard for the scroller's onScroll → SECTIONS layout-read loop. See
+  // the onScroll handler below.
+  let rafScheduled = false;
   onMount(() => {
     document.addEventListener('keydown', handleKeydown, true);
     // Focus the Back button on open so Tab order starts inside the modal —
@@ -499,15 +502,26 @@ export function SettingsModal(props: {
           <div
             class="settings-scroll"
             onScroll={(e) => {
-              const top = e.currentTarget.scrollTop + 8;
-              let active: Section = 'appearance';
-              for (const s of SECTIONS) {
-                const el = document.getElementById(`settings-section-${s.id}`);
-                if (el && el.offsetTop - e.currentTarget.offsetTop <= top) {
-                  active = s.id;
+              // Throttle the offsetTop layout reads to one per animation
+              // frame. Prior version forced a layout flush on every scroll
+              // event (one offsetTop read per SECTIONS entry), pinning the
+              // main thread on heavy scroll-wheel input.
+              if (rafScheduled) return;
+              rafScheduled = true;
+              const scroller = e.currentTarget;
+              requestAnimationFrame(() => {
+                rafScheduled = false;
+                const scrollerOffsetTop = scroller.offsetTop;
+                const top = scroller.scrollTop + 8;
+                let active: Section = 'appearance';
+                for (const s of SECTIONS) {
+                  const el = document.getElementById(`settings-section-${s.id}`);
+                  if (el && el.offsetTop - scrollerOffsetTop <= top) {
+                    active = s.id;
+                  }
                 }
-              }
-              if (active !== section()) setSection(active);
+                if (active !== section()) setSection(active);
+              });
             }}
           >
             {/* Group: settings.json (machine, first) -------------------- */}

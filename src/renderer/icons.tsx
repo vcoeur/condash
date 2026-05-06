@@ -127,6 +127,64 @@ export function BookIcon() {
   );
 }
 
+// Close (×) — used by every modal-head close button. Stroke-width comes
+// from CSS so a heavier modal head can override; the default 1.6 reads at
+// 16×16 in both light and dark themes.
+export function IconClose() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+    </svg>
+  );
+}
+
+// External — corner-arrow inside a frame. "Open in main IDE / file
+// manager" actions use this. Same vocabulary as ChevronDownIcon — stroked,
+// rounded, currentColor.
+export function IconExternal() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 2.5H2.5v11h11V11" />
+      <path d="M9 2.5h4.5V7" />
+      <path d="M13.5 2.5L7 9" />
+    </svg>
+  );
+}
+
+// Plus — used for the "+ New project" / "+ Add note" affordances. Same
+// stroke-weight as IconClose so the two read as a pair.
+export function IconPlus() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  );
+}
+
 // Folder — tabbed silhouette with a soft duotone fill. The "open in file
 // manager" entry uses this in the open_with menu, replacing the standalone
 // 📁 button on the card face.

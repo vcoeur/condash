@@ -1,4 +1,12 @@
-import { createEffect, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
@@ -745,20 +753,22 @@ export function NoteModal(props: {
               <section class="deliverables-strip">
                 <h3>Deliverables</h3>
                 <ul>
-                  {props.state!.deliverables!.map((d) => (
-                    <li>
-                      <button
-                        class="deliverable-link"
-                        onClick={() => props.onOpenDeliverable(d.path)}
-                        title={d.path}
-                      >
-                        ⬇ {d.label}
-                      </button>
-                      <Show when={d.description}>
-                        <span class="deliverable-desc"> — {d.description}</span>
-                      </Show>
-                    </li>
-                  ))}
+                  <For each={props.state!.deliverables!}>
+                    {(d) => (
+                      <li>
+                        <button
+                          class="deliverable-link"
+                          onClick={() => props.onOpenDeliverable(d.path)}
+                          title={d.path}
+                        >
+                          ⬇ {d.label}
+                        </button>
+                        <Show when={d.description}>
+                          <span class="deliverable-desc"> — {d.description}</span>
+                        </Show>
+                      </li>
+                    )}
+                  </For>
                 </ul>
               </section>
             </Show>
