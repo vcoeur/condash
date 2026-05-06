@@ -16,9 +16,13 @@ are still on disk; delete condash and the files don't move.
 - **Knowledge** (right pane, alternate) — your reference notes as cards.
 - **Resources** (right pane, alternate, `Ctrl+R`) — every file under
   `resources/` as cards (any extension), with copy / open / paste-to-term
-  actions.
+  actions. The directory ships with sensible defaults: nothing to set up
+  on first launch — drop a file in `resources/` and the pane will
+  surface it.
 - **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under
-  `.claude/skills/`, edited in place.
+  `.claude/skills/`, edited in place. Default location for the four
+  shipped skills (`/projects`, `/knowledge`, `/skills`, `/pr`) — they
+  appear automatically once `condash skills install` has run.
 - **Terminal** — toggle with `` Ctrl+` ``.
 - **Search** — `Ctrl+Shift+F` for cross-tree fuzzy search.
 
