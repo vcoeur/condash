@@ -108,6 +108,20 @@
   flex-shrink: 0;
 }
 
+/* The trailing slot pushes any header action (NOW gets the "+ New project"
+ * button) to the right edge. The wrapper stops click events from bubbling
+ * to the section toggle so clicking the button inside doesn't collapse
+ * the section. */
+.group-header-spacer {
+  flex: 1;
+}
+
+.group-header-action {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+
 .group-header .caret {
   color: var(--text-muted);
   font-size: 10px;
@@ -168,11 +182,13 @@
 
 .group-body {
   display: grid;
-  /* Cards stay one-per-row until the grid can fit two ≥650px-wide cards.
-   * Below that breakpoint the single column expands to fill the pane (the
-   * `1fr` upper bound), so there's no awkward shrunken card on narrow
-   * windows. */
-  grid-template-columns: repeat(auto-fill, minmax(min(650px, 100%), 1fr));
+  /* Cards stay one-per-row until the grid can fit two cards each at the
+   * configured min-width. Below that breakpoint the single column expands
+   * to fill the pane (the `1fr` upper bound), so there's no awkward
+   * shrunken card on narrow windows. The min is set from settings.json
+   * (`cardMinWidth.projects`); the fallback below mirrors the bundled
+   * default in `DEFAULT_CARD_MIN_WIDTH`. */
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-projects, 650px), 100%), 1fr));
   gap: 12px;
   padding: 0;
 }
@@ -753,12 +769,13 @@
   letter-spacing: 0.01em;
 }
 
-/* "+ New project" button — top-of-pane CTA above the status sections. */
-.projects-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 8px 8px 0;
+/* "+ New project" button — lives in the NOW section header.
+ * When the NOW section is empty the surrounding block is dimmed
+ * (`opacity: 0.45`) to read as a placeholder; the action slot fights its way
+ * back to full strength so the create-first-project affordance stays
+ * legible. */
+.group-block[data-empty='true'][data-status='now'] .group-header-action {
+  opacity: calc(1 / 0.45);
 }
 
 .new-project-button {

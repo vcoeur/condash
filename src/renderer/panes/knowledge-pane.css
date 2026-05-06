@@ -74,11 +74,14 @@
   gap: 10px;
 }
 
-/* Same two-up grid as the Code-pane `.repos-grid` — single column under
- * 520 px so a narrow pane never holds an awkward shrunken card. */
+/* Same two-up grid as the Code-pane `.repos-grid` — single column below
+ * the configured min-width so a narrow pane never holds an awkward
+ * shrunken card. The min is set from settings.json
+ * (`cardMinWidth.knowledge`); the fallback below mirrors the bundled
+ * default in `DEFAULT_CARD_MIN_WIDTH`. */
 .knowledge-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-knowledge, 520px)), 1fr));
   gap: 10px;
 }
 

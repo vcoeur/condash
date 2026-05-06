@@ -1,6 +1,13 @@
 import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
-import type { Platform, TerminalPrefs, TerminalXtermPrefs, Theme } from '@shared/types';
+import type {
+  CardMinWidthPrefs,
+  Platform,
+  TerminalPrefs,
+  TerminalXtermPrefs,
+  Theme,
+} from '@shared/types';
+import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import type { RawRepo } from '../main/config-schema';
 import {
   type ColorEntry,
@@ -43,6 +50,12 @@ export function SettingsModal(props: {
   configurationPath: string;
   theme: Theme;
   onChangeTheme: (theme: Theme) => void;
+  /** Resolved card-min-width prefs (every key filled). Drives the live
+   *  values shown in the Appearance subsection. */
+  cardMinWidth: Required<CardMinWidthPrefs>;
+  /** Commit a partial card-min-width patch. The renderer applies the new
+   *  CSS variables and persists to settings.json. */
+  onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
   onClose: () => void;
 }) {
   const [section, setSection] = createSignal<Section>('appearance');
@@ -505,6 +518,56 @@ export function SettingsModal(props: {
                     )}
                   </For>
                 </div>
+              </div>
+
+              <h3>Card density</h3>
+              <p class="settings-hint">
+                Each grid keeps a row of <em>n</em> cards until the pane is wide enough to fit{' '}
+                <em>n+1</em> cards each at this width — at which point the row reflows. Lower
+                numbers pack more cards per row at the same window size.
+              </p>
+              <div class="settings-grid">
+                <For
+                  each={
+                    [
+                      {
+                        key: 'projects',
+                        label: 'Project cards (Projects pane)',
+                      },
+                      {
+                        key: 'code',
+                        label: 'Code cards (Code pane)',
+                      },
+                      {
+                        key: 'knowledge',
+                        label: 'Knowledge cards (Knowledge pane)',
+                      },
+                    ] as const
+                  }
+                >
+                  {(field) => (
+                    <label>
+                      <span>{field.label}</span>
+                      <input
+                        type="number"
+                        min="120"
+                        max="2400"
+                        step="10"
+                        value={props.cardMinWidth[field.key]}
+                        onChange={(e) => {
+                          const raw = e.currentTarget.value;
+                          const parsed =
+                            raw === '' ? DEFAULT_CARD_MIN_WIDTH[field.key] : Number(raw);
+                          if (!Number.isFinite(parsed)) return;
+                          props.onChangeCardMinWidth({ [field.key]: parsed });
+                        }}
+                      />
+                      <small class="settings-field-hint">
+                        Min width in CSS pixels. Default {DEFAULT_CARD_MIN_WIDTH[field.key]}.
+                      </small>
+                    </label>
+                  )}
+                </For>
               </div>
             </section>
 

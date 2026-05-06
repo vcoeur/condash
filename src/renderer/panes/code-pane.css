@@ -45,11 +45,13 @@
 
 .repos-grid {
   display: grid;
-  /* Cards stay one-per-row until the grid can fit two ≥650px-wide cards.
-   * Below that breakpoint the single column expands to fill the pane (the
-   * `1fr` upper bound), so there's no awkward shrunken card on narrow
-   * windows. */
-  grid-template-columns: repeat(auto-fill, minmax(min(650px, 100%), 1fr));
+  /* Cards stay one-per-row until the grid can fit two cards each at the
+   * configured min-width. Below that breakpoint the single column expands
+   * to fill the pane (the `1fr` upper bound), so there's no awkward
+   * shrunken card on narrow windows. The min is set from settings.json
+   * (`cardMinWidth.code`); the fallback below mirrors the bundled
+   * default in `DEFAULT_CARD_MIN_WIDTH`. */
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-code, 650px), 100%), 1fr));
   gap: 12px;
 }
 

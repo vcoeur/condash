@@ -1,4 +1,5 @@
 import type {
+  CardMinWidthPrefs,
   ConceptionInitState,
   DirtyDetails,
   KnowledgeNode,
@@ -63,6 +64,15 @@ export interface CondashApi {
    * Stored as `welcome.dismissed` in settings.json. */
   getWelcomeDismissed(): Promise<boolean>;
   setWelcomeDismissed(value: boolean): Promise<void>;
+  /** Per-pane card grid min-width (CSS pixels). Returned as a fully-resolved
+   *  object — missing keys are filled in with `DEFAULT_CARD_MIN_WIDTH` so
+   *  the renderer never has to deal with `undefined`. */
+  getCardMinWidth(): Promise<Required<CardMinWidthPrefs>>;
+  /** Persist the user-edited card min-widths. Keys explicitly set to the
+   *  built-in default are dropped from settings.json so the file stays
+   *  small and re-defaulting works automatically when the bundled
+   *  defaults change in a future release. */
+  setCardMinWidth(prefs: CardMinWidthPrefs): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;

@@ -124,7 +124,33 @@ export interface Settings {
    * `dismissed` hides it permanently for users who manage trees entirely
    * outside the dashboard. */
   welcome?: { dismissed?: boolean };
+  /** Per-pane card grid min-width (CSS pixels). The grid uses
+   * `minmax(min(<min>, 100%), 1fr)` so a row of *n* cards reflows to *n+1*
+   * once the pane is wide enough to fit *n+1* cards each at this width.
+   * Smaller values pack more cards per row at the same window size; larger
+   * values keep cards roomy. Per-machine because what feels right depends
+   * on the monitor, not the team. */
+  cardMinWidth?: CardMinWidthPrefs;
 }
+
+/** Per-pane card min-width in CSS pixels. Used in the grid template
+ * `minmax(min(<min>, 100%), 1fr)`. Each field is optional — a missing
+ * field falls back to the built-in default (`DEFAULT_CARD_MIN_WIDTH`). */
+export interface CardMinWidthPrefs {
+  projects?: number;
+  code?: number;
+  knowledge?: number;
+}
+
+/** Built-in defaults for the three card grids. Match the literal pixel
+ * values previously baked into the pane stylesheets — changing one of
+ * these silently changes the layout on every machine that hasn't set the
+ * matching key in settings.json, so do it deliberately. */
+export const DEFAULT_CARD_MIN_WIDTH = {
+  projects: 650,
+  code: 650,
+  knowledge: 520,
+} as const satisfies Required<CardMinWidthPrefs>;
 
 /** One row of `git status --porcelain=v1` output, joined with the
  *  matching `git diff --numstat HEAD` row when present. */

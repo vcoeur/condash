@@ -111,26 +111,32 @@ export function ProjectsView(props: {
 
   return (
     <div class="projects-stack">
-      <Show when={!isSearching() && props.onNewProject}>
-        <div class="projects-toolbar">
-          <button
-            type="button"
-            class="new-project-button"
-            onClick={() => props.onNewProject?.()}
-            title="Create a new project / incident / document"
-          >
-            <span class="new-project-button-plus" aria-hidden="true">
-              +
-            </span>
-            <span>New project</span>
-          </button>
-        </div>
-      </Show>
       <Show
         when={isSearching()}
         fallback={
           <For each={projectsTabGroups(props.buckets)}>
             {(group) => {
+              // The "+ New project" button rides the NOW section header so it
+              // sits on the same row as the section title. Other sections
+              // don't get the action — creating an item from "later" or
+              // "backlog" would still land in NOW and the affordance reads
+              // most clearly when it's anchored to the active-work section.
+              const headerAction =
+                group.status === 'now' && props.onNewProject
+                  ? () => (
+                      <button
+                        type="button"
+                        class="new-project-button"
+                        onClick={() => props.onNewProject?.()}
+                        title="Create a new project / incident / document"
+                      >
+                        <span class="new-project-button-plus" aria-hidden="true">
+                          +
+                        </span>
+                        <span>New project</span>
+                      </button>
+                    )
+                  : undefined;
               if (group.status === 'done' && group.items.length > 0) {
                 const grouping = groupDone(group.items, todayIso());
                 return (
@@ -141,6 +147,7 @@ export function ProjectsView(props: {
                     onToggleStep={props.onToggleStep}
                     onDropProject={props.onDropProject}
                     onWorkOn={props.onWorkOn}
+                    headerAction={headerAction}
                     bodySlot={() => (
                       <div class="group-body subgroups">
                         <Show when={grouping.recent.length > 0}>
@@ -183,6 +190,7 @@ export function ProjectsView(props: {
                   onToggleStep={props.onToggleStep}
                   onDropProject={props.onDropProject}
                   onWorkOn={props.onWorkOn}
+                  headerAction={headerAction}
                 />
               );
             }}
