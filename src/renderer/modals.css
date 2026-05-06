@@ -820,6 +820,57 @@
   gap: 8px;
 }
 
+/* Cheat-sheet overlay shown on `?`. Two-column grid of shortcut groups,
+ * each group rendered as a <dl> so screen readers get the keys/labels
+ * paired up. <kbd> is styled to look like a soft chip. */
+.shortcuts-overlay {
+  width: min(640px, 92vw);
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+  padding: 16px 18px;
+  font-size: 13px;
+}
+
+.shortcuts-group h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.shortcuts-group dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.shortcuts-group dt {
+  margin: 0;
+}
+
+.shortcuts-group dd {
+  margin: 0;
+  color: var(--text-muted);
+  align-self: center;
+}
+
+.shortcuts-overlay kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* Generic confirm modal (init template prompt, etc.) — shares the visual
  * language of the quit-confirm but lives in its own component so callers
  * can pass arbitrary body content. */
