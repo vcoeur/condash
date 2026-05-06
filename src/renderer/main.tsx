@@ -90,7 +90,8 @@ function App() {
   const [conceptionPath, setConceptionPath] = createSignal<string | null>(null);
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [theme, setTheme] = createSignal<Theme>('system');
-  const [toast, setToast] = createSignal<string | null>(null);
+  type ToastKind = 'success' | 'error' | 'info';
+  const [toast, setToast] = createSignal<{ msg: string; kind: ToastKind } | null>(null);
   // Composite-layout state — replaces the prior single-`tab` selector.
   // Default mirrors the persisted server-side default until the real
   // value loads (avoids a frame of empty UI).
@@ -144,12 +145,12 @@ function App() {
   // teardown within the 4 s window — doesn't leave a callback running
   // against a disposed signal.
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
-  const flashToast = (msg: string) => {
-    setToast(msg);
+  const flashToast = (msg: string, kind: ToastKind = 'info') => {
+    setToast({ msg, kind });
     if (toastTimer !== null) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastTimer = null;
-      setToast((cur) => (cur === msg ? null : cur));
+      setToast((cur) => (cur && cur.msg === msg ? null : cur));
     }, 4000);
   };
   onCleanup(() => {
@@ -190,7 +191,7 @@ function App() {
     setCardMinWidth(next);
     applyCardMinWidth(next);
     void window.condash.setCardMinWidth(next).catch((err) => {
-      flashToast(`Could not persist card min-width: ${(err as Error).message}`);
+      flashToast(`Could not persist card min-width: ${(err as Error).message}`, 'error');
     });
   };
 
@@ -201,7 +202,7 @@ function App() {
     const next = { ...layout(), ...patch };
     setLayoutState(next);
     void window.condash.setLayout(next).catch((err) => {
-      flashToast(`Could not persist layout: ${(err as Error).message}`);
+      flashToast(`Could not persist layout: ${(err as Error).message}`, 'error');
     });
   };
 
@@ -434,7 +435,7 @@ function App() {
     try {
       await window.condash.launchOpenWith(slot, path);
     } catch (err) {
-      flashToast(`Launch failed: ${(err as Error).message}`);
+      flashToast(`Launch failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -442,9 +443,9 @@ function App() {
     if (!window.confirm(`Force-stop ${repo.name}?`)) return;
     try {
       await window.condash.forceStopRepo(repo.name);
-      flashToast(`Force-stopped ${repo.name}`);
+      flashToast(`Force-stopped ${repo.name}`, 'success');
     } catch (err) {
-      flashToast(`Force-stop failed: ${(err as Error).message}`);
+      flashToast(`Force-stop failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -530,7 +531,7 @@ function App() {
     }
     if (command === 'open-conception') {
       void window.condash.openConceptionDirectory().catch((err) => {
-        flashToast(`Open failed: ${(err as Error).message}`);
+        flashToast(`Open failed: ${(err as Error).message}`, 'error');
       });
       return;
     }
@@ -605,7 +606,7 @@ function App() {
         label,
       );
     } catch (err) {
-      flashToast(`Run failed: ${(err as Error).message}`);
+      flashToast(`Run failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -629,17 +630,17 @@ function App() {
         setInitConfirmState({ path: picked, missing });
       }
     } catch (err) {
-      flashToast(`Init check failed: ${(err as Error).message}`);
+      flashToast(`Init check failed: ${(err as Error).message}`, 'error');
     }
   };
 
   const runInit = async (path: string): Promise<void> => {
     try {
       const { created } = await window.condash.initConception(path);
-      flashToast(`Initialised conception template — ${created.length} files created.`);
+      flashToast(`Initialised conception template — ${created.length} files created.`, 'success');
       setRefreshKey((k) => k + 1);
     } catch (err) {
-      flashToast(`Init failed: ${(err as Error).message}`);
+      flashToast(`Init failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -682,17 +683,17 @@ function App() {
     if (slug === null) return;
     const trimmed = slug.trim();
     if (!trimmed) {
-      flashToast('Empty slug — note not created.');
+      flashToast('Empty slug — note not created.', 'error');
       return;
     }
     try {
       const path = await window.condash.createProjectNote(project.path, trimmed);
       const filename = path.split('/').pop() ?? path;
-      flashToast(`Created ${filename}.`);
+      flashToast(`Created ${filename}.`, 'success');
       // Open the new note in the in-app modal editor straight away.
       setModal({ path, title: filename });
     } catch (err) {
-      flashToast(`Could not create note: ${(err as Error).message}`);
+      flashToast(`Could not create note: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -760,8 +761,8 @@ function App() {
     copyPath: (path) => {
       void navigator.clipboard
         .writeText(path)
-        .then(() => flashToast('Path copied'))
-        .catch((err) => flashToast(`Copy failed: ${(err as Error).message}`));
+        .then(() => flashToast('Path copied', 'success'))
+        .catch((err) => flashToast(`Copy failed: ${(err as Error).message}`, 'error'));
     },
     pasteToTerm: async (path) => {
       await bridge.handlePasteToTerm(path);
@@ -828,7 +829,7 @@ function App() {
   const handleWikilink = (slug: string) => {
     const matches = slugIndex().get(slug);
     if (!matches || matches.length === 0) {
-      flashToast(`No item matches [[${slug}]]`);
+      flashToast(`No item matches [[${slug}]]`, 'error');
       return;
     }
     const target = matches[0];
@@ -845,7 +846,7 @@ function App() {
       await window.condash.toggleStep(project.path, step.lineIndex, step.marker, next);
     } catch (err) {
       mutate((items) => applyStepMarker(items ?? [], project.path, step.lineIndex, step.marker));
-      flashToast(`Toggle failed: ${(err as Error).message}`);
+      flashToast(`Toggle failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -856,7 +857,7 @@ function App() {
       // place. No optimistic update — the line index could shift if anything
       // else changed in the file between read and write.
     } catch (err) {
-      flashToast(`Edit step failed: ${(err as Error).message}`);
+      flashToast(`Edit step failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -868,7 +869,7 @@ function App() {
       // IPC rejection (missing `## Steps` section, file lock contention) is
       // hard to diagnose from a screenshot alone — the toast is transient.
       console.error('[step.add]', project.path, err);
-      flashToast(`Add step failed: ${(err as Error).message}`);
+      flashToast(`Add step failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -908,7 +909,7 @@ function App() {
       }
     } catch (err) {
       mutate((current) => applyStatus(current ?? [], path, previous));
-      flashToast(`Status change failed: ${(err as Error).message}`);
+      flashToast(`Status change failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -1326,7 +1327,7 @@ function App() {
             // resource refetch settles.
             setRefreshKey((k) => k + 1);
             setPreviewPath(result.readme);
-            flashToast(`Created ${result.relPath}`);
+            flashToast(`Created ${result.relPath}`, 'success');
           }}
         />
       </Show>
@@ -1360,9 +1361,11 @@ function App() {
       </Show>
 
       <Show when={toast()}>
-        <div class="toast" role="status">
-          {toast()}
-        </div>
+        {(t) => (
+          <div class="toast" data-kind={t().kind} role="status">
+            {t().msg}
+          </div>
+        )}
       </Show>
     </div>
   );

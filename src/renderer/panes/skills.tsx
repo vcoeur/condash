@@ -146,6 +146,11 @@ export function SkillsView(props: {
                       }
                     >
                       SKILL
+                      <Show when={idx().shipped}>
+                        <span class="shipped-tag">
+                          {idx().shipped?.diverged ? ' · diverged' : ' · shipped'}
+                        </span>
+                      </Show>
                     </button>
                   )}
                 </Show>

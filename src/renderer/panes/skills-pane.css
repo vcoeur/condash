@@ -65,10 +65,10 @@
   outline-offset: 1px;
 }
 
-.skills-section-index.shipped::after {
-  content: ' · shipped';
+.skills-section-index .shipped-tag {
   font-weight: 500;
   opacity: 0.85;
+  margin-left: 4px;
 }
 
 .skills-section-index.diverged {
@@ -77,9 +77,8 @@
   background: color-mix(in srgb, var(--warn) 12%, transparent);
 }
 
-.skills-section-index.diverged::after {
-  content: ' · diverged';
-  font-weight: 500;
+.skills-section-index.diverged .shipped-tag {
+  opacity: 1;
 }
 
 .skills-grid {
