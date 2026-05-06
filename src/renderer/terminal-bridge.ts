@@ -10,7 +10,7 @@ export interface TerminalBridgeDeps {
   /** Read terminal preferences (for screenshot dir + launcher command). */
   terminalPrefs: () => TerminalPrefs | undefined;
   /** Surface a transient toast in the renderer. */
-  flashToast: (msg: string) => void;
+  flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
 
 export interface TerminalBridge {
@@ -47,7 +47,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       try {
         await handle.spawnUserShell(deps.terminalPrefs()?.launcher_command ?? null, 'my');
       } catch (err) {
-        deps.flashToast(`Could not open a shell: ${(err as Error).message}`);
+        deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
         return;
       }
     }
@@ -75,7 +75,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
         label,
       );
     } catch (err) {
-      deps.flashToast(`Open in term failed: ${(err as Error).message}`);
+      deps.flashToast(`Open in term failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -83,12 +83,12 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const prefs = deps.terminalPrefs() ?? {};
     const dir = prefs.screenshot_dir;
     if (!dir) {
-      deps.flashToast('No terminal.screenshot_dir set in configuration.json');
+      deps.flashToast('No terminal.screenshot_dir set in configuration.json', 'error');
       return;
     }
     const latest = await window.condash.termLatestScreenshot(dir);
     if (!latest) {
-      deps.flashToast(`No files under ${dir}`);
+      deps.flashToast(`No files under ${dir}`, 'error');
       return;
     }
     const handle = deps.terminalHandle();
@@ -103,7 +103,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     const handle = deps.terminalHandle();
     if (!handle) {
-      deps.flashToast('Terminal pane not available.');
+      deps.flashToast('Terminal pane not available.', 'error');
       return;
     }
     deps.ensureTerminalOpen();
@@ -111,7 +111,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       try {
         await handle.spawnUserShell(deps.terminalPrefs()?.launcher_command ?? null, 'my');
       } catch (err) {
-        deps.flashToast(`Could not open a shell: ${(err as Error).message}`);
+        deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
         return;
       }
     }

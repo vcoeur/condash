@@ -542,10 +542,20 @@ button:hover {
   transform: translateX(-50%);
   padding: 8px 16px;
   background: var(--bg-elevated);
-  border: 1px solid var(--warn);
-  color: var(--warn);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
   border-radius: var(--radius);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
   font-size: 12px;
   max-width: 80vw;
+}
+
+.toast[data-kind='error'] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.toast[data-kind='success'] {
+  border-color: var(--accent);
+  color: var(--accent);
 }
