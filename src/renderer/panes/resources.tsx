@@ -70,7 +70,14 @@ export interface ResourcesViewActions {
   pasteToTerm: (path: string) => Promise<void>;
 }
 
-export function ResourcesView(props: { root: ResourceNode | null; actions: ResourcesViewActions }) {
+export function ResourcesView(props: {
+  root: ResourceNode | null;
+  actions: ResourcesViewActions;
+  /** Open Settings (so the user can adjust `resources_path`). */
+  onOpenSettings?: () => void;
+  /** Open the conception folder in the OS file manager. */
+  onOpenConceptionDir?: () => void;
+}) {
   const sections = createMemo<FlatSection[]>(() => buildSections(props.root));
 
   return (
@@ -79,10 +86,27 @@ export function ResourcesView(props: { root: ResourceNode | null; actions: Resou
         when={sections().length > 0}
         fallback={
           <div class="empty">
+            <p>No resources directory yet.</p>
             <p>
-              No resources directory yet — create <code>resources/</code> at the conception root, or
-              change <code>resources_path</code> in settings.
+              Drop any file under <code>resources/</code> at the conception root, or change{' '}
+              <code>resources_path</code> in Settings.
             </p>
+            <div class="empty-actions">
+              <Show when={props.onOpenConceptionDir}>
+                <button
+                  type="button"
+                  class="empty-cta"
+                  onClick={() => props.onOpenConceptionDir?.()}
+                >
+                  Open in file manager
+                </button>
+              </Show>
+              <Show when={props.onOpenSettings}>
+                <button type="button" class="empty-cta" onClick={() => props.onOpenSettings?.()}>
+                  Edit settings
+                </button>
+              </Show>
+            </div>
           </div>
         }
       >

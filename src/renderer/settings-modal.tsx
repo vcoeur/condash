@@ -105,7 +105,13 @@ export function SettingsModal(props: {
     }
   };
 
-  onMount(() => document.addEventListener('keydown', handleKeydown, true));
+  let backButtonRef: HTMLButtonElement | undefined;
+  onMount(() => {
+    document.addEventListener('keydown', handleKeydown, true);
+    // Focus the Back button on open so Tab order starts inside the modal —
+    // without this Tab walks back into whatever button triggered Settings.
+    queueMicrotask(() => backButtonRef?.focus());
+  });
   onCleanup(() => document.removeEventListener('keydown', handleKeydown, true));
 
   // Saved-at indicator timer — shared by patchConfig + patchTerminal so we
@@ -416,7 +422,13 @@ export function SettingsModal(props: {
         onClick={(e) => e.stopPropagation()}
       >
         <header class="modal-head settings-head">
-          <button class="settings-back" onClick={attemptClose} title="Back (Esc)" aria-label="Back">
+          <button
+            ref={(el) => (backButtonRef = el)}
+            class="settings-back"
+            onClick={attemptClose}
+            title="Back (Esc)"
+            aria-label="Back"
+          >
             <span class="settings-back-arrow" aria-hidden="true">
               ←
             </span>

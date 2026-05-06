@@ -150,7 +150,23 @@ function CodeRunRow(props: {
         exited: props.session.exited !== undefined,
       }}
     >
-      <header class="code-run-head" onClick={() => setExpanded((v) => !v)}>
+      <header
+        class="code-run-head"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded()}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          // Don't intercept Enter/Space when focus is on the inner Stop
+          // button — that button has its own click handler we shouldn't
+          // double-fire. Native button activation already works there.
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('button')) return;
+          e.preventDefault();
+          setExpanded((v) => !v);
+        }}
+      >
         <span class="caret" aria-hidden="true">
           {expanded() ? '▾' : '▸'}
         </span>
