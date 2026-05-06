@@ -29,6 +29,7 @@ import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { resetMermaidTheme } from './markdown';
+import { refreshAllXtermThemes } from './xterm-mount';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { buildSlugIndex } from './wikilinks';
 import { PdfModal } from './pdf-modal';
@@ -146,6 +147,15 @@ function App() {
     if (t === 'dark') return true;
     if (t === 'light') return false;
     return systemDark();
+  });
+  // Repaint live xterms whenever isDark flips. Covers both the user-driven
+  // theme toggle (already handled in handleThemeChange) and the system flip
+  // while theme='system' (which only updates `systemDark`, never going through
+  // the manual handler). Runs once on mount with the initial value — harmless,
+  // since CSS tokens already match.
+  createEffect(() => {
+    isDark();
+    refreshAllXtermThemes();
   });
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
   const [welcomeDismissed, setWelcomeDismissed] = createSignal<boolean>(false);
@@ -274,6 +284,8 @@ function App() {
     setTheme(next);
     applyTheme(next);
     resetMermaidTheme();
+    // xterm refresh runs through the createEffect on isDark below — covers
+    // both this path and an OS dark/light flip while theme='system'.
     void window.condash.setTheme(next);
   };
 

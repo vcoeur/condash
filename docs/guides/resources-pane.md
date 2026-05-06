@@ -2,6 +2,9 @@
 
 The Resources pane sits next to **Code**, **Knowledge**, and **Skills** in the right working-surface slot (`Ctrl+R` to switch in). It browses the file hierarchy under a configurable directory at the conception root and surfaces every file as a small action card.
 
+![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-light.png#only-light)
+![Resources pane — file cards grouped by directory with view/open/copy/→term actions](../assets/screenshots/resources-pane-dark.png#only-dark)
+
 ## What it shows
 
 By default the pane reads from `<conception>/resources/`. The directory does not have to exist — when it's missing the pane shows an empty-state with a pointer to the setting.
