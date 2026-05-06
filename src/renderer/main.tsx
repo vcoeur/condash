@@ -801,9 +801,9 @@ function App() {
   };
 
   const handleConfirmQuit = () => {
-    if (noteDirty() && !window.confirm('Unsaved note edits will be lost. Quit anyway?')) {
-      return;
-    }
+    // The QuitConfirmModal already surfaces the noteDirty warning inline
+    // (see noteDirty prop) so by the time the user clicks Quit they've
+    // accepted both stakes. No second confirm.
     setQuitConfirmOpen(false);
     void window.condash.quitApp();
   };
@@ -1381,6 +1381,7 @@ function App() {
         <QuitConfirmModal
           onCancel={() => setQuitConfirmOpen(false)}
           onConfirm={handleConfirmQuit}
+          noteDirty={noteDirty()}
         />
       </Show>
 

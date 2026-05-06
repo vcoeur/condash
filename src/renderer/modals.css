@@ -814,6 +814,13 @@
   color: var(--text-muted);
 }
 
+/* Inline warning surfaced in QuitConfirmModal when noteDirty is set —
+ * keeps the noteDirty + quit-pty stakes in one modal instead of stacking
+ * a second confirm. Coloured red so it reads as a discard warning. */
+.quit-confirm-warn {
+  color: var(--error, #d44);
+}
+
 .quit-confirm-actions {
   display: flex;
   justify-content: flex-end;
