@@ -90,6 +90,7 @@ export function SearchModal(props: {
   const handleKeydown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       props.onClose();
     }
   };

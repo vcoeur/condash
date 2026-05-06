@@ -94,9 +94,11 @@ export function PromptModal(props: { state: PromptModalState | null; onClose: ()
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
+                    e.stopPropagation();
                     confirm();
                   } else if (e.key === 'Escape') {
                     e.preventDefault();
+                    e.stopPropagation();
                     cancel();
                   }
                 }}

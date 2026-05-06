@@ -26,11 +26,13 @@ export function ConfirmModal(props: ConfirmModalProps) {
   const handleKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       props.onCancel();
     } else if (event.key === 'Enter') {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'BUTTON') return;
       event.preventDefault();
+      event.stopPropagation();
       props.onConfirm();
     }
   };

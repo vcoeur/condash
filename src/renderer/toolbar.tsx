@@ -1,4 +1,4 @@
-import { Show } from 'solid-js';
+import { onCleanup, onMount, Show } from 'solid-js';
 import type { LayoutState } from '@shared/types';
 import './toolbar.css';
 
@@ -43,6 +43,16 @@ export function Toolbar(props: {
 /** Confirm modal shown before quitting the app — terminates running pty
  *  sessions, so we want an explicit confirmation. */
 export function QuitConfirmModal(props: { onCancel: () => void; onConfirm: () => void }) {
+  const handleKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      props.onCancel();
+    }
+  };
+  onMount(() => document.addEventListener('keydown', handleKey, true));
+  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
+
   return (
     <div class="modal-backdrop" onClick={props.onCancel}>
       <div

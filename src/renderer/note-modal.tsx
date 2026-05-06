@@ -444,11 +444,13 @@ export function NoteModal(props: {
     if (e.key === 'Escape') {
       if (pendingViewSwitch()) {
         e.preventDefault();
+        e.stopPropagation();
         cancelViewSwitch();
         return;
       }
       if (findOpen()) {
         e.preventDefault();
+        e.stopPropagation();
         setFindOpen(false);
         setFindQuery('');
         // Restore focus to the note body so the user lands back where
@@ -459,10 +461,12 @@ export function NoteModal(props: {
       if (dirty()) {
         if (!window.confirm('Unsaved changes — close anyway?')) {
           e.preventDefault();
+          e.stopPropagation();
           return;
         }
       }
       e.preventDefault();
+      e.stopPropagation();
       props.onClose();
       return;
     }
