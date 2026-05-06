@@ -121,19 +121,27 @@
      * (--bg-panel) used by Projects and other content stacks, with cards
      * (--bg-elevated) on top. The page used to be near-pure-black (#08080a)
      * which made cards read as cut-outs in the void; small ΔL between the
-     * three layers gives a calmer "panel with cards" feel. */
-    --bg: #0f1014;
-    --bg-panel: #15171c;
-    --bg-elevated: #1f2128;
-    --bg-subtle: #26262b;
-    --bg-hover: #2e2e34;
+     * three layers gives a calmer "panel with cards" feel.
+     *
+     * Warmth retune (D.9): the surface family is shifted from cool
+     * blue-black (#0f1014 / #15171c / #1f2128) toward warm brown-black so
+     * the dark mode mirrors the warm-paper light theme rather than fighting
+     * it. Text was already warm cream (#f1efe8 → #d6d3c8 → #a3a098); the
+     * old cool surface made the warm text float disconnectedly. The new
+     * surface temperatures sit closer to dark sepia, keeping the same
+     * three-layer ΔL but with a yellow-leaning hue. */
+    --bg: #14120e;
+    --bg-panel: #1a1814;
+    --bg-elevated: #24221c;
+    --bg-subtle: #2a2722;
+    --bg-hover: #322f29;
     --text: #f1efe8;
     --text-body: #d6d3c8;
     --text-muted: #a3a098;
     --text-faint: #837f76;
-    --border: #2c2f37;
-    --border-strong: #3b3f4a;
-    --accent: #818cf8;
+    --border: #322d24;
+    --border-strong: #443e34;
+    --accent: #a48cf0;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
     --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
@@ -162,20 +170,21 @@
 }
 
 [data-theme='dark'] {
-  /* Same two-layer dark surface as the prefers-color-scheme block above —
-   * keep the two in lock-step. */
-  --bg: #0f1014;
-  --bg-panel: #15171c;
-  --bg-elevated: #1f2128;
-  --bg-subtle: #26262b;
-  --bg-hover: #2e2e34;
+  /* Same warm dark surface as the prefers-color-scheme block above —
+   * keep the two in lock-step. See the rationale comment there for the
+   * D.9 warmth retune. */
+  --bg: #14120e;
+  --bg-panel: #1a1814;
+  --bg-elevated: #24221c;
+  --bg-subtle: #2a2722;
+  --bg-hover: #322f29;
   --text: #f1efe8;
   --text-body: #d6d3c8;
   --text-muted: #a3a098;
   --text-faint: #837f76;
-  --border: #2c2f37;
-  --border-strong: #3b3f4a;
-  --accent: #818cf8;
+  --border: #322d24;
+  --border-strong: #443e34;
+  --accent: #a48cf0;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
 
