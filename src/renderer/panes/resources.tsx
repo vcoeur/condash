@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { ResourceCategory, ResourceNode } from '@shared/types';
 import { formatSectionLabel } from './pane-utils';
+import { usePaneScrollMemory } from './pane-scroll-memory';
 import './resources-pane.css';
 
 interface FlatSection {
@@ -79,9 +80,10 @@ export function ResourcesView(props: {
   onOpenConceptionDir?: () => void;
 }) {
   const sections = createMemo<FlatSection[]>(() => buildSections(props.root));
+  const scrollRef = usePaneScrollMemory('resources');
 
   return (
-    <div class="resources-pane">
+    <div class="resources-pane" ref={scrollRef}>
       <Show
         when={sections().length > 0}
         fallback={
