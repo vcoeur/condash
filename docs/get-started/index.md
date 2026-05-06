@@ -134,6 +134,8 @@ You can also create items by hand — just `mkdir projects/<YYYY-MM>/<YYYY-MM-DD
 - **Projects** (left pane) — items grouped by status (Current / Next / Backlog / Done). Click a row to expand it inline; click again to open the full note in a modal.
 - **Code** (right pane) — your repos, dirty status, open-in-IDE buttons. Empty until you set `workspace_path` and `repositories` in `configuration.json` (gear modal → `configuration.json` tab).
 - **Knowledge** (right pane, alternate) — your reference notes, organised as cards. Hidden when `<conception>/knowledge/` is empty.
+- **Resources** (right pane, alternate, `Ctrl+R`) — every file under `resources/` (any extension) shown as a card with copy / open / paste-to-term actions. See [Resources pane](../guides/resources-pane.md).
+- **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under `.claude/skills/`, edited in place. See [Skills pane](../guides/skills-pane.md).
 - **Terminal** — toggle with `` Ctrl+` `` (View → Show Terminal).
 - **Search** — `Ctrl+Shift+F` opens cross-tree fuzzy search.
 

@@ -14,6 +14,11 @@ are still on disk; delete condash and the files don't move.
 - **Code** (right pane) — your repos, dirty state, run / open-with
   buttons.
 - **Knowledge** (right pane, alternate) — your reference notes as cards.
+- **Resources** (right pane, alternate, `Ctrl+R`) — every file under
+  `resources/` as cards (any extension), with copy / open / paste-to-term
+  actions.
+- **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under
+  `.claude/skills/`, edited in place.
 - **Terminal** — toggle with `` Ctrl+` ``.
 - **Search** — `Ctrl+Shift+F` for cross-tree fuzzy search.
 

@@ -13,7 +13,7 @@ condash reads two JSON files. Both are optional in principle — the dashboard r
 
 | File                 | Path                                                                                                                                                                        | Lifecycle                  | Owns                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
-| `configuration.json` | `<conception_path>/configuration.json`                                                                                                                                      | Per-tree, versioned in git | `workspace_path`, `worktrees_path`, `repositories`, `open_with`, `pdf_viewer`   |
+| `configuration.json` | `<conception_path>/configuration.json`                                                                                                                                      | Per-tree, versioned in git | `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`   |
 | `settings.json`      | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `conceptionPath`, `theme`, `terminal`, `layout`, `welcome`, `cardMinWidth`      |
 
 The split is by **lifecycle**, not by feature. Each key lives in exactly one file:
@@ -30,6 +30,8 @@ Lives at `<conception_path>/configuration.json`. Commit it. Every key is optiona
 {
   "workspace_path": "/home/you/src",
   "worktrees_path": "/home/you/src/worktrees",
+  "resources_path": "resources",
+  "skills_path": ".claude/skills",
   "repositories": {
     "primary": [
       "condash",
@@ -67,6 +69,8 @@ A `terminal` block at this level still validates for backward-compat, but it is 
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workspace_path` | Directory condash scans for git repositories. Every direct subdirectory containing a `.git/` shows up in the **Code** pane. If unset, the tab is hidden. |
 | `worktrees_path` | Additional sandbox for the "open in IDE" buttons. Paths outside `workspace_path` and `worktrees_path` are rejected before the shell sees them.          |
+| `resources_path` | Directory backing the **Resources** pane. Relative paths are resolved against `<conception_path>`; default `"resources"`. Every file under this tree (any extension) shows up as a card. Unset = same as default. See [Resources pane guide](../guides/resources-pane.md). |
+| `skills_path`    | Directory backing the **Skills** pane. Relative paths are resolved against `<conception_path>`; default `".claude/skills"`. Markdown only. Each skill renders as a section with its `SKILL.md` body. Unset = same as default. See [Skills pane guide](../guides/skills-pane.md). |
 
 ### `repositories`
 
@@ -258,7 +262,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | Field           | Type                              | Meaning                                                                                          |
 | --------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `projects`      | bool                              | Show or hide the Projects pane on the left edge.                                                 |
-| `working`       | `'code' \| 'knowledge' \| null`   | Tristate. `'code'` shows the Code pane in the working slot, `'knowledge'` shows Knowledge, `null` hides both. |
+| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| null` | Five-state. `'code'`, `'knowledge'`, `'resources'`, or `'skills'` shows that pane in the working slot; `null` hides them all. |
 | `terminal`      | bool                              | Show or hide the Terminal pane at the bottom.                                                    |
 | `projectsWidth` | non-negative int                  | Pixel width of the Projects pane after the user drags the splitter.                              |
 
@@ -266,17 +270,19 @@ The IPC verbs `getLayout` / `setLayout` read and write this block atomically —
 
 ### CardMinWidth
 
-`cardMinWidth` controls the n→n+1 reflow threshold for the three card grids (Projects, Code, Knowledge). Each grid uses `minmax(min(<min>, 100%), 1fr)`, so a row of *n* cards reflows to *n+1* once the pane is wide enough to fit *n+1* cards each at this width.
+`cardMinWidth` controls the n→n+1 reflow threshold for the five card grids (Projects, Code, Knowledge, Resources, Skills). Each grid uses `minmax(min(<min>, 100%), 1fr)`, so a row of *n* cards reflows to *n+1* once the pane is wide enough to fit *n+1* cards each at this width.
 
-| Field       | Type                | Default | Meaning                                                          |
-| ----------- | ------------------- | ------- | ---------------------------------------------------------------- |
-| `projects`  | int 120 – 2400 (px) | 650     | Min width of a project card on the Projects pane.                |
-| `code`      | int 120 – 2400 (px) | 650     | Min width of a repo card on the Code pane.                       |
-| `knowledge` | int 120 – 2400 (px) | 520     | Min width of a knowledge-section card on the Knowledge pane.     |
+| Field       | Type                | Default | Meaning                                                              |
+| ----------- | ------------------- | ------- | -------------------------------------------------------------------- |
+| `projects`  | int 120 – 2400 (px) | 650     | Min width of a project card on the Projects pane.                    |
+| `code`      | int 120 – 2400 (px) | 650     | Min width of a repo card on the Code pane.                           |
+| `knowledge` | int 120 – 2400 (px) | 520     | Min width of a knowledge-section card on the Knowledge pane.         |
+| `resources` | int 120 – 2400 (px) | 280     | Min width of a resource card on the Resources pane.                  |
+| `skills`    | int 120 – 2400 (px) | 280     | Min width of a skill card on the Skills pane.                        |
 
 Lower numbers pack more cards per row at the same window size; higher numbers keep cards roomy. Values outside the `120–2400` range are silently dropped back to the default. Keys equal to the default are removed from disk so the bundled defaults can change in a future release without leaving stale literals on every machine.
 
-`getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`) so live edits in the Settings modal reflow the grids without a reload.
+`getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`, `--card-min-resources`, `--card-min-skills`) so live edits in the Settings modal reflow the grids without a reload.
 
 Resolution order for the conception path, checked in sequence:
 
@@ -292,7 +298,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 **Global Condash Settings** (write to `settings.json`):
 
-- **Appearance** — theme; per-pane card-grid min-widths (Projects / Code / Knowledge).
+- **Appearance** — theme; per-pane card-grid min-widths (Projects / Code / Knowledge / Resources / Skills).
 - **Terminal** — embedded terminal preferences (shell, shortcuts, xterm.js fonts and colours).
 
 **Conception Configuration** (write to `configuration.json`):

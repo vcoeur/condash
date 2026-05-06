@@ -9,7 +9,9 @@ The few you'll actually use.
 | `Ctrl+O` | **Open…** — pick a different conception folder |
 | `Ctrl+,` | **Settings…** — open the configuration modal |
 | `Ctrl+Shift+F` | **Search…** — cross-tree fuzzy search |
-| `Ctrl+R` / `F5` | Reload window |
+| `Ctrl+R` | Show **Resources** pane |
+| `Ctrl+L` | Show **Skills** pane |
+| `Ctrl+Shift+R` / `F5` | Reload window |
 | `Ctrl+Shift+I` | Toggle DevTools |
 | `Ctrl+0` / `Ctrl+ +` / `Ctrl+ -` | Zoom reset / in / out |
 | `F11` | Toggle fullscreen |

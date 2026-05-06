@@ -9,7 +9,7 @@ description: How the Electron build is wired — the three processes, the IPC co
 
 ## What condash is
 
-A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, and `configuration.json` tree, presents it through three panes — Projects (left edge), Code or Knowledge in the working slot (right edge, mutually exclusive), Terminal (bottom). Search is a global modal opened with `Ctrl+Shift+F`, not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys.
+A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.claude/skills/`, and `configuration.json` tree, presents it through three slots — Projects (left edge), one of Code / Knowledge / Resources / Skills in the working slot (right edge, mutually exclusive), Terminal (bottom). Search is a global modal opened with `Ctrl+Shift+F`, not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys.
 
 There is no backend, no database, and no message bus. Every feature is a filesystem walk + a Markdown parse, with chokidar pushing change notifications.
 

@@ -11,7 +11,7 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 
 | Area | Count | Configurable? |
 |---|---|---|
-| Application menu (File / View) | 7 | no |
+| Application menu (File / View) | 12 | no |
 | Dashboard global | 2 | no |
 | Project cards | 6 | no |
 | Note modal | 4 | no |
@@ -32,9 +32,12 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | View | Show Projects | — | Toggle the Projects pane on the left edge. |
 | View | Show Code | — | Show the Code pane in the working slot. |
 | View | Show Knowledge | — | Show the Knowledge pane in the working slot. |
-| View | Hide working surface | — | Hide whichever pane (Code or Knowledge) is in the working slot. |
+| View | Show Resources | `Ctrl+R` / `Cmd+R` | Show the Resources pane in the working slot. |
+| View | Show Skills | `Ctrl+L` / `Cmd+L` | Show the Skills pane in the working slot. |
+| View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills) is in the working slot. |
 | View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
+| View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). The bare `Ctrl+R` slot is taken by **Show Resources**. |
 | Help | About / Welcome / Quick start / … | — | Open the matching `docs/` page in the in-app Help modal. |
 
 The View toggles round-trip through `getLayout` / `setLayout` — see [Config files — LayoutState](config.md#layoutstate). The visible state is kept in sync with the menu's `checkbox` items.

@@ -1,6 +1,6 @@
 # The Resources pane
 
-The Resources pane sits next to **Code** and **Knowledge** in the right working-surface slot. It browses the file hierarchy under a configurable directory at the conception root and surfaces every file as a small action card.
+The Resources pane sits next to **Code**, **Knowledge**, and **Skills** in the right working-surface slot (`Ctrl+R` to switch in). It browses the file hierarchy under a configurable directory at the conception root and surfaces every file as a small action card.
 
 ## What it shows
 
@@ -35,7 +35,7 @@ Clicking the card body itself runs the most-likely action for the file type — 
 
 ## Configuration
 
-Set the directory by editing `configuration.json` at the conception root, or via **Settings → Workspace → Resources directory**.
+Set the directory by editing `configuration.json` at the conception root (per-tree, versioned with the conception), or via **Settings → Workspace → Resources directory**. The value is **not** in `settings.json` — it's tree-side so teammates see the same resources tree.
 
 ```json
 {
