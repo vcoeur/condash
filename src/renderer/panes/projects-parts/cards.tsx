@@ -141,6 +141,12 @@ export function GroupBlock(props: {
    * flat card list. The outer header / collapse / drag-drop chrome is
    * unchanged. */
   bodySlot?: () => any;
+  /** Optional trailing element rendered inside the header row, right of the
+   * count. Used by the NOW section to surface the "+ New project" button on
+   * the same row as the section title (saves a row of vertical space and
+   * anchors the affordance to the section it acts on). The slot's click is
+   * stopped from propagating so it doesn't toggle the section. */
+  headerAction?: () => any;
   onOpen: (project: Project) => void;
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
@@ -218,6 +224,12 @@ export function GroupBlock(props: {
         <span class="dot" aria-hidden="true" />
         <span class="name">{props.group.status}</span>
         <span class="count">{props.group.items.length}</span>
+        <Show when={props.headerAction}>
+          <span class="group-header-spacer" />
+          <span class="group-header-action" onClick={(e) => e.stopPropagation()}>
+            {props.headerAction!()}
+          </span>
+        </Show>
       </header>
       <Show when={isOpen() && !isEmpty()}>
         <Show

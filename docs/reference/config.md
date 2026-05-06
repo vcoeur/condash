@@ -14,7 +14,7 @@ condash reads two JSON files. Both are optional in principle — the dashboard r
 | File                 | Path                                                                                                                                                                        | Lifecycle                  | Owns                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
 | `configuration.json` | `<conception_path>/configuration.json`                                                                                                                                      | Per-tree, versioned in git | `workspace_path`, `worktrees_path`, `repositories`, `open_with`, `pdf_viewer`   |
-| `settings.json`      | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `conceptionPath`, `theme`, `terminal`, `layout`, `welcome`                      |
+| `settings.json`      | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `conceptionPath`, `theme`, `terminal`, `layout`, `welcome`, `cardMinWidth`      |
 
 The split is by **lifecycle**, not by feature. Each key lives in exactly one file:
 
@@ -231,7 +231,12 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
     "terminal": false,
     "projectsWidth": 420
   },
-  "welcome": { "dismissed": true }
+  "welcome": { "dismissed": true },
+  "cardMinWidth": {
+    "projects": 600,
+    "code": 600,
+    "knowledge": 480
+  }
 }
 ```
 
@@ -242,6 +247,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `terminal.*`     | Embedded-terminal preferences. See [Terminal preferences](#terminal-preferences) above for every sub-key.                                       |
 | `layout`         | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                  |
 | `welcome`        | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                         |
+| `cardMinWidth`   | Per-pane card grid min-width. See [CardMinWidth](#cardminwidth) below.                                                                          |
 
 `open_with`, `pdf_viewer`, and `repositories` are intentionally **not** valid in `settings.json` — they live tree-side in `configuration.json`. Setting them here is silently ignored.
 
@@ -258,6 +264,20 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 
 The IPC verbs `getLayout` / `setLayout` read and write this block atomically — toggling a pane via the View menu (or its keyboard shortcut) round-trips through `setLayout` so the change survives a restart.
 
+### CardMinWidth
+
+`cardMinWidth` controls the n→n+1 reflow threshold for the three card grids (Projects, Code, Knowledge). Each grid uses `minmax(min(<min>, 100%), 1fr)`, so a row of *n* cards reflows to *n+1* once the pane is wide enough to fit *n+1* cards each at this width.
+
+| Field       | Type                | Default | Meaning                                                          |
+| ----------- | ------------------- | ------- | ---------------------------------------------------------------- |
+| `projects`  | int 120 – 2400 (px) | 650     | Min width of a project card on the Projects pane.                |
+| `code`      | int 120 – 2400 (px) | 650     | Min width of a repo card on the Code pane.                       |
+| `knowledge` | int 120 – 2400 (px) | 520     | Min width of a knowledge-section card on the Knowledge pane.     |
+
+Lower numbers pack more cards per row at the same window size; higher numbers keep cards roomy. Values outside the `120–2400` range are silently dropped back to the default. Keys equal to the default are removed from disk so the bundled defaults can change in a future release without leaving stale literals on every machine.
+
+`getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`) so live edits in the Settings modal reflow the grids without a reload.
+
 Resolution order for the conception path, checked in sequence:
 
 1. `conceptionPath` in this file.
@@ -272,7 +292,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 **Global Condash Settings** (write to `settings.json`):
 
-- **Appearance** — theme.
+- **Appearance** — theme; per-pane card-grid min-widths (Projects / Code / Knowledge).
 - **Terminal** — embedded terminal preferences (shell, shortcuts, xterm.js fonts and colours).
 
 **Conception Configuration** (write to `configuration.json`):

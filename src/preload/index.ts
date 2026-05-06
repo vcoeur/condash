@@ -31,6 +31,8 @@ const api: CondashApi = {
   setLayout: (layout) => ipcRenderer.invoke('setLayout', layout),
   getWelcomeDismissed: () => ipcRenderer.invoke('getWelcomeDismissed'),
   setWelcomeDismissed: (value) => ipcRenderer.invoke('setWelcomeDismissed', value),
+  getCardMinWidth: () => ipcRenderer.invoke('getCardMinWidth'),
+  setCardMinWidth: (prefs) => ipcRenderer.invoke('setCardMinWidth', prefs),
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
     ipcRenderer.invoke('step.toggle', path, lineIndex, expectedMarker, newMarker),

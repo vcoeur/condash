@@ -11,6 +11,7 @@ import {
 } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import type {
+  CardMinWidthPrefs,
   Deliverable,
   LayoutState,
   OpenWithSlotKey,
@@ -24,6 +25,7 @@ import type {
   WorkingSurface,
   Worktree,
 } from '@shared/types';
+import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import { NoteModal, type ModalState } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { resetMermaidTheme } from './markdown';
@@ -67,6 +69,17 @@ function applyTheme(theme: Theme): void {
   } else {
     root.setAttribute('data-theme', theme);
   }
+}
+
+/** Push the user-configured card grid min-widths onto `:root` as CSS
+ * pixels. The pane stylesheets read `--card-min-{projects,code,knowledge}`
+ * with a literal fallback that matches `DEFAULT_CARD_MIN_WIDTH`, so a
+ * partial prefs object falls back per-key automatically. */
+function applyCardMinWidth(prefs: Required<CardMinWidthPrefs>): void {
+  const root = document.documentElement;
+  root.style.setProperty('--card-min-projects', `${prefs.projects}px`);
+  root.style.setProperty('--card-min-code', `${prefs.code}px`);
+  root.style.setProperty('--card-min-knowledge', `${prefs.knowledge}px`);
 }
 
 function App() {
@@ -151,6 +164,31 @@ function App() {
     applyTheme(t);
   });
   void window.condash.getLayout().then(setLayoutState);
+
+  // Card min-widths drive the n→n+1 reflow on the three pane grids.
+  // Track them in a signal so the settings modal can publish updates
+  // back through `setCardMinWidth` and the CSS variables react in the
+  // same frame.
+  const [cardMinWidth, setCardMinWidth] = createSignal<Required<CardMinWidthPrefs>>({
+    ...DEFAULT_CARD_MIN_WIDTH,
+  });
+  applyCardMinWidth(cardMinWidth());
+  void window.condash.getCardMinWidth().then((prefs) => {
+    setCardMinWidth(prefs);
+    applyCardMinWidth(prefs);
+  });
+
+  /** Persist a partial card-min-width patch and refresh the CSS variables.
+   * Settings modal commits go through here so the live grids resize on
+   * blur without a reload. */
+  const handleCardMinWidthChange = (patch: CardMinWidthPrefs): void => {
+    const next: Required<CardMinWidthPrefs> = { ...cardMinWidth(), ...patch };
+    setCardMinWidth(next);
+    applyCardMinWidth(next);
+    void window.condash.setCardMinWidth(next).catch((err) => {
+      flashToast(`Could not persist card min-width: ${(err as Error).message}`);
+    });
+  };
 
   /** Apply a layout patch and persist it. The persistence is fire-and-
    * forget: any settings.json write failure surfaces as a toast but the
@@ -1161,6 +1199,8 @@ function App() {
           configurationPath={`${conceptionPath()}/configuration.json`}
           theme={theme()}
           onChangeTheme={handleThemeChange}
+          cardMinWidth={cardMinWidth()}
+          onChangeCardMinWidth={handleCardMinWidthChange}
           onClose={() => setSettingsOpen(false)}
         />
       </Show>
