@@ -1,14 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, net, protocol, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { promises as fsp } from 'node:fs';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseHeader } from '../shared/header';
 
-import { toPosix } from '../shared/path';
-
-import { detectConceptionState, initConception } from './conception-init';
-import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from './settings';
+import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
@@ -29,21 +26,10 @@ import {
 } from './repo-watchers';
 import { getDirtyDetails } from './git-details';
 import { forceStopRepo, launchOpenWith, listOpenWith } from './launchers';
-import {
-  attachTerminal,
-  closeSession,
-  getTerminalPrefs,
-  killAll,
-  listTerminalSessions,
-  migrateTerminalFromConfigIfNeeded,
-  resizeTerminal,
-  setSessionSide,
-  setTerminalPrefs,
-  spawnTerminal,
-  writeTerminal,
-} from './terminals';
-import { latestScreenshot } from './screenshot';
-import { readHelpDoc } from './help';
+import { killAll, migrateTerminalFromConfigIfNeeded } from './terminals';
+import { registerTerminalIpc } from './ipc/terminal';
+import { registerSettingsIpc } from './ipc/settings';
+import { registerSystemIpc } from './ipc/system';
 import type {
   LayoutState,
   OpenWithSlotKey,
@@ -51,8 +37,6 @@ import type {
   ProjectCreateInput,
   ProjectCreateResult,
   StepMarker,
-  TermSpawnRequest,
-  Theme,
 } from '../shared/types';
 import { statusOrder } from '../shared/projects';
 
@@ -109,8 +93,6 @@ if (IS_CLI) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require(`${__dirname}/../../dist-cli/condash.cjs`);
 }
-
-const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
 // Wayland fractional-scaling fix.
 //
@@ -578,101 +560,9 @@ function registerIpc(): void {
     return forceStopRepo(conceptionPath, repoName);
   });
 
-  ipcMain.handle('term.spawn', async (event, request: TermSpawnRequest) => {
-    const { conceptionPath } = await readSettings();
-    return spawnTerminal(conceptionPath, event.sender, request);
-  });
-
-  ipcMain.handle('term.write', (_, id: string, data: string) => {
-    writeTerminal(id, data);
-  });
-
-  ipcMain.handle('term.resize', (_, id: string, cols: number, rows: number) => {
-    resizeTerminal(id, cols, rows);
-  });
-
-  ipcMain.handle('term.close', (_, id: string) => {
-    closeSession(id);
-  });
-
-  ipcMain.handle('term.list', () => listTerminalSessions());
-
-  ipcMain.handle('term.attach', (_, id: string) => attachTerminal(id));
-
-  ipcMain.handle('term.setSide', (_, id: string, side: 'my' | 'code') => setSessionSide(id, side));
-
-  ipcMain.handle('term.getPrefs', async () => {
-    return (await getTerminalPrefs()) ?? {};
-  });
-
-  ipcMain.handle('term.setPrefs', async (_, prefs: unknown) => {
-    if (!prefs || typeof prefs !== 'object') {
-      throw new Error('term.setPrefs: payload must be an object');
-    }
-    await setTerminalPrefs(prefs as Parameters<typeof setTerminalPrefs>[0]);
-  });
-
-  ipcMain.handle('term.latestScreenshot', async (_, dir: string) => {
-    return latestScreenshot(dir);
-  });
-
-  ipcMain.handle('help.readDoc', (_, name: string) => readHelpDoc(name));
-
-  ipcMain.handle('openInEditor', async (_, path: string) => {
-    const error = await shell.openPath(path);
-    if (error) throw new Error(error);
-  });
-
-  ipcMain.handle('getConceptionPath', async () => {
-    const { conceptionPath } = await readSettings();
-    return conceptionPath ? toPosix(conceptionPath) : null;
-  });
-
-  ipcMain.handle('pdf.toFileUrl', (_, path: string) => {
-    if (typeof path !== 'string' || path.length === 0) {
-      throw new Error('pdf.toFileUrl: path must be a non-empty string');
-    }
-    return {
-      url: pathToFileURL(path).href,
-      filename: basename(path),
-    };
-  });
-
-  ipcMain.handle('getTheme', async () => {
-    const { theme } = await readSettings();
-    return theme;
-  });
-
-  ipcMain.handle('getSettingsPath', () => toPosix(settingsPath()));
-
-  ipcMain.handle('setTheme', async (_, theme: Theme) => {
-    if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`);
-    await updateSettings((cur) => ({ ...cur, theme }));
-  });
-
-  ipcMain.handle('getLayout', async () => {
-    const { layout } = await readSettings();
-    return layout ?? DEFAULT_LAYOUT;
-  });
-
-  ipcMain.handle('setLayout', async (_, layout: LayoutState) => {
-    await updateSettings((cur) => ({ ...cur, layout }));
-    // Application menu reflects layout state — rebuild so the View
-    // submenu's check marks line up with the new state.
-    buildMenu(layout);
-  });
-
-  ipcMain.handle('getWelcomeDismissed', async () => {
-    const { welcome } = await readSettings();
-    return welcome?.dismissed === true;
-  });
-
-  ipcMain.handle('setWelcomeDismissed', async (_, value: boolean) => {
-    await updateSettings((cur) => ({
-      ...cur,
-      welcome: { ...(cur.welcome ?? {}), dismissed: value },
-    }));
-  });
+  registerTerminalIpc();
+  registerSettingsIpc({ onLayoutChange: buildMenu });
+  registerSystemIpc({ onConceptionPicked: updateWindowTitle });
 
   ipcMain.handle(
     'step.toggle',
@@ -769,68 +659,9 @@ function registerIpc(): void {
     writeNote(path, expectedContent, newContent),
   );
 
-  ipcMain.handle('detectConceptionState', (_, path: string) => detectConceptionState(path));
-
-  ipcMain.handle('initConception', async (_, path: string) => {
-    const created = await initConception(path);
-    return { created };
-  });
-
-  ipcMain.handle('pickConceptionPath', async () => {
-    const result = await dialog.showOpenDialog({
-      title: 'Choose conception directory',
-      properties: ['openDirectory'],
-    });
-    if (result.canceled || result.filePaths.length === 0) return null;
-
-    const picked = toPosix(result.filePaths[0]);
-    await updateSettings((cur) => ({ ...cur, conceptionPath: picked }));
-    await setWatchedConception(picked);
-    updateWindowTitle(picked);
-    return picked;
-  });
-
-  ipcMain.handle('openConceptionDirectory', async () => {
-    const { conceptionPath } = await readSettings();
-    if (!conceptionPath) return;
-    const error = await shell.openPath(conceptionPath);
-    if (error) throw new Error(error);
-  });
-
-  ipcMain.handle('openExternal', async (_, target: string) => {
-    if (typeof target !== 'string' || target.length === 0) return;
-    // shell.openExternal already filters non-http/https on most platforms but
-    // we additionally clamp to safe schemes here so a hostile pty can't pop a
-    // file:// or jar: handler. Local paths must go through `openPath`.
-    if (!/^(https?|mailto):/i.test(target)) return;
-    await shell.openExternal(target);
-  });
-
-  ipcMain.handle('openPath', async (_, target: string) => {
-    if (typeof target !== 'string' || target.length === 0) return;
-    // Reject anything that looks like a URL — the renderer should call
-    // openExternal for those.
-    if (/^[a-z][a-z0-9+\-.]*:/i.test(target)) return;
-    const error = await shell.openPath(target);
-    if (error) throw new Error(error);
-  });
-
   ipcMain.handle('project.createNote', async (_, projectPath: string, slug: string) => {
     return createProjectNote(projectPath, slug);
   });
-
-  ipcMain.handle('quitApp', () => {
-    app.quit();
-  });
-
-  ipcMain.handle('getAppInfo', () => ({
-    name: app.getName(),
-    version: app.getVersion(),
-    electron: process.versions.electron,
-    chrome: process.versions.chrome,
-    node: process.versions.node,
-    platform: process.platform,
-  }));
 }
 
 if (!IS_CLI)
