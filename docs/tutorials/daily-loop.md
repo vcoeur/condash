@@ -25,10 +25,10 @@ condash
 
 Click the **Current** sub-pane and click the `helio search` incident row. The card expands.
 
-![Incident card expanded with all four step markers visible](../assets/screenshots/item-fuzzy-search-light.png#only-light)
-![Incident card expanded with all four step markers visible](../assets/screenshots/item-fuzzy-search-dark.png#only-dark)
+![Fuzzy search modal open across the dashboard](../assets/screenshots/item-fuzzy-search-light.png#only-light)
+![Fuzzy search modal open across the dashboard](../assets/screenshots/item-fuzzy-search-dark.png#only-dark)
 
-(Screenshot is of a project card; the incident layout is identical except for the pink `INCIDENT` badge and the `Environment` / `Severity` header fields.)
+(The screenshot above shows the global fuzzy-search modal — used to jump to the row. The expanded incident card itself looks like a project card except for the amber `INCIDENT` badge and the `Environment` / `Severity` header fields.)
 
 Read the README. The summary points at a specific test corpus, and the `notes/stack-trace.md` note has the actual Python traceback from the reporter.
 
