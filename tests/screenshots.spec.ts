@@ -147,22 +147,54 @@ async function captureForTheme(theme: Theme): Promise<void> {
   const b = await boot(theme);
   const { page } = b;
   try {
-    // 1. dashboard-overview / projects-current — landing view with the Projects pane visible.
+    // 1. dashboard-overview — landing view with the Projects pane visible.
     await showPane(b, 'Projects');
     await shoot(page, theme, 'dashboard-overview');
-    await shoot(page, theme, 'projects-current');
 
-    // 2. projects-next / projects-backlog / projects-done — the Electron build stacks
-    //    every status group on a single scroll, so we approximate the Tauri filter
-    //    tabs by scrolling each section's heading into view before shooting.
-    for (const slug of ['projects-next', 'projects-backlog', 'projects-done']) {
-      const heading = slug.replace('projects-', '');
-      const h = page.locator(`.projects-section[data-status="${heading}"]`).first();
-      if (await h.count()) {
-        await h.scrollIntoViewIfNeeded();
+    // 2. projects-{current,next,backlog,done} — the Electron build stacks every
+    //    status group on one scroll, so capturing the same viewport four times
+    //    produced byte-identical PNGs (the v2.10.17 review flagged this).
+    //    Clip each shot to the matching section's bounding box so the four
+    //    PNGs actually carry distinct content. `current` maps to `now`;
+    //    `next` maps to `review` (the Tauri-era filter naming).
+    const STATUS_FOR_SLUG: Record<string, string> = {
+      'projects-current': 'now',
+      'projects-next': 'review',
+      'projects-backlog': 'backlog',
+      'projects-done': 'done',
+    };
+    for (const slug of Object.keys(STATUS_FOR_SLUG)) {
+      const status = STATUS_FOR_SLUG[slug];
+      const section = page
+        .locator(
+          `.group-block[data-status="${status}"], .projects-section[data-status="${status}"]`,
+        )
+        .first();
+      if (await section.count()) {
+        await section.scrollIntoViewIfNeeded();
         await settle(page);
+        const box = await section.boundingBox();
+        if (box) {
+          try {
+            await page.screenshot({
+              path: join(outRoot, theme, `${slug}.png`),
+              clip: {
+                x: Math.max(0, box.x - 16),
+                y: Math.max(0, box.y - 16),
+                width: Math.min(box.width + 32, 1600),
+                height: Math.min(box.height + 32, 1100),
+              },
+              timeout: 8_000,
+            });
+          } catch (err) {
+            console.error(`[shoot-clip] ${theme}/${slug}: ${(err as Error).message}`);
+          }
+          continue;
+        }
       }
-      await shoot(page, theme, slug);
+      // Section absent in the demo fixture (e.g. `review` has no items yet)
+      // — skip rather than fall back to a duplicate dashboard shot.
+      console.warn(`[shoot] ${theme}/${slug}: section "${status}" not present in fixture, skipped`);
     }
     // Reset scroll for the next shots.
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -176,33 +208,70 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await showPane(b, 'Knowledge');
     await shoot(page, theme, 'knowledge-tab');
 
-    // 5. history-tab — Electron has no History tab. Capture the Projects view as
-    //    the closest analog so the PNG slot stays populated; the docs page that
-    //    references it will be rewritten in the same PR.
+    // 5. history-tab — the Electron build has no History tab. The Tauri-era
+    //    PNG slot is no longer current — we now point the search-modal capture
+    //    at the same docs slot rather than keep a knowledge dupe in its place.
+    //    Drop the file from the output set; the docs page that references it
+    //    is rewritten alongside.
+    // (no shoot)
+
+    // 5b. search-modal — covers the Tauri-era item-fuzzy-search slot with a
+    //     dedicated capture instead of inferring it from the modal-with-query
+    //     shot below. Open via Ctrl+K menu IPC.
+    await sendMenu(b.app, 'search');
+    await settle(page);
+    await shoot(page, theme, 'search-modal');
+    await page.keyboard.press('Escape');
+    await settle(page);
+
+    // 5c. new-project-modal — open via the toolbar's "+ New project" button
+    //     in the Projects pane (no menu IPC for it). Type a placeholder
+    //     title so the slug preview is visible in the capture.
     await showPane(b, 'Projects');
-    await shoot(page, theme, 'history-tab');
+    const newBtn = page.locator('.new-project-button').first();
+    if (await newBtn.count()) {
+      await newBtn.click();
+      await settle(page);
+      const titleField = page.locator('.new-project-input').first();
+      if (await titleField.count()) {
+        await titleField.fill('My new project');
+        await settle(page);
+      }
+      await shoot(page, theme, 'new-project-modal');
+      await page.keyboard.press('Escape');
+      await settle(page);
+    }
 
     // 6. gear-modal* — open Settings via the File → Settings menu command.
-    //    The Electron build has tabs General / Terminal / configuration.json /
-    //    Shortcuts; we map the Tauri-era "preferences" → Terminal (the
-    //    live-edit per-user prefs) and "repositories" → configuration.json
-    //    (the editor that owns the repositories[] block of the JSON).
+    //    The Electron build has a left-side rail (Appearance / Terminal /
+    //    Workspace / Repositories / Open with), not the legacy tab strip;
+    //    use the rail buttons directly so each capture lands on a distinct
+    //    section instead of three identical PNGs of the Appearance pane.
     await sendMenu(b.app, 'open-settings');
     await settle(page);
     await shoot(page, theme, 'gear-modal');
-    const termTab = page.locator('.settings-tabs .settings-tab', { hasText: /^Terminal$/ }).first();
-    if (await termTab.count()) {
-      await termTab.click();
-      await settle(page);
-    }
+    const railClick = async (label: RegExp): Promise<void> => {
+      // Settings opens as a full-viewport modal — the backdrop intercepts
+      // pointer events, so a normal click on the rail item retries forever.
+      // `force: true` bypasses the actionability check (the rail item is
+      // visible and on top within the modal scope) and gets the click through.
+      const item = page.locator('.settings-rail-item', { hasText: label }).first();
+      if (await item.count()) {
+        await item.click({ force: true });
+        await settle(page);
+        await page.waitForTimeout(300);
+      }
+    };
+    await railClick(/^Terminal$/);
     await shoot(page, theme, 'gear-modal-preferences');
-    const configTab = page.locator('.settings-tabs .settings-tab', { hasText: /configuration\.json/i }).first();
-    if (await configTab.count()) {
-      await configTab.click();
-      await settle(page);
-      await page.waitForTimeout(400);
-    }
+    await shoot(page, theme, 'settings-modal-terminal');
+    await railClick(/^Repositories$/);
     await shoot(page, theme, 'gear-modal-repositories');
+    await shoot(page, theme, 'settings-modal-repositories');
+    await railClick(/^Appearance$/);
+    await shoot(page, theme, 'settings-modal-appearance');
+    await railClick(/^Open with$/);
+    await shoot(page, theme, 'settings-modal-open-with');
     // Close the modal (Esc).
     await page.keyboard.press('Escape');
     await settle(page);
