@@ -57,7 +57,7 @@ When changing the dev port, update **every** file:
 
 - **Per-machine**: `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`. Owned by Electron's `app.getPath('userData')`, derived from `package.json`'s `name` field. JSON only — no YAML.
 - **Tree-level (post-MVP-0)**: `<conception>/configuration.json`. New file, JSON. Coexists with the Tauri build's `<conception>/configuration.yml` until Tauri is deprecated.
-- `CONDASH_CONCEPTION_PATH` env var override: not yet wired. Add when needed.
+- `CONDASH_CONCEPTION_PATH` env var override: wired in both Electron (`src/main/settings.ts`) and CLI (`src/cli/conception.ts`). See [`docs/guides/configure-conception-path.md`](docs/guides/configure-conception-path.md) for the resolution chain.
 
 ## Sandbox: dev vs. production
 
@@ -89,7 +89,7 @@ macOS and Windows are unaffected.
 - [`docs/reference/config.md`](docs/reference/config.md) — `configuration.json` + `settings.json` schema + per-key reference.
 - [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
 
-The in-app Help menu reads files out of the asar via the allowlist in `src/main/help.ts`. As of the docs-overhaul pass (May 2026) it carries thirteen short names — `welcome`, `getting-started`, `install`, `first-launch`, `shortcuts`, `configuration`, `cli`, `mutations`, `architecture`, `why-markdown`, `values`, `non-goals`, `index` — all mapping to canonical Diátaxis paths under `docs/`. The OS-level Help submenu groups them in three blocks: Welcome / Getting started, Reference (configuration / CLI / mutations), Explanation (architecture / values / non-goals); separate items link out to `condash.vcoeur.com` and the issue tracker via `shell.openExternal`. There is no separate copy at the repo root — the migration shipped in `v2.0.6`.
+The in-app Help menu reads files out of the asar via the allowlist in `src/main/help.ts`. The allowlist carries six short names — `welcome`, `quick-start`, `shortcuts`, `configuration`, `cli`, `why-markdown` — each mapping to `docs/help/<name>.md`. Separate menu items link out to `condash.vcoeur.com` and the issue tracker via `shell.openExternal`. There is no separate copy at the repo root — the migration shipped in `v2.0.6`.
 
 The first-launch **welcome screen** lives in `src/renderer/welcome-screen.tsx` and renders inside `workspace-center` when the conception path is set, the projects list is empty, and the knowledge tree is empty (and the user hasn't dismissed it). Dismiss state persists at `welcome.dismissed` in `settings.json` via the `getWelcomeDismissed` / `setWelcomeDismissed` IPC verbs.
 

@@ -93,13 +93,19 @@ README with that header. condash picks it up live.
 
 ## Editing settings
 
-**File → Settings…** (`Ctrl+,`) opens a tabbed modal:
+**File → Settings…** (`Ctrl+,`) opens a sidebar-rail modal with five
+sections:
 
-- **General** — theme.
-- **Terminal** — shell, shortcuts, xterm.js settings.
-- **`configuration.json`** — full JSON editor for the per-tree config
-  (atomic save, validated against the schema).
-- **Shortcuts** — keyboard reference.
+- **Appearance** — theme, card-min-width sliders, font scale.
+- **Terminal** — shell, xterm.js settings, screenshot directory.
+- **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
+  `skills_path`.
+- **Repositories** — primary + secondary repos and their `run` /
+  `force_stop` commands.
+- **Open with** — `main_ide`, `pdf_viewer`, `terminal` launcher entries.
+
+There is no in-modal JSON editor; the **Open configuration.json
+externally** button at the bottom hands the file to your `main_ide`.
 
 Per-tree config (`<conception>/configuration.json`) is shared with
 teammates via git — workspace path, repos, launcher commands. Per-machine

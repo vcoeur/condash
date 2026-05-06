@@ -155,11 +155,11 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `launcher_command`          | `claude`                                                | Shell-style command spawned by the secondary `+` button in each terminal side. Empty hides the button.                         |
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                          |
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                         |
-| `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the gear modal's **Terminal** tab. |
+| `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section. |
 
 ### `terminal.xterm` { #terminalxterm }
 
-Visual + behavioural knobs for the xterm.js renderer. All keys are optional; missing keys fall through to xterm's defaults. Edit through the **Settings → Terminal** tab in the gear modal — the editor live-rewrites `configuration.json` and reloads existing tabs without a relaunch.
+Visual + behavioural knobs for the xterm.js renderer. All keys are optional; missing keys fall through to xterm's defaults. Edit through the **Settings → Terminal** section — the editor live-rewrites `configuration.json` and reloads existing tabs without a relaunch.
 
 ```json
 {
@@ -294,7 +294,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 ## Editing from the dashboard
 
-**File → Settings…** (`Ctrl+,`) opens a tabbed modal. There is no in-modal JSON editor: each persisted preference has its own form control, grouped by which file it writes to.
+**File → Settings…** (`Ctrl+,`) opens a sidebar-rail modal. There is no in-modal JSON editor: each persisted preference has its own form control, grouped by which file it writes to.
 
 **Global Condash Settings** (write to `settings.json`):
 
@@ -303,7 +303,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 **Conception Configuration** (write to `configuration.json`):
 
-- **Workspace** — `workspace_path`, `worktrees_path`.
+- **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`.
 - **Repositories** — primary / secondary list, per-repo `run` / `force_stop`.
 - **Open with** — slot labels and commands.
 
