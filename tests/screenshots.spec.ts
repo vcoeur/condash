@@ -336,14 +336,34 @@ async function captureForTheme(theme: Theme): Promise<void> {
         await page.waitForTimeout(400);
       }
       await shoot(page, theme, 'wikilink-source');
+      // Close the modal so subsequent captures don't pick up a stray overlay.
+      await page.keyboard.press('Escape');
+      await settle(page);
     }
+
+    // 12. resources-pane — Show via the View → Show Resources menu command
+    //     (Ctrl+R since v2.10.21). The fixture's resources/ has 2 root files
+    //     and one subdir (notes/) so the pane renders with both a ROOT
+    //     section and a NOTES section.
+    await sendMenu(b.app, 'show-resources');
+    await settle(page);
+    await page.waitForTimeout(400);
+    await shoot(page, theme, 'resources-pane');
+
+    // 13. skills-pane — Show via the View → Show Skills menu command (Ctrl+L).
+    //     The fixture's .claude/skills/example-skill/ has a SKILL.md plus a
+    //     companion file so the pane renders with the [SKILL] index badge.
+    await sendMenu(b.app, 'show-skills');
+    await settle(page);
+    await page.waitForTimeout(400);
+    await shoot(page, theme, 'skills-pane');
   } finally {
     await shutdown(b);
   }
 }
 
-test('capture all 31 screenshots in light + dark', async () => {
-  test.setTimeout(180_000);
+test('capture all 33 screenshots in light + dark', async () => {
+  test.setTimeout(240_000);
   await rm(outRoot, { recursive: true, force: true });
   await captureForTheme('light');
   await captureForTheme('dark');
