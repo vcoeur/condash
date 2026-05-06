@@ -1,6 +1,7 @@
 import chokidar, { type FSWatcher } from 'chokidar';
 import { BrowserWindow } from 'electron';
-import { join, sep } from 'node:path';
+import { join } from 'node:path';
+import { toPosix } from '../shared/path';
 import type { TreeEvent } from '../shared/types';
 
 const DEBOUNCE_MS = 250;
@@ -64,26 +65,32 @@ function classify(conception: string, eventName: ChokidarEvent, path: string): T
   const op = chokidarToOp(eventName);
   if (!op) return { kind: 'unknown' };
 
+  // Chokidar can emit native or POSIX separators depending on platform and
+  // base-path shape. Compare on a POSIX-normalised view so prefix/suffix
+  // checks work the same on macOS, Linux, and Windows.
+  const conceptionP = toPosix(conception);
+  const pathP = toPosix(path);
+
   // Config files at the conception root.
-  const configJson = join(conception, 'configuration.json');
-  const configYml = join(conception, 'configuration.yml');
-  if (path === configJson || path === configYml) {
+  const configJson = toPosix(join(conception, 'configuration.json'));
+  const configYml = toPosix(join(conception, 'configuration.yml'));
+  if (pathP === configJson || pathP === configYml) {
     return { kind: 'config', path };
   }
 
   // Project README: <conception>/projects/<month>/<slug>/README.md
-  const projectsPrefix = join(conception, 'projects') + sep;
-  if (path.startsWith(projectsPrefix) && path.endsWith(`${sep}README.md`)) {
-    const tail = path.slice(projectsPrefix.length, -`${sep}README.md`.length);
-    if (tail.split(sep).length === 2) {
+  const projectsPrefix = `${conceptionP}/projects/`;
+  if (pathP.startsWith(projectsPrefix) && pathP.endsWith('/README.md')) {
+    const tail = pathP.slice(projectsPrefix.length, -'/README.md'.length);
+    if (tail.split('/').length === 2) {
       return { kind: 'project', op, path };
     }
     return { kind: 'unknown' };
   }
 
   // Knowledge: any `.md` under <conception>/knowledge/.
-  const knowledgePrefix = join(conception, 'knowledge') + sep;
-  if (path.startsWith(knowledgePrefix) && path.toLowerCase().endsWith('.md')) {
+  const knowledgePrefix = `${conceptionP}/knowledge/`;
+  if (pathP.startsWith(knowledgePrefix) && pathP.toLowerCase().endsWith('.md')) {
     return { kind: 'knowledge', op, path };
   }
 
@@ -106,6 +113,7 @@ function schedule(): void {
     pendingUnknown = false;
     if (events.length === 0) return;
     for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
       win.webContents.send('tree-events', events);
     }
   }, DEBOUNCE_MS);

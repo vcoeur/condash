@@ -112,10 +112,21 @@ export async function forceStopRepo(conceptionPath: string, repoName: string): P
   const entry = findRepoEntry(config, repoName);
   if (!entry?.forceStop) throw new Error(`No force_stop configured for ${repoName}`);
 
-  const child = spawn(entry.forceStop, {
+  // Tokenise instead of `shell: true`. The configured force_stop is read
+  // from the user's `configuration.json` so it isn't strictly attacker-
+  // supplied, but routing it through the shell still costs us shell
+  // metacharacter surprises (a comment in the command, a stray `&`, an
+  // unintended glob) and any ${VAR}-style interpolation against the
+  // condash main process env. argv-form keeps spawn-without-shell.
+  const argv = tokenise(entry.forceStop, '');
+  if (argv.length === 0) {
+    throw new Error(`force_stop for ${repoName} tokenises to nothing`);
+  }
+  const [program, ...args] = argv;
+  const child = spawn(program, args, {
     detached: true,
     stdio: 'ignore',
-    shell: true,
+    shell: false,
   });
   await new Promise<void>((resolve, reject) => {
     child.on('error', (err) => reject(err));

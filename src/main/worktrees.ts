@@ -1,4 +1,3 @@
-import { normalize } from 'node:path';
 import { exec } from './exec';
 import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
 import { toPosix } from '../shared/path';
@@ -63,11 +62,13 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
       continue;
     }
     if (line.startsWith('worktree ')) {
-      // git porcelain always reports POSIX `/` separators, even on Windows.
-      // Normalise to the native form first (so internal `path.join` /
-      // `path.relative` against this string don't mix separators), then
-      // re-normalise to POSIX at the IPC boundary below.
-      current.path = normalize(line.slice('worktree '.length));
+      // git porcelain reports POSIX `/` even on Windows. Keep that shape
+      // throughout: cache keys (`getDirtyCount` / `getUpstreamStatus`),
+      // watcher keys, and the IPC boundary all need to agree, otherwise
+      // a Windows checkout silently doubles every cache entry. Anywhere
+      // we touch the local filesystem, `path.join`/`path.resolve` accept
+      // mixed separators on Windows.
+      current.path = toPosix(line.slice('worktree '.length));
     } else if (line.startsWith('branch refs/heads/')) {
       current.branch = line.slice('branch refs/heads/'.length);
     } else if (line === 'detached') {
@@ -95,7 +96,5 @@ export async function listWorktrees(repoPath: string): Promise<Worktree[]> {
       wt.upstream = upstream;
     }),
   );
-  // POSIX-shape every path before it crosses the IPC boundary.
-  for (const wt of out) wt.path = toPosix(wt.path);
   return out;
 }

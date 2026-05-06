@@ -3,6 +3,13 @@ import { join } from 'node:path';
 
 const KNOWLEDGE_IGNORED = /(^|\/)\.[^/]+/;
 
+// Heavy/non-content dirs: skip them in the markdown walker to avoid pulling
+// thousands of irrelevant `.md` files (npm package READMEs, vendored docs)
+// when a stray `node_modules/` or `.git/` somehow sits under the conception
+// tree. `notes/` is *not* skipped here — project notes are searchable body
+// content. `local/` carries gitignored deliverables and is also excluded.
+const SKIP_DIR_NAMES = new Set(['.git', 'node_modules', 'local']);
+
 export interface ProjectFile {
   path: string;
   /** Absolute path of the owning project directory (item dir). */
@@ -64,6 +71,7 @@ async function walkMarkdown(dir: string, visit: (file: string) => void): Promise
     if (entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (SKIP_DIR_NAMES.has(entry.name)) continue;
       await walkMarkdown(full, visit);
     } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
       visit(full);

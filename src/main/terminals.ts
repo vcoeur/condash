@@ -50,9 +50,9 @@ function snapshot(): TermSession[] {
 function broadcastSessions(): void {
   const snap = snapshot();
   for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.webContents.isDestroyed()) {
-      win.webContents.send('term.sessions', snap);
-    }
+    if (win.isDestroyed()) continue;
+    if (win.webContents.isDestroyed()) continue;
+    win.webContents.send('term.sessions', snap);
   }
 }
 

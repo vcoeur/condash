@@ -130,15 +130,21 @@ function scheduleStructural(repoPath: string): void {
 
 /** Replace the watcher set with watchers for the given paths. Watchers
  *  for paths no longer present are torn down; new paths get a fresh
- *  set. Idempotent across repeated calls with the same set. */
-export function setRepoWatchers(targets: WatchedPath[]): void {
+ *  set. Idempotent across repeated calls with the same set.
+ *
+ *  Closes are awaited before re-creating watchers so a path that gets
+ *  removed and re-added in quick succession (e.g. config edit churn,
+ *  rapid structural events) cannot race a stale chokidar instance
+ *  against its replacement. */
+export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
   const wantedKeys = new Set(targets.map((t) => t.path));
+  const closing: Promise<void>[] = [];
 
   for (const [path, entry] of watchers) {
     if (wantedKeys.has(path)) continue;
-    void entry.worktree.close().catch(() => undefined);
-    void entry.gitMeta.close().catch(() => undefined);
-    if (entry.structural) void entry.structural.close().catch(() => undefined);
+    closing.push(entry.worktree.close().catch(() => undefined));
+    closing.push(entry.gitMeta.close().catch(() => undefined));
+    if (entry.structural) closing.push(entry.structural.close().catch(() => undefined));
     watchers.delete(path);
     const t = pendingScalarTimers.get(path);
     if (t) {
@@ -151,6 +157,8 @@ export function setRepoWatchers(targets: WatchedPath[]): void {
       pendingStructuralTimers.delete(path);
     }
   }
+
+  await Promise.all(closing);
 
   for (const target of targets) {
     if (watchers.has(target.path)) continue;
