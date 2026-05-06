@@ -74,7 +74,7 @@ function applyTheme(theme: Theme): void {
 }
 
 /** Push the user-configured card grid min-widths onto `:root` as CSS
- * pixels. The pane stylesheets read `--card-min-{projects,code,knowledge}`
+ * pixels. The pane stylesheets read `--card-min-{projects,code,knowledge,resources,skills}`
  * with a literal fallback that matches `DEFAULT_CARD_MIN_WIDTH`, so a
  * partial prefs object falls back per-key automatically. */
 function applyCardMinWidth(prefs: Required<CardMinWidthPrefs>): void {
@@ -82,6 +82,8 @@ function applyCardMinWidth(prefs: Required<CardMinWidthPrefs>): void {
   root.style.setProperty('--card-min-projects', `${prefs.projects}px`);
   root.style.setProperty('--card-min-code', `${prefs.code}px`);
   root.style.setProperty('--card-min-knowledge', `${prefs.knowledge}px`);
+  root.style.setProperty('--card-min-resources', `${prefs.resources}px`);
+  root.style.setProperty('--card-min-skills', `${prefs.skills}px`);
 }
 
 function App() {

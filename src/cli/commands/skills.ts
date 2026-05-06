@@ -495,8 +495,7 @@ async function readManifest(dest: string): Promise<SkillsManifest | null> {
 
 async function writeManifest(dest: string, manifest: SkillsManifest): Promise<void> {
   const path = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
-  await fs.mkdir(dirname(path), { recursive: true });
-  await fs.writeFile(path, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+  await writeFileMkdir(path, Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8'));
 }
 
 async function writeFileMkdir(path: string, content: Buffer): Promise<void> {

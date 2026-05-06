@@ -73,9 +73,7 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
     },
   );
 
-  watcher.on('all', (eventName, path) =>
-    onWatchEvent(conceptionPath, eventName, path, roots),
-  );
+  watcher.on('all', (eventName, path) => onWatchEvent(conceptionPath, eventName, path, roots));
   watcher.on('error', (err) => {
     console.error('[watcher]', err);
   });
@@ -100,12 +98,7 @@ export async function refreshWatchedConception(): Promise<void> {
 
 type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
 
-function onWatchEvent(
-  conception: string,
-  eventName: string,
-  path: string,
-  roots: RootSet,
-): void {
+function onWatchEvent(conception: string, eventName: string, path: string, roots: RootSet): void {
   const event = classify(conception, eventName as ChokidarEvent, path, roots);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);
@@ -114,7 +107,9 @@ function onWatchEvent(
   // the old ones aren't. Fire-and-forget — the in-flight `tree-events`
   // batch still flushes through `schedule()` for the renderer.
   if (event.kind === 'config') {
-    void refreshWatchedConception();
+    void refreshWatchedConception().catch((err) => {
+      console.error('[watcher] refreshWatchedConception failed', err);
+    });
   }
   schedule();
 }

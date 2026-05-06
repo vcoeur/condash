@@ -1,5 +1,6 @@
 import { app, dialog, ipcMain, shell } from 'electron';
-import { basename } from 'node:path';
+import { promises as fs } from 'node:fs';
+import { basename, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { toPosix } from '../../shared/path';
 import { readSettings, updateSettings } from '../settings';
@@ -27,13 +28,33 @@ export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => 
     return conceptionPath ? toPosix(conceptionPath) : null;
   });
 
-  ipcMain.handle('pdf.toFileUrl', (_, path: string) => {
+  ipcMain.handle('pdf.toFileUrl', async (_, path: string) => {
     if (typeof path !== 'string' || path.length === 0) {
       throw new Error('pdf.toFileUrl: path must be a non-empty string');
     }
+    // Bound the file:// URL to the conception subtree — without this, a
+    // compromised renderer can synthesise a webview src for any file on disk
+    // (e.g. ~/.ssh/id_rsa) by passing an absolute path. Resolve against the
+    // realpath to defeat symlink traversal.
+    const { conceptionPath } = await readSettings();
+    if (!conceptionPath) {
+      throw new Error('pdf.toFileUrl: no conception path is set');
+    }
+    let real: string;
+    try {
+      real = await fs.realpath(path);
+    } catch {
+      throw new Error('pdf.toFileUrl: path does not resolve');
+    }
+    const conceptionReal = await fs.realpath(conceptionPath);
+    const child = real.endsWith(sep) ? real : real + sep;
+    const parent = conceptionReal.endsWith(sep) ? conceptionReal : conceptionReal + sep;
+    if (!(child === parent || child.startsWith(parent))) {
+      throw new Error('pdf.toFileUrl: path is outside the conception tree');
+    }
     return {
-      url: pathToFileURL(path).href,
-      filename: basename(path),
+      url: pathToFileURL(real).href,
+      filename: basename(real),
     };
   });
 
@@ -66,19 +87,27 @@ export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => 
   });
 
   ipcMain.handle('openExternal', async (_, target: string) => {
-    if (typeof target !== 'string' || target.length === 0) return;
+    if (typeof target !== 'string' || target.length === 0) {
+      throw new Error('openExternal: target must be a non-empty string');
+    }
     // shell.openExternal already filters non-http/https on most platforms but
     // we additionally clamp to safe schemes here so a hostile pty can't pop a
     // file:// or jar: handler. Local paths must go through `openPath`.
-    if (!/^(https?|mailto):/i.test(target)) return;
+    if (!/^(https?|mailto):/i.test(target)) {
+      throw new Error('openExternal: only http(s)/mailto schemes are allowed');
+    }
     await shell.openExternal(target);
   });
 
   ipcMain.handle('openPath', async (_, target: string) => {
-    if (typeof target !== 'string' || target.length === 0) return;
+    if (typeof target !== 'string' || target.length === 0) {
+      throw new Error('openPath: target must be a non-empty string');
+    }
     // Reject anything that looks like a URL — the renderer should call
     // openExternal for those.
-    if (/^[a-z][a-z0-9+\-.]*:/i.test(target)) return;
+    if (/^[a-z][a-z0-9+\-.]*:/i.test(target)) {
+      throw new Error('openPath: target must be a path, not a URL');
+    }
     const error = await shell.openPath(target);
     if (error) throw new Error(error);
   });

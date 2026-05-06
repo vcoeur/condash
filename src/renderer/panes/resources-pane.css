@@ -45,7 +45,10 @@
 
 .resources-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(var(--card-min-resources, 280px), 100%), 1fr)
+  );
   gap: 8px;
 }
 
@@ -175,4 +178,15 @@
   background: var(--bg-elevated);
   color: var(--text-primary);
   border-color: var(--border-strong);
+}
+
+.resources-card-action:focus-visible,
+.resources-card-body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.resources-card-action[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

@@ -15,16 +15,22 @@ const GROUPS: ShortcutGroup[] = [
     title: 'Navigation',
     entries: [
       { keys: 'Ctrl + K', description: 'Open search' },
+      { keys: 'Ctrl + Shift + F', description: 'Open search modal (alias)' },
       { keys: 'Ctrl + N', description: 'New project' },
       { keys: 'Ctrl + ,', description: 'Open settings' },
       { keys: 'F5', description: 'Refresh tree, repos, and dirty counts' },
+      { keys: 'Ctrl + Shift + R', description: 'Reload window (hard reload)' },
       { keys: 'Esc', description: 'Close the topmost modal' },
       { keys: '?', description: 'Toggle this overlay' },
     ],
   },
   {
     title: 'Panes',
-    entries: [{ keys: 'Ctrl + `', description: 'Toggle Terminal' }],
+    entries: [
+      { keys: 'Ctrl + R', description: 'Show Resources pane' },
+      { keys: 'Ctrl + L', description: 'Show Skills pane' },
+      { keys: 'Ctrl + `', description: 'Toggle Terminal' },
+    ],
   },
   {
     title: 'Project cards',
@@ -66,8 +72,13 @@ export function ShortcutsOverlay(props: { onClose: () => void }) {
   const handleKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' || e.key === '?') {
       e.preventDefault();
+      e.stopPropagation();
       props.onClose();
+      return;
     }
+    // Overlay is the topmost modal — swallow every other shortcut so
+    // Ctrl+K, Ctrl+`, etc. don't fire underneath it.
+    e.stopPropagation();
   };
   onMount(() => document.addEventListener('keydown', handleKey, true));
   onCleanup(() => document.removeEventListener('keydown', handleKey, true));

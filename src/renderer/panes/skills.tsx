@@ -109,9 +109,8 @@ export function SkillsView(props: {
               when={props.searchInput.trim().length > 0}
               fallback={
                 <p>
-                  No skills directory yet — install skills with{' '}
-                  <code>condash skills install</code>, or change <code>skills_path</code> in
-                  settings.
+                  No skills directory yet — install skills with <code>condash skills install</code>,
+                  or change <code>skills_path</code> in settings.
                 </p>
               }
             >
@@ -184,7 +183,16 @@ function SkillCard(props: { node: SkillNode; onOpen: () => void }) {
       class="skills-card"
       data-shipped={shippedStatus()}
       title={props.node.path}
+      tabIndex={0}
+      role="button"
+      aria-label={`Open skill ${props.node.title}`}
       onClick={() => props.onOpen()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          props.onOpen();
+        }
+      }}
     >
       <header class="skills-card-head">
         <h3 class="skills-card-title">{props.node.title}</h3>

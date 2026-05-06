@@ -28,10 +28,7 @@ function setupSkills(): void {
     join(tmp, '.claude', 'skills', 'projects', 'create.md'),
     '# Create\n\nCreate notes.\n',
   );
-  writeFileSync(
-    join(tmp, '.claude', 'skills', 'projects', 'subdir', 'deep.md'),
-    '# Deep helper\n',
-  );
+  writeFileSync(join(tmp, '.claude', 'skills', 'projects', 'subdir', 'deep.md'), '# Deep helper\n');
   writeFileSync(join(tmp, '.claude', 'skills', 'projects', 'image.png'), 'binary');
 }
 
@@ -87,10 +84,7 @@ describe('readSkillsTree', () => {
         },
       },
     };
-    writeFileSync(
-      join(tmp, '.claude', 'skills', '.condash-skills.json'),
-      JSON.stringify(manifest),
-    );
+    writeFileSync(join(tmp, '.claude', 'skills', '.condash-skills.json'), JSON.stringify(manifest));
 
     const tree = (await readSkillsTree(tmp, '.claude/skills'))!;
     const projects = tree.children?.[0];
