@@ -67,7 +67,7 @@ A `terminal` block at this level still validates for backward-compat, but it is 
 
 | Key              | Meaning                                                                                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspace_path` | Directory condash scans for git repositories. Every direct subdirectory containing a `.git/` shows up in the **Code** pane. If unset, the tab is hidden. |
+| `workspace_path` | Directory condash scans for git repositories. Every direct subdirectory containing a `.git/` shows up in the **Code** pane. If unset, the pane is hidden. |
 | `worktrees_path` | Additional sandbox for the "open in IDE" buttons. Paths outside `workspace_path` and `worktrees_path` are rejected before the shell sees them.          |
 | `resources_path` | Directory backing the **Resources** pane. Relative paths are resolved against `<conception_path>`; default `"resources"`. Every file under this tree (any extension) shows up as a card. Unset = same as default. See [Resources pane guide](../guides/resources-pane.md). |
 | `skills_path`    | Directory backing the **Skills** pane. Relative paths are resolved against `<conception_path>`; default `".claude/skills"`. Markdown only. Each skill renders as a section with its `SKILL.md` body. Unset = same as default. See [Skills pane guide](../guides/skills-pane.md). |
