@@ -8,6 +8,7 @@ import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../
 import { atomicWrite } from './atomic-write';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { readSettings, updateSettings } from './settings';
+import { tokenise } from './launchers';
 
 interface Session {
   id: string;
@@ -314,11 +315,22 @@ function isAlive(p: pty.IPty | null): boolean {
 }
 
 function runForceStop(command: string): Promise<void> {
+  // Tokenise + shell:false to mirror launchers.runForceStopRepo. Routing
+  // the user-configured force_stop: string through the shell costs us
+  // shell-metacharacter surprises (stray `&`, unintended globs) and ${VAR}
+  // interpolation against the main-process env — the argv shape avoids
+  // both. Pass-9 closes the parity gap with launchers.ts.
   return new Promise<void>((resolve) => {
-    const child = spawn(command, {
+    const argv = tokenise(command, '');
+    if (argv.length === 0) {
+      resolve();
+      return;
+    }
+    const [program, ...args] = argv;
+    const child = spawn(program, args, {
       detached: true,
       stdio: 'ignore',
-      shell: true,
+      shell: false,
     });
     let settled = false;
     const finish = () => {

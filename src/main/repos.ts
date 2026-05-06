@@ -5,6 +5,7 @@ import { toPosix } from '../shared/path';
 import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
 import { getCurrentBranch, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
+import { pathExists } from './fs-helpers';
 
 interface FlatRepo extends RepoLookup {
   kind: 'primary' | 'secondary';
@@ -18,15 +19,6 @@ async function readConfig(conceptionPath: string): Promise<ConfigShape> {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
     throw err;
-  }
-}
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
   }
 }
 

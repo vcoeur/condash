@@ -9,6 +9,7 @@ import { projectsStrategy } from '../../main/index-projects';
 import { checkBranchState } from '../../main/worktree-ops';
 import { exec } from '../../main/exec';
 import { touchDirtyMarker } from '../../main/dirty';
+import { pathExists } from '../../main/fs-helpers';
 import { isoToday } from '../../shared/iso-today';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
 import { statusOrder } from '../../shared/projects';
@@ -484,15 +485,6 @@ function extractParagraph(lines: string[], hitIndex: number): string {
     .slice(start, end + 1)
     .join('\n')
     .trim();
-}
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function listProjects(

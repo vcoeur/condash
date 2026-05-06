@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { pathExists } from './fs-helpers';
 
 import type { ConceptionInitState } from '../shared/types';
 
@@ -109,15 +110,6 @@ async function isFile(p: string): Promise<boolean> {
   try {
     const stat = await fs.stat(p);
     return stat.isFile();
-  } catch {
-    return false;
-  }
-}
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
   } catch {
     return false;
   }

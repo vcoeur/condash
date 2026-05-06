@@ -28,6 +28,7 @@ import { findProjectReadmes } from './walk';
 import { readHeader } from './header-io';
 import { exec } from './exec';
 import type { ConfigShape } from './config-walk';
+import { pathExists } from './fs-helpers';
 
 export type AuditCheckName = 'lfs' | 'binaries' | 'cross-repo' | 'worktrees' | 'index';
 
@@ -399,15 +400,6 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
 // ---------------------------------------------------------------------------
 // Helpers.
 // ---------------------------------------------------------------------------
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await fs.access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function readConfig(
   conceptionPath: string,
