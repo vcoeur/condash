@@ -1,6 +1,7 @@
 import { createMemo, For, Show } from 'solid-js';
 import type { SkillNode } from '@shared/types';
 import { filterByQuery } from '../filter-by-query';
+import { formatSectionLabel } from './pane-utils';
 import './skills-pane.css';
 
 interface SkillSection {
@@ -40,7 +41,7 @@ function buildSections(root: SkillNode | null): SkillSection[] {
     }
 
     if (index || others.length > 0) {
-      const label = dirRel === '' ? 'ROOT' : dirRel.split('/').join(' · ').toUpperCase();
+      const label = formatSectionLabel(dirRel);
       out.push({
         id: dirRel,
         label,

@@ -3,6 +3,7 @@ import type { KnowledgeNode, SearchHit, SearchResults, SearchSnippet } from '@sh
 import { BookIcon } from '../icons';
 import { useSearchDebounce } from '../search-debounce';
 import { HighlightedText } from '../search/highlight';
+import { formatSectionLabel, isSearching as isSearchingShared } from './pane-utils';
 import './knowledge-pane.css';
 
 /* Knowledge pane — flat card list grouped one section per directory. The
@@ -68,7 +69,7 @@ function buildSections(root: KnowledgeNode | null): KnowledgeSection[] {
       for (const f of contentNodes) general.push({ node: f, bucket: 'general' });
     } else if (contentNodes.length > 0 || indexNode) {
       const bucket = bucketOf(dirRel);
-      const label = dirRel.split('/').join(' · ').toUpperCase();
+      const label = formatSectionLabel(dirRel);
       const files: KnowledgeFile[] = contentNodes
         .slice()
         .sort((a, b) => a.title.localeCompare(b.title))
@@ -184,7 +185,7 @@ export function KnowledgeView(props: {
     results().hits.filter((h) => h.source === 'knowledge'),
   );
 
-  const isSearching = (): boolean => props.searchInput.trim().length > 0;
+  const isSearching = (): boolean => isSearchingShared(props.searchInput);
 
   return (
     <div class="knowledge-pane">

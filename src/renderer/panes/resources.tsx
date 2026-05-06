@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { ResourceCategory, ResourceNode } from '@shared/types';
 import { filterByQuery } from '../filter-by-query';
+import { formatSectionLabel } from './pane-utils';
 import './resources-pane.css';
 
 interface FlatSection {
@@ -40,7 +41,7 @@ function buildSections(root: ResourceNode | null): FlatSection[] {
 
   const out: FlatSection[] = [];
   for (const [id, files] of sections) {
-    const label = id === '' ? 'ROOT' : id.split('/').join(' · ').toUpperCase();
+    const label = formatSectionLabel(id);
     out.push({
       id,
       label,
