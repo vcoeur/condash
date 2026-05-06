@@ -11,7 +11,7 @@ description: The short list of environment variables condash reads.
 
 | Name | Purpose | Default | Accepted values |
 |---|---|---|---|
-| `CONDASH_CONCEPTION` | One-shot conception-path override | unset | Any absolute path |
+| `CONDASH_CONCEPTION_PATH` | One-shot conception-path override (legacy alias `CONDASH_CONCEPTION` still accepted) | unset | Any absolute path |
 | `CONDASH_FORCE_DEVICE_SCALE_FACTOR` | Force a fixed integer scale (Wayland fallback) | unset | Positive number |
 | `CONDASH_FORCE_PROD` | Force the renderer to load the packaged build (Playwright fixture) | unset | `1` or unset |
 | `SHELL` | Fallback for `terminal.shell` | `/bin/bash` | Absolute path to an interactive shell |
@@ -36,7 +36,7 @@ Set by Electron itself when launched with `--no-sandbox` (the dev script in `pac
 
 You should not set this manually for the production `.deb` build — it installs `chrome-sandbox` SUID-root at `/opt/condash/`, and disabling the sandbox there is a net regression.
 
-## `CONDASH_CONCEPTION`
+## `CONDASH_CONCEPTION_PATH`
 
 A one-shot override for the conception path. When set, it wins over the `conceptionPath` value in `settings.json`. Useful for:
 
@@ -45,6 +45,8 @@ A one-shot override for the conception path. When set, it wins over the `concept
 - Running multiple condash instances against different trees from different shells.
 
 The override is **session-scoped** — it is not persisted back into `settings.json`, and the next launch without the env var falls back to the saved value.
+
+The legacy name `CONDASH_CONCEPTION` is still accepted for back-compat (skills and scripts written before the rename keep working); when both are set, `CONDASH_CONCEPTION_PATH` wins.
 
 ## `CONDASH_FORCE_DEVICE_SCALE_FACTOR`
 

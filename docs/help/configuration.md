@@ -8,8 +8,9 @@ apply when keys are missing.
 | `configuration.json` | `<conception>/configuration.json` | Workspace + repositories (versioned in git) |
 | `settings.json` | `~/.config/condash/settings.json` (Linux) | This-machine prefs (terminal, IDE, theme) |
 
-**Per-machine values win.** When the same key appears in both files,
-`settings.json` overrides `configuration.json`, merged field by field.
+**Each key lives in exactly one file** — the two configs own disjoint
+key sets. See [reference/config.md](../reference/config.md#at-a-glance)
+for the split.
 
 ## `configuration.json` — minimal example
 
@@ -72,7 +73,7 @@ automatically. Setting them in `settings.json` is silently ignored.
 
 ## Editing in the app
 
-**File → Settings…** (`Ctrl+,`) opens a tabbed modal. There is no
+**File → Settings…** (`Ctrl+,`) opens a sidebar-rail modal. There is no
 in-modal JSON editor — each preference has its own form control,
 grouped by which file it writes to.
 
@@ -85,7 +86,8 @@ grouped by which file it writes to.
 
 **Conception Configuration** (write to `configuration.json`):
 
-- **Workspace** — `workspace_path`, `worktrees_path`.
+- **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
+  `skills_path`.
 - **Repositories** — primary / secondary list, per-repo `run` /
   `force_stop`.
 - **Open with** — slot labels and commands.

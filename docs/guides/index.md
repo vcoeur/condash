@@ -17,6 +17,8 @@ Each guide answers one specific question.
 - **[Embedded terminal](terminal.md)** — toggle, dock, prefer your shell, screenshot paste.
 - **[Wikilinks between items](wikilinks.md)** — `[[other-item]]` resolves across the tree.
 - **[The knowledge tree](knowledge-tree.md)** — your reference notes, organised as cards.
+- **[The Resources pane](resources-pane.md)** — every file under `resources/` as a card with copy / open / paste-to-term actions.
+- **[The Skills pane](skills-pane.md)** — markdown skills under `.claude/skills/`, edited in place, with shipped/diverged chips.
 - **[Troubleshooting](troubleshooting.md)** — Wayland blur, dirty caches, app won't launch.
 
 **More**
