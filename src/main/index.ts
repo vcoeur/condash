@@ -10,6 +10,7 @@ import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
 import { addStep, editStepText, transitionStatus, toggleStep, writeNote } from './mutate';
+import { touchDirtyMarker } from './dirty';
 import { createProjectCore } from '../cli/commands/projects';
 import { checkBranchState } from './worktree-ops';
 import { listProjectFiles } from './files';
@@ -433,20 +434,6 @@ async function readBranchFromReadme(readmePath: string): Promise<string | null> 
     return parseHeader(raw).branch;
   } catch {
     return null;
-  }
-}
-
-async function touchDirtyMarker(
-  conceptionPath: string,
-  tree: 'projects' | 'knowledge',
-): Promise<void> {
-  const path = join(conceptionPath, tree, '.index-dirty');
-  try {
-    await fsp.utimes(path, new Date(), new Date());
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      await fsp.writeFile(path, '', 'utf8');
-    } else throw err;
   }
 }
 

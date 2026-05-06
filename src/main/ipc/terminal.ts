@@ -35,7 +35,7 @@ export function registerTerminalIpc(): void {
 
   ipcMain.handle('term.list', () => listTerminalSessions());
 
-  ipcMain.handle('term.attach', (_, id: string) => attachTerminal(id));
+  ipcMain.handle('term.attach', (event, id: string) => attachTerminal(id, event.sender));
 
   ipcMain.handle('term.setSide', (_, id: string, side: 'my' | 'code') => {
     if (side !== 'my' && side !== 'code') {

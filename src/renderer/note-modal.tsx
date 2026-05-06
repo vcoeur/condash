@@ -207,6 +207,13 @@ export function NoteModal(props: {
   createEffect(() => {
     props.onDirtyChange?.(dirty());
   });
+  // On unmount, force the host's mirror back to false. Without this, closing
+  // a dirty modal via the × button or backdrop confirm leaves the host
+  // believing an unsaved note still exists, producing a phantom
+  // "Unsaved note edits will be lost" prompt at next Quit.
+  onCleanup(() => {
+    props.onDirtyChange?.(false);
+  });
 
   // Switching to a different file (back/forward, in-modal navigation) must
   // reset the per-file local state — otherwise an unsaved-edit pill from the

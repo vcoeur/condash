@@ -28,6 +28,10 @@ interface Session {
   buffer: string;
   /** Process exit code; undefined while live. */
   exited?: number;
+  /** Per-session 'destroyed' listener handle on `webContents` — kept on the
+   * session so `stopSession` can remove it (otherwise long-lived renderers
+   * accumulate one stale closure per spawned-and-closed session). */
+  onWebContentsDestroyed?: () => void;
 }
 
 const MAX_BUFFER = 64_000;
@@ -61,9 +65,33 @@ export function listTerminalSessions(): TermSession[] {
   return snapshot();
 }
 
-export function attachTerminal(id: string): { output: string; exited?: number } | null {
+export function attachTerminal(
+  id: string,
+  sender: WebContents,
+): { output: string; exited?: number } | null {
   const s = sessions.get(id);
   if (!s) return null;
+  // Reassign the live data sink to the calling renderer so that subsequent
+  // `term.data` events from the still-running pty land in the freshly-loaded
+  // window. Without this, after a renderer reload the session row is visible
+  // but no live output arrives — `webContents.send` keeps targeting the
+  // destroyed original WebContents and silently bails.
+  if (!s.webContents.isDestroyed() && s.webContents.id === sender.id) {
+    return { output: s.buffer, exited: s.exited };
+  }
+  if (s.onWebContentsDestroyed) {
+    try {
+      s.webContents.removeListener('destroyed', s.onWebContentsDestroyed);
+    } catch {
+      /* old webContents already gone */
+    }
+  }
+  s.webContents = sender;
+  const onDestroyed = (): void => {
+    void closeSession(id);
+  };
+  s.onWebContentsDestroyed = onDestroyed;
+  sender.once('destroyed', onDestroyed);
   return { output: s.buffer, exited: s.exited };
 }
 
@@ -225,9 +253,11 @@ export async function spawnTerminal(
     broadcastSessions();
   });
 
-  webContents.once('destroyed', () => {
-    closeSession(id);
-  });
+  const onDestroyed = (): void => {
+    void closeSession(id);
+  };
+  session.onWebContentsDestroyed = onDestroyed;
+  webContents.once('destroyed', onDestroyed);
 
   broadcastSessions();
   return { id, cwd };
@@ -341,6 +371,13 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
   }
 
   if (removeEntry) {
+    if (session.onWebContentsDestroyed && !session.webContents.isDestroyed()) {
+      try {
+        session.webContents.removeListener('destroyed', session.onWebContentsDestroyed);
+      } catch {
+        /* webContents already torn down */
+      }
+    }
     sessions.delete(id);
     broadcastSessions();
   }

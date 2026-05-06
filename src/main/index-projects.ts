@@ -135,7 +135,7 @@ async function draftMonthEntry(child: ChildInfo, aggregated: string[]): Promise<
 }
 
 async function validateAllReadmes(
-  rootAbsPath: string,
+  _rootAbsPath: string,
   conceptionPath: string,
 ): Promise<ValidationWarning[]> {
   const out: ValidationWarning[] = [];
@@ -152,8 +152,6 @@ async function validateAllReadmes(
       out.push({ path: readme, field: w.field, message: w.message, severity: 'warn' });
     }
   }
-  // Quietly avoid touching `rootAbsPath` — kept for signature parity.
-  void rootAbsPath;
   return out;
 }
 

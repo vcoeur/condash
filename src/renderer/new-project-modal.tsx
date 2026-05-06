@@ -39,11 +39,14 @@ export function NewProjectModal(props: {
 
   const handleKey = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return;
-    const target = event.target as HTMLElement | null;
-    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+    // The modal opens with the title field focused, so an INPUT/TEXTAREA
+    // early-return swallowed Esc until the user clicked away. Esc closes
+    // the modal regardless of the focused field — but stays guarded by
+    // `busy()` so a mid-create submit isn't cancelled by a stray keypress.
+    if (busy()) return;
     event.preventDefault();
     event.stopPropagation();
-    if (!busy()) props.onClose();
+    props.onClose();
   };
 
   onMount(() => {

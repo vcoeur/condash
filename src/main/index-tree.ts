@@ -528,7 +528,7 @@ async function processDirectory(
     }
   }
 
-  result.created = isNew && (changed || true); // creating a new index is always "changed"
+  result.created = isNew;
   result.changed = !isNew && changed;
   return result;
 }

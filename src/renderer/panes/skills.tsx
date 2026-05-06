@@ -65,8 +65,6 @@ function buildSections(root: SkillNode | null): SkillSection[] {
   return out;
 }
 
-const filterFiles = (files: SkillNode[], q: string): SkillNode[] => filterByQuery(files, q);
-
 function indexMatches(index: SkillNode | undefined, q: string): boolean {
   if (q.trim().length === 0) return true;
   if (!index) return false;
@@ -84,7 +82,7 @@ export function SkillsView(props: {
     if (q.trim().length === 0) return sections();
     return sections()
       .map((s) => {
-        const files = filterFiles(s.files, q);
+        const files = filterByQuery(s.files, q);
         const indexHit = indexMatches(s.index, q);
         if (files.length === 0 && !indexHit) {
           return { ...s, files, index: undefined };

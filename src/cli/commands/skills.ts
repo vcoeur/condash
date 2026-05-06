@@ -27,7 +27,7 @@
 
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import type { ParsedArgs } from '../parser';
@@ -538,6 +538,4 @@ function cheapDiff(oldStr: string, newStr: string): string {
   return out.join('\n');
 }
 
-// Quiet "import only used in types" lint by referencing the imports we need.
 export type { SkillsManifest };
-void relative;
