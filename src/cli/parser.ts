@@ -68,21 +68,16 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       if (Object.prototype.hasOwnProperty.call(flags, name)) {
         throw new UsageError(`Flag '--${name}' specified more than once`);
       }
-      if (BOOL_FLAGS.has(name) && eq === -1) {
+      if (BOOL_FLAGS.has(name)) {
+        if (eq !== -1) {
+          throw new UsageError(`Boolean flag '--${name}' does not accept a value`);
+        }
         flags[name] = true;
         i += 1;
         continue;
       }
       if (eq !== -1) {
         flags[name] = token.slice(eq + 1);
-        i += 1;
-        continue;
-      }
-      // A bare `--bool=value` form would have been caught above; here a
-      // boolean-set flag without `=` and no following value just means
-      // "true" (e.g. trailing `--quiet`).
-      if (BOOL_FLAGS.has(name)) {
-        flags[name] = true;
         i += 1;
         continue;
       }
@@ -198,6 +193,21 @@ export function takeUniversalFlags(args: ParsedArgs): UniversalFlags {
     throw new UsageError('--json and --ndjson are mutually exclusive');
   }
   return out;
+}
+
+/**
+ * Reject any flag keys remaining on `args.flags` after the command has
+ * extracted everything it knows about. Pass-4 and pass-5 audits flagged
+ * that `takeUniversalFlags` documents this as the caller's responsibility
+ * but every command was silently dropping unknown flags. Call this at
+ * the END of a command's flag extraction (after pulling each known key
+ * into a local) to catch typos like `--sortx status`.
+ */
+export function assertNoExtraFlags(args: ParsedArgs): void {
+  const extras = Object.keys(args.flags);
+  if (extras.length === 0) return;
+  const word = extras.length === 1 ? 'flag' : 'flags';
+  throw new UsageError(`Unknown ${word}: ${extras.map((k) => `--${k}`).join(', ')}`);
 }
 
 /**

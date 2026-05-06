@@ -35,6 +35,7 @@ export function PdfModal(props: {
         class="modal pdf-modal"
         role="dialog"
         aria-modal="true"
+        aria-label={`PDF: ${resolved()?.filename ?? 'document'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <header class="modal-head">

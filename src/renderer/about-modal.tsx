@@ -13,10 +13,7 @@ interface AppInfo {
  * mount so the user sees the build they're actually running. */
 export function AboutModal(props: { onClose: () => void }) {
   const [info, setInfo] = createSignal<AppInfo | null>(null);
-
-  onMount(() => {
-    void window.condash.getAppInfo().then(setInfo);
-  });
+  let cancelled = false;
 
   const handleKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
@@ -25,8 +22,19 @@ export function AboutModal(props: { onClose: () => void }) {
       props.onClose();
     }
   };
-  onMount(() => document.addEventListener('keydown', handleKey, true));
-  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
+
+  onMount(() => {
+    // Cancellation guard so the .then() doesn't setInfo into a disposed
+    // root if the modal closes before the IPC resolves.
+    void window.condash.getAppInfo().then((next) => {
+      if (!cancelled) setInfo(next);
+    });
+    document.addEventListener('keydown', handleKey, true);
+  });
+  onCleanup(() => {
+    cancelled = true;
+    document.removeEventListener('keydown', handleKey, true);
+  });
 
   return (
     <div class="modal-backdrop" onClick={props.onClose}>

@@ -37,7 +37,12 @@ export function registerTerminalIpc(): void {
 
   ipcMain.handle('term.attach', (_, id: string) => attachTerminal(id));
 
-  ipcMain.handle('term.setSide', (_, id: string, side: 'my' | 'code') => setSessionSide(id, side));
+  ipcMain.handle('term.setSide', (_, id: string, side: 'my' | 'code') => {
+    if (side !== 'my' && side !== 'code') {
+      throw new Error(`term.setSide: invalid side ${JSON.stringify(side)}`);
+    }
+    return setSessionSide(id, side);
+  });
 
   ipcMain.handle('term.getPrefs', async () => {
     return (await getTerminalPrefs()) ?? {};
