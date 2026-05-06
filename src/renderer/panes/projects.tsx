@@ -8,6 +8,7 @@ import {
   todayIso,
 } from './projects-parts/data';
 import { GroupBlock, SubGroup } from './projects-parts/cards';
+import { usePaneScrollMemory } from './pane-scroll-memory';
 
 // Public API re-exports — kept here so existing consumers
 // (`./panes/projects`) keep importing from the same module path.
@@ -35,8 +36,9 @@ export function ProjectsView(props: {
    * create flow keep working unchanged. */
   onNewProject?: () => void;
 }) {
+  const scrollRef = usePaneScrollMemory('projects');
   return (
-    <div class="projects-stack">
+    <div class="projects-stack" ref={scrollRef}>
       <For each={projectsTabGroups(props.buckets)}>
         {(group) => {
           // The "+ New project" button rides the NOW section header so it

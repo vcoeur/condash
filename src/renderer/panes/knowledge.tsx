@@ -2,6 +2,7 @@ import { createMemo, For, Show } from 'solid-js';
 import type { KnowledgeNode } from '@shared/types';
 import { BookIcon } from '../icons';
 import { formatSectionLabel } from './pane-utils';
+import { usePaneScrollMemory } from './pane-scroll-memory';
 import './knowledge-pane.css';
 
 /* Knowledge pane — flat card list grouped one section per directory. The
@@ -111,9 +112,10 @@ export function KnowledgeView(props: {
 }) {
   const todayISO = new Date().toISOString().slice(0, 10);
   const sections = createMemo<KnowledgeSection[]>(() => buildSections(props.root));
+  const scrollRef = usePaneScrollMemory('knowledge');
 
   return (
-    <div class="knowledge-pane">
+    <div class="knowledge-pane" ref={scrollRef}>
       <DirectoryView sections={sections()} todayISO={todayISO} onOpen={props.onOpen} />
     </div>
   );

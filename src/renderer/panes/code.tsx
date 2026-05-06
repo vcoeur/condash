@@ -15,6 +15,7 @@ import { CodeRunRows } from '../code-runs';
 import { createDropdownMenu } from '../dropdown-menu';
 import { ChevronDownIcon, FolderIcon, KillIcon, RunIcon, StopIcon, TerminalIcon } from '../icons';
 import { createPositionedPopover } from '../popover';
+import { usePaneScrollMemory } from './pane-scroll-memory';
 
 type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
 
@@ -688,8 +689,9 @@ export function CodeView(props: {
   onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
   onCloseSession: (id: string) => void;
 }) {
+  const scrollRef = usePaneScrollMemory('code');
   return (
-    <div class="repos-pane">
+    <div class="repos-pane" ref={scrollRef}>
       <For each={props.groups}>
         {(group) => {
           // Active runs for this group only, sorted to mirror the section's

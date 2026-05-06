@@ -1,6 +1,7 @@
 import { createMemo, For, Show } from 'solid-js';
 import type { SkillNode } from '@shared/types';
 import { formatSectionLabel } from './pane-utils';
+import { usePaneScrollMemory } from './pane-scroll-memory';
 import './skills-pane.css';
 
 interface SkillSection {
@@ -74,9 +75,10 @@ export function SkillsView(props: {
   onCopyInstallCommand?: () => void;
 }) {
   const sections = createMemo<SkillSection[]>(() => buildSections(props.root));
+  const scrollRef = usePaneScrollMemory('skills');
 
   return (
-    <div class="skills-pane">
+    <div class="skills-pane" ref={scrollRef}>
       <Show
         when={sections().length > 0}
         fallback={
