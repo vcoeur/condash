@@ -155,7 +155,19 @@ Or set the path through `condash config conception-path ~/src/conception` (write
 
 ### `condash` opens the GUI when I expected the CLI
 
-The CLI dispatcher only fires for known nouns (`projects`, `knowledge`, `search`, `repos`, `worktrees`, `dirty`, `skills`, `config`, `help`) or top-level `--help` / `--version`. A typo silently drops you into the GUI. See [`condash --help`](../reference/cli.md) for the full list.
+The CLI dispatcher only fires for known nouns (`projects`, `knowledge`, `search`, `repos`, `worktrees`, `audit`, `dirty`, `skills`, `config`, `help`) or top-level `--help` / `--version`. A typo silently drops you into the GUI. See [`condash --help`](../reference/cli.md) for the full list.
+
+## Reading the toasts
+
+Toasts at the bottom of the dashboard come in three colours. The colour signals what just happened — read it before reading the message.
+
+| Colour | Kind | When you see it |
+|---|---|---|
+| Green / accent | success | A write completed: `Created <slug>`, `Path copied`, `Force-stopped <repo>`, `Initialised conception template`. The action took effect — nothing to do. |
+| Red / warn | error | An action failed and was not retried: `Run failed`, `Open failed`, `Status change failed`, `Could not persist layout`. The trailing message is the underlying cause; the dashboard state was *not* mutated. |
+| Neutral | info | Diagnostic context: `[[slug]] matched 3 items — opening the first`, branch warnings on close. The dashboard state did change; the toast is FYI. |
+
+Toasts auto-dismiss after 4 seconds. Identical messages don't stack — a second flash of the same text resets the timer instead of queuing a duplicate.
 
 ## Still stuck?
 

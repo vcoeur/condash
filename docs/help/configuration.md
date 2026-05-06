@@ -23,6 +23,9 @@ apply when keys are missing.
       { "name": "myapp", "run": "make dev" }
     ],
     "secondary": ["conception"]
+  },
+  "open_with": {
+    "main_ide": { "label": "Open in IDE", "command": "code {path}" }
   }
 }
 ```
@@ -31,7 +34,10 @@ apply when keys are missing.
 |---|---|
 | `workspace_path` | Where condash scans for git repos. |
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
+| `resources_path` | Folder backing the Resources pane. Default `resources`. |
+| `skills_path` | Folder backing the Skills pane. Default `.claude/skills`. |
 | `repositories.primary` / `.secondary` | Repos to surface on the Code pane. Each entry is a string or an object with `name`, optional `submodules`, `run`, `force_stop`, `label`. |
+| `open_with` | Three launcher slots (`main_ide`, `secondary_ide`, `terminal`) — tree-side so teammates pick them up automatically. `{path}` is replaced with the absolute target path. |
 
 A repo entry's `run` wires up an inline dev-server runner; `force_stop`
 gives a kill button that frees a stuck port (e.g. `fuser -k 8200/tcp`).
@@ -47,8 +53,12 @@ gives a kill button that frees a stuck port (e.g. `fuser -k 8200/tcp`).
     "shortcut": "Ctrl+T",
     "screenshot_dir": "/home/you/Pictures/Screenshots"
   },
-  "open_with": {
-    "main_ide": { "label": "Open in IDE", "command": "code {path}" }
+  "cardMinWidth": {
+    "projects": 650,
+    "code": 650,
+    "knowledge": 520,
+    "resources": 280,
+    "skills": 280
   }
 }
 ```
@@ -56,8 +66,9 @@ gives a kill button that frees a stuck port (e.g. `fuser -k 8200/tcp`).
 The first-launch folder picker writes `conceptionPath` for you. Theme
 follows the OS unless you set it explicitly via the toolbar toggle.
 
-`{path}` in any `open_with` command is replaced with the absolute path
-of the repo, worktree, or directory being opened.
+`open_with` and `pdf_viewer` are **not** valid in `settings.json` — they
+are tree-side, in `configuration.json`, so teammates pick them up
+automatically. Setting them in `settings.json` is silently ignored.
 
 ## Editing in the app
 
@@ -67,7 +78,8 @@ grouped by which file it writes to.
 
 **Global Condash Settings** (write to `settings.json`):
 
-- **Appearance** — theme.
+- **Appearance** — theme; per-pane card-grid min-widths (Projects /
+  Code / Knowledge / Resources / Skills).
 - **Terminal** — embedded terminal preferences (shell, shortcuts,
   xterm.js fonts and colours).
 
@@ -86,8 +98,8 @@ through the same atomic save + schema validation path either way.
 
 | Change | Effect |
 |---|---|
-| `open_with`, `terminal`, repo `run` / `force_stop` | Live, no restart |
-| `workspace_path`, `worktrees_path`, repository list | Restart required |
+| `open_with`, `terminal`, repo `run` / `force_stop`, `cardMinWidth`, theme | Live, no restart |
+| `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, repository list | Restart required |
 
 ## More
 
