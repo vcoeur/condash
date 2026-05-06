@@ -259,6 +259,16 @@ export function SettingsModal(props: {
       c.worktrees_path = value || undefined;
     });
 
+  const setResourcesPath = (value: string): Promise<void> =>
+    patchConfig((c) => {
+      c.resources_path = value || undefined;
+    });
+
+  const setSkillsPath = (value: string): Promise<void> =>
+    patchConfig((c) => {
+      c.skills_path = value || undefined;
+    });
+
   // --- Repositories ----------------------------------------------------
 
   type RepoBucket = 'primary' | 'secondary';
@@ -822,6 +832,33 @@ export function SettingsModal(props: {
                     placeholder={pick(WORKTREES_PLACEHOLDER, platform())}
                     {...bindText('worktrees_path', () => parsed().worktrees_path, setWorktreesPath)}
                   />
+                </label>
+                <label>
+                  <span>Resources directory</span>
+                  <input
+                    type="text"
+                    placeholder="resources"
+                    {...bindText(
+                      'resources_path',
+                      () => parsed().resources_path,
+                      setResourcesPath,
+                    )}
+                  />
+                  <span class="settings-field-hint">
+                    Relative to the conception root. Browsed by the Resources pane.
+                  </span>
+                </label>
+                <label>
+                  <span>Skills directory</span>
+                  <input
+                    type="text"
+                    placeholder=".claude/skills"
+                    {...bindText('skills_path', () => parsed().skills_path, setSkillsPath)}
+                  />
+                  <span class="settings-field-hint">
+                    Relative to the conception root. Markdown files here are editable from the
+                    Skills pane.
+                  </span>
                 </label>
               </div>
             </section>

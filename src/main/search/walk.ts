@@ -46,6 +46,33 @@ export async function collectKnowledgeFiles(knowledgeRoot: string): Promise<stri
   return out;
 }
 
+/**
+ * Walk every `.md` and `.txt` file under the configured resources root.
+ * The resources tree may contain dotfiles inside subdirectories; we still
+ * skip dot-prefixed segments below the root for the same noise-reduction
+ * reasons knowledge does.
+ */
+export async function collectResourceFiles(resourcesRoot: string): Promise<string[]> {
+  const out: string[] = [];
+  await walkExtensions(resourcesRoot, RESOURCE_EXTS, (file) => out.push(file));
+  return out;
+}
+
+/**
+ * Walk every `.md` file under the configured skills root. The default
+ * skills root sits inside `.claude/`, so the dot-prefixed-segment skip
+ * applies *below* the root only — entries directly under the root are
+ * always followed.
+ */
+export async function collectSkillFiles(skillsRoot: string): Promise<string[]> {
+  const out: string[] = [];
+  await walkExtensions(skillsRoot, SKILL_EXTS, (file) => out.push(file));
+  return out;
+}
+
+const RESOURCE_EXTS = new Set(['.md', '.markdown', '.txt']);
+const SKILL_EXTS = new Set(['.md']);
+
 async function readSubdirs(dir: string): Promise<string[]> {
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -75,6 +102,38 @@ async function walkMarkdown(dir: string, visit: (file: string) => void): Promise
       await walkMarkdown(full, visit);
     } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
       visit(full);
+    }
+  }
+}
+
+/**
+ * Recursive walker that surfaces files matching any of `exts`. Always
+ * follows the directory passed in (dot-prefixed roots are fine — the
+ * skills tree sits under `.claude/`); below the root, dot-prefixed
+ * segments are skipped, like the markdown walker.
+ */
+async function walkExtensions(
+  dir: string,
+  exts: ReadonlySet<string>,
+  visit: (file: string) => void,
+): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIR_NAMES.has(entry.name)) continue;
+      await walkExtensions(full, exts, visit);
+    } else if (entry.isFile()) {
+      const lower = entry.name.toLowerCase();
+      const dot = lower.lastIndexOf('.');
+      if (dot >= 0 && exts.has(lower.slice(dot))) visit(full);
     }
   }
 }

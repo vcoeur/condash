@@ -31,7 +31,7 @@ const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, t
  * both — projects (with their notes) and knowledge files. The pill
  * filter sits on the search modal header. The backend doesn't know
  * about the filter; we just hide non-matching buckets in the UI. */
-type SourceFilter = 'all' | 'projects' | 'knowledge';
+type SourceFilter = 'all' | 'projects' | 'knowledge' | 'resources' | 'skills';
 
 export function SearchModal(props: {
   onClose: () => void;
@@ -60,16 +60,24 @@ export function SearchModal(props: {
     grouped().projects.reduce((acc, g) => acc + 1 + g.files.length, 0),
   );
   const knowledgeCount = createMemo(() => grouped().knowledge.length);
-  const totalCount = createMemo(() => projectCount() + knowledgeCount());
+  const resourcesCount = createMemo(() => grouped().resources.length);
+  const skillsCount = createMemo(() => grouped().skills.length);
+  const totalCount = createMemo(
+    () => projectCount() + knowledgeCount() + resourcesCount() + skillsCount(),
+  );
 
   const showProjects = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'projects';
   const showKnowledge = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'knowledge';
+  const showResources = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'resources';
+  const showSkills = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'skills';
 
   // Visible-results count under the active filter — drives the
   // "no matches in this source" empty state.
   const visibleCount = createMemo(() => {
     if (sourceFilter() === 'projects') return projectCount();
     if (sourceFilter() === 'knowledge') return knowledgeCount();
+    if (sourceFilter() === 'resources') return resourcesCount();
+    if (sourceFilter() === 'skills') return skillsCount();
     return totalCount();
   });
 
@@ -160,6 +168,24 @@ export function SearchModal(props: {
             >
               Knowledge <span class="search-source-count">{knowledgeCount()}</span>
             </button>
+            <button
+              class="search-source-pill"
+              classList={{ active: sourceFilter() === 'resources' }}
+              role="radio"
+              aria-checked={sourceFilter() === 'resources'}
+              onClick={() => setSourceFilter('resources')}
+            >
+              Resources <span class="search-source-count">{resourcesCount()}</span>
+            </button>
+            <button
+              class="search-source-pill"
+              classList={{ active: sourceFilter() === 'skills' }}
+              role="radio"
+              aria-checked={sourceFilter() === 'skills'}
+              onClick={() => setSourceFilter('skills')}
+            >
+              Skills <span class="search-source-count">{skillsCount()}</span>
+            </button>
           </div>
         </Show>
         <div class="search-modal-body">
@@ -169,9 +195,7 @@ export function SearchModal(props: {
                 when={visibleCount() > 0}
                 fallback={
                   <div class="empty">
-                    {grouped().total === 0
-                      ? 'No matches.'
-                      : `No matches in ${sourceFilter() === 'projects' ? 'projects' : 'knowledge'}.`}
+                    {grouped().total === 0 ? 'No matches.' : `No matches in ${sourceFilter()}.`}
                   </div>
                 }
               >
@@ -189,6 +213,16 @@ export function SearchModal(props: {
                   </Show>
                   <Show when={showKnowledge()}>
                     <For each={grouped().knowledge}>
+                      {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                    </For>
+                  </Show>
+                  <Show when={showResources()}>
+                    <For each={grouped().resources}>
+                      {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                    </For>
+                  </Show>
+                  <Show when={showSkills()}>
+                    <For each={grouped().skills}>
                       {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
                     </For>
                   </Show>

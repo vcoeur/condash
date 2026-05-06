@@ -1,9 +1,15 @@
 import { join, relative } from 'node:path';
 import type { SearchResults } from '../../shared/types';
 import { toPosix } from '../../shared/path';
-import { collectKnowledgeFiles, collectProjectFiles } from './walk';
+import {
+  collectKnowledgeFiles,
+  collectProjectFiles,
+  collectResourceFiles,
+  collectSkillFiles,
+} from './walk';
 import { matchFile, type MatchOutput } from './match';
 import { parseQuery } from './query';
+import { resolveConceptionPaths } from '../conception-paths';
 
 /** Maximum number of hits returned to the renderer. The renderer's grouping
  * pass collapses project-side hits afterwards, so this caps raw files, not
@@ -27,8 +33,14 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
     return { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
   }
 
-  const projectFiles = await collectProjectFiles(join(conceptionPath, 'projects'));
-  const knowledgeFiles = await collectKnowledgeFiles(join(conceptionPath, 'knowledge'));
+  const { resources, skills } = await resolveConceptionPaths(conceptionPath);
+
+  const [projectFiles, knowledgeFiles, resourceFiles, skillFiles] = await Promise.all([
+    collectProjectFiles(join(conceptionPath, 'projects')),
+    collectKnowledgeFiles(join(conceptionPath, 'knowledge')),
+    collectResourceFiles(join(conceptionPath, resources)),
+    collectSkillFiles(join(conceptionPath, skills)),
+  ]);
 
   const matchPromises: Promise<MatchOutput | null>[] = [];
 
@@ -50,6 +62,28 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
         path: toPosix(path),
         relPath: toPosix(relative(conceptionPath, path)),
         source: 'knowledge',
+        terms,
+      }),
+    );
+  }
+
+  for (const path of resourceFiles) {
+    matchPromises.push(
+      matchFile({
+        path: toPosix(path),
+        relPath: toPosix(relative(conceptionPath, path)),
+        source: 'resources',
+        terms,
+      }),
+    );
+  }
+
+  for (const path of skillFiles) {
+    matchPromises.push(
+      matchFile({
+        path: toPosix(path),
+        relPath: toPosix(relative(conceptionPath, path)),
+        source: 'skills',
         terms,
       }),
     );

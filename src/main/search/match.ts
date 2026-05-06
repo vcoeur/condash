@@ -7,7 +7,7 @@ import { buildSnippets } from './snippets';
 export interface MatchInput {
   path: string;
   relPath: string;
-  source: 'project' | 'knowledge';
+  source: 'project' | 'knowledge' | 'resources' | 'skills';
   projectPath?: string;
   terms: readonly SearchTerm[];
 }

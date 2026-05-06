@@ -44,6 +44,8 @@ import {
 } from './panes/projects';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView, groupRepos } from './panes/code';
+import { ResourcesView, type ResourcesViewActions } from './panes/resources';
+import { SkillsView } from './panes/skills';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { NewProjectModal } from './new-project-modal';
@@ -275,6 +277,22 @@ function App() {
     async ([path, , working]) => {
       if (!path || working !== 'knowledge') return null;
       return window.condash.readKnowledgeTree();
+    },
+  );
+
+  const [resources] = createResource(
+    () => [conceptionPath(), refreshKey(), layout().working] as const,
+    async ([path, , working]) => {
+      if (!path || working !== 'resources') return null;
+      return window.condash.readResourcesTree();
+    },
+  );
+
+  const [skills] = createResource(
+    () => [conceptionPath(), refreshKey(), layout().working] as const,
+    async ([path, , working]) => {
+      if (!path || working !== 'skills') return null;
+      return window.condash.readSkillsTree();
     },
   );
 
@@ -538,6 +556,14 @@ function App() {
       selectWorking(layout().working === 'knowledge' ? null : 'knowledge');
       return;
     }
+    if (command === 'show-resources') {
+      selectWorking(layout().working === 'resources' ? null : 'resources');
+      return;
+    }
+    if (command === 'show-skills') {
+      selectWorking(layout().working === 'skills' ? null : 'skills');
+      return;
+    }
     if (command === 'hide-working') {
       selectWorking(null);
       return;
@@ -708,6 +734,36 @@ function App() {
     // to displaying the absolute filesystem path — long, low-contrast,
     // and not what the user wants to read at the top of a note.
     setModal({ path, title });
+  };
+
+  const handleViewResource = (path: string, title: string): void => {
+    setModal({ path, title, readOnly: true });
+  };
+
+  const handleOpenSkillFile = (
+    path: string,
+    title: string,
+    shipped?: { diverged: boolean } | null,
+  ): void => {
+    let bannerKind: 'shipped' | 'shipped-diverged' | undefined;
+    if (shipped) bannerKind = shipped.diverged ? 'shipped-diverged' : 'shipped';
+    setModal({ path, title, bannerKind });
+  };
+
+  const resourcesActions: ResourcesViewActions = {
+    openInEditor: handleOpenInEditor,
+    viewMarkdown: handleViewResource,
+    viewText: handleViewResource,
+    viewPdf: (path) => setPdfPath(path),
+    copyPath: (path) => {
+      void navigator.clipboard
+        .writeText(path)
+        .then(() => flashToast('Path copied'))
+        .catch((err) => flashToast(`Copy failed: ${(err as Error).message}`));
+    },
+    pasteToTerm: async (path) => {
+      await bridge.handlePasteToTerm(path);
+    },
   };
 
   const handleOpenHelp = (doc: HelpDoc) => {
@@ -926,6 +982,12 @@ function App() {
   const onKnowledgeHandleClick = (): void => {
     selectWorking(layout().working === 'knowledge' ? null : 'knowledge');
   };
+  const onResourcesHandleClick = (): void => {
+    selectWorking(layout().working === 'resources' ? null : 'resources');
+  };
+  const onSkillsHandleClick = (): void => {
+    selectWorking(layout().working === 'skills' ? null : 'skills');
+  };
   const handlesEnabled = (): boolean => !!conceptionPath();
 
   return (
@@ -976,6 +1038,8 @@ function App() {
                   <button onClick={toggleProjects}>Show Projects</button>
                   <button onClick={() => selectWorking('code')}>Show Code</button>
                   <button onClick={() => selectWorking('knowledge')}>Show Knowledge</button>
+                  <button onClick={() => selectWorking('resources')}>Show Resources</button>
+                  <button onClick={() => selectWorking('skills')}>Show Skills</button>
                   <button onClick={toggleTerminal}>Show Terminal</button>
                 </div>
               </div>
@@ -1028,6 +1092,30 @@ function App() {
                           onOpen={handleOpenKnowledgeFile}
                         />
                       </Show>
+                    </Suspense>
+                  </section>
+                </Show>
+
+                <Show when={layout().working === 'resources'}>
+                  <section class="pane pane-working">
+                    <Suspense fallback={<div class="empty">Loading…</div>}>
+                      <ResourcesView
+                        root={resources() ?? null}
+                        searchInput=""
+                        actions={resourcesActions}
+                      />
+                    </Suspense>
+                  </section>
+                </Show>
+
+                <Show when={layout().working === 'skills'}>
+                  <section class="pane pane-working">
+                    <Suspense fallback={<div class="empty">Loading…</div>}>
+                      <SkillsView
+                        root={skills() ?? null}
+                        searchInput=""
+                        onOpen={handleOpenSkillFile}
+                      />
                     </Suspense>
                   </section>
                 </Show>
@@ -1103,6 +1191,26 @@ function App() {
             title={layout().working === 'knowledge' ? 'Hide Knowledge' : 'Show Knowledge'}
           >
             <span class="edge-handle-label">Knowledge</span>
+          </button>
+          <button
+            class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().working === 'resources' }}
+            aria-pressed={layout().working === 'resources'}
+            onClick={onResourcesHandleClick}
+            disabled={!handlesEnabled()}
+            title={layout().working === 'resources' ? 'Hide Resources' : 'Show Resources'}
+          >
+            <span class="edge-handle-label">Resources</span>
+          </button>
+          <button
+            class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().working === 'skills' }}
+            aria-pressed={layout().working === 'skills'}
+            onClick={onSkillsHandleClick}
+            disabled={!handlesEnabled()}
+            title={layout().working === 'skills' ? 'Hide Skills' : 'Show Skills'}
+          >
+            <span class="edge-handle-label">Skills</span>
           </button>
         </aside>
       </div>

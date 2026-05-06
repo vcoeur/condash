@@ -108,11 +108,32 @@ const terminalSettings = z
 export type XtermSettings = z.infer<typeof xtermSettings>;
 export type XtermColors = z.infer<typeof xtermColors>;
 
+/**
+ * Constraint shared by `resources_path` and `skills_path`: the value must
+ * be a non-empty, normalised relative path interpreted from the conception
+ * root. Absolute paths and `..` segments are rejected — both would let the
+ * panes browse outside the conception tree, which is not the user-facing
+ * promise.
+ */
+const conceptionRelativePath = z
+  .string()
+  .min(1, 'must not be empty')
+  .refine((value) => !value.startsWith('/'), {
+    message: 'must be relative to the conception root (no leading "/")',
+  })
+  .refine((value) => !value.split(/[\\/]/).includes('..'), {
+    message: 'must not contain ".." segments',
+  });
+
 export const configSchema = z
   .object({
     $schema_doc: z.string().optional(),
     workspace_path: z.string().optional(),
     worktrees_path: z.string().optional(),
+    /** Directory browsed by the Resources pane (default `resources`). */
+    resources_path: conceptionRelativePath.optional(),
+    /** Directory browsed by the Skills pane (default `.claude/skills`). */
+    skills_path: conceptionRelativePath.optional(),
     repositories: z
       .object({
         primary: z.array(repoEntry).optional(),
@@ -137,6 +158,19 @@ export const configSchema = z
   .strict();
 
 export type Config = z.infer<typeof configSchema>;
+
+/**
+ * Default for `resources_path` when the key is absent. Kept here so the
+ * schema and the resolver agree on one constant.
+ */
+export const DEFAULT_RESOURCES_PATH = 'resources';
+
+/**
+ * Default for `skills_path` when the key is absent. The conception template
+ * already ships skills under `.claude/skills/`, so a freshly-initialised
+ * tree resolves to a non-empty Skills pane out of the box.
+ */
+export const DEFAULT_SKILLS_PATH = '.claude/skills';
 
 /**
  * Parse → validate → re-serialise a `configuration.json` body.

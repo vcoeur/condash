@@ -52,3 +52,38 @@ describe('configSchema repoEntry', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('configSchema resources_path / skills_path', () => {
+  it('accepts plain relative paths', () => {
+    const result = configSchema.safeParse({
+      resources_path: 'resources',
+      skills_path: '.claude/skills',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a nested relative path', () => {
+    const result = configSchema.safeParse({ resources_path: 'docs/resources' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an absolute path', () => {
+    const result = configSchema.safeParse({ resources_path: '/etc/passwd' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an empty string', () => {
+    const result = configSchema.safeParse({ skills_path: '' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a path containing ".."', () => {
+    const result = configSchema.safeParse({ resources_path: '../escape' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a deeper path containing a ".." segment', () => {
+    const result = configSchema.safeParse({ skills_path: 'a/../b' });
+    expect(result.success).toBe(false);
+  });
+});

@@ -21,6 +21,13 @@ export type ModalState = {
    * Clicking it calls onClose, which the parent routes back to the originating
    * preview via the previewBackPath plumbing. */
   backLabel?: string;
+  /** Open the modal in read-only mode — no save / edit toggle. Used by the
+   * Resources pane for `.md` and `.txt` viewing. */
+  readOnly?: boolean;
+  /** Render an informational banner above the body. `'shipped'` flags a file
+   * tracked by `.condash-skills.json` whose disk SHA matches the manifest;
+   * `'shipped-diverged'` flags a local edit. */
+  bannerKind?: 'shipped' | 'shipped-diverged';
 } | null;
 
 type Mode = 'view' | 'edit';
@@ -170,9 +177,15 @@ export function NoteModal(props: {
    *  flip live when the user toggles theme without remounting the editor. */
   dark?: boolean;
 }) {
-  const [mode, setMode] = createSignal<Mode>(props.state?.initialMode ?? 'view');
+  const [mode, setMode] = createSignal<Mode>(
+    props.state?.readOnly ? 'view' : (props.state?.initialMode ?? 'view'),
+  );
 
   createEffect(() => {
+    if (props.state?.readOnly) {
+      setMode('view');
+      return;
+    }
     if (props.state?.initialMode) setMode(props.state.initialMode);
     else if (props.state && !isMarkdown(props.state.path)) setMode('edit');
   });
@@ -521,6 +534,11 @@ export function NoteModal(props: {
             </button>
           </Show>
           <span class="modal-title">{props.state?.title ?? props.state?.path ?? ''}</span>
+          <Show when={props.state?.readOnly}>
+            <span class="modal-readonly-tag" title="Read-only — open in IDE to edit">
+              read-only
+            </span>
+          </Show>
           <span class="modal-head-spacer" />
           <Show when={dirty()}>
             <span class="modal-dirty" title="Unsaved changes" aria-label="Unsaved changes">
@@ -532,16 +550,18 @@ export function NoteModal(props: {
               ✓
             </span>
           </Show>
-          <button
-            class="modal-button"
-            classList={{ active: mode() === 'edit' }}
-            onClick={requestViewMode}
-            title={mode() === 'edit' ? 'View (Ctrl+E)' : 'Edit (Ctrl+E)'}
-            aria-label={mode() === 'edit' ? 'Switch to view mode' : 'Switch to edit mode'}
-          >
-            {mode() === 'edit' ? <IconView /> : <IconEdit />}
-          </button>
-          <Show when={mode() === 'edit'}>
+          <Show when={!props.state?.readOnly}>
+            <button
+              class="modal-button"
+              classList={{ active: mode() === 'edit' }}
+              onClick={requestViewMode}
+              title={mode() === 'edit' ? 'View (Ctrl+E)' : 'Edit (Ctrl+E)'}
+              aria-label={mode() === 'edit' ? 'Switch to view mode' : 'Switch to edit mode'}
+            >
+              {mode() === 'edit' ? <IconView /> : <IconEdit />}
+            </button>
+          </Show>
+          <Show when={mode() === 'edit' && !props.state?.readOnly}>
             <button
               class="modal-button"
               onClick={() => void save()}
@@ -612,6 +632,19 @@ export function NoteModal(props: {
 
         <Show when={error()}>
           <div class="modal-error">{error()}</div>
+        </Show>
+
+        <Show when={props.state?.bannerKind === 'shipped'}>
+          <div class="modal-banner modal-banner--info" role="status">
+            Shipped by condash. The on-disk content matches the version installed by{' '}
+            <code>condash skills install</code>.
+          </div>
+        </Show>
+        <Show when={props.state?.bannerKind === 'shipped-diverged'}>
+          <div class="modal-banner modal-banner--warn" role="status">
+            Shipped by condash, but locally edited. Running{' '}
+            <code>condash skills install</code> will flag this divergence.
+          </div>
         </Show>
 
         <Show when={pendingViewSwitch()}>

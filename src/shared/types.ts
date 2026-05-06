@@ -90,10 +90,10 @@ export interface ProjectFileEntry {
 
 export type Theme = 'light' | 'dark' | 'system';
 
-/** Right-slot working surface — picks which of Code / Knowledge is shown
- * in the top-band right pane, or `null` to leave it hidden. The two are
- * mutually exclusive: showing one swaps the other out. */
-export type WorkingSurface = 'code' | 'knowledge' | null;
+/** Right-slot working surface — picks which of Code / Knowledge / Resources /
+ * Skills is shown in the top-band right pane, or `null` to leave it hidden.
+ * All four are mutually exclusive: showing one swaps the others out. */
+export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | null;
 
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, working surface on the right) and a bottom band (Terminal).
@@ -396,8 +396,9 @@ export interface SearchHit {
   relPath: string;
   /** Best-effort title (first H1 line) for display. */
   title: string;
-  /** 'project' if the file lives under projects/<…>/, 'knowledge' otherwise. */
-  source: 'project' | 'knowledge';
+  /** Where the file lives. Drives the result-grouping in the search UI and
+   * the per-source facet pills in the search modal. */
+  source: 'project' | 'knowledge' | 'resources' | 'skills';
   /** Relevance score — higher is better. */
   score: number;
   /** Total occurrence count across all query terms. */
@@ -430,6 +431,8 @@ export interface SearchResults {
 export type TreeEvent =
   | { kind: 'project'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'knowledge'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'resources'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'skills'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'config'; path: string }
   | { kind: 'unknown' };
 
@@ -469,6 +472,91 @@ export interface KnowledgeNode {
   summary?: string;
   /** ISO date (YYYY-MM-DD) extracted from a `**Verified:**` line, when present. Files only. */
   verifiedAt?: string;
+}
+
+/**
+ * Coarse file category used by the Resources pane to pick the right icon
+ * and action set without re-reading the file. Computed from the extension
+ * during the tree walk; binaries fall through to `binary`, anything not
+ * matched by the table lands in `other`.
+ */
+export type ResourceCategory =
+  | 'markdown'
+  | 'pdf'
+  | 'text'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'archive'
+  | 'binary'
+  | 'other';
+
+/**
+ * Tree node for the Resources pane. Same shape as `KnowledgeNode` but every
+ * file is surfaced (not just `.md`), and each file carries its mime hint
+ * plus the coarse `category` used by the renderer's icon picker.
+ */
+export interface ResourceNode {
+  /** Path relative to <conception>/<resources_path>. Empty string for the root. */
+  relPath: string;
+  /** Absolute path on disk. */
+  path: string;
+  /** Last segment of relPath, or 'resources' for the root. */
+  name: string;
+  /** Title from the .md (first h1) when this is a markdown file; the directory or basename otherwise. */
+  title: string;
+  /** Directory or file. */
+  kind: 'directory' | 'file';
+  /** Children (only for directories). Sorted: directories first, then files, both alphabetical. */
+  children?: ResourceNode[];
+  /** First non-heading paragraph, trimmed to ~240 chars. Markdown files only. */
+  summary?: string;
+  /** Coarse category (drives icon + action set). Files only. */
+  category?: ResourceCategory;
+  /** Best-effort mime type (e.g. "text/markdown", "image/png"). Files only. */
+  mime?: string;
+  /** Size in bytes. Files only. */
+  size?: number;
+}
+
+/**
+ * Tracked-shipping metadata for a skill file. Populated only when the file
+ * appears in `<skills_path>/.condash-skills.json`. Used by the renderer to
+ * surface a "shipped" chip and a "diverged from shipped" banner when local
+ * edits would be flagged on the next `condash skills install`.
+ */
+export interface SkillShippedInfo {
+  /** SHA-256 from the manifest (the hash of the version condash shipped). */
+  manifestSha: string;
+  /** SHA-256 of the file currently on disk. */
+  diskSha: string;
+  /** True when the two hashes differ. */
+  diverged: boolean;
+  /** Condash version that shipped this file, when recorded in the manifest. */
+  shippedVersion?: string;
+}
+
+/**
+ * Tree node for the Skills pane. Same shape as `KnowledgeNode` plus the
+ * optional `shipped` stamp on `SKILL.md` and shipped body files.
+ */
+export interface SkillNode {
+  /** Path relative to <conception>/<skills_path>. Empty string for the root. */
+  relPath: string;
+  /** Absolute path on disk. */
+  path: string;
+  /** Last segment of relPath, or 'skills' for the root. */
+  name: string;
+  /** Title from the .md (first h1) when this is a file; the directory name otherwise. */
+  title: string;
+  /** Directory or file. Files end with .md; everything else is skipped. */
+  kind: 'directory' | 'file';
+  /** Children (only for directories). */
+  children?: SkillNode[];
+  /** First non-heading paragraph, trimmed to ~240 chars. Files only. */
+  summary?: string;
+  /** Shipped-file tracking, when the manifest covers this file. Files only. */
+  shipped?: SkillShippedInfo;
 }
 
 /**

@@ -33,7 +33,12 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
       unknownSeen = true;
       continue;
     }
-    if (event.kind === 'config' || event.kind === 'knowledge') {
+    if (
+      event.kind === 'config' ||
+      event.kind === 'knowledge' ||
+      event.kind === 'resources' ||
+      event.kind === 'skills'
+    ) {
       knowledgeOrConfigDirty = true;
       continue;
     }
