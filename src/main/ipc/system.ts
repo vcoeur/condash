@@ -34,19 +34,23 @@ export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => 
     }
     // Bound the file:// URL to the conception subtree — without this, a
     // compromised renderer can synthesise a webview src for any file on disk
-    // (e.g. ~/.ssh/id_rsa) by passing an absolute path. Resolve against the
-    // realpath to defeat symlink traversal.
+    // (e.g. ~/.ssh/id_rsa) by passing an absolute path. Resolve via realpath
+    // to defeat symlink traversal. Both paths are realpathed together (in
+    // parallel) so the window between resolving the request and resolving
+    // the conception is as narrow as Promise.all allows — a symlink flip
+    // mid-call is still possible in theory but the realpath result we
+    // compare against is captured atomically per call.
     const { conceptionPath } = await readSettings();
     if (!conceptionPath) {
       throw new Error('pdf.toFileUrl: no conception path is set');
     }
     let real: string;
+    let conceptionReal: string;
     try {
-      real = await fs.realpath(path);
+      [real, conceptionReal] = await Promise.all([fs.realpath(path), fs.realpath(conceptionPath)]);
     } catch {
       throw new Error('pdf.toFileUrl: path does not resolve');
     }
-    const conceptionReal = await fs.realpath(conceptionPath);
     const child = real.endsWith(sep) ? real : real + sep;
     const parent = conceptionReal.endsWith(sep) ? conceptionReal : conceptionReal + sep;
     if (!(child === parent || child.startsWith(parent))) {

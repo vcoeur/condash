@@ -501,7 +501,16 @@ async function writeManifest(dest: string, manifest: SkillsManifest): Promise<vo
 async function writeFileMkdir(path: string, content: Buffer): Promise<void> {
   await fs.mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.${Date.now()}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, content);
+  // tmp -> fsync -> rename. The fsync is required so a power-loss between
+  // writeFile and rename can't leave a zero-length skill (or manifest)
+  // poisoning the next install run. Same invariant as src/main/atomic-write.ts.
+  const fh = await fs.open(tmp, 'w');
+  try {
+    await fh.writeFile(content);
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
   await fs.rename(tmp, path);
 }
 

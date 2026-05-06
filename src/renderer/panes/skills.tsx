@@ -137,6 +137,13 @@ export function SkillsView(props: {
                         diverged: !!idx().shipped?.diverged,
                       }}
                       onClick={() => props.onOpen(idx().path, idx().title, idx().shipped)}
+                      aria-label={`Open SKILL.md for ${section.label}${
+                        idx().shipped?.diverged
+                          ? ' (shipped, locally edited)'
+                          : idx().shipped
+                            ? ' (shipped)'
+                            : ''
+                      }`}
                       title={
                         idx().shipped?.diverged
                           ? 'SKILL.md (shipped, locally edited)'

@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from 'solid-js';
+import { createSignal, onCleanup, onMount, Show } from 'solid-js';
 
 interface AppInfo {
   name: string;
@@ -17,6 +17,16 @@ export function AboutModal(props: { onClose: () => void }) {
   onMount(() => {
     void window.condash.getAppInfo().then(setInfo);
   });
+
+  const handleKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      props.onClose();
+    }
+  };
+  onMount(() => document.addEventListener('keydown', handleKey, true));
+  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
   return (
     <div class="modal-backdrop" onClick={props.onClose}>
