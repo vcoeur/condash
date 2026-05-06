@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { useModalEscHandler } from './modal-helpers';
 
 interface AppInfo {
   name: string;
@@ -15,13 +16,7 @@ export function AboutModal(props: { onClose: () => void }) {
   const [info, setInfo] = createSignal<AppInfo | null>(null);
   let cancelled = false;
 
-  const handleKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      props.onClose();
-    }
-  };
+  useModalEscHandler(props.onClose);
 
   onMount(() => {
     // Cancellation guard so the .then() doesn't setInfo into a disposed
@@ -29,11 +24,9 @@ export function AboutModal(props: { onClose: () => void }) {
     void window.condash.getAppInfo().then((next) => {
       if (!cancelled) setInfo(next);
     });
-    document.addEventListener('keydown', handleKey, true);
   });
   onCleanup(() => {
     cancelled = true;
-    document.removeEventListener('keydown', handleKey, true);
   });
 
   return (

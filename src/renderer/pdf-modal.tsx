@@ -1,24 +1,12 @@
-import { createResource, onCleanup, onMount, Show } from 'solid-js';
+import { createResource, Show } from 'solid-js';
+import { useModalEscHandler } from './modal-helpers';
 
 export function PdfModal(props: {
   path: string;
   onClose: () => void;
   onOpenInOs: (path: string) => void;
 }) {
-  const handleKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      props.onClose();
-    }
-  };
-
-  onMount(() => {
-    document.addEventListener('keydown', handleKey, true);
-  });
-  onCleanup(() => {
-    document.removeEventListener('keydown', handleKey, true);
-  });
+  useModalEscHandler(props.onClose);
 
   // Build the `file://` URL in main via `pathToFileURL`. That's the only
   // path-to-URL conversion that handles Windows drive letters and percent-

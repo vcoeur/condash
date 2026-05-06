@@ -1,6 +1,7 @@
-import { createEffect, createResource, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createResource, Show } from 'solid-js';
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
+import { useModalEscHandler } from './modal-helpers';
 import './code-theme.css';
 
 export type HelpDoc =
@@ -32,15 +33,7 @@ const TITLE: Record<HelpDoc, string> = {
 export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
   let bodyRef: HTMLDivElement | undefined;
 
-  const handleKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      props.onClose();
-    }
-  };
-  onMount(() => document.addEventListener('keydown', handleKey, true));
-  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
+  useModalEscHandler(props.onClose);
 
   const [content] = createResource(
     () => props.doc,
