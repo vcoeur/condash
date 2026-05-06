@@ -91,7 +91,7 @@ async function indexCommand(
     dryRun,
     rewriteAggregated,
   });
-  emit(ctx, report, formatIndexReport);
+  emit(ctx, report, formatIndexReport, [], { streamField: 'updated' });
 }
 
 function formatIndexReport(report: IndexRegenReport): string {

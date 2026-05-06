@@ -135,13 +135,19 @@ function formatBranchCheck(result: BranchCheckResult): string {
 
 async function worktreeMismatch(ctx: OutputContext, conceptionPath: string): Promise<void> {
   const report = await runAudit(conceptionPath, ['worktrees']);
-  emit(ctx, report, (r) => {
-    const data = r as AuditReport;
-    if (data.issues.length === 0) return 'No mismatches.\n';
-    const lines: string[] = [];
-    for (const i of data.issues) lines.push(`${i.file ?? '-'}  ${i.message}`);
-    return lines.join('\n') + '\n';
-  });
+  emit(
+    ctx,
+    report,
+    (r) => {
+      const data = r as AuditReport;
+      if (data.issues.length === 0) return 'No mismatches.\n';
+      const lines: string[] = [];
+      for (const i of data.issues) lines.push(`${i.file ?? '-'}  ${i.message}`);
+      return lines.join('\n') + '\n';
+    },
+    [],
+    { streamField: 'issues' },
+  );
 }
 
 async function worktreeSetup(
@@ -282,7 +288,7 @@ export async function runAuditCommand(
     }
   }
   const report = await runAudit(conceptionPath, include as AuditCheckName[]);
-  emit(ctx, report, formatAuditPretty);
+  emit(ctx, report, formatAuditPretty, [], { streamField: 'issues' });
 }
 
 function formatAuditPretty(report: AuditReport): string {
@@ -385,12 +391,18 @@ export async function runDirty(
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       }
     }
-    emit(ctx, { cleared }, (d) => {
-      const list = (d as { cleared: string[] }).cleared;
-      return list.length === 0
-        ? '(no markers were present)\n'
-        : list.map((p) => `cleared ${p}`).join('\n') + '\n';
-    });
+    emit(
+      ctx,
+      { cleared },
+      (d) => {
+        const list = (d as { cleared: string[] }).cleared;
+        return list.length === 0
+          ? '(no markers were present)\n'
+          : list.map((p) => `cleared ${p}`).join('\n') + '\n';
+      },
+      [],
+      { streamField: 'cleared' },
+    );
     return;
   }
   throw new CliError(ExitCodes.USAGE, `Unknown dirty verb: ${verb}`);
