@@ -519,7 +519,7 @@ function registerIpc(): void {
     // Sync the per-repo FS watchers to the live repo set: a config edit
     // that adds or removes a repo is reflected here, since this handler
     // re-runs on every renderer-driven repos refresh.
-    setRepoWatchers(watchTargetsFromRepos(repos));
+    await setRepoWatchers(watchTargetsFromRepos(repos));
     return repos;
   });
 
@@ -539,7 +539,7 @@ function registerIpc(): void {
     // which is rare (worktree mutation, branch checkout) — far cheaper
     // than getting the watch-set delta logic wrong.
     const repos = await listRepos(conceptionPath);
-    setRepoWatchers(watchTargetsFromRepos(repos));
+    await setRepoWatchers(watchTargetsFromRepos(repos));
     return entries;
   });
 
