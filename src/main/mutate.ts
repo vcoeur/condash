@@ -5,8 +5,12 @@ import { isoToday } from '../shared/iso-today';
 import { atomicWrite } from './atomic-write';
 import { configSchema } from './config-schema';
 
-const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s.*)$/;
-const STEP_LINE_FULL_RE = /^(\s*-\s\[)([ ~x-])(\]\s)(.*)$/;
+// One regex for both shapes: capture the step text in group 4 so callers
+// that need the body text use it; callers that only need the marker can
+// ignore the trailing group. Replaces a near-byte-identical pair where
+// the only difference was whether `(.*)` lived inside or outside the
+// `]\s` capture — easy to drift, never observed working independently.
+const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s)(.*)$/;
 const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)(\S+)\s*$/i;
 const HEADING2_RE = /^##\s+(.+)$/;
 
@@ -68,7 +72,7 @@ export async function toggleStep(
       );
     }
 
-    lines[lineIndex] = `${match[1]}${newMarker}${match[3]}`;
+    lines[lineIndex] = `${match[1]}${newMarker}${match[3]}${match[4]}`;
     await atomicWrite(path, lines.join(eol));
   });
 }
@@ -95,7 +99,7 @@ export async function editStepText(
       throw new Error(`Line index ${lineIndex} out of range`);
     }
 
-    const match = lines[lineIndex].match(STEP_LINE_FULL_RE);
+    const match = lines[lineIndex].match(STEP_LINE_RE);
     if (!match) {
       throw new Error(`Line ${lineIndex} is not a step`);
     }

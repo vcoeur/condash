@@ -211,6 +211,23 @@ export function parseIntFlag(value: string | boolean | undefined, fallback: numb
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/**
+ * Parse a comma-separated string flag into a trimmed, non-empty list.
+ * Returns `null` when the flag is missing/non-string or all entries are
+ * empty after trimming. Used by every verb that accepts CSV inputs
+ * (`--apps`, `--status`, `--kind`, `--repo`). Centralised to retire the
+ * parseCsvFlag/parseRepoFlag duplicates that had drifted across the
+ * command files.
+ */
+export function parseCsvFlag(value: string | boolean | undefined): string[] | null {
+  if (typeof value !== 'string') return null;
+  const parts = value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.length === 0 ? null : parts;
+}
+
 export interface UniversalFlags {
   json: boolean;
   ndjson: boolean;

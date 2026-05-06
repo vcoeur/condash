@@ -17,7 +17,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { findProjectReadmes } from './walk';
-import { readHeader } from './header-fs';
+import { readHeader } from './header-io';
 import { exec } from './exec';
 import { walkRepos, type ConfigShape } from './config-walk';
 
