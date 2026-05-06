@@ -1,12 +1,7 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { ResourceCategory, ResourceNode } from '@shared/types';
+import { filterByQuery } from '../filter-by-query';
 import './resources-pane.css';
-
-interface FlatFile {
-  node: ResourceNode;
-  /** Section label — "" for root-level files. */
-  section: string;
-}
 
 interface FlatSection {
   /** Empty string for the root section. */
@@ -61,13 +56,7 @@ function buildSections(root: ResourceNode | null): FlatSection[] {
 }
 
 /** Substring filter on title + relPath for the in-pane search input. */
-function filterFiles(files: ResourceNode[], q: string): ResourceNode[] {
-  if (q.trim().length === 0) return files;
-  const lower = q.toLowerCase();
-  return files.filter(
-    (f) => f.title.toLowerCase().includes(lower) || f.relPath.toLowerCase().includes(lower),
-  );
-}
+const filterFiles = (files: ResourceNode[], q: string): ResourceNode[] => filterByQuery(files, q);
 
 export interface ResourcesViewActions {
   /** Open via the user's main `open_with` slot. */
@@ -272,5 +261,3 @@ function CategoryGlyph(props: { category: ResourceCategory }) {
   };
   return <span class="resources-card-glyph-label">{label()}</span>;
 }
-
-export type { FlatFile };

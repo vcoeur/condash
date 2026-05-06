@@ -1,5 +1,6 @@
 import { createMemo, For, Show } from 'solid-js';
 import type { SkillNode } from '@shared/types';
+import { filterByQuery } from '../filter-by-query';
 import './skills-pane.css';
 
 interface SkillSection {
@@ -63,13 +64,7 @@ function buildSections(root: SkillNode | null): SkillSection[] {
   return out;
 }
 
-function filterFiles(files: SkillNode[], q: string): SkillNode[] {
-  if (q.trim().length === 0) return files;
-  const lower = q.toLowerCase();
-  return files.filter(
-    (f) => f.title.toLowerCase().includes(lower) || f.relPath.toLowerCase().includes(lower),
-  );
-}
+const filterFiles = (files: SkillNode[], q: string): SkillNode[] => filterByQuery(files, q);
 
 function indexMatches(index: SkillNode | undefined, q: string): boolean {
   if (q.trim().length === 0) return true;
