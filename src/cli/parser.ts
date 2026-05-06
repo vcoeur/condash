@@ -60,6 +60,14 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       if (!name) {
         throw new UsageError(`Empty flag name: '${token}'`);
       }
+      // Reject duplicates: a second `--foo bar --foo baz` is almost always
+      // a typo or shell-history mishap, and silently letting the second
+      // value win has burned skills that thought they were composing
+      // additive flags. Boolean flags get the same treatment for symmetry
+      // (a true→true overwrite is still a sign of a mistake).
+      if (Object.prototype.hasOwnProperty.call(flags, name)) {
+        throw new UsageError(`Flag '--${name}' specified more than once`);
+      }
       if (BOOL_FLAGS.has(name) && eq === -1) {
         flags[name] = true;
         i += 1;
@@ -70,7 +78,19 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         i += 1;
         continue;
       }
+      // A bare `--bool=value` form would have been caught above; here a
+      // boolean-set flag without `=` and no following value just means
+      // "true" (e.g. trailing `--quiet`).
+      if (BOOL_FLAGS.has(name)) {
+        flags[name] = true;
+        i += 1;
+        continue;
+      }
       const value = argv[i + 1];
+      // The previous "starts with --" check rejected `--flag --next` but
+      // also wrongly rejected `--flag -X` (legitimate short-flag value
+      // inside CSV inputs). Tighten to "exactly the next token starts
+      // with `--`": short flags pass through as positional values.
       if (value === undefined || value.startsWith('--')) {
         throw new UsageError(`Flag '--${name}' expects a value`);
       }
@@ -161,7 +181,14 @@ export function takeUniversalFlags(args: ParsedArgs): UniversalFlags {
         if (typeof value !== 'string') {
           throw new UsageError(`--conception expects a path`);
         }
-        out.conceptionPath = value;
+        // Trim leading/trailing whitespace: copy-paste from a Markdown
+        // log or YAML config easily picks up a stray space, and the
+        // resulting `path.resolve(' /home/alice/...')` silently maps to
+        // `cwd/ /home/alice/...` instead of the intended absolute path.
+        out.conceptionPath = value.trim();
+        if (out.conceptionPath.length === 0) {
+          throw new UsageError(`--conception value is empty`);
+        }
         delete args.flags[key];
         break;
     }

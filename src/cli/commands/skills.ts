@@ -92,17 +92,23 @@ async function listShipped(args: ParsedArgs, ctx: OutputContext): Promise<void> 
       installed: installedFiles ? Object.keys(installedFiles).length : 0,
     };
   });
-  emit(ctx, { destination: dest, skills: rows }, (data) => {
-    const d = data as { destination: string | null; skills: typeof rows };
-    const lines: string[] = [];
-    if (d.destination) lines.push(`Destination: ${d.destination}/.claude/skills/`);
-    for (const r of d.skills) {
-      const status =
-        r.installed > 0 ? `${r.installed}/${r.shippedFiles} files installed` : 'not installed';
-      lines.push(`  ${r.name.padEnd(16)} ${status.padEnd(28)} ${r.description ?? ''}`);
-    }
-    return lines.join('\n') + '\n';
-  });
+  emit(
+    ctx,
+    { destination: dest, skills: rows },
+    (data) => {
+      const d = data as { destination: string | null; skills: typeof rows };
+      const lines: string[] = [];
+      if (d.destination) lines.push(`Destination: ${d.destination}/.claude/skills/`);
+      for (const r of d.skills) {
+        const status =
+          r.installed > 0 ? `${r.installed}/${r.shippedFiles} files installed` : 'not installed';
+        lines.push(`  ${r.name.padEnd(16)} ${status.padEnd(28)} ${r.description ?? ''}`);
+      }
+      return lines.join('\n') + '\n';
+    },
+    [],
+    { streamField: 'skills' },
+  );
 }
 
 interface InstallReport {
@@ -354,23 +360,29 @@ async function skillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void>
     }
   }
 
-  emit(ctx, { destination: skillsRoot, items: report }, (data) => {
-    const d = data as { destination: string; items: typeof report };
-    if (d.items.length === 0) return `(no installed skills under ${d.destination})\n`;
-    const widths = {
-      skill: Math.max(5, ...d.items.map((r) => r.skill.length)),
-      file: Math.max(4, ...d.items.map((r) => r.file.length)),
-      state: 9,
-    };
-    return (
-      d.items
-        .map(
-          (r) =>
-            `  ${r.skill.padEnd(widths.skill)}  ${r.file.padEnd(widths.file)}  ${r.state.padEnd(widths.state)}  ${r.shippedVersion ?? '-'}`,
-        )
-        .join('\n') + '\n'
-    );
-  });
+  emit(
+    ctx,
+    { destination: skillsRoot, items: report },
+    (data) => {
+      const d = data as { destination: string; items: typeof report };
+      if (d.items.length === 0) return `(no installed skills under ${d.destination})\n`;
+      const widths = {
+        skill: Math.max(5, ...d.items.map((r) => r.skill.length)),
+        file: Math.max(4, ...d.items.map((r) => r.file.length)),
+        state: 9,
+      };
+      return (
+        d.items
+          .map(
+            (r) =>
+              `  ${r.skill.padEnd(widths.skill)}  ${r.file.padEnd(widths.file)}  ${r.state.padEnd(widths.state)}  ${r.shippedVersion ?? '-'}`,
+          )
+          .join('\n') + '\n'
+      );
+    },
+    [],
+    { streamField: 'items' },
+  );
 }
 
 async function resolveDest(args: ParsedArgs): Promise<string> {

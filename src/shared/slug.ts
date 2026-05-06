@@ -30,7 +30,15 @@ export function slugify(title: string): string {
   return trimmed;
 }
 
-/** True when a value already matches the on-disk slug-tail regex. */
+/** True when a value already matches the on-disk slug-tail regex.
+ *
+ *  Tightened from the original `[a-z0-9-]+` which accepted leading/trailing
+ *  hyphens, doubled hyphens, and 200-character runaway strings. The
+ *  constructor for new project folders (and the rename guard) needs every
+ *  produced tail to round-trip cleanly through `slugify`, which it can't
+ *  if the tail starts with `-`, ends with `-`, or contains `--`.
+ */
 export function isValidSlugTail(value: string): boolean {
-  return /^[a-z0-9-]+$/.test(value);
+  if (value.length === 0 || value.length > SLUG_MAX_LEN) return false;
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }

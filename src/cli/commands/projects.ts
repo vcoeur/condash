@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { findProjectReadmes } from '../../main/walk';
 import { parseReadme } from '../../main/parse';
 import { appendTimelineEntry, parseTimelineEntries, transitionStatus } from '../../main/mutate';
@@ -699,6 +699,8 @@ async function searchProjects(
       truncated: results.truncated,
     },
     (data) => formatSearchHuman(data as { hits: typeof enriched; query: string }, conceptionPath),
+    [],
+    { streamField: 'hits' },
   );
 }
 
@@ -728,7 +730,20 @@ async function validateCommand(
   if (all) {
     readmes = await findProjectReadmes(conceptionPath);
   } else if (explicitPath) {
-    readmes = [explicitPath];
+    // Path-traversal guard: --path is the one validate input where the
+    // skill/user passes an arbitrary filesystem path, so we resolve and
+    // require it to live under <conception>/projects/. Without this, a
+    // skill bug or shell typo could point validate at an arbitrary
+    // README on disk and we'd dutifully open it.
+    const resolved = resolve(conceptionPath, explicitPath);
+    const projectsRoot = resolve(conceptionPath, 'projects') + sep;
+    if (!resolved.startsWith(projectsRoot)) {
+      throw new CliError(
+        ExitCodes.USAGE,
+        `--path must point inside <conception>/projects/ (got ${explicitPath})`,
+      );
+    }
+    readmes = [resolved];
   } else if (slug) {
     const candidate = await resolveSlug(conceptionPath, slug);
     readmes = [candidate.readmePath];
@@ -759,32 +774,38 @@ async function validateCommand(
     });
   }
 
-  // For --json/--ndjson, emit unconditionally then choose exit code below;
-  // for human, only print the report (CliError below sets exit code).
-  if (ctx.json || ctx.ndjson) {
-    emit(ctx, { reports, totalErrors, totalChecked: reports.length }, () => '');
-  } else {
-    const lines: string[] = [];
-    for (const r of reports) {
-      if (r.errors.length === 0 && r.warnings.length === 0) continue;
-      lines.push(r.relPath);
-      for (const e of r.errors) lines.push(`  ERROR  ${e.field}: ${e.message}`);
-      for (const w of r.warnings) lines.push(`  warn   ${w.field}: ${w.message}`);
-    }
-    if (lines.length === 0) {
-      process.stdout.write(
-        `OK (${reports.length} README${reports.length === 1 ? '' : 's'} checked)\n`,
-      );
-    } else {
-      process.stdout.write(lines.join('\n') + '\n');
-    }
-  }
-
+  // Single envelope discipline: on errors, throw CliError so the dispatcher
+  // emits ONE failure envelope carrying the reports — without this branch,
+  // the success-path emit() would write a success envelope first and
+  // consumers would see two JSON objects on a failed run (the previous bug
+  // the v2.10.17 review caught).
   if (totalErrors > 0) {
     throw new CliError(ExitCodes.VALIDATION, `${totalErrors} validation error(s)`, {
       reports: reports.filter((r) => r.errors.length > 0),
+      totalChecked: reports.length,
     });
   }
+
+  emit(
+    ctx,
+    { reports, totalErrors, totalChecked: reports.length },
+    (data) => {
+      const d = data as { reports: typeof reports };
+      const lines: string[] = [];
+      for (const r of d.reports) {
+        if (r.errors.length === 0 && r.warnings.length === 0) continue;
+        lines.push(r.relPath);
+        for (const e of r.errors) lines.push(`  ERROR  ${e.field}: ${e.message}`);
+        for (const w of r.warnings) lines.push(`  warn   ${w.field}: ${w.message}`);
+      }
+      if (lines.length === 0) {
+        return `OK (${d.reports.length} README${d.reports.length === 1 ? '' : 's'} checked)\n`;
+      }
+      return lines.join('\n') + '\n';
+    },
+    [],
+    { streamField: 'reports' },
+  );
 }
 
 async function statusCommand(

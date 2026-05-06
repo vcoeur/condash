@@ -11,7 +11,8 @@ export interface Resolved {
 /**
  * Resolve the conception root for this invocation. Order:
  *   1. --conception <path> flag.
- *   2. $CONDASH_CONCEPTION env var.
+ *   2. $CONDASH_CONCEPTION_PATH env var (legacy $CONDASH_CONCEPTION still
+ *      honoured — see the reconcile note in `src/main/settings.ts`).
  *   3. $CLAUDE_PROJECT_DIR — the env var skill hooks set when running on
  *      behalf of a /projects skill. Trusted only when the directory carries
  *      a `configuration.json` (so a stray export from a sibling project
@@ -31,11 +32,17 @@ export async function resolveConception(flagValue: string | undefined): Promise<
     tried.push(`--conception ${flagValue} (no configuration.json)`);
   }
 
-  const envOverride = process.env.CONDASH_CONCEPTION;
+  // `_PATH` is the canonical name (matches main/settings.ts); the
+  // legacy `CONDASH_CONCEPTION` is still honoured so existing skill
+  // hooks don't break, but new docs should reference `_PATH`.
+  const envOverride = process.env.CONDASH_CONCEPTION_PATH ?? process.env.CONDASH_CONCEPTION;
+  const envName = process.env.CONDASH_CONCEPTION_PATH
+    ? 'CONDASH_CONCEPTION_PATH'
+    : 'CONDASH_CONCEPTION';
   if (envOverride) {
     const abs = absolutise(envOverride);
     if (await looksLikeConception(abs)) return { path: abs, source: 'env' };
-    tried.push(`$CONDASH_CONCEPTION=${envOverride} (no configuration.json)`);
+    tried.push(`$${envName}=${envOverride} (no configuration.json)`);
   }
 
   const skillDir = process.env.CLAUDE_PROJECT_DIR;
@@ -71,17 +78,33 @@ async function looksLikeConception(path: string): Promise<boolean> {
   } catch {
     return false;
   }
-  return existsSync(`${path}/configuration.json`);
+  // Both `configuration.json` and a `projects/` directory are required:
+  // any folder with a stray `configuration.json` (e.g. a webpack/babel
+  // config in an unrelated repo) used to silently retarget the CLI.
+  if (!existsSync(`${path}/configuration.json`)) return false;
+  try {
+    const projects = await fs.stat(`${path}/projects`);
+    return projects.isDirectory();
+  } catch {
+    return false;
+  }
 }
+
+// Defensive cap: walking up from a deeply nested directory inside a
+// container or pathological symlink loop used to spin until cwd hit `/`.
+// Sixteen levels covers every realistic project layout we ship and keeps
+// the worst case bounded.
+const MAX_WALK_UP_DEPTH = 16;
 
 async function walkUpForConception(start: string): Promise<string | null> {
   let dir = absolutise(start);
-  while (true) {
-    if (existsSync(`${dir}/configuration.json`)) return dir;
+  for (let depth = 0; depth < MAX_WALK_UP_DEPTH; depth++) {
+    if (await looksLikeConception(dir)) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
+  return null;
 }
 
 function absolutise(value: string): string {

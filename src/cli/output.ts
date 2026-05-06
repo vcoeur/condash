@@ -87,16 +87,37 @@ export function noConception(triedSources: string[]): never {
 }
 
 /**
- * Emit a successful result. In `--json` mode wraps `data` in the envelope;
- * in `--ndjson` mode `data` must be an array and one line is emitted per
- * element (warnings are written to stderr); otherwise calls the human
- * formatter.
+ * Per-command --ndjson shape hint.
+ *
+ * Most CLI verbs return a single envelope-shaped object. The historic
+ * contract — "ndjson means data MUST be an array" — crashed those verbs
+ * with a RUNTIME exit code when invoked under `--ndjson`. The new shape:
+ *
+ *   - `data` is itself an array → stream each row, no trailer.
+ *   - `streamField` is set and `data[streamField]` is an array → stream
+ *     those rows, then emit one trailing `{ "__meta": <rest> }` line
+ *     carrying every other top-level field (so consumers that want the
+ *     summary still see it without having to guess where the boundary is).
+ *   - Otherwise → emit `data` as a single line (same shape `--json` would
+ *     produce, minus the envelope wrapping).
+ *
+ * Callers that benefit from streaming (search hits, list items) pass
+ * `streamField`; everyone else gets the "single trailing object" default
+ * for free, which is what the contract should have been from day one.
  */
+export interface NdjsonShape {
+  /** Top-level field on `data` whose array value should be streamed
+   *  one record per line. Missing or non-array → fall back to single-
+   *  object emission. */
+  streamField?: string;
+}
+
 export function emit<T>(
   ctx: OutputContext,
   data: T,
   humanFormat: (data: T, ctx: OutputContext) => string,
   warnings: string[] = [],
+  ndjsonShape: NdjsonShape = {},
 ): void {
   if (ctx.json) {
     const envelope: JsonEnvelope<T> = { ok: true, data, warnings };
@@ -104,15 +125,7 @@ export function emit<T>(
     return;
   }
   if (ctx.ndjson) {
-    if (!Array.isArray(data)) {
-      throw new CliError(
-        ExitCodes.RUNTIME,
-        '--ndjson requested but command produced a non-array result',
-      );
-    }
-    for (const row of data) {
-      process.stdout.write(JSON.stringify(row) + '\n');
-    }
+    emitNdjson(data, ndjsonShape);
     if (warnings.length > 0 && !ctx.quiet) {
       for (const w of warnings) {
         process.stderr.write(`warning: ${w}\n`);
@@ -126,6 +139,39 @@ export function emit<T>(
       process.stderr.write(`warning: ${w}\n`);
     }
   }
+}
+
+function emitNdjson<T>(data: T, shape: NdjsonShape): void {
+  if (Array.isArray(data)) {
+    for (const row of data) {
+      process.stdout.write(JSON.stringify(row) + '\n');
+    }
+    return;
+  }
+  if (
+    shape.streamField &&
+    data !== null &&
+    typeof data === 'object' &&
+    Array.isArray((data as Record<string, unknown>)[shape.streamField])
+  ) {
+    const obj = data as Record<string, unknown>;
+    const rows = obj[shape.streamField] as unknown[];
+    for (const row of rows) {
+      process.stdout.write(JSON.stringify(row) + '\n');
+    }
+    const meta: Record<string, unknown> = {};
+    let hasMeta = false;
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === shape.streamField) continue;
+      meta[key] = value;
+      hasMeta = true;
+    }
+    if (hasMeta) {
+      process.stdout.write(JSON.stringify({ __meta: meta }) + '\n');
+    }
+    return;
+  }
+  process.stdout.write(JSON.stringify(data) + '\n');
 }
 
 /**
@@ -189,15 +235,44 @@ function humanDetails(details: Record<string, unknown>): string[] {
       if (value.length === 0) continue;
       const head = value
         .slice(0, 5)
-        .map((v) => (typeof v === 'string' ? v : JSON.stringify(v)))
+        .map((v) => sanitiseForTty(typeof v === 'string' ? v : JSON.stringify(v)))
         .join(', ');
       const more = value.length > 5 ? ` (+${value.length - 5} more)` : '';
       out.push(`${key}: ${head}${more}`);
     } else if (typeof value === 'string') {
-      out.push(`${key}: ${value}`);
+      out.push(`${key}: ${sanitiseForTty(value)}`);
     } else {
-      out.push(`${key}: ${JSON.stringify(value)}`);
+      out.push(`${key}: ${sanitiseForTty(JSON.stringify(value))}`);
     }
+  }
+  return out;
+}
+
+/** Strip control characters from a string before it lands on a terminal.
+ *  An attacker-controlled error detail (e.g. a slug carried straight back
+ *  from the user) must not be able to inject ANSI escape sequences,
+ *  cursor moves, or alt-screen toggles into the operator's TTY. We keep
+ *  newline/tab visible-only by rendering them as escapes so multi-line
+ *  payloads don't break the per-detail "key: value" layout either. */
+function sanitiseForTty(value: string): string {
+  let out = '';
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    if (ch === '\n') {
+      out += '\\n';
+      continue;
+    }
+    if (ch === '\t') {
+      out += '\\t';
+      continue;
+    }
+    if (ch === '\r') {
+      out += '\\r';
+      continue;
+    }
+    // Strip C0 controls (0x00-0x1f except handled above) and DEL (0x7f).
+    if (code < 0x20 || code === 0x7f) continue;
+    out += ch;
   }
   return out;
 }
