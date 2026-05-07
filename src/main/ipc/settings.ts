@@ -1,8 +1,11 @@
 import { ipcMain } from 'electron';
 import { toPosix } from '../../shared/path';
 import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../settings';
-import type { CardMinWidthPrefs, LayoutState, Theme } from '../../shared/types';
+import type { CardMinWidthPrefs, LayoutState, Theme, TreeExpansionPrefs } from '../../shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '../../shared/types';
+
+const TREE_EXPANSION_KEYS = ['knowledge', 'resources', 'skills'] as const;
+type TreeExpansionKey = (typeof TREE_EXPANSION_KEYS)[number];
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
@@ -87,6 +90,56 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
       if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
     }
     return out;
+  });
+
+  ipcMain.handle('getTreeExpansion', async () => {
+    const { treeExpansion } = await readSettings();
+    const out: Required<TreeExpansionPrefs> = {
+      knowledge: [],
+      resources: [],
+      skills: [],
+    };
+    for (const key of TREE_EXPANSION_KEYS) {
+      const v = treeExpansion?.[key];
+      if (Array.isArray(v)) {
+        // Coerce to string + dedupe; filter anything that isn't a string
+        // so a corrupt settings file can't crash the renderer.
+        const seen = new Set<string>();
+        for (const entry of v) {
+          if (typeof entry === 'string') seen.add(entry);
+        }
+        out[key] = Array.from(seen);
+      }
+    }
+    return out;
+  });
+
+  ipcMain.handle('setTreeExpansion', async (_, raw: unknown) => {
+    const input = (raw ?? {}) as Record<string, unknown>;
+    const allowed = new Set<string>(TREE_EXPANSION_KEYS);
+    for (const key of Object.keys(input)) {
+      if (!allowed.has(key)) {
+        throw new Error(`setTreeExpansion: unknown key ${JSON.stringify(key)}`);
+      }
+    }
+    const sanitised: TreeExpansionPrefs = {};
+    let nonEmpty = false;
+    for (const key of TREE_EXPANSION_KEYS) {
+      const v = input[key as TreeExpansionKey];
+      if (!Array.isArray(v)) continue;
+      const seen = new Set<string>();
+      for (const entry of v) {
+        if (typeof entry === 'string') seen.add(entry);
+      }
+      if (seen.size > 0) {
+        sanitised[key] = Array.from(seen);
+        nonEmpty = true;
+      }
+    }
+    await updateSettings((cur) => ({
+      ...cur,
+      treeExpansion: nonEmpty ? sanitised : undefined,
+    }));
   });
 
   ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {

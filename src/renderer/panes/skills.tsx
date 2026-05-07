@@ -1,68 +1,36 @@
-import { createMemo, For, Show } from 'solid-js';
+import { Show } from 'solid-js';
 import type { SkillNode } from '@shared/types';
-import { formatSectionLabel } from './pane-utils';
 import { usePaneScrollMemory } from './pane-scroll-memory';
+import {
+  TreeView,
+  type TreeAffordance,
+  type TreeViewMutationApi,
+  type TreeViewPromptApi,
+} from './tree-view';
 import './skills-pane.css';
 
-interface SkillSection {
-  /** Path relative to the skills root, e.g. "projects" or "projects/subdir". */
-  id: string;
-  label: string;
-  /** SKILL.md when this directory is a skill — surfaced as the section index. */
-  index?: SkillNode;
-  /** Other `.md` body files in this directory. */
-  files: SkillNode[];
+const SKILLS_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
+
+/** Pull the directory's `SKILL.md` (case-sensitive — that's how the
+ *  manifest stores it) so it can render as a `[SKILL]` badge on the
+ *  directory header instead of as a separate card. */
+function findSkillIndex(node: SkillNode): SkillNode | undefined {
+  for (const child of node.children ?? []) {
+    if (child.kind === 'file' && child.name === 'SKILL.md') return child;
+  }
+  return undefined;
 }
 
-/**
- * Walk the skills tree and emit one section per directory at any depth
- * that contains at least one `.md`. `SKILL.md` (case-sensitive — that is
- * how the manifest stores it) is pulled out of the file list and rendered
- * as a `[SKILL]` index badge on the section header.
- */
-function buildSections(root: SkillNode | null): SkillSection[] {
-  if (!root) return [];
-  const out: SkillSection[] = [];
-
-  const visit = (node: SkillNode, dirRel: string): void => {
-    if (node.kind !== 'directory') return;
-    const fileChildren: SkillNode[] = [];
-    const dirChildren: SkillNode[] = [];
-    for (const child of node.children ?? []) {
-      if (child.kind === 'directory') dirChildren.push(child);
-      else fileChildren.push(child);
-    }
-
-    let index: SkillNode | undefined;
-    const others: SkillNode[] = [];
-    for (const f of fileChildren) {
-      if (f.name === 'SKILL.md') index = f;
-      else others.push(f);
-    }
-
-    if (index || others.length > 0) {
-      const label = formatSectionLabel(dirRel);
-      out.push({
-        id: dirRel,
-        label,
-        index,
-        files: others.sort((a, b) => a.name.localeCompare(b.name)),
-      });
-    }
-
-    for (const sub of dirChildren) {
-      const childRel = dirRel ? `${dirRel}/${sub.name}` : sub.name;
-      visit(sub, childRel);
-    }
-  };
-  visit(root, '');
-
-  out.sort((a, b) => {
-    if (a.id === '') return -1;
-    if (b.id === '') return 1;
-    return a.id.localeCompare(b.id);
-  });
-  return out;
+/** Drop every `SKILL.md` from the tree — handled separately by the
+ *  per-directory `renderDirSuffix` slot. */
+function stripSkillIndexes(node: SkillNode): SkillNode {
+  if (node.kind !== 'directory') return node;
+  const filtered: SkillNode[] = [];
+  for (const child of node.children ?? []) {
+    if (child.kind === 'file' && child.name === 'SKILL.md') continue;
+    filtered.push(stripSkillIndexes(child));
+  }
+  return { ...node, children: filtered };
 }
 
 export function SkillsView(props: {
@@ -73,14 +41,19 @@ export function SkillsView(props: {
   /** Copy the install command to the clipboard so the user can paste into
    *  the embedded terminal. */
   onCopyInstallCommand?: () => void;
+  expanded: () => ReadonlySet<string>;
+  onToggleExpand: (relPath: string) => void;
+  mutations: TreeViewMutationApi;
+  prompts: TreeViewPromptApi;
+  onAfterMutation: (newPath: string, kind: TreeAffordance, sourceDirRelPath: string) => void;
+  onError: (message: string) => void;
 }) {
-  const sections = createMemo<SkillSection[]>(() => buildSections(props.root));
   const scrollRef = usePaneScrollMemory('skills');
 
   return (
     <div class="skills-pane" ref={scrollRef}>
       <Show
-        when={sections().length > 0}
+        when={props.root}
         fallback={
           <div class="empty">
             <p>No skills installed.</p>
@@ -107,65 +80,64 @@ export function SkillsView(props: {
           </div>
         }
       >
-        <For each={sections()}>
-          {(section) => (
-            <section class="skills-group">
-              <h2 class="skills-section-header">
-                <span class="name">{section.label}</span>
-                <Show when={section.files.length > 0}>
-                  <span class="count">{section.files.length}</span>
-                </Show>
-                <Show when={section.index}>
-                  {(idx) => (
-                    <button
-                      type="button"
-                      class="skills-section-index"
-                      classList={{
-                        shipped: !!idx().shipped,
-                        diverged: !!idx().shipped?.diverged,
-                      }}
-                      onClick={() => props.onOpen(idx().path, idx().title, idx().shipped)}
-                      aria-label={`Open SKILL.md for ${section.label}${
-                        idx().shipped?.diverged
-                          ? ' (shipped, locally edited)'
-                          : idx().shipped
-                            ? ' (shipped)'
-                            : ''
-                      }`}
-                      title={
-                        idx().shipped?.diverged
-                          ? 'SKILL.md (shipped, locally edited)'
-                          : idx().shipped
-                            ? 'SKILL.md (shipped)'
-                            : 'SKILL.md'
-                      }
-                    >
-                      SKILL
-                      <Show when={idx().shipped}>
-                        <span class="shipped-tag">
-                          {idx().shipped?.diverged ? ' · diverged' : ' · shipped'}
-                        </span>
-                      </Show>
-                    </button>
-                  )}
-                </Show>
-                <span class="rule" />
-              </h2>
-              <Show when={section.files.length > 0}>
-                <div class="skills-grid">
-                  <For each={section.files}>
-                    {(file) => (
-                      <SkillCard
-                        node={file}
-                        onOpen={() => props.onOpen(file.path, file.title, file.shipped)}
-                      />
-                    )}
-                  </For>
-                </div>
+        {(root) => (
+          <TreeView<SkillNode>
+            treeKey="skills"
+            root={stripSkillIndexes(root())}
+            expanded={props.expanded}
+            onToggleExpand={props.onToggleExpand}
+            affordances={SKILLS_AFFORDANCES}
+            mutations={props.mutations}
+            prompts={props.prompts}
+            onAfterMutation={props.onAfterMutation}
+            onError={props.onError}
+            renderDirSuffix={(dir) => (
+              <Show when={findSkillIndex(dir)}>
+                {(idx) => (
+                  <button
+                    type="button"
+                    class="skills-section-index"
+                    classList={{
+                      shipped: !!idx().shipped,
+                      diverged: !!idx().shipped?.diverged,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onOpen(idx().path, idx().title, idx().shipped);
+                    }}
+                    aria-label={`Open SKILL.md for ${dir.relPath || 'skills'}${
+                      idx().shipped?.diverged
+                        ? ' (shipped, locally edited)'
+                        : idx().shipped
+                          ? ' (shipped)'
+                          : ''
+                    }`}
+                    title={
+                      idx().shipped?.diverged
+                        ? 'SKILL.md (shipped, locally edited)'
+                        : idx().shipped
+                          ? 'SKILL.md (shipped)'
+                          : 'SKILL.md'
+                    }
+                  >
+                    SKILL
+                    <Show when={idx().shipped}>
+                      <span class="shipped-tag">
+                        {idx().shipped?.diverged ? ' · diverged' : ' · shipped'}
+                      </span>
+                    </Show>
+                  </button>
+                )}
               </Show>
-            </section>
-          )}
-        </For>
+            )}
+            renderFile={(file) => (
+              <SkillCard
+                node={file}
+                onOpen={() => props.onOpen(file.path, file.title, file.shipped)}
+              />
+            )}
+          />
+        )}
       </Show>
     </div>
   );

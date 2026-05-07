@@ -18,6 +18,7 @@ import { requirePathUnder, requirePathUnderWorkspace } from './path-bounds';
 import { readKnowledgeTree } from './knowledge';
 import { readResourcesTree } from './resources';
 import { readSkillsTree } from './skills';
+import { treeCreateMd, treeImportFile, treeMkdir } from './tree-mutations';
 import { resolveConceptionPaths } from './conception-paths';
 import { createProjectNote, readNote } from './note';
 import { search } from './search';
@@ -42,6 +43,7 @@ import type {
   ProjectCreateInput,
   ProjectCreateResult,
   StepMarker,
+  TreeRoot,
 } from '../shared/types';
 import { statusOrder } from '../shared/projects';
 
@@ -554,6 +556,18 @@ function registerIpc(): void {
     const { skills } = await resolveConceptionPaths(conceptionPath);
     return readSkillsTree(conceptionPath, skills);
   });
+
+  ipcMain.handle('tree.createMd', (_, root: TreeRoot, dirRelPath: string, filename: string) =>
+    treeCreateMd(root, dirRelPath, filename),
+  );
+
+  ipcMain.handle('tree.mkdir', (_, root: TreeRoot, dirRelPath: string, name: string) =>
+    treeMkdir(root, dirRelPath, name),
+  );
+
+  ipcMain.handle('tree.importFile', (_, root: TreeRoot, dirRelPath: string) =>
+    treeImportFile(root, dirRelPath),
+  );
 
   ipcMain.handle('search', async (_, query: string) => {
     const { conceptionPath } = await readSettings();
