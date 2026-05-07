@@ -25,6 +25,8 @@ import type {
   Theme,
   TransitionResult,
   TreeEvent,
+  TreeExpansionPrefs,
+  TreeRoot,
 } from './types';
 
 export interface CondashApi {
@@ -83,6 +85,14 @@ export interface CondashApi {
    *  small and re-defaulting works automatically when the bundled
    *  defaults change in a future release. */
   setCardMinWidth(prefs: CardMinWidthPrefs): Promise<void>;
+  /** Per-pane set of expanded directory `relPath`s for the three tree
+   *  panes. The empty-string entry stands in for the pane root. Returns a
+   *  fully-resolved object — every key has at least an empty array so the
+   *  renderer never has to deal with `undefined`. */
+  getTreeExpansion(): Promise<Required<TreeExpansionPrefs>>;
+  /** Persist the per-pane expanded-directory sets. The patch is a full
+   *  replacement; pass `{}` to clear back to the all-collapsed default. */
+  setTreeExpansion(prefs: TreeExpansionPrefs): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;
@@ -187,6 +197,23 @@ export interface CondashApi {
    *  and prefixed with the next zero-padded NN- counter. Returns the absolute
    *  path of the new file (always created — caller can then open it). */
   createProjectNote(projectPath: string, slug: string): Promise<string>;
+  /** Create a new markdown file under one of the three tree panes'
+   *  directories. `dirRelPath` is relative to the pane's on-disk root (`''`
+   *  for the root). `filename` is sanitised to lowercase-hyphen and an
+   *  `.md` extension is appended when missing. Resources accept any
+   *  extension; knowledge / skills always force `.md`. Refuses to overwrite
+   *  an existing file. Returns the new file's absolute path so the caller
+   *  can re-fetch the tree and open the file in the editor. */
+  treeCreateMd(root: TreeRoot, dirRelPath: string, filename: string): Promise<string>;
+  /** Create a new subdirectory under one of the three tree panes'
+   *  directories. Same `dirRelPath` semantics as `treeCreateMd`. `name` is
+   *  sanitised to lowercase-hyphen. Idempotent: a no-op if the directory
+   *  already exists, but always returns its absolute path. */
+  treeMkdir(root: TreeRoot, dirRelPath: string, name: string): Promise<string>;
+  /** Pop an OS file picker, then copy the chosen file into the target tree
+   *  directory. Resolves to the destination's absolute path, or `null` when
+   *  the user cancels. Refuses to overwrite an existing file. */
+  treeImportFile(root: TreeRoot, dirRelPath: string): Promise<string | null>;
   /** Trigger app quit. Renderer is responsible for any user confirmation. */
   quitApp(): Promise<void>;
   /** App version + bundled release metadata used by the About modal.

@@ -131,7 +131,28 @@ export interface Settings {
    * values keep cards roomy. Per-machine because what feels right depends
    * on the monitor, not the team. */
   cardMinWidth?: CardMinWidthPrefs;
+  /** Per-pane set of expanded directory `relPath`s in the Knowledge,
+   * Resources, and Skills panes. Empty (or missing) means every directory
+   * is collapsed — that is the on-purpose first-load state per the issue
+   * #89 spec. The empty-string entry stands in for the pane's root
+   * directory; everything else matches a `relPath` returned by the tree
+   * reader. Per-machine because the answer is "what was I last looking
+   * at on this laptop", not a team convention. */
+  treeExpansion?: TreeExpansionPrefs;
 }
+
+/** Sets of expanded directory `relPath`s for the three tree panes. The
+ * empty-string entry is the root of that pane. */
+export interface TreeExpansionPrefs {
+  knowledge?: string[];
+  resources?: string[];
+  skills?: string[];
+}
+
+/** Discriminator for the three tree panes. Used by the `tree.*` IPC verbs
+ * to pick the correct on-disk root (knowledge is hardcoded to `knowledge/`;
+ * resources and skills come from `configuration.json`). */
+export type TreeRoot = 'knowledge' | 'resources' | 'skills';
 
 /** Per-pane card min-width in CSS pixels. Used in the grid template
  * `minmax(min(<min>, 100%), 1fr)`. Each field is optional — a missing

@@ -1,0 +1,148 @@
+import { constants as fsConstants, promises as fs } from 'node:fs';
+import { basename, extname, join, normalize } from 'node:path';
+import { dialog } from 'electron';
+import type { TreeRoot } from '../shared/types';
+import { toPosix } from '../shared/path';
+import { readSettings } from './settings';
+import { resolveConceptionPaths } from './conception-paths';
+import { requirePathUnder } from './path-bounds';
+
+/**
+ * Helpers backing the `tree.*` IPC verbs that mutate the on-disk
+ * Knowledge / Resources / Skills trees. Each verb resolves the pane's
+ * on-disk root, joins the renderer-supplied `dirRelPath` + child name,
+ * normalises, then re-checks the result is still under the pane's root
+ * via `requirePathUnder` so a renderer that hands us `..` / an absolute
+ * path can never escape the bound. The renderer is trusted today, but we
+ * apply the same defence-in-depth as `assertUnderConception` in
+ * `src/main/index.ts`.
+ */
+
+/** Resolve a tree root to its absolute on-disk path. Knowledge is hardcoded
+ * to `<conception>/knowledge/`; resources + skills come from
+ * `configuration.json`. */
+async function resolveRoot(root: TreeRoot): Promise<string> {
+  const { conceptionPath } = await readSettings();
+  if (!conceptionPath) throw new Error('no conception path is set');
+  if (root === 'knowledge') return join(conceptionPath, 'knowledge');
+  const { resources, skills } = await resolveConceptionPaths(conceptionPath);
+  if (root === 'resources') return join(conceptionPath, resources);
+  if (root === 'skills') return join(conceptionPath, skills);
+  throw new Error(`unknown tree root: ${root as string}`);
+}
+
+/** Lowercase, replace runs of non-alphanumerics with `-`, trim leading/
+ *  trailing hyphens. Empty input maps to a single placeholder. */
+function sanitiseSegment(name: string, fallback: string): string {
+  const cleaned = name
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
+/** Sanitise `filename`, splitting any user-supplied extension off so the
+ *  basename is hyphen-cased without touching `.` characters. For
+ *  knowledge / skills the extension is always `.md`; for resources we keep
+ *  the user's extension and default to `.md` when none was supplied. */
+function buildFilename(root: TreeRoot, raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) throw new Error('filename must be a non-empty string');
+  const ext = extname(trimmed).toLowerCase();
+  const stem = ext ? trimmed.slice(0, trimmed.length - ext.length) : trimmed;
+  const cleanedStem = sanitiseSegment(stem, 'untitled').replace(/\.+/g, '-');
+  if (root === 'resources') {
+    return cleanedStem + (ext || '.md');
+  }
+  // Knowledge + skills: `.md` only.
+  return cleanedStem + '.md';
+}
+
+/** Resolve `<root>/<dirRelPath>/<name>` and prove via realpath that it
+ *  stays under the pane's root. Returns the canonical absolute path. */
+async function resolveChildBounded(
+  root: TreeRoot,
+  dirRelPath: string,
+  childName: string,
+): Promise<{ rootAbs: string; targetAbs: string }> {
+  const rootAbs = await resolveRoot(root);
+  if (typeof dirRelPath !== 'string') {
+    throw new Error('dirRelPath must be a string');
+  }
+  // `''` is allowed (means the root itself).
+  const cleanedDir = normalize(dirRelPath);
+  if (/^(\.\.([\\/]|$))/.test(cleanedDir) || cleanedDir.startsWith('/')) {
+    throw new Error('dirRelPath escapes the pane root');
+  }
+  if (cleanedDir.includes('..')) {
+    // normalize() may leave a literal `..` mid-path if the prefix wasn't
+    // resolvable; reject defensively.
+    const segments = cleanedDir.split(/[\\/]/);
+    if (segments.includes('..')) throw new Error('dirRelPath escapes the pane root');
+  }
+  const dirAbs = cleanedDir === '' || cleanedDir === '.' ? rootAbs : join(rootAbs, cleanedDir);
+  // The directory must already exist on disk and stay under the root.
+  await requirePathUnder(dirAbs, rootAbs);
+  const targetAbs = join(dirAbs, childName);
+  // Sanity check that childName itself doesn't contain a separator that
+  // would let the join slip out of the directory; sanitiseSegment already
+  // strips them, but double-check before any writes.
+  if (basename(targetAbs) !== childName) {
+    throw new Error('invalid child name');
+  }
+  return { rootAbs, targetAbs };
+}
+
+export async function treeCreateMd(
+  root: TreeRoot,
+  dirRelPath: string,
+  filename: string,
+): Promise<string> {
+  const sanitised = buildFilename(root, filename);
+  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised);
+  // `wx` flag refuses to overwrite — surfaces a clear error to the
+  // renderer when the user picks a name that's already taken.
+  await fs.writeFile(targetAbs, '', { encoding: 'utf8', flag: 'wx' });
+  return toPosix(targetAbs);
+}
+
+export async function treeMkdir(root: TreeRoot, dirRelPath: string, name: string): Promise<string> {
+  const sanitised = sanitiseSegment(name, '').replace(/\.+/g, '-');
+  if (sanitised.length === 0) throw new Error('directory name is empty after sanitisation');
+  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised);
+  await fs.mkdir(targetAbs, { recursive: true });
+  return toPosix(targetAbs);
+}
+
+export async function treeImportFile(root: TreeRoot, dirRelPath: string): Promise<string | null> {
+  // Resolve + bounds-check the destination before opening the dialog so
+  // we never copy a file just to throw away on a bad target.
+  const rootAbs = await resolveRoot(root);
+  const cleanedDir = normalize(dirRelPath ?? '');
+  const dirAbs = cleanedDir === '' || cleanedDir === '.' ? rootAbs : join(rootAbs, cleanedDir);
+  await requirePathUnder(dirAbs, rootAbs);
+
+  const result = await dialog.showOpenDialog({
+    title: 'Import file',
+    properties: ['openFile'],
+    buttonLabel: 'Import',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const sourceAbs = result.filePaths[0];
+  if (!sourceAbs) return null;
+  const sourceName = basename(sourceAbs);
+  // Sanitise just the basename — keep the extension verbatim so a `.pdf`
+  // import lands as `.pdf`. For knowledge / skills we still want `.md`-
+  // ish material, but enforcing here would block the legitimate "drop a
+  // PDF reference into knowledge/external/" workflow; leave the
+  // categorisation to the user.
+  const ext = extname(sourceName);
+  const stem = ext ? sourceName.slice(0, sourceName.length - ext.length) : sourceName;
+  const cleanedStem = sanitiseSegment(stem, 'imported').replace(/\.+/g, '-');
+  const finalName = cleanedStem + ext;
+  const targetAbs = join(dirAbs, finalName);
+  if (basename(targetAbs) !== finalName) throw new Error('invalid imported filename');
+  // `COPYFILE_EXCL` refuses to overwrite — same behaviour as createMd.
+  await fs.copyFile(sourceAbs, targetAbs, fsConstants.COPYFILE_EXCL);
+  return toPosix(targetAbs);
+}

@@ -22,10 +22,12 @@ import type {
   TermSession,
   TerminalPrefs,
   Theme,
+  TreeRoot,
   WorkingSurface,
   Worktree,
 } from '@shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
+import type { TreeAffordance, TreeViewMutationApi, TreeViewPromptApi } from './panes/tree-view';
 import { NoteModal, type ModalState } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { resetMermaidTheme } from './markdown';
@@ -214,6 +216,85 @@ function App() {
       flashToast(`Could not persist card min-width: ${(err as Error).message}`, 'error');
     });
   };
+
+  // Per-pane expansion state for the Knowledge / Resources / Skills tree
+  // panes (issue #89). Each set holds the directory `relPath`s that are
+  // currently expanded; an empty set means the pane is fully collapsed
+  // (the on-purpose first-load state). The hydrate-from-IPC then-callback
+  // overrides the empty defaults when the user has prior state on disk.
+  const [knowledgeExpanded, setKnowledgeExpanded] = createSignal<ReadonlySet<string>>(new Set());
+  const [resourcesExpanded, setResourcesExpanded] = createSignal<ReadonlySet<string>>(new Set());
+  const [skillsExpanded, setSkillsExpanded] = createSignal<ReadonlySet<string>>(new Set());
+  void window.condash.getTreeExpansion().then((prefs) => {
+    setKnowledgeExpanded(new Set(prefs.knowledge));
+    setResourcesExpanded(new Set(prefs.resources));
+    setSkillsExpanded(new Set(prefs.skills));
+  });
+
+  /** Persist the union of the three pane sets to settings.json.
+   *  Fire-and-forget — a write failure surfaces as a toast but the
+   *  in-memory state stays authoritative for the session. */
+  const persistTreeExpansion = (): void => {
+    const prefs = {
+      knowledge: Array.from(knowledgeExpanded()),
+      resources: Array.from(resourcesExpanded()),
+      skills: Array.from(skillsExpanded()),
+    };
+    void window.condash.setTreeExpansion(prefs).catch((err) => {
+      flashToast(`Could not persist tree expansion: ${(err as Error).message}`, 'error');
+    });
+  };
+
+  const toggleTreeExpand = (treeKey: TreeRoot, relPath: string): void => {
+    const setterByKey = {
+      knowledge: setKnowledgeExpanded,
+      resources: setResourcesExpanded,
+      skills: setSkillsExpanded,
+    } as const;
+    const getterByKey = {
+      knowledge: knowledgeExpanded,
+      resources: resourcesExpanded,
+      skills: skillsExpanded,
+    } as const;
+    const next = new Set(getterByKey[treeKey]());
+    if (next.has(relPath)) next.delete(relPath);
+    else next.add(relPath);
+    setterByKey[treeKey](next);
+    persistTreeExpansion();
+  };
+
+  /** Force a directory into the expanded set without toggling — used after
+   *  a successful tree mutation so the user can see the new file. */
+  const expandTreeDir = (treeKey: TreeRoot, relPath: string): void => {
+    if (relPath === '') return; // root is always expanded; no need to track
+    const setterByKey = {
+      knowledge: setKnowledgeExpanded,
+      resources: setResourcesExpanded,
+      skills: setSkillsExpanded,
+    } as const;
+    const getterByKey = {
+      knowledge: knowledgeExpanded,
+      resources: resourcesExpanded,
+      skills: skillsExpanded,
+    } as const;
+    const cur = getterByKey[treeKey]();
+    if (cur.has(relPath)) return;
+    const next = new Set(cur);
+    next.add(relPath);
+    setterByKey[treeKey](next);
+    persistTreeExpansion();
+  };
+
+  const treeMutations: TreeViewMutationApi = {
+    createMd: (root, dirRelPath, filename) =>
+      window.condash.treeCreateMd(root, dirRelPath, filename),
+    mkdir: (root, dirRelPath, name) => window.condash.treeMkdir(root, dirRelPath, name),
+    importFile: (root, dirRelPath) => window.condash.treeImportFile(root, dirRelPath),
+  };
+  const treePrompts: TreeViewPromptApi = {
+    prompt: openPrompt,
+  };
+  const treeError = (msg: string): void => flashToast(msg, 'error');
 
   /** Apply a layout patch and persist it. The persistence is fire-and-
    * forget: any settings.json write failure surfaces as a toast but the
@@ -808,6 +889,43 @@ function App() {
     },
   };
 
+  /** Per-pane post-mutation handler. Bumps the refresh key so the pane
+   *  re-fetches its tree, expands the source directory so the user sees
+   *  the new entry, and (for createMd / importFile) opens the new file
+   *  the way that pane normally opens its file kind. `mkdir` only
+   *  expands so the user can drop notes in. */
+  const handleAfterTreeMutation = (
+    treeKey: TreeRoot,
+    newPath: string,
+    kind: TreeAffordance,
+    sourceDirRelPath: string,
+  ): void => {
+    setRefreshKey((k) => k + 1);
+    expandTreeDir(treeKey, sourceDirRelPath);
+    if (kind === 'mkdir') return;
+    if (treeKey === 'knowledge') {
+      handleOpenKnowledgeFile(newPath);
+      return;
+    }
+    if (treeKey === 'skills') {
+      // Match `handleOpenSkillFile` — title falls back to the basename
+      // because the freshly-created file has no h1 yet.
+      const title = newPath.split('/').pop() ?? newPath;
+      handleOpenSkillFile(newPath, title, null);
+      return;
+    }
+    // Resources: open via the user's main editor for non-viewable kinds,
+    // or the inline viewer for markdown / pdf / text.
+    const lower = newPath.toLowerCase();
+    if (lower.endsWith('.md')) {
+      handleViewResource(newPath, newPath.split('/').pop() ?? newPath);
+    } else if (lower.endsWith('.pdf')) {
+      setPdfPath(newPath);
+    } else {
+      void window.condash.openInEditor(newPath);
+    }
+  };
+
   const handleOpenHelp = (doc: HelpDoc) => {
     setHelpDoc(doc);
   };
@@ -1127,7 +1245,18 @@ function App() {
                           </div>
                         }
                       >
-                        <KnowledgeView root={knowledge()!} onOpen={handleOpenKnowledgeFile} />
+                        <KnowledgeView
+                          root={knowledge()!}
+                          onOpen={handleOpenKnowledgeFile}
+                          expanded={knowledgeExpanded}
+                          onToggleExpand={(rel) => toggleTreeExpand('knowledge', rel)}
+                          mutations={treeMutations}
+                          prompts={treePrompts}
+                          onAfterMutation={(newPath, kind, source) =>
+                            handleAfterTreeMutation('knowledge', newPath, kind, source)
+                          }
+                          onError={treeError}
+                        />
                       </Show>
                     </Suspense>
                   </section>
@@ -1145,6 +1274,14 @@ function App() {
                             flashToast(`Open failed: ${(err as Error).message}`, 'error');
                           });
                         }}
+                        expanded={resourcesExpanded}
+                        onToggleExpand={(rel) => toggleTreeExpand('resources', rel)}
+                        mutations={treeMutations}
+                        prompts={treePrompts}
+                        onAfterMutation={(newPath, kind, source) =>
+                          handleAfterTreeMutation('resources', newPath, kind, source)
+                        }
+                        onError={treeError}
                       />
                     </Suspense>
                   </section>
@@ -1165,6 +1302,14 @@ function App() {
                               flashToast(`Copy failed: ${(err as Error).message}`, 'error'),
                             );
                         }}
+                        expanded={skillsExpanded}
+                        onToggleExpand={(rel) => toggleTreeExpand('skills', rel)}
+                        mutations={treeMutations}
+                        prompts={treePrompts}
+                        onAfterMutation={(newPath, kind, source) =>
+                          handleAfterTreeMutation('skills', newPath, kind, source)
+                        }
+                        onError={treeError}
                       />
                     </Suspense>
                   </section>

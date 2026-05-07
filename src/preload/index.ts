@@ -35,6 +35,8 @@ const api: CondashApi = {
   setWelcomeDismissed: (value) => ipcRenderer.invoke('setWelcomeDismissed', value),
   getCardMinWidth: () => ipcRenderer.invoke('getCardMinWidth'),
   setCardMinWidth: (prefs) => ipcRenderer.invoke('setCardMinWidth', prefs),
+  getTreeExpansion: () => ipcRenderer.invoke('getTreeExpansion'),
+  setTreeExpansion: (prefs) => ipcRenderer.invoke('setTreeExpansion', prefs),
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
     ipcRenderer.invoke('step.toggle', path, lineIndex, expectedMarker, newMarker),
@@ -92,6 +94,10 @@ const api: CondashApi = {
   openPath: (target: string) => ipcRenderer.invoke('openPath', target),
   createProjectNote: (projectPath: string, slug: string) =>
     ipcRenderer.invoke('project.createNote', projectPath, slug),
+  treeCreateMd: (root, dirRelPath, filename) =>
+    ipcRenderer.invoke('tree.createMd', root, dirRelPath, filename),
+  treeMkdir: (root, dirRelPath, name) => ipcRenderer.invoke('tree.mkdir', root, dirRelPath, name),
+  treeImportFile: (root, dirRelPath) => ipcRenderer.invoke('tree.importFile', root, dirRelPath),
   quitApp: () => ipcRenderer.invoke('quitApp'),
   getAppInfo: () => ipcRenderer.invoke('getAppInfo'),
   pdfToFileUrl: (path: string) => ipcRenderer.invoke('pdf.toFileUrl', path),

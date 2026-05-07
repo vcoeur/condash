@@ -1,60 +1,15 @@
-import { createMemo, createSignal, For, Show } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import type { ResourceCategory, ResourceNode } from '@shared/types';
-import { formatSectionLabel } from './pane-utils';
 import { usePaneScrollMemory } from './pane-scroll-memory';
+import {
+  TreeView,
+  type TreeAffordance,
+  type TreeViewMutationApi,
+  type TreeViewPromptApi,
+} from './tree-view';
 import './resources-pane.css';
 
-interface FlatSection {
-  /** Empty string for the root section. */
-  id: string;
-  label: string;
-  files: ResourceNode[];
-}
-
-/**
- * Walk the resources tree and emit one section per directory (root +
- * every nested directory). Recurses to any depth — sections with no files
- * are dropped so an empty wrapper directory doesn't render an empty
- * section header.
- */
-function buildSections(root: ResourceNode | null): FlatSection[] {
-  if (!root) return [];
-  const sections = new Map<string, ResourceNode[]>();
-
-  const visit = (node: ResourceNode, dirRel: string): void => {
-    if (node.kind !== 'directory') return;
-    const fileChildren: ResourceNode[] = [];
-    const dirChildren: ResourceNode[] = [];
-    for (const child of node.children ?? []) {
-      if (child.kind === 'directory') dirChildren.push(child);
-      else fileChildren.push(child);
-    }
-    if (fileChildren.length > 0) {
-      sections.set(dirRel, fileChildren);
-    }
-    for (const sub of dirChildren) {
-      const childRel = dirRel ? `${dirRel}/${sub.name}` : sub.name;
-      visit(sub, childRel);
-    }
-  };
-  visit(root, '');
-
-  const out: FlatSection[] = [];
-  for (const [id, files] of sections) {
-    const label = formatSectionLabel(id);
-    out.push({
-      id,
-      label,
-      files: files.slice().sort((a, b) => a.name.localeCompare(b.name)),
-    });
-  }
-  out.sort((a, b) => {
-    if (a.id === '') return -1;
-    if (b.id === '') return 1;
-    return a.id.localeCompare(b.id);
-  });
-  return out;
-}
+const RESOURCES_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'importFile', 'mkdir'];
 
 export interface ResourcesViewActions {
   /** Open via the user's main `open_with` slot. */
@@ -78,14 +33,19 @@ export function ResourcesView(props: {
   onOpenSettings?: () => void;
   /** Open the conception folder in the OS file manager. */
   onOpenConceptionDir?: () => void;
+  expanded: () => ReadonlySet<string>;
+  onToggleExpand: (relPath: string) => void;
+  mutations: TreeViewMutationApi;
+  prompts: TreeViewPromptApi;
+  onAfterMutation: (newPath: string, kind: TreeAffordance, sourceDirRelPath: string) => void;
+  onError: (message: string) => void;
 }) {
-  const sections = createMemo<FlatSection[]>(() => buildSections(props.root));
   const scrollRef = usePaneScrollMemory('resources');
 
   return (
     <div class="resources-pane" ref={scrollRef}>
       <Show
-        when={sections().length > 0}
+        when={props.root}
         fallback={
           <div class="empty">
             <p>No resources directory yet.</p>
@@ -112,22 +72,20 @@ export function ResourcesView(props: {
           </div>
         }
       >
-        <For each={sections()}>
-          {(section) => (
-            <section class="resources-group">
-              <h2 class="resources-section-header">
-                <span class="name">{section.label}</span>
-                <span class="count">{section.files.length}</span>
-                <span class="rule" />
-              </h2>
-              <div class="resources-grid">
-                <For each={section.files}>
-                  {(file) => <ResourceCard node={file} actions={props.actions} />}
-                </For>
-              </div>
-            </section>
-          )}
-        </For>
+        {(root) => (
+          <TreeView<ResourceNode>
+            treeKey="resources"
+            root={root()}
+            expanded={props.expanded}
+            onToggleExpand={props.onToggleExpand}
+            affordances={RESOURCES_AFFORDANCES}
+            mutations={props.mutations}
+            prompts={props.prompts}
+            onAfterMutation={props.onAfterMutation}
+            onError={props.onError}
+            renderFile={(file) => <ResourceCard node={file} actions={props.actions} />}
+          />
+        )}
       </Show>
     </div>
   );

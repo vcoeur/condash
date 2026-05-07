@@ -14,7 +14,7 @@ condash reads two JSON files. Both are optional in principle — the dashboard r
 | File                 | Path                                                                                                                                                                        | Lifecycle                  | Owns                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
 | `configuration.json` | `<conception_path>/configuration.json`                                                                                                                                      | Per-tree, versioned in git | `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`   |
-| `settings.json`      | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `conceptionPath`, `theme`, `terminal`, `layout`, `welcome`, `cardMinWidth`      |
+| `settings.json`      | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `conceptionPath`, `theme`, `terminal`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`      |
 
 The split is by **lifecycle**, not by feature. Each key lives in exactly one file:
 
@@ -240,6 +240,11 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
     "projects": 600,
     "code": 600,
     "knowledge": 480
+  },
+  "treeExpansion": {
+    "knowledge": ["topics", "topics/security"],
+    "resources": [],
+    "skills": ["pr"]
   }
 }
 ```
@@ -252,6 +257,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `layout`         | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                  |
 | `welcome`        | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                         |
 | `cardMinWidth`   | Per-pane card grid min-width. See [CardMinWidth](#cardminwidth) below.                                                                          |
+| `treeExpansion`  | Per-pane set of expanded directory `relPath`s for the Knowledge / Resources / Skills tree panes. Empty (or missing) means everything is collapsed — the on-purpose first-load state per #89. |
 
 `open_with`, `pdf_viewer`, and `repositories` are intentionally **not** valid in `settings.json` — they live tree-side in `configuration.json`. Setting them here is silently ignored.
 

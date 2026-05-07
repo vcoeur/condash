@@ -1,0 +1,178 @@
+/* Shared styles for the collapsible directory tree used by the
+ * Knowledge / Resources / Skills panes (issue #89). The pane wrapper
+ * still owns padding, scrolling, and per-pane card grids; this file
+ * styles only the tree chrome itself (directory header, twisty,
+ * affordance buttons, indentation rail). */
+
+.tree-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tree-directory {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Indent every nested directory off the depth attribute. The root
+ * directory (`data-depth="0"`) hugs the pane's edge; children indent
+ * by 16 px per level so a deeply nested tree stays compact. */
+.tree-directory[data-depth='1'] > .tree-children {
+  padding-left: 16px;
+}
+.tree-directory[data-depth='2'] > .tree-children {
+  padding-left: 16px;
+}
+.tree-directory[data-depth='3'] > .tree-children {
+  padding-left: 16px;
+}
+.tree-directory[data-depth='4'] > .tree-children {
+  padding-left: 16px;
+}
+
+.tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left: 1px dashed var(--border);
+  padding-left: 14px;
+}
+
+/* The root node's children sit flush — no rail, no indent. The pane
+ * chrome handles its own padding so the tree behaves like a list at the
+ * top level. */
+.tree-directory[data-root='true'] > .tree-children {
+  border-left: none;
+  padding-left: 0;
+}
+
+.tree-dir-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* Make the whole header (except the buttons) act like the twisty so
+ * users can click anywhere on the row to collapse/expand. The twisty
+ * button still gets the keyboard focus. */
+.tree-dir-header[data-root='false'] {
+  cursor: pointer;
+}
+.tree-dir-header[data-root='false']:hover .tree-dir-name {
+  color: var(--text);
+}
+
+.tree-dir-twisty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 100ms ease;
+}
+
+.tree-dir-twisty:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.tree-dir-twisty:disabled {
+  cursor: default;
+  visibility: hidden;
+}
+
+.tree-dir-twisty-glyph {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.tree-dir-twisty-glyph[data-open='true'] {
+  transform: rotate(90deg);
+}
+
+.tree-dir-name {
+  color: var(--text);
+}
+
+/* The root header gets a slightly more prominent label so the pane
+ * still has a clear "title" line under the tab bar. */
+.tree-dir-header[data-root='true'] .tree-dir-name {
+  letter-spacing: 0.2em;
+  color: var(--text-muted);
+}
+
+.tree-dir-count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.tree-dir-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.tree-dir-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* Reveal the action buttons on hover or when the directory has focus.
+ * Keep them mounted so a tab through the header doesn't skip them
+ * outright — visibility-toggling would do that. */
+.tree-dir-header:hover .tree-dir-actions,
+.tree-dir-header:focus-within .tree-dir-actions {
+  opacity: 1;
+}
+
+.tree-dir-action {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 1px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease;
+}
+
+.tree-dir-action:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.tree-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
