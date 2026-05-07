@@ -419,15 +419,22 @@ function App() {
   //      `key: 'path'` argument — without it, the v2.7-era
   //      "F5 nukes my popover" disruption bug returns.
   const [repos, setRepos] = createStore<RepoEntry[]>([]);
+  // True once `listRepos()` has resolved at least once for the current
+  // conception. Lets the Code pane distinguish "still loading" (show
+  // spinner) from "loaded, genuinely empty" (show the add-repo CTA).
+  // Reset to `false` whenever the conception path changes or clears.
+  const [reposLoaded, setReposLoaded] = createSignal(false);
 
   const reloadRepos = async (): Promise<void> => {
     const path = conceptionPath();
     if (!path) {
       setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
+      setReposLoaded(false);
       return;
     }
     const list = await window.condash.listRepos();
     setRepos(reconcile(list, { key: 'path' }));
+    setReposLoaded(true);
   };
 
   /** Per-primary partial reload. Looks up the primary entry by `path`
@@ -477,13 +484,21 @@ function App() {
     primaryReloadTimers.clear();
   });
 
-  // Mirror the prior resource semantics: load when the user is on the Code
-  // pane, clear otherwise. Side-effect-light — no Suspense, no remount.
+  // Load repos as soon as the conception path is known — not gated on
+  // the Code pane being open. Two reasons:
+  //   1. The first paint of the Code pane is instant instead of showing
+  //      a "Loading…" flash while `listRepos()` fans out one `git
+  //      status` per repo + worktree.
+  //   2. Subsequent pane switches don't re-pay the cost — the cached
+  //      store stays populated, and `onRepoEvents` keeps it fresh.
+  // Clearing only happens when the conception path itself goes away
+  // (e.g. the user picks a different conception), not on every pane
+  // switch — that flash to the empty state was the bug fixed here.
   createEffect(() => {
     const path = conceptionPath();
-    const working = layout().working;
-    if (!path || working !== 'code') {
+    if (!path) {
       setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
+      setReposLoaded(false);
       return;
     }
     void reloadRepos();
@@ -1335,21 +1350,23 @@ function App() {
                       <Show
                         when={repos.length > 0}
                         fallback={
-                          <div class="empty">
-                            <p>No repositories configured.</p>
-                            <p>
-                              Add entries under <code>repositories.primary</code> or{' '}
-                              <code>repositories.secondary</code> in <code>configuration.json</code>
-                              .
-                            </p>
-                            <button
-                              type="button"
-                              class="empty-cta"
-                              onClick={() => setSettingsOpen(true)}
-                            >
-                              + Add repository
-                            </button>
-                          </div>
+                          <Show when={reposLoaded()} fallback={<div class="empty">Loading…</div>}>
+                            <div class="empty">
+                              <p>No repositories configured.</p>
+                              <p>
+                                Add entries under <code>repositories.primary</code> or{' '}
+                                <code>repositories.secondary</code> in{' '}
+                                <code>configuration.json</code>.
+                              </p>
+                              <button
+                                type="button"
+                                class="empty-cta"
+                                onClick={() => setSettingsOpen(true)}
+                              >
+                                + Add repository
+                              </button>
+                            </div>
+                          </Show>
                         }
                       >
                         <CodeView
