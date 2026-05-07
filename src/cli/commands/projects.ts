@@ -19,7 +19,7 @@ import { statusOrder } from '../../shared/projects';
 import { isValidSlugTail } from '../../shared/slug';
 import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
-import { parseHeader, validateHeader, type HeaderFields } from '../../shared/header';
+import { parseHeader, validateHeader, validateBody, type HeaderFields } from '../../shared/header';
 import { readHeader } from '../../main/header-io';
 import { assertNoExtraFlags, parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
 
@@ -577,14 +577,16 @@ async function validateCommand(
   let totalErrors = 0;
 
   for (const readme of readmes) {
-    const fields = await readHeader(readme);
+    const raw = await fs.readFile(readme, 'utf8');
+    const fields = parseHeader(raw);
     const v = validateHeader(fields, readme);
-    totalErrors += v.errors.length;
+    const b = validateBody(raw);
+    totalErrors += v.errors.length + b.errors.length;
     reports.push({
       path: readme,
       relPath: relative(conceptionPath, readme),
-      errors: v.errors,
-      warnings: v.warnings,
+      errors: [...v.errors, ...b.errors],
+      warnings: [...v.warnings, ...b.warnings],
     });
   }
 

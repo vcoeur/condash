@@ -196,3 +196,56 @@ export function validateHeader(fields: HeaderFields, readmePath: string): Header
 
   return { errors, warnings };
 }
+
+const STEPS_HEADING = /^##\s+Steps\s*$/i;
+const FENCE = /^\s*```/;
+const WIKILINK = /\[\[[^\]]+\]\]/;
+const MD_LINK = /\[[^\]]*\]\(([^)]+)\)/;
+
+/**
+ * Lint the body of a README for rules that must hold beyond the header block.
+ *
+ * Currently enforces the **Steps-must-be-link-free** rule from
+ * `projects/SKILL.md`: any `[[…]]` wikilink or `[label](path)` markdown link
+ * inside the `## Steps` section is surfaced as a warning. The Projects-tab
+ * card renderer prints step lines verbatim, and links wrap as raw text there.
+ *
+ * Fenced code blocks inside `## Steps` are skipped — a backticked or fenced
+ * snippet that happens to contain link-shaped characters is fine.
+ */
+export function validateBody(raw: string): HeaderValidation {
+  const errors: HeaderIssue[] = [];
+  const warnings: HeaderIssue[] = [];
+  const lines = raw.split(/\r?\n/);
+  let inSteps = false;
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (STEPS_HEADING.test(line)) {
+      inSteps = true;
+      continue;
+    }
+    if (inSteps && HEADING2.test(line)) {
+      inSteps = false;
+      continue;
+    }
+    if (!inSteps) continue;
+    if (WIKILINK.test(line)) {
+      warnings.push({
+        field: 'steps',
+        message: `line ${i + 1}: wikilink [[…]] inside ## Steps — move it to ## Step details or ## Notes (the Projects-tab card renders step lines verbatim and links wrap as raw text)`,
+      });
+    } else if (MD_LINK.test(line)) {
+      warnings.push({
+        field: 'steps',
+        message: `line ${i + 1}: markdown link [label](path) inside ## Steps — move it to ## Step details or ## Notes (the Projects-tab card renders step lines verbatim and links wrap as raw text)`,
+      });
+    }
+  }
+  return { errors, warnings };
+}
