@@ -584,6 +584,21 @@ function App() {
       return;
     }
 
+    // Screenshot-paste shortcut wins inside the xterm too — that's the very
+    // surface users want to paste a screenshot path into. The listener runs
+    // in capture phase (see addEventListener below), so stopPropagation here
+    // keeps xterm.js from firing its built-in Ctrl+Shift+V → clipboard text
+    // paste, which would otherwise win and overwrite the screenshot path.
+    if (layout().terminal && terminalHandle) {
+      const screenshotPaste = parseShortcut(prefs.screenshot_paste_shortcut ?? 'Ctrl+Shift+V');
+      if (matchesShortcut(event, screenshotPaste)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void bridge.handleScreenshotPaste();
+        return;
+      }
+    }
+
     // Every other shortcut yields to text inputs / xterm so we don't steal
     // arrow keys, paste, etc. from someone who's typing.
     if (insideEditable) return;
@@ -621,18 +636,17 @@ function App() {
       terminalHandle.moveActiveTab(1);
       return;
     }
-    const paste = parseShortcut(prefs.screenshot_paste_shortcut);
-    if (matchesShortcut(event, paste)) {
-      event.preventDefault();
-      void bridge.handleScreenshotPaste();
-    }
   };
 
+  // Capture phase: the screenshot-paste branch above needs to run before
+  // xterm.js's textarea keydown listener so stopPropagation can suppress
+  // its built-in Ctrl+Shift+V paste. Other branches don't stopPropagation,
+  // so events still bubble normally to descendants when no shortcut matches.
   onMount(() => {
-    document.addEventListener('keydown', handleGlobalKeyDown);
+    document.addEventListener('keydown', handleGlobalKeyDown, true);
   });
   onCleanup(() => {
-    document.removeEventListener('keydown', handleGlobalKeyDown);
+    document.removeEventListener('keydown', handleGlobalKeyDown, true);
   });
 
   // Application menu → renderer plumbing.
