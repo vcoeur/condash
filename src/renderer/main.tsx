@@ -378,26 +378,33 @@ function App() {
     },
   );
 
+  // Knowledge / Resources / Skills trees are cached once the conception
+  // path is set and re-fetched only when `refreshKey` bumps. The latter
+  // is wired to `onTreeEvents` (config / knowledge / resources / skills
+  // subtree changes), so cached data stays correct between switches.
+  // Dropping `layout().working` from the source key is what makes pane
+  // switches instant — without it, leaving the pane reset the resource
+  // to `null` and re-entry forced a full disk read every time.
   const [knowledge] = createResource(
-    () => [conceptionPath(), refreshKey(), layout().working] as const,
-    async ([path, , working]) => {
-      if (!path || working !== 'knowledge') return null;
+    () => [conceptionPath(), refreshKey()] as const,
+    async ([path]) => {
+      if (!path) return null;
       return window.condash.readKnowledgeTree();
     },
   );
 
   const [resources] = createResource(
-    () => [conceptionPath(), refreshKey(), layout().working] as const,
-    async ([path, , working]) => {
-      if (!path || working !== 'resources') return null;
+    () => [conceptionPath(), refreshKey()] as const,
+    async ([path]) => {
+      if (!path) return null;
       return window.condash.readResourcesTree();
     },
   );
 
   const [skills] = createResource(
-    () => [conceptionPath(), refreshKey(), layout().working] as const,
-    async ([path, , working]) => {
-      if (!path || working !== 'skills') return null;
+    () => [conceptionPath(), refreshKey()] as const,
+    async ([path]) => {
+      if (!path) return null;
       return window.condash.readSkillsTree();
     },
   );
