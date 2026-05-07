@@ -38,29 +38,18 @@ function freshnessOf(verifiedAt: string | undefined, todayISO: string): string {
   return 'old';
 }
 
+function isKnowledgeIndex(node: KnowledgeNode): boolean {
+  return node.kind === 'file' && node.name.toLowerCase() === 'index.md';
+}
+
 /** Return the directory's `index.md` child (case-insensitive on the
  *  filename), if any. Surfaced as the `[INDEX]` badge on the dir header
  *  and dropped from the file list so it doesn't double up as a card. */
 function findIndexChild(node: KnowledgeNode): KnowledgeNode | undefined {
   for (const child of node.children ?? []) {
-    if (child.kind === 'file' && child.name.toLowerCase() === 'index.md') return child;
+    if (isKnowledgeIndex(child)) return child;
   }
   return undefined;
-}
-
-/** Strip every `index.md` from the tree — it's already surfaced as the
- *  per-directory INDEX badge, and we don't want it doubling up as a
- *  card under the directory header. Returns a shallow-cloned tree so
- *  the original `KnowledgeNode` reference (held by the createResource)
- *  stays untouched. */
-function stripIndexes(node: KnowledgeNode): KnowledgeNode {
-  if (node.kind !== 'directory') return node;
-  const filtered: KnowledgeNode[] = [];
-  for (const child of node.children ?? []) {
-    if (child.kind === 'file' && child.name.toLowerCase() === 'index.md') continue;
-    filtered.push(stripIndexes(child));
-  }
-  return { ...node, children: filtered };
 }
 
 export function KnowledgeView(props: {
@@ -80,7 +69,7 @@ export function KnowledgeView(props: {
     <div class="knowledge-pane" ref={scrollRef}>
       <TreeView<KnowledgeNode>
         treeKey="knowledge"
-        root={stripIndexes(props.root)}
+        root={props.root}
         expanded={props.expanded}
         onToggleExpand={props.onToggleExpand}
         affordances={KNOWLEDGE_AFFORDANCES}
@@ -88,6 +77,7 @@ export function KnowledgeView(props: {
         prompts={props.prompts}
         onAfterMutation={props.onAfterMutation}
         onError={props.onError}
+        skipFile={isKnowledgeIndex}
         renderDirSuffix={(dir) => (
           <Show when={findIndexChild(dir)}>
             {(idx) => (

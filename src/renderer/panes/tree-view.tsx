@@ -65,6 +65,12 @@ export interface TreeViewProps<TFile extends TreeViewBaseNode> {
   /** Optional pane-specific suffix for a directory's header — the
    *  Knowledge `INDEX` badge or the Skills `SKILL` badge live here. */
   renderDirSuffix?: (dir: TFile) => JSX.Element;
+  /** Optional predicate that drops a file from the directory's card
+   *  list (and from its file count) without removing it from the
+   *  underlying tree. Used to hide `index.md` / `SKILL.md` so they
+   *  surface only as the per-directory `[INDEX]` / `[SKILL]` badge
+   *  rendered by `renderDirSuffix`. */
+  skipFile?: (file: TFile) => boolean;
   /** Which affordance buttons sit on every directory header. */
   affordances: ReadonlyArray<TreeAffordance>;
   /** Bridge to `window.condash.tree*` — passed in so the component is
@@ -93,6 +99,7 @@ export function TreeView<TFile extends TreeViewBaseNode>(props: TreeViewProps<TF
         onToggleExpand={props.onToggleExpand}
         renderFile={props.renderFile}
         renderDirSuffix={props.renderDirSuffix}
+        skipFile={props.skipFile}
         affordances={props.affordances}
         mutations={props.mutations}
         prompts={props.prompts}
@@ -112,6 +119,7 @@ interface DirectoryBodyProps<TFile extends TreeViewBaseNode> {
   onToggleExpand: (relPath: string) => void;
   renderFile: (file: TFile) => JSX.Element;
   renderDirSuffix?: (dir: TFile) => JSX.Element;
+  skipFile?: (file: TFile) => boolean;
   affordances: ReadonlyArray<TreeAffordance>;
   mutations: TreeViewMutationApi;
   prompts: TreeViewPromptApi;
@@ -134,8 +142,12 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
   });
   const childFiles = createMemo<TFile[]>(() => {
     const out: TFile[] = [];
+    const skip = props.skipFile;
     for (const child of props.node.children ?? []) {
-      if (child.kind === 'file') out.push(child as TFile);
+      if (child.kind !== 'file') continue;
+      const file = child as TFile;
+      if (skip?.(file)) continue;
+      out.push(file);
     }
     return out;
   });
@@ -174,6 +186,7 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
                 onToggleExpand={props.onToggleExpand}
                 renderFile={props.renderFile}
                 renderDirSuffix={props.renderDirSuffix}
+                skipFile={props.skipFile}
                 affordances={props.affordances}
                 mutations={props.mutations}
                 prompts={props.prompts}

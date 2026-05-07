@@ -11,26 +11,19 @@ import './skills-pane.css';
 
 const SKILLS_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
 
-/** Pull the directory's `SKILL.md` (case-sensitive — that's how the
- *  manifest stores it) so it can render as a `[SKILL]` badge on the
- *  directory header instead of as a separate card. */
-function findSkillIndex(node: SkillNode): SkillNode | undefined {
-  for (const child of node.children ?? []) {
-    if (child.kind === 'file' && child.name === 'SKILL.md') return child;
-  }
-  return undefined;
+function isSkillIndex(node: SkillNode): boolean {
+  // Case-sensitive — that's how the manifest stores it and how
+  // `condash skills install` reasons about file identity.
+  return node.kind === 'file' && node.name === 'SKILL.md';
 }
 
-/** Drop every `SKILL.md` from the tree — handled separately by the
- *  per-directory `renderDirSuffix` slot. */
-function stripSkillIndexes(node: SkillNode): SkillNode {
-  if (node.kind !== 'directory') return node;
-  const filtered: SkillNode[] = [];
+/** Pull the directory's `SKILL.md` so it can render as a `[SKILL]`
+ *  badge on the directory header instead of as a separate card. */
+function findSkillIndex(node: SkillNode): SkillNode | undefined {
   for (const child of node.children ?? []) {
-    if (child.kind === 'file' && child.name === 'SKILL.md') continue;
-    filtered.push(stripSkillIndexes(child));
+    if (isSkillIndex(child)) return child;
   }
-  return { ...node, children: filtered };
+  return undefined;
 }
 
 export function SkillsView(props: {
@@ -83,7 +76,7 @@ export function SkillsView(props: {
         {(root) => (
           <TreeView<SkillNode>
             treeKey="skills"
-            root={stripSkillIndexes(root())}
+            root={root()}
             expanded={props.expanded}
             onToggleExpand={props.onToggleExpand}
             affordances={SKILLS_AFFORDANCES}
@@ -91,6 +84,7 @@ export function SkillsView(props: {
             prompts={props.prompts}
             onAfterMutation={props.onAfterMutation}
             onError={props.onError}
+            skipFile={isSkillIndex}
             renderDirSuffix={(dir) => (
               <Show when={findSkillIndex(dir)}>
                 {(idx) => (
