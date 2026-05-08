@@ -246,6 +246,26 @@
   box-sizing: border-box;
 }
 
+/* Unified scrollbar styling — every scrollable region across the app shares
+ * the same thin look so panes don't switch between chunky-default and styled
+ * scrollbars depending on which container scrolls. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+  border: 2px solid var(--bg-panel);
+}
+
 html,
 body,
 #root {

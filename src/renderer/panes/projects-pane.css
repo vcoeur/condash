@@ -7,18 +7,6 @@
   min-height: 0;
   overflow-y: auto;
   background: var(--bg-panel);
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
-
-.projects-stack::-webkit-scrollbar {
-  width: 10px;
-}
-
-.projects-stack::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 4px;
-  border: 2px solid var(--bg-panel);
 }
 
 .projects-filter {
