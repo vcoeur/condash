@@ -164,25 +164,27 @@ interface TemplateInputs {
 }
 
 function renderTemplate(input: TemplateInputs): string {
-  const apps = input.apps.map((a) => `\`${a}\``).join(', ');
-  const headerLines: string[] = [
-    `# ${input.title}`,
-    '',
-    `**Date**: ${input.date}`,
-    `**Kind**: ${input.kind}`,
-    `**Status**: now`,
-    `**Apps**: ${apps}`,
-  ];
-  if (input.branch) headerLines.push(`**Branch**: \`${input.branch}\``);
-  if (input.base) headerLines.push(`**Base**: \`${input.base}\``);
+  const fmLines: string[] = ['---'];
+  fmLines.push(`date: ${input.date}`);
+  fmLines.push(`kind: ${input.kind}`);
+  fmLines.push(`status: now`);
+  if (input.apps.length === 0) {
+    fmLines.push('apps: []');
+  } else {
+    fmLines.push('apps:');
+    for (const app of input.apps) fmLines.push(`  - ${yamlScalar(app)}`);
+  }
+  if (input.branch) fmLines.push(`branch: ${yamlScalar(input.branch)}`);
+  if (input.base) fmLines.push(`base: ${yamlScalar(input.base)}`);
   if (input.kind === 'incident') {
-    if (input.environment) headerLines.push(`**Environment**: ${input.environment}`);
-    if (input.severity) {
-      const tail = input.severityImpact ? ` — ${input.severityImpact}` : '';
-      headerLines.push(`**Severity**: ${input.severity}${tail}`);
+    if (input.environment) fmLines.push(`environment: ${yamlScalar(input.environment)}`);
+    if (input.severity) fmLines.push(`severity: ${yamlScalar(input.severity)}`);
+    if (input.severityImpact) {
+      fmLines.push(`severity_impact: ${yamlScalar(input.severityImpact)}`);
     }
   }
-  const header = headerLines.join('\n');
+  fmLines.push('---');
+  const header = `${fmLines.join('\n')}\n\n# ${input.title}`;
 
   let body: string;
   if (input.kind === 'project') {
@@ -248,4 +250,23 @@ _Not yet identified._
 `;
   }
   return `${header}\n\n${body}`;
+}
+
+/**
+ * Quote a YAML scalar only when the value would otherwise change meaning —
+ * leading dash, leading punctuation that introduces a YAML node, embedded
+ * colon-space (a flow mapping), or a non-ASCII character that the YAML 1.1
+ * boolean rule (`yes`/`no`/`on`/`off`) might catch. The values we serialise
+ * here are slug-shaped strings (apps, branches, ISO dates, enums) plus the
+ * incident `severity_impact` free text — quoting is only needed for the
+ * latter and even then rarely.
+ */
+function yamlScalar(value: string): string {
+  if (value === '') return '""';
+  // Reserved words / booleans under YAML 1.1 — quote to be safe even though
+  // the `yaml` package defaults to YAML 1.2 (where these are plain strings).
+  if (/^(?:true|false|null|yes|no|on|off|y|n)$/i.test(value)) return JSON.stringify(value);
+  // Anything alphanumeric + a small punctuation set is safe unquoted.
+  if (/^[A-Za-z0-9][\w. /+-]*$/.test(value) && !/^-/.test(value)) return value;
+  return JSON.stringify(value);
 }

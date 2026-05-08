@@ -28,7 +28,7 @@ All operate on the item's `README.md` in place. Paths are validated against the 
 | Toggle step | `toggleStep` | Click a checkbox | Rewrites one `- [<marker>] <text>` line. Drift-checked: `expectedMarker` must match the on-disk marker or the write is refused. Markers are `[ ]`, `[~]`, `[x]`, `[-]`. |
 | Add step | `addStep` | Click "+" in the Steps section | Inserts `- [ ] <text>` at the end of the `## Steps` section |
 | Edit step | `editStepText` | Click the pencil on a step | Rewrites the `<text>` portion. Drift-checked: `expectedText` must match the on-disk text. |
-| Change status | `setStatus` | Drag card between kanban columns | Rewrites the `**Status**: <value>` line in the metadata block. On done-edges (close: prev → done, reopen: done → prev) also appends a `Closed.` / `Reopened.` line to `## Timeline`. Refuses if the `**Status**:` line is missing. |
+| Change status | `setStatus` | Drag card between kanban columns | Rewrites the status line in the metadata block — `status: <value>` for YAML-frontmatter READMEs, `**Status**: <value>` for the legacy bold-prose form. On done-edges (close: prev → done, reopen: done → prev) also appends a `Closed.` / `Reopened.` line to `## Timeline`. Refuses if no status line is present. |
 | Create item | `createProject` | Submit the new-project modal | Allocates `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/` from the canonical kind template (project / incident / document) and writes the README. |
 
 All mutation verbs are routed through [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts), which:

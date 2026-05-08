@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { addStep } from './mutate';
+import { addStep, transitionStatus } from './mutate';
 
 describe('addStep', () => {
   let dir: string;
@@ -54,5 +54,133 @@ describe('addStep', () => {
     await addStep(path, 'first');
     const out = await fs.readFile(path, 'utf8');
     expect(out).toContain('## Steps\n\n- [ ] first\n\n## Timeline');
+  });
+});
+
+describe('transitionStatus', () => {
+  let dir: string;
+  let path: string;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(join(tmpdir(), 'transition-'));
+    path = join(dir, 'README.md');
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('flips the bold-prose **Status** line', async () => {
+    await fs.writeFile(
+      path,
+      [
+        '# T',
+        '',
+        '**Date**: 2026-05-08',
+        '**Status**: now',
+        '**Kind**: project',
+        '**Apps**: `x`',
+        '',
+        '## Timeline',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const result = await transitionStatus(path, 'review');
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.previousStatus).toBe('now');
+    expect(result.newStatus).toBe('review');
+    expect(out).toContain('**Status**: review');
+    expect(out).not.toContain('**Status**: now');
+  });
+
+  it('flips the YAML frontmatter status line', async () => {
+    await fs.writeFile(
+      path,
+      [
+        '---',
+        'date: 2026-05-08',
+        'kind: project',
+        'status: now',
+        'apps:',
+        '  - x',
+        '---',
+        '',
+        '# T',
+        '',
+        '## Timeline',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const result = await transitionStatus(path, 'review');
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.previousStatus).toBe('now');
+    expect(result.newStatus).toBe('review');
+    expect(out).toMatch(/^status: review$/m);
+    expect(out).not.toMatch(/^status: now$/m);
+  });
+
+  it('preserves quoting in the YAML frontmatter status line', async () => {
+    await fs.writeFile(
+      path,
+      ['---', 'status: "now"', 'kind: project', '---', '', '# T', '', '## Timeline', ''].join('\n'),
+      'utf8',
+    );
+    await transitionStatus(path, 'review');
+    const out = await fs.readFile(path, 'utf8');
+    expect(out).toMatch(/^status: "review"$/m);
+  });
+
+  it('appends a Closed line on done-edges in YAML form', async () => {
+    await fs.writeFile(
+      path,
+      [
+        '---',
+        'date: 2026-05-08',
+        'kind: project',
+        'status: now',
+        'apps:',
+        '  - x',
+        '---',
+        '',
+        '# T',
+        '',
+        '## Timeline',
+        '',
+        '- 2026-05-08 — Created.',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const result = await transitionStatus(path, 'done', { today: '2026-05-09' });
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.timelineAppended).toBe('- 2026-05-09 — Closed.');
+    expect(out).toContain('- 2026-05-09 — Closed.');
+  });
+
+  it("doesn't pick up a status: line outside the frontmatter fence", async () => {
+    await fs.writeFile(
+      path,
+      [
+        '---',
+        'date: 2026-05-08',
+        'kind: project',
+        'status: now',
+        '---',
+        '',
+        '# T',
+        '',
+        '## Notes',
+        '',
+        'A line of body text mentioning status: maybe.',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await transitionStatus(path, 'review');
+    const out = await fs.readFile(path, 'utf8');
+    expect(out).toContain('status: review');
+    expect(out).toContain('status: maybe.');
   });
 });

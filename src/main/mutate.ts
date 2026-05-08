@@ -16,6 +16,12 @@ import {
 // `]\s` capture — easy to drift, never observed working independently.
 const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s)(.*)$/;
 const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)(\S+)\s*$/i;
+// Bare YAML mapping line within the frontmatter block. Tolerates an optional
+// surrounding quote on the value so `status: "now"` and `status: 'now'`
+// round-trip without quote drift. Group 1 is the leading `status: ` so we
+// can rebuild the line; group 2 carries the matched quote (empty when none).
+const YAML_STATUS_LINE_RE = /^(status:\s*)(["']?)([A-Za-z]+)\2\s*$/i;
+const FRONTMATTER_OPEN_RE = /^---\s*$/;
 const HEADING2_RE = /^##\s+(.+)$/;
 
 /**
@@ -304,18 +310,37 @@ export async function transitionStatus(
 
     let previous: string | null = null;
     let updated = false;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('## ')) break;
-      const match = lines[i].match(STATUS_LINE_RE);
-      if (match) {
-        previous = match[2].trim().toLowerCase();
-        lines[i] = `${match[1]}${newStatus}`;
-        updated = true;
-        break;
+    if (lines.length > 0 && FRONTMATTER_OPEN_RE.test(lines[0])) {
+      // YAML frontmatter shape: walk only inside the `---` fence so a
+      // body-level "status:" line (e.g. inside a code block in ## Notes)
+      // can't be mistaken for the metadata field.
+      for (let i = 1; i < lines.length; i++) {
+        if (FRONTMATTER_OPEN_RE.test(lines[i])) break;
+        const match = lines[i].match(YAML_STATUS_LINE_RE);
+        if (match) {
+          previous = match[3].trim().toLowerCase();
+          // Preserve the original quoting convention (none / "double" /
+          // 'single') so a hand-edited file isn't reformatted on every flip.
+          const quote = match[2];
+          lines[i] = `${match[1]}${quote}${newStatus}${quote}`;
+          updated = true;
+          break;
+        }
+      }
+    } else {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('## ')) break;
+        const match = lines[i].match(STATUS_LINE_RE);
+        if (match) {
+          previous = match[2].trim().toLowerCase();
+          lines[i] = `${match[1]}${newStatus}`;
+          updated = true;
+          break;
+        }
       }
     }
     if (!updated) {
-      throw new Error('No **Status**: line found in metadata block');
+      throw new Error('No status line found in metadata block');
     }
 
     let timelineAppended: string | null = null;
