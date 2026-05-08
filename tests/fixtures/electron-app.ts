@@ -34,7 +34,7 @@ export async function bootApp(options: { extraConfig?: Record<string, unknown> }
     'utf8',
   );
   await writeFile(
-    join(conceptionDir, 'configuration.json'),
+    join(conceptionDir, 'condash.json'),
     JSON.stringify({ ...(options.extraConfig ?? {}) }, null, 2) + '\n',
     'utf8',
   );
@@ -46,7 +46,11 @@ export async function bootApp(options: { extraConfig?: Record<string, unknown> }
   await mkdir(join(userDataDir, 'condash'), { recursive: true });
   await writeFile(
     join(userDataDir, 'condash', 'settings.json'),
-    JSON.stringify({ conceptionPath: conceptionDir, theme: 'system' }, null, 2) + '\n',
+    JSON.stringify(
+      { lastConceptionPath: conceptionDir, recentConceptionPaths: [conceptionDir], theme: 'system' },
+      null,
+      2,
+    ) + '\n',
     'utf8',
   );
 

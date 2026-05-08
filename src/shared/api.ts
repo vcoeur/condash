@@ -62,6 +62,24 @@ export interface CondashApi {
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;
+  /** Switch the active conception to one of the recents. Promotes the path
+   * to the head of `recentConceptionPaths`, swaps the FS watchers, and
+   * fires the same broadcast `pickConceptionPath`'s success branch does.
+   * Returns the path so the renderer can re-render against it without a
+   * second `getConceptionPath` round-trip. */
+  openConception(path: string): Promise<string>;
+  /** Path to the conception's editable config file (`condash.json`,
+   * falling back to legacy `configuration.json`). Returns `null` when no
+   * conception is active. */
+  getConceptionConfigPath(): Promise<string | null>;
+  /** Per-machine list of recently-opened conception paths, newest first.
+   * Drives the File → Open Recent submenu and the Settings modal. */
+  getRecentConceptionPaths(): Promise<string[]>;
+  /** Drop the entire recents list. Does not touch `lastConceptionPath` —
+   * the active conception is whichever the user has open right now. */
+  clearRecentConceptionPaths(): Promise<void>;
+  /** Drop one entry from the recents list. Does not touch `lastConceptionPath`. */
+  removeRecentConceptionPath(path: string): Promise<void>;
   /** Probe a candidate workspace path: does it have projects/ and configuration.json? */
   detectConceptionState(path: string): Promise<ConceptionInitState>;
   /** Lay the bundled conception-template/ tree into `path`. Existing files preserved. */
@@ -236,6 +254,10 @@ export interface CondashApi {
    * File → Open conception directory, File → Quit). Returns an unsubscribe.
    */
   onMenuCommand(callback: (command: MenuCommand) => void): () => void;
+  /** File → Open Recent → <path> click. Returns an unsubscribe. */
+  onMenuOpenRecent(callback: (path: string) => void): () => void;
+  /** File → Open Recent → Clear menu click. Returns an unsubscribe. */
+  onMenuClearRecents(callback: () => void): () => void;
 }
 
 export type MenuCommand =

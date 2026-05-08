@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
-import { join, sep } from 'node:path';
+import { sep } from 'node:path';
 import { readSettings } from './settings';
+import { getEffectiveConceptionConfig } from './effective-config';
 
 /**
  * Throw unless `path` resolves to a location under `root`.
@@ -57,7 +58,7 @@ export async function requirePathUnderWorkspace(path: string): Promise<string> {
     throw new Error('path must be a non-empty string');
   }
   const settings = await readSettings();
-  const conceptionPath = settings.conceptionPath;
+  const conceptionPath = settings.lastConceptionPath;
   if (!conceptionPath) {
     throw new Error('no conception path is set');
   }
@@ -88,22 +89,18 @@ export async function requirePathUnderWorkspace(path: string): Promise<string> {
 }
 
 async function readWorkspaceRoots(conceptionPath: string): Promise<string[]> {
-  try {
-    const raw = await fs.readFile(join(conceptionPath, 'configuration.json'), 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return [];
-    const out: string[] = [];
-    const obj = parsed as Record<string, unknown>;
-    if (typeof obj.workspace_path === 'string' && obj.workspace_path.length > 0) {
-      out.push(obj.workspace_path);
-    }
-    if (typeof obj.worktrees_path === 'string' && obj.worktrees_path.length > 0) {
-      out.push(obj.worktrees_path);
-    }
-    return out;
-  } catch {
-    return [];
+  // Effective config: settings.json's workspace_path/worktrees_path are valid
+  // global defaults; the conception's condash.json (or legacy
+  // configuration.json) overrides at top level. Conception wins.
+  const config = await getEffectiveConceptionConfig(conceptionPath);
+  const out: string[] = [];
+  if (typeof config.workspace_path === 'string' && config.workspace_path.length > 0) {
+    out.push(config.workspace_path);
   }
+  if (typeof config.worktrees_path === 'string' && config.worktrees_path.length > 0) {
+    out.push(config.worktrees_path);
+  }
+  return out;
 }
 
 /**

@@ -22,7 +22,7 @@ import { requirePathUnder } from './path-bounds';
  * to `<conception>/knowledge/`; resources + skills come from
  * `configuration.json`. */
 async function resolveRoot(root: TreeRoot): Promise<string> {
-  const { conceptionPath } = await readSettings();
+  const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) throw new Error('no conception path is set');
   if (root === 'knowledge') return join(conceptionPath, 'knowledge');
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);

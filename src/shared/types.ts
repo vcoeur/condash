@@ -111,7 +111,13 @@ export interface LayoutState {
 }
 
 export interface Settings {
-  conceptionPath: string | null;
+  /** Currently-open conception path. Replaces the legacy `conceptionPath`
+   * field; a one-shot migration in `readSettings` rewrites old files. */
+  lastConceptionPath: string | null;
+  /** Most-recently-opened conception paths, newest first. Capped on every
+   * write — oldest evicted on overflow. Drives the File → Open Recent
+   * submenu and the Global tab's recents list. */
+  recentConceptionPaths: string[];
   theme: Theme;
   /** Per-machine terminal prefs. Moved here from configuration.json so each
    * laptop carries its own font/screenshot/keybinding choices. */

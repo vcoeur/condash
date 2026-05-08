@@ -29,15 +29,15 @@ export interface GroupMeta {
 export const GROUPS: GroupMeta[] = [
   {
     id: 'machine',
-    label: 'Global Condash Settings',
+    label: 'Global',
     file: 'settings.json',
-    hint: 'Stored in ~/.config/condash/ on this machine only — not synced.',
+    hint: 'Per-machine defaults stored in the OS user-data directory. Carries the active conception path and the recents list — cannot be overridden per-conception.',
   },
   {
     id: 'config',
-    label: 'Conception Configuration',
-    file: 'configuration.json',
-    hint: 'Lives in the conception repo and is shared across machines.',
+    label: 'This conception',
+    file: 'condash.json',
+    hint: 'Per-conception overrides stored in the tree itself. Top-level keys here replace the matching keys in settings.json. Reads fall back to legacy configuration.json when condash.json is absent; writes always target condash.json.',
   },
 ];
 

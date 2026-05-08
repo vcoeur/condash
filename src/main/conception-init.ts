@@ -35,7 +35,10 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
   }
 
   const hasProjects = await isDirectory(join(path, 'projects'));
-  const hasConfiguration = await isFile(join(path, 'configuration.json'));
+  // `condash.json` is canonical; `configuration.json` is the legacy fallback
+  // (kept indefinitely). Either filename satisfies the marker.
+  const hasConfiguration =
+    (await isFile(join(path, 'condash.json'))) || (await isFile(join(path, 'configuration.json')));
   return {
     pathExists: true,
     hasProjects,
@@ -93,7 +96,8 @@ async function copyTreeRespecting(
 
 /** Drop the `.example` suffix on the two known templated files. */
 function mapTemplateName(rel: string): string {
-  if (rel === 'configuration.json.example') return 'configuration.json';
+  if (rel === 'condash.json.example') return 'condash.json';
+  if (rel === 'configuration.json.example') return 'condash.json';
   if (rel === '.claude/settings.example.json') return '.claude/settings.json';
   return rel;
 }

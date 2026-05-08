@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
-import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { OpenWithSlots, OpenWithSlotKey } from '../shared/types';
 import { findRepoEntry, type ConfigShape } from './config-walk';
+import { getEffectiveConceptionConfig } from './effective-config';
 
 interface RawSlot {
   label: string;
@@ -17,13 +17,7 @@ interface RawConfigShape extends ConfigShape {
 const SLOT_KEYS: readonly OpenWithSlotKey[] = ['main_ide', 'secondary_ide', 'terminal'];
 
 async function readRawConfig(conceptionPath: string): Promise<RawConfigShape> {
-  try {
-    const raw = await fs.readFile(join(conceptionPath, 'configuration.json'), 'utf8');
-    return JSON.parse(raw) as RawConfigShape;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
-    throw err;
-  }
+  return (await getEffectiveConceptionConfig(conceptionPath)) as RawConfigShape;
 }
 
 export async function listOpenWith(conceptionPath: string): Promise<OpenWithSlots> {

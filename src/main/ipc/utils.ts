@@ -10,7 +10,7 @@ export async function withConception<T>(
   handler: (conceptionPath: string) => Promise<T> | T,
   fallback: T,
 ): Promise<T> {
-  const { conceptionPath } = await readSettings();
+  const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) return fallback;
   return handler(conceptionPath);
 }
@@ -23,7 +23,7 @@ export async function withConception<T>(
 export async function requireConception<T>(
   handler: (conceptionPath: string) => Promise<T> | T,
 ): Promise<T> {
-  const { conceptionPath } = await readSettings();
+  const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) throw new Error('No conception path set');
   return handler(conceptionPath);
 }

@@ -1,11 +1,12 @@
-import { promises as fs } from 'node:fs';
-import { isAbsolute, join, normalize } from 'node:path';
+import { isAbsolute, normalize } from 'node:path';
 import { DEFAULT_RESOURCES_PATH, DEFAULT_SKILLS_PATH } from './config-schema';
+import { getEffectiveConceptionConfig } from './effective-config';
 
 /**
- * Resolve `resources_path` and `skills_path` from a conception's
- * `configuration.json`, falling back to the schema defaults when the file
- * is missing, malformed, or doesn't carry the keys.
+ * Resolve `resources_path` and `skills_path` from the effective config
+ * (global `settings.json` ⊕ conception `condash.json` / legacy
+ * `configuration.json`), falling back to the schema defaults when no file
+ * supplies the keys.
  *
  * Each tree reader needs only the two relative paths, so this helper
  * stays narrow rather than re-deriving the full config shape — which
@@ -20,20 +21,10 @@ export async function resolveConceptionPaths(conceptionPath: string): Promise<{
   resources: string;
   skills: string;
 }> {
-  const file = join(conceptionPath, 'configuration.json');
-  let parsed: { resources_path?: unknown; skills_path?: unknown } = {};
-  try {
-    const raw = await fs.readFile(file, 'utf8');
-    const json = JSON.parse(raw) as unknown;
-    if (json && typeof json === 'object') {
-      parsed = json as { resources_path?: unknown; skills_path?: unknown };
-    }
-  } catch {
-    /* fall through with defaults */
-  }
+  const config = await getEffectiveConceptionConfig(conceptionPath);
   return {
-    resources: pickRelative(parsed.resources_path, DEFAULT_RESOURCES_PATH),
-    skills: pickRelative(parsed.skills_path, DEFAULT_SKILLS_PATH),
+    resources: pickRelative(config.resources_path, DEFAULT_RESOURCES_PATH),
+    skills: pickRelative(config.skills_path, DEFAULT_SKILLS_PATH),
   };
 }
 

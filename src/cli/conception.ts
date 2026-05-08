@@ -29,7 +29,7 @@ export async function resolveConception(flagValue: string | undefined): Promise<
   if (flagValue) {
     const abs = absolutise(flagValue);
     if (await looksLikeConception(abs)) return { path: abs, source: 'flag' };
-    tried.push(`--conception ${flagValue} (no configuration.json)`);
+    tried.push(`--conception ${flagValue} (no condash.json or configuration.json)`);
   }
 
   // `_PATH` is the canonical name (matches main/settings.ts); the
@@ -42,7 +42,7 @@ export async function resolveConception(flagValue: string | undefined): Promise<
   if (envOverride) {
     const abs = absolutise(envOverride);
     if (await looksLikeConception(abs)) return { path: abs, source: 'env' };
-    tried.push(`$${envName}=${envOverride} (no configuration.json)`);
+    tried.push(`$${envName}=${envOverride} (no condash.json or configuration.json)`);
   }
 
   const skillDir = process.env.CLAUDE_PROJECT_DIR;
@@ -51,21 +51,23 @@ export async function resolveConception(flagValue: string | undefined): Promise<
     if (await looksLikeConception(abs)) {
       return { path: abs, source: 'CLAUDE_PROJECT_DIR' };
     }
-    tried.push(`$CLAUDE_PROJECT_DIR=${skillDir} (no configuration.json)`);
+    tried.push(`$CLAUDE_PROJECT_DIR=${skillDir} (no condash.json or configuration.json)`);
   }
 
   const walked = await walkUpForConception(process.cwd());
   if (walked) return { path: walked, source: 'cwd-walk' };
-  tried.push(`cwd-walk from ${process.cwd()} (no configuration.json found)`);
+  tried.push(`cwd-walk from ${process.cwd()} (no condash.json or configuration.json found)`);
 
   const settings = await readSettings();
-  if (settings.conceptionPath && (await looksLikeConception(settings.conceptionPath))) {
-    return { path: settings.conceptionPath, source: 'settings' };
+  if (settings.lastConceptionPath && (await looksLikeConception(settings.lastConceptionPath))) {
+    return { path: settings.lastConceptionPath, source: 'settings' };
   }
-  if (settings.conceptionPath) {
-    tried.push(`settings.conceptionPath=${settings.conceptionPath} (no configuration.json)`);
+  if (settings.lastConceptionPath) {
+    tried.push(
+      `settings.lastConceptionPath=${settings.lastConceptionPath} (not a conception tree)`,
+    );
   } else {
-    tried.push('settings.conceptionPath is unset');
+    tried.push('settings.lastConceptionPath is unset');
   }
 
   noConception(tried);
@@ -78,10 +80,13 @@ async function looksLikeConception(path: string): Promise<boolean> {
   } catch {
     return false;
   }
-  // Both `configuration.json` and a `projects/` directory are required:
-  // any folder with a stray `configuration.json` (e.g. a webpack/babel
-  // config in an unrelated repo) used to silently retarget the CLI.
-  if (!existsSync(`${path}/configuration.json`)) return false;
+  // Both a config file and a `projects/` directory are required: any folder
+  // with a stray config file (e.g. a webpack/babel config in an unrelated
+  // repo) used to silently retarget the CLI. `condash.json` is the canonical
+  // filename; `configuration.json` is the legacy fallback kept indefinitely.
+  if (!existsSync(`${path}/condash.json`) && !existsSync(`${path}/configuration.json`)) {
+    return false;
+  }
   try {
     const projects = await fs.stat(`${path}/projects`);
     return projects.isDirectory();

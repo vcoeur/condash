@@ -46,7 +46,8 @@ async function boot(theme: Theme): Promise<Booted> {
     join(userDataDir, 'condash', 'settings.json'),
     JSON.stringify(
       {
-        conceptionPath: conceptionDir,
+        lastConceptionPath: conceptionDir,
+        recentConceptionPaths: [conceptionDir],
         theme,
         layout: {
           projects: true,

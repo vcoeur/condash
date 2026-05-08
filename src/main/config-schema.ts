@@ -1,9 +1,12 @@
 import { z } from 'zod';
 
 /**
- * Schema for `<conception>/configuration.json`. Used to reject malformed
- * shapes on save. The shape is canonical — `open_with.{slot}` is a single
- * `{label, command}` per method, no list fallback.
+ * Schemas for the two condash settings files. The unified shape lives here
+ * so the global per-machine `settings.json` and the per-conception
+ * `condash.json` (which replaces the legacy `configuration.json`) stay in
+ * lock-step. Top-level keys in `condash.json` replace the matching keys in
+ * `settings.json` at read time; the only fields a conception cannot set
+ * are `lastConceptionPath` and `recentConceptionPaths`.
  */
 const repoEntry: z.ZodType<RawRepo> = z.lazy(() =>
   z.union([
@@ -108,6 +111,39 @@ const terminalSettings = z
 export type XtermSettings = z.infer<typeof xtermSettings>;
 export type XtermColors = z.infer<typeof xtermColors>;
 
+const layoutSchema = z
+  .object({
+    projects: z.boolean(),
+    working: z.union([
+      z.literal('code'),
+      z.literal('knowledge'),
+      z.literal('resources'),
+      z.literal('skills'),
+      z.null(),
+    ]),
+    terminal: z.boolean(),
+    projectsWidth: z.number().int().positive(),
+  })
+  .strict();
+
+const cardMinWidthSchema = z
+  .object({
+    projects: z.number().int().positive().optional(),
+    code: z.number().int().positive().optional(),
+    knowledge: z.number().int().positive().optional(),
+    resources: z.number().int().positive().optional(),
+    skills: z.number().int().positive().optional(),
+  })
+  .strict();
+
+const treeExpansionSchema = z
+  .object({
+    knowledge: z.array(z.string()).optional(),
+    resources: z.array(z.string()).optional(),
+    skills: z.array(z.string()).optional(),
+  })
+  .strict();
+
 /**
  * Constraint shared by `resources_path` and `skills_path`: the value must
  * be a non-empty, normalised relative path interpreted from the conception
@@ -125,33 +161,74 @@ const conceptionRelativePath = z
     message: 'must not contain ".." segments',
   });
 
-export const configSchema = z
+/**
+ * Workspace + presentational fields shared by global and per-conception
+ * settings files. Picked apart from the path-tracking fields so the same
+ * shape can be used in both files — the conception override variant just
+ * omits `lastConceptionPath` + `recentConceptionPaths`.
+ */
+const sharedSchemaFields = {
+  $schema_doc: z.string().optional(),
+  workspace_path: z.string().optional(),
+  worktrees_path: z.string().optional(),
+  /** Directory browsed by the Resources pane (default `resources`). */
+  resources_path: conceptionRelativePath.optional(),
+  /** Directory browsed by the Skills pane (default `.claude/skills`). */
+  skills_path: conceptionRelativePath.optional(),
+  repositories: z.array(repoEntry).optional(),
+  open_with: z
+    .object({
+      main_ide: openWithSlot.optional(),
+      secondary_ide: openWithSlot.optional(),
+      terminal: openWithSlot.optional(),
+    })
+    .strict()
+    .optional(),
+  pdf_viewer: z.array(z.string()).optional(),
+  /** Terminal preferences. Per-machine in settings.json; overridable per-conception. */
+  terminal: terminalSettings.optional(),
+  theme: z.enum(['light', 'dark', 'system']).optional(),
+  layout: layoutSchema.optional(),
+  welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),
+  cardMinWidth: cardMinWidthSchema.optional(),
+  treeExpansion: treeExpansionSchema.optional(),
+} as const;
+
+/**
+ * Path-tracking fields the global per-machine `settings.json` owns. A
+ * conception's `condash.json` is forbidden from setting these — a tree
+ * cannot describe its own location, and the recents list is necessarily
+ * machine-local.
+ */
+const pathTrackingFields = {
+  /** Currently-open conception path. Replaces the older `conceptionPath`. */
+  lastConceptionPath: z.string().nullable().optional(),
+  /** Most-recently-opened paths, newest first, capped at RECENT_CONCEPTION_PATHS_CAP. */
+  recentConceptionPaths: z.array(z.string()).optional(),
+} as const;
+
+/** Schema for `<userData>/settings.json`. */
+export const globalSettingsSchema = z
   .object({
-    $schema_doc: z.string().optional(),
-    workspace_path: z.string().optional(),
-    worktrees_path: z.string().optional(),
-    /** Directory browsed by the Resources pane (default `resources`). */
-    resources_path: conceptionRelativePath.optional(),
-    /** Directory browsed by the Skills pane (default `.claude/skills`). */
-    skills_path: conceptionRelativePath.optional(),
-    repositories: z.array(repoEntry).optional(),
-    open_with: z
-      .object({
-        main_ide: openWithSlot.optional(),
-        secondary_ide: openWithSlot.optional(),
-        terminal: openWithSlot.optional(),
-      })
-      .strict()
-      .optional(),
-    pdf_viewer: z.array(z.string()).optional(),
-    /** @deprecated Terminal preferences live in settings.json now. Kept here
-     * so existing files validate during the boot-time migration; do not
-     * read or write this block from new code. */
-    terminal: terminalSettings.optional(),
+    ...sharedSchemaFields,
+    ...pathTrackingFields,
   })
   .strict();
 
-export type Config = z.infer<typeof configSchema>;
+/** Schema for `<conception>/condash.json` — same shape minus path-self. */
+export const conceptionConfigSchema = z.object(sharedSchemaFields).strict();
+
+/**
+ * Backwards-compatibility export. Older code referenced `configSchema`;
+ * the new name is `conceptionConfigSchema`.
+ */
+export const configSchema = conceptionConfigSchema;
+
+export type GlobalSettings = z.infer<typeof globalSettingsSchema>;
+export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
+
+/** Backwards-compat alias. */
+export type Config = ConceptionConfig;
 
 /**
  * Default for `resources_path` when the key is absent. Kept here so the
@@ -167,28 +244,25 @@ export const DEFAULT_RESOURCES_PATH = 'resources';
 export const DEFAULT_SKILLS_PATH = '.claude/skills';
 
 /**
- * Parse → validate → re-serialise a `configuration.json` body.
- *
- * Lives next to the schema so the two stay in lock-step: any tightening
- * of `configSchema` automatically tightens what callers can write back
- * to disk via the renderer's NoteModal save path. Errors are formatted
- * with a dotted path so the user can see which field tripped the schema.
- *
- * Returns the canonical 2-space JSON the project's existing
- * `configuration.json` files use, with a trailing newline.
+ * Parse → validate → re-serialise a conception's `condash.json` (or its
+ * legacy `configuration.json`) body. Used by the renderer's NoteModal save
+ * path so the bytes that hit disk are always schema-canonical.
  */
-export function validateAndCanonicaliseConfig(json: string): string {
+export function validateAndCanonicaliseConceptionConfig(json: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
   } catch (err) {
     throw new Error(`Invalid JSON: ${(err as Error).message}`);
   }
-  const result = configSchema.safeParse(parsed);
+  const result = conceptionConfigSchema.safeParse(parsed);
   if (!result.success) {
     const issue = result.error.issues[0];
     const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-    throw new Error(`configuration.json: ${where} — ${issue.message}`);
+    throw new Error(`condash.json: ${where} — ${issue.message}`);
   }
   return JSON.stringify(result.data, null, 2) + '\n';
 }
+
+/** Backwards-compat alias for the renamed canonicaliser. */
+export const validateAndCanonicaliseConfig = validateAndCanonicaliseConceptionConfig;

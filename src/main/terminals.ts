@@ -8,6 +8,7 @@ import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../
 import { atomicWrite } from './atomic-write';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { readSettings, updateSettings } from './settings';
+import { getEffectiveConceptionConfig } from './effective-config';
 import { tokenise } from './launchers';
 
 interface Session {
@@ -110,13 +111,7 @@ function makeId(): string {
 }
 
 async function readRawConfig(conceptionPath: string): Promise<ConfigShape> {
-  try {
-    const raw = await fs.readFile(join(conceptionPath, 'configuration.json'), 'utf8');
-    return JSON.parse(raw) as ConfigShape;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
-    throw err;
-  }
+  return (await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape;
 }
 
 function defaultShell(configured?: string): string {
@@ -173,7 +168,7 @@ export async function spawnTerminal(
 
   if (request.repo && conceptionPath) {
     const entry = findRepoEntry(config, request.repo);
-    if (!entry) throw new Error(`Repo '${request.repo}' not found in configuration.json`);
+    if (!entry) throw new Error(`Repo '${request.repo}' not found in effective config`);
     // Honour an explicit request.cwd (worktree path from the Code-pane Run
     // button on a non-primary branch) over the entry's resolved primary
     // checkout. Without this, every Run lands on the primary checkout
@@ -423,8 +418,11 @@ export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
   // can't race with this migration.
   const initial = await readSettings();
   if (initial.terminal && Object.keys(initial.terminal).length > 0) return;
-  if (!initial.conceptionPath) return;
-  const configFile = join(initial.conceptionPath, 'configuration.json');
+  if (!initial.lastConceptionPath) return;
+  // Legacy migration: only the original `configuration.json` is checked.
+  // A fresh `condash.json` carrying a terminal block is a deliberate
+  // per-conception override and stays put.
+  const configFile = join(initial.lastConceptionPath, 'configuration.json');
   let raw: string;
   try {
     raw = await fs.readFile(configFile, 'utf8');

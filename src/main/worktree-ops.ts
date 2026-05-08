@@ -21,6 +21,7 @@ import { readHeader } from './header-io';
 import { exec } from './exec';
 import { walkRepos, type ConfigShape } from './config-walk';
 import { pathExists } from './fs-helpers';
+import { getEffectiveConceptionConfig } from './effective-config';
 
 interface ConfigWithPaths extends ConfigShape {
   worktrees_path?: string;
@@ -572,13 +573,7 @@ function shellArgs(command: string): string[] {
 }
 
 async function readConfig(conceptionPath: string): Promise<ConfigWithPaths> {
-  const path = join(conceptionPath, 'configuration.json');
-  try {
-    const raw = await fs.readFile(path, 'utf8');
-    return JSON.parse(raw) as ConfigWithPaths;
-  } catch {
-    return {};
-  }
+  return (await getEffectiveConceptionConfig(conceptionPath)) as ConfigWithPaths;
 }
 
 function defaultWorktreesPath(): string {

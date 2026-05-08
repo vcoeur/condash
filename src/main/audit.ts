@@ -29,6 +29,7 @@ import { readHeader } from './header-io';
 import { exec } from './exec';
 import type { ConfigShape } from './config-walk';
 import { pathExists } from './fs-helpers';
+import { getEffectiveConceptionConfig } from './effective-config';
 
 export type AuditCheckName = 'lfs' | 'binaries' | 'cross-repo' | 'worktrees' | 'index';
 
@@ -404,13 +405,9 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
 async function readConfig(
   conceptionPath: string,
 ): Promise<ConfigShape & { worktrees_path?: string }> {
-  const path = join(conceptionPath, 'configuration.json');
-  try {
-    const raw = await fs.readFile(path, 'utf8');
-    return JSON.parse(raw) as ConfigShape & { worktrees_path?: string };
-  } catch {
-    return {};
-  }
+  return (await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape & {
+    worktrees_path?: string;
+  };
 }
 
 async function listLfsFiles(conceptionPath: string): Promise<Set<string> | null> {
