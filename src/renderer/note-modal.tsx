@@ -687,13 +687,13 @@ export function NoteModal(props: {
         <Show when={props.state?.bannerKind === 'shipped'}>
           <div class="modal-banner modal-banner--info" role="status">
             Shipped by condash. The on-disk content matches the version installed by{' '}
-            <code>condash skills install</code>.
+            <code>condash-cli skills install</code>.
           </div>
         </Show>
         <Show when={props.state?.bannerKind === 'shipped-diverged'}>
           <div class="modal-banner modal-banner--warn" role="status">
-            Shipped by condash, but locally edited. Running <code>condash skills install</code> will
-            flag this divergence.
+            Shipped by condash, but locally edited. Running <code>condash-cli skills install</code>{' '}
+            will flag this divergence.
           </div>
         </Show>
 

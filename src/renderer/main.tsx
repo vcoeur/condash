@@ -1330,7 +1330,7 @@ function App() {
                         onOpenSettings={() => setSettingsOpen(true)}
                         onCopyInstallCommand={() => {
                           void navigator.clipboard
-                            .writeText('condash skills install')
+                            .writeText('condash-cli skills install')
                             .then(() => flashToast('Copied install command', 'success'))
                             .catch((err) =>
                               flashToast(`Copy failed: ${(err as Error).message}`, 'error'),

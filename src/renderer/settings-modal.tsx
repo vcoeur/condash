@@ -899,7 +899,7 @@ export function SettingsModal(props: {
                 an object with optional <code>label</code>, <code>run</code>,{' '}
                 <code>force_stop</code>, <code>install</code>, <code>env</code>, and{' '}
                 <code>submodules</code>. <code>env</code> lists files copied from the primary into a
-                new worktree on <code>condash worktrees setup</code>.
+                new worktree on <code>condash-cli worktrees setup</code>.
               </p>
               <div class="settings-bucket">
                 <For each={repos()}>

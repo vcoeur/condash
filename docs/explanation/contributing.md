@@ -53,7 +53,7 @@ src/
 scripts/          # Build glue. esbuild entry point, electron-builder helpers.
 docs/             # This documentation site.
 tests/            # Playwright E2E + Vitest unit tests.
-conception-template/  # Skills + sample tree shipped via `condash skills install`.
+conception-template/  # Skills + sample tree shipped via `condash-cli skills install`.
 ```
 
 Three TS configs:

@@ -546,7 +546,7 @@ export interface ResourceNode {
  * Tracked-shipping metadata for a skill file. Populated only when the file
  * appears in `<skills_path>/.condash-skills.json`. Used by the renderer to
  * surface a "shipped" chip and a "diverged from shipped" banner when local
- * edits would be flagged on the next `condash skills install`.
+ * edits would be flagged on the next `condash-cli skills install`.
  */
 export interface SkillShippedInfo {
   /** SHA-256 from the manifest (the hash of the version condash shipped). */
@@ -596,7 +596,7 @@ export interface ConceptionInitState {
 }
 
 /**
- * Result of a status transition (`setStatus` IPC, `condash projects status
+ * Result of a status transition (`setStatus` IPC, `condash-cli projects status
  * set` / `close` / `reopen`). `timelineAppended` is non-null only on
  * done-edges (close or reopen) — that's the entire signal the renderer needs
  * to surface a "Closed." / "Reopened." toast and refresh the timeline pane.
@@ -607,7 +607,7 @@ export interface TransitionResult {
   timelineAppended: string | null;
   /** Set on close (done-edge) when the project's `**Branch**` has a stale
    * worktree on disk or a local branch left behind. The renderer surfaces
-   * this as a toast so the user remembers to run `condash worktrees remove`
+   * this as a toast so the user remembers to run `condash-cli worktrees remove`
    * before forgetting. Undefined for non-close transitions and for closes
    * that didn't touch a branch. */
   branchWarning?: string;
@@ -615,7 +615,7 @@ export interface TransitionResult {
 
 /**
  * Input for the GUI's "+ New project" form, mirrored on the CLI as the
- * `condash projects create` flag set. Apps / Branch / Base intentionally
+ * `condash-cli projects create` flag set. Apps / Branch / Base intentionally
  * omitted from the form: minimal-info create only. The renderer normalises
  * the slug (via `slugify`) before dispatching; the main process re-validates
  * against `^[a-z0-9-]+$`.

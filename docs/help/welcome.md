@@ -22,7 +22,7 @@ are still on disk; delete condash and the files don't move.
 - **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under
   `.claude/skills/`, edited in place. Default location for the four
   shipped skills (`/projects`, `/knowledge`, `/skills`, `/pr`) — they
-  appear automatically once `condash skills install` has run.
+  appear automatically once `condash-cli skills install` has run.
 - **Terminal** — toggle with `` Ctrl+` ``.
 - **Search** — `Ctrl+Shift+F` for cross-tree fuzzy search.
 
@@ -40,7 +40,7 @@ This Help menu has the essentials, written to be read on their own:
 - **Quick start** — install, first launch, your first project.
 - **Keyboard shortcuts** — the few you'll use every day.
 - **Configuration** — what the JSON files control.
-- **CLI overview** — the `condash` command line.
+- **CLI overview** — the `condash-cli` command line.
 - **Why Markdown-first** — the design pitch.
 
 Full documentation lives at **https://condash.vcoeur.com**. The Help

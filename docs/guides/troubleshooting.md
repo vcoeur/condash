@@ -56,7 +56,7 @@ projects/YYYY-MM/YYYY-MM-DD-<slug>/README.md
 
 Items at the wrong nesting depth (e.g. `projects/<slug>/` without a month directory) are skipped. The slug must match `^[a-z0-9-]+$` after the date prefix.
 
-Fix: `git mv` the items into the right shape, or use the [`condash projects`](../reference/cli.md) verbs to validate.
+Fix: `git mv` the items into the right shape, or use the [`condash-cli projects`](../reference/cli.md) verbs to validate.
 
 ### Code pane is empty / "Code (0)"
 
@@ -143,19 +143,19 @@ Both keys live in `configuration.json` under `terminal.xterm`. The Settings → 
 
 ## CLI
 
-### `condash projects list` says "no conception"
+### `condash-cli projects list` says "no conception"
 
 The CLI honours the same path-resolution chain as the GUI but does not open the folder picker. Point it explicitly:
 
 ```bash
-condash --conception ~/src/conception projects list
+condash-cli --conception ~/src/conception projects list
 ```
 
-Or set the path through `condash config conception-path ~/src/conception` (writes to `settings.json`, picked up by both the GUI and the CLI).
+Or set the path through `condash-cli config conception-path ~/src/conception` (writes to `settings.json`, picked up by both the GUI and the CLI).
 
-### `condash` opens the GUI when I expected the CLI
+### `condash` says "'projects' is a CLI command, not a GUI option"
 
-The CLI dispatcher only fires for known nouns (`projects`, `knowledge`, `search`, `repos`, `worktrees`, `audit`, `dirty`, `skills`, `config`, `help`) or top-level `--help` / `--version`. A typo silently drops you into the GUI. See [`condash --help`](../reference/cli.md) for the full list.
+From v2.14.0 the GUI launcher (`condash`) and the CLI launcher (`condash-cli`) are split. `condash <noun>` errors out with a hint. Re-run as `condash-cli <noun>`. See [`condash-cli --help`](../reference/cli.md) for the full list of nouns.
 
 ## Reading the toasts
 

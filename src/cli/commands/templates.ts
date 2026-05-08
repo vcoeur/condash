@@ -1,12 +1,12 @@
 /**
- * `condash templates <list|install|status>`
+ * `condash-cli templates <list|install|status>`
  *
  * Ships the marker-delimited *region* of selected files instead of the
  * whole file. Today this is just `CLAUDE.md` with the
  * `<!-- condash:general:begin -->` … `<!-- condash:general:end -->` region;
  * the surrounding text (notably the user-owned `## Specific to this
  * conception` section) is never touched. Same hash-based safe-update model
- * as `condash skills install`:
+ * as `condash-cli skills install`:
  *
  *   - region matches manifest → unchanged → safe to push the new shipped region.
  *   - region differs from manifest → user edited → refuse without --force.

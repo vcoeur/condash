@@ -249,7 +249,7 @@ async function retrieveCommand(
 ): Promise<void> {
   const query = args.positional.join(' ').trim();
   if (!query) {
-    throw new CliError(ExitCodes.USAGE, 'Usage: condash knowledge retrieve <query>');
+    throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli knowledge retrieve <query>');
   }
   const mode = (args.flags.mode as string | undefined) ?? 'both';
   if (!['triage', 'grep', 'both'].includes(mode)) {
@@ -411,7 +411,7 @@ async function stampCommand(
   if (!target) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD]',
+      'Usage: condash-cli knowledge stamp <path> --where <where> [--date YYYY-MM-DD]',
     );
   }
   const where = args.flags.where;
@@ -519,7 +519,7 @@ function isAbsoluteLike(p: string): boolean {
 function printSubHelp(): void {
   process.stdout.write(
     [
-      'condash knowledge <verb> [args]',
+      'condash-cli knowledge <verb> [args]',
       '',
       'Verbs:',
       '  tree        Hierarchical view of knowledge/ (with --depth N).',

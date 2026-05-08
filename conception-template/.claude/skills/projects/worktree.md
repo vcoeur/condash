@@ -18,12 +18,12 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
 ## `setup <branch>`
 
 1. Confirm with the user.
-2. `condash worktrees check <branch> --json` — preview which repos will get worktrees, what's already in place, and what's blocked (primary checkout already on the branch, pinned repos, etc.). Show this preview before acting.
+2. `condash-cli worktrees check <branch> --json` — preview which repos will get worktrees, what's already in place, and what's blocked (primary checkout already on the branch, pinned repos, etc.). Show this preview before acting.
 3. **For every repo where `data.repos[].primaryOnBranch` is true** (the main checkout currently has the branch), the worktree can't be added until the primary moves. Ask the user which branch to switch the primary to, then `git -C <workspace_path>/<repo> checkout <other-branch>`. (This is the one operation the CLI defers to skill prose — it requires a user decision the CLI can't make.)
 4. **Run setup:**
 
    ```bash
-   condash worktrees setup <branch> [--no-env] [--no-install] [--copy-env] [--base <ref>] --json
+   condash-cli worktrees setup <branch> [--no-env] [--no-install] [--copy-env] [--base <ref>] --json
    ```
 
    **Per-repo `env: [...]`** in `configuration.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the new worktree. Applied **unconditionally when set** — pass `--no-env` to skip. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration.
@@ -50,11 +50,11 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
 ## `remove <branch>`
 
 1. Confirm with the user.
-2. `condash worktrees check <branch> --json` — preview the state.
+2. `condash-cli worktrees check <branch> --json` — preview the state.
 3. **Run remove:**
 
    ```bash
-   condash worktrees remove <branch> [--repo <r>...] --json
+   condash-cli worktrees remove <branch> [--repo <r>...] --json
    ```
 
    The CLI:
@@ -75,7 +75,7 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
 ## `check <branch>`
 
 ```bash
-condash worktrees check <branch> --json
+condash-cli worktrees check <branch> --json
 ```
 
 Returns `{branch, worktreesRoot, declaringItems[], repos[], missing[], orphan[]}`. Each repo row carries `worktreeExists`, `localBranchExists`, `primaryOnBranch`, and an optional `pinnedBranch`.
@@ -85,8 +85,8 @@ Use this before any setup/remove, and any time the user asks "what's the state o
 ## `list` / `status`
 
 ```bash
-condash repos list --include-worktrees --json
-condash worktrees mismatch --json
+condash-cli repos list --include-worktrees --json
+condash-cli worktrees mismatch --json
 ```
 
 The first call returns every configured repo with its worktrees (path / branch / primary / dirty count). The second flags items declaring `**Branch**` but missing the on-disk worktree — offer `/projects worktree setup <branch>` per missing branch.

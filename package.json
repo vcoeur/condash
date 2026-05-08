@@ -5,7 +5,7 @@
   "private": true,
   "main": "dist-electron/main/index.js",
   "bin": {
-    "condash": "dist-cli/condash.cjs"
+    "condash-cli": "dist-cli/condash.cjs"
   },
   "homepage": "https://github.com/vcoeur/condash",
   "repository": {

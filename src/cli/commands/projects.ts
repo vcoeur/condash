@@ -214,7 +214,7 @@ async function scanPromotionsCommand(
 ): Promise<void> {
   const slug = args.positional[0];
   if (!slug) {
-    throw new CliError(ExitCodes.USAGE, 'Usage: condash projects scan-promotions <slug>');
+    throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects scan-promotions <slug>');
   }
   assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
@@ -361,7 +361,7 @@ async function readProject(
   conceptionPath: string,
 ): Promise<void> {
   const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects read <slug>');
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects read <slug>');
   const candidate = await resolveSlug(conceptionPath, slug);
   const project = await parseReadme(candidate.readmePath);
   const header = parseHeader(await fs.readFile(candidate.readmePath, 'utf8'));
@@ -438,7 +438,7 @@ async function resolveCommand(
   conceptionPath: string,
 ): Promise<void> {
   const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects resolve <slug>');
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects resolve <slug>');
   assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   emit(
@@ -459,7 +459,7 @@ async function searchProjects(
   conceptionPath: string,
 ): Promise<void> {
   const query = args.positional.join(' ');
-  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects search <query>');
+  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects search <query>');
   const limit = parseIntFlag(args.flags.limit, 50);
   const statusFilter = parseCsvFlag(args.flags.status);
   const kindFilter = parseCsvFlag(args.flags.kind);
@@ -564,7 +564,7 @@ async function validateCommand(
   } else {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash projects validate <slug> | --all | --path <readme-path>',
+      'Usage: condash-cli projects validate <slug> | --all | --path <readme-path>',
     );
   }
 
@@ -632,7 +632,7 @@ async function statusCommand(
   const sub = args.positional[0];
   if (sub === 'get') {
     const slug = args.positional[1];
-    if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects status get <slug>');
+    if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects status get <slug>');
     assertNoExtraFlags(args);
     const candidate = await resolveSlug(conceptionPath, slug);
     const header = await readHeader(candidate.readmePath);
@@ -647,7 +647,7 @@ async function statusCommand(
     const slug = args.positional[1];
     const value = args.positional[2];
     if (!slug || !value) {
-      throw new CliError(ExitCodes.USAGE, 'Usage: condash projects status set <slug> <status>');
+      throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects status set <slug> <status>');
     }
     if (!(KNOWN_STATUSES as readonly string[]).includes(value)) {
       validation(`Status '${value}' not in {${KNOWN_STATUSES.join(', ')}}`);
@@ -675,7 +675,10 @@ async function statusCommand(
     );
     return;
   }
-  throw new CliError(ExitCodes.USAGE, 'Usage: condash projects status <get|set> <slug> [<value>]');
+  throw new CliError(
+    ExitCodes.USAGE,
+    'Usage: condash-cli projects status <get|set> <slug> [<value>]',
+  );
 }
 
 async function closeProject(
@@ -684,7 +687,7 @@ async function closeProject(
   conceptionPath: string,
 ): Promise<void> {
   const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects close <slug>');
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects close <slug>');
   const newStatus = (args.flags.status as string | undefined) ?? 'done';
   if (!(KNOWN_STATUSES as readonly string[]).includes(newStatus)) {
     validation(`Status '${newStatus}' not in {${KNOWN_STATUSES.join(', ')}}`);
@@ -726,13 +729,13 @@ async function reopenProject(
   conceptionPath: string,
 ): Promise<void> {
   const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects reopen <slug>');
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects reopen <slug>');
   const target = (args.flags.status as string | undefined) ?? 'now';
   if (!(KNOWN_STATUSES as readonly string[]).includes(target)) {
     validation(`Status '${target}' not in {${KNOWN_STATUSES.join(', ')}}`);
   }
   if (target === 'done') {
-    validation(`reopen target cannot be 'done' — use \`condash projects close\` instead`);
+    validation(`reopen target cannot be 'done' — use \`condash-cli projects close\` instead`);
   }
   delete args.flags.status;
   assertNoExtraFlags(args);
@@ -885,7 +888,7 @@ function basenameOf(readmePath: string): string {
  * Probe the closed item's branch (when the header carries one) and surface
  * a warning if the on-disk worktree or the local branch still exists. Closing
  * an item only flips Status — the actual cleanup verbs are
- * `condash worktrees remove <branch>` and `git branch -d <branch>`, and a
+ * `condash-cli worktrees remove <branch>` and `git branch -d <branch>`, and a
  * silent close lets the miss go unnoticed (this exact thing happened during
  * the parent simplify batch, May 1).
  */
@@ -916,7 +919,7 @@ async function leftoverBranchWarnings(
     parts.push(`local branch '${branch}' still exists in ${repos}`);
   }
   return [
-    `${parts.join('; ')} — run \`condash worktrees remove ${branch}\` ` +
+    `${parts.join('; ')} — run \`condash-cli worktrees remove ${branch}\` ` +
       `then \`git branch -d ${branch}\` to clean up.`,
   ];
 }
@@ -924,7 +927,7 @@ async function leftoverBranchWarnings(
 function printSubHelp(): void {
   process.stdout.write(
     [
-      'condash projects <verb> [args]',
+      'condash-cli projects <verb> [args]',
       '',
       'Verbs:',
       '  list             List projects (filters: --status --kind --apps --branch).',
