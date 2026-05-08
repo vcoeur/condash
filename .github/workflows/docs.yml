@@ -65,6 +65,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+          # No uv.lock in this repo (we use ephemeral `uv run --with`).
+          # Key the cache on the workflow file itself, where the
+          # mkdocs-material pin lives — invalidates only on bump.
+          cache-dependency-glob: .github/workflows/docs.yml
 
       - name: Install aptly + gnupg
         run: |
