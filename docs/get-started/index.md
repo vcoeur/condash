@@ -40,6 +40,8 @@ sudo apt update && sudo apt install condash
 
 Then `sudo apt update && sudo apt upgrade` covers updates.
 
+The apt index covers the most-recent few releases (default 5). Older versions remain downloadable as `.deb` from each release on [github.com/vcoeur/condash/releases](https://github.com/vcoeur/condash/releases) — just outside `apt` resolution.
+
 ### Linux — AppImage
 
 ```bash

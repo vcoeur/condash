@@ -83,7 +83,7 @@ macOS and Windows are unaffected.
 
 ## Pointers
 
-- **Public site**: [`condash.vcoeur.com`](https://condash.vcoeur.com) — built from `docs/` + `mkdocs.yml` by `.github/workflows/docs.yml` on every published release. Includes a signed apt repo at `condash.vcoeur.com/apt/` rebuilt from every release's `.deb` assets.
+- **Public site**: [`condash.vcoeur.com`](https://condash.vcoeur.com) — built from `docs/` + `mkdocs.yml` by `.github/workflows/docs.yml` on every published release. Includes a signed apt repo at `condash.vcoeur.com/apt/`, indexed against the **most-recent `APT_HISTORY` releases** (5 by default; tune in `docs.yml` env). Older `.deb` assets stay reachable from each release's GitHub page; only the apt index is windowed.
 - [`docs/index.md`](docs/index.md) — landing page of both the in-app Help menu and the public mkdocs site.
 - [`docs/explanation/internals.md`](docs/explanation/internals.md) — invariants: drift checks, atomic writes, write queue, TTL cache, pty kill pipeline, IPC contract.
 - [`docs/reference/config.md`](docs/reference/config.md) — `configuration.json` + `settings.json` schema + per-key reference.
