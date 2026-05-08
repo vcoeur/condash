@@ -59,12 +59,16 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   // set. `skills_path` defaults to `.claude/skills`, which would normally
   // be filtered out — bypass the rule for paths under the configured
   // skills/resources roots so a `.claude/skills/foo.md` change still fires.
+  // The same bypass covers `<conception>/.claude/CLAUDE.md`, which is
+  // surfaced in the Skills pane as a synthetic root entry.
+  const claudeDot = toPosix(join(conceptionPath, '.claude', 'CLAUDE.md'));
   const ignored = (path: string): boolean => {
     if (NODE_MODULES_RE.test(path) || DIST_RE.test(path) || TARGET_RE.test(path)) return true;
     if (!DOTFILE_SEGMENT_RE.test(path)) return false;
     const posix = toPosix(path);
     if (posix === roots.resources || posix.startsWith(`${roots.resources}/`)) return false;
     if (posix === roots.skills || posix.startsWith(`${roots.skills}/`)) return false;
+    if (posix === claudeDot) return false;
     return true;
   };
 
@@ -76,6 +80,11 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
       join(conceptionPath, skills),
       join(conceptionPath, 'configuration.json'),
       join(conceptionPath, 'configuration.yml'),
+      // Conception-level CLAUDE.md (root and `.claude/`). Surfaced as
+      // synthetic skill entries so the Skills pane can open them — they
+      // need to repaint the pane on edit, hence the explicit watches.
+      join(conceptionPath, 'CLAUDE.md'),
+      join(conceptionPath, '.claude', 'CLAUDE.md'),
     ],
     {
       ignored,
@@ -155,6 +164,15 @@ function classify(
   const configYml = toPosix(join(conception, 'configuration.yml'));
   if (pathP === configJson || pathP === configYml) {
     return { kind: 'config', path };
+  }
+
+  // Conception-level CLAUDE.md surfaces in the Skills pane as a
+  // synthetic entry — route changes through the `skills` event so
+  // the pane refetches and the synthetic entry repaints.
+  const claudeRoot = toPosix(join(conception, 'CLAUDE.md'));
+  const claudeDot = toPosix(join(conception, '.claude', 'CLAUDE.md'));
+  if (pathP === claudeRoot || pathP === claudeDot) {
+    return { kind: 'skills', op, path };
   }
 
   // Project README: <conception>/projects/<month>/<slug>/README.md

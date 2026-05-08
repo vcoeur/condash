@@ -13,6 +13,15 @@ const HIDDEN_PREFIX = /^\./;
  * Knowledge (recursive, only `.md` surfaced) plus an optional `shipped`
  * stamp on files tracked by `.condash-skills.json`. Symlink loops are
  * deduped via realpath.
+ *
+ * Also injects synthetic root-level entries for the conception's
+ * `CLAUDE.md` (root) and `.claude/CLAUDE.md`, when present. Those files
+ * sit outside the skills directory but are surfaced here because they
+ * carry the same kind of agent-instruction content as `SKILL.md` and
+ * the user expects to reach them from the Skills pane. Each synthetic
+ * entry is a `kind: 'file'` SkillNode with `name === 'CLAUDE.md'`; the
+ * renderer detects that name to render a "CLAUDE" badge instead of the
+ * usual skill-card layout.
  */
 export async function readSkillsTree(
   conceptionPath: string,
@@ -25,7 +34,49 @@ export async function readSkillsTree(
     return null;
   }
   const shipped = await buildShippedLookup(root);
-  return walk(root, '', basename(skillsRelPath) || 'skills', new Set<string>(), shipped, root);
+  const tree = await walk(
+    root,
+    '',
+    basename(skillsRelPath) || 'skills',
+    new Set<string>(),
+    shipped,
+    root,
+  );
+  const claudeEntries = await readConceptionClaudeMd(conceptionPath);
+  if (claudeEntries.length > 0) {
+    tree.children = [...claudeEntries, ...(tree.children ?? [])];
+  }
+  return tree;
+}
+
+/** Probe `<conceptionPath>/CLAUDE.md` and `<conceptionPath>/.claude/CLAUDE.md`
+ *  and return synthetic SkillNode entries for whichever exist. The synthetic
+ *  `relPath` is sentinel-prefixed (`__claude__/...`) so it can't collide with
+ *  any real path inside the skills tree. */
+async function readConceptionClaudeMd(conceptionPath: string): Promise<SkillNode[]> {
+  const candidates: Array<{ rel: string; abs: string }> = [
+    { rel: '__claude__/CLAUDE.md', abs: join(conceptionPath, 'CLAUDE.md') },
+    { rel: '__claude__/.claude/CLAUDE.md', abs: join(conceptionPath, '.claude', 'CLAUDE.md') },
+  ];
+  const found: SkillNode[] = [];
+  for (const { rel, abs } of candidates) {
+    try {
+      const stat = await fs.stat(abs);
+      if (!stat.isFile()) continue;
+    } catch {
+      continue;
+    }
+    const meta = await readMarkdownMeta(abs, 'CLAUDE.md');
+    found.push({
+      relPath: rel,
+      path: toPosix(abs),
+      name: 'CLAUDE.md',
+      title: meta.title,
+      kind: 'file',
+      summary: meta.summary,
+    });
+  }
+  return found;
 }
 
 async function walk(

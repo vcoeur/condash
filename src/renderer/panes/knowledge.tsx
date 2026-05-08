@@ -42,16 +42,6 @@ function isKnowledgeIndex(node: KnowledgeNode): boolean {
   return node.kind === 'file' && node.name.toLowerCase() === 'index.md';
 }
 
-/** Return the directory's `index.md` child (case-insensitive on the
- *  filename), if any. Surfaced as the `[INDEX]` badge on the dir header
- *  and dropped from the file list so it doesn't double up as a card. */
-function findIndexChild(node: KnowledgeNode): KnowledgeNode | undefined {
-  for (const child of node.children ?? []) {
-    if (isKnowledgeIndex(child)) return child;
-  }
-  return undefined;
-}
-
 export function KnowledgeView(props: {
   root: KnowledgeNode;
   onOpen: (path: string, title?: string) => void;
@@ -77,23 +67,30 @@ export function KnowledgeView(props: {
         prompts={props.prompts}
         onAfterMutation={props.onAfterMutation}
         onError={props.onError}
-        skipFile={isKnowledgeIndex}
-        renderDirSuffix={(dir) => (
-          <Show when={findIndexChild(dir)}>
-            {(idx) => (
-              <button
-                type="button"
-                class="knowledge-section-index"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onOpen(idx().path, idx().title);
-                }}
-                title={`Open ${dir.relPath || 'knowledge'} index`}
+        specialFile={(file) => isKnowledgeIndex(file)}
+        renderSpecialFile={(file, dir) => (
+          <button
+            type="button"
+            class="tree-special-file knowledge-special-file"
+            data-bucket={bucketOf(dir.relPath)}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onOpen(file.path, file.title);
+            }}
+            title={`Open ${dir.relPath || 'knowledge'} index`}
+          >
+            <span class="tree-special-badge">INDEX</span>
+            <span class="tree-special-title">{file.title}</span>
+            <Show when={file.verifiedAt}>
+              <span
+                class="tree-special-meta"
+                data-fresh={freshnessOf(file.verifiedAt, todayISO)}
+                title={`Verified ${file.verifiedAt}`}
               >
-                INDEX
-              </button>
-            )}
-          </Show>
+                {file.verifiedAt}
+              </span>
+            </Show>
+          </button>
         )}
         renderFile={(file) => (
           <KnowledgeCard

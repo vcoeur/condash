@@ -36,43 +36,29 @@
   background: var(--border-subtle);
 }
 
-.skills-section-index {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  padding: 2px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  cursor: pointer;
-  transition: background 100ms;
-}
-
-.skills-section-index:hover {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-}
-
-.skills-section-index:focus-visible,
 .skills-card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.skills-section-index .shipped-tag {
-  font-weight: 500;
-  opacity: 0.85;
-  margin-left: 4px;
+/* SKILL special-file row — the dir's `SKILL.md` rendered as the first
+ * card inside the dir's expanded body. Inherits the generic
+ * `.tree-special-file` chrome and supplies a SKILL-coloured badge,
+ * with a warn tint when the file diverges from the shipped manifest. */
+.skill-special-file {
+  color: var(--accent);
 }
 
-.skills-section-index.diverged {
-  border-color: var(--warn);
+.skill-special-file.diverged {
   color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 12%, transparent);
 }
 
-.skills-section-index.diverged .shipped-tag {
-  opacity: 1;
+/* Conception-level CLAUDE.md surfaced at the skills root. Uses
+ * `--col-running` (pink) so it reads as "agent instructions, live
+ * context" rather than "shipped skill" — distinct from the SKILL row
+ * just below it. */
+.claude-special-file {
+  color: var(--col-running);
 }
 
 .skills-grid {
