@@ -11,7 +11,7 @@ Trigger: `/knowledge index`.
 1. **Run:**
 
    ```bash
-   condash knowledge index --json
+   condash-cli knowledge index --json
    ```
 
    Pass `--dry-run` to inspect without writing.

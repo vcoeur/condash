@@ -24,7 +24,7 @@ export async function runSearch(
   conceptionPath: string,
 ): Promise<void> {
   const query = args.positional.join(' ').trim();
-  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash search <query>');
+  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli search <query>');
   const scope = (args.flags.scope as string | undefined) ?? 'all';
   if (!['all', 'projects', 'knowledge'].includes(scope)) {
     throw new CliError(ExitCodes.USAGE, '--scope must be all|projects|knowledge');
@@ -96,7 +96,7 @@ async function worktreeCheck(
 ): Promise<void> {
   const branch = args.positional[0];
   if (!branch) {
-    throw new CliError(ExitCodes.USAGE, 'Usage: condash worktrees check <branch>');
+    throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli worktrees check <branch>');
   }
   assertNoExtraFlags(args);
   const result = await checkBranchState(conceptionPath, branch);
@@ -162,7 +162,7 @@ async function worktreeSetup(
   if (!branch) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
+      'Usage: condash-cli worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
     );
   }
   const repos = parseCsvFlag(args.flags.repo) ?? undefined;
@@ -226,7 +226,10 @@ async function worktreeRemove(
 ): Promise<void> {
   const branch = args.positional[0];
   if (!branch) {
-    throw new CliError(ExitCodes.USAGE, 'Usage: condash worktrees remove <branch> [--repo <r>...]');
+    throw new CliError(
+      ExitCodes.USAGE,
+      'Usage: condash-cli worktrees remove <branch> [--repo <r>...]',
+    );
   }
   const repos = parseCsvFlag(args.flags.repo) ?? undefined;
   delete args.flags.repo;
@@ -256,7 +259,7 @@ function formatRemoveResult(result: RemoveResult): string {
 function printWorktreesHelp(): void {
   process.stdout.write(
     [
-      'condash worktrees <verb> [args]',
+      'condash-cli worktrees <verb> [args]',
       '',
       'Verbs:',
       '  list             Repos with their worktrees (alias of repos list --include-worktrees).',
@@ -380,7 +383,7 @@ export async function runDirty(
   if (verb === 'touch') {
     const tree = args.positional[0];
     if (tree !== 'projects' && tree !== 'knowledge') {
-      throw new CliError(ExitCodes.USAGE, 'Usage: condash dirty touch <projects|knowledge>');
+      throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli dirty touch <projects|knowledge>');
     }
     assertNoExtraFlags(args);
     await touchDirtyMarker(conceptionPath, tree);
@@ -391,7 +394,10 @@ export async function runDirty(
   if (verb === 'clear') {
     const which = args.positional[0];
     if (which !== 'projects' && which !== 'knowledge' && which !== 'all') {
-      throw new CliError(ExitCodes.USAGE, 'Usage: condash dirty clear <projects|knowledge|all>');
+      throw new CliError(
+        ExitCodes.USAGE,
+        'Usage: condash-cli dirty clear <projects|knowledge|all>',
+      );
     }
     assertNoExtraFlags(args);
     const targets = which === 'all' ? ['projects', 'knowledge'] : [which];
@@ -448,7 +454,7 @@ export async function runConfig(
   }
   if (verb === 'get') {
     const key = args.positional[0];
-    if (!key) throw new CliError(ExitCodes.USAGE, 'Usage: condash config get <key>');
+    if (!key) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli config get <key>');
     assertNoExtraFlags(args);
     const path = join(conceptionPath, 'configuration.json');
     const raw = await fs.readFile(path, 'utf8');

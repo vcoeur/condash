@@ -11,7 +11,7 @@ import { pathExists } from './fs-helpers';
  * README from the canonical template, mkdir's `notes/`, touches the dirty
  * marker, and reports what was created.
  *
- * Shared between `condash projects create` (the CLI verb) and the Electron
+ * Shared between `condash-cli projects create` (the CLI verb) and the Electron
  * main process's `createProject` IPC so the GUI's "+ New project" button
  * writes byte-identical files to the CLI. The previous home was
  * `src/cli/commands/projects.ts`, but main was importing it — inverted

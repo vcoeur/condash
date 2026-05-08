@@ -15,7 +15,7 @@
  *  - `index`      — every directory under `knowledge/` carries an `index.md`
  *                   listing its children; flag dangling and orphan entries.
  *
- * Stamps live in `condash knowledge verify` — not duplicated here. The audit
+ * Stamps live in `condash-cli knowledge verify` — not duplicated here. The audit
  * verb composes that one too via the same envelope.
  *
  * Pure read-only. Returns `{summary, issues[]}` so the CLI can either pretty-
@@ -333,7 +333,7 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
         severity: 'warn',
         file: relative(conceptionPath, idx),
         line: null,
-        message: `Directory has no index.md — run condash knowledge index`,
+        message: `Directory has no index.md — run condash-cli knowledge index`,
       });
       continue;
     }
@@ -388,7 +388,7 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
           severity: 'warn',
           file: rel,
           line: null,
-          message: `Body file not referenced from ${relative(conceptionPath, d)}/index.md — run condash knowledge index`,
+          message: `Body file not referenced from ${relative(conceptionPath, d)}/index.md — run condash-cli knowledge index`,
           fix: { action: 'run_knowledge_index', path: rel },
         });
       }

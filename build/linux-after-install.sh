@@ -15,9 +15,6 @@
 # kernel still applies userns when permitted and the SUID binary is harmless
 # otherwise.
 #
-# See knowledge/topics/ops/electron-appimage-no-sandbox.md in the conception
-# repo for the full failure analysis.
-
 if type update-alternatives 2>/dev/null >&1; then
     # Remove previous link if it doesn't use update-alternatives
     if [ -L '/usr/bin/${executable}' -a -e '/usr/bin/${executable}' -a "`readlink '/usr/bin/${executable}'`" != '/etc/alternatives/${executable}' ]; then
@@ -27,6 +24,13 @@ if type update-alternatives 2>/dev/null >&1; then
 else
     ln -sf '/opt/${sanitizedProductName}/${executable}' '/usr/bin/${executable}'
 fi
+
+# CLI companion: from v2.14.0 the GUI (condash) and the CLI (condash-cli)
+# are two separate entries on PATH. Both point at wrappers under
+# /opt/<sanitizedProductName>/ that share a body and dispatch on argv0.
+# Plain ln -sf — update-alternatives isn't useful here because no other
+# package provides condash-cli.
+ln -sf '/opt/${sanitizedProductName}/condash-cli' '/usr/bin/condash-cli'
 
 chmod 4755 '/opt/${sanitizedProductName}/chrome-sandbox' || true
 

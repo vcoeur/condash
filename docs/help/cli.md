@@ -1,11 +1,12 @@
 # CLI overview
 
-The same `condash` binary that opens the dashboard also serves a
-command-line interface. Invoke it with a known noun and the GUI is
-skipped — output goes straight to stdout.
+`condash-cli` is the command-line companion to the desktop dashboard. The
+.deb / AppImage / DMG / NSIS installers drop both binaries — `condash`
+opens the dashboard, `condash-cli` runs against the same conception tree
+from a terminal.
 
 ```
-condash <noun> <verb> [args] [--flags]
+condash-cli <noun> <verb> [args] [--flags]
 ```
 
 ## Top-level
@@ -13,8 +14,8 @@ condash <noun> <verb> [args] [--flags]
 | Invocation | What it does |
 |---|---|
 | `condash` | Launch the dashboard |
-| `condash --help` | Top-level CLI help |
-| `condash --version` | Print version |
+| `condash-cli --help` | Top-level CLI help |
+| `condash-cli --version` | Print version |
 
 ## Nouns
 
@@ -22,13 +23,13 @@ condash <noun> <verb> [args] [--flags]
 |---|---|
 | `projects` | `list`, `read`, `search`, `validate`, `status get/set`, `close` |
 | `knowledge` | `tree`, `verify`, `retrieve`, `stamp` |
-| `search` | `condash search "<query>" [--scope all\|projects\|knowledge]` |
+| `search` | `condash-cli search "<query>" [--scope all\|projects\|knowledge]` |
 | `repos` | `list [--include-worktrees]` |
 | `worktrees` | `list`, `setup <branch>`, `remove <branch>`, `check <branch>` |
 | `dirty` | `list`, `touch <tree>`, `clear <tree\|all>` |
 | `skills` | `list`, `install`, `status` |
 | `config` | `conception-path [<path>]`, `list`, `get <key>` |
-| `help` | `condash help <noun>` |
+| `help` | `condash-cli help <noun>` |
 
 ## Universal flags
 
@@ -44,19 +45,19 @@ condash <noun> <verb> [args] [--flags]
 
 ```bash
 # What's currently active?
-condash projects list --status now,review
+condash-cli projects list --status now,review
 
 # Search both trees for a phrase.
-condash search "session cookie"
+condash-cli search "session cookie"
 
 # Resolve a slug, then edit the README.
-$EDITOR "$(condash projects resolve my-feature)"/README.md
+$EDITOR "$(condash-cli projects resolve my-feature)"/README.md
 
 # Validate every item.
-condash projects validate --all
+condash-cli projects validate --all
 
 # Pipe to jq.
-condash projects list --json | jq '.data[] | select(.kind == "incident")'
+condash-cli projects list --json | jq '.data[] | select(.kind == "incident")'
 ```
 
 ## Exit codes

@@ -27,11 +27,15 @@ asarUnpack:
   - dist-cli/**/*
   - conception-template/**/*
 
-# Linux-only: wrap the Electron binary with a bash launcher that exports
-# ELECTRON_OZONE_PLATFORM_HINT=wayland when XDG_SESSION_TYPE=wayland. Without
-# this, the packaged AppImage / .deb falls back to XWayland and renders blurry
-# on fractional-scaled monitors. See build/after-pack.cjs for the full why +
-# projects/2026-04/2026-04-29-condash-appimage-wayland-env/.
+# Per-platform launcher wiring. See build/after-pack.cjs for the full why.
+# Two responsibilities:
+#   1. Linux: wrap the Electron binary with a bash launcher that exports
+#      ELECTRON_OZONE_PLATFORM_HINT=wayland on Wayland sessions before
+#      Chromium's C++ early-init reads it (otherwise the AppImage falls back
+#      to XWayland and renders blurry on fractional-scaled monitors).
+#   2. Every platform: drop a `condash-cli` companion launcher next to the
+#      GUI binary so the CLI surface is reachable without going through
+#      `condash` (which is GUI-only from v2.14.0).
 afterPack: build/after-pack.cjs
 
 # Auto-update channel: latest*.yml is uploaded next to the bundles in the

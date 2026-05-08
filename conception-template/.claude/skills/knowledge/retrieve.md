@@ -10,7 +10,7 @@ Read-only lookup over the `knowledge/` tree. Two flavours:
 Trigger: `/knowledge retrieve <query>`, or any "check knowledge for …" ask.
 
 ```bash
-condash knowledge retrieve "<query>" --mode both --json
+condash-cli knowledge retrieve "<query>" --mode both --json
 ```
 
 The CLI walks `knowledge/index.md` and the matching subdir indexes, scoring each entry's keyword tags + description against the query, and falls through to a body-file grep when triage returns zero matches. Returns:
@@ -38,7 +38,7 @@ Non-exhaustive triggers — always consult `knowledge/` before editing or advisi
 Trigger: `/knowledge retrieve grep <pattern>` or when the triage walk comes back empty.
 
 ```bash
-condash knowledge retrieve "<pattern>" --mode grep --json
+condash-cli knowledge retrieve "<pattern>" --mode grep --json
 ```
 
 Skips the index walk and goes straight to a body-file grep (excluding `index.md` files — those are pointers, not sources). Report `<subdir>/<file>:<line>: <snippet>` per match. Open the strongest match and quote the relevant passage back to the user.

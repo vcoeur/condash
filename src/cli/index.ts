@@ -16,7 +16,7 @@ import { runTemplates } from './commands/templates';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
-const TOP_HELP = `condash <noun> <verb> [args] [--flags]
+const TOP_HELP = `condash-cli <noun> <verb> [args] [--flags]
 
 Nouns:
   projects     list, read, resolve, search, validate, status get|set, close,
@@ -30,7 +30,7 @@ Nouns:
   skills       list shipped skills; install [<name>...]; status
   templates    list shipped templates; install [<path>...]; status
   config       conception-path, list, get <key>
-  help         this message; or 'condash help <noun>' for verbs
+  help         this message; or 'condash-cli help <noun>' for verbs
 
 Universal flags:
   --conception <path>   Override conception root.
@@ -87,7 +87,7 @@ async function main(): Promise<number> {
   };
 
   if (universal.version) {
-    process.stdout.write(`condash ${VERSION}\n`);
+    process.stdout.write(`condash-cli ${VERSION}\n`);
     return ExitCodes.OK;
   }
 

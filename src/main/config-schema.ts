@@ -14,14 +14,14 @@ const repoEntry: z.ZodType<RawRepo> = z.lazy(() =>
         label: z.string().min(1).optional(),
         run: z.string().optional(),
         force_stop: z.string().optional(),
-        /** Install command run after `condash worktrees setup` creates the
+        /** Install command run after `condash-cli worktrees setup` creates the
          *  worktree. Applied unconditionally when set (#87) — pass
          *  `--no-install` on the CLI to skip. */
         install: z.string().optional(),
         /** Pin: keep this repo on a fixed branch; `worktrees setup` skips it. */
         pinned_branch: z.string().optional(),
         /** Files to copy from the primary checkout into a new worktree on
-         *  `condash worktrees setup`. Applied unconditionally when present —
+         *  `condash-cli worktrees setup`. Applied unconditionally when present —
          *  no flag needed. Default empty → no copy. Closes #82. */
         env: z.array(z.string().min(1)).optional(),
         submodules: z.array(repoEntry).optional(),

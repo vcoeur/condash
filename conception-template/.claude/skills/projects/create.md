@@ -25,7 +25,7 @@ Trigger: `/projects create <kind>` with kind ∈ {`project`, `incident`, `docume
 3. **Shell out:**
 
    ```bash
-   condash projects create \
+   condash-cli projects create \
      --kind <project|incident|document> \
      --slug <slug> \
      --title "<Title>" \
@@ -45,7 +45,7 @@ Trigger: `/projects create <kind>` with kind ∈ {`project`, `incident`, `docume
 
    On success, parse the envelope's `data.path` and `data.relPath`.
 
-4. **Worktree check.** If `**Branch**` was provided, run `condash worktrees check <branch> --json`:
+4. **Worktree check.** If `**Branch**` was provided, run `condash-cli worktrees check <branch> --json`:
    - If `data.repos[].worktreeExists` is true everywhere expected, remind the user that code edits go through the worktree paths.
    - Otherwise, offer `/projects worktree setup <branch>`.
 

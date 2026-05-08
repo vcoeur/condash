@@ -47,15 +47,12 @@ import type {
 } from '../shared/types';
 import { statusOrder } from '../shared/projects';
 
-// CLI dispatch — when invoked with a known noun (e.g. `condash projects list`),
-// short-circuit the GUI and route through the CLI bundle instead. The packaged
-// `condash` binary on PATH is the same launcher whether the user wants the
-// dashboard or a CLI call; detecting here means a deb / AppImage install
-// works for both without a separate `condash-cli` binary.
-//
-// Detection rule: scan args for the first non-flag token; if it's a CLI noun,
-// we're in CLI mode. Electron's own switches (--no-sandbox, --enable-features
-// from afterPack, …) start with `-` and are skipped.
+// Hard flip from v2.14.0: CLI nouns belong on `condash-cli`, not `condash`.
+// If a user types a CLI noun on `condash`, error before any GUI init so the
+// migration is loud, not silent. The packaged `condash-cli` launcher
+// (build/after-pack.cjs) runs the same Electron binary in plain-Node mode
+// (ELECTRON_RUN_AS_NODE=1) against the bundled `dist-cli/condash.cjs`, so
+// it never reaches this file.
 const CLI_NOUNS: ReadonlySet<string> = new Set([
   'projects',
   'knowledge',
@@ -69,38 +66,30 @@ const CLI_NOUNS: ReadonlySet<string> = new Set([
   'config',
   'help',
 ]);
-function isCliInvocation(): boolean {
+function detectCliMisuse(): string | null {
   for (let i = 1; i < process.argv.length; i++) {
     const arg = process.argv[i];
     if (!arg) continue;
-    // Top-level --help / --version / short forms are CLI signals — they
-    // should print the CLI's help/version text, not open the GUI.
     if (arg === '--help' || arg === '-h' || arg === '--version' || arg === '-v') {
-      return true;
+      return arg;
     }
     if (arg.startsWith('-')) continue;
-    return CLI_NOUNS.has(arg);
+    return CLI_NOUNS.has(arg) ? arg : null;
   }
-  return false;
+  return null;
 }
-const IS_CLI = isCliInvocation();
-if (IS_CLI) {
-  // dist-cli/condash.cjs is a sibling of dist-electron/. From this file
-  // (dist-electron/main/index.js post-build), `../../dist-cli/condash.cjs`
-  // resolves to that bundle in both dev and packaged builds. The CLI sets
-  // process.exitCode itself when its async dispatcher resolves; we leave
-  // node running until the promise settles, and we gate every Electron-
-  // side-effect block below on !IS_CLI so no window ever opens.
-  //
-  // The require path is constructed at runtime — a literal
-  // `require('../../dist-cli/condash.cjs')` would be statically followed
-  // by esbuild and the entire CLI bundle would be inlined into this main
-  // bundle, which (a) doubles the file size and (b) breaks every
-  // `__dirname`-based lookup inside the CLI (the CLI walks up from its
-  // own __dirname to find conception-template/, so it must be loaded
-  // from its own file).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require(`${__dirname}/../../dist-cli/condash.cjs`);
+const cliMisuse = detectCliMisuse();
+if (cliMisuse !== null) {
+  const hint =
+    cliMisuse === '--help' || cliMisuse === '-h'
+      ? 'condash-cli help'
+      : cliMisuse === '--version' || cliMisuse === '-v'
+        ? 'condash-cli --version'
+        : `condash-cli ${cliMisuse}`;
+  process.stderr.write(
+    `condash: '${cliMisuse}' is a CLI command, not a GUI option.\n` + `Use \`${hint}\` instead.\n`,
+  );
+  process.exit(1);
 }
 
 // Wayland fractional-scaling fix.
@@ -123,7 +112,7 @@ if (IS_CLI) {
 // integer scale (Chromium then renders at that scale and the compositor
 // down-scales) — useful as a last-ditch escape if a specific compositor still
 // renders blurry.
-if (!IS_CLI && process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland') {
+if (process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland') {
   // Strongly prefer native Wayland over XWayland — XWayland always blits at
   // integer scale, which produces blurry text on fractional-scaled monitors
   // (1.25, 1.5, …). The `wayland` hint (vs. `auto`) is more reliable in
@@ -137,7 +126,7 @@ if (!IS_CLI && process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 
     'UseOzonePlatform,WaylandFractionalScaleV1,WaylandWindowDecorations',
   );
 }
-const forcedScale = !IS_CLI ? process.env.CONDASH_FORCE_DEVICE_SCALE_FACTOR : undefined;
+const forcedScale = process.env.CONDASH_FORCE_DEVICE_SCALE_FACTOR;
 if (forcedScale) {
   app.commandLine.appendSwitch('force-device-scale-factor', forcedScale);
 }
@@ -148,14 +137,12 @@ if (forcedScale) {
 // under our CSP. The custom scheme is restricted to files inside the active
 // conception path and is the only way relative-path images surface in note
 // view. See `renderMarkdown` for the matching renderer-side rewrite.
-if (!IS_CLI) {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: 'condash-file',
-      privileges: { standard: true, supportFetchAPI: true, secure: true, bypassCSP: false },
-    },
-  ]);
-}
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'condash-file',
+    privileges: { standard: true, supportFetchAPI: true, secure: true, bypassCSP: false },
+  },
+]);
 
 const DEV_URL = 'http://localhost:5600';
 // Treat the build as "dev" when not packaged AND not explicitly forced into
@@ -464,7 +451,7 @@ function buildBranchWarning(
     const repos = lingeringBranches.map((r) => r.name).join(', ');
     parts.push(`local branch '${branch}' still exists in ${repos}`);
   }
-  return `${parts.join('; ')} — run \`condash worktrees remove ${branch}\` then \`git branch -d ${branch}\` to clean up.`;
+  return `${parts.join('; ')} — run \`condash-cli worktrees remove ${branch}\` then \`git branch -d ${branch}\` to clean up.`;
 }
 
 async function getProject(path: string): Promise<Project | null> {
@@ -692,7 +679,7 @@ function registerIpc(): void {
     'setStatus',
     async (_, path: string, newStatus: string, opts?: { summary?: string }) => {
       const result = await transitionStatus(path, newStatus, opts);
-      // Touch the dirty marker so a follow-up `condash projects index` is
+      // Touch the dirty marker so a follow-up `condash-cli projects index` is
       // surfaced. Best-effort: if the conception path isn't set we just
       // skip it — the in-memory list rebuild still happens via the watcher.
       const { conceptionPath } = await readSettings();
@@ -782,50 +769,47 @@ function registerIpc(): void {
   });
 }
 
-if (!IS_CLI)
-  app.whenReady().then(async () => {
-    registerIpc();
-    registerNoteAssetProtocol();
-    // One-shot: copy any pre-existing terminal block out of configuration.json
-    // and into settings.json. Idempotent — does nothing once settings owns
-    // the data. Runs before window creation so the renderer's first
-    // term.getPrefs always sees the post-migration state.
-    await migrateTerminalFromConfigIfNeeded();
-    const { conceptionPath, layout } = await readSettings();
-    await setWatchedConception(conceptionPath);
-    buildMenu(layout ?? DEFAULT_LAYOUT);
-    mainWindow = await createWindow(conceptionPath);
-    mainWindow.on('closed', () => {
-      mainWindow = null;
-    });
-
-    app.on('activate', async () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        const settings = await readSettings();
-        mainWindow = await createWindow(settings.conceptionPath);
-        mainWindow.on('closed', () => {
-          mainWindow = null;
-        });
-      }
-    });
-
-    // Auto-update is disabled. The dashboard is installed/upgraded
-    // out-of-band (apt / dpkg / make install) so the in-app updater would
-    // race against the system package manager; left here as a no-op so
-    // electron-updater stays a tracked dependency without firing on launch.
+app.whenReady().then(async () => {
+  registerIpc();
+  registerNoteAssetProtocol();
+  // One-shot: copy any pre-existing terminal block out of configuration.json
+  // and into settings.json. Idempotent — does nothing once settings owns
+  // the data. Runs before window creation so the renderer's first
+  // term.getPrefs always sees the post-migration state.
+  await migrateTerminalFromConfigIfNeeded();
+  const { conceptionPath, layout } = await readSettings();
+  await setWatchedConception(conceptionPath);
+  buildMenu(layout ?? DEFAULT_LAYOUT);
+  mainWindow = await createWindow(conceptionPath);
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
 
-if (!IS_CLI) {
-  app.on('window-all-closed', () => {
-    void killAll();
-    if (process.platform !== 'darwin') app.quit();
+  app.on('activate', async () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const settings = await readSettings();
+      mainWindow = await createWindow(settings.conceptionPath);
+      mainWindow.on('closed', () => {
+        mainWindow = null;
+      });
+    }
   });
 
-  // Cmd-Q on macOS bypasses window-all-closed; before-quit covers it. Linux/
-  // Windows hit before-quit too, so killAll runs idempotent-cheap on the
-  // already-empty session map there.
-  app.on('before-quit', () => {
-    void killAll();
-    void disposeRepoWatchers();
-  });
-}
+  // Auto-update is disabled. The dashboard is installed/upgraded
+  // out-of-band (apt / dpkg / make install) so the in-app updater would
+  // race against the system package manager; left here as a no-op so
+  // electron-updater stays a tracked dependency without firing on launch.
+});
+
+app.on('window-all-closed', () => {
+  void killAll();
+  if (process.platform !== 'darwin') app.quit();
+});
+
+// Cmd-Q on macOS bypasses window-all-closed; before-quit covers it. Linux/
+// Windows hit before-quit too, so killAll runs idempotent-cheap on the
+// already-empty session map there.
+app.on('before-quit', () => {
+  void killAll();
+  void disposeRepoWatchers();
+});

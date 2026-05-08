@@ -1,5 +1,5 @@
 ---
-allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(condash *), Bash(git -C * rev-parse *), Bash(git -C * status*)
+allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(condash-cli *), Bash(git -C * rev-parse *), Bash(git -C * status*)
 description: "Manage the conception knowledge/ tree — durable reference material for this workspace. Actions: retrieve (search + triage walk), update (add/edit a body file with citation + stamp rules), index (regenerate every knowledge/**/index.md), verify (audit stale verification stamps + tree audits). Every mechanical step shells out to `condash`. Invoke as /knowledge <action>."
 ---
 
@@ -22,7 +22,7 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 | `index`     | `/knowledge index`                   | [index.md](index.md)       |
 | `verify`    | `/knowledge verify`                  | [verify.md](verify.md)     |
 
-For a one-off lookup or a small edit to a file you already know, use `Read` and `Edit` directly. The `condash knowledge stamp` verb (described under "Verification stamps" below) is also callable on its own when refreshing a single fact's `**Verified:**` line.
+For a one-off lookup or a small edit to a file you already know, use `Read` and `Edit` directly. The `condash-cli knowledge stamp` verb (described under "Verification stamps" below) is also callable on its own when refreshing a single fact's `**Verified:**` line.
 
 ## Core rules
 
@@ -36,7 +36,7 @@ These are the contract every `/knowledge` action enforces:
   **Verified:** YYYY-MM-DD <where>
   ```
 
-  `<where>` is one of `<app>@<shortsha>` (optionally `on <branch>`), `<conception-path>`, or `<name>: <url>`. For external state without a SHA, append `HH:MM UTC` when intra-day drift matters. The CLI writes this idempotently — `condash knowledge stamp <path> --where <where>` replaces an existing stamp or inserts a new one.
+  `<where>` is one of `<app>@<shortsha>` (optionally `on <branch>`), `<conception-path>`, or `<name>: <url>`. For external state without a SHA, append `HH:MM UTC` when intra-day drift matters. The CLI writes this idempotently — `condash-cli knowledge stamp <path> --where <where>` replaces an existing stamp or inserts a new one.
 
 - **Cross-link.** Body files link to the `projects/` items that produced them; items link back via `## Notes`.
 - **Don't duplicate app internals.** Single-app details belong in that app's own `CLAUDE.md`. `knowledge/internal/<app>.md` carries conception-side knowledge only.
@@ -59,7 +59,7 @@ These are the contract every `/knowledge` action enforces:
 
 Every `knowledge/**/index.md` lists every immediate `.md` file (except itself) and every immediate subdirectory. Entry shape: link, italic one-line description, backticked keyword tag list. Hand-written sections (intro, group headings, root rules) are preserved verbatim. Curated descriptions and tag sets survive across `/knowledge index` runs.
 
-`/knowledge index` runs `condash knowledge index` — see [index.md](index.md).
+`/knowledge index` runs `condash-cli knowledge index` — see [index.md](index.md).
 
 ## Stamp refresh
 

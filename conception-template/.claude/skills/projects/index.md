@@ -9,7 +9,7 @@ Trigger: `/projects index`.
 1. **Run:**
 
    ```bash
-   condash projects index --json
+   condash-cli projects index --json
    ```
 
    Pass `--dry-run` to inspect without writing.
