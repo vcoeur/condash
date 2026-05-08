@@ -18,13 +18,11 @@ for the split.
 {
   "workspace_path": "/home/you/src",
   "worktrees_path": "/home/you/src/worktrees",
-  "repositories": {
-    "primary": [
-      "condash",
-      { "name": "myapp", "run": "make dev" }
-    ],
-    "secondary": ["conception"]
-  },
+  "repositories": [
+    "condash",
+    { "name": "myapp", "run": "make dev" },
+    "conception"
+  ],
   "open_with": {
     "main_ide": { "label": "Open in IDE", "command": "code {path}" }
   }
@@ -37,7 +35,7 @@ for the split.
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
 | `resources_path` | Folder backing the Resources pane. Default `resources`. |
 | `skills_path` | Folder backing the Skills pane. Default `.claude/skills`. |
-| `repositories.primary` / `.secondary` | Repos to surface on the Code pane. Each entry is a string or an object with `name`, optional `submodules`, `run`, `force_stop`, `label`. |
+| `repositories` | Flat ordered list of repos to surface on the Code pane. Each entry is a string or an object with `name`, optional `submodules`, `run`, `force_stop`, `label`. |
 | `open_with` | Three launcher slots (`main_ide`, `secondary_ide`, `terminal`) — tree-side so teammates pick them up automatically. `{path}` is replaced with the absolute target path. |
 
 A repo entry's `run` wires up an inline dev-server runner; `force_stop`
@@ -88,8 +86,7 @@ grouped by which file it writes to.
 
 - **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
   `skills_path`.
-- **Repositories** — primary / secondary list, per-repo `run` /
-  `force_stop`.
+- **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 - **Open with** — slot labels and commands.
 
 Power users can hit **Open configuration.json externally** in the

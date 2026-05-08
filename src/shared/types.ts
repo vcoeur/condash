@@ -266,8 +266,6 @@ export interface RepoEntry {
   label?: string;
   /** Absolute path on disk. */
   path: string;
-  /** primary | secondary — matches the configuration.json layout. */
-  kind: 'primary' | 'secondary';
   /** When set, this entry is a submodule of the named parent repo. */
   parent?: string;
   /** Count of modified+staged+untracked files; null if git status couldn't run. */

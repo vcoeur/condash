@@ -23,20 +23,18 @@ The runner is opt-in per repo and per sub-repo. Declare it in [`configuration.js
 
 ```json
 {
-  "repositories": {
-    "primary": [
-      "conception",
-      { "name": "notes.vcoeur.com", "run": "make dev" },
-      {
-        "name": "helio",
-        "run": "cargo watch -x run",
-        "submodules": [
-          { "name": "apps/web", "run": "npm --prefix apps/web run dev" },
-          "apps/api"
-        ]
-      }
-    ]
-  }
+  "repositories": [
+    "conception",
+    { "name": "notes.vcoeur.com", "run": "make dev" },
+    {
+      "name": "helio",
+      "run": "cargo watch -x run",
+      "submodules": [
+        { "name": "apps/web", "run": "npm --prefix apps/web run dev" },
+        "apps/api"
+      ]
+    }
+  ]
 }
 ```
 

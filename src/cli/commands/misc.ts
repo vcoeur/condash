@@ -343,11 +343,8 @@ export async function runRepos(
       const data = d as typeof repos;
       if (data.length === 0) return '(no repos configured)\n';
       return (
-        data
-          .map(
-            (r) => `${r.kind.padEnd(9)}  ${r.name.padEnd(24)}  ${r.missing ? '(missing)' : r.path}`,
-          )
-          .join('\n') + '\n'
+        data.map((r) => `${r.name.padEnd(24)}  ${r.missing ? '(missing)' : r.path}`).join('\n') +
+        '\n'
       );
     });
     return;

@@ -170,11 +170,8 @@ export function SettingsModal(props: {
     }
     mutator(parsedConfig);
     const pruned = pruneEmpty(parsedConfig) as RawConfig;
-    if (pruned.repositories?.primary) {
-      pruned.repositories.primary = compactRepos(pruned.repositories.primary);
-    }
-    if (pruned.repositories?.secondary) {
-      pruned.repositories.secondary = compactRepos(pruned.repositories.secondary);
+    if (pruned.repositories) {
+      pruned.repositories = compactRepos(pruned.repositories);
     }
     const next = JSON.stringify(pruned, null, 2) + '\n';
     if (next === text) return;
@@ -296,32 +293,21 @@ export function SettingsModal(props: {
 
   // --- Repositories ----------------------------------------------------
 
-  type RepoBucket = 'primary' | 'secondary';
+  const repos = (): RawRepo[] => parsed().repositories ?? [];
 
-  const repos = (bucket: RepoBucket): RawRepo[] => parsed().repositories?.[bucket] ?? [];
-
-  const updateRepos = (
-    bucket: RepoBucket,
-    mutate: (entries: RawRepo[]) => RawRepo[],
-  ): Promise<void> =>
+  const updateRepos = (mutate: (entries: RawRepo[]) => RawRepo[]): Promise<void> =>
     patchConfig((c) => {
-      const repositories = (c.repositories ?? {}) as {
-        primary?: RawRepo[];
-        secondary?: RawRepo[];
-      };
-      const current = (repositories[bucket] ?? []).slice();
-      repositories[bucket] = mutate(current);
-      c.repositories = repositories;
+      const current = (c.repositories ?? []).slice();
+      c.repositories = mutate(current);
     });
 
-  const addRepo = (bucket: RepoBucket): Promise<void> =>
-    updateRepos(bucket, (entries) => [...entries, { name: '' }]);
+  const addRepo = (): Promise<void> => updateRepos((entries) => [...entries, { name: '' }]);
 
-  const removeRepo = (bucket: RepoBucket, index: number): Promise<void> =>
-    updateRepos(bucket, (entries) => entries.filter((_, i) => i !== index));
+  const removeRepo = (index: number): Promise<void> =>
+    updateRepos((entries) => entries.filter((_, i) => i !== index));
 
-  const moveRepo = (bucket: RepoBucket, index: number, delta: -1 | 1): Promise<void> =>
-    updateRepos(bucket, (entries) => {
+  const moveRepo = (index: number, delta: -1 | 1): Promise<void> =>
+    updateRepos((entries) => {
       const target = index + delta;
       if (target < 0 || target >= entries.length) return entries;
       const next = entries.slice();
@@ -330,12 +316,8 @@ export function SettingsModal(props: {
       return next;
     });
 
-  const updateRepoEntry = (
-    bucket: RepoBucket,
-    index: number,
-    patch: (entry: RawRepo) => RawRepo,
-  ): Promise<void> =>
-    updateRepos(bucket, (entries) => entries.map((e, i) => (i === index ? patch(e) : e)));
+  const updateRepoEntry = (index: number, patch: (entry: RawRepo) => RawRepo): Promise<void> =>
+    updateRepos((entries) => entries.map((e, i) => (i === index ? patch(e) : e)));
 
   // --- Open with -------------------------------------------------------
 
@@ -919,32 +901,27 @@ export function SettingsModal(props: {
                 <code>submodules</code>. <code>env</code> lists files copied from the primary into a
                 new worktree on <code>condash worktrees setup</code>.
               </p>
-              <For each={['primary', 'secondary'] as const}>
-                {(bucket) => (
-                  <div class="settings-bucket">
-                    <h3>{bucket === 'primary' ? 'Primary' : 'Secondary'}</h3>
-                    <For each={repos(bucket)}>
-                      {(entry, index) => (
-                        <RepoRow
-                          entry={entry}
-                          idPrefix={`repo.${bucket}[${index()}]`}
-                          index={index()}
-                          total={repos(bucket).length}
-                          bindText={bindText}
-                          onMove={(delta) => void moveRepo(bucket, index(), delta)}
-                          onRemove={() => void removeRepo(bucket, index())}
-                          onPatch={(next) => updateRepoEntry(bucket, index(), () => next)}
-                        />
-                      )}
-                    </For>
-                    <div class="settings-list-actions">
-                      <button class="modal-button" onClick={() => void addRepo(bucket)}>
-                        + Add repo
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </For>
+              <div class="settings-bucket">
+                <For each={repos()}>
+                  {(entry, index) => (
+                    <RepoRow
+                      entry={entry}
+                      idPrefix={`repo[${index()}]`}
+                      index={index()}
+                      total={repos().length}
+                      bindText={bindText}
+                      onMove={(delta) => void moveRepo(index(), delta)}
+                      onRemove={() => void removeRepo(index())}
+                      onPatch={(next) => updateRepoEntry(index(), () => next)}
+                    />
+                  )}
+                </For>
+                <div class="settings-list-actions">
+                  <button class="modal-button" onClick={() => void addRepo()}>
+                    + Add repo
+                  </button>
+                </div>
+              </div>
             </section>
 
             {/* Open with ----------------------------------------------- */}

@@ -39,9 +39,7 @@ test('Code panel reflects git worktree add/remove without manual refresh', async
     extraConfig: {
       workspace_path: workspaceDir,
       worktrees_path: worktreeRoot,
-      repositories: {
-        primary: ['demo-repo'],
-      },
+      repositories: ['demo-repo'],
     },
   });
 

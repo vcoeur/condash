@@ -170,7 +170,7 @@ export interface RawConfig {
   worktrees_path?: string;
   resources_path?: string;
   skills_path?: string;
-  repositories?: { primary?: RawRepo[]; secondary?: RawRepo[] };
+  repositories?: RawRepo[];
   open_with?: Record<string, { label?: string; command?: string }>;
 }
 

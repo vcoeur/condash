@@ -1,46 +1,21 @@
 .repos-pane {
   flex: 1;
-  overflow-y: auto;
-  padding: 14px 18px 22px;
+  /* The pane itself does not scroll — it splits into a scrollable top
+   * region (.repos-pane-scroll) and a non-scrolling bottom dock
+   * (.code-runs-dock). Without this the inner scroller never clips. */
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 18px;
 }
 
-.repos-group {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.repos-group-header {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.repos-group-header .name {
-  color: var(--text);
-}
-
-.repos-group-header .count {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
-}
-
-.repos-group-header .rule {
+.repos-pane-scroll {
   flex: 1;
-  height: 1px;
-  background: var(--border);
+  /* Required for the flex parent to clip — otherwise the grid's
+   * intrinsic content size pushes overflow outside the pane. */
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px 18px;
 }
 
 .repos-grid {
@@ -55,12 +30,49 @@
   gap: 12px;
 }
 
+.code-runs-dock {
+  flex: 0 0 auto;
+  /* Cap the dock so an expanded xterm can't starve the repo list. The
+   * inner scroller takes over once content exceeds the cap. */
+  max-height: 50%;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding: 10px 18px 14px;
+}
+
+/* Empty when no sessions — keeps zero footprint via the inner <Show>. */
+.code-runs-dock:empty {
+  display: none;
+}
+
 .code-runs {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
+}
+
+.code-runs-header {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.code-runs-header .name {
+  color: var(--text);
+}
+
+.code-runs-header .count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
 }
 
 .code-runs-list {

@@ -5,13 +5,11 @@ test('Run on a configured repo spawns the run: command and emits its output', as
   const booted = await bootApp({
     extraConfig: {
       workspace_path: '/tmp',
-      repositories: {
-        // `echo` exits immediately; once the renderer's TerminalPane sees
-        // term.exit it auto-closes the tab via termClose, and termAttach
-        // then returns null because the session is gone. Trail with
-        // `sleep 5` so the pty is alive while the test polls for output.
-        primary: [{ name: '.', run: 'echo hi-from-runner; sleep 5' }],
-      },
+      // `echo` exits immediately; once the renderer's TerminalPane sees
+      // term.exit it auto-closes the tab via termClose, and termAttach
+      // then returns null because the session is gone. Trail with
+      // `sleep 5` so the pty is alive while the test polls for output.
+      repositories: [{ name: '.', run: 'echo hi-from-runner; sleep 5' }],
     },
   });
   try {
@@ -68,12 +66,10 @@ test('termClose tears down the process tree (parity-batch-7 Stop pipeline)', asy
   const booted = await bootApp({
     extraConfig: {
       workspace_path: '/tmp',
-      repositories: {
-        // `exec sleep 30` makes the pid we print *become* the sleep process —
-        // so if the kill only reaches the wrapping bash and not its child,
-        // the test harness will still see this pid alive after termClose.
-        primary: [{ name: '.', run: 'echo PID:$$; exec sleep 30' }],
-      },
+      // `exec sleep 30` makes the pid we print *become* the sleep process —
+      // so if the kill only reaches the wrapping bash and not its child,
+      // the test harness will still see this pid alive after termClose.
+      repositories: [{ name: '.', run: 'echo PID:$$; exec sleep 30' }],
     },
   });
   try {
@@ -105,9 +101,7 @@ test('spawning a second run for the same repo replaces the first', async () => {
   const booted = await bootApp({
     extraConfig: {
       workspace_path: '/tmp',
-      repositories: {
-        primary: [{ name: '.', run: 'echo PID:$$; exec sleep 30' }],
-      },
+      repositories: [{ name: '.', run: 'echo PID:$$; exec sleep 30' }],
     },
   });
   try {

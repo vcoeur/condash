@@ -445,9 +445,7 @@ function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupExtended>
   });
   // Re-walk the raw config to pick up `pinned_branch`, `install`, and `env`
   // (those aren't currently in the RepoLookup shape).
-  const primary = config.repositories?.primary ?? [];
-  const secondary = config.repositories?.secondary ?? [];
-  for (const raw of [...primary, ...secondary]) {
+  for (const raw of config.repositories ?? []) {
     if (typeof raw === 'string') continue;
     const lookup = map.get(raw.name);
     if (!lookup) continue;

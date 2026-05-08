@@ -5,8 +5,8 @@ import type { Worktree } from '../shared/types';
 
 /**
  * Current branch for a checkout, or null when HEAD is genuinely detached
- * (or the path is not inside a git repo). Used for sub-repos and secondary
- * repos that aren't queried via `git worktree list`.
+ * (or the path is not inside a git repo). Used for sub-repos and other
+ * checkouts that aren't queried via `git worktree list`.
  */
 export async function getCurrentBranch(repoPath: string): Promise<string | null> {
   try {

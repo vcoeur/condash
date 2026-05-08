@@ -7,9 +7,7 @@ import { getCurrentBranch, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
 import { pathExists } from './fs-helpers';
 
-interface FlatRepo extends RepoLookup {
-  kind: 'primary' | 'secondary';
-}
+type FlatRepo = RepoLookup;
 
 async function readConfig(conceptionPath: string): Promise<ConfigShape> {
   const path = join(conceptionPath, 'configuration.json');
@@ -24,8 +22,8 @@ async function readConfig(conceptionPath: string): Promise<ConfigShape> {
 
 function flatRepos(config: ConfigShape): FlatRepo[] {
   const flat: FlatRepo[] = [];
-  walkRepos(config, (entry, kind) => {
-    flat.push({ ...entry, kind });
+  walkRepos(config, (entry) => {
+    flat.push(entry);
   });
   return flat;
 }
@@ -73,7 +71,6 @@ async function buildEntry(
       name: entry.display,
       label: entry.label,
       path: toPosix(entry.cwd),
-      kind: entry.kind,
       parent: entry.parent,
       dirty: null,
       missing: true,
@@ -93,7 +90,6 @@ async function buildEntry(
     name: entry.display,
     label: entry.label,
     path: toPosix(entry.cwd),
-    kind: entry.kind,
     parent: entry.parent,
     dirty,
     missing: false,

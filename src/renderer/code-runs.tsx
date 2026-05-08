@@ -19,10 +19,9 @@ export function CodeRunRows(props: CodeRunRowsProps) {
   return (
     <Show when={props.sessions.length > 0}>
       <section class="code-runs">
-        <h2 class="repos-group-header">
+        <h2 class="code-runs-header">
           <span class="name">ACTIVE RUNS</span>
           <span class="count">{props.sessions.length}</span>
-          <span class="rule" />
         </h2>
         <div class="code-runs-list">
           <For each={props.sessions}>

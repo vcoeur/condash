@@ -9,7 +9,7 @@
 }
 
 /* Section header — same capsule + count + rule treatment used by the
- * Code-pane `.repos-group-header` so the three panes share one chrome
+ * Code-pane `.code-runs-header` so the three panes share one chrome
  * vocabulary. Defined locally here (rather than promoted to a shared
  * class) to keep pane-CSS changes scoped. The optional [INDEX] button
  * sits between the count and the rule. */
