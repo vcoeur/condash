@@ -78,8 +78,8 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
       join(conceptionPath, 'knowledge'),
       join(conceptionPath, resources),
       join(conceptionPath, skills),
+      join(conceptionPath, 'condash.json'),
       join(conceptionPath, 'configuration.json'),
-      join(conceptionPath, 'configuration.yml'),
       // Conception-level CLAUDE.md (root and `.claude/`). Surfaced as
       // synthetic skill entries so the Skills pane can open them — they
       // need to repaint the pane on edit, hence the explicit watches.
@@ -159,10 +159,11 @@ function classify(
   const conceptionP = toPosix(conception);
   const pathP = toPosix(path);
 
-  // Config files at the conception root.
+  // Config files at the conception root. Both filenames participate so
+  // an in-flight rename / hand-edit of either is reflected.
+  const condashJson = toPosix(join(conception, 'condash.json'));
   const configJson = toPosix(join(conception, 'configuration.json'));
-  const configYml = toPosix(join(conception, 'configuration.yml'));
-  if (pathP === configJson || pathP === configYml) {
+  if (pathP === condashJson || pathP === configJson) {
     return { kind: 'config', path };
   }
 

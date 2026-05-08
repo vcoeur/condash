@@ -241,10 +241,11 @@ export async function writeNote(
       throw new Error('File on disk has drifted; reload before saving');
     }
 
-    const finalContent =
-      basename(path) === 'configuration.json'
-        ? validateAndCanonicaliseConfig(newContent)
-        : newContent;
+    const baseName = basename(path);
+    const isConceptionConfig = baseName === 'condash.json' || baseName === 'configuration.json';
+    const finalContent = isConceptionConfig
+      ? validateAndCanonicaliseConfig(newContent)
+      : newContent;
     await atomicWrite(path, finalContent);
     return finalContent;
   });

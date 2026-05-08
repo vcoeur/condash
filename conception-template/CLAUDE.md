@@ -10,7 +10,7 @@ A **systems documentation tree**, not a code project. Everything here is Markdow
 - `/pr` — project-aware GitHub PR opener. Canonical rules: [`pr/SKILL.md`](.claude/skills/pr/SKILL.md).
 - `/skills` — pull condash-shipped skill updates. Canonical rules: [`skills/SKILL.md`](.claude/skills/skills/SKILL.md).
 - Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
-- [`configuration.json`](configuration.json) — workspace + preferences config read by condash.
+- [`condash.json`](condash.json) — per-conception overrides read by condash. Top-level keys here replace the matching keys in `~/.config/condash/settings.json`. Legacy filename `configuration.json` is still read as a fallback.
 
 ## Workflow
 

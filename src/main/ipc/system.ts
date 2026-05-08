@@ -3,7 +3,8 @@ import { promises as fs } from 'node:fs';
 import { basename, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { toPosix } from '../../shared/path';
-import { readSettings, updateSettings } from '../settings';
+import { prependRecent, readSettings, removeRecent, updateSettings } from '../settings';
+import { resolveConceptionConfigPath } from '../effective-config';
 import { detectConceptionState, initConception } from '../conception-init';
 import { setWatchedConception } from '../watcher';
 import { disposeRepoWatchers } from '../repo-watchers';
@@ -18,7 +19,13 @@ import { readHelpDoc } from '../help';
  * `onConceptionPicked` is invoked after the user picks a new conception
  * folder so main entry can refresh the window title.
  */
-export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => void }): void {
+export function registerSystemIpc(opts: {
+  onConceptionPicked: (path: string) => void;
+  onRecentsChange?: () => void;
+}): void {
+  const fireRecentsChange = (): void => {
+    opts.onRecentsChange?.();
+  };
   // openInEditor accepts an arbitrary path on purpose — this is the user's
   // "open this file in $EDITOR" affordance and the renderer hands it
   // whatever the user picked (resources file, sibling note, log line, …).
@@ -32,8 +39,20 @@ export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => 
   });
 
   ipcMain.handle('getConceptionPath', async () => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     return conceptionPath ? toPosix(conceptionPath) : null;
+  });
+
+  /**
+   * Path to the conception's editable config file. Prefers `condash.json`
+   * (canonical) and falls back to `configuration.json` for legacy trees.
+   * Returns the canonical path even when neither file exists, so a first
+   * save creates `condash.json`.
+   */
+  ipcMain.handle('getConceptionConfigPath', async () => {
+    const { lastConceptionPath: conceptionPath } = await readSettings();
+    if (!conceptionPath) return null;
+    return toPosix(await resolveConceptionConfigPath(conceptionPath));
   });
 
   ipcMain.handle('pdf.toFileUrl', async (_, path: string) => {
@@ -48,7 +67,7 @@ export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => 
     // the conception is as narrow as Promise.all allows — a symlink flip
     // mid-call is still possible in theory but the realpath result we
     // compare against is captured atomically per call.
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) {
       throw new Error('pdf.toFileUrl: no conception path is set');
     }
@@ -85,18 +104,68 @@ export function registerSystemIpc(opts: { onConceptionPicked: (path: string) => 
     if (result.canceled || result.filePaths.length === 0) return null;
 
     const picked = toPosix(result.filePaths[0]);
-    await updateSettings((cur) => ({ ...cur, conceptionPath: picked }));
+    await updateSettings((cur) => ({
+      ...cur,
+      lastConceptionPath: picked,
+      recentConceptionPaths: prependRecent(cur.recentConceptionPaths, picked),
+    }));
     // Tear down repo watchers from the previous conception before re-pointing
     // them; otherwise stale `repo-events` carry paths the renderer no longer
     // tracks until the next listRepos reconciles.
     await disposeRepoWatchers();
     await setWatchedConception(picked);
     opts.onConceptionPicked(picked);
+    fireRecentsChange();
     return picked;
   });
 
+  /**
+   * Switch the active conception to one of the recents (e.g. driven by the
+   * File → Open Recent menu). Same effect as `pickConceptionPath`'s success
+   * branch — promotes the picked path to the head of recents, swaps the
+   * watchers, broadcasts. Returns the path so the renderer can re-render
+   * against the new conception without a second `getConceptionPath` round-trip.
+   */
+  ipcMain.handle('openConception', async (_, path: string) => {
+    if (typeof path !== 'string' || path.length === 0) {
+      throw new Error('openConception: path must be a non-empty string');
+    }
+    const picked = toPosix(path);
+    await updateSettings((cur) => ({
+      ...cur,
+      lastConceptionPath: picked,
+      recentConceptionPaths: prependRecent(cur.recentConceptionPaths, picked),
+    }));
+    await disposeRepoWatchers();
+    await setWatchedConception(picked);
+    opts.onConceptionPicked(picked);
+    fireRecentsChange();
+    return picked;
+  });
+
+  ipcMain.handle('getRecentConceptionPaths', async () => {
+    const { recentConceptionPaths } = await readSettings();
+    return recentConceptionPaths;
+  });
+
+  ipcMain.handle('clearRecentConceptionPaths', async () => {
+    await updateSettings((cur) => ({ ...cur, recentConceptionPaths: [] }));
+    fireRecentsChange();
+  });
+
+  ipcMain.handle('removeRecentConceptionPath', async (_, path: string) => {
+    if (typeof path !== 'string' || path.length === 0) {
+      throw new Error('removeRecentConceptionPath: path must be a non-empty string');
+    }
+    await updateSettings((cur) => ({
+      ...cur,
+      recentConceptionPaths: removeRecent(cur.recentConceptionPaths, path),
+    }));
+    fireRecentsChange();
+  });
+
   ipcMain.handle('openConceptionDirectory', async () => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return;
     const error = await shell.openPath(conceptionPath);
     if (error) throw new Error(error);

@@ -55,9 +55,10 @@ When changing the dev port, update **every** file:
 
 ## Configuration
 
-- **Per-machine**: `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`. Owned by Electron's `app.getPath('userData')`, derived from `package.json`'s `name` field. JSON only — no YAML.
-- **Tree-level (post-MVP-0)**: `<conception>/configuration.json`. New file, JSON. Coexists with the Tauri build's `<conception>/configuration.yml` until Tauri is deprecated.
+- **Per-machine**: `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`. Owned by Electron's `app.getPath('userData')`, derived from `package.json`'s `name` field. JSON only. Sole owner of `lastConceptionPath` + `recentConceptionPaths` (cap 5); also carries global defaults for every workspace key.
+- **Per-conception**: `<conception>/condash.json`. JSON. Top-level keys here replace the matching keys in `settings.json` (top-level replace; arrays replace, objects replace whole). The legacy filename `configuration.json` is read indefinitely as a fallback; writes always target `condash.json`. The retired Tauri build's `<conception>/configuration.yml` reader has been removed.
 - `CONDASH_CONCEPTION_PATH` env var override: wired in both Electron (`src/main/settings.ts`) and CLI (`src/cli/conception.ts`). See [`docs/guides/configure-conception-path.md`](docs/guides/configure-conception-path.md) for the resolution chain.
+- The merge resolver lives in `src/main/effective-config.ts`. Every reader (`repos.ts`, `worktree-ops.ts`, `launchers.ts`, `audit.ts`, `terminals.ts`, `conception-paths.ts`, the CLI's `config` verbs) goes through it.
 
 ## Sandbox: dev vs. production
 
@@ -86,7 +87,7 @@ macOS and Windows are unaffected.
 - **Public site**: [`condash.vcoeur.com`](https://condash.vcoeur.com) — built from `docs/` + `mkdocs.yml` by `.github/workflows/docs.yml` on every published release. Includes a signed apt repo at `condash.vcoeur.com/apt/`, indexed against the **most-recent `APT_HISTORY` releases** (5 by default; tune in `docs.yml` env). Older `.deb` assets stay reachable from each release's GitHub page; only the apt index is windowed.
 - [`docs/index.md`](docs/index.md) — landing page of both the in-app Help menu and the public mkdocs site.
 - [`docs/explanation/internals.md`](docs/explanation/internals.md) — invariants: drift checks, atomic writes, write queue, TTL cache, pty kill pipeline, IPC contract.
-- [`docs/reference/config.md`](docs/reference/config.md) — `configuration.json` + `settings.json` schema + per-key reference.
+- [`docs/reference/config.md`](docs/reference/config.md) — `condash.json` + `settings.json` schema + per-key reference, including the override model.
 - [`docs/explanation/non-goals.md`](docs/explanation/non-goals.md) — explicit non-goals; **read before adding "while we're at it" features**.
 
 The in-app Help menu reads files out of the asar via the allowlist in `src/main/help.ts`. The allowlist carries six short names — `welcome`, `quick-start`, `shortcuts`, `configuration`, `cli`, `why-markdown` — each mapping to `docs/help/<name>.md`. Separate menu items link out to `condash.vcoeur.com` and the issue tracker via `shell.openExternal`. There is no separate copy at the repo root — the migration shipped in `v2.0.6`.

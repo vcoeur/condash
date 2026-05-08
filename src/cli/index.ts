@@ -29,7 +29,8 @@ Nouns:
   dirty        list, touch <tree>, clear <tree|all>
   skills       list shipped skills; install [<name>...]; status
   templates    list shipped templates; install [<path>...]; status
-  config       conception-path, list, get <key>
+  config       conception-path, path, list [--effective|--global],
+               get <key> [--effective|--global], set <key> <value> [--global]
   help         this message; or 'condash-cli help <noun>' for verbs
 
 Universal flags:

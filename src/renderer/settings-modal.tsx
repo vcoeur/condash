@@ -27,6 +27,67 @@ import {
   compactRepos,
 } from './settings-modal-parts/data';
 import { RepoRow } from './settings-modal-parts/repo-row';
+import type { JSX } from 'solid-js';
+
+/**
+ * Per-machine list of recently-opened conception paths, displayed on the
+ * Global tab. Each row shows the basename + dimmed parent path, plus an
+ * inline "Remove" button. A "Clear all" button at the foot drops the
+ * whole list. Reactivity: re-fetched whenever `version` changes — the
+ * component bumps it on every successful mutation so the list refreshes
+ * without a full modal reload.
+ */
+function RecentConceptionsSection(): JSX.Element {
+  const [version, setVersion] = createSignal(0);
+  const [recents] = createResource(version, () => window.condash.getRecentConceptionPaths());
+
+  const handleRemove = async (path: string): Promise<void> => {
+    await window.condash.removeRecentConceptionPath(path);
+    setVersion((v) => v + 1);
+  };
+
+  const handleClear = async (): Promise<void> => {
+    await window.condash.clearRecentConceptionPaths();
+    setVersion((v) => v + 1);
+  };
+
+  return (
+    <section class="settings-section">
+      <h2>Recent conception paths</h2>
+      <p class="settings-section-hint">
+        Newest first. Drives the File → Open Recent submenu. Removing a path here also removes it
+        from the menu — your active conception is unaffected.
+      </p>
+      <Show
+        when={(recents() ?? []).length > 0}
+        fallback={<p class="settings-empty">No recents yet.</p>}
+      >
+        <ul class="settings-recents-list">
+          <For each={recents()}>
+            {(path) => (
+              <li class="settings-recents-row">
+                <code class="settings-recents-path">{path}</code>
+                <button
+                  type="button"
+                  class="modal-button"
+                  onClick={() => void handleRemove(path)}
+                  title="Remove from recents"
+                >
+                  Remove
+                </button>
+              </li>
+            )}
+          </For>
+        </ul>
+        <div class="settings-recents-actions">
+          <button type="button" class="modal-button" onClick={() => void handleClear()}>
+            Clear all
+          </button>
+        </div>
+      </Show>
+    </section>
+  );
+}
 
 /**
  * Full-viewport Settings modal. Every persisted preference has its own
@@ -47,7 +108,7 @@ import { RepoRow } from './settings-modal-parts/repo-row';
  */
 
 export function SettingsModal(props: {
-  configurationPath: string;
+  conceptionPath: string;
   theme: Theme;
   onChangeTheme: (theme: Theme) => void;
   /** Resolved card-min-width prefs (every key filled). Drives the live
@@ -58,6 +119,18 @@ export function SettingsModal(props: {
   onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
   onClose: () => void;
 }) {
+  // Read path: the existing condash.json (canonical) or the legacy
+  // configuration.json fallback. Resolved on mount so we surface the right
+  // file even when the conception still has only the legacy filename.
+  // Write path: always condash.json. The first save in a legacy tree
+  // creates condash.json and leaves configuration.json orphaned for the
+  // user to delete (no auto-rename, no auto-delete).
+  const writePath = `${props.conceptionPath}/condash.json`;
+  const [readPath, { mutate: mutateReadPath }] = createResource(
+    () => props.conceptionPath,
+    () => window.condash.getConceptionConfigPath(),
+  );
+  const configurationPath = (): string => readPath() ?? writePath;
   const [section, setSection] = createSignal<Section>('appearance');
   const [error, setError] = createSignal<string | null>(null);
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
@@ -73,7 +146,7 @@ export function SettingsModal(props: {
   const isDirty = (): boolean => Object.keys(drafts()).length > 0;
 
   const [content, { mutate: mutateContent }] = createResource(
-    () => props.configurationPath,
+    () => configurationPath(),
     (path) => window.condash.readNote(path),
   );
 
@@ -163,9 +236,7 @@ export function SettingsModal(props: {
     try {
       parsedConfig = (text ? JSON.parse(text) : {}) as RawConfig;
     } catch (err) {
-      setError(
-        `configuration.json is invalid: ${(err as Error).message}. Open it externally to repair.`,
-      );
+      setError(`condash.json is invalid: ${(err as Error).message}. Open it externally to repair.`);
       return;
     }
     mutator(parsedConfig);
@@ -178,12 +249,28 @@ export function SettingsModal(props: {
     setError(null);
     setPending(true);
     try {
-      // configuration.json is canonicalised through the Zod schema on the
+      // The conception config is canonicalised through the Zod schema on the
       // main side, so the bytes that reach disk can differ from `next`
       // (e.g. Zod reorders new keys into schema order). Cache the actual
       // written content so the next save's CAS baseline matches disk.
-      const written = await window.condash.writeNote(props.configurationPath, text, next);
+      //
+      // Path swap: read from configurationPath() (which may be the legacy
+      // configuration.json) and always write to writePath (canonical
+      // condash.json). The CAS expected-content is the legacy file's
+      // content; on the first write to a fresh condash.json that file
+      // doesn't yet exist, so note.write's drift check sees `''` on disk
+      // — we handle that by passing `''` as the expected baseline when
+      // writing to a new path.
+      const readFrom = configurationPath();
+      const expected = readFrom === writePath ? text : '';
+      const written = await window.condash.writeNote(writePath, expected, next);
       mutateContent(written);
+      // After a successful write, the canonical condash.json now exists
+      // (or has been updated) — re-point the read resource so the next
+      // refresh round-trip lands on the right file.
+      if (readFrom !== writePath) {
+        mutateReadPath(writePath);
+      }
       setSavedAt(Date.now());
       scheduleSavedAtClear();
     } catch (err) {
@@ -194,7 +281,7 @@ export function SettingsModal(props: {
   };
 
   const openConfigExternally = (): void => {
-    void window.condash.openPath(props.configurationPath);
+    void window.condash.openPath(configurationPath());
   };
 
   const [settingsPath] = createResource(() => window.condash.getSettingsPath());
@@ -447,7 +534,7 @@ export function SettingsModal(props: {
         </header>
         <Show when={parseError()}>
           <div class="modal-error">
-            configuration.json failed to parse — {parseError()}. Edit it externally to repair.
+            condash.json failed to parse — {parseError()}. Edit it externally to repair.
           </div>
         </Show>
         <Show when={error()}>
@@ -506,9 +593,9 @@ export function SettingsModal(props: {
               });
             }}
           >
-            {/* Group: settings.json (machine, first) -------------------- */}
+            {/* Group: settings.json (per-machine global) ----------------- */}
             <header class="settings-group-divider">
-              <h2>Global Condash Settings</h2>
+              <h2>Global</h2>
               <code>settings.json</code>
               <span class="settings-group-divider-actions">
                 <button
@@ -528,9 +615,14 @@ export function SettingsModal(props: {
                 </button>
               </span>
               <span class="settings-group-divider-hint">
-                Stored in <code>~/.config/condash/</code>; per-machine, not synced.
+                Per-machine defaults stored in the OS user-data directory. Carries the active
+                conception path and the recents list. Workspace and presentational keys here are
+                inherited by every conception unless that conception's <code>condash.json</code>{' '}
+                overrides them.
               </span>
             </header>
+
+            <RecentConceptionsSection />
 
             {/* Appearance ----------------------------------------------- */}
             <section id="settings-section-appearance" class="settings-section">
@@ -819,10 +911,14 @@ export function SettingsModal(props: {
               </div>
             </section>
 
-            {/* Group: configuration.json (conception, second) ----------- */}
+            {/* Group: condash.json (per-conception override) -------------- */}
             <header class="settings-group-divider">
-              <h2>Conception Configuration</h2>
-              <code>configuration.json</code>
+              <h2>This conception</h2>
+              <code>
+                {configurationPath().endsWith('configuration.json')
+                  ? 'configuration.json (legacy)'
+                  : 'condash.json'}
+              </code>
               <span class="settings-group-divider-actions">
                 <button
                   class="modal-button"
@@ -835,13 +931,15 @@ export function SettingsModal(props: {
                 <button
                   class="modal-button"
                   onClick={openConfigExternally}
-                  title="Open configuration.json with the OS default editor"
+                  title="Open the conception config file with the OS default editor"
                 >
                   Open externally
                 </button>
               </span>
               <span class="settings-group-divider-hint">
-                Lives in the conception repo; shared across machines.
+                Top-level keys here override the matching keys in settings.json. Reads fall back to
+                legacy configuration.json when condash.json is absent; writes always target
+                condash.json.
               </span>
             </header>
 

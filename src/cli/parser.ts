@@ -36,6 +36,8 @@ const BOOL_FLAGS = new Set([
   'install',
   'no-env',
   'no-install',
+  'effective',
+  'global',
 ]);
 
 /**

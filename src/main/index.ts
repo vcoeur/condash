@@ -229,16 +229,43 @@ async function createWindow(initialPath: string | null): Promise<BrowserWindow> 
  * purpose: Ctrl+Q is too easy to hit by accident, and File → Quit
  * routes through a renderer-side confirmation modal anyway.
  */
-function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
+function buildMenu(
+  layout: LayoutState = DEFAULT_LAYOUT,
+  recents: { paths: string[]; current: string | null } = { paths: [], current: null },
+): void {
   const send = (command: string): void => {
     mainWindow?.webContents.send('menu-command', command);
   };
+
+  const openRecentSubmenu: MenuItemConstructorOptions[] = recents.paths.length
+    ? [
+        ...recents.paths.map((path) => ({
+          label: prettyRecentLabel(path),
+          type: 'checkbox' as const,
+          checked: path === recents.current,
+          click: () => {
+            mainWindow?.webContents.send('menu-open-recent', path);
+          },
+        })),
+        { type: 'separator' as const },
+        {
+          label: 'Clear menu',
+          click: () => {
+            mainWindow?.webContents.send('menu-clear-recents');
+          },
+        },
+      ]
+    : [{ label: '(no recent conceptions)', enabled: false }];
 
   const fileSubmenu: MenuItemConstructorOptions[] = [
     {
       label: 'Open…',
       accelerator: 'CommandOrControl+O',
       click: () => send('open-folder'),
+    },
+    {
+      label: 'Open Recent',
+      submenu: openRecentSubmenu,
     },
     {
       label: 'Open conception directory',
@@ -397,6 +424,43 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
 }
 
 /**
+ * Rebuild the application menu against the latest layout. Used as the
+ * `onLayoutChange` hook by registerSettingsIpc — the View submenu's check
+ * marks need to refresh after every layout mutation.
+ */
+let lastRecents: { paths: string[]; current: string | null } = { paths: [], current: null };
+let lastLayout: LayoutState = DEFAULT_LAYOUT;
+function rebuildMenu(layout: LayoutState): void {
+  lastLayout = layout;
+  buildMenu(layout, lastRecents);
+}
+async function rebuildMenuFromSettings(): Promise<void> {
+  const settings = await readSettings();
+  lastRecents = {
+    paths: settings.recentConceptionPaths ?? [],
+    current: settings.lastConceptionPath,
+  };
+  buildMenu(lastLayout, lastRecents);
+}
+
+/**
+ * Format a recents path for the File → Open Recent submenu. The basename
+ * (e.g. `conception`) carries the visual weight; the parent directory is
+ * shown after a dimmed em-dash so two trees with the same basename don't
+ * look identical.
+ */
+function prettyRecentLabel(path: string): string {
+  const segments = path.split('/').filter((s) => s.length > 0);
+  if (segments.length === 0) return path;
+  const tail = segments[segments.length - 1];
+  const head = segments.slice(0, -1).join('/');
+  if (!head) return tail;
+  // The Electron menu strips raw `/` runs in some renders; collapse the
+  // parent path to a tilde-anchored form when it lives under HOME.
+  return `${tail} — ${head}`;
+}
+
+/**
  * Defence-in-depth: every IPC handler that accepts a `path` from the
  * renderer and reads or writes the filesystem at that path runs through
  * here first. Realpathed bound check against the current conception
@@ -407,7 +471,7 @@ function buildMenu(layout: LayoutState = DEFAULT_LAYOUT): void {
  * threat model targets a different bound.
  */
 async function assertUnderConception(path: string): Promise<void> {
-  const { conceptionPath } = await readSettings();
+  const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) {
     throw new Error('no conception path is set');
   }
@@ -415,7 +479,7 @@ async function assertUnderConception(path: string): Promise<void> {
 }
 
 async function listProjects(): Promise<Project[]> {
-  const { conceptionPath } = await readSettings();
+  const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) return [];
 
   const readmes = await findProjectReadmes(conceptionPath);
@@ -483,7 +547,7 @@ function registerNoteAssetProtocol(): void {
     const path = decodeURIComponent(url.pathname);
     const requested = host ? `/${host}${path}` : path;
     const settings = await readSettings();
-    const root = settings.conceptionPath;
+    const root = settings.lastConceptionPath;
     if (!root) return new Response('no conception path', { status: 403 });
     // Reject `..` traversal at the URL layer before we touch the filesystem.
     // realpath() alone could resolve a symlink that escapes the conception,
@@ -526,20 +590,20 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('readKnowledgeTree', async () => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return null;
     return readKnowledgeTree(conceptionPath);
   });
 
   ipcMain.handle('readResourcesTree', async () => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return null;
     const { resources } = await resolveConceptionPaths(conceptionPath);
     return readResourcesTree(conceptionPath, resources);
   });
 
   ipcMain.handle('readSkillsTree', async () => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return null;
     const { skills } = await resolveConceptionPaths(conceptionPath);
     return readSkillsTree(conceptionPath, skills);
@@ -558,13 +622,13 @@ function registerIpc(): void {
   );
 
   ipcMain.handle('search', async (_, query: string) => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return [];
     return search(conceptionPath, query);
   });
 
   ipcMain.handle('listRepos', async () => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return [];
     const repos = await listRepos(conceptionPath);
     // Sync the per-repo FS watchers to the live repo set: a config edit
@@ -580,7 +644,7 @@ function registerIpc(): void {
   // re-synced for the affected paths so a freshly-added worktree gets a
   // scalar watcher pair right away (and a freshly-removed one is dropped).
   ipcMain.handle('listReposForPrimary', async (_, primaryName: string) => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return [];
     const entries = await listReposForPrimary(conceptionPath, primaryName);
     // Re-list the *full* watcher set: the simplest correct way to make sure
@@ -618,13 +682,13 @@ function registerIpc(): void {
   );
 
   ipcMain.handle('listOpenWith', async () => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return {};
     return listOpenWith(conceptionPath);
   });
 
   ipcMain.handle('launchOpenWith', async (_, slot: OpenWithSlotKey, path: string) => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) throw new Error('No conception path set');
     // Bound to workspace + worktrees + conception so the renderer can
     // launch the user's IDE on a project README, a workspace repo, or a
@@ -634,14 +698,22 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('forceStopRepo', async (_, repoName: string) => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) throw new Error('No conception path set');
     return forceStopRepo(conceptionPath, repoName);
   });
 
   registerTerminalIpc();
-  registerSettingsIpc({ onLayoutChange: buildMenu });
-  registerSystemIpc({ onConceptionPicked: updateWindowTitle });
+  registerSettingsIpc({ onLayoutChange: rebuildMenu });
+  registerSystemIpc({
+    onConceptionPicked: (picked) => {
+      updateWindowTitle(picked);
+      void rebuildMenuFromSettings();
+    },
+    onRecentsChange: () => {
+      void rebuildMenuFromSettings();
+    },
+  });
 
   ipcMain.handle(
     'step.toggle',
@@ -682,7 +754,7 @@ function registerIpc(): void {
       // Touch the dirty marker so a follow-up `condash-cli projects index` is
       // surfaced. Best-effort: if the conception path isn't set we just
       // skip it — the in-memory list rebuild still happens via the watcher.
-      const { conceptionPath } = await readSettings();
+      const { lastConceptionPath: conceptionPath } = await readSettings();
       if (conceptionPath) {
         await touchDirtyMarker(conceptionPath, 'projects').catch((err) => {
           console.error('[setStatus] touchDirtyMarker failed', err);
@@ -719,7 +791,7 @@ function registerIpc(): void {
   ipcMain.handle(
     'createProject',
     async (_, input: ProjectCreateInput): Promise<ProjectCreateResult> => {
-      const { conceptionPath } = await readSettings();
+      const { lastConceptionPath: conceptionPath } = await readSettings();
       if (!conceptionPath) throw new Error('No conception path set');
       const result = await createProjectCore(conceptionPath, {
         kind: input.kind,
@@ -777,9 +849,15 @@ app.whenReady().then(async () => {
   // the data. Runs before window creation so the renderer's first
   // term.getPrefs always sees the post-migration state.
   await migrateTerminalFromConfigIfNeeded();
-  const { conceptionPath, layout } = await readSettings();
+  const settings = await readSettings();
+  const conceptionPath = settings.lastConceptionPath;
   await setWatchedConception(conceptionPath);
-  buildMenu(layout ?? DEFAULT_LAYOUT);
+  lastLayout = settings.layout ?? DEFAULT_LAYOUT;
+  lastRecents = {
+    paths: settings.recentConceptionPaths ?? [],
+    current: conceptionPath,
+  };
+  buildMenu(lastLayout, lastRecents);
   mainWindow = await createWindow(conceptionPath);
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -788,7 +866,7 @@ app.whenReady().then(async () => {
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const settings = await readSettings();
-      mainWindow = await createWindow(settings.conceptionPath);
+      mainWindow = await createWindow(settings.lastConceptionPath);
       mainWindow.on('closed', () => {
         mainWindow = null;
       });

@@ -25,6 +25,11 @@ const api: CondashApi = {
   openInEditor: (path) => ipcRenderer.invoke('openInEditor', path),
   pickConceptionPath: () => ipcRenderer.invoke('pickConceptionPath'),
   getConceptionPath: () => ipcRenderer.invoke('getConceptionPath'),
+  openConception: (path) => ipcRenderer.invoke('openConception', path),
+  getConceptionConfigPath: () => ipcRenderer.invoke('getConceptionConfigPath'),
+  getRecentConceptionPaths: () => ipcRenderer.invoke('getRecentConceptionPaths'),
+  clearRecentConceptionPaths: () => ipcRenderer.invoke('clearRecentConceptionPaths'),
+  removeRecentConceptionPath: (path) => ipcRenderer.invoke('removeRecentConceptionPath', path),
   detectConceptionState: (path) => ipcRenderer.invoke('detectConceptionState', path),
   initConception: (path) => ipcRenderer.invoke('initConception', path),
   getTheme: () => ipcRenderer.invoke('getTheme'),
@@ -105,6 +110,16 @@ const api: CondashApi = {
     const handler = (_: unknown, command: MenuCommand): void => callback(command);
     ipcRenderer.on('menu-command', handler);
     return () => ipcRenderer.removeListener('menu-command', handler);
+  },
+  onMenuOpenRecent: (callback) => {
+    const handler = (_: unknown, path: string): void => callback(path);
+    ipcRenderer.on('menu-open-recent', handler);
+    return () => ipcRenderer.removeListener('menu-open-recent', handler);
+  },
+  onMenuClearRecents: (callback) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu-clear-recents', handler);
+    return () => ipcRenderer.removeListener('menu-clear-recents', handler);
   },
 };
 

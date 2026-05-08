@@ -742,6 +742,26 @@ function App() {
   });
   onCleanup(offMenu);
 
+  const offMenuOpenRecent = window.condash.onMenuOpenRecent((path) => {
+    void window.condash
+      .openConception(path)
+      .then((newPath) => {
+        setConceptionPath(newPath);
+        setRefreshKey((k) => k + 1);
+      })
+      .catch((err) => {
+        flashToast(`Open failed: ${(err as Error).message}`, 'error');
+      });
+  });
+  onCleanup(offMenuOpenRecent);
+
+  const offMenuClearRecents = window.condash.onMenuClearRecents(() => {
+    void window.condash.clearRecentConceptionPaths().catch((err) => {
+      flashToast(`Clear recents failed: ${(err as Error).message}`, 'error');
+    });
+  });
+  onCleanup(offMenuClearRecents);
+
   const handleRunRepo = async (repo: RepoEntry, worktree?: Worktree) => {
     // The Code-pane Run button spawns a `side: 'code'` session that renders in
     // the inline CodeRunRow inside the Code pane — *not* in the bottom terminal
@@ -780,7 +800,7 @@ function App() {
       if (state.pathExists && !state.looksInitialised) {
         const missing: string[] = [];
         if (!state.hasProjects) missing.push('projects/');
-        if (!state.hasConfiguration) missing.push('configuration.json');
+        if (!state.hasConfiguration) missing.push('condash.json');
         setInitConfirmState({ path: picked, missing });
       }
     } catch (err) {
@@ -1543,7 +1563,7 @@ function App() {
 
       <Show when={settingsOpen() && conceptionPath()}>
         <SettingsModal
-          configurationPath={`${conceptionPath()}/configuration.json`}
+          conceptionPath={conceptionPath()!}
           theme={theme()}
           onChangeTheme={handleThemeChange}
           cardMinWidth={cardMinWidth()}

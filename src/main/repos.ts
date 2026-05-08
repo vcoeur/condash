@@ -1,23 +1,16 @@
-import { promises as fs } from 'node:fs';
-import { join, relative } from 'node:path';
+import { relative } from 'node:path';
 import type { RepoEntry, Worktree } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
 import { getCurrentBranch, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
 import { pathExists } from './fs-helpers';
+import { getEffectiveConceptionConfig } from './effective-config';
 
 type FlatRepo = RepoLookup;
 
 async function readConfig(conceptionPath: string): Promise<ConfigShape> {
-  const path = join(conceptionPath, 'configuration.json');
-  try {
-    const raw = await fs.readFile(path, 'utf8');
-    return JSON.parse(raw) as ConfigShape;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
-    throw err;
-  }
+  return (await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape;
 }
 
 function flatRepos(config: ConfigShape): FlatRepo[] {

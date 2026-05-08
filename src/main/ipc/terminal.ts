@@ -17,7 +17,7 @@ import type { TermSpawnRequest } from '../../shared/types';
 /** Wire every term.* IPC handler. Called once from main entry. */
 export function registerTerminalIpc(): void {
   ipcMain.handle('term.spawn', async (event, request: TermSpawnRequest) => {
-    const { conceptionPath } = await readSettings();
+    const { lastConceptionPath: conceptionPath } = await readSettings();
     return spawnTerminal(conceptionPath, event.sender, request);
   });
 

@@ -4,6 +4,14 @@ import { search as searchAll } from '../../main/search';
 import { listRepos } from '../../main/repos';
 import { runAudit, type AuditCheckName, type AuditReport } from '../../main/audit';
 import {
+  conceptionConfigWritePath,
+  getEffectiveConceptionConfig,
+  readConceptionConfigRaw,
+  resolveConceptionConfigPath,
+} from '../../main/effective-config';
+import { settingsPath } from '../../main/settings';
+import { atomicWrite } from '../../main/atomic-write';
+import {
   checkBranchState,
   setupBranchWorktrees,
   removeBranchWorktrees,
@@ -444,29 +452,160 @@ export async function runConfig(
     );
     return;
   }
-  if (verb === null || verb === 'list') {
+  if (verb === 'path') {
     assertNoExtraFlags(args);
-    const path = join(conceptionPath, 'configuration.json');
-    const raw = await fs.readFile(path, 'utf8');
-    const config = JSON.parse(raw);
-    emit(ctx, config, () => raw);
+    const conception = await resolveConceptionConfigPath(conceptionPath);
+    const data = { global: settingsPath(), conception };
+    emit(ctx, data, () => `global:    ${data.global}\nconception: ${data.conception}\n`);
+    return;
+  }
+  if (verb === null || verb === 'list') {
+    const useEffective = consumeFlag(args, '--effective');
+    const useGlobal = consumeFlag(args, '--global');
+    if (useEffective && useGlobal) {
+      throw new CliError(ExitCodes.USAGE, '--effective and --global are mutually exclusive');
+    }
+    assertNoExtraFlags(args);
+    let config: unknown;
+    if (useGlobal) {
+      const raw = await fs.readFile(settingsPath(), 'utf8').catch((err) => {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '{}';
+        throw err;
+      });
+      config = JSON.parse(raw);
+    } else if (useEffective) {
+      config = await getEffectiveConceptionConfig(conceptionPath);
+    } else {
+      // Default: per-conception view (whatever condash.json / configuration.json holds).
+      config = await readConceptionConfigRaw(conceptionPath);
+    }
+    emit(ctx, config, () => `${JSON.stringify(config, null, 2)}\n`);
     return;
   }
   if (verb === 'get') {
     const key = args.positional[0];
-    if (!key) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli config get <key>');
+    if (!key)
+      throw new CliError(
+        ExitCodes.USAGE,
+        'Usage: condash-cli config get <key> [--effective|--global]',
+      );
+    const useEffective = consumeFlag(args, '--effective');
+    const useGlobal = consumeFlag(args, '--global');
+    if (useEffective && useGlobal) {
+      throw new CliError(ExitCodes.USAGE, '--effective and --global are mutually exclusive');
+    }
     assertNoExtraFlags(args);
-    const path = join(conceptionPath, 'configuration.json');
-    const raw = await fs.readFile(path, 'utf8');
-    const config = JSON.parse(raw);
+    let config: unknown;
+    let source: string;
+    if (useGlobal) {
+      const raw = await fs.readFile(settingsPath(), 'utf8').catch((err) => {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '{}';
+        throw err;
+      });
+      config = JSON.parse(raw);
+      source = 'settings.json';
+    } else if (useEffective) {
+      config = await getEffectiveConceptionConfig(conceptionPath);
+      source = 'effective';
+    } else {
+      config = await readConceptionConfigRaw(conceptionPath);
+      source = 'condash.json';
+    }
     const value = pickByDottedPath(config, key);
     if (value === undefined) {
-      throw new CliError(ExitCodes.NOT_FOUND, `Key '${key}' not found in configuration.json`);
+      throw new CliError(ExitCodes.NOT_FOUND, `Key '${key}' not found in ${source}`);
     }
     emit(ctx, value, (d) => `${typeof d === 'string' ? d : JSON.stringify(d, null, 2)}\n`);
     return;
   }
+  if (verb === 'set') {
+    const key = args.positional[0];
+    const value = args.positional[1];
+    if (!key || value === undefined) {
+      throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli config set <key> <value> [--global]');
+    }
+    const writeGlobal = consumeFlag(args, '--global');
+    assertNoExtraFlags(args);
+    // Parse value as JSON when it looks like a primitive / object / array;
+    // otherwise treat as a literal string (the common case).
+    let parsedValue: unknown = value;
+    const trimmed = value.trim();
+    if (/^(true|false|null|-?\d|"|\[|\{)/.test(trimmed)) {
+      try {
+        parsedValue = JSON.parse(trimmed);
+      } catch {
+        parsedValue = value;
+      }
+    }
+    if (writeGlobal) {
+      await mutateJsonFile(settingsPath(), (current) => {
+        setByDottedPath(current, key, parsedValue);
+      });
+      emit(ctx, { ok: true, target: 'settings.json', key }, () => `set ${key} in settings.json\n`);
+    } else {
+      const writePath = conceptionConfigWritePath(conceptionPath);
+      // If condash.json doesn't exist yet but configuration.json does,
+      // seed condash.json from the legacy file so the first set doesn't
+      // silently drop the user's existing keys.
+      const existing = await readConceptionConfigRaw(conceptionPath);
+      await mutateJsonFile(writePath, (current) => {
+        if (Object.keys(current).length === 0) {
+          for (const [k, v] of Object.entries(existing)) current[k] = v;
+        }
+        setByDottedPath(current, key, parsedValue);
+      });
+      emit(ctx, { ok: true, target: 'condash.json', key }, () => `set ${key} in condash.json\n`);
+    }
+    return;
+  }
   throw new CliError(ExitCodes.USAGE, `Unknown config verb: ${verb}`);
+}
+
+/**
+ * Strip a known flag from `args.flags` (returns whether it was present).
+ * Used by `runConfig` to consume `--effective` / `--global` before
+ * `assertNoExtraFlags` rejects everything else.
+ */
+function consumeFlag(args: ParsedArgs, name: string): boolean {
+  // Flag keys are stored without the leading `--`, matching the parser.
+  const key = name.startsWith('--') ? name.slice(2) : name;
+  const present = args.flags[key] !== undefined;
+  if (present) delete args.flags[key];
+  return present;
+}
+
+/** Set a value at a dotted path on `obj`, mutating in place. */
+function setByDottedPath(obj: Record<string, unknown>, key: string, value: unknown): void {
+  const parts = key.split('.');
+  let cursor: Record<string, unknown> = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    const next = cursor[part];
+    if (next === undefined || next === null || typeof next !== 'object' || Array.isArray(next)) {
+      cursor[part] = {};
+    }
+    cursor = cursor[part] as Record<string, unknown>;
+  }
+  cursor[parts[parts.length - 1]] = value;
+}
+
+/** Read-modify-write a JSON file atomically; creates the file when missing. */
+async function mutateJsonFile(
+  path: string,
+  mutate: (current: Record<string, unknown>) => void,
+): Promise<void> {
+  let current: Record<string, unknown> = {};
+  try {
+    const raw = await fs.readFile(path, 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      current = parsed as Record<string, unknown>;
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  mutate(current);
+  await atomicWrite(path, JSON.stringify(current, null, 2) + '\n');
 }
 
 function pickByDottedPath(obj: unknown, dotted: string): unknown {
