@@ -14,7 +14,7 @@
   align-items: center;
   gap: 8px;
   margin: 16px 0 8px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   letter-spacing: 0.06em;
   font-weight: 600;
   text-transform: uppercase;
@@ -26,7 +26,7 @@
 }
 
 .skills-section-header .count {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   opacity: 0.8;
 }
 
@@ -95,7 +95,7 @@
 
 .skills-card-title {
   flex: 1;
-  font-size: 12.5px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -105,7 +105,7 @@
 }
 
 .skills-card-shipped {
-  font-size: 9.5px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 2px 6px;
@@ -123,7 +123,7 @@
 }
 
 .skills-card-relpath {
-  font-size: 10.5px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   margin: 0;
   overflow: hidden;
@@ -132,7 +132,7 @@
 }
 
 .skills-card-summary {
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   margin: 4px 0 0;
   display: -webkit-box;

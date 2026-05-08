@@ -111,6 +111,20 @@
   --font-display: var(--font-ui);
   --font-mono:
     ui-monospace, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
+
+  /* Type scale — single source of truth for every font-size in the four
+   * card surfaces (Projects / Knowledge / Skills / Resources). Five
+   * tokens, no half-pixel sizes. Roles are documented in
+   * conception/projects/2026-05/2026-05-08-condash-text-sizes/notes/02-scale.md
+   * (mapping: --text-2xs counts/chips, --text-xs meta/links,
+   * --text-sm section headers, --text-md body/summaries, --text-lg
+   * card titles). Glyph-sized rules (expander arrow 9px, twisty 14px,
+   * + button 16px) keep raw px because they're icons, not text. */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
 }
 
 /* Dark theme — applied either by OS preference (when no [data-theme] override)
@@ -278,7 +292,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
 }
@@ -362,7 +376,7 @@ button:hover {
    * against busy content. The edge handles are the primary keyboard-
    * free way to summon a hidden pane; making the affordance findable is
    * worth two pixels of strip width. */
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   letter-spacing: 0.06em;
   padding: 6px 0;
@@ -467,7 +481,7 @@ button:hover {
   gap: 12px;
   padding: 24px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: center;
 }
 
@@ -487,7 +501,7 @@ button:hover {
   border: 1px solid var(--accent);
   border-radius: 6px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 
@@ -535,7 +549,7 @@ button:hover {
   border-radius: 6px;
   color: inherit;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 
@@ -554,7 +568,7 @@ button:hover {
   color: var(--text-primary);
   border-radius: var(--radius);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-  font-size: 12px;
+  font-size: var(--text-sm);
   max-width: 80vw;
 }
 
