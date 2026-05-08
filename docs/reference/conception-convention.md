@@ -56,7 +56,7 @@ Five ordered values, highest-urgency first:
 | `backlog` | Possible; worth keeping, not committed |
 | `done` | Closed. Stays in its `YYYY-MM/` folder indefinitely. |
 
-The parser normalises the value to lowercase and falls back to `backlog` for anything unrecognised. Unknown values also log a parser warning and make the card sprout a red `!? <value>` badge next to its status pill so typos (`wip`, `active`, …) don't silently vanish into `backlog`; see [README format — Status](readme-format.md#status) for the full rule. Inside the dashboard, status changes via drag-and-drop rewrite the `**Status**:` line in place — see [mutations](mutations.md).
+The parser normalises the value to lowercase and falls back to `backlog` for anything unrecognised. Unknown values also log a parser warning and make the card sprout a red `!? <value>` badge next to its status pill so typos (`wip`, `active`, …) don't silently vanish into `backlog`; see [README format — Status](readme-format.md#status) for the full rule. Inside the dashboard, status changes via drag-and-drop rewrite the status line in place — `status:` for YAML-frontmatter READMEs, `**Status**:` for legacy bold-prose READMEs. See [mutations](mutations.md).
 
 ## Steps
 
@@ -138,7 +138,7 @@ See [mutations](mutations.md) for the create/rename/upload routes, and [Linking 
 
 ## What is not part of the convention
 
-- **No frontmatter.** YAML / TOML frontmatter is ignored. Use it for your own tooling if you want.
+- **No TOML frontmatter.** YAML frontmatter is the canonical header shape from v2.16.0; TOML frontmatter is ignored. The legacy bold-prose header is also accepted indefinitely. See [README format](readme-format.md).
 - **No IDs.** The directory name is the identity. No UUIDs, no auto-incrementing counters.
 - **No schema version.** The parser is backwards-compatible within a major version; new fields are additive.
 - **No lock files.** Everything the dashboard knows is derived from the tree on every request.

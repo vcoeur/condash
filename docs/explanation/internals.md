@@ -58,7 +58,7 @@ Every write call carries the *expected* state of the file region it's about to c
 
 - `toggleStep(path, lineIndex, expectedMarker, newMarker)` — the renderer passes the marker it currently sees; the main process refuses to write if the file on disk shows something else.
 - `editStepText(path, lineIndex, expectedText, newText)` — same idea for step text edits.
-- `setStatus(path, newStatus)` — only updates the **Status**: line in the metadata block, refuses if the line is missing.
+- `setStatus(path, newStatus)` — only updates the status line in the metadata block, refuses if the line is missing. The single primitive handles both header shapes: `status:` inside a `---`-delimited YAML frontmatter block, or the legacy `**Status**:` bold-prose line.
 - `writeNote(path, expectedContent, newContent)` — full-file drift check; renderer surfaces a "reload before saving" toast on mismatch.
 
 The reason: the user is *also* editing these files in their IDE. condash never assumes it's the only writer. See [Mutation model](../reference/mutations.md) for the user-facing contract.

@@ -1,20 +1,29 @@
 /**
- * Pure parsing of item README headers (the H1 + `**Key**: value` block above
- * the first `## ` heading) and the canonical enums + folder-slug regex used
- * to validate them. Lives in `shared/` so both the Electron main process and
- * the CLI can consume it without crossing module layers — historically this
- * code lived in `cli/header.ts` and `main/parse.ts`, and the duplication
- * leaked through as `main → cli` imports plus drifting regexes.
+ * Pure parsing of item README headers and the canonical enums + folder-slug
+ * regex used to validate them. Two header shapes are accepted:
  *
- * Anything that touches the filesystem (e.g. `readHeader`) stays out of this
- * module. Callers that need to validate folder names by path pass the path
- * in; we do not import `node:fs` here.
+ *   1. **YAML frontmatter** (canonical, emitted by `renderTemplate` from
+ *      v2.16.0 onward): a `---`-delimited block at the top of the file with
+ *      `key: value` pairs (`apps:` is a YAML sequence). The H1 follows the
+ *      closing `---`.
+ *   2. **Bold-prose** (legacy, accepted indefinitely): `# Title` followed by
+ *      `**Key**: value` lines until the first `## ` heading. Backticked tokens
+ *      inside `**Apps**` / `**Branch**` / `**Base**` are extracted as values.
+ *
+ * Both shapes feed the same `HeaderFields` output. `rewriteHeaderToYaml`
+ * (in `main/rewrite-headers.ts`) converts shape 2 → shape 1.
+ *
+ * Lives in `shared/` so both the Electron main process and the CLI can
+ * consume it without crossing module layers. Anything that touches the
+ * filesystem (e.g. `readHeader`) stays out of this module.
  */
+import { parse as parseYaml } from 'yaml';
 import { KNOWN_STATUSES } from './types';
 
 export const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
 export const HEADING2 = /^##\s+(.+)$/;
 const BACKTICK = /`([^`]+)`/g;
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export const KNOWN_KINDS = ['project', 'incident', 'document'] as const;
 
@@ -60,6 +69,14 @@ export interface HeaderIssue {
 }
 
 export function parseHeader(raw: string): HeaderFields {
+  const fmMatch = raw.match(FRONTMATTER_RE);
+  if (fmMatch) {
+    return parseYamlFrontmatterHeader(fmMatch[1], raw.slice(fmMatch[0].length));
+  }
+  return parseBoldProseHeader(raw);
+}
+
+function parseBoldProseHeader(raw: string): HeaderFields {
   const lines = raw.split(/\r?\n/);
   const meta = new Map<string, string>();
   let title: string | null = null;
@@ -114,6 +131,95 @@ export function parseHeader(raw: string): HeaderFields {
     base,
     extra,
   };
+}
+
+/**
+ * Map a parsed YAML frontmatter object onto `HeaderFields`. Permissive about
+ * shape — invalid YAML, non-object roots, and unknown keys all degrade to
+ * empty/null rather than throwing, so a malformed header doesn't crash the
+ * dashboard. Validation of values (enum membership, folder-name cross-check)
+ * happens later in `validateHeader`.
+ *
+ * The body following the frontmatter is scanned for the first H1 to populate
+ * `title`. Falls back to `null` when the body has no `#`-prefixed line.
+ *
+ * Severity in YAML lives in two fields (`severity` enum + `severity_impact`
+ * free text) but legacy consumers read `extra.severity` as a single string.
+ * We compose `<severity> — <severity_impact>` into `extra.severity` for
+ * compatibility, while keeping the split fields available individually.
+ */
+function parseYamlFrontmatterHeader(yamlBody: string, body: string): HeaderFields {
+  let data: Record<string, unknown> = {};
+  try {
+    const parsed = parseYaml(yamlBody);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      data = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Malformed YAML — degrade silently. validateHeader will surface the
+    // missing fields downstream.
+  }
+
+  let title: string | null = null;
+  for (const line of body.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('#')) {
+      title = trimmed.replace(/^#+\s*/, '').trim() || null;
+    }
+    break;
+  }
+
+  const apps = normaliseAppsValue(data.apps);
+  const branch = scalarToString(data.branch);
+  const base = scalarToString(data.base);
+  const date = scalarToString(data.date);
+  const status = scalarToString(data.status)?.toLowerCase() ?? null;
+  const kind = scalarToString(data.kind)?.toLowerCase() ?? null;
+
+  const KNOWN = new Set(['date', 'kind', 'status', 'apps', 'branch', 'base']);
+  const extra: Record<string, string> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (KNOWN.has(key)) continue;
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) {
+      extra[key] = value.map((v) => String(v)).join(', ');
+    } else if (typeof value === 'object') {
+      extra[key] = JSON.stringify(value);
+    } else {
+      extra[key] = String(value);
+    }
+  }
+  // Legacy compatibility: bold-prose stored severity as `<level> — <impact>`
+  // in a single line; split fields recombine for any consumer reading
+  // `extra.severity` as a string.
+  if ('severity' in extra && 'severity_impact' in extra) {
+    const sev = extra.severity;
+    const impact = extra.severity_impact;
+    if (sev && impact) extra.severity = `${sev} — ${impact}`;
+  }
+
+  return { title, date, status, kind, apps, branch, base, extra };
+}
+
+function scalarToString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function normaliseAppsValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim()).filter((s) => s.length > 0);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((s) => s.trim().replace(/^`|`$/g, ''))
+      .filter((s) => s.length > 0);
+  }
+  return [];
 }
 
 /** Last directory segment of a README path — `parentFolderName('a/b/c/README.md')`

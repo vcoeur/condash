@@ -98,6 +98,7 @@ Item lifecycle and reads.
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
 | `create --kind <k> --slug <s> --title "<t>" --apps "<a>"` | Create a new project / incident / document folder + README from the canonical template. Incidents add `--severity` + `--severity-impact` + `--environment` |
 | `scan-promotions [--limit N]` | Walk closed items for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
+| `rewrite-headers [--dry-run]` | One-shot migration of legacy bold-prose headers to YAML frontmatter; idempotent (already-YAML files are no-ops). Skips any README whose body has unexpected content between the meta block and the first `##` heading |
 
 Slug forms accepted:
 

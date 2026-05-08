@@ -14,6 +14,7 @@ import {
   type CreateProjectInput,
   type CreateProjectResult,
 } from '../../main/create-project';
+import { rewriteHeadersInTree, type RewriteHeadersReport } from '../../main/rewrite-headers';
 import { KNOWN_STATUSES, type SearchHit } from '../../shared/types';
 import { statusOrder } from '../../shared/projects';
 import { isValidSlugTail } from '../../shared/slug';
@@ -75,6 +76,8 @@ export async function runProjects(
       return await createCommand(args, ctx, conceptionPath);
     case 'scan-promotions':
       return await scanPromotionsCommand(args, ctx, conceptionPath);
+    case 'rewrite-headers':
+      return await rewriteHeadersCommand(args, ctx, conceptionPath);
     default:
       throw new CliError(ExitCodes.USAGE, `Unknown projects verb: ${verb}`);
   }
@@ -272,6 +275,36 @@ function extractParagraph(lines: string[], hitIndex: number): string {
     .slice(start, end + 1)
     .join('\n')
     .trim();
+}
+
+async function rewriteHeadersCommand(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const dryRun = args.flags['dry-run'] === true;
+  delete args.flags['dry-run'];
+  assertNoExtraFlags(args);
+  const report = await rewriteHeadersInTree(conceptionPath, { dryRun });
+  emit(ctx, { ...report, dryRun }, (data) => {
+    const d = data as RewriteHeadersReport & { dryRun: boolean };
+    const lines: string[] = [];
+    lines.push(`README header rewrite (${d.dryRun ? 'dry-run' : 'wrote changes'})`);
+    if (d.rewritten.length > 0) {
+      lines.push(`Rewritten (${d.rewritten.length}):`);
+      for (const p of d.rewritten) lines.push(`  ~ ${relative(conceptionPath, p)}`);
+    }
+    if (d.alreadyYaml.length > 0) {
+      lines.push(`Already YAML: ${d.alreadyYaml.length}`);
+    }
+    if (d.skipped.length > 0) {
+      lines.push(`Skipped (${d.skipped.length}):`);
+      for (const s of d.skipped) {
+        lines.push(`  ! ${relative(conceptionPath, s.path)}  [${s.reason}]`);
+      }
+    }
+    return lines.join('\n') + '\n';
+  });
 }
 
 async function listProjects(
@@ -942,6 +975,7 @@ function printSubHelp(): void {
       '  index            Regenerate projects/index.md + month indexes.',
       '  create           Create a new item: --kind --slug --apps --title [--branch …].',
       "  scan-promotions  Surface durable-finding candidates inside an item's notes/.",
+      '  rewrite-headers  One-shot: convert legacy bold-prose headers to YAML frontmatter. --dry-run previews.',
       '',
     ].join('\n'),
   );
