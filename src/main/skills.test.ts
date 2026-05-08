@@ -104,4 +104,25 @@ describe('readSkillsTree', () => {
     const skill = tree.children?.[0]?.children?.find((c) => c.name === 'SKILL.md');
     expect(skill?.shipped).toBeUndefined();
   });
+
+  it('injects synthetic CLAUDE.md entries when present at the conception root', async () => {
+    setupSkills();
+    writeFileSync(join(tmp, 'CLAUDE.md'), '# Project CLAUDE\n\nProject-level rules.\n');
+    writeFileSync(join(tmp, '.claude', 'CLAUDE.md'), '# Inner CLAUDE\n\nClaude-dir rules.\n');
+    const tree = (await readSkillsTree(tmp, '.claude/skills'))!;
+    const claude = (tree.children ?? []).filter((c) => c.name === 'CLAUDE.md');
+    // Both candidates surface, in stable order (root first, then `.claude/`).
+    expect(claude.length).toBe(2);
+    expect(claude[0]?.title).toBe('Project CLAUDE');
+    expect(claude[0]?.path).toContain('CLAUDE.md');
+    expect(claude[0]?.relPath.startsWith('__claude__/')).toBe(true);
+    expect(claude[1]?.title).toBe('Inner CLAUDE');
+  });
+
+  it('skips CLAUDE.md when neither location exists', async () => {
+    setupSkills();
+    const tree = (await readSkillsTree(tmp, '.claude/skills'))!;
+    const claude = (tree.children ?? []).filter((c) => c.name === 'CLAUDE.md');
+    expect(claude.length).toBe(0);
+  });
 });

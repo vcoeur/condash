@@ -59,15 +59,24 @@
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: default;
+  /* Pull the row taller so the whole strip is a comfortable hit area
+   * for the disclosure toggle (matches the bumped twisty size). */
+  min-height: 28px;
+  padding: 2px 0;
+  border-radius: 4px;
 }
 
-/* Make the whole header (except the buttons) act like the twisty so
- * users can click anywhere on the row to collapse/expand. The twisty
- * button still gets the keyboard focus. */
+/* The whole header row toggles the directory — match cursor + hover
+ * so the affordance reads as one big disclosure target. The twisty
+ * still gets keyboard focus. */
 .tree-dir-header[data-root='false'] {
   cursor: pointer;
 }
-.tree-dir-header[data-root='false']:hover .tree-dir-name {
+.tree-dir-header[data-root='false']:hover {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.tree-dir-header[data-root='false']:hover .tree-dir-name,
+.tree-dir-header[data-root='false']:hover .tree-dir-twisty {
   color: var(--text);
 }
 
@@ -75,15 +84,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  /* Bumped from 18px → 24px so the chevron itself is a comfortable
+   * touch / mouse target, not just a fleck of glyph. */
+  width: 24px;
+  height: 24px;
   padding: 0;
   background: transparent;
   border: none;
-  color: var(--text-faint);
+  color: var(--text-muted);
   cursor: pointer;
-  border-radius: 3px;
-  transition: background 100ms ease;
+  border-radius: 4px;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+  flex-shrink: 0;
 }
 
 .tree-dir-twisty:hover:not(:disabled) {
@@ -98,7 +112,8 @@
 
 .tree-dir-twisty-glyph {
   display: inline-block;
-  font-size: 11px;
+  /* Larger chevron to match the bumped twisty hit area. */
+  font-size: 14px;
   line-height: 1;
   transition: transform 120ms ease;
 }
@@ -175,4 +190,70 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Special-file slot — wraps the per-pane `renderSpecialFile` render
+ * (Knowledge `INDEX`, Skills `SKILL`, top-level `CLAUDE.md`). Sits as
+ * the first child inside the dir's expanded body, ahead of any nested
+ * directories or regular file cards. The pane stylesheets supply the
+ * actual badge look on `.tree-special-file`. */
+.tree-special {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-special-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 100ms ease;
+}
+
+.tree-special-file:hover {
+  border-color: var(--border-strong);
+}
+
+.tree-special-file:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tree-special-badge {
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.tree-special-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-special-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+  flex-shrink: 0;
 }

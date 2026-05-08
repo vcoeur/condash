@@ -62,14 +62,24 @@ export interface TreeViewProps<TFile extends TreeViewBaseNode> {
   /** Render a single file leaf. The pane keeps full control of card
    *  layout, click handling, and badges. */
   renderFile: (file: TFile) => JSX.Element;
-  /** Optional pane-specific suffix for a directory's header — the
-   *  Knowledge `INDEX` badge or the Skills `SKILL` badge live here. */
+  /** Optional pane-specific suffix for a directory's header — kept for
+   *  decoration that is *not* the special-file callout. The
+   *  index.md / SKILL.md / CLAUDE.md badges no longer live here; they
+   *  render inside the dir's expanded body via `renderSpecialFile`. */
   renderDirSuffix?: (dir: TFile) => JSX.Element;
+  /** Predicate identifying a directory's "special file" — index.md for
+   *  Knowledge, SKILL.md for sub-skill dirs, CLAUDE.md at the skills
+   *  root. The first matched file per directory is pulled out of the
+   *  regular file list and rendered first inside the expanded body via
+   *  `renderSpecialFile`. */
+  specialFile?: (file: TFile, dir: TFile) => boolean;
+  /** Render the special file as a badged callout. Receives the file
+   *  node and the parent directory so the badge can carry e.g.
+   *  `INDEX for topics` context if the pane wants it. */
+  renderSpecialFile?: (file: TFile, dir: TFile) => JSX.Element;
   /** Optional predicate that drops a file from the directory's card
    *  list (and from its file count) without removing it from the
-   *  underlying tree. Used to hide `index.md` / `SKILL.md` so they
-   *  surface only as the per-directory `[INDEX]` / `[SKILL]` badge
-   *  rendered by `renderDirSuffix`. */
+   *  underlying tree. */
   skipFile?: (file: TFile) => boolean;
   /** Which affordance buttons sit on every directory header. */
   affordances: ReadonlyArray<TreeAffordance>;
@@ -99,6 +109,8 @@ export function TreeView<TFile extends TreeViewBaseNode>(props: TreeViewProps<TF
         onToggleExpand={props.onToggleExpand}
         renderFile={props.renderFile}
         renderDirSuffix={props.renderDirSuffix}
+        specialFile={props.specialFile}
+        renderSpecialFile={props.renderSpecialFile}
         skipFile={props.skipFile}
         affordances={props.affordances}
         mutations={props.mutations}
@@ -119,6 +131,8 @@ interface DirectoryBodyProps<TFile extends TreeViewBaseNode> {
   onToggleExpand: (relPath: string) => void;
   renderFile: (file: TFile) => JSX.Element;
   renderDirSuffix?: (dir: TFile) => JSX.Element;
+  specialFile?: (file: TFile, dir: TFile) => boolean;
+  renderSpecialFile?: (file: TFile, dir: TFile) => JSX.Element;
   skipFile?: (file: TFile) => boolean;
   affordances: ReadonlyArray<TreeAffordance>;
   mutations: TreeViewMutationApi;
@@ -140,12 +154,24 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
     }
     return out;
   });
-  const childFiles = createMemo<TFile[]>(() => {
-    const out: TFile[] = [];
-    const skip = props.skipFile;
+  const specialChild = createMemo<TFile | null>(() => {
+    const test = props.specialFile;
+    if (!test) return null;
     for (const child of props.node.children ?? []) {
       if (child.kind !== 'file') continue;
       const file = child as TFile;
+      if (test(file, props.node)) return file;
+    }
+    return null;
+  });
+  const childFiles = createMemo<TFile[]>(() => {
+    const out: TFile[] = [];
+    const skip = props.skipFile;
+    const special = specialChild();
+    for (const child of props.node.children ?? []) {
+      if (child.kind !== 'file') continue;
+      const file = child as TFile;
+      if (special && file === special) continue;
       if (skip?.(file)) continue;
       out.push(file);
     }
@@ -171,10 +197,13 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
         prompts={props.prompts}
         onAfterMutation={props.onAfterMutation}
         onError={props.onError}
-        directFileCount={childFiles().length}
+        directFileCount={childFiles().length + (specialChild() ? 1 : 0)}
       />
       <Show when={isExpanded(props.expanded(), props.node.relPath, props.isRoot)}>
         <div class="tree-children">
+          <Show when={specialChild() && props.renderSpecialFile}>
+            <div class="tree-special">{props.renderSpecialFile!(specialChild()!, props.node)}</div>
+          </Show>
           <For each={childDirs()}>
             {(dir) => (
               <DirectoryBody
@@ -186,6 +215,8 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
                 onToggleExpand={props.onToggleExpand}
                 renderFile={props.renderFile}
                 renderDirSuffix={props.renderDirSuffix}
+                specialFile={props.specialFile}
+                renderSpecialFile={props.renderSpecialFile}
                 skipFile={props.skipFile}
                 affordances={props.affordances}
                 mutations={props.mutations}
@@ -274,11 +305,23 @@ function DirectoryHeader<TFile extends TreeViewBaseNode>(
     }
   };
 
+  /** The whole header row toggles the directory — the disclosure target
+   *  is the row, not just the chevron. Clicks on inner buttons (the
+   *  affordance row, or any `<button>` a `renderDirSuffix` slot might
+   *  add) are excluded so they keep their own behaviour. */
+  const handleHeaderClick = (e: MouseEvent): void => {
+    if (props.isRoot) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button.tree-dir-action, button.tree-dir-suffix-action')) return;
+    props.onToggleExpand(props.node.relPath);
+  };
+
   return (
     <header
       class="tree-dir-header"
       data-root={props.isRoot ? 'true' : 'false'}
       data-open={open() ? 'true' : 'false'}
+      onClick={handleHeaderClick}
     >
       <button
         type="button"
@@ -286,7 +329,10 @@ function DirectoryHeader<TFile extends TreeViewBaseNode>(
         aria-label={open() ? 'Collapse' : 'Expand'}
         title={open() ? 'Collapse' : 'Expand'}
         disabled={props.isRoot}
-        onClick={() => {
+        onClick={(e) => {
+          // The header row already toggles via handleHeaderClick — stop
+          // here so the row handler doesn't fire a second toggle.
+          e.stopPropagation();
           if (!props.isRoot) props.onToggleExpand(props.node.relPath);
         }}
       >
@@ -300,7 +346,9 @@ function DirectoryHeader<TFile extends TreeViewBaseNode>(
       <Show when={props.directFileCount > 0}>
         <span class="tree-dir-count">{props.directFileCount}</span>
       </Show>
-      <Show when={props.renderDirSuffix}>{props.renderDirSuffix?.(props.node)}</Show>
+      <Show when={props.renderDirSuffix}>
+        <span class="tree-dir-suffix">{props.renderDirSuffix?.(props.node)}</span>
+      </Show>
       <span class="tree-dir-rule" />
       <div class="tree-dir-actions">
         <Show when={props.affordances.includes('createMd')}>

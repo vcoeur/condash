@@ -17,13 +17,11 @@ function isSkillIndex(node: SkillNode): boolean {
   return node.kind === 'file' && node.name === 'SKILL.md';
 }
 
-/** Pull the directory's `SKILL.md` so it can render as a `[SKILL]`
- *  badge on the directory header instead of as a separate card. */
-function findSkillIndex(node: SkillNode): SkillNode | undefined {
-  for (const child of node.children ?? []) {
-    if (isSkillIndex(child)) return child;
-  }
-  return undefined;
+/** Recognise a synthetic CLAUDE.md entry injected by the main-process
+ *  skills walker. Carries `name === 'CLAUDE.md'` and lives only at the
+ *  skills root (`relPath` starts with the `__claude__/` sentinel). */
+function isClaudeMd(node: SkillNode): boolean {
+  return node.kind === 'file' && node.name === 'CLAUDE.md';
 }
 
 export function SkillsView(props: {
@@ -84,46 +82,65 @@ export function SkillsView(props: {
             prompts={props.prompts}
             onAfterMutation={props.onAfterMutation}
             onError={props.onError}
-            skipFile={isSkillIndex}
-            renderDirSuffix={(dir) => (
-              <Show when={findSkillIndex(dir)}>
-                {(idx) => (
+            specialFile={(file, dir) => {
+              // Sub-directories surface their SKILL.md; the synthetic
+              // CLAUDE.md entries surface only at the root level.
+              if (dir.relPath === '') return isClaudeMd(file);
+              return isSkillIndex(file);
+            }}
+            renderSpecialFile={(file, dir) => {
+              if (isClaudeMd(file)) {
+                return (
                   <button
                     type="button"
-                    class="skills-section-index"
-                    classList={{
-                      shipped: !!idx().shipped,
-                      diverged: !!idx().shipped?.diverged,
-                    }}
+                    class="tree-special-file claude-special-file"
                     onClick={(e) => {
                       e.stopPropagation();
-                      props.onOpen(idx().path, idx().title, idx().shipped);
+                      props.onOpen(file.path, file.title, file.shipped);
                     }}
-                    aria-label={`Open SKILL.md for ${dir.relPath || 'skills'}${
-                      idx().shipped?.diverged
-                        ? ' (shipped, locally edited)'
-                        : idx().shipped
-                          ? ' (shipped)'
-                          : ''
-                    }`}
-                    title={
-                      idx().shipped?.diverged
-                        ? 'SKILL.md (shipped, locally edited)'
-                        : idx().shipped
-                          ? 'SKILL.md (shipped)'
-                          : 'SKILL.md'
-                    }
+                    title={`Open ${file.path}`}
+                    aria-label={`Open ${file.path}`}
                   >
-                    SKILL
-                    <Show when={idx().shipped}>
-                      <span class="shipped-tag">
-                        {idx().shipped?.diverged ? ' · diverged' : ' · shipped'}
-                      </span>
-                    </Show>
+                    <span class="tree-special-badge">CLAUDE</span>
+                    <span class="tree-special-title">{file.title}</span>
+                    <span class="tree-special-meta">{file.relPath}</span>
                   </button>
-                )}
-              </Show>
-            )}
+                );
+              }
+              const shipped = file.shipped;
+              return (
+                <button
+                  type="button"
+                  class="tree-special-file skill-special-file"
+                  classList={{
+                    shipped: !!shipped,
+                    diverged: !!shipped?.diverged,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onOpen(file.path, file.title, shipped);
+                  }}
+                  aria-label={`Open SKILL.md for ${dir.relPath || 'skills'}${
+                    shipped?.diverged ? ' (shipped, locally edited)' : shipped ? ' (shipped)' : ''
+                  }`}
+                  title={
+                    shipped?.diverged
+                      ? 'SKILL.md (shipped, locally edited)'
+                      : shipped
+                        ? 'SKILL.md (shipped)'
+                        : 'SKILL.md'
+                  }
+                >
+                  <span class="tree-special-badge">SKILL</span>
+                  <span class="tree-special-title">{file.title}</span>
+                  <Show when={shipped}>
+                    <span class="tree-special-meta">
+                      {shipped?.diverged ? 'diverged' : 'shipped'}
+                    </span>
+                  </Show>
+                </button>
+              );
+            }}
             renderFile={(file) => (
               <SkillCard
                 node={file}

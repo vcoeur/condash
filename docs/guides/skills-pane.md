@@ -7,7 +7,9 @@ The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the
 
 ## What it shows
 
-By default the pane reads from `<conception>/.claude/skills/`. Each directory under the root is treated as a skill — its `SKILL.md` is highlighted as the section index, and its body files (`create.md`, `update.md`, `index.md`, …) render as cards inside that section. The walker recurses to any depth, so nested helper directories render as their own sections.
+By default the pane reads from `<conception>/.claude/skills/`. Each directory under the root is treated as a skill — its `SKILL.md` is rendered as a badged callout at the top of the directory's expanded body (just below the directory header), and its body files (`create.md`, `update.md`, `index.md`, …) render as cards underneath. The walker recurses to any depth, so nested helper directories render as their own sections.
+
+The pane also surfaces the conception's `CLAUDE.md` files — `<conception>/CLAUDE.md` and `<conception>/.claude/CLAUDE.md` — as top-level entries with a `CLAUDE` badge, alongside the regular skill directories. They open in the same note modal as everything else.
 
 Only `.md` files are surfaced — non-markdown files in a skill directory are ignored.
 
@@ -19,8 +21,8 @@ Click any card to open the file in the note modal — the same editor used elsew
 
 Skills installed by `condash skills install` are tracked in `<skills_path>/.condash-skills.json`. The pane uses this manifest to flag two states:
 
-- **shipped** — the on-disk content matches the version condash shipped. Cards display a `shipped` chip; `SKILL.md` carries the same flag on its section badge.
-- **shipped · diverged** — the file is shipped but locally edited. Cards display an amber `shipped · diverged` chip; the section badge for `SKILL.md` switches to amber. Opening the file shows a banner: *"Shipped by condash, but locally edited. Running `condash skills install` will flag this divergence."*
+- **shipped** — the on-disk content matches the version condash shipped. Cards display a `shipped` chip; the `SKILL` callout carries the same flag.
+- **shipped · diverged** — the file is shipped but locally edited. Cards display an amber `shipped · diverged` chip; the `SKILL` callout switches to amber. Opening the file shows a banner: *"Shipped by condash, but locally edited. Running `condash skills install` will flag this divergence."*
 
 The flags are informational only — local edits are never blocked. They exist so a quick scan tells you where your customisations are and warns you before an upstream re-install reverts them.
 
