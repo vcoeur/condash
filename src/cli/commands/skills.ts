@@ -25,31 +25,19 @@
  * `<conception-root or cwd>/.claude/skills/`).
  */
 
-import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
-
-const MANIFEST_RELPATH = '.condash-skills.json';
-const MANIFEST_VERSION = 1;
-
-interface ManifestFileEntry {
-  /** SHA256 of the file content as we wrote it at last install. */
-  sha256: string;
-  /** condash version that shipped this content. */
-  shippedVersion: string;
-}
-
-interface ManifestSkillEntry {
-  files: Record<string, ManifestFileEntry>;
-}
-
-interface SkillsManifest {
-  version: number;
-  skills: Record<string, ManifestSkillEntry>;
-}
+import {
+  MANIFEST_VERSION,
+  cheapDiff,
+  readManifest,
+  sha256,
+  writeFileMkdir,
+  writeManifest,
+} from './install-shared';
 
 interface ShippedSkill {
   name: string;
@@ -476,72 +464,3 @@ async function extractDescription(skillMdPath: string): Promise<string | null> {
     return null;
   }
 }
-
-async function readManifest(dest: string): Promise<SkillsManifest | null> {
-  const path = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
-  try {
-    const raw = await fs.readFile(path, 'utf8');
-    const parsed = JSON.parse(raw) as SkillsManifest;
-    if (parsed.version !== MANIFEST_VERSION) {
-      throw new CliError(
-        ExitCodes.RUNTIME,
-        `Manifest at ${path} has unknown version ${parsed.version} (expected ${MANIFEST_VERSION})`,
-      );
-    }
-    return parsed;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    if (err instanceof CliError) throw err;
-    throw new CliError(
-      ExitCodes.RUNTIME,
-      `Could not read manifest at ${path}: ${(err as Error).message}`,
-    );
-  }
-}
-
-async function writeManifest(dest: string, manifest: SkillsManifest): Promise<void> {
-  const path = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
-  await writeFileMkdir(path, Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8'));
-}
-
-async function writeFileMkdir(path: string, content: Buffer): Promise<void> {
-  await fs.mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${Date.now()}.${process.pid}.tmp`;
-  // tmp -> fsync -> rename. The fsync is required so a power-loss between
-  // writeFile and rename can't leave a zero-length skill (or manifest)
-  // poisoning the next install run. Same invariant as src/main/atomic-write.ts.
-  const fh = await fs.open(tmp, 'w');
-  try {
-    await fh.writeFile(content);
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
-  await fs.rename(tmp, path);
-}
-
-function sha256(content: Buffer): string {
-  return createHash('sha256').update(content).digest('hex');
-}
-
-/**
- * Cheap unified-style diff sufficient for human inspection. Real diff libs
- * (jsdiff) would balloon the bundle for marginal value here — `--diff` is
- * an inspection aid, not a merge tool.
- */
-function cheapDiff(oldStr: string, newStr: string): string {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-  const out: string[] = [];
-  const max = Math.max(oldLines.length, newLines.length);
-  for (let i = 0; i < max; i++) {
-    const a = oldLines[i];
-    const b = newLines[i];
-    if (a === b) continue;
-    if (a !== undefined) out.push(`- ${a}`);
-    if (b !== undefined) out.push(`+ ${b}`);
-  }
-  return out.join('\n');
-}
-
-export type { SkillsManifest };

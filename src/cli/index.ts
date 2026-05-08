@@ -12,6 +12,7 @@ import {
   runWorktrees,
 } from './commands/misc';
 import { runSkills } from './commands/skills';
+import { runTemplates } from './commands/templates';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
@@ -27,6 +28,7 @@ Nouns:
   audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
   dirty        list, touch <tree>, clear <tree|all>
   skills       list shipped skills; install [<name>...]; status
+  templates    list shipped templates; install [<path>...]; status
   config       conception-path, list, get <key>
   help         this message; or 'condash help <noun>' for verbs
 
@@ -159,6 +161,9 @@ async function dispatch(
       return ExitCodes.OK;
     case 'skills':
       await runSkills(args.verb, args, ctx);
+      return ExitCodes.OK;
+    case 'templates':
+      await runTemplates(args.verb, args, ctx);
       return ExitCodes.OK;
     case 'config':
       await runConfig(args.verb, args, ctx, conceptionPath);
