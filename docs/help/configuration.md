@@ -83,28 +83,45 @@ them per-tree.
 
 ## Editing in the app
 
-**File → Settings…** (`Ctrl+,`) opens a full-viewport modal split into
-two file targets. There is no in-modal JSON editor — each preference
-has its own form control.
+**File → Settings…** (`Ctrl+,`) opens a full-viewport modal with a
+two-tab layout. There is no in-modal JSON editor — each preference has
+its own form control.
 
-**Global** (writes to `settings.json`):
+**Global** tab (writes to `settings.json`):
 
-- **Appearance** — theme; per-pane card-grid min-widths.
-- **Terminal** — embedded terminal preferences.
 - **Recent conception paths** — manage the recents list backing
   **File → Open Recent**.
+- **Appearance** — theme; per-pane card-grid min-widths.
+- **Terminal** — embedded terminal preferences.
 
-**This conception** (writes to `condash.json`; the legacy
+**This conception** tab (writes to `condash.json`; the legacy
 `configuration.json` is read but never written to):
 
 - **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
   `skills_path`.
 - **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 - **Open with** — slot labels and commands.
+- **Appearance** — theme + card-grid min-widths overridden for this
+  conception only.
+- **Terminal** — `terminal` block overridden for this conception only.
 
-Each header carries an **Open externally** button — power users can
-edit the raw JSON in their `$EDITOR`. Modal writes round-trip through
-the same atomic save + schema validation path either way.
+Inheritance badges on the **This conception** tab call out where each
+top-level key sits relative to the global value:
+
+- **Inherits** — no override in `condash.json`. The effective value is
+  whatever `settings.json` (or the bundled default) provides. Editing
+  the field on this tab writes the override.
+- **Overridden** — `condash.json` sets the key to a value that differs
+  from `settings.json`. A **Reset to global** button drops the
+  override and falls back to inheritance.
+- **Matches global** — `condash.json` carries the key but the value
+  matches `settings.json` exactly. The override is redundant; a
+  **Remove override** button clears the line so the key inherits.
+
+The rail at the left of the modal carries **Save** (flush focused-but-
+unblurred edits) and **Open externally** (open the active tab's file
+in your `$EDITOR`). Modal writes round-trip through the same atomic
+save + schema-validation path the CLI uses, either way.
 
 ## File → Open Recent
 

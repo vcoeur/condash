@@ -114,6 +114,22 @@ export interface CondashApi {
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;
+  /**
+   * Raw text content of `settings.json`. Returns `''` when the file is
+   * absent — the Settings modal treats that as "fresh defaults" and creates
+   * the file on first save. Used to drive the Global tab's editor and to
+   * compute inheritance badges by comparing against the conception's
+   * `condash.json`.
+   */
+  getGlobalSettingsRaw(): Promise<string>;
+  /**
+   * Atomic CAS write to `settings.json`. The main process canonicalises
+   * the JSON through `globalSettingsSchema` before writing — so the bytes
+   * that hit disk can differ from `newContent` (Zod reorders keys to
+   * schema order). Returns whatever was actually written so the caller can
+   * keep its CAS baseline aligned with disk.
+   */
+  writeGlobalSettings(expectedContent: string, newContent: string): Promise<string>;
   toggleStep(
     path: string,
     lineIndex: number,

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { toPosix } from '../../shared/path';
+import { getEffectiveConceptionConfig } from '../effective-config';
 import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../settings';
 import type { CardMinWidthPrefs, LayoutState, Theme, TreeExpansionPrefs } from '../../shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '../../shared/types';
@@ -49,8 +50,16 @@ function pruneDefaults(prefs: CardMinWidthPrefs): CardMinWidthPrefs | undefined 
  */
 export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState) => void }): void {
   ipcMain.handle('getTheme', async () => {
-    const { theme } = await readSettings();
-    return theme;
+    // Effective theme: condash.json's override beats settings.json's
+    // global value. Falls back to 'system' when neither side has set a
+    // theme. Re-routed through the effective resolver in v2.15.1 so
+    // per-conception overrides take effect app-wide.
+    const settings = await readSettings();
+    if (settings.lastConceptionPath) {
+      const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
+      if (effective.theme) return effective.theme as Theme;
+    }
+    return settings.theme;
   });
 
   ipcMain.handle('getSettingsPath', () => toPosix(settingsPath()));
@@ -83,10 +92,22 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   });
 
   ipcMain.handle('getCardMinWidth', async () => {
-    const { cardMinWidth } = await readSettings();
+    // Effective per-pane min-width: condash.json's override (whole
+    // object replaces global) beats settings.json. Re-routed through
+    // the effective resolver in v2.15.1 so per-conception overrides
+    // take effect app-wide. The shape is built from the bundled
+    // defaults so missing keys never reach the renderer as undefined.
+    const settings = await readSettings();
+    let raw: Partial<CardMinWidthPrefs> | undefined = settings.cardMinWidth;
+    if (settings.lastConceptionPath) {
+      const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
+      if (effective.cardMinWidth) {
+        raw = effective.cardMinWidth as Partial<CardMinWidthPrefs>;
+      }
+    }
     const out: Required<CardMinWidthPrefs> = { ...DEFAULT_CARD_MIN_WIDTH };
     for (const key of CARD_MIN_KEYS) {
-      const v = cardMinWidth?.[key];
+      const v = raw?.[key];
       if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
     }
     return out;

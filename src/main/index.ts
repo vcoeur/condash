@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseHeader } from '../shared/header';
 
-import { DEFAULT_LAYOUT, readSettings } from './settings';
+import { DEFAULT_LAYOUT, readSettings, settingsPath } from './settings';
 import { findProjectReadmes } from './walk';
 import { parseReadme } from './parse';
 import { setWatchedConception } from './watcher';
@@ -833,6 +833,22 @@ function registerIpc(): void {
       await assertUnderConception(path);
       return writeNote(path, expectedContent, newContent);
     },
+  );
+
+  // Raw read of the per-machine `settings.json`. Used by the Settings modal
+  // to compute inheritance badges (compare global vs. condash.json values)
+  // and to drive the Global-tab editor through the same patchConfig flow it
+  // uses for condash.json. Returns `''` when the file doesn't exist yet —
+  // the modal treats that as "fresh defaults" and creates the file on first
+  // save.
+  ipcMain.handle('settings.readRaw', async () => readNote(settingsPath()));
+
+  // Atomic CAS write to settings.json. Canonicalises through
+  // `globalSettingsSchema` (handled by `writeNote`'s basename dispatch).
+  // Returns the bytes actually written so the caller can keep its CAS
+  // baseline aligned with disk after Zod re-orders keys.
+  ipcMain.handle('settings.writeRaw', async (_, expectedContent: string, newContent: string) =>
+    writeNote(settingsPath(), expectedContent, newContent),
   );
 
   ipcMain.handle('project.createNote', async (_, projectPath: string, slug: string) => {

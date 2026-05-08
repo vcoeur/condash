@@ -266,3 +266,24 @@ export function validateAndCanonicaliseConceptionConfig(json: string): string {
 
 /** Backwards-compat alias for the renamed canonicaliser. */
 export const validateAndCanonicaliseConfig = validateAndCanonicaliseConceptionConfig;
+
+/**
+ * Parse → validate → re-serialise the per-machine `settings.json` body. Used
+ * by the Settings modal's Global-tab save path so the bytes that hit disk
+ * are always schema-canonical and the path-tracking fields stay welcomed.
+ */
+export function validateAndCanonicaliseGlobalSettings(json: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (err) {
+    throw new Error(`Invalid JSON: ${(err as Error).message}`);
+  }
+  const result = globalSettingsSchema.safeParse(parsed);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+    throw new Error(`settings.json: ${where} — ${issue.message}`);
+  }
+  return JSON.stringify(result.data, null, 2) + '\n';
+}

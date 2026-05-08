@@ -1,43 +1,77 @@
-import type { Platform, TerminalXtermPrefs, Theme } from '@shared/types';
+import type {
+  CardMinWidthPrefs,
+  Platform,
+  TerminalPrefs,
+  TerminalXtermPrefs,
+  Theme,
+} from '@shared/types';
 import type { RawRepo } from '../../main/config-schema';
 
-export type Section = 'workspace' | 'repositories' | 'open-with' | 'terminal' | 'appearance';
+export type SettingsTab = 'global' | 'conception';
 
-export type SectionGroup = 'config' | 'machine';
+/**
+ * Sections rendered on each tab. Theme + cardMinWidth + terminal appear on
+ * BOTH tabs because they are inheritable: the global control writes to
+ * `settings.json` and the conception control writes to `condash.json`. The
+ * id is suffixed with `:global` / `:conception` so scroll-spy can tell them
+ * apart.
+ */
+export type Section =
+  | 'recents:global'
+  | 'appearance:global'
+  | 'terminal:global'
+  | 'workspace:conception'
+  | 'repositories:conception'
+  | 'open-with:conception'
+  | 'appearance:conception'
+  | 'terminal:conception';
 
 export interface SectionMeta {
   id: Section;
   label: string;
-  group: SectionGroup;
+  tab: SettingsTab;
 }
 
+/**
+ * Order matters — drives both the left-rail section list and the scroll-
+ * spy that flips `section` as the user scrolls through the active tab's
+ * panel. Workspace / Repositories / Open with live on the conception tab
+ * only because that's where overriding them makes sense; the Global tab
+ * hosts per-machine defaults (theme + cardMinWidth + terminal) that every
+ * conception inherits unless overridden.
+ */
 export const SECTIONS: SectionMeta[] = [
-  { id: 'appearance', label: 'Appearance', group: 'machine' },
-  { id: 'terminal', label: 'Terminal', group: 'machine' },
-  { id: 'workspace', label: 'Workspace', group: 'config' },
-  { id: 'repositories', label: 'Repositories', group: 'config' },
-  { id: 'open-with', label: 'Open with', group: 'config' },
+  // Global tab.
+  { id: 'recents:global', label: 'Recent conceptions', tab: 'global' },
+  { id: 'appearance:global', label: 'Appearance', tab: 'global' },
+  { id: 'terminal:global', label: 'Terminal', tab: 'global' },
+  // Conception tab.
+  { id: 'workspace:conception', label: 'Workspace', tab: 'conception' },
+  { id: 'repositories:conception', label: 'Repositories', tab: 'conception' },
+  { id: 'open-with:conception', label: 'Open with', tab: 'conception' },
+  { id: 'appearance:conception', label: 'Appearance', tab: 'conception' },
+  { id: 'terminal:conception', label: 'Terminal', tab: 'conception' },
 ];
 
-export interface GroupMeta {
-  id: SectionGroup;
+export interface TabMeta {
+  id: SettingsTab;
   label: string;
   file: string;
   hint: string;
 }
 
-export const GROUPS: GroupMeta[] = [
+export const TABS: TabMeta[] = [
   {
-    id: 'machine',
+    id: 'global',
     label: 'Global',
     file: 'settings.json',
-    hint: 'Per-machine defaults stored in the OS user-data directory. Carries the active conception path and the recents list — cannot be overridden per-conception.',
+    hint: 'Per-machine defaults stored in the OS user-data directory. Owns the active conception path and the recents list. Inherited by every conception unless that conception overrides the key in its `condash.json`.',
   },
   {
-    id: 'config',
+    id: 'conception',
     label: 'This conception',
     file: 'condash.json',
-    hint: 'Per-conception overrides stored in the tree itself. Top-level keys here replace the matching keys in settings.json. Reads fall back to legacy configuration.json when condash.json is absent; writes always target condash.json.',
+    hint: 'Top-level keys here override the matching keys in settings.json. Reads fall back to legacy `configuration.json` when `condash.json` is absent; writes always target `condash.json`.',
   },
 ];
 
@@ -164,6 +198,12 @@ export function pick(
   return table.default ?? '';
 }
 
+/**
+ * Subset of the unified config schema that the Settings modal reads + writes.
+ * Mirrors `globalSettingsSchema` / `conceptionConfigSchema` from
+ * `src/main/config-schema.ts` — every overridable key is present here so
+ * the same RawConfig shape can describe either file.
+ */
 export interface RawConfig {
   $schema_doc?: string;
   workspace_path?: string;
@@ -172,6 +212,15 @@ export interface RawConfig {
   skills_path?: string;
   repositories?: RawRepo[];
   open_with?: Record<string, { label?: string; command?: string }>;
+  pdf_viewer?: string[];
+  theme?: Theme;
+  cardMinWidth?: CardMinWidthPrefs;
+  terminal?: TerminalPrefs;
+  /** Conception-only fields — never set on the conception side. */
+  lastConceptionPath?: string | null;
+  recentConceptionPaths?: string[];
+  /** Modal UI state — last-active tab. Persists per-machine. */
+  lastSettingsTab?: SettingsTab;
 }
 
 /**

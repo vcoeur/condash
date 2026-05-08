@@ -12,13 +12,14 @@ import type { RawRepo } from '../main/config-schema';
 import {
   type ColorEntry,
   CURSOR_STYLES,
-  GROUPS,
   OPEN_WITH_SLOTS,
   pick,
   pruneEmpty,
   type RawConfig,
   type Section,
   SECTIONS,
+  type SettingsTab,
+  TABS,
   TERMINAL_COLORS,
   TERMINAL_STRING_FIELDS,
   THEME_OPTIONS,
@@ -26,8 +27,36 @@ import {
   WORKTREES_PLACEHOLDER,
   compactRepos,
 } from './settings-modal-parts/data';
+import {
+  FieldBadgeRow,
+  type InheritanceState,
+  inheritanceState,
+} from './settings-modal-parts/badges';
 import { RepoRow } from './settings-modal-parts/repo-row';
 import type { JSX } from 'solid-js';
+
+/** Persisted last-active settings tab. Stored in localStorage so opening
+ *  the modal a second time lands on whichever tab the user was on. Per-
+ *  machine UI state — not a vault-wide preference. */
+const LAST_TAB_STORAGE_KEY = 'condash:settings-modal:last-tab';
+
+function loadLastTab(): SettingsTab {
+  try {
+    const raw = window.localStorage.getItem(LAST_TAB_STORAGE_KEY);
+    return raw === 'conception' ? 'conception' : 'global';
+  } catch {
+    return 'global';
+  }
+}
+
+function persistLastTab(tab: SettingsTab): void {
+  try {
+    window.localStorage.setItem(LAST_TAB_STORAGE_KEY, tab);
+  } catch {
+    // localStorage may throw in private-mode tests; the active-tab default
+    // gracefully degrades to "global" on next open.
+  }
+}
 
 /**
  * Per-machine list of recently-opened conception paths, displayed on the
@@ -52,7 +81,7 @@ function RecentConceptionsSection(): JSX.Element {
   };
 
   return (
-    <section class="settings-section">
+    <section id="settings-section-recents:global" class="settings-section">
       <h2>Recent conception paths</h2>
       <p class="settings-section-hint">
         Newest first. Drives the File → Open Recent submenu. Removing a path here also removes it
@@ -90,19 +119,21 @@ function RecentConceptionsSection(): JSX.Element {
 }
 
 /**
- * Full-viewport Settings modal. Every persisted preference has its own
- * editable control — there is no in-modal JSON editor. Power users get a
- * single "Open configuration.json externally" button in the header that
- * shells out via `window.condash.openPath`.
+ * Full-viewport Settings modal. Two-tab layout: Global (writes to per-
+ * machine `settings.json`) and This conception (writes to
+ * `<conception>/condash.json`). Inheritable keys (theme, cardMinWidth,
+ * terminal) appear on both tabs; the conception tab carries inheritance
+ * badges per top-level key.
  *
- * Writes are funnelled through `patchConfig`, which parses the live file,
+ * Writes are funnelled through `patchConfig` (condash.json) and
+ * `patchSettings` (settings.json), each of which parses the live file,
  * applies a mutator, drops empty leaves, and round-trips through the
- * `note.write` IPC's atomic CAS so the schema-validation path stays the
- * same.
+ * `note.write` / `settings.writeRaw` IPC's atomic CAS so the schema-
+ * validation path stays consistent across the two files.
  *
  * Module shape: types, constants, helpers, and the recursive `RepoRow`
  * row component live in ./settings-modal-parts/. This file owns the
- * SettingsModal shell — every persisted-state closure (drafts, patchConfig,
+ * SettingsModal shell — every persisted-state closure (drafts, patches,
  * bindText, scrollToSection, flushDrafts) lives here so the inline section
  * markup can call them without prop-drilling.
  */
@@ -115,7 +146,7 @@ export function SettingsModal(props: {
    *  values shown in the Appearance subsection. */
   cardMinWidth: Required<CardMinWidthPrefs>;
   /** Commit a partial card-min-width patch. The renderer applies the new
-   *  CSS variables and persists to settings.json. */
+   *  CSS variables and persists. */
   onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
   onClose: () => void;
 }) {
@@ -131,7 +162,21 @@ export function SettingsModal(props: {
     () => window.condash.getConceptionConfigPath(),
   );
   const configurationPath = (): string => readPath() ?? writePath;
-  const [section, setSection] = createSignal<Section>('appearance');
+
+  const [tab, setTab] = createSignal<SettingsTab>(loadLastTab());
+  const switchTab = (next: SettingsTab): void => {
+    if (next === tab()) return;
+    setTab(next);
+    persistLastTab(next);
+    // Pin the section signal to whichever section heads the new tab so
+    // the rail's "active" highlight points at the visible panel before
+    // the user has scrolled.
+    const first = SECTIONS.find((s) => s.tab === next);
+    if (first) setSection(first.id);
+  };
+  const [section, setSection] = createSignal<Section>(
+    (SECTIONS.find((s) => s.tab === loadLastTab()) ?? SECTIONS[0]).id,
+  );
   const [error, setError] = createSignal<string | null>(null);
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
   const [pending, setPending] = createSignal(false);
@@ -148,6 +193,14 @@ export function SettingsModal(props: {
   const [content, { mutate: mutateContent }] = createResource(
     () => configurationPath(),
     (path) => window.condash.readNote(path),
+  );
+
+  // Raw text contents of `settings.json`. Used for the Global-tab editor +
+  // for the conception tab's badge comparisons. Empty string means the
+  // file doesn't exist yet on this machine — the modal still renders, the
+  // first save creates it.
+  const [globalContent, { mutate: mutateGlobalContent }] = createResource(() =>
+    window.condash.getGlobalSettingsRaw(),
   );
 
   // Used to pick OS-appropriate placeholder text for path / shell fields.
@@ -190,7 +243,7 @@ export function SettingsModal(props: {
   });
   onCleanup(() => document.removeEventListener('keydown', handleKeydown, true));
 
-  // Saved-at indicator timer — shared by patchConfig + patchTerminal so we
+  // Saved-at indicator timer — shared by patchConfig + patchSettings so we
   // only ever have one pending clear in-flight, and so closing the modal
   // mid-grace doesn't fire setSavedAt on a disposed scope.
   let savedAtTimer: ReturnType<typeof setTimeout> | null = null;
@@ -205,36 +258,25 @@ export function SettingsModal(props: {
     if (savedAtTimer !== null) clearTimeout(savedAtTimer);
   });
 
-  const parsed = createMemo<RawConfig>(() => {
-    const text = content();
-    if (!text) return {};
-    try {
-      return JSON.parse(text) as RawConfig;
-    } catch {
-      return {};
-    }
-  });
+  // --- Parsed memos ---------------------------------------------------
 
-  const parseError = createMemo<string | null>(() => {
-    const text = content();
-    if (!text) return null;
-    try {
-      JSON.parse(text);
-      return null;
-    } catch (err) {
-      return (err as Error).message;
-    }
-  });
+  const parsed = createMemo<RawConfig>(() => parseRawConfig(content() ?? ''));
+  const globalParsed = createMemo<RawConfig>(() => parseRawConfig(globalContent() ?? ''));
+
+  const parseError = createMemo<string | null>(() => parseErrorOf(content() ?? ''));
+  const globalParseError = createMemo<string | null>(() => parseErrorOf(globalContent() ?? ''));
+
+  // --- patchConfig (condash.json) -------------------------------------
 
   /**
-   * Apply `mutator` to the parsed configuration, drop empty leaves, and
-   * persist via the same atomic CAS path the JSON-editor tab used.
+   * Apply `mutator` to the parsed condash.json, drop empty leaves, and
+   * persist via the same atomic CAS path used by every other note write.
    */
   const patchConfig = async (mutator: (config: RawConfig) => void): Promise<void> => {
     const text = content() ?? '';
     let parsedConfig: RawConfig;
     try {
-      parsedConfig = (text ? JSON.parse(text) : {}) as RawConfig;
+      parsedConfig = (text ? (JSON.parse(text) as RawConfig) : {}) as RawConfig;
     } catch (err) {
       setError(`condash.json is invalid: ${(err as Error).message}. Open it externally to repair.`);
       return;
@@ -249,18 +291,18 @@ export function SettingsModal(props: {
     setError(null);
     setPending(true);
     try {
-      // The conception config is canonicalised through the Zod schema on the
-      // main side, so the bytes that reach disk can differ from `next`
-      // (e.g. Zod reorders new keys into schema order). Cache the actual
-      // written content so the next save's CAS baseline matches disk.
+      // The conception config is canonicalised through the Zod schema on
+      // the main side, so the bytes that reach disk can differ from
+      // `next` (e.g. Zod reorders new keys into schema order). Cache the
+      // actual written content so the next save's CAS baseline matches
+      // disk.
       //
-      // Path swap: read from configurationPath() (which may be the legacy
-      // configuration.json) and always write to writePath (canonical
-      // condash.json). The CAS expected-content is the legacy file's
-      // content; on the first write to a fresh condash.json that file
-      // doesn't yet exist, so note.write's drift check sees `''` on disk
-      // — we handle that by passing `''` as the expected baseline when
-      // writing to a new path.
+      // Path swap: read from configurationPath() (which may be the
+      // legacy configuration.json) and always write to writePath
+      // (canonical condash.json). On the first write to a fresh
+      // condash.json the file doesn't yet exist, so note.write's drift
+      // check sees `''` on disk — pass `''` as the expected baseline
+      // when writing to a new path.
       const readFrom = configurationPath();
       const expected = readFrom === writePath ? text : '';
       const written = await window.condash.writeNote(writePath, expected, next);
@@ -280,14 +322,77 @@ export function SettingsModal(props: {
     }
   };
 
+  // --- patchSettings (settings.json) ---------------------------------
+
+  /**
+   * Apply `mutator` to the parsed settings.json, drop empty leaves, and
+   * persist via the new `settings.writeRaw` IPC's atomic CAS. Mirrors
+   * `patchConfig` but writes to the per-machine file. Every Global-tab
+   * editor goes through this; the long-standing `setTheme` / `setLayout`
+   * / `termSetPrefs` IPC verbs continue to write here too for the rest of
+   * the app.
+   */
+  const patchSettings = async (mutator: (settings: RawConfig) => void): Promise<void> => {
+    const text = globalContent() ?? '';
+    let parsedSettings: RawConfig;
+    try {
+      parsedSettings = (text ? (JSON.parse(text) as RawConfig) : {}) as RawConfig;
+    } catch (err) {
+      setError(
+        `settings.json is invalid: ${(err as Error).message}. Open it externally to repair.`,
+      );
+      return;
+    }
+    mutator(parsedSettings);
+    const pruned = pruneEmpty(parsedSettings) as RawConfig;
+    if (pruned.repositories) {
+      pruned.repositories = compactRepos(pruned.repositories);
+    }
+    const next = JSON.stringify(pruned, null, 2) + '\n';
+    if (next === text) return;
+    setError(null);
+    setPending(true);
+    try {
+      const written = await window.condash.writeGlobalSettings(text, next);
+      mutateGlobalContent(written);
+      setSavedAt(Date.now());
+      scheduleSavedAtClear();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  /** Patch the right file based on `target`. */
+  const patchFor = (target: SettingsTab) => (target === 'global' ? patchSettings : patchConfig);
+
+  /** Read the parsed source-of-truth for the given target. */
+  const parsedFor = (target: SettingsTab): RawConfig =>
+    target === 'global' ? globalParsed() : parsed();
+
+  // --- Inheritance state helpers --------------------------------------
+
+  const stateOf = <K extends keyof RawConfig>(key: K): InheritanceState =>
+    inheritanceState(key, globalParsed(), parsed());
+
+  /** Drop a top-level key from condash.json. Used by the "Remove
+   *  override" / "Reset to global" buttons. */
+  const removeOverride = <K extends keyof RawConfig>(key: K): Promise<void> =>
+    patchConfig((c) => {
+      delete (c as Record<string, unknown>)[key as string];
+    });
+
+  // --- External openers ----------------------------------------------
+
   const openConfigExternally = (): void => {
     void window.condash.openPath(configurationPath());
   };
 
-  const [settingsPath] = createResource(() => window.condash.getSettingsPath());
+  const [settingsPathRes] = createResource(() => window.condash.getSettingsPath());
 
   const openSettingsExternally = (): void => {
-    const path = settingsPath();
+    const path = settingsPathRes();
     if (path) void window.condash.openPath(path);
   };
 
@@ -356,7 +461,13 @@ export function SettingsModal(props: {
     props.onClose();
   };
 
-  // --- Workspace -------------------------------------------------------
+  // --- Per-target setters --------------------------------------------
+  //
+  // Workspace + Repositories + Open-with currently live on the conception
+  // tab only — the Global tab keeps its today-shape (Recents + Appearance
+  // + Terminal). Theme / cardMinWidth / terminal are inheritable: each
+  // ships a Global-side setter (writes to settings.json) and a
+  // Conception-side setter (writes to condash.json).
 
   const setWorkspacePath = (value: string): Promise<void> =>
     patchConfig((c) => {
@@ -377,8 +488,6 @@ export function SettingsModal(props: {
     patchConfig((c) => {
       c.skills_path = value || undefined;
     });
-
-  // --- Repositories ----------------------------------------------------
 
   const repos = (): RawRepo[] => parsed().repositories ?? [];
 
@@ -406,8 +515,6 @@ export function SettingsModal(props: {
   const updateRepoEntry = (index: number, patch: (entry: RawRepo) => RawRepo): Promise<void> =>
     updateRepos((entries) => entries.map((e, i) => (i === index ? patch(e) : e)));
 
-  // --- Open with -------------------------------------------------------
-
   const updateOpenWithSlot = (
     key: 'main_ide' | 'secondary_ide' | 'terminal',
     patch: { label?: string; command?: string },
@@ -424,49 +531,110 @@ export function SettingsModal(props: {
       c.open_with = openWith;
     });
 
-  // --- Terminal (settings.json — per-machine) -------------------------
+  // --- Card min width (inheritable) ----------------------------------
+  //
+  // The Global-tab control writes to settings.json AND fires the existing
+  // `setCardMinWidth` IPC so the live CSS variables in the rest of the app
+  // pick up the change immediately. The Conception-tab control writes to
+  // condash.json only; the rest of the app (re-routed in this PR to read
+  // through the effective resolver) picks up the conception override on
+  // its next refresh.
 
-  const [terminalRes, { mutate: mutateTerminal }] = createResource<TerminalPrefs>(() =>
-    window.condash.termGetPrefs(),
-  );
-
-  const terminalPrefs = (): TerminalPrefs => terminalRes() ?? {};
-
-  /**
-   * Apply `mutator` to the persisted terminal prefs in settings.json,
-   * drop empty leaves, and round-trip through `term.setPrefs`.
-   */
-  const patchTerminal = async (mutator: (prefs: TerminalPrefs) => TerminalPrefs): Promise<void> => {
-    const next = mutator({ ...terminalPrefs() });
-    const pruned = (pruneEmpty(next) as TerminalPrefs) ?? {};
-    setError(null);
-    setPending(true);
-    try {
-      await window.condash.termSetPrefs(pruned);
-      mutateTerminal(pruned);
-      setSavedAt(Date.now());
-      scheduleSavedAtClear();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setPending(false);
-    }
+  const setGlobalCardMinWidth = async (patch: CardMinWidthPrefs): Promise<void> => {
+    await patchSettings((c) => {
+      const merged: CardMinWidthPrefs = { ...(c.cardMinWidth ?? {}), ...patch };
+      // Drop the entry when the user types an empty string — the prop
+      // change comes through as the bundled default, which the prune
+      // step handles.
+      for (const k of Object.keys(merged) as (keyof CardMinWidthPrefs)[]) {
+        if (merged[k] === undefined) delete merged[k];
+      }
+      c.cardMinWidth = Object.keys(merged).length > 0 ? merged : undefined;
+    });
+    // Notify the rest of the app via the existing prop callback so the
+    // CSS variables update without a re-mount.
+    props.onChangeCardMinWidth(patch);
   };
 
+  const setConceptionCardMinWidth = (patch: CardMinWidthPrefs): Promise<void> =>
+    patchConfig((c) => {
+      const merged: CardMinWidthPrefs = { ...(c.cardMinWidth ?? {}), ...patch };
+      for (const k of Object.keys(merged) as (keyof CardMinWidthPrefs)[]) {
+        if (merged[k] === undefined) delete merged[k];
+      }
+      c.cardMinWidth = Object.keys(merged).length > 0 ? merged : undefined;
+    });
+
+  /** Effective per-tab card-min-width snapshot. The Global tab shows
+   *  whatever settings.json carries (or the bundled default); the
+   *  Conception tab shows condash.json's own value when overridden,
+   *  otherwise the global one. */
+  const cardMinWidthFor =
+    (target: SettingsTab) =>
+    (key: keyof CardMinWidthPrefs): number => {
+      if (target === 'global') {
+        return globalParsed().cardMinWidth?.[key] ?? DEFAULT_CARD_MIN_WIDTH[key];
+      }
+      return (
+        parsed().cardMinWidth?.[key] ??
+        globalParsed().cardMinWidth?.[key] ??
+        DEFAULT_CARD_MIN_WIDTH[key]
+      );
+    };
+
+  // --- Theme (inheritable) -------------------------------------------
+
+  const setGlobalTheme = async (next: Theme): Promise<void> => {
+    await patchSettings((c) => {
+      c.theme = next;
+    });
+    // Keep the live theme prop in lock-step with settings.json.
+    props.onChangeTheme(next);
+  };
+
+  const setConceptionTheme = (next: Theme): Promise<void> =>
+    patchConfig((c) => {
+      c.theme = next;
+    });
+
+  /** Effective theme for the given tab. */
+  const themeFor = (target: SettingsTab): Theme => {
+    if (target === 'global') return globalParsed().theme ?? props.theme ?? 'system';
+    return parsed().theme ?? globalParsed().theme ?? props.theme ?? 'system';
+  };
+
+  // --- Terminal prefs (inheritable) ----------------------------------
+
+  const terminalPrefsFor = (target: SettingsTab): TerminalPrefs =>
+    (parsedFor(target).terminal as TerminalPrefs | undefined) ?? {};
+
+  /** Mutate the `terminal` block on the given file via its patch fn. */
+  const patchTerminal = (
+    target: SettingsTab,
+    mutator: (prefs: TerminalPrefs) => TerminalPrefs,
+  ): Promise<void> =>
+    patchFor(target)((c) => {
+      const next = mutator({ ...((c.terminal as TerminalPrefs | undefined) ?? {}) });
+      const cleaned = (pruneEmpty(next) as TerminalPrefs) ?? {};
+      c.terminal = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+    });
+
   const setTerminalString = (
+    target: SettingsTab,
     key: (typeof TERMINAL_STRING_FIELDS)[number]['key'],
     value: string,
   ): Promise<void> =>
-    patchTerminal((p) => {
+    patchTerminal(target, (p) => {
       const next = { ...p } as Record<string, unknown>;
       next[key] = value || undefined;
       return next as TerminalPrefs;
     });
 
-  const xtermPrefs = createMemo<TerminalXtermPrefs>(() => terminalPrefs().xterm ?? {});
+  const xtermPrefsFor = (target: SettingsTab): TerminalXtermPrefs =>
+    terminalPrefsFor(target).xterm ?? {};
 
-  const updateXterm = (patch: Partial<TerminalXtermPrefs>): Promise<void> =>
-    patchTerminal((p) => {
+  const updateXterm = (target: SettingsTab, patch: Partial<TerminalXtermPrefs>): Promise<void> =>
+    patchTerminal(target, (p) => {
       const xterm = (p.xterm ?? {}) as TerminalXtermPrefs;
       const merged: TerminalXtermPrefs = { ...xterm, ...patch };
       if (patch.colors) {
@@ -475,14 +643,38 @@ export function SettingsModal(props: {
       return { ...p, xterm: merged };
     });
 
-  const updateColor = (key: ColorEntry['key'], value: string): void =>
-    void updateXterm({ colors: { [key]: value || undefined } as never });
+  const updateColor = (target: SettingsTab, key: ColorEntry['key'], value: string): void =>
+    void updateXterm(target, { colors: { [key]: value || undefined } as never });
+
+  // --- Scroll-to-section ---------------------------------------------
 
   const scrollToSection = (id: Section): void => {
     setSection(id);
     const el = document.getElementById(`settings-section-${id}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // --- Keyboard nav for the tablist ----------------------------------
+
+  const handleTabKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const order: SettingsTab[] = ['global', 'conception'];
+    const idx = order.indexOf(tab());
+    const next =
+      e.key === 'ArrowLeft'
+        ? order[(idx + order.length - 1) % order.length]
+        : order[(idx + 1) % order.length];
+    switchTab(next);
+    // Move focus to the newly active tab button so screen readers
+    // announce the active state.
+    queueMicrotask(() => {
+      const el = document.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`);
+      el?.focus();
+    });
+  };
+
+  // --- Render --------------------------------------------------------
 
   return (
     <div class="modal-backdrop settings-modal-backdrop" onClick={attemptClose}>
@@ -532,49 +724,84 @@ export function SettingsModal(props: {
             ×
           </button>
         </header>
+
+        {/* Tablist — switches between the Global and This-conception panels. */}
+        <div class="settings-tablist" role="tablist" aria-label="Settings scope">
+          <For each={TABS}>
+            {(meta) => (
+              <button
+                type="button"
+                role="tab"
+                data-tab={meta.id}
+                class="settings-tab"
+                classList={{ active: tab() === meta.id }}
+                aria-selected={tab() === meta.id}
+                aria-controls={`settings-panel-${meta.id}`}
+                tabIndex={tab() === meta.id ? 0 : -1}
+                onClick={() => switchTab(meta.id)}
+                onKeyDown={handleTabKey}
+              >
+                <span class="settings-tab-label">{meta.label}</span>
+                <code class="settings-tab-file">{meta.file}</code>
+              </button>
+            )}
+          </For>
+        </div>
+
         <Show when={parseError()}>
           <div class="modal-error">
             condash.json failed to parse — {parseError()}. Edit it externally to repair.
           </div>
         </Show>
+        <Show when={globalParseError()}>
+          <div class="modal-error">
+            settings.json failed to parse — {globalParseError()}. Edit it externally to repair.
+          </div>
+        </Show>
         <Show when={error()}>
           <div class="modal-error">{error()}</div>
         </Show>
+
         <div class="settings-shell">
           <nav class="settings-rail" aria-label="Settings sections">
-            <For each={GROUPS}>
-              {(g) => (
-                <div class="settings-rail-group">
-                  <div class="settings-rail-group-heading">
-                    <span class="settings-rail-group-label">{g.label}</span>
-                    <code>{g.file}</code>
-                  </div>
-                  <ul class="settings-rail-list">
-                    <For each={SECTIONS.filter((s) => s.group === g.id)}>
-                      {(s) => (
-                        <li>
-                          <button
-                            class="settings-rail-item"
-                            classList={{ active: section() === s.id }}
-                            onClick={() => scrollToSection(s.id)}
-                          >
-                            {s.label}
-                          </button>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                </div>
-              )}
-            </For>
+            <p class="settings-rail-hint">{TABS.find((t) => t.id === tab())?.hint}</p>
+            <ul class="settings-rail-list">
+              <For each={SECTIONS.filter((s) => s.tab === tab())}>
+                {(s) => (
+                  <li>
+                    <button
+                      class="settings-rail-item"
+                      classList={{ active: section() === s.id }}
+                      onClick={() => scrollToSection(s.id)}
+                    >
+                      {s.label}
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+            <div class="settings-rail-actions">
+              <button
+                class="modal-button"
+                onClick={() => void flushDrafts()}
+                disabled={!isDirty()}
+                title="Flush any focused-but-unblurred edits to disk"
+              >
+                Save
+              </button>
+              <button
+                class="modal-button"
+                onClick={tab() === 'global' ? openSettingsExternally : openConfigExternally}
+                title={`Open ${TABS.find((t) => t.id === tab())?.file} with the OS default editor`}
+              >
+                Open externally
+              </button>
+            </div>
           </nav>
+
           <div
             class="settings-scroll"
             onScroll={(e) => {
-              // Throttle the offsetTop layout reads to one per animation
-              // frame. Prior version forced a layout flush on every scroll
-              // event (one offsetTop read per SECTIONS entry), pinning the
-              // main thread on heavy scroll-wheel input.
               if (rafScheduled) return;
               rafScheduled = true;
               const scroller = e.currentTarget;
@@ -582,8 +809,10 @@ export function SettingsModal(props: {
                 rafScheduled = false;
                 const scrollerOffsetTop = scroller.offsetTop;
                 const top = scroller.scrollTop + 8;
-                let active: Section = 'appearance';
-                for (const s of SECTIONS) {
+                const sectionsForTab = SECTIONS.filter((s) => s.tab === tab());
+                if (sectionsForTab.length === 0) return;
+                let active: Section = sectionsForTab[0].id;
+                for (const s of sectionsForTab) {
                   const el = document.getElementById(`settings-section-${s.id}`);
                   if (el && el.offsetTop - scrollerOffsetTop <= top) {
                     active = s.id;
@@ -593,477 +822,278 @@ export function SettingsModal(props: {
               });
             }}
           >
-            {/* Group: settings.json (per-machine global) ----------------- */}
-            <header class="settings-group-divider">
-              <h2>Global</h2>
-              <code>settings.json</code>
-              <span class="settings-group-divider-actions">
-                <button
-                  class="modal-button"
-                  onClick={() => void flushDrafts()}
-                  disabled={!isDirty()}
-                  title="Flush any focused-but-unblurred edits to disk"
-                >
-                  Save
-                </button>
-                <button
-                  class="modal-button"
-                  onClick={openSettingsExternally}
-                  title="Open settings.json with the OS default editor"
-                >
-                  Open externally
-                </button>
-              </span>
-              <span class="settings-group-divider-hint">
-                Per-machine defaults stored in the OS user-data directory. Carries the active
-                conception path and the recents list. Workspace and presentational keys here are
-                inherited by every conception unless that conception's <code>condash.json</code>{' '}
-                overrides them.
-              </span>
-            </header>
+            {/* Global tabpanel ----------------------------------------- */}
+            <div
+              role="tabpanel"
+              id="settings-panel-global"
+              aria-labelledby="settings-tab-global"
+              class="settings-tabpanel"
+              classList={{ 'settings-tabpanel--hidden': tab() !== 'global' }}
+            >
+              <RecentConceptionsSection />
 
-            <RecentConceptionsSection />
+              {/* Appearance — global ---------------------------------- */}
+              <section id="settings-section-appearance:global" class="settings-section">
+                <h2>Appearance</h2>
+                <p class="settings-section-hint">
+                  Per-machine defaults. Each conception can override these in its own{' '}
+                  <code>condash.json</code>.
+                </p>
+                <ThemePicker
+                  current={themeFor('global')}
+                  onChange={(t) => void setGlobalTheme(t)}
+                />
+                <CardDensityFields
+                  resolve={cardMinWidthFor('global')}
+                  onChange={(patch) => void setGlobalCardMinWidth(patch)}
+                />
+              </section>
 
-            {/* Appearance ----------------------------------------------- */}
-            <section id="settings-section-appearance" class="settings-section">
-              <h2>Appearance</h2>
-              <div class="settings-field">
-                <span class="settings-field-label">Theme</span>
-                <div class="settings-radio-group" role="radiogroup">
-                  <For each={THEME_OPTIONS}>
-                    {(opt) => (
-                      <label class="settings-radio">
-                        <input
-                          type="radio"
-                          name="theme"
-                          checked={props.theme === opt.value}
-                          onChange={() => props.onChangeTheme(opt.value)}
-                        />
-                        <span>{opt.label}</span>
-                      </label>
+              {/* Terminal — global ----------------------------------- */}
+              <section id="settings-section-terminal:global" class="settings-section">
+                <h2>Terminal</h2>
+                <p class="settings-section-hint">
+                  Per-machine defaults. Each conception can override the entire{' '}
+                  <code>terminal</code> block in its <code>condash.json</code>.
+                </p>
+                <TerminalFields
+                  target="global"
+                  bindText={bindText}
+                  prefs={() => terminalPrefsFor('global')}
+                  xterm={() => xtermPrefsFor('global')}
+                  setString={(k, v) => setTerminalString('global', k, v)}
+                  updateXterm={(p) => updateXterm('global', p)}
+                  updateColor={(k, v) => updateColor('global', k, v)}
+                  platform={platform}
+                />
+              </section>
+            </div>
+
+            {/* Conception tabpanel ----------------------------------- */}
+            <div
+              role="tabpanel"
+              id="settings-panel-conception"
+              aria-labelledby="settings-tab-conception"
+              class="settings-tabpanel"
+              classList={{ 'settings-tabpanel--hidden': tab() !== 'conception' }}
+            >
+              {/* Workspace ----------------------------------------- */}
+              <section id="settings-section-workspace:conception" class="settings-section">
+                <div class="settings-section-head">
+                  <h2>Workspace</h2>
+                </div>
+                <div class="settings-grid settings-grid--wide">
+                  <FieldWithBadge
+                    label="Workspace path"
+                    state={stateOf('workspace_path')}
+                    onRemove={() => void removeOverride('workspace_path')}
+                  >
+                    <input
+                      type="text"
+                      placeholder={pick(WORKSPACE_PLACEHOLDER, platform())}
+                      {...bindText(
+                        'conception.workspace_path',
+                        () => parsed().workspace_path,
+                        setWorkspacePath,
+                      )}
+                    />
+                  </FieldWithBadge>
+                  <FieldWithBadge
+                    label="Worktrees path"
+                    state={stateOf('worktrees_path')}
+                    onRemove={() => void removeOverride('worktrees_path')}
+                  >
+                    <input
+                      type="text"
+                      placeholder={pick(WORKTREES_PLACEHOLDER, platform())}
+                      {...bindText(
+                        'conception.worktrees_path',
+                        () => parsed().worktrees_path,
+                        setWorktreesPath,
+                      )}
+                    />
+                  </FieldWithBadge>
+                  <FieldWithBadge
+                    label="Resources directory"
+                    hint="Relative to the conception root. Browsed by the Resources pane."
+                    state={stateOf('resources_path')}
+                    onRemove={() => void removeOverride('resources_path')}
+                  >
+                    <input
+                      type="text"
+                      placeholder="resources"
+                      {...bindText(
+                        'conception.resources_path',
+                        () => parsed().resources_path,
+                        setResourcesPath,
+                      )}
+                    />
+                  </FieldWithBadge>
+                  <FieldWithBadge
+                    label="Skills directory"
+                    hint="Relative to the conception root. Markdown files here are editable from the Skills pane."
+                    state={stateOf('skills_path')}
+                    onRemove={() => void removeOverride('skills_path')}
+                  >
+                    <input
+                      type="text"
+                      placeholder=".claude/skills"
+                      {...bindText(
+                        'conception.skills_path',
+                        () => parsed().skills_path,
+                        setSkillsPath,
+                      )}
+                    />
+                  </FieldWithBadge>
+                </div>
+              </section>
+
+              {/* Repositories ----------------------------------------- */}
+              <section id="settings-section-repositories:conception" class="settings-section">
+                <div class="settings-section-head">
+                  <h2>Repositories</h2>
+                  <FieldBadgeRow
+                    state={stateOf('repositories')}
+                    onRemove={() => void removeOverride('repositories')}
+                  />
+                </div>
+                <p class="settings-hint">
+                  Each entry is either just a name (resolved against <code>workspace_path</code>) or
+                  an object with optional <code>label</code>, <code>run</code>,{' '}
+                  <code>force_stop</code>, <code>install</code>, <code>env</code>, and{' '}
+                  <code>submodules</code>.
+                </p>
+                <div class="settings-bucket">
+                  <For each={repos()}>
+                    {(entry, index) => (
+                      <RepoRow
+                        entry={entry}
+                        idPrefix={`repo[${index()}]`}
+                        index={index()}
+                        total={repos().length}
+                        bindText={bindText}
+                        onMove={(delta) => void moveRepo(index(), delta)}
+                        onRemove={() => void removeRepo(index())}
+                        onPatch={(next) => updateRepoEntry(index(), () => next)}
+                      />
                     )}
                   </For>
+                  <div class="settings-list-actions">
+                    <button class="modal-button" onClick={() => void addRepo()}>
+                      + Add repo
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              <h3>Card density</h3>
-              <p class="settings-hint">
-                Each grid keeps a row of <em>n</em> cards until the pane is wide enough to fit{' '}
-                <em>n+1</em> cards each at this width — at which point the row reflows. Lower
-                numbers pack more cards per row at the same window size.
-              </p>
-              <div class="settings-grid">
-                <For
-                  each={
-                    [
-                      {
-                        key: 'projects',
-                        label: 'Project cards (Projects pane)',
-                      },
-                      {
-                        key: 'code',
-                        label: 'Code cards (Code pane)',
-                      },
-                      {
-                        key: 'knowledge',
-                        label: 'Knowledge cards (Knowledge pane)',
-                      },
-                      {
-                        key: 'resources',
-                        label: 'Resource cards (Resources pane)',
-                      },
-                      {
-                        key: 'skills',
-                        label: 'Skill cards (Skills pane)',
-                      },
-                    ] as const
-                  }
-                >
-                  {(field) => (
-                    <label>
-                      <span>{field.label}</span>
-                      <input
-                        type="number"
-                        min="120"
-                        max="2400"
-                        step="10"
-                        value={props.cardMinWidth[field.key]}
-                        onChange={(e) => {
-                          const raw = e.currentTarget.value;
-                          const parsed =
-                            raw === '' ? DEFAULT_CARD_MIN_WIDTH[field.key] : Number(raw);
-                          if (!Number.isFinite(parsed)) return;
-                          props.onChangeCardMinWidth({ [field.key]: parsed });
-                        }}
-                      />
-                      <small class="settings-field-hint">
-                        Min width in CSS pixels. Default {DEFAULT_CARD_MIN_WIDTH[field.key]}.
-                      </small>
-                    </label>
-                  )}
-                </For>
-              </div>
-            </section>
-
-            {/* Terminal (settings.json — per-machine) ------------------ */}
-            <section id="settings-section-terminal" class="settings-section">
-              <h2>Terminal</h2>
-              <h3>Behaviour &amp; shortcuts</h3>
-              <div class="settings-grid">
-                <For each={TERMINAL_STRING_FIELDS}>
-                  {(field) => (
-                    <label>
-                      <span>{field.label}</span>
-                      <input
-                        type="text"
-                        placeholder={pick(field.placeholder, platform())}
-                        {...bindText(
-                          `terminal.${field.key}`,
-                          () =>
-                            (terminalPrefs() as Record<string, unknown>)[field.key] as
-                              | string
-                              | undefined,
-                          (v) => setTerminalString(field.key, v),
-                        )}
-                      />
-                      <Show when={field.hint}>
-                        <small class="settings-field-hint">{field.hint}</small>
-                      </Show>
-                    </label>
-                  )}
-                </For>
-              </div>
-
-              <h3>Font</h3>
-              <div class="settings-grid">
-                <label>
-                  <span>Font family</span>
-                  <input
-                    type="text"
-                    placeholder="ui-monospace, Menlo, Consolas, monospace"
-                    {...bindText(
-                      'xterm.font_family',
-                      () => xtermPrefs().font_family,
-                      (v) => updateXterm({ font_family: v || undefined }),
-                    )}
+              {/* Open with ----------------------------------------- */}
+              <section id="settings-section-open-with:conception" class="settings-section">
+                <div class="settings-section-head">
+                  <h2>Open with</h2>
+                  <FieldBadgeRow
+                    state={stateOf('open_with')}
+                    onRemove={() => void removeOverride('open_with')}
                   />
-                </label>
-                <label>
-                  <span>Font size (px)</span>
-                  <input
-                    type="number"
-                    min="6"
-                    max="48"
-                    value={xtermPrefs().font_size ?? ''}
-                    placeholder="12"
-                    onChange={(e) =>
-                      void updateXterm({
-                        font_size: e.currentTarget.value
-                          ? Number(e.currentTarget.value)
-                          : undefined,
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Line height</span>
-                  <input
-                    type="number"
-                    step="0.05"
-                    min="0.8"
-                    max="2"
-                    value={xtermPrefs().line_height ?? ''}
-                    placeholder="1.0"
-                    onChange={(e) =>
-                      void updateXterm({
-                        line_height: e.currentTarget.value
-                          ? Number(e.currentTarget.value)
-                          : undefined,
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Letter spacing (px)</span>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={xtermPrefs().letter_spacing ?? ''}
-                    placeholder="0"
-                    onChange={(e) =>
-                      void updateXterm({
-                        letter_spacing: e.currentTarget.value
-                          ? Number(e.currentTarget.value)
-                          : undefined,
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Font weight</span>
-                  <input
-                    type="text"
-                    placeholder="normal | 400 | 500"
-                    {...bindText(
-                      'xterm.font_weight',
-                      () =>
-                        xtermPrefs().font_weight !== undefined
-                          ? String(xtermPrefs().font_weight)
-                          : undefined,
-                      (v) => updateXterm({ font_weight: v || undefined }),
-                    )}
-                  />
-                </label>
-                <label>
-                  <span>Bold weight</span>
-                  <input
-                    type="text"
-                    placeholder="bold | 600 | 700"
-                    {...bindText(
-                      'xterm.font_weight_bold',
-                      () =>
-                        xtermPrefs().font_weight_bold !== undefined
-                          ? String(xtermPrefs().font_weight_bold)
-                          : undefined,
-                      (v) => updateXterm({ font_weight_bold: v || undefined }),
-                    )}
-                  />
-                </label>
-              </div>
-              <h3>Cursor &amp; buffer</h3>
-              <div class="settings-grid">
-                <label>
-                  <span>Cursor style</span>
-                  <select
-                    value={xtermPrefs().cursor_style ?? 'block'}
-                    onChange={(e) =>
-                      void updateXterm({
-                        cursor_style: e.currentTarget.value as 'block' | 'underline' | 'bar',
-                      })
-                    }
-                  >
-                    <For each={CURSOR_STYLES}>
-                      {(opt) => <option value={opt.value}>{opt.label}</option>}
-                    </For>
-                  </select>
-                </label>
-                <label class="settings-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={xtermPrefs().cursor_blink !== false}
-                    onChange={(e) => void updateXterm({ cursor_blink: e.currentTarget.checked })}
-                  />
-                  <span>Cursor blink</span>
-                </label>
-                <label>
-                  <span>Scrollback (lines)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100000"
-                    value={xtermPrefs().scrollback ?? ''}
-                    placeholder="10000"
-                    onChange={(e) =>
-                      void updateXterm({
-                        scrollback: e.currentTarget.value
-                          ? Number(e.currentTarget.value)
-                          : undefined,
-                      })
-                    }
-                  />
-                </label>
-                <label class="settings-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={xtermPrefs().ligatures === true}
-                    onChange={(e) =>
-                      void updateXterm({ ligatures: e.currentTarget.checked || undefined })
-                    }
-                  />
-                  <span>Programming-font ligatures</span>
-                </label>
-              </div>
-              <h3>Colours</h3>
-              <p class="settings-hint">
-                Leave a field blank to inherit the active theme. Values are CSS colours (hex, named,{' '}
-                <code>color-mix(...)</code>).
-              </p>
-              <div class="settings-color-grid">
-                <For each={TERMINAL_COLORS}>
-                  {(entry) => (
-                    <label class="settings-color">
-                      <span>{entry.label}</span>
-                      <input
-                        type="text"
-                        placeholder="—"
-                        {...bindText(
-                          `xterm.colors.${entry.key}`,
-                          () => xtermPrefs().colors?.[entry.key],
-                          (v) => {
-                            updateColor(entry.key, v);
-                            return Promise.resolve();
-                          },
-                        )}
-                      />
-                    </label>
-                  )}
-                </For>
-              </div>
-            </section>
-
-            {/* Group: condash.json (per-conception override) -------------- */}
-            <header class="settings-group-divider">
-              <h2>This conception</h2>
-              <code>
-                {configurationPath().endsWith('configuration.json')
-                  ? 'configuration.json (legacy)'
-                  : 'condash.json'}
-              </code>
-              <span class="settings-group-divider-actions">
-                <button
-                  class="modal-button"
-                  onClick={() => void flushDrafts()}
-                  disabled={!isDirty()}
-                  title="Flush any focused-but-unblurred edits to disk"
-                >
-                  Save
-                </button>
-                <button
-                  class="modal-button"
-                  onClick={openConfigExternally}
-                  title="Open the conception config file with the OS default editor"
-                >
-                  Open externally
-                </button>
-              </span>
-              <span class="settings-group-divider-hint">
-                Top-level keys here override the matching keys in settings.json. Reads fall back to
-                legacy configuration.json when condash.json is absent; writes always target
-                condash.json.
-              </span>
-            </header>
-
-            {/* Workspace ------------------------------------------------ */}
-            <section id="settings-section-workspace" class="settings-section">
-              <h2>Workspace</h2>
-              <div class="settings-grid settings-grid--wide">
-                <label>
-                  <span>Workspace path</span>
-                  <input
-                    type="text"
-                    placeholder={pick(WORKSPACE_PLACEHOLDER, platform())}
-                    {...bindText('workspace_path', () => parsed().workspace_path, setWorkspacePath)}
-                  />
-                </label>
-                <label>
-                  <span>Worktrees path</span>
-                  <input
-                    type="text"
-                    placeholder={pick(WORKTREES_PLACEHOLDER, platform())}
-                    {...bindText('worktrees_path', () => parsed().worktrees_path, setWorktreesPath)}
-                  />
-                </label>
-                <label>
-                  <span>Resources directory</span>
-                  <input
-                    type="text"
-                    placeholder="resources"
-                    {...bindText('resources_path', () => parsed().resources_path, setResourcesPath)}
-                  />
-                  <span class="settings-field-hint">
-                    Relative to the conception root. Browsed by the Resources pane.
-                  </span>
-                </label>
-                <label>
-                  <span>Skills directory</span>
-                  <input
-                    type="text"
-                    placeholder=".claude/skills"
-                    {...bindText('skills_path', () => parsed().skills_path, setSkillsPath)}
-                  />
-                  <span class="settings-field-hint">
-                    Relative to the conception root. Markdown files here are editable from the
-                    Skills pane.
-                  </span>
-                </label>
-              </div>
-            </section>
-
-            {/* Repositories -------------------------------------------- */}
-            <section id="settings-section-repositories" class="settings-section">
-              <h2>Repositories</h2>
-              <p class="settings-hint">
-                Each entry is either just a name (resolved against <code>workspace_path</code>) or
-                an object with optional <code>label</code>, <code>run</code>,{' '}
-                <code>force_stop</code>, <code>install</code>, <code>env</code>, and{' '}
-                <code>submodules</code>. <code>env</code> lists files copied from the primary into a
-                new worktree on <code>condash-cli worktrees setup</code>.
-              </p>
-              <div class="settings-bucket">
-                <For each={repos()}>
-                  {(entry, index) => (
-                    <RepoRow
-                      entry={entry}
-                      idPrefix={`repo[${index()}]`}
-                      index={index()}
-                      total={repos().length}
-                      bindText={bindText}
-                      onMove={(delta) => void moveRepo(index(), delta)}
-                      onRemove={() => void removeRepo(index())}
-                      onPatch={(next) => updateRepoEntry(index(), () => next)}
-                    />
-                  )}
-                </For>
-                <div class="settings-list-actions">
-                  <button class="modal-button" onClick={() => void addRepo()}>
-                    + Add repo
-                  </button>
                 </div>
-              </div>
-            </section>
+                <p class="settings-hint">
+                  Three slots used by the per-folder &quot;Open in…&quot; menu.{' '}
+                  <code>{'{path}'}</code> is substituted with the absolute path. Clear the command
+                  to remove the slot.
+                </p>
+                <div class="settings-grid settings-grid--wide">
+                  <For each={OPEN_WITH_SLOTS}>
+                    {(slot) => {
+                      const current = (): { label?: string; command?: string } =>
+                        parsed().open_with?.[slot.key] ?? {};
+                      return (
+                        <div class="settings-open-with">
+                          <span class="settings-field-label">{slot.label}</span>
+                          <input
+                            type="text"
+                            placeholder={`Open in ${slot.label.toLowerCase()}`}
+                            {...bindText(
+                              `conception.open_with.${slot.key}.label`,
+                              () => current().label,
+                              (v) => updateOpenWithSlot(slot.key, { label: v }),
+                            )}
+                          />
+                          <input
+                            type="text"
+                            placeholder="idea {path}"
+                            {...bindText(
+                              `conception.open_with.${slot.key}.command`,
+                              () => current().command,
+                              (v) => updateOpenWithSlot(slot.key, { command: v }),
+                            )}
+                          />
+                        </div>
+                      );
+                    }}
+                  </For>
+                </div>
+              </section>
 
-            {/* Open with ----------------------------------------------- */}
-            <section id="settings-section-open-with" class="settings-section">
-              <h2>Open with</h2>
-              <p class="settings-hint">
-                Three slots used by the per-folder &quot;Open in…&quot; menu.{' '}
-                <code>{'{path}'}</code> is substituted with the absolute path. Clear the command to
-                remove the slot.
-              </p>
-              <div class="settings-grid settings-grid--wide">
-                <For each={OPEN_WITH_SLOTS}>
-                  {(slot) => {
-                    const current = (): { label?: string; command?: string } =>
-                      parsed().open_with?.[slot.key] ?? {};
-                    return (
-                      <div class="settings-open-with">
-                        <span class="settings-field-label">{slot.label}</span>
-                        <input
-                          type="text"
-                          placeholder={`Open in ${slot.label.toLowerCase()}`}
-                          {...bindText(
-                            `open_with.${slot.key}.label`,
-                            () => current().label,
-                            (v) => updateOpenWithSlot(slot.key, { label: v }),
-                          )}
-                        />
-                        <input
-                          type="text"
-                          placeholder="idea {path}"
-                          {...bindText(
-                            `open_with.${slot.key}.command`,
-                            () => current().command,
-                            (v) => updateOpenWithSlot(slot.key, { command: v }),
-                          )}
-                        />
-                      </div>
-                    );
-                  }}
-                </For>
-              </div>
-            </section>
+              {/* Appearance — conception ---------------------------- */}
+              <section id="settings-section-appearance:conception" class="settings-section">
+                <div class="settings-section-head">
+                  <h2>Appearance</h2>
+                </div>
+                <div class="settings-section-subhead">
+                  <h3>Theme</h3>
+                  <FieldBadgeRow
+                    state={stateOf('theme')}
+                    onRemove={() => void removeOverride('theme')}
+                  />
+                </div>
+                <ThemePicker
+                  current={themeFor('conception')}
+                  onChange={(t) => void setConceptionTheme(t)}
+                />
+                <div class="settings-section-subhead">
+                  <h3>Card density</h3>
+                  <FieldBadgeRow
+                    state={stateOf('cardMinWidth')}
+                    onRemove={() => void removeOverride('cardMinWidth')}
+                  />
+                </div>
+                <p class="settings-hint">
+                  Each grid keeps a row of <em>n</em> cards until the pane is wide enough to fit{' '}
+                  <em>n+1</em> cards each at this width — at which point the row reflows.
+                </p>
+                <CardDensityFields
+                  resolve={cardMinWidthFor('conception')}
+                  onChange={(patch) => void setConceptionCardMinWidth(patch)}
+                />
+              </section>
+
+              {/* Terminal — conception ------------------------------ */}
+              <section id="settings-section-terminal:conception" class="settings-section">
+                <div class="settings-section-head">
+                  <h2>Terminal</h2>
+                  <FieldBadgeRow
+                    state={stateOf('terminal')}
+                    onRemove={() => void removeOverride('terminal')}
+                  />
+                </div>
+                <p class="settings-section-hint">
+                  Override the entire <code>terminal</code> block for this conception. Editing any
+                  field here writes the whole block to <code>condash.json</code>.
+                </p>
+                <TerminalFields
+                  target="conception"
+                  bindText={bindText}
+                  prefs={() => terminalPrefsFor('conception')}
+                  xterm={() => xtermPrefsFor('conception')}
+                  setString={(k, v) => setTerminalString('conception', k, v)}
+                  updateXterm={(p) => updateXterm('conception', p)}
+                  updateColor={(k, v) => updateColor('conception', k, v)}
+                  platform={platform}
+                />
+              </section>
+            </div>
           </div>
         </div>
+
         <Show when={closeConfirm()}>
           <div class="settings-confirm-backdrop" onClick={() => setCloseConfirm(false)}>
             <div
@@ -1091,5 +1121,337 @@ export function SettingsModal(props: {
         </Show>
       </div>
     </div>
+  );
+}
+
+// --- Section helpers ---------------------------------------------------
+
+function parseRawConfig(text: string): RawConfig {
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as RawConfig;
+  } catch {
+    return {};
+  }
+}
+
+function parseErrorOf(text: string): string | null {
+  if (!text) return null;
+  try {
+    JSON.parse(text);
+    return null;
+  } catch (err) {
+    return (err as Error).message;
+  }
+}
+
+/** Field row that pairs a labelled control with an inheritance badge.
+ *  Used on the conception tab; pass `state="inherits"` and `hide` from the
+ *  global tab if it ever needs the same shape. */
+function FieldWithBadge(props: {
+  label: string;
+  hint?: string;
+  state: InheritanceState;
+  onRemove: () => void;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <label class="settings-field-with-badge">
+      <span class="settings-field-row">
+        <span class="settings-field-label">{props.label}</span>
+        <FieldBadgeRow state={props.state} onRemove={props.onRemove} />
+      </span>
+      {props.children}
+      <Show when={props.hint}>
+        <span class="settings-field-hint">{props.hint}</span>
+      </Show>
+    </label>
+  );
+}
+
+/** Theme radios — shared between the Global and Conception tabs. */
+function ThemePicker(props: { current: Theme; onChange: (theme: Theme) => void }): JSX.Element {
+  return (
+    <div class="settings-field">
+      <span class="settings-field-label">Theme</span>
+      <div class="settings-radio-group" role="radiogroup">
+        <For each={THEME_OPTIONS}>
+          {(opt) => (
+            <label class="settings-radio">
+              <input
+                type="radio"
+                name={`theme-${Math.random().toString(36).slice(2, 8)}`}
+                checked={props.current === opt.value}
+                onChange={() => props.onChange(opt.value)}
+              />
+              <span>{opt.label}</span>
+            </label>
+          )}
+        </For>
+      </div>
+    </div>
+  );
+}
+
+/** Five card-min-width fields — shared between tabs. */
+function CardDensityFields(props: {
+  resolve: (key: keyof CardMinWidthPrefs) => number;
+  onChange: (patch: CardMinWidthPrefs) => void;
+}): JSX.Element {
+  return (
+    <div class="settings-grid">
+      <For
+        each={
+          [
+            { key: 'projects', label: 'Project cards (Projects pane)' },
+            { key: 'code', label: 'Code cards (Code pane)' },
+            { key: 'knowledge', label: 'Knowledge cards (Knowledge pane)' },
+            { key: 'resources', label: 'Resource cards (Resources pane)' },
+            { key: 'skills', label: 'Skill cards (Skills pane)' },
+          ] as const
+        }
+      >
+        {(field) => (
+          <label>
+            <span>{field.label}</span>
+            <input
+              type="number"
+              min="120"
+              max="2400"
+              step="10"
+              value={props.resolve(field.key)}
+              onChange={(e) => {
+                const raw = e.currentTarget.value;
+                const parsed = raw === '' ? DEFAULT_CARD_MIN_WIDTH[field.key] : Number(raw);
+                if (!Number.isFinite(parsed)) return;
+                props.onChange({ [field.key]: parsed });
+              }}
+            />
+            <small class="settings-field-hint">
+              Min width in CSS pixels. Default {DEFAULT_CARD_MIN_WIDTH[field.key]}.
+            </small>
+          </label>
+        )}
+      </For>
+    </div>
+  );
+}
+
+/** Terminal section content — string fields, xterm font/cursor/buffer,
+ *  colours. Shared between Global and Conception tabs. */
+function TerminalFields(props: {
+  target: SettingsTab;
+  bindText: (
+    id: string,
+    persisted: () => string | undefined,
+    save: (value: string) => Promise<void>,
+  ) => {
+    value: string;
+    onInput: (e: InputEvent & { currentTarget: HTMLInputElement }) => void;
+    onChange: (e: Event & { currentTarget: HTMLInputElement }) => void;
+  };
+  prefs: () => TerminalPrefs;
+  xterm: () => TerminalXtermPrefs;
+  setString: (key: (typeof TERMINAL_STRING_FIELDS)[number]['key'], value: string) => Promise<void>;
+  updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
+  updateColor: (key: ColorEntry['key'], value: string) => void;
+  platform: () => Platform | undefined;
+}): JSX.Element {
+  const idPrefix = `${props.target}.terminal`;
+  return (
+    <>
+      <h3>Behaviour &amp; shortcuts</h3>
+      <div class="settings-grid">
+        <For each={TERMINAL_STRING_FIELDS}>
+          {(field) => (
+            <label>
+              <span>{field.label}</span>
+              <input
+                type="text"
+                placeholder={pick(field.placeholder, props.platform())}
+                {...props.bindText(
+                  `${idPrefix}.${field.key}`,
+                  () => (props.prefs() as Record<string, unknown>)[field.key] as string | undefined,
+                  (v) => props.setString(field.key, v),
+                )}
+              />
+              <Show when={field.hint}>
+                <small class="settings-field-hint">{field.hint}</small>
+              </Show>
+            </label>
+          )}
+        </For>
+      </div>
+
+      <h3>Font</h3>
+      <div class="settings-grid">
+        <label>
+          <span>Font family</span>
+          <input
+            type="text"
+            placeholder="ui-monospace, Menlo, Consolas, monospace"
+            {...props.bindText(
+              `${idPrefix}.xterm.font_family`,
+              () => props.xterm().font_family,
+              (v) => props.updateXterm({ font_family: v || undefined }),
+            )}
+          />
+        </label>
+        <label>
+          <span>Font size (px)</span>
+          <input
+            type="number"
+            min="6"
+            max="48"
+            value={props.xterm().font_size ?? ''}
+            placeholder="12"
+            onChange={(e) =>
+              void props.updateXterm({
+                font_size: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+        </label>
+        <label>
+          <span>Line height</span>
+          <input
+            type="number"
+            step="0.05"
+            min="0.8"
+            max="2"
+            value={props.xterm().line_height ?? ''}
+            placeholder="1.0"
+            onChange={(e) =>
+              void props.updateXterm({
+                line_height: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+        </label>
+        <label>
+          <span>Letter spacing (px)</span>
+          <input
+            type="number"
+            step="0.5"
+            value={props.xterm().letter_spacing ?? ''}
+            placeholder="0"
+            onChange={(e) =>
+              void props.updateXterm({
+                letter_spacing: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+        </label>
+        <label>
+          <span>Font weight</span>
+          <input
+            type="text"
+            placeholder="normal | 400 | 500"
+            {...props.bindText(
+              `${idPrefix}.xterm.font_weight`,
+              () =>
+                props.xterm().font_weight !== undefined
+                  ? String(props.xterm().font_weight)
+                  : undefined,
+              (v) => props.updateXterm({ font_weight: v || undefined }),
+            )}
+          />
+        </label>
+        <label>
+          <span>Bold weight</span>
+          <input
+            type="text"
+            placeholder="bold | 600 | 700"
+            {...props.bindText(
+              `${idPrefix}.xterm.font_weight_bold`,
+              () =>
+                props.xterm().font_weight_bold !== undefined
+                  ? String(props.xterm().font_weight_bold)
+                  : undefined,
+              (v) => props.updateXterm({ font_weight_bold: v || undefined }),
+            )}
+          />
+        </label>
+      </div>
+
+      <h3>Cursor &amp; buffer</h3>
+      <div class="settings-grid">
+        <label>
+          <span>Cursor style</span>
+          <select
+            value={props.xterm().cursor_style ?? 'block'}
+            onChange={(e) =>
+              void props.updateXterm({
+                cursor_style: e.currentTarget.value as 'block' | 'underline' | 'bar',
+              })
+            }
+          >
+            <For each={CURSOR_STYLES}>
+              {(opt) => <option value={opt.value}>{opt.label}</option>}
+            </For>
+          </select>
+        </label>
+        <label class="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={props.xterm().cursor_blink !== false}
+            onChange={(e) => void props.updateXterm({ cursor_blink: e.currentTarget.checked })}
+          />
+          <span>Cursor blink</span>
+        </label>
+        <label>
+          <span>Scrollback (lines)</span>
+          <input
+            type="number"
+            min="0"
+            max="100000"
+            value={props.xterm().scrollback ?? ''}
+            placeholder="10000"
+            onChange={(e) =>
+              void props.updateXterm({
+                scrollback: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+        </label>
+        <label class="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={props.xterm().ligatures === true}
+            onChange={(e) =>
+              void props.updateXterm({ ligatures: e.currentTarget.checked || undefined })
+            }
+          />
+          <span>Programming-font ligatures</span>
+        </label>
+      </div>
+
+      <h3>Colours</h3>
+      <p class="settings-hint">
+        Leave a field blank to inherit the active theme. Values are CSS colours (hex, named,{' '}
+        <code>color-mix(...)</code>).
+      </p>
+      <div class="settings-color-grid">
+        <For each={TERMINAL_COLORS}>
+          {(entry) => (
+            <label class="settings-color">
+              <span>{entry.label}</span>
+              <input
+                type="text"
+                placeholder="—"
+                {...props.bindText(
+                  `${idPrefix}.xterm.colors.${entry.key}`,
+                  () => props.xterm().colors?.[entry.key],
+                  (v) => {
+                    props.updateColor(entry.key, v);
+                    return Promise.resolve();
+                  },
+                )}
+              />
+            </label>
+          )}
+        </For>
+      </div>
+    </>
   );
 }

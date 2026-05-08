@@ -1,7 +1,13 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { ConfigShape } from './config-walk';
-import type { TerminalPrefs } from '../shared/types';
+import type {
+  CardMinWidthPrefs,
+  LayoutState,
+  TerminalPrefs,
+  Theme,
+  TreeExpansionPrefs,
+} from '../shared/types';
 import { settingsPath } from './settings';
 
 /**
@@ -27,6 +33,10 @@ export interface EffectiveConfig extends ConfigShape {
   open_with?: Record<string, { label: string; command: string }>;
   pdf_viewer?: string[];
   terminal?: TerminalPrefs;
+  theme?: Theme;
+  cardMinWidth?: CardMinWidthPrefs;
+  layout?: LayoutState;
+  treeExpansion?: TreeExpansionPrefs;
 }
 
 /** Filename condash now writes to. */
