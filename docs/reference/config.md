@@ -307,21 +307,25 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 ## Editing from the dashboard
 
-**File → Settings…** (`Ctrl+,`) opens a full-viewport modal split into two file targets. There is no in-modal JSON editor: each persisted preference has its own form control.
+**File → Settings…** (`Ctrl+,`) opens a full-viewport modal with a two-tab layout (added in v2.15.2). There is no in-modal JSON editor: each persisted preference has its own form control.
 
-**Global** (writes to `settings.json`):
+**Global** tab (writes to `settings.json`):
 
+- **Recent conception paths** — manage the recents list backing **File → Open Recent**.
 - **Appearance** — theme; per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences.
-- **Recent conception paths** — manage the recents list backing **File → Open Recent**.
 
-**This conception** (writes to `condash.json`; the legacy `configuration.json` is read but never written to):
+**This conception** tab (writes to `condash.json`; the legacy `configuration.json` is read but never written to):
 
 - **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`.
 - **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 - **Open with** — slot labels and commands.
+- **Appearance** — theme + card-grid min-widths overridden for this conception only.
+- **Terminal** — `terminal` block overridden for this conception only.
 
-Each header carries an **Open externally** button that shells out via `window.condash.openPath` so power users can edit the raw JSON in their `$EDITOR`. Writes go through `patchConfig`, which parses the live file, applies a mutator, drops empty leaves, and round-trips through `note.write`'s atomic CAS — schema-validated by the [strict zod schema](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) before the bytes hit disk.
+Each top-level key on the **This conception** tab carries an inheritance badge that calls out the override state — **Inherits**, **Overridden**, or **Matches global** — plus a **Reset to global** / **Remove override** button when the conception writes anything for that key. Removing an override drops the key from `condash.json` and falls back to inheritance. Writes go through `patchConfig` (condash.json) and `patchSettings` (settings.json), each of which parses the live file, applies a mutator, drops empty leaves, and round-trips through atomic CAS — schema-validated by the [strict zod schemas](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) (`globalSettingsSchema` for settings.json, `conceptionConfigSchema` for condash.json) before the bytes hit disk.
+
+The rail at the left of the modal carries **Save** (flush focused-but-unblurred edits) and **Open externally** (open the active tab's file in the OS default editor). The active tab is remembered between modal opens via `localStorage`.
 
 Keys not surfaced in the modal — `pdf_viewer`, the `welcome.dismissed` flag — still need a hand-edit. See [`settings.json` (per-user, per-machine)](#settingsjson-per-user-per-machine) above for paths.
 

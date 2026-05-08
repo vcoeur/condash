@@ -4,7 +4,10 @@ import type { StepMarker, TransitionResult } from '../shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '../shared/types';
 import { isoToday } from '../shared/iso-today';
 import { atomicWrite } from './atomic-write';
-import { validateAndCanonicaliseConfig } from './config-schema';
+import {
+  validateAndCanonicaliseConfig,
+  validateAndCanonicaliseGlobalSettings,
+} from './config-schema';
 
 // One regex for both shapes: capture the step text in group 4 so callers
 // that need the body text use it; callers that only need the marker can
@@ -243,9 +246,15 @@ export async function writeNote(
 
     const baseName = basename(path);
     const isConceptionConfig = baseName === 'condash.json' || baseName === 'configuration.json';
-    const finalContent = isConceptionConfig
-      ? validateAndCanonicaliseConfig(newContent)
-      : newContent;
+    const isGlobalSettings = baseName === 'settings.json';
+    let finalContent: string;
+    if (isConceptionConfig) {
+      finalContent = validateAndCanonicaliseConfig(newContent);
+    } else if (isGlobalSettings) {
+      finalContent = validateAndCanonicaliseGlobalSettings(newContent);
+    } else {
+      finalContent = newContent;
+    }
     await atomicWrite(path, finalContent);
     return finalContent;
   });

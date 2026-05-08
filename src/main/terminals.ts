@@ -7,8 +7,8 @@ import * as pty from 'node-pty';
 import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../shared/types';
 import { atomicWrite } from './atomic-write';
 import { findRepoEntry, type ConfigShape } from './config-walk';
-import { readSettings, updateSettings } from './settings';
 import { getEffectiveConceptionConfig } from './effective-config';
+import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
 
 interface Session {
@@ -394,16 +394,25 @@ export function closeSession(id: string): Promise<void> {
   return stopSession(id);
 }
 
-/** Read terminal prefs from settings.json. As of 2026-05-01 these live
- * per-machine, not in the conception's configuration.json — the boot-time
- * migration in main/index.ts copies any pre-existing block. */
+/** Read effective terminal prefs. The active conception's `condash.json`
+ * may override the entire `terminal` block (top-level replace); when no
+ * override is set, the per-machine `settings.json` value applies. The
+ * one-shot migration that promoted terminal from configuration.json into
+ * settings.json (2026-05-01) still runs at boot — the overridable layer
+ * sits on top of that. */
 export async function getTerminalPrefs(): Promise<TerminalPrefs> {
   const settings = await readSettings();
+  if (settings.lastConceptionPath) {
+    const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
+    if (effective.terminal) return effective.terminal;
+  }
   return settings.terminal ?? {};
 }
 
 /** Replace the persisted terminal prefs in settings.json. The patch is a
- * full replacement; pass `{}` to clear back to defaults. */
+ * full replacement; pass `{}` to clear back to defaults. Always writes to
+ * the per-machine settings.json — per-conception overrides are written
+ * via the Settings modal's `patchConfig` flow. */
 export async function setTerminalPrefs(patch: TerminalPrefs): Promise<void> {
   await updateSettings((cur) => ({ ...cur, terminal: patch }));
 }

@@ -43,6 +43,9 @@ const api: CondashApi = {
   getTreeExpansion: () => ipcRenderer.invoke('getTreeExpansion'),
   setTreeExpansion: (prefs) => ipcRenderer.invoke('setTreeExpansion', prefs),
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
+  getGlobalSettingsRaw: () => ipcRenderer.invoke('settings.readRaw'),
+  writeGlobalSettings: (expectedContent, newContent) =>
+    ipcRenderer.invoke('settings.writeRaw', expectedContent, newContent),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
     ipcRenderer.invoke('step.toggle', path, lineIndex, expectedMarker, newMarker),
   editStepText: (path, lineIndex, expectedText, newText) =>

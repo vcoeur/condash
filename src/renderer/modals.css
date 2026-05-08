@@ -343,6 +343,71 @@
   font-size: 13px;
 }
 
+/* Tab strip — switches between the Global panel and the This-conception
+ * panel. Lives between the modal header and the settings-shell rail/scroll
+ * row. ARIA tablist semantics; arrow-key nav handled in JS. */
+.settings-tablist {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 0 16px;
+}
+
+.settings-tab {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 16px 8px;
+  margin: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    color 0.08s ease,
+    border-color 0.08s ease;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.settings-tab-label {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.settings-tab-file {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+.settings-tab.active .settings-tab-file {
+  color: var(--text-muted);
+}
+
+.settings-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
 .settings-shell {
   flex: 1;
   min-height: 0;
@@ -395,6 +460,27 @@
   color: var(--text-muted);
   letter-spacing: 0;
   text-transform: none;
+}
+
+/* Brief context paragraph rendered above the rail's section list — tells
+ * the user which file the active tab edits. Replaces the per-group heading
+ * row that lived inside the scroll viewport in v2.15.0. */
+.settings-rail-hint {
+  margin: 0 14px 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.settings-rail-actions {
+  margin: 14px 14px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .settings-rail-list {
@@ -520,10 +606,55 @@
   align-items: center;
 }
 
+/* Tabpanel — wraps every section in one tab. Both stay mounted (so
+ * drafts and scroll position survive a tab switch); the inactive panel
+ * is `display: none`-hidden via the modifier class. */
+.settings-tabpanel {
+  display: block;
+}
+
+.settings-tabpanel--hidden {
+  display: none;
+}
+
 .settings-section {
   padding: 8px 0 32px;
   border-bottom: 1px solid var(--border);
   scroll-margin-top: 16px;
+}
+
+/* Section heading row that hosts h2 + badge group on the same line. Used
+ * on the conception tab where each top-level key carries a visible
+ * inheritance badge. */
+.settings-section-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.settings-section-head h2 {
+  margin: 0;
+}
+
+.settings-section-subhead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0 8px;
+}
+
+.settings-section-subhead h3 {
+  margin: 0;
+}
+
+.settings-section-hint {
+  margin: -6px 0 14px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .settings-section:last-child {
@@ -734,8 +865,12 @@
  * head action), which clips multi-word labels like "+ with run / label". */
 .settings-modal--full .settings-list-actions .modal-button,
 .settings-modal--full .settings-group-divider-actions .modal-button,
+.settings-modal--full .settings-rail-actions .modal-button,
+.settings-modal--full .settings-recents-row .modal-button,
+.settings-modal--full .settings-recents-actions .modal-button,
 .settings-modal--full .settings-confirm-actions .modal-button,
-.settings-modal--full .settings-conception-path .modal-button {
+.settings-modal--full .settings-conception-path .modal-button,
+.settings-modal--full .settings-field-badges .modal-button {
   width: auto;
   height: auto;
   padding: 5px 12px;
@@ -745,6 +880,15 @@
   font-weight: 500;
   white-space: nowrap;
   line-height: 1.2;
+}
+
+/* Compact override for the per-field "Reset to global" / "Remove
+ * override" button — sits next to a small badge and shouldn't dwarf it. */
+.settings-modal--full .settings-field-badges .settings-remove-override {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 /* Open-with rows: label + command stacked */
@@ -1177,4 +1321,93 @@
   margin-top: 8px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* ---- Inheritance badges (conception tab) ------------------------------- */
+
+/* Pill rendered next to a top-level key's editor on the conception tab.
+ * Three variants — neutral / accent / warning — driven by classList from
+ * the `inheritanceState` helper. */
+.settings-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.settings-badge--inherits {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: var(--bg-subtle);
+}
+
+.settings-badge--overridden {
+  color: #044a26;
+  background: #d1f5dd;
+  border-color: #6dcf94;
+}
+
+.settings-badge--matches {
+  color: #6a4a06;
+  background: #fff1c8;
+  border-color: #e6c66a;
+}
+
+[data-theme='dark'] .settings-badge--overridden {
+  color: #c2efd2;
+  background: rgba(34, 102, 64, 0.4);
+  border-color: rgba(120, 200, 150, 0.55);
+}
+
+[data-theme='dark'] .settings-badge--matches {
+  color: #f0d9a8;
+  background: rgba(120, 92, 28, 0.45);
+  border-color: rgba(220, 180, 90, 0.55);
+}
+
+/* Container for the badge plus the optional Remove-override button. Used
+ * inside section-head rows AND inside FieldWithBadge. */
+.settings-field-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.settings-remove-override {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* Field row holding label + badges on one line above the input. Used for
+ * per-field badges on the conception tab (workspace paths, etc.). */
+.settings-field-with-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-field-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-field-with-badge > input,
+.settings-field-with-badge > select,
+.settings-field-with-badge > textarea {
+  /* Inputs inside the labelled-with-badge wrapper inherit the modal-wide
+   * input styles set on bare `label > input` selectors elsewhere; the
+   * extra wrapping div would otherwise lose those rules. */
+  margin-top: 2px;
 }
