@@ -23,8 +23,8 @@ const WRAPPER_SCRIPT = `#!/usr/bin/env bash
 # Two-mode launcher: CLI fast-path or GUI launch.
 #
 # CLI fast-path: when the first non-flag arg is a known noun (projects /
-# knowledge / skills / search / repos / worktrees / audit / dirty / config / help),
-# we skip Chromium init entirely and run the bundled Electron binary in
+# knowledge / skills / templates / search / repos / worktrees / audit / dirty /
+# config / help), we skip Chromium init entirely and run the bundled Electron in
 # plain-Node mode via ELECTRON_RUN_AS_NODE=1. That path resolves the CLI
 # bundle from app.asar.unpacked/ (electron-builder unpacks dist-cli/ +
 # conception-template/ so plain Node fs can read them). Startup is ~50ms
@@ -44,7 +44,7 @@ BIN="$DIR/__BIN_NAME__"
 # invocation still falls through to the GUI.
 for arg in "$@"; do
   case "$arg" in
-    --help|-h|--version|-v|projects|knowledge|skills|search|repos|worktrees|audit|dirty|config|help)
+    --help|-h|--version|-v|projects|knowledge|skills|templates|search|repos|worktrees|audit|dirty|config|help)
       CLI_BUNDLE="$DIR/resources/app.asar.unpacked/dist-cli/condash.cjs"
       if [ -f "$CLI_BUNDLE" ]; then
         export ELECTRON_RUN_AS_NODE=1

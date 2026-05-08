@@ -65,6 +65,7 @@ const CLI_NOUNS: ReadonlySet<string> = new Set([
   'audit',
   'dirty',
   'skills',
+  'templates',
   'config',
   'help',
 ]);
