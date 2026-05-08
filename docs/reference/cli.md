@@ -33,7 +33,7 @@ The CLI exists because skills (`/projects`, `/knowledge`) and shell scripts need
 CLI nouns:
 
 ```
-projects   knowledge   search   repos   worktrees   audit   dirty   skills   config   help
+projects   knowledge   search   repos   worktrees   audit   dirty   skills   templates   config   help
 ```
 
 Top-level `--help`, `-h`, `--version`, and `-v` always route to the CLI (they print help/version text instead of opening a window).
@@ -192,6 +192,18 @@ Manage condash-shipped Claude Code skills.
 | `status` | Compare local skills against the shipped versions and the recorded SHA256 manifest |
 
 The manifest at `.claude/skills/.condash-skills.json` tracks the shipped version and SHA256 per file, so updates can detect local edits.
+
+### `templates`
+
+Manage condash-shipped *partial-file* templates — top-level files where condash owns a marker-delimited region (today: `CLAUDE.md` between `<!-- condash:general:begin -->` and `<!-- condash:general:end -->`). The text outside the markers (notably `## Specific to this conception`) is user-owned and never touched.
+
+| Verb | What it does |
+|---|---|
+| `list` | Print every template that ships with this condash version, with installed/version status |
+| `install [<path>...]` | Update the shipped region inside `<conception>/<path>`. With no args, runs all shipped templates. Refuses on edits without `--force`; `--diff` shows the unified diff |
+| `status` | Compare local regions against the shipped versions and the recorded SHA256 (states: `unchanged` / `outdated` / `edited` / `missing` / `missing-markers` / `orphan`) |
+
+The manifest reuses `.claude/skills/.condash-skills.json` (`templates` namespace alongside `skills`). The recorded SHA256 hashes the **content between markers, exclusive of marker lines** — so the user can move the marker pair within the file without invalidating the manifest, as long as the region content stays the same.
 
 ### `config`
 
