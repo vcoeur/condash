@@ -42,12 +42,13 @@ These are the contract every `/knowledge` action enforces:
 - **Don't duplicate app internals.** Single-app details belong in that app's own `CLAUDE.md`. `knowledge/internal/<app>.md` carries conception-side knowledge only.
 - **Don't create pointer-only stubs.** If there's no conception-side knowledge for an app, the `internal/index.md` row is the body.
 - **Prefer narrow-scope slugs over subject-area slugs.** `ci-action-pinning.md` beats `github-actions.md`.
-- **Bucket-picking rubric:** intent/rule → `conventions.md`; single app → `internal/<app>.md` (or index row); ecosystem-spanning → `topics/<subcategory>/<slug>.md`; third-party → `external/<system>.md`.
+- **Bucket-picking rubric:** durable team rule → **not here** (goes in the project's `CLAUDE.md` Specific section); single app → `internal/<app>.md` (or index row); ecosystem-spanning → `topics/<subcategory>/<slug>.md`; third-party → `external/<system>.md`.
 - **Durable only.** Project-specific plans, incident reports, and in-flight work live under `projects/`, never here.
+- **No workflow rules.** `knowledge/` is reference material — facts you look up. Workflow rules, team conventions, and pre-skill behaviour go in the project's `CLAUDE.md`. The bucket-picking rubric, read flow, and edit flow are documented here in `SKILL.md`, not duplicated into `knowledge/index.md`.
 
 ## When to create vs. extend
 
-- **Durable team rule** → `knowledge/conventions.md` (root-level exception). Structure: claim (H3) + **Why** + **How to apply**. No stamp.
+- **Durable team rule** → not here. Lives in the project's `CLAUDE.md` Specific section (auto-loaded).
 - **New third-party service** → `external/<system>.md`.
 - **New shared self-hosted service** → `internal/<service>.md`.
 - **New cross-cutting topic** → `topics/<subcategory>/<slug>.md`.
