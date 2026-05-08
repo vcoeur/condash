@@ -46,7 +46,7 @@ import {
   ProjectsView,
 } from './panes/projects';
 import { KnowledgeView } from './panes/knowledge';
-import { CodeView, groupRepos } from './panes/code';
+import { CodeView } from './panes/code';
 import { ResourcesView, type ResourcesViewActions } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { SearchModal } from './search-modal';
@@ -416,8 +416,8 @@ function App() {
   //   1. **Scalar** (dirty, upstream) — push events from
   //      `repo-watchers.ts` flow through `repo-events.ts` into path-
   //      shaped `setRepos(...)` writes. Only the cells that actually
-  //      read each value re-evaluate — `repoGroups` and other whole-
-  //      list readers stay quiet on a single dirty tick.
+  //      read each value re-evaluate — whole-list memos like the
+  //      Code-pane `orderedRepos` stay quiet on a single dirty tick.
   //   2. **Set membership** (worktree add/remove, primary checkout
   //      branch switch, configuration.json edit) — `reloadRepos` (full
   //      list) or `reloadPrimaryByPath` (per-primary subset) replaces
@@ -519,8 +519,6 @@ function App() {
     });
   });
   onCleanup(offRepoEvents);
-
-  const repoGroups = createMemo(() => groupRepos(repos));
 
   const [openWithSlots] = createResource(
     () => [conceptionPath(), refreshKey()] as const,
@@ -1361,8 +1359,7 @@ function App() {
                             <div class="empty">
                               <p>No repositories configured.</p>
                               <p>
-                                Add entries under <code>repositories.primary</code> or{' '}
-                                <code>repositories.secondary</code> in{' '}
+                                Add entries to <code>repositories</code> in{' '}
                                 <code>configuration.json</code>.
                               </p>
                               <button
@@ -1378,7 +1375,6 @@ function App() {
                       >
                         <CodeView
                           repos={repos}
-                          groups={repoGroups()}
                           slots={openWithSlots() ?? {}}
                           liveRepos={liveRepos()}
                           liveSessionCwds={liveSessionCwds()}

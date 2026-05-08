@@ -134,13 +134,7 @@ export const configSchema = z
     resources_path: conceptionRelativePath.optional(),
     /** Directory browsed by the Skills pane (default `.claude/skills`). */
     skills_path: conceptionRelativePath.optional(),
-    repositories: z
-      .object({
-        primary: z.array(repoEntry).optional(),
-        secondary: z.array(repoEntry).optional(),
-      })
-      .strict()
-      .optional(),
+    repositories: z.array(repoEntry).optional(),
     open_with: z
       .object({
         main_ide: openWithSlot.optional(),

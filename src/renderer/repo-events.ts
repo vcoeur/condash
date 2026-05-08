@@ -7,8 +7,8 @@
  *   - **Scalar** (`repo-dirty`, `repo-upstream`): path-shaped `setRepos`
  *     writes. Only the cells actually read by a component re-evaluate —
  *     the top-level array reference and unaffected rows stay stable, so
- *     whole-list readers (e.g. `repoGroups`) don't re-run on a single
- *     dirty tick.
+ *     whole-list readers (e.g. the Code-pane `orderedRepos` memo) don't
+ *     re-run on a single dirty tick.
  *
  *   - **Set membership** (`repo-worktrees-changed`): the worktree list
  *     for a primary changed (worktree add/remove) or its checkout

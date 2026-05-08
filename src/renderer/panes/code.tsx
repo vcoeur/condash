@@ -19,8 +19,6 @@ import { usePaneScrollMemory } from './pane-scroll-memory';
 
 type RepoStatus = 'missing' | 'unknown' | 'clean' | 'dirty';
 
-export type RepoGroup = { id: string; label: string; entries: RepoEntry[] };
-
 const LAUNCHER_SLOTS: readonly OpenWithSlotKey[] = ['main_ide', 'secondary_ide', 'terminal'];
 const LAUNCHER_GLYPH: Record<OpenWithSlotKey, string> = {
   main_ide: '⌘',
@@ -28,7 +26,10 @@ const LAUNCHER_GLYPH: Record<OpenWithSlotKey, string> = {
   terminal: '▶',
 };
 
-export function groupRepos(repos: readonly RepoEntry[]): RepoGroup[] {
+/** Flatten the configured repo list into one ordered card sequence, with each
+ *  submodule parent immediately followed by its children. Top-level entries
+ *  with no children pass through in declaration order. */
+export function orderedRepos(repos: readonly RepoEntry[]): RepoEntry[] {
   const childrenByParent = new Map<string, RepoEntry[]>();
   for (const r of repos) {
     if (!r.parent) continue;
@@ -36,32 +37,14 @@ export function groupRepos(repos: readonly RepoEntry[]): RepoGroup[] {
     arr.push(r);
     childrenByParent.set(r.parent, arr);
   }
-  const primary: RepoEntry[] = [];
-  const secondary: RepoEntry[] = [];
-  const submoduleParents: { parent: RepoEntry; children: RepoEntry[] }[] = [];
+  const out: RepoEntry[] = [];
   for (const r of repos) {
     if (r.parent) continue;
+    out.push(r);
     const kids = childrenByParent.get(r.name);
-    if (kids && kids.length > 0) {
-      submoduleParents.push({ parent: r, children: kids });
-    } else if (r.kind === 'primary') {
-      primary.push(r);
-    } else {
-      secondary.push(r);
-    }
+    if (kids) out.push(...kids);
   }
-  const groups: RepoGroup[] = [];
-  if (primary.length > 0) groups.push({ id: 'primary', label: 'PRIMARY', entries: primary });
-  for (const { parent, children } of submoduleParents) {
-    groups.push({
-      id: parent.name,
-      label: parent.name.toUpperCase(),
-      entries: [parent, ...children],
-    });
-  }
-  if (secondary.length > 0)
-    groups.push({ id: 'secondary', label: 'SECONDARY', entries: secondary });
-  return groups;
+  return out;
 }
 
 /** Synthesise the primary checkout as a Worktree-shaped row when the data
@@ -166,10 +149,7 @@ export function RepoRow(props: {
         </Show>
         <span class="spacer" />
         <Show when={props.repo.parent}>
-          <span
-            class="repo-kind-tag"
-            title={`Submodule, configured under repositories.${props.repo.kind}`}
-          >
+          <span class="repo-kind-tag" title="Submodule, configured under repositories">
             submodule
           </span>
         </Show>
@@ -670,12 +650,11 @@ function BranchInfoBadges(props: { worktree: Worktree; subtreeScoped: boolean })
   );
 }
 
-/** Top-level Code-pane view. Renders one section per group (PRIMARY,
- *  per-submodule parents, SECONDARY) with the repo cards and any inline
- *  CodeRunRow sessions slotted under their owning group. */
+/** Top-level Code-pane view. Renders one flat grid of repo cards in a
+ *  scrollable top region, with ACTIVE RUNS pinned at the bottom so the
+ *  live-process list never scrolls out of view. */
 export function CodeView(props: {
   repos: readonly RepoEntry[];
-  groups: readonly RepoGroup[];
   slots: OpenWithSlots;
   liveRepos: ReadonlySet<string>;
   liveSessionCwds: ReadonlyMap<string, string>;
@@ -689,73 +668,65 @@ export function CodeView(props: {
   onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
   onCloseSession: (id: string) => void;
 }) {
+  // Pane scroll memory binds to the inner scroller so position survives
+  // pane switches; the outer .repos-pane is no longer the scrolling box.
   const scrollRef = usePaneScrollMemory('code');
+  const ordered = createMemo<readonly RepoEntry[]>(() => orderedRepos(props.repos));
+  // Sort active runs to mirror the on-screen repo card order — sessions for
+  // the topmost card come first, regardless of when they were spawned.
+  // Memoised so a parent re-render doesn't re-allocate the array on every
+  // pass and force every <CodeRunRow> to remount.
+  const dockSessions = createMemo<readonly TermSession[]>(() => {
+    const order = new Map(ordered().map((r, i) => [r.name, i]));
+    return props.codeRunSessions.slice().sort((a, b) => {
+      const ai = a.repo ? (order.get(a.repo) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      const bi = b.repo ? (order.get(b.repo) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+      return ai - bi;
+    });
+  });
   return (
-    <div class="repos-pane" ref={scrollRef}>
-      <For each={props.groups}>
-        {(group) => {
-          // Active runs for this group only, sorted to mirror the section's
-          // repo order so what's running for "condash" appears below the
-          // "condash" card and so on. Memoised so a parent re-render (e.g.
-          // a layout signal change) doesn't re-allocate the filtered+sorted
-          // array on every pass — without the memo, <For> below remounts
-          // every CodeRunRow on every render.
-          const groupSessions = createMemo<readonly TermSession[]>(() => {
-            const order = new Map(group.entries.map((e, i) => [e.name, i]));
-            return props.codeRunSessions
-              .filter((s) => s.repo && order.has(s.repo))
-              .slice()
-              .sort((a, b) => (order.get(a.repo!) ?? 0) - (order.get(b.repo!) ?? 0));
-          });
-          return (
-            <section class="repos-group" data-group={group.id}>
-              <h2 class="repos-group-header">
-                <span class="name">{group.label}</span>
-                <span class="count">{group.entries.length}</span>
-                <span class="rule" />
-              </h2>
-              <div class="repos-grid">
-                <For each={group.entries}>
-                  {(repo) => {
-                    const liveBranch = (): string | null => {
-                      const cwd = props.liveSessionCwds.get(repo.name);
-                      if (!cwd) return null;
-                      const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
-                      if (wt) return wt.branch ?? '(no branch)';
-                      // Fallback: cwd matches the repo's primary path.
-                      if (cwd === repo.path) {
-                        const primary = (repo.worktrees ?? []).find((w) => w.primary);
-                        return primary?.branch ?? null;
-                      }
-                      return null;
-                    };
-                    return (
-                      <RepoRow
-                        repo={repo}
-                        slots={props.slots}
-                        live={props.liveRepos.has(repo.name)}
-                        liveBranch={liveBranch()}
-                        onOpen={props.onOpen}
-                        onLaunch={props.onLaunch}
-                        onForceStop={props.onForceStop}
-                        onStop={props.onStop}
-                        onRun={props.onRun}
-                        onOpenInTerm={props.onOpenInTerm}
-                      />
-                    );
-                  }}
-                </For>
-              </div>
-              <CodeRunRows
-                sessions={groupSessions()}
-                repos={props.repos}
-                xtermPrefs={props.xtermPrefs}
-                onClose={props.onCloseSession}
-              />
-            </section>
-          );
-        }}
-      </For>
+    <div class="repos-pane">
+      <div class="repos-pane-scroll" ref={scrollRef}>
+        <div class="repos-grid">
+          <For each={ordered()}>
+            {(repo) => {
+              const liveBranch = (): string | null => {
+                const cwd = props.liveSessionCwds.get(repo.name);
+                if (!cwd) return null;
+                const wt = (repo.worktrees ?? []).find((w) => w.path === cwd);
+                if (wt) return wt.branch ?? '(no branch)';
+                if (cwd === repo.path) {
+                  const primary = (repo.worktrees ?? []).find((w) => w.primary);
+                  return primary?.branch ?? null;
+                }
+                return null;
+              };
+              return (
+                <RepoRow
+                  repo={repo}
+                  slots={props.slots}
+                  live={props.liveRepos.has(repo.name)}
+                  liveBranch={liveBranch()}
+                  onOpen={props.onOpen}
+                  onLaunch={props.onLaunch}
+                  onForceStop={props.onForceStop}
+                  onStop={props.onStop}
+                  onRun={props.onRun}
+                  onOpenInTerm={props.onOpenInTerm}
+                />
+              );
+            }}
+          </For>
+        </div>
+      </div>
+      <div class="code-runs-dock">
+        <CodeRunRows
+          sessions={dockSessions()}
+          repos={props.repos}
+          xtermPrefs={props.xtermPrefs}
+          onClose={props.onCloseSession}
+        />
+      </div>
     </div>
   );
 }

@@ -20,10 +20,7 @@ export type RawRepo =
 
 export interface ConfigShape {
   workspace_path?: string;
-  repositories?: {
-    primary?: RawRepo[];
-    secondary?: RawRepo[];
-  };
+  repositories?: RawRepo[];
 }
 
 export interface RepoLookup {
@@ -58,37 +55,23 @@ export function resolveCwd(
 }
 
 /**
- * Walk every repo entry in `config.repositories` (primary + secondary,
- * recursing into `submodules`). The visitor receives a fully-resolved
- * `RepoLookup` and a `kind` discriminator. Visitors that want to short-circuit
- * the walk return `false`; returning `true` (or `void`) keeps the walk going.
+ * Walk every repo entry in `config.repositories` (recursing into `submodules`)
+ * in declaration order. Visitors that want to short-circuit the walk return
+ * `false`; returning `true` (or `void`) keeps the walk going.
  */
-export function walkRepos(
-  config: ConfigShape,
-  visit: (entry: RepoLookup, kind: 'primary' | 'secondary') => boolean | void,
-): void {
+export function walkRepos(config: ConfigShape, visit: (entry: RepoLookup) => boolean | void): void {
   const workspace = config.workspace_path;
-  const visitList = (entries: RawRepo[], kind: 'primary' | 'secondary'): boolean => {
-    for (const entry of entries) {
-      const stop = visitOne(entry, kind, undefined, workspace, visit);
-      if (stop) return true;
-    }
-    return false;
-  };
-  if (config.repositories?.primary) {
-    if (visitList(config.repositories.primary, 'primary')) return;
-  }
-  if (config.repositories?.secondary) {
-    visitList(config.repositories.secondary, 'secondary');
+  if (!config.repositories) return;
+  for (const entry of config.repositories) {
+    if (visitOne(entry, undefined, workspace, visit)) return;
   }
 }
 
 function visitOne(
   entry: RawRepo,
-  kind: 'primary' | 'secondary',
   parent: string | undefined,
   workspace: string | undefined,
-  visit: (entry: RepoLookup, kind: 'primary' | 'secondary') => boolean | void,
+  visit: (entry: RepoLookup) => boolean | void,
 ): boolean {
   if (typeof entry === 'string') {
     const lookup: RepoLookup = {
@@ -97,7 +80,7 @@ function visitOne(
       parent,
       cwd: resolveCwd(workspace, parent, entry),
     };
-    return visit(lookup, kind) === false;
+    return visit(lookup) === false;
   }
   const lookup: RepoLookup = {
     display: parent ? `${parent}/${entry.name}` : entry.name,
@@ -108,10 +91,10 @@ function visitOne(
     run: entry.run,
     forceStop: entry.force_stop,
   };
-  if (visit(lookup, kind) === false) return true;
+  if (visit(lookup) === false) return true;
   if (entry.submodules?.length) {
     for (const sub of entry.submodules) {
-      if (visitOne(sub, kind, entry.name, workspace, visit)) return true;
+      if (visitOne(sub, entry.name, workspace, visit)) return true;
     }
   }
   return false;

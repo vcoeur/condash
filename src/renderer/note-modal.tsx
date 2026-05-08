@@ -143,9 +143,9 @@ const CONFIG_SUMMARY: { key: string; purpose: string }[] = [
   { key: 'workspace_path', purpose: 'Base directory for non-absolute repo entries.' },
   { key: 'worktrees_path', purpose: 'Where new git worktrees are created (informational).' },
   {
-    key: 'repositories.primary / .secondary',
+    key: 'repositories',
     purpose:
-      'Repos shown on the Code pane. Each entry: name, optional run / force_stop / submodules.',
+      'Flat ordered list of repos shown on the Code pane. Each entry: name, optional run / force_stop / submodules.',
   },
   {
     key: 'open_with',

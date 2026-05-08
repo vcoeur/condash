@@ -32,24 +32,22 @@ Lives at `<conception_path>/configuration.json`. Commit it. Every key is optiona
   "worktrees_path": "/home/you/src/worktrees",
   "resources_path": "resources",
   "skills_path": ".claude/skills",
-  "repositories": {
-    "primary": [
-      "condash",
-      {
-        "name": "helio",
-        "submodules": [
-          { "name": "apps/web", "run": "make dev" },
-          { "name": "apps/api", "run": "make dev" }
-        ]
-      },
-      {
-        "name": "notes.vcoeur.com",
-        "run": "make dev",
-        "force_stop": "fuser -k 8200/tcp 5200/tcp"
-      }
-    ],
-    "secondary": ["conception"]
-  },
+  "repositories": [
+    "condash",
+    {
+      "name": "helio",
+      "submodules": [
+        { "name": "apps/web", "run": "make dev" },
+        { "name": "apps/api", "run": "make dev" }
+      ]
+    },
+    {
+      "name": "notes.vcoeur.com",
+      "run": "make dev",
+      "force_stop": "fuser -k 8200/tcp 5200/tcp"
+    },
+    "conception"
+  ],
   "open_with": {
     "main_ide": { "label": "Open in main IDE", "command": "idea {path}" },
     "secondary_ide": { "label": "Open in secondary IDE", "command": "code {path}" },
@@ -74,18 +72,16 @@ A `terminal` block at this level still validates for backward-compat, but it is 
 
 ### `repositories`
 
-Two buckets, `primary` and `secondary`, each an array of repo entries. Entries take one of the following shapes:
+A single ordered array of repo entries — the Code pane renders cards in the order declared here. Entries take one of the following shapes:
 
 ```json
 {
-  "repositories": {
-    "primary": [
-      "condash",
-      { "name": "helio" },
-      { "name": "helio", "submodules": ["apps/web", "apps/api"] },
-      { "name": "notes.vcoeur.com", "run": "make dev", "force_stop": "fuser -k 8200/tcp" }
-    ]
-  }
+  "repositories": [
+    "condash",
+    { "name": "helio" },
+    { "name": "helio", "submodules": ["apps/web", "apps/api"] },
+    { "name": "notes.vcoeur.com", "run": "make dev", "force_stop": "fuser -k 8200/tcp" }
+  ]
 }
 ```
 
@@ -101,7 +97,7 @@ Two buckets, `primary` and `secondary`, each an array of repo entries. Entries t
 | `{"name": "repo", "env": [".env", ".env.local"]}`         | Files copied from the primary checkout into a new worktree on `condash worktrees setup` — applied **unconditionally** when present (no flag needed). Closes the silent-undefined-`VITE_*` footgun where forgetting `--copy-env` leaves a Vite SPA reading `import.meta.env.VITE_*` as `undefined`. Default empty → no copy. Path traversal is rejected (no `..`, no absolute paths).                                                                                                                       |
 | `{"name": "repo", "pinned_branch": "<branch>"}`           | Pin the repo to a fixed branch. `condash worktrees setup` skips it instead of creating a worktree on the requested branch. Use for shared / vendored repos that should never track the project branch axis.                                                                                                                                                                                                                                                                                                  |
 
-Anything under `workspace_path` not named in either bucket lands in a third `OTHERS` card.
+Anything under `workspace_path` not named in `repositories` is ignored — only listed entries appear on the Code pane.
 
 ### `open_with`
 
@@ -310,7 +306,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 **Conception Configuration** (write to `configuration.json`):
 
 - **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`.
-- **Repositories** — primary / secondary list, per-repo `run` / `force_stop`.
+- **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 - **Open with** — slot labels and commands.
 
 A header button — **Open configuration.json externally** — shells out via `window.condash.openPath` so power users can edit the raw JSON in their `$EDITOR` instead. Writes that go through the modal are funnelled through `patchConfig`, which parses the live file, applies a mutator, drops empty leaves, and round-trips through the `note.write` IPC's atomic CAS — same path as the in-modal forms — so the [strict zod schema](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) is enforced both ways.

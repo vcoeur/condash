@@ -1,13 +1,13 @@
 ---
 title: Repositories and open-with buttons · condash guide
-description: Point condash at your workspace, group repos into primary / secondary / others, and wire the three launcher slots to your own editor and terminal.
+description: Point condash at your workspace, list the repos surfaced on the Code pane, and wire the three launcher slots to your own editor and terminal.
 ---
 
 # Repositories and open-with buttons
 
 > **Audience.** Daily user.
 
-**When to read this.** The **Code** pane shows the wrong repos, or the wrong repos are in the primary card, or the "open in IDE" button launches the wrong thing (or nothing).
+**When to read this.** The **Code** pane shows the wrong repos, the order isn't what you want, or the "open in IDE" button launches the wrong thing (or nothing).
 
 Everything on this page lives in `<conception_path>/configuration.json`. Per-machine overrides go in `settings.json` and win on overlap.
 
@@ -25,25 +25,24 @@ Everything on this page lives in `<conception_path>/configuration.json`. Per-mac
 
 If `workspace_path` is unset, the Code pane disappears.
 
-## Grouping: primary, secondary, others
+## The repository list
 
 ```json
 {
-  "repositories": {
-    "primary": ["helio", "helio-web"],
-    "secondary": ["helio-docs"]
-  }
+  "repositories": [
+    "helio",
+    "helio-web",
+    "helio-docs"
+  ]
 }
 ```
 
-Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. Every repo not listed in either group lands in an auto-generated **OTHERS** card. The three cards render as a single strip, in the order primary → secondary → others:
+Names are bare directory names (not paths) matched against whatever was found under `workspace_path`. The Code pane renders one card per entry in declaration order — keep the repos you touch most often at the top.
 
-![Code pane — three repos organised into primary, secondary, others](../assets/screenshots/code-pane-light.png#only-light)
-![Code pane — three repos organised into primary, secondary, others](../assets/screenshots/code-pane-dark.png#only-dark)
+![Code pane — flat list of repo cards](../assets/screenshots/code-pane-light.png#only-light)
+![Code pane — flat list of repo cards](../assets/screenshots/code-pane-dark.png#only-dark)
 
-Inside a card, each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it.
-
-The grouping is a UX signal, nothing more — every group behaves the same (same dirty counts, same launcher buttons). Use it to keep the repos you actually touch today at eye level.
+Each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it.
 
 ## Submodules in a monorepo
 
@@ -51,14 +50,12 @@ If you work in a monorepo where different subdirectories are edited independentl
 
 ```json
 {
-  "repositories": {
-    "primary": [
-      {
-        "name": "helio",
-        "submodules": ["apps/web", "apps/api", "crates/parser"]
-      }
-    ]
-  }
+  "repositories": [
+    {
+      "name": "helio",
+      "submodules": ["apps/web", "apps/api", "crates/parser"]
+    }
+  ]
 }
 ```
 
@@ -95,7 +92,7 @@ Built-in defaults for the three slots reproduce the previous IntelliJ / VS Code 
 
 ## Editing via the Settings modal
 
-Open **File → Settings…** (`Ctrl+,`) and pick the **Workspace**, **Repositories**, or **Open with** tab — each has form fields backed by `configuration.json`. There is no in-modal JSON editor; for keys outside the modal (e.g. nested `repositories.primary[].submodules` shapes, `pdf_viewer`), use the **Open configuration.json externally** button in the header to edit the raw JSON in your `$EDITOR`. Either path runs through the same atomic save + strict zod schema.
+Open **File → Settings…** (`Ctrl+,`) and pick the **Workspace**, **Repositories**, or **Open with** tab — each has form fields backed by `configuration.json`. There is no in-modal JSON editor; for keys outside the modal (e.g. nested `repositories[].submodules` shapes, `pdf_viewer`), use the **Open configuration.json externally** button in the header to edit the raw JSON in your `$EDITOR`. Either path runs through the same atomic save + strict zod schema.
 
 Changes to `open_with` and `terminal` reload the dashboard live; `workspace_path`, `worktrees_path`, and the `repositories` list need a restart.
 
@@ -107,17 +104,15 @@ Distinct from `open_with` (which launches **external** tools like your IDE), the
 
 ```json
 {
-  "repositories": {
-    "primary": [
-      { "name": "notes.vcoeur.com", "run": "make dev" },
-      {
-        "name": "helio",
-        "submodules": [
-          { "name": "apps/web", "run": "npm --prefix apps/web run dev" }
-        ]
-      }
-    ]
-  }
+  "repositories": [
+    { "name": "notes.vcoeur.com", "run": "make dev" },
+    {
+      "name": "helio",
+      "submodules": [
+        { "name": "apps/web", "run": "npm --prefix apps/web run dev" }
+      ]
+    }
+  ]
 }
 ```
 
