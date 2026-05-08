@@ -12,9 +12,16 @@ name: Pages (docs + apt repo)
 # gh release download).
 #
 # The apt repo is rebuilt deterministically from scratch on every
-# run by re-fetching every .deb from every published GitHub
-# Release — no state is preserved between deploys, so a corrupted
-# Pages deploy can be recovered by re-running the workflow.
+# run, but the .deb assets it ingests are cached across runs (keyed
+# on the fingerprint of the visible release-tag set). On a release-
+# tag change the key misses and the parallel download loop re-fetches
+# only the missing assets onto the prior cache. A corrupted Pages
+# deploy can still be recovered by manually evicting the cache and
+# re-running the workflow.
+#
+# Apt history is capped to the most-recent N releases (APT_HISTORY).
+# Older versions remain installable via direct .deb download from
+# the GitHub Releases page; only the apt index is trimmed.
 
 on:
   # `workflow_run` instead of `release: [published]` because release.yml
@@ -42,6 +49,7 @@ env:
   APT_SIGNING_KEY_FPR: BC6C98E8D6D80FFBC408057FD1D69E3E4A005621
   APT_SUITE: stable
   APT_COMPONENT: main
+  APT_HISTORY: 5
 
 jobs:
   build:
@@ -52,11 +60,11 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
       - name: Install aptly + gnupg
         run: |
@@ -76,21 +84,66 @@ jobs:
           echo "$APT_SIGNING_KEY" | gpg --batch --import
           gpg --list-secret-keys "$APT_SIGNING_KEY_FPR" >/dev/null
 
-      - name: Download all .deb from GitHub Releases
+      - name: Resolve release-tag window
+        id: tags
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          # Most-recent N non-draft releases (newest first per gh's
+          # default sort). Prereleases are included — release.yml ships
+          # Electron builds as prereleases on tag push.
+          gh release list --limit "$APT_HISTORY" --json tagName,isDraft \
+            -q '.[] | select(.isDraft==false) | .tagName' > .release-tags.txt
+          echo "Tag window:"
+          cat .release-tags.txt
+          fingerprint="$(sort .release-tags.txt | sha256sum | cut -c1-16)"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Cache .deb assets
+        uses: actions/cache@v4
+        with:
+          path: debs
+          key: condash-debs-v1-${{ steps.tags.outputs.fingerprint }}
+          restore-keys: |
+            condash-debs-v1-
+
+      - name: Fetch .deb assets in parallel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
           mkdir -p debs
-          # Iterate every release tag and pull its .deb assets.
-          # Drafts are skipped (assets aren't reachable via
-          # gh release download); prereleases ARE included because
-          # the Electron release.yml ships builds as prereleases on
-          # tag push (see release.yml header comment for the why).
-          for tag in $(gh release list --limit 200 --json tagName,isDraft \
-                       -q '.[] | select(.isDraft==false) | .tagName'); do
-            echo "Fetching .deb assets from $tag"
-            gh release download "$tag" --pattern '*.deb' --dir debs/ --skip-existing || true
-          done
+          # --skip-existing makes per-tag downloads idempotent, so a
+          # partial cache restore from restore-keys only re-fetches the
+          # delta. xargs -P parallelises across tags; ordering inside
+          # debs/ doesn't matter to aptly.
+          xargs -P 8 -I {} -a .release-tags.txt \
+            sh -c 'gh release download "$1" --pattern "*.deb" --dir debs/ --skip-existing || true' _ {}
+
+      - name: Prune .debs outside the release window
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Restore-key cache hits can carry .debs from a previous tag
+          # window. Compute the expected filename set from the current
+          # window and drop anything else, so the apt repo only indexes
+          # APT_HISTORY releases.
+          : > .expected-debs.txt
+          while IFS= read -r tag; do
+            gh release view "$tag" --json assets \
+              -q '.assets[].name | select(endswith(".deb"))' >> .expected-debs.txt
+          done < .release-tags.txt
+          sort -u .expected-debs.txt -o .expected-debs.txt
+          find debs -maxdepth 1 -name '*.deb' -printf '%f\n' \
+            | sort -u > .have-debs.txt
+          comm -23 .have-debs.txt .expected-debs.txt > .stale-debs.txt
+          if [ -s .stale-debs.txt ]; then
+            echo "Pruning stale .debs:"
+            cat .stale-debs.txt
+            while IFS= read -r f; do rm -f "debs/$f"; done < .stale-debs.txt
+          fi
           ls -la debs/
 
       - name: Build apt repo with aptly
