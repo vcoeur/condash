@@ -22,7 +22,7 @@
   width: 100%;
   padding: 8px 12px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--text);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -112,7 +112,7 @@
 
 .group-header .caret {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   width: 10px;
   text-align: center;
   flex-shrink: 0;
@@ -151,7 +151,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text);
 }
 
@@ -159,7 +159,7 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.04em;
 }
 
@@ -208,7 +208,7 @@
 }
 
 .group-block.subgroup .group-header .name {
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.1em;
   color: var(--text-muted);
 }
@@ -308,7 +308,7 @@
   padding: 1px 6px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 10.5px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--text-muted);
   background: var(--bg-subtle);
@@ -323,7 +323,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-body);
 }
@@ -350,7 +350,7 @@
 .projects-empty {
   padding: 14px 16px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-md);
   background: var(--bg-elevated);
   border: 1px dashed var(--border);
   border-radius: var(--radius);
@@ -390,7 +390,7 @@
    * is the same sans as --font-ui — gives card titles enough display
    * presence without leaning on a serif. */
   font-weight: 700;
-  font-size: 17px;
+  font-size: var(--text-lg);
   line-height: 1.25;
   color: var(--text);
   word-break: break-word;
@@ -400,7 +400,7 @@
 }
 
 .row .title .kind-glyph {
-  /* Glyph is em-sized (1.15em of the 17 px title), so its top sits
+  /* Glyph is em-sized (1.15em of the 15 px title), so its top sits
    * naturally on the cap-height line; no margin nudge needed. The
    * left edge aligns with the next-step-marker on the row below. */
 }
@@ -417,7 +417,7 @@
 .row .summary {
   margin: 0;
   color: var(--text-body);
-  font-size: 13.5px;
+  font-size: var(--text-md);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -430,7 +430,7 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 13.5px;
+  font-size: var(--text-md);
   line-height: 1.5;
   color: var(--text);
 }
@@ -477,7 +477,7 @@
   align-items: center;
   gap: 4px 10px;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -503,7 +503,7 @@
 
 .row .meta-icon.branch {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-2xs);
   color: var(--text-faint);
   letter-spacing: 0.01em;
 }
@@ -580,7 +580,7 @@
   margin: -2px -4px;
   border-radius: 4px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -645,7 +645,7 @@
 
 .row .meta-icon.expander .progress-text {
   font-variant-numeric: tabular-nums;
-  font-size: 10.5px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -681,7 +681,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -752,7 +752,7 @@
 }
 .row .slug {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-2xs);
   color: var(--text-faint);
   letter-spacing: 0.01em;
 }
@@ -777,7 +777,7 @@
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   transition:
     background 100ms ease,
