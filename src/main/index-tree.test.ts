@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { knowledgeStrategy } from './index-knowledge';
+import { projectsStrategy } from './index-projects';
 import { regenerateIndex } from './index-tree';
 
 let conceptionDir: string;
@@ -263,6 +264,75 @@ describe('regenerateIndex (knowledge strategy)', () => {
       const occurrences = index.match(/sandbox-testing\.md/g) ?? [];
       // One in the link text, one in the URL → two on the single bullet line.
       expect(occurrences.length).toBe(2);
+    });
+  });
+});
+
+describe('regenerateIndex (projects strategy)', () => {
+  describe('YAML-frontmatter item tags', () => {
+    // Regression test for the bug filed in conception incident
+    // 2026-05-09-condash-projects-index-yaml-tags. After the v2.16.0 YAML
+    // migration, item-folder bullets in projects/YYYY-MM/index.md were
+    // re-derived from the engine's descendant-aggregate map — but the
+    // engine never recurses into item folders (they have no `index.md`),
+    // so the aggregate was empty and tags came out as `[]`. The fix
+    // re-routes leaf-item tags through `strategy.draftSubdirEntry`, which
+    // reads the README via `parseHeader` and produces kind/status/apps.
+
+    async function writeProjectsTree(): Promise<void> {
+      await writeFile(
+        'projects/2026-05/2026-05-09-feature/README.md',
+        [
+          '---',
+          'date: 2026-05-09',
+          'kind: project',
+          'status: now',
+          'apps:',
+          '  - condash',
+          '  - vcoeur.com',
+          '---',
+          '',
+          '# Feature',
+          '',
+          '## Goal',
+          '',
+          'Ship a thing.',
+          '',
+        ].join('\n'),
+      );
+    }
+
+    it('drafts an item bullet with kind/status/app tags from YAML frontmatter', async () => {
+      await writeProjectsTree();
+      await regenerateIndex(conceptionDir, projectsStrategy);
+      const monthIndex = await readFile('projects/2026-05/index.md');
+      // Tags must lead with kind, status, then app slugs.
+      expect(monthIndex).toMatch(
+        /- \[`2026-05-09-feature\/`\][^\n]+\*[^*]+\*\s+`\[project, now, condash, vcoeur-com\]`/,
+      );
+    });
+
+    it('is idempotent: a second pass leaves the month and root indexes unchanged', async () => {
+      await writeProjectsTree();
+      await regenerateIndex(conceptionDir, projectsStrategy);
+      const monthBefore = await readFile('projects/2026-05/index.md');
+      const rootBefore = await readFile('projects/index.md');
+      const second = await regenerateIndex(conceptionDir, projectsStrategy);
+      expect(second.updated).toEqual([]);
+      const monthAfter = await readFile('projects/2026-05/index.md');
+      const rootAfter = await readFile('projects/index.md');
+      expect(monthAfter).toBe(monthBefore);
+      expect(rootAfter).toBe(rootBefore);
+    });
+
+    it('rolls item tags up to the month aggregate in a single pass', async () => {
+      await writeProjectsTree();
+      await regenerateIndex(conceptionDir, projectsStrategy);
+      const rootIndex = await readFile('projects/index.md');
+      // The month bullet's tag list must include at least one of the
+      // items' tags — proves the aggregate sees the descendants on the
+      // first pass.
+      expect(rootIndex).toMatch(/- \[`2026-05\/`\][^\n]+`\[[^\]]*condash[^\]]*\]`/);
     });
   });
 });
