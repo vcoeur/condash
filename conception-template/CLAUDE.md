@@ -39,6 +39,14 @@ One row per app this conception covers. Columns:
 
 Keep the table tight: navigation fields only. Operational config (formatter, port, base branch, …) belongs in `condash.json`, not here.
 
+#### Submodules — subpath by default, promote when warranted
+
+A submodule (or any sub-repo / sub-package within a parent app) is reachable as `@<parent>/<submodule>/<path>` by default — one row in the table for the parent, submodules treated as internal structure. Promote a submodule to its own row when it earns the navigation cost: it has its own `CLAUDE.md`, its own `knowledge/internal/*.md` entry, or it's worked on in independent PR cycles.
+
+Naming for promoted submodules: bare `@<sub>` when the basename is unique workspace-wide; dotted `@<parent>.<sub>` (e.g. `@PaintingManager.app`) when the bare slug would collide with another app or another submodule.
+
+`condash.json`'s `submodules:` block is orthogonal — that block lists runnable targets for the dashboard (what `make dev` to invoke, what to force-stop). The Apps table is the human / agent navigation index. They can disagree without harm; align by intent, not by mirroring.
+
 #### Cross-references via `@<app>/<path>`
 
 Knowledge entries, project notes, and rule bodies refer to source code as `@<app>/<path-in-repo>` (e.g. `@<app>/src/server.ts:42`) instead of `~/src/<workspace>/<app>/...`. The `@` prefix makes references grep-friendly and decouples prose from any one host's filesystem layout — the Apps table is the only place the absolute path appears.
