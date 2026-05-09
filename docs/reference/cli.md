@@ -196,15 +196,15 @@ The manifest at `.claude/skills/.condash-skills.json` tracks the shipped version
 
 ### `templates`
 
-Manage condash-shipped *partial-file* templates — top-level files where condash owns a marker-delimited region (today: `CLAUDE.md` between `<!-- condash:general:begin -->` and `<!-- condash:general:end -->`). The text outside the markers (notably `## Specific to this conception`) is user-owned and never touched.
+Manage condash-shipped *partial-file* templates — top-level files where condash owns the body of one H2 section (today: `CLAUDE.md`'s `## General`). The text outside that section — H1, intro paragraph, and the user-owned `## Specifics` — is never touched.
 
 | Verb | What it does |
 |---|---|
 | `list` | Print every template that ships with this condash version, with installed/version status |
 | `install [<path>...]` | Update the shipped region inside `<conception>/<path>`. With no args, runs all shipped templates. Refuses on edits without `--force`; `--diff` shows the unified diff |
-| `status` | Compare local regions against the shipped versions and the recorded SHA256 (states: `unchanged` / `outdated` / `edited` / `missing` / `missing-markers` / `orphan`) |
+| `status` | Compare local regions against the shipped versions and the recorded SHA256 (states: `unchanged` / `outdated` / `edited` / `missing` / `missing-heading` / `orphan`) |
 
-The manifest reuses `.claude/skills/.condash-skills.json` (`templates` namespace alongside `skills`). The recorded SHA256 hashes the **content between markers, exclusive of marker lines** — so the user can move the marker pair within the file without invalidating the manifest, as long as the region content stays the same.
+The manifest reuses `.claude/skills/.condash-skills.json` (`templates` namespace alongside `skills`). The recorded SHA256 hashes the **body of the H2 section, exclusive of the heading line and the trailing blank line before the next H2** — so the user can reorder content above or below the section without invalidating the manifest. Manifests written by older condash versions used `region: "condash:general"` (the HTML-comment-marker namespace); they migrate transparently to `region: "General"` on the next install.
 
 ### `config`
 
