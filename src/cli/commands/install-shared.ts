@@ -29,9 +29,12 @@ export interface ManifestSkillEntry {
 }
 
 export interface ManifestTemplateEntry {
-  /** Marker name, e.g. "condash:general". */
+  /** Heading text for the shipped region, e.g. "General" — matches `## General`.
+   *  Older manifests may carry the legacy marker namespace (`"condash:general"`);
+   *  the templates installer migrates that to `"General"` on the next install. */
   region: string;
-  /** SHA256 of the region content (between markers, exclusive of marker lines). */
+  /** SHA256 of the region body (the H2 section's body, exclusive of the heading
+   *  line and any trailing blank line before the next H2). */
   sha256: string;
   /** condash version that shipped this region. */
   shippedVersion: string;

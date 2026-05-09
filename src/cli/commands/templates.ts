@@ -1,23 +1,25 @@
 /**
  * `condash-cli templates <list|install|status>`
  *
- * Ships the marker-delimited *region* of selected files instead of the
- * whole file. Today this is just `CLAUDE.md` with the
- * `<!-- condash:general:begin -->` … `<!-- condash:general:end -->` region;
- * the surrounding text (notably the user-owned `## Specific to this
- * conception` section) is never touched. Same hash-based safe-update model
- * as `condash-cli skills install`:
+ * Ships the body of a top-level heading (`## <region>`) inside selected files
+ * instead of the whole file. Today this is just `CLAUDE.md`'s `## General`
+ * section; the surrounding text — H1, intro paragraph, and the user-owned
+ * `## Specifics` section that follows — is never touched. Same hash-based
+ * safe-update model as `condash-cli skills install`:
  *
  *   - region matches manifest → unchanged → safe to push the new shipped region.
  *   - region differs from manifest → user edited → refuse without --force.
  *   - region present but template not in manifest → orphan → treat as edited.
- *   - markers absent → no region to write through; refuse without --force.
- *     With --force, write the entire shipped file (markers + placeholder
- *     `## Specific to this conception` section), creating both halves.
+ *   - heading absent or ambiguous → no region to write through; refuse without
+ *     --force. With --force, write the entire shipped file (H1 + intro +
+ *     `## General` body + placeholder `## Specifics` section).
  *   - file absent entirely → fresh install path → write the shipped file.
  *
  * The manifest entry sits alongside `skills` in
- * `<dest>/.claude/skills/.condash-skills.json`.
+ * `<dest>/.claude/skills/.condash-skills.json`. Manifests written by older
+ * condash versions used `region: "condash:general"` (the HTML-comment-marker
+ * namespace); they're migrated to `region: "General"` (the heading text) on
+ * the next install.
  */
 
 import { promises as fs } from 'node:fs';
@@ -37,16 +39,26 @@ import {
 interface ShippedTemplate {
   /** Path relative to dest root, e.g. "CLAUDE.md". */
   path: string;
-  /** Marker name, e.g. "condash:general". */
+  /** Heading text for the shipped region, e.g. "General" — matches `## General`. */
   region: string;
 }
 
 /**
  * Hardcoded list of files condash ships partially. Today there's only one;
- * adding more (e.g. another top-level marker-delimited file) is a one-line
- * append plus a new entry in `conception-template/`.
+ * adding more is a one-line append plus a new entry in `conception-template/`.
  */
-const SHIPPED_TEMPLATES: ShippedTemplate[] = [{ path: 'CLAUDE.md', region: 'condash:general' }];
+const SHIPPED_TEMPLATES: ShippedTemplate[] = [{ path: 'CLAUDE.md', region: 'General' }];
+
+/**
+ * Older condash versions stored the HTML-comment-marker namespace
+ * (`condash:general`) as the region key. Headings replaced markers; this maps
+ * the legacy value to the new heading text so an existing install reconciles
+ * without a forced overwrite.
+ */
+function migrateLegacyRegion(region: string): string {
+  if (region === 'condash:general') return 'General';
+  return region;
+}
 
 export async function runTemplates(
   verb: string | null,
@@ -210,7 +222,7 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
         report.refused.push({
           path: t.path,
           region: t.region,
-          reason: `markers <!-- ${t.region}:begin/end --> not found`,
+          reason: `heading "## ${t.region}" not found (or ambiguous)`,
         });
       }
       continue;
@@ -231,7 +243,8 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
     }
 
     const tracked = templates[t.path];
-    if (tracked && tracked.region === t.region && tracked.sha256 === onDiskRegionHash) {
+    const trackedRegion = tracked ? migrateLegacyRegion(tracked.region) : null;
+    if (tracked && trackedRegion === t.region && tracked.sha256 === onDiskRegionHash) {
       // Region matches manifest (user hasn't edited since last install) →
       // safe to push the new shipped region.
       if (!dryRun) {
@@ -326,7 +339,7 @@ function formatInstallHuman(report: InstallReport): string {
 interface StatusRow {
   path: string;
   region: string;
-  state: 'unchanged' | 'edited' | 'missing' | 'missing-markers' | 'orphan' | 'outdated';
+  state: 'unchanged' | 'edited' | 'missing' | 'missing-heading' | 'orphan' | 'outdated';
   shippedVersion: string | null;
 }
 
@@ -365,7 +378,7 @@ async function templatesStatus(args: ParsedArgs, ctx: OutputContext): Promise<vo
       rows.push({
         path: t.path,
         region: t.region,
-        state: 'missing-markers',
+        state: 'missing-heading',
         shippedVersion: entry?.shippedVersion ?? null,
       });
       continue;
@@ -417,7 +430,7 @@ async function templatesStatus(args: ParsedArgs, ctx: OutputContext): Promise<vo
     if (shippedSet.has(path)) continue;
     rows.push({
       path,
-      region: entry.region,
+      region: migrateLegacyRegion(entry.region),
       state: 'orphan',
       shippedVersion: entry.shippedVersion,
     });
@@ -470,57 +483,83 @@ function locateShippedTemplatesRoot(): string {
 }
 
 /**
- * Extract the content between `<!-- <region>:begin -->` and
- * `<!-- <region>:end -->` markers, exclusive of the marker lines.
+ * Extract the body of an H2 section identified by its heading text.
  *
- * Returns `null` if either marker is missing or `:end` precedes `:begin`.
- * Both markers must each be on their own line; surrounding whitespace and
- * other line content is rejected so a malformed (or only partially commented)
- * marker doesn't accidentally match.
+ * The region body is everything between the line `## <region>` (exclusive)
+ * and the next H2 heading (`## …`, exclusive) or end-of-file. The heading
+ * line itself and any trailing blank line before the next H2 are not part
+ * of the body — they are structural and would otherwise leak into the hash.
  *
- * The trailing newline after the begin marker and before the end marker is
- * NOT part of the region content. Callers that hash the region get a stable
- * hash regardless of line-ending style as long as the region content itself
- * is normalised.
+ * Returns `null` when the heading is missing or appears more than once
+ * (ambiguous) — both cases are treated as `missing-heading` upstream so the
+ * user is asked rather than silently overwritten.
+ *
+ * The match is case- and whitespace-sensitive on the heading text itself
+ * (`## General` only — `## general` or `##  General` won't match). Three or
+ * more `#` (H3+) never match: the regex demands exactly two.
  */
 export function extractRegion(content: string, region: string): string | null {
-  const beginRe = new RegExp(`^<!--\\s*${escapeRegex(region)}:begin\\s*-->\\s*$`, 'm');
-  const endRe = new RegExp(`^<!--\\s*${escapeRegex(region)}:end\\s*-->\\s*$`, 'm');
-  const beginMatch = beginRe.exec(content);
-  if (!beginMatch) return null;
-  const endMatch = endRe.exec(content);
-  if (!endMatch) return null;
-  const beginEndIdx = beginMatch.index + beginMatch[0].length;
-  if (endMatch.index <= beginEndIdx) return null;
-  // Trim the single newline that immediately follows the begin marker and
-  // the one immediately preceding the end marker — they're structural and
-  // would otherwise leak into the hash.
-  let start = beginEndIdx;
-  if (content[start] === '\n') start += 1;
-  let end = endMatch.index;
-  if (end > 0 && content[end - 1] === '\n') end -= 1;
-  if (end < start) return '';
-  return content.slice(start, end);
+  const heading = findHeading(content, region);
+  if (heading === null) return null;
+  return content.slice(heading.bodyStart, heading.bodyEnd);
 }
 
 /**
- * Replace the content between markers with `replacement`, preserving the
- * marker lines verbatim. Caller is responsible for ensuring the region
- * exists (use `extractRegion` first).
+ * Replace the body of the H2 section identified by `region`, preserving the
+ * heading line and everything outside the region. Throws when the heading is
+ * missing or ambiguous; callers should use `extractRegion` first to gate.
  */
 export function replaceRegion(content: string, region: string, replacement: string): string {
-  const beginRe = new RegExp(`^<!--\\s*${escapeRegex(region)}:begin\\s*-->\\s*$`, 'm');
-  const endRe = new RegExp(`^<!--\\s*${escapeRegex(region)}:end\\s*-->\\s*$`, 'm');
-  const beginMatch = beginRe.exec(content);
-  const endMatch = endRe.exec(content);
-  if (!beginMatch || !endMatch) {
+  const heading = findHeading(content, region);
+  if (heading === null) {
     throw new Error(`Region ${region} not found in content`);
   }
-  const beginEnd = beginMatch.index + beginMatch[0].length;
-  const before = content.slice(0, beginEnd);
-  const after = content.slice(endMatch.index);
-  // Re-introduce the structural newlines around the new region content.
-  return `${before}\n${replacement}\n${after}`;
+  const before = content.slice(0, heading.bodyStart);
+  const after = content.slice(heading.tailStart);
+  if (after.length === 0) {
+    // Heading runs to EOF — trail the new body with one newline so the file
+    // ends cleanly.
+    return `${before}${replacement}\n`;
+  }
+  // A blank line separates the body from the next H2. We always emit one,
+  // normalising whatever the user had before.
+  return `${before}${replacement}\n\n${after}`;
+}
+
+interface HeadingSpan {
+  /** Index of the first byte of the body content (after the heading line). */
+  bodyStart: number;
+  /** Index of the last byte + 1 of the body content (after trimming the
+   *  trailing newlines that separate body from next H2 or EOF). Used for
+   *  hashing and extraction. */
+  bodyEnd: number;
+  /** Index of the start of the tail region — i.e. the next H2 or EOF.
+   *  Used by `replaceRegion` so the trailing newlines don't get duplicated. */
+  tailStart: number;
+}
+
+function findHeading(content: string, region: string): HeadingSpan | null {
+  const headingRe = new RegExp(`^##[ \\t]+${escapeRegex(region)}[ \\t]*$`, 'gm');
+  const matches = [...content.matchAll(headingRe)];
+  if (matches.length !== 1) return null;
+  const match = matches[0];
+  const headingStart = match.index!;
+  const headingEnd = headingStart + match[0].length;
+  // Body starts on the line after the heading; skip exactly one '\n'.
+  let bodyStart = headingEnd;
+  if (content[bodyStart] === '\n') bodyStart += 1;
+
+  // Find the next H2 (`^##\s`) after the body start. H3+ (`###`) is excluded
+  // by the lookahead: `##` followed by space or tab.
+  const nextH2Re = /^##(?=[ \t])/gm;
+  nextH2Re.lastIndex = bodyStart;
+  const next = nextH2Re.exec(content);
+  const tailStart = next ? next.index : content.length;
+  // Trim trailing newlines so the hash is stable when the user adds or
+  // removes blank lines before the next heading.
+  let bodyEnd = tailStart;
+  while (bodyEnd > bodyStart && content[bodyEnd - 1] === '\n') bodyEnd -= 1;
+  return { bodyStart, bodyEnd, tailStart };
 }
 
 function escapeRegex(s: string): string {
