@@ -1,6 +1,6 @@
 ---
 title: Management skills · condash reference
-description: Reference for the four shipped Claude Code skills — /projects, /knowledge, /skills, /pr — and how they shell out to the condash CLI.
+description: Reference for the five shipped Claude Code skills — /projects, /knowledge, /tidy, /skills, /pr — and how they shell out to the condash CLI.
 ---
 
 # Management skills
@@ -9,12 +9,13 @@ description: Reference for the four shipped Claude Code skills — /projects, /k
 
 ## At a glance
 
-condash ships four [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.claude/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.claude/skills) in the repo and land at `<conception>/.claude/skills/` after running `condash-cli skills install` (or `/skills install` from a session).
+condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.claude/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.claude/skills) in the repo and land at `<conception>/.claude/skills/` after running `condash-cli skills install` (or `/skills install` from a session).
 
 | Skill | Scope | What it does |
 |---|---|---|
 | **`/projects`** | items + worktrees | Create / read / update / close projects, incidents, and documents. Manage worktrees per branch. |
 | **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. |
+| **`/tidy`** | health | Run every audit + verify stamp check, batch the auto-fixable ones into one confirmation, surface the rest as a punch-list. |
 | **`/skills`** | meta | Install or update the shipped skills themselves — wraps `condash-cli skills install`. |
 | **`/pr`** | git | Open a GitHub PR from the current branch with the project README's timeline-append rule applied. |
 
@@ -52,6 +53,18 @@ Manage durable reference material in `<conception>/knowledge/`.
 
 Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones older than the freshness threshold.
 
+## `/tidy`
+
+Run every audit and verification check the CLI knows about, batch the safely auto-fixable issues into a single confirmation, and surface the rest as a punch-list.
+
+| Action | Trigger | Wraps |
+|---|---|---|
+| (default) | `/tidy [check=<list>] [dry-run]` | `condash-cli audit --include all --json` and `condash-cli knowledge verify --json` |
+
+The skill never auto-bumps `**Verified:**` stamps (a stale stamp means "human re-reads the source") and never auto-deletes cross-repo references — instead it searches for likely-renamed targets and proposes a redirect when there's a single candidate. Every other auto-fix (LFS track, worktree setup, dangling-index-line removal, `knowledge index` regen) goes through one `AskUserQuestion` round before applying.
+
+Each issue carries a `fix.action` symbol and a `fix.autoFix: bool` flag — the skill reads `autoFix` directly rather than deriving fixability from check names.
+
 ## `/skills`
 
 Install or refresh the shipped skills. Use it after upgrading condash to pull updated skill content while keeping local edits.
@@ -77,7 +90,7 @@ condash-cli skills install
 condash-cli skills install
 ```
 
-The skills land at `<conception>/.claude/skills/`. Reload Claude Code (or start a new session) and `/projects`, `/knowledge`, `/skills`, `/pr` are available.
+The skills land at `<conception>/.claude/skills/`. Reload Claude Code (or start a new session) and `/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr` are available.
 
 `condash-cli skills install` writes one file at a time and asks for confirmation per file when local content differs from the shipped version — your customisations don't get clobbered silently.
 
