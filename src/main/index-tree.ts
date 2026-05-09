@@ -453,31 +453,13 @@ async function processDirectory(
     result.added.push(canonical);
   }
 
-  // Aggregate this directory's keyword footprint upward — frequency-counted
-  // so the parent pass can rank candidates when the cap forces drops. Tags
-  // from kept (curated *and* drafted) bullets here count as 1 each; descendant
-  // contributions add their own counts.
-  const myAggregate = new Map<string, number>();
-  const bumpTag = (tag: string, by = 1): void => {
-    myAggregate.set(tag, (myAggregate.get(tag) ?? 0) + by);
-  };
-  for (const bullet of shape.bullets.values()) {
-    for (const t of bullet.tags) bumpTag(t);
-  }
-  for (const bullet of newEntries) {
-    for (const t of bullet.tags) bumpTag(t);
-  }
-  // Also fold descendants (already populated since we go deepest-first).
-  for (const [path, freq] of aggregatedKeywords) {
-    if (path.startsWith(dirAbsPath + '/')) {
-      for (const [t, n] of freq) bumpTag(t, n);
-    }
-  }
-  aggregatedKeywords.set(dirAbsPath, myAggregate);
-
   // For *existing* subdir bullets, re-derive tags from the descendant
   // aggregate when (a) the bullet is drafted (engine-owned), or (b) we're in
   // --rewrite-aggregated migration mode. Curated bullets are left alone.
+  // Run this BEFORE building `myAggregate` below so the rolled-up counts
+  // reflect the corrected tags — otherwise a parent pass picks up stale
+  // tag values from before this loop's mutations and convergence takes an
+  // extra pass.
   for (const child of children) {
     if (child.kind !== 'directory') continue;
     const canonical = canonicalName(child);
@@ -488,7 +470,14 @@ async function processDirectory(
 
     const childFreq = aggregatedKeywords.get(child.absPath) ?? new Map();
     const ranked = rankAggregatedTags(childFreq);
-    const newTags = ranked.kept;
+    // Leaf-like children (project item folders — no `index.md`, no recursion)
+    // never populate the descendant aggregate. Re-route their tag derivation
+    // through `draftSubdirEntry`, which the strategy implements by reading
+    // the README. Container children (months, knowledge subdirs) keep using
+    // the aggregate — `draftSubdirEntry` for those just hands `aggregated.kept`
+    // back as `keywords`, so the call is shape-preserving.
+    const draft = await strategy.draftSubdirEntry(dirAbsPath, child, ranked.kept);
+    const newTags = draft.keywords;
 
     // Compute the diff for the change report.
     const additions = newTags.filter((t) => !bullet.tags.includes(t));
@@ -516,6 +505,29 @@ async function processDirectory(
       });
     }
   }
+
+  // Aggregate this directory's keyword footprint upward — frequency-counted
+  // so the parent pass can rank candidates when the cap forces drops. Tags
+  // from kept (curated *and* drafted) bullets here count as 1 each; descendant
+  // contributions add their own counts. Built AFTER the per-child re-derive
+  // above so the parent sees the post-mutation tag set.
+  const myAggregate = new Map<string, number>();
+  const bumpTag = (tag: string, by = 1): void => {
+    myAggregate.set(tag, (myAggregate.get(tag) ?? 0) + by);
+  };
+  for (const bullet of shape.bullets.values()) {
+    for (const t of bullet.tags) bumpTag(t);
+  }
+  for (const bullet of newEntries) {
+    for (const t of bullet.tags) bumpTag(t);
+  }
+  // Also fold descendants (already populated since we go deepest-first).
+  for (const [path, freq] of aggregatedKeywords) {
+    if (path.startsWith(dirAbsPath + '/')) {
+      for (const [t, n] of freq) bumpTag(t, n);
+    }
+  }
+  aggregatedKeywords.set(dirAbsPath, myAggregate);
 
   // Render the new file content if anything changed.
   const changed =
