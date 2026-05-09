@@ -1,6 +1,6 @@
 ---
 title: Extend the management skills · condash guide
-description: How to fork or wrap the shipped /projects, /knowledge, /skills, /pr Claude Code skills with team-specific behaviour.
+description: How to fork or wrap the shipped /projects, /knowledge, /tidy, /skills, /pr Claude Code skills with team-specific behaviour.
 ---
 
 # Extend the management skills
@@ -19,6 +19,7 @@ For the base reference (every action, every CLI verb each one wraps), see [the m
 # After running `condash-cli skills install`
 <conception>/.claude/skills/projects/
 <conception>/.claude/skills/knowledge/
+<conception>/.claude/skills/tidy/
 <conception>/.claude/skills/skills/
 <conception>/.claude/skills/pr/
 ```

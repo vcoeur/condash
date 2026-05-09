@@ -40,8 +40,13 @@ export interface AuditIssue {
   file: string | null;
   line: number | null;
   message: string;
-  /** Hint for the consuming skill on what kind of fix applies. */
-  fix?: { action: string; [key: string]: unknown };
+  /**
+   * Hint for the consuming skill on what kind of fix applies. Always present;
+   * `autoFix: false` flags issues that need human judgment (a punch-list item).
+   * `autoFix: true` flags issues a skill can mechanically apply once batched
+   * confirmation is given.
+   */
+  fix: { action: string; autoFix: boolean; [key: string]: unknown };
 }
 
 export interface AuditReport {
@@ -89,6 +94,7 @@ export async function runAudit(
             file: null,
             line: null,
             message: `unknown check: ${check}`,
+            fix: { action: 'unknown_check', autoFix: false },
           });
       }
     } catch (err) {
@@ -98,6 +104,7 @@ export async function runAudit(
         file: null,
         line: null,
         message: `check crashed: ${err instanceof Error ? err.message : String(err)}`,
+        fix: { action: 'investigate_crash', autoFix: false },
       });
     }
   }
@@ -136,6 +143,7 @@ async function checkLfs(conceptionPath: string): Promise<AuditIssue[]> {
         file: null,
         line: null,
         message: 'git-lfs not available; skipping LFS check',
+        fix: { action: 'install_git_lfs', autoFix: false },
       },
     ];
   }
@@ -158,7 +166,7 @@ async function checkLfs(conceptionPath: string): Promise<AuditIssue[]> {
       file: rel,
       line: null,
       message: `${rel} (${sizeKb.toFixed(0)} kB) is not tracked by git-lfs`,
-      fix: { action: 'lfs_track_path', path: rel, sizeKb: Math.round(sizeKb) },
+      fix: { action: 'lfs_track_path', autoFix: true, path: rel, sizeKb: Math.round(sizeKb) },
     });
   }
   return issues;
@@ -193,6 +201,12 @@ async function checkBinaries(conceptionPath: string): Promise<AuditIssue[]> {
       file: rel,
       line: null,
       message: `${rel} is ${sizeKb.toFixed(0)} kB (> ${LARGE_BIN_KB} kB review threshold, not in git-lfs)`,
+      fix: {
+        action: 'consider_lfs_or_remove',
+        autoFix: false,
+        path: rel,
+        sizeKb: Math.round(sizeKb),
+      },
     });
   }
   return issues;
@@ -230,7 +244,7 @@ async function checkCrossRepo(conceptionPath: string): Promise<AuditIssue[]> {
         file: claudePath,
         line: lineNo,
         message: `Reference to ${ref} does not resolve`,
-        fix: { action: 'flag_for_user_edit', ref, inFile: claudePath },
+        fix: { action: 'flag_for_user_edit', autoFix: false, ref, inFile: claudePath },
       });
     }
   }
@@ -301,7 +315,7 @@ async function checkWorktrees(conceptionPath: string): Promise<AuditIssue[]> {
       file: relative(conceptionPath, readme),
       line: null,
       message: `Item declares Branch '${header.branch}' but no worktree at ${wt}`,
-      fix: { action: 'offer_worktree_setup', branch: header.branch },
+      fix: { action: 'offer_worktree_setup', autoFix: true, branch: header.branch },
     });
   }
   return issues;
@@ -321,6 +335,7 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
       file: 'knowledge/',
       line: null,
       message: 'knowledge/ directory missing',
+      fix: { action: 'create_knowledge_dir', autoFix: false },
     });
     return issues;
   }
@@ -335,6 +350,7 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
         file: relative(conceptionPath, idx),
         line: null,
         message: `Directory has no index.md — run condash-cli knowledge index`,
+        fix: { action: 'run_knowledge_index', autoFix: true },
       });
       continue;
     }
@@ -363,7 +379,7 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
           file: relative(conceptionPath, idx),
           line: lineNo,
           message: `Index entry [${m[1]}](${rawLink}) points to a file that does not exist`,
-          fix: { action: 'remove_index_line', path: rawLink, label: m[1] },
+          fix: { action: 'remove_index_line', autoFix: true, path: rawLink, label: m[1] },
         });
         continue;
       }
@@ -390,7 +406,7 @@ async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> {
           file: rel,
           line: null,
           message: `Body file not referenced from ${relative(conceptionPath, d)}/index.md — run condash-cli knowledge index`,
-          fix: { action: 'run_knowledge_index', path: rel },
+          fix: { action: 'run_knowledge_index', autoFix: true, path: rel },
         });
       }
     }

@@ -197,9 +197,28 @@ async function verifyCommand(
     else fresh.push(report);
   }
 
+  // Materialise stale stamps as audit-shaped issues so wrapping skills (e.g.
+  // /tidy) consume audit + verify with one shape. autoFix is hardcoded to
+  // false: a stale stamp means "human reread the source and re-confirmed",
+  // never "bump the date for me".
+  const issues = stale.map((s) => ({
+    check: 'stale_verification',
+    severity: 'warn' as const,
+    file: s.relPath,
+    line: s.line,
+    message: `Verification stamp from ${s.verifiedAt} (${s.ageDays}d ago) is older than ${maxAge}-day threshold`,
+    fix: {
+      action: 'flag_for_user_review',
+      autoFix: false,
+      verifiedAt: s.verifiedAt,
+      ageDays: s.ageDays,
+      where: s.where,
+    },
+  }));
+
   emit(
     ctx,
-    { stale, fresh: fresh.length, unstamped, maxAge },
+    { stale, fresh: fresh.length, unstamped, maxAge, issues },
     (data) => {
       const d = data as { stale: StampReport[]; fresh: number; unstamped: string[] };
       const lines: string[] = [];

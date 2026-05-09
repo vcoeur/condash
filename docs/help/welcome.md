@@ -20,9 +20,9 @@ are still on disk; delete condash and the files don't move.
   on first launch — drop a file in `resources/` and the pane will
   surface it.
 - **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under
-  `.claude/skills/`, edited in place. Default location for the four
-  shipped skills (`/projects`, `/knowledge`, `/skills`, `/pr`) — they
-  appear automatically once `condash-cli skills install` has run.
+  `.claude/skills/`, edited in place. Default location for the five
+  shipped skills (`/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr`)
+  — they appear automatically once `condash-cli skills install` has run.
 - **Terminal** — toggle with `` Ctrl+` ``.
 - **Search** — `Ctrl+Shift+F` for cross-tree fuzzy search.
 

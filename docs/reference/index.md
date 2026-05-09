@@ -23,5 +23,5 @@ Short pages, one per surface. Look things up here; learn them in **[Get started]
 - [Inline dev-server runner](inline-runner.md) — the per-repo Run/Stop button and the `run` field.
 - [IPC API](ipc-api.md) — every verb the renderer can call on the main process.
 - [Environment variables](env.md) — the short list.
-- [Management skill](skill.md) — the shipped `/projects` and `/knowledge` skills.
+- [Management skill](skill.md) — the shipped `/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr` skills.
 - [Releases workflow](../get-started/releases.md) — what each version tag means and how the auto-updater behaves.

@@ -292,18 +292,22 @@ export async function runAuditCommand(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const include =
+  const includeRaw =
     typeof args.flags.include === 'string'
       ? args.flags.include
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
       : ALL_AUDIT_CHECKS;
+  // `all` is a documented alias for "every check" — keeps wrapping skills
+  // (`/tidy`) able to write `--include all --json` without conditional flag
+  // construction.
+  const include = includeRaw.flatMap((c) => (c === 'all' ? ALL_AUDIT_CHECKS : [c]));
   for (const c of include) {
     if (!ALL_AUDIT_CHECKS.includes(c as AuditCheckName)) {
       throw new CliError(
         ExitCodes.USAGE,
-        `--include must be a comma-separated subset of {${ALL_AUDIT_CHECKS.join(', ')}}; got '${c}'`,
+        `--include must be 'all' or a comma-separated subset of {${ALL_AUDIT_CHECKS.join(', ')}}; got '${c}'`,
       );
     }
   }

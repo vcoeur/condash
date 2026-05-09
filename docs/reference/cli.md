@@ -13,7 +13,7 @@ description: The condash-cli command-line surface — list projects, search, man
 condash-cli <noun> <verb> [args] [--flags]
 ```
 
-The CLI exists because skills (`/projects`, `/knowledge`) and shell scripts need a programmatic surface that shares condash's parser, validator, and indexer — without re-implementing them in `bash + grep + sed`.
+The CLI exists because skills (`/projects`, `/knowledge`, `/tidy`) and shell scripts need a programmatic surface that shares condash's parser, validator, and indexer — without re-implementing them in `bash + grep + sed`.
 
 ## At a glance
 
@@ -167,6 +167,8 @@ condash-cli audit --include lfs,binaries
 | `index` | `index.md` files out of sync with the on-disk tree |
 
 `--include <list>` restricts to a comma-separated subset.
+
+Each issue in `--json` mode carries a `fix` object: `{ action, autoFix, ...payload }`. `autoFix: true` flags issues a wrapping skill (e.g. `/tidy`) can mechanically apply once batched confirmation is given; `autoFix: false` flags items that need human judgment. The same shape is shared with `condash-cli knowledge verify --json`'s `issues[]` array, so triage skills consume audit + verify uniformly.
 
 ### `dirty`
 
