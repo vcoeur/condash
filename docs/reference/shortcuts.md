@@ -11,7 +11,7 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 
 | Area | Count | Configurable? |
 |---|---|---|
-| Application menu (File / View) | 12 | no |
+| Application menu (File / View) | 14 | no |
 | Dashboard global | 2 | no |
 | Project cards | 6 | no |
 | Note modal | 4 | no |
@@ -28,10 +28,11 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | File | Open conception directory | — | Reveal the current conception in the OS file manager. |
 | File | Settings | `Ctrl+,` / `Cmd+,` | Open the Settings modal. |
 | File | Search… | `Ctrl+Shift+F` / `Cmd+Shift+F` | Open the global search modal. |
+| File | New project… | `Ctrl+N` / `Cmd+N` | Open the new-project modal. |
 | File | Quit | (no accelerator) | Trigger the quit-confirm flow. |
 | View | Show Projects | — | Toggle the Projects pane on the left edge. |
-| View | Show Code | — | Show the Code pane in the working slot. |
-| View | Show Knowledge | — | Show the Knowledge pane in the working slot. |
+| View | Show Code | `Ctrl+Shift+C` / `Cmd+Shift+C` | Show the Code pane in the working slot. |
+| View | Show Knowledge | `Ctrl+Shift+K` / `Cmd+Shift+K` | Show the Knowledge pane in the working slot. |
 | View | Show Resources | `Ctrl+R` / `Cmd+R` | Show the Resources pane in the working slot. |
 | View | Show Skills | `Ctrl+L` / `Cmd+L` | Show the Skills pane in the working slot. |
 | View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills) is in the working slot. |
