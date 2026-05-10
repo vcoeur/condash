@@ -20,7 +20,7 @@ Trigger: `/projects update <slug>` or implicit ("add a note to <slug>", "change 
 
 4. **Timeline entries.** One line: `<YYYY-MM-DD> — <what happened>`. Terse.
 
-5. **Worktree check.** If the update involves code and `**Branch**` is set, enforce branch isolation (edits go through `<worktrees_path>/<branch>/<repo>/`).
+5. **Worktree check.** If the update involves code and `branch` is set, enforce branch isolation (edits go through `<worktrees_path>/<branch>/<repo>/`).
 
 ## Rules
 
