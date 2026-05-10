@@ -15,9 +15,12 @@
 !include "WinMessages.nsh"
 
 ; StrFunc functions must be declared once before use. The Un-prefixed
-; variants are required inside uninstaller-context macros.
+; variants are required inside uninstaller-context macros. Declare only
+; what the macros below actually call — NSIS treats unreferenced
+; uninstaller-side functions as warning 6010, and electron-builder
+; promotes warnings to errors (so a stray ${UnStrStr} declaration
+; without a matching ${UnStrStr} call fails the build).
 ${StrStr}
-${UnStrStr}
 ${UnStrRep}
 
 !macro customInstall
