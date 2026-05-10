@@ -1,16 +1,11 @@
 import { createEffect, createResource, Show } from 'solid-js';
+import type { HelpDocName as HelpDoc } from '@shared/types';
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import { useModalEscHandler } from './modal-helpers';
 import './code-theme.css';
 
-export type HelpDoc =
-  | 'welcome'
-  | 'quick-start'
-  | 'shortcuts'
-  | 'configuration'
-  | 'cli'
-  | 'why-markdown';
+export type { HelpDoc };
 
 const TITLE: Record<HelpDoc, string> = {
   welcome: 'Welcome to condash',

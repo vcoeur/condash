@@ -13,7 +13,7 @@ Every project tracker answers a few questions for you: what am I working on, wha
 2. **The dashboard is a view, not a second database.** Close the dashboard and the files don't go anywhere. Delete the dashboard and the files don't go anywhere.
 3. **Writing is cheap.** No form to fill, no modal to open, no required fields, no schema migration. You type Markdown.
 
-This page is the pitch. Read [tutorials/first-run](../get-started/index.md) for how to actually install the thing.
+This page is the pitch. Read [Get started](../get-started/index.md) for how to actually install the thing.
 
 ## Your project tracker should be plain files in git
 

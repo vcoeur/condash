@@ -1,6 +1,6 @@
 ---
 title: Tutorials · condash
-description: Learn condash by doing. Three linear walkthroughs take you from a fresh install to managing real work.
+description: Learn condash by doing. A realistic walkthrough takes you from an open item to a closed PR.
 ---
 
 # Tutorials

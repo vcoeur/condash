@@ -39,8 +39,7 @@ asarUnpack:
 afterPack: build/after-pack.cjs
 
 # Auto-update channel: latest*.yml is uploaded next to the bundles in the
-# GitHub Release tied to the current `v*` tag. App reads it at runtime via
-# electron-updater.
+# GitHub Release tied to the current `v*` tag.
 #
 # `releaseType: prerelease` tells electron-builder to look for (and, if
 # missing, create) a prerelease for the tag. Drafts are invisible to the
