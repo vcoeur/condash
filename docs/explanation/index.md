@@ -46,7 +46,7 @@ Every piece earns its keep. The `**Key**: value` headers render visually but par
 - **No multi-user collaboration.** Single-user, local-only.
 - **No web UI / HTTP server.** End-to-end IPC.
 - **No code editing.** Source files open in your IDE via configurable launcher slots.
-- **No telemetry.** Nothing leaves your machine except the GitHub Releases feed for auto-updates.
+- **No telemetry.** Nothing leaves your machine, period.
 - **No general-purpose terminal.** The xterm pane is a log view + project-scoped shell, not a Konsole / iTerm replacement.
 - **No notes search index.** The conception tree is small enough that re-walking on every query is faster than maintaining an index.
 

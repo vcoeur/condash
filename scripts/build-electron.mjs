@@ -23,11 +23,10 @@ const devMode = watchMode || process.argv.includes('--dev');
  *  runtime (Electron-internal wiring or native bindings). */
 const EXTERNAL = [
   'electron',
-  // Native modules — kept here for future-proofing; bundle skips them and they
-  // resolve from node_modules. Add new native deps to this list.
+  // Native modules — bundle skips them and they resolve from node_modules.
+  // Add new native deps to this list.
   'node-pty',
   'fsevents',
-  'better-sqlite3',
   // electron-updater pulls in `lzma-native`, `7zip-bin`, and reaches for
   // `original-fs` (an Electron-internal module). Inlining the whole graph
   // explodes the bundle and breaks runtime loading; keep it external so it

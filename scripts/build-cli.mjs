@@ -30,7 +30,6 @@ const EXTERNAL = [
   'electron',
   'node-pty',
   'fsevents',
-  'better-sqlite3',
   'electron-updater',
   'original-fs',
 ];

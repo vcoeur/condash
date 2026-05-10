@@ -28,7 +28,7 @@ condash binds to nothing public. It speaks IPC to one renderer and `fs` to one t
 Practical consequences:
 
 - **No login screen, ever.** No accounts, no API keys, no OAuth flow.
-- **No opt-out telemetry either.** condash collects nothing about you. The only thing it ever fetches is the GitHub Releases feed during the auto-update check.
+- **No opt-out telemetry either.** condash collects nothing about you, and it does not phone home.
 - **No feature where "single-user" is in tension with how it's meant to work.** Real-time collaboration, presence indicators, "X is editing this" markers: not even on the long-term roadmap. Use git.
 
 ## 3. Simple over clever
