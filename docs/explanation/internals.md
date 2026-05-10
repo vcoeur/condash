@@ -155,7 +155,7 @@ src/renderer/    ──vite─────► dist/
   release/{*.AppImage, *.deb, *.dmg, *.exe, latest*.yml}
 ```
 
-esbuild bundles main + preload into single CJS files. Native modules (`electron`, `node-pty`, future `better-sqlite3`) are kept external — they have to load from `node_modules` so `electron-rebuild` can reach them. Pure-JS deps, including ESM-only libraries (chokidar 4 and friends), are inlined.
+esbuild bundles main + preload into single CJS files. Native modules (`electron`, `node-pty`) are kept external — they have to load from `node_modules` so `electron-rebuild` can reach them. Pure-JS deps, including ESM-only libraries (chokidar 4 and friends), are inlined.
 
 `tsc` no longer emits — esbuild owns emission, tsc owns type-checking. `make typecheck` runs `tsc --noEmit` against `tsconfig.main.json` and `tsconfig.renderer.json`.
 

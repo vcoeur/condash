@@ -6,18 +6,18 @@ Project tracking + per-feature specs live in `vcoeur/conception/projects/2026-04
 
 ## Stack
 
-- **Main**: Node, TypeScript, **bundled with esbuild** (`scripts/build-electron.mjs`) to a single CJS file at `dist-electron/main/index.js`. Imports are inlined; ESM-only deps (chokidar 4, future libs) bundle to CJS transparently. Native modules (electron, node-pty when MVP-15 lands, fsevents, better-sqlite3) stay external — they have to load from `node_modules` so `electron-rebuild` can reach them.
+- **Main**: Node, TypeScript, **bundled with esbuild** (`scripts/build-electron.mjs`) to a single CJS file at `dist-electron/main/index.js`. Imports are inlined; ESM-only deps (chokidar 4, future libs) bundle to CJS transparently. Native modules (electron, node-pty, fsevents) stay external — they have to load from `node_modules` so `electron-rebuild` can reach them.
 - **Preload**: same bundler, output at `dist-electron/preload/index.js`. Stays CJS because `webPreferences.sandbox: true` + ESM preload don't mix on Electron.
 - **Typecheck**: `tsc -p tsconfig.main.json --noEmit` (and the renderer twin). `tsc` no longer emits — esbuild owns emission, tsc owns type-checking.
 - **Renderer**: Solid + Solid signals, Vite (with `vite-plugin-solid`), plain CSS files + CSS variables, `src/renderer/main.tsx`.
 - **Shared types**: `src/shared/types.ts` — plain serialisable objects, ISO strings, no methods.
 - **Packaging**: electron-builder, single `BrowserWindow`, all modals/panes are in-renderer overlays.
-- **Watcher (post-MVP-0)**: single global chokidar rooted at `<conception>/`, debounced 250 ms.
+- **Watcher**: single global chokidar rooted at `<conception>/`, debounced 250 ms.
 
 ### Adding a new main-process dep
 
 1. `npm install <pkg>`. ESM-only is fine — esbuild bundles it as CJS.
-2. If the dep is **native** (has a `binding.gyp` or ships prebuilt `.node` files — e.g. `node-pty`, `better-sqlite3`), add it to the `EXTERNAL` array in `scripts/build-electron.mjs` so esbuild leaves it alone, and wire `electron-rebuild` if needed.
+2. If the dep is **native** (has a `binding.gyp` or ships prebuilt `.node` files — e.g. `node-pty`), add it to the `EXTERNAL` array in `scripts/build-electron.mjs` so esbuild leaves it alone, and wire `electron-rebuild` if needed.
 3. Pure-JS deps need no further work.
 
 ## Locked decisions
@@ -79,7 +79,7 @@ macOS and Windows are unaffected.
 - Run `make format` after every code change.
 - All UI must work without per-OS CSS branches (Electron + Chromium = same renderer everywhere).
 - File-path conventions: every path crossing the IPC boundary is normalised to forward-slash form via `toPosix(p)` from `src/shared/path.ts`. Internal `fs` calls keep the native separator (use `path.join`); the renderer can then split on `/` without per-OS branches. Cross-OS shell wrapping (`bash -lc` / `cmd.exe /d /s /c` / `pwsh -Command`) lives in `src/main/terminals.ts`'s `wrapForShell`.
-- IPC contract is the single typed `CondashApi` interface in `src/shared/api.ts`. Functions, not URLs. Promises for request/response; events only for chokidar push (when wired).
+- IPC contract is the single typed `CondashApi` interface in `src/shared/api.ts`. Functions, not URLs. Promises for request/response; events only for chokidar push.
 - Hard interaction-to-paint budget: **≤ 16 ms** for any user-initiated action. Optimistic UI is the default; rollback on IPC failure.
 
 ## Pointers
@@ -95,17 +95,3 @@ The in-app Help menu reads files out of the asar via the allowlist in `src/main/
 The first-launch **welcome screen** lives in `src/renderer/welcome-screen.tsx` and renders inside `workspace-center` when the conception path is set, the projects list is empty, and the knowledge tree is empty (and the user hasn't dismissed it). Dismiss state persists at `welcome.dismissed` in `settings.json` via the `getWelcomeDismissed` / `setWelcomeDismissed` IPC verbs.
 
 When changing app behaviour, update the matching `docs/` file in the same commit. The schema in `src/main/config-schema.ts` and the public reference (`docs/reference/config.md`) must agree on every release.
-
-## What's deliberately not here (yet)
-
-Until each feature has its own spec under `conception/projects/2026-04/2026-04-26-condash-electron-port/notes/specs/`:
-
-- File watcher (MVP-1).
-- Step toggles, status drag, knowledge tab, terminal, notes modal, deliverables, repo strip, inline runner, search, preferences modal.
-- Markdown rendering (markdown-it + plugins per L8, lands with the notes modal).
-- CodeMirror 6 (lands with the notes editor).
-- Auto-update (`electron-updater`, deferred behind a flag).
-- `node-pty` (terminal feature only).
-- Code-signing.
-
-No spec, no code.
