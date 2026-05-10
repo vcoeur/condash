@@ -1,0 +1,85 @@
+name: pr
+
+# PR-level CI. Two jobs:
+#
+#   1. quick-checks (ubuntu) — typecheck + renderer/main build. Catches
+#      TypeScript regressions and trivial bundler breakage in ~1-2 min.
+#
+#   2. installer-smoke (ubuntu + windows) — runs `electron-builder
+#      --publish never` to compile the full NSIS installer (Windows) and
+#      the .deb/.AppImage (Linux). Skips the AppImage AppRun repack
+#      step that release.yml does; that's purely a runtime-launch
+#      concern, not a build-time concern, so PR CI doesn't need it.
+#
+# The installer-smoke Windows job is the load-bearing one: NSIS warning
+# 6010 (unreferenced Function) is treated as an error by electron-builder
+# and only surfaces when makensis runs against the full assembled
+# installer template, which is what `electron-builder --publish never`
+# produces. v2.18.24/.25 shipped broken because that pipeline only
+# ran on tag-push and the failures only appeared after the tag was
+# already pushed.
+#
+# macOS is omitted: the macOS DMG build is reliable, doesn't depend on
+# any of the platform-specific hooks (`build/installer.nsh`,
+# `build/linux-after-install.sh`), and the macos-latest runner is the
+# slowest of the three. Skipping it on PRs trades a small coverage gap
+# for ~5 min per PR.
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  quick-checks:
+    name: Typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Format check
+        run: npx prettier --check "src/**/*.{ts,tsx,css,html,json}"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build renderer + main
+        run: npm run build
+
+  installer-smoke:
+    name: Installer smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + main
+        run: npm run build
+
+      - name: Build installers
+        run: npx electron-builder --publish never
