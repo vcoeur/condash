@@ -2,6 +2,7 @@ import type {
   CardMinWidthPrefs,
   ConceptionInitState,
   DirtyDetails,
+  HelpDocName,
   KnowledgeNode,
   LayoutState,
   OpenWithSlotKey,
@@ -298,14 +299,6 @@ export type MenuCommand =
   | 'help-configuration'
   | 'help-cli'
   | 'help-why-markdown';
-
-export type HelpDocName =
-  | 'welcome'
-  | 'quick-start'
-  | 'shortcuts'
-  | 'configuration'
-  | 'cli'
-  | 'why-markdown';
 
 declare global {
   interface Window {

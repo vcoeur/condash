@@ -27,11 +27,6 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export const KNOWN_KINDS = ['project', 'incident', 'document'] as const;
 
-export const ENUMS = {
-  KNOWN_STATUSES,
-  KNOWN_KINDS,
-} as const;
-
 const FOLDER_NAME_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 
 export function isItemFolderName(name: string): boolean {
