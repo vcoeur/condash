@@ -13,7 +13,7 @@ The dashboard's **write surface is small**. It touches three places only:
 
 1. An item's `README.md` (step + status edits).
 2. Files under an item's root, mostly the `notes/` subdirectory (create, rename, upload, overwrite).
-3. The tree-level `<conception_path>/configuration.json`.
+3. The tree-level `<conception_path>/condash.json`.
 
 It does **not** touch `.git/`, does not move or rename item directories, does not run shell commands other than the user-configured `open_with.*` / `pdf_viewer` / `terminal.launcher_command` chains and the `repositories[].run` / `force_stop` strings.
 
@@ -47,7 +47,7 @@ All paths live under an item's directory (`projects/YYYY-MM/YYYY-MM-DD-slug/...`
 | Action | IPC verb | Trigger | Effect |
 |---|---|---|---|
 | Read a note | `readNote` | Click a file in the card | Returns plain bytes — no write |
-| Overwrite a note | `writeNote` | Save in the note editor | Atomic rewrite via `.tmp` + rename. Full-content drift check refuses stale overwrites. For `configuration.json`, the bytes written may differ from the input (Zod canonicalisation reorders keys). |
+| Overwrite a note | `writeNote` | Save in the note editor | Atomic rewrite via `.tmp` + rename. Full-content drift check refuses stale overwrites. For `condash.json`, the bytes written may differ from the input (Zod canonicalisation reorders keys). |
 | Create a note | `createProjectNote` | Click "+ Note" in the card | Creates `<projectPath>/notes/NN-<slug>.md` with the next zero-padded counter; returns the new path. |
 | List item files | `listProjectFiles` | Open the notes panel | Lists files under the item's `notes/` directory — no write |
 
@@ -55,7 +55,7 @@ The `note.write` verb takes `(path, expectedContent, newContent)`. If `expectedC
 
 ## Config edits
 
-The tree-level `<conception_path>/configuration.json` is editable through the gear modal's plain-text JSON editor. The dashboard does not expose a typed config API — the user edits the JSON directly, and condash reparses on save.
+The tree-level `<conception_path>/condash.json` is editable through the gear modal's plain-text JSON editor. The dashboard does not expose a typed config API — the user edits the JSON directly, and condash reparses on save.
 
 The watcher fires a `config` event on `tree-events`, the renderer bumps `refreshKey`, and most changes reload live. Structural changes (`workspace_path`, `worktrees_path`, the `repositories` list shape) require a restart for paths to be re-resolved.
 
@@ -74,7 +74,7 @@ The launcher verbs spawn an external process. These **do not** write to the conc
 | Open conception root | `openConceptionDirectory()` | Always `conceptionPath` | OS default file manager |
 | Open a local path | `openPath(target)` | Absolute path, OS-validated | OS default handler — used by the Settings modal "Open externally" buttons |
 | Open an external URL | `openExternal(target)` | Scheme must be `http:`, `https:`, or `mailto:` | OS default handler |
-| Force-stop a repo | `forceStopRepo(repoName)` | Repo must be in `configuration.json` | The repo's `force_stop:` shell command — no path argument |
+| Force-stop a repo | `forceStopRepo(repoName)` | Repo must be in `condash.json` | The repo's `force_stop:` shell command — no path argument |
 
 Paths outside the configured sandbox are rejected **before the shell sees them**. The validation lives in [`src/main/launchers.ts`](https://github.com/vcoeur/condash/blob/main/src/main/launchers.ts) (path checks) and the per-verb handlers in [`src/main/index.ts`](https://github.com/vcoeur/condash/blob/main/src/main/index.ts).
 

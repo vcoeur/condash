@@ -3,14 +3,12 @@ import { parseArgs, takeUniversalFlags, UsageError } from './parser';
 import { resolveConception } from './conception';
 import { runProjects } from './commands/projects';
 import { runKnowledge } from './commands/knowledge';
-import {
-  runAuditCommand,
-  runConfig,
-  runDirty,
-  runRepos,
-  runSearch,
-  runWorktrees,
-} from './commands/misc';
+import { runSearch } from './commands/search';
+import { runRepos } from './commands/repos';
+import { runWorktrees } from './commands/worktrees';
+import { runAuditCommand } from './commands/audit';
+import { runDirty } from './commands/dirty';
+import { runConfig } from './commands/config';
 import { runSkills } from './commands/skills';
 import { runTemplates } from './commands/templates';
 

@@ -419,7 +419,7 @@ function App() {
   //      read each value re-evaluate — whole-list memos like the
   //      Code-pane `orderedRepos` stay quiet on a single dirty tick.
   //   2. **Set membership** (worktree add/remove, primary checkout
-  //      branch switch, configuration.json edit) — `reloadRepos` (full
+  //      branch switch, condash.json edit) — `reloadRepos` (full
   //      list) or `reloadPrimaryByPath` (per-primary subset) replaces
   //      rows. `reconcile` keyed on `path` preserves row identity, so
   //      open dropdowns / popovers survive the swap. Do not remove the
@@ -458,7 +458,7 @@ function App() {
     }
     const updated = await window.condash.listReposForPrimary(primary.name);
     if (updated.length === 0) {
-      // Primary disappeared from configuration.json between the watcher
+      // Primary disappeared from condash.json between the watcher
       // event and this fetch — reload everything to reconcile.
       void reloadRepos();
       return;
@@ -791,7 +791,7 @@ function App() {
     setRefreshKey((k) => k + 1);
 
     // Surface the bundled-template init when the picked folder lacks the
-    // conception markers (projects/ + configuration.json). Init never
+    // conception markers (projects/ + condash.json). Init never
     // overwrites — existing files stay put. The ConfirmModal replaces
     // window.confirm so the dialog stays inside the renderer (no native
     // chrome flash, keyboard handling matches the rest of the app).
@@ -1380,7 +1380,7 @@ function App() {
                               <p>No repositories configured.</p>
                               <p>
                                 Add entries to <code>repositories</code> in{' '}
-                                <code>configuration.json</code>.
+                                <code>condash.json</code>.
                               </p>
                               <button
                                 type="button"

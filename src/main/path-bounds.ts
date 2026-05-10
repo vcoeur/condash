@@ -42,7 +42,7 @@ export async function requirePathUnder(path: string, root: string): Promise<stri
 /**
  * Throw unless `path` resolves under any of: conceptionPath,
  * `workspace_path`, or `worktrees_path`. The latter two come from
- * `<conception>/configuration.json` (workspace-scoped repos and their
+ * `<conception>/condash.json` (workspace-scoped repos and their
  * worktrees). Used by IPC handlers that operate on git worktrees outside
  * the conception tree itself — `getDirtyDetails`, `launchOpenWith` — so a
  * compromised renderer can't drive `git status` against `~/.ssh/` or open

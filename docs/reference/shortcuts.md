@@ -89,7 +89,7 @@ Inside the CodeMirror edit pane:
 
 ## Embedded terminal — pane-level
 
-These live at the dashboard level and can fire from outside the terminal pane (e.g. toggle it open from anywhere). Configurable via the `terminal:` block in `settings.json` (preferred, per-machine) or `configuration.json` (tree default). Shortcut strings follow the `KeyboardEvent.key` convention — modifiers are `Ctrl`, `Shift`, `Alt`, `Meta`.
+These live at the dashboard level and can fire from outside the terminal pane (e.g. toggle it open from anywhere). Configurable via the `terminal:` block in `settings.json` (preferred, per-machine) or `condash.json` (tree default). Shortcut strings follow the `KeyboardEvent.key` convention — modifiers are `Ctrl`, `Shift`, `Alt`, `Meta`.
 
 | Default | Action | Config key |
 |---|---|---|
@@ -146,4 +146,4 @@ This keeps `` Ctrl+` `` from firing while you're typing in the search modal, but
 
 ## Reloading shortcut changes
 
-`terminal` shortcut changes saved via the gear modal take effect **live** — chokidar fires a `config` event, the renderer reloads the parsed shortcut specs. No restart needed. Changes made by hand-editing `configuration.json` or `settings.json` likewise re-render via the watcher; only `workspace_path` / `worktrees_path` / the `repositories` list need an actual restart.
+`terminal` shortcut changes saved via the gear modal take effect **live** — chokidar fires a `config` event, the renderer reloads the parsed shortcut specs. No restart needed. Changes made by hand-editing `condash.json` or `settings.json` likewise re-render via the watcher; only `workspace_path` / `worktrees_path` / the `repositories` list need an actual restart.

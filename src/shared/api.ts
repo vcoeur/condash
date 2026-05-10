@@ -46,7 +46,7 @@ export interface CondashApi {
   /** Per-primary partial reload — returns the primary's `RepoEntry` plus
    * its submodule children freshly re-read. Driven by the structural
    * FS-watcher event `repo-worktrees-changed`. Empty array when the
-   * primary is no longer in `configuration.json`. */
+   * primary is no longer in `condash.json`. */
   listReposForPrimary(primaryName: string): Promise<RepoEntry[]>;
   /** Drop the in-memory git-status cache. Use from Refresh so the next
    * listRepos() runs `git status` everywhere instead of returning TTL-
@@ -80,7 +80,7 @@ export interface CondashApi {
   clearRecentConceptionPaths(): Promise<void>;
   /** Drop one entry from the recents list. Does not touch `lastConceptionPath`. */
   removeRecentConceptionPath(path: string): Promise<void>;
-  /** Probe a candidate workspace path: does it have projects/ and configuration.json? */
+  /** Probe a candidate workspace path: does it have projects/ and condash.json? */
   detectConceptionState(path: string): Promise<ConceptionInitState>;
   /** Lay the bundled conception-template/ tree into `path`. Existing files preserved. */
   initConception(path: string): Promise<{ created: string[] }>;
@@ -169,7 +169,7 @@ export interface CondashApi {
   readNote(path: string): Promise<string>;
   /**
    * Atomically write `newContent` if disk still matches `expectedContent`.
-   * For `configuration.json`, the main process canonicalises the JSON
+   * For `condash.json`, the main process canonicalises the JSON
    * through the Zod schema before writing — so the bytes that hit disk can
    * differ from `newContent` (e.g. Zod reorders object keys to schema
    * order). Returns whatever was actually written so the caller can keep
@@ -224,7 +224,7 @@ export interface CondashApi {
    *  `openPath` for local filesystem paths. */
   openExternal(target: string): Promise<void>;
   /** Open a local filesystem path with the OS default handler. Used by
-   *  the Settings modal's "Open externally" buttons for configuration.json
+   *  the Settings modal's "Open externally" buttons for condash.json
    *  and settings.json. Caller must pass an absolute path. */
   openPath(target: string): Promise<void>;
   /** Create a new note file under <projectPath>/notes/. The slug is sanitised

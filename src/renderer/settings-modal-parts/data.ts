@@ -226,7 +226,7 @@ export interface RawConfig {
 /**
  * Repository entries that carry only `{ name }` (no label / run / force_stop /
  * submodules) collapse back to the bare-string shape on save. The full
- * editor renders both shapes the same way, but configuration.json keeps its
+ * editor renders both shapes the same way, but condash.json keeps its
  * compact form for entries that don't need extra fields.
  */
 export function compactRepos(repos: RawRepo[]): RawRepo[] {

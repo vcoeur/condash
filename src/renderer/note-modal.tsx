@@ -171,7 +171,7 @@ export function NoteModal(props: {
   onOpenMarkdown: (path: string) => void;
   /** Open a PDF referenced by a relative link in the rendered body. */
   onOpenPdf: (path: string) => void;
-  /** Open a bundled help doc — used by the configuration.json reference panel
+  /** Open a bundled help doc — used by the condash.json reference panel
    * to expand into the full doc. */
   onOpenHelp?: (doc: 'configuration' | 'welcome') => void;
   /** Pop one entry off the in-modal navigation history. When provided, the

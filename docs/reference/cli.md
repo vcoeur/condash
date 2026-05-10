@@ -130,7 +130,7 @@ condash-cli search "session cookie" --scope all
 
 ### `repos`
 
-List configured repositories from `configuration.json`.
+List configured repositories from `condash.json`.
 
 ```bash
 condash-cli repos list                       # primary + secondary, no worktrees
@@ -139,7 +139,7 @@ condash-cli repos list --include-worktrees   # add worktrees in <worktrees_path>
 
 ### `worktrees`
 
-Worktree-centric operations on top of `configuration.json`'s repositories. Both `repos list --include-worktrees` and these verbs share the same per-repo dirty/upstream cache.
+Worktree-centric operations on top of `condash.json`'s repositories. Both `repos list --include-worktrees` and these verbs share the same per-repo dirty/upstream cache.
 
 | Verb | What it does |
 |---|---|
@@ -214,7 +214,7 @@ Read or change condash configuration.
 |---|---|
 | `conception-path` | Print the saved conception path |
 | `conception-path <path>` | Save a new conception path to `settings.json` |
-| `list` | Print every key from `configuration.json` and `settings.json` (merged view) |
+| `list` | Print every key from `condash.json` and `settings.json` (merged view) |
 | `get <key>` | Print one key's value, dot-separated path (`terminal.shell`) |
 
 `config conception-path` is the only verb that does not need an existing conception path — it sets one.

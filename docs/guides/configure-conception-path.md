@@ -13,7 +13,7 @@ The conception path is the only piece of configuration condash needs before it c
 
 ## Option 1 — first-launch folder picker
 
-On first launch with no tree configured, condash opens a native folder picker. Pick the directory containing your `projects/` + (optional) `configuration.json` and condash writes the choice to `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or the platform equivalent — see [Config files](../reference/config.md#at-a-glance)). Subsequent launches reuse the saved path automatically.
+On first launch with no tree configured, condash opens a native folder picker. Pick the directory containing your `projects/` + (optional) `condash.json` and condash writes the choice to `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or the platform equivalent — see [Config files](../reference/config.md#at-a-glance)). Subsequent launches reuse the saved path automatically.
 
 This is the right setup for your main tree — the path you work in every day.
 
@@ -72,4 +72,4 @@ Then either edit `settings.json` to point at `/tmp/scratch-tree`, or delete `set
 
 ## Multiple machines pointed at the same tree
 
-`conceptionPath` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `configuration.json` at its root; per-machine preferences stay in `settings.json`.
+`conceptionPath` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `condash.json` at its root; per-machine preferences stay in `settings.json`.

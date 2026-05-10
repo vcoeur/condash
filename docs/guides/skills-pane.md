@@ -28,7 +28,7 @@ The flags are informational only — local edits are never blocked. They exist s
 
 ## Configuration
 
-Set the directory by editing `configuration.json` at the conception root (per-tree, versioned with the conception), or via **Settings → Workspace → Skills directory**. The value is **not** in `settings.json` — it's tree-side so teammates see the same skills tree.
+Set the directory by editing `condash.json` at the conception root (per-tree, versioned with the conception), or via **Settings → Workspace → Skills directory**. The value is **not** in `settings.json` — it's tree-side so teammates see the same skills tree.
 
 ```json
 {
