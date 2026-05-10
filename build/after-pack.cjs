@@ -28,8 +28,8 @@
 // Windows (NSIS):
 //   <install>/condash.exe        ← Electron binary (untouched)
 //   <install>/condash-cli.cmd    ← .cmd shim
-//   The install dir isn't added to PATH automatically — users add it
-//   manually or invoke with the full path.
+//   The install dir is appended to per-user PATH (HKCU\Environment\PATH)
+//   by build/installer.nsh on install, removed on uninstall.
 
 const fs = require('node:fs');
 const path = require('node:path');
