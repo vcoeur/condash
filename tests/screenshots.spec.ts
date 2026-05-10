@@ -2,18 +2,24 @@
  * Screenshot harness.
  *
  * Drives the packaged Electron build against the bundled `tests/fixtures/conception-demo`
- * and captures the 31 PNGs that the public docs site references.
+ * and captures the 19 PNGs (× 2 themes = 38 files) that the public docs site can reference.
  *
  * Run as `npm run test -- --reporter=list screenshots.spec.ts`. Output lands in
  * `tests/screenshots-out/{light,dark}/<name>.png`. The matching pair is then
- * copied into `docs/assets/screenshots/<name>-{light,dark}.png` by hand or by
- * the helper script in `scripts/sync-screenshots.mjs`.
+ * copied by hand into `docs/assets/screenshots/<name>-{light,dark}.png`
+ * (e.g. `cp tests/screenshots-out/{light,dark}/*.png docs/assets/screenshots/`).
  *
  * Window is forced to 1600×1100 logical px with deviceScaleFactor=2 so the
  * captured PNGs come out at 3200×2200 — matching the Tauri-era originals.
  */
 
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  _electron as electron,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, cp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -289,7 +295,9 @@ async function captureForTheme(theme: Theme): Promise<void> {
     //    `menu-command` IPC ('search').
     await sendMenu(b.app, 'search');
     await settle(page);
-    const searchInput = page.locator('.search-modal input, .search-input, input[placeholder*="search" i]').first();
+    const searchInput = page
+      .locator('.search-modal input, .search-input, input[placeholder*="search" i]')
+      .first();
     if (await searchInput.count()) {
       await searchInput.fill('fuzzy');
       await settle(page);
@@ -363,7 +371,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
   }
 }
 
-test('capture all 33 screenshots in light + dark', async () => {
+test('capture all 19 screenshots in light + dark', async () => {
   test.setTimeout(240_000);
   await rm(outRoot, { recursive: true, force: true });
   await captureForTheme('light');
