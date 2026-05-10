@@ -75,7 +75,10 @@ function compareDirNames(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-function buildFileTree(files: readonly ProjectFileEntry[]): FileTree {
+function buildFileTree(
+  files: readonly ProjectFileEntry[],
+  options?: { ensureNotesDir?: boolean },
+): FileTree {
   const rootFiles: ProjectFileEntry[] = [];
   const subBuckets = new Map<string, ProjectFileEntry[]>();
   for (const file of files) {
@@ -94,6 +97,13 @@ function buildFileTree(files: readonly ProjectFileEntry[]): FileTree {
   }
 
   rootFiles.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Surface a synthetic empty notes/ dir when the caller wants the
+  // "+ Add note" affordance available even on projects that haven't
+  // had their notes/ folder created on disk yet.
+  if (options?.ensureNotesDir && !subBuckets.has('notes')) {
+    subBuckets.set('notes', []);
+  }
 
   const dirs: FileTreeDir[] = [];
   const dirNames = Array.from(subBuckets.keys()).sort(compareDirNames);
@@ -504,7 +514,12 @@ export function ProjectPreview(props: {
                   </button>
                 </Show>
 
-                <Show when={(files() ?? []).filter((f) => f.relPath !== 'README.md').length > 0}>
+                <Show
+                  when={
+                    (files() ?? []).filter((f) => f.relPath !== 'README.md').length > 0 ||
+                    !!props.onCreateNote
+                  }
+                >
                   <section class="preview-section sidebar-block">
                     <h3 class="preview-section-head">
                       Files
@@ -516,6 +531,7 @@ export function ProjectPreview(props: {
                       <FileTreeRows
                         tree={buildFileTree(
                           (files() ?? []).filter((f) => f.relPath !== 'README.md'),
+                          { ensureNotesDir: !!props.onCreateNote },
                         )}
                         depth={0}
                         onOpenFile={(file) => props.onOpenFile(file.path)}
