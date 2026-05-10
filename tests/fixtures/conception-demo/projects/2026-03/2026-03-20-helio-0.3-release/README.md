@@ -1,9 +1,14 @@
-# helio 0.3 release
+---
+date: 2026-03-20
+kind: project
+status: done
+apps:
+  - helio
+  - helio-web
+  - helio-docs
+---
 
-**Date**: 2026-03-20
-**Kind**: project
-**Status**: done
-**Apps**: `helio`, `helio-web`, `helio-docs`
+# helio 0.3 release
 
 ## Goal
 

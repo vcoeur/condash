@@ -1,9 +1,12 @@
-# JSON / NDJSON export for read-only commands
+---
+date: 2026-04-15
+kind: project
+status: later
+apps:
+  - helio
+---
 
-**Date**: 2026-04-15
-**Kind**: project
-**Status**: later
-**Apps**: `helio`
+# JSON / NDJSON export for read-only commands
 
 ## Goal
 

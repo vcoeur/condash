@@ -1,11 +1,14 @@
-# `helio search` crashes on large logs
+---
+date: 2026-04-08
+kind: incident
+status: now
+apps:
+  - helio
+environment: PROD — user running helio 0.4.0-alpha.2 (trigram-index branch) against nginx access logs from their production edge tier
+severity: high — reproducible OOM on any corpus above ~800 MB; the CLI process dies with SIGKILL from the kernel OOM killer, losing all streamed-but-unflushed output
+---
 
-**Date**: 2026-04-08
-**Kind**: incident
-**Status**: now
-**Apps**: `helio`
-**Environment**: PROD — user running helio 0.4.0-alpha.2 (trigram-index branch) against nginx access logs from their production edge tier
-**Severity**: high — reproducible OOM on any corpus above ~800 MB; the CLI process dies with SIGKILL from the kernel OOM killer, losing all streamed-but-unflushed output
+# `helio search` crashes on large logs
 
 ## Description
 

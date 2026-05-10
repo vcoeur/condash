@@ -1,10 +1,13 @@
-# CLI config migration to layered TOML
+---
+date: 2026-04-12
+kind: project
+status: review
+apps:
+  - helio
+branch: config/layered-toml
+---
 
-**Date**: 2026-04-12
-**Kind**: project
-**Status**: review
-**Apps**: `helio`
-**Branch**: `config/layered-toml`
+# CLI config migration to layered TOML
 
 ## Goal
 

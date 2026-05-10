@@ -1,11 +1,14 @@
-# helio-docs 404s after 0.3 deploy
+---
+date: 2026-03-25
+kind: incident
+status: done
+apps:
+  - helio-docs
+environment: PROD — helio-docs.example.com, post 0.3 deploy
+severity: low — every guide page under `/guides/*` returned 404 for ~40 minutes; root and reference pages were unaffected
+---
 
-**Date**: 2026-03-25
-**Kind**: incident
-**Status**: done
-**Apps**: `helio-docs`
-**Environment**: PROD — helio-docs.example.com, post 0.3 deploy
-**Severity**: low — every guide page under `/guides/*` returned 404 for ~40 minutes; root and reference pages were unaffected
+# helio-docs 404s after 0.3 deploy
 
 ## Description
 

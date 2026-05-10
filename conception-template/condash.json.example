@@ -2,10 +2,7 @@
   "$schema_doc": "Source of truth for condash. See docs/reference/config.md for the full schema and per-OS recipes.",
   "workspace_path": "/path/to/workspace",
   "worktrees_path": "/path/to/workspace/../worktrees",
-  "repositories": {
-    "primary": [],
-    "secondary": []
-  },
+  "repositories": [],
   "open_with": {
     "main_ide": {
       "label": "Open in main IDE",

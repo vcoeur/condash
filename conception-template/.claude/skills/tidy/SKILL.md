@@ -10,7 +10,7 @@ description: Audit the conception tree (knowledge index orphans + dangling links
 
 - Periodically — once a week, or before opening a release-shaped PR off `main`.
 - After a bulk refactor of `knowledge/` or `projects/` — orphans and dangling index links pile up.
-- After a worktree-heavy week — branches that were merged or removed often leave stale items declaring `**Branch**` with no on-disk worktree.
+- After a worktree-heavy week — branches that were merged or removed often leave stale items declaring `branch` with no on-disk worktree.
 - When the dashboard's audit indicator shows issues.
 
 For an at-a-glance read without the triage walk, `condash-cli audit` and `condash-cli knowledge verify` directly are faster.

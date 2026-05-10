@@ -48,16 +48,16 @@ Trigger: `/projects close <slug>`.
    condash-cli projects close <slug> --summary "<one-line outcome>" --json
    ```
 
-   The CLI sets `**Status**: done`, appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
+   The CLI sets the status to `done` (rewriting `status:` for YAML-frontmatter READMEs or `**Status**:` for the legacy bold-prose form), appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
 
-6. **Worktree + branch cleanup.** If the item has a `**Branch**` field:
+6. **Worktree + branch cleanup.** If the item has a `branch` field:
 
    ```bash
    condash-cli worktrees check <branch> --json
    condash-cli worktrees remove <branch> --json
    ```
 
-   `worktrees check` shows which repos still have worktrees on this branch. `worktrees remove` is **protected-set aware**: it only removes worktrees for repos in the closing item's `**Apps**` that no other active item still claims on the same branch.
+   `worktrees check` shows which repos still have worktrees on this branch. `worktrees remove` is **protected-set aware**: it only removes worktrees for repos in the closing item's `apps` that no other active item still claims on the same branch.
 
    The CLI does **not** delete local branches — that stays here so the `git -C <repo> branch -d` refusal can surface to the user. After `worktrees remove` reports success, for each `data.removed[].repo`:
 
@@ -104,4 +104,4 @@ Trigger: `/projects reopen <slug>` or "reopen <slug>".
 condash-cli projects reopen <slug> [--status <now|review|later|backlog>] --summary "<reason>" --json
 ```
 
-Default target status is `now`. The CLI flips `**Status**`, appends `- YYYY-MM-DD — Reopened. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. If the item carried a `**Branch**` whose worktrees were torn down at close time, offer `/projects worktree setup <branch>` afterwards — reopen is a status edit only, it never re-creates worktrees.
+Default target status is `now`. The CLI flips the status (in either YAML or bold-prose form), appends `- YYYY-MM-DD — Reopened. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. If the item carried a `branch` whose worktrees were torn down at close time, offer `/projects worktree setup <branch>` afterwards — reopen is a status edit only, it never re-creates worktrees.

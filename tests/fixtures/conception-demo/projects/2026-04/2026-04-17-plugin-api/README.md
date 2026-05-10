@@ -1,9 +1,12 @@
-# plugin API implementation
+---
+date: 2026-04-17
+kind: project
+status: backlog
+apps:
+  - helio
+---
 
-**Date**: 2026-04-17
-**Kind**: project
-**Status**: backlog
-**Apps**: `helio`
+# plugin API implementation
 
 ## Goal
 

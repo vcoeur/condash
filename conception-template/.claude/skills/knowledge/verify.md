@@ -61,7 +61,7 @@ A sibling app's `CLAUDE.md` references `../../conception/...` and the target doe
 
 ### `worktrees` (informational; offer setup)
 
-Items declaring an active `**Branch**` field but no on-disk worktree. Offer `/projects worktree setup <branch>` per missing branch. Don't auto-create — worktree setup has side effects (env copy, install).
+Items declaring an active `branch` field but no on-disk worktree. Offer `/projects worktree setup <branch>` per missing branch. Don't auto-create — worktree setup has side effects (env copy, install).
 
 ### `index` (auto-fix candidate)
 

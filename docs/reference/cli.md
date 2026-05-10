@@ -133,7 +133,7 @@ condash-cli search "session cookie" --scope all
 List configured repositories from `condash.json`.
 
 ```bash
-condash-cli repos list                       # primary + secondary, no worktrees
+condash-cli repos list                       # configured repos, no worktrees
 condash-cli repos list --include-worktrees   # add worktrees in <worktrees_path>/
 ```
 
