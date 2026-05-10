@@ -174,14 +174,6 @@ function emitNdjson<T>(data: T, shape: NdjsonShape): void {
   process.stdout.write(JSON.stringify(data) + '\n');
 }
 
-/**
- * Write a single record on a streaming path (`--ndjson`). The dispatcher
- * holds onto exit-code policy; this just lays a JSON line on stdout.
- */
-export function emitNdjsonRecord(record: unknown): void {
-  process.stdout.write(JSON.stringify(record) + '\n');
-}
-
 export function reportError(ctx: OutputContext, err: unknown): ExitCode {
   if (err instanceof CliError) {
     if (ctx.json || ctx.ndjson) {

@@ -1,6 +1,6 @@
+import { META_LINE } from '../../shared/header';
 import type { SearchRegion } from '../../shared/types';
 
-const META_LINE = /^\*\*[A-Za-z][\w -]*\*\*\s*:.*$/;
 const HEADING = /^#{1,6}\s+/;
 
 /**

@@ -1,24 +1,15 @@
 import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import type { HelpDocName } from '../shared/types';
 
 /**
- * Names of the doc files exposed to the renderer through `helpReadDoc`.
- * The whitelist is the only path-traversal defence — the renderer can pass
- * any string, but only these resolve to a file.
- *
- * Help docs live under `docs/help/` and are intentionally short and
- * self-contained — no relative wikilinks. Each one ends with a pointer
- * to the matching section on the public docs site.
+ * `PATHS` is the only path-traversal defence — the renderer can pass any
+ * string for `helpReadDoc(name)`, but only entries in this allowlist resolve
+ * to a file. Help docs live under `docs/help/` and are intentionally short
+ * and self-contained (no relative wikilinks). The `HelpDocName` union lives
+ * in `shared/types.ts` so the IPC contract stays in lock-step with this map.
  */
-export type HelpDocName =
-  | 'welcome'
-  | 'quick-start'
-  | 'shortcuts'
-  | 'configuration'
-  | 'cli'
-  | 'why-markdown';
-
 const PATHS: Record<HelpDocName, string> = {
   welcome: 'help/welcome.md',
   'quick-start': 'help/quick-start.md',

@@ -6,6 +6,20 @@ export type Platform = 'linux' | 'darwin' | 'win32' | (string & {});
 
 export type ItemKind = 'project' | 'incident' | 'document' | 'unknown';
 
+/**
+ * Names of the bundled help docs the renderer can request via `helpReadDoc`.
+ * Lifted to `shared/` so the IPC contract (`shared/api.ts`) and the main
+ * loader's `PATHS` allowlist (`main/help.ts`) reference one canonical union —
+ * additions/renames touch one file instead of two.
+ */
+export type HelpDocName =
+  | 'welcome'
+  | 'quick-start'
+  | 'shortcuts'
+  | 'configuration'
+  | 'cli'
+  | 'why-markdown';
+
 export type KnownStatus = 'now' | 'review' | 'later' | 'backlog' | 'done';
 
 export const KNOWN_STATUSES: readonly KnownStatus[] = ['now', 'review', 'later', 'backlog', 'done'];

@@ -108,9 +108,6 @@ const terminalSettings = z
   })
   .strict();
 
-export type XtermSettings = z.infer<typeof xtermSettings>;
-export type XtermColors = z.infer<typeof xtermColors>;
-
 const layoutSchema = z
   .object({
     projects: z.boolean(),
@@ -224,7 +221,6 @@ export const conceptionConfigSchema = z.object(sharedSchemaFields).strict();
  */
 export const configSchema = conceptionConfigSchema;
 
-export type GlobalSettings = z.infer<typeof globalSettingsSchema>;
 export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
 
 /** Backwards-compat alias. */

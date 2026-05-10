@@ -174,10 +174,6 @@ async function writeSettingsRaw(next: Settings): Promise<void> {
   await fs.rename(tmp, path);
 }
 
-export function writeSettings(next: Settings): Promise<void> {
-  return withSettingsQueue(() => writeSettingsRaw(next));
-}
-
 /**
  * Atomic read-modify-write. Use this for every IPC verb that mutates a
  * narrow field (setLayout, setTheme, setWelcomeDismissed, termSetPrefs,
