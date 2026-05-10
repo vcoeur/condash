@@ -38,8 +38,10 @@ asarUnpack:
 #      `condash` (which is GUI-only from v2.14.0).
 afterPack: build/after-pack.cjs
 
-# Auto-update channel: latest*.yml is uploaded next to the bundles in the
-# GitHub Release tied to the current `v*` tag.
+# Publish: every tag pushes installers (and electron-builder's metadata
+# files latest*.yml / *.blockmap) into the GitHub Release for the tag.
+# Auto-update is disabled at runtime — see src/main/index.ts:312 — but
+# the metadata files are still emitted as a no-op side-effect.
 #
 # `releaseType: prerelease` tells electron-builder to look for (and, if
 # missing, create) a prerelease for the tag. Drafts are invisible to the
