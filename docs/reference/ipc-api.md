@@ -45,7 +45,7 @@ Every mutation carries the **expected** state of the region it's about to change
 | `toggleStep(path, lineIndex, expectedMarker, newMarker)` | Compare line's existing marker (`[ ]`, `[~]`, `[x]`, `[-]`) to `expectedMarker`. |
 | `editStepText(path, lineIndex, expectedText, newText)` | Compare line's existing text to `expectedText`. |
 | `addStep(path, text)` | Append-only — no drift check. |
-| `setStatus(path, newStatus, opts?)` | Verify the metadata block contains a `**Status**:` line. On done-edges (close: prev → done, reopen: done → prev) also append a `Closed.` / `Reopened.` line to `## Timeline`. Returns `TransitionResult` with `timelineAppended` non-null exactly when a timeline line was written. |
+| `setStatus(path, newStatus, opts?)` | Verify the metadata block contains a Status line. On done-edges (close: prev → done, reopen: done → prev) also append a `Closed.` / `Reopened.` line to `## Timeline`. Returns `TransitionResult` with `timelineAppended` non-null exactly when a timeline line was written. |
 | `createProject(input)` | Allocate `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/` from the canonical kind template. Returns `{ slug, readmePath }`. |
 | `createProjectNote(projectPath, slug)` | Create `<projectPath>/notes/NN-<slug>.md`. Scans `notes/` for the highest existing `NN-` prefix, increments by one, sanitises the slug, writes an empty file, returns the absolute path. |
 | `writeNote(path, expectedContent, newContent)` | Full-file content compare. For `condash.json`, the main process canonicalises the JSON through the Zod schema before writing — the bytes that hit disk can differ from `newContent`. Returns the bytes actually written so the caller can keep its CAS baseline aligned with disk. |

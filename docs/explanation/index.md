@@ -17,14 +17,17 @@ Every project tracker answers a few questions: what am I working on, what's its 
 
 A README looks like this:
 
-```markdown
-# Migrate auth to session-cookie hybrid
+````markdown
+---
+date: 2026-04-10
+kind: project
+status: now
+apps:
+  - notes.vcoeur.com
+branch: feat/session-cookie-auth
+---
 
-**Date**: 2026-04-10
-**Kind**: project
-**Status**: now
-**Apps**: `notes.vcoeur.com`
-**Branch**: `feat/session-cookie-auth`
+# Migrate auth to session-cookie hybrid
 
 ## Goal
 
@@ -35,9 +38,11 @@ Drop the JWT dependency without breaking existing sessions.
 - [x] Audit session-cookie usage
 - [~] Implement hybrid read path
 - [ ] Migration script for existing tokens
-```
+````
 
-Every piece earns its keep. The `**Key**: value` headers render visually but parse with one regex. `## Steps` checkboxes work in any Markdown tool. `git diff` shows exactly what changed when you flip a step. `rg "session cookie"` finds it in 30 ms.
+Legacy bold-prose headers (`**Date**: 2026-04-10`, etc.) are still accepted — see [README format](../reference/readme-format.md).
+
+Every piece earns its keep. The YAML frontmatter parses straight into the metadata block; `## Steps` checkboxes work in any Markdown tool. `git diff` shows exactly what changed when you flip a step. `rg "session cookie"` finds it in 30 ms.
 
 → Full pitch with three good-fit scenarios: **[Why Markdown-first](why-markdown.md)**.
 
