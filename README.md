@@ -17,7 +17,7 @@ A desktop dashboard for a folder of Markdown files — **projects**, **incidents
 Everything lives at **[condash.vcoeur.com](https://condash.vcoeur.com)**:
 
 - [Get started](https://condash.vcoeur.com/get-started/) — install, first launch, releases.
-- [Tutorials](https://condash.vcoeur.com/tutorials/) — first run, first project, a day with condash.
+- [Tutorials](https://condash.vcoeur.com/tutorials/) — a day in the life of a condash workflow.
 - [Reference](https://condash.vcoeur.com/reference/) — every CLI verb, config key, shortcut, mutation.
 - [Background](https://condash.vcoeur.com/explanation/) — values, non-goals, internals, why Markdown-first.
 

@@ -5,7 +5,7 @@ description: Open an existing item, edit code in the repo strip, run a build in 
 
 # A day with condash
 
-> **Audience.** New user becoming a daily user — you've finished the first two tutorials and want to see the realistic workflow.
+> **Audience.** New user becoming a daily user — you've worked through Get started and want to see the realistic workflow.
 
 **When to read this.** You've worked through [Get started](../get-started/index.md). You want to see the full workflow: not just "how do I create an item?", but "what does a day of real work look like when this tree is your work tracker?".
 
