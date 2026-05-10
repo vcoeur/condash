@@ -1,4 +1,5 @@
 import { For, onCleanup, onMount } from 'solid-js';
+import './shortcuts-overlay.css';
 
 interface ShortcutEntry {
   keys: string;

@@ -1,0 +1,28 @@
+/* Generic confirm modal (init template prompt, etc.) — shares the visual
+ * language of the quit-confirm but lives in its own component so callers
+ * can pass arbitrary body content. */
+.confirm-modal {
+  width: min(460px, 90vw);
+}
+
+.confirm-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.confirm-message {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

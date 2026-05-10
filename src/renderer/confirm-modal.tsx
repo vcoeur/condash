@@ -1,4 +1,5 @@
 import { type JSX, onCleanup, onMount, Show } from 'solid-js';
+import './confirm-modal.css';
 
 export interface ConfirmModalProps {
   /** Heading shown in the modal-head bar. */
