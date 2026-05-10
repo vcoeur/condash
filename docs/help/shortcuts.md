@@ -8,7 +8,7 @@ The few you'll actually use.
 |---|---|
 | `Ctrl+O` | **Open…** — pick a different conception folder |
 | `Ctrl+,` | **Settings…** — open the configuration modal |
-| `Ctrl+Shift+F` | **Search…** — cross-tree fuzzy search |
+| `Ctrl+K` / `Ctrl+Shift+F` | **Search…** — cross-tree fuzzy search |
 | `Ctrl+R` | Show **Resources** pane |
 | `Ctrl+L` | Show **Skills** pane |
 | `F5` | **Refresh** — re-read repos, drop git-status cache |

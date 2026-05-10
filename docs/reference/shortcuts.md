@@ -12,7 +12,7 @@ description: Every keyboard shortcut the dashboard and embedded terminal recogni
 | Area | Count | Configurable? |
 |---|---|---|
 | Application menu (File / View) | 14 | no |
-| Dashboard global | 2 | no |
+| Dashboard global | 3 | no |
 | Project cards | 6 | no |
 | Note modal | 4 | no |
 | Terminal — pane | 3 | yes (`[terminal]`) |
@@ -47,6 +47,7 @@ The View toggles round-trip through `getLayout` / `setLayout` — see [Config fi
 
 | Shortcut | Action | Configurable |
 |---|---|---|
+| `Ctrl+K` / `Cmd+K` | Open the global search modal (same effect as `Ctrl+Shift+F`). | no |
 | `Escape` | Close the topmost modal | no |
 | `?` | Toggle the keyboard-shortcut cheat-sheet overlay | no |
 

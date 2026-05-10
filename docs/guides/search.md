@@ -12,6 +12,7 @@ description: Use the search modal's full-text search across every README, note, 
 condash's search is a **modal**, not a pane. It's available from anywhere in the app:
 
 - **`Ctrl+Shift+F`** / **`Cmd+Shift+F`** — opens the modal.
+- **`Ctrl+K`** / **`Cmd+K`** — alias of the above; matches the cheat-sheet's primary, intended for VS Code / Linear / Slack muscle memory.
 - **File → Search…** — same.
 
 The query box takes focus the moment the modal opens. Start typing; results render live, ranked and grouped by item. `Esc` closes the modal.
