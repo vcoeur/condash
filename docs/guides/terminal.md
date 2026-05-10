@@ -109,7 +109,7 @@ A snippet sourced from a non-condash terminal (gnome-terminal, iTerm2, …) emit
 
 ## Live theming and font tweaks (Settings → Terminal)
 
-**File → Settings… → Terminal** (`Ctrl+,`, then the **Terminal** tab) live-edits the `terminal.xterm` block: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. The Terminal tab sits under **Global Condash Settings**, so it writes to `settings.json` (per-machine). For a tree-wide default that teammates pick up automatically, hand-edit `terminal.xterm` in `condash.json` instead. Either way, changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
+**File → Settings… → Terminal** (`Ctrl+,`, then the **Terminal** section) live-edits the `terminal.xterm` block: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. The Terminal section ships on both Settings tabs: the **Global** copy writes to `settings.json` (per-machine default); the **This conception** copy writes to `condash.json` (per-tree override, picked up by teammates on git pull). Each field on the conception tab carries an inheritance badge with a Reset-to-global button. Either way, changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
 
 See [`terminal.xterm` in the config reference](../reference/config.md#terminalxterm) for the full key table.
 

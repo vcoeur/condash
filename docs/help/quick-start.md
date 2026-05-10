@@ -98,19 +98,24 @@ condash picks it up live.
 
 ## Editing settings
 
-**File → Settings…** (`Ctrl+,`) opens a sidebar-rail modal with five
-sections:
+**File → Settings…** (`Ctrl+,`) opens a two-tab modal — **Global**
+(per-machine, writes to `settings.json`) and **This conception**
+(per-tree, writes to `condash.json`).
 
-- **Appearance** — theme, card-min-width sliders, font scale.
-- **Terminal** — shell, xterm.js settings, screenshot directory.
-- **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
-  `skills_path`.
-- **Repositories** — flat ordered list of repos shown on the Code pane,
-  each with optional `run` / `force_stop` commands and submodules.
-- **Open with** — `main_ide`, `pdf_viewer`, `terminal` launcher entries.
+- **Global** carries Recent conceptions, Appearance, Terminal — all
+  per-machine defaults.
+- **This conception** carries Workspace, Repositories, Open with, plus
+  per-tree overrides for Appearance and Terminal. An inheritance badge
+  on each field calls out whether the conception value matches the
+  global default or overrides it; a **Reset to global** button drops
+  the override.
 
-There is no in-modal JSON editor; the **Open externally** button at the
-bottom hands the active tab's file to your `main_ide`.
+There is no in-modal JSON editor — each preference has its own form
+control. The **Open externally** button at the bottom of the rail
+opens the active tab's file (`condash.json` or `settings.json`) with
+your OS default handler.
+
+→ Full breakdown: [Configuration](configuration.md).
 
 Per-tree config (`<conception>/condash.json`, with `configuration.json`
 read indefinitely as a legacy fallback) is shared with teammates via git
