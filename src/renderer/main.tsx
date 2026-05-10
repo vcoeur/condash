@@ -5,11 +5,9 @@ import {
   createResource,
   createSignal,
   onCleanup,
-  onMount,
   Show,
   Suspense,
 } from 'solid-js';
-import { createStore, reconcile } from 'solid-js/store';
 import type {
   CardMinWidthPrefs,
   Deliverable,
@@ -52,11 +50,13 @@ import { SkillsView } from './panes/skills';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { NewProjectModal } from './new-project-modal';
-import { matchesShortcut, parseShortcut } from './keymap';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
-import { applyRepoEvents } from './repo-events';
+import { createTreeExpansion } from './tree-expansion';
+import { createReposStore } from './repos-store';
+import { createGlobalKeyboard } from './global-keyboard';
+import { createMenuRouter } from './menu-commands';
 import { QuitConfirmModal } from './quit-confirm-modal';
 import { AboutModal } from './about-modal';
 import { ConfirmModal } from './confirm-modal';
@@ -217,73 +217,9 @@ function App() {
     });
   };
 
-  // Per-pane expansion state for the Knowledge / Resources / Skills tree
-  // panes (issue #89). Each set holds the directory `relPath`s that are
-  // currently expanded; an empty set means the pane is fully collapsed
-  // (the on-purpose first-load state). The hydrate-from-IPC then-callback
-  // overrides the empty defaults when the user has prior state on disk.
-  const [knowledgeExpanded, setKnowledgeExpanded] = createSignal<ReadonlySet<string>>(new Set());
-  const [resourcesExpanded, setResourcesExpanded] = createSignal<ReadonlySet<string>>(new Set());
-  const [skillsExpanded, setSkillsExpanded] = createSignal<ReadonlySet<string>>(new Set());
-  void window.condash.getTreeExpansion().then((prefs) => {
-    setKnowledgeExpanded(new Set(prefs.knowledge));
-    setResourcesExpanded(new Set(prefs.resources));
-    setSkillsExpanded(new Set(prefs.skills));
-  });
-
-  /** Persist the union of the three pane sets to settings.json.
-   *  Fire-and-forget — a write failure surfaces as a toast but the
-   *  in-memory state stays authoritative for the session. */
-  const persistTreeExpansion = (): void => {
-    const prefs = {
-      knowledge: Array.from(knowledgeExpanded()),
-      resources: Array.from(resourcesExpanded()),
-      skills: Array.from(skillsExpanded()),
-    };
-    void window.condash.setTreeExpansion(prefs).catch((err) => {
-      flashToast(`Could not persist tree expansion: ${(err as Error).message}`, 'error');
-    });
-  };
-
-  const toggleTreeExpand = (treeKey: TreeRoot, relPath: string): void => {
-    const setterByKey = {
-      knowledge: setKnowledgeExpanded,
-      resources: setResourcesExpanded,
-      skills: setSkillsExpanded,
-    } as const;
-    const getterByKey = {
-      knowledge: knowledgeExpanded,
-      resources: resourcesExpanded,
-      skills: skillsExpanded,
-    } as const;
-    const next = new Set(getterByKey[treeKey]());
-    if (next.has(relPath)) next.delete(relPath);
-    else next.add(relPath);
-    setterByKey[treeKey](next);
-    persistTreeExpansion();
-  };
-
-  /** Force a directory into the expanded set without toggling — used after
-   *  a successful tree mutation so the user can see the new file. */
-  const expandTreeDir = (treeKey: TreeRoot, relPath: string): void => {
-    if (relPath === '') return; // root is always expanded; no need to track
-    const setterByKey = {
-      knowledge: setKnowledgeExpanded,
-      resources: setResourcesExpanded,
-      skills: setSkillsExpanded,
-    } as const;
-    const getterByKey = {
-      knowledge: knowledgeExpanded,
-      resources: resourcesExpanded,
-      skills: skillsExpanded,
-    } as const;
-    const cur = getterByKey[treeKey]();
-    if (cur.has(relPath)) return;
-    const next = new Set(cur);
-    next.add(relPath);
-    setterByKey[treeKey](next);
-    persistTreeExpansion();
-  };
+  const treeExpansion = createTreeExpansion({ flashToast });
+  const { knowledgeExpanded, resourcesExpanded, skillsExpanded, toggleTreeExpand, expandTreeDir } =
+    treeExpansion;
 
   const treeMutations: TreeViewMutationApi = {
     createMd: (root, dirRelPath, filename) =>
@@ -409,116 +345,10 @@ function App() {
     },
   );
 
-  // `repos` is a Solid store rather than a `createResource`. The Code
-  // panel's data has two refresh axes — keep them mentally separate or
-  // the bug at the end of v2.7 keeps coming back:
-  //
-  //   1. **Scalar** (dirty, upstream) — push events from
-  //      `repo-watchers.ts` flow through `repo-events.ts` into path-
-  //      shaped `setRepos(...)` writes. Only the cells that actually
-  //      read each value re-evaluate — whole-list memos like the
-  //      Code-pane `orderedRepos` stay quiet on a single dirty tick.
-  //   2. **Set membership** (worktree add/remove, primary checkout
-  //      branch switch, condash.json edit) — `reloadRepos` (full
-  //      list) or `reloadPrimaryByPath` (per-primary subset) replaces
-  //      rows. `reconcile` keyed on `path` preserves row identity, so
-  //      open dropdowns / popovers survive the swap. Do not remove the
-  //      `key: 'path'` argument — without it, the v2.7-era
-  //      "F5 nukes my popover" disruption bug returns.
-  const [repos, setRepos] = createStore<RepoEntry[]>([]);
-  // True once `listRepos()` has resolved at least once for the current
-  // conception. Lets the Code pane distinguish "still loading" (show
-  // spinner) from "loaded, genuinely empty" (show the add-repo CTA).
-  // Reset to `false` whenever the conception path changes or clears.
-  const [reposLoaded, setReposLoaded] = createSignal(false);
-
-  const reloadRepos = async (): Promise<void> => {
-    const path = conceptionPath();
-    if (!path) {
-      setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
-      setReposLoaded(false);
-      return;
-    }
-    const list = await window.condash.listRepos();
-    setRepos(reconcile(list, { key: 'path' }));
-    setReposLoaded(true);
-  };
-
-  /** Per-primary partial reload. Looks up the primary entry by `path`
-   *  in the current store, calls `listReposForPrimary`, and merges the
-   *  result row-by-row keyed on `path`. Falls back to a full
-   *  `reloadRepos()` if the primary isn't in the store (defensive — a
-   *  structural event for an unknown primary is unexpected). */
-  const reloadPrimaryByPath = async (repoPath: string): Promise<void> => {
-    if (!conceptionPath()) return;
-    const primary = repos.find((r) => !r.parent && r.path === repoPath);
-    if (!primary) {
-      void reloadRepos();
-      return;
-    }
-    const updated = await window.condash.listReposForPrimary(primary.name);
-    if (updated.length === 0) {
-      // Primary disappeared from condash.json between the watcher
-      // event and this fetch — reload everything to reconcile.
-      void reloadRepos();
-      return;
-    }
-    // Build the next snapshot: keep rows outside this primary's family,
-    // append the freshly-fetched rows. Reconcile keyed on `path` does
-    // the diff/merge, preserving row identity for unaffected rows and
-    // any popovers anchored on them.
-    const familyPaths = new Set(updated.map((e) => e.path));
-    const survivors = repos.filter((r) => !familyPaths.has(r.path) && r.parent !== primary.name);
-    setRepos(reconcile([...survivors, ...updated], { key: 'path' }));
-  };
-
-  // Per-primary reload debouncer. Coalesces bursts of structural events
-  // for the same primary (e.g. several FS writes during one `git
-  // worktree add`). 250 ms is short enough to feel instant and long
-  // enough to absorb the burst.
-  const primaryReloadTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const schedulePrimaryReload = (repoPath: string): void => {
-    const existing = primaryReloadTimers.get(repoPath);
-    if (existing) clearTimeout(existing);
-    const t = setTimeout(() => {
-      primaryReloadTimers.delete(repoPath);
-      void reloadPrimaryByPath(repoPath);
-    }, 250);
-    primaryReloadTimers.set(repoPath, t);
-  };
-  onCleanup(() => {
-    for (const t of primaryReloadTimers.values()) clearTimeout(t);
-    primaryReloadTimers.clear();
-  });
-
-  // Load repos as soon as the conception path is known — not gated on
-  // the Code pane being open. Two reasons:
-  //   1. The first paint of the Code pane is instant instead of showing
-  //      a "Loading…" flash while `listRepos()` fans out one `git
-  //      status` per repo + worktree.
-  //   2. Subsequent pane switches don't re-pay the cost — the cached
-  //      store stays populated, and `onRepoEvents` keeps it fresh.
-  // Clearing only happens when the conception path itself goes away
-  // (e.g. the user picks a different conception), not on every pane
-  // switch — that flash to the empty state was the bug fixed here.
-  createEffect(() => {
-    const path = conceptionPath();
-    if (!path) {
-      setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
-      setReposLoaded(false);
-      return;
-    }
-    void reloadRepos();
-  });
-
-  const offRepoEvents = window.condash.onRepoEvents((events) => {
-    applyRepoEvents(events, {
-      repos,
-      setRepos,
-      onWorktreesChanged: schedulePrimaryReload,
-    });
-  });
-  onCleanup(offRepoEvents);
+  // Code-pane repos store. Owns the scalar/set-membership split and the
+  // structural-event debouncer; see `./repos-store.ts` for the contract.
+  const reposStore = createReposStore({ conceptionPath, flashToast });
+  const { repos, reposLoaded, reloadRepos } = reposStore;
 
   const [openWithSlots] = createResource(
     () => [conceptionPath(), refreshKey()] as const,
@@ -587,180 +417,34 @@ function App() {
     void window.condash.termClose(live.id);
   };
 
-  const handleGlobalKeyDown = (event: KeyboardEvent): void => {
-    const target = event.target as HTMLElement | null;
-    const insideEditable = !!target?.closest(
-      '.xterm-host, input, textarea, .cm-editor, [contenteditable=true]',
-    );
-
-    const prefs = terminalPrefs() ?? {};
-    const toggle = parseShortcut(prefs.shortcut ?? 'Ctrl+`');
-    // Pane-toggle is the one shortcut that always wins, even from inside a
-    // text input or the active xterm — users expect it to summon/dismiss the
-    // pane unconditionally.
-    if (matchesShortcut(event, toggle)) {
-      event.preventDefault();
-      toggleTerminal();
-      return;
-    }
-
-    // Screenshot-paste shortcut wins inside the xterm too — that's the very
-    // surface users want to paste a screenshot path into. The listener runs
-    // in capture phase (see addEventListener below), so stopPropagation here
-    // keeps xterm.js from firing its built-in Ctrl+Shift+V → clipboard text
-    // paste, which would otherwise win and overwrite the screenshot path.
-    if (layout().terminal && terminalHandle) {
-      const screenshotPaste = parseShortcut(prefs.screenshot_paste_shortcut ?? 'Ctrl+Shift+V');
-      if (matchesShortcut(event, screenshotPaste)) {
-        event.preventDefault();
-        event.stopPropagation();
-        void bridge.handleScreenshotPaste();
-        return;
-      }
-    }
-
-    // Every other shortcut yields to text inputs / xterm so we don't steal
-    // arrow keys, paste, etc. from someone who's typing.
-    if (insideEditable) return;
-
-    // ?-overlay toggle. Bare `?` (no modifiers) so a shifted `?` from the
-    // user's keyboard layout still fires; the focused-input guard above
-    // already keeps it out of any text field.
-    if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      event.preventDefault();
-      setShortcutsOpen((cur) => !cur);
-      return;
-    }
-
-    // Ctrl+K → open search. The Search menu item already binds
-    // Ctrl+Shift+F (Electron menus accept one accelerator per item), but
-    // the cheat-sheet documents Ctrl+K as the primary; bind it here so
-    // muscle memory from VS Code / Linear / Slack works.
-    if ((event.ctrlKey || event.metaKey) && event.key === 'k' && !event.shiftKey && !event.altKey) {
-      event.preventDefault();
-      setSearchModalOpen(true);
-      return;
-    }
-
-    // Move-tab shortcuts only fire when the pane is open.
-    if (!layout().terminal || !terminalHandle) return;
-    const left = parseShortcut(prefs.move_tab_left_shortcut ?? 'Ctrl+Left');
-    const right = parseShortcut(prefs.move_tab_right_shortcut ?? 'Ctrl+Right');
-    if (matchesShortcut(event, left)) {
-      event.preventDefault();
-      terminalHandle.moveActiveTab(-1);
-      return;
-    }
-    if (matchesShortcut(event, right)) {
-      event.preventDefault();
-      terminalHandle.moveActiveTab(1);
-      return;
-    }
-  };
-
-  // Capture phase: the screenshot-paste branch above needs to run before
-  // xterm.js's textarea keydown listener so stopPropagation can suppress
-  // its built-in Ctrl+Shift+V paste. Other branches don't stopPropagation,
-  // so events still bubble normally to descendants when no shortcut matches.
-  onMount(() => {
-    document.addEventListener('keydown', handleGlobalKeyDown, true);
-  });
-  onCleanup(() => {
-    document.removeEventListener('keydown', handleGlobalKeyDown, true);
+  createGlobalKeyboard({
+    layout,
+    terminalPrefs,
+    getTerminalHandle: () => terminalHandle,
+    toggleTerminal,
+    bridge,
+    setSearchModalOpen,
+    setShortcutsOpen,
   });
 
-  // Application menu → renderer plumbing.
-  const offMenu = window.condash.onMenuCommand((command) => {
-    if (command === 'search') {
-      setSearchModalOpen(true);
-      return;
-    }
-    if (command === 'open-folder') {
-      void handlePick();
-      return;
-    }
-    if (command === 'open-conception') {
-      void window.condash.openConceptionDirectory().catch((err) => {
-        flashToast(`Open failed: ${(err as Error).message}`, 'error');
-      });
-      return;
-    }
-    if (command === 'open-settings') {
-      if (conceptionPath()) setSettingsOpen(true);
-      return;
-    }
-    if (command === 'request-quit') {
-      setQuitConfirmOpen(true);
-      return;
-    }
-    if (command === 'new-project') {
-      if (conceptionPath()) setNewProjectOpen(true);
-      return;
-    }
-    if (command === 'toggle-terminal') {
-      toggleTerminal();
-      return;
-    }
-    if (command === 'toggle-projects') {
-      toggleProjects();
-      return;
-    }
-    if (command === 'show-code') {
-      selectWorking(layout().working === 'code' ? null : 'code');
-      return;
-    }
-    if (command === 'show-knowledge') {
-      selectWorking(layout().working === 'knowledge' ? null : 'knowledge');
-      return;
-    }
-    if (command === 'show-resources') {
-      selectWorking(layout().working === 'resources' ? null : 'resources');
-      return;
-    }
-    if (command === 'show-skills') {
-      selectWorking(layout().working === 'skills' ? null : 'skills');
-      return;
-    }
-    if (command === 'hide-working') {
-      selectWorking(null);
-      return;
-    }
-    if (command === 'refresh') {
-      handleRefresh();
-      return;
-    }
-    if (command === 'about') {
-      setAboutOpen(true);
-      return;
-    }
-    if (command.startsWith('help-')) {
-      // Strip the `help-` prefix to get the HelpDoc name.
-      const doc = command.slice('help-'.length) as HelpDoc;
-      setHelpDoc(doc);
-      return;
-    }
+  createMenuRouter({
+    conceptionPath,
+    layout,
+    setConceptionPath,
+    bumpRefreshKey: () => setRefreshKey((k) => k + 1),
+    setSearchModalOpen,
+    setSettingsOpen,
+    setNewProjectOpen,
+    setQuitConfirmOpen,
+    setAboutOpen,
+    setHelpDoc,
+    toggleProjects,
+    toggleTerminal,
+    selectWorking,
+    handleRefresh: () => handleRefresh(),
+    handlePick: () => handlePick(),
+    flashToast,
   });
-  onCleanup(offMenu);
-
-  const offMenuOpenRecent = window.condash.onMenuOpenRecent((path) => {
-    void window.condash
-      .openConception(path)
-      .then((newPath) => {
-        setConceptionPath(newPath);
-        setRefreshKey((k) => k + 1);
-      })
-      .catch((err) => {
-        flashToast(`Open failed: ${(err as Error).message}`, 'error');
-      });
-  });
-  onCleanup(offMenuOpenRecent);
-
-  const offMenuClearRecents = window.condash.onMenuClearRecents(() => {
-    void window.condash.clearRecentConceptionPaths().catch((err) => {
-      flashToast(`Clear recents failed: ${(err as Error).message}`, 'error');
-    });
-  });
-  onCleanup(offMenuClearRecents);
 
   const handleRunRepo = async (repo: RepoEntry, worktree?: Worktree) => {
     // The Code-pane Run button spawns a `side: 'code'` session that renders in
