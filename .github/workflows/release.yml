@@ -1,7 +1,7 @@
 name: release
 
-# Build unsigned cross-platform installers + publish them (and the
-# `latest*.yml` channel files electron-updater needs) to a single
+# Build unsigned cross-platform installers + publish them (plus the
+# `latest*.yml` metadata files electron-builder emits) to a single
 # GitHub Release tied to the pushed `v*` tag.
 #
 # Triggered by tags only — `git push origin v2.0.0`. The workflow does NOT

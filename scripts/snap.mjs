@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const REAL_CONCEPTION = process.env.CONDASH_CONCEPTION_PATH ?? '/home/alice/src/vcoeur/conception';
 const OUT_DIR = '/tmp/condash-snap';
-const TABS = ['projects', 'code', 'knowledge', 'history', 'search'];
+const TABS = ['projects', 'code', 'knowledge'];
 
 async function main() {
   const requested = process.argv.slice(2);
@@ -63,8 +63,7 @@ async function main() {
       console.log(`[snap] terminal → ${out}`);
       continue;
     }
-    const label = tab[0].toUpperCase() + tab.slice(1);
-    await win.locator(`button.tab:has-text("${label}")`).first().click().catch(() => {});
+    await showPane(app, tab);
     await new Promise((r) => setTimeout(r, 800));
     const out = `${OUT_DIR}/${tab}.png`;
     await win.screenshot({ path: out, fullPage: false });
@@ -73,6 +72,16 @@ async function main() {
 
   await app.close();
   await rm(userData, { recursive: true, force: true });
+}
+
+// The composite layout has no in-window tab strip — pane visibility is
+// driven by the application menu, so screenshot prep goes through the same
+// channel a real menu click would. Mirrors tests/screenshots.spec.ts:122.
+async function showPane(app, label) {
+  await app.evaluate(({ BrowserWindow }, cmd) => {
+    const w = BrowserWindow.getAllWindows()[0];
+    if (w) w.webContents.send('menu-command', cmd);
+  }, label === 'projects' ? 'toggle-projects' : `show-${label}`);
 }
 
 main().catch((err) => {

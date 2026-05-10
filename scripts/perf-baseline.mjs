@@ -93,21 +93,16 @@ async function captureRun(run) {
     });
 
     windowResults.tabswitch = await captureWindow(run, 'tabswitch', electronPid, async () => {
-      const tabs = ['Knowledge', 'History', 'Projects'];
+      const tabs = ['knowledge', 'projects'];
       const end = Date.now() + WINDOW_SECS * 1000;
       let i = 0;
       while (Date.now() < end) {
-        const label = tabs[i % tabs.length];
-        await win
-          .locator(`button.tab:has-text("${label}")`)
-          .first()
-          .click({ timeout: 1500 })
-          .catch(() => {});
+        await showPane(app, tabs[i % tabs.length]);
         i++;
         await sleep(500);
       }
       // Leave on Projects for the next window.
-      await win.locator('button.tab:has-text("Projects")').first().click().catch(() => {});
+      await showPane(app, 'projects');
     });
 
     windowResults.projectscroll = await captureWindow(run, 'projectscroll', electronPid, async () => {
@@ -235,6 +230,16 @@ function summarise(allRuns) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// The composite layout has no in-window tab strip — pane visibility is
+// driven by the application menu, so the tabswitch workload goes through
+// the same channel a real menu click would. Mirrors tests/screenshots.spec.ts:122.
+async function showPane(app, label) {
+  await app.evaluate(({ BrowserWindow }, cmd) => {
+    const w = BrowserWindow.getAllWindows()[0];
+    if (w) w.webContents.send('menu-command', cmd);
+  }, label === 'projects' ? 'toggle-projects' : `show-${label}`);
 }
 
 function countDirs(path, depth) {
