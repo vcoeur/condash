@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { useModalEscHandler } from './modal-helpers';
+import './about-modal.css';
 
 interface AppInfo {
   name: string;

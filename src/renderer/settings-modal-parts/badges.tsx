@@ -53,7 +53,7 @@ function canonicalise(value: unknown): string {
 /**
  * Pill rendered next to a conception-tab field showing whether the
  * conception is inheriting, overriding, or redundantly matching the global
- * value. Three CSS variants — see `modals.css` `.settings-badge--*`.
+ * value. Three CSS variants — see `settings-modal.css` `.settings-badge--*`.
  */
 export function InheritanceBadge(props: { state: InheritanceState }): JSX.Element {
   return (

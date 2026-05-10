@@ -1,0 +1,278 @@
+/* ---- Search modal ------------------------------------------------------ */
+
+/* Top-anchored backdrop — the modal hugs the top of the viewport (command-
+ * palette feel) and only grows downward as results come in. The double-
+ * class selector beats `.modal-backdrop`'s single-class default centring,
+ * which lives in note-modal.css and loads after this file. */
+.modal-backdrop.search-modal-backdrop {
+  align-items: flex-start;
+  padding-top: 6vh;
+}
+
+.search-modal {
+  width: min(820px, 92vw);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.search-modal-head {
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.search-modal-input {
+  flex: 1;
+  font-size: 14px;
+  padding: 8px 12px;
+}
+
+.search-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Source filter — pill-row that lets the user narrow results to
+ * Projects only, Knowledge only, or All. Sits between the search input
+ * and the result list. Counts on each pill always reflect the
+ * unfiltered result set, so the user can see what each option would
+ * yield without committing to it. */
+.search-source-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 8px;
+  flex-wrap: wrap;
+}
+
+.search-source-pill {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.search-source-pill:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.search-source-pill.active {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.search-source-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-faint);
+  text-transform: none;
+}
+
+.search-modal-body .search-results {
+  overflow-y: auto;
+  max-height: 64vh;
+  min-height: 0;
+}
+
+.search-results-grouped {
+  gap: 10px;
+}
+
+/* Lift result rows above the modal's `--bg-elevated` background so they read
+ * as distinct cards. Without this they share the modal's bg and only the
+ * borders survive — which is what made results look "empty". */
+.search-modal-body .search-row {
+  background: var(--bg-subtle);
+}
+
+.search-modal-body .search-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Per-token highlight palette. The mark element ships token-index-modulo-4
+ * variants so multi-word queries paint each token a distinct colour. The
+ * `dim` modifier lowers the saturation for the path-line highlight so the
+ * (much shorter) path doesn't compete with body snippets. */
+.search-mark {
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--col-later) 35%, transparent);
+}
+.search-mark-0 {
+  background: color-mix(in srgb, var(--col-later) 35%, transparent);
+}
+.search-mark-1 {
+  background: color-mix(in srgb, var(--col-soon) 28%, transparent);
+}
+.search-mark-2 {
+  background: color-mix(in srgb, var(--col-now) 22%, transparent);
+}
+.search-mark-3 {
+  background: color-mix(in srgb, var(--col-review) 22%, transparent);
+}
+.search-mark.dim {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.badge-project {
+  background: color-mix(in srgb, var(--col-now) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-now) 30%, transparent);
+  color: var(--col-now);
+}
+
+.search-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* Inside a project group, the per-row override at `.search-modal-body
+ * .search-row` would otherwise stack on top of the group's own bg. Reset
+ * them back to transparent so the group card has one continuous surface. */
+.search-modal-body .search-project-header,
+.search-modal-body .search-project-files .search-row {
+  background: transparent;
+}
+
+.search-modal-body .search-project-header:hover,
+.search-modal-body .search-project-files .search-row:hover {
+  background: var(--bg-hover);
+}
+
+.search-project-header {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-project-header:hover {
+  background: var(--bg-hover);
+}
+
+.search-row-hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.search-project-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-project-files .search-row {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 6px 14px 8px 28px;
+}
+
+.search-project-files .search-row:hover {
+  background: var(--bg-hover);
+}
+
+.search-project-files li + li .search-row {
+  border-top: 1px dashed var(--border);
+}
+
+.search-file-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.search-tips {
+  padding: 12px 8px 4px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.search-tips h4 {
+  margin: 0 0 6px;
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.search-tips ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-tips code {
+  background: var(--bg-subtle);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+
+.search-truncated-hint {
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+/* "where in the file" tags surfaced before each snippet — tiny chip that
+ * tells the user the snippet came from the meta block / title / heading. */
+.snippet-region-tag {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.search-snippets li.snippet-meta,
+.search-snippets li.snippet-h1 {
+  font-weight: 500;
+}

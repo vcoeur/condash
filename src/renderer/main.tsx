@@ -62,7 +62,6 @@ import { AboutModal } from './about-modal';
 import { ConfirmModal } from './confirm-modal';
 import { ShortcutsOverlay } from './shortcuts-overlay';
 import './styles.css';
-import './modals.css';
 import './note-modal.css';
 import './project-preview.css';
 import './welcome-screen.css';

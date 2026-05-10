@@ -11,6 +11,7 @@ import {
 import type { SearchHighlight, SearchHit, SearchResults, SearchSnippet } from '@shared/types';
 import { HighlightedText } from './search/highlight';
 import { groupHits, type ProjectGroup } from './search/grouping';
+import './search-modal.css';
 
 const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
 

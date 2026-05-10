@@ -1,0 +1,32 @@
+/* ---- Quit-confirm modal ------------------------------------------------ */
+
+.quit-confirm-modal {
+  width: min(420px, 90vw);
+}
+
+.quit-confirm-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.quit-confirm-body p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* Inline warning surfaced in QuitConfirmModal when noteDirty is set —
+ * keeps the noteDirty + quit-pty stakes in one modal instead of stacking
+ * a second confirm. Coloured red so it reads as a discard warning. */
+.quit-confirm-warn {
+  color: var(--error, #d44);
+}
+
+.quit-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { ProjectCreateInput, ProjectCreateResult } from '@shared/types';
 import { slugify, isValidSlugTail } from '@shared/slug';
+import './new-project-modal.css';
 
 type Kind = ProjectCreateInput['kind'];
 type Status = ProjectCreateInput['status'];

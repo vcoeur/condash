@@ -1,5 +1,6 @@
 import { Show } from 'solid-js';
 import { useModalEscHandler } from './modal-helpers';
+import './quit-confirm-modal.css';
 
 /** Confirm modal shown before quitting the app — terminates running pty
  *  sessions, so we want an explicit confirmation. When `noteDirty` is set,

@@ -32,6 +32,7 @@ import {
   RepositoriesSection,
 } from './settings-modal-parts/sections-repos-and-open-with';
 import type { JSX } from 'solid-js';
+import './settings-modal.css';
 
 /** Persisted last-active settings tab. Stored in localStorage so opening
  *  the modal a second time lands on whichever tab the user was on. Per-
