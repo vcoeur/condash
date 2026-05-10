@@ -89,3 +89,12 @@ win:
     - nsis
   # No code-signing cert. SmartScreen will warn on first install; users
   # click "More info" → "Run anyway".
+
+# build/installer.nsh appends $INSTDIR to per-user PATH on install (and
+# strips it on uninstall) so `condash` and `condash-cli` are reachable
+# from any shell, matching the Linux postinst's /usr/bin/condash[-cli]
+# symlinks. electron-builder picks build/installer.nsh up by default;
+# the explicit `include:` is here so the wiring isn't load-bearing on a
+# default-discovery convention. See GitHub issue #119.
+nsis:
+  include: build/installer.nsh

@@ -73,6 +73,8 @@ xattr -dr com.apple.quarantine /Applications/condash.app
 
 Double-click the installer. Windows shows "Windows protected your PC" — click **More info → Run anyway**. Each new release re-prompts (expected for unsigned binaries).
 
+The installer appends its install directory to your per-user `PATH`, so `condash` (the GUI launcher) and `condash-cli` (the command-line companion) are reachable from any new shell. Already-open shells need to be restarted to pick up the change. Uninstall removes the entry.
+
 ## First launch
 
 The first time you run `condash`, a **native folder picker** opens and asks where your conception tree lives. Pick (or create) any directory that will hold your Markdown items, for example `~/src/conception/`. condash writes the choice into `settings.json` and reuses it next time.
