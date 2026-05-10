@@ -218,7 +218,7 @@ jobs:
               -f make_latest=$MAKE_LATEST >/dev/null
             echo "Release for $TAG already exists ($REL_ID); state re-asserted, uploading into it."
           else
-            BODY=$'Unsigned Electron build of condash. Auto-update channel served from this release via `electron-updater`.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
+            BODY=$'Unsigned Electron build of condash.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
             gh api -X POST "repos/$GH_REPO/releases" \
               -f tag_name="$TAG" \
               -F draft=false \
