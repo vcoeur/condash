@@ -9,6 +9,7 @@ import type {
 } from '@shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import {
+  buildSavePayload,
   type ColorEntry,
   pruneEmpty,
   type RawConfig,
@@ -17,7 +18,6 @@ import {
   type SettingsTab,
   TABS,
   TERMINAL_STRING_FIELDS,
-  compactRepos,
 } from './settings-modal-parts/data';
 import { inheritanceState } from './settings-modal-parts/badges';
 import type { InheritanceState } from './settings-modal-parts/badges';
@@ -281,11 +281,7 @@ export function SettingsModal(props: {
       return;
     }
     mutator(parsedConfig);
-    const pruned = pruneEmpty(parsedConfig) as RawConfig;
-    if (pruned.repositories) {
-      pruned.repositories = compactRepos(pruned.repositories);
-    }
-    const next = JSON.stringify(pruned, null, 2) + '\n';
+    const next = JSON.stringify(buildSavePayload(parsedConfig), null, 2) + '\n';
     if (next === text) return;
     setError(null);
     setPending(true);
@@ -343,11 +339,7 @@ export function SettingsModal(props: {
       return;
     }
     mutator(parsedSettings);
-    const pruned = pruneEmpty(parsedSettings) as RawConfig;
-    if (pruned.repositories) {
-      pruned.repositories = compactRepos(pruned.repositories);
-    }
-    const next = JSON.stringify(pruned, null, 2) + '\n';
+    const next = JSON.stringify(buildSavePayload(parsedSettings), null, 2) + '\n';
     if (next === text) return;
     setError(null);
     setPending(true);

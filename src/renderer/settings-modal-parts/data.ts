@@ -228,6 +228,11 @@ export interface RawConfig {
  * submodules) collapse back to the bare-string shape on save. The full
  * editor renders both shapes the same way, but condash.json keeps its
  * compact form for entries that don't need extra fields.
+ *
+ * Also drops empty-string / undefined optional fields from the object form,
+ * so a just-added row whose name is still blank stays as `{ "name": "" }` on
+ * disk (visible row in the JSON, schema-valid `repoEntry`) rather than being
+ * pruned away to `null` by the generic `pruneEmpty` pass.
  */
 export function compactRepos(repos: RawRepo[]): RawRepo[] {
   return repos.map((entry) => {
@@ -237,11 +242,16 @@ export function compactRepos(repos: RawRepo[]): RawRepo[] {
       copy.submodules = compactRepos(copy.submodules);
       if (copy.submodules.length === 0) delete copy.submodules;
     }
-    const extras = (Object.keys(copy) as (keyof typeof copy)[]).filter(
-      (k) => k !== 'name' && copy[k] !== undefined && copy[k] !== '',
-    );
-    if (extras.length === 0) return copy.name;
-    return copy;
+    for (const k of Object.keys(copy) as (keyof typeof copy)[]) {
+      if (k === 'name') continue;
+      if (copy[k] === undefined || copy[k] === '') delete copy[k];
+    }
+    const extras = (Object.keys(copy) as (keyof typeof copy)[]).filter((k) => k !== 'name');
+    // Only compact to a bare string when there is an actual name to compact
+    // to — a blank placeholder row keeps the object shape so the user sees
+    // it both in the editor and in the JSON file.
+    if (extras.length === 0 && copy.name) return copy.name;
+    return { ...copy, name: copy.name ?? '' };
   });
 }
 
@@ -263,6 +273,24 @@ export function pruneEmpty(value: unknown): unknown {
     return out;
   }
   return value;
+}
+
+/**
+ * Build the JSON payload that the Settings modal hands to `note.write` (or
+ * `settings.writeRaw`). Strips empty leaves with `pruneEmpty` for everything
+ * except the `repositories` array — `compactRepos` is the canonical
+ * normaliser there. Routing repos through `pruneEmpty` would erase a freshly
+ * added `{ name: '' }` row's only key, leaving an empty object that
+ * `compactRepos` then maps to `undefined` → `null` on serialisation, which
+ * the `repoEntry` schema rejects (`repositories.<index> — Invalid input`).
+ */
+export function buildSavePayload(config: RawConfig): RawConfig {
+  const { repositories, ...rest } = config;
+  const pruned = pruneEmpty(rest) as RawConfig;
+  if (repositories !== undefined) {
+    pruned.repositories = compactRepos(repositories);
+  }
+  return pruned;
 }
 
 export type BindTextFn = (
