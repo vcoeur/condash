@@ -107,7 +107,10 @@ make package     # → release/{*.AppImage, *.deb, *.dmg, *.exe, latest*.yml}
 
 Native modules (`electron`, `node-pty`) stay external — esbuild leaves them as `require()` calls so they load from `node_modules`. `electron-rebuild` rebuilds them against the bundled Electron's Node ABI; `electron-builder` runs it again at package time.
 
-The release pipeline (`.github/workflows/release.yml`) builds all four installers on tag push, uploads them to the GitHub Release as draft assets, and rebuilds the apt repository at `condash.vcoeur.com/apt/` from every published `.deb`.
+Two GitHub Actions workflows guard `main`:
+
+- **`.github/workflows/pr.yml`** runs on every `pull_request` to `main`. A `quick-checks` job (Ubuntu) runs `prettier --check` + `npm run typecheck` + `npm run build`; an `installer-smoke` matrix job (Ubuntu + Windows) runs `npx electron-builder --publish never` to compile the full `.deb` / `.AppImage` / NSIS installer. macOS is not in the PR matrix — the DMG build path doesn't depend on platform-specific hooks, so it's only exercised on tag-push. The Windows installer-smoke is the load-bearing job: `build/installer.nsh`'s NSIS hooks only get assembled into the full installer template when `electron-builder` runs, so warnings-as-errors regressions there only surface here (or at release time, which is too late).
+- **`.github/workflows/release.yml`** builds all four installers on tag push (`v*`), uploads them to the GitHub Release as draft assets, and rebuilds the apt repository at `condash.vcoeur.com/apt/` from every published `.deb`.
 
 ## Documentation changes
 
