@@ -106,11 +106,14 @@ From the Welcome screen, click **Create your first project**. The new-item modal
 Click **Create item**. condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-try-condash/README.md` with this template:
 
 ```markdown
-# Try condash
+---
+date: 2026-05-02
+kind: project
+status: now
+apps: []
+---
 
-**Date**: 2026-05-02
-**Kind**: project
-**Status**: now
+# Try condash
 
 ## Goal
 
@@ -127,7 +130,7 @@ Click **Create item**. condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-try-conda
 ## Notes
 ```
 
-That file is the whole item. The dashboard reads it on every refresh; mutations (toggle a step, change status, drag between groups) rewrite specific lines. The format is documented in **[README format](../reference/readme-format.md)**.
+That file is the whole item. The dashboard reads it on every refresh; mutations (toggle a step, change status, drag between groups) rewrite specific lines. The format is documented in **[README format](../reference/readme-format.md)** — YAML frontmatter is canonical, the legacy bold-prose form (`**Date**: …`, etc.) is still accepted.
 
 You can also create items by hand — just `mkdir projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/` and drop a `README.md` with the header above. condash picks it up live.
 
