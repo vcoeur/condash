@@ -1,6 +1,6 @@
 # /projects — worktree (multi-repo branch management)
 
-Multi-repo items use git worktrees at `<worktrees_path>/<branch>/<repo>/`, grouped by branch name. Worktrees let us work on several items simultaneously without switching branches in the main working copies at `<workspace_path>/<repo>/`. Both paths come from `configuration.json` at the conception tree root.
+Multi-repo items use git worktrees at `<worktrees_path>/<branch>/<repo>/`, grouped by branch name. Worktrees let us work on several items simultaneously without switching branches in the main working copies at `<workspace_path>/<repo>/`. Both paths come from `condash.json` at the conception tree root.
 
 The CLI owns the multi-app derivation, the protected-set logic, and the per-repo `git worktree` calls. The skill just translates user intent into CLI calls.
 
@@ -10,10 +10,10 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
 
 | Action            | Meaning                                                                                              |
 |-------------------|------------------------------------------------------------------------------------------------------|
-| `setup <branch>`  | Create worktrees for every repo in the union of `**Apps**` across items declaring `<branch>`.         |
+| `setup <branch>`  | Create worktrees for every repo in the union of `apps` across items declaring `<branch>`.             |
 | `remove <branch>` | Remove this branch's worktrees, protected-set aware.                                                  |
 | `check <branch>`  | Per-repo state for one branch (declaring items, on-disk worktrees, local branches).                   |
-| `list` / `status` | All repos with their worktrees + `**Branch**` mismatch audit.                                         |
+| `list` / `status` | All repos with their worktrees + `branch` mismatch audit.                                             |
 
 ## `setup <branch>`
 
@@ -26,14 +26,14 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
    condash-cli worktrees setup <branch> [--no-env] [--no-install] [--copy-env] [--base <ref>] --json
    ```
 
-   **Per-repo `env: [...]`** in `configuration.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the new worktree. Applied **unconditionally when set** — pass `--no-env` to skip. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration.
+   **Per-repo `env: [...]`** in `condash.json` is the canonical way to copy gitignored files (e.g. `[".env", ".env.local"]`) from the primary into the new worktree. Applied **unconditionally when set** — pass `--no-env` to skip. `--copy-env` is a legacy fallback that copies `.env` / `.env.local` only for repos *without* an `env:` declaration.
 
-   **Per-repo `install: <cmd>`** in `configuration.json` runs after the worktree is created (npm/pnpm/uv/etc.). Run **unconditionally when set** — pass `--no-install` to skip. Repos without an `install:` declaration are silently no-op.
+   **Per-repo `install: <cmd>`** in `condash.json` runs after the worktree is created (npm/pnpm/uv/etc.). Run **unconditionally when set** — pass `--no-install` to skip. Repos without an `install:` declaration are silently no-op.
 
-   **Base ref.** The CLI reads `**Base**` from every item declaring `<branch>` and uses it as the start point for new branches. All declaring items must agree on the base (the call fails with the disagreeing slugs otherwise). `--base <ref>` overrides the README field for one-shot setups. When no item declares `**Base**` and `--base` isn't passed, new branches are created off the repo's default tip.
+   **Base ref.** The CLI reads `base` from every item declaring `<branch>` and uses it as the start point for new branches. All declaring items must agree on the base (the call fails with the disagreeing slugs otherwise). `--base <ref>` overrides the README field for one-shot setups. When no item declares `base` and `--base` isn't passed, new branches are created off the repo's default tip.
 
    The CLI:
-   - reads `**Apps**` from every item declaring `<branch>` and unions the top-level repos,
+   - reads `apps` from every item declaring `<branch>` and unions the top-level repos,
    - skips repos with `pinned_branch:` (those track a different axis),
    - calls `git worktree add` per repo (creates the branch with `-b <branch> <base>` when missing),
    - blocks any repo whose declared `<base>` doesn't resolve locally — the reason field tells you to `git fetch` or create the base first,
@@ -89,12 +89,12 @@ condash-cli repos list --include-worktrees --json
 condash-cli worktrees mismatch --json
 ```
 
-The first call returns every configured repo with its worktrees (path / branch / primary / dirty count). The second flags items declaring `**Branch**` but missing the on-disk worktree — offer `/projects worktree setup <branch>` per missing branch.
+The first call returns every configured repo with its worktrees (path / branch / primary / dirty count). The second flags items declaring `branch` but missing the on-disk worktree — offer `/projects worktree setup <branch>` per missing branch.
 
 Format the directory listing so the absolute path is the first line of each block, copy-paste ready.
 
 ## Per-repo overrides
 
-A repo entry in `configuration.json` may carry a `pinned_branch:` field; when set, the repo always stays on that branch and is **never** included in worktree setup, even when listed in a project's Apps. The CLI honours this automatically. Use this for repos whose branch tracks a different axis (e.g. a benchmark harness pinned to `main`, with the version under test selected by an in-tree config file).
+A repo entry in `condash.json` may carry a `pinned_branch:` field; when set, the repo always stays on that branch and is **never** included in worktree setup, even when listed in a project's Apps. The CLI honours this automatically. Use this for repos whose branch tracks a different axis (e.g. a benchmark harness pinned to `main`, with the version under test selected by an in-tree config file).
 
 **Multiple items on the same branch** is fine — worktrees are per-branch, not per-item. `remove` honours the protected set so closing one item never yanks worktrees out from under another.

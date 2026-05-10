@@ -5,10 +5,10 @@ description: "Open a GitHub PR from the current branch. Project-aware wrapper: h
 
 # /pr — open a pull request (project-aware wrapper)
 
-This skill handles the **project-side mechanics** of opening a PR for any repo listed in `configuration.json` under `repositories:`:
+This skill handles the **project-side mechanics** of opening a PR for any repo listed in `condash.json` under `repositories:`:
 
 - Resolve the driving project from the current git branch.
-- Pick the base branch via the project's `**Base**` field (or `origin/HEAD`).
+- Pick the base branch via the project's `base` field (or `origin/HEAD`).
 - Push if needed and run `gh pr create`.
 - Append a timeline entry to the driving project's README on success.
 
@@ -41,7 +41,7 @@ Anything else about the body — title style, mandatory sections, prohibited tra
    | Source | Check |
    |--------|-------|
    | User call-site override | "`/pr base=develop`", "open PR to `release-4.2`", etc. |
-   | Project `**Base**` field | `condash-cli projects list --branch <current-branch> --json` returns one row per matching project with parsed `branch` / `base`. If exactly one match has a non-empty `base`, use that value. |
+   | Project `base` field | `condash-cli projects list --branch <current-branch> --json` returns one row per matching project with parsed `branch` / `base`. If exactly one match has a non-empty `base`, use that value. |
    | `origin/HEAD` on main checkout | `git rev-parse --git-common-dir` to find the main checkout; `git -C "$main" symbolic-ref refs/remotes/origin/HEAD` for the default. If unset, try `git remote set-head origin -a` once, then ask the user. |
 
    Sanity-check: `git log --oneline <base>..HEAD` must be a clean non-empty diff. Re-ask if it's empty or enormous.
@@ -77,4 +77,4 @@ Anything else about the body — title style, mandatory sections, prohibited tra
    - **Zero matches** → say so; the user may want to create an item.
    - **Multiple matches** → `AskUserQuestion` with the list; append to the chosen README only.
 
-   Don't change `**Status**`. Don't commit.
+   Don't change `status`. Don't commit.

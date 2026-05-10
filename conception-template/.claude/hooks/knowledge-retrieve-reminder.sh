@@ -19,7 +19,7 @@
 #     match="knowledge/topics/ops/dev-ports.md (port allocation rules)" ;;
 #   *auth*|*token*|*session*.ts|*session*.py)
 #     match="knowledge/topics/security/auth.md (token storage rules)" ;;
-#   */conception/configuration.json|*/conception/configuration.yml)
+#   */conception/condash.json)
 #     match="the file's own header + .claude/skills/projects/worktree.md (configuration schema)" ;;
 
 set -euo pipefail

@@ -5,7 +5,7 @@ description: "Manage projects, incidents, and documents in the conception tree (
 
 # /projects — conception items + worktrees
 
-Every conception item — feature project, incident, or document — lives at `projects/YYYY-MM/YYYY-MM-DD-slug/` with a `README.md` and a `notes/` directory. Items never move once created; **Status** alone signals done-ness.
+Every conception item — feature project, incident, or document — lives at `projects/YYYY-MM/YYYY-MM-DD-slug/` with a `README.md` and a `notes/` directory. Items never move once created; the `status` field alone signals done-ness.
 
 The skill is editorial only. **Every mechanical step shells out to `condash`.** This guarantees one parser owns every read and write of the tree — the dashboard, the CLI, and this skill all see the same canonical view.
 
@@ -35,15 +35,21 @@ One-off CLI verb without a skill action: `condash-cli projects backfill-closed [
 ## README header
 
 ```markdown
-# <Title>
+---
+date: YYYY-MM-DD
+kind: project    # or incident | document
+status: now      # now | review | later | backlog | done
+apps:
+  - app1
+  - app2/sub-path
+branch: branch-name   # optional
+base: branch-name     # optional
+---
 
-**Date**: YYYY-MM-DD
-**Kind**: project | incident | document
-**Status**: now | review | later | backlog | done
-**Apps**: `app1`, `app2/sub-path`
-**Branch**: `branch-name` (optional)
-**Base**: `branch-name` (optional)
+# <Title>
 ```
+
+Legacy bold-prose headers (`**Date**: …`, etc.) are still accepted by the parser; YAML is canonical.
 
 Status meanings:
 
@@ -53,9 +59,9 @@ Status meanings:
 - `backlog` — acknowledged but not scheduled.
 - `done` — finished. Folder does not move.
 
-Kind-specific additions (incidents only): `**Environment**: <PROD/STAGING/DEV>`, `**Severity**: <low/medium/high — impact>`.
+Kind-specific additions (incidents only): `environment: <PROD/STAGING/DEV>`, `severity: <low/medium/high — impact>`.
 
-`**Apps**` is backtick-delimited, comma-separated. `**Branch**`'s first backticked token is authoritative. `**Date**` always matches the month directory — changing it requires a `git mv`.
+`apps` is a YAML list (one entry per line). `branch`'s value is authoritative. `date` always matches the month directory — changing it requires a `git mv`.
 
 ## Slug resolution
 
@@ -69,13 +75,13 @@ Item folder names match `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`. `<slug>` accepts three
 
 ## Branch isolation
 
-When an item has a `**Branch**` field:
+When an item has a `branch` field:
 
-1. Code edits go through the worktree at `<worktrees_path>/<branch>/<repo>/`. Both paths come from `configuration.json` at the conception root (`condash-cli config get worktrees_path`, `condash-cli config get workspace_path`).
+1. Code edits go through the worktree at `<worktrees_path>/<branch>/<repo>/`. Both paths come from `condash.json` at the conception root (`condash-cli config get worktrees_path`, `condash-cli config get workspace_path`).
 2. **Never edit code in `<workspace_path>/<repo>/`** — those are the main checkouts on different branches.
-3. Use `condash-cli worktrees check <branch>` to inspect state, `condash-cli worktrees setup <branch>` to create, `condash-cli worktrees remove <branch>` to clean up. `condash-cli worktrees mismatch` lists every active item declaring a `**Branch**` that has no on-disk worktree — run it when something feels off.
+3. Use `condash-cli worktrees check <branch>` to inspect state, `condash-cli worktrees setup <branch>` to create, `condash-cli worktrees remove <branch>` to clean up. `condash-cli worktrees mismatch` lists every active item declaring a `branch` that has no on-disk worktree — run it when something feels off.
 
-When no `**Branch**` field is set, the main checkouts at `<workspace_path>/<repo>/` are fine.
+When no `branch` field is set, the main checkouts at `<workspace_path>/<repo>/` are fine.
 
 ## Shared rules
 
