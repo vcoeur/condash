@@ -26,9 +26,11 @@ condash-cli <noun> <verb> [args] [--flags]
 | `search` | `condash-cli search "<query>" [--scope all\|projects\|knowledge]` |
 | `repos` | `list [--include-worktrees]` |
 | `worktrees` | `list`, `setup <branch>`, `remove <branch>`, `check <branch>` |
+| `audit` | `--include lfs,binaries,cross-repo,worktrees,index` |
 | `dirty` | `list`, `touch <tree>`, `clear <tree\|all>` |
 | `skills` | `list`, `install`, `status` |
-| `config` | `conception-path [<path>]`, `list`, `get <key>` |
+| `templates` | `list`, `install [<path>...]`, `status` |
+| `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>` (`--global` / `--effective` on read verbs) |
 | `help` | `condash-cli help <noun>` |
 
 ## Universal flags

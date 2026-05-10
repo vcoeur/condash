@@ -55,7 +55,7 @@ When invoked, run the team-specific pre-step (below), then dispatch to the shipp
 
 1. Ask the user the standard fields plus the team-specific `**Linear ID**:` header.
 2. Run `/projects create` with the gathered fields.
-3. After creation, append the Linear ID line to the README header, between `**Apps**` and `## Goal`.
+3. After creation, append the Linear ID line to the README header, between `apps` and `## Goal`.
 4. Open the matching Linear ticket in the browser via `condash openExternal`.
 ```
 
@@ -73,7 +73,7 @@ The patterns below are realistic shapes — copy and adapt to your tree.
 
 ### Branch isolation on create
 
-**Problem.** Your projects-that-touch-code need to work in a git worktree, not the main checkout. The shipped `/projects create` writes the README and stops; you want it to also scaffold the worktree when the item declares a `**Branch**:`.
+**Problem.** Your projects-that-touch-code need to work in a git worktree, not the main checkout. The shipped `/projects create` writes the README and stops; you want it to also scaffold the worktree when the item declares a `branch`.
 
 **Wrapper sketch.** After `/projects create` returns:
 
@@ -81,7 +81,7 @@ The patterns below are realistic shapes — copy and adapt to your tree.
 condash-cli worktrees setup <branch> --copy-env
 ```
 
-Run it only when the new item has a `**Branch**:` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash-cli worktrees setup` itself is the canonical path — it knows where worktrees live (`<condash.json>.worktrees_path`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
+Run it only when the new item has a `branch` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash-cli worktrees setup` itself is the canonical path — it knows where worktrees live (`<condash.json>.worktrees_path`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
 
 ### Deliverable generation on close
 
@@ -107,7 +107,7 @@ Don't touch hand-written bullets for other files — only manage the bullet for 
 
 Each pattern assumes something the conception convention itself doesn't:
 
-- Branch isolation assumes you have a `worktrees_path` configured and that `**Branch**:` is part of your workflow.
+- Branch isolation assumes you have a `worktrees_path` configured and that `branch` is part of your workflow.
 - Deliverable generation assumes a specific `md_to_pdf` pipeline is available and that `document` items have a canonical note.
 - Notes index assumes the README has a `## Notes` section and that notes have first-paragraph summaries.
 

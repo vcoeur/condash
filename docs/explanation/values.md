@@ -78,7 +78,7 @@ Practical consequences:
 - **OSC 133 for terminal prompt boundaries.** Same protocol as iTerm2, WezTerm, kitty, Warp. Drop-in shell snippets, no custom protocol.
 - **`xterm-256color` for terminal capabilities.** Works with every modern terminal program.
 
-The exception: when a standard doesn't exist (the **Status** field syntax, the directory layout `projects/YYYY-MM/<slug>/`), pick the simplest possible plain-text shape and commit to it.
+The exception: when a standard doesn't exist (the Status field syntax, the directory layout `projects/YYYY-MM/<slug>/`), pick the simplest possible plain-text shape and commit to it.
 
 ## 7. The dashboard is a thin write surface
 

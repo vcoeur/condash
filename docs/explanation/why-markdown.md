@@ -31,14 +31,18 @@ Plain Markdown in git is the opposite on every axis. It's portable, greppable, d
 
 A README under a project folder looks like this:
 
-```markdown
-# Migrate auth to session-cookie hybrid
+````markdown
+---
+date: 2026-04-10
+kind: project
+status: now
+apps:
+  - notes.vcoeur.com
+  - vcoeur.com
+branch: feat/session-cookie-auth
+---
 
-**Date**: 2026-04-10
-**Kind**: project
-**Status**: now
-**Apps**: `notes.vcoeur.com`, `vcoeur.com`
-**Branch**: `feat/session-cookie-auth`
+# Migrate auth to session-cookie hybrid
 
 ## Goal
 
@@ -49,12 +53,14 @@ Drop the JWT dependency without breaking existing sessions.
 - [x] Audit session-cookie usage
 - [~] Implement hybrid read path
 - [ ] Migration script for existing tokens
-```
+````
+
+Legacy bold-prose headers (`**Date**: 2026-04-10`, etc.) are still accepted — see [README format](../reference/readme-format.md).
 
 Every piece of it earns its keep:
 
 - `# <title>` is the canonical human name. Markdown conventions; nothing special.
-- `**Key**: value` headers are both visually weighted in a rendered preview and trivially parseable with a regex. No `~~~yaml` frontmatter fence — the header is part of the document.
+- The YAML frontmatter parses straight into the metadata block — strict-mode validation catches typos before they hit the dashboard. The legacy bold-prose form (`**Date**: …`) is still accepted indefinitely; the parser tries YAML first and falls back.
 - `## Steps` with standard GitHub-style checkboxes are editable in every Markdown tool on the planet, and the status markers (`[x]`, `[~]`, `[-]`) survive round-trips through anything that doesn't understand them — they're just characters inside a bullet.
 
 And because it's a regular Markdown file:

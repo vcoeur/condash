@@ -12,14 +12,17 @@ three of these at once:
 
 ## A README looks like this
 
-```markdown
-# Migrate auth to session-cookie hybrid
+````markdown
+---
+date: 2026-04-10
+kind: project
+status: now
+apps:
+  - notes.vcoeur.com
+branch: feat/session-cookie-auth
+---
 
-**Date**: 2026-04-10
-**Kind**: project
-**Status**: now
-**Apps**: `notes.vcoeur.com`
-**Branch**: `feat/session-cookie-auth`
+# Migrate auth to session-cookie hybrid
 
 ## Goal
 
@@ -30,11 +33,13 @@ Drop the JWT dependency without breaking existing sessions.
 - [x] Audit session-cookie usage
 - [~] Implement hybrid read path
 - [ ] Migration script for existing tokens
-```
+````
+
+Legacy bold-prose headers are still accepted.
 
 Every piece earns its keep:
 
-- The `**Key**: value` headers render visually but parse with one regex.
+- The YAML frontmatter parses straight into the metadata block.
 - `## Steps` checkboxes work in any Markdown tool.
 - `git diff` shows exactly what changed when you flip a step.
 - `rg "session cookie"` finds it in 30 ms.

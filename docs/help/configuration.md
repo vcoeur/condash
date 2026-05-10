@@ -133,18 +133,18 @@ paths** section lets you remove individual entries or clear all.
 
 ## CLI
 
-The `condash config` verbs read and write the same files:
+The `condash-cli config` verbs read and write the same files:
 
 ```sh
-condash config path                       # show both file paths
-condash config list                       # show condash.json
-condash config list --global              # show settings.json
-condash config list --effective           # show merged view (conception ⊕ global)
-condash config get repositories[0]        # query the conception layer
-condash config get theme --effective      # query the merged view
-condash config get theme --global         # query settings.json
-condash config set theme dark             # write to condash.json
-condash config set theme dark --global    # write to settings.json
+condash-cli config path                       # show both file paths
+condash-cli config list                       # show condash.json
+condash-cli config list --global              # show settings.json
+condash-cli config list --effective           # show merged view (conception ⊕ global)
+condash-cli config get repositories[0]        # query the conception layer
+condash-cli config get theme --effective      # query the merged view
+condash-cli config get theme --global         # query settings.json
+condash-cli config set theme dark             # write to condash.json
+condash-cli config set theme dark --global    # write to settings.json
 ```
 
 ## When changes apply

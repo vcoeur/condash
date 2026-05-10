@@ -69,11 +69,14 @@ condash writes `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/README.md` with
 this template:
 
 ```markdown
-# My title
+---
+date: 2026-05-02
+kind: project
+status: now
+apps: []
+---
 
-**Date**: 2026-05-02
-**Kind**: project
-**Status**: now
+# My title
 
 ## Goal
 
@@ -89,7 +92,9 @@ this template:
 ```
 
 You can also hand-create items — just `mkdir` the folder and drop a
-README with that header. condash picks it up live.
+README with that header. Legacy bold-prose headers (`**Date**: 2026-05-02`,
+etc.) are still accepted; see the [README format reference](../reference/readme-format.md).
+condash picks it up live.
 
 ## Editing settings
 

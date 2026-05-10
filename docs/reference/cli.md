@@ -91,7 +91,7 @@ Item lifecycle and reads.
 | `resolve <slug>` | Resolve a slug to its absolute path |
 | `search <query>` | Full-text search across items, optional `--status` / `--kind` / `--limit` |
 | `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree, or `--path <readme>` to check one file outside the resolved conception |
-| `status get <slug>` / `status set <slug> <new-status>` | Read or change the `**Status**` field |
+| `status get <slug>` / `status set <slug> <new-status>` | Read or change the `status` field |
 | `close <slug>` | Set status to `done` (or `--status <name>`) and append a `Closed.` timeline entry |
 | `reopen <slug>` | Move `done` back to `now` (or `--status <s>`) and append a `Reopened.` timeline entry |
 | `backfill-closed [--dry-run]` | Append a `Closed.` timeline entry to legacy `done` items missing one |
@@ -145,7 +145,7 @@ Worktree-centric operations on top of `condash.json`'s repositories. Both `repos
 |---|---|
 | `list` | Print every worktree, grouped by primary, with branch + dirty status |
 | `check <branch>` | Per-branch state: which items declare it, per-repo `worktree✓`/`branch✓`/`primary-on-branch`/`pinned` flags, missing or orphan dirs |
-| `mismatch` | Report worktrees referenced by an item's `**Branch**` field that don't exist on disk (or vice versa) |
+| `mismatch` | Report worktrees referenced by an item's `branch` field that don't exist on disk (or vice versa) |
 | `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` copies `.env*` from the main checkout; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook; `--base <ref>` branches off `<ref>` instead of the repo's default branch |
 | `remove <branch> [--repo <r>...]` | Tear down `<branch>` worktrees and (if safe) the local branch |
 
@@ -163,7 +163,7 @@ condash-cli audit --include lfs,binaries
 | `lfs` | Files that should probably live in Git LFS but are tracked as blobs |
 | `binaries` | Binary files (PDF, .docx, images > size threshold) that may need migrating |
 | `cross-repo` | Cross-repo wikilinks or relative paths that escape the conception |
-| `worktrees` | Same shape as `worktrees mismatch` — items declaring a `**Branch**` with no on-disk worktree, or vice versa |
+| `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
 | `index` | `index.md` files out of sync with the on-disk tree |
 
 `--include <list>` restricts to a comma-separated subset.
@@ -214,8 +214,10 @@ Read or change condash configuration.
 |---|---|
 | `conception-path` | Print the saved conception path |
 | `conception-path <path>` | Save a new conception path to `settings.json` |
-| `list` | Print every key from `condash.json` and `settings.json` (merged view) |
-| `get <key>` | Print one key's value, dot-separated path (`terminal.shell`) |
+| `path` | Print both config file paths (`settings.json` + `condash.json`) |
+| `list [--global\|--effective]` | Print every key. Default reads `condash.json`; `--global` reads `settings.json`; `--effective` shows the merged view (conception ⊕ global) |
+| `get <key> [--global\|--effective]` | Print one key's value, dot-separated path (`terminal.shell`). Same flag axis as `list` |
+| `set <key> <value> [--global]` | Write a key. Default writes `condash.json`; `--global` writes `settings.json` |
 
 `config conception-path` is the only verb that does not need an existing conception path — it sets one.
 

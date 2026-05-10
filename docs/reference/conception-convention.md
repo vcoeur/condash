@@ -9,7 +9,7 @@ description: The content-level syntax condash reads out of each README body — 
 
 ## At a glance
 
-Every item is a directory under `projects/YYYY-MM/YYYY-MM-DD-slug/` containing a `README.md`. There is no top-level `incidents/` or `documents/` folder — the `**Kind**` field in the header discriminates. Three body sections are parsed: `## Steps`, `## Deliverables`, and anything whose heading is used by the step-add-by-section flow (`## Timeline`, etc., are left alone).
+Every item is a directory under `projects/YYYY-MM/YYYY-MM-DD-slug/` containing a `README.md`. There is no top-level `incidents/` or `documents/` folder — the `kind` field in the header discriminates. Three body sections are parsed: `## Steps`, `## Deliverables`, and anything whose heading is used by the step-add-by-section flow (`## Timeline`, etc., are left alone).
 
 For the header format, see [README format](readme-format.md).
 
@@ -40,7 +40,7 @@ Rules, enforced or conventional:
 | Items live at `projects/YYYY-MM/YYYY-MM-DD-slug/README.md` | parser glob | Anything not matching `projects/*/*/README.md` is invisible. |
 | Month folder is `YYYY-MM` | convention | The parser does not validate the folder name, but the wikilink resolver expects it. |
 | Item folder starts with `YYYY-MM-DD-` | convention | Dashes; no spaces. The part after the date prefix is the short slug wikilinks resolve against. |
-| Kind lives in the body as `**Kind**: …` | convention | Defaults to `project`. No separate directory per kind — they coexist under one month folder. |
+| Kind lives in the metadata block as `kind: …` | convention | Defaults to `project`. No separate directory per kind — they coexist under one month folder. |
 
 The flat-month layout was a deliberate simplification of an earlier `projects/<slug>/` + `projects/YYYY-MM/<slug>/` split. Items never move between active and archive; a `Status: done` flip is the only archive signal, and there's nothing for `condash` to rename. See [why Markdown-first](../explanation/why-markdown.md) for the rationale.
 
