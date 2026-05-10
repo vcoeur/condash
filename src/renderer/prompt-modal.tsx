@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { slugify } from '@shared/slug';
+import './prompt-modal.css';
 
 export interface PromptModalState {
   title: string;

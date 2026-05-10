@@ -9,9 +9,6 @@
   justify-content: stretch;
 }
 
-/* Two-class selector raises specificity above the base `.modal` rule that
- * caps width at min(1100px, 100%) — note-modal.css loads after modals.css,
- * so without the doubled class it wins on source order. */
 .settings-modal.settings-modal--full {
   width: 100%;
   height: 100%;
