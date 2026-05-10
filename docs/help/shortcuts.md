@@ -11,7 +11,8 @@ The few you'll actually use.
 | `Ctrl+Shift+F` | **Search…** — cross-tree fuzzy search |
 | `Ctrl+R` | Show **Resources** pane |
 | `Ctrl+L` | Show **Skills** pane |
-| `Ctrl+Shift+R` / `F5` | Reload window |
+| `F5` | **Refresh** — re-read repos, drop git-status cache |
+| `Ctrl+Shift+R` | **Reload window** — full hard reload |
 | `Ctrl+Shift+I` | Toggle DevTools |
 | `Ctrl+0` / `Ctrl+ +` / `Ctrl+ -` | Zoom reset / in / out |
 | `F11` | Toggle fullscreen |
