@@ -96,23 +96,6 @@ The buttons spawn the command in `open_with.<slot>.command` from `settings.json`
 - The command isn't on `$PATH` (typical for macOS GUI editors that don't install a shell launcher). Use the `open -na` form on macOS — see [Config files — Per-OS recipes](../reference/config.md#per-os-recipes).
 - The path being passed isn't under `workspace_path` or `worktrees_path`. condash refuses to spawn launchers outside those sandboxes; check the toast message.
 
-## Auto-update
-
-### "An update was downloaded" toast, but condash doesn't restart
-
-`electron-updater` downloads the new build silently and prompts to restart. If the prompt appears but nothing happens after clicking restart:
-
-- **macOS** — re-flagged by Gatekeeper. Drop the quarantine attribute and reopen:
-  ```bash
-  xattr -dr com.apple.quarantine /Applications/condash.app
-  ```
-- **Linux AppImage** — make sure the AppImage lives somewhere writable by your user (not under `/opt/`). `electron-updater` rewrites the file in place.
-- **Linux apt** — apt-installed users are exempt from in-app updates. `sudo apt update && sudo apt upgrade` is the update path.
-
-### Auto-update is checking too often / not at all
-
-The check fires once per launch. If you keep condash open for days, the update toast may never appear — relaunch to trigger a check, or watch the [releases page](https://github.com/vcoeur/condash/releases) directly.
-
 ## File-edit conflicts
 
 ### "Reload before saving" toast on every save

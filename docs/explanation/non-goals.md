@@ -65,7 +65,7 @@ condash ships unsigned `.deb`, `.AppImage`, `.dmg`, and `.exe` builds. Code-sign
 
 ## No telemetry / usage reporting
 
-condash collects nothing and phones home for nothing except the `electron-updater` check (a `GET` against the GitHub Releases feed that carries only the user-agent).
+condash collects nothing and phones home for nothing.
 
 **Why**: it's a personal-tool category. Telemetry would buy us nothing the user can't tell us directly.
 

@@ -24,4 +24,4 @@ Short pages, one per surface. Look things up here; learn them in **[Get started]
 - [IPC API](ipc-api.md) — every verb the renderer can call on the main process.
 - [Environment variables](env.md) — the short list.
 - [Management skill](skill.md) — the shipped `/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr` skills.
-- [Releases workflow](../get-started/releases.md) — what each version tag means and how the auto-updater behaves.
+- [Releases workflow](../get-started/releases.md) — what each version tag means.

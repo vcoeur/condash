@@ -1,6 +1,6 @@
 ---
 title: Releases · condash
-description: How to find the latest condash release, what the version scheme means, and how the auto-updater behaves.
+description: How to find the latest condash release, what the version scheme means, and how to upgrade.
 ---
 
 # Releases
@@ -47,8 +47,8 @@ If the [latest-release](https://github.com/vcoeur/condash/releases/latest) URL 4
 
 If you're waiting on a specific fix, the GitHub **Actions** tab shows the build progress; the release appears under **All releases** the moment the maintainer flips the draft to published.
 
-## Auto-update
+## Upgrading
 
-condash ships with `electron-updater` wired against its GitHub Releases. On launch the packaged build checks the latest published release, downloads the matching artifact in the background, and prompts to restart when it's ready. See **[Install — Auto-update](releases.md)** for the per-OS behaviour and the apt-repository carve-out.
+condash does not auto-update. Install and upgrade are out-of-band — apt on Linux, dpkg or the `.deb` directly, or `make install` from source. The `electron-updater` wiring is shipped as a no-op so the dependency stays tracked; the packaged build does not check the GitHub Releases feed on launch.
 
-If you'd rather track releases manually, subscribe to the repo's **Releases** tab on GitHub — you'll get an email when a new version ships.
+To track releases, subscribe to the repo's **Releases** tab on GitHub — you'll get an email when a new version ships.
