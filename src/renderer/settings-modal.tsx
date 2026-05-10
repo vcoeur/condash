@@ -8,10 +8,8 @@ import type {
   Theme,
 } from '@shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
-import type { RawRepo } from '../main/config-schema';
 import {
   type ColorEntry,
-  OPEN_WITH_SLOTS,
   pruneEmpty,
   type RawConfig,
   type Section,
@@ -19,21 +17,20 @@ import {
   type SettingsTab,
   TABS,
   TERMINAL_STRING_FIELDS,
-  WORKSPACE_PLACEHOLDER,
-  WORKTREES_PLACEHOLDER,
   compactRepos,
-  pick,
 } from './settings-modal-parts/data';
-import { FieldBadgeRow, inheritanceState } from './settings-modal-parts/badges';
+import { inheritanceState } from './settings-modal-parts/badges';
 import type { InheritanceState } from './settings-modal-parts/badges';
-import { RepoRow } from './settings-modal-parts/repo-row';
 import { parseErrorOf, parseRawConfig } from './settings-modal-parts/parse';
 import {
-  CardDensityFields,
-  FieldWithBadge,
-  TerminalFields,
-  ThemePicker,
-} from './settings-modal-parts/fields';
+  AppearanceSection,
+  TerminalSection,
+} from './settings-modal-parts/sections-appearance-and-terminal';
+import { WorkspaceSection } from './settings-modal-parts/sections-workspace';
+import {
+  OpenWithSection,
+  RepositoriesSection,
+} from './settings-modal-parts/sections-repos-and-open-with';
 import type { JSX } from 'solid-js';
 
 /** Persisted last-active settings tab. Stored in localStorage so opening
@@ -462,76 +459,6 @@ export function SettingsModal(props: {
     props.onClose();
   };
 
-  // --- Per-target setters --------------------------------------------
-  //
-  // Workspace + Repositories + Open-with currently live on the conception
-  // tab only — the Global tab keeps its today-shape (Recents + Appearance
-  // + Terminal). Theme / cardMinWidth / terminal are inheritable: each
-  // ships a Global-side setter (writes to settings.json) and a
-  // Conception-side setter (writes to condash.json).
-
-  const setWorkspacePath = (value: string): Promise<void> =>
-    patchConfig((c) => {
-      c.workspace_path = value || undefined;
-    });
-
-  const setWorktreesPath = (value: string): Promise<void> =>
-    patchConfig((c) => {
-      c.worktrees_path = value || undefined;
-    });
-
-  const setResourcesPath = (value: string): Promise<void> =>
-    patchConfig((c) => {
-      c.resources_path = value || undefined;
-    });
-
-  const setSkillsPath = (value: string): Promise<void> =>
-    patchConfig((c) => {
-      c.skills_path = value || undefined;
-    });
-
-  const repos = (): RawRepo[] => parsed().repositories ?? [];
-
-  const updateRepos = (mutate: (entries: RawRepo[]) => RawRepo[]): Promise<void> =>
-    patchConfig((c) => {
-      const current = (c.repositories ?? []).slice();
-      c.repositories = mutate(current);
-    });
-
-  const addRepo = (): Promise<void> => updateRepos((entries) => [...entries, { name: '' }]);
-
-  const removeRepo = (index: number): Promise<void> =>
-    updateRepos((entries) => entries.filter((_, i) => i !== index));
-
-  const moveRepo = (index: number, delta: -1 | 1): Promise<void> =>
-    updateRepos((entries) => {
-      const target = index + delta;
-      if (target < 0 || target >= entries.length) return entries;
-      const next = entries.slice();
-      const [removed] = next.splice(index, 1);
-      next.splice(target, 0, removed);
-      return next;
-    });
-
-  const updateRepoEntry = (index: number, patch: (entry: RawRepo) => RawRepo): Promise<void> =>
-    updateRepos((entries) => entries.map((e, i) => (i === index ? patch(e) : e)));
-
-  const updateOpenWithSlot = (
-    key: 'main_ide' | 'secondary_ide' | 'terminal',
-    patch: { label?: string; command?: string },
-  ): Promise<void> =>
-    patchConfig((c) => {
-      const openWith = (c.open_with ?? {}) as Record<string, { label?: string; command?: string }>;
-      const current = openWith[key] ?? {};
-      const merged = { ...current, ...patch };
-      if (!merged.command) {
-        delete openWith[key];
-      } else {
-        openWith[key] = merged;
-      }
-      c.open_with = openWith;
-    });
-
   // --- Card min width (inheritable) ----------------------------------
   //
   // The Global-tab control writes to settings.json AND fires the existing
@@ -833,41 +760,24 @@ export function SettingsModal(props: {
             >
               <RecentConceptionsSection />
 
-              {/* Appearance — global ---------------------------------- */}
-              <section id="settings-section-appearance:global" class="settings-section">
-                <h2>Appearance</h2>
-                <p class="settings-section-hint">
-                  Per-machine defaults. Each conception can override these in its own{' '}
-                  <code>condash.json</code>.
-                </p>
-                <ThemePicker
-                  current={themeFor('global')}
-                  onChange={(t) => void setGlobalTheme(t)}
-                />
-                <CardDensityFields
-                  resolve={cardMinWidthFor('global')}
-                  onChange={(patch) => void setGlobalCardMinWidth(patch)}
-                />
-              </section>
+              <AppearanceSection
+                target="global"
+                themeFor={themeFor}
+                setTheme={setGlobalTheme}
+                cardMinWidthFor={cardMinWidthFor}
+                setCardMinWidth={setGlobalCardMinWidth}
+              />
 
-              {/* Terminal — global ----------------------------------- */}
-              <section id="settings-section-terminal:global" class="settings-section">
-                <h2>Terminal</h2>
-                <p class="settings-section-hint">
-                  Per-machine defaults. Each conception can override the entire{' '}
-                  <code>terminal</code> block in its <code>condash.json</code>.
-                </p>
-                <TerminalFields
-                  target="global"
-                  bindText={bindText}
-                  prefs={() => terminalPrefsFor('global')}
-                  xterm={() => xtermPrefsFor('global')}
-                  setString={(k, v) => setTerminalString('global', k, v)}
-                  updateXterm={(p) => updateXterm('global', p)}
-                  updateColor={(k, v) => updateColor('global', k, v)}
-                  platform={platform}
-                />
-              </section>
+              <TerminalSection
+                target="global"
+                bindText={bindText}
+                prefs={() => terminalPrefsFor('global')}
+                xterm={() => xtermPrefsFor('global')}
+                setString={(k, v) => setTerminalString('global', k, v)}
+                updateXterm={(p) => updateXterm('global', p)}
+                updateColor={(k, v) => updateColor('global', k, v)}
+                platform={platform}
+              />
             </div>
 
             {/* Conception tabpanel ----------------------------------- */}
@@ -878,219 +788,61 @@ export function SettingsModal(props: {
               class="settings-tabpanel"
               classList={{ 'settings-tabpanel--hidden': tab() !== 'conception' }}
             >
-              {/* Workspace ----------------------------------------- */}
-              <section id="settings-section-workspace:conception" class="settings-section">
-                <div class="settings-section-head">
-                  <h2>Workspace</h2>
-                </div>
-                <div class="settings-grid settings-grid--wide">
-                  <FieldWithBadge
-                    label="Workspace path"
-                    state={stateOf('workspace_path')}
-                    onRemove={() => void removeOverride('workspace_path')}
-                  >
-                    <input
-                      type="text"
-                      placeholder={pick(WORKSPACE_PLACEHOLDER, platform())}
-                      {...bindText(
-                        'conception.workspace_path',
-                        () => parsed().workspace_path,
-                        setWorkspacePath,
-                      )}
-                    />
-                  </FieldWithBadge>
-                  <FieldWithBadge
-                    label="Worktrees path"
-                    state={stateOf('worktrees_path')}
-                    onRemove={() => void removeOverride('worktrees_path')}
-                  >
-                    <input
-                      type="text"
-                      placeholder={pick(WORKTREES_PLACEHOLDER, platform())}
-                      {...bindText(
-                        'conception.worktrees_path',
-                        () => parsed().worktrees_path,
-                        setWorktreesPath,
-                      )}
-                    />
-                  </FieldWithBadge>
-                  <FieldWithBadge
-                    label="Resources directory"
-                    hint="Relative to the conception root. Browsed by the Resources pane."
-                    state={stateOf('resources_path')}
-                    onRemove={() => void removeOverride('resources_path')}
-                  >
-                    <input
-                      type="text"
-                      placeholder="resources"
-                      {...bindText(
-                        'conception.resources_path',
-                        () => parsed().resources_path,
-                        setResourcesPath,
-                      )}
-                    />
-                  </FieldWithBadge>
-                  <FieldWithBadge
-                    label="Skills directory"
-                    hint="Relative to the conception root. Markdown files here are editable from the Skills pane."
-                    state={stateOf('skills_path')}
-                    onRemove={() => void removeOverride('skills_path')}
-                  >
-                    <input
-                      type="text"
-                      placeholder=".claude/skills"
-                      {...bindText(
-                        'conception.skills_path',
-                        () => parsed().skills_path,
-                        setSkillsPath,
-                      )}
-                    />
-                  </FieldWithBadge>
-                </div>
-              </section>
+              <WorkspaceSection
+                bindText={bindText}
+                parsed={parsed}
+                stateOf={stateOf}
+                removeOverride={removeOverride}
+                patchConfig={patchConfig}
+                platform={platform}
+              />
 
-              {/* Repositories ----------------------------------------- */}
-              <section id="settings-section-repositories:conception" class="settings-section">
-                <div class="settings-section-head">
-                  <h2>Repositories</h2>
-                  <FieldBadgeRow
-                    state={stateOf('repositories')}
-                    onRemove={() => void removeOverride('repositories')}
-                  />
-                </div>
-                <p class="settings-hint">
-                  Each entry is either just a name (resolved against <code>workspace_path</code>) or
-                  an object with optional <code>label</code>, <code>run</code>,{' '}
-                  <code>force_stop</code>, <code>install</code>, <code>env</code>, and{' '}
-                  <code>submodules</code>.
-                </p>
-                <div class="settings-bucket">
-                  <For each={repos()}>
-                    {(entry, index) => (
-                      <RepoRow
-                        entry={entry}
-                        idPrefix={`repo[${index()}]`}
-                        index={index()}
-                        total={repos().length}
-                        bindText={bindText}
-                        onMove={(delta) => void moveRepo(index(), delta)}
-                        onRemove={() => void removeRepo(index())}
-                        onPatch={(next) => updateRepoEntry(index(), () => next)}
-                      />
-                    )}
-                  </For>
-                  <div class="settings-list-actions">
-                    <button class="modal-button" onClick={() => void addRepo()}>
-                      + Add repo
-                    </button>
-                  </div>
-                </div>
-              </section>
+              <RepositoriesSection
+                parsed={parsed}
+                bindText={bindText}
+                stateOf={stateOf}
+                removeOverride={removeOverride}
+                patchConfig={patchConfig}
+              />
 
-              {/* Open with ----------------------------------------- */}
-              <section id="settings-section-open-with:conception" class="settings-section">
-                <div class="settings-section-head">
-                  <h2>Open with</h2>
-                  <FieldBadgeRow
-                    state={stateOf('open_with')}
-                    onRemove={() => void removeOverride('open_with')}
-                  />
-                </div>
-                <p class="settings-hint">
-                  Three slots used by the per-folder &quot;Open in…&quot; menu.{' '}
-                  <code>{'{path}'}</code> is substituted with the absolute path. Clear the command
-                  to remove the slot.
-                </p>
-                <div class="settings-grid settings-grid--wide">
-                  <For each={OPEN_WITH_SLOTS}>
-                    {(slot) => {
-                      const current = (): { label?: string; command?: string } =>
-                        parsed().open_with?.[slot.key] ?? {};
-                      return (
-                        <div class="settings-open-with">
-                          <span class="settings-field-label">{slot.label}</span>
-                          <input
-                            type="text"
-                            placeholder={`Open in ${slot.label.toLowerCase()}`}
-                            {...bindText(
-                              `conception.open_with.${slot.key}.label`,
-                              () => current().label,
-                              (v) => updateOpenWithSlot(slot.key, { label: v }),
-                            )}
-                          />
-                          <input
-                            type="text"
-                            placeholder="idea {path}"
-                            {...bindText(
-                              `conception.open_with.${slot.key}.command`,
-                              () => current().command,
-                              (v) => updateOpenWithSlot(slot.key, { command: v }),
-                            )}
-                          />
-                        </div>
-                      );
-                    }}
-                  </For>
-                </div>
-              </section>
+              <OpenWithSection
+                parsed={parsed}
+                bindText={bindText}
+                stateOf={stateOf}
+                removeOverride={removeOverride}
+                patchConfig={patchConfig}
+              />
 
-              {/* Appearance — conception ---------------------------- */}
-              <section id="settings-section-appearance:conception" class="settings-section">
-                <div class="settings-section-head">
-                  <h2>Appearance</h2>
-                </div>
-                <div class="settings-section-subhead">
-                  <h3>Theme</h3>
-                  <FieldBadgeRow
-                    state={stateOf('theme')}
-                    onRemove={() => void removeOverride('theme')}
-                  />
-                </div>
-                <ThemePicker
-                  current={themeFor('conception')}
-                  onChange={(t) => void setConceptionTheme(t)}
-                />
-                <div class="settings-section-subhead">
-                  <h3>Card density</h3>
-                  <FieldBadgeRow
-                    state={stateOf('cardMinWidth')}
-                    onRemove={() => void removeOverride('cardMinWidth')}
-                  />
-                </div>
-                <p class="settings-hint">
-                  Each grid keeps a row of <em>n</em> cards until the pane is wide enough to fit{' '}
-                  <em>n+1</em> cards each at this width — at which point the row reflows.
-                </p>
-                <CardDensityFields
-                  resolve={cardMinWidthFor('conception')}
-                  onChange={(patch) => void setConceptionCardMinWidth(patch)}
-                />
-              </section>
+              <AppearanceSection
+                target="conception"
+                themeFor={themeFor}
+                setTheme={setConceptionTheme}
+                cardMinWidthFor={cardMinWidthFor}
+                setCardMinWidth={setConceptionCardMinWidth}
+                themeBadge={{
+                  stateOf: () => stateOf('theme'),
+                  removeOverride: () => void removeOverride('theme'),
+                }}
+                cardMinWidthBadge={{
+                  stateOf: () => stateOf('cardMinWidth'),
+                  removeOverride: () => void removeOverride('cardMinWidth'),
+                }}
+              />
 
-              {/* Terminal — conception ------------------------------ */}
-              <section id="settings-section-terminal:conception" class="settings-section">
-                <div class="settings-section-head">
-                  <h2>Terminal</h2>
-                  <FieldBadgeRow
-                    state={stateOf('terminal')}
-                    onRemove={() => void removeOverride('terminal')}
-                  />
-                </div>
-                <p class="settings-section-hint">
-                  Override the entire <code>terminal</code> block for this conception. Editing any
-                  field here writes the whole block to <code>condash.json</code>.
-                </p>
-                <TerminalFields
-                  target="conception"
-                  bindText={bindText}
-                  prefs={() => terminalPrefsFor('conception')}
-                  xterm={() => xtermPrefsFor('conception')}
-                  setString={(k, v) => setTerminalString('conception', k, v)}
-                  updateXterm={(p) => updateXterm('conception', p)}
-                  updateColor={(k, v) => updateColor('conception', k, v)}
-                  platform={platform}
-                />
-              </section>
+              <TerminalSection
+                target="conception"
+                bindText={bindText}
+                prefs={() => terminalPrefsFor('conception')}
+                xterm={() => xtermPrefsFor('conception')}
+                setString={(k, v) => setTerminalString('conception', k, v)}
+                updateXterm={(p) => updateXterm('conception', p)}
+                updateColor={(k, v) => updateColor('conception', k, v)}
+                platform={platform}
+                badge={{
+                  stateOf: () => stateOf('terminal'),
+                  removeOverride: () => void removeOverride('terminal'),
+                }}
+              />
             </div>
           </div>
         </div>
