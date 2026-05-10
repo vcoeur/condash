@@ -1,10 +1,13 @@
-# plugin API proposal
+---
+date: 2026-04-10
+kind: document
+status: now
+apps:
+  - helio
+languages: en
+---
 
-**Date**: 2026-04-10
-**Kind**: document
-**Status**: now
-**Apps**: `helio`
-**Languages**: en
+# plugin API proposal
 
 ## Goal
 

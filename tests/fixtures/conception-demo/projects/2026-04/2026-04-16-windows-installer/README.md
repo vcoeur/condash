@@ -1,9 +1,12 @@
-# Windows MSI installer
+---
+date: 2026-04-16
+kind: project
+status: later
+apps:
+  - helio
+---
 
-**Date**: 2026-04-16
-**Kind**: project
-**Status**: later
-**Apps**: `helio`
+# Windows MSI installer
 
 ## Status note
 

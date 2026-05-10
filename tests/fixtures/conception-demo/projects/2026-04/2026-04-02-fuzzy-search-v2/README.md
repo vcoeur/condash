@@ -1,10 +1,14 @@
-# fuzzy search v2
+---
+date: 2026-04-02
+kind: project
+status: now
+apps:
+  - helio
+  - helio-web
+branch: search/fuzzy-v2
+---
 
-**Date**: 2026-04-02
-**Kind**: project
-**Status**: now
-**Apps**: `helio`, `helio-web`
-**Branch**: `search/fuzzy-v2`
+# fuzzy search v2
 
 ## Goal
 

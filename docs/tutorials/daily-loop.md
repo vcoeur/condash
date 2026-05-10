@@ -100,7 +100,7 @@ git push -u origin fix/search-large-logs
 gh pr create --fill
 ```
 
-If you've installed the [`/pr` skill](https://github.com/vcoeur/conception/tree/main/.claude/skills/pr), the PR body will pull its structure from the item's README automatically. The incident is now **waiting on external signal** — the merge. Change the item's status from `now` to `review` by clicking its status pill. The dashboard rewrites the README's `**Status**:` line.
+If you've installed the [`/pr` skill](https://github.com/vcoeur/conception/tree/main/.claude/skills/pr), the PR body will pull its structure from the item's README automatically. The incident is now **waiting on external signal** — the merge. Change the item's status from `now` to `review` by clicking its status pill. The dashboard rewrites the README's status line — `status:` for YAML-frontmatter READMEs, `**Status**:` for the legacy bold-prose form.
 
 In the Current sub-pane, the item moves from the `NOW` group to the `REVIEW` group. You can see exactly this split in the screenshot below — the `CLI config migration to layered TOML` item is already in review while three others are still under NOW.
 
