@@ -135,8 +135,9 @@ function isMarkdown(path: string): boolean {
   return path.toLowerCase().endsWith('.md');
 }
 
-function isConfigurationJson(path: string): boolean {
-  return path.toLowerCase().endsWith('/configuration.json');
+function isConceptionConfig(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith('/condash.json') || lower.endsWith('/configuration.json');
 }
 
 const CONFIG_SUMMARY: { key: string; purpose: string }[] = [
@@ -726,7 +727,7 @@ export function NoteModal(props: {
           tabIndex={-1}
           onClick={handleBodyClick}
         >
-          <Show when={props.state && isConfigurationJson(props.state.path)}>
+          <Show when={props.state && isConceptionConfig(props.state.path)}>
             <ConfigSummaryPanel onOpenFullDoc={() => props.onOpenHelp?.('configuration')} />
           </Show>
           <Show when={content.loading}>

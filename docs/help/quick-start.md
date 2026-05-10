@@ -100,17 +100,18 @@ sections:
 - **Terminal** — shell, xterm.js settings, screenshot directory.
 - **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
   `skills_path`.
-- **Repositories** — primary + secondary repos and their `run` /
-  `force_stop` commands.
+- **Repositories** — flat ordered list of repos shown on the Code pane,
+  each with optional `run` / `force_stop` commands and submodules.
 - **Open with** — `main_ide`, `pdf_viewer`, `terminal` launcher entries.
 
-There is no in-modal JSON editor; the **Open configuration.json
-externally** button at the bottom hands the file to your `main_ide`.
+There is no in-modal JSON editor; the **Open externally** button at the
+bottom hands the active tab's file to your `main_ide`.
 
-Per-tree config (`<conception>/configuration.json`) is shared with
-teammates via git — workspace path, repos, launcher commands. Per-machine
-config (`settings.json`) is local to this laptop — your editor binary,
-your terminal, your theme.
+Per-tree config (`<conception>/condash.json`, with `configuration.json`
+read indefinitely as a legacy fallback) is shared with teammates via git
+— workspace path, repos, launcher commands. Per-machine config
+(`settings.json`) is local to this laptop — your editor binary, your
+terminal, your theme.
 
 ## More
 

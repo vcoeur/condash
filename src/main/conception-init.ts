@@ -49,7 +49,7 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
 
 /**
  * Copy the bundled conception-template/ into `targetPath`, expanding the
- * `*.example` files (`configuration.json.example` → `configuration.json`,
+ * `*.example` files (`condash.json.example` → `condash.json`,
  * `.claude/settings.example.json` → `.claude/settings.json`). `CLAUDE.md`
  * is shipped under its real name with a `## General` heading wrapping the
  * shipped region, so `condash-cli templates install` can push updates into
@@ -97,7 +97,6 @@ async function copyTreeRespecting(
 /** Drop the `.example` suffix on the two known templated files. */
 function mapTemplateName(rel: string): string {
   if (rel === 'condash.json.example') return 'condash.json';
-  if (rel === 'configuration.json.example') return 'condash.json';
   if (rel === '.claude/settings.example.json') return '.claude/settings.json';
   return rel;
 }

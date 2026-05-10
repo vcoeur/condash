@@ -112,7 +112,7 @@ F5 / View → Refresh covers both: it drops the git-status TTL cache, recomputes
 
 ### 7. IPC contract
 
-`CondashApi` in `src/shared/api.ts` is the *whole* IPC surface. The preload (`src/preload/index.ts`) implements every verb as a one-line `ipcRenderer.invoke`; the main process (`src/main/index.ts:registerIpc`) registers one handler per verb. No string-mux'd actions, no implicit channels.
+`CondashApi` in `src/shared/api.ts` is the *whole* IPC surface. The preload (`src/preload/index.ts`) implements every verb as a one-line `ipcRenderer.invoke`; the main process registers one handler per verb. `src/main/index.ts:registerIpc` is a thin dispatcher that calls each per-domain module under `src/main/ipc/` (`projects.ts`, `trees.ts`, `repos.ts`, `settings.ts`, `system.ts`, `terminal.ts`). No string-mux'd actions, no implicit channels.
 
 Subscriptions (`onTreeEvents`, `onTermData`, `onTermExit`, `onTermSessions`) return an unsubscribe function; the renderer holds it and calls it from `onCleanup`.
 
