@@ -67,7 +67,7 @@ export function TerminalPane(props: {
    * conception path). */
   cwd?: string | null;
   /** User-configured xterm preferences (font, colours, scrollback, …). Pulled
-   *  from configuration.json under `terminal.xterm`. Undefined = defaults. */
+   *  from condash.json under `terminal.xterm`. Undefined = defaults. */
   xtermPrefs?: TerminalXtermPrefs;
 }) {
   const [tabs, setTabs] = createSignal<Tab[]>([]);

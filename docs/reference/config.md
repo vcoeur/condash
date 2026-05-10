@@ -131,7 +131,7 @@ Each slot takes a `label` (tooltip text) and a single `command` string.
 
 > **Schema note.** condash (Electron) takes a single `command` string per slot — there is no `commands` list / fallback chain. If you need a fallback (e.g. `idea` then `idea.sh`), wrap it in a small launcher script that does the trial-and-fall-through itself.
 
-Built-in defaults reproduce common IntelliJ / VS Code / terminal behaviour, so a `configuration.json` with no `open_with` block still gives functional buttons. Override only the slots you want to customise.
+Built-in defaults reproduce common IntelliJ / VS Code / terminal behaviour, so a `condash.json` with no `open_with` block still gives functional buttons. Override only the slots you want to customise.
 
 #### Per-OS recipes
 
@@ -160,7 +160,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 
 ### `terminal.xterm` { #terminalxterm }
 
-Visual + behavioural knobs for the xterm.js renderer. All keys are optional; missing keys fall through to xterm's defaults. Edit through the **Settings → Terminal** section — the editor live-rewrites `configuration.json` and reloads existing tabs without a relaunch.
+Visual + behavioural knobs for the xterm.js renderer. All keys are optional; missing keys fall through to xterm's defaults. Edit through the **Settings → Terminal** section — the editor live-rewrites `condash.json` and reloads existing tabs without a relaunch.
 
 ```json
 {
@@ -342,5 +342,5 @@ Changes that reload live without a restart:
 ## See also
 
 - [Environment variables](env.md) — what condash reads from the environment, and what it deliberately doesn't.
-- [Inline dev-server runner](inline-runner.md) — the `run` field in `configuration.json`.
+- [Inline dev-server runner](inline-runner.md) — the `run` field in `condash.json`.
 - [Terminal shortcuts](shortcuts.md) — what each `terminal.*` shortcut does in the UI.

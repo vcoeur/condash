@@ -934,7 +934,7 @@ async function leftoverBranchWarnings(
   try {
     state = await checkBranchState(conceptionPath, branch);
   } catch {
-    // checkBranchState reads configuration.json + queries each repo; if the
+    // checkBranchState reads condash.json + queries each repo; if the
     // probe itself fails we'd rather close cleanly than crash the verb.
     return [];
   }

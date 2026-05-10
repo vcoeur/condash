@@ -18,11 +18,11 @@ description: The short list of environment variables condash reads.
 | `XDG_CONFIG_HOME` | Linux per-user config root | `~/.config` | Any absolute path |
 | `ELECTRON_DISABLE_SANDBOX` | Disable Chromium's setuid sandbox | unset | `1` or unset |
 
-condash itself reads almost no environment variables — configuration lives in `settings.json` (per-user) and `configuration.json` (per-tree). The handful of vars below either feed Electron's startup or back the embedded terminal.
+condash itself reads almost no environment variables — configuration lives in `settings.json` (per-user) and `condash.json` (per-tree). The handful of vars below either feed Electron's startup or back the embedded terminal.
 
 ## `SHELL`
 
-Standard POSIX shell variable. Used as the fallback command when `terminal.shell` is not configured in `configuration.json` or `settings.json`. The embedded terminal spawns a node-pty session running this shell.
+Standard POSIX shell variable. Used as the fallback command when `terminal.shell` is not configured in `condash.json` or `settings.json`. The embedded terminal spawns a node-pty session running this shell.
 
 ## `XDG_CONFIG_HOME`
 
@@ -66,5 +66,5 @@ Set by the Playwright e2e fixture to force the renderer to load the packaged `di
 
 ## Cross-reference
 
-- [Config files](config.md) — the `settings.json` + `configuration.json` schema.
+- [Config files](config.md) — the `settings.json` + `condash.json` schema.
 - [Environment hygiene](../explanation/internals.md#environment-hygiene) — how condash strips `PYTHONHOME` / `PYTHONPATH` / `PERLLIB` / `QT_PLUGIN_PATH` / `GSETTINGS_SCHEMA_DIR` from spawned subprocesses, and why the AppImage build also patches `AppRun` so the leak doesn't reach launchers it spawns.

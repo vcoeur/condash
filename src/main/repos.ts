@@ -104,7 +104,7 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
  * Per-primary partial reload. Returns the primary's `RepoEntry` plus
  * every submodule child re-rooted on the primary's freshly-listed
  * worktrees. Empty array if the primary is no longer in
- * `configuration.json` (e.g. config was edited concurrently).
+ * `condash.json` (e.g. config was edited concurrently).
  *
  * Used by the structural FS watcher path: when a primary's
  * `.git/HEAD` or `.git/worktrees/` changes, the renderer asks for just

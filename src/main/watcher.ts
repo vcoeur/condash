@@ -104,8 +104,9 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
 
 /**
  * Tear down the current watcher and rebuild it. Called after a
- * `configuration.json` edit might have changed `resources_path` or
- * `skills_path`, so the new roots are observed and the old ones aren't.
+ * `condash.json` (or legacy `configuration.json`) edit might have changed
+ * `resources_path` or `skills_path`, so the new roots are observed and
+ * the old ones aren't.
  */
 export async function refreshWatchedConception(): Promise<void> {
   if (!current) return;
@@ -119,7 +120,7 @@ export async function refreshWatchedConception(): Promise<void> {
 
 type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
 
-// Promise chain so two rapid configuration.json edits queue their
+// Promise chain so two rapid condash.json edits queue their
 // rebuilds instead of racing — the second close() can otherwise land
 // while the first refresh is still reassigning `current`, leaking a
 // chokidar handle or losing a config event entirely.
@@ -129,7 +130,7 @@ function onWatchEvent(conception: string, eventName: string, path: string, roots
   const event = classify(conception, eventName as ChokidarEvent, path, roots);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);
-  // A configuration.json edit may have changed `resources_path` /
+  // A condash.json edit may have changed `resources_path` /
   // `skills_path`. Rebuild the watcher so the new roots are observed
   // and the old ones aren't. Serialise via refreshChain so concurrent
   // edits don't race the close+rebuild — the in-flight `tree-events`

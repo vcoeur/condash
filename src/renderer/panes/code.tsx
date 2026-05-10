@@ -94,7 +94,7 @@ export function RepoRow(props: {
     return props.repo.name;
   };
 
-  /** Card title — prefers `label` from `configuration.json` when set, falls
+  /** Card title — prefers `label` from `condash.json` when set, falls
    * back to the directory name. */
   const cardTitle = (): string => props.repo.label ?? displayName();
 
@@ -237,7 +237,7 @@ function RepoCardMenu(props: { repo: RepoEntry; onForceStop: (repo: RepoEntry) =
             title={
               props.repo.hasForceStop
                 ? undefined
-                : 'No force_stop: configured for this repo in configuration.json'
+                : 'No force_stop: configured for this repo in condash.json'
             }
             onClick={() => {
               if (!props.repo.hasForceStop) return;

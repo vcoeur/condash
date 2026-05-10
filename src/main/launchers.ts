@@ -107,7 +107,7 @@ export async function forceStopRepo(conceptionPath: string, repoName: string): P
   if (!entry?.forceStop) throw new Error(`No force_stop configured for ${repoName}`);
 
   // Tokenise instead of `shell: true`. The configured force_stop is read
-  // from the user's `configuration.json` so it isn't strictly attacker-
+  // from the user's `condash.json` so it isn't strictly attacker-
   // supplied, but routing it through the shell still costs us shell
   // metacharacter surprises (a comment in the command, a stray `&`, an
   // unintended glob) and any ${VAR}-style interpolation against the

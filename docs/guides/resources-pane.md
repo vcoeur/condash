@@ -30,7 +30,7 @@ Each card carries a coloured glyph for its file type:
 A button row at the bottom of each card exposes:
 
 - **view** — `.md` and `.txt` open in the in-app note modal in **read-only** mode; `.pdf` opens in the existing PDF viewer modal. Any other extension hides this button.
-- **open** — opens the file via the user's `open_with.main_ide` slot (configured in `configuration.json`).
+- **open** — opens the file via the user's `open_with.main_ide` slot (configured in `condash.json`).
 - **copy** — copies the absolute path to the system clipboard.
 - **→ term** — pastes the absolute path into the focused terminal session (no `↵`). If no session is live, the button still pastes once you spawn one.
 
@@ -38,7 +38,7 @@ Clicking the card body itself runs the most-likely action for the file type — 
 
 ## Configuration
 
-Set the directory by editing `configuration.json` at the conception root (per-tree, versioned with the conception), or via **Settings → Workspace → Resources directory**. The value is **not** in `settings.json` — it's tree-side so teammates see the same resources tree.
+Set the directory by editing `condash.json` at the conception root (per-tree, versioned with the conception), or via **Settings → Workspace → Resources directory**. The value is **not** in `settings.json` — it's tree-side so teammates see the same resources tree.
 
 ```json
 {

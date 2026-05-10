@@ -30,7 +30,7 @@ conception/
 │           └── README.md
 ├── knowledge/                                ← optional, explorer pane
 │   └── …
-└── configuration.json                         ← tree-level config
+└── condash.json                               ← tree-level config
 ```
 
 Rules, enforced or conventional:

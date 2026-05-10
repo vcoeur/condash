@@ -48,7 +48,7 @@ Every mutation carries the **expected** state of the region it's about to change
 | `setStatus(path, newStatus, opts?)` | Verify the metadata block contains a `**Status**:` line. On done-edges (close: prev → done, reopen: done → prev) also append a `Closed.` / `Reopened.` line to `## Timeline`. Returns `TransitionResult` with `timelineAppended` non-null exactly when a timeline line was written. |
 | `createProject(input)` | Allocate `projects/<YYYY-MM>/<YYYY-MM-DD>-<slug>/` from the canonical kind template. Returns `{ slug, readmePath }`. |
 | `createProjectNote(projectPath, slug)` | Create `<projectPath>/notes/NN-<slug>.md`. Scans `notes/` for the highest existing `NN-` prefix, increments by one, sanitises the slug, writes an empty file, returns the absolute path. |
-| `writeNote(path, expectedContent, newContent)` | Full-file content compare. For `configuration.json`, the main process canonicalises the JSON through the Zod schema before writing — the bytes that hit disk can differ from `newContent`. Returns the bytes actually written so the caller can keep its CAS baseline aligned with disk. |
+| `writeNote(path, expectedContent, newContent)` | Full-file content compare. For `condash.json`, the main process canonicalises the JSON through the Zod schema before writing — the bytes that hit disk can differ from `newContent`. Returns the bytes actually written so the caller can keep its CAS baseline aligned with disk. |
 | `readNote(path)` | Read a single file's contents. Path must resolve under the conception. |
 
 Step markers are `[ ]` (open), `[~]` (in-progress), `[x]` (done), `[-]` (abandoned). The dashboard cycle order is `open → progress → done → abandoned → open` (see [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx)).
@@ -59,17 +59,17 @@ All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate
 
 | Verb | What it does |
 |---|---|
-| `listRepos()` | Read `configuration.json` repositories, scan each for a `.git/`, attach cached dirty count and worktrees. |
+| `listRepos()` | Read `condash.json` repositories, scan each for a `.git/`, attach cached dirty count and worktrees. |
 | `listReposForPrimary(name)` | Per-primary partial reload — returns the primary's `RepoEntry` plus its submodule children freshly re-read. Driven by the structural FS-watcher event `repo-worktrees-changed`. |
 | `invalidateGitStatus()` | Drop the 3 s TTL git-status cache (used by the Refresh button). |
 | `getDirtyDetails(path, opts?)` | Detailed `git status -s` + `git diff --stat HEAD` for a worktree path. Powers the click-to-inspect popover on the per-branch `N dirty` badge. Returns `null` when the path is missing or not a git repo. |
 | `forceStopRepo(repoName)` | Run the repo's `force_stop:` shell command — escape hatch for a port held by a non-condash process. |
-| `listOpenWith()` | Return `open_with` slots from `<conception>/configuration.json`. (Slots are tree-wide; settings.json is not consulted.) |
+| `listOpenWith()` | Return `open_with` slots from `<conception>/condash.json`. (Slots are tree-wide; settings.json is not consulted.) |
 | `launchOpenWith(slot, path)` | Spawn the configured editor against `path`. |
 | `openInEditor(path)` | Resolve the user's preferred editor and open the file. |
 | `openConceptionDirectory()` | Reveal the conception root in the OS file manager. |
 | `openExternal(target)` | Open `target` with the OS default handler. Accepted schemes: `http:`, `https:`, `mailto:`. Other schemes (including `file:`) reject — call `openPath` for filesystem paths. |
-| `openPath(target)` | Open a local filesystem path with the OS default handler. Used by the Settings modal's "Open externally" buttons for `configuration.json` and `settings.json`. Caller passes an absolute path. |
+| `openPath(target)` | Open a local filesystem path with the OS default handler. Used by the Settings modal's "Open externally" buttons for `condash.json` and `settings.json`. Caller passes an absolute path. |
 | `pdfToFileUrl(path)` | Build a `file://` URL for a local PDF (handles Windows drive letters and percent-encoding). Returns the URL plus the basename so the renderer can render it without doing its own POSIX-only path split. |
 
 ## PTY sessions
@@ -98,7 +98,7 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 |---|---|
 | `pickConceptionPath()` | Open a native folder picker, write the choice to `settings.json:conceptionPath`. Returns the picked path or `null` on cancel. |
 | `getConceptionPath()` | Return the saved path (`null` if unset). |
-| `detectConceptionState(path)` | Probe a candidate folder — does it already have `projects/` and `configuration.json`? Used by the first-launch flow before deciding whether to offer initialisation. |
+| `detectConceptionState(path)` | Probe a candidate folder — does it already have `projects/` and `condash.json`? Used by the first-launch flow before deciding whether to offer initialisation. |
 | `initConception(path)` | Lay the bundled `conception-template/` tree into `path`. Existing files are preserved. Returns `{ created: string[] }`. |
 | `getSettingsPath()` | Absolute path to `~/.config/condash/settings.json` (or platform equivalent), for the Settings modal's "Open externally" button. |
 
@@ -124,7 +124,7 @@ Per-path tree events for projects + knowledge + configuration. Classification:
 
 - `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — renderer bumps `refreshKey`.
-- `config` — `configuration.json` at the conception root. Same coarse handling.
+- `config` — `condash.json` (or legacy `configuration.json`) at the conception root. Same coarse handling.
 - `unknown` — any classification failure. Forces a full re-render.
 
 A burst of `unknown` events collapses to one event before the renderer is notified.

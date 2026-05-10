@@ -20,7 +20,7 @@ import { requirePathUnder } from './path-bounds';
 
 /** Resolve a tree root to its absolute on-disk path. Knowledge is hardcoded
  * to `<conception>/knowledge/`; resources + skills come from
- * `configuration.json`. */
+ * `condash.json`. */
 async function resolveRoot(root: TreeRoot): Promise<string> {
   const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) throw new Error('no conception path is set');

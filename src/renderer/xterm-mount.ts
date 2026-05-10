@@ -53,7 +53,7 @@ interface MountOptions {
   replay?: string;
   /** Theme override; defaults to reading CSS custom properties. */
   theme?: { background: string; foreground: string };
-  /** User-configured xterm preferences from configuration.json. Overrides
+  /** User-configured xterm preferences from condash.json. Overrides
    * fontSize / theme when set. */
   prefs?: XtermPrefs;
   /** Renderer-side custom key hook. Return false to swallow. Stacked with the

@@ -4,7 +4,7 @@
  * Both mutators are multi-app aware: the canonical input is a branch name,
  * the union of `**Apps**` across items declaring that branch defines which
  * repos get a worktree. Pinned repos (those carrying `pinned_branch:` in
- * `configuration.json`) are excluded from setup since they track a different
+ * `condash.json`) are excluded from setup since they track a different
  * axis. Removal is protected-set aware: repos still claimed by *other* active
  * items on the same branch keep their worktree.
  *
@@ -38,7 +38,7 @@ interface RawRepoExtended {
 }
 
 export interface BranchRepoState {
-  /** Repo name (matches the canonical key under configuration.json `repositories`). */
+  /** Repo name (matches the canonical key under condash.json `repositories`). */
   name: string;
   /** Absolute path to the repo's primary working copy. */
   primaryPath: string;
@@ -56,7 +56,7 @@ export interface BranchRepoState {
 
 export interface BranchCheckResult {
   branch: string;
-  /** Worktrees root from configuration.json. */
+  /** Worktrees root from condash.json. */
   worktreesRoot: string;
   /** Items declaring this branch (status, slug, apps). */
   declaringItems: { slug: string; readme: string; status: string; apps: string[] }[];
@@ -73,13 +73,13 @@ export interface SetupOptions {
   repos?: string[];
   /** Legacy opportunistic copy of `.env` / `.env.local` from the primary
    *  into the new worktree. Repos with `env:` declared in
-   *  `configuration.json` always have those files copied; this flag only
+   *  `condash.json` always have those files copied; this flag only
    *  affects repos *without* an `env:` declaration. */
   copyEnv?: boolean;
-  /** Skip env-file copy for repos that declare `env:` in configuration.json.
+  /** Skip env-file copy for repos that declare `env:` in condash.json.
    *  Per-repo `env:` is otherwise applied unconditionally. Closes #87. */
   skipEnv?: boolean;
-  /** Skip running the per-repo `install:` from configuration.json. The
+  /** Skip running the per-repo `install:` from condash.json. The
    *  install step otherwise runs unconditionally for repos that declare
    *  `install:`. Closes #87. */
   skipInstall?: boolean;
@@ -221,7 +221,7 @@ export async function setupBranchWorktrees(
   for (const name of wanted) {
     const lookup = reposByName.get(name);
     if (!lookup) {
-      result.blocked.push({ repo: name, reason: `not configured in configuration.json` });
+      result.blocked.push({ repo: name, reason: `not configured in condash.json` });
       continue;
     }
     if (lookup.pinnedBranch) {

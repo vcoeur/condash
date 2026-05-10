@@ -119,7 +119,7 @@ export interface Settings {
    * submenu and the Global tab's recents list. */
   recentConceptionPaths: string[];
   theme: Theme;
-  /** Per-machine terminal prefs. Moved here from configuration.json so each
+  /** Per-machine terminal prefs. Moved here from condash.json so each
    * laptop carries its own font/screenshot/keybinding choices. */
   terminal?: TerminalPrefs;
   /** Composite-layout visibility + sizes. Persisted globally (per-machine)
@@ -157,7 +157,7 @@ export interface TreeExpansionPrefs {
 
 /** Discriminator for the three tree panes. Used by the `tree.*` IPC verbs
  * to pick the correct on-disk root (knowledge is hardcoded to `knowledge/`;
- * resources and skills come from `configuration.json`). */
+ * resources and skills come from `condash.json`). */
 export type TreeRoot = 'knowledge' | 'resources' | 'skills';
 
 /** Per-pane card min-width in CSS pixels. Used in the grid template
@@ -266,7 +266,7 @@ export interface Worktree {
 export interface RepoEntry {
   /** Display name (typically the repo directory name; submodules use `parent/child`). */
   name: string;
-  /** Optional human-friendly label from `configuration.json`. Rendered as a
+  /** Optional human-friendly label from `condash.json`. Rendered as a
    * small subtitle on the card when present — useful when the directory name
    * is a slug and a friendlier descriptor is wanted alongside it. */
   label?: string;
@@ -278,9 +278,9 @@ export interface RepoEntry {
   dirty: number | null;
   /** True when path doesn't exist or isn't a git repo. */
   missing: boolean;
-  /** True when configuration.json sets a `force_stop:` for this entry. */
+  /** True when condash.json sets a `force_stop:` for this entry. */
   hasForceStop?: boolean;
-  /** True when configuration.json sets a `run:` for this entry. The renderer
+  /** True when condash.json sets a `run:` for this entry. The renderer
    * uses this to decide whether to render the per-branch run button — REPO
    * cards without a configured run target should not surface it. */
   hasRun?: boolean;
@@ -597,7 +597,7 @@ export interface ConceptionInitState {
   pathExists: boolean;
   hasProjects: boolean;
   hasConfiguration: boolean;
-  /** Both projects/ and configuration.json present. */
+  /** Both projects/ and condash.json (or legacy configuration.json) present. */
   looksInitialised: boolean;
 }
 
