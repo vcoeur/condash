@@ -11,6 +11,9 @@ import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
 import { ConfirmModal } from './confirm-modal';
+import { IconClose, IconEdit, IconExternal, IconSave, IconView } from './note-modal-parts/icons';
+import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './note-modal-parts/find';
+import { ConfigSummaryPanel } from './note-modal-parts/config-summary';
 import './code-theme.css';
 
 let editorModulePromise: Promise<typeof import('./editor')> | null = null;
@@ -41,92 +44,6 @@ export type ModalState = {
 
 type Mode = 'view' | 'edit';
 
-function IconEdit() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M11.5 2.5l2 2-7.5 7.5H4v-2z" />
-      <path d="M10 4l2 2" />
-    </svg>
-  );
-}
-
-function IconView() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
-      <circle cx="8" cy="8" r="1.6" />
-    </svg>
-  );
-}
-
-function IconSave() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2.5 2.5h8.5L13.5 5v8.5h-11z" />
-      <path d="M5 2.5v3h5v-3" />
-      <rect x="4.5" y="9" width="7" height="4.5" />
-    </svg>
-  );
-}
-
-function IconExternal() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5.5 3h-3v10h10v-3" />
-      <path d="M9 2.5h4.5V7" />
-      <path d="M7 9l6.5-6.5" />
-    </svg>
-  );
-}
-
-function IconClose() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 4l8 8M12 4l-8 8" />
-    </svg>
-  );
-}
-
 function inferLanguage(path: string): 'markdown' | 'json' {
   return path.toLowerCase().endsWith('.json') ? 'json' : 'markdown';
 }
@@ -139,26 +56,6 @@ function isConceptionConfig(path: string): boolean {
   const lower = path.toLowerCase();
   return lower.endsWith('/condash.json') || lower.endsWith('/configuration.json');
 }
-
-const CONFIG_SUMMARY: { key: string; purpose: string }[] = [
-  { key: 'workspace_path', purpose: 'Base directory for non-absolute repo entries.' },
-  { key: 'worktrees_path', purpose: 'Where new git worktrees are created (informational).' },
-  {
-    key: 'repositories',
-    purpose:
-      'Flat ordered list of repos shown on the Code pane. Each entry: name, optional run / force_stop / submodules.',
-  },
-  {
-    key: 'open_with',
-    purpose:
-      'IDE / terminal launchers (main_ide, secondary_ide, terminal). {path} substitutes the target.',
-  },
-  {
-    key: 'terminal',
-    purpose:
-      'Pane preferences: shell, shortcut, screenshot_dir, screenshot_paste_shortcut, launcher_command.',
-  },
-];
 
 export function NoteModal(props: {
   state: ModalState;
@@ -816,110 +713,5 @@ export function NoteModal(props: {
         )}
       </Show>
     </div>
-  );
-}
-
-const FIND_HIGHLIGHT_CLASS = 'find-hit';
-const FIND_CURRENT_CLASS = 'find-current';
-
-function clearFindHighlights(container: HTMLElement): void {
-  for (const el of Array.from(
-    container.querySelectorAll<HTMLElement>(`.${FIND_HIGHLIGHT_CLASS}`),
-  )) {
-    const parent = el.parentNode;
-    if (!parent) continue;
-    parent.replaceChild(document.createTextNode(el.textContent ?? ''), el);
-    parent.normalize();
-  }
-}
-
-function highlightFindMatches(container: HTMLElement, query: string): number {
-  const lower = query.toLowerCase();
-  if (lower.length === 0) return 0;
-
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent) return NodeFilter.FILTER_REJECT;
-      // Skip script/style/find-bar (UI noise) and SVG subtrees (mermaid
-      // diagrams render text as <text> nodes inside <svg>; replacing them
-      // with split <span> wrappers blows up the diagram's layout).
-      if (parent.closest('script, style, svg, .find-bar')) return NodeFilter.FILTER_REJECT;
-      return node.nodeValue && node.nodeValue.toLowerCase().includes(lower)
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT;
-    },
-  });
-
-  const targets: Text[] = [];
-  let cur: Node | null = walker.nextNode();
-  while (cur) {
-    targets.push(cur as Text);
-    cur = walker.nextNode();
-  }
-
-  let count = 0;
-  for (const node of targets) {
-    const text = node.nodeValue ?? '';
-    const fragment = document.createDocumentFragment();
-    const lowerText = text.toLowerCase();
-    let cursor = 0;
-    let next = lowerText.indexOf(lower, cursor);
-    while (next !== -1) {
-      if (next > cursor) fragment.appendChild(document.createTextNode(text.slice(cursor, next)));
-      const span = document.createElement('span');
-      span.className = FIND_HIGHLIGHT_CLASS;
-      span.textContent = text.slice(next, next + query.length);
-      fragment.appendChild(span);
-      count++;
-      cursor = next + query.length;
-      next = lowerText.indexOf(lower, cursor);
-    }
-    if (cursor < text.length) fragment.appendChild(document.createTextNode(text.slice(cursor)));
-    node.parentNode?.replaceChild(fragment, node);
-  }
-  return count;
-}
-
-function focusFindMatch(container: HTMLElement, index: number): void {
-  const hits = container.querySelectorAll<HTMLElement>(`.${FIND_HIGHLIGHT_CLASS}`);
-  for (const hit of Array.from(hits)) hit.classList.remove(FIND_CURRENT_CLASS);
-  const target = hits[index];
-  if (!target) return;
-  target.classList.add(FIND_CURRENT_CLASS);
-  target.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
-}
-
-function ConfigSummaryPanel(props: { onOpenFullDoc: () => void }) {
-  const [open, setOpen] = createSignal(true);
-  return (
-    <details
-      class="config-summary-panel"
-      open={open()}
-      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary>
-        Reference — top-level keys
-        <button
-          class="modal-button config-summary-link"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            props.onOpenFullDoc();
-          }}
-          title="Open the full configuration reference"
-        >
-          Full reference →
-        </button>
-      </summary>
-      <ul class="config-summary-list">
-        {CONFIG_SUMMARY.map((row) => (
-          <li>
-            <code>{row.key}</code>
-            <span> — {row.purpose}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
   );
 }
