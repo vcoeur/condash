@@ -14,6 +14,7 @@ import { ConfirmModal } from './confirm-modal';
 import { IconClose, IconEdit, IconExternal, IconSave, IconView } from './note-modal-parts/icons';
 import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './note-modal-parts/find';
 import { ConfigSummaryPanel } from './note-modal-parts/config-summary';
+import './note-modal.css';
 import './code-theme.css';
 
 let editorModulePromise: Promise<typeof import('./editor')> | null = null;

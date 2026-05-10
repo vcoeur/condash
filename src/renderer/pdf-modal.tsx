@@ -1,5 +1,6 @@
 import { createResource, Show } from 'solid-js';
 import { useModalEscHandler } from './modal-helpers';
+import './pdf-modal.css';
 
 export function PdfModal(props: {
   path: string;

@@ -1,0 +1,236 @@
+/* ---- Shared modal chrome ----------------------------------------------- *
+ * Backdrop, panel, head row, head buttons and shared status pills used by
+ * every modal in the renderer. Imported once from `main.tsx` so every modal
+ * inherits the base styling regardless of import order. Per-modal stylesheets
+ * may override individual rules (e.g. `.note-modal { width: … }`).
+ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  max-height: 100%;
+}
+
+.modal-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  max-width: 320px;
+  transition:
+    background 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease;
+}
+
+.modal-back-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.modal-back-arrow {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.modal-back-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.012em;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-rendering: optimizeLegibility;
+}
+
+.modal-path {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-head-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Steps progress mini — sits in the modal head between title and the
+ * action cluster. Reads as "X/Y resolved" with a thin track-and-fill
+ * bar matching the card's expander bar. Dims at 100 % via
+ * data-complete (see selector below). */
+.head-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-body);
+  flex-shrink: 0;
+}
+
+.head-progress-text {
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.head-progress-track {
+  width: 60px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-faint) 32%, transparent);
+  overflow: hidden;
+  position: relative;
+}
+
+.head-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--col-soon);
+  border-radius: 2px;
+  transition: width 200ms ease;
+}
+
+.head-progress[data-complete='true'] {
+  opacity: 0.55;
+}
+
+.head-progress[data-complete='true'] .head-progress-fill {
+  background: var(--text-faint);
+}
+
+/* Project date — small mono label sitting just left of the head action
+ * cluster. Quiet, scannable. */
+.head-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
+}
+
+.modal-button {
+  /* Modal-head action buttons — chunkier than the card's row-actions
+   * because the modal head needs the icons to read clearly without
+   * crowding the title. Slightly larger square + larger SVG, with a
+   * tinted hover that picks up an action-specific colour cue. */
+  background: var(--bg-subtle);
+  border: 1px solid transparent;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-body);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
+}
+
+.modal-button svg {
+  /* SVG is sized to fill 80% of the 32 px button so the icon content
+   * reads at full presence, not as a tiny glyph in a big box. */
+  width: 26px;
+  height: 26px;
+}
+
+.modal-button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.modal-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.modal-button.active {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.modal-button.modal-close:hover {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.modal-dirty {
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.modal-saved {
+  color: var(--col-soon);
+  font-size: 12px;
+}
+
+.modal-error {
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg-elevated));
+  color: var(--warn);
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--warn);
+  font-size: 12px;
+}
