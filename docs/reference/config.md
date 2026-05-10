@@ -21,7 +21,7 @@ Both files share the **same schema** modulo the two path-tracking keys above. An
 ### Reading and writing
 
 - **Read precedence**: condash reads `<conception>/condash.json` when present, falling back to `<conception>/configuration.json` for legacy trees. The legacy filename is supported indefinitely with no deprecation date.
-- **Write target**: every save through the GUI or `condash config set` writes to `condash.json`. The first save in a legacy tree creates `condash.json` and leaves `configuration.json` orphaned for you to delete by hand (no auto-rename, no auto-delete).
+- **Write target**: every save through the GUI or `condash-cli config set` writes to `condash.json`. The first save in a legacy tree creates `condash.json` and leaves `configuration.json` orphaned for you to delete by hand (no auto-rename, no auto-delete).
 - **Override scope**: a conception's `condash.json` is forbidden from setting `lastConceptionPath` or `recentConceptionPaths` — a tree cannot describe its own location, by design.
 - **Environment override**: `CONDASH_CONCEPTION_PATH` still wins for the session, matching the legacy behaviour.
 

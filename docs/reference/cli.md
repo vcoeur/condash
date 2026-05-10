@@ -214,8 +214,10 @@ Read or change condash configuration.
 |---|---|
 | `conception-path` | Print the saved conception path |
 | `conception-path <path>` | Save a new conception path to `settings.json` |
-| `list` | Print every key from `condash.json` and `settings.json` (merged view) |
-| `get <key>` | Print one key's value, dot-separated path (`terminal.shell`) |
+| `path` | Print both config file paths (`settings.json` + `condash.json`) |
+| `list [--global\|--effective]` | Print every key. Default reads `condash.json`; `--global` reads `settings.json`; `--effective` shows the merged view (conception ⊕ global) |
+| `get <key> [--global\|--effective]` | Print one key's value, dot-separated path (`terminal.shell`). Same flag axis as `list` |
+| `set <key> <value> [--global]` | Write a key. Default writes `condash.json`; `--global` writes `settings.json` |
 
 `config conception-path` is the only verb that does not need an existing conception path — it sets one.
 
