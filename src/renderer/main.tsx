@@ -200,16 +200,15 @@ function App() {
     applyCardMinWidth(prefs);
   });
 
-  /** Persist a partial card-min-width patch and refresh the CSS variables.
-   * Settings modal commits go through here so the live grids resize on
-   * blur without a reload. */
+  /** Refresh the live card-min-width CSS variables. Settings modal commits
+   *  go through here on blur so grids resize without a reload. The modal
+   *  itself persists via `patchSettings` (settings.json) / `patchConfig`
+   *  (condash.json), so this callback is UI-only — calling `setCardMinWidth`
+   *  here would queue a second write that races the modal's CAS baseline. */
   const handleCardMinWidthChange = (patch: CardMinWidthPrefs): void => {
     const next: Required<CardMinWidthPrefs> = { ...cardMinWidth(), ...patch };
     setCardMinWidth(next);
     applyCardMinWidth(next);
-    void window.condash.setCardMinWidth(next).catch((err) => {
-      flashToast(`Could not persist card min-width: ${(err as Error).message}`, 'error');
-    });
   };
 
   const treeExpansion = createTreeExpansion({ flashToast });
@@ -295,13 +294,16 @@ function App() {
   void window.condash.termList().then(setAllSessions);
   onCleanup(offTermSessions);
 
+  // UI-only theme update for the Settings modal callback. The modal persists
+  // via `patchSettings` (settings.json) / `patchConfig` (condash.json), so
+  // calling `setTheme` here would queue a second write that races the modal's
+  // CAS baseline and silently drops in-flight terminal edits.
   const handleThemeChange = (next: Theme) => {
     setTheme(next);
     applyTheme(next);
     resetMermaidTheme();
     // xterm refresh runs through the createEffect on isDark below — covers
     // both this path and an OS dark/light flip while theme='system'.
-    void window.condash.setTheme(next);
   };
 
   // Projects + the three tree panes are backed by Solid stores keyed on a

@@ -712,7 +712,10 @@ export function SettingsModal(props: {
               </button>
               <button
                 class="modal-button"
-                onClick={tab() === 'global' ? openSettingsExternally : openConfigExternally}
+                onClick={() => {
+                  if (tab() === 'global') openSettingsExternally();
+                  else openConfigExternally();
+                }}
                 title={`Open ${TABS.find((t) => t.id === tab())?.file} with the OS default editor`}
               >
                 Open externally
