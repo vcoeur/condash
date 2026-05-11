@@ -179,13 +179,15 @@ async function worktreeRemove(
   if (!branch) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash-cli worktrees remove <branch> [--repo <r>...]',
+      'Usage: condash-cli worktrees remove <branch> [--repo <r>...] [--force] [--force-rm]',
     );
   }
   const repos = parseCsvFlag(args.flags.repo) ?? undefined;
-  delete args.flags.repo;
+  const force = args.flags.force === true;
+  const forceRm = args.flags['force-rm'] === true;
+  for (const k of ['repo', 'force', 'force-rm']) delete args.flags[k];
   assertNoExtraFlags(args);
-  const result = await removeBranchWorktrees(conceptionPath, branch, { repos });
+  const result = await removeBranchWorktrees(conceptionPath, branch, { repos, force, forceRm });
   emit(ctx, result, formatRemoveResult);
 }
 
@@ -199,6 +201,14 @@ function formatRemoveResult(result: RemoveResult): string {
   if (result.protected.length > 0) {
     lines.push(`Kept (protected, ${result.protected.length}):`);
     for (const p of result.protected) lines.push(`  · ${p.repo}: ${p.reason}`);
+  }
+  if (result.partiallyRemoved.length > 0) {
+    lines.push(`Partially removed (${result.partiallyRemoved.length}):`);
+    for (const p of result.partiallyRemoved) {
+      lines.push(`  ! ${p.repo}  →  ${p.path}`);
+      lines.push(`      ${p.reason}`);
+    }
+    lines.push(`  Re-run with --force-rm to delete the leftover directories.`);
   }
   if (result.notPresent.length > 0) {
     lines.push(`Not present: ${result.notPresent.join(', ')}`);
@@ -224,7 +234,11 @@ function printWorktreesHelp(): void {
       '                   opts out. --copy-env is the legacy opportunistic .env / .env.local copy for repos',
       '                   without `env:` declared.',
       '  remove <branch>  Remove worktrees for this branch, protected-set aware.',
-      '                   Flags: --repo <r>... (override).',
+      '                   Flags: --repo <r>... (override) --force --force-rm.',
+      '                   --force passes through to `git worktree remove --force` (deletes even if dirty).',
+      '                   --force-rm implies --force; if git deregisters but leaves files behind',
+      '                   (e.g. node_modules), `rm -rf` the leftover dir to finish the job.',
+      '                   Without --force-rm, half-removed entries land in `partiallyRemoved[]`.',
       '',
     ].join('\n'),
   );

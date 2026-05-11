@@ -1,0 +1,146 @@
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, chmodSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { exec as execFile } from '../exec';
+import { removeBranchWorktrees } from './remove';
+
+let prevXdgConfigHome: string | undefined;
+let xdgHome: string;
+
+let tmp: string;
+let conception: string;
+let repo: string;
+let worktreesRoot: string;
+const branch = 'partial-test';
+
+async function git(cwd: string, ...args: string[]): Promise<string> {
+  const { stdout } = await execFile('git', args, {
+    cwd,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+  });
+  return stdout;
+}
+
+beforeAll(() => {
+  prevXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  xdgHome = mkdtempSync(join(tmpdir(), 'condash-xdg-'));
+  process.env.XDG_CONFIG_HOME = xdgHome;
+});
+
+afterEach(() => {
+  if (tmp) {
+    // Restore writable bits before rm to avoid EACCES on the read-only file
+    // we plant to provoke a partial remove.
+    try {
+      chmodSync(join(worktreesRoot, branch, 'demo', 'node_modules'), 0o755);
+      chmodSync(join(worktreesRoot, branch, 'demo', 'node_modules', 'pinned.js'), 0o644);
+    } catch {
+      // dir may already be partially gone — ignore.
+    }
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+beforeEach(async () => {
+  tmp = mkdtempSync(join(tmpdir(), 'condash-remove-'));
+  conception = join(tmp, 'conception');
+  repo = join(tmp, 'workspace', 'demo');
+  worktreesRoot = join(tmp, 'wt');
+  mkdirSync(conception, { recursive: true });
+  mkdirSync(join(tmp, 'workspace'), { recursive: true });
+  mkdirSync(worktreesRoot, { recursive: true });
+
+  // Conception config: one repo `demo` under `workspace_path`, worktrees in
+  // `worktrees_path`. No projects directory needed — we pass `repos:` to
+  // `removeBranchWorktrees` directly so it skips item discovery.
+  writeFileSync(
+    join(conception, 'condash.json'),
+    JSON.stringify(
+      {
+        workspace_path: join(tmp, 'workspace'),
+        worktrees_path: worktreesRoot,
+        repositories: [{ name: 'demo' }],
+      },
+      null,
+      2,
+    ),
+  );
+
+  // Bare git repo + first commit so we can branch off it.
+  await git(join(tmp, 'workspace'), 'init', '-q', '-b', 'main', 'demo');
+  await git(repo, 'config', 'user.email', 'test@example.com');
+  await git(repo, 'config', 'user.name', 'Test');
+  await git(repo, 'commit', '-q', '--allow-empty', '-m', 'init');
+
+  // Worktree on the test branch with rebuildable artifacts that block git's
+  // own rm: a read-only file inside `node_modules/`. With `--force`, git
+  // deregisters first then fails on the chmod-restricted unlink — exactly
+  // the partial-removed state issue #124 reports.
+  const target = join(worktreesRoot, branch, 'demo');
+  await git(repo, 'worktree', 'add', '-q', target, '-b', branch);
+  mkdirSync(join(target, 'node_modules'));
+  writeFileSync(join(target, 'node_modules', 'pinned.js'), 'x');
+  chmodSync(join(target, 'node_modules', 'pinned.js'), 0o444);
+  chmodSync(join(target, 'node_modules'), 0o555);
+});
+
+describe('removeBranchWorktrees', () => {
+  it('reports partiallyRemoved when --force deregisters but rm fails', async () => {
+    const result = await removeBranchWorktrees(conception, branch, {
+      repos: ['demo'],
+      force: true,
+    });
+    expect(result.removed).toEqual([]);
+    expect(result.protected).toEqual([]);
+    expect(result.partiallyRemoved).toHaveLength(1);
+    expect(result.partiallyRemoved[0]).toMatchObject({
+      repo: 'demo',
+      path: join(worktreesRoot, branch, 'demo'),
+    });
+    expect(result.partiallyRemoved[0].reason).toContain('git worktree remove failed');
+    // Registry was deregistered: `git worktree list` no longer mentions it.
+    const wts = await git(repo, 'worktree', 'list', '--porcelain');
+    expect(wts).not.toContain(join(worktreesRoot, branch, 'demo'));
+    // Disk still has the leftover dir.
+    expect(existsSync(join(worktreesRoot, branch, 'demo'))).toBe(true);
+  });
+
+  it('classifies refusal-without-deregister as protected, not partially removed', async () => {
+    // Without --force, git refuses outright: no registry mutation, dir intact.
+    const result = await removeBranchWorktrees(conception, branch, { repos: ['demo'] });
+    expect(result.removed).toEqual([]);
+    expect(result.partiallyRemoved).toEqual([]);
+    expect(result.protected).toHaveLength(1);
+    expect(result.protected[0].repo).toBe('demo');
+    expect(result.protected[0].reason).toContain('git worktree remove failed');
+    const wts = await git(repo, 'worktree', 'list', '--porcelain');
+    expect(wts).toContain(join(worktreesRoot, branch, 'demo'));
+  });
+
+  it('--force-rm completes the cleanup and reports the repo under removed[]', async () => {
+    const result = await removeBranchWorktrees(conception, branch, {
+      repos: ['demo'],
+      forceRm: true,
+    });
+    expect(result.partiallyRemoved).toEqual([]);
+    expect(result.protected).toEqual([]);
+    expect(result.removed).toHaveLength(1);
+    expect(result.removed[0]).toMatchObject({
+      repo: 'demo',
+      path: join(worktreesRoot, branch, 'demo'),
+    });
+    // Both the registry and the disk are clean now.
+    const wts = await git(repo, 'worktree', 'list', '--porcelain');
+    expect(wts).not.toContain(join(worktreesRoot, branch, 'demo'));
+    expect(existsSync(join(worktreesRoot, branch, 'demo'))).toBe(false);
+    // Parent branch dir was empty after — it should have been rmdir'd too.
+    expect(result.parentRemoved).toBe(true);
+  });
+});
+
+// Restore env at module unload so the test process leaves no trace.
+process.on('exit', () => {
+  if (prevXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+  else process.env.XDG_CONFIG_HOME = prevXdgConfigHome;
+});
