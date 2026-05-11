@@ -43,37 +43,6 @@ export interface ReposStore {
  * `path` keeps row identity stable so any open dropdowns / popovers
  * survive the swap.
  */
-/**
- * Replace `primary`'s family rows in `current` with `updated`, keeping the
- * family anchored at the primary's current index. Appending the updated
- * family to the tail (the previous behaviour) would jump it to the bottom
- * of the list on every structural watcher event — visible to the user as
- * the Code panel reshuffling on every `git worktree add/remove` or
- * `.git/HEAD` write.
- *
- * `updated` is treated as authoritative for the family's membership: a
- * submodule absent from `updated` is genuinely gone (e.g. removed from
- * `condash.json`) and is not preserved from `current`. If `primary` isn't
- * in `current` (defensive: shouldn't happen because the caller already
- * resolves it from the store), the family is appended at the tail.
- */
-export function spliceFamilyAt(
-  current: readonly RepoEntry[],
-  primary: { name: string; path: string },
-  updated: readonly RepoEntry[],
-): RepoEntry[] {
-  const updatedPaths = new Set(updated.map((e) => e.path));
-  const isFamily = (r: RepoEntry): boolean =>
-    updatedPaths.has(r.path) || r.parent === primary.name || r.path === primary.path;
-  const primaryIdx = current.findIndex((r) => r.path === primary.path);
-  if (primaryIdx === -1) {
-    return [...current.filter((r) => !isFamily(r)), ...updated];
-  }
-  const before = current.slice(0, primaryIdx).filter((r) => !isFamily(r));
-  const after = current.slice(primaryIdx + 1).filter((r) => !isFamily(r));
-  return [...before, ...updated, ...after];
-}
-
 export function createReposStore(deps: ReposStoreDeps): ReposStore {
   const [repos, setRepos] = createStore<RepoEntry[]>([]);
   const [reposLoaded, setReposLoaded] = createSignal(false);
@@ -164,4 +133,35 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
   onCleanup(offRepoEvents);
 
   return { repos, setRepos, reposLoaded, reloadRepos };
+}
+
+/**
+ * Replace `primary`'s family rows in `current` with `updated`, keeping the
+ * family anchored at the primary's current index. Appending the updated
+ * family to the tail (the previous behaviour) would jump it to the bottom
+ * of the list on every structural watcher event — visible to the user as
+ * the Code panel reshuffling on every `git worktree add/remove` or
+ * `.git/HEAD` write.
+ *
+ * `updated` is treated as authoritative for the family's membership: a
+ * submodule absent from `updated` is genuinely gone (e.g. removed from
+ * `condash.json`) and is not preserved from `current`. If `primary` isn't
+ * in `current` (defensive: shouldn't happen because the caller already
+ * resolves it from the store), the family is appended at the tail.
+ */
+export function spliceFamilyAt(
+  current: readonly RepoEntry[],
+  primary: Pick<RepoEntry, 'name' | 'path'>,
+  updated: readonly RepoEntry[],
+): RepoEntry[] {
+  const updatedPaths = new Set(updated.map((e) => e.path));
+  const isFamily = (r: RepoEntry): boolean =>
+    updatedPaths.has(r.path) || r.parent === primary.name || r.path === primary.path;
+  const primaryIdx = current.findIndex((r) => r.path === primary.path);
+  if (primaryIdx === -1) {
+    return [...current.filter((r) => !isFamily(r)), ...updated];
+  }
+  const before = current.slice(0, primaryIdx).filter((r) => !isFamily(r));
+  const after = current.slice(primaryIdx + 1).filter((r) => !isFamily(r));
+  return [...before, ...updated, ...after];
 }
