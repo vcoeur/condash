@@ -7,7 +7,6 @@ export interface MenuRouterDeps {
   conceptionPath: Accessor<string | null>;
   layout: Accessor<LayoutState>;
   setConceptionPath: (next: string | null) => void;
-  bumpRefreshKey: () => void;
   setSearchModalOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setNewProjectOpen: (open: boolean) => void;
@@ -105,8 +104,10 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
     void window.condash
       .openConception(path)
       .then((newPath) => {
+        // Setting the conception path cascades through every store's
+        // `createEffect(conceptionPath)` (projects, knowledge, resources,
+        // skills, repos, config), so no explicit refresh bump is needed.
         deps.setConceptionPath(newPath);
-        deps.bumpRefreshKey();
       })
       .catch((err) => {
         deps.flashToast(`Open failed: ${(err as Error).message}`, 'error');
