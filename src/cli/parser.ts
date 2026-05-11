@@ -30,6 +30,7 @@ const BOOL_FLAGS = new Set([
   'include-worktrees',
   'header',
   'force',
+  'force-rm',
   'diff',
   'no-touch-dirty',
   'copy-env',

@@ -19,14 +19,33 @@ import {
 export interface RemoveOptions {
   /** Optional explicit repo allow-list. */
   repos?: string[];
+  /**
+   * Pass `--force` to `git worktree remove`. Without this, git refuses any
+   * worktree with modified or untracked files.
+   */
+  force?: boolean;
+  /**
+   * Implies `force`. After git deregisters the worktree, if the directory
+   * still has files (typically rebuildable artifacts like `node_modules` or
+   * build output blocking git's own rm), `fs.rm` it recursively. The repo is
+   * then reported under `removed[]`.
+   */
+  forceRm?: boolean;
 }
 
 export interface RemoveResult {
   branch: string;
   /** Repos whose worktree we removed. */
   removed: { repo: string; path: string }[];
-  /** Repos kept because another active item still claims them on this branch. */
+  /** Repos kept because another active item still claims them on this branch,
+   *  or because `git worktree remove` failed *without* deregistering the
+   *  worktree (registry still consistent with disk — caller can retry). */
   protected: { repo: string; reason: string }[];
+  /** Repos whose git registry entry was removed but whose on-disk directory
+   *  still has files. Caller decides whether to `rm -rf` (e.g. via
+   *  `--force-rm`), resume manual cleanup, or leave the orphan for
+   *  `worktrees check`. */
+  partiallyRemoved: { repo: string; path: string; reason: string }[];
   /** Repos that had no worktree at this branch in the first place. */
   notPresent: string[];
   /** Whether `<worktrees_path>/<branch>/` was rmdir'd (only if empty after). */
@@ -42,6 +61,8 @@ export async function removeBranchWorktrees(
   const config = await readConfig(conceptionPath);
   const worktreesRoot = config.worktrees_path ?? defaultWorktreesPath();
   const reposByName = repoLookupMap(config);
+  const force = options.force === true || options.forceRm === true;
+  const forceRm = options.forceRm === true;
 
   // Resolve target repos: explicit list, or the union of Apps across items
   // declaring the branch. Then remove the protected set (repos still claimed
@@ -70,6 +91,7 @@ export async function removeBranchWorktrees(
     branch,
     removed: [],
     protected: [],
+    partiallyRemoved: [],
     notPresent: [],
     parentRemoved: false,
   };
@@ -89,14 +111,37 @@ export async function removeBranchWorktrees(
       result.notPresent.push(name);
       continue;
     }
+    const args = force ? ['worktree', 'remove', '--force', target] : ['worktree', 'remove', target];
     try {
-      await exec('git', ['worktree', 'remove', target], { cwd: lookup.cwd });
+      await exec('git', args, { cwd: lookup.cwd });
       result.removed.push({ repo: name, path: target });
     } catch (err) {
-      result.protected.push({
-        repo: name,
-        reason: `git worktree remove failed: ${err instanceof Error ? err.message : String(err)}`,
-      });
+      const reason = `git worktree remove failed: ${err instanceof Error ? err.message : String(err)}`;
+      // Disambiguate: did git deregister the worktree before failing on the
+      // rm step (partial remove — disk dirty, registry clean), or did it
+      // refuse outright (genuinely protected)? `--force` removes the registry
+      // entry first, then tries to delete the dir; a failure on the second
+      // half leaves the registry-vs-disk inconsistency users hit.
+      const stillRegistered = await isStillRegistered(lookup.cwd, target);
+      if (stillRegistered) {
+        result.protected.push({ repo: name, reason });
+        continue;
+      }
+      if (forceRm && (await pathExists(target))) {
+        try {
+          await rmrfWithChmodFallback(target);
+          result.removed.push({ repo: name, path: target });
+          continue;
+        } catch (rmErr) {
+          result.partiallyRemoved.push({
+            repo: name,
+            path: target,
+            reason: `${reason}; --force-rm cleanup also failed: ${rmErr instanceof Error ? rmErr.message : String(rmErr)}`,
+          });
+          continue;
+        }
+      }
+      result.partiallyRemoved.push({ repo: name, path: target, reason });
     }
   }
 
@@ -129,4 +174,79 @@ export async function removeBranchWorktrees(
   }
 
   return result;
+}
+
+/**
+ * `fs.rm(target, { recursive: true, force: true })`, with a chmod-walk
+ * fallback on EACCES / EPERM. Node's `force: true` only swallows ENOENT —
+ * read-only files and read-only parent dirs still throw. The common
+ * `--force-rm` use case is rebuildable artifacts (`node_modules`, build
+ * output) that are usually writable, but stray read-only files do happen
+ * (npm caches, vendored dependencies); making the flag pay off when it
+ * matters is worth the second pass.
+ */
+async function rmrfWithChmodFallback(target: string): Promise<void> {
+  try {
+    await fs.rm(target, { recursive: true, force: true });
+    return;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'EACCES' && code !== 'EPERM') throw err;
+  }
+  await chmodWritableRecursive(target);
+  await fs.rm(target, { recursive: true, force: true });
+}
+
+async function chmodWritableRecursive(target: string): Promise<void> {
+  let stat;
+  try {
+    stat = await fs.lstat(target);
+  } catch {
+    return;
+  }
+  if (stat.isSymbolicLink()) return;
+  // u+rwx on dirs (need x to traverse), u+rw on files. We only fix the owner
+  // bits — anything else is the caller's problem and we shouldn't be silently
+  // promoting visibility.
+  await fs
+    .chmod(target, stat.isDirectory() ? 0o700 | (stat.mode & 0o077) : 0o600 | (stat.mode & 0o077))
+    .catch(() => {});
+  if (stat.isDirectory()) {
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = await fs.readdir(target, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      await chmodWritableRecursive(join(target, entry.name));
+    }
+  }
+}
+
+/**
+ * True if `git worktree list --porcelain` (run in `cwd`) still lists the
+ * worktree at `target`. Used after a failed `git worktree remove` to tell
+ * "git refused" (registry intact) from "git deregistered then failed on rm"
+ * (partial remove).
+ */
+async function isStillRegistered(cwd: string, target: string): Promise<boolean> {
+  let stdout: string;
+  try {
+    ({ stdout } = await exec('git', ['worktree', 'list', '--porcelain'], { cwd }));
+  } catch {
+    // If we can't query the registry, default to the safer assumption: the
+    // failure was a plain refusal and the caller should retry rather than
+    // see a phantom partial-removed entry.
+    return true;
+  }
+  const targetReal = await fs.realpath(target).catch(() => target);
+  for (const line of stdout.split('\n')) {
+    if (!line.startsWith('worktree ')) continue;
+    const path = line.slice('worktree '.length).trim();
+    if (path === target) return true;
+    const real = await fs.realpath(path).catch(() => path);
+    if (real === targetReal) return true;
+  }
+  return false;
 }
