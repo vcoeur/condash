@@ -113,6 +113,18 @@ export function RepoRow(props: {
           />
         </label>
         <label>
+          <span>Pinned branch</span>
+          <input
+            type="text"
+            placeholder="main"
+            {...props.bindText(
+              `${props.idPrefix}.pinned_branch`,
+              () => obj().pinned_branch,
+              (v) => patchObj({ pinned_branch: v || undefined }),
+            )}
+          />
+        </label>
+        <label>
           <span>Env files (comma-separated)</span>
           <input
             type="text"

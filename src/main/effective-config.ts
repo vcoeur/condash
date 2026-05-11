@@ -30,7 +30,7 @@ export interface EffectiveConfig extends ConfigShape {
   worktrees_path?: string;
   resources_path?: string;
   skills_path?: string;
-  open_with?: Record<string, { label: string; command: string }>;
+  open_with?: Record<string, { label?: string; command: string }>;
   pdf_viewer?: string[];
   terminal?: TerminalPrefs;
   theme?: Theme;

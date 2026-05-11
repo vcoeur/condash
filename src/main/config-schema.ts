@@ -48,7 +48,7 @@ export type RawRepo =
 
 const openWithSlot = z
   .object({
-    label: z.string(),
+    label: z.string().optional(),
     command: z.string().min(1),
   })
   .strict();

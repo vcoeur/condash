@@ -6,7 +6,7 @@ import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 
 interface RawSlot {
-  label: string;
+  label?: string;
   command: string;
 }
 
@@ -26,7 +26,7 @@ export async function listOpenWith(conceptionPath: string): Promise<OpenWithSlot
   for (const key of SLOT_KEYS) {
     const slot = config.open_with?.[key];
     if (slot && typeof slot.command === 'string' && slot.command.trim()) {
-      out[key] = { label: slot.label, command: slot.command };
+      out[key] = { label: slot.label ?? '', command: slot.command };
     }
   }
   return out;

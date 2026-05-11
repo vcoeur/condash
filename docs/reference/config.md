@@ -114,7 +114,7 @@ Three vendor-neutral launcher slots used by the "Open with …" buttons on every
 | `secondary_ide` | Lighter editor — VS Code, VSCodium, Zed.                |
 | `terminal`      | Spawn a terminal already `cd`-ed into the target.       |
 
-Each slot takes a `label` (tooltip text) and a single `command` string.
+Each slot takes a `command` string (required) and an optional `label` (tooltip text).
 
 ```json
 {
