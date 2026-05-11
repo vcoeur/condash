@@ -1,21 +1,16 @@
 import { render } from 'solid-js/web';
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  onCleanup,
-  Show,
-  Suspense,
-} from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 import type {
   CardMinWidthPrefs,
   Deliverable,
+  KnowledgeNode,
   LayoutState,
   OpenWithSlotKey,
   OpenWithSlots,
   Project,
   RepoEntry,
+  ResourceNode,
+  SkillNode,
   Step,
   TermSession,
   TerminalPrefs,
@@ -55,6 +50,8 @@ import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
 import { createTreeExpansion } from './tree-expansion';
 import { createReposStore } from './repos-store';
+import { createProjectsStore } from './projects-store';
+import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
 import { createMenuRouter } from './menu-commands';
 import { QuitConfirmModal } from './quit-confirm-modal';
@@ -99,7 +96,6 @@ function applyCardMinWidth(prefs: Required<CardMinWidthPrefs>): void {
 
 function App() {
   const [conceptionPath, setConceptionPath] = createSignal<string | null>(null);
-  const [refreshKey, setRefreshKey] = createSignal(0);
   const [theme, setTheme] = createSignal<Theme>('system');
   type ToastKind = 'success' | 'error' | 'info';
   const [toast, setToast] = createSignal<{ msg: string; kind: ToastKind } | null>(null);
@@ -248,12 +244,15 @@ function App() {
 
   const unsubscribe = window.condash.onTreeEvents((events) => {
     void applyTreeEvents(events, {
-      mutate,
-      bumpRefreshKey: () => setRefreshKey((k) => k + 1),
-      // Repos no longer depend on refreshKey — refetch them explicitly when
-      // a config edit (potentially adding/removing repos) or an unknown event
-      // arrives. Dirty changes flow through `repo-events` instead and don't
-      // need this path.
+      mutateProjects: mutate,
+      reloadProjects: reloadProjects,
+      reloadKnowledge: knowledgeStore.reload,
+      reloadResources: resourcesStore.reload,
+      reloadSkills: skillsStore.reload,
+      reloadConfig: reloadConfig,
+      // Repos do not subscribe to tree events directly — repo-events
+      // covers scalar / structural updates; `config` is the only path
+      // through which the repo list itself can change.
       refetchRepos: () => {
         void reloadRepos();
       },
@@ -305,65 +304,72 @@ function App() {
     void window.condash.setTheme(next);
   };
 
-  const [projects, { mutate }] = createResource(
-    () => [conceptionPath(), refreshKey()] as const,
-    async ([path]) => {
-      if (!path) return [] as Project[];
-      return window.condash.listProjects();
-    },
-  );
+  // Projects + the three tree panes are backed by Solid stores keyed on a
+  // stable identity field (`path` for projects, `relPath` for tree nodes).
+  // `reconcile` reuses prior node references across refresh, so `<For>`
+  // keeps card / row DOM identity and per-card popover state (drag-drop
+  // dropdowns, the Step menu, hover anchors) survives every watcher tick.
+  // Switching panes does not refetch — the stores stay populated for the
+  // active conception until it changes.
+  const projectsStore = createProjectsStore({ conceptionPath });
+  const { projects, loaded: projectsLoaded, mutate, reload: reloadProjects } = projectsStore;
 
-  // Knowledge / Resources / Skills trees are cached once the conception
-  // path is set and re-fetched only when `refreshKey` bumps. The latter
-  // is wired to `onTreeEvents` (config / knowledge / resources / skills
-  // subtree changes), so cached data stays correct between switches.
-  // Dropping `layout().working` from the source key is what makes pane
-  // switches instant — without it, leaving the pane reset the resource
-  // to `null` and re-entry forced a full disk read every time.
-  const [knowledge] = createResource(
-    () => [conceptionPath(), refreshKey()] as const,
-    async ([path]) => {
-      if (!path) return null;
-      return window.condash.readKnowledgeTree();
-    },
-  );
+  const knowledgeStore = createTreeStore<KnowledgeNode>({
+    conceptionPath,
+    fetcher: () => window.condash.readKnowledgeTree(),
+    key: 'relPath',
+  });
+  const knowledge = knowledgeStore.root;
 
-  const [resources] = createResource(
-    () => [conceptionPath(), refreshKey()] as const,
-    async ([path]) => {
-      if (!path) return null;
-      return window.condash.readResourcesTree();
-    },
-  );
+  const resourcesStore = createTreeStore<ResourceNode>({
+    conceptionPath,
+    fetcher: () => window.condash.readResourcesTree(),
+    key: 'relPath',
+  });
+  const resources = resourcesStore.root;
 
-  const [skills] = createResource(
-    () => [conceptionPath(), refreshKey()] as const,
-    async ([path]) => {
-      if (!path) return null;
-      return window.condash.readSkillsTree();
-    },
-  );
+  const skillsStore = createTreeStore<SkillNode>({
+    conceptionPath,
+    fetcher: () => window.condash.readSkillsTree(),
+    key: 'relPath',
+  });
+  const skills = skillsStore.root;
 
   // Code-pane repos store. Owns the scalar/set-membership split and the
   // structural-event debouncer; see `./repos-store.ts` for the contract.
   const reposStore = createReposStore({ conceptionPath, flashToast });
   const { repos, reposLoaded, reloadRepos } = reposStore;
 
-  const [openWithSlots] = createResource(
-    () => [conceptionPath(), refreshKey()] as const,
-    async ([path]) => {
-      if (!path) return {} as OpenWithSlots;
-      return window.condash.listOpenWith();
-    },
-  );
-
-  const [terminalPrefs] = createResource(
-    () => [conceptionPath(), refreshKey()] as const,
-    async ([path]) => {
-      if (!path) return {} as TerminalPrefs;
-      return window.condash.termGetPrefs();
-    },
-  );
+  // Open With slots + terminal prefs are config-bound — they change
+  // only on a `'config'` tree event (or an explicit user save). Plain
+  // signals keep them out of the Suspense/resource graph so a knowledge
+  // edit doesn't refetch them.
+  const [openWithSlots, setOpenWithSlots] = createSignal<OpenWithSlots>({});
+  const [terminalPrefs, setTerminalPrefs] = createSignal<TerminalPrefs | undefined>(undefined);
+  const reloadConfig = async (): Promise<void> => {
+    if (!conceptionPath()) {
+      setOpenWithSlots({});
+      setTerminalPrefs(undefined);
+      return;
+    }
+    const [slots, prefs] = await Promise.all([
+      window.condash.listOpenWith(),
+      window.condash.termGetPrefs(),
+    ]);
+    setOpenWithSlots(slots);
+    setTerminalPrefs(prefs);
+  };
+  // Reload on every conception-path change. Mirrors the per-store
+  // effect so the three config-bound reads stay in sync without a
+  // shared `refreshKey`.
+  createEffect(() => {
+    if (!conceptionPath()) {
+      setOpenWithSlots({});
+      setTerminalPrefs(undefined);
+      return;
+    }
+    void reloadConfig();
+  });
 
   const ensureTerminalOpen = (): void => {
     if (!layout().terminal) updateLayout({ terminal: true });
@@ -430,7 +436,6 @@ function App() {
     conceptionPath,
     layout,
     setConceptionPath,
-    bumpRefreshKey: () => setRefreshKey((k) => k + 1),
     setSearchModalOpen,
     setSettingsOpen,
     setNewProjectOpen,
@@ -470,8 +475,12 @@ function App() {
   const handlePick = async () => {
     const picked = await window.condash.pickConceptionPath();
     if (!picked) return;
+    const prior = conceptionPath();
     setConceptionPath(picked);
-    setRefreshKey((k) => k + 1);
+    // Picking the same path is a "refresh me" gesture — the
+    // per-store createEffect only fires on actual change, so fan out
+    // a full reload to honour that.
+    if (prior === picked) void reloadAll();
 
     // Surface the bundled-template init when the picked folder lacks the
     // conception markers (projects/ + condash.json). Init never
@@ -495,26 +504,34 @@ function App() {
     try {
       const { created } = await window.condash.initConception(path);
       flashToast(`Initialised conception template — ${created.length} files created.`, 'success');
-      setRefreshKey((k) => k + 1);
+      void reloadAll();
     } catch (err) {
       flashToast(`Init failed: ${(err as Error).message}`, 'error');
     }
   };
 
+  // Full fan-out reload. Used by View → Refresh and as the success
+  // tail of `initConception`. Each store applies `reconcile` on swap-in
+  // so card / row DOM identity survives — the visible effect is content
+  // updating in place, not the pane blanking and rebuilding.
+  const reloadAll = async (): Promise<void> => {
+    await Promise.all([
+      reloadProjects(),
+      knowledgeStore.reload(),
+      resourcesStore.reload(),
+      skillsStore.reload(),
+      reloadConfig(),
+      reloadRepos(),
+    ]);
+  };
+
   const handleRefresh = () => {
-    // F5 / View → Refresh covers both axes:
-    //   1. Drop the per-worktree git-status cache + force-recompute
-    //      every watched path so dirty/upstream are fresh.
-    //   2. Bump refreshKey so projects, knowledge, openWith, terminal
-    //      prefs all re-fetch.
-    //   3. Re-list repos so any worktree add/remove that happened
-    //      outside the running app (CLI worktree mutation, manual git
-    //      worktree add) is reflected immediately. The reconcile-with-
-    //      key contract on the repos store keeps open popovers /
-    //      dropdowns alive across the swap.
+    // F5 / View → Refresh: drop the per-worktree git-status cache so
+    // dirty/upstream recompute on the next listRepos, then fan out a
+    // full reload across every store. Repos are explicit because the
+    // reposStore's createEffect only fires on conception-path change.
     void window.condash.invalidateGitStatus();
-    setRefreshKey((k) => k + 1);
-    void reloadRepos();
+    void reloadAll();
   };
 
   const handleOpenInEditor = (path: string) => {
@@ -637,7 +654,13 @@ function App() {
     kind: TreeAffordance,
     sourceDirRelPath: string,
   ): void => {
-    setRefreshKey((k) => k + 1);
+    // Reload the affected tree explicitly — the chokidar watcher does
+    // fire on the new file, but the open-the-newly-created-file branch
+    // below runs synchronously and we want the tree pane to reflect
+    // the new entry on the same frame.
+    if (treeKey === 'knowledge') void knowledgeStore.reload();
+    else if (treeKey === 'resources') void resourcesStore.reload();
+    else void skillsStore.reload();
     expandTreeDir(treeKey, sourceDirRelPath);
     if (kind === 'mkdir') return;
     if (treeKey === 'knowledge') {
@@ -690,8 +713,10 @@ function App() {
   const shouldShowWelcome = (): boolean => {
     if (welcomeDismissed()) return false;
     if (!conceptionPath()) return false;
-    if (projects.loading) return false;
-    if ((projects() ?? []).length > 0) return false;
+    // Wait for the first projects load — otherwise the welcome screen
+    // flashes for one frame on cold start before the IPC resolves.
+    if (!projectsLoaded()) return false;
+    if (projects().length > 0) return false;
     if (!knowledgeIsEmpty()) return false;
     return true;
   };
@@ -793,11 +818,10 @@ function App() {
     try {
       const result = await window.condash.setStatus(path, newStatus);
       // The main process appended a Closed./Reopened. timeline entry on
-      // done-edges; bump the refresh key so the popup's timeline pane and
-      // the card's last-date both pick up the new entry.
-      if (result.timelineAppended) {
-        setRefreshKey((k) => k + 1);
-      }
+      // done-edges; the watcher fires a 'project' event for the README
+      // that patches the card via `mutateProjects`. No explicit reload
+      // here — reconcile updates the timeline / closedAt in place and
+      // the popup re-reads through the live projects accessor.
       if (result.branchWarning) {
         flashToast(result.branchWarning, 'info');
       }
@@ -945,21 +969,19 @@ function App() {
               <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
                 <Show when={layout().projects}>
                   <section class="pane pane-projects">
-                    <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <Show
-                        when={(projects() ?? []).length > 0}
-                        fallback={<div class="empty">No projects found under projects/.</div>}
-                      >
-                        <ProjectsView
-                          buckets={projectsTabGroups()}
-                          onOpen={handleOpenProject}
-                          onToggleStep={handleToggleStep}
-                          onDropProject={handleDropOnColumn}
-                          onWorkOn={(p) => void bridge.handleWorkOn(p)}
-                          onNewProject={() => setNewProjectOpen(true)}
-                        />
-                      </Show>
-                    </Suspense>
+                    <Show
+                      when={(projects() ?? []).length > 0}
+                      fallback={<div class="empty">No projects found under projects/.</div>}
+                    >
+                      <ProjectsView
+                        buckets={projectsTabGroups()}
+                        onOpen={handleOpenProject}
+                        onToggleStep={handleToggleStep}
+                        onDropProject={handleDropOnColumn}
+                        onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                        onNewProject={() => setNewProjectOpen(true)}
+                      />
+                    </Show>
                   </section>
                 </Show>
 
@@ -973,126 +995,117 @@ function App() {
 
                 <Show when={layout().working === 'knowledge'}>
                   <section class="pane pane-working">
-                    <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <Show
-                        when={knowledge()}
-                        fallback={
-                          <div class="empty">
-                            No knowledge/ directory under the selected conception path.
-                          </div>
+                    <Show
+                      when={knowledge()}
+                      fallback={
+                        <div class="empty">
+                          No knowledge/ directory under the selected conception path.
+                        </div>
+                      }
+                    >
+                      <KnowledgeView
+                        root={knowledge()!}
+                        onOpen={handleOpenKnowledgeFile}
+                        expanded={knowledgeExpanded}
+                        onToggleExpand={(rel) => toggleTreeExpand('knowledge', rel)}
+                        mutations={treeMutations}
+                        prompts={treePrompts}
+                        onAfterMutation={(newPath, kind, source) =>
+                          handleAfterTreeMutation('knowledge', newPath, kind, source)
                         }
-                      >
-                        <KnowledgeView
-                          root={knowledge()!}
-                          onOpen={handleOpenKnowledgeFile}
-                          expanded={knowledgeExpanded}
-                          onToggleExpand={(rel) => toggleTreeExpand('knowledge', rel)}
-                          mutations={treeMutations}
-                          prompts={treePrompts}
-                          onAfterMutation={(newPath, kind, source) =>
-                            handleAfterTreeMutation('knowledge', newPath, kind, source)
-                          }
-                          onError={treeError}
-                        />
-                      </Show>
-                    </Suspense>
+                        onError={treeError}
+                      />
+                    </Show>
                   </section>
                 </Show>
 
                 <Show when={layout().working === 'resources'}>
                   <section class="pane pane-working">
-                    <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <ResourcesView
-                        root={resources() ?? null}
-                        actions={resourcesActions}
-                        onOpenSettings={() => setSettingsOpen(true)}
-                        onOpenConceptionDir={() => {
-                          void window.condash.openConceptionDirectory().catch((err) => {
-                            flashToast(`Open failed: ${(err as Error).message}`, 'error');
-                          });
-                        }}
-                        expanded={resourcesExpanded}
-                        onToggleExpand={(rel) => toggleTreeExpand('resources', rel)}
-                        mutations={treeMutations}
-                        prompts={treePrompts}
-                        onAfterMutation={(newPath, kind, source) =>
-                          handleAfterTreeMutation('resources', newPath, kind, source)
-                        }
-                        onError={treeError}
-                      />
-                    </Suspense>
+                    <ResourcesView
+                      root={resources() ?? null}
+                      actions={resourcesActions}
+                      onOpenSettings={() => setSettingsOpen(true)}
+                      onOpenConceptionDir={() => {
+                        void window.condash.openConceptionDirectory().catch((err) => {
+                          flashToast(`Open failed: ${(err as Error).message}`, 'error');
+                        });
+                      }}
+                      expanded={resourcesExpanded}
+                      onToggleExpand={(rel) => toggleTreeExpand('resources', rel)}
+                      mutations={treeMutations}
+                      prompts={treePrompts}
+                      onAfterMutation={(newPath, kind, source) =>
+                        handleAfterTreeMutation('resources', newPath, kind, source)
+                      }
+                      onError={treeError}
+                    />
                   </section>
                 </Show>
 
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
-                    <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <SkillsView
-                        root={skills() ?? null}
-                        onOpen={handleOpenSkillFile}
-                        onOpenSettings={() => setSettingsOpen(true)}
-                        onCopyInstallCommand={() => {
-                          void navigator.clipboard
-                            .writeText('condash-cli skills install')
-                            .then(() => flashToast('Copied install command', 'success'))
-                            .catch((err) =>
-                              flashToast(`Copy failed: ${(err as Error).message}`, 'error'),
-                            );
-                        }}
-                        expanded={skillsExpanded}
-                        onToggleExpand={(rel) => toggleTreeExpand('skills', rel)}
-                        mutations={treeMutations}
-                        prompts={treePrompts}
-                        onAfterMutation={(newPath, kind, source) =>
-                          handleAfterTreeMutation('skills', newPath, kind, source)
-                        }
-                        onError={treeError}
-                      />
-                    </Suspense>
+                    <SkillsView
+                      root={skills() ?? null}
+                      onOpen={handleOpenSkillFile}
+                      onOpenSettings={() => setSettingsOpen(true)}
+                      onCopyInstallCommand={() => {
+                        void navigator.clipboard
+                          .writeText('condash-cli skills install')
+                          .then(() => flashToast('Copied install command', 'success'))
+                          .catch((err) =>
+                            flashToast(`Copy failed: ${(err as Error).message}`, 'error'),
+                          );
+                      }}
+                      expanded={skillsExpanded}
+                      onToggleExpand={(rel) => toggleTreeExpand('skills', rel)}
+                      mutations={treeMutations}
+                      prompts={treePrompts}
+                      onAfterMutation={(newPath, kind, source) =>
+                        handleAfterTreeMutation('skills', newPath, kind, source)
+                      }
+                      onError={treeError}
+                    />
                   </section>
                 </Show>
 
                 <Show when={layout().working === 'code'}>
                   <section class="pane pane-working">
-                    <Suspense fallback={<div class="empty">Loading…</div>}>
-                      <Show
-                        when={repos.length > 0}
-                        fallback={
-                          <Show when={reposLoaded()} fallback={<div class="empty">Loading…</div>}>
-                            <div class="empty">
-                              <p>No repositories configured.</p>
-                              <p>
-                                Add entries to <code>repositories</code> in{' '}
-                                <code>condash.json</code>.
-                              </p>
-                              <button
-                                type="button"
-                                class="empty-cta"
-                                onClick={() => setSettingsOpen(true)}
-                              >
-                                + Add repository
-                              </button>
-                            </div>
-                          </Show>
-                        }
-                      >
-                        <CodeView
-                          repos={repos}
-                          slots={openWithSlots() ?? {}}
-                          liveRepos={liveRepos()}
-                          liveSessionCwds={liveSessionCwds()}
-                          codeRunSessions={codeRunSessions()}
-                          xtermPrefs={terminalPrefs()?.xterm}
-                          onOpen={handleOpenInEditor}
-                          onLaunch={(slot, path) => void handleLaunch(slot, path)}
-                          onForceStop={(r) => void handleForceStop(r)}
-                          onStop={handleStopRepo}
-                          onRun={(r, wt) => void handleRunRepo(r, wt)}
-                          onOpenInTerm={(r, wt) => void bridge.handleOpenInTerm(r, wt)}
-                          onCloseSession={(id) => void window.condash.termClose(id)}
-                        />
-                      </Show>
-                    </Suspense>
+                    <Show
+                      when={repos.length > 0}
+                      fallback={
+                        <Show when={reposLoaded()} fallback={<div class="empty">Loading…</div>}>
+                          <div class="empty">
+                            <p>No repositories configured.</p>
+                            <p>
+                              Add entries to <code>repositories</code> in <code>condash.json</code>.
+                            </p>
+                            <button
+                              type="button"
+                              class="empty-cta"
+                              onClick={() => setSettingsOpen(true)}
+                            >
+                              + Add repository
+                            </button>
+                          </div>
+                        </Show>
+                      }
+                    >
+                      <CodeView
+                        repos={repos}
+                        slots={openWithSlots() ?? {}}
+                        liveRepos={liveRepos()}
+                        liveSessionCwds={liveSessionCwds()}
+                        codeRunSessions={codeRunSessions()}
+                        xtermPrefs={terminalPrefs()?.xterm}
+                        onOpen={handleOpenInEditor}
+                        onLaunch={(slot, path) => void handleLaunch(slot, path)}
+                        onForceStop={(r) => void handleForceStop(r)}
+                        onStop={handleStopRepo}
+                        onRun={(r, wt) => void handleRunRepo(r, wt)}
+                        onOpenInTerm={(r, wt) => void bridge.handleOpenInTerm(r, wt)}
+                        onCloseSession={(id) => void window.condash.termClose(id)}
+                      />
+                    </Show>
                   </section>
                 </Show>
               </div>
@@ -1262,9 +1275,9 @@ function App() {
             setNewProjectOpen(false);
             // Refresh the project list and prime the popup. The popup
             // resolves the Project object via `previewProject()`, which
-            // re-reads `projects()`, so the popup mounts as soon as the
-            // resource refetch settles.
-            setRefreshKey((k) => k + 1);
+            // re-reads `projects()`, so the popup mounts as soon as
+            // reload settles.
+            void reloadProjects();
             setPreviewPath(result.readme);
             flashToast(`Created ${result.relPath}`, 'success');
           }}
