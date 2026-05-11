@@ -76,9 +76,21 @@
 }
 
 .code-runs-list {
-  display: flex;
-  flex-direction: column;
+  /* Mirror `.repos-grid` above so a running-indicator card respects the
+   * same `cardMinWidth.code` setting as the repo cards it sits below —
+   * without this the cards stretch to the full dock width even when the
+   * pane is wide enough to fit two side by side. `auto-fill` (not
+   * `auto-fit`) keeps the empty track so a single card stays capped at
+   * the configured min-width instead of expanding to fill the pane. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-code, 650px), 100%), 1fr));
   gap: 8px;
+}
+
+/* When a card is expanded the embedded xterm needs the full dock width
+ * to be useful, so it spans every grid column. */
+.code-run-row.expanded {
+  grid-column: 1 / -1;
 }
 
 /* Active-run cards are deliberately styled differently from repo cards:
