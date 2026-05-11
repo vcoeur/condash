@@ -1,7 +1,7 @@
 import { test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { bootApp, type BootedApp } from './fixtures/electron-app';
 
 /**
@@ -18,8 +18,15 @@ import { bootApp, type BootedApp } from './fixtures/electron-app';
  * the current build does, so we know what to fix.
  */
 
+/**
+ * Findings output file. Defaults to `test-results/settings-modal-audit-findings.json`
+ * under the repo root — CI-safe. A driving project (e.g. the conception note)
+ * can override to its own `local/` path via the `CONDASH_AUDIT_FINDINGS_OUT`
+ * env var.
+ */
 const FINDINGS_OUT =
-  '/home/alice/src/vcoeur/conception/projects/2026-05/2026-05-11-condash-settings-modal-all-fields/local/audit-findings.json';
+  process.env.CONDASH_AUDIT_FINDINGS_OUT ??
+  resolve(__dirname, '..', 'test-results', 'settings-modal-audit-findings.json');
 
 interface Finding {
   scope: 'global' | 'conception';
