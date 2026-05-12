@@ -12,7 +12,6 @@ import type {
   ResourceNode,
   SkillNode,
   Step,
-  TermSession,
   TerminalPrefs,
   Theme,
   TreeRoot,
@@ -51,6 +50,7 @@ import { applyTreeEvents } from './tree-events';
 import { createTreeExpansion } from './tree-expansion';
 import { createBranchFilterStore } from './branch-filter-store';
 import { createReposStore } from './repos-store';
+import { createSessionsStore } from './sessions-store';
 import { createProjectsStore } from './projects-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
@@ -262,40 +262,10 @@ function App() {
   });
   onCleanup(unsubscribe);
 
-  // Track every live-or-exited session — Code pane uses code-side ones for
-  // its inline runner rows, and the LIVE badge on repo cards is derived
-  // from the same snapshot.
-  const [allSessions, setAllSessions] = createSignal<readonly TermSession[]>([]);
-  const liveRepos = createMemo<ReadonlySet<string>>(() => {
-    const live = new Set<string>();
-    for (const s of allSessions()) {
-      if (s.repo && s.exited === undefined) live.add(s.repo);
-    }
-    return live;
-  });
-  // Track the branch each live repo session is running on so the Code-pane
-  // card face can label it ("running on main") without expanding the card.
-  // We match the session's cwd against the repo's worktree paths to pick
-  // the right branch.
-  const liveSessionCwds = createMemo<ReadonlyMap<string, string>>(() => {
-    const out = new Map<string, string>();
-    for (const s of allSessions()) {
-      if (!s.repo || s.exited !== undefined) continue;
-      if (s.cwd) out.set(s.repo, s.cwd);
-    }
-    return out;
-  });
-  const codeRunSessions = createMemo<readonly TermSession[]>(() =>
-    allSessions().filter((s) => s.side === 'code'),
-  );
-  const offTermSessions = window.condash.onTermSessions((sessions) => {
-    setAllSessions(sessions);
-  });
-  // Seed once on mount — onTermSessions only fires on changes, so without
-  // this initial pull, sessions inherited from a prior renderer would not
-  // surface until the next spawn/exit.
-  void window.condash.termList().then(setAllSessions);
-  onCleanup(offTermSessions);
+  // Track every live-or-exited session — used by both the Code pane's
+  // inline runner rows and the LIVE badge / "running on <branch>" label
+  // on repo cards. See `./sessions-store.ts` for the contract.
+  const { allSessions, liveRepos, liveSessionCwds, codeRunSessions } = createSessionsStore();
 
   // UI-only theme update for the Settings modal callback. The modal persists
   // via `patchSettings` (settings.json) / `patchConfig` (condash.json), so

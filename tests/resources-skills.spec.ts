@@ -74,12 +74,6 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
     const skillsRoot = join(conceptionDir, '.claude', 'skills');
     await mkdir(join(skillsRoot, 'projects'), { recursive: true });
     const skillBody = '# Projects skill\n\nLead paragraph.\n';
-    await writeFile(join(skillsRoot, 'projects', 'SKILL.md'), skillBody, 'utf8');
-    await writeFile(
-      join(skillsRoot, 'projects', 'create.md'),
-      '# Create\n\nCreate body.\n',
-      'utf8',
-    );
 
     // Pre-compute the SHA so SKILL.md is "clean shipped" and create.md is
     // "diverged shipped" — then we can assert both badge variants in one go.
@@ -91,6 +85,11 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
         .join('');
     }, skillBody);
 
+    // Manifest first, then the `.md` files. The watcher classifies only
+    // `.md` paths (and unlinks) under the skills root as `skills` events,
+    // so the manifest write itself never triggers a refetch. Writing it
+    // first means the skills-tree reload driven by the SKILL.md / create.md
+    // `add` events finds the manifest already on disk.
     await writeFile(
       join(skillsRoot, '.condash-skills.json'),
       JSON.stringify({
@@ -104,6 +103,12 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
           },
         },
       }),
+      'utf8',
+    );
+    await writeFile(join(skillsRoot, 'projects', 'SKILL.md'), skillBody, 'utf8');
+    await writeFile(
+      join(skillsRoot, 'projects', 'create.md'),
+      '# Create\n\nCreate body.\n',
       'utf8',
     );
 
