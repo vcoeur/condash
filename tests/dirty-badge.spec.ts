@@ -31,7 +31,10 @@ test('getDirtyDetails returns parsed file list + numstat for a dirty worktree', 
     await writeFile(join(repoDir, 'README.md'), '# initial\nplus a new line\n', 'utf8');
     await writeFile(join(repoDir, 'note.txt'), 'fresh\n', 'utf8');
 
-    const booted = await bootApp();
+    // requirePathUnderWorkspace gates getDirtyDetails: the repoDir lives
+    // under tmpdir(), so declare that as workspace_path in the booted
+    // conception so the bounds check accepts it.
+    const booted = await bootApp({ extraConfig: { workspace_path: tmpdir() } });
     try {
       const details = await booted.window.evaluate(
         (path) => window.condash.getDirtyDetails(path),
@@ -77,7 +80,10 @@ test('getDirtyDetails returns an empty list for a clean worktree', async () => {
   try {
     await seedRepo(repoDir);
 
-    const booted = await bootApp();
+    // requirePathUnderWorkspace gates getDirtyDetails: the repoDir lives
+    // under tmpdir(), so declare that as workspace_path in the booted
+    // conception so the bounds check accepts it.
+    const booted = await bootApp({ extraConfig: { workspace_path: tmpdir() } });
     try {
       const details = await booted.window.evaluate(
         (path) => window.condash.getDirtyDetails(path),
