@@ -222,7 +222,7 @@ export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
  *  but chokidar never reattaches, so the renderer never sees the new
  *  worktree. The `unlinkDir` handler below detects that case and calls
  *  `rewireStructuralWatcher` to swap in a fresh chokidar instance. */
-function buildStructuralWatcher(repoPath: string): FSWatcher | undefined {
+function buildStructuralWatcher(repoPath: string): FSWatcher {
   const headPath = join(repoPath, '.git/HEAD');
   const adminPath = join(repoPath, '.git/worktrees');
   try {
