@@ -6,7 +6,7 @@ test('Run on a configured repo spawns the run: command and emits its output', as
     extraConfig: {
       workspace_path: '/tmp',
       // `echo` exits immediately; once the renderer's TerminalPane sees
-      // term.exit it auto-closes the tab via termClose, and termAttach
+      // termExit it auto-closes the tab via termClose, and termAttach
       // then returns null because the session is gone. Trail with
       // `sleep 5` so the pty is alive while the test polls for output.
       repositories: [{ name: '.', run: 'echo hi-from-runner; sleep 5' }],

@@ -18,7 +18,7 @@ const TITLE: Record<HelpDoc, string> = {
 
 /**
  * Read-only modal for the bundled docs/. Pulls the markdown from main via
- * helpReadDoc, renders it through the same pipeline as the note modal
+ * readHelpDoc, renders it through the same pipeline as the note modal
  * (markdown-it + mermaid + highlight.js), and shows it in a centred dialog.
  *
  * Distinct from NoteModal because help docs are non-editable, never
@@ -34,7 +34,7 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
     () => props.doc,
     async (doc) => {
       try {
-        return await window.condash.helpReadDoc(doc);
+        return await window.condash.readHelpDoc(doc);
       } catch (err) {
         return `# Error\n\nCould not load \`${doc}.md\`: ${(err as Error).message}`;
       }

@@ -26,7 +26,7 @@ interface Session {
   /** Captured at spawn time so Stop doesn't need conceptionPath at kill time. */
   forceStop?: string;
   /** Rolling tail of stdout/stderr — replayed when a freshly-loaded renderer
-   * re-attaches via term.attach. Capped at MAX_BUFFER bytes. */
+   * re-attaches via termAttach. Capped at MAX_BUFFER bytes. */
   buffer: string;
   /** Process exit code; undefined while live. */
   exited?: number;
@@ -59,7 +59,7 @@ function broadcastSessions(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
     if (win.webContents.isDestroyed()) continue;
-    win.webContents.send('term.sessions', snap);
+    win.webContents.send('termSessions', snap);
   }
 }
 
@@ -74,7 +74,7 @@ export function attachTerminal(
   const s = sessions.get(id);
   if (!s) return null;
   // Reassign the live data sink to the calling renderer so that subsequent
-  // `term.data` events from the still-running pty land in the freshly-loaded
+  // `termData` events from the still-running pty land in the freshly-loaded
   // window. Without this, after a renderer reload the session row is visible
   // but no live output arrives — `webContents.send` keeps targeting the
   // destroyed original WebContents and silently bails.
@@ -189,7 +189,7 @@ export async function spawnTerminal(
 
   // One run per repo: kill any prior code-side session for the same repo
   // before we spawn. Awaited so renderer reactions stay clean
-  // (term.sessions snapshot drops the old entry first, then we add the new
+  // (termSessions snapshot drops the old entry first, then we add the new
   // one), and so the dev port is freed before the new run binds.
   if (request.side === 'code' && request.repo) {
     const stale = [...sessions.values()].filter(
@@ -236,13 +236,13 @@ export async function spawnTerminal(
   ptyProcess.onData((data) => {
     appendBuffer(session, data);
     if (webContents.isDestroyed()) return;
-    webContents.send('term.data', { id, data });
+    webContents.send('termData', { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {
     session.exited = exitCode;
     session.pty = null;
     if (!webContents.isDestroyed()) {
-      webContents.send('term.exit', { id, code: exitCode });
+      webContents.send('termExit', { id, code: exitCode });
     }
     // Keep the entry around (with `exited` set) so renderers that reload
     // can still see it via termList — closeSession removes it on demand.

@@ -45,21 +45,21 @@ const api: CondashApi = {
   getSelectedBranches: () => ipcRenderer.invoke('getSelectedBranches'),
   setSelectedBranches: (list) => ipcRenderer.invoke('setSelectedBranches', list),
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
-  getGlobalSettingsRaw: () => ipcRenderer.invoke('settings.readRaw'),
+  getGlobalSettingsRaw: () => ipcRenderer.invoke('getGlobalSettingsRaw'),
   writeGlobalSettings: (expectedContent, newContent) =>
-    ipcRenderer.invoke('settings.writeRaw', expectedContent, newContent),
+    ipcRenderer.invoke('writeGlobalSettings', expectedContent, newContent),
   toggleStep: (path, lineIndex, expectedMarker, newMarker) =>
-    ipcRenderer.invoke('step.toggle', path, lineIndex, expectedMarker, newMarker),
+    ipcRenderer.invoke('toggleStep', path, lineIndex, expectedMarker, newMarker),
   editStepText: (path, lineIndex, expectedText, newText) =>
-    ipcRenderer.invoke('step.editText', path, lineIndex, expectedText, newText),
-  addStep: (path, text) => ipcRenderer.invoke('step.add', path, text),
+    ipcRenderer.invoke('editStepText', path, lineIndex, expectedText, newText),
+  addStep: (path, text) => ipcRenderer.invoke('addStep', path, text),
   listProjectFiles: (path) => ipcRenderer.invoke('listProjectFiles', path),
   setStatus: (path, newStatus, opts) => ipcRenderer.invoke('setStatus', path, newStatus, opts),
   createProject: (input) => ipcRenderer.invoke('createProject', input),
-  readNote: (path) => ipcRenderer.invoke('note.read', path),
+  readNote: (path) => ipcRenderer.invoke('readNote', path),
   writeNote: (path, expectedContent, newContent) =>
-    ipcRenderer.invoke('note.write', path, expectedContent, newContent),
-  helpReadDoc: (name) => ipcRenderer.invoke('help.readDoc', name),
+    ipcRenderer.invoke('writeNote', path, expectedContent, newContent),
+  readHelpDoc: (name) => ipcRenderer.invoke('readHelpDoc', name),
   onTreeEvents: (callback) => {
     const handler = (_: unknown, events: TreeEvent[]): void => callback(events);
     ipcRenderer.on('tree-events', handler);
@@ -74,43 +74,43 @@ const api: CondashApi = {
       ipcRenderer.removeListener('repo-events', handler);
     };
   },
-  termSpawn: (request) => ipcRenderer.invoke('term.spawn', request),
-  termWrite: (id, data) => ipcRenderer.invoke('term.write', id, data),
-  termResize: (id, cols, rows) => ipcRenderer.invoke('term.resize', id, cols, rows),
-  termClose: (id) => ipcRenderer.invoke('term.close', id),
-  termGetPrefs: () => ipcRenderer.invoke('term.getPrefs'),
-  termSetPrefs: (prefs) => ipcRenderer.invoke('term.setPrefs', prefs),
-  termLatestScreenshot: (dir) => ipcRenderer.invoke('term.latestScreenshot', dir),
-  termList: () => ipcRenderer.invoke('term.list'),
-  termAttach: (id) => ipcRenderer.invoke('term.attach', id),
-  termSetSide: (id, side) => ipcRenderer.invoke('term.setSide', id, side),
+  termSpawn: (request) => ipcRenderer.invoke('termSpawn', request),
+  termWrite: (id, data) => ipcRenderer.invoke('termWrite', id, data),
+  termResize: (id, cols, rows) => ipcRenderer.invoke('termResize', id, cols, rows),
+  termClose: (id) => ipcRenderer.invoke('termClose', id),
+  termGetPrefs: () => ipcRenderer.invoke('termGetPrefs'),
+  termSetPrefs: (prefs) => ipcRenderer.invoke('termSetPrefs', prefs),
+  termLatestScreenshot: (dir) => ipcRenderer.invoke('termLatestScreenshot', dir),
+  termList: () => ipcRenderer.invoke('termList'),
+  termAttach: (id) => ipcRenderer.invoke('termAttach', id),
+  termSetSide: (id, side) => ipcRenderer.invoke('termSetSide', id, side),
   onTermData: (callback) => {
     const handler = (_: unknown, msg: TermDataMessage): void => callback(msg);
-    ipcRenderer.on('term.data', handler);
-    return () => ipcRenderer.removeListener('term.data', handler);
+    ipcRenderer.on('termData', handler);
+    return () => ipcRenderer.removeListener('termData', handler);
   },
   onTermExit: (callback) => {
     const handler = (_: unknown, msg: TermExitMessage): void => callback(msg);
-    ipcRenderer.on('term.exit', handler);
-    return () => ipcRenderer.removeListener('term.exit', handler);
+    ipcRenderer.on('termExit', handler);
+    return () => ipcRenderer.removeListener('termExit', handler);
   },
   onTermSessions: (callback) => {
     const handler = (_: unknown, sessions: TermSession[]): void => callback(sessions);
-    ipcRenderer.on('term.sessions', handler);
-    return () => ipcRenderer.removeListener('term.sessions', handler);
+    ipcRenderer.on('termSessions', handler);
+    return () => ipcRenderer.removeListener('termSessions', handler);
   },
   openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
   openExternal: (target: string) => ipcRenderer.invoke('openExternal', target),
   openPath: (target: string) => ipcRenderer.invoke('openPath', target),
   createProjectNote: (projectPath: string, slug: string) =>
-    ipcRenderer.invoke('project.createNote', projectPath, slug),
+    ipcRenderer.invoke('createProjectNote', projectPath, slug),
   treeCreateMd: (root, dirRelPath, filename) =>
-    ipcRenderer.invoke('tree.createMd', root, dirRelPath, filename),
-  treeMkdir: (root, dirRelPath, name) => ipcRenderer.invoke('tree.mkdir', root, dirRelPath, name),
-  treeImportFile: (root, dirRelPath) => ipcRenderer.invoke('tree.importFile', root, dirRelPath),
+    ipcRenderer.invoke('treeCreateMd', root, dirRelPath, filename),
+  treeMkdir: (root, dirRelPath, name) => ipcRenderer.invoke('treeMkdir', root, dirRelPath, name),
+  treeImportFile: (root, dirRelPath) => ipcRenderer.invoke('treeImportFile', root, dirRelPath),
   quitApp: () => ipcRenderer.invoke('quitApp'),
   getAppInfo: () => ipcRenderer.invoke('getAppInfo'),
-  pdfToFileUrl: (path: string) => ipcRenderer.invoke('pdf.toFileUrl', path),
+  pdfToFileUrl: (path: string) => ipcRenderer.invoke('pdfToFileUrl', path),
   onMenuCommand: (callback) => {
     const handler = (_: unknown, command: MenuCommand): void => callback(command);
     ipcRenderer.on('menu-command', handler);

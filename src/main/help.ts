@@ -5,7 +5,7 @@ import type { HelpDocName } from '../shared/types';
 
 /**
  * `PATHS` is the only path-traversal defence — the renderer can pass any
- * string for `helpReadDoc(name)`, but only entries in this allowlist resolve
+ * string for `readHelpDoc(name)`, but only entries in this allowlist resolve
  * to a file. Help docs live under `docs/help/` and are intentionally short
  * and self-contained (no relative wikilinks). The `HelpDocName` union lives
  * in `shared/types.ts` so the IPC contract stays in lock-step with this map.

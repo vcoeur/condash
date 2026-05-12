@@ -7,7 +7,7 @@ export type Platform = 'linux' | 'darwin' | 'win32' | (string & {});
 export type ItemKind = 'project' | 'incident' | 'document' | 'unknown';
 
 /**
- * Names of the bundled help docs the renderer can request via `helpReadDoc`.
+ * Names of the bundled help docs the renderer can request via `readHelpDoc`.
  * Lifted to `shared/` so the IPC contract (`shared/api.ts`) and the main
  * loader's `PATHS` allowlist (`main/help.ts`) reference one canonical union —
  * additions/renames touch one file instead of two.

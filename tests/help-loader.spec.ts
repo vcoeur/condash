@@ -25,10 +25,10 @@ test.describe('Help loader', () => {
   ] as const;
 
   for (const key of KEYS) {
-    test(`help.readDoc('${key}') returns a non-empty body`, async () => {
+    test(`readHelpDoc('${key}') returns a non-empty body`, async () => {
       const booted = await bootApp();
       try {
-        const body = await booted.window.evaluate((k) => window.condash.helpReadDoc(k), key);
+        const body = await booted.window.evaluate((k) => window.condash.readHelpDoc(k), key);
         expect(typeof body).toBe('string');
         expect((body ?? '').length).toBeGreaterThan(20);
       } finally {
@@ -40,7 +40,7 @@ test.describe('Help loader', () => {
   test("cli body mentions 'condash-cli'", async () => {
     const booted = await bootApp();
     try {
-      const body = await booted.window.evaluate(() => window.condash.helpReadDoc('cli'));
+      const body = await booted.window.evaluate(() => window.condash.readHelpDoc('cli'));
       // Asserting on a string the live `docs/help/cli.md` body must contain
       // makes sure the help loader is reading the *current* file, not a
       // stale bundled copy.

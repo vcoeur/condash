@@ -805,7 +805,7 @@ function App() {
       // Surface to the console as well as the toast. Without this, a thrown
       // IPC rejection (missing `## Steps` section, file lock contention) is
       // hard to diagnose from a screenshot alone — the toast is transient.
-      console.error('[step.add]', project.path, err);
+      console.error('[addStep]', project.path, err);
       flashToast(`Add step failed: ${(err as Error).message}`, 'error');
     }
   };

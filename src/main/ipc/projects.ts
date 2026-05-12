@@ -97,7 +97,7 @@ export function registerProjectsIpc(): void {
   });
 
   ipcMain.handle(
-    'step.toggle',
+    'toggleStep',
     async (
       _,
       path: string,
@@ -111,14 +111,14 @@ export function registerProjectsIpc(): void {
   );
 
   ipcMain.handle(
-    'step.editText',
+    'editStepText',
     async (_, path: string, lineIndex: number, expectedText: string, newText: string) => {
       await assertUnderConception(path);
       return editStepText(path, lineIndex, expectedText, newText);
     },
   );
 
-  ipcMain.handle('step.add', async (_, path: string, text: string) => {
+  ipcMain.handle('addStep', async (_, path: string, text: string) => {
     await assertUnderConception(path);
     return addStep(path, text);
   });
@@ -203,13 +203,13 @@ export function registerProjectsIpc(): void {
     },
   );
 
-  ipcMain.handle('note.read', async (_, path: string) => {
+  ipcMain.handle('readNote', async (_, path: string) => {
     await assertUnderConception(path);
     return readNote(path);
   });
 
   ipcMain.handle(
-    'note.write',
+    'writeNote',
     async (_, path: string, expectedContent: string, newContent: string) => {
       await assertUnderConception(path);
       return writeNote(path, expectedContent, newContent);
@@ -222,17 +222,17 @@ export function registerProjectsIpc(): void {
   // uses for condash.json. Returns `''` when the file doesn't exist yet —
   // the modal treats that as "fresh defaults" and creates the file on first
   // save.
-  ipcMain.handle('settings.readRaw', async () => readNote(settingsPath()));
+  ipcMain.handle('getGlobalSettingsRaw', async () => readNote(settingsPath()));
 
   // Atomic CAS write to settings.json. Canonicalises through
   // `globalSettingsSchema` (handled by `writeNote`'s basename dispatch).
   // Returns the bytes actually written so the caller can keep its CAS
   // baseline aligned with disk after Zod re-orders keys.
-  ipcMain.handle('settings.writeRaw', async (_, expectedContent: string, newContent: string) =>
+  ipcMain.handle('writeGlobalSettings', async (_, expectedContent: string, newContent: string) =>
     writeNote(settingsPath(), expectedContent, newContent),
   );
 
-  ipcMain.handle('project.createNote', async (_, projectPath: string, slug: string) => {
+  ipcMain.handle('createProjectNote', async (_, projectPath: string, slug: string) => {
     await assertUnderConception(projectPath);
     return createProjectNote(projectPath, slug);
   });
