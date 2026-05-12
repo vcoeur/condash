@@ -586,7 +586,10 @@
 }
 
 /* Position-fixed because the bar lives inside the scrollable pane — a
- * relatively-positioned menu would clip against `overflow: auto`. */
+ * relatively-positioned menu would clip against `overflow: auto`.
+ * Anchored at the trigger's *left* edge via `createPositionedPopover`,
+ * so no `translateX(-100%)` (that pattern is for right-edge-aligned
+ * dropdowns like `RepoCardMenu`). */
 .branch-filter-menu {
   position: fixed;
   z-index: 50;
@@ -600,7 +603,6 @@
   border-radius: 8px;
   box-shadow: var(--shadow-lift);
   overflow: hidden;
-  transform: translateX(-100%);
 }
 
 .branch-filter-menu-head {

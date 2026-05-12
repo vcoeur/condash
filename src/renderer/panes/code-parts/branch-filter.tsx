@@ -1,5 +1,5 @@
 import { For, Show } from 'solid-js';
-import { createDropdownMenu } from '../../dropdown-menu';
+import { createPositionedPopover } from '../../popover';
 import { ChevronDownIcon } from '../../icons';
 
 /**
@@ -19,6 +19,11 @@ import { ChevronDownIcon } from '../../icons';
  * review}` with a non-null `**Branch**`) get a "project" badge so the
  * "what am I working on right now" choices stand out from ad-hoc local
  * branches.
+ *
+ * Uses `createPositionedPopover` (anchors at the trigger's *left* edge)
+ * rather than `createDropdownMenu` (anchors at the *right*) — the bar
+ * sits at the left of the pane, so a right-edge-aligned dropdown would
+ * extend off-screen.
  */
 export function BranchFilter(props: {
   available: readonly string[];
@@ -26,7 +31,14 @@ export function BranchFilter(props: {
   activeProjectBranches: ReadonlySet<string>;
   onToggle: (branch: string) => void;
 }) {
-  const menu = createDropdownMenu();
+  let triggerEl: HTMLElement | undefined;
+  let popoverEl: HTMLElement | undefined;
+
+  const popover = createPositionedPopover({
+    popoverRef: () => popoverEl,
+    triggerRefs: () => [triggerEl],
+    onClose: () => popover.setOpen(false),
+  });
 
   const triggerLabel = (): string => {
     const n = props.selected.size;
@@ -34,31 +46,49 @@ export function BranchFilter(props: {
     return `Branches (${n} selected)`;
   };
 
+  const toggleOpen = (e: MouseEvent): void => {
+    e.stopPropagation();
+    if (popover.open()) {
+      popover.setOpen(false);
+      return;
+    }
+    popover.reposition();
+    popover.setOpen(true);
+  };
+
   return (
     <Show when={props.available.length > 0}>
       <div class="branch-filter-bar">
         <button
-          ref={menu.setTrigger}
+          ref={(el) => {
+            triggerEl = el;
+            popover.setActiveTrigger(el);
+          }}
           type="button"
           class="branch-filter-trigger"
           classList={{ active: props.selected.size > 0 }}
           aria-haspopup="menu"
-          aria-expanded={menu.isOpen()}
+          aria-expanded={popover.open()}
           aria-label="Pin branches visible on every app card"
           title="Pin branches visible on every app card"
-          onClick={menu.toggle}
+          onClick={toggleOpen}
         >
           <span class="branch-filter-trigger-label">{triggerLabel()}</span>
           <ChevronDownIcon />
         </button>
-        <Show when={menu.isOpen() && menu.anchor()}>
+        <Show when={popover.open() && popover.anchor()}>
           <div
-            ref={menu.setMenu}
+            ref={(el) => {
+              popoverEl = el;
+              // Re-measure with the rendered height so the flip-above
+              // decision uses the real popover size, not zero.
+              if (el) requestAnimationFrame(() => popover.reposition());
+            }}
             class="branch-filter-menu portal"
             role="menu"
             style={{
-              top: `${menu.anchor()!.top}px`,
-              left: `${menu.anchor()!.left}px`,
+              top: `${popover.anchor()!.top}px`,
+              left: `${popover.anchor()!.left}px`,
             }}
           >
             <header class="branch-filter-menu-head">
