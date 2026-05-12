@@ -1,3 +1,4 @@
+import { Match, Switch } from 'solid-js';
 import type { StepCounts, StepMarker } from '@shared/types';
 
 /* StepIcon — single shape vocabulary for the four step states. Drawn as a
@@ -8,80 +9,85 @@ import type { StepCounts, StepMarker } from '@shared/types';
  *   ' ' (todo)    → outlined rounded square
  *   '~' (doing)   → outlined square + concentric inner filled square
  *   'x' (done)    → filled square with negative-space check mark
- *   '-' (dropped) → outlined square crossed out */
+ *   '-' (dropped) → outlined square crossed out
+ *
+ * Each branch is wrapped in <Match> so the rendered SVG swaps reactively
+ * when `props.marker` changes — a plain `if/return` body is evaluated once
+ * at mount, leaving the shape frozen on the marker value the component
+ * was first created with.
+ */
 export function StepIcon(props: { marker: StepMarker }) {
-  if (props.marker === '~') {
-    return (
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <rect x="2.5" y="2.5" width="11" height="11" rx="2.25" />
-        <rect
-          x="5.75"
-          y="5.75"
-          width="4.5"
-          height="4.5"
-          rx="0.75"
-          fill="currentColor"
-          stroke="none"
-        />
-      </svg>
-    );
-  }
-  if (props.marker === 'x') {
-    return (
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <rect
-          x="2.5"
-          y="2.5"
-          width="11"
-          height="11"
-          rx="2.25"
-          fill="currentColor"
-          stroke="currentColor"
-        />
-        <path d="M5.25 8.25l2 2L10.75 6.5" stroke="var(--bg-elevated)" stroke-width="1.8" />
-      </svg>
-    );
-  }
-  if (props.marker === '-') {
-    return (
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <rect x="2.5" y="2.5" width="11" height="11" rx="2.25" />
-        <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />
-      </svg>
-    );
-  }
   return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
+    <Switch
+      fallback={
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="2.5" y="2.5" width="11" height="11" rx="2.25" />
+        </svg>
+      }
     >
-      <rect x="2.5" y="2.5" width="11" height="11" rx="2.25" />
-    </svg>
+      <Match when={props.marker === '~'}>
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="2.5" y="2.5" width="11" height="11" rx="2.25" />
+          <rect
+            x="5.75"
+            y="5.75"
+            width="4.5"
+            height="4.5"
+            rx="0.75"
+            fill="currentColor"
+            stroke="none"
+          />
+        </svg>
+      </Match>
+      <Match when={props.marker === 'x'}>
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect
+            x="2.5"
+            y="2.5"
+            width="11"
+            height="11"
+            rx="2.25"
+            fill="currentColor"
+            stroke="currentColor"
+          />
+          <path d="M5.25 8.25l2 2L10.75 6.5" stroke="var(--bg-elevated)" stroke-width="1.8" />
+        </svg>
+      </Match>
+      <Match when={props.marker === '-'}>
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="2.5" y="2.5" width="11" height="11" rx="2.25" />
+          <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" />
+        </svg>
+      </Match>
+    </Switch>
   );
 }
 
