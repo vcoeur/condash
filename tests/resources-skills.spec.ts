@@ -113,10 +113,25 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
     await skillsHandle.click();
 
     await expect(window.locator('.skills-pane')).toBeVisible();
-    // SKILL.md surfaces as the [SKILL] section badge with the "shipped" tag.
-    const skillBadge = window.locator('.skills-section-index').first();
+    // Expand the `projects/` sub-directory so its SKILL.md surfaces. The
+    // skills-pane uppercases directory names for display (`PROJECTS`), so
+    // the locator is case-insensitive. Directories start collapsed when
+    // there is no persisted expansion state — a fresh per-test conception
+    // never has one.
+    const projectsHeader = window
+      .locator('.tree-dir-header')
+      .filter({ has: window.locator('.tree-dir-name', { hasText: /^projects$/i }) });
+    await expect(projectsHeader).toBeVisible();
+    if ((await projectsHeader.getAttribute('data-open')) !== 'true') {
+      await projectsHeader.click();
+    }
+    // SKILL.md surfaces as a tree-special-file button (the [SKILL] badge
+    // sits inside it). When the SHA matches the manifest, the button
+    // carries a `shipped` class but not `diverged`.
+    const skillBadge = window.locator('.skill-special-file').first();
     await expect(skillBadge).toBeVisible();
-    await expect(skillBadge).toHaveClass(/shipped/);
+    await expect(skillBadge).toHaveClass(/\bshipped\b/);
+    await expect(skillBadge).not.toHaveClass(/diverged/);
     // The body file's SHA mismatches → diverged chip on its card.
     const createCard = window.locator('.skills-card', { hasText: 'Create' });
     await expect(createCard).toBeVisible();
