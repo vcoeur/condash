@@ -2,7 +2,7 @@
  * Screenshot harness.
  *
  * Drives the packaged Electron build against the bundled `tests/fixtures/conception-demo`
- * and captures the 19 PNGs (× 2 themes = 38 files) that the public docs site can reference.
+ * and captures the 10 PNG slugs (× 2 themes = 20 files) that the public docs site references.
  *
  * Run as `npm run test -- --reporter=list screenshots.spec.ts`. Output lands in
  * `tests/screenshots-out/{light,dark}/<name>.png`. The matching pair is then
@@ -158,24 +158,15 @@ async function captureForTheme(theme: Theme): Promise<void> {
     await showPane(b, 'Projects');
     await shoot(page, theme, 'dashboard-overview');
 
-    // 2. projects-{current,next,backlog,done} — the Electron build stacks every
-    //    status group on one scroll, so capturing the same viewport four times
-    //    produced byte-identical PNGs (the v2.10.17 review flagged this).
-    //    Clip each shot to the matching section's bounding box so the four
-    //    PNGs actually carry distinct content. `current` maps to `now`;
-    //    `next` maps to `review` (the Tauri-era filter naming).
-    const STATUS_FOR_SLUG: Record<string, string> = {
-      'projects-current': 'now',
-      'projects-next': 'review',
-      'projects-backlog': 'backlog',
-      'projects-done': 'done',
-    };
-    for (const slug of Object.keys(STATUS_FOR_SLUG)) {
-      const status = STATUS_FOR_SLUG[slug];
+    // 2. projects-done — capture only the Done status group (the other
+    //    sub-pane shots — current / next / backlog — used to be in this loop
+    //    but were never referenced from docs and were pruned together with
+    //    their PNG files. Re-introduce them here if a docs page starts
+    //    citing them again).
+    {
+      const slug = 'projects-done';
       const section = page
-        .locator(
-          `.group-block[data-status="${status}"], .projects-section[data-status="${status}"]`,
-        )
+        .locator('.group-block[data-status="done"], .projects-section[data-status="done"]')
         .first();
       if (await section.count()) {
         await section.scrollIntoViewIfNeeded();
@@ -196,12 +187,10 @@ async function captureForTheme(theme: Theme): Promise<void> {
           } catch (err) {
             console.error(`[shoot-clip] ${theme}/${slug}: ${(err as Error).message}`);
           }
-          continue;
         }
+      } else {
+        console.warn(`[shoot] ${theme}/${slug}: "done" section not present in fixture, skipped`);
       }
-      // Section absent in the demo fixture (e.g. `review` has no items yet)
-      // — skip rather than fall back to a duplicate dashboard shot.
-      console.warn(`[shoot] ${theme}/${slug}: section "${status}" not present in fixture, skipped`);
     }
     // Reset scroll for the next shots.
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -214,74 +203,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
     // 4. knowledge-pane.
     await showPane(b, 'Knowledge');
     await shoot(page, theme, 'knowledge-pane');
-
-    // 5. history-pane — the Electron build has no History pane. The Tauri-era
-    //    PNG slot is no longer current — we now point the search-modal capture
-    //    at the same docs slot rather than keep a knowledge dupe in its place.
-    //    Drop the file from the output set; the docs page that references it
-    //    is rewritten alongside.
-    // (no shoot)
-
-    // 5b. search-modal — covers the Tauri-era item-fuzzy-search slot with a
-    //     dedicated capture instead of inferring it from the modal-with-query
-    //     shot below. Open via Ctrl+K menu IPC.
-    await sendMenu(b.app, 'search');
-    await settle(page);
-    await shoot(page, theme, 'search-modal');
-    await page.keyboard.press('Escape');
-    await settle(page);
-
-    // 5c. new-project-modal — open via the toolbar's "+ New project" button
-    //     in the Projects pane (no menu IPC for it). Type a placeholder
-    //     title so the slug preview is visible in the capture.
-    await showPane(b, 'Projects');
-    const newBtn = page.locator('.new-project-button').first();
-    if (await newBtn.count()) {
-      await newBtn.click();
-      await settle(page);
-      const titleField = page.locator('.new-project-input').first();
-      if (await titleField.count()) {
-        await titleField.fill('My new project');
-        await settle(page);
-      }
-      await shoot(page, theme, 'new-project-modal');
-      await page.keyboard.press('Escape');
-      await settle(page);
-    }
-
-    // 6. gear-modal* — open Settings via the File → Settings menu command.
-    //    The Electron build has a left-side rail (Appearance / Terminal /
-    //    Workspace / Repositories / Open with), not the legacy tab strip;
-    //    use the rail buttons directly so each capture lands on a distinct
-    //    section instead of three identical PNGs of the Appearance pane.
-    await sendMenu(b.app, 'open-settings');
-    await settle(page);
-    await shoot(page, theme, 'gear-modal');
-    const railClick = async (label: RegExp): Promise<void> => {
-      // Settings opens as a full-viewport modal — the backdrop intercepts
-      // pointer events, so a normal click on the rail item retries forever.
-      // `force: true` bypasses the actionability check (the rail item is
-      // visible and on top within the modal scope) and gets the click through.
-      const item = page.locator('.settings-rail-item', { hasText: label }).first();
-      if (await item.count()) {
-        await item.click({ force: true });
-        await settle(page);
-        await page.waitForTimeout(300);
-      }
-    };
-    await railClick(/^Terminal$/);
-    await shoot(page, theme, 'gear-modal-preferences');
-    await shoot(page, theme, 'settings-modal-terminal');
-    await railClick(/^Repositories$/);
-    await shoot(page, theme, 'gear-modal-repositories');
-    await shoot(page, theme, 'settings-modal-repositories');
-    await railClick(/^Appearance$/);
-    await shoot(page, theme, 'settings-modal-appearance');
-    await railClick(/^Open with$/);
-    await shoot(page, theme, 'settings-modal-open-with');
-    // Close the modal (Esc).
-    await page.keyboard.press('Escape');
-    await settle(page);
 
     // 7. terminal — toggle the terminal pane via the View → Show Terminal menu.
     await sendMenu(b.app, 'toggle-terminal');
@@ -330,26 +251,6 @@ async function captureForTheme(theme: Theme): Promise<void> {
     }
     await shoot(page, theme, 'status-unknown-badge');
 
-    // 11. wikilink-source — only one shot, captured in light mode only. Open
-    //     a knowledge note that contains a [[wikilink]] so the resolved link
-    //     renders in the note modal.
-    if (theme === 'light') {
-      await showPane(b, 'Knowledge');
-      // Card list is flat — click the helio card directly. The Knowledge
-      // tab used to be a tree (`.knowledge-dir` / `.knowledge-leaf`) and
-      // needed an expand step; cards make that obsolete.
-      const helio = page.locator('.knowledge-card', { hasText: /helio/i }).first();
-      if (await helio.count()) {
-        await helio.click();
-        await settle(page);
-        await page.waitForTimeout(400);
-      }
-      await shoot(page, theme, 'wikilink-source');
-      // Close the modal so subsequent captures don't pick up a stray overlay.
-      await page.keyboard.press('Escape');
-      await settle(page);
-    }
-
     // 12. resources-pane — Show via the View → Show Resources menu command
     //     (Ctrl+R since v2.10.21). The fixture's resources/ has 2 root files
     //     and one subdir (notes/) so the pane renders with both a ROOT
@@ -371,7 +272,7 @@ async function captureForTheme(theme: Theme): Promise<void> {
   }
 }
 
-test('capture all 19 screenshots in light + dark', async () => {
+test('capture all 20 screenshots in light + dark', async () => {
   test.setTimeout(240_000);
   await rm(outRoot, { recursive: true, force: true });
   await captureForTheme('light');
