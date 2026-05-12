@@ -29,9 +29,16 @@ describe('filterWorktrees', () => {
   const bar = wt('feature-bar');
   const detached = wt(null);
 
-  it('keeps only the primary row when nothing is selected', () => {
+  it('keeps every worktree when the selection is empty', () => {
     const out = filterWorktrees([primary, foo, bar], new Set());
-    expect(out).toEqual([primary]);
+    expect(out).toEqual([primary, foo, bar]);
+  });
+
+  it('includes detached worktrees in the empty-selection passthrough', () => {
+    // Empty selection = unfiltered. Detached non-primary rows survive
+    // here even though they would be dropped by an active filter.
+    const out = filterWorktrees([primary, foo, detached], new Set());
+    expect(out).toEqual([primary, foo, detached]);
   });
 
   it('keeps the primary plus any selected non-primary branches', () => {
@@ -39,9 +46,9 @@ describe('filterWorktrees', () => {
     expect(out).toEqual([primary, foo]);
   });
 
-  it('drops detached / no-branch worktrees that are not primary', () => {
-    // Detached has no name to pin — even when the selection is non-empty
-    // it stays hidden behind the filter. Acceptable: rare edge case.
+  it('drops detached / no-branch worktrees when the filter is active', () => {
+    // Detached has no name to pin — once the selection is non-empty it
+    // falls out of the visible set. Acceptable: rare edge case.
     const out = filterWorktrees([primary, foo, detached], new Set(['feature-foo']));
     expect(out).toEqual([primary, foo]);
   });
@@ -51,13 +58,13 @@ describe('filterWorktrees', () => {
     expect(out).toEqual([primary]);
   });
 
-  it('keeps a detached worktree when it is marked primary', () => {
-    // The synthetic-primary placeholder emitted by ensureWorktrees has
-    // `branch: null`; it must still survive the filter as the always-on
-    // baseline row.
+  it('keeps a synthetic-primary (null branch) under an active filter', () => {
+    // ensureWorktrees emits `{ branch: null, primary: true }` when the
+    // data layer couldn't list real worktrees. That row must survive
+    // even when the filter is active and the primary has no branch name.
     const detachedPrimary = wt(null, true);
-    const out = filterWorktrees([detachedPrimary, foo], new Set());
-    expect(out).toEqual([detachedPrimary]);
+    const out = filterWorktrees([detachedPrimary, foo], new Set(['feature-foo']));
+    expect(out).toEqual([detachedPrimary, foo]);
   });
 
   it('preserves the input order (does not re-sort)', () => {

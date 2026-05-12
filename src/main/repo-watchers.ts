@@ -194,45 +194,72 @@ export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
 
     let structural: FSWatcher | undefined;
     if (target.isPrimary) {
-      // `.git/HEAD` writes when the primary's checkout switches branch
-      // (or goes detached). `.git/worktrees/` directory contents change
-      // on `git worktree add` (admin dir created) and `git worktree
-      // remove` (admin dir unlinked). Either way, the primary's
-      // worktree list as seen by `git worktree list` has changed and
-      // the renderer needs a per-primary reload.
-      //
-      // `.git/worktrees/` only exists once the user has added at least
-      // one extra worktree. Pre-create it as an empty dir so chokidar
-      // can attach a watcher right away — git treats an empty admin
-      // dir as no worktrees, and re-creates it as needed on the first
-      // `git worktree add`. Without this, the cold-start case (fresh
-      // primary, no worktrees yet) would miss the structural event for
-      // the first add until F5 forces a reload.
-      const headPath = join(target.path, '.git/HEAD');
-      const adminPath = join(target.path, '.git/worktrees');
-      try {
-        mkdirSync(adminPath, { recursive: true });
-      } catch {
-        // best-effort — repo missing, .git is a file (this is itself a
-        // worktree, not a primary), or permissions. Fall back to
-        // skipping the admin watcher.
-      }
-      const structuralPaths: string[] = [headPath];
-      if (existsSync(adminPath)) structuralPaths.push(adminPath);
-      structural = chokidar.watch(structuralPaths, {
-        ignoreInitial: true,
-        persistent: true,
-        depth: 1,
-      });
-      const repoPath = target.path;
-      structural.on('all', () => scheduleStructural(repoPath));
-      structural.on('error', (err) => {
-        console.error(`[repo-watcher] structural ${target.path}:`, err);
-      });
+      structural = buildStructuralWatcher(target.path);
     }
 
     watchers.set(target.path, { ...target, worktree, gitMeta, structural });
   }
+}
+
+/** Build (or rebuild) the structural FSWatcher for a primary repo.
+ *
+ *  Watches:
+ *
+ *    - `.git/HEAD` — primary's branch switch (or detached).
+ *    - `.git/worktrees/` — `git worktree add` (subdir created) and
+ *      `git worktree remove` (subdir unlinked).
+ *
+ *  `.git/worktrees/` only exists once at least one extra worktree has
+ *  been added. We pre-create it as an empty directory so chokidar can
+ *  attach right away — git treats an empty admin dir as "no worktrees"
+ *  and re-uses it on the next add. Without the pre-create, the cold-start
+ *  case (fresh primary, no worktrees yet) would miss the structural event
+ *  for the first add until F5 forces a reload.
+ *
+ *  **Why rebuilds happen**: `git worktree remove` of the *last* worktree
+ *  unlinks `.git/worktrees/` itself, killing the inotify watch beneath
+ *  chokidar. Any subsequent `git worktree add` re-creates the directory
+ *  but chokidar never reattaches, so the renderer never sees the new
+ *  worktree. The `unlinkDir` handler below detects that case and calls
+ *  `rewireStructuralWatcher` to swap in a fresh chokidar instance. */
+function buildStructuralWatcher(repoPath: string): FSWatcher {
+  const headPath = join(repoPath, '.git/HEAD');
+  const adminPath = join(repoPath, '.git/worktrees');
+  try {
+    mkdirSync(adminPath, { recursive: true });
+  } catch {
+    // best-effort — repo missing, .git is a file (this is itself a
+    // worktree, not a primary), or permissions. Fall back to skipping
+    // the admin watcher.
+  }
+  const structuralPaths: string[] = [headPath];
+  if (existsSync(adminPath)) structuralPaths.push(adminPath);
+  const w = chokidar.watch(structuralPaths, {
+    ignoreInitial: true,
+    persistent: true,
+    depth: 1,
+  });
+  w.on('all', (event, eventPath) => {
+    if (event === 'unlinkDir' && eventPath === adminPath) {
+      // The watched admin dir was just deleted (last worktree removed).
+      // Re-arm before the renderer reload races us — otherwise the next
+      // `git worktree add` will fire to a dead watcher.
+      void rewireStructuralWatcher(repoPath);
+    }
+    scheduleStructural(repoPath);
+  });
+  w.on('error', (err) => {
+    console.error(`[repo-watcher] structural ${repoPath}:`, err);
+  });
+  return w;
+}
+
+async function rewireStructuralWatcher(repoPath: string): Promise<void> {
+  const entry = watchers.get(repoPath);
+  if (!entry || !entry.isPrimary) return;
+  const old = entry.structural;
+  entry.structural = buildStructuralWatcher(repoPath);
+  if (old) await old.close().catch(() => undefined);
 }
 
 /** Derive the watch list from a `listRepos` result. Each repo and its

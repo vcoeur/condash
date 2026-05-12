@@ -77,12 +77,13 @@ export function orderedWorktrees(repo: RepoEntry): Worktree[] {
 }
 
 /**
- * Apply the top-of-pane branch filter to a card's worktree list. The
- * primary worktree is always kept — it is the always-on baseline row the
- * issue specifies. Non-primary rows are kept only when their branch name
- * is in `selected`; a detached / no-branch non-primary row has no name
- * to pin and is dropped (rare; the user can still inspect that worktree
- * by checking it out elsewhere).
+ * Apply the top-of-pane branch filter to a card's worktree list.
+ *
+ *   - Empty selection → every worktree is kept (the unfiltered baseline).
+ *   - Non-empty selection → the primary plus any non-primary whose branch
+ *     name is in `selected`. The primary is the always-on baseline row;
+ *     a detached / no-branch non-primary row has no name to pin and is
+ *     dropped (rare; the user can still inspect that worktree elsewhere).
  *
  * Pure / order-preserving so the renderer can call it on a memo result
  * without re-sorting.
@@ -91,6 +92,7 @@ export function filterWorktrees(
   worktrees: readonly Worktree[],
   selected: ReadonlySet<string>,
 ): Worktree[] {
+  if (selected.size === 0) return worktrees.slice();
   return worktrees.filter((wt) => {
     if (wt.primary) return true;
     if (wt.branch == null) return false;

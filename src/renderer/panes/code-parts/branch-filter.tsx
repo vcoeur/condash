@@ -4,16 +4,17 @@ import { ChevronDownIcon } from '../../icons';
 
 /**
  * Top-of-Code-pane branch filter. The control opens a checkbox list of
- * every non-primary branch known across the visible cards; ticking a
- * branch reveals that row on every card that carries it. The primary
- * worktree row is always rendered — the filter is additive on top of it,
- * which is why there is no "Clear all" / "Select all" affordance.
+ * every non-primary branch known across the visible cards. With nothing
+ * pinned the cards show every worktree; ticking branches narrows the
+ * visible set to "primary + ticked branches" on every card that carries
+ * them. The primary row is always present either way, so there is no
+ * "Clear all" / "Select all" affordance.
  *
  * Empty `available` ⇒ the bar renders nothing (no non-primary worktrees
  * to filter). Visual states:
  *
- *   - `selected.size === 0` — trigger label is "Branches (none pinned)".
- *   - otherwise — "Branches (N selected)" with `selected.size`.
+ *   - `selected.size === 0` — trigger label is "Branches (all shown)".
+ *   - otherwise — "Branches (N pinned)" with `selected.size`.
  *
  * Branches that match an active conception project (`status ∈ {now,
  * review}` with a non-null `**Branch**`) get a "project" badge so the
@@ -42,8 +43,8 @@ export function BranchFilter(props: {
 
   const triggerLabel = (): string => {
     const n = props.selected.size;
-    if (n === 0) return 'Branches (none pinned)';
-    return `Branches (${n} selected)`;
+    if (n === 0) return 'Branches (all shown)';
+    return `Branches (${n} pinned)`;
   };
 
   const toggleOpen = (e: MouseEvent): void => {
@@ -94,7 +95,7 @@ export function BranchFilter(props: {
             <header class="branch-filter-menu-head">
               <span>Pin branches</span>
               <span class="branch-filter-menu-hint">
-                Main row always visible · selection is additive
+                Main row always visible · empty selection shows every branch
               </span>
             </header>
             <ul class="branch-filter-list">

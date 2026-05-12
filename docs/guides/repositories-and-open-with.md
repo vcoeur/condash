@@ -48,7 +48,7 @@ Each repo renders as a top-level row. Any sub-repos declared for that repo (see 
 
 The **primary worktree row** (the checkout under `workspace_path`) is always visible on every card and gets a subtly tinted background so it reads as the always-on reference row.
 
-Every **other** branch row — typically a per-feature worktree under `worktrees_path` — is hidden by default. To reveal one, click the **Branches** button at the top of the Code pane and tick the branches you want pinned. The selection is additive on top of the primary row: pinning `feature-foo` reveals that row on every card that carries it, and is a silent no-op on cards that don't. There is no "Clear all" affordance — clearing the selection means "show only primaries everywhere", which is the on-purpose first-load state.
+By default — with nothing pinned — every other branch row is shown too: the cards display the full worktree set as-is. Click the **Branches** button at the top of the Code pane and tick one or more entries to narrow the view: each card then renders just its primary row plus any rows whose branch is in your pinned set, and is a silent no-op on cards that don't carry those branches. Unticking the last entry returns to the "show all" baseline; there is no "Clear all" affordance because removing every tick already restores it.
 
 The selection persists per-machine in `settings.json` under `selectedBranches`, so a coffee break or a reboot doesn't clear it. Branches that match a conception project with status `now` or `review` carry a small "project" badge in the dropdown so the most likely picks stand out from ad-hoc local branches.
 
