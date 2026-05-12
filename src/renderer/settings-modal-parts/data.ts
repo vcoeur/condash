@@ -276,8 +276,8 @@ export function pruneEmpty(value: unknown): unknown {
 }
 
 /**
- * Build the JSON payload that the Settings modal hands to `note.write` (or
- * `settings.writeRaw`). Strips empty leaves with `pruneEmpty` for everything
+ * Build the JSON payload that the Settings modal hands to `writeNote` (or
+ * `writeGlobalSettings`). Strips empty leaves with `pruneEmpty` for everything
  * except the `repositories` array — `compactRepos` is the canonical
  * normaliser there. Routing repos through `pruneEmpty` would erase a freshly
  * added `{ name: '' }` row's only key, leaving an empty object that

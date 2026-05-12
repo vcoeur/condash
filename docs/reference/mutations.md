@@ -51,7 +51,7 @@ All paths live under an item's directory (`projects/YYYY-MM/YYYY-MM-DD-slug/...`
 | Create a note | `createProjectNote` | Click "+ Note" in the card | Creates `<projectPath>/notes/NN-<slug>.md` with the next zero-padded counter; returns the new path. |
 | List item files | `listProjectFiles` | Open the notes panel | Lists files under the item's `notes/` directory — no write |
 
-The `note.write` verb takes `(path, expectedContent, newContent)`. If `expectedContent` no longer matches what's on disk, the renderer surfaces a "reload before saving" toast and the write is refused. No merge — the user re-opens the note and redoes their edit.
+The `writeNote` verb takes `(path, expectedContent, newContent)`. If `expectedContent` no longer matches what's on disk, the renderer surfaces a "reload before saving" toast and the write is refused. No merge — the user re-opens the note and redoes their edit.
 
 ## Config edits
 

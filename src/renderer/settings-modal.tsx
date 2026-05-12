@@ -127,7 +127,7 @@ function RecentConceptionsSection(): JSX.Element {
  * Writes are funnelled through `patchConfig` (condash.json) and
  * `patchSettings` (settings.json), each of which parses the live file,
  * applies a mutator, drops empty leaves, and round-trips through the
- * `note.write` / `settings.writeRaw` IPC's atomic CAS so the schema-
+ * `writeNote` / `writeGlobalSettings` IPC's atomic CAS so the schema-
  * validation path stays consistent across the two files.
  *
  * Module shape: types, constants, helpers, and the recursive `RepoRow`
@@ -295,7 +295,7 @@ export function SettingsModal(props: {
       // Path swap: read from configurationPath() (which may be the
       // legacy configuration.json) and always write to writePath
       // (canonical condash.json). On the first write to a fresh
-      // condash.json the file doesn't yet exist, so note.write's drift
+      // condash.json the file doesn't yet exist, so writeNote's drift
       // check sees `''` on disk — pass `''` as the expected baseline
       // when writing to a new path.
       const readFrom = configurationPath();
@@ -321,7 +321,7 @@ export function SettingsModal(props: {
 
   /**
    * Apply `mutator` to the parsed settings.json, drop empty leaves, and
-   * persist via the new `settings.writeRaw` IPC's atomic CAS. Mirrors
+   * persist via the new `writeGlobalSettings` IPC's atomic CAS. Mirrors
    * `patchConfig` but writes to the per-machine file. Every Global-tab
    * editor goes through this; the long-standing `setTheme` / `setLayout`
    * / `termSetPrefs` IPC verbs continue to write here too for the rest of

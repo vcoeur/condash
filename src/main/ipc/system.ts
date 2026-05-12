@@ -55,9 +55,9 @@ export function registerSystemIpc(opts: {
     return toPosix(await resolveConceptionConfigPath(conceptionPath));
   });
 
-  ipcMain.handle('pdf.toFileUrl', async (_, path: string) => {
+  ipcMain.handle('pdfToFileUrl', async (_, path: string) => {
     if (typeof path !== 'string' || path.length === 0) {
-      throw new Error('pdf.toFileUrl: path must be a non-empty string');
+      throw new Error('pdfToFileUrl: path must be a non-empty string');
     }
     // Bound the file:// URL to the conception subtree — without this, a
     // compromised renderer can synthesise a webview src for any file on disk
@@ -69,19 +69,19 @@ export function registerSystemIpc(opts: {
     // compare against is captured atomically per call.
     const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) {
-      throw new Error('pdf.toFileUrl: no conception path is set');
+      throw new Error('pdfToFileUrl: no conception path is set');
     }
     let real: string;
     let conceptionReal: string;
     try {
       [real, conceptionReal] = await Promise.all([fs.realpath(path), fs.realpath(conceptionPath)]);
     } catch {
-      throw new Error('pdf.toFileUrl: path does not resolve');
+      throw new Error('pdfToFileUrl: path does not resolve');
     }
     const child = real.endsWith(sep) ? real : real + sep;
     const parent = conceptionReal.endsWith(sep) ? conceptionReal : conceptionReal + sep;
     if (!(child === parent || child.startsWith(parent))) {
-      throw new Error('pdf.toFileUrl: path is outside the conception tree');
+      throw new Error('pdfToFileUrl: path is outside the conception tree');
     }
     return {
       url: pathToFileURL(real).href,
@@ -210,5 +210,5 @@ export function registerSystemIpc(opts: {
     platform: process.platform,
   }));
 
-  ipcMain.handle('help.readDoc', (_, name: string) => readHelpDoc(name));
+  ipcMain.handle('readHelpDoc', (_, name: string) => readHelpDoc(name));
 }

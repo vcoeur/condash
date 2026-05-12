@@ -188,7 +188,7 @@ export interface CondashApi {
    * Read one of the bundled help docs (`docs/<name>.md`). The main process
    * whitelists the shipped names; anything else rejects.
    */
-  helpReadDoc(name: HelpDocName): Promise<string>;
+  readHelpDoc(name: HelpDocName): Promise<string>;
   /**
    * Subscribe to per-path tree events emitted by the main-process file watcher.
    * Each callback receives a debounced batch. Returns an unsubscribe function.

@@ -7,7 +7,7 @@ import { getEffectiveConceptionConfig } from './effective-config';
  * Throw unless `path` resolves to a location under `root`.
  *
  * Both paths are realpathed (in parallel, to narrow the TOCTOU window
- * to what the Node fs queue allows — same shape as pass-3's pdf.toFileUrl
+ * to what the Node fs queue allows — same shape as pass-3's pdfToFileUrl
  * fix). Symlinks are followed; the comparison is on canonical paths so
  * a symlink under conception pointing at /etc/passwd is rejected.
  *
@@ -18,7 +18,7 @@ import { getEffectiveConceptionConfig } from './effective-config';
  * Used by IPC handlers that accept arbitrary `path` from the renderer
  * — defence-in-depth: the renderer is trusted today, but a compromised
  * renderer can otherwise reach `/etc/passwd` via getProject, readNote,
- * step.add, etc. Pass-4..6 deferred; pass-7 lands.
+ * addStep, etc. Pass-4..6 deferred; pass-7 lands.
  */
 export async function requirePathUnder(path: string, root: string): Promise<string> {
   if (typeof path !== 'string' || path.length === 0) {

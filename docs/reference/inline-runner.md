@@ -73,13 +73,13 @@ The jump-arrow next to the repo name lets you scroll to wherever the session is 
 
 ## IPC verbs
 
-The runner is wired through the same IPC contract as the embedded terminal. The `term.spawn` verb takes a `request` carrying the repo's `run:` string + the checkout cwd; subsequent `term.write` / `term.resize` / `term.close` calls drive it. The `onTermData` / `onTermExit` / `onTermSessions` push channels stream output and lifecycle events into the renderer.
+The runner is wired through the same IPC contract as the embedded terminal. The `termSpawn` verb takes a `request` carrying the repo's `run:` string + the checkout cwd; subsequent `termWrite` / `termResize` / `termClose` calls drive it. The `onTermData` / `onTermExit` / `onTermSessions` push channels stream output and lifecycle events into the renderer.
 
 See [IPC API — PTY sessions](ipc-api.md#pty-sessions) for the full surface.
 
 ## Live updates
 
-Runner state changes don't go through a polling loop — the main process pushes `term.sessions` events when a session starts, exits, or moves between checkouts, and the renderer's Code pane listens. There is no fingerprint-driven refresh; the Solid signals targeted at the affected row update without disturbing the rest of the UI.
+Runner state changes don't go through a polling loop — the main process pushes `termSessions` events when a session starts, exits, or moves between checkouts, and the renderer's Code pane listens. There is no fingerprint-driven refresh; the Solid signals targeted at the affected row update without disturbing the rest of the UI.
 
 ## Lifetime
 

@@ -12,7 +12,7 @@ import { withConception } from './utils';
 /**
  * Wire the read/write IPC for the three conception-scoped trees
  * (knowledge, resources, skills) plus the cross-tree search verb.
- * Tree mutation handlers (`tree.createMd`, `tree.mkdir`, `tree.importFile`)
+ * Tree mutation handlers (`treeCreateMd`, `treeMkdir`, `treeImportFile`)
  * are conception-scoped through the shared tree-mutations layer.
  */
 export function registerTreesIpc(): void {
@@ -34,15 +34,15 @@ export function registerTreesIpc(): void {
     }, null),
   );
 
-  ipcMain.handle('tree.createMd', (_, root: TreeRoot, dirRelPath: string, filename: string) =>
+  ipcMain.handle('treeCreateMd', (_, root: TreeRoot, dirRelPath: string, filename: string) =>
     treeCreateMd(root, dirRelPath, filename),
   );
 
-  ipcMain.handle('tree.mkdir', (_, root: TreeRoot, dirRelPath: string, name: string) =>
+  ipcMain.handle('treeMkdir', (_, root: TreeRoot, dirRelPath: string, name: string) =>
     treeMkdir(root, dirRelPath, name),
   );
 
-  ipcMain.handle('tree.importFile', (_, root: TreeRoot, dirRelPath: string) =>
+  ipcMain.handle('treeImportFile', (_, root: TreeRoot, dirRelPath: string) =>
     treeImportFile(root, dirRelPath),
   );
 

@@ -250,7 +250,7 @@ function isPathUnder(child: string, parent: string): boolean {
  * The per-domain split:
  *   • projects — listProjects, getProject, step.*, listProjectFiles,
  *     setStatus, createProject, note.*, settings.read/writeRaw,
- *     project.createNote.
+ *     createProjectNote.
  *   • trees — read{Knowledge,Resources,Skills}Tree, tree.*, search.
  *   • repos — listRepos, listReposForPrimary, invalidateGitStatus,
  *     getDirtyDetails, listOpenWith, launchOpenWith, forceStopRepo.
@@ -281,7 +281,7 @@ app.whenReady().then(async () => {
   // One-shot: copy any pre-existing terminal block out of configuration.json
   // and into settings.json. Idempotent — does nothing once settings owns
   // the data. Runs before window creation so the renderer's first
-  // term.getPrefs always sees the post-migration state.
+  // termGetPrefs always sees the post-migration state.
   await migrateTerminalFromConfigIfNeeded();
   const settings = await readSettings();
   const conceptionPath = settings.lastConceptionPath;

@@ -49,7 +49,7 @@ interface MountOptions {
    * but expose this so future tweaks don't have to fork the helper. */
   fontSize?: number;
   /** Buffered tail to write before live data starts arriving. Comes from
-   * `term.attach` when re-attaching to an existing pty. */
+   * `termAttach` when re-attaching to an existing pty. */
   replay?: string;
   /** Theme override; defaults to reading CSS custom properties. */
   theme?: { background: string; foreground: string };

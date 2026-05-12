@@ -15,7 +15,7 @@ test('terminal pane opens and a My-terms shell tab spawns a session', async () =
     expect(typeof session.id).toBe('string');
     expect(session.id.length).toBeGreaterThan(0);
 
-    // Buffered tail (term.attach) over racing term.data — `printf` flushes
+    // Buffered tail (termAttach) over racing termData — `printf` flushes
     // synchronously but the CDP roundtrip can still beat the pty's first
     // write, so we poll briefly.
     let attached: { output: string; exited?: number } | null = null;
