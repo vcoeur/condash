@@ -1,8 +1,8 @@
-import { For, Show } from 'solid-js';
+import { createMemo, For, Show } from 'solid-js';
 import type { OpenWithSlotKey, OpenWithSlots, RepoEntry, Worktree } from '@shared/types';
 import { BranchActions } from './branch-actions';
 import { BranchInfoBadges } from './branch-badges';
-import { orderedWorktrees, type RepoStatus } from './data';
+import { filterWorktrees, orderedWorktrees, type RepoStatus } from './data';
 import { RepoCardMenu } from './repo-menu';
 
 export function RepoRow(props: {
@@ -13,6 +13,11 @@ export function RepoRow(props: {
   /** Branch name of the live session, when known — surfaced on the card face
    * so the user can see what's running at a glance. */
   liveBranch?: string | null;
+  /** Branch names pinned by the Code-pane top-of-pane filter. The primary
+   *  worktree row is always rendered regardless of this set; non-primary
+   *  rows render only when their branch name is in here. An empty set
+   *  collapses every card to its primary row alone. */
+  selectedBranches: ReadonlySet<string>;
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
@@ -45,6 +50,10 @@ export function RepoRow(props: {
     if (wt.dirty == null) return 'unknown';
     return wt.dirty === 0 ? 'clean' : 'dirty';
   };
+
+  const visibleWorktrees = createMemo(() =>
+    filterWorktrees(orderedWorktrees(props.repo), props.selectedBranches),
+  );
 
   const hasRun = (): boolean => !props.repo.missing && !!props.repo.hasRun;
 
@@ -89,9 +98,13 @@ export function RepoRow(props: {
         <RepoCardMenu repo={props.repo} onForceStop={props.onForceStop} />
       </header>
       <ul class="branches">
-        <For each={orderedWorktrees(props.repo)}>
+        <For each={visibleWorktrees()}>
           {(wt) => (
-            <li class="branch-row" data-status={branchStatus(wt)}>
+            <li
+              class="branch-row"
+              data-status={branchStatus(wt)}
+              data-primary={wt.primary ? 'true' : undefined}
+            >
               <span class="branch-dot" aria-hidden="true" />
               <span
                 class="branch-name"

@@ -189,6 +189,7 @@ const sharedSchemaFields = {
   welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),
   cardMinWidth: cardMinWidthSchema.optional(),
   treeExpansion: treeExpansionSchema.optional(),
+  selectedBranches: z.array(z.string()).optional(),
 } as const;
 
 /**

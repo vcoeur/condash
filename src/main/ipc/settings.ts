@@ -163,6 +163,34 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     }));
   });
 
+  ipcMain.handle('getSelectedBranches', async () => {
+    const { selectedBranches } = await readSettings();
+    if (!Array.isArray(selectedBranches)) return [] as string[];
+    // Coerce + dedupe defensively in case a hand-edit corrupted the file.
+    const seen = new Set<string>();
+    for (const entry of selectedBranches) {
+      if (typeof entry === 'string' && entry.length > 0) seen.add(entry);
+    }
+    return Array.from(seen);
+  });
+
+  ipcMain.handle('setSelectedBranches', async (_, raw: unknown) => {
+    if (!Array.isArray(raw)) {
+      throw new Error('setSelectedBranches: expected array of strings');
+    }
+    const seen = new Set<string>();
+    for (const entry of raw) {
+      if (typeof entry === 'string' && entry.length > 0) seen.add(entry);
+    }
+    const next = Array.from(seen);
+    await updateSettings((cur) => ({
+      ...cur,
+      // Drop the field entirely when empty so settings.json stays clean
+      // and the on-purpose "nothing pinned" state matches a fresh install.
+      selectedBranches: next.length > 0 ? next : undefined,
+    }));
+  });
+
   ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {
     const input = (raw ?? {}) as Record<string, unknown>;
     // Reject unknown keys outright — silently dropping them used to mask
