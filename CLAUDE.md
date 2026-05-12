@@ -2,8 +2,6 @@
 
 Electron build of condash. As of 2026-04-27 this **is** the canonical condash — it lives at `vcoeur/condash` after the swap that moved the Tauri lineage to `vcoeur/condash-tauri`. The Tauri build remains buildable at that repo for as long as bug fixes are warranted.
 
-Project tracking + per-feature specs live in `vcoeur/conception/projects/2026-04/2026-04-26-condash-electron-port/` (closed) and `vcoeur/conception/projects/2026-04/2026-04-26-condash-electron-parity/` (closed). Active work is under `vcoeur/conception/projects/2026-04/2026-04-27-condash-packaging/`.
-
 ## Stack
 
 - **Main**: Node, TypeScript, **bundled with esbuild** (`scripts/build-electron.mjs`) to a single CJS file at `dist-electron/main/index.js`. Imports are inlined; ESM-only deps (chokidar 4, future libs) bundle to CJS transparently. Native modules (electron, node-pty, fsevents) stay external — they have to load from `node_modules` so `electron-rebuild` can reach them.
@@ -22,13 +20,13 @@ Project tracking + per-feature specs live in `vcoeur/conception/projects/2026-04
 
 ## Locked decisions
 
-The 14 design choices the spec phase treats as fixed live in `conception/projects/2026-04/2026-04-26-condash-electron-port/notes/03-locked-decisions.md`. Re-open by editing that file with a dated reason — never silently in another note.
+The load-bearing design choices — UI framework (Solid + Solid signals), styling (plain CSS files + CSS variables), IPC contract shape (single typed `CondashApi` in `src/shared/api.ts`), window architecture (single `BrowserWindow`, in-renderer overlays), data shape (plain serialisable objects in `src/shared/types.ts`), file-watching protocol (single global chokidar rooted at `<conception>/`, 250 ms debounce), config format (JSON: per-machine `settings.json` + per-conception `condash.json`), and build tool (esbuild for main/preload, Vite for renderer) — are captured in this file and in [`docs/explanation/internals.md`](docs/explanation/internals.md). Treat them as locked: changing any of them is a PR with a dated rationale in the commit message, not a silent in-flight edit.
 
 ## Dev ports
 
 - **5600** — Vite dev server.
 - **5601** — Vite preview.
-- Both `strictPort: true`. Defined in `vite.config.ts`. Cross-app port table: `conception/knowledge/topics/ops/dev-ports.md`.
+- Both `strictPort: true`. Defined in `vite.config.ts`. The numbers are picked from a 56xx block to stay clear of common defaults (3000, 5173, 5432, 8000, 8080) and of sibling vcoeur apps that bind their own host ports during dev.
 
 When changing the dev port, update **every** file:
 
@@ -37,7 +35,6 @@ When changing the dev port, update **every** file:
 - `src/main/index.ts` — `DEV_URL`.
 - `src/renderer/index.html` — CSP `connect-src` (HMR websocket).
 - `package.json` — `dev:electron` `wait-on tcp:<port>`.
-- `conception/knowledge/topics/ops/dev-ports.md`.
 - This file.
 
 ## Commands
