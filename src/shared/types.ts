@@ -159,6 +159,11 @@ export interface Settings {
    * reader. Per-machine because the answer is "what was I last looking
    * at on this laptop", not a team convention. */
   treeExpansion?: TreeExpansionPrefs;
+  /** Branch names that the Code pane's top-of-pane filter pins as visible
+   * on every app card. The primary worktree row is always rendered; this
+   * set is additive on top of it. Per-machine because the answer is "what
+   * I'm actively working on right now on this laptop", not a team rule. */
+  selectedBranches?: string[];
 }
 
 /** Sets of expanded directory `relPath`s for the three tree panes. The

@@ -44,6 +44,14 @@ Names are bare directory names (not paths) matched against whatever was found un
 
 Each repo renders as a top-level row. Any sub-repos declared for that repo (see [Submodules in a monorepo](#submodules-in-a-monorepo) below) sit on the same row level, visually grouped with the parent by a blue left-border accent. Worktrees for a given repo or sub-repo nest directly under it.
 
+## Pinning branches across cards
+
+The **primary worktree row** (the checkout under `workspace_path`) is always visible on every card and gets a subtly tinted background so it reads as the always-on reference row.
+
+Every **other** branch row — typically a per-feature worktree under `worktrees_path` — is hidden by default. To reveal one, click the **Branches** button at the top of the Code pane and tick the branches you want pinned. The selection is additive on top of the primary row: pinning `feature-foo` reveals that row on every card that carries it, and is a silent no-op on cards that don't. There is no "Clear all" affordance — clearing the selection means "show only primaries everywhere", which is the on-purpose first-load state.
+
+The selection persists per-machine in `settings.json` under `selectedBranches`, so a coffee break or a reboot doesn't clear it. Branches that match a conception project with status `now` or `review` carry a small "project" badge in the dropdown so the most likely picks stand out from ad-hoc local branches.
+
 ## Submodules in a monorepo
 
 If you work in a monorepo where different subdirectories are edited independently, use the submodule form:

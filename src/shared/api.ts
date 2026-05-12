@@ -112,6 +112,13 @@ export interface CondashApi {
   /** Persist the per-pane expanded-directory sets. The patch is a full
    *  replacement; pass `{}` to clear back to the all-collapsed default. */
   setTreeExpansion(prefs: TreeExpansionPrefs): Promise<void>;
+  /** Branch names the Code-pane top-of-pane filter currently pins as
+   *  visible on every app card. Always returns a deduped array (possibly
+   *  empty); the renderer wraps it in a `Set` for membership tests. */
+  getSelectedBranches(): Promise<string[]>;
+  /** Persist the Code-pane pinned-branches set. Pass an empty array to
+   *  hide every non-primary row (the on-purpose default). */
+  setSelectedBranches(list: string[]): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;

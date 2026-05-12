@@ -519,6 +519,157 @@
   color: var(--col-dirty);
 }
 
+/* Primary-worktree row — the always-on baseline row that the top-of-pane
+ * branch filter cannot hide. Subtle tint + slightly heavier name weight
+ * mark it as the reference point each card keeps visible. Loud enough to
+ * read at a glance, quiet enough to leave dirty / running highlights as
+ * the most prominent signal on the row. */
+.branch-row[data-primary='true'] {
+  background: color-mix(in srgb, var(--text) 4%, var(--bg-elevated));
+  padding-left: 4px;
+  padding-right: 4px;
+  margin-left: -4px;
+  margin-right: -4px;
+}
+
+.branch-row[data-primary='true'] .branch-name {
+  font-weight: 700;
+}
+
+/* Top-of-pane branch filter bar — sits above the repo grid in
+ * `.repos-pane-scroll`. The trigger button mirrors the search-modal
+ * source-filter pill vocabulary (rounded, subtle border, tinted active
+ * state) and renders nothing when there are no non-primary branches to
+ * pin. */
+.branch-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.branch-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 120ms,
+    border-color 120ms;
+}
+
+.branch-filter-trigger:hover {
+  border-color: var(--border-strong);
+}
+
+.branch-filter-trigger.active {
+  border-color: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.branch-filter-trigger svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.branch-filter-trigger-label {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Position-fixed because the bar lives inside the scrollable pane — a
+ * relatively-positioned menu would clip against `overflow: auto`.
+ * Anchored at the trigger's *left* edge via `createPositionedPopover`,
+ * so no `translateX(-100%)` (that pattern is for right-edge-aligned
+ * dropdowns like `RepoCardMenu`). */
+.branch-filter-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 240px;
+  max-width: 320px;
+  max-height: min(60vh, 480px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+.branch-filter-menu-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.branch-filter-menu-hint {
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.branch-filter-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+}
+
+.branch-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.branch-filter-item:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.branch-filter-item input[type='checkbox'] {
+  accent-color: var(--col-running);
+  flex-shrink: 0;
+}
+
+.branch-filter-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-filter-item-badge {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--col-running) 18%, var(--bg-elevated));
+  color: var(--text);
+  flex-shrink: 0;
+}
+
 .branch-role {
   font-family: var(--font-ui);
   font-size: 10px;

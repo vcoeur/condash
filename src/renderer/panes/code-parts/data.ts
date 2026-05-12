@@ -75,3 +75,40 @@ export function orderedWorktrees(repo: RepoEntry): Worktree[] {
   });
   return list;
 }
+
+/**
+ * Apply the top-of-pane branch filter to a card's worktree list. The
+ * primary worktree is always kept — it is the always-on baseline row the
+ * issue specifies. Non-primary rows are kept only when their branch name
+ * is in `selected`; a detached / no-branch non-primary row has no name
+ * to pin and is dropped (rare; the user can still inspect that worktree
+ * by checking it out elsewhere).
+ *
+ * Pure / order-preserving so the renderer can call it on a memo result
+ * without re-sorting.
+ */
+export function filterWorktrees(
+  worktrees: readonly Worktree[],
+  selected: ReadonlySet<string>,
+): Worktree[] {
+  return worktrees.filter((wt) => {
+    if (wt.primary) return true;
+    if (wt.branch == null) return false;
+    return selected.has(wt.branch);
+  });
+}
+
+/** Collect the deduped, sorted set of non-primary branch names across all
+ *  visible repos. Used to populate the Code-pane top-of-pane filter
+ *  dropdown; detached / no-branch entries are skipped (no name to pin). */
+export function collectFilterableBranches(repos: readonly RepoEntry[]): string[] {
+  const seen = new Set<string>();
+  for (const repo of repos) {
+    for (const wt of repo.worktrees ?? []) {
+      if (wt.primary) continue;
+      if (wt.branch == null) continue;
+      seen.add(wt.branch);
+    }
+  }
+  return Array.from(seen).sort((a, b) => a.localeCompare(b));
+}

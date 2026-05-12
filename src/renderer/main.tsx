@@ -49,6 +49,7 @@ import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { applyTreeEvents } from './tree-events';
 import { createTreeExpansion } from './tree-expansion';
+import { createBranchFilterStore } from './branch-filter-store';
 import { createReposStore } from './repos-store';
 import { createProjectsStore } from './projects-store';
 import { createTreeStore } from './tree-store';
@@ -215,6 +216,8 @@ function App() {
   const { knowledgeExpanded, resourcesExpanded, skillsExpanded, toggleTreeExpand, expandTreeDir } =
     treeExpansion;
 
+  const branchFilter = createBranchFilterStore({ flashToast });
+
   const treeMutations: TreeViewMutationApi = {
     createMd: (root, dirRelPath, filename) =>
       window.condash.treeCreateMd(root, dirRelPath, filename),
@@ -315,6 +318,19 @@ function App() {
   // active conception until it changes.
   const projectsStore = createProjectsStore({ conceptionPath });
   const { projects, loaded: projectsLoaded, mutate, reload: reloadProjects } = projectsStore;
+
+  /** Branches referenced by an in-flight conception project — drives the
+   *  "project" badge in the Code-pane branch-filter dropdown so the
+   *  branches most likely worth pinning surface visibly above ad-hoc
+   *  local ones. `done`/`later`/`backlog` projects don't badge. */
+  const activeProjectBranches = createMemo<ReadonlySet<string>>(() => {
+    const out = new Set<string>();
+    for (const project of projects()) {
+      if (project.status !== 'now' && project.status !== 'review') continue;
+      if (project.branch) out.add(project.branch);
+    }
+    return out;
+  });
 
   const knowledgeStore = createTreeStore<KnowledgeNode>({
     conceptionPath,
@@ -1099,6 +1115,9 @@ function App() {
                         liveSessionCwds={liveSessionCwds()}
                         codeRunSessions={codeRunSessions()}
                         xtermPrefs={terminalPrefs()?.xterm}
+                        selectedBranches={branchFilter.selectedBranches()}
+                        activeProjectBranches={activeProjectBranches()}
+                        onToggleBranch={branchFilter.toggleBranch}
                         onOpen={handleOpenInEditor}
                         onLaunch={(slot, path) => void handleLaunch(slot, path)}
                         onForceStop={(r) => void handleForceStop(r)}
