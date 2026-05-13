@@ -198,6 +198,15 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 - **Events panel** on the right — chronological list of events for the selected session. Each line shows the timestamp, an event kind chip (`in` / `out` / `spawn` / `exit` / `close` / `rotate`), and the payload. ANSI escapes are stripped on render so unprintable bytes don't break the layout; the raw bytes live on disk for tools that want them.
 - **Delete day** wipes one day-directory at a time.
 
+#### Record granularity
+
+The writer treats **Enter** (or any newline on the IN side) as the transaction boundary between command-cycles:
+
+- One `in` record per command-line — the entire typed command up to `\r` / `\n`, including the trailing newline.
+- One `out` record per command-cycle — the pty's echo of the typed keystrokes, the program's response, and any prompt redraw all land in the same record. The OUT record seals when the user starts typing the next command (or at the byte cap, or on session close).
+
+This means a session that ran two commands typically lands as `spawn`, `in`, `out`, `in`, `out`, `exit`, `close` — seven records, regardless of how many keystrokes were typed. Long streams without an interactive follow-up (e.g. `tail -f`, fullscreen TUIs like vim and htop) flush in 64 KB chunks instead of one giant record, so resident memory stays bounded.
+
 ### Tuning capture
 
 The `terminal.logging` block in `.condash/settings.json` (or in the global `settings.json` for cross-conception defaults) carries the knobs:

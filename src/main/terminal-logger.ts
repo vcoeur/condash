@@ -83,41 +83,38 @@ export function stripAnsi(s: string): string {
  * and one `out` event echoing each character; without coalescing, typing
  * `echo A\r` yields ~14 records.
  *
- * The writer keeps **two independent buffers** — one for `in`, one for
- * `out` — each flushing on its own rules. The earlier "switching kind
- * flushes" rule looked sensible on paper but broke the dominant case:
- * the pty echoes every typed byte, so the kind alternated every byte
- * and the buffer was dumped between every keystroke and its echo. Typing
- * `ls -al<Enter>` produced 14 records instead of two. With independent
- * buffers, the `in` accumulates the whole command up to `\r` and the
- * `out` accumulates the whole echo + listing — one record each. Per-byte
- * chronology between `in` and `out` is intentionally not preserved at
- * record granularity; the `ts` of each record (first byte of the burst)
- * gives burst-level ordering, which is what the user actually wants.
+ * The writer treats **Enter as the natural transaction boundary**. There
+ * are no timers — earlier idle-based heuristics fragmented per-byte under
+ * real human typing (a 100ms OUT idle is shorter than the ~200ms gap
+ * between keystrokes, so each echoed byte flushed before the next
+ * arrived).
  *
- * Flush rules per buffer:
+ * Flush rules:
  *
- *   1. **`in` flushes on line terminator** — a typed command up to Enter
- *      lands as one record (`data: "echo A\r"`).
- *   2. **`out` flushes on idle** (`OUTPUT_IDLE_MS`) — pty echo + the
- *      shell's prompt-redraw burst collapse into one or two records per
- *      command.
- *   3. **Either buffer flushes on cap, pause, spawn / exit / close** —
- *      every public method that ends a turn flushes both.
+ *   - **`in`** buffer flushes when its data ends in `\r` or `\n`. One
+ *     command-line → one record.
+ *   - **`out`** buffer flushes when a **fresh `in` burst starts** —
+ *     i.e., when the IN buffer transitions from empty to non-empty,
+ *     signalling that the user is starting the next command. That makes
+ *     one OUT record per command-cycle: pty echo of the previous
+ *     command's keystrokes + program output + prompt redraw all land
+ *     together, anchored at the timestamp of the echo's first byte.
+ *   - Both buffers flush on `MAX_BUFFER_BYTES` (memory safety) and on
+ *     lifecycle events (spawn / exit / close / pause).
  *
- * `INPUT_IDLE_MS` is a fallback for keys that never produce a newline
- * (arrow keys, raw-mode TUI input, partial pastes). `MAX_BUFFER_BYTES`
- * caps each in-memory buffer so a streaming `tail -f` or `cargo build`
- * doesn't grow unbounded if it never idles long enough to trip the timer.
+ * The byte cap is the only safety net for sessions that never see a
+ * newline on the IN side — long-running streams (`tail -f`), fullscreen
+ * TUIs (vim, htop), or commands that exit without an interactive
+ * follow-up. Those flush in 64 KB chunks. Per-byte chronology between
+ * `in` and `out` is intentionally not preserved at record granularity;
+ * each record's `ts` is the first byte of that record's burst, which
+ * gives transaction-level ordering — what a reader of the JSONL wants.
  */
-const INPUT_IDLE_MS = 500;
-const OUTPUT_IDLE_MS = 100;
 const MAX_BUFFER_BYTES = 64 * 1024;
 
 interface PendingBuffer {
   data: string;
   ts: string;
-  timer: NodeJS.Timeout | null;
 }
 
 export class SessionLogger {
@@ -133,11 +130,11 @@ export class SessionLogger {
    * the rotation suffix differentiates them, not the timestamp. */
   private readonly spawnTime: Date;
   /** Two independent coalesce buffers — `in` and `out` accumulate
-   * separately so the pty's per-byte echo doesn't churn the buffer into
-   * single-byte records. Each carries its own idle timer; `data` empty
-   * means the buffer is idle (timer cleared, ts cleared). */
-  private pendingIn: PendingBuffer = { data: '', ts: '', timer: null };
-  private pendingOut: PendingBuffer = { data: '', ts: '', timer: null };
+   * separately. The IN side flushes on `\r`/`\n`; the OUT side flushes
+   * whenever IN does. Both also flush on byte cap and lifecycle events.
+   * `data` empty means the buffer is idle. */
+  private pendingIn: PendingBuffer = { data: '', ts: '' };
+  private pendingOut: PendingBuffer = { data: '', ts: '' };
 
   constructor(
     private readonly conceptionPath: string,
@@ -210,9 +207,9 @@ export class SessionLogger {
     });
   }
 
-  /** Test hook — force both pending coalesce buffers to disk now.
-   * Production callers rely on the timers; tests use this to avoid a
-   * `setTimeout` wait. */
+  /** Test hook — force both pending coalesce buffers to disk now. Kept
+   * for tests that want to assert on partial buffers without ending the
+   * session (the production path flushes on Enter / cap / lifecycle). */
   flushForTests(): void {
     this.flushAll();
   }
@@ -229,41 +226,39 @@ export class SessionLogger {
 
   private coalesce(kind: 'in' | 'out', data: string): void {
     const buf = kind === 'in' ? this.pendingIn : this.pendingOut;
+    // First byte of a fresh IN burst — the user is starting the next
+    // command-cycle. Flush whatever OUT had accumulated (echoes +
+    // program output + prompt redraw of the previous cycle) before
+    // opening a new IN record. This is what makes one OUT record per
+    // command-cycle.
+    if (kind === 'in' && buf.data.length === 0) {
+      this.flushBuffer('out');
+    }
     if (buf.data.length === 0) {
       buf.ts = new Date().toISOString();
       buf.data = data;
     } else {
       buf.data += data;
     }
-    // Input flushes at line boundaries: one Enter press closes the
-    // record. Multi-line pastes that end in newline flush in one go.
+    // IN flushes at line boundaries: one Enter press (or a multi-line
+    // paste ending in a newline) closes the IN record. OUT stays
+    // buffered — it'll seal at the next IN-burst-start, the cap, or
+    // close.
     if (kind === 'in' && /[\r\n]$/.test(buf.data)) {
-      this.flushBuffer(kind);
+      this.flushBuffer('in');
       return;
     }
-    // Bound each buffer so a stream that never idles can't grow forever.
+    // Memory-safety cap. Long streams (`tail -f`) and fullscreen TUIs
+    // (vim, htop) never see a typed newline, so without this the buffer
+    // would grow unbounded. 64 KB is large enough to hold a typical
+    // command-cycle but small enough to bound resident memory.
     if (buf.data.length >= MAX_BUFFER_BYTES) {
       this.flushBuffer(kind);
-      return;
     }
-    // Idle-based fallback. Resetting the timer on every byte means a
-    // steady stream extends the same record until idle / cap / newline /
-    // close — exactly what the user expects from "one burst, one entry".
-    if (buf.timer !== null) clearTimeout(buf.timer);
-    const idleMs = kind === 'in' ? INPUT_IDLE_MS : OUTPUT_IDLE_MS;
-    buf.timer = setTimeout(() => this.flushBuffer(kind), idleMs);
-    // Don't keep the event loop alive on the writer alone — close() and
-    // exit() flush explicitly, so an orphaned timer would only delay
-    // shutdown.
-    buf.timer.unref?.();
   }
 
   private flushBuffer(kind: 'in' | 'out'): void {
     const buf = kind === 'in' ? this.pendingIn : this.pendingOut;
-    if (buf.timer !== null) {
-      clearTimeout(buf.timer);
-      buf.timer = null;
-    }
     if (buf.data.length === 0) return;
     const data = buf.data;
     const ts = buf.ts;
@@ -274,8 +269,8 @@ export class SessionLogger {
   }
 
   /** Flush both buffers; used by the lifecycle methods (`spawn` / `exit`
-   * / `close` / pause). Order is `in` then `out` — same order interactive
-   * sessions naturally produce, and the test expects it. */
+   * / `close` / pause) and by the IN-side Enter flush. Order is `in`
+   * then `out` — same order interactive sessions naturally produce. */
   private flushAll(): void {
     this.flushBuffer('in');
     this.flushBuffer('out');
