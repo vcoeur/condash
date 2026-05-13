@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, Show, createMemo } from 'solid-js';
+import { createEffect, createResource, createSignal, For, Show, createMemo } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { TermLogEvent, TermLogSessionMeta } from '@shared/types';
 import { ConfirmModal } from '../confirm-modal';
@@ -8,15 +8,14 @@ import './logs-pane.css';
  * Logs pane — browse `<conception>/.condash/logs/`.
  *
  * Layout:
- *   - Top toolbar: day picker.
- *   - Left rail: one row per session-file for the chosen day.
- *   - Right panel: events from the selected session, plain-text with
- *     a `[kind]` chip per line.
+ *   - Row 1: Day select · Session select · Refresh · Delete session.
+ *   - Row 2: Search box (substring match against canonicalised event text).
+ *   - Body: events for the selected session, plain monospace text, ANSI
+ *     stripped on render.
  *
- * Scope kept tight on first ship: no search, no virtual list, no
- * embedded xterm replay. The viewer is plain monospace text — ANSI is
- * stripped on render so unprintable escape sequences don't break the
- * layout. Filtering / search / xterm-readable mode land as follow-ups.
+ * Scope kept tight: no cross-day search, no virtual list, no embedded
+ * xterm replay. The viewer is plain monospace text — ANSI is stripped on
+ * render so unprintable escape sequences don't break the layout.
  */
 export function LogsView(): JSX.Element {
   // The list of available day-dirs (newest first).
@@ -42,6 +41,19 @@ export function LogsView(): JSX.Element {
 
   const [selectedSession, setSelectedSession] = createSignal<TermLogSessionMeta | null>(null);
 
+  // Auto-select the first session whenever the session list arrives or
+  // changes. Without this, the search input + delete-session button stay
+  // disabled and the events panel reads "Pick a session" on every day
+  // change — and the new design has no session rail for the user to
+  // click on.
+  createEffect(() => {
+    const list = sessions();
+    if (!list) return;
+    const current = selectedSession();
+    if (current && list.some((s) => s.path === current.path)) return;
+    setSelectedSession(list.length > 0 ? list[0] : null);
+  });
+
   // Events for the selected session file.
   const [events, { refetch: refetchEvents }] = createResource(
     () => selectedSession(),
@@ -53,11 +65,8 @@ export function LogsView(): JSX.Element {
   );
 
   // Free-text search box. Substring match (case-insensitive) against
-  // `ev.text` (canonicalised by the IPC reader — see canonical-input.ts)
-  // with a `stripAnsi(data)` fallback for older events that lack `text`.
-  // Filtering runs in the renderer because the IPC payload is already
-  // capped at 5000 events — adding a backend grep round-trip per
-  // keystroke would feel slower than the in-memory scan.
+  // `ev.text` (canonicalised by the IPC reader) with `stripAnsi(data)`
+  // fallback for older events that lack `text`.
   const [query, setQuery] = createSignal('');
 
   const filteredEvents = createMemo<TermLogEvent[]>(() => {
@@ -67,7 +76,7 @@ export function LogsView(): JSX.Element {
     return all.filter((ev) => searchableBody(ev).toLowerCase().includes(q));
   });
 
-  const [pendingDelete, setPendingDelete] = createSignal<string | null>(null);
+  const [pendingDelete, setPendingDelete] = createSignal<TermLogSessionMeta | null>(null);
 
   const refreshAll = (): void => {
     void refetchDays();
@@ -75,8 +84,8 @@ export function LogsView(): JSX.Element {
     void refetchEvents();
   };
 
-  const confirmDelete = (day: string): void => {
-    void window.condash.logsDeleteDay(day).then(() => {
+  const confirmDeleteSession = (sess: TermLogSessionMeta): void => {
+    void window.condash.logsDeleteSession(sess.path).then(() => {
       setPendingDelete(null);
       setSelectedSession(null);
       refreshAll();
@@ -86,127 +95,113 @@ export function LogsView(): JSX.Element {
   return (
     <div class="logs-pane">
       <div class="logs-toolbar">
-        <label class="logs-day-picker">
-          <span>Day</span>
-          <select
-            value={effectiveDay() ?? ''}
-            onChange={(e) => {
-              setSelectedDay(e.currentTarget.value || null);
-              setSelectedSession(null);
+        <div class="logs-toolbar-row">
+          <label class="logs-picker">
+            <span>Day</span>
+            <select
+              value={effectiveDay() ?? ''}
+              onChange={(e) => {
+                setSelectedDay(e.currentTarget.value || null);
+                setSelectedSession(null);
+              }}
+              disabled={(days()?.length ?? 0) === 0}
+            >
+              <For each={days() ?? []}>
+                {(entry) => <option value={entry.day}>{entry.day}</option>}
+              </For>
+              <Show when={(days()?.length ?? 0) === 0}>
+                <option value="">no logs</option>
+              </Show>
+            </select>
+          </label>
+          <label class="logs-picker logs-picker--session">
+            <span>Session</span>
+            <select
+              value={selectedSession()?.path ?? ''}
+              onChange={(e) => {
+                const path = e.currentTarget.value;
+                const match = (sessions() ?? []).find((s) => s.path === path) ?? null;
+                setSelectedSession(match);
+              }}
+              disabled={(sessions()?.length ?? 0) === 0}
+            >
+              <For each={sessions() ?? []}>
+                {(meta) => <option value={meta.path}>{sessionLabel(meta)}</option>}
+              </For>
+              <Show when={(sessions()?.length ?? 0) === 0}>
+                <option value="">no sessions</option>
+              </Show>
+            </select>
+          </label>
+          <span class="logs-toolbar-spacer" />
+          <button type="button" class="logs-refresh" onClick={refreshAll}>
+            Refresh
+          </button>
+          <button
+            type="button"
+            class="logs-delete-day"
+            disabled={!selectedSession()}
+            onClick={() => {
+              const s = selectedSession();
+              if (s) setPendingDelete(s);
             }}
-            disabled={(days()?.length ?? 0) === 0}
           >
-            <For each={days() ?? []}>
-              {(entry) => <option value={entry.day}>{entry.day}</option>}
-            </For>
-            <Show when={(days()?.length ?? 0) === 0}>
-              <option value="">no logs</option>
-            </Show>
-          </select>
-        </label>
-        <button type="button" class="logs-refresh" onClick={refreshAll}>
-          Refresh
-        </button>
-        <input
-          type="search"
-          class="logs-search"
-          placeholder="Search this session…"
-          value={query()}
-          onInput={(e) => setQuery(e.currentTarget.value)}
-          disabled={!selectedSession()}
-        />
-        <Show when={effectiveDay()}>
-          {(day) => (
-            <button type="button" class="logs-delete-day" onClick={() => setPendingDelete(day())}>
-              Delete day
-            </button>
-          )}
-        </Show>
+            Delete session
+          </button>
+        </div>
+        <div class="logs-toolbar-row logs-toolbar-row--search">
+          <input
+            type="search"
+            class="logs-search"
+            placeholder="Search this session…"
+            value={query()}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            disabled={!selectedSession()}
+          />
+        </div>
       </div>
 
       <Show when={pendingDelete()}>
-        {(day) => (
+        {(sess) => (
           <ConfirmModal
-            title="Delete day's logs"
-            body={`Delete every log file from ${day()}? This cannot be undone.`}
+            title="Delete session log"
+            body={`Delete ${sess().day} ${sess().time}${sess().cmd ? ` — ${sess().cmd}` : ''}? This cannot be undone.`}
             confirmLabel="Delete"
             destructive
             onCancel={() => setPendingDelete(null)}
-            onConfirm={() => confirmDelete(day())}
+            onConfirm={() => confirmDeleteSession(sess())}
           />
         )}
       </Show>
 
-      <div class="logs-body">
-        <aside class="logs-sessions">
-          <Show
-            when={(sessions()?.length ?? 0) > 0}
-            fallback={<div class="empty">No sessions for {effectiveDay() ?? '—'}.</div>}
-          >
-            <For each={sessions() ?? []}>
-              {(meta) => (
-                <button
-                  type="button"
-                  class="logs-session-row"
-                  classList={{
-                    'logs-session-row--selected': selectedSession()?.path === meta.path,
-                    'logs-session-row--exited': meta.exitCode !== undefined,
-                  }}
-                  onClick={() => setSelectedSession(meta)}
+      <section class="logs-events">
+        <Show when={selectedSession()} fallback={<div class="empty">Pick a session above.</div>}>
+          {(sess) => (
+            <>
+              <div class="logs-events-head">
+                <span>{sess().path}</span>
+              </div>
+              <div class="logs-events-list">
+                <Show
+                  when={(events()?.length ?? 0) > 0}
+                  fallback={<div class="empty">Empty session.</div>}
                 >
-                  <div class="logs-session-time">{meta.time}</div>
-                  <div class="logs-session-meta">
-                    <Show when={meta.repo}>
-                      <span class="logs-session-repo">{meta.repo}</span>
-                    </Show>
-                    <Show when={meta.cmd}>
-                      {(cmd) => <span class="logs-session-cmd">{truncate(cmd(), 80)}</span>}
-                    </Show>
-                  </div>
-                  <div class="logs-session-size">
-                    {formatBytes(meta.bytes)}
-                    <Show when={meta.exitCode !== undefined}>
-                      <span class="logs-session-exit">· exit {meta.exitCode}</span>
-                    </Show>
-                  </div>
-                </button>
-              )}
-            </For>
-          </Show>
-        </aside>
-
-        <section class="logs-events">
-          <Show
-            when={selectedSession()}
-            fallback={<div class="empty">Pick a session on the left.</div>}
-          >
-            {(sess) => (
-              <>
-                <div class="logs-events-head">
-                  <span>{sess().path}</span>
-                </div>
-                <div class="logs-events-list">
                   <Show
-                    when={(events()?.length ?? 0) > 0}
-                    fallback={<div class="empty">Empty session.</div>}
+                    when={filteredEvents().length > 0}
+                    fallback={
+                      <div class="empty">
+                        No matches for "{query()}" ({events()?.length ?? 0} events).
+                      </div>
+                    }
                   >
-                    <Show
-                      when={filteredEvents().length > 0}
-                      fallback={
-                        <div class="empty">
-                          No matches for "{query()}" ({events()?.length ?? 0} events).
-                        </div>
-                      }
-                    >
-                      <For each={filteredEvents()}>{(ev) => <EventRow ev={ev} />}</For>
-                    </Show>
+                    <For each={filteredEvents()}>{(ev) => <EventRow ev={ev} />}</For>
                   </Show>
-                </div>
-              </>
-            )}
-          </Show>
-        </section>
-      </div>
+                </Show>
+              </div>
+            </>
+          )}
+        </Show>
+      </section>
     </div>
   );
 }
@@ -220,6 +215,14 @@ function EventRow(props: { ev: TermLogEvent }): JSX.Element {
       <span class="logs-event-body">{eventBody(ev)}</span>
     </div>
   );
+}
+
+function sessionLabel(meta: TermLogSessionMeta): string {
+  const head = meta.repo ? `${meta.time} · ${meta.repo}` : meta.time;
+  const cmd = meta.cmd ? ` · ${truncate(meta.cmd, 60)}` : '';
+  const size = ` · ${formatBytes(meta.bytes)}`;
+  const exit = meta.exitCode !== undefined ? ` · exit ${meta.exitCode}` : '';
+  return `${head}${cmd}${size}${exit}`;
 }
 
 function eventBody(ev: TermLogEvent): string {

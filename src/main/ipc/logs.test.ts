@@ -210,3 +210,28 @@ describe('logsDeleteDay', () => {
     expect(days).toEqual([]);
   });
 });
+
+describe('logsDeleteSession', () => {
+  it('removes a single session file', async () => {
+    const file = writeLogFile('2026-05-13', '142207-t-a.jsonl', [{ kind: 'spawn' }]);
+    writeLogFile('2026-05-13', '152200-t-b.jsonl', [{ kind: 'spawn' }]);
+    const result = (await handlers.logsDeleteSession({}, file)) as { deleted: boolean };
+    expect(result.deleted).toBe(true);
+    const sessions = (await handlers.logsListSessions({}, '2026-05-13')) as { path: string }[];
+    expect(sessions.map((s) => s.path)).toEqual([
+      join(condashLogsRoot(tmp), '2026', '05', '13', '152200-t-b.jsonl'),
+    ]);
+  });
+
+  it('rejects paths outside the logs root', async () => {
+    await expect(handlers.logsDeleteSession({}, '/etc/passwd')).rejects.toThrow();
+  });
+
+  it('rejects non-jsonl files even inside the logs root', async () => {
+    const root = condashLogsRoot(tmp);
+    mkdirSync(join(root, '2026', '05', '13'), { recursive: true });
+    const txt = join(root, '2026', '05', '13', 'note.txt');
+    writeFileSync(txt, 'hello');
+    await expect(handlers.logsDeleteSession({}, txt)).rejects.toThrow();
+  });
+});

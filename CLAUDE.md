@@ -57,6 +57,7 @@ When changing the dev port, update **every** file:
 - **Per-conception logs**: `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. One file per pty spawn; gitignored alongside `settings.json`. Janitor (`src/main/terminal-logger-janitor.ts`) evicts day-directories past `terminal.logging.retentionDays` (default 14) and oldest-first while over `terminal.logging.maxDirMb` (default 500). Runs at startup + every 24 h. The Logs working surface (`Cmd+Shift+L`) browses the tree.
 - `CONDASH_CONCEPTION_PATH` env var override: wired in both Electron (`src/main/settings.ts`) and CLI (`src/cli/conception.ts`). See [`docs/guides/configure-conception-path.md`](docs/guides/configure-conception-path.md) for the resolution chain. The conception-detector accepts any of the three recognised config files when validating a candidate path.
 - The merge resolver lives in `src/main/effective-config.ts`. Every reader (`repos.ts`, `worktree-ops.ts`, `launchers.ts`, `audit.ts`, `terminals.ts`, `conception-paths.ts`, the CLI's `config` verbs) goes through it.
+- **Merge rule**: top-level replace for every key, with **one exception**: `terminal` merges one level deep so a conception customising `terminal.logging` keeps the per-machine `terminal.launcher_command` / `screenshot_dir` / shortcuts. The exception is documented in `docs/reference/config.md` and tested in `effective-config.test.ts`.
 
 ## Sandbox: dev vs. production
 

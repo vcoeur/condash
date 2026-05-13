@@ -18,6 +18,8 @@ condash reads two JSON files. Both share **the same schema**. The per-machine `s
 
 Both files share the **same schema** modulo the two path-tracking keys above. Any other top-level key — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches` — may live in either file. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge).
 
+**Exception: `terminal` merges one level deep.** Its sub-schema straddles per-machine input / device prefs (`shell`, `shortcut`, `screenshot_dir`, `launcher_command`, `xterm`, `screenshot_paste_shortcut`, `move_tab_{left,right}_shortcut`) and per-tree retention policy (`logging.{retentionDays, maxDirMb, maxFileMb, ansiPolicy}`). A pure replace meant any conception that customised `terminal.logging` silently lost every per-machine terminal pref — the launcher button vanished, the screenshot-paste shortcut toasted "no screenshot directory". Conception sub-keys win at the first level; sub-keys absent from the conception fall through to the global block. Nested values inside `terminal.xterm` and `terminal.logging` still replace whole — only the immediate sub-keys of `terminal` merge.
+
 ### The `.condash/` workspace directory
 
 `.condash/` is condash's per-conception state directory — the home of `settings.json` plus terminal logs at `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. **The whole directory is gitignored by default** (the auto-migrator appends a `.condash/` line to your `.gitignore` on first run when the conception is a git repo), so settings + logs are per-host state with no commit-leak risk. Teams that want to share a baseline config either commit `condash.json` alongside (legacy path still reads) or manually un-ignore `settings.json` in their `.gitignore`.
@@ -68,7 +70,7 @@ Lives at `<conception_path>/.condash/settings.json`. Don't commit it — the aut
 
 Paths may use `~` (expanded to `$HOME`) or absolute paths. JSON does not carry comments — keep prose documentation in the project README or the per-tree `CLAUDE.md`.
 
-A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — the conception value replaces the global one for that tree.
+A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — and unlike every other top-level key, the per-conception block **merges with** the global one (see the exception called out at the top of this page). A conception declaring `terminal.logging.retentionDays` keeps the global `terminal.launcher_command` / `terminal.screenshot_dir` it inherited.
 
 ### Terminal logging
 

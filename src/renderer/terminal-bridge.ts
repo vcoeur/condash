@@ -87,7 +87,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const prefs = deps.terminalPrefs() ?? {};
     const dir = prefs.screenshot_dir;
     if (!dir) {
-      deps.flashToast('No terminal.screenshot_dir set in condash.json', 'error');
+      deps.flashToast(
+        'No screenshot directory set — open Settings → Terminal → Screenshot directory.',
+        'error',
+      );
       return;
     }
     const latest = await window.condash.termLatestScreenshot(dir);

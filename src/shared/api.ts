@@ -239,6 +239,10 @@ export interface CondashApi {
   logsReadEvents(filePath: string, offset?: number, limit?: number): Promise<TermLogEvent[]>;
   /** Wipe an entire day-directory. */
   logsDeleteDay(day: string): Promise<{ deleted: boolean }>;
+  /** Delete a single session file (one pty spawn). Bounded under
+   *  `<conception>/.condash/logs/`; rejects paths outside the logs root
+   *  or files that don't end in `.jsonl`. */
+  logsDeleteSession(filePath: string): Promise<{ deleted: boolean }>;
 
   /** Open the configured conception directory in the OS file manager. */
   openConceptionDirectory(): Promise<void>;

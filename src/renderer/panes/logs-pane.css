@@ -1,6 +1,6 @@
-/* Logs pane — split layout: toolbar on top, sessions rail on the left,
- * events on the right. Pulls colours from the renderer's CSS variables so
- * dark / light themes work without overrides. */
+/* Logs pane — two-row toolbar on top (selects + actions, then search),
+ * full-width events panel underneath. Pulls colours from the renderer's
+ * CSS variables so dark / light themes work without overrides. */
 
 .logs-pane {
   display: flex;
@@ -12,21 +12,44 @@
 
 .logs-toolbar {
   display: flex;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.4rem;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--surface-border, #2a2a2a);
   flex: 0 0 auto;
 }
 
-.logs-day-picker {
+.logs-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.logs-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.logs-picker {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
-.logs-day-picker span {
-  font-size: 0.85rem;
+.logs-picker--session {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.logs-picker--session select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.logs-picker span {
+  font-size: 0.8rem;
   color: var(--text-muted, #8a8a8a);
 }
 
@@ -42,14 +65,23 @@
 }
 
 .logs-refresh:hover,
-.logs-delete-day:hover {
+.logs-delete-day:hover:not(:disabled) {
   background: var(--surface-hover, rgba(255, 255, 255, 0.04));
 }
 
-.logs-search {
+.logs-delete-day {
+  color: #c44;
+  border-color: rgba(204, 68, 68, 0.4);
+}
+
+.logs-delete-day:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.logs-toolbar-row--search .logs-search {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 28rem;
   font-size: 0.85rem;
   padding: 0.25rem 0.6rem;
   border: 1px solid var(--surface-border, #2a2a2a);
@@ -67,88 +99,10 @@
   color: var(--text-muted, #8a8a8a);
 }
 
-.logs-delete-day {
-  color: #c44;
-  border-color: rgba(204, 68, 68, 0.4);
-}
-
-.logs-body {
-  display: grid;
-  grid-template-columns: minmax(220px, 28%) 1fr;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.logs-sessions {
-  overflow-y: auto;
-  border-right: 1px solid var(--surface-border, #2a2a2a);
-  display: flex;
-  flex-direction: column;
-  padding: 0.25rem 0;
-}
-
-.logs-session-row {
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--surface-border, #2a2a2a);
-  padding: 0.5rem 0.75rem;
-  color: inherit;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  font-family: inherit;
-}
-
-.logs-session-row:hover {
-  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
-}
-
-.logs-session-row--selected {
-  background: var(--surface-selected, rgba(80, 140, 240, 0.12));
-}
-
-.logs-session-row--exited {
-  opacity: 0.7;
-}
-
-.logs-session-time {
-  font-variant-numeric: tabular-nums;
-  font-size: 0.85rem;
-}
-
-.logs-session-meta {
-  display: flex;
-  gap: 0.4rem;
-  font-size: 0.78rem;
-  color: var(--text-muted, #8a8a8a);
-  flex-wrap: wrap;
-}
-
-.logs-session-repo {
-  color: var(--text-default, #cfcfcf);
-  font-weight: 500;
-}
-
-.logs-session-cmd {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-}
-
-.logs-session-size {
-  font-size: 0.72rem;
-  color: var(--text-muted, #8a8a8a);
-  font-variant-numeric: tabular-nums;
-}
-
-.logs-session-exit {
-  margin-left: 0.4rem;
-}
-
 .logs-events {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
 }
@@ -173,10 +127,14 @@
   padding: 0.5rem 0.75rem;
 }
 
+/* Tighter columns than the original 6rem / 4.5rem layout: the body has
+ * to compete with terminal output, and every saved column is one we
+ * don't wrap. Timestamps remain `HH:MM:SS.mmm` (12 chars, tabular-nums
+ * → fits 4.75rem). Kind chip drops to 2.75rem at 0.68rem font-size. */
 .logs-event {
   display: grid;
-  grid-template-columns: 6rem 4.5rem 1fr;
-  gap: 0.5rem;
+  grid-template-columns: 4.75rem 2.75rem 1fr;
+  gap: 0.4rem;
   align-items: baseline;
   margin-bottom: 0.15rem;
 }
@@ -184,12 +142,13 @@
 .logs-event-ts {
   color: var(--text-muted, #8a8a8a);
   font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
 }
 
 .logs-event-kind {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--text-muted, #8a8a8a);
 }
 

@@ -104,6 +104,7 @@ const api: CondashApi = {
   logsReadEvents: (filePath, offset, limit) =>
     ipcRenderer.invoke('logsReadEvents', filePath, offset, limit),
   logsDeleteDay: (day) => ipcRenderer.invoke('logsDeleteDay', day),
+  logsDeleteSession: (filePath) => ipcRenderer.invoke('logsDeleteSession', filePath),
   openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
   openExternal: (target: string) => ipcRenderer.invoke('openExternal', target),
   openPath: (target: string) => ipcRenderer.invoke('openPath', target),
