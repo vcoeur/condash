@@ -9,6 +9,11 @@ export interface PersistedTabMeta {
   label: string;
   customName?: string;
   column: Column;
+  /** When true, `displayName` ignores OSC 7 cwd updates and keeps `label`
+   *  (unless `customName` is set). Pinned at spawn time by launchers that
+   *  supply a deliberate title — lambda button, code-card "open in term".
+   *  The "+" new-shell path leaves this falsy so cwd basename wins. */
+  pinned?: boolean;
 }
 
 export interface PersistedLayout {
