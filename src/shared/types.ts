@@ -416,7 +416,7 @@ export interface TerminalPrefs {
 
 /** Configuration for the per-session terminal log writer. Defaults are
  * applied by the writer when fields are absent (`enabled: true`,
- * `maxFileMb: 50`, `ansiPolicy: 'raw'`, `retentionDays: 14`,
+ * `maxFileMb: 5`, `ansiPolicy: 'raw'`, `retentionDays: 14`,
  * `maxDirMb: 500`) — the schema's defaults track the same values. */
 export interface TerminalLoggingPrefs {
   /** Toggle capture entirely. Default: true. */
@@ -428,7 +428,10 @@ export interface TerminalLoggingPrefs {
    * evicts oldest day-directories first when over cap. Default: 500. */
   maxDirMb?: number;
   /** Per-file rotation threshold. Sessions that exceed this size roll to
-   * `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, etc. Default: 50. */
+   * `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, etc. Default: 5. TUI sessions
+   * (Claude Code, long agent runs) emit constant cursor-positioned
+   * repaints — the render-side replay viewer handles redundancy at view
+   * time, but a tight on-disk cap keeps any single session bounded. */
   maxFileMb?: number;
   /** `raw`: store ANSI bytes as received (viewer strips on render). */
   /** `stripped`: strip ANSI before writing (smaller files, lossy). */

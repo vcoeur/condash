@@ -37,7 +37,14 @@ const DEFAULT_PREFS: Required<TerminalLoggingPrefs> = {
   enabled: true,
   retentionDays: 14,
   maxDirMb: 500,
-  maxFileMb: 50,
+  // 5 MB. TUI sessions (Claude Code, long agent runs) emit constant
+  // spinner / status-bar repaints; without a tight cap a single session
+  // can balloon to many MB of redundant bytes. The render-side replay
+  // viewer (panes/logs.tsx) handles redundancy at view time, but disk
+  // usage still needs a bound. 5 MB rotates a busy Claude session a few
+  // times rather than letting one file grow unbounded; readers see each
+  // continuation as a separate session in the dropdown.
+  maxFileMb: 5,
   ansiPolicy: 'raw',
 };
 

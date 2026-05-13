@@ -391,7 +391,7 @@ export function TerminalFields(props: {
             type="number"
             min="1"
             value={logging().maxFileMb ?? ''}
-            placeholder="50"
+            placeholder="5"
             onChange={(e) =>
               void props.updateLogging({
                 maxFileMb: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
