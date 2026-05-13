@@ -1,13 +1,9 @@
 /**
- * Logs IPC unit tests — exercises the path-parsing + meta-extraction
- * branches directly. The IPC dispatch layer (`ipcMain.handle`) is
- * thin enough that the playwright tests will cover end-to-end behaviour.
+ * Logs IPC unit tests — exercises path-parsing + meta-extraction. The
+ * handlers under test are private; we capture them off a mocked
+ * `ipcMain.handle` and call them directly.
  *
- * The handlers under test are private; we test them through the public
- * surface exposed by the module by mocking `readSettings` to return a
- * temp conception path, then invoking via a direct call.
- *
- * Approach: build a synthetic `.condash/logs/YYYY/MM/DD/<file>.jsonl`
+ * Approach: build a synthetic `.condash/logs/YYYY/MM/DD/<sid>.{txt,meta.json}`
  * tree under a tmp dir, point `lastConceptionPath` at it via a mocked
  * `readSettings`, and invoke the handlers.
  */
@@ -32,14 +28,6 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
   app: { getPath: () => '/tmp/electron-app' },
 }));
-
-// Pull in the IPC module — it imports the mocked `electron` and
-// `readSettings`. We re-import the handler implementations via the
-// module's internals by re-registering them; instead, re-export the
-// internal helpers directly via a thin wrapper here.
-
-// Because the handlers are local fns, easiest path: invoke them through
-// the registration call + capture the handlers off the mocked ipcMain.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
@@ -69,14 +57,23 @@ afterEach(() => {
   delete (globalThis as { __testConception?: string }).__testConception;
 });
 
-function writeLogFile(day: string, fileName: string, lines: object[]): string {
+/** Build a `<base>.txt` + `<base>.meta.json` pair under `<conception>/.condash/logs/<day>/`. */
+function writeSession(
+  day: string,
+  hms: string,
+  sid: string,
+  body: string,
+  meta: Record<string, unknown>,
+): string {
   const root = condashLogsRoot(tmp);
   const [y, m, d] = day.split('-');
   const dir = join(root, y, m, d);
   mkdirSync(dir, { recursive: true });
-  const fullPath = join(dir, fileName);
-  writeFileSync(fullPath, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
-  return fullPath;
+  const txtPath = join(dir, `${hms}-${sid}.txt`);
+  const metaPath = join(dir, `${hms}-${sid}.meta.json`);
+  writeFileSync(txtPath, body);
+  writeFileSync(metaPath, JSON.stringify(meta));
+  return txtPath;
 }
 
 describe('logsListDays', () => {
@@ -86,18 +83,20 @@ describe('logsListDays', () => {
   });
 
   it('lists all YYYY/MM/DD dirs newest first', async () => {
-    writeLogFile('2026-05-13', '142207-t-aaa.jsonl', [{ kind: 'spawn' }]);
-    writeLogFile('2026-05-10', '093001-t-bbb.jsonl', [{ kind: 'spawn' }]);
-    writeLogFile('2026-04-30', '180000-t-ccc.jsonl', [{ kind: 'spawn' }]);
+    writeSession('2026-05-13', '142207', 't-aaa', 'x', { sid: 't-aaa' });
+    writeSession('2026-05-10', '093001', 't-bbb', 'x', { sid: 't-bbb' });
+    writeSession('2026-04-30', '180000', 't-ccc', 'x', { sid: 't-ccc' });
     const result = (await handlers.logsListDays()) as { day: string }[];
     expect(result.map((r) => r.day)).toEqual(['2026-05-13', '2026-05-10', '2026-04-30']);
   });
 
-  it('skips non-numeric directory names', async () => {
-    writeLogFile('2026-05-13', 'x.jsonl', [{ kind: 'spawn' }]);
+  it('skips day directories that contain no .txt files', async () => {
+    // Day dir with only a legacy .jsonl should be skipped — the viewer
+    // ignores `.jsonl` entirely.
     const root = condashLogsRoot(tmp);
-    mkdirSync(join(root, 'notes'), { recursive: true });
-    writeFileSync(join(root, 'notes', 'readme.md'), 'x');
+    mkdirSync(join(root, '2026', '04', '01'), { recursive: true });
+    writeFileSync(join(root, '2026', '04', '01', '142207-t-x.jsonl'), '{}\n');
+    writeSession('2026-05-13', '142207', 't-y', 'x', { sid: 't-y' });
     const result = (await handlers.logsListDays()) as { day: string }[];
     expect(result.map((r) => r.day)).toEqual(['2026-05-13']);
   });
@@ -109,30 +108,22 @@ describe('logsListSessions', () => {
   });
 
   it('returns per-session metadata sorted by time', async () => {
-    writeLogFile('2026-05-13', '142207-t-aaa.jsonl', [
-      {
-        ts: '2026-05-13T14:22:07.341Z',
-        sid: 't-aaa',
-        side: 'my',
-        kind: 'spawn',
-        cmd: '/bin/bash',
-        argv: ['-l'],
-        cwd: '/home/alice',
-      },
-    ]);
-    writeLogFile('2026-05-13', '093001-t-bbb.jsonl', [
-      {
-        ts: '2026-05-13T09:30:01.000Z',
-        sid: 't-bbb',
-        side: 'code',
-        kind: 'spawn',
-        cmd: 'make',
-        argv: ['dev'],
-        repo: 'condash',
-        cwd: '/home/alice/condash',
-      },
-      { ts: '2026-05-13T09:35:02.000Z', sid: 't-bbb', side: 'code', kind: 'exit', exitCode: 0 },
-    ]);
+    writeSession('2026-05-13', '142207', 't-aaa', 'first', {
+      sid: 't-aaa',
+      side: 'my',
+      cmd: '/bin/bash',
+      argv: ['-l'],
+      cwd: '/home/alice',
+    });
+    writeSession('2026-05-13', '093001', 't-bbb', 'second', {
+      sid: 't-bbb',
+      side: 'code',
+      cmd: 'make',
+      argv: ['dev'],
+      repo: 'condash',
+      cwd: '/home/alice/condash',
+      exitCode: 0,
+    });
     const result = (await handlers.logsListSessions({}, '2026-05-13')) as Array<{
       sid: string;
       time: string;
@@ -151,59 +142,53 @@ describe('logsListSessions', () => {
     const result = await handlers.logsListSessions({}, '2026-05-13');
     expect(result).toEqual([]);
   });
+
+  it('ignores .jsonl files even when they share a directory with .txt files', async () => {
+    const root = condashLogsRoot(tmp);
+    mkdirSync(join(root, '2026', '05', '13'), { recursive: true });
+    writeFileSync(join(root, '2026', '05', '13', '142207-t-legacy.jsonl'), '{}\n');
+    writeSession('2026-05-13', '142208', 't-modern', 'x', { sid: 't-modern' });
+    const result = (await handlers.logsListSessions({}, '2026-05-13')) as Array<{ sid: string }>;
+    expect(result.map((r) => r.sid)).toEqual(['t-modern']);
+  });
 });
 
-describe('logsReadEvents', () => {
-  it('paginates with offset + limit', async () => {
-    const lines = Array.from({ length: 10 }, (_, i) => ({
-      ts: `2026-05-13T14:22:0${i}.000Z`,
-      sid: 't-x',
+describe('logsReadSession', () => {
+  it('returns the .txt body + parsed sidecar meta', async () => {
+    const file = writeSession('2026-05-13', '142207', 't-aaa', 'hello rendered text', {
+      sid: 't-aaa',
       side: 'my',
-      kind: 'out',
-      data: `line ${i}`,
-    }));
-    const file = writeLogFile('2026-05-13', '142207-t-x.jsonl', lines);
-    const page1 = (await handlers.logsReadEvents({}, file, 0, 5)) as { data: string }[];
-    expect(page1.map((e) => e.data)).toEqual(['line 0', 'line 1', 'line 2', 'line 3', 'line 4']);
-    const page2 = (await handlers.logsReadEvents({}, file, 5, 5)) as { data: string }[];
-    expect(page2.map((e) => e.data)).toEqual(['line 5', 'line 6', 'line 7', 'line 8', 'line 9']);
+      cmd: '/bin/bash',
+      argv: [],
+      cwd: '/x',
+      exitCode: 0,
+    });
+    const res = (await handlers.logsReadSession({}, file)) as {
+      text: string;
+      meta: { sid: string; exitCode: number } | null;
+    };
+    expect(res.text).toBe('hello rendered text');
+    expect(res.meta?.sid).toBe('t-aaa');
+    expect(res.meta?.exitCode).toBe(0);
   });
 
   it('rejects files outside the logs root', async () => {
-    await expect(handlers.logsReadEvents({}, '/etc/passwd', 0, 100)).rejects.toThrow();
+    await expect(handlers.logsReadSession({}, '/etc/passwd')).rejects.toThrow();
   });
 
-  it('rejects non-jsonl files', async () => {
-    const file = writeLogFile('2026-05-13', '142207-t-y.jsonl', [{ kind: 'spawn' }]);
-    const txt = file.replace(/\.jsonl$/, '.txt');
-    writeFileSync(txt, 'hi');
-    await expect(handlers.logsReadEvents({}, txt, 0, 100)).rejects.toThrow();
-  });
-
-  it('enriches in/out events with a canonical `text` field', async () => {
-    const file = writeLogFile('2026-05-13', '142207-t-canon.jsonl', [
-      { ts: 'a', sid: 't-canon', side: 'my', kind: 'spawn', cmd: 'bash', argv: [] },
-      // Typed `gi<BS>it push\r` (backspaced after typing `gi`, then typed
-      // `it push`). Canonical form: `git push\r`.
-      { ts: 'b', sid: 't-canon', side: 'my', kind: 'in', data: 'gi\bit push\r' },
-      // Output bytes with ANSI colour + trailing CR (no LF).
-      { ts: 'c', sid: 't-canon', side: 'my', kind: 'out', data: '\x1b[31merror\x1b[0m\r' },
-    ]);
-    const events = (await handlers.logsReadEvents({}, file, 0, 100)) as Array<{
-      kind: string;
-      text?: string;
-    }>;
-    const inEv = events.find((e) => e.kind === 'in');
-    const outEv = events.find((e) => e.kind === 'out');
-    expect(inEv?.text).toBe('git push\r');
-    expect(outEv?.text).toBe('error');
+  it('rejects non-.txt files', async () => {
+    const root = condashLogsRoot(tmp);
+    mkdirSync(join(root, '2026', '05', '13'), { recursive: true });
+    const jsonl = join(root, '2026', '05', '13', '142207-t-x.jsonl');
+    writeFileSync(jsonl, '{}\n');
+    await expect(handlers.logsReadSession({}, jsonl)).rejects.toThrow();
   });
 });
 
 describe('logsDeleteDay', () => {
   it('removes the whole day-directory', async () => {
-    writeLogFile('2026-05-13', '142207-t-a.jsonl', [{ kind: 'spawn' }]);
-    writeLogFile('2026-05-13', '152200-t-b.jsonl', [{ kind: 'spawn' }]);
+    writeSession('2026-05-13', '142207', 't-a', 'x', { sid: 't-a' });
+    writeSession('2026-05-13', '152200', 't-b', 'x', { sid: 't-b' });
     const result = (await handlers.logsDeleteDay({}, '2026-05-13')) as { deleted: boolean };
     expect(result.deleted).toBe(true);
     const days = (await handlers.logsListDays()) as unknown[];
@@ -212,26 +197,24 @@ describe('logsDeleteDay', () => {
 });
 
 describe('logsDeleteSession', () => {
-  it('removes a single session file', async () => {
-    const file = writeLogFile('2026-05-13', '142207-t-a.jsonl', [{ kind: 'spawn' }]);
-    writeLogFile('2026-05-13', '152200-t-b.jsonl', [{ kind: 'spawn' }]);
+  it('removes both the .txt and the sidecar .meta.json', async () => {
+    const file = writeSession('2026-05-13', '142207', 't-a', 'x', { sid: 't-a' });
+    writeSession('2026-05-13', '152200', 't-b', 'x', { sid: 't-b' });
     const result = (await handlers.logsDeleteSession({}, file)) as { deleted: boolean };
     expect(result.deleted).toBe(true);
-    const sessions = (await handlers.logsListSessions({}, '2026-05-13')) as { path: string }[];
-    expect(sessions.map((s) => s.path)).toEqual([
-      join(condashLogsRoot(tmp), '2026', '05', '13', '152200-t-b.jsonl'),
-    ]);
+    const sessions = (await handlers.logsListSessions({}, '2026-05-13')) as { sid: string }[];
+    expect(sessions.map((s) => s.sid)).toEqual(['t-b']);
   });
 
   it('rejects paths outside the logs root', async () => {
     await expect(handlers.logsDeleteSession({}, '/etc/passwd')).rejects.toThrow();
   });
 
-  it('rejects non-jsonl files even inside the logs root', async () => {
+  it('rejects non-.txt files even inside the logs root', async () => {
     const root = condashLogsRoot(tmp);
     mkdirSync(join(root, '2026', '05', '13'), { recursive: true });
-    const txt = join(root, '2026', '05', '13', 'note.txt');
-    writeFileSync(txt, 'hello');
-    await expect(handlers.logsDeleteSession({}, txt)).rejects.toThrow();
+    const jsonl = join(root, '2026', '05', '13', '142207-t-x.jsonl');
+    writeFileSync(jsonl, '{}\n');
+    await expect(handlers.logsDeleteSession({}, jsonl)).rejects.toThrow();
   });
 });

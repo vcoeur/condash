@@ -20,8 +20,8 @@ import type {
   StepMarker,
   TermDataMessage,
   TermExitMessage,
-  TermLogEvent,
   TermLogSessionMeta,
+  TermLogSessionRead,
   TermSession,
   TermSpawnRequest,
   TerminalPrefs,
@@ -234,14 +234,13 @@ export interface CondashApi {
   /** List session-file metadata (path, time, size, repo, cmd) for one
    * day. `day` is `YYYY-MM-DD`. */
   logsListSessions(day: string): Promise<TermLogSessionMeta[]>;
-  /** Read up to `limit` events from a session log file, starting at
-   * line `offset`. */
-  logsReadEvents(filePath: string, offset?: number, limit?: number): Promise<TermLogEvent[]>;
+  /** Read a session's rendered `.txt` body + sidecar `.meta.json`. */
+  logsReadSession(filePath: string): Promise<TermLogSessionRead>;
   /** Wipe an entire day-directory. */
   logsDeleteDay(day: string): Promise<{ deleted: boolean }>;
-  /** Delete a single session file (one pty spawn). Bounded under
-   *  `<conception>/.condash/logs/`; rejects paths outside the logs root
-   *  or files that don't end in `.jsonl`. */
+  /** Delete a single session (one pty spawn) and its `.meta.json` sidecar.
+   *  Bounded under `<conception>/.condash/logs/`; rejects paths outside
+   *  the logs root or files that don't end in `.txt`. */
   logsDeleteSession(filePath: string): Promise<{ deleted: boolean }>;
 
   /** Open the configured conception directory in the OS file manager. */

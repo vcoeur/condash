@@ -181,11 +181,14 @@ Per-platform shell wrapping (so `terminal.run` strings reach the right shell) li
 
 ## Session logging
 
-Every terminal tab can be captured to disk for later review. Capture is **on by default** and writes one JSONL file per pty spawn to:
+Every terminal tab can be captured to disk for later review. Capture is **on by default** and writes one rendered transcript per pty spawn to:
 
 ```
-<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.jsonl
+<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.txt
+<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.meta.json
 ```
+
+The `.txt` body matches exactly what the live terminal pane's **Save buffer** button produces — pty bytes piped through a headless xterm + `SerializeAddon`, atomically rewritten every 5 seconds. The sidecar `.meta.json` carries the spawn context (cmd, argv, cwd, repo) plus exit metadata once the session ends.
 
 The whole `.condash/` directory is gitignored by default — the auto-migrator appends a `.condash/` line to your `.gitignore` the first time it lifts a legacy `condash.json` into the new layout, so logs (and per-host settings) stay per-host with no commit-leak risk.
 
@@ -194,18 +197,16 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 `View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface:
 
 - **Day picker** at the top — newest day-directory first.
-- **Sessions rail** on the left — one row per pty spawn, with the spawn time, repo (when launched via Run), short command, size on disk, and exit code if present.
-- **Events panel** on the right — chronological list of events for the selected session. Each line shows the timestamp, an event kind chip (`in` / `spawn` / `exit` / `close` / `rotate`), and the payload. Contiguous `out` events from a single program run are replayed through an off-screen xterm + SerializeAddon and shown as a single rendered transcript block — the same recipe the live pane's Save-buffer button uses. This is what makes TUI sessions (Claude Code, agent runs) readable: cursor-positioning escapes that paint the spinner and bottom status bar resolve to the final screen state instead of scattering one glyph per line. Raw bytes still live on disk for tools that want them.
-- **Delete day** wipes one day-directory at a time.
+- **Session picker** — one entry per pty spawn, with the spawn time, repo (when launched via Run), short command, size on disk, and exit code if present.
+- **Transcript body** — the rendered terminal buffer, styled via `ansi_up` (SGR colour escapes → inline-styled spans). Non-SGR escapes (mode-set, cursor positioning, OSC) are silently dropped. The result reads like a regular terminal screen, not a stream of raw escape sequences.
+- **Search box** does a case-insensitive substring match against the rendered text.
+- **Delete session** wipes one session and its sidecar; **Delete day** (via session selection + confirm) wipes the whole day-directory.
 
-#### Record granularity
+#### What's captured
 
-The writer treats **Enter** (or any newline on the IN side) as the transaction boundary between command-cycles:
+The writer treats the pty `output` stream as the source of truth. Typed keystrokes are **not captured separately** — the kernel pty echoes them back through `output`, so the rendered buffer already shows what was typed. Capturing keystrokes again would either double-echo (if fed into the same xterm) or build a parallel keystroke log (richer than `~/.bash_history`); we do neither.
 
-- One `in` record per command-line — the entire typed command up to `\r` / `\n`, including the trailing newline.
-- One `out` record per command-cycle — the pty's echo of the typed keystrokes, the program's response, and any prompt redraw all land in the same record. The OUT record seals when the user starts typing the next command (or at the byte cap, or on session close).
-
-This means a session that ran two commands typically lands as `spawn`, `in`, `out`, `in`, `out`, `exit`, `close` — seven records, regardless of how many keystrokes were typed. Long streams without an interactive follow-up (e.g. `tail -f`, fullscreen TUIs like vim and htop) flush in 64 KB chunks instead of one giant record, so resident memory stays bounded.
+Long-running streams (`tail -f`, full-screen TUIs like `vim` / `htop` / Claude Code) are bounded by the xterm scrollback: bytes that scroll past the scrollback window are dropped, exactly as they would be in the live terminal pane. The on-disk `.txt` therefore self-bounds to roughly *scrollback × line width* and never grows beyond that.
 
 ### Tuning capture
 
@@ -218,8 +219,7 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
       "enabled": true,
       "retentionDays": 14,
       "maxDirMb": 500,
-      "maxFileMb": 5,
-      "ansiPolicy": "raw"
+      "scrollback": 10000
     }
   }
 }
@@ -227,7 +227,11 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
 
 See the [config reference](../reference/config.md#terminal-logging) for per-key defaults and effects.
 
-A janitor runs at app start and every 24 hours: it deletes day-directories older than `retentionDays`, then evicts the oldest day-directory while total size is over `maxDirMb`. Per-session files larger than `maxFileMb` roll to `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, ...; a `kind: 'rotate'` marker in the continuation file points back at its predecessor.
+A janitor runs at app start and every 24 hours: it deletes day-directories older than `retentionDays`, then evicts the oldest day-directory while total size is over `maxDirMb`. There is no per-file rotation — `scrollback` is the only size knob.
+
+#### Migration from `.jsonl`
+
+condash ≤ 2.22 wrote a JSONL event stream (one record per pty burst) instead of the rendered `.txt`. Files in that format remain on disk if they were captured by an older version, but the Logs pane no longer reads them — only the janitor's age-based eviction touches them. To free space immediately, delete `<conception>/.condash/logs/` and start fresh on the new format.
 
 ### Privacy
 

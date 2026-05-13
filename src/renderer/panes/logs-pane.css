@@ -118,78 +118,26 @@
   text-overflow: ellipsis;
 }
 
-.logs-events-list {
+/* Rendered transcript — one `<pre>` block holding the .txt body styled
+ * via ansi_up. `pre` (not `pre-wrap`) preserves terminal geometry; the
+ * pane's vertical scroll handles tall buffers, horizontal scroll picks
+ * up lines wider than the viewport (sessions are written at 200 cols
+ * on the writer side). */
+.logs-transcript {
   flex: 1 1 auto;
-  overflow-y: auto;
+  overflow: auto;
+  margin: 0;
+  padding: 0.75rem 1rem;
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.4;
-  padding: 0.5rem 0.75rem;
-}
-
-/* Row layout: timestamp · kind chip · body. The ts column has to fit
- * `HH:MM:SS.mmm` (12 chars) in whatever monospace the platform picks
- * up via the `ui-monospace, Menlo, Consolas, monospace` stack — Linux's
- * fallback (DejaVu Sans Mono) is meaningfully wider than Menlo, so the
- * earlier 4.75rem column overflowed straight through the 0.4rem gap
- * into the kind chip. 5.75rem holds on every platform we ship. Kind
- * column widens to 3.25rem so SPAWN / ROTATE / CLOSE have headroom.
- *
- * Font-size is unified at 0.8rem across all three cells; the earlier
- * stagger (ts 0.78 / kind 0.68 / body 0.85) made baseline-aligned cells
- * sit at three visibly different heights. */
-.logs-event {
-  display: grid;
-  grid-template-columns: 5.75rem 3.25rem 1fr;
-  gap: 0.5rem;
-  align-items: baseline;
-  margin-bottom: 0.15rem;
-  font-size: 0.8rem;
-}
-
-.logs-event-ts {
-  color: var(--text-muted, #8a8a8a);
-  font-variant-numeric: tabular-nums;
-}
-
-.logs-event-kind {
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--text-muted, #8a8a8a);
-}
-
-.logs-event--in .logs-event-kind {
-  color: #6ad27a;
-}
-
-.logs-event--out .logs-event-kind {
-  color: #82b3ff;
-}
-
-.logs-event--spawn .logs-event-kind,
-.logs-event--exit .logs-event-kind,
-.logs-event--close .logs-event-kind,
-.logs-event--rotate .logs-event-kind {
-  color: #d9a64a;
-}
-
-.logs-event--transcript .logs-event-kind {
-  color: #82b3ff;
-}
-
-.logs-event-body {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-/* Transcript blocks are the xterm-rendered output of a contiguous run of
- * `out` events. `pre` (not `pre-wrap`) so the rendered terminal lines
- * line up exactly; horizontal scroll picks up overflow for sessions
- * wider than the 200-column replay geometry. */
-.logs-event-body--transcript {
   white-space: pre;
-  overflow-x: auto;
   word-break: normal;
+}
+
+.logs-events-head-cmd,
+.logs-events-head-exit {
+  color: var(--text-muted, #8a8a8a);
 }
 
 .logs-pane .empty {
