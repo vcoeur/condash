@@ -30,8 +30,13 @@ conception/
 │           └── README.md
 ├── knowledge/                                ← optional, explorer pane
 │   └── …
-└── condash.json                               ← tree-level config
+├── .condash/                                 ← tree-level state (gitignored)
+│   ├── settings.json                         ←   per-host config
+│   └── logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl    ←   per-session terminal capture
+└── condash.json                              ← legacy config (still read)
 ```
+
+The `.condash/` directory is gitignored by default — the auto-migrator appends `.condash/` to your conception's `.gitignore` the first time it lifts a legacy `condash.json` into `.condash/settings.json`. See [Config files](config.md) for the read precedence and the migration mechanics.
 
 Rules, enforced or conventional:
 

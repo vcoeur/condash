@@ -178,3 +178,55 @@ The terminal works on Linux, macOS, and Windows. The shell defaults differ by pl
 - **Windows** — `%ComSpec%` (`cmd.exe` by default). Override with `terminal.shell = "C:\\Program Files\\PowerShell\\7\\pwsh.exe"` if you prefer PowerShell, or any `bash` from Git for Windows / MSYS2.
 
 Per-platform shell wrapping (so `terminal.run` strings reach the right shell) lives in `src/main/terminals.ts:wrapForShell`. Shell-integration snippets under `integrations/` cover bash, zsh, fish, and PowerShell.
+
+## Session logging
+
+Every terminal tab can be captured to disk for later review. Capture is **on by default** and writes one JSONL file per pty spawn to:
+
+```
+<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.jsonl
+```
+
+The whole `.condash/` directory is gitignored by default — the auto-migrator appends a `.condash/` line to your `.gitignore` the first time it lifts a legacy `condash.json` into the new layout, so logs (and per-host settings) stay per-host with no commit-leak risk.
+
+### Browsing logs
+
+`View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface:
+
+- **Day picker** at the top — newest day-directory first.
+- **Sessions rail** on the left — one row per pty spawn, with the spawn time, repo (when launched via Run), short command, size on disk, and exit code if present.
+- **Events panel** on the right — chronological list of events for the selected session. Each line shows the timestamp, an event kind chip (`in` / `out` / `spawn` / `exit` / `close` / `rotate`), and the payload. ANSI escapes are stripped on render so unprintable bytes don't break the layout; the raw bytes live on disk for tools that want them.
+- **Delete day** wipes one day-directory at a time.
+
+### Tuning capture
+
+The `terminal.logging` block in `.condash/settings.json` (or in the global `settings.json` for cross-conception defaults) carries the knobs:
+
+```json
+{
+  "terminal": {
+    "logging": {
+      "enabled": true,
+      "retentionDays": 14,
+      "maxDirMb": 500,
+      "maxFileMb": 50,
+      "ansiPolicy": "raw"
+    }
+  }
+}
+```
+
+See the [config reference](../reference/config.md#terminal-logging) for per-key defaults and effects.
+
+A janitor runs at app start and every 24 hours: it deletes day-directories older than `retentionDays`, then evicts the oldest day-directory while total size is over `maxDirMb`. Per-session files larger than `maxFileMb` roll to `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, ...; a `kind: 'rotate'` marker in the continuation file points back at its predecessor.
+
+### Privacy
+
+Terminal output routinely carries secrets: `gh auth login` paste, env-var dumps, ssh passphrases, API tokens in `curl -H` lines. The on-disk-at-rest risk is comparable to `~/.bash_history`, but the file is much richer. Mitigations baked in:
+
+- `.condash/` is gitignored by default — no accidental commit.
+- Logs never leave the host — no telemetry, no cloud sync.
+- `terminal.logging.enabled = false` cuts capture per-conception or globally; existing files stay on disk for the janitor.
+- The Logs pane's **Delete day** button wipes one day at a time.
+
+No automatic redaction — pattern-based scrubbing is unreliable and gives false reassurance. To capture a sensitive command without recording its output, disable logging via the settings toggle before running it.
