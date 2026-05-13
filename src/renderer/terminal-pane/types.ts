@@ -20,17 +20,23 @@ export interface Tab {
   /** User-renamed label, if any. Persisted by id in localStorage. */
   customName?: string;
   /** Most recent cwd reported via OSC 7 (`file://host/path`). Used for the
-   *  display label when the user hasn't supplied a custom name. */
+   *  display label when the user hasn't supplied a custom name and the tab
+   *  isn't `pinned`. */
   cwd?: string;
+  /** When true, OSC 7 cwd is ignored for display — `label` stays the title
+   *  until the user manually renames. Set at spawn time for sources that
+   *  carry a deliberate title (lambda launcher, code-card "open in term"). */
+  pinned?: boolean;
   /** Process exit code; the tab can still be cleared via close. */
   exited?: number;
 }
 
 /** Display name for a tab. Custom rename wins; otherwise the cwd basename if
- *  the shell emitted OSC 7; otherwise the spawn-time label. */
+ *  the shell emitted OSC 7 (and the tab isn't pinned); otherwise the
+ *  spawn-time label. */
 export function displayName(tab: Tab): string {
   if (tab.customName) return tab.customName;
-  if (tab.cwd) {
+  if (!tab.pinned && tab.cwd) {
     const basename = tab.cwd.split('/').filter(Boolean).pop();
     if (basename) return basename;
   }

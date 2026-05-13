@@ -16,8 +16,20 @@ export interface BootedApp {
 /**
  * Build a tiny conception fixture (one project, one knowledge note) and launch
  * the production Electron build pointed at it.
+ *
+ * Pass `prepare` to drop extra files into the conception *before* Electron
+ * launches — anything that should be visible on the initial tree read
+ * (skills, resources, etc.) belongs there. Files written after `bootApp`
+ * returns rely on the chokidar watcher to fire `tree-events`, which is racy
+ * under CI's xvfb (the watcher can miss events for files created inside a
+ * freshly-mkdir'd directory before its inotify hook attaches).
  */
-export async function bootApp(options: { extraConfig?: Record<string, unknown> } = {}): Promise<BootedApp> {
+export async function bootApp(
+  options: {
+    extraConfig?: Record<string, unknown>;
+    prepare?: (conceptionDir: string) => Promise<void>;
+  } = {},
+): Promise<BootedApp> {
   const conceptionDir = await mkdtemp(join(tmpdir(), 'condash-test-conception-'));
   const userDataDir = await mkdtemp(join(tmpdir(), 'condash-test-userdata-'));
 
@@ -53,6 +65,12 @@ export async function bootApp(options: { extraConfig?: Record<string, unknown> }
     ) + '\n',
     'utf8',
   );
+
+  // Caller-provided fixture writes — go in before launch so the initial tree
+  // read sees them without depending on the chokidar watcher.
+  if (options.prepare) {
+    await options.prepare(conceptionDir);
+  }
 
   const app = await electron.launch({
     args: ['.', '--no-sandbox'],

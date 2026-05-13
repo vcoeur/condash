@@ -33,7 +33,13 @@ Each side header carries three buttons:
 - **Launcher `+`** (if `terminal.launcher_command` is set) — spawn a new tab whose child process is the launcher command instead of the shell. Default is `claude`, so this slot opens a Claude Code session. Set `launcher_command = ""` to hide the button.
 - **Tab strip** — click to focus the tab; middle-click to close. Clicking inside the xterm itself also promotes the tab to active (the click+focus listener was wired so a stray click never silently sends keys to a different tab than the one you're looking at).
 
-Each tab is labelled with its child's argv[0] (e.g. `bash 1`, `claude 2`). Once the shell emits an OSC 7 cwd hint, the label switches to the cwd basename (`condash`, `notes`, …); a manual rename overrides. The full path always shows in the title attribute. Tabs **auto-close on process exit** — the previous "[process exited N]" stale-tab behaviour is gone. If you want the buffer before close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
+Tab titles depend on how the tab was spawned:
+
+- **`+` plain shell** — labelled `shell`; once the shell emits an OSC 7 cwd hint, the label switches to the cwd basename (`condash`, `notes`, …) and follows subsequent `cd`s.
+- **Launcher `+`** — labelled with the launcher command (e.g. `claude`, `lambda`). The label is **pinned**: OSC 7 cwd updates do *not* override it.
+- **Code-card "open in term"** — labelled `<repo> · <branch>` (e.g. `condash · my-feature`). Also pinned, so the branch stays visible even after the shell `cd`s inside the worktree.
+
+A manual double-click rename always wins. The full path shows in the title attribute. Tabs **auto-close on process exit** — the previous "[process exited N]" stale-tab behaviour is gone. If you want the buffer before close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
 
 `TERM=xterm-256color`, and the shell is launched with `-l` so your login rc-files run.
 
@@ -54,7 +60,7 @@ URLs in the buffer are clickable thanks to the web-links addon — clicking open
 Drop-in snippets for bash, zsh, and fish make the terminal render **semantic prompts** — a coloured gutter mark next to each prompt boundary (green = exit 0, red = non-zero) and `Ctrl+Up` / `Ctrl+Down` to jump between them. They emit two standard OSC sequences:
 
 - **OSC 133** — prompt-boundary protocol (`A` prompt-start, `B` prompt-end, `C` command-start, `D;<exit>` command-end with exit code). Same protocol used by iTerm2, WezTerm, kitty, and Warp.
-- **OSC 7** — current working directory (`file://host/path`). Drives the cwd-basename tab label.
+- **OSC 7** — current working directory (`file://host/path`). Drives the cwd-basename tab label for the plain `+` shell tabs (pinned tabs ignore OSC 7).
 
 ### Where the snippets live
 
