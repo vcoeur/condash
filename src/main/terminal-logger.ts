@@ -86,6 +86,10 @@ export class SessionLogger {
   private currentPath: string | null = null;
   private closed = false;
   private paused = false;
+  /** Spawn time, captured once. All rotation files inherit this HHMMSS
+   * prefix so they sort together and share the same `<sid>` identity —
+   * the rotation suffix differentiates them, not the timestamp. */
+  private readonly spawnTime: Date;
 
   constructor(
     private readonly conceptionPath: string,
@@ -93,6 +97,7 @@ export class SessionLogger {
     prefs?: TerminalLoggingPrefs,
   ) {
     this.prefs = resolveLoggingPrefs(prefs);
+    this.spawnTime = new Date();
   }
 
   /** True when no further writes should happen. Lets callers short-circuit
@@ -134,7 +139,11 @@ export class SessionLogger {
   close(): Promise<void> {
     if (this.closed) return Promise.resolve();
     this.closed = true;
-    if (this.isEnabled() === false && this.stream === null) return Promise.resolve();
+    // Nothing was ever written → nothing to close.
+    if (this.stream === null) return Promise.resolve();
+    // Write the close marker explicitly — `write()` is happy to run even
+    // after `closed = true` (the closed flag only gates the public
+    // spawn / in / out / exit methods through isEnabled()).
     this.write({ kind: 'close' });
     return new Promise<void>((resolve) => {
       if (this.stream === null) {
@@ -196,7 +205,7 @@ export class SessionLogger {
   }
 
   private computeTargetPath(): string {
-    const base = sessionLogPath(this.conceptionPath, this.ctx.sid);
+    const base = sessionLogPath(this.conceptionPath, this.ctx.sid, this.spawnTime);
     if (this.rotation === 1) return base;
     // `HHMMSS-<sid>.jsonl` → `HHMMSS-<sid>.<rotation>.jsonl`
     return base.replace(/\.jsonl$/, `.${this.rotation}.jsonl`);

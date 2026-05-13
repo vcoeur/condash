@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -147,17 +147,36 @@ describe('SessionLogger', () => {
     await waitForFlush();
     await logger.close();
 
-    const original = sessionLogPath(tmp, 't-rot');
-    const rotated = original.replace(/\.jsonl$/, '.2.jsonl');
-    // Existence is enough — rotation may produce the new file even before
-    // the close marker hits disk on slow IO.
-    expect(existsSync(rotated)).toBe(true);
+    // The original session file's path is whatever the logger wrote on
+    // its first event — we read it back via `filePath()` rather than
+    // recomputing with `new Date()` at test time, because the rotated
+    // continuation must share the original's HHMMSS prefix (spawn time
+    // is captured once at construction).
+    const original = logger.filePath();
+    // After rotation, `filePath()` points at the continuation file.
+    // To get the original, derive from the same dirname.
+    expect(original).not.toBeNull();
+    if (!original) return;
+    // Confirm the original-named file (without `.2.`) exists too, with
+    // the same HHMMSS prefix as the continuation.
+    const baseDir = original.replace(/[/][^/]+$/, '');
+    const filesInDir = readdirSync(baseDir).sort();
+    // Two `.jsonl` files: one without rotation suffix, one with `.2.jsonl`.
+    const jsonlFiles = filesInDir.filter((f) => f.endsWith('.jsonl'));
+    expect(jsonlFiles.length).toBeGreaterThanOrEqual(2);
+    const continuation = jsonlFiles.find((f) => /\.2\.jsonl$/.test(f));
+    const base = jsonlFiles.find((f) => /^\d{6}-t-rot\.jsonl$/.test(f));
+    expect(base).toBeTruthy();
+    expect(continuation).toBeTruthy();
+    // Shared HHMMSS prefix — fixes the rotation-timestamp bug.
+    expect(continuation?.slice(0, 6)).toBe(base?.slice(0, 6));
 
     // The rotation marker lives in the *new* file, recording the source.
-    const rotatedEvents = readJsonl(rotated);
+    const continuationPath = `${baseDir}/${continuation}`;
+    const rotatedEvents = readJsonl(continuationPath);
     const rotateEv = rotatedEvents.find((e) => e.kind === 'rotate');
     expect(rotateEv).toBeTruthy();
-    expect(rotateEv?.from).toBe(original);
+    expect(rotateEv?.from).toBe(`${baseDir}/${base}`);
   });
 
   it('strips ANSI when ansiPolicy is "stripped"', async () => {

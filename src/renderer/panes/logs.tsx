@@ -1,6 +1,7 @@
 import { createResource, createSignal, For, Show, createMemo } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { TermLogEvent, TermLogSessionMeta } from '@shared/types';
+import { ConfirmModal } from '../confirm-modal';
 import './logs-pane.css';
 
 /**
@@ -51,10 +52,20 @@ export function LogsView(): JSX.Element {
     },
   );
 
+  const [pendingDelete, setPendingDelete] = createSignal<string | null>(null);
+
   const refreshAll = (): void => {
     void refetchDays();
     void refetchSessions();
     void refetchEvents();
+  };
+
+  const confirmDelete = (day: string): void => {
+    void window.condash.logsDeleteDay(day).then(() => {
+      setPendingDelete(null);
+      setSelectedSession(null);
+      refreshAll();
+    });
   };
 
   return (
@@ -83,24 +94,25 @@ export function LogsView(): JSX.Element {
         </button>
         <Show when={effectiveDay()}>
           {(day) => (
-            <button
-              type="button"
-              class="logs-delete-day"
-              onClick={() => {
-                if (!window.confirm(`Delete every log from ${day()}? This cannot be undone.`)) {
-                  return;
-                }
-                void window.condash.logsDeleteDay(day()).then(() => {
-                  setSelectedSession(null);
-                  refreshAll();
-                });
-              }}
-            >
+            <button type="button" class="logs-delete-day" onClick={() => setPendingDelete(day())}>
               Delete day
             </button>
           )}
         </Show>
       </div>
+
+      <Show when={pendingDelete()}>
+        {(day) => (
+          <ConfirmModal
+            title="Delete day's logs"
+            body={`Delete every log file from ${day()}? This cannot be undone.`}
+            confirmLabel="Delete"
+            destructive
+            onCancel={() => setPendingDelete(null)}
+            onConfirm={() => confirmDelete(day())}
+          />
+        )}
+      </Show>
 
       <div class="logs-body">
         <aside class="logs-sessions">
