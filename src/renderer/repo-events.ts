@@ -63,10 +63,21 @@ function applyDirty(
   path: string,
   dirty: number | null,
 ): void {
-  // Top-level repo path?
+  // Top-level repo path? Patch `repo.dirty` AND the matching primary
+  // worktree's `dirty` in one go. Both share the same path, but the
+  // card chip reads from `worktrees[*].dirty` (see branch-badges.tsx);
+  // without the dual write the chip freezes at its initial value until
+  // a full reload.
   const ri = repos.findIndex((r) => r.path === path);
   if (ri >= 0) {
     if (repos[ri].dirty !== dirty) setRepos(ri, 'dirty', dirty);
+    const wts = repos[ri].worktrees;
+    if (wts) {
+      const wi = wts.findIndex((w) => w.path === path);
+      if (wi >= 0 && wts[wi].dirty !== dirty) {
+        setRepos(ri, 'worktrees', wi, 'dirty', dirty);
+      }
+    }
     return;
   }
   // Otherwise look for a worktree match. Linear scan is fine — repos.length
