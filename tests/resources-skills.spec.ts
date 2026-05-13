@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
@@ -68,50 +69,50 @@ test('Resources pane: handle, render, copy path, view markdown', async () => {
 });
 
 test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () => {
-  const booted = await bootApp();
-  const { window, conceptionDir, cleanup } = booted;
-  try {
-    const skillsRoot = join(conceptionDir, '.claude', 'skills');
-    await mkdir(join(skillsRoot, 'projects'), { recursive: true });
-    const skillBody = '# Projects skill\n\nLead paragraph.\n';
+  const skillBody = '# Projects skill\n\nLead paragraph.\n';
+  // Compute the SHA without a renderer (matches Node's crypto). The fixture
+  // is dropped onto disk before Electron launches, so we can't go via
+  // `window.evaluate` for the hash — and we don't need to: SHA-256 is the
+  // same algorithm everywhere.
+  const skillSha = createHash('sha256').update(skillBody, 'utf8').digest('hex');
 
-    // Pre-compute the SHA so SKILL.md is "clean shipped" and create.md is
-    // "diverged shipped" — then we can assert both badge variants in one go.
-    const skillSha = await window.evaluate(async (text: string) => {
-      const enc = new TextEncoder();
-      const buf = await crypto.subtle.digest('SHA-256', enc.encode(text));
-      return Array.from(new Uint8Array(buf))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-    }, skillBody);
-
-    // Manifest first, then the `.md` files. The watcher classifies only
-    // `.md` paths (and unlinks) under the skills root as `skills` events,
-    // so the manifest write itself never triggers a refetch. Writing it
-    // first means the skills-tree reload driven by the SKILL.md / create.md
-    // `add` events finds the manifest already on disk.
-    await writeFile(
-      join(skillsRoot, '.condash-skills.json'),
-      JSON.stringify({
-        version: 1,
-        skills: {
-          projects: {
-            files: {
-              'SKILL.md': { sha256: skillSha, shippedVersion: '2.10.15' },
-              'create.md': { sha256: 'deadbeef', shippedVersion: '2.10.15' },
+  const booted = await bootApp({
+    // Skill files go in before launch so the initial `readSkillsTree` picks
+    // them up. Relying on the chokidar watcher to fire `add` events for
+    // files created inside a freshly-mkdir'd directory was flaky under
+    // CI's xvfb — events for the inner SKILL.md were occasionally
+    // dropped when the inotify hook hadn't attached to the new dir yet.
+    prepare: async (conceptionDir) => {
+      const skillsRoot = join(conceptionDir, '.claude', 'skills');
+      await mkdir(join(skillsRoot, 'projects'), { recursive: true });
+      // Manifest first, then the `.md` files. The watcher classifies only
+      // `.md` paths (and unlinks) under the skills root as `skills` events,
+      // so the manifest write itself never triggers a refetch.
+      await writeFile(
+        join(skillsRoot, '.condash-skills.json'),
+        JSON.stringify({
+          version: 1,
+          skills: {
+            projects: {
+              files: {
+                'SKILL.md': { sha256: skillSha, shippedVersion: '2.10.15' },
+                'create.md': { sha256: 'deadbeef', shippedVersion: '2.10.15' },
+              },
             },
           },
-        },
-      }),
-      'utf8',
-    );
-    await writeFile(join(skillsRoot, 'projects', 'SKILL.md'), skillBody, 'utf8');
-    await writeFile(
-      join(skillsRoot, 'projects', 'create.md'),
-      '# Create\n\nCreate body.\n',
-      'utf8',
-    );
-
+        }),
+        'utf8',
+      );
+      await writeFile(join(skillsRoot, 'projects', 'SKILL.md'), skillBody, 'utf8');
+      await writeFile(
+        join(skillsRoot, 'projects', 'create.md'),
+        '# Create\n\nCreate body.\n',
+        'utf8',
+      );
+    },
+  });
+  const { window, cleanup } = booted;
+  try {
     const skillsHandle = window
       .locator('.edge-strip-right .edge-handle')
       .filter({ hasText: 'Skills' });
