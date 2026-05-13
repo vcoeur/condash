@@ -7,6 +7,8 @@ import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { setWatchedConception } from './watcher';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll, migrateTerminalFromConfigIfNeeded } from './terminals';
+import { runLogJanitor } from './terminal-logger-janitor';
+import { getEffectiveConceptionConfig } from './effective-config';
 import { buildMenu, rebuildMenu, rebuildMenuFromSettings, setMenuWindow } from './menu';
 import { registerProjectsIpc } from './ipc/projects';
 import { registerReposIpc } from './ipc/repos';
@@ -286,6 +288,14 @@ app.whenReady().then(async () => {
   const settings = await readSettings();
   const conceptionPath = settings.lastConceptionPath;
   await setWatchedConception(conceptionPath);
+  // Sweep `.condash/logs/` for expired day-directories. Runs once at
+  // startup and on a 24 h interval. Bounded by the effective
+  // `terminal.logging.retentionDays` / `maxDirMb` settings; defaults are
+  // 14 days / 500 MB.
+  if (conceptionPath) {
+    void runJanitorSafe(conceptionPath);
+    setInterval(() => void runJanitorSafe(conceptionPath), 24 * 60 * 60 * 1000);
+  }
   buildMenu(settings.layout ?? DEFAULT_LAYOUT, {
     paths: settings.recentConceptionPaths ?? [],
     current: conceptionPath,
@@ -327,3 +337,16 @@ app.on('before-quit', () => {
   void killAll();
   void disposeRepoWatchers();
 });
+
+/** Run the terminal-logs janitor for `conceptionPath`. Pulls the
+ * effective config so settings-level overrides apply. Errors are
+ * swallowed locally — a janitor failure must not crash app start nor
+ * propagate into the IPC layer. */
+async function runJanitorSafe(conceptionPath: string): Promise<void> {
+  try {
+    const config = await getEffectiveConceptionConfig(conceptionPath);
+    await runLogJanitor(conceptionPath, config.terminal?.logging);
+  } catch (err) {
+    process.stderr.write(`condash terminal-logs janitor: ${(err as Error).message}\n`);
+  }
+}

@@ -13,6 +13,7 @@ import { Show, type JSX } from 'solid-js';
 import type {
   CardMinWidthPrefs,
   Platform,
+  TerminalLoggingPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
@@ -121,6 +122,7 @@ interface TerminalSectionProps {
   setString: (key: TerminalStringFieldKey, value: string) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
+  updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
   platform: () => Platform | undefined;
   /** Inheritance state for the `terminal` key. Conception tab only. */
   badge?: BadgeProps;
@@ -166,6 +168,7 @@ export function TerminalSection(props: TerminalSectionProps): JSX.Element {
         setString={props.setString}
         updateXterm={props.updateXterm}
         updateColor={props.updateColor}
+        updateLogging={props.updateLogging}
         platform={props.platform}
       />
     </section>
