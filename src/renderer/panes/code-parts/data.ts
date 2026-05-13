@@ -30,6 +30,41 @@ export function buildBar(added: number, deleted: number): string {
   return '+'.repeat(plus) + '-'.repeat(BAR_WIDTH - plus);
 }
 
+/** One group in the section-grouped Code-pane view: the header label (null
+ *  for the implicit default bucket — repos that precede the first section
+ *  marker, or when the conception has no section markers at all) plus the
+ *  ordered repo cards that belong to it. */
+export interface RepoSectionGroup {
+  /** Section heading from `condash.json`, or null for the implicit pre-first-
+   *  section bucket. */
+  section: string | null;
+  /** Stable key — section name when present, '__default__' for the implicit
+   *  bucket. Used by the renderer's in-memory collapse `Set`. */
+  key: string;
+  repos: RepoEntry[];
+}
+
+/** Split an ordered repo list into one group per `section` value, preserving
+ *  declaration order. Submodules inherit their parent's section so they stay
+ *  in the same group as their parent. Empty groups are dropped. */
+export function groupRepos(ordered: readonly RepoEntry[]): RepoSectionGroup[] {
+  const groups: RepoSectionGroup[] = [];
+  let current: RepoSectionGroup | null = null;
+  for (const repo of ordered) {
+    const section = repo.section ?? null;
+    if (!current || current.section !== section) {
+      current = {
+        section,
+        key: section ?? '__default__',
+        repos: [],
+      };
+      groups.push(current);
+    }
+    current.repos.push(repo);
+  }
+  return groups;
+}
+
 /** Flatten the configured repo list into one ordered card sequence, with each
  *  submodule parent immediately followed by its children. Top-level entries
  *  with no children pass through in declaration order. */

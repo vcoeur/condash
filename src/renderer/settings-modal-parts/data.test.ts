@@ -58,4 +58,28 @@ describe('compactRepos — invariants', () => {
   it('drops empty submodules arrays', () => {
     expect(compactRepos([{ name: 'foo', submodules: [] }])).toEqual(['foo']);
   });
+
+  it('preserves section markers verbatim, never adding a phantom name field', () => {
+    expect(
+      compactRepos([
+        { section: 'Sites' },
+        { name: 'alicepeintures.com' },
+        { section: 'Tools' },
+        { name: 'condash' },
+      ]),
+    ).toEqual([{ section: 'Sites' }, 'alicepeintures.com', { section: 'Tools' }, 'condash']);
+  });
+
+  it('keeps a compacted sectioned payload schema-valid', () => {
+    const payload = buildSavePayload({
+      repositories: [
+        { section: 'Sites' },
+        { name: 'alicepeintures.com', run: 'make dev' },
+        { section: 'Tools' },
+        { name: 'condash' },
+      ],
+    });
+    const result = conceptionConfigSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+  });
 });

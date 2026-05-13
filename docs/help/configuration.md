@@ -41,7 +41,7 @@ always target `condash.json`.
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
 | `resources_path` | Folder backing the Resources pane. Default `resources`. |
 | `skills_path` | Folder backing the Skills pane. Default `.claude/skills`. |
-| `repositories` | Flat ordered list of repos to surface on the Code pane. Each entry is a string or an object with `name`, optional `submodules`, `run`, `force_stop`, `label`. |
+| `repositories` | Ordered list of repos to surface on the Code pane. Each entry is a string, a `{name, …}` object (optional `submodules`, `run`, `force_stop`, `label`, `install`, `env`, `pinned_branch`), or a `{"section": "<heading>"}` marker that groups every following repo under a header — see [Reference → Configuration → `repositories`](../reference/config.md#repositories) for the full table. |
 | `open_with` | Three launcher slots (`main_ide`, `secondary_ide`, `terminal`). `{path}` is replaced with the absolute target path. |
 
 A repo entry's `run` wires up an inline dev-server runner; `force_stop`

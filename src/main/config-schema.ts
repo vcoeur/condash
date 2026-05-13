@@ -8,30 +8,74 @@ import { z } from 'zod';
  * `settings.json` at read time; the only fields a conception cannot set
  * are `lastConceptionPath` and `recentConceptionPaths`.
  */
-const repoEntry: z.ZodType<RawRepo> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z
-      .object({
-        name: z.string(),
-        label: z.string().min(1).optional(),
-        run: z.string().optional(),
-        force_stop: z.string().optional(),
-        /** Install command run after `condash-cli worktrees setup` creates the
-         *  worktree. Applied unconditionally when set (#87) — pass
-         *  `--no-install` on the CLI to skip. */
-        install: z.string().optional(),
-        /** Pin: keep this repo on a fixed branch; `worktrees setup` skips it. */
-        pinned_branch: z.string().optional(),
-        /** Files to copy from the primary checkout into a new worktree on
-         *  `condash-cli worktrees setup`. Applied unconditionally when present —
-         *  no flag needed. Default empty → no copy. Closes #82. */
-        env: z.array(z.string().min(1)).optional(),
-        submodules: z.array(repoEntry).optional(),
-      })
-      .strict(),
-  ]),
-);
+/**
+ * Submodule entries: same shape as a top-level repo, minus the recursive
+ * `submodules` (no nested submodules) AND minus the section-marker variant
+ * (sections are top-level only — see `topLevelRepoEntry` below).
+ */
+const submoduleRepoEntry: z.ZodType<RawSubmoduleRepo> = z.union([
+  z.string(),
+  z
+    .object({
+      name: z.string(),
+      label: z.string().min(1).optional(),
+      run: z.string().optional(),
+      force_stop: z.string().optional(),
+      install: z.string().optional(),
+      pinned_branch: z.string().optional(),
+      env: z.array(z.string().min(1)).optional(),
+    })
+    .strict(),
+]);
+
+/**
+ * Top-level entries: a name string, a full repo object (with optional
+ * `submodules`), or a section marker that groups everything until the next
+ * marker into a labelled bucket. Section markers carry no behaviour — they
+ * only steer the Settings UI and the Code pane's card grouping. The walker
+ * in `config-walk.ts` strips them out before any consumer sees the list.
+ */
+const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
+  z.string(),
+  z
+    .object({
+      name: z.string(),
+      label: z.string().min(1).optional(),
+      run: z.string().optional(),
+      force_stop: z.string().optional(),
+      /** Install command run after `condash-cli worktrees setup` creates the
+       *  worktree. Applied unconditionally when set (#87) — pass
+       *  `--no-install` on the CLI to skip. */
+      install: z.string().optional(),
+      /** Pin: keep this repo on a fixed branch; `worktrees setup` skips it. */
+      pinned_branch: z.string().optional(),
+      /** Files to copy from the primary checkout into a new worktree on
+       *  `condash-cli worktrees setup`. Applied unconditionally when present —
+       *  no flag needed. Default empty → no copy. Closes #82. */
+      env: z.array(z.string().min(1)).optional(),
+      submodules: z.array(submoduleRepoEntry).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      /** Non-empty heading text. Renders as a section header in the Settings
+       *  modal and groups Code-pane cards under the same label. */
+      section: z.string().min(1),
+    })
+    .strict(),
+]);
+
+export type RawSubmoduleRepo =
+  | string
+  | {
+      name: string;
+      label?: string;
+      run?: string;
+      force_stop?: string;
+      install?: string;
+      pinned_branch?: string;
+      env?: string[];
+    };
 
 export type RawRepo =
   | string
@@ -43,8 +87,14 @@ export type RawRepo =
       install?: string;
       pinned_branch?: string;
       env?: string[];
-      submodules?: RawRepo[];
-    };
+      submodules?: RawSubmoduleRepo[];
+    }
+  | { section: string };
+
+/** True when `entry` is the section-marker variant of `RawRepo`. */
+export function isSectionMarker(entry: RawRepo): entry is { section: string } {
+  return typeof entry === 'object' && entry !== null && 'section' in entry;
+}
 
 const openWithSlot = z
   .object({
@@ -172,7 +222,7 @@ const sharedSchemaFields = {
   resources_path: conceptionRelativePath.optional(),
   /** Directory browsed by the Skills pane (default `.claude/skills`). */
   skills_path: conceptionRelativePath.optional(),
-  repositories: z.array(repoEntry).optional(),
+  repositories: z.array(topLevelRepoEntry).optional(),
   open_with: z
     .object({
       main_ide: openWithSlot.optional(),

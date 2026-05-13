@@ -17,7 +17,7 @@ describe('configSchema repoEntry', () => {
     if (result.success) {
       const repo = result.data.repositories?.[0];
       expect(typeof repo).toBe('object');
-      if (repo && typeof repo !== 'string') {
+      if (repo && typeof repo !== 'string' && 'name' in repo) {
         expect(repo.env).toEqual(['.env', '.env.local']);
         expect(repo.install).toBe('npm install');
         expect(repo.pinned_branch).toBe('main');
@@ -49,6 +49,44 @@ describe('configSchema repoEntry', () => {
   it('rejects the legacy primary/secondary bucket shape', () => {
     const result = configSchema.safeParse({
       repositories: { primary: ['legacy-repo'] },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a `{ section: "…" }` marker at the top level', () => {
+    const result = configSchema.safeParse({
+      repositories: [
+        { section: 'Sites' },
+        { name: 'alicepeintures.com', run: 'make dev' },
+        { section: 'Tools' },
+        'condash',
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty section name', () => {
+    const result = configSchema.safeParse({
+      repositories: [{ section: '' }, 'condash'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a section marker inside `submodules`', () => {
+    const result = configSchema.safeParse({
+      repositories: [
+        {
+          name: 'parent',
+          submodules: [{ section: 'Inner' }, { name: 'child' }],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a section marker carrying any other field', () => {
+    const result = configSchema.safeParse({
+      repositories: [{ section: 'Sites', collapsed: true }],
     });
     expect(result.success).toBe(false);
   });

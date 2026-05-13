@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RepoEntry, Worktree } from '../../../shared/types';
-import { collectFilterableBranches, filterWorktrees } from './data';
+import { collectFilterableBranches, filterWorktrees, groupRepos, orderedRepos } from './data';
 
 function wt(branch: string | null, primary = false): Worktree {
   return {
@@ -99,5 +99,52 @@ describe('collectFilterableBranches', () => {
       },
     ];
     expect(collectFilterableBranches(repos)).toEqual([]);
+  });
+});
+
+describe('groupRepos', () => {
+  function r(name: string, section?: string, parent?: string): RepoEntry {
+    return {
+      name,
+      path: `/r/${name}`,
+      dirty: 0,
+      missing: false,
+      hasForceStop: false,
+      hasRun: false,
+      section,
+      parent,
+    };
+  }
+
+  it('returns one default-bucket group when no repo has a section', () => {
+    const groups = groupRepos([r('alpha'), r('beta')]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].section).toBeNull();
+    expect(groups[0].key).toBe('__default__');
+    expect(groups[0].repos.map((p) => p.name)).toEqual(['alpha', 'beta']);
+  });
+
+  it('splits repos by section in declaration order, keeping submodules in their parent group', () => {
+    // orderedRepos puts submodules right after their parent; groupRepos is
+    // called on that flat list. Submodules inherit their parent's section at
+    // walk time (see config-walk.ts), so they stay in the same group as the
+    // parent without any special-case logic here.
+    const ordered = orderedRepos([
+      r('alicepeintures.com', 'Sites'),
+      r('condash', 'Tools'),
+      r('frontend', 'Tools', 'condash'),
+    ]);
+    const groups = groupRepos(ordered);
+    expect(groups.map((g) => g.section)).toEqual(['Sites', 'Tools']);
+    expect(groups[0].repos.map((p) => p.name)).toEqual(['alicepeintures.com']);
+    expect(groups[1].repos.map((p) => p.name)).toEqual(['condash', 'frontend']);
+  });
+
+  it('emits a leading default-bucket group before the first section', () => {
+    const groups = groupRepos([r('standalone'), r('grouped', 'Later')]);
+    expect(groups.map((g) => [g.section, g.key, g.repos.length])).toEqual([
+      [null, '__default__', 1],
+      ['Later', 'Later', 1],
+    ]);
   });
 });

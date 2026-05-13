@@ -5,7 +5,7 @@ import type {
   TerminalXtermPrefs,
   Theme,
 } from '@shared/types';
-import type { RawRepo } from '../../main/config-schema';
+import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../../main/config-schema';
 
 export type SettingsTab = 'global' | 'conception';
 
@@ -237,9 +237,20 @@ export interface RawConfig {
 export function compactRepos(repos: RawRepo[]): RawRepo[] {
   return repos.map((entry) => {
     if (typeof entry === 'string') return entry;
-    const copy: Exclude<RawRepo, string> = { ...entry };
+    if (isSectionMarker(entry)) return { section: entry.section };
+    // Repo-object variant from here on.
+    const copy = { ...entry } as {
+      name: string;
+      label?: string;
+      run?: string;
+      force_stop?: string;
+      install?: string;
+      pinned_branch?: string;
+      env?: string[];
+      submodules?: RawSubmoduleRepo[];
+    };
     if (copy.submodules) {
-      copy.submodules = compactRepos(copy.submodules);
+      copy.submodules = compactRepos(copy.submodules) as RawSubmoduleRepo[];
       if (copy.submodules.length === 0) delete copy.submodules;
     }
     for (const k of Object.keys(copy) as (keyof typeof copy)[]) {
