@@ -37,6 +37,17 @@ import { settingsPath } from './settings';
  * replace; objects replace whole. No deep merge — predictable beats
  * convenient. A conception that wants to override only one `open_with`
  * slot has to restate the others.
+ *
+ * One exception: `terminal`. Its sub-schema straddles per-machine input /
+ * device prefs (`shell`, `shortcut`, `screenshot_dir`, `launcher_command`,
+ * `xterm`, …) and per-tree retention policy (`logging.{retentionDays,
+ * maxDirMb, …}`). A pure replace meant any tree that customised
+ * `terminal.logging` silently lost every per-machine terminal pref — the
+ * λ launcher button vanished and the screenshot-paste shortcut toasted
+ * "no screenshot_dir". `terminal` therefore merges one level deep:
+ * conception fields win at the sub-key level, missing sub-keys fall
+ * through to the global block. Nested values inside `terminal.xterm` /
+ * `terminal.logging` still replace whole.
  */
 export interface EffectiveConfig extends ConfigShape {
   workspace_path?: string;
@@ -166,9 +177,17 @@ export async function getEffectiveConceptionConfig(
   }
   for (const [key, value] of Object.entries(conception)) {
     if (GLOBAL_ONLY_KEYS.has(key)) continue;
+    if (key === 'terminal' && isPlainObject(value) && isPlainObject(merged.terminal)) {
+      merged.terminal = { ...merged.terminal, ...value };
+      continue;
+    }
     merged[key] = value;
   }
   return merged as EffectiveConfig;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 async function fileExists(path: string): Promise<boolean> {

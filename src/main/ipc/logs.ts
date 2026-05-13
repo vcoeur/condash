@@ -28,6 +28,7 @@ export function registerLogsIpc(): void {
     readEvents(filePath, offset, limit),
   );
   ipcMain.handle('logsDeleteDay', async (_e, day: string) => deleteDay(day));
+  ipcMain.handle('logsDeleteSession', async (_e, filePath: string) => deleteSession(filePath));
 }
 
 interface DayEntry {
@@ -224,6 +225,24 @@ function enrichEventText(ev: TermLogEvent): void {
   if (typeof ev.data !== 'string') return;
   if (ev.kind === 'in') ev.text = canonicalizeInput(ev.data);
   else if (ev.kind === 'out') ev.text = canonicalizeOutput(ev.data);
+}
+
+async function deleteSession(filePath: string): Promise<{ deleted: boolean }> {
+  const conception = await activeConceptionPath();
+  if (!conception) return { deleted: false };
+  // Bounds-check first so a malicious renderer can't escape the logs root
+  // by passing `/etc/passwd` or `..`. `requirePathUnder` resolves symlinks
+  // and rejects anything outside the root.
+  await requirePathUnder(filePath, condashLogsRoot(conception));
+  if (!filePath.endsWith('.jsonl')) {
+    throw new Error('logsDeleteSession: only .jsonl files');
+  }
+  try {
+    await fs.rm(filePath, { force: true });
+    return { deleted: true };
+  } catch {
+    return { deleted: false };
+  }
 }
 
 async function deleteDay(day: string): Promise<{ deleted: boolean }> {

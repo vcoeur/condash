@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   conceptionConfigWritePath,
+  getEffectiveConceptionConfig,
   readConceptionConfigRaw,
   resolveConceptionConfigPath,
 } from './effective-config';
@@ -83,5 +84,62 @@ describe('readConceptionConfigRaw', () => {
 
   it('returns {} when nothing is present', async () => {
     expect(await readConceptionConfigRaw(tmp)).toEqual({});
+  });
+});
+
+describe('getEffectiveConceptionConfig', () => {
+  it('merges terminal one level deep so per-conception logging keeps per-machine prefs', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(
+      global,
+      JSON.stringify({
+        terminal: {
+          launcher_command: 'claude',
+          screenshot_dir: '/home/alice/Pictures/Screenshots',
+        },
+      }),
+    );
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(
+      condashSettingsPath(tmp),
+      JSON.stringify({
+        terminal: { logging: { retentionDays: 28 } },
+      }),
+    );
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.terminal).toEqual({
+      launcher_command: 'claude',
+      screenshot_dir: '/home/alice/Pictures/Screenshots',
+      logging: { retentionDays: 28 },
+    });
+  });
+
+  it('lets conception terminal sub-keys override the global ones', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(
+      global,
+      JSON.stringify({ terminal: { launcher_command: 'claude', screenshot_dir: '/a' } }),
+    );
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(condashSettingsPath(tmp), JSON.stringify({ terminal: { screenshot_dir: '/b' } }));
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.terminal).toEqual({ launcher_command: 'claude', screenshot_dir: '/b' });
+  });
+
+  it('still replaces non-terminal keys whole (open_with stays one-or-the-other)', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(
+      global,
+      JSON.stringify({
+        open_with: { main_ide: { command: 'idea {path}' }, terminal: { command: 'ghostty' } },
+      }),
+    );
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(
+      condashSettingsPath(tmp),
+      JSON.stringify({ open_with: { terminal: { command: 'kitty' } } }),
+    );
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.open_with).toEqual({ terminal: { command: 'kitty' } });
   });
 });

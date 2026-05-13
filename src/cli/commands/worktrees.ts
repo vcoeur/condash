@@ -122,7 +122,7 @@ async function worktreeSetup(
   const skipInstall = args.flags['no-install'] === true;
   if (args.flags.install === true) {
     process.stderr.write(
-      '[deprecated] --install is now the default for repos that declare install: in condash.json. Use --no-install to skip.\n',
+      '[deprecated] --install is now the default for repos that declare install: in .condash/settings.json. Use --no-install to skip.\n',
     );
   }
   const baseFlag = args.flags.base;
@@ -229,7 +229,7 @@ function printWorktreesHelp(): void {
       '  setup <branch>   Create worktrees for every repo in the union of **Apps** declaring this branch.',
       '                   Flags: --repo <r>... (override) --no-env --no-install --copy-env --base <ref>',
       '                   Base ref defaults to the **Base** field on declaring item READMEs (must agree).',
-      '                   Repos with `env: [...]` in condash.json have those files copied by default;',
+      '                   Repos with `env: [...]` in .condash/settings.json have those files copied by default;',
       '                   --no-env opts out. Repos with `install: <cmd>` have it run by default; --no-install',
       '                   opts out. --copy-env is the legacy opportunistic .env / .env.local copy for repos',
       '                   without `env:` declared.',
