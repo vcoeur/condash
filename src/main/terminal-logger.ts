@@ -78,6 +78,29 @@ export function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, '');
 }
 
+/**
+ * Coalesce policy. Interactive shells emit one `in` event per keystroke
+ * and one `out` event echoing each character; without coalescing, typing
+ * `echo A\r` yields ~14 records. The writer batches consecutive same-kind
+ * payloads into one record using three rules:
+ *
+ *   1. **`in` flushes on line terminator** — a typed command up to Enter
+ *      lands as one record (`data: "echo A\r"`), matching the user's
+ *      mental model of "one line of input = one event".
+ *   2. **`out` flushes on idle** (`OUTPUT_IDLE_MS`) — pty echo + the
+ *      shell's prompt-redraw burst collapse into one or two records per
+ *      command.
+ *   3. **Switching kind flushes** — preserves chronological in→out order.
+ *
+ * `INPUT_IDLE_MS` is a fallback for keys that never produce a newline
+ * (arrow keys, raw-mode TUI input, partial pastes). `MAX_BUFFER_BYTES`
+ * caps the in-memory buffer so a streaming `tail -f` or `cargo build`
+ * doesn't grow unbounded if it never idles long enough to trip the timer.
+ */
+const INPUT_IDLE_MS = 500;
+const OUTPUT_IDLE_MS = 100;
+const MAX_BUFFER_BYTES = 64 * 1024;
+
 export class SessionLogger {
   private prefs: Required<TerminalLoggingPrefs>;
   private rotation = 1;
@@ -90,6 +113,11 @@ export class SessionLogger {
    * prefix so they sort together and share the same `<sid>` identity —
    * the rotation suffix differentiates them, not the timestamp. */
   private readonly spawnTime: Date;
+  /** Buffered in/out events waiting for a coalesce flush. Same-kind
+   * payloads concatenate; switching kind flushes first. Null between
+   * bursts. */
+  private pending: { kind: 'in' | 'out'; data: string; ts: string } | null = null;
+  private flushTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly conceptionPath: string,
@@ -107,11 +135,16 @@ export class SessionLogger {
   }
 
   setPaused(paused: boolean): void {
+    // Entering pause is a hard boundary — seal whatever was buffered so a
+    // resume after the pause starts a fresh record rather than splicing
+    // pre- and post-pause data together.
+    if (paused && !this.paused) this.flushPending();
     this.paused = paused;
   }
 
   spawn(): void {
     if (!this.isEnabled()) return;
+    this.flushPending();
     this.write({
       kind: 'spawn',
       cmd: this.ctx.spawn.cmd,
@@ -122,16 +155,17 @@ export class SessionLogger {
 
   input(data: string): void {
     if (!this.isEnabled() || data.length === 0) return;
-    this.write({ kind: 'in', data: this.encode(data), len: data.length });
+    this.coalesce('in', data);
   }
 
   output(data: string): void {
     if (!this.isEnabled() || data.length === 0) return;
-    this.write({ kind: 'out', data: this.encode(data), len: data.length });
+    this.coalesce('out', data);
   }
 
   exit(exitCode: number): void {
     if (!this.isEnabled()) return;
+    this.flushPending();
     this.write({ kind: 'exit', exitCode });
   }
 
@@ -139,6 +173,7 @@ export class SessionLogger {
   close(): Promise<void> {
     if (this.closed) return Promise.resolve();
     this.closed = true;
+    this.flushPending();
     // Nothing was ever written → nothing to close.
     if (this.stream === null) return Promise.resolve();
     // Write the close marker explicitly — `write()` is happy to run even
@@ -155,6 +190,13 @@ export class SessionLogger {
     });
   }
 
+  /** Test hook — force the pending coalesce buffer to disk now. Production
+   * callers rely on the timer; tests use this to avoid a `setTimeout`
+   * wait. */
+  flushForTests(): void {
+    this.flushPending();
+  }
+
   /** Absolute path of the currently-active file. Visible for tab indicator
    * tooltips. Returns null before the first write. */
   filePath(): string | null {
@@ -165,13 +207,57 @@ export class SessionLogger {
     return this.prefs.ansiPolicy === 'stripped' ? stripAnsi(data) : data;
   }
 
-  private write(event: Record<string, unknown>): void {
+  private coalesce(kind: 'in' | 'out', data: string): void {
+    // Switching direction flushes — preserves chronology between an `in`
+    // keystroke and the matching `out` echo.
+    if (this.pending && this.pending.kind !== kind) this.flushPending();
+    if (this.pending) {
+      this.pending.data += data;
+    } else {
+      this.pending = { kind, data, ts: new Date().toISOString() };
+    }
+    // Input flushes at line boundaries: one Enter press closes the
+    // record. Multi-line pastes that end in newline flush in one go.
+    if (kind === 'in' && /[\r\n]$/.test(this.pending.data)) {
+      this.flushPending();
+      return;
+    }
+    // Bound the buffer so a stream that never idles can't grow forever.
+    if (this.pending.data.length >= MAX_BUFFER_BYTES) {
+      this.flushPending();
+      return;
+    }
+    // Idle-based fallback. Resetting the timer on every byte means a
+    // steady stream extends the same record until idle / cap / newline /
+    // close — exactly what the user expects from "one burst, one entry".
+    if (this.flushTimer !== null) clearTimeout(this.flushTimer);
+    const idleMs = kind === 'in' ? INPUT_IDLE_MS : OUTPUT_IDLE_MS;
+    this.flushTimer = setTimeout(() => this.flushPending(), idleMs);
+    // Don't keep the event loop alive on the writer alone — close() and
+    // exit() flush explicitly, so an orphaned timer would only delay
+    // shutdown.
+    this.flushTimer.unref?.();
+  }
+
+  private flushPending(): void {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    const p = this.pending;
+    if (p === null) return;
+    this.pending = null;
+    const encoded = this.encode(p.data);
+    this.write({ kind: p.kind, data: encoded, len: p.data.length }, p.ts);
+  }
+
+  private write(event: Record<string, unknown>, ts?: string): void {
     try {
       const stream = this.openStream();
       if (stream === null) return;
       const line =
         JSON.stringify({
-          ts: new Date().toISOString(),
+          ts: ts ?? new Date().toISOString(),
           sid: this.ctx.sid,
           side: this.ctx.side,
           ...(this.ctx.repo ? { repo: this.ctx.repo } : {}),

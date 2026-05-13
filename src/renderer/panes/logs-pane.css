@@ -46,6 +46,27 @@
   background: var(--surface-hover, rgba(255, 255, 255, 0.04));
 }
 
+.logs-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 28rem;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--surface-border, #2a2a2a);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+}
+
+.logs-search:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.logs-search::placeholder {
+  color: var(--text-muted, #8a8a8a);
+}
+
 .logs-delete-day {
   color: #c44;
   border-color: rgba(204, 68, 68, 0.4);

@@ -898,6 +898,9 @@ function App() {
   const onSkillsHandleClick = (): void => {
     selectWorking(layout().working === 'skills' ? null : 'skills');
   };
+  const onLogsHandleClick = (): void => {
+    selectWorking(layout().working === 'logs' ? null : 'logs');
+  };
   const handlesEnabled = (): boolean => !!conceptionPath();
 
   return (
@@ -1164,6 +1167,18 @@ function App() {
             title={layout().working === 'skills' ? 'Hide Skills (Ctrl+L)' : 'Show Skills (Ctrl+L)'}
           >
             <span class="edge-handle-label">Skills</span>
+          </button>
+          <button
+            class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().working === 'logs' }}
+            aria-pressed={layout().working === 'logs'}
+            onClick={onLogsHandleClick}
+            disabled={!handlesEnabled()}
+            title={
+              layout().working === 'logs' ? 'Hide Logs (Ctrl+Shift+L)' : 'Show Logs (Ctrl+Shift+L)'
+            }
+          >
+            <span class="edge-handle-label">Logs</span>
           </button>
         </aside>
       </div>

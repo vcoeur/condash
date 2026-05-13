@@ -52,6 +52,21 @@ export function LogsView(): JSX.Element {
     },
   );
 
+  // Free-text search box. Substring match (case-insensitive) against
+  // `ev.text` (canonicalised by the IPC reader — see canonical-input.ts)
+  // with a `stripAnsi(data)` fallback for older events that lack `text`.
+  // Filtering runs in the renderer because the IPC payload is already
+  // capped at 5000 events — adding a backend grep round-trip per
+  // keystroke would feel slower than the in-memory scan.
+  const [query, setQuery] = createSignal('');
+
+  const filteredEvents = createMemo<TermLogEvent[]>(() => {
+    const all = events() ?? [];
+    const q = query().trim().toLowerCase();
+    if (q.length === 0) return all;
+    return all.filter((ev) => searchableBody(ev).toLowerCase().includes(q));
+  });
+
   const [pendingDelete, setPendingDelete] = createSignal<string | null>(null);
 
   const refreshAll = (): void => {
@@ -92,6 +107,14 @@ export function LogsView(): JSX.Element {
         <button type="button" class="logs-refresh" onClick={refreshAll}>
           Refresh
         </button>
+        <input
+          type="search"
+          class="logs-search"
+          placeholder="Search this session…"
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+          disabled={!selectedSession()}
+        />
         <Show when={effectiveDay()}>
           {(day) => (
             <button type="button" class="logs-delete-day" onClick={() => setPendingDelete(day())}>
@@ -167,7 +190,16 @@ export function LogsView(): JSX.Element {
                     when={(events()?.length ?? 0) > 0}
                     fallback={<div class="empty">Empty session.</div>}
                   >
-                    <For each={events() ?? []}>{(ev) => <EventRow ev={ev} />}</For>
+                    <Show
+                      when={filteredEvents().length > 0}
+                      fallback={
+                        <div class="empty">
+                          No matches for "{query()}" ({events()?.length ?? 0} events).
+                        </div>
+                      }
+                    >
+                      <For each={filteredEvents()}>{(ev) => <EventRow ev={ev} />}</For>
+                    </Show>
                   </Show>
                 </div>
               </>
@@ -196,7 +228,11 @@ function eventBody(ev: TermLogEvent): string {
     return `${ev.cmd ?? ''} ${argv}`.trim();
   }
   if (ev.kind === 'in' || ev.kind === 'out') {
-    return stripAnsi(ev.data ?? '');
+    // Prefer the IPC-side canonicalisation (handles backspaces / Ctrl+U
+    // for `in`, drops bare \r for `out`). Fall back to stripAnsi(data)
+    // for resilience — only matters if a future change forgets to
+    // populate `text` for some kind.
+    return ev.text ?? stripAnsi(ev.data ?? '');
   }
   if (ev.kind === 'exit') {
     return `exitCode=${ev.exitCode ?? '?'}`;
@@ -205,6 +241,11 @@ function eventBody(ev: TermLogEvent): string {
     return `rotated from ${ev.from ?? ''} to ${ev.to ?? ''}`;
   }
   return '';
+}
+
+/** Searchable form of an event — same canonical text the row renders. */
+function searchableBody(ev: TermLogEvent): string {
+  return eventBody(ev);
 }
 
 // Lightweight stripper that matches the writer's policy — keep this in

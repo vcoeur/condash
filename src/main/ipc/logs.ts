@@ -1,7 +1,9 @@
 import { ipcMain } from 'electron';
-import { promises as fs } from 'node:fs';
+import { createReadStream, promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import type { TermLogEvent, TermLogSessionMeta } from '../../shared/types';
+import { canonicalizeInput, canonicalizeOutput } from '../../shared/canonical-input';
 import { condashLogsRoot } from '../condash-dir';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings } from '../settings';
@@ -168,27 +170,60 @@ async function readEvents(filePath: string, offset = 0, limit = 1000): Promise<T
   if (!filePath.endsWith('.jsonl')) {
     throw new Error('logsReadEvents: only .jsonl files');
   }
-  let raw: string;
-  try {
-    raw = await fs.readFile(filePath, 'utf8');
-  } catch {
-    return [];
-  }
-  const out: TermLogEvent[] = [];
-  let lineIdx = 0;
-  for (const line of raw.split('\n')) {
-    if (line.length === 0) continue;
-    if (lineIdx >= offset && out.length < limit) {
-      try {
-        out.push(JSON.parse(line) as TermLogEvent);
-      } catch {
-        /* skip malformed */
+  return readEventsStreaming(filePath, offset, limit);
+}
+
+/**
+ * Stream a JSONL session file line-by-line and return the `offset`-th
+ * through `offset+limit-1` events. Earlier versions did `fs.readFile +
+ * split('\n')` which allocated the whole file (a real-world 2.3 MB log
+ * triggered a multi-megabyte string + a 9000-element array) just to grab
+ * the first few thousand records. Streaming caps memory at the read-stream
+ * buffer plus the `limit`-sized output array.
+ *
+ * Also enriches `in` / `out` events with a `text` field — see
+ * `canonicalize{Input,Output}` for the rules. The on-disk JSONL is kept
+ * raw so the file remains a faithful pty capture; search and display
+ * consume `text`.
+ */
+function readEventsStreaming(
+  filePath: string,
+  offset: number,
+  limit: number,
+): Promise<TermLogEvent[]> {
+  return new Promise<TermLogEvent[]>((resolve) => {
+    const out: TermLogEvent[] = [];
+    let lineIdx = 0;
+    const stream = createReadStream(filePath, { encoding: 'utf8' });
+    stream.on('error', () => resolve(out));
+    const rl = createInterface({ input: stream, crlfDelay: Infinity });
+    const finish = (): void => {
+      rl.removeAllListeners();
+      stream.destroy();
+      resolve(out);
+    };
+    rl.on('line', (line) => {
+      if (line.length === 0) return;
+      if (lineIdx >= offset && out.length < limit) {
+        try {
+          const ev = JSON.parse(line) as TermLogEvent;
+          enrichEventText(ev);
+          out.push(ev);
+        } catch {
+          /* skip malformed */
+        }
       }
-    }
-    lineIdx += 1;
-    if (out.length >= limit) break;
-  }
-  return out;
+      lineIdx += 1;
+      if (out.length >= limit) finish();
+    });
+    rl.on('close', finish);
+  });
+}
+
+function enrichEventText(ev: TermLogEvent): void {
+  if (typeof ev.data !== 'string') return;
+  if (ev.kind === 'in') ev.text = canonicalizeInput(ev.data);
+  else if (ev.kind === 'out') ev.text = canonicalizeOutput(ev.data);
 }
 
 async function deleteDay(day: string): Promise<{ deleted: boolean }> {

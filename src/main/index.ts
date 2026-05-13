@@ -1,5 +1,6 @@
 import { app, BrowserWindow, net, protocol, shell } from 'electron';
 import { promises as fsp } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -120,6 +121,20 @@ const DEV_URL = 'http://localhost:5600';
 // production mode. CONDASH_FORCE_PROD=1 is set by the Playwright fixture so
 // tests load the real file:// build instead of the Vite dev URL.
 const isDev = !app.isPackaged && process.env.CONDASH_FORCE_PROD !== '1';
+
+// Dev and the installed prod binary share the same Electron product name
+// ("condash"), so by default both resolve `app.getPath('userData')` to
+// `~/.config/condash` — running `npm run dev` while the prod app is open
+// makes them race for `settings.json`, window-state, and the IPC socket.
+// In dev, redirect userData to `~/.config/condash-dev` so the two
+// instances are fully isolated. Must run before `app.whenReady()` (and
+// before any IPC handler that reads userData), which is why this lives
+// at module top-level.
+if (isDev) {
+  const devUserData =
+    process.env.CONDASH_DEV_USER_DATA_DIR ?? join(homedir(), '.config', 'condash-dev');
+  app.setPath('userData', devUserData);
+}
 
 let mainWindow: BrowserWindow | null = null;
 

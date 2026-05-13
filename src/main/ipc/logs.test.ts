@@ -179,6 +179,25 @@ describe('logsReadEvents', () => {
     writeFileSync(txt, 'hi');
     await expect(handlers.logsReadEvents({}, txt, 0, 100)).rejects.toThrow();
   });
+
+  it('enriches in/out events with a canonical `text` field', async () => {
+    const file = writeLogFile('2026-05-13', '142207-t-canon.jsonl', [
+      { ts: 'a', sid: 't-canon', side: 'my', kind: 'spawn', cmd: 'bash', argv: [] },
+      // Typed `gi<BS>it push\r` (backspaced after typing `gi`, then typed
+      // `it push`). Canonical form: `git push\r`.
+      { ts: 'b', sid: 't-canon', side: 'my', kind: 'in', data: 'gi\bit push\r' },
+      // Output bytes with ANSI colour + trailing CR (no LF).
+      { ts: 'c', sid: 't-canon', side: 'my', kind: 'out', data: '\x1b[31merror\x1b[0m\r' },
+    ]);
+    const events = (await handlers.logsReadEvents({}, file, 0, 100)) as Array<{
+      kind: string;
+      text?: string;
+    }>;
+    const inEv = events.find((e) => e.kind === 'in');
+    const outEv = events.find((e) => e.kind === 'out');
+    expect(inEv?.text).toBe('git push\r');
+    expect(outEv?.text).toBe('error');
+  });
 });
 
 describe('logsDeleteDay', () => {

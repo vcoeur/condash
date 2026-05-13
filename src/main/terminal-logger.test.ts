@@ -218,6 +218,71 @@ describe('SessionLogger', () => {
     expect(logger.filePath()).toBeNull();
   });
 
+  it('coalesces a typed command + Enter into one in record', async () => {
+    const logger = new SessionLogger(tmp, {
+      sid: 't-coal-in',
+      side: 'my',
+      cwd: '/x',
+      spawn: { cmd: 'bash', argv: [] },
+    });
+    logger.spawn();
+    // Each keystroke arrives separately; Enter (`\r`) closes the record.
+    for (const ch of 'echo A') logger.input(ch);
+    logger.input('\r');
+    await logger.close();
+    const path = logger.filePath();
+    if (!path) throw new Error('no path');
+    const events = readJsonl(path);
+    const inEvents = events.filter((e) => e.kind === 'in');
+    expect(inEvents).toHaveLength(1);
+    expect(inEvents[0].data).toBe('echo A\r');
+    expect(inEvents[0].len).toBe(7);
+  });
+
+  it('coalesces echoed output bytes until close', async () => {
+    const logger = new SessionLogger(tmp, {
+      sid: 't-coal-out',
+      side: 'my',
+      cwd: '/x',
+      spawn: { cmd: 'bash', argv: [] },
+    });
+    logger.spawn();
+    // Simulate the pty echoing each typed character.
+    for (const ch of 'echo A') logger.output(ch);
+    await logger.close();
+    const path = logger.filePath();
+    if (!path) throw new Error('no path');
+    const outEvents = readJsonl(path).filter((e) => e.kind === 'out');
+    expect(outEvents).toHaveLength(1);
+    expect(outEvents[0].data).toBe('echo A');
+  });
+
+  it('flushes pending in-buffer when switching to out', async () => {
+    const logger = new SessionLogger(tmp, {
+      sid: 't-coal-switch',
+      side: 'my',
+      cwd: '/x',
+      spawn: { cmd: 'bash', argv: [] },
+    });
+    logger.spawn();
+    // Two keystrokes with no newline yet, then output arrives — the
+    // pending `in` must seal before the `out` starts so chronology is
+    // preserved.
+    logger.input('a');
+    logger.input('b');
+    logger.output('result');
+    await logger.close();
+    const path = logger.filePath();
+    if (!path) throw new Error('no path');
+    const events = readJsonl(path);
+    const kinds = events.filter((e) => e.kind === 'in' || e.kind === 'out').map((e) => e.kind);
+    expect(kinds).toEqual(['in', 'out']);
+    const inEv = events.find((e) => e.kind === 'in');
+    const outEv = events.find((e) => e.kind === 'out');
+    expect(inEv?.data).toBe('ab');
+    expect(outEv?.data).toBe('result');
+  });
+
   it('close() is idempotent', async () => {
     const logger = new SessionLogger(tmp, {
       sid: 't-c',

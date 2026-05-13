@@ -114,6 +114,11 @@ export interface TermLogEvent {
   cwd?: string;
   kind: 'spawn' | 'in' | 'out' | 'exit' | 'close' | 'rotate';
   data?: string;
+  /** Search-friendly form of `data` — ANSI stripped, edit chars resolved
+   * (backspace, Ctrl+U, Ctrl+W). Computed by the IPC reader so the
+   * on-disk JSONL stays a faithful pty capture. Absent on non-data
+   * events (spawn / exit / close / rotate). */
+  text?: string;
   len?: number;
   exitCode?: number;
   cmd?: string;
