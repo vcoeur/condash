@@ -1,15 +1,8 @@
 import { createEffect, createResource, createSignal, For, Show, createMemo } from 'solid-js';
 import type { JSX } from 'solid-js';
-import { Terminal } from '@xterm/xterm';
-import { SerializeAddon } from '@xterm/addon-serialize';
-import type { TermLogEvent, TermLogSessionMeta } from '@shared/types';
+import { AnsiUp } from 'ansi_up';
+import type { TermLogSessionMeta, TermLogSessionRead } from '@shared/types';
 import { ConfirmModal } from '../confirm-modal';
-import {
-  buildRenderedItems,
-  searchableText,
-  type RenderedItem,
-  type ReplaySegmentRenderer,
-} from './logs-replay';
 import './logs-pane.css';
 
 /**
@@ -17,25 +10,20 @@ import './logs-pane.css';
  *
  * Layout:
  *   - Row 1: Day select · Session select · Refresh · Delete session.
- *   - Row 2: Search box (substring match against rendered event text).
- *   - Body: events for the selected session. Contiguous `out` events are
- *     replayed through an off-screen xterm + SerializeAddon (same recipe
- *     the live pane's Save-buffer button uses) and shown as a single
- *     rendered transcript block; `in` / `spawn` / `exit` / `rotate`
- *     events render as one-line rows above and below the transcript.
+ *   - Row 2: Search box (substring match against the rendered session text).
+ *   - Body: header line with cmd / exit / repo, then the rendered
+ *     terminal buffer styled via `ansi_up` (ANSI SGR → HTML spans with
+ *     inline colour). Non-SGR escapes (mode set, cursor positioning) are
+ *     silently dropped.
  *
- * Why replay (and not just ANSI-strip the bytes): TUIs like Claude Code
- * emit constant cursor-positioning + line-erase sequences for the
- * spinner and bottom status bar. Stripping ANSI but keeping the literal
- * `\n`s between repaints scatters each frame's glyphs down separate
- * lines — unreadable. Feeding the raw bytes into an off-screen
- * `Terminal` resolves all the cursor motion to the final screen state.
+ * The writer (`src/main/terminal-logger.ts`) feeds raw pty bytes into a
+ * headless xterm and atomically writes the serialised buffer to a `.txt`
+ * file every 5 s. We just read the file and let ansi_up draw it; no
+ * replay pipeline on this side.
  */
 export function LogsView(): JSX.Element {
-  // The list of available day-dirs (newest first).
   const [days, { refetch: refetchDays }] = createResource(() => window.condash.logsListDays());
 
-  // Currently-selected day; defaults to the newest available.
   const [selectedDay, setSelectedDay] = createSignal<string | null>(null);
   const effectiveDay = createMemo(() => {
     const sel = selectedDay();
@@ -44,7 +32,6 @@ export function LogsView(): JSX.Element {
     return list && list.length > 0 ? list[0].day : null;
   });
 
-  // Sessions for the active day.
   const [sessions, { refetch: refetchSessions }] = createResource(
     () => effectiveDay(),
     (day): Promise<TermLogSessionMeta[]> => {
@@ -55,11 +42,8 @@ export function LogsView(): JSX.Element {
 
   const [selectedSession, setSelectedSession] = createSignal<TermLogSessionMeta | null>(null);
 
-  // Auto-select the first session whenever the session list arrives or
-  // changes. Without this, the search input + delete-session button stay
-  // disabled and the events panel reads "Pick a session" on every day
-  // change — and the new design has no session rail for the user to
-  // click on.
+  // Auto-select the first session on day change so the search box +
+  // delete button don't sit disabled.
   createEffect(() => {
     const list = sessions();
     if (!list) return;
@@ -68,38 +52,30 @@ export function LogsView(): JSX.Element {
     setSelectedSession(list.length > 0 ? list[0] : null);
   });
 
-  // Events for the selected session file.
-  const [events, { refetch: refetchEvents }] = createResource(
+  const [sessionRead, { refetch: refetchSessionRead }] = createResource(
     () => selectedSession(),
-    (sess): Promise<TermLogEvent[]> => {
-      if (!sess) return Promise.resolve([]);
-      // Cap at 5000 lines to keep the renderer responsive on huge logs.
-      return window.condash.logsReadEvents(sess.path, 0, 5000);
+    (sess): Promise<TermLogSessionRead> => {
+      if (!sess) return Promise.resolve({ text: '', meta: null });
+      return window.condash.logsReadSession(sess.path);
     },
   );
 
-  // Walk events through the xterm replay pipeline. Each session-file
-  // load constructs a fresh `XtermSegmentRenderer`; it's disposed inside
-  // `buildRenderedItems` after the final segment.
-  const [renderedItems] = createResource(
-    () => events(),
-    async (evs): Promise<RenderedItem[]> => {
-      if (!evs || evs.length === 0) return [];
-      const renderer = new XtermSegmentRenderer();
-      return buildRenderedItems(evs, renderer);
-    },
-  );
-
-  // Free-text search box. Substring match (case-insensitive) against
-  // each item's searchable text — for event rows that's the canonical
-  // event body; for transcript blocks it's the rendered terminal text.
   const [query, setQuery] = createSignal('');
 
-  const filteredItems = createMemo<RenderedItem[]>(() => {
-    const all = renderedItems() ?? [];
+  const ansiHtml = createMemo<string>(() => {
+    const read = sessionRead();
+    if (!read || !read.text) return '';
+    const ansi = new AnsiUp();
+    ansi.use_classes = false;
+    return ansi.ansi_to_html(read.text);
+  });
+
+  const matches = createMemo<boolean>(() => {
+    const read = sessionRead();
+    if (!read || !read.text) return false;
     const q = query().trim().toLowerCase();
-    if (q.length === 0) return all;
-    return all.filter((item) => searchableText(item).toLowerCase().includes(q));
+    if (q.length === 0) return true;
+    return read.text.toLowerCase().includes(q);
   });
 
   const [pendingDelete, setPendingDelete] = createSignal<TermLogSessionMeta | null>(null);
@@ -107,7 +83,7 @@ export function LogsView(): JSX.Element {
   const refreshAll = (): void => {
     void refetchDays();
     void refetchSessions();
-    void refetchEvents();
+    void refetchSessionRead();
   };
 
   const confirmDeleteSession = (sess: TermLogSessionMeta): void => {
@@ -204,39 +180,20 @@ export function LogsView(): JSX.Element {
         <Show when={selectedSession()} fallback={<div class="empty">Pick a session above.</div>}>
           {(sess) => (
             <>
-              <div class="logs-events-head">
-                <span>{sess().path}</span>
-              </div>
-              <div class="logs-events-list">
+              <SessionHeader sess={sess()} />
+              <Show when={!sessionRead.loading} fallback={<div class="empty">Loading…</div>}>
                 <Show
-                  when={(events()?.length ?? 0) > 0}
+                  when={(sessionRead()?.text.length ?? 0) > 0}
                   fallback={<div class="empty">Empty session.</div>}
                 >
                   <Show
-                    when={renderedItems.loading || renderedItems() !== undefined}
-                    fallback={<div class="empty">Rendering…</div>}
+                    when={matches()}
+                    fallback={<div class="empty">No matches for "{query()}".</div>}
                   >
-                    <Show
-                      when={filteredItems().length > 0}
-                      fallback={
-                        <div class="empty">
-                          No matches for "{query()}" ({renderedItems()?.length ?? 0} items).
-                        </div>
-                      }
-                    >
-                      <For each={filteredItems()}>
-                        {(item) =>
-                          item.kind === 'transcript' ? (
-                            <TranscriptBlock item={item} />
-                          ) : (
-                            <EventRow ev={item.ev} />
-                          )
-                        }
-                      </For>
-                    </Show>
+                    <pre class="logs-transcript" innerHTML={ansiHtml()} />
                   </Show>
                 </Show>
-              </div>
+              </Show>
             </>
           )}
         </Show>
@@ -245,25 +202,16 @@ export function LogsView(): JSX.Element {
   );
 }
 
-function EventRow(props: { ev: TermLogEvent }): JSX.Element {
-  const { ev } = props;
+function SessionHeader(props: { sess: TermLogSessionMeta }): JSX.Element {
   return (
-    <div class={`logs-event logs-event--${ev.kind}`}>
-      <span class="logs-event-ts">{ev.ts.slice(11, 23)}</span>
-      <span class="logs-event-kind">{ev.kind}</span>
-      <span class="logs-event-body">{eventBody(ev)}</span>
-    </div>
-  );
-}
-
-function TranscriptBlock(props: {
-  item: Extract<RenderedItem, { kind: 'transcript' }>;
-}): JSX.Element {
-  return (
-    <div class="logs-event logs-event--transcript">
-      <span class="logs-event-ts">{props.item.firstTs.slice(11, 23)}</span>
-      <span class="logs-event-kind">out</span>
-      <span class="logs-event-body logs-event-body--transcript">{props.item.text}</span>
+    <div class="logs-events-head">
+      <span class="logs-events-head-path">{props.sess.path}</span>
+      <Show when={props.sess.cmd}>
+        <span class="logs-events-head-cmd"> · {props.sess.cmd}</span>
+      </Show>
+      <Show when={props.sess.exitCode !== undefined}>
+        <span class="logs-events-head-exit"> · exit {props.sess.exitCode}</span>
+      </Show>
     </div>
   );
 }
@@ -274,82 +222,6 @@ function sessionLabel(meta: TermLogSessionMeta): string {
   const size = ` · ${formatBytes(meta.bytes)}`;
   const exit = meta.exitCode !== undefined ? ` · exit ${meta.exitCode}` : '';
   return `${head}${cmd}${size}${exit}`;
-}
-
-function eventBody(ev: TermLogEvent): string {
-  if (ev.kind === 'spawn') {
-    const argv = Array.isArray(ev.argv) ? ev.argv.join(' ') : '';
-    return `${ev.cmd ?? ''} ${argv}`.trim();
-  }
-  if (ev.kind === 'in') {
-    return ev.text ?? ev.data ?? '';
-  }
-  if (ev.kind === 'exit') {
-    return `exitCode=${ev.exitCode ?? '?'}`;
-  }
-  if (ev.kind === 'rotate') {
-    return `rotated from ${ev.from ?? ''} to ${ev.to ?? ''}`;
-  }
-  return '';
-}
-
-/**
- * Xterm-backed implementation of `ReplaySegmentRenderer`. Constructs a
- * fresh `Terminal` per segment with `SerializeAddon` loaded, never
- * calls `.open()` (so no DOM is touched), and reads the rendered buffer
- * via `serialize.serialize()` — exactly the recipe the live pane's
- * Save-buffer button (`terminal-pane.tsx:444-456`) uses.
- *
- * 200×50 geometry is generous enough for any Claude Code TUI; if a
- * future user's live terminal is wider the replay will re-wrap, which
- * we accept as cosmetic.
- */
-class XtermSegmentRenderer implements ReplaySegmentRenderer {
-  private term: Terminal | null = null;
-  private serializeAddon: SerializeAddon | null = null;
-
-  start(): void {
-    this.disposeTerm();
-    const term = new Terminal({
-      cols: 200,
-      rows: 50,
-      allowProposedApi: true,
-      scrollback: 10000,
-    });
-    const addon = new SerializeAddon();
-    term.loadAddon(addon);
-    this.term = term;
-    this.serializeAddon = addon;
-  }
-
-  write(data: string): void {
-    this.term?.write(data);
-  }
-
-  async serialize(): Promise<string> {
-    const term = this.term;
-    const addon = this.serializeAddon;
-    if (!term || !addon) return '';
-    // `term.write` queues parsing; we need its callback to fire before
-    // reading the buffer or we'll serialise a pre-parse view of the
-    // last chunk. An empty write with a callback flushes the parser.
-    await new Promise<void>((resolve) => term.write('', () => resolve()));
-    return addon.serialize();
-  }
-
-  dispose(): void {
-    this.disposeTerm();
-  }
-
-  private disposeTerm(): void {
-    try {
-      this.term?.dispose();
-    } catch {
-      /* xterm's dispose can throw if already torn down; never fatal */
-    }
-    this.term = null;
-    this.serializeAddon = null;
-  }
 }
 
 function formatBytes(n: number): string {

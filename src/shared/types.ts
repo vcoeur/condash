@@ -104,39 +104,17 @@ export interface ProjectFileEntry {
 
 export type Theme = 'light' | 'dark' | 'system';
 
-/** A single event in a per-session terminal log file. Mirrors what
- * `SessionLogger.write` emits — one object per JSONL line. */
-export interface TermLogEvent {
-  ts: string;
-  sid: string;
-  side: TermSide;
-  repo?: string;
-  cwd?: string;
-  kind: 'spawn' | 'in' | 'out' | 'exit' | 'close' | 'rotate';
-  data?: string;
-  /** Search-friendly form of `data` — ANSI stripped, edit chars resolved
-   * (backspace, Ctrl+U, Ctrl+W). Computed by the IPC reader so the
-   * on-disk JSONL stays a faithful pty capture. Absent on non-data
-   * events (spawn / exit / close / rotate). */
-  text?: string;
-  len?: number;
-  exitCode?: number;
-  cmd?: string;
-  argv?: string[];
-  from?: string;
-  to?: string;
-}
-
-/** Header summary for a session log file — what the Logs pane's left rail
- * renders as one row per spawn. Derived from the file's first event(s). */
+/** Per-session log file summary — what the Logs pane's session selector
+ * renders as one row per spawn. Pairs an absolute `.txt` path with
+ * sidecar metadata. */
 export interface TermLogSessionMeta {
-  /** Absolute path to the log file. */
+  /** Absolute path to the `.txt` file. */
   path: string;
   /** Day directory this session lives in, `YYYY-MM-DD`. */
   day: string;
   /** Spawn-time HH:MM:SS, parsed from the filename prefix. */
   time: string;
-  /** Total size in bytes. */
+  /** Total size of the `.txt` in bytes. */
   bytes: number;
   /** Session id (the `<sid>` suffix in the filename). */
   sid: string;
@@ -146,9 +124,21 @@ export interface TermLogSessionMeta {
   cwd?: string;
   /** Spawn command argv joined (truncated to 80 chars in the renderer). */
   cmd?: string;
-  /** Exit code if a close/exit event was found in the file; undefined while
-   * a long-running session is still alive. */
+  /** Exit code, if `exit` was reached; undefined while a long-running
+   * session is still alive. */
   exitCode?: number;
+}
+
+/** Contents of a session — rendered `.txt` text plus parsed sidecar
+ * metadata. Returned by `logsReadSession`. */
+export interface TermLogSessionRead {
+  /** Rendered terminal buffer — same format the live pane's Save-buffer
+   * button produces. Includes SGR codes for colour; the renderer pipes
+   * this through `ansi_up` to produce styled HTML. */
+  text: string;
+  /** Sidecar metadata parsed from `<base>.meta.json`. Best-effort —
+   * missing for in-flight sessions whose meta hasn't been flushed yet. */
+  meta: TermLogSessionMeta | null;
 }
 
 /** Right-slot working surface — picks which of Code / Knowledge / Resources /
@@ -416,8 +406,8 @@ export interface TerminalPrefs {
 
 /** Configuration for the per-session terminal log writer. Defaults are
  * applied by the writer when fields are absent (`enabled: true`,
- * `maxFileMb: 5`, `ansiPolicy: 'raw'`, `retentionDays: 14`,
- * `maxDirMb: 500`) — the schema's defaults track the same values. */
+ * `scrollback: 10000`, `retentionDays: 14`, `maxDirMb: 500`) — the
+ * schema's defaults track the same values. */
 export interface TerminalLoggingPrefs {
   /** Toggle capture entirely. Default: true. */
   enabled?: boolean;
@@ -427,15 +417,10 @@ export interface TerminalLoggingPrefs {
   /** Total size cap for the per-conception logs/ tree. The janitor
    * evicts oldest day-directories first when over cap. Default: 500. */
   maxDirMb?: number;
-  /** Per-file rotation threshold. Sessions that exceed this size roll to
-   * `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, etc. Default: 5. TUI sessions
-   * (Claude Code, long agent runs) emit constant cursor-positioned
-   * repaints — the render-side replay viewer handles redundancy at view
-   * time, but a tight on-disk cap keeps any single session bounded. */
-  maxFileMb?: number;
-  /** `raw`: store ANSI bytes as received (viewer strips on render). */
-  /** `stripped`: strip ANSI before writing (smaller files, lossy). */
-  ansiPolicy?: 'raw' | 'stripped';
+  /** Scrollback lines retained by the headless xterm that produces the
+   * rendered `.txt`. Larger value → more history kept, larger per-session
+   * file. Default: 10000. */
+  scrollback?: number;
 }
 
 /** Snapshot of a live (or recently-exited) terminal session, broadcast on

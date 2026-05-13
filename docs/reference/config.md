@@ -74,17 +74,23 @@ A `terminal` block at this level is a valid per-conception override. The boot-ti
 
 ### Terminal logging
 
-Inside the `terminal` block, `terminal.logging` configures per-session capture of stdin / stdout / spawn / exit events. Captured events land in `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl` — one file per pty spawn. The Logs working surface (`View → Show Logs`, `Cmd+Shift+L`) browses the tree.
+Inside the `terminal` block, `terminal.logging` configures per-session capture. Each pty spawn produces two files in `<conception>/.condash/logs/YYYY/MM/DD/`:
 
-| Key             | Type                       | Default | Meaning                                                                                                                                                                                                       |
-|-----------------|----------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `enabled`       | boolean                    | `true`  | Toggle capture entirely. Disabling stops new writes; existing files stay on disk for the janitor.                                                                                                              |
-| `retentionDays` | integer ≥ 0                | `14`    | Day-directories older than this are removed on next janitor run. `0` disables age-based eviction (the size cap still applies).                                                                                |
-| `maxDirMb`      | integer ≥ 0                | `500`   | Total cap on `<conception>/.condash/logs/`. The janitor evicts oldest day-directories first while over cap, regardless of age.                                                                                |
-| `maxFileMb`     | integer ≥ 1                | `5`     | Per-file rotation threshold. Sessions over this size roll to `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, ... A `kind: 'rotate'` event marks the continuation in the new file. Default kept low because TUI sessions (Claude Code, agent runs) emit constant cursor-positioned repaints — the Logs viewer's xterm replay absorbs the redundancy at render time, but it still bloats raw bytes on disk. |
-| `ansiPolicy`    | `'raw'` \| `'stripped'`    | `'raw'` | `raw` stores ANSI bytes as received (viewer strips on render). `stripped` strips ANSI before writing — smaller files, lossy.                                                                                  |
+- `HHMMSS-<sid>.txt` — the rendered terminal buffer (matches what the live pane's **Save buffer** button produces). The writer pipes pty bytes through a headless xterm + `SerializeAddon`, atomically rewriting the file every 5 s.
+- `HHMMSS-<sid>.meta.json` — sidecar carrying `{ sid, side, repo?, cwd, cmd, argv, started, exitCode?, finished? }`.
 
-The janitor runs at app startup and every 24 hours. Errors are logged to stderr and never propagate into the IPC layer. The captured event shape is `{ ts, sid, side, repo?, cwd, kind: 'spawn'|'in'|'out'|'exit'|'close'|'rotate', data?, len?, exitCode?, cmd?, argv? }` — one JSON object per line.
+Typed keystrokes are *not* captured separately — the pty echoes them back through stdout, so the rendered buffer already shows what was typed. The Logs working surface (`View → Show Logs`, `Cmd+Shift+L`) reads the `.txt` and renders it via `ansi_up` (SGR colour escapes → styled HTML; non-SGR escapes are silently dropped).
+
+| Key             | Type           | Default | Meaning                                                                                                                                                                                                       |
+|-----------------|----------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `enabled`       | boolean        | `true`  | Toggle capture entirely. Disabling stops new writes; existing files stay on disk for the janitor.                                                                                                              |
+| `retentionDays` | integer ≥ 0    | `14`    | Day-directories older than this are removed on next janitor run. `0` disables age-based eviction (the size cap still applies).                                                                                |
+| `maxDirMb`      | integer ≥ 0    | `500`   | Total cap on `<conception>/.condash/logs/`. The janitor evicts oldest day-directories first while over cap, regardless of age.                                                                                |
+| `scrollback`    | integer ≥ 100  | `10000` | Scrollback lines retained by the per-session headless xterm. Larger → more history captured, larger `.txt` files; smaller → older output rolls off the top of the buffer (same semantics as the live pane). |
+
+The janitor runs at app startup and every 24 hours. Errors are logged to stderr and never propagate into the IPC layer.
+
+condash ≤ 2.22 wrote a JSONL event stream (`HHMMSS-<sid>.jsonl`) instead. The new viewer ignores those files; only the janitor's age-based eviction touches them. To clear the legacy format immediately, delete `<conception>/.condash/logs/` and start fresh.
 
 ### Workspace keys
 

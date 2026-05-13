@@ -337,8 +337,8 @@ export function TerminalFields(props: {
       <h3>Logging</h3>
       <p class="settings-hint">
         Capture stdin / stdout for every terminal tab to{' '}
-        <code>.condash/logs/YYYY/MM/DD/HHMMSS-&lt;id&gt;.jsonl</code>. The
-        <code> .condash/</code> tree is gitignored by default.
+        <code>.condash/logs/YYYY/MM/DD/HHMMSS-&lt;id&gt;.txt</code> with sidecar
+        <code> .meta.json</code>. The <code> .condash/</code> tree is gitignored by default.
       </p>
       <div class="settings-grid">
         <label class="settings-checkbox">
@@ -386,35 +386,22 @@ export function TerminalFields(props: {
           </small>
         </label>
         <label>
-          <span>Max per-file size (MB)</span>
+          <span>Scrollback (lines)</span>
           <input
             type="number"
-            min="1"
-            value={logging().maxFileMb ?? ''}
-            placeholder="5"
+            min="100"
+            value={logging().scrollback ?? ''}
+            placeholder="10000"
             onChange={(e) =>
               void props.updateLogging({
-                maxFileMb: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+                scrollback: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
               })
             }
           />
           <small class="settings-field-hint">
-            Sessions over this size roll to <code>.2.jsonl</code>, <code>.3.jsonl</code>, ...
+            How many lines the headless xterm retains per session. Larger → bigger
+            <code> .txt</code> files; smaller → older output rolls off the top.
           </small>
-        </label>
-        <label>
-          <span>ANSI escape policy</span>
-          <select
-            value={logging().ansiPolicy ?? 'raw'}
-            onChange={(e) =>
-              void props.updateLogging({
-                ansiPolicy: e.currentTarget.value as 'raw' | 'stripped',
-              })
-            }
-          >
-            <option value="raw">raw — store ANSI bytes, strip at view</option>
-            <option value="stripped">stripped — drop ANSI before write</option>
-          </select>
         </label>
       </div>
     </>

@@ -150,8 +150,7 @@ const terminalLoggingSettings = z
     enabled: z.boolean().optional(),
     retentionDays: z.number().int().min(0).optional(),
     maxDirMb: z.number().int().min(0).optional(),
-    maxFileMb: z.number().int().min(1).optional(),
-    ansiPolicy: z.enum(['raw', 'stripped']).optional(),
+    scrollback: z.number().int().min(100).optional(),
   })
   .strict();
 

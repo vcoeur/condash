@@ -1,25 +1,40 @@
-import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { Terminal } from '@xterm/headless';
+import { SerializeAddon } from '@xterm/addon-serialize';
 import type { TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 
 /**
- * Single-session writer for the terminal capture stream. One instance per
- * pty spawn; lives from `open()` to `close()`. Owns one `WriteStream` for
- * the active file; rotates on size overflow.
+ * Single-session writer. One instance per pty spawn; lives from `open()`
+ * to `close()`. Owns a headless xterm `Terminal` + `SerializeAddon` and
+ * mirrors the rendered buffer into `<conception>/.condash/logs/YYYY/MM/DD/`:
  *
- * File path:
- *   `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`
+ *   - `HHMMSS-<sid>.txt`       — the rendered terminal buffer at the
+ *                                most recent flush. Format matches the
+ *                                live pane's Save-buffer output (xterm
+ *                                serialize: text + SGR codes, mode-set
+ *                                escapes for buffer state). The Logs pane
+ *                                renders this via ansi_up; external tools
+ *                                can `cat` it directly.
+ *   - `HHMMSS-<sid>.meta.json` — sidecar with `{ sid, side, repo?, cwd,
+ *                                cmd, argv, started, exitCode?, finished? }`.
+ *                                Written on `spawn`, rewritten on `exit`.
  *
- * Event shapes (one JSON object per line, newline-terminated):
+ * Bytes flow: pty `output(data)` → `term.write(data)`. A debounced timer
+ * (default 5 s) serialises the buffer and atomically renames a temp file
+ * onto the `.txt` path. `exit()` and `close()` force an immediate flush.
  *
- *   spawn  { ts, sid, side, repo?, cwd, kind: 'spawn', cmd, argv }
- *   in     { ts, sid, side, kind: 'in', data, len }
- *   out    { ts, sid, side, kind: 'out', data, len }
- *   exit   { ts, sid, side, kind: 'exit', exitCode }
- *   close  { ts, sid, side, kind: 'close' }
- *   rotate { ts, sid, side, kind: 'rotate', from, to } — written into the
- *          new file after a size-driven roll.
+ * `input(data)` is intentionally a no-op — the pty echoes typed bytes
+ * back through stdout, so feeding `in` into the headless xterm would
+ * double-echo, and capturing keystrokes separately leaks a richer record
+ * than `~/.bash_history`. Privacy win, no semantic loss for the logs
+ * viewer use case.
+ *
+ * Buffer is bounded by xterm scrollback (default 10000 lines × 200 cols
+ * ≈ 2 MB max). No rotation — the file size is self-capped by the same
+ * mechanism that bounds the live terminal pane.
  *
  * All filesystem errors are swallowed locally and logged to stderr — the
  * pty pipeline must never block on a misbehaving log writer. Pause /
@@ -33,23 +48,41 @@ export interface SessionContext {
   spawn: { cmd: string; argv: string[] };
 }
 
+/** Sidecar `.meta.json` shape. Read by the Logs pane to populate the
+ * session header (cmd / exit / repo) and the session-list metadata
+ * (size, exit, started). */
+export interface SessionMeta {
+  sid: string;
+  side: TermSide;
+  repo?: string;
+  cwd: string;
+  cmd: string;
+  argv: string[];
+  started: string;
+  exitCode?: number;
+  finished?: string;
+}
+
 const DEFAULT_PREFS: Required<TerminalLoggingPrefs> = {
   enabled: true,
   retentionDays: 14,
   maxDirMb: 500,
-  // 5 MB. TUI sessions (Claude Code, long agent runs) emit constant
-  // spinner / status-bar repaints; without a tight cap a single session
-  // can balloon to many MB of redundant bytes. The render-side replay
-  // viewer (panes/logs.tsx) handles redundancy at view time, but disk
-  // usage still needs a bound. 5 MB rotates a busy Claude session a few
-  // times rather than letting one file grow unbounded; readers see each
-  // continuation as a separate session in the dropdown.
-  maxFileMb: 5,
-  ansiPolicy: 'raw',
+  scrollback: 10000,
 };
 
+/** Default 5-second debounce. Pty `output` calls schedule the flush; the
+ * timer fires once per debounce window, regardless of how many writes
+ * happened in between. */
+const DEFAULT_FLUSH_MS = 5000;
+
+/** Headless xterm geometry. 200×50 is generous for any TUI we care about
+ * (Claude Code, agent runs, top, vim); wider terminals re-wrap, which is
+ * cosmetic. Settable later if anyone asks. */
+const COLS = 200;
+const ROWS = 50;
+
 /** Resolve the per-session log file path inside `conceptionPath`. Returns
- * absolute path, no side effects. */
+ * the canonical `.txt` path, no side effects. */
 export function sessionLogPath(
   conceptionPath: string,
   sid: string,
@@ -61,7 +94,12 @@ export function sessionLogPath(
   const hh = String(when.getHours()).padStart(2, '0');
   const mi = String(when.getMinutes()).padStart(2, '0');
   const ss = String(when.getSeconds()).padStart(2, '0');
-  return join(condashLogsRoot(conceptionPath), yyyy, mm, dd, `${hh}${mi}${ss}-${sid}.jsonl`);
+  return join(condashLogsRoot(conceptionPath), yyyy, mm, dd, `${hh}${mi}${ss}-${sid}.txt`);
+}
+
+/** Sidecar metadata path next to the `.txt`. */
+export function sessionMetaPath(txtPath: string): string {
+  return txtPath.replace(/\.txt$/, '.meta.json');
 }
 
 /** Apply `TerminalLoggingPrefs` patch on top of the defaults. Internal —
@@ -72,285 +110,181 @@ export function resolveLoggingPrefs(patch?: TerminalLoggingPrefs): Required<Term
     enabled: patch.enabled ?? DEFAULT_PREFS.enabled,
     retentionDays: patch.retentionDays ?? DEFAULT_PREFS.retentionDays,
     maxDirMb: patch.maxDirMb ?? DEFAULT_PREFS.maxDirMb,
-    maxFileMb: patch.maxFileMb ?? DEFAULT_PREFS.maxFileMb,
-    ansiPolicy: patch.ansiPolicy ?? DEFAULT_PREFS.ansiPolicy,
+    scrollback: patch.scrollback ?? DEFAULT_PREFS.scrollback,
   };
-}
-
-/** Strip ANSI / CSI / OSC escape sequences. Pulled out so unit tests can
- * verify the regex doesn't drop printable characters. */
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b[@-_]/g;
-export function stripAnsi(s: string): string {
-  return s.replace(ANSI_RE, '');
-}
-
-/**
- * Coalesce policy. Interactive shells emit one `in` event per keystroke
- * and one `out` event echoing each character; without coalescing, typing
- * `echo A\r` yields ~14 records.
- *
- * The writer treats **Enter as the natural transaction boundary**. There
- * are no timers — earlier idle-based heuristics fragmented per-byte under
- * real human typing (a 100ms OUT idle is shorter than the ~200ms gap
- * between keystrokes, so each echoed byte flushed before the next
- * arrived).
- *
- * Flush rules:
- *
- *   - **`in`** buffer flushes when its data ends in `\r` or `\n`. One
- *     command-line → one record.
- *   - **`out`** buffer flushes when a **fresh `in` burst starts** —
- *     i.e., when the IN buffer transitions from empty to non-empty,
- *     signalling that the user is starting the next command. That makes
- *     one OUT record per command-cycle: pty echo of the previous
- *     command's keystrokes + program output + prompt redraw all land
- *     together, anchored at the timestamp of the echo's first byte.
- *   - Both buffers flush on `MAX_BUFFER_BYTES` (memory safety) and on
- *     lifecycle events (spawn / exit / close / pause).
- *
- * The byte cap is the only safety net for sessions that never see a
- * newline on the IN side — long-running streams (`tail -f`), fullscreen
- * TUIs (vim, htop), or commands that exit without an interactive
- * follow-up. Those flush in 64 KB chunks. Per-byte chronology between
- * `in` and `out` is intentionally not preserved at record granularity;
- * each record's `ts` is the first byte of that record's burst, which
- * gives transaction-level ordering — what a reader of the JSONL wants.
- */
-const MAX_BUFFER_BYTES = 64 * 1024;
-
-interface PendingBuffer {
-  data: string;
-  ts: string;
 }
 
 export class SessionLogger {
   private prefs: Required<TerminalLoggingPrefs>;
-  private rotation = 1;
-  private bytesWritten = 0;
-  private stream: WriteStream | null = null;
-  private currentPath: string | null = null;
+  private term: Terminal;
+  private serializeAddon: SerializeAddon;
+  private flushTimer: NodeJS.Timeout | null = null;
+  private readonly startedTs: string;
+  private exitCode: number | undefined;
+  private finishedTs: string | undefined;
+  private readonly txtPath: string;
+  private readonly metaPath: string;
   private closed = false;
   private paused = false;
-  /** Spawn time, captured once. All rotation files inherit this HHMMSS
-   * prefix so they sort together and share the same `<sid>` identity —
-   * the rotation suffix differentiates them, not the timestamp. */
-  private readonly spawnTime: Date;
-  /** Two independent coalesce buffers — `in` and `out` accumulate
-   * separately. The IN side flushes on `\r`/`\n`; the OUT side flushes
-   * whenever IN does. Both also flush on byte cap and lifecycle events.
-   * `data` empty means the buffer is idle. */
-  private pendingIn: PendingBuffer = { data: '', ts: '' };
-  private pendingOut: PendingBuffer = { data: '', ts: '' };
+  private dirty = false;
+  private readonly flushMs: number;
 
   constructor(
-    private readonly conceptionPath: string,
+    conceptionPath: string,
     private readonly ctx: SessionContext,
     prefs?: TerminalLoggingPrefs,
+    /** Test hook — override the debounce window. */
+    flushMs: number = DEFAULT_FLUSH_MS,
   ) {
     this.prefs = resolveLoggingPrefs(prefs);
-    this.spawnTime = new Date();
+    this.flushMs = flushMs;
+    this.startedTs = new Date().toISOString();
+    this.txtPath = sessionLogPath(conceptionPath, ctx.sid, new Date());
+    this.metaPath = sessionMetaPath(this.txtPath);
+    this.term = new Terminal({
+      cols: COLS,
+      rows: ROWS,
+      scrollback: this.prefs.scrollback,
+      allowProposedApi: true,
+    });
+    this.serializeAddon = new SerializeAddon();
+    this.term.loadAddon(this.serializeAddon);
   }
 
-  /** True when no further writes should happen. Lets callers short-circuit
-   * the per-event `JSON.stringify` cost when capture is off. */
+  /** True when new writes should be accepted. Lets callers short-circuit
+   * the per-event xterm.write cost when capture is off. */
   isEnabled(): boolean {
     return this.prefs.enabled && !this.closed && !this.paused;
   }
 
   setPaused(paused: boolean): void {
-    // Entering pause is a hard boundary — seal whatever was buffered so a
-    // resume after the pause starts a fresh record rather than splicing
-    // pre- and post-pause data together.
-    if (paused && !this.paused) this.flushAll();
+    if (paused && !this.paused) this.flushNowFireAndForget();
     this.paused = paused;
   }
 
+  /** Called once at the start of a session. Establishes the on-disk
+   * presence so a session that never produces output still shows up in
+   * the Logs pane (empty `.txt`, populated `.meta.json`). */
   spawn(): void {
     if (!this.isEnabled()) return;
-    this.flushAll();
-    this.write({
-      kind: 'spawn',
-      cmd: this.ctx.spawn.cmd,
-      argv: this.ctx.spawn.argv,
-      cwd: this.ctx.cwd,
-    });
+    this.writeMetaSync();
   }
 
-  input(data: string): void {
-    if (!this.isEnabled() || data.length === 0) return;
-    this.coalesce('in', data);
+  /** No-op. Pty echoes typed bytes back through stdout, so `output`
+   * already covers what the user saw. Capturing `in` separately would
+   * either double-echo (if we wrote `in` into xterm too) or leak raw
+   * keystrokes (if we wrote a separate stream); neither serves the
+   * logs-viewer use case. */
+  input(_data: string): void {
+    /* intentional no-op — see class doc */
   }
 
   output(data: string): void {
     if (!this.isEnabled() || data.length === 0) return;
-    this.coalesce('out', data);
+    this.term.write(data);
+    this.dirty = true;
+    this.scheduleFlush();
   }
 
   exit(exitCode: number): void {
     if (!this.isEnabled()) return;
-    this.flushAll();
-    this.write({ kind: 'exit', exitCode });
+    this.exitCode = exitCode;
+    this.finishedTs = new Date().toISOString();
+    this.flushNowFireAndForget();
+    this.writeMetaSync();
   }
 
   /** Idempotent. After close(), all further calls are no-ops. */
-  close(): Promise<void> {
-    if (this.closed) return Promise.resolve();
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.cancelFlush();
+    // Drain the pending flush *before* flipping `closed` — the guard in
+    // `flushNow` early-returns once `closed` is true, so we'd lose the
+    // tail otherwise.
+    if (this.dirty) await this.flushNow();
     this.closed = true;
-    this.flushAll();
-    // Nothing was ever written → nothing to close.
-    if (this.stream === null) return Promise.resolve();
-    // Write the close marker explicitly — `write()` is happy to run even
-    // after `closed = true` (the closed flag only gates the public
-    // spawn / in / out / exit methods through isEnabled()).
-    this.write({ kind: 'close' });
-    return new Promise<void>((resolve) => {
-      if (this.stream === null) {
-        resolve();
-        return;
-      }
-      this.stream.end(() => resolve());
-      this.stream = null;
-    });
+    // No final meta write — spawn() / exit() are the only meta touch
+    // points.
+    this.term.dispose();
   }
 
-  /** Test hook — force both pending coalesce buffers to disk now. Kept
-   * for tests that want to assert on partial buffers without ending the
-   * session (the production path flushes on Enter / cap / lifecycle). */
-  flushForTests(): void {
-    this.flushAll();
+  /** Test hook — force an immediate flush regardless of debounce. */
+  async flushForTests(): Promise<void> {
+    await this.flushNow();
   }
 
-  /** Absolute path of the currently-active file. Visible for tab indicator
-   * tooltips. Returns null before the first write. */
+  /** Absolute path of the rendered `.txt` file. Returns the canonical
+   * path even before the first flush — file may not yet exist on disk. */
   filePath(): string | null {
-    return this.currentPath;
+    return this.txtPath;
   }
 
-  private encode(data: string): string {
-    return this.prefs.ansiPolicy === 'stripped' ? stripAnsi(data) : data;
+  private scheduleFlush(): void {
+    if (this.flushTimer) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      this.flushNowFireAndForget();
+    }, this.flushMs);
   }
 
-  private coalesce(kind: 'in' | 'out', data: string): void {
-    const buf = kind === 'in' ? this.pendingIn : this.pendingOut;
-    // First byte of a fresh IN burst — the user is starting the next
-    // command-cycle. Flush whatever OUT had accumulated (echoes +
-    // program output + prompt redraw of the previous cycle) before
-    // opening a new IN record. This is what makes one OUT record per
-    // command-cycle.
-    if (kind === 'in' && buf.data.length === 0) {
-      this.flushBuffer('out');
-    }
-    if (buf.data.length === 0) {
-      buf.ts = new Date().toISOString();
-      buf.data = data;
-    } else {
-      buf.data += data;
-    }
-    // IN flushes at line boundaries: one Enter press (or a multi-line
-    // paste ending in a newline) closes the IN record. OUT stays
-    // buffered — it'll seal at the next IN-burst-start, the cap, or
-    // close.
-    if (kind === 'in' && /[\r\n]$/.test(buf.data)) {
-      this.flushBuffer('in');
-      return;
-    }
-    // Memory-safety cap. Long streams (`tail -f`) and fullscreen TUIs
-    // (vim, htop) never see a typed newline, so without this the buffer
-    // would grow unbounded. 64 KB is large enough to hold a typical
-    // command-cycle but small enough to bound resident memory.
-    if (buf.data.length >= MAX_BUFFER_BYTES) {
-      this.flushBuffer(kind);
+  private cancelFlush(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
   }
 
-  private flushBuffer(kind: 'in' | 'out'): void {
-    const buf = kind === 'in' ? this.pendingIn : this.pendingOut;
-    if (buf.data.length === 0) return;
-    const data = buf.data;
-    const ts = buf.ts;
-    buf.data = '';
-    buf.ts = '';
-    const encoded = this.encode(data);
-    this.write({ kind, data: encoded, len: data.length }, ts);
-  }
-
-  /** Flush both buffers; used by the lifecycle methods (`spawn` / `exit`
-   * / `close` / pause) and by the IN-side Enter flush. Order is `in`
-   * then `out` — same order interactive sessions naturally produce. */
-  private flushAll(): void {
-    this.flushBuffer('in');
-    this.flushBuffer('out');
-  }
-
-  private write(event: Record<string, unknown>, ts?: string): void {
-    try {
-      const stream = this.openStream();
-      if (stream === null) return;
-      const line =
-        JSON.stringify({
-          ts: ts ?? new Date().toISOString(),
-          sid: this.ctx.sid,
-          side: this.ctx.side,
-          ...(this.ctx.repo ? { repo: this.ctx.repo } : {}),
-          ...event,
-        }) + '\n';
-      const buf = Buffer.from(line, 'utf8');
-      stream.write(buf);
-      this.bytesWritten += buf.byteLength;
-      this.maybeRotate();
-    } catch (err) {
-      // Never let log-writer failures take down the terminal pipeline.
-      process.stderr.write(`condash terminal-logger: ${(err as Error).message}\n`);
-    }
-  }
-
-  private openStream(): WriteStream | null {
-    if (this.stream !== null) return this.stream;
-    const target = this.computeTargetPath();
-    try {
-      mkdirSync(join(target, '..'), { recursive: true });
-    } catch (err) {
-      process.stderr.write(`condash terminal-logger: mkdir failed: ${(err as Error).message}\n`);
-      return null;
-    }
-    this.stream = createWriteStream(target, { flags: 'a' });
-    this.stream.on('error', (err) => {
-      process.stderr.write(`condash terminal-logger: stream error: ${err.message}\n`);
+  private flushNowFireAndForget(): void {
+    void this.flushNow().catch((err: Error) => {
+      process.stderr.write(`condash terminal-logger: flush failed: ${err.message}\n`);
     });
-    this.currentPath = target;
-    return this.stream;
   }
 
-  private computeTargetPath(): string {
-    const base = sessionLogPath(this.conceptionPath, this.ctx.sid, this.spawnTime);
-    if (this.rotation === 1) return base;
-    // `HHMMSS-<sid>.jsonl` → `HHMMSS-<sid>.<rotation>.jsonl`
-    return base.replace(/\.jsonl$/, `.${this.rotation}.jsonl`);
+  private async flushNow(): Promise<void> {
+    if (!this.dirty || this.closed) return;
+    this.dirty = false;
+    // Wait for any queued xterm parse to complete before serialising —
+    // otherwise the buffer may not reflect the most recent `output` call.
+    await new Promise<void>((resolve) => this.term.write('', () => resolve()));
+    // The await above yielded the event loop; the session may have been
+    // closed (and the term disposed) while we waited. Drop the
+    // serialise / write attempt — its output would be stale anyway.
+    if (this.closed) return;
+    const text = this.serializeAddon.serialize();
+    try {
+      mkdirSync(dirname(this.txtPath), { recursive: true });
+      const tmp = `${this.txtPath}.tmp`;
+      await writeFile(tmp, text, 'utf8');
+      await rename(tmp, this.txtPath);
+    } catch (err) {
+      process.stderr.write(`condash terminal-logger: write failed: ${(err as Error).message}\n`);
+    }
   }
 
-  private maybeRotate(): void {
-    if (this.bytesWritten < this.prefs.maxFileMb * 1024 * 1024) return;
-    const from = this.currentPath;
-    const oldStream = this.stream;
-    this.rotation += 1;
-    this.bytesWritten = 0;
-    this.stream = null;
-    this.currentPath = null;
-    oldStream?.end();
-    // Drop a rotate marker in the new file so a reader hitting the
-    // continuation can find its predecessor.
-    const stream = this.openStream();
-    if (!stream) return;
-    const line =
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        sid: this.ctx.sid,
-        side: this.ctx.side,
-        kind: 'rotate',
-        from,
-        to: this.currentPath,
-      }) + '\n';
-    stream.write(Buffer.from(line, 'utf8'));
+  /** Synchronous to avoid races between rapid spawn/exit/close calls.
+   * Meta is a small JSON blob — sync write is negligible cost and
+   * removes the .tmp-collision class of bug. */
+  private writeMetaSync(): void {
+    const meta: SessionMeta = {
+      sid: this.ctx.sid,
+      side: this.ctx.side,
+      ...(this.ctx.repo ? { repo: this.ctx.repo } : {}),
+      cwd: this.ctx.cwd,
+      cmd: this.ctx.spawn.cmd,
+      argv: this.ctx.spawn.argv,
+      started: this.startedTs,
+      ...(this.exitCode !== undefined ? { exitCode: this.exitCode } : {}),
+      ...(this.finishedTs ? { finished: this.finishedTs } : {}),
+    };
+    try {
+      mkdirSync(dirname(this.metaPath), { recursive: true });
+      const tmp = `${this.metaPath}.tmp`;
+      writeFileSync(tmp, JSON.stringify(meta, null, 2) + '\n', 'utf8');
+      renameSync(tmp, this.metaPath);
+    } catch (err) {
+      process.stderr.write(
+        `condash terminal-logger: meta write failed: ${(err as Error).message}\n`,
+      );
+    }
   }
 }
