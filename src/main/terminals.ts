@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -10,6 +11,7 @@ import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
+import { SessionLogger } from './terminal-logger';
 
 interface Session {
   id: string;
@@ -34,11 +36,14 @@ interface Session {
    * session so `stopSession` can remove it (otherwise long-lived renderers
    * accumulate one stale closure per spawned-and-closed session). */
   onWebContentsDestroyed?: () => void;
+  /** Per-session disk logger — captures stdin / stdout / spawn / exit to
+   * `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. Null when the spawn
+   * happened without an active conception (no place to write). */
+  logger: SessionLogger | null;
 }
 
 const MAX_BUFFER = 64_000;
 const sessions = new Map<string, Session>();
-let nextId = 1;
 
 function appendBuffer(session: Session, data: string): void {
   session.buffer = (session.buffer + data).slice(-MAX_BUFFER);
@@ -106,8 +111,12 @@ export function setSessionSide(id: string, side: TermSide): void {
   broadcastSessions();
 }
 
+/** Generate an opaque session id. The 8-hex-char random suffix is
+ * filename-safe (used in the log writer's path) and unique across
+ * restarts / windows — the previous monotonic counter collided with
+ * filenames after a crash + restart in the same second. */
 function makeId(): string {
-  return `t${Date.now().toString(36)}-${nextId++}`;
+  return `t-${randomBytes(4).toString('hex')}`;
 }
 
 async function readRawConfig(conceptionPath: string): Promise<ConfigShape> {
@@ -221,6 +230,20 @@ export async function spawnTerminal(
   });
 
   const id = makeId();
+  const logger = conceptionPath
+    ? new SessionLogger(
+        conceptionPath,
+        {
+          sid: id,
+          side: request.side,
+          repo: request.repo,
+          cwd,
+          spawn: { cmd: program, argv },
+        },
+        (config as { terminal?: { logging?: import('../shared/types').TerminalLoggingPrefs } })
+          .terminal?.logging,
+      )
+    : null;
   const session: Session = {
     id,
     side: request.side,
@@ -230,17 +253,21 @@ export async function spawnTerminal(
     cwd,
     forceStop,
     buffer: '',
+    logger,
   };
   sessions.set(id, session);
+  logger?.spawn();
 
   ptyProcess.onData((data) => {
     appendBuffer(session, data);
+    session.logger?.output(data);
     if (webContents.isDestroyed()) return;
     webContents.send('termData', { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {
     session.exited = exitCode;
     session.pty = null;
+    session.logger?.exit(exitCode);
     if (!webContents.isDestroyed()) {
       webContents.send('termExit', { id, code: exitCode });
     }
@@ -262,6 +289,7 @@ export async function spawnTerminal(
 export function writeTerminal(id: string, data: string): void {
   const session = sessions.get(id);
   if (!session?.pty) return;
+  session.logger?.input(data);
   session.pty.write(data);
 }
 
@@ -384,6 +412,12 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
       } catch {
         /* webContents already torn down */
       }
+    }
+    // Flush + close the log file. close() is idempotent so the killAll
+    // path's two-stage tear-down (delete after Promise.allSettled) doesn't
+    // double-close.
+    if (session.logger) {
+      void session.logger.close();
     }
     sessions.delete(id);
     broadcastSessions();

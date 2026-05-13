@@ -361,6 +361,31 @@ export interface TerminalPrefs {
   move_tab_left_shortcut?: string;
   move_tab_right_shortcut?: string;
   xterm?: TerminalXtermPrefs;
+  /** Per-session capture of stdin / stdout / spawn / exit to
+   * `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. The folder
+   * is fully gitignored by default. */
+  logging?: TerminalLoggingPrefs;
+}
+
+/** Configuration for the per-session terminal log writer. Defaults are
+ * applied by the writer when fields are absent (`enabled: true`,
+ * `maxFileMb: 50`, `ansiPolicy: 'raw'`, `retentionDays: 14`,
+ * `maxDirMb: 500`) — the schema's defaults track the same values. */
+export interface TerminalLoggingPrefs {
+  /** Toggle capture entirely. Default: true. */
+  enabled?: boolean;
+  /** Days of log history retained by the janitor. Older day-directories
+   * are evicted on next janitor run. Default: 14. */
+  retentionDays?: number;
+  /** Total size cap for the per-conception logs/ tree. The janitor
+   * evicts oldest day-directories first when over cap. Default: 500. */
+  maxDirMb?: number;
+  /** Per-file rotation threshold. Sessions that exceed this size roll to
+   * `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, etc. Default: 50. */
+  maxFileMb?: number;
+  /** `raw`: store ANSI bytes as received (viewer strips on render). */
+  /** `stripped`: strip ANSI before writing (smaller files, lossy). */
+  ansiPolicy?: 'raw' | 'stripped';
 }
 
 /** Snapshot of a live (or recently-exited) terminal session, broadcast on
