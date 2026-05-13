@@ -90,13 +90,14 @@ export function SettingsModal(props: {
   onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
   onClose: () => void;
 }) {
-  // Read path: the existing condash.json (canonical) or the legacy
-  // configuration.json fallback. Resolved on mount so we surface the right
-  // file even when the conception still has only the legacy filename.
-  // Write path: always condash.json. The first save in a legacy tree
-  // creates condash.json and leaves configuration.json orphaned for the
-  // user to delete (no auto-rename, no auto-delete).
-  const writePath = `${props.conceptionPath}/condash.json`;
+  // Read path: the existing `.condash/settings.json` (canonical) or one of
+  // the two legacy fallbacks (`condash.json` / `configuration.json`).
+  // Resolved on mount so we surface the right file even when the conception
+  // still has only a legacy filename. Write path: always
+  // `.condash/settings.json` — the first save in a legacy tree creates the
+  // new canonical alongside the legacy file, and the auto-migrator
+  // tombstones the legacy on next conception-open.
+  const writePath = `${props.conceptionPath}/.condash/settings.json`;
   const [readPath, { mutate: mutateReadPath }] = createResource(
     () => props.conceptionPath,
     () => window.condash.getConceptionConfigPath(),

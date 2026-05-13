@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, dirname } from 'node:path';
 import type { StepMarker, TransitionResult } from '../shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '../shared/types';
 import { isoToday } from '../shared/iso-today';
@@ -270,6 +270,13 @@ export async function writeNote(
       finalContent = validateAndCanonicaliseGlobalSettings(newContent);
     } else {
       finalContent = newContent;
+    }
+    // The new canonical config lives in `.condash/`, which may not exist
+    // yet when the user saves Settings for the first time on a fresh
+    // conception. Ensure the parent dir before atomicWrite — cheap, and
+    // covers any other future write to a not-yet-created subdir too.
+    if (isConceptionSettingsPath(path)) {
+      await fs.mkdir(dirname(path), { recursive: true });
     }
     await atomicWrite(path, finalContent);
     return finalContent;
