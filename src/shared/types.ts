@@ -305,6 +305,11 @@ export interface RepoEntry {
   hasRun?: boolean;
   /** Worktrees attached to this repo (always includes the primary checkout). */
   worktrees?: Worktree[];
+  /** Name of the most-recent `{ section: … }` marker that preceded this
+   *  entry in `repositories[]`. Undefined for entries before the first
+   *  marker (the implicit default bucket). Submodules inherit their parent's
+   *  section. Drives Code-pane card grouping. */
+  section?: string;
 }
 
 export type TermSide = 'my' | 'code';

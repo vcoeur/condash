@@ -69,6 +69,7 @@ async function buildEntry(
       missing: true,
       hasForceStop,
       hasRun,
+      section: entry.section,
     } satisfies RepoEntry;
   }
   const worktrees = entry.parent
@@ -89,6 +90,7 @@ async function buildEntry(
     hasForceStop,
     hasRun,
     worktrees: worktrees.length > 0 ? worktrees : undefined,
+    section: entry.section,
   } satisfies RepoEntry;
 }
 

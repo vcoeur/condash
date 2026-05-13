@@ -1,4 +1,4 @@
-import { createMemo, For } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 import './code-pane.css';
 import type {
   OpenWithSlotKey,
@@ -10,7 +10,7 @@ import type {
 } from '@shared/types';
 import { CodeRunRows } from '../code-runs';
 import { BranchFilter } from './code-parts/branch-filter';
-import { collectFilterableBranches, orderedRepos } from './code-parts/data';
+import { collectFilterableBranches, groupRepos, orderedRepos } from './code-parts/data';
 import { RepoRow } from './code-parts/repo-row';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 
@@ -46,6 +46,19 @@ export function CodeView(props: {
   // pane switches; the outer .repos-pane is no longer the scrolling box.
   const scrollRef = usePaneScrollMemory('code');
   const ordered = createMemo<readonly RepoEntry[]>(() => orderedRepos(props.repos));
+  const grouped = createMemo(() => groupRepos(ordered()));
+  // In-memory only — section collapse state is intentionally not persisted
+  // (per the 2026-05-13 design call: keep the renderer simple, re-expand on
+  // every reload).
+  const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
+  const toggleSection = (key: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
   // The filter dropdown lists every non-primary branch known across the
   // currently-visible cards. Recomputed when the repo list changes;
   // detached / no-branch worktrees are skipped (no name to pin).
@@ -71,9 +84,10 @@ export function CodeView(props: {
           activeProjectBranches={props.activeProjectBranches}
           onToggle={props.onToggleBranch}
         />
-        <div class="repos-grid">
-          <For each={ordered()}>
-            {(repo) => {
+        <For each={grouped()}>
+          {(group) => {
+            const isCollapsed = (): boolean => collapsed().has(group.key);
+            const renderCard = (repo: RepoEntry): ReturnType<typeof RepoRow> => {
               const liveBranch = (): string | null => {
                 const cwd = props.liveSessionCwds.get(repo.name);
                 if (!cwd) return null;
@@ -100,9 +114,37 @@ export function CodeView(props: {
                   onOpenInTerm={props.onOpenInTerm}
                 />
               );
-            }}
-          </For>
-        </div>
+            };
+            return (
+              <Show
+                when={group.section !== null}
+                fallback={
+                  <div class="repos-grid">
+                    <For each={group.repos}>{renderCard}</For>
+                  </div>
+                }
+              >
+                <div class="repos-section">
+                  <button
+                    type="button"
+                    class="repos-section-header"
+                    aria-expanded={!isCollapsed()}
+                    onClick={() => toggleSection(group.key)}
+                  >
+                    <span class="repos-section-chevron">{isCollapsed() ? '▸' : '▾'}</span>
+                    <span class="repos-section-title">{group.section}</span>
+                    <span class="repos-section-count">{group.repos.length}</span>
+                  </button>
+                  <Show when={!isCollapsed()}>
+                    <div class="repos-grid">
+                      <For each={group.repos}>{renderCard}</For>
+                    </div>
+                  </Show>
+                </div>
+              </Show>
+            );
+          }}
+        </For>
       </div>
       <div class="code-runs-dock">
         <CodeRunRows

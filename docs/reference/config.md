@@ -82,10 +82,12 @@ A single ordered array of repo entries — the Code pane renders cards in the or
 ```json
 {
   "repositories": [
+    { "section": "Sites" },
+    { "name": "alicepeintures.com", "run": "make dev" },
+    { "name": "notes.vcoeur.com", "run": "make dev", "force_stop": "fuser -k 8200/tcp" },
+    { "section": "Tools" },
     "condash",
-    { "name": "helio" },
-    { "name": "helio", "submodules": ["apps/web", "apps/api"] },
-    { "name": "notes.vcoeur.com", "run": "make dev", "force_stop": "fuser -k 8200/tcp" }
+    { "name": "helio", "submodules": ["apps/web", "apps/api"] }
   ]
 }
 ```
@@ -101,6 +103,7 @@ A single ordered array of repo entries — the Code pane renders cards in the or
 | `{"name": "repo", "install": "<cmd>"}`                    | Install command run after `condash-cli worktrees setup` creates a worktree — applied **unconditionally** when present (no flag needed); pass `--no-install` to skip. Typical: `npm install` for a Node repo, `pip install -e .` for a Python one. Same shell trust level as `run`.                                                                                                                                                                                                                            |
 | `{"name": "repo", "env": [".env", ".env.local"]}`         | Files copied from the primary checkout into a new worktree on `condash-cli worktrees setup` — applied **unconditionally** when present (no flag needed). Closes the silent-undefined-`VITE_*` footgun where forgetting `--copy-env` leaves a Vite SPA reading `import.meta.env.VITE_*` as `undefined`. Default empty → no copy. Path traversal is rejected (no `..`, no absolute paths).                                                                                                                       |
 | `{"name": "repo", "pinned_branch": "<branch>"}`           | Pin the repo to a fixed branch. `condash-cli worktrees setup` skips it instead of creating a worktree on the requested branch. Use for shared / vendored repos that should never track the project branch axis.                                                                                                                                                                                                                                                                                                  |
+| `{"section": "<heading>"}`                                | Section marker — not a repo. Every repo that follows in `repositories[]` belongs to this section until the next `{"section"}` entry. The Settings modal renders a header row; the Code pane groups cards under the heading with an in-memory collapse toggle. Repos placed before the first marker live in an implicit default bucket that renders as today's flat list (no header). **Top-level only** — `submodules` cannot contain section markers. Carries no other field. |
 
 Anything under `workspace_path` not named in `repositories` is ignored — only listed entries appear on the Code pane.
 

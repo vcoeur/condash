@@ -12,7 +12,7 @@ const CONFIG_SUMMARY: { key: string; purpose: string }[] = [
   {
     key: 'repositories',
     purpose:
-      'Flat ordered list of repos shown on the Code pane. Each entry: name, optional run / force_stop / submodules.',
+      'Ordered list of repos shown on the Code pane. Each entry: name, optional run / force_stop / submodules. Insert a { "section": "…" } entry to group every repo that follows it under a header.',
   },
   {
     key: 'open_with',

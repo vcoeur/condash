@@ -6,11 +6,12 @@
  * modal shell.
  */
 
-import { For, type JSX } from 'solid-js';
-import type { RawRepo } from '../../main/config-schema';
+import { For, Show, type JSX } from 'solid-js';
+import { isSectionMarker, type RawRepo } from '../../main/config-schema';
 import { type BindTextFn, OPEN_WITH_SLOTS, type RawConfig } from './data';
 import { FieldBadgeRow, type InheritanceState } from './badges';
 import { RepoRow } from './repo-row';
+import { SectionRow } from './section-row';
 
 interface RepositoriesSectionProps {
   parsed: () => RawConfig;
@@ -30,6 +31,9 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
     });
 
   const addRepo = (): Promise<void> => updateRepos((entries) => [...entries, { name: '' }]);
+
+  const addSection = (): Promise<void> =>
+    updateRepos((entries) => [...entries, { section: 'New section' }]);
 
   const removeRepo = (index: number): Promise<void> =>
     updateRepos((entries) => entries.filter((_, i) => i !== index));
@@ -59,26 +63,47 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
       <p class="settings-hint">
         Each entry is either just a name (resolved against <code>workspace_path</code>) or an object
         with optional <code>label</code>, <code>run</code>, <code>force_stop</code>,{' '}
-        <code>install</code>, <code>env</code>, and <code>submodules</code>.
+        <code>install</code>, <code>env</code>, and <code>submodules</code>. A{' '}
+        <code>{'{ "section": "…" }'}</code> entry inserts a header above the repos that follow it,
+        in this list and in the Code pane.
       </p>
       <div class="settings-bucket">
         <For each={repos()}>
           {(entry, index) => (
-            <RepoRow
-              entry={entry}
-              idPrefix={`repo[${index()}]`}
-              index={index()}
-              total={repos().length}
-              bindText={props.bindText}
-              onMove={(delta) => void moveRepo(index(), delta)}
-              onRemove={() => void removeRepo(index())}
-              onPatch={(next) => updateRepoEntry(index(), () => next)}
-            />
+            <Show
+              when={!isSectionMarker(entry)}
+              fallback={
+                <SectionRow
+                  entry={entry as { section: string }}
+                  idPrefix={`repo[${index()}]`}
+                  index={index()}
+                  total={repos().length}
+                  bindText={props.bindText}
+                  onMove={(delta) => void moveRepo(index(), delta)}
+                  onRemove={() => void removeRepo(index())}
+                  onPatch={(next) => updateRepoEntry(index(), () => next)}
+                />
+              }
+            >
+              <RepoRow
+                entry={entry as Exclude<RawRepo, { section: string }>}
+                idPrefix={`repo[${index()}]`}
+                index={index()}
+                total={repos().length}
+                bindText={props.bindText}
+                onMove={(delta) => void moveRepo(index(), delta)}
+                onRemove={() => void removeRepo(index())}
+                onPatch={(next) => updateRepoEntry(index(), () => next)}
+              />
+            </Show>
           )}
         </For>
         <div class="settings-list-actions">
           <button class="modal-button" onClick={() => void addRepo()}>
             + Add repo
+          </button>
+          <button class="modal-button" onClick={() => void addSection()}>
+            + Add section
           </button>
         </div>
       </div>

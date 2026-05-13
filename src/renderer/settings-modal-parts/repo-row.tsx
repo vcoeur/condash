@@ -1,5 +1,5 @@
 import { For, Show } from 'solid-js';
-import type { RawRepo } from '../../main/config-schema';
+import type { RawRepo, RawSubmoduleRepo } from '../../main/config-schema';
 import { type BindTextFn, moveItem } from './data';
 
 /**
@@ -7,10 +7,15 @@ import { type BindTextFn, moveItem } from './data';
  * (name, label, run, force_stop, sub repos) regardless of how the entry
  * is currently serialized — string-form entries are coerced to object on
  * render. The recursive `submodules` UI lets a parent repo carry its own
- * nested list with the same shape.
+ * nested list with the same shape. Section markers (`{ section: … }`) are
+ * rendered by `<SectionRow>` and never reach this component — the parent
+ * uses an `isSectionMarker` guard.
  */
+type RepoRowEntry = Exclude<RawRepo, { section: string }>;
+type RepoRowObject = Exclude<RepoRowEntry, string>;
+
 export function RepoRow(props: {
-  entry: RawRepo;
+  entry: RepoRowEntry;
   idPrefix: string;
   index: number;
   total: number;
@@ -19,16 +24,17 @@ export function RepoRow(props: {
   onRemove: () => void;
   onPatch: (next: RawRepo) => Promise<void>;
 }) {
-  const obj = (): Exclude<RawRepo, string> =>
+  const obj = (): RepoRowObject =>
     typeof props.entry === 'string' ? { name: props.entry } : props.entry;
 
-  const patchObj = (patch: Partial<Exclude<RawRepo, string>>): Promise<void> =>
+  const patchObj = (patch: Partial<RepoRowObject>): Promise<void> =>
     props.onPatch({ ...obj(), ...patch });
 
-  const submodules = (): RawRepo[] => obj().submodules ?? [];
+  const submodules = (): RawSubmoduleRepo[] => obj().submodules ?? [];
 
-  const updateSubmodules = (mutate: (subs: RawRepo[]) => RawRepo[]): Promise<void> =>
-    patchObj({ submodules: mutate(submodules()) });
+  const updateSubmodules = (
+    mutate: (subs: RawSubmoduleRepo[]) => RawSubmoduleRepo[],
+  ): Promise<void> => patchObj({ submodules: mutate(submodules()) });
 
   return (
     <div class="settings-repo-row">
@@ -157,7 +163,9 @@ export function RepoRow(props: {
                 onMove={(delta) => void updateSubmodules((all) => moveItem(all, idx(), delta))}
                 onRemove={() => void updateSubmodules((all) => all.filter((_, i) => i !== idx()))}
                 onPatch={(next) =>
-                  updateSubmodules((all) => all.map((e, i) => (i === idx() ? next : e)))
+                  updateSubmodules((all) =>
+                    all.map((e, i) => (i === idx() ? (next as RawSubmoduleRepo) : e)),
+                  )
                 }
               />
             )}

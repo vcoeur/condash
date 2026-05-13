@@ -9,7 +9,7 @@ import { basename, join } from 'node:path';
 import { findProjectReadmes } from '../walk';
 import { readHeader } from '../header-io';
 import { exec } from '../exec';
-import { walkRepos, type ConfigShape } from '../config-walk';
+import { isSectionMarker, walkRepos, type ConfigShape } from '../config-walk';
 import { getEffectiveConceptionConfig } from '../effective-config';
 
 export interface ConfigWithPaths extends ConfigShape {
@@ -44,6 +44,7 @@ export function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupEx
   // (those aren't currently in the RepoLookup shape).
   for (const raw of config.repositories ?? []) {
     if (typeof raw === 'string') continue;
+    if (isSectionMarker(raw)) continue;
     const lookup = map.get(raw.name);
     if (!lookup) continue;
     const ext = raw as unknown as RawRepoExtended;

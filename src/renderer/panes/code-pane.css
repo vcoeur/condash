@@ -30,6 +30,50 @@
   gap: 12px;
 }
 
+.repos-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.repos-section:first-child {
+  margin-top: 0;
+}
+
+.repos-section-header {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 4px 0 4px 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.repos-section-header:hover {
+  color: var(--text);
+}
+
+.repos-section-chevron {
+  display: inline-block;
+  width: 1ch;
+  font-weight: 500;
+}
+
+.repos-section-count {
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
 .code-runs-dock {
   flex: 0 0 auto;
   /* Cap the dock so an expanded xterm can't starve the repo list. The

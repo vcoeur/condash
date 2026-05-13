@@ -553,6 +553,23 @@
   background: var(--bg-subtle);
 }
 
+.settings-repo-row--section {
+  background: var(--bg-subtle);
+  border-style: dashed;
+  margin-top: 12px;
+}
+
+.settings-repo-row--section:first-child {
+  margin-top: 0;
+}
+
+.settings-repo-section-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+
 .settings-repo-row-detail label {
   display: flex;
   flex-direction: column;

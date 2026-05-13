@@ -8,6 +8,15 @@ import { isAbsolute, join } from 'node:path';
  * the main process doesn't re-implement them.
  */
 
+export type RawSubmoduleRepo =
+  | string
+  | {
+      name: string;
+      label?: string;
+      run?: string;
+      force_stop?: string;
+    };
+
 export type RawRepo =
   | string
   | {
@@ -15,12 +24,18 @@ export type RawRepo =
       label?: string;
       run?: string;
       force_stop?: string;
-      submodules?: RawRepo[];
-    };
+      submodules?: RawSubmoduleRepo[];
+    }
+  | { section: string };
 
 export interface ConfigShape {
   workspace_path?: string;
   repositories?: RawRepo[];
+}
+
+/** True when `entry` is a section-marker variant of `RawRepo`. */
+export function isSectionMarker(entry: RawRepo): entry is { section: string } {
+  return typeof entry === 'object' && entry !== null && 'section' in entry;
 }
 
 export interface RepoLookup {
@@ -38,6 +53,11 @@ export interface RepoLookup {
   run?: string;
   /** Configured force_stop: command, if any. */
   forceStop?: string;
+  /** Name of the most-recent `{ section: … }` marker that preceded this
+   *  entry in `repositories[]`, when any. Undefined for entries before the
+   *  first marker — those belong to the implicit default bucket. Submodule
+   *  entries inherit their parent's section. */
+  section?: string;
 }
 
 /** Resolve an entry's absolute cwd from `workspace_path` + optional parent + name. */
@@ -62,15 +82,21 @@ export function resolveCwd(
 export function walkRepos(config: ConfigShape, visit: (entry: RepoLookup) => boolean | void): void {
   const workspace = config.workspace_path;
   if (!config.repositories) return;
+  let currentSection: string | undefined;
   for (const entry of config.repositories) {
-    if (visitOne(entry, undefined, workspace, visit)) return;
+    if (isSectionMarker(entry)) {
+      currentSection = entry.section;
+      continue;
+    }
+    if (visitOne(entry, undefined, workspace, currentSection, visit)) return;
   }
 }
 
 function visitOne(
-  entry: RawRepo,
+  entry: RawRepo | RawSubmoduleRepo,
   parent: string | undefined,
   workspace: string | undefined,
+  section: string | undefined,
   visit: (entry: RepoLookup) => boolean | void,
 ): boolean {
   if (typeof entry === 'string') {
@@ -79,9 +105,13 @@ function visitOne(
       name: entry,
       parent,
       cwd: resolveCwd(workspace, parent, entry),
+      section,
     };
     return visit(lookup) === false;
   }
+  // Section markers are stripped by the caller. By construction this branch
+  // only receives a repo-object variant.
+  if ('section' in entry) return false;
   const lookup: RepoLookup = {
     display: parent ? `${parent}/${entry.name}` : entry.name,
     name: entry.name,
@@ -90,11 +120,12 @@ function visitOne(
     cwd: resolveCwd(workspace, parent, entry.name),
     run: entry.run,
     forceStop: entry.force_stop,
+    section,
   };
   if (visit(lookup) === false) return true;
-  if (entry.submodules?.length) {
+  if ('submodules' in entry && entry.submodules?.length) {
     for (const sub of entry.submodules) {
-      if (visitOne(sub, entry.name, workspace, visit)) return true;
+      if (visitOne(sub, entry.name, workspace, section, visit)) return true;
     }
   }
   return false;
