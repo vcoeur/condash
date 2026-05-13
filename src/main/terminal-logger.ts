@@ -81,25 +81,44 @@ export function stripAnsi(s: string): string {
 /**
  * Coalesce policy. Interactive shells emit one `in` event per keystroke
  * and one `out` event echoing each character; without coalescing, typing
- * `echo A\r` yields ~14 records. The writer batches consecutive same-kind
- * payloads into one record using three rules:
+ * `echo A\r` yields ~14 records.
+ *
+ * The writer keeps **two independent buffers** — one for `in`, one for
+ * `out` — each flushing on its own rules. The earlier "switching kind
+ * flushes" rule looked sensible on paper but broke the dominant case:
+ * the pty echoes every typed byte, so the kind alternated every byte
+ * and the buffer was dumped between every keystroke and its echo. Typing
+ * `ls -al<Enter>` produced 14 records instead of two. With independent
+ * buffers, the `in` accumulates the whole command up to `\r` and the
+ * `out` accumulates the whole echo + listing — one record each. Per-byte
+ * chronology between `in` and `out` is intentionally not preserved at
+ * record granularity; the `ts` of each record (first byte of the burst)
+ * gives burst-level ordering, which is what the user actually wants.
+ *
+ * Flush rules per buffer:
  *
  *   1. **`in` flushes on line terminator** — a typed command up to Enter
- *      lands as one record (`data: "echo A\r"`), matching the user's
- *      mental model of "one line of input = one event".
+ *      lands as one record (`data: "echo A\r"`).
  *   2. **`out` flushes on idle** (`OUTPUT_IDLE_MS`) — pty echo + the
  *      shell's prompt-redraw burst collapse into one or two records per
  *      command.
- *   3. **Switching kind flushes** — preserves chronological in→out order.
+ *   3. **Either buffer flushes on cap, pause, spawn / exit / close** —
+ *      every public method that ends a turn flushes both.
  *
  * `INPUT_IDLE_MS` is a fallback for keys that never produce a newline
  * (arrow keys, raw-mode TUI input, partial pastes). `MAX_BUFFER_BYTES`
- * caps the in-memory buffer so a streaming `tail -f` or `cargo build`
+ * caps each in-memory buffer so a streaming `tail -f` or `cargo build`
  * doesn't grow unbounded if it never idles long enough to trip the timer.
  */
 const INPUT_IDLE_MS = 500;
 const OUTPUT_IDLE_MS = 100;
 const MAX_BUFFER_BYTES = 64 * 1024;
+
+interface PendingBuffer {
+  data: string;
+  ts: string;
+  timer: NodeJS.Timeout | null;
+}
 
 export class SessionLogger {
   private prefs: Required<TerminalLoggingPrefs>;
@@ -113,11 +132,12 @@ export class SessionLogger {
    * prefix so they sort together and share the same `<sid>` identity —
    * the rotation suffix differentiates them, not the timestamp. */
   private readonly spawnTime: Date;
-  /** Buffered in/out events waiting for a coalesce flush. Same-kind
-   * payloads concatenate; switching kind flushes first. Null between
-   * bursts. */
-  private pending: { kind: 'in' | 'out'; data: string; ts: string } | null = null;
-  private flushTimer: NodeJS.Timeout | null = null;
+  /** Two independent coalesce buffers — `in` and `out` accumulate
+   * separately so the pty's per-byte echo doesn't churn the buffer into
+   * single-byte records. Each carries its own idle timer; `data` empty
+   * means the buffer is idle (timer cleared, ts cleared). */
+  private pendingIn: PendingBuffer = { data: '', ts: '', timer: null };
+  private pendingOut: PendingBuffer = { data: '', ts: '', timer: null };
 
   constructor(
     private readonly conceptionPath: string,
@@ -138,13 +158,13 @@ export class SessionLogger {
     // Entering pause is a hard boundary — seal whatever was buffered so a
     // resume after the pause starts a fresh record rather than splicing
     // pre- and post-pause data together.
-    if (paused && !this.paused) this.flushPending();
+    if (paused && !this.paused) this.flushAll();
     this.paused = paused;
   }
 
   spawn(): void {
     if (!this.isEnabled()) return;
-    this.flushPending();
+    this.flushAll();
     this.write({
       kind: 'spawn',
       cmd: this.ctx.spawn.cmd,
@@ -165,7 +185,7 @@ export class SessionLogger {
 
   exit(exitCode: number): void {
     if (!this.isEnabled()) return;
-    this.flushPending();
+    this.flushAll();
     this.write({ kind: 'exit', exitCode });
   }
 
@@ -173,7 +193,7 @@ export class SessionLogger {
   close(): Promise<void> {
     if (this.closed) return Promise.resolve();
     this.closed = true;
-    this.flushPending();
+    this.flushAll();
     // Nothing was ever written → nothing to close.
     if (this.stream === null) return Promise.resolve();
     // Write the close marker explicitly — `write()` is happy to run even
@@ -190,11 +210,11 @@ export class SessionLogger {
     });
   }
 
-  /** Test hook — force the pending coalesce buffer to disk now. Production
-   * callers rely on the timer; tests use this to avoid a `setTimeout`
-   * wait. */
+  /** Test hook — force both pending coalesce buffers to disk now.
+   * Production callers rely on the timers; tests use this to avoid a
+   * `setTimeout` wait. */
   flushForTests(): void {
-    this.flushPending();
+    this.flushAll();
   }
 
   /** Absolute path of the currently-active file. Visible for tab indicator
@@ -208,47 +228,57 @@ export class SessionLogger {
   }
 
   private coalesce(kind: 'in' | 'out', data: string): void {
-    // Switching direction flushes — preserves chronology between an `in`
-    // keystroke and the matching `out` echo.
-    if (this.pending && this.pending.kind !== kind) this.flushPending();
-    if (this.pending) {
-      this.pending.data += data;
+    const buf = kind === 'in' ? this.pendingIn : this.pendingOut;
+    if (buf.data.length === 0) {
+      buf.ts = new Date().toISOString();
+      buf.data = data;
     } else {
-      this.pending = { kind, data, ts: new Date().toISOString() };
+      buf.data += data;
     }
     // Input flushes at line boundaries: one Enter press closes the
     // record. Multi-line pastes that end in newline flush in one go.
-    if (kind === 'in' && /[\r\n]$/.test(this.pending.data)) {
-      this.flushPending();
+    if (kind === 'in' && /[\r\n]$/.test(buf.data)) {
+      this.flushBuffer(kind);
       return;
     }
-    // Bound the buffer so a stream that never idles can't grow forever.
-    if (this.pending.data.length >= MAX_BUFFER_BYTES) {
-      this.flushPending();
+    // Bound each buffer so a stream that never idles can't grow forever.
+    if (buf.data.length >= MAX_BUFFER_BYTES) {
+      this.flushBuffer(kind);
       return;
     }
     // Idle-based fallback. Resetting the timer on every byte means a
     // steady stream extends the same record until idle / cap / newline /
     // close — exactly what the user expects from "one burst, one entry".
-    if (this.flushTimer !== null) clearTimeout(this.flushTimer);
+    if (buf.timer !== null) clearTimeout(buf.timer);
     const idleMs = kind === 'in' ? INPUT_IDLE_MS : OUTPUT_IDLE_MS;
-    this.flushTimer = setTimeout(() => this.flushPending(), idleMs);
+    buf.timer = setTimeout(() => this.flushBuffer(kind), idleMs);
     // Don't keep the event loop alive on the writer alone — close() and
     // exit() flush explicitly, so an orphaned timer would only delay
     // shutdown.
-    this.flushTimer.unref?.();
+    buf.timer.unref?.();
   }
 
-  private flushPending(): void {
-    if (this.flushTimer !== null) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
+  private flushBuffer(kind: 'in' | 'out'): void {
+    const buf = kind === 'in' ? this.pendingIn : this.pendingOut;
+    if (buf.timer !== null) {
+      clearTimeout(buf.timer);
+      buf.timer = null;
     }
-    const p = this.pending;
-    if (p === null) return;
-    this.pending = null;
-    const encoded = this.encode(p.data);
-    this.write({ kind: p.kind, data: encoded, len: p.data.length }, p.ts);
+    if (buf.data.length === 0) return;
+    const data = buf.data;
+    const ts = buf.ts;
+    buf.data = '';
+    buf.ts = '';
+    const encoded = this.encode(data);
+    this.write({ kind, data: encoded, len: data.length }, ts);
+  }
+
+  /** Flush both buffers; used by the lifecycle methods (`spawn` / `exit`
+   * / `close` / pause). Order is `in` then `out` — same order interactive
+   * sessions naturally produce, and the test expects it. */
+  private flushAll(): void {
+    this.flushBuffer('in');
+    this.flushBuffer('out');
   }
 
   private write(event: Record<string, unknown>, ts?: string): void {

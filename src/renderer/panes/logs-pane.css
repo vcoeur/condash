@@ -127,26 +127,32 @@
   padding: 0.5rem 0.75rem;
 }
 
-/* Tighter columns than the original 6rem / 4.5rem layout: the body has
- * to compete with terminal output, and every saved column is one we
- * don't wrap. Timestamps remain `HH:MM:SS.mmm` (12 chars, tabular-nums
- * → fits 4.75rem). Kind chip drops to 2.75rem at 0.68rem font-size. */
+/* Row layout: timestamp · kind chip · body. The ts column has to fit
+ * `HH:MM:SS.mmm` (12 chars) in whatever monospace the platform picks
+ * up via the `ui-monospace, Menlo, Consolas, monospace` stack — Linux's
+ * fallback (DejaVu Sans Mono) is meaningfully wider than Menlo, so the
+ * earlier 4.75rem column overflowed straight through the 0.4rem gap
+ * into the kind chip. 5.75rem holds on every platform we ship. Kind
+ * column widens to 3.25rem so SPAWN / ROTATE / CLOSE have headroom.
+ *
+ * Font-size is unified at 0.8rem across all three cells; the earlier
+ * stagger (ts 0.78 / kind 0.68 / body 0.85) made baseline-aligned cells
+ * sit at three visibly different heights. */
 .logs-event {
   display: grid;
-  grid-template-columns: 4.75rem 2.75rem 1fr;
-  gap: 0.4rem;
+  grid-template-columns: 5.75rem 3.25rem 1fr;
+  gap: 0.5rem;
   align-items: baseline;
   margin-bottom: 0.15rem;
+  font-size: 0.8rem;
 }
 
 .logs-event-ts {
   color: var(--text-muted, #8a8a8a);
   font-variant-numeric: tabular-nums;
-  font-size: 0.78rem;
 }
 
 .logs-event-kind {
-  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--text-muted, #8a8a8a);
