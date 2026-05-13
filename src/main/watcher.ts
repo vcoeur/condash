@@ -3,6 +3,7 @@ import { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { toPosix } from '../shared/path';
 import type { TreeEvent } from '../shared/types';
+import { migrateLegacyConfig } from './condash-dir-migrate';
 import { resolveConceptionPaths } from './conception-paths';
 
 const DEBOUNCE_MS = 250;
@@ -48,6 +49,14 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   // rebuild from the old tree could fire after we've swapped.
   refreshChain = Promise.resolve();
   if (!conceptionPath) return;
+
+  // One-shot migration of legacy `condash.json` / `configuration.json` →
+  // `.condash/settings.json`. Idempotent and silent when there's nothing
+  // to do. Runs before the watcher attaches so the renderer's first
+  // config read sees the post-migration state.
+  await migrateLegacyConfig(conceptionPath).catch((err) => {
+    process.stderr.write(`condash: migrateLegacyConfig failed: ${err}\n`);
+  });
 
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);
   const roots: RootSet = {

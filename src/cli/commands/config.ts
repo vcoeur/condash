@@ -1,10 +1,12 @@
 import { promises as fs } from 'node:fs';
+import { dirname } from 'node:path';
 import {
   conceptionConfigWritePath,
   getEffectiveConceptionConfig,
   readConceptionConfigRaw,
   resolveConceptionConfigPath,
 } from '../../main/effective-config';
+import { migrateLegacyConfig } from '../../main/condash-dir-migrate';
 import { settingsPath } from '../../main/settings';
 import { atomicWrite } from '../../main/atomic-write';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
@@ -84,7 +86,7 @@ export async function runConfig(
       source = 'effective';
     } else {
       config = await readConceptionConfigRaw(conceptionPath);
-      source = 'condash.json';
+      source = '.condash/settings.json';
     }
     const value = pickByDottedPath(config, key);
     if (value === undefined) {
@@ -119,9 +121,9 @@ export async function runConfig(
       emit(ctx, { ok: true, target: 'settings.json', key }, () => `set ${key} in settings.json\n`);
     } else {
       const writePath = conceptionConfigWritePath(conceptionPath);
-      // If condash.json doesn't exist yet but configuration.json does,
-      // seed condash.json from the legacy file so the first set doesn't
-      // silently drop the user's existing keys.
+      // If the canonical primary doesn't exist yet but a legacy file does,
+      // seed the new primary from the legacy content so the first `set`
+      // doesn't silently drop the user's existing keys.
       const existing = await readConceptionConfigRaw(conceptionPath);
       await mutateJsonFile(writePath, (current) => {
         if (Object.keys(current).length === 0) {
@@ -129,8 +131,27 @@ export async function runConfig(
         }
         setByDottedPath(current, key, parsedValue);
       });
-      emit(ctx, { ok: true, target: 'condash.json', key }, () => `set ${key} in condash.json\n`);
+      emit(
+        ctx,
+        { ok: true, target: '.condash/settings.json', key },
+        () => `set ${key} in .condash/settings.json\n`,
+      );
     }
+    return;
+  }
+  if (verb === 'migrate') {
+    assertNoExtraFlags(args);
+    const result = await migrateLegacyConfig(conceptionPath);
+    emit(ctx, result, (d) => {
+      const r = d as Awaited<ReturnType<typeof migrateLegacyConfig>>;
+      if (!r.migrated) {
+        return r.reason === 'primary-already-exists'
+          ? `already migrated — .condash/settings.json exists\n`
+          : `no legacy condash.json or configuration.json found; nothing to migrate\n`;
+      }
+      const gi = r.gitignoreUpdated ? ' (added .condash/ to .gitignore)' : '';
+      return `migrated ${r.from} → ${r.to}${gi}\n`;
+    });
     return;
   }
   throw new CliError(ExitCodes.USAGE, `Unknown config verb: ${verb}`);
@@ -164,7 +185,8 @@ function setByDottedPath(obj: Record<string, unknown>, key: string, value: unkno
   cursor[parts[parts.length - 1]] = value;
 }
 
-/** Read-modify-write a JSON file atomically; creates the file when missing. */
+/** Read-modify-write a JSON file atomically; creates the file (and its
+ * parent directory) when missing. */
 async function mutateJsonFile(
   path: string,
   mutate: (current: Record<string, unknown>) => void,
@@ -180,6 +202,10 @@ async function mutateJsonFile(
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
   mutate(current);
+  // The new canonical config lives in `.condash/`, which may not exist yet
+  // on a fresh conception. `atomicWrite` needs the parent dir present, so
+  // mkdir -p before writing.
+  await fs.mkdir(dirname(path), { recursive: true });
   await atomicWrite(path, JSON.stringify(current, null, 2) + '\n');
 }
 

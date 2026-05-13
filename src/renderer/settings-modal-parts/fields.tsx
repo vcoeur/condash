@@ -3,6 +3,7 @@ import type { JSX } from 'solid-js';
 import type {
   CardMinWidthPrefs,
   Platform,
+  TerminalLoggingPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
@@ -132,8 +133,11 @@ export function TerminalFields(props: {
   setString: (key: (typeof TERMINAL_STRING_FIELDS)[number]['key'], value: string) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
+  updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
   platform: () => Platform | undefined;
 }): JSX.Element {
+  const logging = (): TerminalLoggingPrefs => props.prefs().logging ?? {};
+  const loggingEnabled = (): boolean => logging().enabled !== false;
   const idPrefix = `${props.target}.terminal`;
   return (
     <>
@@ -328,6 +332,90 @@ export function TerminalFields(props: {
             </label>
           )}
         </For>
+      </div>
+
+      <h3>Logging</h3>
+      <p class="settings-hint">
+        Capture stdin / stdout for every terminal tab to{' '}
+        <code>.condash/logs/YYYY/MM/DD/HHMMSS-&lt;id&gt;.jsonl</code>. The
+        <code> .condash/</code> tree is gitignored by default.
+      </p>
+      <div class="settings-grid">
+        <label class="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={loggingEnabled()}
+            onChange={(e) => void props.updateLogging({ enabled: e.currentTarget.checked })}
+          />
+          <span>Enable terminal capture</span>
+        </label>
+        <label>
+          <span>Retention (days)</span>
+          <input
+            type="number"
+            min="0"
+            max="3650"
+            value={logging().retentionDays ?? ''}
+            placeholder="14"
+            onChange={(e) =>
+              void props.updateLogging({
+                retentionDays: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+          <small class="settings-field-hint">
+            Day-directories older than this are removed on next janitor run.
+            <code> 0</code> disables age-based eviction.
+          </small>
+        </label>
+        <label>
+          <span>Max total size (MB)</span>
+          <input
+            type="number"
+            min="0"
+            value={logging().maxDirMb ?? ''}
+            placeholder="500"
+            onChange={(e) =>
+              void props.updateLogging({
+                maxDirMb: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+          <small class="settings-field-hint">
+            When over this cap, the oldest day-directory is removed first.
+          </small>
+        </label>
+        <label>
+          <span>Max per-file size (MB)</span>
+          <input
+            type="number"
+            min="1"
+            value={logging().maxFileMb ?? ''}
+            placeholder="50"
+            onChange={(e) =>
+              void props.updateLogging({
+                maxFileMb: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+          <small class="settings-field-hint">
+            Sessions over this size roll to <code>.2.jsonl</code>, <code>.3.jsonl</code>, ...
+          </small>
+        </label>
+        <label>
+          <span>ANSI escape policy</span>
+          <select
+            value={logging().ansiPolicy ?? 'raw'}
+            onChange={(e) =>
+              void props.updateLogging({
+                ansiPolicy: e.currentTarget.value as 'raw' | 'stripped',
+              })
+            }
+          >
+            <option value="raw">raw — store ANSI bytes, strip at view</option>
+            <option value="stripped">stripped — drop ANSI before write</option>
+          </select>
+        </label>
       </div>
     </>
   );

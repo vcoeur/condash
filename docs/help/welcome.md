@@ -31,7 +31,7 @@ are still on disk; delete condash and the files don't move.
 **File → Open…** (`Ctrl+O`) opens the native folder picker again.
 
 **File → Settings…** (`Ctrl+,`) opens a tabbed editor for theme, the
-embedded terminal, and `condash.json`.
+embedded terminal, and `.condash/settings.json`.
 
 ## Where to go next
 

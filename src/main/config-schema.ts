@@ -145,6 +145,16 @@ const xtermSettings = z
   })
   .strict();
 
+const terminalLoggingSettings = z
+  .object({
+    enabled: z.boolean().optional(),
+    retentionDays: z.number().int().min(0).optional(),
+    maxDirMb: z.number().int().min(0).optional(),
+    maxFileMb: z.number().int().min(1).optional(),
+    ansiPolicy: z.enum(['raw', 'stripped']).optional(),
+  })
+  .strict();
+
 const terminalSettings = z
   .object({
     shell: z.string().optional(),
@@ -155,6 +165,7 @@ const terminalSettings = z
     move_tab_left_shortcut: z.string().optional(),
     move_tab_right_shortcut: z.string().optional(),
     xterm: xtermSettings.optional(),
+    logging: terminalLoggingSettings.optional(),
   })
   .strict();
 
@@ -166,6 +177,7 @@ const layoutSchema = z
       z.literal('knowledge'),
       z.literal('resources'),
       z.literal('skills'),
+      z.literal('logs'),
       z.null(),
     ]),
     terminal: z.boolean(),

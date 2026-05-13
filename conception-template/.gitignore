@@ -11,6 +11,13 @@ projects/*/*/local/**
 # Local Claude scratch files. Global gitignore convention is **/.claude/*.local.*
 .claude/*.local.*
 
+# condash workspace state (per-host: settings.json + terminal logs).
+# Note: ignoring the dir contents with `.condash/*` (not the dir itself)
+# is what lets the negation re-include the starter example. A bare
+# `.condash/` would shadow every nested path beyond git's reach.
+.condash/*
+!.condash/settings.json.example
+
 # Common OS / editor cruft.
 .DS_Store
 Thumbs.db

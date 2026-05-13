@@ -43,7 +43,7 @@ test('Settings: + Add section appends a section marker to condash.json', async (
     });
     await addSectionBtn.click();
 
-    const condashPath = join(booted.conceptionDir, 'condash.json');
+    const condashPath = join(booted.conceptionDir, '.condash', 'settings.json');
     await expect
       .poll(async () => {
         const parsed = JSON.parse(await readFile(condashPath, 'utf8')) as {

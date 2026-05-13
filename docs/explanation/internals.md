@@ -9,7 +9,7 @@ description: How the Electron build is wired — the three processes, the IPC co
 
 ## What condash is
 
-A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.claude/skills/`, and `condash.json` tree, presents it through three slots — Projects (left edge), one of Code / Knowledge / Resources / Skills in the working slot (right edge, mutually exclusive), Terminal (bottom). Search is a global modal opened with `Ctrl+Shift+F`, not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys.
+A thin layer above the conception convention. It reads the live `<conception>/projects/`, `knowledge/`, `resources/`, `.claude/skills/`, and `.condash/settings.json` tree, presents it through three slots — Projects (left edge), one of Code / Knowledge / Resources / Skills / Logs in the working slot (right edge, mutually exclusive), Terminal (bottom). Search is a global modal opened with `Ctrl+Shift+F`, not a pane. The user can *navigate* and *edit Markdown in place*; code is not edited inside condash, and running dev servers are supervised through embedded ptys (with optional disk capture under `.condash/logs/`).
 
 There is no backend, no database, and no message bus. Every feature is a filesystem walk + a Markdown parse, with chokidar pushing change notifications.
 
@@ -96,7 +96,7 @@ A single watcher rooted at `<conception>/`, debounced 250 ms. Events are classif
 
 - `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — the renderer just bumps `refreshKey`.
-- `config` — `condash.json` (or legacy `configuration.json`) at the conception root. Same coarse handling.
+- `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Same coarse handling.
 - `unknown` — any classification failure. Forces a full re-render.
 
 A burst of `unknown` events collapses to a single `unknown` event before the renderer is notified.

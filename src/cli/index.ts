@@ -28,7 +28,8 @@ Nouns:
   skills       list shipped skills; install [<name>...]; status
   templates    list shipped templates; install [<path>...]; status
   config       conception-path, path, list [--effective|--global],
-               get <key> [--effective|--global], set <key> <value> [--global]
+               get <key> [--effective|--global], set <key> <value> [--global],
+               migrate (legacy condash.json → .condash/settings.json)
   help         this message; or 'condash-cli help <noun>' for verbs
 
 Universal flags:

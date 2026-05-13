@@ -3,6 +3,7 @@ import { onMount, onCleanup } from 'solid-js';
 import type {
   CardMinWidthPrefs,
   Platform,
+  TerminalLoggingPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
@@ -89,13 +90,14 @@ export function SettingsModal(props: {
   onChangeCardMinWidth: (patch: CardMinWidthPrefs) => void;
   onClose: () => void;
 }) {
-  // Read path: the existing condash.json (canonical) or the legacy
-  // configuration.json fallback. Resolved on mount so we surface the right
-  // file even when the conception still has only the legacy filename.
-  // Write path: always condash.json. The first save in a legacy tree
-  // creates condash.json and leaves configuration.json orphaned for the
-  // user to delete (no auto-rename, no auto-delete).
-  const writePath = `${props.conceptionPath}/condash.json`;
+  // Read path: the existing `.condash/settings.json` (canonical) or one of
+  // the two legacy fallbacks (`condash.json` / `configuration.json`).
+  // Resolved on mount so we surface the right file even when the conception
+  // still has only a legacy filename. Write path: always
+  // `.condash/settings.json` — the first save in a legacy tree creates the
+  // new canonical alongside the legacy file, and the auto-migrator
+  // tombstones the legacy on next conception-open.
+  const writePath = `${props.conceptionPath}/.condash/settings.json`;
   const [readPath, { mutate: mutateReadPath }] = createResource(
     () => props.conceptionPath,
     () => window.condash.getConceptionConfigPath(),
@@ -507,6 +509,26 @@ export function SettingsModal(props: {
   const updateColor = (target: SettingsTab, key: ColorEntry['key'], value: string): void =>
     void updateXterm(target, { colors: { [key]: value || undefined } as never });
 
+  const updateLogging = (
+    target: SettingsTab,
+    patch: Partial<TerminalLoggingPrefs>,
+  ): Promise<void> =>
+    patchTerminal(target, (p) => {
+      const logging = (p.logging ?? {}) as TerminalLoggingPrefs;
+      const merged: TerminalLoggingPrefs = { ...logging };
+      // Apply the patch field-by-field so `undefined` clears a key (lets
+      // a user re-default by clearing an input) and explicit values
+      // overwrite.
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) {
+          delete (merged as Record<string, unknown>)[k];
+        } else {
+          (merged as Record<string, unknown>)[k] = v;
+        }
+      }
+      return { ...p, logging: merged };
+    });
+
   // --- Scroll-to-section ---------------------------------------------
 
   const scrollToSection = (id: Section): void => {
@@ -712,6 +734,7 @@ export function SettingsModal(props: {
                 setString={(k, v) => setTerminalString('global', k, v)}
                 updateXterm={(p) => updateXterm('global', p)}
                 updateColor={(k, v) => updateColor('global', k, v)}
+                updateLogging={(p) => updateLogging('global', p)}
                 platform={platform}
               />
             </div>
@@ -773,6 +796,7 @@ export function SettingsModal(props: {
                 setString={(k, v) => setTerminalString('conception', k, v)}
                 updateXterm={(p) => updateXterm('conception', p)}
                 updateColor={(k, v) => updateColor('conception', k, v)}
+                updateLogging={(p) => updateLogging('conception', p)}
                 platform={platform}
                 badge={{
                   stateOf: () => stateOf('terminal'),

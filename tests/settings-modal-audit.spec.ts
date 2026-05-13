@@ -291,7 +291,7 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
   test.setTimeout(300_000);
   const booted = await bootApp({ extraConfig: {} });
   const settingsPath = join(booted.userDataDir, 'condash', 'settings.json');
-  const conceptionPath = join(booted.conceptionDir, 'condash.json');
+  const conceptionPath = join(booted.conceptionDir, '.condash', 'settings.json');
   // Flush findings every few seconds so a timeout still produces output.
   const flushTimer = setInterval(() => {
     void persistFindings().catch(() => undefined);

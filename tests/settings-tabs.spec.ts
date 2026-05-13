@@ -102,7 +102,7 @@ test('settings modal: reset-to-global drops the override key from condash.json',
     // dropped from condash.json on disk.
     await expect(skillsField.locator('.settings-badge--inherits')).toBeVisible();
 
-    const condashPath = join(booted.conceptionDir, 'condash.json');
+    const condashPath = join(booted.conceptionDir, '.condash', 'settings.json');
     await expect
       .poll(async () => {
         const text = await readFile(condashPath, 'utf8');

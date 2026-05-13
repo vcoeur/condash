@@ -45,8 +45,13 @@ export async function bootApp(
     `# knowledge\n\nFixture knowledge index.\n`,
     'utf8',
   );
+  // The per-conception config now lives under `.condash/settings.json`
+  // (the auto-migrator lifts a legacy `condash.json` on first run, but
+  // writing directly to the canonical path keeps the fixture stable —
+  // playwright tests then read/write that same path.)
+  await mkdir(join(conceptionDir, '.condash'), { recursive: true });
   await writeFile(
-    join(conceptionDir, 'condash.json'),
+    join(conceptionDir, '.condash', 'settings.json'),
     JSON.stringify({ ...(options.extraConfig ?? {}) }, null, 2) + '\n',
     'utf8',
   );

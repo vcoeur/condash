@@ -7,29 +7,33 @@ description: The two JSON files condash reads (per-tree and per-machine) and wha
 
 > **Audience.** Daily user.
 
-condash reads two JSON files. Both share **the same schema**. The per-machine `settings.json` carries global defaults (and the only two fields a conception cannot describe — its own active path and the recents list). The per-conception `condash.json` carries overrides that win at top-level granularity. Either file is optional — the dashboard runs with sensible defaults.
+condash reads two JSON files. Both share **the same schema**. The per-machine `settings.json` carries global defaults (and the only two fields a conception cannot describe — its own active path and the recents list). The per-conception `.condash/settings.json` carries overrides that win at top-level granularity. Either file is optional — the dashboard runs with sensible defaults.
 
 ## At a glance
 
-| File              | Path                                                                                                                                                                        | Lifecycle                  | Owns exclusively                                                  |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------ |
-| `settings.json`   | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine      | `lastConceptionPath`, `recentConceptionPaths` (cap 5)              |
-| `condash.json`    | `<conception_path>/condash.json` (legacy fallback: `configuration.json`)                                                                                                    | Per-conception, versioned  | (none — every key here also accepts a global default)              |
+| File                       | Path                                                                                                                                                                        | Lifecycle                                   | Owns exclusively                                      |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------- |
+| `settings.json`            | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine                       | `lastConceptionPath`, `recentConceptionPaths` (cap 5) |
+| `.condash/settings.json`   | `<conception_path>/.condash/settings.json` (legacy fallbacks: `condash.json`, `configuration.json`)                                                                         | Per-conception, **per-host** (gitignored)   | (none — every key here also accepts a global default) |
 
 Both files share the **same schema** modulo the two path-tracking keys above. Any other top-level key — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches` — may live in either file. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge).
 
+### The `.condash/` workspace directory
+
+`.condash/` is condash's per-conception state directory — the home of `settings.json` plus terminal logs at `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. **The whole directory is gitignored by default** (the auto-migrator appends a `.condash/` line to your `.gitignore` on first run when the conception is a git repo), so settings + logs are per-host state with no commit-leak risk. Teams that want to share a baseline config either commit `condash.json` alongside (legacy path still reads) or manually un-ignore `settings.json` in their `.gitignore`.
+
 ### Reading and writing
 
-- **Read precedence**: condash reads `<conception>/condash.json` when present, falling back to `<conception>/configuration.json` for legacy trees. The legacy filename is supported indefinitely with no deprecation date.
-- **Write target**: every save through the GUI or `condash-cli config set` writes to `condash.json`. The first save in a legacy tree creates `condash.json` and leaves `configuration.json` orphaned for you to delete by hand (no auto-rename, no auto-delete).
-- **Override scope**: a conception's `condash.json` is forbidden from setting `lastConceptionPath` or `recentConceptionPaths` — a tree cannot describe its own location, by design.
+- **Read precedence**: `<conception>/.condash/settings.json` (canonical) → `<conception>/condash.json` (legacy) → `<conception>/configuration.json` (legacy²). Both legacy filenames are read indefinitely with no deprecation date.
+- **Write target**: every save through the GUI or `condash-cli config set` writes to `.condash/settings.json`. The auto-migrator copies the legacy content into the new path on first open, tombstones the source file (so accidental edits don't drift), and appends `.condash/` to `.gitignore`. Run `condash-cli config migrate` to invoke it explicitly.
+- **Override scope**: a conception's `settings.json` is forbidden from setting `lastConceptionPath` or `recentConceptionPaths` — a tree cannot describe its own location, by design.
 - **Environment override**: `CONDASH_CONCEPTION_PATH` still wins for the session, matching the legacy behaviour.
 
-## `condash.json` (per-conception, versioned)
+## `.condash/settings.json` (per-conception, per-host)
 
-Lives at `<conception_path>/condash.json`. Commit it. Every key is optional — a minimal valid file is `{}`, in which case condash uses globals (or built-in defaults) everywhere. Strict-mode validation: extra top-level keys are rejected on save.
+Lives at `<conception_path>/.condash/settings.json`. Don't commit it — the auto-migrator gitignores `.condash/` for you. Every key is optional — a minimal valid file is `{}`, in which case condash uses globals (or built-in defaults) everywhere. Strict-mode validation: extra top-level keys are rejected on save.
 
-> **Legacy filename.** Older trees still ship `configuration.json` instead of `condash.json`. Both filenames are read indefinitely; on save, condash always writes `condash.json` and leaves `configuration.json` alone. Run `mv configuration.json condash.json` (in your worktree, with a follow-up commit) to retire the legacy filename when it's safe to do so.
+> **Legacy filenames.** Older trees ship `condash.json` (canonical before this migration) or `configuration.json` (legacy²) at the conception root. Both are still read; the migrator lifts their content into `.condash/settings.json` on first open. Don't hand-rename — let the migrator run.
 
 ```json
 {
@@ -64,7 +68,21 @@ Lives at `<conception_path>/condash.json`. Commit it. Every key is optional — 
 
 Paths may use `~` (expanded to `$HOME`) or absolute paths. JSON does not carry comments — keep prose documentation in the project README or the per-tree `CLAUDE.md`.
 
-A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `condash.json` may carry its own `terminal` block — the conception value replaces the global one for that tree.
+A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — the conception value replaces the global one for that tree.
+
+### Terminal logging
+
+Inside the `terminal` block, `terminal.logging` configures per-session capture of stdin / stdout / spawn / exit events. Captured events land in `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl` — one file per pty spawn. The Logs working surface (`View → Show Logs`, `Cmd+Shift+L`) browses the tree.
+
+| Key             | Type                       | Default | Meaning                                                                                                                                                                                                       |
+|-----------------|----------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `enabled`       | boolean                    | `true`  | Toggle capture entirely. Disabling stops new writes; existing files stay on disk for the janitor.                                                                                                              |
+| `retentionDays` | integer ≥ 0                | `14`    | Day-directories older than this are removed on next janitor run. `0` disables age-based eviction (the size cap still applies).                                                                                |
+| `maxDirMb`      | integer ≥ 0                | `500`   | Total cap on `<conception>/.condash/logs/`. The janitor evicts oldest day-directories first while over cap, regardless of age.                                                                                |
+| `maxFileMb`     | integer ≥ 1                | `50`    | Per-file rotation threshold. Sessions over this size roll to `HHMMSS-<sid>.2.jsonl`, `.3.jsonl`, ... A `kind: 'rotate'` event marks the continuation in the new file.                                          |
+| `ansiPolicy`    | `'raw'` \| `'stripped'`    | `'raw'` | `raw` stores ANSI bytes as received (viewer strips on render). `stripped` strips ANSI before writing — smaller files, lossy.                                                                                  |
+
+The janitor runs at app startup and every 24 hours. Errors are logged to stderr and never propagate into the IPC layer. The captured event shape is `{ ts, sid, side, repo?, cwd, kind: 'spawn'|'in'|'out'|'exit'|'close'|'rotate', data?, len?, exitCode?, cmd?, argv? }` — one JSON object per line.
 
 ### Workspace keys
 
@@ -134,7 +152,7 @@ Each slot takes a `command` string (required) and an optional `label` (tooltip t
 
 > **Schema note.** condash (Electron) takes a single `command` string per slot — there is no `commands` list / fallback chain. If you need a fallback (e.g. `idea` then `idea.sh`), wrap it in a small launcher script that does the trial-and-fall-through itself.
 
-Built-in defaults reproduce common IntelliJ / VS Code / terminal behaviour, so a `condash.json` with no `open_with` block still gives functional buttons. Override only the slots you want to customise.
+Built-in defaults reproduce common IntelliJ / VS Code / terminal behaviour, so a `.condash/settings.json` with no `open_with` block still gives functional buttons. Override only the slots you want to customise.
 
 #### Per-OS recipes
 
@@ -163,7 +181,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 
 ### `terminal.xterm` { #terminalxterm }
 
-Visual + behavioural knobs for the xterm.js renderer. All keys are optional; missing keys fall through to xterm's defaults. Edit through the **Settings → Terminal** section — the editor live-rewrites `condash.json` and reloads existing tabs without a relaunch.
+Visual + behavioural knobs for the xterm.js renderer. All keys are optional; missing keys fall through to xterm's defaults. Edit through the **Settings → Terminal** section — the editor live-rewrites `.condash/settings.json` and reloads existing tabs without a relaunch.
 
 ```json
 {
@@ -270,7 +288,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `treeExpansion`  | Per-pane set of expanded directory `relPath`s for the Knowledge / Resources / Skills tree panes. Empty (or missing) means everything is collapsed — the on-purpose first-load state per #89. |
 | `selectedBranches` | Branches pinned by the Code-pane top-of-pane filter. The primary worktree row is always rendered; this set is additive on top of it. Empty (or missing) means every card shows only its primary row. |
 
-Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`) are also valid in `settings.json` — they act as global defaults that any conception's `condash.json` may override. The reverse direction is forbidden: a conception's `condash.json` cannot set `lastConceptionPath` or `recentConceptionPaths`, since those describe the tree's own location and the user's machine-local recents list.
+Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`) are also valid in `settings.json` — they act as global defaults that any conception's `.condash/settings.json` may override. The reverse direction is forbidden: a conception's `settings.json` cannot set `lastConceptionPath` or `recentConceptionPaths`, since those describe the tree's own location and the user's machine-local recents list.
 
 ### LayoutState
 
@@ -320,7 +338,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 - **Appearance** — theme; per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences.
 
-**This conception** tab (writes to `condash.json`; the legacy `configuration.json` is read but never written to):
+**This conception** tab (writes to `.condash/settings.json`; the legacy `condash.json` and `configuration.json` are read but never written to):
 
 - **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`.
 - **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
@@ -328,7 +346,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 - **Appearance** — theme + card-grid min-widths overridden for this conception only.
 - **Terminal** — `terminal` block overridden for this conception only.
 
-Each top-level key on the **This conception** tab carries an inheritance badge that calls out the override state — **Inherits**, **Overridden**, or **Matches global** — plus a **Reset to global** / **Remove override** button when the conception writes anything for that key. Removing an override drops the key from `condash.json` and falls back to inheritance. Writes go through `patchConfig` (condash.json) and `patchSettings` (settings.json), each of which parses the live file, applies a mutator, drops empty leaves, and round-trips through atomic CAS — schema-validated by the [strict zod schemas](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) (`globalSettingsSchema` for settings.json, `conceptionConfigSchema` for condash.json) before the bytes hit disk.
+Each top-level key on the **This conception** tab carries an inheritance badge that calls out the override state — **Inherits**, **Overridden**, or **Matches global** — plus a **Reset to global** / **Remove override** button when the conception writes anything for that key. Removing an override drops the key from `.condash/settings.json` and falls back to inheritance. Writes go through `patchConfig` (conception settings) and `patchSettings` (global settings), each of which parses the live file, applies a mutator, drops empty leaves, and round-trips through atomic CAS — schema-validated by the [strict zod schemas](https://github.com/vcoeur/condash/blob/main/src/main/config-schema.ts) (`globalSettingsSchema` for settings.json, `conceptionConfigSchema` for the conception side) before the bytes hit disk.
 
 The rail at the left of the modal carries **Save** (flush focused-but-unblurred edits) and **Open externally** (open the active tab's file in the OS default editor). The active tab is remembered between modal opens via `localStorage`.
 
@@ -347,5 +365,5 @@ Changes that reload live without a restart:
 ## See also
 
 - [Environment variables](env.md) — what condash reads from the environment, and what it deliberately doesn't.
-- [Inline dev-server runner](inline-runner.md) — the `run` field in `condash.json`.
+- [Inline dev-server runner](inline-runner.md) — the `run` field in `.condash/settings.json`.
 - [Terminal shortcuts](shortcuts.md) — what each `terminal.*` shortcut does in the UI.

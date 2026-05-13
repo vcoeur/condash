@@ -1,0 +1,199 @@
+/* Logs pane — split layout: toolbar on top, sessions rail on the left,
+ * events on the right. Pulls colours from the renderer's CSS variables so
+ * dark / light themes work without overrides. */
+
+.logs-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--surface-border, #2a2a2a);
+  flex: 0 0 auto;
+}
+
+.logs-day-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logs-day-picker span {
+  font-size: 0.85rem;
+  color: var(--text-muted, #8a8a8a);
+}
+
+.logs-refresh,
+.logs-delete-day {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--surface-border, #2a2a2a);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.logs-refresh:hover,
+.logs-delete-day:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+}
+
+.logs-delete-day {
+  color: #c44;
+  border-color: rgba(204, 68, 68, 0.4);
+}
+
+.logs-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 28%) 1fr;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.logs-sessions {
+  overflow-y: auto;
+  border-right: 1px solid var(--surface-border, #2a2a2a);
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0;
+}
+
+.logs-session-row {
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--surface-border, #2a2a2a);
+  padding: 0.5rem 0.75rem;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-family: inherit;
+}
+
+.logs-session-row:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+}
+
+.logs-session-row--selected {
+  background: var(--surface-selected, rgba(80, 140, 240, 0.12));
+}
+
+.logs-session-row--exited {
+  opacity: 0.7;
+}
+
+.logs-session-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+.logs-session-meta {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-muted, #8a8a8a);
+  flex-wrap: wrap;
+}
+
+.logs-session-repo {
+  color: var(--text-default, #cfcfcf);
+  font-weight: 500;
+}
+
+.logs-session-cmd {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+.logs-session-size {
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a8a8a);
+  font-variant-numeric: tabular-nums;
+}
+
+.logs-session-exit {
+  margin-left: 0.4rem;
+}
+
+.logs-events {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.logs-events-head {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted, #8a8a8a);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  border-bottom: 1px solid var(--surface-border, #2a2a2a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logs-events-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding: 0.5rem 0.75rem;
+}
+
+.logs-event {
+  display: grid;
+  grid-template-columns: 6rem 4.5rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.15rem;
+}
+
+.logs-event-ts {
+  color: var(--text-muted, #8a8a8a);
+  font-variant-numeric: tabular-nums;
+}
+
+.logs-event-kind {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #8a8a8a);
+}
+
+.logs-event--in .logs-event-kind {
+  color: #6ad27a;
+}
+
+.logs-event--out .logs-event-kind {
+  color: #82b3ff;
+}
+
+.logs-event--spawn .logs-event-kind,
+.logs-event--exit .logs-event-kind,
+.logs-event--close .logs-event-kind,
+.logs-event--rotate .logs-event-kind {
+  color: #d9a64a;
+}
+
+.logs-event-body {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.logs-pane .empty {
+  color: var(--text-muted, #8a8a8a);
+  padding: 1rem;
+  font-size: 0.9rem;
+}
