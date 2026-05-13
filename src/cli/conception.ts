@@ -15,13 +15,17 @@ export interface Resolved {
  *      honoured — see the reconcile note in `src/main/settings.ts`).
  *   3. $CLAUDE_PROJECT_DIR — the env var skill hooks set when running on
  *      behalf of a /projects skill. Trusted only when the directory carries
- *      a `configuration.json` (so a stray export from a sibling project
- *      doesn't silently retarget us).
- *   4. Walk up from cwd looking for a `configuration.json`.
+ *      one of the recognised config files (so a stray export from a sibling
+ *      project doesn't silently retarget us).
+ *   4. Walk up from cwd looking for a recognised config file.
  *   5. Settings.json (the same file the Electron app writes when the user
  *      picks a folder via "Open conception directory").
  *   6. Throw NO_CONCEPTION (exit 5) listing every source we tried — the
  *      skill / shell can read the list and explain why nothing matched.
+ *
+ * "Recognised config files" are, in priority order:
+ *   `.condash/settings.json` (canonical), `condash.json` (legacy),
+ *   `configuration.json` (legacy²).
  */
 export async function resolveConception(flagValue: string | undefined): Promise<Resolved> {
   const tried: string[] = [];
@@ -29,7 +33,7 @@ export async function resolveConception(flagValue: string | undefined): Promise<
   if (flagValue) {
     const abs = absolutise(flagValue);
     if (await looksLikeConception(abs)) return { path: abs, source: 'flag' };
-    tried.push(`--conception ${flagValue} (no condash.json or configuration.json)`);
+    tried.push(`--conception ${flagValue} (no recognised config file)`);
   }
 
   // `_PATH` is the canonical name (matches main/settings.ts); the
@@ -42,7 +46,7 @@ export async function resolveConception(flagValue: string | undefined): Promise<
   if (envOverride) {
     const abs = absolutise(envOverride);
     if (await looksLikeConception(abs)) return { path: abs, source: 'env' };
-    tried.push(`$${envName}=${envOverride} (no condash.json or configuration.json)`);
+    tried.push(`$${envName}=${envOverride} (no recognised config file)`);
   }
 
   const skillDir = process.env.CLAUDE_PROJECT_DIR;
@@ -51,12 +55,12 @@ export async function resolveConception(flagValue: string | undefined): Promise<
     if (await looksLikeConception(abs)) {
       return { path: abs, source: 'CLAUDE_PROJECT_DIR' };
     }
-    tried.push(`$CLAUDE_PROJECT_DIR=${skillDir} (no condash.json or configuration.json)`);
+    tried.push(`$CLAUDE_PROJECT_DIR=${skillDir} (no recognised config file)`);
   }
 
   const walked = await walkUpForConception(process.cwd());
   if (walked) return { path: walked, source: 'cwd-walk' };
-  tried.push(`cwd-walk from ${process.cwd()} (no condash.json or configuration.json found)`);
+  tried.push(`cwd-walk from ${process.cwd()} (no recognised config file found)`);
 
   const settings = await readSettings();
   if (settings.lastConceptionPath && (await looksLikeConception(settings.lastConceptionPath))) {
@@ -82,9 +86,15 @@ async function looksLikeConception(path: string): Promise<boolean> {
   }
   // Both a config file and a `projects/` directory are required: any folder
   // with a stray config file (e.g. a webpack/babel config in an unrelated
-  // repo) used to silently retarget the CLI. `condash.json` is the canonical
-  // filename; `configuration.json` is the legacy fallback kept indefinitely.
-  if (!existsSync(`${path}/condash.json`) && !existsSync(`${path}/configuration.json`)) {
+  // repo) used to silently retarget the CLI. Recognised in priority order:
+  //   `.condash/settings.json` (canonical),
+  //   `condash.json` (legacy),
+  //   `configuration.json` (legacy²).
+  if (
+    !existsSync(`${path}/.condash/settings.json`) &&
+    !existsSync(`${path}/condash.json`) &&
+    !existsSync(`${path}/configuration.json`)
+  ) {
     return false;
   }
   try {

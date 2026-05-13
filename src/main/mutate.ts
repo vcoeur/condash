@@ -4,6 +4,7 @@ import type { StepMarker, TransitionResult } from '../shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '../shared/types';
 import { isoToday } from '../shared/iso-today';
 import { atomicWrite } from './atomic-write';
+import { isConceptionSettingsPath } from './condash-dir';
 import {
   validateAndCanonicaliseConfig,
   validateAndCanonicaliseGlobalSettings,
@@ -251,8 +252,17 @@ export async function writeNote(
     }
 
     const baseName = basename(path);
-    const isConceptionConfig = baseName === 'condash.json' || baseName === 'configuration.json';
-    const isGlobalSettings = baseName === 'settings.json';
+    // The canonical conception config lives at `<conception>/.condash/settings.json`
+    // — same basename as the global per-machine `~/.config/condash/settings.json`,
+    // so we disambiguate via the parent-directory check. The two legacy names at
+    // the conception root (`condash.json`, `configuration.json`) are also handled
+    // here even though the writer no longer targets them — keeps `condash-cli
+    // config set` working against a legacy file the user hasn't migrated yet.
+    const isConceptionConfig =
+      isConceptionSettingsPath(path) ||
+      baseName === 'condash.json' ||
+      baseName === 'configuration.json';
+    const isGlobalSettings = baseName === 'settings.json' && !isConceptionSettingsPath(path);
     let finalContent: string;
     if (isConceptionConfig) {
       finalContent = validateAndCanonicaliseConfig(newContent);
