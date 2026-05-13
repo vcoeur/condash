@@ -40,8 +40,14 @@ import './terminal-pane.css';
 
 export type { Column, Tab } from './terminal-pane/types';
 
+export interface SpawnOptions {
+  /** Lock the tab title to `label` so OSC 7 cwd updates from the shell
+   *  don't override it. Default false (current "+" new-shell behavior). */
+  pinned?: boolean;
+}
+
 export interface TerminalPaneHandle {
-  spawn(request: TermSpawnRequest, label: string): Promise<string>;
+  spawn(request: TermSpawnRequest, label: string, opts?: SpawnOptions): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
   /** Add a fresh user shell tab to "My terms". */
   spawnUserShell(launcherCommand?: string | null, side?: TermSide): Promise<string>;
@@ -257,10 +263,11 @@ export function TerminalPane(props: {
         column,
         label,
         customName: meta?.customName,
+        pinned: meta?.pinned,
         exited: s.exited,
       };
       setTabs((prev) => [...prev, tab]);
-      setMeta(s.id, { label, customName: meta?.customName, column });
+      setMeta(s.id, { label, customName: meta?.customName, column, pinned: meta?.pinned });
       const attach = await window.condash.termAttach(s.id);
       mountForSession(s.id, column, attach?.output);
       setActiveIn(column, s.id);
@@ -318,9 +325,20 @@ export function TerminalPane(props: {
     return base;
   };
 
-  const spawn = async (request: TermSpawnRequest, label: string): Promise<string> => {
+  const spawn = async (
+    request: TermSpawnRequest,
+    label: string,
+    opts?: SpawnOptions,
+  ): Promise<string> => {
     const { id } = await window.condash.termSpawn(request);
-    setMeta(id, { label, column: nextSpawnColumn });
+    const pinned = opts?.pinned;
+    setMeta(id, { label, column: nextSpawnColumn, pinned });
+    // `broadcastSessions()` in main fires before the `termSpawn` invoke
+    // reply resolves here, so reconcile typically inserts the Tab with the
+    // fallback label ('shell' / '<repo> (run)') and no `pinned` flag —
+    // readMeta returns nothing because we hadn't written yet. Patch the
+    // Tab with the caller's intent now that we know the id.
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, label, pinned } : t)));
     return id;
   };
 
@@ -328,15 +346,21 @@ export function TerminalPane(props: {
     launcherCommand?: string | null,
     sd: TermSide = 'my',
   ): Promise<string> => {
-    const base = launcherCommand?.trim() || 'shell';
+    const trimmed = launcherCommand?.trim() || '';
+    const base = trimmed || 'shell';
     const label = uniqueLabel(base);
+    // Pin the label only when the caller passed a real launcher command
+    // (the lambda button). The bare `+` button leaves it unpinned so the
+    // shell's OSC 7 cwd basename drives the displayed title.
+    const pinned = trimmed.length > 0;
     return spawn(
       {
         side: sd,
-        command: launcherCommand?.trim() || undefined,
+        command: trimmed || undefined,
         cwd: props.cwd ?? undefined,
       },
       label,
+      { pinned },
     );
   };
 
@@ -380,6 +404,7 @@ export function TerminalPane(props: {
         label: tab.label,
         customName: trimmed || undefined,
         column: tab.column,
+        pinned: tab.pinned,
       });
     }
     setRenamingId(null);

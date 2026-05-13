@@ -67,12 +67,16 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     try {
       // No `repo`/`command` → spawns the user's default shell at the worktree
       // path inside the existing terminal pane (no popup window).
+      // `pinned`: keep the `<repo> · <branch>` label as the tab title even
+      // after the shell emits OSC 7 (which would otherwise replace it with
+      // the worktree basename and hide the branch).
       await handle.spawn(
         {
           side: 'my',
           cwd: worktree.path,
         },
         label,
+        { pinned: true },
       );
     } catch (err) {
       deps.flashToast(`Open in term failed: ${(err as Error).message}`, 'error');
