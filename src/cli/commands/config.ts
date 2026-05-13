@@ -86,7 +86,7 @@ export async function runConfig(
       source = 'effective';
     } else {
       config = await readConceptionConfigRaw(conceptionPath);
-      source = 'condash.json';
+      source = '.condash/settings.json';
     }
     const value = pickByDottedPath(config, key);
     if (value === undefined) {

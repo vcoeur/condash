@@ -35,10 +35,13 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
   }
 
   const hasProjects = await isDirectory(join(path, 'projects'));
-  // `condash.json` is canonical; `configuration.json` is the legacy fallback
-  // (kept indefinitely). Either filename satisfies the marker.
+  // `.condash/settings.json` is canonical; `condash.json` and
+  // `configuration.json` are legacy fallbacks (both read indefinitely).
+  // Any of the three satisfies the marker.
   const hasConfiguration =
-    (await isFile(join(path, 'condash.json'))) || (await isFile(join(path, 'configuration.json')));
+    (await isFile(join(path, '.condash', 'settings.json'))) ||
+    (await isFile(join(path, 'condash.json'))) ||
+    (await isFile(join(path, 'configuration.json')));
   return {
     pathExists: true,
     hasProjects,
@@ -94,9 +97,14 @@ async function copyTreeRespecting(
   }
 }
 
-/** Drop the `.example` suffix on the two known templated files. */
+/** Drop the `.example` suffix on the known templated files. The bundled
+ * conception-template ships `.condash/settings.json.example` and
+ * `.claude/settings.example.json`; on init they materialise without
+ * the `.example` segment. The older `condash.json.example` form is
+ * still mapped so existing template clones keep working. */
 function mapTemplateName(rel: string): string {
   if (rel === 'condash.json.example') return 'condash.json';
+  if (rel === '.condash/settings.json.example') return '.condash/settings.json';
   if (rel === '.claude/settings.example.json') return '.claude/settings.json';
   return rel;
 }
