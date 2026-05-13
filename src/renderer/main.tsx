@@ -41,6 +41,7 @@ import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
 import { ResourcesView, type ResourcesViewActions } from './panes/resources';
 import { SkillsView } from './panes/skills';
+import { LogsView } from './panes/logs';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { NewProjectModal } from './new-project-modal';
@@ -1027,6 +1028,12 @@ function App() {
                       }
                       onError={treeError}
                     />
+                  </section>
+                </Show>
+
+                <Show when={layout().working === 'logs'}>
+                  <section class="pane pane-working">
+                    <LogsView />
                   </section>
                 </Show>
 

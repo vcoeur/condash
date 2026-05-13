@@ -15,6 +15,7 @@ import { registerReposIpc } from './ipc/repos';
 import { registerSettingsIpc } from './ipc/settings';
 import { registerSystemIpc } from './ipc/system';
 import { registerTerminalIpc } from './ipc/terminal';
+import { registerLogsIpc } from './ipc/logs';
 import { registerTreesIpc } from './ipc/trees';
 
 // Hard flip from v2.14.0: CLI nouns belong on `condash-cli`, not `condash`.
@@ -265,6 +266,7 @@ function registerIpc(): void {
   registerTreesIpc();
   registerReposIpc();
   registerTerminalIpc();
+  registerLogsIpc();
   registerSettingsIpc({ onLayoutChange: rebuildMenu });
   registerSystemIpc({
     onConceptionPicked: (picked) => {

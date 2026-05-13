@@ -99,6 +99,11 @@ const api: CondashApi = {
     ipcRenderer.on('termSessions', handler);
     return () => ipcRenderer.removeListener('termSessions', handler);
   },
+  logsListDays: () => ipcRenderer.invoke('logsListDays'),
+  logsListSessions: (day) => ipcRenderer.invoke('logsListSessions', day),
+  logsReadEvents: (filePath, offset, limit) =>
+    ipcRenderer.invoke('logsReadEvents', filePath, offset, limit),
+  logsDeleteDay: (day) => ipcRenderer.invoke('logsDeleteDay', day),
   openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
   openExternal: (target: string) => ipcRenderer.invoke('openExternal', target),
   openPath: (target: string) => ipcRenderer.invoke('openPath', target),

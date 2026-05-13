@@ -20,6 +20,8 @@ import type {
   StepMarker,
   TermDataMessage,
   TermExitMessage,
+  TermLogEvent,
+  TermLogSessionMeta,
   TermSession,
   TermSpawnRequest,
   TerminalPrefs,
@@ -225,6 +227,19 @@ export interface CondashApi {
   /** Sessions changed (spawn / exit / close). Receives the full snapshot. */
   onTermSessions(callback: (sessions: TermSession[]) => void): () => void;
 
+  /** List the day-directories present under
+   * `<conception>/.condash/logs/` — newest first. Empty when no
+   * conception is active or no logs have been captured. */
+  logsListDays(): Promise<{ day: string; path: string }[]>;
+  /** List session-file metadata (path, time, size, repo, cmd) for one
+   * day. `day` is `YYYY-MM-DD`. */
+  logsListSessions(day: string): Promise<TermLogSessionMeta[]>;
+  /** Read up to `limit` events from a session log file, starting at
+   * line `offset`. */
+  logsReadEvents(filePath: string, offset?: number, limit?: number): Promise<TermLogEvent[]>;
+  /** Wipe an entire day-directory. */
+  logsDeleteDay(day: string): Promise<{ deleted: boolean }>;
+
   /** Open the configured conception directory in the OS file manager. */
   openConceptionDirectory(): Promise<void>;
   /** Open an `http(s):` or `mailto:` URL with the OS default handler.
@@ -297,6 +312,7 @@ export type MenuCommand =
   | 'show-knowledge'
   | 'show-resources'
   | 'show-skills'
+  | 'show-logs'
   | 'hide-working'
   | 'refresh'
   | 'about'

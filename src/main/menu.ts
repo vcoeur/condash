@@ -148,6 +148,13 @@ export function buildMenu(
       click: () => send('show-skills'),
     },
     {
+      label: 'Show Logs',
+      type: 'checkbox',
+      checked: layout.working === 'logs',
+      accelerator: 'CommandOrControl+Shift+L',
+      click: () => send('show-logs'),
+    },
+    {
       label: 'Hide working surface',
       enabled: layout.working !== null,
       click: () => send('hide-working'),

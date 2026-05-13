@@ -177,6 +177,7 @@ const layoutSchema = z
       z.literal('knowledge'),
       z.literal('resources'),
       z.literal('skills'),
+      z.literal('logs'),
       z.null(),
     ]),
     terminal: z.boolean(),

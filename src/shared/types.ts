@@ -104,10 +104,52 @@ export interface ProjectFileEntry {
 
 export type Theme = 'light' | 'dark' | 'system';
 
+/** A single event in a per-session terminal log file. Mirrors what
+ * `SessionLogger.write` emits — one object per JSONL line. */
+export interface TermLogEvent {
+  ts: string;
+  sid: string;
+  side: TermSide;
+  repo?: string;
+  cwd?: string;
+  kind: 'spawn' | 'in' | 'out' | 'exit' | 'close' | 'rotate';
+  data?: string;
+  len?: number;
+  exitCode?: number;
+  cmd?: string;
+  argv?: string[];
+  from?: string;
+  to?: string;
+}
+
+/** Header summary for a session log file — what the Logs pane's left rail
+ * renders as one row per spawn. Derived from the file's first event(s). */
+export interface TermLogSessionMeta {
+  /** Absolute path to the log file. */
+  path: string;
+  /** Day directory this session lives in, `YYYY-MM-DD`. */
+  day: string;
+  /** Spawn-time HH:MM:SS, parsed from the filename prefix. */
+  time: string;
+  /** Total size in bytes. */
+  bytes: number;
+  /** Session id (the `<sid>` suffix in the filename). */
+  sid: string;
+  /** Optional repo name from the spawn event. */
+  repo?: string;
+  /** Cwd captured at spawn. */
+  cwd?: string;
+  /** Spawn command argv joined (truncated to 80 chars in the renderer). */
+  cmd?: string;
+  /** Exit code if a close/exit event was found in the file; undefined while
+   * a long-running session is still alive. */
+  exitCode?: number;
+}
+
 /** Right-slot working surface — picks which of Code / Knowledge / Resources /
  * Skills is shown in the top-band right pane, or `null` to leave it hidden.
  * All four are mutually exclusive: showing one swaps the others out. */
-export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | null;
+export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
 
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, working surface on the right) and a bottom band (Terminal).
