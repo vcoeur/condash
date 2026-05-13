@@ -3,6 +3,7 @@ import type { JSX } from 'solid-js';
 import { AnsiUp } from 'ansi_up';
 import type { TermLogSessionMeta, TermLogSessionRead } from '@shared/types';
 import { ConfirmModal } from '../confirm-modal';
+import { expandCursorForward } from './logs-render';
 import './logs-pane.css';
 
 /**
@@ -13,8 +14,11 @@ import './logs-pane.css';
  *   - Row 2: Search box (substring match against the rendered session text).
  *   - Body: header line with cmd / exit / repo, then the rendered
  *     terminal buffer styled via `ansi_up` (ANSI SGR → HTML spans with
- *     inline colour). Non-SGR escapes (mode set, cursor positioning) are
- *     silently dropped.
+ *     inline colour). Cursor-forward (`CSI N C`) is pre-expanded to N
+ *     spaces — `@xterm/addon-serialize` uses CUF to encode empty cells,
+ *     and ansi_up would otherwise drop it — see `logs-render.ts`. Other
+ *     non-SGR escapes (mode set, cursor up/down/back) are dropped by
+ *     ansi_up, which is correct for a static text rendering.
  *
  * The writer (`src/main/terminal-logger.ts`) feeds raw pty bytes into a
  * headless xterm and atomically writes the serialised buffer to a `.txt`
@@ -67,7 +71,7 @@ export function LogsView(): JSX.Element {
     if (!read || !read.text) return '';
     const ansi = new AnsiUp();
     ansi.use_classes = false;
-    return ansi.ansi_to_html(read.text);
+    return ansi.ansi_to_html(expandCursorForward(read.text));
   });
 
   const matches = createMemo<boolean>(() => {
