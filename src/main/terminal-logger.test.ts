@@ -257,7 +257,7 @@ describe('SessionLogger', () => {
     expect(outEvents[0].data).toBe('echo A');
   });
 
-  it('flushes pending in-buffer when switching to out', async () => {
+  it('keeps in / out coalesce buffers independent; close() flushes both', async () => {
     const logger = new SessionLogger(tmp, {
       sid: 't-coal-switch',
       side: 'my',
@@ -265,9 +265,10 @@ describe('SessionLogger', () => {
       spawn: { cmd: 'bash', argv: [] },
     });
     logger.spawn();
-    // Two keystrokes with no newline yet, then output arrives — the
-    // pending `in` must seal before the `out` starts so chronology is
-    // preserved.
+    // Two keystrokes (no newline yet), then a chunk of output arrives.
+    // With independent buffers neither flushes the other — both seal at
+    // close(). The `in` lands first because `flushAll()` drains `in`
+    // before `out`.
     logger.input('a');
     logger.input('b');
     logger.output('result');
@@ -281,6 +282,40 @@ describe('SessionLogger', () => {
     const outEv = events.find((e) => e.kind === 'out');
     expect(inEv?.data).toBe('ab');
     expect(outEv?.data).toBe('result');
+  });
+
+  it('collapses an interactive pty echo burst into one in + one out', async () => {
+    // Regression: v2.21.0–v2.21.2 used a single coalesce buffer that
+    // flushed on every kind switch, so the pty echoing each keystroke
+    // produced one in + one out record *per byte* — typing `ls -al<Enter>`
+    // landed 14 records on disk. The fix uses two independent buffers.
+    const logger = new SessionLogger(tmp, {
+      sid: 't-echo',
+      side: 'my',
+      cwd: '/x',
+      spawn: { cmd: 'bash', argv: [] },
+    });
+    logger.spawn();
+    // Interleave each keystroke with its pty echo, ending with Enter +
+    // the full command output. Mirrors the on-disk pattern from a real
+    // `bash` + `ls` session.
+    for (const ch of 'ls') {
+      logger.input(ch);
+      logger.output(ch);
+    }
+    logger.input('\r');
+    logger.output('\r\ntotal 0\r\n');
+    await logger.close();
+
+    const path = logger.filePath();
+    if (!path) throw new Error('no path');
+    const events = readJsonl(path);
+    const inEvents = events.filter((e) => e.kind === 'in');
+    const outEvents = events.filter((e) => e.kind === 'out');
+    expect(inEvents).toHaveLength(1);
+    expect(inEvents[0].data).toBe('ls\r');
+    expect(outEvents).toHaveLength(1);
+    expect(outEvents[0].data).toBe('ls\r\ntotal 0\r\n');
   });
 
   it('close() is idempotent', async () => {
