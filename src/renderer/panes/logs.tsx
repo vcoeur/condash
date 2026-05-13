@@ -1,7 +1,15 @@
 import { createEffect, createResource, createSignal, For, Show, createMemo } from 'solid-js';
 import type { JSX } from 'solid-js';
+import { Terminal } from '@xterm/xterm';
+import { SerializeAddon } from '@xterm/addon-serialize';
 import type { TermLogEvent, TermLogSessionMeta } from '@shared/types';
 import { ConfirmModal } from '../confirm-modal';
+import {
+  buildRenderedItems,
+  searchableText,
+  type RenderedItem,
+  type ReplaySegmentRenderer,
+} from './logs-replay';
 import './logs-pane.css';
 
 /**
@@ -9,13 +17,19 @@ import './logs-pane.css';
  *
  * Layout:
  *   - Row 1: Day select · Session select · Refresh · Delete session.
- *   - Row 2: Search box (substring match against canonicalised event text).
- *   - Body: events for the selected session, plain monospace text, ANSI
- *     stripped on render.
+ *   - Row 2: Search box (substring match against rendered event text).
+ *   - Body: events for the selected session. Contiguous `out` events are
+ *     replayed through an off-screen xterm + SerializeAddon (same recipe
+ *     the live pane's Save-buffer button uses) and shown as a single
+ *     rendered transcript block; `in` / `spawn` / `exit` / `rotate`
+ *     events render as one-line rows above and below the transcript.
  *
- * Scope kept tight: no cross-day search, no virtual list, no embedded
- * xterm replay. The viewer is plain monospace text — ANSI is stripped on
- * render so unprintable escape sequences don't break the layout.
+ * Why replay (and not just ANSI-strip the bytes): TUIs like Claude Code
+ * emit constant cursor-positioning + line-erase sequences for the
+ * spinner and bottom status bar. Stripping ANSI but keeping the literal
+ * `\n`s between repaints scatters each frame's glyphs down separate
+ * lines — unreadable. Feeding the raw bytes into an off-screen
+ * `Terminal` resolves all the cursor motion to the final screen state.
  */
 export function LogsView(): JSX.Element {
   // The list of available day-dirs (newest first).
@@ -64,16 +78,28 @@ export function LogsView(): JSX.Element {
     },
   );
 
+  // Walk events through the xterm replay pipeline. Each session-file
+  // load constructs a fresh `XtermSegmentRenderer`; it's disposed inside
+  // `buildRenderedItems` after the final segment.
+  const [renderedItems] = createResource(
+    () => events(),
+    async (evs): Promise<RenderedItem[]> => {
+      if (!evs || evs.length === 0) return [];
+      const renderer = new XtermSegmentRenderer();
+      return buildRenderedItems(evs, renderer);
+    },
+  );
+
   // Free-text search box. Substring match (case-insensitive) against
-  // `ev.text` (canonicalised by the IPC reader) with `stripAnsi(data)`
-  // fallback for older events that lack `text`.
+  // each item's searchable text — for event rows that's the canonical
+  // event body; for transcript blocks it's the rendered terminal text.
   const [query, setQuery] = createSignal('');
 
-  const filteredEvents = createMemo<TermLogEvent[]>(() => {
-    const all = events() ?? [];
+  const filteredItems = createMemo<RenderedItem[]>(() => {
+    const all = renderedItems() ?? [];
     const q = query().trim().toLowerCase();
     if (q.length === 0) return all;
-    return all.filter((ev) => searchableBody(ev).toLowerCase().includes(q));
+    return all.filter((item) => searchableText(item).toLowerCase().includes(q));
   });
 
   const [pendingDelete, setPendingDelete] = createSignal<TermLogSessionMeta | null>(null);
@@ -187,14 +213,27 @@ export function LogsView(): JSX.Element {
                   fallback={<div class="empty">Empty session.</div>}
                 >
                   <Show
-                    when={filteredEvents().length > 0}
-                    fallback={
-                      <div class="empty">
-                        No matches for "{query()}" ({events()?.length ?? 0} events).
-                      </div>
-                    }
+                    when={renderedItems.loading || renderedItems() !== undefined}
+                    fallback={<div class="empty">Rendering…</div>}
                   >
-                    <For each={filteredEvents()}>{(ev) => <EventRow ev={ev} />}</For>
+                    <Show
+                      when={filteredItems().length > 0}
+                      fallback={
+                        <div class="empty">
+                          No matches for "{query()}" ({renderedItems()?.length ?? 0} items).
+                        </div>
+                      }
+                    >
+                      <For each={filteredItems()}>
+                        {(item) =>
+                          item.kind === 'transcript' ? (
+                            <TranscriptBlock item={item} />
+                          ) : (
+                            <EventRow ev={item.ev} />
+                          )
+                        }
+                      </For>
+                    </Show>
                   </Show>
                 </Show>
               </div>
@@ -217,6 +256,18 @@ function EventRow(props: { ev: TermLogEvent }): JSX.Element {
   );
 }
 
+function TranscriptBlock(props: {
+  item: Extract<RenderedItem, { kind: 'transcript' }>;
+}): JSX.Element {
+  return (
+    <div class="logs-event logs-event--transcript">
+      <span class="logs-event-ts">{props.item.firstTs.slice(11, 23)}</span>
+      <span class="logs-event-kind">out</span>
+      <span class="logs-event-body logs-event-body--transcript">{props.item.text}</span>
+    </div>
+  );
+}
+
 function sessionLabel(meta: TermLogSessionMeta): string {
   const head = meta.repo ? `${meta.time} · ${meta.repo}` : meta.time;
   const cmd = meta.cmd ? ` · ${truncate(meta.cmd, 60)}` : '';
@@ -230,12 +281,8 @@ function eventBody(ev: TermLogEvent): string {
     const argv = Array.isArray(ev.argv) ? ev.argv.join(' ') : '';
     return `${ev.cmd ?? ''} ${argv}`.trim();
   }
-  if (ev.kind === 'in' || ev.kind === 'out') {
-    // Prefer the IPC-side canonicalisation (handles backspaces / Ctrl+U
-    // for `in`, drops bare \r for `out`). Fall back to stripAnsi(data)
-    // for resilience — only matters if a future change forgets to
-    // populate `text` for some kind.
-    return ev.text ?? stripAnsi(ev.data ?? '');
+  if (ev.kind === 'in') {
+    return ev.text ?? ev.data ?? '';
   }
   if (ev.kind === 'exit') {
     return `exitCode=${ev.exitCode ?? '?'}`;
@@ -246,17 +293,63 @@ function eventBody(ev: TermLogEvent): string {
   return '';
 }
 
-/** Searchable form of an event — same canonical text the row renders. */
-function searchableBody(ev: TermLogEvent): string {
-  return eventBody(ev);
-}
+/**
+ * Xterm-backed implementation of `ReplaySegmentRenderer`. Constructs a
+ * fresh `Terminal` per segment with `SerializeAddon` loaded, never
+ * calls `.open()` (so no DOM is touched), and reads the rendered buffer
+ * via `serialize.serialize()` — exactly the recipe the live pane's
+ * Save-buffer button (`terminal-pane.tsx:444-456`) uses.
+ *
+ * 200×50 geometry is generous enough for any Claude Code TUI; if a
+ * future user's live terminal is wider the replay will re-wrap, which
+ * we accept as cosmetic.
+ */
+class XtermSegmentRenderer implements ReplaySegmentRenderer {
+  private term: Terminal | null = null;
+  private serializeAddon: SerializeAddon | null = null;
 
-// Lightweight stripper that matches the writer's policy — keep this in
-// sync with `stripAnsi` in main/terminal-logger.ts.
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b[@-_]/g;
-function stripAnsi(s: string): string {
-  return s.replace(ANSI_RE, '');
+  start(): void {
+    this.disposeTerm();
+    const term = new Terminal({
+      cols: 200,
+      rows: 50,
+      allowProposedApi: true,
+      scrollback: 10000,
+    });
+    const addon = new SerializeAddon();
+    term.loadAddon(addon);
+    this.term = term;
+    this.serializeAddon = addon;
+  }
+
+  write(data: string): void {
+    this.term?.write(data);
+  }
+
+  async serialize(): Promise<string> {
+    const term = this.term;
+    const addon = this.serializeAddon;
+    if (!term || !addon) return '';
+    // `term.write` queues parsing; we need its callback to fire before
+    // reading the buffer or we'll serialise a pre-parse view of the
+    // last chunk. An empty write with a callback flushes the parser.
+    await new Promise<void>((resolve) => term.write('', () => resolve()));
+    return addon.serialize();
+  }
+
+  dispose(): void {
+    this.disposeTerm();
+  }
+
+  private disposeTerm(): void {
+    try {
+      this.term?.dispose();
+    } catch {
+      /* xterm's dispose can throw if already torn down; never fatal */
+    }
+    this.term = null;
+    this.serializeAddon = null;
+  }
 }
 
 function formatBytes(n: number): string {

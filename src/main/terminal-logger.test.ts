@@ -41,7 +41,7 @@ describe('resolveLoggingPrefs', () => {
   it('returns defaults when patch is empty', () => {
     const p = resolveLoggingPrefs({});
     expect(p.enabled).toBe(true);
-    expect(p.maxFileMb).toBe(50);
+    expect(p.maxFileMb).toBe(5);
     expect(p.maxDirMb).toBe(500);
     expect(p.retentionDays).toBe(14);
     expect(p.ansiPolicy).toBe('raw');

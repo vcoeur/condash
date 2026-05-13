@@ -195,7 +195,7 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 
 - **Day picker** at the top — newest day-directory first.
 - **Sessions rail** on the left — one row per pty spawn, with the spawn time, repo (when launched via Run), short command, size on disk, and exit code if present.
-- **Events panel** on the right — chronological list of events for the selected session. Each line shows the timestamp, an event kind chip (`in` / `out` / `spawn` / `exit` / `close` / `rotate`), and the payload. ANSI escapes are stripped on render so unprintable bytes don't break the layout; the raw bytes live on disk for tools that want them.
+- **Events panel** on the right — chronological list of events for the selected session. Each line shows the timestamp, an event kind chip (`in` / `spawn` / `exit` / `close` / `rotate`), and the payload. Contiguous `out` events from a single program run are replayed through an off-screen xterm + SerializeAddon and shown as a single rendered transcript block — the same recipe the live pane's Save-buffer button uses. This is what makes TUI sessions (Claude Code, agent runs) readable: cursor-positioning escapes that paint the spinner and bottom status bar resolve to the final screen state instead of scattering one glyph per line. Raw bytes still live on disk for tools that want them.
 - **Delete day** wipes one day-directory at a time.
 
 #### Record granularity
@@ -218,7 +218,7 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
       "enabled": true,
       "retentionDays": 14,
       "maxDirMb": 500,
-      "maxFileMb": 50,
+      "maxFileMb": 5,
       "ansiPolicy": "raw"
     }
   }

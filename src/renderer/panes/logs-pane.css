@@ -173,9 +173,23 @@
   color: #d9a64a;
 }
 
+.logs-event--transcript .logs-event-kind {
+  color: #82b3ff;
+}
+
 .logs-event-body {
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* Transcript blocks are the xterm-rendered output of a contiguous run of
+ * `out` events. `pre` (not `pre-wrap`) so the rendered terminal lines
+ * line up exactly; horizontal scroll picks up overflow for sessions
+ * wider than the 200-column replay geometry. */
+.logs-event-body--transcript {
+  white-space: pre;
+  overflow-x: auto;
+  word-break: normal;
 }
 
 .logs-pane .empty {
