@@ -1,6 +1,6 @@
 # General
 # Shipped by condash. The body below — between this heading and `# Specifics`
-# — is refreshed by `condash templates install`. Edits inside this section
+# — is refreshed by `condash skills install`. Edits inside this section
 # are flagged on the next install. Per-conception patterns go under
 # `# Specifics` at the bottom of the file.
 
@@ -43,5 +43,5 @@ Thumbs.db
 
 # Specifics
 # Per-conception patterns below — condash never touches this section on
-# `templates install`. Add things like extra `.claude/` overrides, secret
+# `skills install`. Add things like extra `.claude/` overrides, secret
 # files, repo-specific scratch dirs, etc.

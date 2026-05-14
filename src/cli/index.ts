@@ -11,7 +11,6 @@ import { runAuditCommand } from './commands/audit';
 import { runDirty } from './commands/dirty';
 import { runConfig } from './commands/config';
 import { runSkills } from './commands/skills';
-import { runTemplates } from './commands/templates';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
@@ -31,8 +30,7 @@ Nouns:
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
   dirty        list, touch <tree>, clear <tree|all>
-  skills       list shipped skills; install [<name>...]; status
-  templates    list shipped templates; install [<path>...]; status
+  skills       list shipped artefacts; install [<name-or-path>...]; status
   config       conception-path, path, list [--effective|--global],
                get <key> [--effective|--global], set <key> <value> [--global],
                migrate (legacy condash.json → .condash/settings.json)
@@ -170,9 +168,6 @@ async function dispatch(
       return ExitCodes.OK;
     case 'skills':
       await runSkills(args.verb, args, ctx);
-      return ExitCodes.OK;
-    case 'templates':
-      await runTemplates(args.verb, args, ctx);
       return ExitCodes.OK;
     case 'config':
       await runConfig(args.verb, args, ctx, conceptionPath);

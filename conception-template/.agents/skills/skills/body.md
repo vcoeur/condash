@@ -1,91 +1,95 @@
-# /skills — install and update condash-shipped skills and templates
+# /skills — install and update condash-shipped artefacts
 
 condash ships two kinds of artefacts into a conception tree:
 
-- **Whole-file skills** under `.claude/skills/<name>/` (the same set in this directory).
-- **Heading-delimited template regions** in top-level files. Today that's just `CLAUDE.md` — the `## General` section carries universal pre-skill rules and the contract for `## Specifics`; the `## Specifics` section below it is user-owned and never touched.
+- **Whole-file agent skills** under `.agents/skills/<name>/` — source-of-truth
+  for the skills compiled into `.claude/skills/` and `.kimi/skills/`.
+- **Top-level files** at the conception root. Some are written whole
+  (`AGENTS.md`, `.gitignore`); some carry a heading-delimited region inside
+  a larger user-owned file (e.g. `AGENTS.md`'s `## General` section is
+  shipped, `## Specifics` is user-owned).
 
-This skill is the user-facing wrapper around `condash skills {list,install,status}` **and** `condash templates {list,install,status}` for fetching new versions while keeping local edits you care about.
+Both kinds flow through a single CLI surface — `condash skills {list,status,install}` —
+and a single manifest namespace. This skill is the user-facing wrapper for
+fetching new versions while keeping local edits you care about.
 
 ## When to use
 
-- **First-time install** — fresh conception that doesn't yet have these skills.
-- **After `npm install -g condash`** that bumps the version — pull updated skill content.
-- **Audit** — "do my local skills + templates match the version condash shipped?".
+- **First-time install** — fresh conception that hasn't run condash yet.
+- **After `npm install -g condash`** that bumps the version — pull updated
+  shipped content.
+- **Audit** — "do my local files match the version condash shipped?".
 
-For a one-off "just install everything, I haven't touched anything" run, `condash skills install` and `condash templates install` directly are faster. This skill earns its keep when there are local edits to triage.
+For a one-off "just install everything, I haven't touched anything" run,
+`condash skills install` directly is faster. This skill earns its keep when
+there are local edits to triage.
 
 ## Trigger
 
 ```
-/skills [update | install [<name>...] | status]
+/skills [update | install [<name-or-path>...] | status]
 ```
 
 | Action     | Meaning |
 |------------|---------|
-| `update`   | (default) Audit skills + templates, then walk per-file: auto-apply safe updates, prompt on edited files. |
-| `install`  | One-shot install of skills (and templates if any name matches a template path). Forwards to the CLI. |
-| `status`   | Read-only audit. Forwards to `condash skills status` and `condash templates status`. |
+| `update`   | (default) Audit shipped artefacts, then walk per-item: auto-apply safe updates, prompt on edited items. |
+| `install`  | One-shot install. Forwards to the CLI. |
+| `status`   | Read-only audit. Forwards to `condash skills status`. |
+
+`<name-or-path>` accepts either a shipped skill name (`knowledge`, `pr`,
+`projects`, `skills`, `tidy`, …) or a top-level destination path
+(`AGENTS.md`, `.gitignore`, …). No positionals = everything.
 
 ## Procedure (`/skills update`)
 
-The walk has two passes — skills first (more files, more likely to need triage), then templates. Each pass uses the same five-step shape (audit → auto-apply → walk edited → handle missing/orphan → report). The user-facing report aggregates both at the end.
+### 1. Audit
 
-### 1a. Skills audit
+Run `condash skills status --json` and parse `data.items` (skill source files)
+and `data.files` (top-level files). Each row carries a `state`:
 
-Run `condash skills status --json` and parse `data.items`. Each row has a `state`:
+- `unchanged`       — local matches manifest matches shipped → ignore.
+- `outdated`        — local matches manifest but shipped has new content → safe to overwrite.
+- `edited`          — local differs from manifest → may conflict with shipped version.
+- `missing`         — manifest knows the item but it's gone from disk.
+- `orphan`          — item present on disk but not tracked by manifest.
+- `missing-heading` — region-style item: file exists but doesn't carry the expected `## <region>` heading (or carries it more than once).
+- `source-missing`  — manifest tracks the item but the shipped source has been removed from the bundle (a previous condash version installed it; the current one no longer ships it).
 
-- `unchanged` — local matches manifest matches shipped → ignore.
-- `outdated`  — local matches manifest but shipped has new content → safe to overwrite.
-- `edited`    — local differs from manifest → may conflict with shipped version.
-- `missing`   — manifest knows the file but it's gone from disk.
-- `orphan`    — file present on disk but not tracked by manifest.
-
-If the audit reports `(no installed skills)` or returns no rows, fall through to first-time install: ask the user *"No skills are installed yet — run `condash skills install` to install them all? (y / n)"*. On `y`, run that and continue to the templates pass.
-
-### 1b. Templates audit
-
-Run `condash templates status --json` and parse `data.items`. Same `state` vocabulary as skills, plus one extra:
-
-- `missing-heading` — file exists on disk but doesn't carry a `## <region>` heading (or carries it more than once), so the CLI has no unambiguous region to update through.
-
-If `data.items` is empty (or every row is `unchanged`), templates pass is a no-op — move on.
+If both arrays are empty, fall through to first-time install: ask the user
+*"Nothing is installed yet — run `condash skills install` to install
+everything? (y / n)"*. On `y`, run it and stop.
 
 ### 2. Auto-apply `outdated`
 
-For every `outdated` row in either pass, the CLI will safely overwrite on a plain re-install (it sees the local hash matches the manifest, so the user hasn't edited — overwriting is contractually safe).
-
-Skills:
-
-```bash
-condash skills install <skill-1> <skill-2> ... --json
-```
-
-Templates:
+For every `outdated` row, the CLI will safely overwrite on a plain
+re-install (it sees the local hash matches the manifest, so the user hasn't
+edited — overwriting is contractually safe).
 
 ```bash
-condash templates install <path-1> <path-2> ... --json
+condash skills install <item-1> <item-2> ... --json
 ```
 
-Parse the response. Report the resulting `updated` arrays to the user as a one-line "updated N file(s) across M skill(s)" / "updated N region(s) across M file(s)".
+`<item>` is whichever identifier the row carries — a skill name for
+skill-tree rows, a destination path for top-level-file rows. Parse the
+response and report the resulting counts to the user as a one-line
+"updated N item(s)".
 
-### 3. Walk `edited` files
+### 3. Walk `edited` items
 
-For each `edited` row (skills first, then templates), ask the user one question. Show:
+For each `edited` row ask the user one question. Show:
 
-- The file path:
-  - Skills: `<conception-root>/.claude/skills/<skill>/<relPath>`.
-  - Templates: `<conception-root>/<path>` (the region inside it identified by `<region>`).
-- The diff between local and shipped. Get it via:
+- The on-disk path (skill files resolve to
+  `<conception-root>/.agents/skills/<skill>/<relPath>`; top-level files
+  resolve to `<conception-root>/<path>`; region-style entries identify the
+  region inside the file as well).
+- The diff between local and shipped:
 
   ```bash
-  # skills
-  condash skills install <skill> --dest <conception-root> --diff --dry-run
-  # templates
-  condash templates install <path> --dest <conception-root> --diff --dry-run
+  condash skills install <item> --dest <conception-root> --diff --dry-run
   ```
 
-  Then read the `diffs[]` array out of the JSON and present the diff block for this entry.
+  Then read the `diffs[]` array out of the JSON and present the diff block
+  for this entry.
 
 - The choice:
 
@@ -93,74 +97,121 @@ For each `edited` row (skills first, then templates), ask the user one question.
 
   Decisions:
   - **keep local** — do nothing for this entry.
-  - **accept shipped** — record this entry. We'll batch-apply at step 4.
-  - **show full file** — Read the shipped version (skills: path returned by `condash skills list --json` → `<sourceDir>/<relPath>`; templates: read the relevant region of the shipped `conception-template/CLAUDE.md` from condash's bundle), present, re-ask.
-  - **skip** — drop every remaining `edited` row in this skill (or the same template path) from the prompt loop. Useful when the user has heavily customised one and wants to leave it alone.
+  - **accept shipped** — record the entry. Batch-apply at step 4.
+  - **show full file** — Read the shipped content from the path returned in
+    `condash skills list --json`, present, re-ask.
+  - **skip** — drop every remaining `edited` row in this skill (or the
+    same top-level path) from the prompt loop. Useful when the user has
+    heavily customised one and wants to leave it alone.
 
 ### 4. Apply `accept shipped` choices
 
-The CLI's `--force` flag operates per skill / per template path, not per file / per region — using it risks overwriting "keep local" files in the same skill. To keep the decision boundary at the file level, **always use the per-file write path**, even when every `edited` row in a skill was "accept shipped":
+The CLI's `--force` flag operates per skill / per top-level path, not per
+file / per region — using it risks overwriting "keep local" files in the
+same group. To keep the decision boundary at the item level, **always use
+the per-file write path**, even when every `edited` row in a group was
+"accept shipped":
 
-1. For each accept-shipped skill file: read the shipped content from the path in `condash skills list --json`, then `Write` it to the on-disk path.
-2. After all per-file writes, run `condash skills install <skill> --json` (no `--force`) once per touched skill so the manifest gets refreshed — the CLI will see local matches shipped and mark each file `Unchanged`.
+1. For each accept-shipped item: read the shipped content from the path in
+   `condash skills list --json`, then `Write` it to the on-disk path.
+2. After all per-file writes, run `condash skills install <group> --json`
+   (no `--force`) once per touched group so the manifest gets refreshed —
+   the CLI will see local matches shipped and mark each entry `Unchanged`.
 
-For templates the boundary is per-region, not per-file. Today every shipped template has a single region, so `condash templates install <path> --json` (no `--force`) safely refreshes the manifest after the user `Write`s the new region content.
+For region-style top-level files, the boundary is per-region. Every shipped
+file with regions has a single region today, so `condash skills install
+<path> --json` (no `--force`) safely refreshes the manifest after the user
+`Write`s the new region content.
 
-### 5. Handle `missing`, `missing-heading`, and `orphan`
+### 5. Handle `missing`, `missing-heading`, `orphan`, `source-missing`
 
-- **`missing`** (skills) — the file vanished but is still in the manifest. Ask: *"Re-install <skill>/<relPath> or remove it from the manifest? (i / r / skip)"*. `i` re-runs `condash skills install <skill>`. `r` is a manual fix the user does — drop the entry from `.condash-skills.json`.
-- **`missing`** (templates) — the file vanished but the manifest still tracks it. Ask: *"Re-install <path> (writes the whole shipped file: H1 + intro + `## General` body + placeholder `## Specifics` section) or remove it from the manifest? (i / r / skip)"*. `i` re-runs `condash templates install <path>`. `r` is a manual fix — drop the entry from the `templates` namespace of `.condash-skills.json`.
-- **`missing-heading`** (templates only) — the file is on disk but the `## <region>` heading is absent or appears more than once. Mention it once, recommend either re-adding (or de-duplicating) the heading manually or running `condash templates install <path> --force` (which writes the whole shipped file, replacing the user's content). **Do not auto-force.**
-- **`orphan`** — entry present but not tracked. Mention it once, recommend running the relevant `install` command to bring the entry under tracking, move on.
+- **`missing`** — the item vanished but is still in the manifest. Ask:
+  *"Re-install or remove from the manifest? (i / r / skip)"*.
+  - `i` re-runs `condash skills install <item>`.
+  - `r` is a manual fix the user does — drop the entry from
+    `.condash-skills.json`. (For top-level files, the `r` re-install path
+    writes the whole shipped file: H1 + body + any placeholder region
+    contract.)
+- **`missing-heading`** (region-style top-level files only) — the file is
+  on disk but the expected `## <region>` heading is absent or duplicated.
+  Mention it once and recommend either re-adding (or de-duplicating) the
+  heading manually or running `condash skills install <path> --force`
+  (which writes the whole shipped file, replacing the user's content).
+  **Do not auto-force.**
+- **`orphan`** — entry present on disk but not tracked by the manifest.
+  Mention it once, recommend running `condash skills install <item>` to
+  bring it under tracking, move on.
+- **`source-missing`** — the manifest tracks the item but the shipped
+  source is gone from the bundle (typically: a previous condash version
+  installed something the current version no longer ships). Mention it
+  once and recommend running `condash skills install --prune` to drop
+  every `source-missing` entry from the manifest in one pass. **Do not
+  auto-prune.**
 
 ### 6. Final report
 
-Summarise what changed across both passes:
+Summarise what changed:
 
 ```
-Skills + templates update report:
-  Skills:
-    Auto-updated: 3 file(s) across 2 skill(s)
-    Accepted shipped (resolved local edits): 2 file(s)
-    Kept local: 4 file(s)
-    Skipped: knowledge (1 file)
-  Templates:
-    Auto-updated: 1 region in CLAUDE.md
-    Kept local: 0
-  Manifest now at version 2.13.0
+Skills update report:
+  Auto-updated: 3 file(s) across 2 skill(s) + 1 top-level file
+  Accepted shipped (resolved local edits): 2 file(s)
+  Kept local: 4 file(s)
+  Skipped: knowledge (1 file)
+  Source-missing: .gitignore (recommend --prune)
+  Manifest now at version 3.1.0
 ```
 
-`Manifest now at version` reads from any one entry's `shippedVersion` after the run — they'll all match within a single condash version.
+`Manifest now at version` reads from any one entry's `shippedVersion` after
+the run — they'll all match within a single condash version.
 
 ## Procedure (`/skills install`)
 
-Forward to the CLI directly. The first positional that matches a shipped skill name routes to `condash skills`; one matching a shipped template path routes to `condash templates`. With no positionals, install both.
+Forward to the CLI directly:
 
 ```bash
-condash skills install [<name>...] [--force] [--diff] [--dry-run] [--json]
-condash templates install [<path>...] [--force] [--diff] [--dry-run] [--json]
+condash skills install [<name-or-path>...] [--force] [--diff] [--dry-run] [--prune] [--json]
 ```
 
-No editorial layer needed — the CLI's refusal-and-`--force` flow is enough for the "I know what I'm doing, just run it" case.
+No editorial layer needed — the CLI's refusal-and-`--force` flow is enough
+for the "I know what I'm doing, just run it" case.
 
 ## Procedure (`/skills status`)
 
-Forward to `condash skills status --json` and `condash templates status --json` and pretty-print both items lists. Useful when the user wants to know "is anything stale?" without committing to a walk.
+Forward to `condash skills status --json` and pretty-print `data.items` +
+`data.files`. Useful when the user wants to know "is anything stale?"
+without committing to a walk.
 
 ## Rules
 
-- **Never delete a file** without explicit user confirmation. The CLI doesn't delete either.
-- **Never edit `.condash-skills.json` by hand** — the install commands own it. Stale or corrupt manifests should be regenerated by re-running install (the `unchanged` path refreshes the entry in place).
-- **Never push past a refused install** with `--force` unless the user said "accept shipped" for that specific file/region. The whole point of the audit is consent per entry.
-- **Never auto-force on `missing-heading`** — that overwrites the whole file. Always ask first.
-- Bootstrap chicken-and-egg: this skill ships **inside** the same install bundle. After `condash skills install`, this `SKILL.md` is on disk in the user's tree; from that point on `/skills update` can update itself like any other skill (the CLI's hash check still gates each write).
+- **Never delete a file** without explicit user confirmation. The CLI
+  doesn't delete either.
+- **Never edit `.condash-skills.json` by hand** — `condash skills install`
+  owns it. Stale or corrupt manifests should be regenerated by re-running
+  install (the `unchanged` path refreshes the entry in place). Exception:
+  the user-driven `r` (remove) branch for `missing` entries.
+- **Never push past a refused install** with `--force` unless the user said
+  "accept shipped" for that specific item. The whole point of the audit is
+  consent per entry.
+- **Never auto-force on `missing-heading`** — that overwrites the whole
+  file. Always ask first.
+- **Never auto-prune on `source-missing`** — flag and recommend, but let
+  the user invoke `--prune` explicitly.
+- Bootstrap chicken-and-egg: this skill ships **inside** the same install
+  bundle. After `condash skills install`, this `body.md` is on disk in the
+  user's tree; from that point on `/skills update` can update itself like
+  any other shipped artefact (the CLI's hash check still gates each write).
 
 ## Why this skill exists
 
-The CLI alone is fine for "all-or-nothing" runs. The skill earns its keep when there are several edited files and the user wants different decisions for each. That triage is editorial — exactly what skills do well and what stuffing more flags into the CLI can't reduce to.
+The CLI alone is fine for "all-or-nothing" runs. The skill earns its keep
+when there are several edited items and the user wants different decisions
+for each. That triage is editorial — exactly what skills do well and what
+stuffing more flags into the CLI can't reduce to.
 
 Out of scope (intentionally):
 
 - Creating new skills — that's `/skill-creator`.
-- Editing skill or template content — that's plain `Edit`.
-- Publishing skills/templates back to condash — that flows through the condash repo's PR pipeline, not this skill.
+- Editing skill content — that's plain `Edit`.
+- Publishing skills back to condash — flows through the condash repo's PR
+  pipeline, not this skill.

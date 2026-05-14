@@ -74,11 +74,11 @@ describe('condash skills install (skillspec mode)', () => {
     expect(claudeClose.length).toBeGreaterThan(0);
   });
 
-  it('records source files in the v2 manifest', async () => {
+  it('records source files in the v3 manifest', async () => {
     await install();
     const manifest = await readManifest(dest);
     expect(manifest).not.toBeNull();
-    expect(manifest!.version).toBe(2);
+    expect(manifest!.version).toBe(3);
     const pr = manifest!.skills.pr;
     expect(pr).toBeTruthy();
     expect(Object.keys(pr.source).sort()).toEqual(['body.md', 'spec.yaml', 'targets/claude.yaml']);
@@ -137,9 +137,36 @@ describe('condash skills install (skillspec mode)', () => {
     );
     await install();
     const manifest = await readManifest(dest);
-    expect(manifest!.version).toBe(2);
-    // The v1 skills section is discarded; the v1 templates section carries forward.
-    expect(manifest!.templates).toBeDefined();
+    expect(manifest!.version).toBe(3);
+    // The v1 skills section is discarded; the v1 templates section carries
+    // forward into the v3 `files` namespace.
+    expect(manifest!.files).toBeDefined();
+    expect(manifest!.files!['AGENTS.md']).toBeTruthy();
     expect(manifest!.skills.pr.source['spec.yaml']).toBeTruthy();
+  });
+
+  it('migrates a v2 manifest with `templates` to v3 `files`', async () => {
+    const manifestPath = join(dest, '.claude/skills', MANIFEST_RELPATH);
+    await fs.mkdir(dirname(manifestPath), { recursive: true });
+    await fs.writeFile(
+      manifestPath,
+      JSON.stringify(
+        {
+          version: 2,
+          skills: {},
+          templates: {
+            'AGENTS.md': { region: 'General', sha256: 'y'.repeat(64), shippedVersion: '2.30.0' },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await install();
+    const manifest = await readManifest(dest);
+    expect(manifest!.version).toBe(3);
+    expect(manifest!.files!['AGENTS.md']).toBeTruthy();
+    // No top-level `templates` field on v3 reads.
+    expect((manifest as unknown as { templates?: unknown }).templates).toBeUndefined();
   });
 });
