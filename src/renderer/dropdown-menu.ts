@@ -18,8 +18,21 @@ interface DropdownMenu {
   setMenu: (el: HTMLElement | undefined) => void;
   /** Toggle the menu — pass the click event so propagation stops. */
   toggle: (e: MouseEvent) => void;
+  /** Open the menu programmatically (e.g. from a keyboard handler that
+   *  already swallowed the event). */
+  open: () => void;
   /** Close programmatically (e.g. after picking a menu item). */
   close: () => void;
+}
+
+export interface CreateDropdownMenuOptions {
+  /** Which edge of the trigger to anchor the menu to. Default `right` —
+   *  the menu's right edge lines up with the trigger's right edge (callers
+   *  apply `transform: translateX(-100%)` in CSS). With `left`, the menu's
+   *  left edge aligns with the trigger's left edge (no transform needed),
+   *  which fits triggers in the left part of the viewport — e.g. the
+   *  terminal strip's spawn dropdown. */
+  align?: 'left' | 'right';
 }
 
 /**
@@ -28,15 +41,18 @@ interface DropdownMenu {
  * positionMenu / onDocClick / onScrollOrResize dance was duplicated
  * across `RepoCardMenu` and `BranchActions`.
  *
- * Anchor shape: `top = trigger.bottom + 4`, `left = trigger.right`.
- * Callers are expected to apply `transform: translateX(-100%)` in CSS so
- * the menu's right edge lines up with the trigger's right edge — this
- * keeps right-column cards inside the viewport. If the rendered menu
- * would overflow the viewport bottom, the helper flips the anchor above
- * the trigger automatically.
+ * Default (right-aligned): `top = trigger.bottom + 4`, `left =
+ * trigger.right`. Callers apply `transform: translateX(-100%)` so the
+ * menu's right edge lines up with the trigger's right edge. With
+ * `align: 'left'`, the anchor is `left = trigger.left` and no transform
+ * is needed.
+ *
+ * If the rendered menu would overflow the viewport bottom, the helper
+ * flips the anchor above the trigger automatically.
  */
-export function createDropdownMenu(): DropdownMenu {
-  const [open, setOpen] = createSignal(false);
+export function createDropdownMenu(options: CreateDropdownMenuOptions = {}): DropdownMenu {
+  const align = options.align ?? 'right';
+  const [openSig, setOpen] = createSignal(false);
   const [anchor, setAnchor] = createSignal<MenuAnchor | null>(null);
   let triggerEl: HTMLElement | undefined;
   let menuEl: HTMLElement | undefined;
@@ -50,11 +66,11 @@ export function createDropdownMenu(): DropdownMenu {
     if (menuH > 0 && top + menuH > window.innerHeight - margin) {
       top = Math.max(margin, rect.top - 4 - menuH);
     }
-    setAnchor({ top, left: rect.right });
+    setAnchor({ top, left: align === 'left' ? rect.left : rect.right });
   };
 
   const onDocClick = (e: MouseEvent): void => {
-    if (!open()) return;
+    if (!openSig()) return;
     const target = e.target as Node;
     if (triggerEl?.contains(target)) return;
     if (menuEl?.contains(target)) return;
@@ -62,7 +78,7 @@ export function createDropdownMenu(): DropdownMenu {
   };
 
   const onScrollOrResize = (): void => {
-    if (open()) positionMenu();
+    if (openSig()) positionMenu();
   };
 
   // Esc closes the open menu — keyboard-only users would otherwise be
@@ -70,7 +86,7 @@ export function createDropdownMenu(): DropdownMenu {
   // a click outside). Capture phase + stopPropagation so we don't also
   // fire the parent modal/popover's Esc handler when stacked.
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (!open()) return;
+    if (!openSig()) return;
     if (e.key !== 'Escape') return;
     e.preventDefault();
     e.stopPropagation();
@@ -91,7 +107,7 @@ export function createDropdownMenu(): DropdownMenu {
   });
 
   return {
-    isOpen: open,
+    isOpen: openSig,
     anchor,
     setTrigger: (el) => {
       triggerEl = el;
@@ -105,10 +121,15 @@ export function createDropdownMenu(): DropdownMenu {
     },
     toggle: (e: MouseEvent): void => {
       e.stopPropagation();
-      if (open()) {
+      if (openSig()) {
         setOpen(false);
         return;
       }
+      positionMenu();
+      setOpen(true);
+    },
+    open: () => {
+      if (openSig()) return;
       positionMenu();
       setOpen(true);
     },
