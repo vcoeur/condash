@@ -63,8 +63,14 @@ export interface SessionMeta {
   finished?: string;
 }
 
+/** Default opt-OUT: a fresh install records nothing until the user flips
+ * the "Record terminal sessions to disk" checkbox in settings. Past
+ * default was `true`; flipped 2026-05-14. The pref is read once at
+ * SessionLogger construction time, so a user flipping the toggle off
+ * while a session is already running does NOT mid-session pause it — the
+ * next spawn picks up the new value. */
 const DEFAULT_PREFS: Required<TerminalLoggingPrefs> = {
-  enabled: true,
+  enabled: false,
   retentionDays: 14,
   maxDirMb: 500,
   scrollback: 10000,
@@ -97,9 +103,10 @@ export function sessionLogPath(
   return join(condashLogsRoot(conceptionPath), yyyy, mm, dd, `${hh}${mi}${ss}-${sid}.txt`);
 }
 
-/** Sidecar metadata path next to the `.txt`. */
+/** Sidecar metadata path next to the `.txt` (or `.txt.gz`). Sidecar
+ * files are not compressed — the janitor only gzips the body. */
 export function sessionMetaPath(txtPath: string): string {
-  return txtPath.replace(/\.txt$/, '.meta.json');
+  return txtPath.replace(/\.txt(?:\.gz)?$/, '.meta.json');
 }
 
 /** Apply `TerminalLoggingPrefs` patch on top of the defaults. Internal —

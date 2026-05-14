@@ -15,19 +15,21 @@ export interface GroupedResults {
   knowledge: SearchHit[];
   resources: SearchHit[];
   skills: SearchHit[];
+  logs: SearchHit[];
   total: number;
 }
 
 /**
  * Group project-side hits by their owning project so a project's README +
- * notes/* matches collapse into a single card. Knowledge hits stay flat
- * (each file is its own subject; no enclosing group).
+ * notes/* matches collapse into a single card. Knowledge / resources /
+ * skills / logs hits stay flat — each file is its own subject; no
+ * enclosing group.
  *
  * Sort:
  * - Projects by aggregate `totalScore` desc.
  * - Files within a project: README first (when present, served as the
  *   header), then notes by relPath asc.
- * - Knowledge hits in their incoming order (already score-sorted by the
+ * - Other buckets in their incoming order (already score-sorted by the
  *   backend).
  */
 export function groupHits(hits: readonly SearchHit[]): GroupedResults {
@@ -35,6 +37,7 @@ export function groupHits(hits: readonly SearchHit[]): GroupedResults {
   const knowledge: SearchHit[] = [];
   const resources: SearchHit[] = [];
   const skills: SearchHit[] = [];
+  const logs: SearchHit[] = [];
 
   for (const hit of hits) {
     if (hit.source === 'project' && hit.projectPath) {
@@ -54,6 +57,8 @@ export function groupHits(hits: readonly SearchHit[]): GroupedResults {
       resources.push(hit);
     } else if (hit.source === 'skills') {
       skills.push(hit);
+    } else if (hit.source === 'logs') {
+      logs.push(hit);
     } else {
       knowledge.push(hit);
     }
@@ -69,6 +74,7 @@ export function groupHits(hits: readonly SearchHit[]): GroupedResults {
     knowledge,
     resources,
     skills,
-    total: projects.length + knowledge.length + resources.length + skills.length,
+    logs,
+    total: projects.length + knowledge.length + resources.length + skills.length + logs.length,
   };
 }

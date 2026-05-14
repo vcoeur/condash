@@ -7,6 +7,7 @@ import type {
   LayoutState,
   OpenWithSlotKey,
   OpenWithSlots,
+  LogsOpenRequest,
   Project,
   RepoEntry,
   ResourceNode,
@@ -115,6 +116,11 @@ function App() {
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
   const [searchModalOpen, setSearchModalOpen] = createSignal(false);
+  // Logs pane: external "open this session" requests posted by the
+  // global-search modal. Carries a path + nonce so reactivating the same
+  // session twice in a row still triggers the pane's effect.
+  const [logsOpenRequest, setLogsOpenRequest] = createSignal<LogsOpenRequest | null>(null);
+  let logsOpenNonce = 0;
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [newProjectOpen, setNewProjectOpen] = createSignal(false);
   const [aboutOpen, setAboutOpen] = createSignal(false);
@@ -1036,7 +1042,10 @@ function App() {
 
                 <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
-                    <LogsView />
+                    <LogsView
+                      openRequest={logsOpenRequest}
+                      xtermPrefs={() => terminalPrefs()?.xterm}
+                    />
                   </section>
                 </Show>
 
@@ -1267,6 +1276,14 @@ function App() {
             setPreviewPath(`${projectDir}/README.md`);
           }}
           onOpenFile={handleOpenKnowledgeFile}
+          onOpenLog={(path) => {
+            // Open the Logs pane and post an open-request the pane reacts
+            // to. Nonce bumps every time so reactivating the same path
+            // still fires the createEffect.
+            logsOpenNonce++;
+            setLogsOpenRequest({ path, nonce: logsOpenNonce });
+            selectWorking('logs');
+          }}
         />
       </Show>
 

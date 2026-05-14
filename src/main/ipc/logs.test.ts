@@ -7,9 +7,10 @@
  * tree under a tmp dir, point `lastConceptionPath` at it via a mocked
  * `readSettings`, and invoke the handlers.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { condashLogsRoot } from '../condash-dir';
@@ -74,6 +75,26 @@ function writeSession(
   writeFileSync(txtPath, body);
   writeFileSync(metaPath, JSON.stringify(meta));
   return txtPath;
+}
+
+/** Same shape, but pre-compressed (`.txt.gz`) — mirrors the post-janitor
+ * on-disk state for older day-dirs. */
+function writeCompressedSession(
+  day: string,
+  hms: string,
+  sid: string,
+  body: string,
+  meta: Record<string, unknown>,
+): string {
+  const root = condashLogsRoot(tmp);
+  const [y, m, d] = day.split('-');
+  const dir = join(root, y, m, d);
+  mkdirSync(dir, { recursive: true });
+  const gzPath = join(dir, `${hms}-${sid}.txt.gz`);
+  const metaPath = join(dir, `${hms}-${sid}.meta.json`);
+  writeFileSync(gzPath, gzipSync(Buffer.from(body, 'utf8')));
+  writeFileSync(metaPath, JSON.stringify(meta));
+  return gzPath;
 }
 
 describe('logsListDays', () => {
@@ -183,6 +204,33 @@ describe('logsReadSession', () => {
     writeFileSync(jsonl, '{}\n');
     await expect(handlers.logsReadSession({}, jsonl)).rejects.toThrow();
   });
+
+  it('transparently decompresses .txt.gz sessions', async () => {
+    const gz = writeCompressedSession('2026-05-13', '142207', 't-gz', 'compressed body', {
+      sid: 't-gz',
+      side: 'my',
+      cmd: 'bash',
+      argv: [],
+      cwd: '/x',
+    });
+    const res = (await handlers.logsReadSession({}, gz)) as {
+      text: string;
+      meta: { sid: string } | null;
+    };
+    expect(res.text).toBe('compressed body');
+    expect(res.meta?.sid).toBe('t-gz');
+  });
+
+  it('listSessions surfaces .txt.gz alongside .txt entries', async () => {
+    writeSession('2026-05-13', '093001', 't-live', 'live body', { sid: 't-live' });
+    writeCompressedSession('2026-05-13', '142207', 't-gz', 'compressed body', { sid: 't-gz' });
+    const result = (await handlers.logsListSessions({}, '2026-05-13')) as Array<{
+      sid: string;
+      path: string;
+    }>;
+    expect(result.map((r) => r.sid)).toEqual(['t-live', 't-gz']);
+    expect(result[1].path.endsWith('.txt.gz')).toBe(true);
+  });
 });
 
 describe('logsDeleteDay', () => {
@@ -216,5 +264,15 @@ describe('logsDeleteSession', () => {
     const jsonl = join(root, '2026', '05', '13', '142207-t-x.jsonl');
     writeFileSync(jsonl, '{}\n');
     await expect(handlers.logsDeleteSession({}, jsonl)).rejects.toThrow();
+  });
+
+  it('removes the compressed body + sidecar when called with a .txt.gz path', async () => {
+    const gz = writeCompressedSession('2026-05-13', '142207', 't-a', 'x', { sid: 't-a' });
+    const meta = gz.replace(/\.txt\.gz$/, '.meta.json');
+    expect(existsSync(meta)).toBe(true);
+    const result = (await handlers.logsDeleteSession({}, gz)) as { deleted: boolean };
+    expect(result.deleted).toBe(true);
+    expect(existsSync(gz)).toBe(false);
+    expect(existsSync(meta)).toBe(false);
   });
 });

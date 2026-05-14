@@ -137,7 +137,9 @@ export function TerminalFields(props: {
   platform: () => Platform | undefined;
 }): JSX.Element {
   const logging = (): TerminalLoggingPrefs => props.prefs().logging ?? {};
-  const loggingEnabled = (): boolean => logging().enabled !== false;
+  // Opt-in by default: only treat the checkbox as on when the user has
+  // explicitly set the flag. `undefined` and `false` both render unchecked.
+  const loggingEnabled = (): boolean => logging().enabled === true;
   const idPrefix = `${props.target}.terminal`;
   return (
     <>
@@ -336,9 +338,10 @@ export function TerminalFields(props: {
 
       <h3>Logging</h3>
       <p class="settings-hint">
-        Capture stdin / stdout for every terminal tab to{' '}
+        Off by default for privacy. When enabled, every terminal tab records its rendered output to{' '}
         <code>.condash/logs/YYYY/MM/DD/HHMMSS-&lt;id&gt;.txt</code> with sidecar
         <code> .meta.json</code>. The <code> .condash/</code> tree is gitignored by default.
+        Toggling off does not delete past transcripts — the Logs pane keeps browsing them.
       </p>
       <div class="settings-grid">
         <label class="settings-checkbox">
@@ -347,7 +350,7 @@ export function TerminalFields(props: {
             checked={loggingEnabled()}
             onChange={(e) => void props.updateLogging({ enabled: e.currentTarget.checked })}
           />
-          <span>Enable terminal capture</span>
+          <span>Record terminal sessions to disk</span>
         </label>
         <label>
           <span>Retention (days)</span>

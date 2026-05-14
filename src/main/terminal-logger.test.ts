@@ -2,9 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import {
   SessionLogger,
+  type SessionContext,
   resolveLoggingPrefs,
   sessionLogPath,
   sessionMetaPath,
@@ -25,6 +27,18 @@ function readMeta(path: string): SessionMeta {
   return JSON.parse(readFileSync(path, 'utf8')) as SessionMeta;
 }
 
+/** Default-on logger for tests. Production defaults to `enabled: false`
+ * (opt-in for privacy); most tests in this file want the writer running
+ * and merge their own scrollback / flushMs overrides on top. */
+function makeLogger(
+  tmpRoot: string,
+  ctx: SessionContext,
+  prefs: TerminalLoggingPrefs = {},
+  flushMs?: number,
+): SessionLogger {
+  return new SessionLogger(tmpRoot, ctx, { enabled: true, ...prefs }, flushMs);
+}
+
 describe('sessionLogPath', () => {
   it('builds YYYY/MM/DD/HHMMSS-<sid>.txt under <conception>/.condash/logs', () => {
     const path = sessionLogPath('/x/conception', 't-abc', new Date('2026-05-13T14:22:07Z'));
@@ -40,9 +54,9 @@ describe('sessionMetaPath', () => {
 });
 
 describe('resolveLoggingPrefs', () => {
-  it('returns defaults when patch is empty', () => {
+  it('returns defaults when patch is empty — enabled defaults to false (opt-in)', () => {
     const p = resolveLoggingPrefs({});
-    expect(p.enabled).toBe(true);
+    expect(p.enabled).toBe(false);
     expect(p.scrollback).toBe(10000);
     expect(p.maxDirMb).toBe(500);
     expect(p.retentionDays).toBe(14);
@@ -51,14 +65,19 @@ describe('resolveLoggingPrefs', () => {
   it('overrides only the specified keys', () => {
     const p = resolveLoggingPrefs({ scrollback: 2000 });
     expect(p.scrollback).toBe(2000);
-    expect(p.enabled).toBe(true);
+    expect(p.enabled).toBe(false);
     expect(p.retentionDays).toBe(14);
+  });
+
+  it('enabled: true patch turns capture on', () => {
+    const p = resolveLoggingPrefs({ enabled: true });
+    expect(p.enabled).toBe(true);
   });
 });
 
 describe('SessionLogger', () => {
   it('writes .meta.json on spawn() and a rendered .txt after output()', async () => {
-    const logger = new SessionLogger(
+    const logger = makeLogger(
       tmp,
       {
         sid: 't-abc',
@@ -66,7 +85,7 @@ describe('SessionLogger', () => {
         cwd: '/home/alice',
         spawn: { cmd: '/bin/bash', argv: ['-l'] },
       },
-      undefined,
+      {},
       // Short flush window so tests don't wait the full 5 s.
       50,
     );
@@ -95,7 +114,7 @@ describe('SessionLogger', () => {
   });
 
   it('files land at <conception>/.condash/logs/YYYY/MM/DD/', async () => {
-    const logger = new SessionLogger(tmp, {
+    const logger = makeLogger(tmp, {
       sid: 't-xyz',
       side: 'code',
       cwd: '/x',
@@ -111,7 +130,7 @@ describe('SessionLogger', () => {
   });
 
   it('drops input() — no extra file, no doubled output', async () => {
-    const logger = new SessionLogger(
+    const logger = makeLogger(
       tmp,
       {
         sid: 't-noin',
@@ -119,7 +138,7 @@ describe('SessionLogger', () => {
         cwd: '/x',
         spawn: { cmd: 'bash', argv: [] },
       },
-      undefined,
+      {},
       50,
     );
     logger.spawn();
@@ -141,7 +160,7 @@ describe('SessionLogger', () => {
   });
 
   it('atomic write — no stale .tmp file remains', async () => {
-    const logger = new SessionLogger(
+    const logger = makeLogger(
       tmp,
       {
         sid: 't-atom',
@@ -149,7 +168,7 @@ describe('SessionLogger', () => {
         cwd: '/x',
         spawn: { cmd: 'bash', argv: [] },
       },
-      undefined,
+      {},
       50,
     );
     logger.spawn();
@@ -165,7 +184,7 @@ describe('SessionLogger', () => {
   });
 
   it('updates meta exitCode + finished on exit()', async () => {
-    const logger = new SessionLogger(
+    const logger = makeLogger(
       tmp,
       {
         sid: 't-ex',
@@ -173,7 +192,7 @@ describe('SessionLogger', () => {
         cwd: '/x',
         spawn: { cmd: 'bash', argv: [] },
       },
-      undefined,
+      {},
       50,
     );
     logger.spawn();
@@ -189,7 +208,7 @@ describe('SessionLogger', () => {
   });
 
   it('debounces flush — multiple outputs in one window produce one write cycle', async () => {
-    const logger = new SessionLogger(
+    const logger = makeLogger(
       tmp,
       {
         sid: 't-debounce',
@@ -197,7 +216,7 @@ describe('SessionLogger', () => {
         cwd: '/x',
         spawn: { cmd: 'bash', argv: [] },
       },
-      undefined,
+      {},
       50,
     );
     logger.spawn();
@@ -240,7 +259,7 @@ describe('SessionLogger', () => {
   });
 
   it('preserves ANSI escapes in the .txt — reader-side ansi_up turns them into styled HTML', async () => {
-    const logger = new SessionLogger(
+    const logger = makeLogger(
       tmp,
       {
         sid: 't-ansi',
@@ -248,7 +267,7 @@ describe('SessionLogger', () => {
         cwd: '/x',
         spawn: { cmd: 'bash', argv: [] },
       },
-      undefined,
+      {},
       50,
     );
     logger.spawn();
@@ -268,7 +287,7 @@ describe('SessionLogger', () => {
   });
 
   it('rendered file size is bounded by scrollback × line width', async () => {
-    const logger = new SessionLogger(
+    const logger = makeLogger(
       tmp,
       {
         sid: 't-bound',
