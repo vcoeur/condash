@@ -300,18 +300,13 @@
 
 /* ── Spawn dropdown ───────────────────────────────────────────────── */
 
-.terminal-tab-dropdown-wrap {
-  position: relative;
-  display: inline-flex;
-  margin-left: 2px;
-}
-
 .terminal-tab-dropdown {
   background: var(--bg-tertiary);
   color: var(--text);
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   padding: 2px 8px;
+  margin-left: 2px;
   font-size: 12px;
   height: 24px;
   cursor: pointer;
@@ -325,15 +320,17 @@
   background: var(--bg-hover);
 }
 
-.terminal-tab-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
+/* The menu must escape `.terminal-tabs`'s `overflow: auto` — `position:
+ * fixed` lifts it out of every clipping ancestor. Coords (top/left) come
+ * from `createDropdownMenu({ align: 'left' })`, set inline from the
+ * trigger's bottom-left in viewport space. */
+.terminal-tab-dropdown-menu.portal {
+  position: fixed;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   min-width: 140px;
-  z-index: 10;
+  z-index: 1000;
   list-style: none;
   padding: 4px 0;
   margin: 0;

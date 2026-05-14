@@ -1,5 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import type { LauncherConfig } from '@shared/types';
+import { createDropdownMenu } from '../dropdown-menu';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
 
@@ -35,12 +37,18 @@ export interface TerminalColumnProps {
 }
 
 /** Dropdown button + menu for spawning tabs. Replaces the fixed `+` / μ / λ
- *  button row with a single control that lists all configured launchers. */
+ *  button row with a single control that lists all configured launchers.
+ *
+ *  The menu is rendered with `position: fixed` (the `.portal` class via
+ *  `createDropdownMenu`) so it escapes the strip's `overflow: auto` —
+ *  otherwise the menu's full height gets clipped down to the strip's 32px
+ *  box and the user sees only fragments of the menu items.
+ */
 function SpawnDropdown(props: {
   launchers: readonly LauncherConfig[];
   onSpawn: (index: number | null) => void;
 }) {
-  const [open, setOpen] = createSignal(false);
+  const menu = createDropdownMenu({ align: 'left' });
   const [highlighted, setHighlighted] = createSignal(0);
 
   const items = () => [
@@ -55,15 +63,16 @@ function SpawnDropdown(props: {
 
   const select = (value: number | null) => {
     props.onSpawn(value);
-    setOpen(false);
+    menu.close();
     setHighlighted(0);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (!open()) {
+    if (!menu.isOpen()) {
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        setOpen(true);
+        setHighlighted(0);
+        menu.open();
       }
       return;
     }
@@ -77,49 +86,63 @@ function SpawnDropdown(props: {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       select(items()[highlighted()].value);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setOpen(false);
     }
+    // Escape is handled by createDropdownMenu globally.
   };
 
   return (
-    <div class="terminal-tab-dropdown-wrap">
+    <>
       <button
+        ref={menu.setTrigger}
         class="terminal-tab-dropdown"
         aria-haspopup="listbox"
-        aria-expanded={open()}
+        aria-expanded={menu.isOpen()}
         aria-label="Spawn new terminal"
         onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
+          setHighlighted(0);
+          menu.toggle(e);
         }}
         onKeyDown={handleKeyDown}
       >
         <span>New shell</span>
         <span aria-hidden="true">▼</span>
       </button>
-      <Show when={open()}>
-        <ul class="terminal-tab-dropdown-menu" role="listbox" aria-label="Terminal spawn options">
-          <For each={items()}>
-            {(item, idx) => (
-              <li
-                role="option"
-                aria-selected={highlighted() === idx()}
-                classList={{ highlighted: highlighted() === idx() }}
-                onMouseEnter={() => setHighlighted(idx())}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  select(item.value);
-                }}
-              >
-                {item.label}
-              </li>
-            )}
-          </For>
-        </ul>
+      <Show when={menu.isOpen() && menu.anchor()}>
+        {/* Portal to document.body so the menu escapes `.terminal-pane`'s
+         *  `contain: layout paint` — that containment makes
+         *  `position: fixed` anchor to the pane instead of the viewport,
+         *  which would render the menu hundreds of pixels off. */}
+        <Portal>
+          <ul
+            ref={menu.setMenu}
+            class="terminal-tab-dropdown-menu portal"
+            role="listbox"
+            aria-label="Terminal spawn options"
+            style={{
+              top: `${menu.anchor()!.top}px`,
+              left: `${menu.anchor()!.left}px`,
+            }}
+          >
+            <For each={items()}>
+              {(item, idx) => (
+                <li
+                  role="option"
+                  aria-selected={highlighted() === idx()}
+                  classList={{ highlighted: highlighted() === idx() }}
+                  onMouseEnter={() => setHighlighted(idx())}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    select(item.value);
+                  }}
+                >
+                  {item.label}
+                </li>
+              )}
+            </For>
+          </ul>
+        </Portal>
       </Show>
-    </div>
+    </>
   );
 }
 
