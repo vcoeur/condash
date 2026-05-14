@@ -7,10 +7,9 @@ import { condashLogsRoot } from './condash-dir';
 import {
   SessionLogger,
   type SessionContext,
+  META_LINE_PREFIX,
   resolveLoggingPrefs,
   sessionLogPath,
-  sessionMetaPath,
-  type SessionMeta,
 } from './terminal-logger';
 
 let tmp: string;
@@ -23,8 +22,48 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function readMeta(path: string): SessionMeta {
-  return JSON.parse(readFileSync(path, 'utf8')) as SessionMeta;
+interface HeaderJson {
+  sid: string;
+  cmd: string;
+  argv: string[];
+  cwd: string;
+  started: string;
+  repo?: string;
+}
+
+interface FooterJson {
+  finished: string;
+  exitCode: number;
+}
+
+/** Parse the on-disk `.txt`: header line, blank, body, optional blank +
+ * footer line. Mirrors `ipc/logs.ts:splitContent`. */
+function parseFile(txtPath: string): {
+  header: HeaderJson | null;
+  body: string;
+  footer: FooterJson | null;
+} {
+  const raw = readFileSync(txtPath, 'utf8');
+  const allLines = raw.split('\n');
+  let header: HeaderJson | null = null;
+  let start = 0;
+  if (allLines.length > 0 && allLines[0].startsWith(META_LINE_PREFIX)) {
+    header = JSON.parse(allLines[0].slice(META_LINE_PREFIX.length)) as HeaderJson;
+    start = 1;
+    if (start < allLines.length && allLines[start] === '') start++;
+  }
+  let end = allLines.length;
+  let footer: FooterJson | null = null;
+  if (end > start && allLines[end - 1] === '') end--;
+  if (end > start && allLines[end - 1].startsWith(META_LINE_PREFIX)) {
+    const parsed = JSON.parse(allLines[end - 1].slice(META_LINE_PREFIX.length));
+    if ('exitCode' in parsed || 'finished' in parsed) {
+      footer = parsed as FooterJson;
+      end--;
+      if (end > start && allLines[end - 1] === '') end--;
+    }
+  }
+  return { header, body: allLines.slice(start, end).join('\n'), footer };
 }
 
 /** Default-on logger for tests. Production defaults to `enabled: false`
@@ -44,12 +83,6 @@ describe('sessionLogPath', () => {
     const path = sessionLogPath('/x/conception', 't-abc', new Date('2026-05-13T14:22:07Z'));
     expect(path.startsWith(condashLogsRoot('/x/conception'))).toBe(true);
     expect(path).toMatch(/[/]\d{4}[/]\d{2}[/]\d{2}[/]\d{6}-t-abc\.txt$/);
-  });
-});
-
-describe('sessionMetaPath', () => {
-  it('replaces .txt with .meta.json', () => {
-    expect(sessionMetaPath('/a/b/123456-sid.txt')).toBe('/a/b/123456-sid.meta.json');
   });
 });
 
@@ -76,7 +109,7 @@ describe('resolveLoggingPrefs', () => {
 });
 
 describe('SessionLogger', () => {
-  it('writes .meta.json on spawn() and a rendered .txt after output()', async () => {
+  it('writes header line on spawn and body + footer after exit', async () => {
     const logger = makeLogger(
       tmp,
       {
@@ -86,7 +119,6 @@ describe('SessionLogger', () => {
         spawn: { cmd: '/bin/bash', argv: ['-l'] },
       },
       {},
-      // Short flush window so tests don't wait the full 5 s.
       50,
     );
     logger.spawn();
@@ -100,17 +132,17 @@ describe('SessionLogger', () => {
     if (!txt) return;
     expect(existsSync(txt)).toBe(true);
 
-    const text = readFileSync(txt, 'utf8');
-    expect(text).toContain('hello world');
-
-    const meta = readMeta(sessionMetaPath(txt));
-    expect(meta.sid).toBe('t-abc');
-    expect(meta.cmd).toBe('/bin/bash');
-    expect(meta.argv).toEqual(['-l']);
-    expect(meta.cwd).toBe('/home/alice');
-    expect(meta.exitCode).toBe(0);
-    expect(meta.finished).toBeTypeOf('string');
-    expect(meta.started).toBeTypeOf('string');
+    const { header, body, footer } = parseFile(txt);
+    expect(header).not.toBeNull();
+    expect(header?.sid).toBe('t-abc');
+    expect(header?.cmd).toBe('/bin/bash');
+    expect(header?.argv).toEqual(['-l']);
+    expect(header?.cwd).toBe('/home/alice');
+    expect(header?.started).toBeTypeOf('string');
+    expect(body).toContain('hello world');
+    expect(footer).not.toBeNull();
+    expect(footer?.exitCode).toBe(0);
+    expect(footer?.finished).toBeTypeOf('string');
   });
 
   it('files land at <conception>/.condash/logs/YYYY/MM/DD/', async () => {
@@ -153,13 +185,12 @@ describe('SessionLogger', () => {
 
     const txt = logger.filePath();
     if (!txt) throw new Error('no path');
-    const text = readFileSync(txt, 'utf8');
-    // The line should appear exactly once.
-    const matches = text.match(/ls/g) ?? [];
+    const { body } = parseFile(txt);
+    const matches = body.match(/ls/g) ?? [];
     expect(matches.length).toBe(1);
   });
 
-  it('atomic write — no stale .tmp file remains', async () => {
+  it('atomic write — no stale .tmp file remains, no sidecar at all', async () => {
     const logger = makeLogger(
       tmp,
       {
@@ -180,10 +211,10 @@ describe('SessionLogger', () => {
     if (!txt) throw new Error('no path');
     expect(existsSync(txt)).toBe(true);
     expect(existsSync(`${txt}.tmp`)).toBe(false);
-    expect(existsSync(`${sessionMetaPath(txt)}.tmp`)).toBe(false);
+    expect(existsSync(txt.replace(/\.txt$/, '.meta.json'))).toBe(false);
   });
 
-  it('updates meta exitCode + finished on exit()', async () => {
+  it('records exitCode + finished in the footer on exit()', async () => {
     const logger = makeLogger(
       tmp,
       {
@@ -202,9 +233,32 @@ describe('SessionLogger', () => {
 
     const txt = logger.filePath();
     if (!txt) throw new Error('no path');
-    const meta = readMeta(sessionMetaPath(txt));
-    expect(meta.exitCode).toBe(137);
-    expect(meta.finished).toBeTypeOf('string');
+    const { footer } = parseFile(txt);
+    expect(footer?.exitCode).toBe(137);
+    expect(footer?.finished).toBeTypeOf('string');
+  });
+
+  it('no footer line until exit() — in-flight sessions only carry the header', async () => {
+    const logger = makeLogger(
+      tmp,
+      {
+        sid: 't-inflight',
+        side: 'my',
+        cwd: '/x',
+        spawn: { cmd: 'bash', argv: [] },
+      },
+      {},
+      50,
+    );
+    logger.spawn();
+    logger.output('still running');
+    await logger.flushForTests();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { header, footer } = parseFile(txt);
+    expect(header).not.toBeNull();
+    expect(footer).toBeNull();
+    await logger.close();
   });
 
   it('debounces flush — multiple outputs in one window produce one write cycle', async () => {
@@ -221,15 +275,14 @@ describe('SessionLogger', () => {
     );
     logger.spawn();
     for (let i = 0; i < 10; i++) logger.output(`line ${i}\r\n`);
-    // Before the debounce fires, the .txt may not exist yet.
     await logger.flushForTests();
     await logger.close();
 
     const txt = logger.filePath();
     if (!txt) throw new Error('no path');
-    const text = readFileSync(txt, 'utf8');
+    const { body } = parseFile(txt);
     for (let i = 0; i < 10; i++) {
-      expect(text).toContain(`line ${i}`);
+      expect(body).toContain(`line ${i}`);
     }
   });
 
@@ -249,20 +302,17 @@ describe('SessionLogger', () => {
     logger.output('hello');
     logger.exit(0);
     await logger.close();
-    // Path returns the canonical position regardless, but no file should
-    // have been written.
     const txt = logger.filePath();
     expect(txt).not.toBeNull();
     if (!txt) return;
     expect(existsSync(txt)).toBe(false);
-    expect(existsSync(sessionMetaPath(txt))).toBe(false);
   });
 
-  it('preserves ANSI escapes in the .txt — reader-side ansi_up turns them into styled HTML', async () => {
+  it('strips SGR escapes — body is plain text', async () => {
     const logger = makeLogger(
       tmp,
       {
-        sid: 't-ansi',
+        sid: 't-plain',
         side: 'my',
         cwd: '/x',
         spawn: { cmd: 'bash', argv: [] },
@@ -277,13 +327,11 @@ describe('SessionLogger', () => {
 
     const txt = logger.filePath();
     if (!txt) throw new Error('no path');
-    const text = readFileSync(txt, 'utf8');
-    // The visible text is preserved; SGR codes survive somewhere in the
-    // serialised buffer so the renderer can colour the output. We don't
-    // pin the exact escape sequence (xterm normalises some forms) — only
-    // that the rendered text appears and that *some* SGR escape is present.
-    expect(text).toContain('red');
-    expect(text).toMatch(/\x1b\[/);
+    const { body } = parseFile(txt);
+    expect(body).toContain('red');
+    // No raw ESC bytes survive into the body — the headless xterm
+    // resolved the SGR codes into glyph attributes we don't render.
+    expect(body).not.toMatch(/\x1b\[/);
   });
 
   it('rendered file size is bounded by scrollback × line width', async () => {
@@ -299,27 +347,16 @@ describe('SessionLogger', () => {
       50,
     );
     logger.spawn();
-    // Pump 5000 lines through — the headless terminal scrollback caps at
-    // 200, so the rendered .txt should hold no more than ~200 lines.
     for (let i = 0; i < 5000; i++) logger.output(`line ${i}\r\n`);
     await logger.flushForTests();
     await logger.close();
 
     const txt = logger.filePath();
     if (!txt) throw new Error('no path');
-    const text = readFileSync(txt, 'utf8');
-    // Count visible-line markers — stripping ANSI to be tolerant of any
-    // styling the writer added.
-    const stripped = text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
-    const lineMatches = stripped.match(/line \d+/g) ?? [];
-    // Headless rows + scrollback gives an upper bound; allow generous
-    // slack (rows + scrollback + 10) so test stays robust if xterm's
-    // internal trimming policy shifts.
+    const { body } = parseFile(txt);
+    const lineMatches = body.match(/line \d+/g) ?? [];
     expect(lineMatches.length).toBeLessThanOrEqual(300);
-    // Sanity: at least *some* lines made it.
     expect(lineMatches.length).toBeGreaterThan(0);
-    // Stat-based size guard: even with worst-case ANSI inflation, far
-    // below what 5000 lines of raw output would have produced.
     expect(statSync(txt).size).toBeLessThan(200 * 1024);
   });
 });

@@ -72,15 +72,14 @@ export async function collectSkillFiles(skillsRoot: string): Promise<string[]> {
 
 /**
  * Walk every saved session log under `<conception>/.condash/logs/`. The
- * tree shape is `YYYY/MM/DD/HHMMSS-<sid>.txt` or `.txt.gz` after the
- * janitor's compression pass. Uses a custom predicate because `.txt.gz`
- * is a double extension the generic `walkExtensions` helper can't match.
+ * tree shape is `YYYY/MM/DD/HHMMSS-<sid>.txt` — sessions are plain text
+ * since v2.27.0 (no compression, no SGR).
  */
 export async function collectLogFiles(logsRoot: string): Promise<string[]> {
   const out: string[] = [];
   await walkPredicate(
     logsRoot,
-    (name) => name.endsWith('.txt') || name.endsWith('.txt.gz'),
+    (name) => name.endsWith('.txt'),
     (file) => out.push(file),
   );
   return out;

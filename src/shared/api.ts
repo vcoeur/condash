@@ -234,13 +234,14 @@ export interface CondashApi {
   /** List session-file metadata (path, time, size, repo, cmd) for one
    * day. `day` is `YYYY-MM-DD`. */
   logsListSessions(day: string): Promise<TermLogSessionMeta[]>;
-  /** Read a session's rendered `.txt` body + sidecar `.meta.json`. */
+  /** Read a session's plain-text body + parsed `# condash: {...}` header /
+   * footer metadata. */
   logsReadSession(filePath: string): Promise<TermLogSessionRead>;
   /** Wipe an entire day-directory. */
   logsDeleteDay(day: string): Promise<{ deleted: boolean }>;
-  /** Delete a single session (one pty spawn) and its `.meta.json` sidecar.
-   *  Bounded under `<conception>/.condash/logs/`; rejects paths outside
-   *  the logs root or files that don't end in `.txt`. */
+  /** Delete a single session (one pty spawn). Bounded under
+   *  `<conception>/.condash/logs/`; rejects paths outside the logs root
+   *  or files that don't end in `.txt`. */
   logsDeleteSession(filePath: string): Promise<{ deleted: boolean }>;
 
   /** Open the configured conception directory in the OS file manager. */

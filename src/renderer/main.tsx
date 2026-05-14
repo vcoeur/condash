@@ -1042,10 +1042,7 @@ function App() {
 
                 <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
-                    <LogsView
-                      openRequest={logsOpenRequest}
-                      xtermPrefs={() => terminalPrefs()?.xterm}
-                    />
+                    <LogsView openRequest={logsOpenRequest} />
                   </section>
                 </Show>
 

@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs';
-import { gunzipSync } from 'node:zlib';
 import type { SearchHighlight, SearchHit, SearchTerm } from '../../shared/types';
-import { expandCursorForward } from '../../shared/expand-cursor-forward';
+import { splitContent } from '../ipc/logs';
 import { buildRegions } from './regions';
 import { scoreOccurrences, type ScorerOccurrence } from './scorer';
 import { buildSnippets } from './snippets';
@@ -35,20 +34,12 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
   try {
     const stat = await fs.stat(input.path);
     mtimeMs = stat.mtimeMs;
-    // Logs are stored either as `.txt` (today) or `.txt.gz` (post-janitor)
-    // and serialised xterm buffers encode runs of empty cells as
-    // cursor-forward escapes — expand them so a search for "Baked for"
-    // hits the same string the user sees in the rendered view.
+    raw = await fs.readFile(input.path, 'utf8');
+    // Logs carry a `# condash: {...}` header / footer line for the
+    // session's spawn / exit metadata. Strip those before matching so a
+    // search for "exit" doesn't snippet-quote the JSON.
     if (input.source === 'logs') {
-      if (input.path.endsWith('.gz')) {
-        const buf = await fs.readFile(input.path);
-        raw = gunzipSync(buf).toString('utf8');
-      } else {
-        raw = await fs.readFile(input.path, 'utf8');
-      }
-      raw = expandCursorForward(raw);
-    } else {
-      raw = await fs.readFile(input.path, 'utf8');
+      raw = splitContent(raw).text;
     }
   } catch {
     return null;

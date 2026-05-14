@@ -181,14 +181,23 @@ Per-platform shell wrapping (so `terminal.run` strings reach the right shell) li
 
 ## Session logging
 
-Every terminal tab can be captured to disk for later review. Capture is **opt-in** (default off, since 2.25.0) for privacy — flip *Record terminal sessions to disk* in `Settings → Terminal → Logging` to start recording. When on, each pty spawn produces a rendered transcript at:
+Every terminal tab can be captured to disk for later review. Capture is **opt-in** (default off, since 2.25.0) for privacy — flip *Record terminal sessions to disk* in `Settings → Terminal → Logging` to start recording. When on, each pty spawn produces **one plain-text file**:
 
 ```
 <conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.txt
-<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.meta.json
 ```
 
-The `.txt` body matches exactly what the live terminal pane's **Save buffer** button produces — pty bytes piped through a headless xterm + `SerializeAddon`, atomically rewritten every 5 seconds. The sidecar `.meta.json` carries the spawn context (cmd, argv, cwd, repo) plus exit metadata once the session ends. Older day-directories are compressed automatically by the janitor (`*.txt → *.txt.gz`, hard-coded one-day buffer); the viewer reads either form transparently.
+The file carries the rendered terminal buffer with two `# condash: {...}` JSON metadata lines folded in: a header at line 1 (`{sid, side, repo?, cwd, cmd, argv, started}`) and a footer at the last line, written when the session exits (`{finished, exitCode}`). `cat`ing the file shows everything — no sidecar to keep in sync.
+
+```
+# condash: {"sid":"t-…","side":"my","cmd":"npm","argv":["run","dev"],"repo":"condash","cwd":"/home/alice/…","started":"2026-05-14T10:00:27Z"}
+
+<rendered terminal buffer — plain UTF-8 text, no SGR / ANSI escapes>
+
+# condash: {"finished":"2026-05-14T10:01:45Z","exitCode":0}
+```
+
+The writer pipes pty bytes into a headless xterm (`@xterm/headless`) and every 5 seconds reads each row of the active buffer via `IBufferLine.translateToString(true)`, joins with `\n`, prepends the header (and appends the footer if the session has exited), and atomically replaces the `.txt`. Colour / bold / underline are deliberately not preserved — for full ANSI fidelity, use the live terminal pane's **Save buffer** button instead.
 
 Toggling logging off does **not** delete past transcripts — the Logs pane keeps browsing them and the janitor's age/cap eviction stays in charge of cleanup.
 
@@ -196,17 +205,15 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 
 ### Browsing logs
 
-`View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface:
+`View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface — a **sessions list grouped by day**, newest day first. Each row is a card showing the spawn time, repo (when launched via Run), short command, size on disk, and exit code (or "running" while alive; the left edge tints red for non-zero exits).
 
-- **Day picker** at the top — newest day-directory first, custom dropdown styling matching the rest of the toolbar.
-- **Session picker** — one entry per pty spawn, with the spawn time, repo (when launched via Run), short command, size on disk, and exit code if present. Defaults to the *most recent* session of the most recent day on first open.
-- **Transcript body** — the rendered terminal buffer, styled via `ansi_up` against the same xterm theme palette the live terminal pane uses. Non-SGR escapes (mode-set, cursor positioning, OSC) are silently dropped. Lines soft-wrap at the pane edge (no horizontal scrollbar); wrapped logical lines get a `↪` continuation glyph in the left gutter.
-- **Search box** — case-insensitive substring against the rendered text. Matches are highlighted in place (no filter mode); the n/N counter plus the ↑/↓ buttons cycle through hits. `Enter` jumps forward, `Shift+Enter` backward.
-- **Delete session** wipes one session and its sidecar; **Delete day** (via session selection + confirm) wipes the whole day-directory.
+Clicking a card opens the **session viewer modal**: a wide overlay with the full plain-text transcript and a case-insensitive search box. The transcript is virtualised — only the visible window of lines is mounted, so even a 100 MB log scrolls smoothly. Long lines horizontal-scroll rather than wrap (every row stays exactly one line-height tall, which the virtualizer needs). Search precomputes per-line hit indices once per query; the n/N counter plus the ↑/↓ buttons cycle hits, `Enter` jumps forward, `Shift+Enter` backward, `Cmd/Ctrl+F` focuses the search box, `Esc` closes the modal.
+
+The `⌫` button in the modal head deletes the open session (one `.txt`, no sidecar to clean up).
 
 ### Searching logs across sessions
 
-Logs are a fifth source of the global search modal (`Cmd+K`), alongside projects, knowledge, resources, and skills. A log hit's title shows the session's start time (`YYYY-MM-DD HH:MM:SS`); activating it switches to the Logs pane and selects that session. Compressed (`.txt.gz`) sessions are decompressed inline by the search backend — the same `expandCursorForward` pre-pass the renderer uses runs before substring matching, so a search for "Baked for" finds the same string the rendered view shows.
+Logs are a source of the global search modal (`Cmd+K`), alongside projects, knowledge, resources, and skills. A log hit's title shows the session's start time (`YYYY-MM-DD HH:MM:SS`); activating it opens the viewer modal directly on that session. The `# condash:` header / footer lines are stripped from the body before substring matching so search snippets carry actual transcript text, not the metadata JSON.
 
 #### What's captured
 

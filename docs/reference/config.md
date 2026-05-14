@@ -74,12 +74,14 @@ A `terminal` block at this level is a valid per-conception override. The boot-ti
 
 ### Terminal logging
 
-Inside the `terminal` block, `terminal.logging` configures per-session capture. Each pty spawn produces two files in `<conception>/.condash/logs/YYYY/MM/DD/`:
+Inside the `terminal` block, `terminal.logging` configures per-session capture. Each pty spawn produces a **single plain-text file** at `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`. Metadata travels inside the file as two `# condash: {...}` JSON lines:
 
-- `HHMMSS-<sid>.txt` — the rendered terminal buffer (matches what the live pane's **Save buffer** button produces). The writer pipes pty bytes through a headless xterm + `SerializeAddon`, atomically rewriting the file every 5 s.
-- `HHMMSS-<sid>.meta.json` — sidecar carrying `{ sid, side, repo?, cwd, cmd, argv, started, exitCode?, finished? }`.
+- **Header** (line 1, always present) — `{ sid, side, repo?, cwd, cmd, argv, started }`.
+- **Footer** (last line, only after the session exits) — `{ finished, exitCode }`.
 
-Typed keystrokes are *not* captured separately — the pty echoes them back through stdout, so the rendered buffer already shows what was typed. The Logs working surface (`View → Show Logs`, `Cmd+Shift+L`) reads the `.txt` and renders it via `ansi_up` (SGR colour escapes → styled HTML; non-SGR escapes are silently dropped).
+The writer pipes pty bytes through a headless xterm (`@xterm/headless`), every 5 s renders each buffer row via `IBufferLine.translateToString(true)`, composes header + body (+ footer if exited), and atomically rewrites the file. Output is plain UTF-8 — no SGR, no CSI, no cursor-forward — so the file is grep-friendly and the viewer needs no ANSI parser. Colour / bold / underline fidelity belongs to the live terminal's **Save buffer** button.
+
+Typed keystrokes are *not* captured separately — the pty echoes them back through stdout, so the rendered buffer already shows what was typed. The Logs working surface (`View → Show Logs`, `Cmd+Shift+L`) lists sessions grouped by day; clicking a card opens a full-overlay viewer modal with virtualised text + case-insensitive search.
 
 | Key             | Type           | Default | Meaning                                                                                                                                                                                                       |
 |-----------------|----------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -88,9 +90,9 @@ Typed keystrokes are *not* captured separately — the pty echoes them back thro
 | `maxDirMb`      | integer ≥ 0    | `500`   | Total cap on `<conception>/.condash/logs/`. The janitor evicts oldest day-directories first while over cap, regardless of age.                                                                                |
 | `scrollback`    | integer ≥ 100  | `10000` | Scrollback lines retained by the per-session headless xterm. Larger → more history captured, larger `.txt` files; smaller → older output rolls off the top of the buffer (same semantics as the live pane). |
 
-The janitor runs at app startup and every 24 hours: it (1) deletes day-dirs older than `retentionDays`, (2) gzips any uncompressed `.txt` in day-dirs at least one day old (today's day-dir is always skipped to avoid racing with the writer), then (3) evicts the oldest surviving day-dir while total size is over `maxDirMb`. The viewer + the global search backend transparently read either `.txt` or `.txt.gz` — the on-disk extension is an implementation detail. Errors are logged to stderr and never propagate into the IPC layer.
+The janitor runs at app startup and every 24 hours: it (1) deletes day-dirs older than `retentionDays`, then (2) evicts the oldest surviving day-dir while total size is over `maxDirMb`. No compression pass since v2.27.0 — plain `.txt` files are small enough at the scrollback cap that gzip is not worth the round-trip cost. Errors are logged to stderr and never propagate into the IPC layer.
 
-condash ≤ 2.22 wrote a JSONL event stream (`HHMMSS-<sid>.jsonl`) instead. The new viewer ignores those files; only the janitor's age-based eviction touches them. To clear the legacy format immediately, delete `<conception>/.condash/logs/` and start fresh.
+Legacy formats — JSONL event streams from condash ≤ 2.22, compressed `.txt.gz` files from 2.23–2.26 — are ignored by the new viewer and global search. They sit on disk until the janitor's age-based eviction sweeps them. To clear them immediately, delete `<conception>/.condash/logs/` and start fresh.
 
 ### Workspace keys
 

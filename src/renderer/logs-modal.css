@@ -1,0 +1,131 @@
+/* Full-overlay session viewer. Shares the .modal-backdrop + .modal
+ * chrome from modal-base.css; this file only carries the bits unique to
+ * the log viewer (search row, virtualised transcript). */
+
+.logs-modal {
+  width: min(1400px, 96vw);
+  height: 90vh;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-modal-head {
+  gap: 10px;
+}
+
+.logs-modal-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+  flex-shrink: 0;
+}
+
+.logs-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.logs-modal-search .logs-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: inherit;
+  border-radius: 4px;
+}
+
+.logs-modal-search .logs-search::placeholder {
+  color: var(--text-muted);
+}
+
+.logs-modal-search .logs-hit-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.logs-modal-search .logs-hit-step {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.logs-modal-search .logs-hit-step:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.logs-modal-search .logs-hit-step:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Virtualised transcript. Row height is a CSS variable so the JS slicer
+ * and the layout agree on it. `white-space: pre` keeps long lines on a
+ * single row — horizontal scroll instead of wrap, so every row is
+ * exactly one line-height tall. */
+.logs-modal .logs-transcript {
+  --logs-row-height: 19.04px;
+  position: relative;
+  flex: 1 1 auto;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.logs-modal .logs-transcript-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.logs-modal .logs-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--logs-row-height);
+  padding: 0 1rem;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.logs-modal .logs-transcript mark.logs-search-hit {
+  background: rgba(255, 196, 0, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.05em;
+}
+
+.logs-modal .logs-transcript mark.logs-search-hit.active {
+  background: rgba(255, 196, 0, 0.75);
+  color: #000;
+  outline: 1px solid rgba(255, 196, 0, 0.95);
+}
+
+.logs-modal .empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
