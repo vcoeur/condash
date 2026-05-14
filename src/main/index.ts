@@ -30,26 +30,33 @@ import { registerTreesIpc } from './ipc/trees';
 // design note `notes/02-unified-binary-design.md` (no args → GUI;
 // `gui [args]` → GUI with `gui` stripped; anything else → CLI).
 //
-// process.argv in Electron's main process is [binaryPath, ...userArgs];
-// Electron's own entry-point arg is not present.
-const dispatch = decideDispatch(process.argv);
-if (dispatch.kind === 'gui') {
-  process.argv.length = 0;
-  process.argv.push(...dispatch.argv);
-} else {
-  const cliBundle = resolveCliBundlePath();
-  if (!cliBundle) {
-    process.stderr.write(
-      'condash: CLI bundle not found — packaged install expected.\n' +
-        'For development use `npm run build && node dist-cli/condash.cjs <args>`.\n',
-    );
-    process.exit(1);
+// In packaged Electron, `process.argv` is `[binaryPath, ...userArgs]` —
+// Electron's own entry-point arg is not present. In dev / Playwright,
+// the binary is invoked with an explicit app path (`electron .`) so
+// `process.argv[1]` is `'.'` (or a fixture path); Electron exposes that
+// as `process.defaultApp === true`. We must skip dispatch in that case,
+// otherwise every dev / test boot is interpreted as a CLI invocation.
+const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
+if (!electronProcess.defaultApp) {
+  const dispatch = decideDispatch(process.argv);
+  if (dispatch.kind === 'gui') {
+    process.argv.length = 0;
+    process.argv.push(...dispatch.argv);
+  } else {
+    const cliBundle = resolveCliBundlePath();
+    if (!cliBundle) {
+      process.stderr.write(
+        'condash: CLI bundle not found — packaged install expected.\n' +
+          'For development use `npm run build && node dist-cli/condash.cjs <args>`.\n',
+      );
+      process.exit(1);
+    }
+    const result = spawnSync(process.execPath, [cliBundle, ...dispatch.cliArgs], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: 'inherit',
+    });
+    process.exit(result.status ?? 1);
   }
-  const result = spawnSync(process.execPath, [cliBundle, ...dispatch.cliArgs], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-    stdio: 'inherit',
-  });
-  process.exit(result.status ?? 1);
 }
 
 function resolveCliBundlePath(): string | null {
