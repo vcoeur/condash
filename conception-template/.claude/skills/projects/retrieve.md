@@ -7,7 +7,7 @@ Read-only actions over the `projects/` tree. All three delegate the mechanical w
 Trigger: `/projects list [kind=<k>] [status=<s>] [apps=<a>] [branch=<b>]`.
 
 ```bash
-condash-cli projects list [--kind <k>] [--status <s>] [--apps <a>] [--branch <b>] --json
+condash projects list [--kind <k>] [--status <s>] [--apps <a>] [--branch <b>] --json
 ```
 
 The CLI returns one row per item with parsed `kind` / `status` / `apps` / `branch` / `date` / `stepCounts` / `headerWarnings`, sorted by status (urgency-first `now → review → later → backlog → done`), then slug. Multiple values are comma-separated (`--kind incident,document`).
@@ -20,17 +20,17 @@ Render to the user as:
 
 Truncate title and apps to keep one line each. If long, print counts per status at the top. Surface any `headerWarnings` rows with the bad fields named.
 
-Fast path — no filters: `condash-cli projects list --status now,review --json` is usually what the user means.
+Fast path — no filters: `condash projects list --status now,review --json` is usually what the user means.
 
 ## `read`
 
 Trigger: `/projects read <slug>`.
 
-1. **Resolve the slug** with `condash-cli projects resolve <slug> --json`. Exit code 4 → no match (re-prompt). Exit code 6 → ambiguous (the JSON `data.candidates` list carries the disambiguation).
+1. **Resolve the slug** with `condash projects resolve <slug> --json`. Exit code 4 → no match (re-prompt). Exit code 6 → ambiguous (the JSON `data.candidates` list carries the disambiguation).
 2. **Read the README + notes** in one shot:
 
    ```bash
-   condash-cli projects read <slug> --with-notes --json
+   condash projects read <slug> --with-notes --json
    ```
 
    The CLI returns the full header (title / kind / status / date / apps / branch / base), `summary`, `steps`, `deliverables`, and a `notes[]` array of `{relPath, content}`.
@@ -41,7 +41,7 @@ Trigger: `/projects read <slug>`.
 Trigger: `/projects search <keyword> [kind=<k>] [status=<s>]`.
 
 ```bash
-condash-cli projects search "<query>" [--kind <k>] [--status <s>] --limit 50 --json
+condash projects search "<query>" [--kind <k>] [--status <s>] --limit 50 --json
 ```
 
 The CLI runs the same scoring/snippet engine the dashboard uses, scoped to projects, and decorates each hit with `headerKind` / `headerStatus` / `headerApps` so the user can triage without a second round-trip. Report one line per match:
@@ -57,7 +57,7 @@ The CLI runs the same scoring/snippet engine the dashboard uses, scoped to proje
 Trigger: `/projects validate [<slug>]` or "is the header valid?".
 
 ```bash
-condash-cli projects validate [<slug>] --json
+condash projects validate [<slug>] --json
 ```
 
 With a slug, validates one item's header against the canonical Status/Kind enums and the date↔folder invariant. Without a slug, walks the whole tree and reports every header with drift. Returns `{errors[], warnings[]}` per file: errors are exit-3-worthy (enum miss, regex miss), warnings are surfaced but never fail the call (missing field, soft date drift).

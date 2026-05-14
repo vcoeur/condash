@@ -79,7 +79,7 @@ function buildBranchWarning(
     const repos = lingeringBranches.map((r) => r.name).join(', ');
     parts.push(`local branch '${branch}' still exists in ${repos}`);
   }
-  return `${parts.join('; ')} — run \`condash-cli worktrees remove ${branch}\` then \`git branch -d ${branch}\` to clean up.`;
+  return `${parts.join('; ')} — run \`condash worktrees remove ${branch}\` then \`git branch -d ${branch}\` to clean up.`;
 }
 
 /**
@@ -132,7 +132,7 @@ export function registerProjectsIpc(): void {
     'setStatus',
     async (_, path: string, newStatus: string, opts?: { summary?: string }) => {
       const result = await transitionStatus(path, newStatus, opts);
-      // Touch the dirty marker so a follow-up `condash-cli projects index` is
+      // Touch the dirty marker so a follow-up `condash projects index` is
       // surfaced. Best-effort: if the conception path isn't set we just
       // skip it — the in-memory list rebuild still happens via the watcher.
       const { lastConceptionPath: conceptionPath } = await readSettings();

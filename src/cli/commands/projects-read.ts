@@ -115,7 +115,7 @@ export async function readProject(
   conceptionPath: string,
 ): Promise<void> {
   const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects read <slug>');
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects read <slug>');
   const candidate = await resolveSlug(conceptionPath, slug);
   const project = await parseReadme(candidate.readmePath);
   const header = parseHeader(await fs.readFile(candidate.readmePath, 'utf8'));
@@ -192,7 +192,7 @@ export async function resolveCommand(
   conceptionPath: string,
 ): Promise<void> {
   const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects resolve <slug>');
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects resolve <slug>');
   assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   emit(
@@ -213,7 +213,7 @@ export async function searchProjects(
   conceptionPath: string,
 ): Promise<void> {
   const query = args.positional.join(' ');
-  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects search <query>');
+  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects search <query>');
   const limit = parseIntFlag(args.flags.limit, 50);
   const statusFilter = parseCsvFlag(args.flags.status);
   const kindFilter = parseCsvFlag(args.flags.kind);
@@ -318,7 +318,7 @@ export async function validateCommand(
   } else {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash-cli projects validate <slug> | --all | --path <readme-path>',
+      'Usage: condash projects validate <slug> | --all | --path <readme-path>',
     );
   }
 

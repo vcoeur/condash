@@ -33,9 +33,10 @@ asarUnpack:
 #      ELECTRON_OZONE_PLATFORM_HINT=wayland on Wayland sessions before
 #      Chromium's C++ early-init reads it (otherwise the AppImage falls back
 #      to XWayland and renders blurry on fractional-scaled monitors).
-#   2. Every platform: drop a `condash-cli` companion launcher next to the
-#      GUI binary so the CLI surface is reachable without going through
-#      `condash` (which is GUI-only from v2.14.0).
+#   2. Every platform: drop a `condash-cli` deprecated alias next to the
+#      single `condash` binary. From v2.24.0 `condash` dispatches to GUI
+#      (no args) or CLI (any other invocation); the alias prints a stderr
+#      deprecation note and will be removed in v3.0.0.
 afterPack: build/after-pack.cjs
 
 # Publish: every tag pushes installers (and electron-builder's metadata
@@ -91,9 +92,10 @@ win:
   # click "More info" → "Run anyway".
 
 # build/installer.nsh appends $INSTDIR to per-user PATH on install (and
-# strips it on uninstall) so `condash` and `condash-cli` are reachable
-# from any shell, matching the Linux postinst's /usr/bin/condash[-cli]
-# symlinks. electron-builder picks build/installer.nsh up by default;
+# strips it on uninstall) so `condash` (and the deprecated `condash-cli`
+# alias) are reachable from any shell, matching the Linux postinst's
+# /usr/bin/condash[-cli] symlinks. electron-builder picks build/installer.nsh
+# up by default;
 # the explicit `include:` is here so the wiring isn't load-bearing on a
 # default-discovery convention. See GitHub issue #119.
 nsis:

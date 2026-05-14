@@ -15,7 +15,7 @@
  *  - `index`      — every directory under `knowledge/` carries an `index.md`
  *                   listing its children; flag dangling and orphan entries.
  *
- * Stamps live in `condash-cli knowledge verify` — not duplicated here. The audit
+ * Stamps live in `condash knowledge verify` — not duplicated here. The audit
  * verb composes that one too via the same envelope.
  *
  * Pure read-only. Returns `{summary, issues[]}` so the CLI can either pretty-

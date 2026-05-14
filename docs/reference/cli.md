@@ -1,16 +1,16 @@
 ---
 title: CLI · condash reference
-description: The condash-cli command-line surface — list projects, search, manage worktrees, install skills, the CLI companion to the desktop dashboard.
+description: The condash command-line surface — list projects, search, manage worktrees, install skills, the CLI companion to the desktop dashboard.
 ---
 
 # CLI
 
 > **Audience.** Daily user and Developer.
 
-`condash-cli` is the command-line companion to the dashboard. From v2.14.0 the GUI launcher (`condash`) and the CLI launcher (`condash-cli`) are two separate entries on PATH. The .deb / AppImage / DMG / NSIS installers drop both — same packaged Electron binary underneath, different launchers. `condash-cli` runs the binary in plain-Node mode (`ELECTRON_RUN_AS_NODE=1`) against the bundled CLI script. No Chromium boots, no window opens, output goes to stdout / stderr.
+`condash` is the command-line companion to the dashboard. From v2.14.0 the GUI launcher (`condash`) and the CLI launcher (`condash`) are two separate entries on PATH. The .deb / AppImage / DMG / NSIS installers drop both — same packaged Electron binary underneath, different launchers. `condash` runs the binary in plain-Node mode (`ELECTRON_RUN_AS_NODE=1`) against the bundled CLI script. No Chromium boots, no window opens, output goes to stdout / stderr.
 
 ```
-condash-cli <noun> <verb> [args] [--flags]
+condash <noun> <verb> [args] [--flags]
 ```
 
 The CLI exists because skills (`/projects`, `/knowledge`, `/tidy`) and shell scripts need a programmatic surface that shares condash's parser, validator, and indexer — without re-implementing them in `bash + grep + sed`.
@@ -20,15 +20,15 @@ The CLI exists because skills (`/projects`, `/knowledge`, `/tidy`) and shell scr
 | Invocation | What it does |
 |---|---|
 | `condash` | Launch the packaged Electron GUI against the saved conception tree |
-| `condash-cli --help` | Print the top-level CLI help |
-| `condash-cli --version` | Print the CLI version |
-| `condash-cli <noun> <verb>` | Run a CLI verb against the resolved conception path |
+| `condash --help` | Print the top-level CLI help |
+| `condash --version` | Print the CLI version |
+| `condash <noun> <verb>` | Run a CLI verb against the resolved conception path |
 | `make dev` (from source) | Watch mode: tsc + vite + Electron with `--no-sandbox` |
 | `make package` (from source) | Per-OS installers under `release/` via electron-builder |
 
 ## How dispatch works
 
-The two launchers are physically separate scripts. `condash` always boots the Electron GUI; if it sees a CLI noun (`projects`, `knowledge`, …) on its argv it errors with a hint to use `condash-cli` instead. `condash-cli` always runs the bundled CLI script under plain Node — it never starts Chromium.
+The two launchers are physically separate scripts. `condash` always boots the Electron GUI; if it sees a CLI noun (`projects`, `knowledge`, …) on its argv it errors with a hint to use `condash` instead. `condash` always runs the bundled CLI script under plain Node — it never starts Chromium.
 
 CLI nouns:
 
@@ -36,7 +36,7 @@ CLI nouns:
 projects   knowledge   search   repos   worktrees   audit   dirty   skills   templates   config   help
 ```
 
-A typo (`condash-cli projct list`) reports an unknown noun and exits with code 2 (usage).
+A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
 
 ## Universal flags
 
@@ -66,7 +66,7 @@ Available on every noun:
 6  ambiguous
 ```
 
-Code 5 means the CLI could not resolve a conception path — pass `--conception <path>` or set one with `condash-cli config conception-path <path>`.
+Code 5 means the CLI could not resolve a conception path — pass `--conception <path>` or set one with `condash config conception-path <path>`.
 
 ## Conception-path resolution
 
@@ -76,7 +76,7 @@ The CLI honours the same chain as the GUI, minus the folder picker:
 2. `conceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or platform equivalent).
 3. Hard error (exit 5).
 
-`condash-cli config conception-path` and `condash-cli config conception-path <path>` read or write the saved value.
+`condash config conception-path` and `condash config conception-path <path>` read or write the saved value.
 
 ## Nouns
 
@@ -123,7 +123,7 @@ Knowledge-tree operations.
 Cross-tree full-text search.
 
 ```bash
-condash-cli search "session cookie" --scope all
+condash search "session cookie" --scope all
 ```
 
 `--scope` accepts `all`, `projects`, `knowledge`. Defaults to `all`.
@@ -133,8 +133,8 @@ condash-cli search "session cookie" --scope all
 List configured repositories from `condash.json`.
 
 ```bash
-condash-cli repos list                       # configured repos, no worktrees
-condash-cli repos list --include-worktrees   # add worktrees in <worktrees_path>/
+condash repos list                       # configured repos, no worktrees
+condash repos list --include-worktrees   # add worktrees in <worktrees_path>/
 ```
 
 ### `worktrees`
@@ -154,8 +154,8 @@ Worktree-centric operations on top of `condash.json`'s repositories. Both `repos
 Tree-wide health checks. Bundles the same passes the GUI exposes via the gear modal's "Audit" button.
 
 ```bash
-condash-cli audit                       # run every check
-condash-cli audit --include lfs,binaries
+condash audit                       # run every check
+condash audit --include lfs,binaries
 ```
 
 | Check | What it flags |
@@ -168,7 +168,7 @@ condash-cli audit --include lfs,binaries
 
 `--include <list>` restricts to a comma-separated subset.
 
-Each issue in `--json` mode carries a `fix` object: `{ action, autoFix, ...payload }`. `autoFix: true` flags issues a wrapping skill (e.g. `/tidy`) can mechanically apply once batched confirmation is given; `autoFix: false` flags items that need human judgment. The same shape is shared with `condash-cli knowledge verify --json`'s `issues[]` array, so triage skills consume audit + verify uniformly.
+Each issue in `--json` mode carries a `fix` object: `{ action, autoFix, ...payload }`. `autoFix: true` flags issues a wrapping skill (e.g. `/tidy`) can mechanically apply once batched confirmation is given; `autoFix: false` flags items that need human judgment. The same shape is shared with `condash knowledge verify --json`'s `issues[]` array, so triage skills consume audit + verify uniformly.
 
 ### `dirty`
 
@@ -223,7 +223,7 @@ Read or change condash configuration.
 
 ### `help`
 
-`condash-cli help` prints the top-level help. `condash-cli help <noun>` re-dispatches to the noun's `--help` path so there's only one source of help text per noun.
+`condash help` prints the top-level help. `condash help <noun>` re-dispatches to the noun's `--help` path so there's only one source of help text per noun.
 
 ## Output modes
 
@@ -240,7 +240,7 @@ Default output is human-readable text aligned for a terminal. `--json` emits a s
 `--ndjson` emits one object per line — useful for piping into `jq`:
 
 ```bash
-condash-cli projects list --ndjson | jq 'select(.status == "now")'
+condash projects list --ndjson | jq 'select(.status == "now")'
 ```
 
 When neither is set and stdout is a TTY, ANSI styling is on. When stdout is piped, styling is off automatically (or override with `--no-color`).
@@ -249,25 +249,25 @@ When neither is set and stdout is a TTY, ANSI styling is on. When stdout is pipe
 
 ```bash
 # What's currently active?
-condash-cli projects list --status now,review
+condash projects list --status now,review
 
 # All items for one app, sorted by date.
-condash-cli projects list --apps notes.vcoeur.com --sort date
+condash projects list --apps notes.vcoeur.com --sort date
 
 # Resolve a slug, then open the README in $EDITOR.
-$EDITOR "$(condash-cli projects resolve fuzzy-search-v2)"/README.md
+$EDITOR "$(condash projects resolve fuzzy-search-v2)"/README.md
 
 # Validate every item in the tree.
-condash-cli projects validate --all
+condash projects validate --all
 
 # Search across both trees for a phrase.
-condash-cli search "session cookie" --scope all --limit 20
+condash search "session cookie" --scope all --limit 20
 
 # Update shipped skills after upgrading condash.
-condash-cli skills install
+condash skills install
 
 # Pipe to jq.
-condash-cli projects list --json | jq '.data[] | select(.kind == "incident")'
+condash projects list --json | jq '.data[] | select(.kind == "incident")'
 ```
 
 ## Dev launch

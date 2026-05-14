@@ -1,5 +1,5 @@
 ---
-allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(condash-cli *)
+allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(condash *)
 description: "Manage projects, incidents, and documents in the conception tree (`projects/YYYY-MM/YYYY-MM-DD-slug/`), plus the worktrees that back their code work. Every mechanical operation goes through `condash`. Invoke as /projects <action> [args]."
 ---
 
@@ -30,7 +30,7 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 
 For a trivial read or appending one note, edit files directly. The skill is mainly worth invoking for `create`, `close`, `reopen`, `index`, `search`, and any `worktree` action.
 
-One-off CLI verb without a skill action: `condash-cli projects backfill-closed [--dry-run]` appends a `Closed.` timeline entry to legacy done items missing one. Run by hand on a tree-wide migration; the action isn't surfaced because it's not part of the day-to-day flow.
+One-off CLI verb without a skill action: `condash projects backfill-closed [--dry-run]` appends a `Closed.` timeline entry to legacy done items missing one. Run by hand on a tree-wide migration; the action isn't surfaced because it's not part of the day-to-day flow.
 
 ## README header
 
@@ -71,15 +71,15 @@ Item folder names match `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`. `<slug>` accepts three
 - Short: `foo` (substring after the date prefix)
 - Month-qualified: `2026-04/2026-04-17-foo`
 
-`condash-cli projects resolve <slug> --json` returns the canonical match (or `AMBIGUOUS` with the candidate list).
+`condash projects resolve <slug> --json` returns the canonical match (or `AMBIGUOUS` with the candidate list).
 
 ## Branch isolation
 
 When an item has a `branch` field:
 
-1. Code edits go through the worktree at `<worktrees_path>/<branch>/<repo>/`. Both paths come from `condash.json` at the conception root (`condash-cli config get worktrees_path`, `condash-cli config get workspace_path`).
+1. Code edits go through the worktree at `<worktrees_path>/<branch>/<repo>/`. Both paths come from `condash.json` at the conception root (`condash config get worktrees_path`, `condash config get workspace_path`).
 2. **Never edit code in `<workspace_path>/<repo>/`** — those are the main checkouts on different branches.
-3. Use `condash-cli worktrees check <branch>` to inspect state, `condash-cli worktrees setup <branch>` to create, `condash-cli worktrees remove <branch>` to clean up. `condash-cli worktrees mismatch` lists every active item declaring a `branch` that has no on-disk worktree — run it when something feels off.
+3. Use `condash worktrees check <branch>` to inspect state, `condash worktrees setup <branch>` to create, `condash worktrees remove <branch>` to clean up. `condash worktrees mismatch` lists every active item declaring a `branch` that has no on-disk worktree — run it when something feels off.
 
 When no `branch` field is set, the main checkouts at `<workspace_path>/<repo>/` are fine.
 

@@ -19,10 +19,10 @@ Click any card to open the file in the note modal — the same editor used elsew
 
 ## Shipped-skill tracking
 
-Skills installed by `condash-cli skills install` are tracked in `<skills_path>/.condash-skills.json`. The pane uses this manifest to flag two states:
+Skills installed by `condash skills install` are tracked in `<skills_path>/.condash-skills.json`. The pane uses this manifest to flag two states:
 
 - **shipped** — the on-disk content matches the version condash shipped. Cards display a `shipped` chip; the `SKILL` callout carries the same flag.
-- **shipped · diverged** — the file is shipped but locally edited. Cards display an amber `shipped · diverged` chip; the `SKILL` callout switches to amber. Opening the file shows a banner: *"Shipped by condash, but locally edited. Running `condash-cli skills install` will flag this divergence."*
+- **shipped · diverged** — the file is shipped but locally edited. Cards display an amber `shipped · diverged` chip; the `SKILL` callout switches to amber. Opening the file shows a banner: *"Shipped by condash, but locally edited. Running `condash skills install` will flag this divergence."*
 
 The flags are informational only — local edits are never blocked. They exist so a quick scan tells you where your customisations are and warns you before an upstream re-install reverts them.
 

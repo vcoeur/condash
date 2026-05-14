@@ -62,10 +62,7 @@ export async function runConfig(
   if (verb === 'get') {
     const key = args.positional[0];
     if (!key)
-      throw new CliError(
-        ExitCodes.USAGE,
-        'Usage: condash-cli config get <key> [--effective|--global]',
-      );
+      throw new CliError(ExitCodes.USAGE, 'Usage: condash config get <key> [--effective|--global]');
     const useEffective = consumeFlag(args, '--effective');
     const useGlobal = consumeFlag(args, '--global');
     if (useEffective && useGlobal) {
@@ -99,7 +96,7 @@ export async function runConfig(
     const key = args.positional[0];
     const value = args.positional[1];
     if (!key || value === undefined) {
-      throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli config set <key> <value> [--global]');
+      throw new CliError(ExitCodes.USAGE, 'Usage: condash config set <key> <value> [--global]');
     }
     const writeGlobal = consumeFlag(args, '--global');
     assertNoExtraFlags(args);

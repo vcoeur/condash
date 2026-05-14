@@ -1,5 +1,5 @@
 ---
-description: Audit the conception tree (knowledge index orphans + dangling links, cross-repo refs, branch ↔ worktree drift, LFS coverage, large binaries, stale verification stamps), batch the auto-fixable issues into a single confirm-then-apply round, and surface the rest as a punch-list. Wraps `condash-cli audit --include all --json` and `condash-cli knowledge verify --json`.
+description: Audit the conception tree (knowledge index orphans + dangling links, cross-repo refs, branch ↔ worktree drift, LFS coverage, large binaries, stale verification stamps), batch the auto-fixable issues into a single confirm-then-apply round, and surface the rest as a punch-list. Wraps `condash audit --include all --json` and `condash knowledge verify --json`.
 ---
 
 # /tidy — audit + batched fix the conception tree
@@ -13,7 +13,7 @@ description: Audit the conception tree (knowledge index orphans + dangling links
 - After a worktree-heavy week — branches that were merged or removed often leave stale items declaring `branch` with no on-disk worktree.
 - When the dashboard's audit indicator shows issues.
 
-For an at-a-glance read without the triage walk, `condash-cli audit` and `condash-cli knowledge verify` directly are faster.
+For an at-a-glance read without the triage walk, `condash audit` and `condash knowledge verify` directly are faster.
 
 ## Trigger
 
@@ -33,8 +33,8 @@ For an at-a-glance read without the triage walk, `condash-cli audit` and `condas
 Run both probes and concatenate their `issues[]` arrays:
 
 ```bash
-condash-cli audit --include all --json
-condash-cli knowledge verify --json
+condash audit --include all --json
+condash knowledge verify --json
 ```
 
 If the user passed `check=...`:
@@ -85,11 +85,11 @@ Found 7 fixable issues across 4 checks:
     + git lfs track projects/2026-04/.../diagram.png  (122 kB)
     + git lfs track projects/2026-04/.../slides.pdf   (310 kB)
   worktrees (1)
-    + condash-cli worktrees setup retire-feature-x
+    + condash worktrees setup retire-feature-x
   index (3)
     + remove dangling line in knowledge/topics/index.md:14
     + remove dangling line in knowledge/internal/index.md:8
-    + condash-cli knowledge index  (orphan body files)
+    + condash knowledge index  (orphan body files)
   cross-repo (1)
     + redirect ../conception/projects/2026-03/old-slug → ../conception/projects/2026-03/new-slug
 
@@ -111,9 +111,9 @@ For each confirmed auto-fix:
 | `fix.action`              | How to apply                                                                                  |
 |---------------------------|-----------------------------------------------------------------------------------------------|
 | `lfs_track_path`          | `git lfs track <fix.path>` from the conception root, then `git add .gitattributes`. Tell the user to commit + push so the migration is durable. |
-| `offer_worktree_setup`    | `condash-cli worktrees setup <fix.branch> --json`.                                            |
+| `offer_worktree_setup`    | `condash worktrees setup <fix.branch> --json`.                                            |
 | `remove_index_line`       | `Edit` the index.md file: delete the matching `[label](path)` line whose `path` equals `fix.path` and whose `label` equals `fix.label`. |
-| `run_knowledge_index`     | `condash-cli knowledge index --json` once at the end of the batch (deduplicate; running it once covers every per-orphan instance). |
+| `run_knowledge_index`     | `condash knowledge index --json` once at the end of the batch (deduplicate; running it once covers every per-orphan instance). |
 | (rename redirect)         | `Edit` the dangling-reference file: replace the old path with the candidate path. The candidate file lives in the conception tree; both relative and same-branch absolute references resolve through `path.resolve` against `dirname(<file>)`. |
 
 After every batch, re-run the matching probe with `--json` to confirm the issue is gone — then collapse the result into the final report.
@@ -124,7 +124,7 @@ Surface every issue with `fix.autoFix === false` as a numbered list, grouped by 
 
 - `binaries` — "consider migrating to LFS or removing". Decision is per-file: large fixtures legitimately stay; cached PDFs should usually go.
 - `cross-repo` (after the rename hunt found nothing) — print the file + line and the dangling reference. The user has to decide whether to update the link or drop the source paragraph.
-- `stale_verification` — print the path:line, the date, and the `**Verified:**` `where` field. Ask the user to either *re-confirm* (re-read the source, then `condash-cli knowledge stamp <path>` to bump the date) or *update the surrounding text*. Never bump the date on the user's behalf — that lies about freshness.
+- `stale_verification` — print the path:line, the date, and the `**Verified:**` `where` field. Ask the user to either *re-confirm* (re-read the source, then `condash knowledge stamp <path>` to bump the date) or *update the surrounding text*. Never bump the date on the user's behalf — that lies about freshness.
 - `install_git_lfs` (info from `lfs` check) — only emitted when `git-lfs` is missing on the host. One-line "install git-lfs to enable this check".
 - `create_knowledge_dir` — only emitted when `knowledge/` is missing. Could be intentional (early-stage conception). Surface and move on.
 - `unknown_check` / `investigate_crash` — bugs in condash itself; report the message verbatim and stop.

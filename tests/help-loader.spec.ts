@@ -37,13 +37,14 @@ test.describe('Help loader', () => {
     });
   }
 
-  test("cli body mentions 'condash-cli'", async () => {
+  test("cli body mentions the legacy 'condash-cli' alias", async () => {
     const booted = await bootApp();
     try {
       const body = await booted.window.evaluate(() => window.condash.readHelpDoc('cli'));
-      // Asserting on a string the live `docs/help/cli.md` body must contain
-      // makes sure the help loader is reading the *current* file, not a
-      // stale bundled copy.
+      // Asserts on a string the live `docs/help/cli.md` body must contain so
+      // the help loader is verified to be reading the *current* file, not a
+      // stale bundled copy. Picks the legacy-alias mention because it's the
+      // most stable token in the file post-unification (v2.24.0).
       expect(body).toMatch(/condash-cli/);
     } finally {
       await booted.cleanup();

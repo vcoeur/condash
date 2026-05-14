@@ -1,11 +1,11 @@
 /**
- * `condash-cli templates <list|install|status>`
+ * `condash templates <list|install|status>`
  *
  * Ships the body of a top-level heading (`## <region>`) inside selected files
  * instead of the whole file. Today this is just `CLAUDE.md`'s `## General`
  * section; the surrounding text — H1, intro paragraph, and the user-owned
  * `## Specifics` section that follows — is never touched. Same hash-based
- * safe-update model as `condash-cli skills install`:
+ * safe-update model as `condash skills install`:
  *
  *   - region matches manifest → unchanged → safe to push the new shipped region.
  *   - region differs from manifest → user edited → refuse without --force.
