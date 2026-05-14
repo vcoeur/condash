@@ -7,7 +7,7 @@ description: How to fork or wrap the shipped /projects, /knowledge, /tidy, /skil
 
 > **Audience.** Daily user and Developer.
 
-**When to read this.** You ran `condash-cli skills install` to drop the shipped skills into `<conception>/.claude/skills/`, used them for a week, and hit "I wish this also did X". This page shows how to add team-specific behaviour without losing access to upstream updates.
+**When to read this.** You ran `condash skills install` to drop the shipped skills into `<conception>/.claude/skills/`, used them for a week, and hit "I wish this also did X". This page shows how to add team-specific behaviour without losing access to upstream updates.
 
 The shipped skills are intentionally minimal — they cover the conception convention itself, not your team's workflow on top of it. Two extension paths exist; pick whichever matches your update cadence.
 
@@ -16,7 +16,7 @@ For the base reference (every action, every CLI verb each one wraps), see [the m
 ## Where the skills live
 
 ```bash
-# After running `condash-cli skills install`
+# After running `condash skills install`
 <conception>/.claude/skills/projects/
 <conception>/.claude/skills/knowledge/
 <conception>/.claude/skills/tidy/
@@ -26,11 +26,11 @@ For the base reference (every action, every CLI verb each one wraps), see [the m
 
 Each directory contains a `SKILL.md` (the entry point) plus per-action detail files (e.g. `create.md`, `close.md` for `/projects`).
 
-The manifest at `<conception>/.claude/skills/.condash-skills.json` tracks the shipped version + SHA256 per file. `condash-cli skills install` walks the diff one file at a time and asks for confirmation when local content differs — your customisations don't get clobbered silently.
+The manifest at `<conception>/.claude/skills/.condash-skills.json` tracks the shipped version + SHA256 per file. `condash skills install` walks the diff one file at a time and asks for confirmation when local content differs — your customisations don't get clobbered silently.
 
 ## Path 1 — fork the shipped files
 
-The simplest extension: edit the file in place. Add a section to `SKILL.md`, change a step in `create.md`, override a default flag in `close.md`. Next `condash-cli skills install` will detect the drift, show you the diff, and ask whether to overwrite — answer "no" to keep your local copy.
+The simplest extension: edit the file in place. Add a section to `SKILL.md`, change a step in `create.md`, override a default flag in `close.md`. Next `condash skills install` will detect the drift, show you the diff, and ask whether to overwrite — answer "no" to keep your local copy.
 
 This is the right path when:
 
@@ -78,10 +78,10 @@ The patterns below are realistic shapes — copy and adapt to your tree.
 **Wrapper sketch.** After `/projects create` returns:
 
 ```bash
-condash-cli worktrees setup <branch> --copy-env
+condash worktrees setup <branch> --copy-env
 ```
 
-Run it only when the new item has a `branch` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash-cli worktrees setup` itself is the canonical path — it knows where worktrees live (`<condash.json>.worktrees_path`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
+Run it only when the new item has a `branch` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash worktrees setup` itself is the canonical path — it knows where worktrees live (`<condash.json>.worktrees_path`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
 
 ### Deliverable generation on close
 

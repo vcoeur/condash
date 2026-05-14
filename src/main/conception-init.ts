@@ -55,7 +55,7 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
  * `*.example` files (`condash.json.example` → `condash.json`,
  * `.claude/settings.example.json` → `.claude/settings.json`). `CLAUDE.md`
  * is shipped under its real name with a `## General` heading wrapping the
- * shipped region, so `condash-cli templates install` can push updates into
+ * shipped region, so `condash templates install` can push updates into
  * it without touching the user-owned `## Specifics` section.
  * Existing files are preserved — the init never overwrites.
  *

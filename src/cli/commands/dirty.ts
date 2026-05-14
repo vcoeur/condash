@@ -32,7 +32,7 @@ export async function runDirty(
   if (verb === 'touch') {
     const tree = args.positional[0];
     if (tree !== 'projects' && tree !== 'knowledge') {
-      throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli dirty touch <projects|knowledge>');
+      throw new CliError(ExitCodes.USAGE, 'Usage: condash dirty touch <projects|knowledge>');
     }
     assertNoExtraFlags(args);
     await touchDirtyMarker(conceptionPath, tree);
@@ -43,10 +43,7 @@ export async function runDirty(
   if (verb === 'clear') {
     const which = args.positional[0];
     if (which !== 'projects' && which !== 'knowledge' && which !== 'all') {
-      throw new CliError(
-        ExitCodes.USAGE,
-        'Usage: condash-cli dirty clear <projects|knowledge|all>',
-      );
+      throw new CliError(ExitCodes.USAGE, 'Usage: condash dirty clear <projects|knowledge|all>');
     }
     assertNoExtraFlags(args);
     const targets = which === 'all' ? ['projects', 'knowledge'] : [which];

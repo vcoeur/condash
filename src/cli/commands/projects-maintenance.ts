@@ -155,7 +155,7 @@ export async function scanPromotionsCommand(
 ): Promise<void> {
   const slug = args.positional[0];
   if (!slug) {
-    throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli projects scan-promotions <slug>');
+    throw new CliError(ExitCodes.USAGE, 'Usage: condash projects scan-promotions <slug>');
   }
   assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);

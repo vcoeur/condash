@@ -256,7 +256,7 @@ export async function writeNote(
     // — same basename as the global per-machine `~/.config/condash/settings.json`,
     // so we disambiguate via the parent-directory check. The two legacy names at
     // the conception root (`condash.json`, `configuration.json`) are also handled
-    // here even though the writer no longer targets them — keeps `condash-cli
+    // here even though the writer no longer targets them — keeps `condash
     // config set` working against a legacy file the user hasn't migrated yet.
     const isConceptionConfig =
       isConceptionSettingsPath(path) ||

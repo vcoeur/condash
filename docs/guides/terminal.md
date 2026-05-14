@@ -181,7 +181,7 @@ Per-platform shell wrapping (so `terminal.run` strings reach the right shell) li
 
 ## Session logging
 
-Every terminal tab can be captured to disk for later review. Capture is **opt-in** (default off, since 2.24.0) for privacy — flip *Record terminal sessions to disk* in `Settings → Terminal → Logging` to start recording. When on, each pty spawn produces a rendered transcript at:
+Every terminal tab can be captured to disk for later review. Capture is **opt-in** (default off, since 2.25.0) for privacy — flip *Record terminal sessions to disk* in `Settings → Terminal → Logging` to start recording. When on, each pty spawn produces a rendered transcript at:
 
 ```
 <conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.txt

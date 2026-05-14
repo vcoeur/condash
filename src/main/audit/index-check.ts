@@ -34,7 +34,7 @@ export async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> 
         severity: 'warn',
         file: relative(conceptionPath, idx),
         line: null,
-        message: `Directory has no index.md — run condash-cli knowledge index`,
+        message: `Directory has no index.md — run condash knowledge index`,
         fix: { action: 'run_knowledge_index', autoFix: true },
       });
       continue;
@@ -90,7 +90,7 @@ export async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> 
           severity: 'warn',
           file: rel,
           line: null,
-          message: `Body file not referenced from ${relative(conceptionPath, d)}/index.md — run condash-cli knowledge index`,
+          message: `Body file not referenced from ${relative(conceptionPath, d)}/index.md — run condash knowledge index`,
           fix: { action: 'run_knowledge_index', autoFix: true, path: rel },
         });
       }

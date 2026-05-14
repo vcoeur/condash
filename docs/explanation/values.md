@@ -102,7 +102,7 @@ Practical consequences:
 
 - **No feature that requires the dashboard to be running** to make sense. Items can be created, edited, and closed entirely from the shell or from a Claude session — the dashboard catches up via the chokidar watcher.
 - **No feature that requires bespoke "AI integration".** condash doesn't talk to any LLM directly. The skills do, on the user's terms.
-- **The skill content is shipped from condash itself.** `condash-cli skills install` copies the canonical skill files into the user's tree. New skill verbs land in condash, the user re-runs `condash-cli skills install`, and they're available in Claude Code.
+- **The skill content is shipped from condash itself.** `condash skills install` copies the canonical skill files into the user's tree. New skill verbs land in condash, the user re-runs `condash skills install`, and they're available in Claude Code.
 
 ## How to use this page
 

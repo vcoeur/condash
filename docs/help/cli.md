@@ -1,21 +1,26 @@
 # CLI overview
 
-`condash-cli` is the command-line companion to the desktop dashboard. The
-.deb / AppImage / DMG / NSIS installers drop both binaries — `condash`
-opens the dashboard, `condash-cli` runs against the same conception tree
-from a terminal.
+`condash` is a single binary that runs as either the desktop dashboard or
+a command-line tool against the same conception tree. Invoking it with no
+arguments opens the dashboard; passing any other argument dispatches to
+the CLI.
 
 ```
-condash-cli <noun> <verb> [args] [--flags]
+condash <noun> <verb> [args] [--flags]
 ```
 
 ## Top-level
 
-| Invocation | What it does |
-|---|---|
-| `condash` | Launch the dashboard |
-| `condash-cli --help` | Top-level CLI help |
-| `condash-cli --version` | Print version |
+| Invocation                          | What it does                                        |
+|-------------------------------------|-----------------------------------------------------|
+| `condash`                           | Launch the dashboard.                               |
+| `condash gui [chromium-switch ...]` | Launch the dashboard with Chromium switches.        |
+| `condash --help`                    | Top-level CLI help.                                 |
+| `condash --version`                 | Print version.                                      |
+
+The legacy `condash-cli` binary still works as an alias for `condash`
+(CLI mode) and prints a one-line stderr deprecation note unless
+`--quiet` is set. It will be removed in v3.0.0.
 
 ## Nouns
 
@@ -23,7 +28,7 @@ condash-cli <noun> <verb> [args] [--flags]
 |---|---|
 | `projects` | `list`, `read`, `search`, `validate`, `status get/set`, `close` |
 | `knowledge` | `tree`, `verify`, `retrieve`, `stamp` |
-| `search` | `condash-cli search "<query>" [--scope all\|projects\|knowledge]` |
+| `search` | `condash search "<query>" [--scope all\|projects\|knowledge]` |
 | `repos` | `list [--include-worktrees]` |
 | `worktrees` | `list`, `setup <branch>`, `remove <branch>`, `check <branch>` |
 | `audit` | `--include lfs,binaries,cross-repo,worktrees,index` |
@@ -31,7 +36,7 @@ condash-cli <noun> <verb> [args] [--flags]
 | `skills` | `list`, `install`, `status` |
 | `templates` | `list`, `install [<path>...]`, `status` |
 | `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>` (`--global` / `--effective` on read verbs) |
-| `help` | `condash-cli help <noun>` |
+| `help` | `condash help <noun>` |
 
 ## Universal flags
 
@@ -47,19 +52,19 @@ condash-cli <noun> <verb> [args] [--flags]
 
 ```bash
 # What's currently active?
-condash-cli projects list --status now,review
+condash projects list --status now,review
 
 # Search both trees for a phrase.
-condash-cli search "session cookie"
+condash search "session cookie"
 
 # Resolve a slug, then edit the README.
-$EDITOR "$(condash-cli projects resolve my-feature)"/README.md
+$EDITOR "$(condash projects resolve my-feature)"/README.md
 
 # Validate every item.
-condash-cli projects validate --all
+condash projects validate --all
 
 # Pipe to jq.
-condash-cli projects list --json | jq '.data[] | select(.kind == "incident")'
+condash projects list --json | jq '.data[] | select(.kind == "incident")'
 ```
 
 ## Exit codes

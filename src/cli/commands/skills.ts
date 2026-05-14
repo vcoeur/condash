@@ -1,5 +1,5 @@
 /**
- * `condash-cli skills <list|install|status>`
+ * `condash skills <list|install|status>`
  *
  * Distributes the skills shipped under `conception-template/.claude/skills/`
  * into a target directory's `./.claude/skills/`. The reason this needs more

@@ -1,9 +1,11 @@
 import { app, BrowserWindow, net, protocol, shell } from 'electron';
-import { promises as fsp } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, promises as fsp } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { decideDispatch } from './dispatch';
 import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { setWatchedConception } from './watcher';
 import { disposeRepoWatchers } from './repo-watchers';
@@ -19,49 +21,63 @@ import { registerTerminalIpc } from './ipc/terminal';
 import { registerLogsIpc } from './ipc/logs';
 import { registerTreesIpc } from './ipc/trees';
 
-// Hard flip from v2.14.0: CLI nouns belong on `condash-cli`, not `condash`.
-// If a user types a CLI noun on `condash`, error before any GUI init so the
-// migration is loud, not silent. The packaged `condash-cli` launcher
-// (build/after-pack.cjs) runs the same Electron binary in plain-Node mode
-// (ELECTRON_RUN_AS_NODE=1) against the bundled `dist-cli/condash.cjs`, so
-// it never reaches this file.
-const CLI_NOUNS: ReadonlySet<string> = new Set([
-  'projects',
-  'knowledge',
-  'search',
-  'repos',
-  'worktrees',
-  'audit',
-  'dirty',
-  'skills',
-  'templates',
-  'config',
-  'help',
-]);
-function detectCliMisuse(): string | null {
-  for (let i = 1; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-    if (!arg) continue;
-    if (arg === '--help' || arg === '-h' || arg === '--version' || arg === '-v') {
-      return arg;
+// Unified-binary dispatch (v2.24.0). The Linux bash wrapper at
+// build/after-pack.cjs already routes CLI invocations to plain-Node mode
+// before this file loads, so on Linux we typically never see CLI args
+// here. macOS and Windows have no equivalent wrapper around the GUI
+// binary; for those, this block re-execs the same binary in plain-Node
+// mode against the packaged CLI bundle. Pattern: rule C from the
+// design note `notes/02-unified-binary-design.md` (no args → GUI;
+// `gui [args]` → GUI with `gui` stripped; anything else → CLI).
+//
+// In packaged Electron, `process.argv` is `[binaryPath, ...userArgs]` —
+// Electron's own entry-point arg is not present. In dev / Playwright,
+// the binary is invoked with an explicit app path (`electron .`) so
+// `process.argv[1]` is `'.'` (or a fixture path); Electron exposes that
+// as `process.defaultApp === true`. We must skip dispatch in that case,
+// otherwise every dev / test boot is interpreted as a CLI invocation.
+const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
+if (!electronProcess.defaultApp) {
+  const dispatch = decideDispatch(process.argv);
+  if (dispatch.kind === 'gui') {
+    process.argv.length = 0;
+    process.argv.push(...dispatch.argv);
+  } else {
+    const cliBundle = resolveCliBundlePath();
+    if (!cliBundle) {
+      process.stderr.write(
+        'condash: CLI bundle not found — packaged install expected.\n' +
+          'For development use `npm run build && node dist-cli/condash.cjs <args>`.\n',
+      );
+      process.exit(1);
     }
-    if (arg.startsWith('-')) continue;
-    return CLI_NOUNS.has(arg) ? arg : null;
+    const result = spawnSync(process.execPath, [cliBundle, ...dispatch.cliArgs], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: 'inherit',
+    });
+    process.exit(result.status ?? 1);
+  }
+}
+
+function resolveCliBundlePath(): string | null {
+  // dist-electron/main/index.js → walk up to find the unpacked CLI bundle.
+  // app.getAppPath() isn't usable before app.whenReady(), so the resolver
+  // walks a few candidate layouts manually.
+  const candidates: string[] = [];
+  let cursor = dirname(__filename);
+  for (let i = 0; i < 6; i++) {
+    candidates.push(join(cursor, 'app.asar.unpacked', 'dist-cli', 'condash.cjs'));
+    candidates.push(
+      join(cursor, '..', 'resources', 'app.asar.unpacked', 'dist-cli', 'condash.cjs'),
+    );
+    candidates.push(join(cursor, 'dist-cli', 'condash.cjs'));
+    cursor = dirname(cursor);
+  }
+  for (const candidate of candidates) {
+    const absolute = resolve(candidate);
+    if (existsSync(absolute)) return absolute;
   }
   return null;
-}
-const cliMisuse = detectCliMisuse();
-if (cliMisuse !== null) {
-  const hint =
-    cliMisuse === '--help' || cliMisuse === '-h'
-      ? 'condash-cli help'
-      : cliMisuse === '--version' || cliMisuse === '-v'
-        ? 'condash-cli --version'
-        : `condash-cli ${cliMisuse}`;
-  process.stderr.write(
-    `condash: '${cliMisuse}' is a CLI command, not a GUI option.\n` + `Use \`${hint}\` instead.\n`,
-  );
-  process.exit(1);
 }
 
 // Wayland fractional-scaling fix.

@@ -47,11 +47,11 @@ base: main
 …
 ```
 
-`condash-cli projects create` emits this shape from v2.16.0 onward. To migrate existing bold-prose READMEs in the tree, run:
+`condash projects create` emits this shape from v2.16.0 onward. To migrate existing bold-prose READMEs in the tree, run:
 
 ```bash
-condash-cli projects rewrite-headers --dry-run   # preview
-condash-cli projects rewrite-headers              # write
+condash projects rewrite-headers --dry-run   # preview
+condash projects rewrite-headers              # write
 ```
 
 The verb is idempotent (already-YAML files are no-ops) and skips any README whose body has unexpected content between the meta block and the first `##` heading — re-run after hand-editing those files.

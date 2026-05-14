@@ -67,7 +67,7 @@ export async function runProjects(
 function printSubHelp(): void {
   process.stdout.write(
     [
-      'condash-cli projects <verb> [args]',
+      'condash projects <verb> [args]',
       '',
       'Verbs:',
       '  list             List projects (filters: --status --kind --apps --branch).',
