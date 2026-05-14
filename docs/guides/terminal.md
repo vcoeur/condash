@@ -181,14 +181,16 @@ Per-platform shell wrapping (so `terminal.run` strings reach the right shell) li
 
 ## Session logging
 
-Every terminal tab can be captured to disk for later review. Capture is **on by default** and writes one rendered transcript per pty spawn to:
+Every terminal tab can be captured to disk for later review. Capture is **opt-in** (default off, since 2.25.0) for privacy — flip *Record terminal sessions to disk* in `Settings → Terminal → Logging` to start recording. When on, each pty spawn produces a rendered transcript at:
 
 ```
 <conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.txt
 <conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<session-id>.meta.json
 ```
 
-The `.txt` body matches exactly what the live terminal pane's **Save buffer** button produces — pty bytes piped through a headless xterm + `SerializeAddon`, atomically rewritten every 5 seconds. The sidecar `.meta.json` carries the spawn context (cmd, argv, cwd, repo) plus exit metadata once the session ends.
+The `.txt` body matches exactly what the live terminal pane's **Save buffer** button produces — pty bytes piped through a headless xterm + `SerializeAddon`, atomically rewritten every 5 seconds. The sidecar `.meta.json` carries the spawn context (cmd, argv, cwd, repo) plus exit metadata once the session ends. Older day-directories are compressed automatically by the janitor (`*.txt → *.txt.gz`, hard-coded one-day buffer); the viewer reads either form transparently.
+
+Toggling logging off does **not** delete past transcripts — the Logs pane keeps browsing them and the janitor's age/cap eviction stays in charge of cleanup.
 
 The whole `.condash/` directory is gitignored by default — the auto-migrator appends a `.condash/` line to your `.gitignore` the first time it lifts a legacy `condash.json` into the new layout, so logs (and per-host settings) stay per-host with no commit-leak risk.
 
@@ -196,11 +198,15 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 
 `View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface:
 
-- **Day picker** at the top — newest day-directory first.
-- **Session picker** — one entry per pty spawn, with the spawn time, repo (when launched via Run), short command, size on disk, and exit code if present.
-- **Transcript body** — the rendered terminal buffer, styled via `ansi_up` (SGR colour escapes → inline-styled spans). Non-SGR escapes (mode-set, cursor positioning, OSC) are silently dropped. The result reads like a regular terminal screen, not a stream of raw escape sequences.
-- **Search box** does a case-insensitive substring match against the rendered text.
+- **Day picker** at the top — newest day-directory first, custom dropdown styling matching the rest of the toolbar.
+- **Session picker** — one entry per pty spawn, with the spawn time, repo (when launched via Run), short command, size on disk, and exit code if present. Defaults to the *most recent* session of the most recent day on first open.
+- **Transcript body** — the rendered terminal buffer, styled via `ansi_up` against the same xterm theme palette the live terminal pane uses. Non-SGR escapes (mode-set, cursor positioning, OSC) are silently dropped. Lines soft-wrap at the pane edge (no horizontal scrollbar); wrapped logical lines get a `↪` continuation glyph in the left gutter.
+- **Search box** — case-insensitive substring against the rendered text. Matches are highlighted in place (no filter mode); the n/N counter plus the ↑/↓ buttons cycle through hits. `Enter` jumps forward, `Shift+Enter` backward.
 - **Delete session** wipes one session and its sidecar; **Delete day** (via session selection + confirm) wipes the whole day-directory.
+
+### Searching logs across sessions
+
+Logs are a fifth source of the global search modal (`Cmd+K`), alongside projects, knowledge, resources, and skills. A log hit's title shows the session's start time (`YYYY-MM-DD HH:MM:SS`); activating it switches to the Logs pane and selects that session. Compressed (`.txt.gz`) sessions are decompressed inline by the search backend — the same `expandCursorForward` pre-pass the renderer uses runs before substring matching, so a search for "Baked for" finds the same string the rendered view shows.
 
 #### What's captured
 
@@ -216,7 +222,7 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
 {
   "terminal": {
     "logging": {
-      "enabled": true,
+      "enabled": false,
       "retentionDays": 14,
       "maxDirMb": 500,
       "scrollback": 10000
@@ -227,7 +233,7 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
 
 See the [config reference](../reference/config.md#terminal-logging) for per-key defaults and effects.
 
-A janitor runs at app start and every 24 hours: it deletes day-directories older than `retentionDays`, then evicts the oldest day-directory while total size is over `maxDirMb`. There is no per-file rotation — `scrollback` is the only size knob.
+A janitor runs at app start and every 24 hours: it deletes day-directories older than `retentionDays`, gzips any uncompressed `.txt` whose day-directory is at least one day old (today's dir is always skipped to avoid racing with active writers), then evicts the oldest day-directory while total size is over `maxDirMb`. There is no per-file rotation — `scrollback` is the only size knob.
 
 #### Migration from `.jsonl`
 

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { promises as fs } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import type { TermLogSessionMeta, TermLogSessionRead } from '../../shared/types';
 import { sessionMetaPath } from '../terminal-logger';
@@ -9,8 +10,10 @@ import { readSettings } from '../settings';
 
 /**
  * IPC surface for the Logs pane: list available day-directories under
- * `<conception>/.condash/logs/`, list per-session `.txt` files for one
- * day, and read a chosen session's rendered text + sidecar metadata.
+ * `<conception>/.condash/logs/`, list per-session `.txt` (or `.txt.gz`)
+ * files for one day, and read a chosen session's rendered text + sidecar
+ * metadata. Compressed sessions are transparently gunzipped — callers
+ * never need to know whether a file is `.txt` or `.txt.gz`.
  *
  * Every `path` argument is bounded inside the conception's logs root via
  * `requirePathUnder` — defence-in-depth against a compromised renderer
@@ -36,6 +39,12 @@ async function activeConceptionPath(): Promise<string | null> {
   return settings.lastConceptionPath ?? null;
 }
 
+/** Both `.txt` (live / today) and `.txt.gz` (compressed by janitor)
+ * count as a session for the picker. */
+function isSessionFile(name: string): boolean {
+  return name.endsWith('.txt') || name.endsWith('.txt.gz');
+}
+
 async function listDaysForActiveConception(): Promise<DayEntry[]> {
   const conception = await activeConceptionPath();
   if (!conception) return [];
@@ -52,10 +61,11 @@ async function listDaysForActiveConception(): Promise<DayEntry[]> {
       const days = await readDirSafe(monthPath);
       for (const d of days) {
         if (!/^\d{2}$/.test(d)) continue;
-        // Skip days that contain only legacy `.jsonl` files (no `.txt`).
+        // Skip days that contain only legacy `.jsonl` files (no `.txt`
+        // or `.txt.gz`).
         const dayPath = join(monthPath, d);
         const dayFiles = await readDirSafe(dayPath);
-        if (!dayFiles.some((f) => f.endsWith('.txt'))) continue;
+        if (!dayFiles.some(isSessionFile)) continue;
         out.push({ day: `${y}-${m}-${d}`, path: dayPath });
       }
     }
@@ -77,7 +87,7 @@ async function listSessionsForDay(day: string): Promise<TermLogSessionMeta[]> {
   const files = await readDirSafe(dayPath);
   const metas: TermLogSessionMeta[] = [];
   for (const name of files) {
-    if (!name.endsWith('.txt')) continue;
+    if (!isSessionFile(name)) continue;
     const fullPath = join(dayPath, name);
     const meta = await readSessionMetaSummary(fullPath, day, name);
     if (meta) metas.push(meta);
@@ -100,8 +110,8 @@ async function readSessionMetaSummary(
   }
   if (!stat.isFile()) return null;
 
-  // Parse `HHMMSS-<sid>.txt`.
-  const m = /^(\d{6})-(.+?)\.txt$/.exec(fileName);
+  // Parse `HHMMSS-<sid>.txt` or `HHMMSS-<sid>.txt.gz`.
+  const m = /^(\d{6})-(.+?)\.txt(?:\.gz)?$/.exec(fileName);
   if (!m) return null;
   const [, hms, sid] = m;
   const time = `${hms.slice(0, 2)}:${hms.slice(2, 4)}:${hms.slice(4, 6)}`;
@@ -150,14 +160,19 @@ async function readSession(filePath: string): Promise<TermLogSessionRead> {
   const conception = await activeConceptionPath();
   if (!conception) return { text: '', meta: null };
   await requirePathUnder(filePath, condashLogsRoot(conception));
-  if (!filePath.endsWith('.txt')) {
-    throw new Error('logsReadSession: only .txt files');
+  if (!filePath.endsWith('.txt') && !filePath.endsWith('.txt.gz')) {
+    throw new Error('logsReadSession: only .txt / .txt.gz files');
   }
   let text = '';
   try {
-    text = await fs.readFile(filePath, 'utf8');
+    if (filePath.endsWith('.txt.gz')) {
+      const buf = await fs.readFile(filePath);
+      text = gunzipSync(buf).toString('utf8');
+    } else {
+      text = await fs.readFile(filePath, 'utf8');
+    }
   } catch {
-    /* missing file → empty body */
+    /* missing file or corrupt gzip → empty body */
   }
   // Derive the on-disk session meta from the same path-based machinery
   // the list flow uses, then return both halves.
@@ -168,8 +183,8 @@ async function readSession(filePath: string): Promise<TermLogSessionRead> {
 }
 
 function deriveDay(filePath: string): string | null {
-  // <root>/YYYY/MM/DD/HHMMSS-<sid>.txt
-  const m = /\/(\d{4})\/(\d{2})\/(\d{2})\/\d{6}-[^/]+\.txt$/.exec(filePath);
+  // <root>/YYYY/MM/DD/HHMMSS-<sid>.txt(.gz)
+  const m = /\/(\d{4})\/(\d{2})\/(\d{2})\/\d{6}-[^/]+\.txt(?:\.gz)?$/.exec(filePath);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
@@ -177,12 +192,18 @@ async function deleteSession(filePath: string): Promise<{ deleted: boolean }> {
   const conception = await activeConceptionPath();
   if (!conception) return { deleted: false };
   await requirePathUnder(filePath, condashLogsRoot(conception));
-  if (!filePath.endsWith('.txt')) {
-    throw new Error('logsDeleteSession: only .txt files');
+  if (!filePath.endsWith('.txt') && !filePath.endsWith('.txt.gz')) {
+    throw new Error('logsDeleteSession: only .txt / .txt.gz files');
   }
   try {
     await fs.rm(filePath, { force: true });
-    // Sweep the sidecar too — missing-OK.
+    // Sweep both extensions in case the picker still holds a path to
+    // the uncompressed sibling — missing-OK either way.
+    if (filePath.endsWith('.txt.gz')) {
+      await fs.rm(filePath.replace(/\.gz$/, ''), { force: true });
+    } else {
+      await fs.rm(`${filePath}.gz`, { force: true });
+    }
     await fs.rm(sessionMetaPath(filePath), { force: true });
     return { deleted: true };
   } catch {

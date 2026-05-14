@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AnsiUp } from 'ansi_up';
-import { expandCursorForward } from './logs-render';
+import { expandCursorForward } from './expand-cursor-forward';
 
 const ESC = '\x1b';
 

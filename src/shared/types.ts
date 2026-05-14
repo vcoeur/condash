@@ -141,6 +141,17 @@ export interface TermLogSessionRead {
   meta: TermLogSessionMeta | null;
 }
 
+/** External "open this log" request — posted by the global-search modal
+ * when the user activates a log hit. The Logs pane reacts by swapping
+ * day + session to point at `path`. The hit offset is informational
+ * (future scroll-to-line); the search box is left as the user typed. */
+export interface LogsOpenRequest {
+  path: string;
+  /** Identity nonce so the same path activated twice in a row still
+   * fires the reaction effect. */
+  nonce: number;
+}
+
 /** Right-slot working surface — picks which of Code / Knowledge / Resources /
  * Skills is shown in the top-band right pane, or `null` to leave it hidden.
  * All four are mutually exclusive: showing one swaps the others out. */
@@ -405,11 +416,13 @@ export interface TerminalPrefs {
 }
 
 /** Configuration for the per-session terminal log writer. Defaults are
- * applied by the writer when fields are absent (`enabled: true`,
+ * applied by the writer when fields are absent (`enabled: false`,
  * `scrollback: 10000`, `retentionDays: 14`, `maxDirMb: 500`) — the
  * schema's defaults track the same values. */
 export interface TerminalLoggingPrefs {
-  /** Toggle capture entirely. Default: true. */
+  /** Toggle capture entirely. Default: false (opt-in for privacy). The
+   * Logs pane stays usable for browsing existing transcripts even when
+   * disabled — flipping the toggle off does not sweep prior logs. */
   enabled?: boolean;
   /** Days of log history retained by the janitor. Older day-directories
    * are evicted on next janitor run. Default: 14. */
@@ -511,7 +524,7 @@ export interface SearchHit {
   title: string;
   /** Where the file lives. Drives the result-grouping in the search UI and
    * the per-source facet pills in the search modal. */
-  source: 'project' | 'knowledge' | 'resources' | 'skills';
+  source: 'project' | 'knowledge' | 'resources' | 'skills' | 'logs';
   /** Relevance score — higher is better. */
   score: number;
   /** Total occurrence count across all query terms. */
@@ -546,6 +559,7 @@ export type TreeEvent =
   | { kind: 'knowledge'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'resources'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'skills'; op: 'add' | 'change' | 'unlink'; path: string }
+  | { kind: 'logs'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'config'; path: string }
   | { kind: 'unknown' };
 
