@@ -330,6 +330,11 @@ export const DEFAULT_SKILLS_PATH = '.claude/skills';
  *   `terminal.launchers` block — the array wins, the legacy scalar is
  *   discarded. The legacy key is removed in both cases so the strict
  *   schema accepts the result and the next write drops it from disk.
+ * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
+ *   dropped in v2.23.0 when the rotation machinery and ANSI stripping
+ *   were retired. Strip silently so existing `.condash/settings.json`
+ *   files keep saving (otherwise every write fails with `Unrecognised
+ *   key`, which also prevents the user from flipping `enabled: true`).
  */
 export function migrateRawSettings(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== 'object') return parsed;
@@ -345,6 +350,13 @@ export function migrateRawSettings(parsed: unknown): unknown {
     delete term.launcher_command;
   } else if ('launcher_command' in term) {
     delete term.launcher_command;
+  }
+  const logging = term.logging;
+  if (logging && typeof logging === 'object') {
+    const log = logging as Record<string, unknown>;
+    for (const droppedKey of ['maxFileMb', 'ansiPolicy']) {
+      if (droppedKey in log) delete log[droppedKey];
+    }
   }
   return parsed;
 }

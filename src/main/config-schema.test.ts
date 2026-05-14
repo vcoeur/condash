@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { configSchema } from './config-schema';
+import {
+  configSchema,
+  migrateRawSettings,
+  validateAndCanonicaliseConceptionConfig,
+} from './config-schema';
 
 describe('configSchema repoEntry', () => {
   it('accepts the new env / install / pinned_branch fields', () => {
@@ -124,5 +128,34 @@ describe('configSchema resources_path / skills_path', () => {
   it('rejects a deeper path containing a ".." segment', () => {
     const result = configSchema.safeParse({ skills_path: 'a/../b' });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('migrateRawSettings — dropped terminal.logging fields', () => {
+  it('strips a stale `maxFileMb` left over from pre-v2.23.0 settings', () => {
+    const migrated = migrateRawSettings({
+      terminal: { logging: { retentionDays: 28, maxDirMb: 10000, maxFileMb: 5 } },
+    }) as { terminal: { logging: Record<string, unknown> } };
+    expect(migrated.terminal.logging).toEqual({ retentionDays: 28, maxDirMb: 10000 });
+    expect('maxFileMb' in migrated.terminal.logging).toBe(false);
+  });
+
+  it('strips a stale `ansiPolicy` left over from pre-v2.23.0 settings', () => {
+    const migrated = migrateRawSettings({
+      terminal: { logging: { ansiPolicy: 'stripped' } },
+    }) as { terminal: { logging: Record<string, unknown> } };
+    expect(migrated.terminal.logging).toEqual({});
+  });
+
+  it('lets `validateAndCanonicaliseConceptionConfig` re-serialise a legacy maxFileMb body', () => {
+    // Without the migration this would throw `terminal.logging.maxFileMb —
+    // Unrecognised key` and block every Settings-modal save on conceptions
+    // upgraded from v2.22 or earlier.
+    const json = JSON.stringify({
+      terminal: { logging: { retentionDays: 28, maxDirMb: 10000, maxFileMb: 5 } },
+    });
+    const canon = validateAndCanonicaliseConceptionConfig(json);
+    const parsed = JSON.parse(canon);
+    expect(parsed.terminal.logging).toEqual({ retentionDays: 28, maxDirMb: 10000 });
   });
 });

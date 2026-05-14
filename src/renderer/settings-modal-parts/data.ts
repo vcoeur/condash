@@ -1,5 +1,6 @@
 import type {
   CardMinWidthPrefs,
+  LauncherConfig,
   LauncherSymbol,
   Platform,
   TerminalPrefs,
@@ -346,4 +347,50 @@ export function moveItem<T>(arr: T[], index: number, delta: -1 | 1): T[] {
   const [removed] = next.splice(index, 1);
   next.splice(target, 0, removed);
   return next;
+}
+
+/**
+ * Pure-function variant of the Settings modal's launcher patch. Given the
+ * current `launchers` array (possibly undefined), apply one field edit
+ * keyed by symbol and return the next array (or `undefined` if the result
+ * is empty so the caller can omit `launchers` entirely from the saved
+ * config).
+ *
+ * Drop rule: an entry whose `command` is empty after the edit is removed.
+ * A title without a command renders no button on the terminal tab strip
+ * (`terminal-pane/column.tsx` filters by non-empty command), and the
+ * strict `launcherSchema` rejects `{ symbol, title }` with `expected
+ * string, received undefined` because `pruneEmpty` strips the empty
+ * `command` field on save.
+ */
+export function applyLauncherEdit(
+  prevLaunchers: LauncherConfig[] | undefined,
+  symbol: LauncherSymbol,
+  field: 'command' | 'title',
+  value: string,
+): LauncherConfig[] | undefined {
+  const trimmed = value.trim();
+  const existing: LauncherConfig[] = (prevLaunchers ?? []).map((l) => ({ ...l }));
+  const idx = existing.findIndex((l) => l.symbol === symbol);
+  const current = idx >= 0 ? existing[idx] : { symbol, command: '', title: undefined };
+  const nextEntry: LauncherConfig = {
+    symbol,
+    command: field === 'command' ? trimmed : current.command,
+    title: field === 'title' ? trimmed || undefined : current.title,
+  };
+  const dropEntry = !nextEntry.command;
+  let nextList: LauncherConfig[];
+  if (idx >= 0) {
+    if (dropEntry) {
+      nextList = existing.filter((_, i) => i !== idx);
+    } else {
+      existing[idx] = nextEntry;
+      nextList = existing;
+    }
+  } else if (dropEntry) {
+    nextList = existing;
+  } else {
+    nextList = [...existing, nextEntry];
+  }
+  return nextList.length > 0 ? nextList : undefined;
 }
