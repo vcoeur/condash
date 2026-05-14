@@ -60,19 +60,12 @@ describe('compileSkillspec', () => {
       }),
       'claude',
     );
-    expect(Object.keys(out.files).sort()).toEqual([
-      'SKILL.md',
-      'close.md',
-      'references/cmd.md',
-    ]);
+    expect(Object.keys(out.files).sort()).toEqual(['SKILL.md', 'close.md', 'references/cmd.md']);
     expect(out.files['close.md'].toString('utf8')).toBe('close action\n');
   });
 
   it('strips leading blank lines from body and ensures trailing newline', () => {
-    const out = compileSkillspec(
-      spec({ body: '\n\n# Heading\n\nText' }),
-      'claude',
-    );
+    const out = compileSkillspec(spec({ body: '\n\n# Heading\n\nText' }), 'claude');
     const text = out.files['SKILL.md'].toString('utf8');
     expect(text).toBe('---\ndescription: demo skill\n---\n\n# Heading\n\nText\n');
   });

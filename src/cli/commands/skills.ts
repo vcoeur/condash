@@ -257,9 +257,7 @@ async function installSkills(args: ParsedArgs, ctx: OutputContext): Promise<void
   // straight from the shipped tree (the on-disk source may not have been
   // written) so the report still reflects what would be emitted.
   for (const skill of compileEligible) {
-    const parsed = await parseSkillspec(
-      dryRun ? skill.sourceDir : join(sourceRoot, skill.name),
-    );
+    const parsed = await parseSkillspec(dryRun ? skill.sourceDir : join(sourceRoot, skill.name));
     for (const target of COMPILE_TARGETS) {
       const compiled = compileSkillspec(parsed, target);
       const outputRoot = join(dest, TARGET_RELPATHS[target], skill.name);

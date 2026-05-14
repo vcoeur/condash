@@ -23,7 +23,7 @@ afterEach(async () => {
 });
 
 function ctx(): OutputContext {
-  return { format: 'json', stdout: () => undefined, stderr: () => undefined };
+  return { json: true, ndjson: false, quiet: true, noColor: true };
 }
 
 async function install(extra: { force?: boolean } = {}): Promise<void> {
@@ -31,6 +31,8 @@ async function install(extra: { force?: boolean } = {}): Promise<void> {
   await runSkills(
     'install',
     {
+      noun: 'skills',
+      verb: 'install',
       positional: [],
       flags: { dest, ...(extra.force ? { force: true } : {}) },
     },
@@ -140,5 +142,4 @@ describe('condash skills install (skillspec mode)', () => {
     expect(manifest!.templates).toBeDefined();
     expect(manifest!.skills.pr.source['spec.yaml']).toBeTruthy();
   });
-
 });
