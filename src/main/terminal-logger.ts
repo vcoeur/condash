@@ -1,30 +1,37 @@
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Terminal } from '@xterm/headless';
-import { SerializeAddon } from '@xterm/addon-serialize';
 import type { TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 
 /**
  * Single-session writer. One instance per pty spawn; lives from `open()`
- * to `close()`. Owns a headless xterm `Terminal` + `SerializeAddon` and
- * mirrors the rendered buffer into `<conception>/.condash/logs/YYYY/MM/DD/`:
+ * to `close()`. Owns a headless xterm `Terminal` and mirrors the
+ * rendered buffer into a **single file**:
  *
- *   - `HHMMSS-<sid>.txt`       — the rendered terminal buffer at the
- *                                most recent flush. Format matches the
- *                                live pane's Save-buffer output (xterm
- *                                serialize: text + SGR codes, mode-set
- *                                escapes for buffer state). The Logs pane
- *                                renders this via ansi_up; external tools
- *                                can `cat` it directly.
- *   - `HHMMSS-<sid>.meta.json` — sidecar with `{ sid, side, repo?, cwd,
- *                                cmd, argv, started, exitCode?, finished? }`.
- *                                Written on `spawn`, rewritten on `exit`.
+ *   `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`
+ *
+ * No sidecar. Metadata travels inside the `.txt` as two `# condash: {…}`
+ * JSON lines — a header line at the top (always present) and a footer
+ * line at the bottom (only after `exit()`). The Logs pane and global
+ * search both parse these lines back out; `cat`ing the file shows the
+ * metadata too without any extra format.
+ *
+ * On-disk shape:
+ *
+ *   # condash: {"sid":"…","side":"…","cmd":"npm","argv":["run","dev"],
+ *               "repo":"condash","cwd":"/home/…","started":"…Z"}
+ *   <blank line>
+ *   <rendered xterm buffer — plain UTF-8 text, one row per `\n`,
+ *    trailing blanks per row trimmed; no SGR, no CSI, no cursor-forward>
+ *   <blank line>            ← only present after exit()
+ *   # condash: {"finished":"…Z","exitCode":0}   ← only after exit()
  *
  * Bytes flow: pty `output(data)` → `term.write(data)`. A debounced timer
- * (default 5 s) serialises the buffer and atomically renames a temp file
- * onto the `.txt` path. `exit()` and `close()` force an immediate flush.
+ * (default 5 s) re-renders the buffer + header (+ footer if exited) and
+ * atomically renames a temp file onto the `.txt` path. `exit()` and
+ * `close()` force an immediate flush.
  *
  * `input(data)` is intentionally a no-op — the pty echoes typed bytes
  * back through stdout, so feeding `in` into the headless xterm would
@@ -32,9 +39,13 @@ import { condashLogsRoot } from './condash-dir';
  * than `~/.bash_history`. Privacy win, no semantic loss for the logs
  * viewer use case.
  *
+ * Colour / bold / underline are lost. The Logs pane is a monochrome
+ * text viewer; if you want full ANSI fidelity, use the live terminal's
+ * Save-buffer button instead.
+ *
  * Buffer is bounded by xterm scrollback (default 10000 lines × 200 cols
- * ≈ 2 MB max). No rotation — the file size is self-capped by the same
- * mechanism that bounds the live terminal pane.
+ * ≈ 2 MB max plain text). No rotation — the file size is self-capped by
+ * the same mechanism that bounds the live terminal pane.
  *
  * All filesystem errors are swallowed locally and logged to stderr — the
  * pty pipeline must never block on a misbehaving log writer. Pause /
@@ -48,10 +59,8 @@ export interface SessionContext {
   spawn: { cmd: string; argv: string[] };
 }
 
-/** Sidecar `.meta.json` shape. Read by the Logs pane to populate the
- * session header (cmd / exit / repo) and the session-list metadata
- * (size, exit, started). */
-export interface SessionMeta {
+/** Header-line JSON shape, written on every flush. */
+interface HeaderMeta {
   sid: string;
   side: TermSide;
   repo?: string;
@@ -59,16 +68,19 @@ export interface SessionMeta {
   cmd: string;
   argv: string[];
   started: string;
-  exitCode?: number;
-  finished?: string;
+}
+
+/** Footer-line JSON shape, appended on `exit()`. */
+interface FooterMeta {
+  finished: string;
+  exitCode: number;
 }
 
 /** Default opt-OUT: a fresh install records nothing until the user flips
- * the "Record terminal sessions to disk" checkbox in settings. Past
- * default was `true`; flipped 2026-05-14. The pref is read once at
- * SessionLogger construction time, so a user flipping the toggle off
- * while a session is already running does NOT mid-session pause it — the
- * next spawn picks up the new value. */
+ * the "Record terminal sessions to disk" checkbox in settings. The pref
+ * is read once at SessionLogger construction time, so a user flipping
+ * the toggle off while a session is already running does NOT mid-session
+ * pause it — the next spawn picks up the new value. */
 const DEFAULT_PREFS: Required<TerminalLoggingPrefs> = {
   enabled: false,
   retentionDays: 14,
@@ -87,6 +99,11 @@ const DEFAULT_FLUSH_MS = 5000;
 const COLS = 200;
 const ROWS = 50;
 
+/** Sentinel prefix for the metadata header / footer lines inside a
+ * `.txt`. The `# ` mimics shell-comment syntax — readable in `cat`,
+ * grep-friendly. */
+export const META_LINE_PREFIX = '# condash: ';
+
 /** Resolve the per-session log file path inside `conceptionPath`. Returns
  * the canonical `.txt` path, no side effects. */
 export function sessionLogPath(
@@ -101,12 +118,6 @@ export function sessionLogPath(
   const mi = String(when.getMinutes()).padStart(2, '0');
   const ss = String(when.getSeconds()).padStart(2, '0');
   return join(condashLogsRoot(conceptionPath), yyyy, mm, dd, `${hh}${mi}${ss}-${sid}.txt`);
-}
-
-/** Sidecar metadata path next to the `.txt` (or `.txt.gz`). Sidecar
- * files are not compressed — the janitor only gzips the body. */
-export function sessionMetaPath(txtPath: string): string {
-  return txtPath.replace(/\.txt(?:\.gz)?$/, '.meta.json');
 }
 
 /** Apply `TerminalLoggingPrefs` patch on top of the defaults. Internal —
@@ -124,13 +135,14 @@ export function resolveLoggingPrefs(patch?: TerminalLoggingPrefs): Required<Term
 export class SessionLogger {
   private prefs: Required<TerminalLoggingPrefs>;
   private term: Terminal;
-  private serializeAddon: SerializeAddon;
   private flushTimer: NodeJS.Timeout | null = null;
+  /** Tail of the serialised flush chain. Each new flush appends; close
+   * awaits the tail so all writes drain before the term is disposed. */
+  private flushChain: Promise<void> = Promise.resolve();
   private readonly startedTs: string;
   private exitCode: number | undefined;
   private finishedTs: string | undefined;
   private readonly txtPath: string;
-  private readonly metaPath: string;
   private closed = false;
   private paused = false;
   private dirty = false;
@@ -147,15 +159,12 @@ export class SessionLogger {
     this.flushMs = flushMs;
     this.startedTs = new Date().toISOString();
     this.txtPath = sessionLogPath(conceptionPath, ctx.sid, new Date());
-    this.metaPath = sessionMetaPath(this.txtPath);
     this.term = new Terminal({
       cols: COLS,
       rows: ROWS,
       scrollback: this.prefs.scrollback,
       allowProposedApi: true,
     });
-    this.serializeAddon = new SerializeAddon();
-    this.term.loadAddon(this.serializeAddon);
   }
 
   /** True when new writes should be accepted. Lets callers short-circuit
@@ -171,17 +180,16 @@ export class SessionLogger {
 
   /** Called once at the start of a session. Establishes the on-disk
    * presence so a session that never produces output still shows up in
-   * the Logs pane (empty `.txt`, populated `.meta.json`). */
+   * the Logs pane (file with just the header line). */
   spawn(): void {
     if (!this.isEnabled()) return;
-    this.writeMetaSync();
+    // Force an immediate write so the file exists with at least the
+    // header line, even if no output ever follows.
+    this.dirty = true;
+    this.flushNowFireAndForget();
   }
 
-  /** No-op. Pty echoes typed bytes back through stdout, so `output`
-   * already covers what the user saw. Capturing `in` separately would
-   * either double-echo (if we wrote `in` into xterm too) or leak raw
-   * keystrokes (if we wrote a separate stream); neither serves the
-   * logs-viewer use case. */
+  /** No-op. Pty echoes typed bytes back through stdout. */
   input(_data: string): void {
     /* intentional no-op — see class doc */
   }
@@ -197,27 +205,26 @@ export class SessionLogger {
     if (!this.isEnabled()) return;
     this.exitCode = exitCode;
     this.finishedTs = new Date().toISOString();
+    this.dirty = true;
     this.flushNowFireAndForget();
-    this.writeMetaSync();
   }
 
   /** Idempotent. After close(), all further calls are no-ops. */
   async close(): Promise<void> {
     if (this.closed) return;
     this.cancelFlush();
-    // Drain the pending flush *before* flipping `closed` — the guard in
-    // `flushNow` early-returns once `closed` is true, so we'd lose the
-    // tail otherwise.
-    if (this.dirty) await this.flushNow();
+    // Drain any pending flushes — they're serialised through
+    // `flushChain`, so awaiting the tail waits for all of them.
+    if (this.dirty) this.flushNowFireAndForget();
+    await this.flushChain;
     this.closed = true;
-    // No final meta write — spawn() / exit() are the only meta touch
-    // points.
     this.term.dispose();
   }
 
   /** Test hook — force an immediate flush regardless of debounce. */
   async flushForTests(): Promise<void> {
-    await this.flushNow();
+    this.flushNowFireAndForget();
+    await this.flushChain;
   }
 
   /** Absolute path of the rendered `.txt` file. Returns the canonical
@@ -242,22 +249,24 @@ export class SessionLogger {
   }
 
   private flushNowFireAndForget(): void {
-    void this.flushNow().catch((err: Error) => {
-      process.stderr.write(`condash terminal-logger: flush failed: ${err.message}\n`);
-    });
+    // Append onto the serialised chain — never run two flushes
+    // concurrently against the same `.txt.tmp`.
+    this.flushChain = this.flushChain
+      .then(() => this.flushNow())
+      .catch((err: Error) => {
+        process.stderr.write(`condash terminal-logger: flush failed: ${err.message}\n`);
+      });
   }
 
   private async flushNow(): Promise<void> {
     if (!this.dirty || this.closed) return;
     this.dirty = false;
-    // Wait for any queued xterm parse to complete before serialising —
+    // Wait for any queued xterm parse to complete before rendering —
     // otherwise the buffer may not reflect the most recent `output` call.
     await new Promise<void>((resolve) => this.term.write('', () => resolve()));
-    // The await above yielded the event loop; the session may have been
-    // closed (and the term disposed) while we waited. Drop the
-    // serialise / write attempt — its output would be stale anyway.
     if (this.closed) return;
-    const text = this.serializeAddon.serialize();
+    const body = renderBufferAsPlainText(this.term);
+    const text = this.composeFileContent(body);
     try {
       mkdirSync(dirname(this.txtPath), { recursive: true });
       const tmp = `${this.txtPath}.tmp`;
@@ -268,11 +277,10 @@ export class SessionLogger {
     }
   }
 
-  /** Synchronous to avoid races between rapid spawn/exit/close calls.
-   * Meta is a small JSON blob — sync write is negligible cost and
-   * removes the .tmp-collision class of bug. */
-  private writeMetaSync(): void {
-    const meta: SessionMeta = {
+  /** Assemble the on-disk text: header line, blank, body, then (if the
+   * session has exited) blank + footer line. */
+  private composeFileContent(body: string): string {
+    const header: HeaderMeta = {
       sid: this.ctx.sid,
       side: this.ctx.side,
       ...(this.ctx.repo ? { repo: this.ctx.repo } : {}),
@@ -280,18 +288,30 @@ export class SessionLogger {
       cmd: this.ctx.spawn.cmd,
       argv: this.ctx.spawn.argv,
       started: this.startedTs,
-      ...(this.exitCode !== undefined ? { exitCode: this.exitCode } : {}),
-      ...(this.finishedTs ? { finished: this.finishedTs } : {}),
     };
-    try {
-      mkdirSync(dirname(this.metaPath), { recursive: true });
-      const tmp = `${this.metaPath}.tmp`;
-      writeFileSync(tmp, JSON.stringify(meta, null, 2) + '\n', 'utf8');
-      renameSync(tmp, this.metaPath);
-    } catch (err) {
-      process.stderr.write(
-        `condash terminal-logger: meta write failed: ${(err as Error).message}\n`,
-      );
+    const lines: string[] = [`${META_LINE_PREFIX}${JSON.stringify(header)}`, ''];
+    if (body.length > 0) lines.push(body);
+    if (this.exitCode !== undefined && this.finishedTs !== undefined) {
+      const footer: FooterMeta = { finished: this.finishedTs, exitCode: this.exitCode };
+      lines.push('', `${META_LINE_PREFIX}${JSON.stringify(footer)}`);
     }
+    return lines.join('\n') + '\n';
   }
+}
+
+/** Read every populated row of the headless xterm buffer (scrollback +
+ * viewport) as plain UTF-8 text. `translateToString(true)` trims trailing
+ * blanks per row, which keeps the file from carrying the wide xterm
+ * grid's empty cells. Rows are joined with `\n`. */
+function renderBufferAsPlainText(term: Terminal): string {
+  const buffer = term.buffer.active;
+  const rows: string[] = [];
+  for (let y = 0; y < buffer.length; y++) {
+    const line = buffer.getLine(y);
+    rows.push(line ? line.translateToString(true) : '');
+  }
+  // Drop the trailing run of empty rows — terminal buffers are usually
+  // padded with blanks all the way to the viewport bottom.
+  while (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
+  return rows.join('\n');
 }

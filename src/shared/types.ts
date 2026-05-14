@@ -129,15 +129,16 @@ export interface TermLogSessionMeta {
   exitCode?: number;
 }
 
-/** Contents of a session — rendered `.txt` text plus parsed sidecar
- * metadata. Returned by `logsReadSession`. */
+/** Contents of a session — plain-text body + parsed metadata. Returned
+ * by `logsReadSession`. */
 export interface TermLogSessionRead {
-  /** Rendered terminal buffer — same format the live pane's Save-buffer
-   * button produces. Includes SGR codes for colour; the renderer pipes
-   * this through `ansi_up` to produce styled HTML. */
+  /** Rendered terminal buffer as plain UTF-8 text. Metadata header /
+   * footer lines (`# condash: {...}`) have been stripped before return —
+   * the renderer sees just the body. */
   text: string;
-  /** Sidecar metadata parsed from `<base>.meta.json`. Best-effort —
-   * missing for in-flight sessions whose meta hasn't been flushed yet. */
+  /** Metadata parsed from the header line (and footer line, if the
+   * session has exited). Best-effort — null if the file has no
+   * recognisable header. */
   meta: TermLogSessionMeta | null;
 }
 

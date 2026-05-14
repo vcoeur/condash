@@ -1,6 +1,5 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { gzipSync } from 'node:zlib';
 import type { TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { resolveLoggingPrefs } from './terminal-logger';
@@ -9,29 +8,18 @@ export interface JanitorResult {
   scanned: number;
   deletedByAge: string[];
   deletedByCap: string[];
-  compressed: string[];
   remainingBytes: number;
 }
-
-/** Days of buffer before a `.txt` gets compressed in place to `.txt.gz`.
- * Today's day-dir is always skipped (a writer may still be flushing into
- * it). The day-after-today boundary is computed against local midnight,
- * matching `daysAgo`. Hard-coded — automatic, no setting. */
-export const COMPRESS_AFTER_DAYS = 1;
 
 /** Walk `<conception>/.condash/logs/YYYY/MM/DD/*` and:
  *
  *   1. delete day-directories older than `retentionDays`,
- *   2. gzip every `.txt` in day-dirs at least `COMPRESS_AFTER_DAYS` old
- *      (active day stays uncompressed for fast reads + race-free writes),
- *   3. total the remaining bytes and, while over `maxDirMb`, delete the
+ *   2. total the remaining bytes and, while over `maxDirMb`, delete the
  *      oldest day-directory still standing.
  *
  * Whole-day eviction (not per-file) — simpler than per-file LRU and
- * matches how users actually think about logs. Compression is per-file
- * in place (`*.txt` → `*.txt.gz`), atomic via `.tmp` + rename. Returns
- * the list of dirs that were removed plus the list of files compressed
- * and the post-cleanup size.
+ * matches how users actually think about logs. Returns the list of dirs
+ * that were removed plus the post-cleanup size.
  *
  * A retention of 0 means "never delete by age" (only the dir-cap path
  * applies); the schema enforces non-negative. */
@@ -46,7 +34,6 @@ export async function runLogJanitor(
     scanned: 0,
     deletedByAge: [],
     deletedByCap: [],
-    compressed: [],
     remainingBytes: 0,
   };
 
@@ -72,17 +59,7 @@ export async function runLogJanitor(
     survivors.push(day);
   }
 
-  // 2. Compression pass — gzip `.txt` files in day-dirs at least
-  // `COMPRESS_AFTER_DAYS` old (today's dir always skipped to avoid
-  // racing with an active writer flushing to a `.txt.tmp` + rename).
-  const compressBoundary = daysAgo(now, COMPRESS_AFTER_DAYS);
-  for (const day of survivors) {
-    if (day.date >= compressBoundary) continue;
-    const compressed = await compressDayDir(day.path);
-    result.compressed.push(...compressed);
-  }
-
-  // 3. Size-based eviction (oldest day-dir first).
+  // 2. Size-based eviction (oldest day-dir first).
   // Sort ascending by date; pop from the front while over cap.
   survivors.sort((a, b) => (a.date < b.date ? -1 : 1));
   let total = await sumBytes(survivors);
@@ -130,45 +107,6 @@ async function listDayDirs(root: string): Promise<DayDir[]> {
     }
   }
   return out;
-}
-
-/** Gzip every `*.txt` in `dayPath` whose `*.txt.gz` companion is missing.
- * Atomic per file: write `*.txt.gz.tmp`, fsync via rename, then unlink
- * the original `*.txt`. Sidecar `.meta.json` is left alone (small,
- * scanned for the picker so the round-trip cost isn't worth it).
- *
- * Errors per file are swallowed so the janitor can't take the app down. */
-async function compressDayDir(dayPath: string): Promise<string[]> {
-  const compressed: string[] = [];
-  const entries = await readDirSafe(dayPath);
-  for (const name of entries) {
-    if (!name.endsWith('.txt')) continue;
-    const txt = join(dayPath, name);
-    const gz = `${txt}.gz`;
-    // Skip if the gz already exists (idempotent re-run).
-    if (await pathExists(gz)) continue;
-    try {
-      const raw = await fs.readFile(txt);
-      const data = gzipSync(raw);
-      const tmp = `${gz}.tmp`;
-      await fs.writeFile(tmp, data);
-      await fs.rename(tmp, gz);
-      await fs.rm(txt, { force: true });
-      compressed.push(gz);
-    } catch {
-      /* per-file errors must not crash the janitor */
-    }
-  }
-  return compressed;
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await fs.stat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function readDirSafe(path: string): Promise<string[]> {

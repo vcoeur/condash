@@ -1,19 +1,19 @@
 import { ipcMain } from 'electron';
 import { promises as fs } from 'node:fs';
-import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import type { TermLogSessionMeta, TermLogSessionRead } from '../../shared/types';
-import { sessionMetaPath } from '../terminal-logger';
+import { META_LINE_PREFIX } from '../terminal-logger';
 import { condashLogsRoot } from '../condash-dir';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings } from '../settings';
 
 /**
- * IPC surface for the Logs pane: list available day-directories under
- * `<conception>/.condash/logs/`, list per-session `.txt` (or `.txt.gz`)
- * files for one day, and read a chosen session's rendered text + sidecar
- * metadata. Compressed sessions are transparently gunzipped — callers
- * never need to know whether a file is `.txt` or `.txt.gz`.
+ * IPC surface for the Logs pane.
+ *
+ * Storage is one plain-text `.txt` per pty spawn: a `# condash: {...}`
+ * JSON header line, a blank line, the rendered xterm buffer, and (after
+ * `exit()`) a blank line + `# condash: {...}` footer line. Metadata is
+ * parsed back out of the header / footer; there is no sidecar file.
  *
  * Every `path` argument is bounded inside the conception's logs root via
  * `requirePathUnder` — defence-in-depth against a compromised renderer
@@ -39,10 +39,8 @@ async function activeConceptionPath(): Promise<string | null> {
   return settings.lastConceptionPath ?? null;
 }
 
-/** Both `.txt` (live / today) and `.txt.gz` (compressed by janitor)
- * count as a session for the picker. */
 function isSessionFile(name: string): boolean {
-  return name.endsWith('.txt') || name.endsWith('.txt.gz');
+  return name.endsWith('.txt');
 }
 
 async function listDaysForActiveConception(): Promise<DayEntry[]> {
@@ -61,8 +59,8 @@ async function listDaysForActiveConception(): Promise<DayEntry[]> {
       const days = await readDirSafe(monthPath);
       for (const d of days) {
         if (!/^\d{2}$/.test(d)) continue;
-        // Skip days that contain only legacy `.jsonl` files (no `.txt`
-        // or `.txt.gz`).
+        // Skip days that contain no `.txt` (legacy `.jsonl` / `.txt.gz`
+        // remnants don't count).
         const dayPath = join(monthPath, d);
         const dayFiles = await readDirSafe(dayPath);
         if (!dayFiles.some(isSessionFile)) continue;
@@ -97,6 +95,9 @@ async function listSessionsForDay(day: string): Promise<TermLogSessionMeta[]> {
   return metas;
 }
 
+/** Builds a TermLogSessionMeta for the listing. Reads the head + tail
+ * of the file to recover the `# condash:` header / footer lines without
+ * loading multi-megabyte transcripts into memory. */
 async function readSessionMetaSummary(
   txtPath: string,
   day: string,
@@ -110,101 +111,201 @@ async function readSessionMetaSummary(
   }
   if (!stat.isFile()) return null;
 
-  // Parse `HHMMSS-<sid>.txt` or `HHMMSS-<sid>.txt.gz`.
-  const m = /^(\d{6})-(.+?)\.txt(?:\.gz)?$/.exec(fileName);
+  // Parse `HHMMSS-<sid>.txt`.
+  const m = /^(\d{6})-(.+?)\.txt$/.exec(fileName);
   if (!m) return null;
-  const [, hms, sid] = m;
+  const [, hms, fileSid] = m;
   const time = `${hms.slice(0, 2)}:${hms.slice(2, 4)}:${hms.slice(4, 6)}`;
 
-  const sidecar = await readMetaSidecar(sessionMetaPath(txtPath));
+  const { header, footer } = await readHeadAndTailMeta(txtPath, stat.size);
 
   return {
     path: txtPath,
     day,
     time,
     bytes: stat.size,
-    sid: sidecar?.sid ?? sid,
-    repo: sidecar?.repo,
-    cwd: sidecar?.cwd,
-    cmd: sidecar?.cmd
-      ? sidecar.argv && sidecar.argv.length > 0
-        ? [sidecar.cmd, ...sidecar.argv].join(' ')
-        : sidecar.cmd
-      : undefined,
-    exitCode: sidecar?.exitCode,
+    sid: typeof header?.sid === 'string' ? header.sid : fileSid,
+    repo: typeof header?.repo === 'string' ? header.repo : undefined,
+    cwd: typeof header?.cwd === 'string' ? header.cwd : undefined,
+    cmd: composeCmdLabel(header),
+    exitCode: typeof footer?.exitCode === 'number' ? footer.exitCode : undefined,
   };
 }
 
-interface MetaSidecar {
-  sid: string;
-  side: string;
+interface HeaderJson {
+  sid?: string;
+  side?: string;
   repo?: string;
   cwd?: string;
   cmd?: string;
   argv?: string[];
   started?: string;
-  exitCode?: number;
-  finished?: string;
 }
 
-async function readMetaSidecar(metaPath: string): Promise<MetaSidecar | null> {
+interface FooterJson {
+  finished?: string;
+  exitCode?: number;
+}
+
+function composeCmdLabel(header: HeaderJson | null): string | undefined {
+  if (!header?.cmd) return undefined;
+  if (header.argv && header.argv.length > 0) {
+    return [header.cmd, ...header.argv].join(' ');
+  }
+  return header.cmd;
+}
+
+/** Read the first 4 KB and (if larger) the last 1 KB of a session file
+ * and pluck the `# condash:` header / footer lines. The header is line
+ * 1, by construction. The footer is the last `# condash:` line in the
+ * tail — only present after `exit()`. */
+async function readHeadAndTailMeta(
+  filePath: string,
+  size: number,
+): Promise<{ header: HeaderJson | null; footer: FooterJson | null }> {
+  const HEAD = 4096;
+  const TAIL = 1024;
+  let header: HeaderJson | null = null;
+  let footer: FooterJson | null = null;
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
   try {
-    const text = await fs.readFile(metaPath, 'utf8');
-    return JSON.parse(text) as MetaSidecar;
+    handle = await fs.open(filePath, 'r');
+    const headBuf = Buffer.alloc(Math.min(HEAD, size));
+    await handle.read(headBuf, 0, headBuf.length, 0);
+    const headText = headBuf.toString('utf8');
+    const firstNewline = headText.indexOf('\n');
+    const firstLine = firstNewline >= 0 ? headText.slice(0, firstNewline) : headText;
+    header = parseMetaLine(firstLine);
+
+    if (size > HEAD) {
+      const tailBuf = Buffer.alloc(TAIL);
+      await handle.read(tailBuf, 0, TAIL, Math.max(0, size - TAIL));
+      const tailText = tailBuf.toString('utf8');
+      footer = findLastFooterLine(tailText);
+    } else {
+      // Whole file fits in HEAD — scan it for a footer line too.
+      footer = findLastFooterLine(headText);
+    }
+  } catch {
+    /* missing or unreadable — leave header/footer null */
+  } finally {
+    if (handle) await handle.close().catch(() => undefined);
+  }
+  return { header, footer };
+}
+
+function parseMetaLine(line: string): HeaderJson | null {
+  if (!line.startsWith(META_LINE_PREFIX)) return null;
+  try {
+    return JSON.parse(line.slice(META_LINE_PREFIX.length));
   } catch {
     return null;
   }
+}
+
+function findLastFooterLine(text: string): FooterJson | null {
+  // Find the last line that begins with the meta prefix. The header line
+  // is also a match — the caller separately parses it, so a corrupted
+  // file with no footer falls back to the header here harmlessly (we
+  // only consume `finished` / `exitCode`).
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = parseMetaLine(lines[i]);
+    if (!m) continue;
+    if ('exitCode' in m || 'finished' in m) return m as FooterJson;
+  }
+  return null;
 }
 
 async function readSession(filePath: string): Promise<TermLogSessionRead> {
   const conception = await activeConceptionPath();
   if (!conception) return { text: '', meta: null };
   await requirePathUnder(filePath, condashLogsRoot(conception));
-  if (!filePath.endsWith('.txt') && !filePath.endsWith('.txt.gz')) {
-    throw new Error('logsReadSession: only .txt / .txt.gz files');
+  if (!filePath.endsWith('.txt')) {
+    throw new Error('logsReadSession: only .txt files');
   }
-  let text = '';
+  let raw = '';
   try {
-    if (filePath.endsWith('.txt.gz')) {
-      const buf = await fs.readFile(filePath);
-      text = gunzipSync(buf).toString('utf8');
-    } else {
-      text = await fs.readFile(filePath, 'utf8');
-    }
+    raw = await fs.readFile(filePath, 'utf8');
   } catch {
-    /* missing file or corrupt gzip → empty body */
+    /* missing file → empty body */
   }
-  // Derive the on-disk session meta from the same path-based machinery
-  // the list flow uses, then return both halves.
+  const { text, header, footer } = splitContent(raw);
   const day = deriveDay(filePath);
   const fileName = filePath.split('/').pop() ?? '';
-  const meta = day ? await readSessionMetaSummary(filePath, day, fileName) : null;
+  const sid = /^\d{6}-(.+?)\.txt$/.exec(fileName)?.[1] ?? '';
+  const meta: TermLogSessionMeta | null =
+    header || footer
+      ? {
+          path: filePath,
+          day: day ?? '',
+          time: deriveTime(fileName),
+          bytes: Buffer.byteLength(raw, 'utf8'),
+          sid: typeof header?.sid === 'string' ? header.sid : sid,
+          repo: typeof header?.repo === 'string' ? header.repo : undefined,
+          cwd: typeof header?.cwd === 'string' ? header.cwd : undefined,
+          cmd: composeCmdLabel(header),
+          exitCode: typeof footer?.exitCode === 'number' ? footer.exitCode : undefined,
+        }
+      : null;
   return { text, meta };
 }
 
+/** Strip the leading `# condash:` header line + its following blank, and
+ * the trailing blank + `# condash:` footer line if present. Returns the
+ * naked body plus the parsed JSON blobs for the caller. */
+export function splitContent(raw: string): {
+  text: string;
+  header: HeaderJson | null;
+  footer: FooterJson | null;
+} {
+  if (raw.length === 0) return { text: '', header: null, footer: null };
+  const allLines = raw.split('\n');
+  let header: HeaderJson | null = null;
+  let start = 0;
+  if (allLines.length > 0 && allLines[0].startsWith(META_LINE_PREFIX)) {
+    header = parseMetaLine(allLines[0]);
+    start = 1;
+    if (start < allLines.length && allLines[start] === '') start++;
+  }
+  let end = allLines.length;
+  let footer: FooterJson | null = null;
+  // Drop a trailing empty line introduced by the file's terminating `\n`.
+  if (end > start && allLines[end - 1] === '') end--;
+  if (end > start && allLines[end - 1].startsWith(META_LINE_PREFIX)) {
+    const parsed = parseMetaLine(allLines[end - 1]);
+    if (parsed && ('exitCode' in parsed || 'finished' in parsed)) {
+      footer = parsed as FooterJson;
+      end--;
+      if (end > start && allLines[end - 1] === '') end--;
+    }
+  }
+  const text = allLines.slice(start, end).join('\n');
+  return { text, header, footer };
+}
+
 function deriveDay(filePath: string): string | null {
-  // <root>/YYYY/MM/DD/HHMMSS-<sid>.txt(.gz)
-  const m = /\/(\d{4})\/(\d{2})\/(\d{2})\/\d{6}-[^/]+\.txt(?:\.gz)?$/.exec(filePath);
+  // <root>/YYYY/MM/DD/HHMMSS-<sid>.txt
+  const m = /\/(\d{4})\/(\d{2})\/(\d{2})\/\d{6}-[^/]+\.txt$/.exec(filePath);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+function deriveTime(fileName: string): string {
+  const m = /^(\d{6})-/.exec(fileName);
+  if (!m) return '';
+  const hms = m[1];
+  return `${hms.slice(0, 2)}:${hms.slice(2, 4)}:${hms.slice(4, 6)}`;
 }
 
 async function deleteSession(filePath: string): Promise<{ deleted: boolean }> {
   const conception = await activeConceptionPath();
   if (!conception) return { deleted: false };
   await requirePathUnder(filePath, condashLogsRoot(conception));
-  if (!filePath.endsWith('.txt') && !filePath.endsWith('.txt.gz')) {
-    throw new Error('logsDeleteSession: only .txt / .txt.gz files');
+  if (!filePath.endsWith('.txt')) {
+    throw new Error('logsDeleteSession: only .txt files');
   }
   try {
     await fs.rm(filePath, { force: true });
-    // Sweep both extensions in case the picker still holds a path to
-    // the uncompressed sibling — missing-OK either way.
-    if (filePath.endsWith('.txt.gz')) {
-      await fs.rm(filePath.replace(/\.gz$/, ''), { force: true });
-    } else {
-      await fs.rm(`${filePath}.gz`, { force: true });
-    }
-    await fs.rm(sessionMetaPath(filePath), { force: true });
     return { deleted: true };
   } catch {
     return { deleted: false };

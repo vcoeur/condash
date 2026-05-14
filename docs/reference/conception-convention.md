@@ -32,7 +32,7 @@ conception/
 │   └── …
 ├── .condash/                                 ← tree-level state (gitignored)
 │   ├── settings.json                         ←   per-host config
-│   └── logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl    ←   per-session terminal capture
+│   └── logs/YYYY/MM/DD/HHMMSS-<sid>.txt      ←   per-session terminal capture (plain text + JSON header/footer)
 └── condash.json                              ← legacy config (still read)
 ```
 
