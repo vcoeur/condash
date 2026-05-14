@@ -18,10 +18,6 @@ condash <noun> <verb> [args] [--flags]
 | `condash --help`                    | Top-level CLI help.                                 |
 | `condash --version`                 | Print version.                                      |
 
-The legacy `condash-cli` binary still works as an alias for `condash`
-(CLI mode) and prints a one-line stderr deprecation note unless
-`--quiet` is set. It will be removed in v3.0.0.
-
 ## Nouns
 
 | Noun | Common verbs |

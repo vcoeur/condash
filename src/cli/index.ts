@@ -50,11 +50,6 @@ Universal flags:
 Exit codes:
   0 ok    1 runtime    2 usage    3 validation
   4 not-found    5 no-conception    6 ambiguous
-
-Legacy alias:
-  The 'condash-cli' binary is a deprecated alias for 'condash <command>'
-  and prints a one-line stderr deprecation note unless --quiet is set. It
-  will be removed in v3.0.0.
 `;
 
 async function main(): Promise<number> {

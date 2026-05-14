@@ -25,12 +25,12 @@ else
     ln -sf '/opt/${sanitizedProductName}/${executable}' '/usr/bin/${executable}'
 fi
 
-# CLI companion: from v2.14.0 the GUI (condash) and the CLI (condash-cli)
-# are two separate entries on PATH. Both point at wrappers under
-# /opt/<sanitizedProductName>/ that share a body and dispatch on argv0.
-# Plain ln -sf — update-alternatives isn't useful here because no other
-# package provides condash-cli.
-ln -sf '/opt/${sanitizedProductName}/condash-cli' '/usr/bin/condash-cli'
+# Remove the deprecated `condash-cli` symlink left over from v2.x installs.
+# The /opt/<sanitizedProductName>/condash-cli wrapper file is part of the
+# .deb file set and dpkg cleans it up on upgrade; the /usr/bin/condash-cli
+# symlink was created by the previous postinst script, so dpkg does not
+# know about it and we have to remove it explicitly.
+rm -f '/usr/bin/condash-cli'
 
 chmod 4755 '/opt/${sanitizedProductName}/chrome-sandbox' || true
 
