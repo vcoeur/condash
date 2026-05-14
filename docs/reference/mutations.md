@@ -15,7 +15,7 @@ The dashboard's **write surface is small**. It touches three places only:
 2. Files under an item's root, mostly the `notes/` subdirectory (create, rename, upload, overwrite).
 3. The tree-level `<conception_path>/condash.json`.
 
-It does **not** touch `.git/`, does not move or rename item directories, does not run shell commands other than the user-configured `open_with.*` / `pdf_viewer` / `terminal.launcher_command` chains and the `repositories[].run` / `force_stop` strings.
+It does **not** touch `.git/`, does not move or rename item directories, does not run shell commands other than the user-configured `open_with.*` / `pdf_viewer` / `terminal.launchers[].command` chains and the `repositories[].run` / `force_stop` strings.
 
 Every mutation is exposed as an [IPC verb](ipc-api.md) on the `CondashApi` interface in [`src/shared/api.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/api.ts). If a verb isn't listed here, condash doesn't write.
 

@@ -401,12 +401,30 @@ export interface TerminalXtermPrefs {
   colors?: TerminalXtermColors;
 }
 
+/** Identifier for one configurable launcher slot. The renderer maps each
+ *  symbol to its Greek glyph (`lambda` → λ, `mu` → μ) — the schema treats
+ *  the symbol as the entry's identity, not its display string. */
+export type LauncherSymbol = 'lambda' | 'mu';
+
+/** One configurable launcher entry. Each renders as a button on the
+ *  terminal tab strip (next to the plain `+`) when `command` is non-empty.
+ *  `title`, when set, becomes the pinned tab label at spawn time; an
+ *  inline rename (`customName`) still wins forever after. */
+export interface LauncherConfig {
+  symbol: LauncherSymbol;
+  command: string;
+  title?: string;
+}
+
 export interface TerminalPrefs {
   shell?: string;
   shortcut?: string;
   screenshot_dir?: string;
   screenshot_paste_shortcut?: string;
-  launcher_command?: string;
+  /** Configurable launcher slots. Each entry renders a button on the tab
+   *  strip; the legacy scalar `launcher_command` is migrated transparently
+   *  into `launchers[0]` (symbol: 'lambda') on first load. */
+  launchers?: LauncherConfig[];
   move_tab_left_shortcut?: string;
   move_tab_right_shortcut?: string;
   xterm?: TerminalXtermPrefs;

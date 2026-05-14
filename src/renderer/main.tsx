@@ -1201,7 +1201,7 @@ function App() {
         open={layout().terminal}
         onClose={() => updateLayout({ terminal: false })}
         onTogglePane={toggleTerminal}
-        launcherCommand={terminalPrefs()?.launcher_command ?? null}
+        launchers={terminalPrefs()?.launchers ?? []}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}
         registerHandle={(handle) => {

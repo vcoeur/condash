@@ -22,7 +22,7 @@ const CONFIG_SUMMARY: { key: string; purpose: string }[] = [
   {
     key: 'terminal',
     purpose:
-      'Pane preferences: shell, shortcut, screenshot_dir, screenshot_paste_shortcut, launcher_command.',
+      'Pane preferences: shell, shortcut, screenshot_dir, screenshot_paste_shortcut, launchers[] (per-slot command + title).',
   },
 ];
 

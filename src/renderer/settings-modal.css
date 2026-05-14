@@ -431,6 +431,20 @@
   gap: 10px 14px;
 }
 
+.settings-launcher-fieldset {
+  border: 1px solid var(--border-subtle, var(--border, rgba(127, 127, 127, 0.2)));
+  border-radius: 6px;
+  padding: 10px 14px 12px;
+  margin: 6px 0 12px;
+}
+
+.settings-launcher-fieldset > legend {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .settings-grid--wide {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }

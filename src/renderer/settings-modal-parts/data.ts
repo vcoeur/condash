@@ -1,5 +1,6 @@
 import type {
   CardMinWidthPrefs,
+  LauncherSymbol,
   Platform,
   TerminalPrefs,
   TerminalXtermPrefs,
@@ -128,7 +129,6 @@ export type TerminalStringFieldKey =
   | 'shortcut'
   | 'screenshot_dir'
   | 'screenshot_paste_shortcut'
-  | 'launcher_command'
   | 'move_tab_left_shortcut'
   | 'move_tab_right_shortcut';
 
@@ -145,12 +145,6 @@ export const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
     key: 'shell',
     label: 'Shell',
     placeholder: { linux: '/bin/bash', darwin: '/bin/zsh', win32: 'cmd.exe', default: '/bin/bash' },
-  },
-  {
-    key: 'launcher_command',
-    label: 'Launcher command',
-    placeholder: { default: 'claude' },
-    hint: 'Run on terminal-tab open before any user input.',
   },
   {
     key: 'screenshot_dir',
@@ -173,6 +167,37 @@ export const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
     key: 'move_tab_right_shortcut',
     label: 'Move tab right',
     placeholder: { default: 'Ctrl+Right' },
+  },
+];
+
+/**
+ * One settings-modal fieldset per launcher slot. Order is the visual
+ * order. The renderer in `fields.tsx` walks this constant to produce one
+ * `<fieldset>` per entry; the tab strip walks `prefs.launchers` (an
+ * arbitrary subset of these symbols) to render the matching buttons.
+ */
+export interface LauncherFieldsetMeta {
+  symbol: LauncherSymbol;
+  glyph: string;
+  label: string;
+  commandPlaceholder: Partial<Record<Platform | 'default', string>>;
+  titlePlaceholder: Partial<Record<Platform | 'default', string>>;
+}
+
+export const LAUNCHER_FIELDSETS: LauncherFieldsetMeta[] = [
+  {
+    symbol: 'lambda',
+    glyph: 'λ',
+    label: 'λ Launcher',
+    commandPlaceholder: { default: 'claude' },
+    titlePlaceholder: { default: 'Claude' },
+  },
+  {
+    symbol: 'mu',
+    glyph: 'μ',
+    label: 'μ Launcher',
+    commandPlaceholder: { default: 'python -m notebook' },
+    titlePlaceholder: { default: 'Jupyter' },
   },
 ];
 

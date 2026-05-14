@@ -1,5 +1,17 @@
-import type { Project, RepoEntry, TerminalPrefs, Worktree } from '@shared/types';
+import type { LauncherConfig, Project, RepoEntry, TerminalPrefs, Worktree } from '@shared/types';
 import type { TerminalPaneHandle } from './terminal-pane';
+
+/** Pick the default launcher used when the dashboard auto-spawns a shell
+ *  (per-card "work on", paste-to-term). Prefers the `lambda` slot to
+ *  preserve the legacy single-launcher behaviour, falling back to the
+ *  first configured entry. Returns `null` when no launcher has a non-empty
+ *  command — callers spawn a plain shell in that case. */
+function defaultLauncher(prefs: TerminalPrefs | undefined): LauncherConfig | null {
+  const launchers = prefs?.launchers ?? [];
+  const lambda = launchers.find((l) => l.symbol === 'lambda' && l.command.trim().length > 0);
+  if (lambda) return lambda;
+  return launchers.find((l) => l.command.trim().length > 0) ?? null;
+}
 
 export interface TerminalBridgeDeps {
   /** Read the current terminal pane handle (null until the pane is mounted). */
@@ -45,7 +57,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     deps.ensureTerminalOpen();
     if (!handle.hasActive()) {
       try {
-        await handle.spawnUserShell(deps.terminalPrefs()?.launcher_command ?? null, 'my');
+        await handle.spawnUserShell(defaultLauncher(deps.terminalPrefs()), 'my');
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
         return;
@@ -116,7 +128,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     deps.ensureTerminalOpen();
     if (!handle.hasActive()) {
       try {
-        await handle.spawnUserShell(deps.terminalPrefs()?.launcher_command ?? null, 'my');
+        await handle.spawnUserShell(defaultLauncher(deps.terminalPrefs()), 'my');
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
         return;

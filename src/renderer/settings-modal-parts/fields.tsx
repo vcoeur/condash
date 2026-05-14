@@ -2,6 +2,8 @@ import { For, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type {
   CardMinWidthPrefs,
+  LauncherConfig,
+  LauncherSymbol,
   Platform,
   TerminalLoggingPrefs,
   TerminalPrefs,
@@ -12,6 +14,7 @@ import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import {
   type ColorEntry,
   CURSOR_STYLES,
+  LAUNCHER_FIELDSETS,
   pick,
   type SettingsTab,
   TERMINAL_COLORS,
@@ -19,6 +22,16 @@ import {
   THEME_OPTIONS,
 } from './data';
 import { FieldBadgeRow, type InheritanceState } from './badges';
+
+/** Lookup current command/title for the given launcher symbol in a TerminalPrefs
+ *  block; both fields default to empty so the input controls stay controlled. */
+function findLauncher(
+  prefs: TerminalPrefs,
+  symbol: LauncherSymbol,
+): { command: string; title: string } {
+  const entry = prefs.launchers?.find((l: LauncherConfig) => l.symbol === symbol);
+  return { command: entry?.command ?? '', title: entry?.title ?? '' };
+}
 
 /** Field row that pairs a labelled control with an inheritance badge.
  *  Used on the conception tab; pass `state="inherits"` and `hide` from the
@@ -131,6 +144,11 @@ export function TerminalFields(props: {
   prefs: () => TerminalPrefs;
   xterm: () => TerminalXtermPrefs;
   setString: (key: (typeof TERMINAL_STRING_FIELDS)[number]['key'], value: string) => Promise<void>;
+  setLauncherField: (
+    symbol: LauncherSymbol,
+    field: 'command' | 'title',
+    value: string,
+  ) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
@@ -165,6 +183,45 @@ export function TerminalFields(props: {
           )}
         </For>
       </div>
+
+      <h3>Launchers</h3>
+      <p class="settings-field-hint">
+        Each launcher renders a button on the terminal tab strip when its command is set. The title,
+        when set, becomes the pinned tab name at spawn time; an inline rename still wins.
+      </p>
+      <For each={LAUNCHER_FIELDSETS}>
+        {(meta) => (
+          <fieldset class="settings-launcher-fieldset">
+            <legend>{meta.label}</legend>
+            <div class="settings-grid">
+              <label>
+                <span>Command</span>
+                <input
+                  type="text"
+                  placeholder={pick(meta.commandPlaceholder, props.platform())}
+                  {...props.bindText(
+                    `${idPrefix}.launchers.${meta.symbol}.command`,
+                    () => findLauncher(props.prefs(), meta.symbol).command || undefined,
+                    (v) => props.setLauncherField(meta.symbol, 'command', v),
+                  )}
+                />
+              </label>
+              <label>
+                <span>Title</span>
+                <input
+                  type="text"
+                  placeholder={pick(meta.titlePlaceholder, props.platform())}
+                  {...props.bindText(
+                    `${idPrefix}.launchers.${meta.symbol}.title`,
+                    () => findLauncher(props.prefs(), meta.symbol).title || undefined,
+                    (v) => props.setLauncherField(meta.symbol, 'title', v),
+                  )}
+                />
+              </label>
+            </div>
+          </fieldset>
+        )}
+      </For>
 
       <h3>Font</h3>
       <div class="settings-grid">
