@@ -2,7 +2,6 @@ import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
 import type {
   CardMinWidthPrefs,
-  LauncherConfig,
   LauncherSymbol,
   Platform,
   TerminalLoggingPrefs,
@@ -12,6 +11,7 @@ import type {
 } from '@shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import {
+  applyLauncherEdit,
   buildSavePayload,
   type ColorEntry,
   pruneEmpty,
@@ -497,11 +497,10 @@ export function SettingsModal(props: {
 
   /**
    * Update one field on one launcher slot in the `launchers` array, keyed
-   * by `symbol`. Creating a new entry when the symbol is absent, removing
-   * the entry when both `command` and `title` end up empty, and removing
-   * the whole `launchers` array when it goes empty — keeps the persisted
-   * JSON minimal so users don't end up with stray `{symbol, command: ""}`
-   * leftovers in their settings file.
+   * by `symbol`. Delegates the array math to `applyLauncherEdit` (pure,
+   * tested in `settings-modal-parts/data.test.ts`); this wrapper only
+   * threads it through `patchTerminal` so the in-progress draft becomes a
+   * disk write.
    */
   const setLauncherField = (
     target: SettingsTab,
@@ -509,32 +508,10 @@ export function SettingsModal(props: {
     field: 'command' | 'title',
     value: string,
   ): Promise<void> =>
-    patchTerminal(target, (p) => {
-      const trimmed = value.trim();
-      const existing: LauncherConfig[] = (p.launchers ?? []).map((l) => ({ ...l }));
-      const idx = existing.findIndex((l) => l.symbol === symbol);
-      const current = idx >= 0 ? existing[idx] : { symbol, command: '', title: undefined };
-      const nextEntry: LauncherConfig = {
-        symbol,
-        command: field === 'command' ? trimmed : current.command,
-        title: field === 'title' ? trimmed || undefined : current.title,
-      };
-      const dropEntry = !nextEntry.command && !nextEntry.title;
-      let nextList: LauncherConfig[];
-      if (idx >= 0) {
-        if (dropEntry) {
-          nextList = existing.filter((_, i) => i !== idx);
-        } else {
-          existing[idx] = nextEntry;
-          nextList = existing;
-        }
-      } else if (dropEntry) {
-        nextList = existing;
-      } else {
-        nextList = [...existing, nextEntry];
-      }
-      return { ...p, launchers: nextList.length > 0 ? nextList : undefined };
-    });
+    patchTerminal(target, (p) => ({
+      ...p,
+      launchers: applyLauncherEdit(p.launchers, symbol, field, value),
+    }));
 
   const xtermPrefsFor = (target: SettingsTab): TerminalXtermPrefs =>
     terminalPrefsFor(target).xterm ?? {};
