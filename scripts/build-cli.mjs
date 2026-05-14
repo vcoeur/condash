@@ -4,7 +4,10 @@
 //
 // The CLI re-imports modules from src/main/, but those modules occasionally
 // reach for `electron` (settings.ts used to; we extracted user-data-dir.ts to
-// avoid that). Anything still listed here is kept external on purpose:
+// avoid that — and v2.27.0 added a second offender: search/match.ts started
+// importing `splitContent` from ipc/logs.ts, which top-level-imports
+// `electron`. Fixed in v2.29.1 by extracting `splitContent` and friends into
+// logs-format.ts). Anything still listed here is kept external on purpose:
 //
 // - `electron` — must remain external because import-time evaluation only
 //   succeeds inside the Electron runtime; the CLI never resolves it (the

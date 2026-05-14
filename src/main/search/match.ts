@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import type { SearchHighlight, SearchHit, SearchTerm } from '../../shared/types';
-import { splitContent } from '../ipc/logs';
+import { splitContent } from '../logs-format';
 import { buildRegions } from './regions';
 import { scoreOccurrences, type ScorerOccurrence } from './scorer';
 import { buildSnippets } from './snippets';
