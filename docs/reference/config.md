@@ -18,7 +18,7 @@ condash reads two JSON files. Both share **the same schema**. The per-machine `s
 
 Both files share the **same schema** modulo the two path-tracking keys above. Any other top-level key — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches` — may live in either file. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge).
 
-**Exception: `terminal` merges one level deep.** Its sub-schema straddles per-machine input / device prefs (`shell`, `shortcut`, `screenshot_dir`, `launcher_command`, `xterm`, `screenshot_paste_shortcut`, `move_tab_{left,right}_shortcut`) and per-tree retention policy (`logging.{retentionDays, maxDirMb, maxFileMb, ansiPolicy}`). A pure replace meant any conception that customised `terminal.logging` silently lost every per-machine terminal pref — the launcher button vanished, the screenshot-paste shortcut toasted "no screenshot directory". Conception sub-keys win at the first level; sub-keys absent from the conception fall through to the global block. Nested values inside `terminal.xterm` and `terminal.logging` still replace whole — only the immediate sub-keys of `terminal` merge.
+**Exception: `terminal` merges one level deep.** Its sub-schema straddles per-machine input / device prefs (`shell`, `shortcut`, `screenshot_dir`, `launchers`, `xterm`, `screenshot_paste_shortcut`, `move_tab_{left,right}_shortcut`) and per-tree retention policy (`logging.{retentionDays, maxDirMb, maxFileMb, ansiPolicy}`). A pure replace meant any conception that customised `terminal.logging` silently lost every per-machine terminal pref — the launcher buttons vanished, the screenshot-paste shortcut toasted "no screenshot directory". Conception sub-keys win at the first level; sub-keys absent from the conception fall through to the global block. Nested values inside `terminal.xterm`, `terminal.logging`, and `terminal.launchers` still replace whole — only the immediate sub-keys of `terminal` merge.
 
 ### The `.condash/` workspace directory
 
@@ -70,7 +70,9 @@ Lives at `<conception_path>/.condash/settings.json`. Don't commit it — the aut
 
 Paths may use `~` (expanded to `$HOME`) or absolute paths. JSON does not carry comments — keep prose documentation in the project README or the per-tree `CLAUDE.md`.
 
-A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — and unlike every other top-level key, the per-conception block **merges with** the global one (see the exception called out at the top of this page). A conception declaring `terminal.logging.retentionDays` keeps the global `terminal.launcher_command` / `terminal.screenshot_dir` it inherited.
+A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — and unlike every other top-level key, the per-conception block **merges with** the global one (see the exception called out at the top of this page). A conception declaring `terminal.logging.retentionDays` keeps the global `terminal.launchers` / `terminal.screenshot_dir` it inherited.
+
+The legacy scalar `terminal.launcher_command` from condash ≤ 2.27 is transparently migrated into `terminal.launchers[0]` with `symbol: 'lambda'` on first load and dropped from the file on the next write. Mixed files — both the legacy scalar and the new array present — keep the array and discard the scalar.
 
 ### Terminal logging
 
@@ -184,10 +186,33 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `shortcut`                  | `` Ctrl+` ``                                            | Toggle the terminal pane. Modifiers: `Ctrl`, `Shift`, `Alt`, `Meta`. Key names follow the HTML `KeyboardEvent.key` convention. |
 | `screenshot_dir`            | `~/Pictures/Screenshots` on Linux, `~/Desktop` on macOS | Directory scanned for "most recent screenshot" by the paste shortcut.                                                          |
 | `screenshot_paste_shortcut` | `Ctrl+Shift+V`                                          | Inserts the absolute path of the newest image in `screenshot_dir` into the active terminal. No `Enter` — you confirm.          |
-| `launcher_command`          | `claude`                                                | Shell-style command spawned by the secondary `+` button in each terminal side. Empty hides the button.                         |
+| `launchers[]`               | `[]`                                                    | Configurable launcher slots — see [`terminal.launchers`](#terminallaunchers) below. Each entry adds a button (λ / μ) to the tab strip.    |
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                          |
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                         |
 | `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section. |
+
+### `terminal.launchers` { #terminallaunchers }
+
+Per-button launcher slots rendered on the terminal tab strip. The strip carries the plain `+` (spawns the configured shell) plus one button per entry whose `command` is non-empty. Two symbols are accepted today: `lambda` (rendered as λ) and `mu` (rendered as μ). The array order does not matter — the renderer keys off `symbol`.
+
+```json
+{
+  "terminal": {
+    "launchers": [
+      { "symbol": "lambda", "command": "claude", "title": "Claude" },
+      { "symbol": "mu", "command": "python -m notebook", "title": "Jupyter" }
+    ]
+  }
+}
+```
+
+| Key       | Type                       | Required | Meaning                                                                                                                                                                            |
+| --------- | -------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `symbol`  | `"lambda"` / `"mu"`        | yes      | Identity of the slot. Drives the glyph rendered on the button (λ / μ). Duplicates are rejected by the schema.                                                                       |
+| `command` | non-empty string           | yes      | Shell-style command spawned when the button is clicked. Resolved through the configured `shell` so pipelines and aliases work. Empty / whitespace is treated as the slot being unset (no button rendered). |
+| `title`   | string                     | no       | Initial pinned tab label at spawn time. When unset, the tab is labelled with the `command` (current behaviour for legacy `launcher_command`). The user's inline rename always wins over this. |
+
+**Migration from `launcher_command`:** the scalar key from condash ≤ 2.27 is rewritten in-flight on every read into `launchers[0]` with `symbol: 'lambda'` (no `title`). The legacy key is dropped on the next settings write — no manual action. A file that has both the legacy scalar and an explicit `launchers` array keeps the array and discards the scalar.
 
 ### `terminal.xterm` { #terminalxterm }
 
@@ -262,7 +287,10 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
   "terminal": {
     "shell": "/bin/zsh",
     "shortcut": "Ctrl+T",
-    "launcher_command": "claude",
+    "launchers": [
+      { "symbol": "lambda", "command": "claude", "title": "Claude" },
+      { "symbol": "mu", "command": "python -m notebook", "title": "Jupyter" }
+    ],
     "screenshot_dir": "/home/you/Pictures/Screenshots"
   },
   "layout": {

@@ -17,7 +17,14 @@
 // - A draggable handle on the pane's top edge sets the pane height.
 
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import type { TermSide, TermSpawnRequest, TerminalPrefs, TerminalXtermPrefs } from '@shared/types';
+import type {
+  LauncherConfig,
+  LauncherSymbol,
+  TermSide,
+  TermSpawnRequest,
+  TerminalPrefs,
+  TerminalXtermPrefs,
+} from '@shared/types';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
@@ -46,11 +53,18 @@ export interface SpawnOptions {
   pinned?: boolean;
 }
 
+/** Spawn-time launcher selector. Passing a `LauncherConfig` pins the tab
+ *  label to `title || command` and runs `command`; passing `null` is the
+ *  plain `+` behaviour (no command, unpinned label tracking OSC 7 cwd). */
+export type LauncherChoice = LauncherConfig | null;
+
 export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string, opts?: SpawnOptions): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
-  /** Add a fresh user shell tab to "My terms". */
-  spawnUserShell(launcherCommand?: string | null, side?: TermSide): Promise<string>;
+  /** Add a fresh user shell tab to "My terms". `launcher` may be a
+   *  `LauncherConfig` to pin and run the launcher command, or `null` for
+   *  a plain shell. */
+  spawnUserShell(launcher?: LauncherChoice, side?: TermSide): Promise<string>;
   /** Move the active tab within its column strip. */
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
@@ -66,9 +80,9 @@ export function TerminalPane(props: {
    *  handle which is visible whether the body is shown or not. */
   onTogglePane: () => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
-  /** Optional launcher command (e.g. `claude`). When set, a second `+` button
-   * spawns a shell that runs this command. */
-  launcherCommand?: string | null;
+  /** Configured launcher slots. One button per entry whose `command` is
+   *  non-empty is rendered on each column's tab strip. */
+  launchers: readonly LauncherConfig[];
   /** Working directory passed to spawned user shells (typically the
    * conception path). */
   cwd?: string | null;
@@ -343,25 +357,37 @@ export function TerminalPane(props: {
   };
 
   const spawnUserShell = async (
-    launcherCommand?: string | null,
+    launcher: LauncherChoice = null,
     sd: TermSide = 'my',
   ): Promise<string> => {
-    const trimmed = launcherCommand?.trim() || '';
-    const base = trimmed || 'shell';
-    const label = uniqueLabel(base);
-    // Pin the label only when the caller passed a real launcher command
-    // (the lambda button). The bare `+` button leaves it unpinned so the
-    // shell's OSC 7 cwd basename drives the displayed title.
-    const pinned = trimmed.length > 0;
+    const command = launcher?.command.trim() || '';
+    const titleHint = launcher?.title?.trim() || '';
+    const labelSource = titleHint || command || 'shell';
+    const label = uniqueLabel(labelSource);
+    // Pin the label only when the caller passed a launcher entry (one of
+    // the configured λ / μ buttons). The bare `+` button leaves the tab
+    // unpinned so the shell's OSC 7 cwd basename drives the displayed
+    // title.
+    const pinned = launcher !== null && command.length > 0;
     return spawn(
       {
         side: sd,
-        command: trimmed || undefined,
+        command: command || undefined,
         cwd: props.cwd ?? undefined,
       },
       label,
       { pinned },
     );
+  };
+
+  /** Resolve a launcher symbol (or null) to its `LauncherConfig` from
+   *  props.launchers. Returns null for a missing entry or empty command —
+   *  callers treat that as the plain `+` path. */
+  const resolveLauncher = (symbol: LauncherSymbol | null): LauncherChoice => {
+    if (symbol === null) return null;
+    const entry = props.launchers.find((l) => l.symbol === symbol);
+    if (!entry || !entry.command.trim()) return null;
+    return entry;
   };
 
   // ---- live data + exit notification ----
@@ -503,7 +529,7 @@ export function TerminalPane(props: {
       activeId={activeIdIn(col)}
       isActiveColumn={activeColumn() === col}
       renamingId={renamingId()}
-      launcherCommand={props.launcherCommand}
+      launchers={props.launchers}
       paneOpen={props.open}
       dnd={dnd}
       registerHost={(c, el) => {
@@ -519,10 +545,10 @@ export function TerminalPane(props: {
       onCommitRename={commitRename}
       onCancelRename={() => setRenamingId(null)}
       onCloseTab={closeTab}
-      onSpawnShell={(c, launcher) => {
+      onSpawnShell={(c, launcherSymbol) => {
         nextSpawnColumn = c;
         setActiveColumn(c);
-        void spawnUserShell(launcher ? props.launcherCommand : null, 'my');
+        void spawnUserShell(resolveLauncher(launcherSymbol), 'my');
       }}
       onSaveBuffer={(c) => {
         setActiveColumn(c);

@@ -12,6 +12,7 @@
 import { Show, type JSX } from 'solid-js';
 import type {
   CardMinWidthPrefs,
+  LauncherSymbol,
   Platform,
   TerminalLoggingPrefs,
   TerminalPrefs,
@@ -120,6 +121,11 @@ interface TerminalSectionProps {
   prefs: () => TerminalPrefs;
   xterm: () => TerminalXtermPrefs;
   setString: (key: TerminalStringFieldKey, value: string) => Promise<void>;
+  setLauncherField: (
+    symbol: LauncherSymbol,
+    field: 'command' | 'title',
+    value: string,
+  ) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
@@ -166,6 +172,7 @@ export function TerminalSection(props: TerminalSectionProps): JSX.Element {
         prefs={props.prefs}
         xterm={props.xterm}
         setString={props.setString}
+        setLauncherField={props.setLauncherField}
         updateXterm={props.updateXterm}
         updateColor={props.updateColor}
         updateLogging={props.updateLogging}

@@ -94,7 +94,7 @@ describe('getEffectiveConceptionConfig', () => {
       global,
       JSON.stringify({
         terminal: {
-          launcher_command: 'claude',
+          launchers: [{ symbol: 'lambda', command: 'claude' }],
           screenshot_dir: '/home/alice/Pictures/Screenshots',
         },
       }),
@@ -108,7 +108,7 @@ describe('getEffectiveConceptionConfig', () => {
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({
-      launcher_command: 'claude',
+      launchers: [{ symbol: 'lambda', command: 'claude' }],
       screenshot_dir: '/home/alice/Pictures/Screenshots',
       logging: { retentionDays: 28 },
     });
@@ -118,12 +118,60 @@ describe('getEffectiveConceptionConfig', () => {
     const global = join(tmp, 'settings.json');
     writeFileSync(
       global,
-      JSON.stringify({ terminal: { launcher_command: 'claude', screenshot_dir: '/a' } }),
+      JSON.stringify({
+        terminal: {
+          launchers: [{ symbol: 'lambda', command: 'claude' }],
+          screenshot_dir: '/a',
+        },
+      }),
     );
     mkdirSync(join(tmp, CONDASH_DIR));
     writeFileSync(condashSettingsPath(tmp), JSON.stringify({ terminal: { screenshot_dir: '/b' } }));
     const eff = await getEffectiveConceptionConfig(tmp, global);
-    expect(eff.terminal).toEqual({ launcher_command: 'claude', screenshot_dir: '/b' });
+    expect(eff.terminal).toEqual({
+      launchers: [{ symbol: 'lambda', command: 'claude' }],
+      screenshot_dir: '/b',
+    });
+  });
+
+  it('migrates a legacy global launcher_command into launchers[] on read', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ terminal: { launcher_command: 'claude' } }));
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.terminal).toEqual({
+      launchers: [{ symbol: 'lambda', command: 'claude' }],
+    });
+  });
+
+  it('migrates a legacy conception launcher_command into launchers[] on read', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, '{}\n');
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(
+      condashSettingsPath(tmp),
+      JSON.stringify({ terminal: { launcher_command: 'nu' } }),
+    );
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.terminal).toEqual({
+      launchers: [{ symbol: 'lambda', command: 'nu' }],
+    });
+  });
+
+  it('drops a legacy launcher_command when explicit launchers[] is present', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(
+      global,
+      JSON.stringify({
+        terminal: {
+          launcher_command: 'stale',
+          launchers: [{ symbol: 'mu', command: 'python -m notebook' }],
+        },
+      }),
+    );
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.terminal).toEqual({
+      launchers: [{ symbol: 'mu', command: 'python -m notebook' }],
+    });
   });
 
   it('still replaces non-terminal keys whole (open_with stays one-or-the-other)', async () => {

@@ -17,6 +17,7 @@ import {
   legacyConfigurationJsonPath,
 } from './condash-dir';
 import { settingsPath } from './settings';
+import { migrateRawSettings } from './config-schema';
 
 /**
  * Two-layer config resolver. Reads the per-machine `settings.json` for
@@ -39,15 +40,17 @@ import { settingsPath } from './settings';
  * slot has to restate the others.
  *
  * One exception: `terminal`. Its sub-schema straddles per-machine input /
- * device prefs (`shell`, `shortcut`, `screenshot_dir`, `launcher_command`,
+ * device prefs (`shell`, `shortcut`, `screenshot_dir`, `launchers`,
  * `xterm`, …) and per-tree retention policy (`logging.{retentionDays,
  * maxDirMb, …}`). A pure replace meant any tree that customised
  * `terminal.logging` silently lost every per-machine terminal pref — the
- * λ launcher button vanished and the screenshot-paste shortcut toasted
+ * launcher buttons vanished and the screenshot-paste shortcut toasted
  * "no screenshot_dir". `terminal` therefore merges one level deep:
  * conception fields win at the sub-key level, missing sub-keys fall
  * through to the global block. Nested values inside `terminal.xterm` /
- * `terminal.logging` still replace whole.
+ * `terminal.logging` / `terminal.launchers` still replace whole — the
+ * launchers array, in particular, replaces wholesale so a conception can
+ * decisively swap in its own set rather than partially shadow.
  */
 export interface EffectiveConfig extends ConfigShape {
   workspace_path?: string;
@@ -131,7 +134,7 @@ export async function readConceptionConfigRaw(
         // missing primary.
         const obj = parsed as Record<string, unknown>;
         if (isTombstone(obj)) continue;
-        return obj;
+        return migrateRawSettings(obj) as Record<string, unknown>;
       }
       return {};
     } catch (err) {
@@ -141,12 +144,16 @@ export async function readConceptionConfigRaw(
   return {};
 }
 
-/** Read settings.json's raw JSON (no shape coercion beyond JSON.parse). */
+/** Read settings.json's raw JSON. Legacy shapes (`terminal.launcher_command`)
+ *  are normalised in-flight by `migrateRawSettings` so every consumer sees
+ *  the canonical schema. */
 async function readGlobalSettingsRaw(settingsFile: string): Promise<Record<string, unknown>> {
   try {
     const raw = await fs.readFile(settingsFile, 'utf8');
     const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
+    if (parsed && typeof parsed === 'object') {
+      return migrateRawSettings(parsed) as Record<string, unknown>;
+    }
     return {};
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};

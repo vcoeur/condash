@@ -1,6 +1,14 @@
 import { For, Show } from 'solid-js';
+import type { LauncherConfig, LauncherSymbol } from '@shared/types';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
+
+/** Maps each launcher slot to the glyph rendered on its tab-strip button.
+ *  Symbol is the entry's identity in settings; glyph is rendering-only. */
+const LAUNCHER_GLYPH: Record<LauncherSymbol, string> = {
+  lambda: 'λ',
+  mu: 'μ',
+};
 
 export interface TerminalColumnProps {
   col: Column;
@@ -8,9 +16,9 @@ export interface TerminalColumnProps {
   activeId: string | null;
   isActiveColumn: boolean;
   renamingId: string | null;
-  /** Optional launcher command (when set, the column gets a second `+`
-   *  button labelled with the command name, e.g. `claude`). */
-  launcherCommand?: string | null;
+  /** Configured launcher slots. One button per entry whose `command` is
+   *  non-empty, in the order they appear in `terminal.launchers`. */
+  launchers: readonly LauncherConfig[];
   /** True when the surrounding pane is currently visible. Drives the
    *  active state of the in-strip Terminal handle. */
   paneOpen: boolean;
@@ -24,7 +32,7 @@ export interface TerminalColumnProps {
   onCommitRename: (id: string, value: string) => void;
   onCancelRename: () => void;
   onCloseTab: (id: string) => void;
-  onSpawnShell: (col: Column, launcher: boolean) => void;
+  onSpawnShell: (col: Column, launcher: LauncherSymbol | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
   /** Toggle the pane open/closed. The Terminal handle in the strip
@@ -145,25 +153,27 @@ export function TerminalColumn(props: TerminalColumnProps) {
           class="terminal-tab-add"
           onClick={(e) => {
             e.stopPropagation();
-            props.onSpawnShell(props.col, false);
+            props.onSpawnShell(props.col, null);
           }}
           title="New shell tab (cwd: conception)"
         >
           +
         </button>
-        <Show when={props.launcherCommand?.trim()}>
-          <button
-            class="terminal-tab-add launcher"
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onSpawnShell(props.col, true);
-            }}
-            title={`New ${props.launcherCommand} tab (cwd: conception)`}
-            aria-label={`New ${props.launcherCommand} tab`}
-          >
-            λ
-          </button>
-        </Show>
+        <For each={props.launchers.filter((l) => l.command.trim().length > 0)}>
+          {(launcher) => (
+            <button
+              class="terminal-tab-add launcher"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onSpawnShell(props.col, launcher.symbol);
+              }}
+              title={`New ${launcher.title || launcher.command} tab (cwd: conception)`}
+              aria-label={`New ${launcher.title || launcher.command} tab`}
+            >
+              {LAUNCHER_GLYPH[launcher.symbol]}
+            </button>
+          )}
+        </For>
         <span class="terminal-tab-strip-spacer" />
         <button
           class="terminal-tab-add"

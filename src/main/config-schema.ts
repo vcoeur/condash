@@ -154,13 +154,30 @@ const terminalLoggingSettings = z
   })
   .strict();
 
+/** Single launcher slot. `symbol` is the identity (drives the glyph the
+ *  renderer picks); `command` is the shell command run on spawn; `title`,
+ *  when present, is the initial pinned tab label. */
+const launcherSchema = z
+  .object({
+    symbol: z.enum(['lambda', 'mu']),
+    command: z.string().min(1, 'command must not be empty'),
+    title: z.string().optional(),
+  })
+  .strict();
+
+const launchersSchema = z
+  .array(launcherSchema)
+  .refine((entries) => new Set(entries.map((e) => e.symbol)).size === entries.length, {
+    message: 'duplicate launcher symbol',
+  });
+
 const terminalSettings = z
   .object({
     shell: z.string().optional(),
     shortcut: z.string().optional(),
     screenshot_dir: z.string().optional(),
     screenshot_paste_shortcut: z.string().optional(),
-    launcher_command: z.string().optional(),
+    launchers: launchersSchema.optional(),
     move_tab_left_shortcut: z.string().optional(),
     move_tab_right_shortcut: z.string().optional(),
     xterm: xtermSettings.optional(),
@@ -302,6 +319,37 @@ export const DEFAULT_RESOURCES_PATH = 'resources';
 export const DEFAULT_SKILLS_PATH = '.claude/skills';
 
 /**
+ * In-place migration of legacy settings shapes ahead of strict-mode zod
+ * parsing. Runs on every parse so old `settings.json` / `condash.json`
+ * bodies stay readable; the schema's `.strict()` would otherwise reject
+ * the stale keys outright.
+ *
+ * Current rules:
+ * - `terminal.launcher_command` (scalar string) → `terminal.launchers[0]`
+ *   with `symbol: 'lambda'`. Skipped if the user already has an explicit
+ *   `terminal.launchers` block — the array wins, the legacy scalar is
+ *   discarded. The legacy key is removed in both cases so the strict
+ *   schema accepts the result and the next write drops it from disk.
+ */
+export function migrateRawSettings(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  const root = parsed as Record<string, unknown>;
+  const terminal = root.terminal;
+  if (!terminal || typeof terminal !== 'object') return parsed;
+  const term = terminal as Record<string, unknown>;
+  if (typeof term.launcher_command === 'string') {
+    const legacy = term.launcher_command.trim();
+    if (legacy.length > 0 && !Array.isArray(term.launchers)) {
+      term.launchers = [{ symbol: 'lambda', command: legacy }];
+    }
+    delete term.launcher_command;
+  } else if ('launcher_command' in term) {
+    delete term.launcher_command;
+  }
+  return parsed;
+}
+
+/**
  * Parse → validate → re-serialise a conception's `condash.json` (or its
  * legacy `configuration.json`) body. Used by the renderer's NoteModal save
  * path so the bytes that hit disk are always schema-canonical.
@@ -313,6 +361,7 @@ export function validateAndCanonicaliseConceptionConfig(json: string): string {
   } catch (err) {
     throw new Error(`Invalid JSON: ${(err as Error).message}`);
   }
+  parsed = migrateRawSettings(parsed);
   const result = conceptionConfigSchema.safeParse(parsed);
   if (!result.success) {
     const issue = result.error.issues[0];
@@ -337,6 +386,7 @@ export function validateAndCanonicaliseGlobalSettings(json: string): string {
   } catch (err) {
     throw new Error(`Invalid JSON: ${(err as Error).message}`);
   }
+  parsed = migrateRawSettings(parsed);
   const result = globalSettingsSchema.safeParse(parsed);
   if (!result.success) {
     const issue = result.error.issues[0];
