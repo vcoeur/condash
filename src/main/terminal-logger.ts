@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { Terminal } from '@xterm/headless';
 import type { TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
+import { META_LINE_PREFIX } from './logs-format';
 
 /**
  * Single-session writer. One instance per pty spawn; lives from `open()`
@@ -101,8 +102,10 @@ const ROWS = 50;
 
 /** Sentinel prefix for the metadata header / footer lines inside a
  * `.txt`. The `# ` mimics shell-comment syntax — readable in `cat`,
- * grep-friendly. */
-export const META_LINE_PREFIX = '# condash: ';
+ * grep-friendly. Defined in `./logs-format` so the search / CLI graph can
+ * reach it without dragging `@xterm/headless` along. Re-exported here for
+ * back-compat with callers that historically imported it from this file. */
+export { META_LINE_PREFIX };
 
 /** Resolve the per-session log file path inside `conceptionPath`. Returns
  * the canonical `.txt` path, no side effects. */
