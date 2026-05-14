@@ -1,6 +1,6 @@
 {
   "name": "condash",
-  "version": "2.28.0",
+  "version": "2.28.1",
   "description": "Markdown project dashboard for the conception tree (Electron build)",
   "private": true,
   "main": "dist-electron/main/index.js",

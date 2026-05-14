@@ -10,15 +10,17 @@ test('terminal pane: + spawns an unpinned shell, λ spawns a pinned launcher tab
   // first token — so we expect the label "cat".
   const booted = await bootApp({
     extraConfig: {
-      terminal: { launcher_command: 'cat' },
+      terminal: { launchers: [{ symbol: 'lambda', command: 'cat' }] },
     },
   });
   try {
     const win = booted.window;
 
-    // Sanity probe: the renderer must see the launcher_command from condash.json.
+    // Sanity probe: the renderer must see the λ launcher entry from settings.
+    // Schema rename in v2.28.0 — legacy `launcher_command` migrates into this
+    // array on load; the unit suite in effective-config.test.ts covers that path.
     const prefs = await win.evaluate(() => window.condash.termGetPrefs());
-    expect(prefs.launcher_command).toBe('cat');
+    expect(prefs.launchers?.[0]?.command).toBe('cat');
 
     // The terminal pane is mounted but starts collapsed; the column header
     // (with the +/λ buttons) is rendered regardless of `open`. Click each
