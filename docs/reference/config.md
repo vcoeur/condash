@@ -72,7 +72,7 @@ Paths may use `~` (expanded to `$HOME`) or absolute paths. JSON does not carry c
 
 A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — and unlike every other top-level key, the per-conception block **merges with** the global one (see the exception called out at the top of this page). A conception declaring `terminal.logging.retentionDays` keeps the global `terminal.launchers` / `terminal.screenshot_dir` it inherited.
 
-The legacy scalar `terminal.launcher_command` from condash ≤ 2.27 is transparently migrated into `terminal.launchers[0]` with `symbol: 'lambda'` on first load and dropped from the file on the next write. Mixed files — both the legacy scalar and the new array present — keep the array and discard the scalar.
+The legacy scalar `terminal.launcher_command` from condash ≤ 2.27 is transparently migrated into `terminal.launchers[0]` with `label: 'λ'` on first load and dropped from the file on the next write. Legacy `symbol`-based entries (`lambda` → `λ`, `mu` → `μ`) are also migrated to `label` automatically. Mixed files — both the legacy scalar and the new array present — keep the array and discard the scalar.
 
 ### Terminal logging
 
@@ -188,21 +188,21 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `shortcut`                  | `` Ctrl+` ``                                            | Toggle the terminal pane. Modifiers: `Ctrl`, `Shift`, `Alt`, `Meta`. Key names follow the HTML `KeyboardEvent.key` convention. |
 | `screenshot_dir`            | `~/Pictures/Screenshots` on Linux, `~/Desktop` on macOS | Directory scanned for "most recent screenshot" by the paste shortcut.                                                          |
 | `screenshot_paste_shortcut` | `Ctrl+Shift+V`                                          | Inserts the absolute path of the newest image in `screenshot_dir` into the active terminal. No `Enter` — you confirm.          |
-| `launchers[]`               | `[]`                                                    | Configurable launcher slots — see [`terminal.launchers`](#terminallaunchers) below. Each entry adds a button (λ / μ) to the tab strip.    |
+| `launchers[]`               | `[]`                                                    | Configurable launcher slots — see [`terminal.launchers`](#terminallaunchers) below. Each entry adds an option to the tab-strip spawn dropdown.    |
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                          |
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                         |
 | `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section. |
 
 ### `terminal.launchers` { #terminallaunchers }
 
-Per-button launcher slots rendered on the terminal tab strip. The strip carries the plain `+` (spawns the configured shell) plus one button per entry whose `command` is non-empty. Two symbols are accepted today: `lambda` (rendered as λ) and `mu` (rendered as μ). The array order does not matter — the renderer keys off `symbol`.
+Per-entry launcher slots rendered in the terminal tab-strip spawn dropdown. The dropdown always offers `New shell` first; below it are the entries from `launchers` whose `command` is non-empty, in array order.
 
 ```json
 {
   "terminal": {
     "launchers": [
-      { "symbol": "lambda", "command": "claude", "title": "Claude" },
-      { "symbol": "mu", "command": "python -m notebook", "title": "Jupyter" }
+      { "label": "Claude", "command": "claude", "title": "Claude" },
+      { "label": "Jupyter", "command": "python -m notebook", "title": "Jupyter" }
     ]
   }
 }
@@ -210,11 +210,11 @@ Per-button launcher slots rendered on the terminal tab strip. The strip carries 
 
 | Key       | Type                       | Required | Meaning                                                                                                                                                                            |
 | --------- | -------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `symbol`  | `"lambda"` / `"mu"`        | yes      | Identity of the slot. Drives the glyph rendered on the button (λ / μ). Duplicates are rejected by the schema.                                                                       |
-| `command` | non-empty string           | yes      | Shell-style command spawned when the button is clicked. Resolved through the configured `shell` so pipelines and aliases work. Empty / whitespace is treated as the slot being unset (no button rendered). |
+| `label`   | string                     | yes      | User-defined name shown in the spawn dropdown. Falls back to `title || command` if empty at render time.                                                                           |
+| `command` | non-empty string           | yes      | Shell-style command spawned when the entry is selected. Resolved through the configured `shell` so pipelines and aliases work. Empty / whitespace is treated as the entry being unset (no dropdown option rendered). |
 | `title`   | string                     | no       | Initial pinned tab label at spawn time. When unset, the tab is labelled with the `command` (current behaviour for legacy `launcher_command`). The user's inline rename always wins over this. |
 
-**Migration from `launcher_command`:** the scalar key from condash ≤ 2.27 is rewritten in-flight on every read into `launchers[0]` with `symbol: 'lambda'` (no `title`). The legacy key is dropped on the next settings write — no manual action. A file that has both the legacy scalar and an explicit `launchers` array keeps the array and discards the scalar.
+**Migration from `launcher_command`:** the scalar key from condash ≤ 2.27 is rewritten in-flight on every read into `launchers[0]` with `label: 'λ'` (no `title`). Legacy `symbol`-based entries (`lambda` → `λ`, `mu` → `μ`) are also migrated to `label` automatically. The legacy key is dropped on the next settings write — no manual action. A file that has both the legacy scalar and an explicit `launchers` array keeps the array and discards the scalar.
 
 ### `terminal.xterm` { #terminalxterm }
 
@@ -290,8 +290,8 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
     "shell": "/bin/zsh",
     "shortcut": "Ctrl+T",
     "launchers": [
-      { "symbol": "lambda", "command": "claude", "title": "Claude" },
-      { "symbol": "mu", "command": "python -m notebook", "title": "Jupyter" }
+      { "label": "Claude", "command": "claude", "title": "Claude" },
+      { "label": "Jupyter", "command": "python -m notebook", "title": "Jupyter" }
     ],
     "screenshot_dir": "/home/you/Pictures/Screenshots"
   },

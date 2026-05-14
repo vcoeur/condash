@@ -12,7 +12,7 @@
 import { Show, type JSX } from 'solid-js';
 import type {
   CardMinWidthPrefs,
-  LauncherSymbol,
+  LauncherConfig,
   Platform,
   TerminalLoggingPrefs,
   TerminalPrefs,
@@ -121,11 +121,11 @@ interface TerminalSectionProps {
   prefs: () => TerminalPrefs;
   xterm: () => TerminalXtermPrefs;
   setString: (key: TerminalStringFieldKey, value: string) => Promise<void>;
-  setLauncherField: (
-    symbol: LauncherSymbol,
-    field: 'command' | 'title',
-    value: string,
-  ) => Promise<void>;
+  launchers: () => LauncherConfig[];
+  patchLauncher: (index: number, patch: Partial<LauncherConfig>) => Promise<void>;
+  addLauncher: () => Promise<void>;
+  removeLauncher: (index: number) => Promise<void>;
+  moveLauncher: (index: number, delta: -1 | 1) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
@@ -172,7 +172,11 @@ export function TerminalSection(props: TerminalSectionProps): JSX.Element {
         prefs={props.prefs}
         xterm={props.xterm}
         setString={props.setString}
-        setLauncherField={props.setLauncherField}
+        launchers={props.launchers}
+        patchLauncher={props.patchLauncher}
+        addLauncher={props.addLauncher}
+        removeLauncher={props.removeLauncher}
+        moveLauncher={props.moveLauncher}
         updateXterm={props.updateXterm}
         updateColor={props.updateColor}
         updateLogging={props.updateLogging}

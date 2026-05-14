@@ -19,7 +19,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import type {
   LauncherConfig,
-  LauncherSymbol,
   TermSide,
   TermSpawnRequest,
   TerminalPrefs,
@@ -380,12 +379,12 @@ export function TerminalPane(props: {
     );
   };
 
-  /** Resolve a launcher symbol (or null) to its `LauncherConfig` from
+  /** Resolve a launcher index (or null) to its `LauncherConfig` from
    *  props.launchers. Returns null for a missing entry or empty command —
-   *  callers treat that as the plain `+` path. */
-  const resolveLauncher = (symbol: LauncherSymbol | null): LauncherChoice => {
-    if (symbol === null) return null;
-    const entry = props.launchers.find((l) => l.symbol === symbol);
+   *  callers treat that as the plain `New shell` path. */
+  const resolveLauncher = (index: number | null): LauncherChoice => {
+    if (index === null) return null;
+    const entry = props.launchers[index];
     if (!entry || !entry.command.trim()) return null;
     return entry;
   };
@@ -545,10 +544,10 @@ export function TerminalPane(props: {
       onCommitRename={commitRename}
       onCancelRename={() => setRenamingId(null)}
       onCloseTab={closeTab}
-      onSpawnShell={(c, launcherSymbol) => {
+      onSpawnShell={(c, launcherIndex) => {
         nextSpawnColumn = c;
         setActiveColumn(c);
-        void spawnUserShell(resolveLauncher(launcherSymbol), 'my');
+        void spawnUserShell(resolveLauncher(launcherIndex), 'my');
       }}
       onSaveBuffer={(c) => {
         setActiveColumn(c);

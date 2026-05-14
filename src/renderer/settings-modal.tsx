@@ -2,7 +2,6 @@ import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import { onMount, onCleanup } from 'solid-js';
 import type {
   CardMinWidthPrefs,
-  LauncherSymbol,
   Platform,
   TerminalLoggingPrefs,
   TerminalPrefs,
@@ -11,11 +10,14 @@ import type {
 } from '@shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import {
-  applyLauncherEdit,
+  addLauncher,
   buildSavePayload,
   type ColorEntry,
+  moveLauncher,
+  patchLauncher,
   pruneEmpty,
   type RawConfig,
+  removeLauncher,
   type Section,
   SECTIONS,
   type SettingsTab,
@@ -495,22 +497,32 @@ export function SettingsModal(props: {
       return next as TerminalPrefs;
     });
 
-  /**
-   * Update one field on one launcher slot in the `launchers` array, keyed
-   * by `symbol`. Delegates the array math to `applyLauncherEdit` (pure,
-   * tested in `settings-modal-parts/data.test.ts`); this wrapper only
-   * threads it through `patchTerminal` so the in-progress draft becomes a
-   * disk write.
-   */
-  const setLauncherField = (
+  const patchLauncherField = (
     target: SettingsTab,
-    symbol: LauncherSymbol,
-    field: 'command' | 'title',
-    value: string,
+    index: number,
+    patch: Partial<import('@shared/types').LauncherConfig>,
   ): Promise<void> =>
     patchTerminal(target, (p) => ({
       ...p,
-      launchers: applyLauncherEdit(p.launchers, symbol, field, value),
+      launchers: patchLauncher(p.launchers, index, patch),
+    }));
+
+  const addLauncherField = (target: SettingsTab): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      launchers: addLauncher(p.launchers),
+    }));
+
+  const removeLauncherField = (target: SettingsTab, index: number): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      launchers: removeLauncher(p.launchers, index),
+    }));
+
+  const moveLauncherField = (target: SettingsTab, index: number, delta: -1 | 1): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      launchers: moveLauncher(p.launchers, index, delta),
     }));
 
   const xtermPrefsFor = (target: SettingsTab): TerminalXtermPrefs =>
@@ -752,7 +764,11 @@ export function SettingsModal(props: {
                 prefs={() => terminalPrefsFor('global')}
                 xterm={() => xtermPrefsFor('global')}
                 setString={(k, v) => setTerminalString('global', k, v)}
-                setLauncherField={(s, f, v) => setLauncherField('global', s, f, v)}
+                launchers={() => terminalPrefsFor('global').launchers ?? []}
+                patchLauncher={(i, p) => patchLauncherField('global', i, p)}
+                addLauncher={() => addLauncherField('global')}
+                removeLauncher={(i) => removeLauncherField('global', i)}
+                moveLauncher={(i, d) => moveLauncherField('global', i, d)}
                 updateXterm={(p) => updateXterm('global', p)}
                 updateColor={(k, v) => updateColor('global', k, v)}
                 updateLogging={(p) => updateLogging('global', p)}
@@ -815,7 +831,11 @@ export function SettingsModal(props: {
                 prefs={() => terminalPrefsFor('conception')}
                 xterm={() => xtermPrefsFor('conception')}
                 setString={(k, v) => setTerminalString('conception', k, v)}
-                setLauncherField={(s, f, v) => setLauncherField('conception', s, f, v)}
+                launchers={() => terminalPrefsFor('conception').launchers ?? []}
+                patchLauncher={(i, p) => patchLauncherField('conception', i, p)}
+                addLauncher={() => addLauncherField('conception')}
+                removeLauncher={(i) => removeLauncherField('conception', i)}
+                moveLauncher={(i, d) => moveLauncherField('conception', i, d)}
                 updateXterm={(p) => updateXterm('conception', p)}
                 updateColor={(k, v) => updateColor('conception', k, v)}
                 updateLogging={(p) => updateLogging('conception', p)}

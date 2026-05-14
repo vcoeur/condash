@@ -94,7 +94,7 @@ describe('getEffectiveConceptionConfig', () => {
       global,
       JSON.stringify({
         terminal: {
-          launchers: [{ symbol: 'lambda', command: 'claude' }],
+          launchers: [{ label: 'λ', command: 'claude' }],
           screenshot_dir: '/home/alice/Pictures/Screenshots',
         },
       }),
@@ -108,7 +108,7 @@ describe('getEffectiveConceptionConfig', () => {
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({
-      launchers: [{ symbol: 'lambda', command: 'claude' }],
+      launchers: [{ label: 'λ', command: 'claude' }],
       screenshot_dir: '/home/alice/Pictures/Screenshots',
       logging: { retentionDays: 28 },
     });
@@ -120,7 +120,7 @@ describe('getEffectiveConceptionConfig', () => {
       global,
       JSON.stringify({
         terminal: {
-          launchers: [{ symbol: 'lambda', command: 'claude' }],
+          launchers: [{ label: 'λ', command: 'claude' }],
           screenshot_dir: '/a',
         },
       }),
@@ -129,7 +129,7 @@ describe('getEffectiveConceptionConfig', () => {
     writeFileSync(condashSettingsPath(tmp), JSON.stringify({ terminal: { screenshot_dir: '/b' } }));
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({
-      launchers: [{ symbol: 'lambda', command: 'claude' }],
+      launchers: [{ label: 'λ', command: 'claude' }],
       screenshot_dir: '/b',
     });
   });
@@ -139,7 +139,7 @@ describe('getEffectiveConceptionConfig', () => {
     writeFileSync(global, JSON.stringify({ terminal: { launcher_command: 'claude' } }));
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({
-      launchers: [{ symbol: 'lambda', command: 'claude' }],
+      launchers: [{ label: 'λ', command: 'claude' }],
     });
   });
 
@@ -153,7 +153,7 @@ describe('getEffectiveConceptionConfig', () => {
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({
-      launchers: [{ symbol: 'lambda', command: 'nu' }],
+      launchers: [{ label: 'λ', command: 'nu' }],
     });
   });
 
@@ -164,13 +164,13 @@ describe('getEffectiveConceptionConfig', () => {
       JSON.stringify({
         terminal: {
           launcher_command: 'stale',
-          launchers: [{ symbol: 'mu', command: 'python -m notebook' }],
+          launchers: [{ label: 'μ', command: 'python -m notebook' }],
         },
       }),
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({
-      launchers: [{ symbol: 'mu', command: 'python -m notebook' }],
+      launchers: [{ label: 'μ', command: 'python -m notebook' }],
     });
   });
 

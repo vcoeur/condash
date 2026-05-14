@@ -3,7 +3,6 @@ import type { JSX } from 'solid-js';
 import type {
   CardMinWidthPrefs,
   LauncherConfig,
-  LauncherSymbol,
   Platform,
   TerminalLoggingPrefs,
   TerminalPrefs,
@@ -14,7 +13,6 @@ import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import {
   type ColorEntry,
   CURSOR_STYLES,
-  LAUNCHER_FIELDSETS,
   pick,
   type SettingsTab,
   TERMINAL_COLORS,
@@ -22,16 +20,6 @@ import {
   THEME_OPTIONS,
 } from './data';
 import { FieldBadgeRow, type InheritanceState } from './badges';
-
-/** Lookup current command/title for the given launcher symbol in a TerminalPrefs
- *  block; both fields default to empty so the input controls stay controlled. */
-function findLauncher(
-  prefs: TerminalPrefs,
-  symbol: LauncherSymbol,
-): { command: string; title: string } {
-  const entry = prefs.launchers?.find((l: LauncherConfig) => l.symbol === symbol);
-  return { command: entry?.command ?? '', title: entry?.title ?? '' };
-}
 
 /** Field row that pairs a labelled control with an inheritance badge.
  *  Used on the conception tab; pass `state="inherits"` and `hide` from the
@@ -144,11 +132,11 @@ export function TerminalFields(props: {
   prefs: () => TerminalPrefs;
   xterm: () => TerminalXtermPrefs;
   setString: (key: (typeof TERMINAL_STRING_FIELDS)[number]['key'], value: string) => Promise<void>;
-  setLauncherField: (
-    symbol: LauncherSymbol,
-    field: 'command' | 'title',
-    value: string,
-  ) => Promise<void>;
+  launchers: () => LauncherConfig[];
+  patchLauncher: (index: number, patch: Partial<LauncherConfig>) => Promise<void>;
+  addLauncher: () => Promise<void>;
+  removeLauncher: (index: number) => Promise<void>;
+  moveLauncher: (index: number, delta: -1 | 1) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
@@ -186,42 +174,76 @@ export function TerminalFields(props: {
 
       <h3>Launchers</h3>
       <p class="settings-field-hint">
-        Each launcher renders a button on the terminal tab strip when its command is set. The title,
-        when set, becomes the pinned tab name at spawn time; an inline rename still wins.
+        Each entry renders an option in the terminal tab-strip dropdown. Label is what you see in
+        the dropdown; title becomes the pinned tab name at spawn time (falls back to command); an
+        inline rename still wins.
       </p>
-      <For each={LAUNCHER_FIELDSETS}>
-        {(meta) => (
-          <fieldset class="settings-launcher-fieldset">
-            <legend>{meta.label}</legend>
-            <div class="settings-grid">
-              <label>
-                <span>Command</span>
-                <input
-                  type="text"
-                  placeholder={pick(meta.commandPlaceholder, props.platform())}
-                  {...props.bindText(
-                    `${idPrefix}.launchers.${meta.symbol}.command`,
-                    () => findLauncher(props.prefs(), meta.symbol).command || undefined,
-                    (v) => props.setLauncherField(meta.symbol, 'command', v),
-                  )}
-                />
-              </label>
-              <label>
-                <span>Title</span>
-                <input
-                  type="text"
-                  placeholder={pick(meta.titlePlaceholder, props.platform())}
-                  {...props.bindText(
-                    `${idPrefix}.launchers.${meta.symbol}.title`,
-                    () => findLauncher(props.prefs(), meta.symbol).title || undefined,
-                    (v) => props.setLauncherField(meta.symbol, 'title', v),
-                  )}
-                />
-              </label>
+      <For each={props.launchers()}>
+        {(launcher, idx) => (
+          <div class="settings-launcher-row">
+            <label>
+              <span>Label</span>
+              <input
+                type="text"
+                placeholder="Claude"
+                {...props.bindText(
+                  `${idPrefix}.launchers.${idx()}.label`,
+                  () => launcher.label || undefined,
+                  (v) => props.patchLauncher(idx(), { label: v }),
+                )}
+              />
+            </label>
+            <label>
+              <span>Command</span>
+              <input
+                type="text"
+                placeholder="claude"
+                {...props.bindText(
+                  `${idPrefix}.launchers.${idx()}.command`,
+                  () => launcher.command || undefined,
+                  (v) => props.patchLauncher(idx(), { command: v }),
+                )}
+              />
+            </label>
+            <label>
+              <span>Title</span>
+              <input
+                type="text"
+                placeholder="Claude"
+                {...props.bindText(
+                  `${idPrefix}.launchers.${idx()}.title`,
+                  () => launcher.title || undefined,
+                  (v) => props.patchLauncher(idx(), { title: v }),
+                )}
+              />
+            </label>
+            <div class="settings-launcher-actions">
+              <button type="button" title="Remove" onClick={() => props.removeLauncher(idx())}>
+                ×
+              </button>
+              <button
+                type="button"
+                title="Move up"
+                disabled={idx() === 0}
+                onClick={() => props.moveLauncher(idx(), -1)}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                title="Move down"
+                disabled={idx() === props.launchers().length - 1}
+                onClick={() => props.moveLauncher(idx(), 1)}
+              >
+                ↓
+              </button>
             </div>
-          </fieldset>
+          </div>
         )}
       </For>
+      <button type="button" class="settings-add-launcher" onClick={() => props.addLauncher()}>
+        + Add launcher
+      </button>
 
       <h3>Font</h3>
       <div class="settings-grid">

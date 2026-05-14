@@ -29,14 +29,13 @@ The pane starts as a single column. The right column materialises only when at l
 
 Each side header carries:
 
-- **`+`** — spawn a new tab running the configured shell.
-- **Launcher buttons** — one per entry in `terminal.launchers` whose `command` is non-empty. Two slots are available: **`λ`** (`symbol: "lambda"`) and **`μ`** (`symbol: "mu"`). Each spawns a new tab whose child process is the launcher command instead of the shell. Leave the slot's `command` empty to hide its button.
+- **Spawn dropdown** — a single button that opens a menu with all configured launchers. The first option is always `New shell` (spawns the configured shell); below it are the entries from `terminal.launchers` whose `command` is non-empty. Selecting an option immediately spawns the corresponding tab.
 - **Tab strip** — click to focus the tab; middle-click to close. Clicking inside the xterm itself also promotes the tab to active (the click+focus listener was wired so a stray click never silently sends keys to a different tab than the one you're looking at).
 
 Tab titles depend on how the tab was spawned:
 
-- **`+` plain shell** — labelled `shell`; once the shell emits an OSC 7 cwd hint, the label switches to the cwd basename (`condash`, `notes`, …) and follows subsequent `cd`s.
-- **Launcher button (`λ` / `μ`)** — labelled with the slot's `title` if set, otherwise the `command` (e.g. `Claude`, `claude`, `python -m notebook`). The label is **pinned**: OSC 7 cwd updates do *not* override it.
+- **`New shell`** — labelled `shell`; once the shell emits an OSC 7 cwd hint, the label switches to the cwd basename (`condash`, `notes`, …) and follows subsequent `cd`s.
+- **Launcher option** — labelled with the entry's `title` if set, otherwise the `command` (e.g. `Claude`, `claude`, `python -m notebook`). The label is **pinned**: OSC 7 cwd updates do *not* override it.
 - **Code-card "open in term"** — labelled `<repo> · <branch>` (e.g. `condash · my-feature`). Also pinned, so the branch stays visible even after the shell `cd`s inside the worktree.
 
 A manual double-click rename always wins. The full path shows in the title attribute. Tabs **auto-close on process exit** — the previous "[process exited N]" stale-tab behaviour is gone. If you want the buffer before close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
@@ -158,8 +157,8 @@ Everything lives under `terminal:` in `${XDG_CONFIG_HOME:-~/.config}/condash/set
     "screenshot_dir": "/home/you/Pictures/Screenshots",
     "screenshot_paste_shortcut": "Ctrl+Shift+V",
     "launchers": [
-      { "symbol": "lambda", "command": "claude", "title": "Claude" },
-      { "symbol": "mu", "command": "python -m notebook", "title": "Jupyter" }
+      { "label": "Claude", "command": "claude", "title": "Claude" },
+      { "label": "Jupyter", "command": "python -m notebook", "title": "Jupyter" }
     ],
     "move_tab_left_shortcut": "Ctrl+Left",
     "move_tab_right_shortcut": "Ctrl+Right"
@@ -169,11 +168,11 @@ Everything lives under `terminal:` in `${XDG_CONFIG_HOME:-~/.config}/condash/set
 
 See the [config reference](../reference/config.md) for the full key table with defaults.
 
-The legacy scalar `terminal.launcher_command` from condash ≤ 2.27 is transparently migrated into `launchers[0]` (symbol: `lambda`) on first load and dropped from the file on next write — no manual action.
+The legacy scalar `terminal.launcher_command` from condash ≤ 2.27 is transparently migrated into `launchers[0]` (label: `λ`) on first load and dropped from the file on next write — no manual action. Legacy `symbol`-based entries (`lambda` → `λ`, `mu` → `μ`) are also migrated to `label` automatically.
 
 ## Editing shortcuts
 
-The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. The two launcher slots (λ, μ) appear as grouped fieldsets with **Command** and **Title** inputs each. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed.
+The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Launchers appear as a dynamic list with **Label**, **Command**, and **Title** inputs per row. Use **+ Add launcher** to create new entries, the **×** button to remove, and **↑ / ↓** to reorder. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed.
 
 ## Platform notes
 
