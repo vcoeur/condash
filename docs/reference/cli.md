@@ -184,15 +184,23 @@ The skills (`/projects index`, `/knowledge index`) clear these after they regene
 
 ### `skills`
 
-Manage condash-shipped Claude Code skills.
+Manage Claude Code + Kimi skills. Two scopes:
 
-| Verb | What it does |
-|---|---|
-| `list` | Print every skill that ships with this condash version |
-| `install [<name>...]` | Copy shipped skill files into `<conception>/.claude/skills/`. With no args, walks each file with diff + per-file confirmation |
-| `status` | Compare local skills against the shipped versions and the recorded SHA256 manifest |
+- **Repo scope (default)** — installs the skills condash itself ships into a conception. Sources go to `<conception>/.agents/skills/<name>/`; compiled outputs to `<conception>/.claude/skills/<name>/` and `<conception>/.kimi/skills/<name>/`.
+- **User scope (`--user`)** — compiles skillspecs the user already owns at `~/.config/agents/skills/<name>/` into `~/.claude/skills/<name>/` + `~/.kimi/skills/<name>/`. Used by the ClaudeConfig sync flow that mirrors versioned user skills out to live.
 
-The manifest at `.claude/skills/.condash-skills.json` tracks the shipped version and SHA256 per file, so updates can detect local edits.
+| Verb | Default scope | With `--user` |
+|---|---|---|
+| `list` | Print every skill condash ships | List user skillspecs under `~/.config/agents/skills/`, with host-filter status |
+| `install [<name>…]` | Copy shipped sources into the conception's `.agents/skills/`, then compile to `.claude/skills/` + `.kimi/skills/`. Refuses on local edits without `--force` | Compile user sources to `~/.claude/skills/` + `~/.kimi/skills/`. No source-copy pass; outputs always regenerated; no manifest |
+| `status` | Compare sources against the recorded SHA256 manifest | Compare each compiled output against a fresh in-memory compile: `ok` / `stale` / `missing` / `skipped` |
+| `validate [<name>…]` | Lint each shipped skillspec | Lint each user skillspec |
+
+`--user` is incompatible with `--dest`. The user-source root, target roots, and host-label file are env-overridable for tests (`CONDASH_USER_SKILLS_ROOT`, `CONDASH_USER_CLAUDE_ROOT`, `CONDASH_USER_KIMI_ROOT`, `CONDASH_USER_HOST_FILE`).
+
+A user skillspec's `spec.yaml` may carry a `hosts:` list — e.g. `hosts: [vcoeur]`. When present, condash reads the current host label from `~/.claude/.host` and skips any skill whose `hosts:` does not include that label. Absent `hosts:` means install everywhere. This replaces the multi-host filter previously enforced by ClaudeConfig's `/sync-config`.
+
+The manifest at `.claude/skills/.condash-skills.json` (repo scope only) tracks the shipped version and SHA256 per file, so updates can detect local edits.
 
 ### `templates`
 

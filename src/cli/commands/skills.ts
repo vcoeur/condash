@@ -8,31 +8,49 @@
  * spec into agent-native skill files for Claude (`.claude/skills/`) and
  * Kimi (`.kimi/skills/`).
  *
- * Install model:
+ * Two scopes, selected by flag:
  *
- *   Pass 1 — copy each shipped skillspec source file into the conception's
- *   `<dest>/.agents/skills/<name>/<relpath>`. This uses the existing SHA-
- *   tracked manifest (`<dest>/.claude/skills/.condash-skills.json`) with
- *   refuse-on-edit semantics: if the user edited a source file, we refuse
- *   to overwrite without `--force` or `--diff`.
+ *   • **Repo scope (default)** — installs the skills condash itself ships
+ *     into a conception:
  *
- *   Pass 2 — parse each (now-on-disk) skillspec and compile it for each
- *   target (`claude`, `kimi`), writing compiled `SKILL.md` + sibling assets
- *   into `<dest>/.claude/skills/<name>/` and `<dest>/.kimi/skills/<name>/`.
- *   Compiled outputs are deterministic from sources and are always
- *   regenerated; they are **not** tracked by the manifest.
+ *     Pass 1 — copy each shipped skillspec source file into the conception's
+ *     `<dest>/.agents/skills/<name>/<relpath>`. This uses the existing SHA-
+ *     tracked manifest (`<dest>/.claude/skills/.condash-skills.json`) with
+ *     refuse-on-edit semantics: if the user edited a source file, we refuse
+ *     to overwrite without `--force` or `--diff`.
  *
- *   Conventionally the conception's `.gitignore` excludes `/.claude/skills/`
- *   and `/.kimi/skills/` (templates regenerated on every install) but
- *   tracks `/.agents/skills/` (the source-of-truth).
+ *     Pass 2 — parse each (now-on-disk) skillspec and compile it for each
+ *     target (`claude`, `kimi`), writing compiled `SKILL.md` + sibling assets
+ *     into `<dest>/.claude/skills/<name>/` and `<dest>/.kimi/skills/<name>/`.
+ *     Compiled outputs are deterministic from sources and are always
+ *     regenerated; they are **not** tracked by the manifest.
  *
- * `--dest <path>` retargets the install dir (default: conception root or
- * cwd). `--force` overrides refuse-on-edit. `--diff` shows a unified diff
- * for each refused source file. `--dry-run` reports what would be written
- * without touching disk.
+ *     Conventionally the conception's `.gitignore` excludes `/.claude/skills/`
+ *     and `/.kimi/skills/` (templates regenerated on every install) but
+ *     tracks `/.agents/skills/` (the source-of-truth).
+ *
+ *   • **User scope (`--user`)** — compiles skillspecs the user already owns
+ *     at `~/.config/agents/skills/<name>/` into `~/.claude/skills/<name>/`
+ *     + `~/.kimi/skills/<name>/`. There is no pass-1 copy and no manifest:
+ *     the user owns the source tree directly and the compiled outputs are
+ *     always regenerated. Specs may declare a `hosts:` list (e.g.
+ *     `hosts: [vcoeur]`); when present, condash reads `~/.claude/.host`
+ *     and skips skills whose `hosts:` does not include the current host
+ *     label. This is the multi-host filter previously enforced by
+ *     ClaudeConfig's `/sync-config`.
+ *
+ * Flags:
+ *
+ *   `--dest <path>`   retargets the repo-scope install dir (default: conception
+ *                     root or cwd). Incompatible with `--user`.
+ *   `--user`          switch to user scope. Incompatible with `--dest`.
+ *   `--force`         repo scope only: override refuse-on-edit.
+ *   `--diff`          repo scope only: show a unified diff per refused file.
+ *   `--dry-run`       report what would be written without touching disk.
  */
 
 import { promises as fs } from 'node:fs';
+import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
@@ -77,16 +95,20 @@ export async function runSkills(
   args: ParsedArgs,
   ctx: OutputContext,
 ): Promise<void> {
+  const userScope = args.flags.user === true;
+  if (userScope && args.flags.dest !== undefined) {
+    throw new CliError(ExitCodes.USAGE, '`--user` is incompatible with `--dest`');
+  }
   switch (verb) {
     case null:
     case 'list':
-      return await listShipped(args, ctx);
+      return userScope ? await listUser(args, ctx) : await listShipped(args, ctx);
     case 'install':
-      return await installSkills(args, ctx);
+      return userScope ? await installUserSkills(args, ctx) : await installSkills(args, ctx);
     case 'status':
-      return await skillsStatus(args, ctx);
+      return userScope ? await userSkillsStatus(args, ctx) : await skillsStatus(args, ctx);
     case 'validate':
-      return await validateSkills(args, ctx);
+      return userScope ? await validateUserSkills(args, ctx) : await validateSkills(args, ctx);
     default:
       throw new CliError(ExitCodes.USAGE, `Unknown skills verb: ${verb}`);
   }
@@ -595,5 +617,357 @@ async function extractDescriptionFromSpec(specPath: string): Promise<string | nu
     return value;
   } catch {
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// User-scope (`--user`) install/list/status/validate
+//
+// In user scope there is no shipped tree and no "copy sources into the
+// destination" pass: the user owns the source tree at
+// `~/.config/agents/skills/<name>/` directly. The compile pipeline is the
+// same one as repo scope (`parseSkillspec` + `compileSkillspec`), pointed
+// at different roots, and the outputs land in `~/.claude/skills/` and
+// `~/.kimi/skills/`. Outputs are always regenerated and not tracked by any
+// manifest (no refuse-on-edit semantics — the user knows the outputs are
+// derived).
+//
+// The `hosts:` field on a spec.yaml restricts a skill to a list of host
+// labels (e.g. `hosts: [vcoeur]`). When present, condash reads the host
+// label from `~/.claude/.host` (single line, whitespace-stripped) and
+// skips skills whose `hosts:` does not contain the current label. This
+// is the multi-host filter previously enforced by ClaudeConfig's
+// `/sync-config`; moving it here lets a single source-of-truth feed all
+// hosts without per-host pruning at sync time.
+//
+// Paths are env-overridable for tests:
+//   CONDASH_USER_SKILLS_ROOT  — replaces ~/.config/agents/skills
+//   CONDASH_USER_CLAUDE_ROOT  — replaces ~/.claude/skills
+//   CONDASH_USER_KIMI_ROOT    — replaces ~/.kimi/skills
+//   CONDASH_USER_HOST_FILE    — replaces ~/.claude/.host
+// ---------------------------------------------------------------------------
+
+interface UserSkill {
+  name: string;
+  sourceDir: string;
+  files: string[];
+  description: string | null;
+  /** Parsed `hosts:` list from spec.yaml; null if the field is absent. */
+  hosts: string[] | null;
+}
+
+interface UserInstallReport {
+  source: string;
+  outputs: Record<CompileTarget, string>;
+  hostLabel: string | null;
+  skipped: { skill: string; hosts: string[] }[];
+  compiled: { skill: string; target: CompileTarget; relPath: string }[];
+}
+
+function userSourceRoot(): string {
+  return process.env.CONDASH_USER_SKILLS_ROOT ?? join(homedir(), '.config', 'agents', 'skills');
+}
+
+function userTargetRoot(target: CompileTarget): string {
+  const envName = target === 'claude' ? 'CONDASH_USER_CLAUDE_ROOT' : 'CONDASH_USER_KIMI_ROOT';
+  return process.env[envName] ?? join(homedir(), `.${target}`, 'skills');
+}
+
+function userHostFile(): string {
+  return process.env.CONDASH_USER_HOST_FILE ?? join(homedir(), '.claude', '.host');
+}
+
+async function readHostLabel(): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(userHostFile(), 'utf8');
+    const label = raw.trim();
+    return label.length > 0 ? label : null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** Coerce a spec.yaml `hosts:` value to a string list, or null if the field
+ *  is absent. Accepts a YAML list (`[vcoeur, oomade]`) or a single scalar
+ *  treated as a one-element list. */
+function normalizeHosts(value: unknown): string[] | null {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim()).filter((v) => v.length > 0);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  }
+  return [];
+}
+
+async function readUserSkills(): Promise<UserSkill[]> {
+  const root = userSourceRoot();
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw new CliError(
+      ExitCodes.RUNTIME,
+      `Could not read user skillspecs at ${root}: ${(err as Error).message}`,
+    );
+  }
+  const out: UserSkill[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const sourceDir = join(root, entry.name);
+    let hosts: string[] | null = null;
+    try {
+      const parsed = await parseSkillspec(sourceDir);
+      hosts = normalizeHosts(parsed.spec.hosts);
+    } catch {
+      // Leave hosts as null; validation will catch malformed specs.
+    }
+    const files = await collectFilesRelative(sourceDir);
+    const description = await extractDescriptionFromSpec(join(sourceDir, 'spec.yaml')).catch(
+      () => null,
+    );
+    out.push({ name: entry.name, sourceDir, files, description, hosts });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+function hostAllowed(skill: UserSkill, hostLabel: string | null): boolean {
+  if (skill.hosts === null) return true;
+  if (skill.hosts.length === 0) return true;
+  if (hostLabel === null) return false;
+  return skill.hosts.includes(hostLabel);
+}
+
+async function installUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<void> {
+  const all = await readUserSkills();
+  const requestedNames = args.positional.length > 0 ? args.positional : null;
+  if (requestedNames) {
+    const known = new Set(all.map((s) => s.name));
+    const missing = requestedNames.filter((n) => !known.has(n));
+    if (missing.length > 0) {
+      throw new CliError(ExitCodes.NOT_FOUND, `Unknown skill(s): ${missing.join(', ')}`, {
+        available: all.map((s) => s.name),
+      });
+    }
+  }
+  const selected = requestedNames ? all.filter((s) => requestedNames.includes(s.name)) : all;
+
+  const dryRun = args.flags['dry-run'] === true;
+  for (const k of ['user', 'dry-run']) delete args.flags[k];
+  assertNoExtraFlags(args);
+
+  const hostLabel = await readHostLabel();
+  const report: UserInstallReport = {
+    source: userSourceRoot(),
+    outputs: { claude: userTargetRoot('claude'), kimi: userTargetRoot('kimi') },
+    hostLabel,
+    skipped: [],
+    compiled: [],
+  };
+
+  for (const skill of selected) {
+    if (!hostAllowed(skill, hostLabel)) {
+      report.skipped.push({ skill: skill.name, hosts: skill.hosts ?? [] });
+      continue;
+    }
+    const parsed = await parseSkillspec(skill.sourceDir);
+    for (const target of COMPILE_TARGETS) {
+      const compiled = compileSkillspec(parsed, target);
+      const outputRoot = join(userTargetRoot(target), skill.name);
+      if (!dryRun) await rmTreeIfPresent(outputRoot);
+      for (const [relPath, content] of Object.entries(compiled.files)) {
+        if (!dryRun) await writeFileMkdir(join(outputRoot, relPath), content);
+        report.compiled.push({ skill: skill.name, target, relPath });
+      }
+    }
+  }
+
+  emit(ctx, report, formatUserInstallHuman);
+}
+
+function formatUserInstallHuman(report: UserInstallReport): string {
+  const lines: string[] = [];
+  lines.push(`Source: ${report.source}`);
+  lines.push(`Compiled → ${report.outputs.claude}`);
+  lines.push(`Compiled → ${report.outputs.kimi}`);
+  if (report.hostLabel !== null) lines.push(`Host: ${report.hostLabel}`);
+  if (report.skipped.length > 0) {
+    lines.push(`Skipped (host-mismatch, ${report.skipped.length}):`);
+    for (const s of report.skipped) {
+      lines.push(`  · ${s.skill}  (hosts: ${s.hosts.join(', ') || '[]'})`);
+    }
+  }
+  if (report.compiled.length > 0) {
+    const byTarget = new Map<CompileTarget, number>();
+    for (const c of report.compiled) byTarget.set(c.target, (byTarget.get(c.target) ?? 0) + 1);
+    const parts = COMPILE_TARGETS.filter((t) => byTarget.has(t)).map(
+      (t) => `${t}=${byTarget.get(t)}`,
+    );
+    lines.push(`Compiled outputs: ${parts.join(', ')}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
+  delete args.flags.user;
+  assertNoExtraFlags(args);
+  const all = await readUserSkills();
+  const hostLabel = await readHostLabel();
+  const rows = all.map((s) => ({
+    name: s.name,
+    description: s.description,
+    files: s.files.length,
+    hosts: s.hosts,
+    allowedOnHost: hostAllowed(s, hostLabel),
+  }));
+  emit(
+    ctx,
+    { source: userSourceRoot(), hostLabel, skills: rows },
+    (data) => {
+      const d = data as {
+        source: string;
+        hostLabel: string | null;
+        skills: typeof rows;
+      };
+      const lines: string[] = [`Source: ${d.source}`];
+      if (d.hostLabel !== null) lines.push(`Host: ${d.hostLabel}`);
+      for (const r of d.skills) {
+        const hostTag =
+          r.hosts === null
+            ? ''
+            : r.allowedOnHost
+              ? ` [hosts: ${r.hosts.join(', ')}]`
+              : ' [skipped: not for this host]';
+        lines.push(`  ${r.name.padEnd(20)} ${(r.description ?? '').slice(0, 80)}${hostTag}`);
+      }
+      return lines.join('\n') + '\n';
+    },
+    [],
+    { streamField: 'skills' },
+  );
+}
+
+interface UserStatusEntry {
+  skill: string;
+  target: CompileTarget;
+  relPath: string;
+  state: 'ok' | 'stale' | 'missing' | 'skipped';
+}
+
+async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
+  delete args.flags.user;
+  assertNoExtraFlags(args);
+  const all = await readUserSkills();
+  const hostLabel = await readHostLabel();
+  const items: UserStatusEntry[] = [];
+
+  for (const skill of all) {
+    if (!hostAllowed(skill, hostLabel)) {
+      items.push({ skill: skill.name, target: 'claude', relPath: '-', state: 'skipped' });
+      continue;
+    }
+    const parsed = await parseSkillspec(skill.sourceDir);
+    for (const target of COMPILE_TARGETS) {
+      const compiled = compileSkillspec(parsed, target);
+      const outputRoot = join(userTargetRoot(target), skill.name);
+      for (const [relPath, content] of Object.entries(compiled.files)) {
+        const outPath = join(outputRoot, relPath);
+        let onDisk: Buffer | null = null;
+        try {
+          onDisk = await fs.readFile(outPath);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        }
+        let state: UserStatusEntry['state'];
+        if (onDisk === null) state = 'missing';
+        else if (Buffer.compare(onDisk, content) === 0) state = 'ok';
+        else state = 'stale';
+        items.push({ skill: skill.name, target, relPath, state });
+      }
+    }
+  }
+
+  emit(
+    ctx,
+    { source: userSourceRoot(), hostLabel, items },
+    (data) => {
+      const d = data as { source: string; hostLabel: string | null; items: UserStatusEntry[] };
+      if (d.items.length === 0) return `(no skillspecs under ${d.source})\n`;
+      const widths = {
+        skill: Math.max(5, ...d.items.map((r) => r.skill.length)),
+        target: 6,
+        file: Math.max(4, ...d.items.map((r) => r.relPath.length)),
+      };
+      return (
+        d.items
+          .map(
+            (r) =>
+              `  ${r.skill.padEnd(widths.skill)}  ${r.target.padEnd(widths.target)}  ${r.relPath.padEnd(widths.file)}  ${r.state}`,
+          )
+          .join('\n') + '\n'
+      );
+    },
+    [],
+    { streamField: 'items' },
+  );
+}
+
+async function validateUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<void> {
+  const requestedNames = args.positional.length > 0 ? args.positional : null;
+  delete args.flags.user;
+  assertNoExtraFlags(args);
+  const all = await readUserSkills();
+  const selected = requestedNames ? all.filter((s) => requestedNames.includes(s.name)) : all;
+  if (requestedNames) {
+    const known = new Set(all.map((s) => s.name));
+    const missing = requestedNames.filter((n) => !known.has(n));
+    if (missing.length > 0) {
+      throw new CliError(ExitCodes.NOT_FOUND, `Unknown skill(s): ${missing.join(', ')}`, {
+        available: all.map((s) => s.name),
+      });
+    }
+  }
+  const report: ValidateReport = { source: userSourceRoot(), skills: [] };
+  for (const skill of selected) {
+    const errors: string[] = [];
+    try {
+      const parsed = await parseSkillspec(skill.sourceDir);
+      for (const target of COMPILE_TARGETS) {
+        try {
+          compileSkillspec(parsed, target);
+        } catch (err) {
+          errors.push(`compile[${target}]: ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      if (err instanceof SkillspecError) errors.push(err.message);
+      else throw err;
+    }
+    report.skills.push({ name: skill.name, errors });
+  }
+  const totalErrors = report.skills.reduce((acc, s) => acc + s.errors.length, 0);
+  emit(ctx, report, (data) => {
+    const d = data as ValidateReport;
+    const lines: string[] = [`Source: ${d.source}`];
+    for (const s of d.skills) {
+      if (s.errors.length === 0) lines.push(`  ✓ ${s.name}`);
+      else {
+        lines.push(`  ✗ ${s.name}`);
+        for (const e of s.errors) lines.push(`      ${e}`);
+      }
+    }
+    return lines.join('\n') + '\n';
+  });
+  if (totalErrors > 0) {
+    throw new CliError(
+      ExitCodes.VALIDATION,
+      `${totalErrors} validation error(s) across ${report.skills.filter((s) => s.errors.length > 0).length} skill(s)`,
+      { skills: report.skills.filter((s) => s.errors.length > 0) },
+    );
   }
 }
