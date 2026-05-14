@@ -1,8 +1,3 @@
----
-allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(condash *)
-description: "Manage projects, incidents, and documents in the conception tree (`projects/YYYY-MM/YYYY-MM-DD-slug/`), plus the worktrees that back their code work. Every mechanical operation goes through `condash`. Invoke as /projects <action> [args]."
----
-
 # /projects — conception items + worktrees
 
 Every conception item — feature project, incident, or document — lives at `projects/YYYY-MM/YYYY-MM-DD-slug/` with a `README.md` and a `notes/` directory. Items never move once created; the `status` field alone signals done-ness.

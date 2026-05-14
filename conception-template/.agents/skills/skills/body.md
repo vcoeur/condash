@@ -1,7 +1,3 @@
----
-description: Install or update condash-shipped skills and templates in this conception. Wraps `condash skills {status,install}` and `condash templates {status,install}` (the templates verb ships partial-file regions of `CLAUDE.md`). Use after upgrading condash to pull updated content, or to do the first-time install. Walks edited files one-by-one so local customisations don't get clobbered.
----
-
 # /skills — install and update condash-shipped skills and templates
 
 condash ships two kinds of artefacts into a conception tree:

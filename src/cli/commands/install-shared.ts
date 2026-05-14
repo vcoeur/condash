@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { CliError, ExitCodes } from '../output';
 
 export const MANIFEST_RELPATH = '.condash-skills.json';
-export const MANIFEST_VERSION = 1;
+export const MANIFEST_VERSION = 2;
 
 export interface ManifestFileEntry {
   /** SHA256 of the file content as we wrote it at last install. */
@@ -24,8 +24,22 @@ export interface ManifestFileEntry {
   shippedVersion: string;
 }
 
+/**
+ * Per-skill manifest entry, v2.
+ *
+ * Tracks **source** files only — files under `<dest>/<skills_source>/<name>/`
+ * (default `<dest>/.agents/skills/<name>/`). Source files use refuse-on-edit
+ * semantics: if the on-disk SHA matches the manifest, condash overwrites with
+ * the newly-shipped content; if it differs, condash refuses without `--force`.
+ *
+ * Compiled outputs under `<dest>/.claude/skills/<name>/` and
+ * `<dest>/.kimi/skills/<name>/` are deterministically regenerated from
+ * sources on every install and are **not** tracked by the manifest. Users
+ * are not expected to edit compiled outputs (a `<!-- GENERATED -->` banner
+ * makes that explicit in each compiled `SKILL.md`).
+ */
 export interface ManifestSkillEntry {
-  files: Record<string, ManifestFileEntry>;
+  source: Record<string, ManifestFileEntry>;
 }
 
 export interface ManifestTemplateEntry {
@@ -47,12 +61,27 @@ export interface Manifest {
   templates?: Record<string, ManifestTemplateEntry>;
 }
 
-/** Read the manifest at `<dest>/.claude/skills/.condash-skills.json`. */
+/** Read the manifest at `<dest>/.claude/skills/.condash-skills.json`.
+ *
+ * Migrates v1 → v2 in-memory on read. The v1 schema tracked compiled-output
+ * file SHAs (in the same directory the manifest lived under); v2 tracks
+ * skillspec **source** file SHAs at a different location. The two have no
+ * useful overlap, so v1 `skills` entries are discarded on migration —
+ * the next v2 install re-seeds the manifest from scratch. v1 `templates`
+ * entries carry forward unchanged.
+ */
 export async function readManifest(dest: string): Promise<Manifest | null> {
   const path = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
   try {
     const raw = await fs.readFile(path, 'utf8');
     const parsed = JSON.parse(raw) as Manifest;
+    if (parsed.version === 1) {
+      return {
+        version: MANIFEST_VERSION,
+        skills: {},
+        templates: parsed.templates,
+      };
+    }
     if (parsed.version !== MANIFEST_VERSION) {
       throw new CliError(
         ExitCodes.RUNTIME,
