@@ -14,7 +14,7 @@ const SUMMARY_MAX = 300;
  *    - 2026-05-02 — Closed. Shipped in v2.9.4.
  * Used by extractClosedAt to find the latest close date. The trailing class
  * tolerates the bare form, an end-of-line, or a space (allowing the optional
- * summary that condash-cli projects close --summary writes). */
+ * summary that condash projects close --summary writes). */
 const CLOSED_LINE = /^\s*-\s+(\d{4}-\d{2}-\d{2})\s+—\s+Closed(\.|$|\s)/;
 
 export async function parseReadme(path: string): Promise<Project> {

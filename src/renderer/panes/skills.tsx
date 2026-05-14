@@ -13,7 +13,7 @@ const SKILLS_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
 
 function isSkillIndex(node: SkillNode): boolean {
   // Case-sensitive — that's how the manifest stores it and how
-  // `condash-cli skills install` reasons about file identity.
+  // `condash skills install` reasons about file identity.
   return node.kind === 'file' && node.name === 'SKILL.md';
 }
 
@@ -49,7 +49,7 @@ export function SkillsView(props: {
           <div class="empty">
             <p>No skills installed.</p>
             <p>
-              Run <code>condash-cli skills install</code> to lay down the bundled skills, or change{' '}
+              Run <code>condash skills install</code> to lay down the bundled skills, or change{' '}
               <code>skills_path</code> in Settings.
             </p>
             <div class="empty-actions">
@@ -187,7 +187,7 @@ function SkillCard(props: { node: SkillNode; onOpen: () => void }) {
               data-state={stamp().diverged ? 'diverged' : 'clean'}
               title={
                 stamp().diverged
-                  ? 'Shipped by condash — local edits will be flagged on `condash-cli skills install`.'
+                  ? 'Shipped by condash — local edits will be flagged on `condash skills install`.'
                   : `Shipped by condash${stamp().shippedVersion ? ` (v${stamp().shippedVersion})` : ''}.`
               }
             >

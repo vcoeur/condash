@@ -1,6 +1,6 @@
 /**
- * Index-tree regenerator — shared engine for `condash-cli projects index` and
- * `condash-cli knowledge index`.
+ * Index-tree regenerator — shared engine for `condash projects index` and
+ * `condash knowledge index`.
  *
  * Both trees follow the same contract: every directory carries an `index.md`
  * listing its immediate `.md` files (excluding `index.md`) and its immediate

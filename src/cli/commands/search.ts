@@ -8,7 +8,7 @@ export async function runSearch(
   conceptionPath: string,
 ): Promise<void> {
   const query = args.positional.join(' ').trim();
-  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli search <query>');
+  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash search <query>');
   const scope = (args.flags.scope as string | undefined) ?? 'all';
   if (!['all', 'projects', 'knowledge'].includes(scope)) {
     throw new CliError(ExitCodes.USAGE, '--scope must be all|projects|knowledge');

@@ -1,5 +1,5 @@
 /**
- * Shared helpers for `condash-cli skills install` and `condash-cli templates install`.
+ * Shared helpers for `condash skills install` and `condash templates install`.
  *
  * Both commands write to the same manifest at
  * `<dest>/.claude/skills/.condash-skills.json` (the `templates` namespace

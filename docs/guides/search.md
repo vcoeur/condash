@@ -100,11 +100,11 @@ If you need to search inside deliverable PDFs, grep them with an external tool o
 
 ## CLI parity
 
-The same search engine is exposed by `condash-cli search`:
+The same search engine is exposed by `condash search`:
 
 ```bash
-condash-cli search "session cookie" --scope all --limit 20
-condash-cli search fuzz --json | jq '.data.hits[].path'
+condash search "session cookie" --scope all --limit 20
+condash search fuzz --json | jq '.data.hits[].path'
 ```
 
 `--scope` accepts `all`, `projects`, `knowledge` (default `all`). See [CLI reference — search](../reference/cli.md#search).

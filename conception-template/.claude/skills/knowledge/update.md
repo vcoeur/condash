@@ -25,7 +25,7 @@ If the fact is in-flight project work or a point-in-time finding, it goes under 
    For the verification stamp, use the CLI rather than hand-templating the line — it's idempotent (replaces an existing stamp or inserts a new one):
 
    ```bash
-   condash-cli knowledge stamp <path> --where "<app>@<sha> on <branch>" [--date YYYY-MM-DD]
+   condash knowledge stamp <path> --where "<app>@<sha> on <branch>" [--date YYYY-MM-DD]
    ```
 
    `--date` defaults to today; pass it only when backstamping. To compute `<sha>` and `<branch>`:
@@ -35,14 +35,14 @@ If the fact is in-flight project work or a point-in-time finding, it goes under 
    git -C <workspace_path>/<app> rev-parse --abbrev-ref HEAD
    ```
 
-   `<workspace_path>` comes from `condash-cli config get workspace_path`.
+   `<workspace_path>` comes from `condash config get workspace_path`.
 
 4. **Cross-link.** Link the body file to the `projects/` item (if any) that produced the knowledge. Update the item's `## Notes` section.
 
 5. **Dirty the knowledge index.** Default to running:
 
    ```bash
-   condash-cli dirty touch knowledge --json
+   condash dirty touch knowledge --json
    ```
 
    Skip only on a literal one-line typo or wording fix to existing prose. Anything that adds, renames, restructures, or rewrites a paragraph dirties the index — when in doubt, touch it. Cost of a false-positive is one quick `/knowledge index` run; cost of a false-negative is stale tags / descriptions teammates rely on for triage. `/knowledge index` clears the marker; the index is not auto-triggered, so remind the user to run it.

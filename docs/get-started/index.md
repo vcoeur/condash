@@ -73,7 +73,7 @@ xattr -dr com.apple.quarantine /Applications/condash.app
 
 Double-click the installer. Windows shows "Windows protected your PC" — click **More info → Run anyway**. Each new release re-prompts (expected for unsigned binaries).
 
-The installer appends its install directory to your per-user `PATH`, so `condash` (the GUI launcher) and `condash-cli` (the command-line companion) are reachable from any new shell. Already-open shells need to be restarted to pick up the change. Uninstall removes the entry.
+The installer appends its install directory to your per-user `PATH`, so `condash` (the GUI launcher) and `condash` (the command-line companion) are reachable from any new shell. Already-open shells need to be restarted to pick up the change. Uninstall removes the entry.
 
 ## First launch
 

@@ -14,7 +14,11 @@ import { runTemplates } from './commands/templates';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
-const TOP_HELP = `condash-cli <noun> <verb> [args] [--flags]
+const TOP_HELP = `condash <noun> <verb> [args] [--flags]
+
+GUI:
+  condash                       Launch the dashboard.
+  condash gui [chromium-switch] Launch with Chromium switches (debugging).
 
 Nouns:
   projects     list, read, resolve, search, validate, status get|set, close,
@@ -30,7 +34,7 @@ Nouns:
   config       conception-path, path, list [--effective|--global],
                get <key> [--effective|--global], set <key> <value> [--global],
                migrate (legacy condash.json → .condash/settings.json)
-  help         this message; or 'condash-cli help <noun>' for verbs
+  help         this message; or 'condash help <noun>' for verbs
 
 Universal flags:
   --conception <path>   Override conception root.
@@ -44,6 +48,11 @@ Universal flags:
 Exit codes:
   0 ok    1 runtime    2 usage    3 validation
   4 not-found    5 no-conception    6 ambiguous
+
+Legacy alias:
+  The 'condash-cli' binary is a deprecated alias for 'condash <command>'
+  and prints a one-line stderr deprecation note unless --quiet is set. It
+  will be removed in v3.0.0.
 `;
 
 async function main(): Promise<number> {
@@ -87,7 +96,7 @@ async function main(): Promise<number> {
   };
 
   if (universal.version) {
-    process.stdout.write(`condash-cli ${VERSION}\n`);
+    process.stdout.write(`condash ${VERSION}\n`);
     return ExitCodes.OK;
   }
 

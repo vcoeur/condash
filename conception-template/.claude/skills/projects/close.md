@@ -6,9 +6,9 @@ Trigger: `/projects close <slug>`.
 
 ## Steps
 
-1. **Resolve slug:** `condash-cli projects resolve <slug> --json`.
+1. **Resolve slug:** `condash projects resolve <slug> --json`.
 
-2. **Read state:** `condash-cli projects read <slug> --with-notes --json`. Use `data.steps`, `data.status`, `data.notes[]` to assess.
+2. **Read state:** `condash projects read <slug> --with-notes --json`. Use `data.steps`, `data.status`, `data.notes[]` to assess.
 
 3. **Sanity check.** If any step is still `[ ]` or `[~]` and the user hasn't said the item is done despite incomplete steps, ask:
 
@@ -29,7 +29,7 @@ Trigger: `/projects close <slug>`.
    b. **Run the heuristic backstop:**
 
       ```bash
-      condash-cli projects scan-promotions <slug> --json
+      condash projects scan-promotions <slug> --json
       ```
 
       Grep-walks `notes/*.md` for `always|never|must|convention|rule|pattern|whenever|all (apps|sites|projects)` and returns `data.candidates[]` with `relPath`, `line`, `match`, and the surrounding `paragraph`. Re-apply the three-question test on anything new. Skip paragraphs already carrying a `**Transferred:**` stamp.
@@ -45,7 +45,7 @@ Trigger: `/projects close <slug>`.
 5. **Flip status + append timeline:**
 
    ```bash
-   condash-cli projects close <slug> --summary "<one-line outcome>" --json
+   condash projects close <slug> --summary "<one-line outcome>" --json
    ```
 
    The CLI sets the status to `done` (rewriting `status:` for YAML-frontmatter READMEs or `**Status**:` for the legacy bold-prose form), appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
@@ -53,8 +53,8 @@ Trigger: `/projects close <slug>`.
 6. **Worktree + branch cleanup.** If the item has a `branch` field:
 
    ```bash
-   condash-cli worktrees check <branch> --json
-   condash-cli worktrees remove <branch> --json
+   condash worktrees check <branch> --json
+   condash worktrees remove <branch> --json
    ```
 
    `worktrees check` shows which repos still have worktrees on this branch. `worktrees remove` is **protected-set aware**: it only removes worktrees for repos in the closing item's `apps` that no other active item still claims on the same branch.
@@ -70,11 +70,11 @@ Trigger: `/projects close <slug>`.
 7. **Refresh dirty indexes.**
 
    ```bash
-   condash-cli dirty list --json
+   condash dirty list --json
    ```
 
-   - If `data.projects.present` is true → `condash-cli projects index --json`.
-   - If `data.knowledge.present` is true → `condash-cli knowledge index --json`.
+   - If `data.projects.present` is true → `condash projects index --json`.
+   - If `data.knowledge.present` is true → `condash knowledge index --json`.
 
 8. **Commit prompt.** Ask the user whether to commit — invoke `/commit` if they have it, otherwise run `git status` + `git diff --stat` and propose a commit message inline using:
 
@@ -101,7 +101,7 @@ Trigger: `/projects close <slug>`.
 Trigger: `/projects reopen <slug>` or "reopen <slug>".
 
 ```bash
-condash-cli projects reopen <slug> [--status <now|review|later|backlog>] --summary "<reason>" --json
+condash projects reopen <slug> [--status <now|review|later|backlog>] --summary "<reason>" --json
 ```
 
 Default target status is `now`. The CLI flips the status (in either YAML or bold-prose form), appends `- YYYY-MM-DD — Reopened. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. If the item carried a `branch` whose worktrees were torn down at close time, offer `/projects worktree setup <branch>` afterwards — reopen is a status edit only, it never re-creates worktrees.

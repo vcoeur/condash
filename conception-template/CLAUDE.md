@@ -4,7 +4,7 @@ A **systems documentation tree**, not a code project. Everything here is Markdow
 
 ## General
 
-This section is shipped by condash and refreshed by `condash-cli templates install`. Edits to it are flagged on the next install. Per-conception content goes under `## Specifics` below.
+This section is shipped by condash and refreshed by `condash templates install`. Edits to it are flagged on the next install. Per-conception content goes under `## Specifics` below.
 
 ### Pointers
 
@@ -23,7 +23,7 @@ This section is shipped by condash and refreshed by `condash-cli templates insta
 
 ### What `## Specifics` should contain
 
-`## Specifics` is per-conception — user-owned, never touched by `condash-cli templates install`. Open it with the **Apps** table; everything below the table is durable team rules and workspace facts.
+`## Specifics` is per-conception — user-owned, never touched by `condash templates install`. Open it with the **Apps** table; everything below the table is durable team rules and workspace facts.
 
 #### Apps table — the always-in-context list of apps
 

@@ -6,15 +6,15 @@ Trigger: `/projects update <slug>` or implicit ("add a note to <slug>", "change 
 
 ## Steps
 
-1. **Resolve slug:** `condash-cli projects resolve <slug> --json`. Exit code 6 → ambiguous (the JSON `data.candidates` carries the disambiguation list).
+1. **Resolve slug:** `condash projects resolve <slug> --json`. Exit code 6 → ambiguous (the JSON `data.candidates` carries the disambiguation list).
 
-2. **Read the item:** `condash-cli projects read <slug> --with-notes --json`. Use `data.title`, `data.kind`, `data.status`, `data.steps`, and `data.notes[]` to understand current state.
+2. **Read the item:** `condash projects read <slug> --with-notes --json`. Use `data.title`, `data.kind`, `data.status`, `data.steps`, and `data.notes[]` to understand current state.
 
 3. **Decide the write:**
 
    - **New finding / work log** → write a `notes/NN-<slug>.md` file (next available number from `data.notes[]`). Add one line under `## Notes` in the README: `` - [`notes/<name>.md`](notes/<name>.md) — <one-line hook>. ``.
-   - **Status change** → `condash-cli projects status set <slug> <value> --json`. CLI validates the enum, rewrites the header line idempotently, touches `projects/.index-dirty`. Add a timeline entry explaining the change (one-line `Edit`).
-   - **Field edit** (Apps, Branch, Severity, …) → edit the header line + a timeline entry if material. Run `condash-cli dirty touch projects --json` if Apps or Branch changed.
+   - **Status change** → `condash projects status set <slug> <value> --json`. CLI validates the enum, rewrites the header line idempotently, touches `projects/.index-dirty`. Add a timeline entry explaining the change (one-line `Edit`).
+   - **Field edit** (Apps, Branch, Severity, …) → edit the header line + a timeline entry if material. Run `condash dirty touch projects --json` if Apps or Branch changed.
    - **Step completion** → flip `[ ]` → `[x]` (or `[~]`/`[!]`). Add a timeline entry.
    - **Follow-ups parked elsewhere** → put under `## Notes` or `## Follow-ups`. If kept in `## Steps` for visibility, tag with `(outside this item)`, `(out of scope)`, `(follow-up)`, or `(tracked in <slug>)` so `/projects close` doesn't flag them.
 

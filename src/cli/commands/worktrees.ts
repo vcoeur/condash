@@ -47,7 +47,7 @@ async function worktreeCheck(
 ): Promise<void> {
   const branch = args.positional[0];
   if (!branch) {
-    throw new CliError(ExitCodes.USAGE, 'Usage: condash-cli worktrees check <branch>');
+    throw new CliError(ExitCodes.USAGE, 'Usage: condash worktrees check <branch>');
   }
   assertNoExtraFlags(args);
   const result = await checkBranchState(conceptionPath, branch);
@@ -113,7 +113,7 @@ async function worktreeSetup(
   if (!branch) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash-cli worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
+      'Usage: condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
     );
   }
   const repos = parseCsvFlag(args.flags.repo) ?? undefined;
@@ -179,7 +179,7 @@ async function worktreeRemove(
   if (!branch) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash-cli worktrees remove <branch> [--repo <r>...] [--force] [--force-rm]',
+      'Usage: condash worktrees remove <branch> [--repo <r>...] [--force] [--force-rm]',
     );
   }
   const repos = parseCsvFlag(args.flags.repo) ?? undefined;
@@ -220,7 +220,7 @@ function formatRemoveResult(result: RemoveResult): string {
 function printWorktreesHelp(): void {
   process.stdout.write(
     [
-      'condash-cli worktrees <verb> [args]',
+      'condash worktrees <verb> [args]',
       '',
       'Verbs:',
       '  list             Repos with their worktrees (alias of repos list --include-worktrees).',
