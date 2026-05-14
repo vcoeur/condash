@@ -1,12 +1,17 @@
 /**
- * Shared helpers for `condash skills install` and `condash templates install`.
+ * Shared helpers for `condash skills install`.
  *
- * Both commands write to the same manifest at
- * `<dest>/.claude/skills/.condash-skills.json` (the `templates` namespace
- * lives alongside `skills` in the same file — one source of truth, one
- * version field). The file lives under `.claude/skills/` for historical
- * reasons; templates are top-level files but reusing the path avoids two
- * manifests that can drift.
+ * Since v3 there is one CLI noun (`skills`) that covers two kinds of shipped
+ * artefacts:
+ *   - **Agent skills** under `<dest>/.agents/skills/<name>/` — full files,
+ *     hash-tracked per relPath.
+ *   - **Top-level files** at the conception root (e.g. AGENTS.md, .gitignore)
+ *     — heading-delimited regions, hash-tracked per file by region body.
+ *
+ * Both kinds write to the same manifest at
+ * `<dest>/.claude/skills/.condash-skills.json`. The file lives under
+ * `.claude/skills/` for historical reasons; top-level files are written
+ * elsewhere but reusing the path avoids two manifests that can drift.
  */
 
 import { createHash } from 'node:crypto';
@@ -15,7 +20,7 @@ import { dirname, join } from 'node:path';
 import { CliError, ExitCodes } from '../output';
 
 export const MANIFEST_RELPATH = '.condash-skills.json';
-export const MANIFEST_VERSION = 2;
+export const MANIFEST_VERSION = 3;
 
 export interface ManifestFileEntry {
   /** SHA256 of the file content as we wrote it at last install. */
@@ -25,7 +30,7 @@ export interface ManifestFileEntry {
 }
 
 /**
- * Per-skill manifest entry, v2.
+ * Per-skill manifest entry.
  *
  * Tracks **source** files only — files under `<dest>/<skills_source>/<name>/`
  * (default `<dest>/.agents/skills/<name>/`). Source files use refuse-on-edit
@@ -42,13 +47,20 @@ export interface ManifestSkillEntry {
   source: Record<string, ManifestFileEntry>;
 }
 
-export interface ManifestTemplateEntry {
+/**
+ * Top-level file manifest entry (heading-delimited region).
+ *
+ * Tracks the hash of the **region body** — everything between the
+ * `## <region>` heading line (exclusive) and the next sibling heading
+ * (exclusive) or end-of-file. The surrounding file content is user-owned
+ * and never touched.
+ */
+export interface ManifestRegionEntry {
   /** Heading text for the shipped region, e.g. "General" — matches `## General`.
    *  Older manifests may carry the legacy marker namespace (`"condash:general"`);
-   *  the templates installer migrates that to `"General"` on the next install. */
+   *  the v1 → v2 migration moves it to `"General"` (the heading text). */
   region: string;
-  /** SHA256 of the region body (the H2 section's body, exclusive of the heading
-   *  line and any trailing blank line before the next H2). */
+  /** SHA256 of the region body. */
   sha256: string;
   /** condash version that shipped this region. */
   shippedVersion: string;
@@ -57,29 +69,48 @@ export interface ManifestTemplateEntry {
 export interface Manifest {
   version: number;
   skills: Record<string, ManifestSkillEntry>;
-  /** Optional — older manifests don't have it. Keyed by file path relative to dest. */
-  templates?: Record<string, ManifestTemplateEntry>;
+  /**
+   * Optional — older manifests don't have it. Keyed by file path relative
+   * to dest (e.g. `"AGENTS.md"`, `".gitignore"`).
+   *
+   * Renamed from `templates` in v3. The migration in `readManifest`
+   * carries v2 `templates` entries forward as `files` unchanged.
+   */
+  files?: Record<string, ManifestRegionEntry>;
 }
 
 /** Read the manifest at `<dest>/.claude/skills/.condash-skills.json`.
  *
- * Migrates v1 → v2 in-memory on read. The v1 schema tracked compiled-output
- * file SHAs (in the same directory the manifest lived under); v2 tracks
- * skillspec **source** file SHAs at a different location. The two have no
- * useful overlap, so v1 `skills` entries are discarded on migration —
- * the next v2 install re-seeds the manifest from scratch. v1 `templates`
- * entries carry forward unchanged.
+ * Migrates older schemas in-memory on read:
+ *
+ *   - **v1 → v3**: discards v1 `skills` entries (they tracked compiled-output
+ *     hashes at a different location; v2+ tracks skillspec sources). v1
+ *     `templates` entries carry forward to v3 `files` unchanged. The next
+ *     install re-seeds the skills section from scratch.
+ *   - **v2 → v3**: renames the `templates` namespace to `files`. Schema is
+ *     otherwise identical, so entries copy over byte-for-byte.
+ *
+ * Migration is in-memory only; the manifest file is rewritten on the next
+ * `writeManifest` call.
  */
 export async function readManifest(dest: string): Promise<Manifest | null> {
   const path = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
+  type LegacyManifest = Manifest & { templates?: Record<string, ManifestRegionEntry> };
   try {
     const raw = await fs.readFile(path, 'utf8');
-    const parsed = JSON.parse(raw) as Manifest;
+    const parsed = JSON.parse(raw) as LegacyManifest;
     if (parsed.version === 1) {
       return {
         version: MANIFEST_VERSION,
         skills: {},
-        templates: parsed.templates,
+        files: parsed.templates,
+      };
+    }
+    if (parsed.version === 2) {
+      return {
+        version: MANIFEST_VERSION,
+        skills: parsed.skills ?? {},
+        files: parsed.templates,
       };
     }
     if (parsed.version !== MANIFEST_VERSION) {

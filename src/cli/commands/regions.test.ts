@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { extractRegion, replaceRegion } from './templates';
+import { extractRegion, replaceRegion } from './regions';
 
 describe('extractRegion', () => {
   it('returns body between heading and next H2, exclusive', () => {
     const content = [
-      '# CLAUDE.md — conception',
+      '# AGENTS.md — conception',
       '',
       'Intro paragraph.',
       '',
@@ -99,7 +99,7 @@ describe('extractRegion', () => {
 describe('replaceRegion', () => {
   it('replaces the body while keeping the heading line and surrounding text', () => {
     const content = [
-      '# CLAUDE.md — conception',
+      '# AGENTS.md — conception',
       '',
       '## General',
       'old body',
@@ -110,7 +110,7 @@ describe('replaceRegion', () => {
     const result = replaceRegion(content, 'General', 'new\nmultiline\nbody');
     expect(result).toBe(
       [
-        '# CLAUDE.md — conception',
+        '# AGENTS.md — conception',
         '',
         '## General',
         'new',
@@ -152,7 +152,7 @@ describe('replaceRegion', () => {
 describe('extract + replace round-trip', () => {
   it('extract→replace with the same body yields byte-identical output', () => {
     const content = [
-      '# CLAUDE.md — conception',
+      '# AGENTS.md — conception',
       '',
       'intro paragraph',
       '',

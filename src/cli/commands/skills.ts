@@ -1,51 +1,55 @@
 /**
  * `condash skills <list|install|status|validate>`
  *
- * As of v2.29.0 condash ships **skillspecs** rather than flat Claude-format
- * `SKILL.md` files. A skillspec is an agent-neutral source directory
- * (`spec.yaml` + `body.md` + optional `targets/<claude|kimi>.yaml` overlays
- * + arbitrary sibling assets); the compiler in `src/skillspec/` turns each
- * spec into agent-native skill files for Claude (`.claude/skills/`) and
- * Kimi (`.kimi/skills/`).
+ * Single CLI verb for everything condash drops into a conception:
+ *
+ *   - **Agent skills** under `<dest>/.agents/skills/<name>/` (skillspec
+ *     sources: `spec.yaml` + `body.md` + optional `targets/<claude|kimi>.yaml`
+ *     overlays + arbitrary sibling assets). The skillspec compiler in
+ *     `src/skillspec/` turns each spec into agent-native skill files for
+ *     Claude (`.claude/skills/`) and Kimi (`.kimi/skills/`).
+ *   - **Top-level files** at the conception root (e.g. `AGENTS.md`,
+ *     `.gitignore`). Each ships the body of one heading-delimited region;
+ *     the surrounding text is user-owned and never touched. AGENTS.md
+ *     additionally compiles to `.claude/CLAUDE.md` and `.kimi/AGENTS.md`
+ *     (target-specific section stripping + variable substitution).
+ *
+ * Both kinds flow through one manifest at
+ * `<dest>/.claude/skills/.condash-skills.json` (v3 schema: `skills.<name>`
+ * + `files.<path>`) and share the same refuse-on-edit semantics — if the
+ * user edited a tracked source, condash refuses without `--force`.
+ *
+ * Positionals accept either a skill name (`pr`, `knowledge`, …) or a
+ * shipped-file path (`AGENTS.md`, `.gitignore`). With no positionals,
+ * everything installs. Unknown positionals error.
  *
  * Two scopes, selected by flag:
  *
- *   • **Repo scope (default)** — installs the skills condash itself ships
- *     into a conception:
+ *   • **Repo scope (default)** — installs the artefacts condash ships into
+ *     the resolved conception. Pass 1: copy skill source files + write
+ *     top-level file regions, both refuse-on-edit. Pass 2: always-compile
+ *     (skillspec → target trees, AGENTS.md → per-target outputs) regardless
+ *     of pass-1 refusals; the on-disk source is what compiles, so a user-
+ *     edited skill body still propagates to `.claude/skills/`.
  *
- *     Pass 1 — copy each shipped skillspec source file into the conception's
- *     `<dest>/.agents/skills/<name>/<relpath>`. This uses the existing SHA-
- *     tracked manifest (`<dest>/.claude/skills/.condash-skills.json`) with
- *     refuse-on-edit semantics: if the user edited a source file, we refuse
- *     to overwrite without `--force` or `--diff`.
- *
- *     Pass 2 — parse each (now-on-disk) skillspec and compile it for each
- *     target (`claude`, `kimi`), writing compiled `SKILL.md` + sibling assets
- *     into `<dest>/.claude/skills/<name>/` and `<dest>/.kimi/skills/<name>/`.
- *     Compiled outputs are deterministic from sources and are always
- *     regenerated; they are **not** tracked by the manifest.
- *
- *     Conventionally the conception's `.gitignore` excludes `/.claude/skills/`
- *     and `/.kimi/skills/` (templates regenerated on every install) but
- *     tracks `/.agents/skills/` (the source-of-truth).
- *
- *   • **User scope (`--user`)** — compiles skillspecs the user already owns
- *     at `~/.config/agents/skills/<name>/` into `~/.claude/skills/<name>/`
- *     + `~/.kimi/skills/<name>/`. There is no pass-1 copy and no manifest:
- *     the user owns the source tree directly and the compiled outputs are
- *     always regenerated. Specs may declare a `hosts:` list (e.g.
- *     `hosts: [vcoeur]`); when present, condash reads `~/.claude/.host`
- *     and skips skills whose `hosts:` does not include the current host
- *     label. This is the multi-host filter previously enforced by
- *     ClaudeConfig's `/sync-config`.
+ *   • **User scope (`--user`)** — compiles user-owned skillspecs at
+ *     `~/.config/agents/skills/<name>/` into `~/.claude/skills/<name>/`
+ *     + `~/.kimi/skills/<name>/`. No pass-1, no manifest, no top-level
+ *     files: the user owns the source tree directly and compiled outputs
+ *     are always regenerated. Specs may declare a `hosts:` list; condash
+ *     reads `~/.claude/.host` and skips skills whose `hosts:` doesn't
+ *     include the current host label.
  *
  * Flags:
  *
- *   `--dest <path>`   retargets the repo-scope install dir (default: conception
- *                     root or cwd). Incompatible with `--user`.
+ *   `--dest <path>`   retargets the repo-scope install dir (default:
+ *                     conception root or cwd). Incompatible with `--user`.
  *   `--user`          switch to user scope. Incompatible with `--dest`.
  *   `--force`         repo scope only: override refuse-on-edit.
- *   `--diff`          repo scope only: show a unified diff per refused file.
+ *   `--diff`          repo scope only: show a unified diff per refused item.
+ *   `--prune`         repo scope only: drop manifest entries whose shipped
+ *                     source has been removed from the bundle (cleans up
+ *                     residue from older condash versions).
  *   `--dry-run`       report what would be written without touching disk.
  */
 
@@ -55,6 +59,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { type AgentsMdTarget } from '../../agents-md';
 import {
   COMPILE_TARGETS,
   compileSkillspec,
@@ -69,7 +74,24 @@ import {
   sha256,
   writeFileMkdir,
   writeManifest,
+  type Manifest,
 } from './install-shared';
+import {
+  SHIPPED_FILES,
+  compileAgentsMdToTargets,
+  installShippedFile,
+  listShippedFiles,
+  locateShippedFilesRoot,
+  maybeRenameClaudeMdToAgentsMd,
+  migrateClaudeMdManifestEntry,
+  pruneSourceMissingFileEntries,
+  sourceMissingFileRows,
+  statusShippedFile,
+  type FileInstallOutcome,
+  type FileListRow,
+  type FileStatusRow,
+  type ShippedFile,
+} from './files';
 
 /** Path of the skillspec source tree relative to the conception root. */
 const SOURCE_RELPATH = '.agents/skills';
@@ -102,11 +124,11 @@ export async function runSkills(
   switch (verb) {
     case null:
     case 'list':
-      return userScope ? await listUser(args, ctx) : await listShipped(args, ctx);
+      return userScope ? await listUser(args, ctx) : await listRepo(args, ctx);
     case 'install':
-      return userScope ? await installUserSkills(args, ctx) : await installSkills(args, ctx);
+      return userScope ? await installUserSkills(args, ctx) : await installRepo(args, ctx);
     case 'status':
-      return userScope ? await userSkillsStatus(args, ctx) : await skillsStatus(args, ctx);
+      return userScope ? await userSkillsStatus(args, ctx) : await repoStatus(args, ctx);
     case 'validate':
       return userScope ? await validateUserSkills(args, ctx) : await validateSkills(args, ctx);
     default:
@@ -114,13 +136,24 @@ export async function runSkills(
   }
 }
 
-async function listShipped(args: ParsedArgs, ctx: OutputContext): Promise<void> {
+interface RepoListReport {
+  destination: string | null;
+  skills: {
+    name: string;
+    description: string | null;
+    shippedFiles: number;
+    installed: number;
+  }[];
+  files: FileListRow[];
+}
+
+async function listRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const shipped = await readShippedSkills();
   const dest = await resolveDest(args).catch(() => null);
   delete args.flags.dest;
   assertNoExtraFlags(args);
   const manifest = dest ? await readManifest(dest) : null;
-  const rows = shipped.map((s) => {
+  const skillsRows = shipped.map((s) => {
     const installedFiles = manifest?.skills[s.name]?.source;
     return {
       name: s.name,
@@ -129,53 +162,93 @@ async function listShipped(args: ParsedArgs, ctx: OutputContext): Promise<void> 
       installed: installedFiles ? Object.keys(installedFiles).length : 0,
     };
   });
+  const fileRows = listShippedFiles(manifest);
+  const report: RepoListReport = { destination: dest, skills: skillsRows, files: fileRows };
   emit(
     ctx,
-    { destination: dest, skills: rows },
+    report,
     (data) => {
-      const d = data as { destination: string | null; skills: typeof rows };
+      const d = data as RepoListReport;
       const lines: string[] = [];
-      if (d.destination) lines.push(`Destination: ${d.destination}/${SOURCE_RELPATH}/`);
-      for (const r of d.skills) {
-        const status =
-          r.installed > 0 ? `${r.installed}/${r.shippedFiles} files installed` : 'not installed';
-        lines.push(`  ${r.name.padEnd(16)} ${status.padEnd(28)} ${r.description ?? ''}`);
+      if (d.destination) lines.push(`Destination: ${d.destination}`);
+      if (d.skills.length > 0) {
+        lines.push(`Skills (${SOURCE_RELPATH}/):`);
+        for (const r of d.skills) {
+          const status =
+            r.installed > 0 ? `${r.installed}/${r.shippedFiles} files installed` : 'not installed';
+          lines.push(`  ${r.name.padEnd(16)} ${status.padEnd(28)} ${r.description ?? ''}`);
+        }
+      }
+      if (d.files.length > 0) {
+        lines.push(`Files (top-level):`);
+        for (const r of d.files) {
+          const status = r.installed ? `installed (${r.shippedVersion ?? '?'})` : 'not installed';
+          lines.push(`  ${r.path.padEnd(16)} ${r.region.padEnd(12)} ${status}`);
+        }
       }
       return lines.join('\n') + '\n';
     },
     [],
-    { streamField: 'skills' },
   );
 }
 
 interface InstallReport {
   destination: string;
-  /** Compiled-output root paths, by target. */
+  conceptionRoot: string;
   outputs: Record<CompileTarget, string>;
   copied: { skill: string; relPath: string }[];
   updated: { skill: string; relPath: string }[];
   unchanged: { skill: string; relPath: string }[];
   refused: { skill: string; relPath: string; reason: string }[];
   forced: { skill: string; relPath: string }[];
-  /** Compiled outputs written in pass 2. */
+  sourceMissing: { skill: string; relPath: string; shippedVersion: string }[];
   compiled: { skill: string; target: CompileTarget; relPath: string }[];
-  diffs?: { skill: string; relPath: string; diff: string }[];
+  files: {
+    copied: { path: string; region: string }[];
+    updated: { path: string; region: string }[];
+    unchanged: { path: string; region: string }[];
+    refused: { path: string; region: string; reason: string }[];
+    forced: { path: string; region: string }[];
+    sourceMissing: { path: string; region: string; shippedVersion: string }[];
+  };
+  agentsMdCompiled: { target: AgentsMdTarget; path: string }[];
+  renamedFromClaudeMd: boolean;
+  pruned?: {
+    skills: { skill: string; relPath: string; shippedVersion: string }[];
+    files: { path: string; region: string; shippedVersion: string }[];
+  };
+  diffs?: { kind: 'skill' | 'file'; label: string; diff: string }[];
 }
 
-async function installSkills(args: ParsedArgs, ctx: OutputContext): Promise<void> {
+async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const shipped = await readShippedSkills();
-  const requestedNames = args.positional.length > 0 ? args.positional : null;
-  const selected = requestedNames
-    ? shipped.filter((s) => requestedNames.includes(s.name))
-    : shipped;
-  if (requestedNames) {
-    const known = new Set(shipped.map((s) => s.name));
-    const missing = requestedNames.filter((n) => !known.has(n));
-    if (missing.length > 0) {
-      throw new CliError(ExitCodes.NOT_FOUND, `Unknown skill(s): ${missing.join(', ')}`, {
-        available: shipped.map((s) => s.name),
+  const requested = args.positional.length > 0 ? args.positional : null;
+
+  // Partition positionals: skill names vs file paths vs unknown.
+  const skillNameSet = new Set(shipped.map((s) => s.name));
+  const filePathSet = new Set(SHIPPED_FILES.map((f) => f.path));
+  let selectedSkills: ShippedSkill[];
+  let selectedFiles: ShippedFile[];
+  if (requested) {
+    const unknown: string[] = [];
+    const skillNames = new Set<string>();
+    const filePaths = new Set<string>();
+    for (const pos of requested) {
+      if (skillNameSet.has(pos)) skillNames.add(pos);
+      else if (filePathSet.has(pos)) filePaths.add(pos);
+      else unknown.push(pos);
+    }
+    if (unknown.length > 0) {
+      throw new CliError(ExitCodes.NOT_FOUND, `Unknown skill or file: ${unknown.join(', ')}`, {
+        availableSkills: shipped.map((s) => s.name),
+        availableFiles: SHIPPED_FILES.map((f) => f.path),
       });
     }
+    selectedSkills = shipped.filter((s) => skillNames.has(s.name));
+    selectedFiles = SHIPPED_FILES.filter((f) => filePaths.has(f.path));
+  } else {
+    selectedSkills = shipped;
+    selectedFiles = SHIPPED_FILES;
   }
 
   const dest = await resolveDest(args);
@@ -185,13 +258,24 @@ async function installSkills(args: ParsedArgs, ctx: OutputContext): Promise<void
   const force = args.flags.force === true;
   const showDiff = args.flags.diff === true;
   const dryRun = args.flags['dry-run'] === true;
-  for (const k of ['dest', 'force', 'diff', 'dry-run']) delete args.flags[k];
+  const prune = args.flags.prune === true;
+  for (const k of ['dest', 'force', 'diff', 'dry-run', 'prune']) delete args.flags[k];
   assertNoExtraFlags(args);
   const shippedVersion = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
-  const manifest = (await readManifest(dest)) ?? { version: MANIFEST_VERSION, skills: {} };
+  const manifest: Manifest = (await readManifest(dest)) ?? {
+    version: MANIFEST_VERSION,
+    skills: {},
+  };
+
+  // v2.29.0 migration: rename CLAUDE.md → AGENTS.md (and its manifest entry)
+  // when the user has an existing legacy install but no AGENTS.md yet.
+  const renamedFromClaudeMd = !dryRun ? await maybeRenameClaudeMdToAgentsMd(dest) : false;
+  if (renamedFromClaudeMd) migrateClaudeMdManifestEntry(manifest);
+
   const report: InstallReport = {
     destination: sourceRoot,
+    conceptionRoot: dest,
     outputs: {
       claude: join(dest, TARGET_RELPATHS.claude),
       kimi: join(dest, TARGET_RELPATHS.kimi),
@@ -201,24 +285,49 @@ async function installSkills(args: ParsedArgs, ctx: OutputContext): Promise<void
     unchanged: [],
     refused: [],
     forced: [],
+    sourceMissing: [],
     compiled: [],
+    files: {
+      copied: [],
+      updated: [],
+      unchanged: [],
+      refused: [],
+      forced: [],
+      sourceMissing: [],
+    },
+    agentsMdCompiled: [],
+    renamedFromClaudeMd,
     diffs: showDiff ? [] : undefined,
   };
 
-  // Pass 1: copy skillspec sources with refuse-on-edit. A skill whose source
-  // files are fully clean (or forced) is eligible for pass-2 compilation.
-  const compileEligible: ShippedSkill[] = [];
-
-  for (const skill of selected) {
+  // Pass 1a: install skill sources with refuse-on-edit.
+  for (const skill of selectedSkills) {
     if (!manifest.skills[skill.name]) {
       manifest.skills[skill.name] = { source: {} };
     }
     const skillManifest = manifest.skills[skill.name];
 
-    let blocked = false;
     for (const relPath of skill.files) {
       const sourcePath = join(skill.sourceDir, relPath);
-      const sourceContent = await fs.readFile(sourcePath);
+      let sourceContent: Buffer;
+      try {
+        sourceContent = await fs.readFile(sourcePath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          // Shouldn't happen — readShippedSkills only returns existing files.
+          // Guard anyway: a vanished source surfaces as source-missing per file.
+          const tracked = skillManifest.source[relPath];
+          if (tracked) {
+            report.sourceMissing.push({
+              skill: skill.name,
+              relPath,
+              shippedVersion: tracked.shippedVersion,
+            });
+          }
+          continue;
+        }
+        throw err;
+      }
       const sourceHash = sha256(sourceContent);
       const targetPath = join(sourceRoot, skill.name, relPath);
 
@@ -253,8 +362,8 @@ async function installSkills(args: ParsedArgs, ctx: OutputContext): Promise<void
 
       if (showDiff) {
         report.diffs!.push({
-          skill: skill.name,
-          relPath,
+          kind: 'skill',
+          label: `${skill.name}/${relPath}`,
           diff: cheapDiff(onDisk.toString('utf8'), sourceContent.toString('utf8')),
         });
       }
@@ -268,41 +377,178 @@ async function installSkills(args: ParsedArgs, ctx: OutputContext): Promise<void
           relPath,
           reason: tracked ? 'edited since last install' : 'present but not tracked by manifest',
         });
-        blocked = true;
       }
     }
-    if (!blocked || force) compileEligible.push(skill);
   }
 
-  // Pass 2: compile each eligible skillspec and write outputs. Outputs are
-  // always regenerated and not tracked by the manifest. On dry-run we parse
-  // straight from the shipped tree (the on-disk source may not have been
-  // written) so the report still reflects what would be emitted.
-  for (const skill of compileEligible) {
-    const parsed = await parseSkillspec(dryRun ? skill.sourceDir : join(sourceRoot, skill.name));
+  // Pass 1b: install top-level files (region-style).
+  for (const file of selectedFiles) {
+    const outcome = await installShippedFile(file, {
+      dest,
+      shippedVersion,
+      force,
+      showDiff,
+      dryRun,
+      manifest,
+    });
+    recordFileOutcome(report, outcome);
+  }
+
+  // Pass 2a: compile every skill on disk (not just the selected slice; the
+  // user may have skills installed from a previous run, and stale compiled
+  // outputs left behind by a partial run would be confusing). Compile reads
+  // the on-disk source, so a refused (= locally-edited) source still
+  // propagates to the target trees — that's the install/compile decoupling
+  // promise.
+  const compileTargets = await collectInstalledSkillNames(sourceRoot, shipped);
+  for (const skillName of compileTargets) {
+    const skill = shipped.find((s) => s.name === skillName);
+    const compileFromDir = dryRun && skill ? skill.sourceDir : join(sourceRoot, skillName);
+    let parsed;
+    try {
+      parsed = await parseSkillspec(compileFromDir);
+    } catch (err) {
+      if (err instanceof SkillspecError) {
+        // Skip skills whose source is malformed — surface to the user via
+        // refusal/diff path during install, not by crashing compile.
+        continue;
+      }
+      throw err;
+    }
     for (const target of COMPILE_TARGETS) {
       const compiled = compileSkillspec(parsed, target);
-      const outputRoot = join(dest, TARGET_RELPATHS[target], skill.name);
-      // Wipe stale files so previously-shipped-but-now-deleted assets don't
-      // linger. Skipped on dry-run.
+      const outputRoot = join(dest, TARGET_RELPATHS[target], skillName);
+      // Wipe stale outputs so previously-shipped-but-now-deleted assets
+      // don't linger. Skipped on dry-run.
       if (!dryRun) await rmTreeIfPresent(outputRoot);
       for (const [relPath, content] of Object.entries(compiled.files)) {
         if (!dryRun) await writeFileMkdir(join(outputRoot, relPath), content);
-        report.compiled.push({ skill: skill.name, target, relPath });
+        report.compiled.push({ skill: skillName, target, relPath });
       }
+    }
+  }
+
+  // Pass 2b: compile AGENTS.md → per-target outputs (no-op if AGENTS.md isn't on disk).
+  report.agentsMdCompiled = await compileAgentsMdToTargets(dest, dryRun);
+
+  // --prune: drop manifest entries whose shipped source is gone.
+  if (prune) {
+    const prunedSkills = pruneSourceMissingSkillEntries(manifest, shipped);
+    const prunedFiles = pruneSourceMissingFileEntries(manifest);
+    report.pruned = { skills: prunedSkills, files: prunedFiles };
+  } else {
+    // Even without --prune, surface source-missing entries in the report so
+    // the user knows to clean up. Walk the manifest after the install pass
+    // wrote anything new.
+    const skillNames = new Set(shipped.map((s) => s.name));
+    for (const [name, entry] of Object.entries(manifest.skills)) {
+      if (skillNames.has(name)) continue;
+      const versions = new Set(Object.values(entry.source).map((f) => f.shippedVersion));
+      const version = versions.size > 0 ? Array.from(versions)[0] : 'unknown';
+      for (const relPath of Object.keys(entry.source)) {
+        report.sourceMissing.push({ skill: name, relPath, shippedVersion: version });
+      }
+    }
+    for (const row of sourceMissingFileRows(manifest)) {
+      report.files.sourceMissing.push({
+        path: row.path,
+        region: row.region,
+        shippedVersion: row.shippedVersion ?? 'unknown',
+      });
     }
   }
 
   if (!dryRun) await writeManifest(dest, manifest);
 
   emit(ctx, report, formatInstallHuman);
-  if (report.refused.length > 0 && !force) {
+  if (report.refused.length + report.files.refused.length > 0 && !force) {
+    const refused = [
+      ...report.refused.map((f) => ({
+        kind: 'skill',
+        label: `${f.skill}/${f.relPath}`,
+        reason: f.reason,
+      })),
+      ...report.files.refused.map((f) => ({ kind: 'file', label: f.path, reason: f.reason })),
+    ];
     throw new CliError(
       ExitCodes.VALIDATION,
-      `${report.refused.length} file(s) refused (locally edited). Re-run with --force to overwrite or --diff to inspect.`,
-      { refused: report.refused },
+      `${refused.length} item(s) refused (locally edited). Re-run with --force to overwrite or --diff to inspect.`,
+      { refused },
     );
   }
+}
+
+function recordFileOutcome(report: InstallReport, outcome: FileInstallOutcome): void {
+  const ref = { path: outcome.path, region: outcome.region };
+  if (outcome.diff !== undefined && report.diffs) {
+    report.diffs.push({ kind: 'file', label: outcome.path, diff: outcome.diff });
+  }
+  switch (outcome.state) {
+    case 'copied':
+      report.files.copied.push(ref);
+      break;
+    case 'updated':
+      report.files.updated.push(ref);
+      break;
+    case 'unchanged':
+      report.files.unchanged.push(ref);
+      break;
+    case 'forced':
+      report.files.forced.push(ref);
+      break;
+    case 'refused':
+      report.files.refused.push({ ...ref, reason: outcome.reason ?? 'refused' });
+      break;
+    case 'source-missing':
+      // Skip — surfaced via the manifest walk so the row carries shippedVersion.
+      break;
+  }
+}
+
+/**
+ * The list of skills to compile in pass 2: every skill that has an
+ * `.agents/skills/<name>/spec.yaml` on disk after pass 1, plus any
+ * currently-shipped skill (caught in the dry-run case where pass 1 didn't
+ * write to disk). De-duplicated.
+ */
+async function collectInstalledSkillNames(
+  sourceRoot: string,
+  shipped: ShippedSkill[],
+): Promise<string[]> {
+  const names = new Set<string>();
+  for (const s of shipped) names.add(s.name);
+  try {
+    const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const spec = join(sourceRoot, entry.name, 'spec.yaml');
+      try {
+        await fs.access(spec);
+        names.add(entry.name);
+      } catch {
+        /* not a skillspec dir — skip */
+      }
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  return [...names].sort();
+}
+
+function pruneSourceMissingSkillEntries(
+  manifest: Manifest,
+  shipped: ShippedSkill[],
+): { skill: string; relPath: string; shippedVersion: string }[] {
+  const shippedNames = new Set(shipped.map((s) => s.name));
+  const dropped: { skill: string; relPath: string; shippedVersion: string }[] = [];
+  for (const [name, entry] of Object.entries(manifest.skills)) {
+    if (shippedNames.has(name)) continue;
+    for (const [relPath, fileEntry] of Object.entries(entry.source)) {
+      dropped.push({ skill: name, relPath, shippedVersion: fileEntry.shippedVersion });
+    }
+    delete manifest.skills[name];
+  }
+  return dropped;
 }
 
 async function rmTreeIfPresent(dir: string): Promise<void> {
@@ -319,6 +565,9 @@ function formatInstallHuman(report: InstallReport): string {
   lines.push(`Source-of-truth: ${report.destination}`);
   lines.push(`Compiled → ${report.outputs.claude}`);
   lines.push(`Compiled → ${report.outputs.kimi}`);
+  if (report.renamedFromClaudeMd) {
+    lines.push(`Renamed: CLAUDE.md → AGENTS.md (legacy install migration)`);
+  }
   if (report.copied.length > 0) {
     lines.push(`Sources copied (${report.copied.length}):`);
     for (const f of report.copied) lines.push(`  + ${f.skill}/${f.relPath}`);
@@ -340,6 +589,49 @@ function formatInstallHuman(report: InstallReport): string {
       lines.push(`  × ${f.skill}/${f.relPath}  (${f.reason})`);
     }
   }
+  if (report.files.copied.length > 0) {
+    lines.push(`Files copied (${report.files.copied.length}):`);
+    for (const f of report.files.copied) lines.push(`  + ${f.path}  (${f.region})`);
+  }
+  if (report.files.updated.length > 0) {
+    lines.push(`Files updated (${report.files.updated.length}):`);
+    for (const f of report.files.updated) lines.push(`  ↻ ${f.path}  (${f.region})`);
+  }
+  if (report.files.unchanged.length > 0) {
+    lines.push(`Files unchanged: ${report.files.unchanged.length}`);
+  }
+  if (report.files.forced.length > 0) {
+    lines.push(`Files forced (${report.files.forced.length}):`);
+    for (const f of report.files.forced) lines.push(`  ! ${f.path}  (${f.region})`);
+  }
+  if (report.files.refused.length > 0) {
+    lines.push(`Files refused (${report.files.refused.length}):`);
+    for (const f of report.files.refused) {
+      lines.push(`  × ${f.path}  (${f.reason})`);
+    }
+  }
+  if (report.sourceMissing.length > 0 || report.files.sourceMissing.length > 0) {
+    const total = report.sourceMissing.length + report.files.sourceMissing.length;
+    lines.push(`Source-missing (${total}, run with --prune to drop from manifest):`);
+    for (const f of report.sourceMissing) {
+      lines.push(`  ⊘ ${f.skill}/${f.relPath}  (last shipped ${f.shippedVersion})`);
+    }
+    for (const f of report.files.sourceMissing) {
+      lines.push(`  ⊘ ${f.path}  (last shipped ${f.shippedVersion})`);
+    }
+  }
+  if (report.pruned) {
+    const total = report.pruned.skills.length + report.pruned.files.length;
+    if (total > 0) {
+      lines.push(`Pruned (${total}):`);
+      for (const f of report.pruned.skills) {
+        lines.push(`  − ${f.skill}/${f.relPath}  (last shipped ${f.shippedVersion})`);
+      }
+      for (const f of report.pruned.files) {
+        lines.push(`  − ${f.path}  (last shipped ${f.shippedVersion})`);
+      }
+    }
+  }
   if (report.compiled.length > 0) {
     const byTarget = new Map<CompileTarget, number>();
     for (const c of report.compiled) {
@@ -350,31 +642,48 @@ function formatInstallHuman(report: InstallReport): string {
     );
     lines.push(`Compiled outputs: ${parts.join(', ')}`);
   }
+  if (report.agentsMdCompiled.length > 0) {
+    lines.push(`Compiled from AGENTS.md (${report.agentsMdCompiled.length}):`);
+    for (const c of report.agentsMdCompiled) lines.push(`  → ${c.path}  (${c.target})`);
+  }
   if (report.diffs && report.diffs.length > 0) {
     for (const d of report.diffs) {
       lines.push('');
-      lines.push(`--- diff: ${d.skill}/${d.relPath}`);
+      lines.push(`--- diff: ${d.label}`);
       lines.push(d.diff);
     }
   }
   return lines.join('\n') + '\n';
 }
 
-async function skillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
+type SkillFileState = 'unchanged' | 'edited' | 'missing' | 'orphan' | 'outdated' | 'source-missing';
+
+interface SkillStatusRow {
+  skill: string;
+  file: string;
+  state: SkillFileState;
+  shippedVersion: string | null;
+}
+
+interface RepoStatusReport {
+  destination: string;
+  items: SkillStatusRow[];
+  files: FileStatusRow[];
+}
+
+async function repoStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const dest = await resolveDest(args);
   delete args.flags.dest;
   assertNoExtraFlags(args);
   const sourceRoot = join(dest, SOURCE_RELPATH);
   const shipped = await readShippedSkills();
-  const manifest = (await readManifest(dest)) ?? { version: MANIFEST_VERSION, skills: {} };
+  const manifest: Manifest = (await readManifest(dest)) ?? {
+    version: MANIFEST_VERSION,
+    skills: {},
+  };
   const shippedByName = new Map(shipped.map((s) => [s.name, s]));
 
-  const report: {
-    skill: string;
-    file: string;
-    state: 'unchanged' | 'edited' | 'missing' | 'orphan' | 'outdated';
-    shippedVersion: string | null;
-  }[] = [];
+  const skillRows: SkillStatusRow[] = [];
 
   for (const [skillName, skillEntry] of Object.entries(manifest.skills)) {
     const ship = shippedByName.get(skillName);
@@ -387,7 +696,7 @@ async function skillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void>
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       }
       if (onDisk === null) {
-        report.push({
+        skillRows.push({
           skill: skillName,
           file: relPath,
           state: 'missing',
@@ -397,7 +706,7 @@ async function skillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void>
       }
       const onDiskHash = sha256(onDisk);
       if (onDiskHash !== entry.sha256) {
-        report.push({
+        skillRows.push({
           skill: skillName,
           file: relPath,
           state: 'edited',
@@ -405,18 +714,34 @@ async function skillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void>
         });
         continue;
       }
-      const shippedFile = ship?.files.includes(relPath)
-        ? await fs.readFile(join(ship.sourceDir, relPath))
-        : null;
-      if (shippedFile && sha256(shippedFile) !== entry.sha256) {
-        report.push({
+      let shippedFile: Buffer | null = null;
+      if (ship && ship.files.includes(relPath)) {
+        try {
+          shippedFile = await fs.readFile(join(ship.sourceDir, relPath));
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        }
+      }
+      if (shippedFile === null) {
+        // Either the skill is no longer shipped or the specific file was
+        // dropped from the spec. Both surface as source-missing.
+        skillRows.push({
+          skill: skillName,
+          file: relPath,
+          state: 'source-missing',
+          shippedVersion: entry.shippedVersion,
+        });
+        continue;
+      }
+      if (sha256(shippedFile) !== entry.sha256) {
+        skillRows.push({
           skill: skillName,
           file: relPath,
           state: 'outdated',
           shippedVersion: entry.shippedVersion,
         });
       } else {
-        report.push({
+        skillRows.push({
           skill: skillName,
           file: relPath,
           state: 'unchanged',
@@ -436,33 +761,62 @@ async function skillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void>
         continue;
       }
       if (!skillManifest[relPath]) {
-        report.push({ skill: skill.name, file: relPath, state: 'orphan', shippedVersion: null });
+        skillRows.push({
+          skill: skill.name,
+          file: relPath,
+          state: 'orphan',
+          shippedVersion: null,
+        });
       }
     }
   }
 
+  const fileRows: FileStatusRow[] = [];
+  for (const file of SHIPPED_FILES) {
+    const row = await statusShippedFile(file, dest, manifest);
+    if (row) fileRows.push(row);
+  }
+  for (const row of sourceMissingFileRows(manifest)) fileRows.push(row);
+
+  const report: RepoStatusReport = { destination: sourceRoot, items: skillRows, files: fileRows };
+
   emit(
     ctx,
-    { destination: sourceRoot, items: report },
+    report,
     (data) => {
-      const d = data as { destination: string; items: typeof report };
-      if (d.items.length === 0) return `(no installed skills under ${d.destination})\n`;
-      const widths = {
-        skill: Math.max(5, ...d.items.map((r) => r.skill.length)),
-        file: Math.max(4, ...d.items.map((r) => r.file.length)),
-        state: 9,
-      };
-      return (
-        d.items
-          .map(
-            (r) =>
-              `  ${r.skill.padEnd(widths.skill)}  ${r.file.padEnd(widths.file)}  ${r.state.padEnd(widths.state)}  ${r.shippedVersion ?? '-'}`,
-          )
-          .join('\n') + '\n'
-      );
+      const d = data as RepoStatusReport;
+      const lines: string[] = [];
+      if (d.items.length === 0 && d.files.length === 0) {
+        return `(nothing tracked under ${d.destination})\n`;
+      }
+      if (d.items.length > 0) {
+        const widths = {
+          skill: Math.max(5, ...d.items.map((r) => r.skill.length)),
+          file: Math.max(4, ...d.items.map((r) => r.file.length)),
+          state: 14,
+        };
+        for (const r of d.items) {
+          lines.push(
+            `  ${r.skill.padEnd(widths.skill)}  ${r.file.padEnd(widths.file)}  ${r.state.padEnd(widths.state)}  ${r.shippedVersion ?? '-'}`,
+          );
+        }
+      }
+      if (d.files.length > 0) {
+        if (d.items.length > 0) lines.push('');
+        const widths = {
+          path: Math.max(4, ...d.files.map((r) => r.path.length)),
+          region: Math.max(6, ...d.files.map((r) => r.region.length)),
+          state: 16,
+        };
+        for (const r of d.files) {
+          lines.push(
+            `  ${r.path.padEnd(widths.path)}  ${r.region.padEnd(widths.region)}  ${r.state.padEnd(widths.state)}  ${r.shippedVersion ?? '-'}`,
+          );
+        }
+      }
+      return lines.join('\n') + '\n';
     },
     [],
-    { streamField: 'items' },
   );
 }
 
@@ -971,3 +1325,7 @@ async function validateUserSkills(args: ParsedArgs, ctx: OutputContext): Promise
     );
   }
 }
+
+// Re-export utility for tests that previously imported from templates.ts.
+// New code should import directly from `./regions` and `./files`.
+export { locateShippedFilesRoot };
