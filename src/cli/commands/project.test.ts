@@ -28,38 +28,45 @@ async function build(): Promise<void> {
 }
 
 describe('condash project build', () => {
-  it('compiles AGENTS.md to .claude/CLAUDE.md and .kimi/AGENTS.md', async () => {
-    const source = [
+  it('compiles .agents/agents/ to .claude/CLAUDE.md and .kimi/AGENTS.md', async () => {
+    const agentsDir = join(dest, '.agents', 'agents');
+    await fs.mkdir(agentsDir, { recursive: true });
+
+    const common = [
       '# AGENTS.md — test',
       '',
       '## General',
       '',
       'Skills at {{ skills_dir }}.',
       '',
-      '### Claude',
-      '',
-      '- Memory at {{ memory_dir }}.',
-      '',
-      '### Kimi',
-      '',
-      '- No memory.',
+      '## Specifics',
       '',
     ].join('\n');
-    await fs.writeFile(join(dest, 'AGENTS.md'), source, 'utf8');
+    await fs.writeFile(join(agentsDir, 'common.md'), common, 'utf8');
+
+    const claudeFragment = ['### Claude', '', '- Memory at {{ memory_dir }}.', ''].join('\n');
+    await fs.writeFile(join(agentsDir, 'claude.md'), claudeFragment, 'utf8');
+
+    const kimiFragment = ['### Kimi', '', '- No memory.', ''].join('\n');
+    await fs.writeFile(join(agentsDir, 'kimi.md'), kimiFragment, 'utf8');
+
     await build();
 
     const claude = await fs.readFile(join(dest, '.claude/CLAUDE.md'), 'utf8');
     expect(claude).toContain('Skills at .claude/skills/.');
     expect(claude).toContain('Memory at ~/.claude/projects/');
     expect(claude).not.toContain('No memory.');
+    // Fragment inserted before ## Specifics
+    expect(claude.indexOf('### Claude')).toBeLessThan(claude.indexOf('## Specifics'));
 
     const kimi = await fs.readFile(join(dest, '.kimi/AGENTS.md'), 'utf8');
     expect(kimi).toContain('Skills at .kimi/skills/.');
     expect(kimi).toContain('No memory.');
-    expect(kimi).not.toContain('Memory at');
+    expect(kimi).not.toContain('Memory at ~/.claude/projects/');
+    expect(kimi.indexOf('### Kimi')).toBeLessThan(kimi.indexOf('## Specifics'));
   });
 
-  it('errors with NOT_FOUND when AGENTS.md is missing', async () => {
-    await expect(build()).rejects.toThrow(/No AGENTS\.md found/);
+  it('errors with NOT_FOUND when .agents/agents/ is missing', async () => {
+    await expect(build()).rejects.toThrow(/No agent-config source found/);
   });
 });

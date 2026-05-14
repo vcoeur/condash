@@ -1,14 +1,10 @@
 /**
  * `condash project build`
  *
- * Compile the conception's `AGENTS.md` source-of-truth into per-agent output
- * files (`.claude/CLAUDE.md` and `.kimi/AGENTS.md`). This is what the user
- * runs after editing `AGENTS.md` directly to refresh the compiled flavours
- * without going through `condash templates install` (which also re-syncs
- * shipped regions from condash itself).
- *
- * Same compile path as the one chained by `templates install` — this verb
- * just exposes it standalone for fast author iteration.
+ * Compile the conception's `.agents/agents/` source tree into per-agent
+ * output files (`.claude/CLAUDE.md` and `.kimi/AGENTS.md`). This is what
+ * the user runs after editing the agent-config sources directly to refresh
+ * the compiled flavours without going through `condash skills install`.
  */
 
 import { promises as fs } from 'node:fs';
@@ -16,16 +12,16 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
-import { AGENTS_MD_TARGETS, compileAgentsMd, type AgentsMdTarget } from '../../agents-md';
+import {
+  AGENTS_MD_TARGETS,
+  AGENTS_MD_OUTPUTS,
+  compileAgentConfig,
+  type AgentsMdTarget,
+} from '../../agents-md';
 import { writeFileMkdir } from './install-shared';
 
-const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
-  claude: '.claude/CLAUDE.md',
-  kimi: '.kimi/AGENTS.md',
-};
-
 interface BuildReport {
-  source: string;
+  sourceDir: string;
   /** One entry per target, listing the absolute path written. */
   outputs: { target: AgentsMdTarget; path: string }[];
 }
@@ -49,23 +45,30 @@ async function buildProject(args: ParsedArgs, ctx: OutputContext): Promise<void>
   for (const k of ['dest', 'dry-run']) delete args.flags[k];
   assertNoExtraFlags(args);
 
-  const sourcePath = join(dest, 'AGENTS.md');
-  let source: string;
+  const sourceDir = join(dest, '.agents', 'agents');
+  const commonPath = join(sourceDir, 'common.md');
+  let common: string;
   try {
-    source = await fs.readFile(sourcePath, 'utf8');
+    common = await fs.readFile(commonPath, 'utf8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new CliError(
         ExitCodes.NOT_FOUND,
-        `No AGENTS.md found at ${sourcePath}. Run \`condash templates install\` to seed it from the shipped template.`,
+        `No agent-config source found at ${sourceDir}. Run \`condash skills install\` to seed it from the shipped template.`,
       );
     }
     throw err;
   }
 
-  const report: BuildReport = { source: sourcePath, outputs: [] };
+  const report: BuildReport = { sourceDir, outputs: [] };
   for (const target of AGENTS_MD_TARGETS) {
-    const compiled = compileAgentsMd(source, target);
+    let fragment = '';
+    try {
+      fragment = await fs.readFile(join(sourceDir, `${target}.md`), 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    const compiled = compileAgentConfig(common, fragment, target);
     const outputPath = join(dest, AGENTS_MD_OUTPUTS[target]);
     if (!dryRun) await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
     report.outputs.push({ target, path: outputPath });
@@ -73,7 +76,7 @@ async function buildProject(args: ParsedArgs, ctx: OutputContext): Promise<void>
 
   emit(ctx, report, (data) => {
     const d = data as BuildReport;
-    const lines = [`Source: ${d.source}`];
+    const lines = [`Source: ${d.sourceDir}`];
     for (const o of d.outputs) lines.push(`  → ${o.path}  (${o.target})`);
     return lines.join('\n') + '\n';
   });

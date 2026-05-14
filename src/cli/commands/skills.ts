@@ -78,12 +78,11 @@ import {
 } from './install-shared';
 import {
   SHIPPED_FILES,
-  compileAgentsMdToTargets,
+  compileAgentConfigs,
+  installAgentConfigSources,
   installShippedFile,
   listShippedFiles,
   locateShippedFilesRoot,
-  maybeRenameClaudeMdToAgentsMd,
-  migrateClaudeMdManifestEntry,
   pruneSourceMissingFileEntries,
   sourceMissingFileRows,
   statusShippedFile,
@@ -212,7 +211,7 @@ interface InstallReport {
     sourceMissing: { path: string; region: string; shippedVersion: string }[];
   };
   agentsMdCompiled: { target: AgentsMdTarget; path: string }[];
-  renamedFromClaudeMd: boolean;
+  agentConfigsCopied: string[];
   pruned?: {
     skills: { skill: string; relPath: string; shippedVersion: string }[];
     files: { path: string; region: string; shippedVersion: string }[];
@@ -268,11 +267,6 @@ async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> 
     skills: {},
   };
 
-  // v2.29.0 migration: rename CLAUDE.md → AGENTS.md (and its manifest entry)
-  // when the user has an existing legacy install but no AGENTS.md yet.
-  const renamedFromClaudeMd = !dryRun ? await maybeRenameClaudeMdToAgentsMd(dest) : false;
-  if (renamedFromClaudeMd) migrateClaudeMdManifestEntry(manifest);
-
   const report: InstallReport = {
     destination: sourceRoot,
     conceptionRoot: dest,
@@ -296,7 +290,7 @@ async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> 
       sourceMissing: [],
     },
     agentsMdCompiled: [],
-    renamedFromClaudeMd,
+    agentConfigsCopied: [],
     diffs: showDiff ? [] : undefined,
   };
 
@@ -428,8 +422,11 @@ async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> 
     }
   }
 
-  // Pass 2b: compile AGENTS.md → per-target outputs (no-op if AGENTS.md isn't on disk).
-  report.agentsMdCompiled = await compileAgentsMdToTargets(dest, dryRun);
+  // Pass 1c: copy agent-config sources.
+  report.agentConfigsCopied = await installAgentConfigSources(dest, dryRun);
+
+  // Pass 2b: compile .agents/agents/ → per-target outputs (no-op if source tree isn't on disk).
+  report.agentsMdCompiled = await compileAgentConfigs(dest, dryRun);
 
   // --prune: drop manifest entries whose shipped source is gone.
   if (prune) {
@@ -565,9 +562,6 @@ function formatInstallHuman(report: InstallReport): string {
   lines.push(`Source-of-truth: ${report.destination}`);
   lines.push(`Compiled → ${report.outputs.claude}`);
   lines.push(`Compiled → ${report.outputs.kimi}`);
-  if (report.renamedFromClaudeMd) {
-    lines.push(`Renamed: CLAUDE.md → AGENTS.md (legacy install migration)`);
-  }
   if (report.copied.length > 0) {
     lines.push(`Sources copied (${report.copied.length}):`);
     for (const f of report.copied) lines.push(`  + ${f.skill}/${f.relPath}`);
@@ -642,8 +636,12 @@ function formatInstallHuman(report: InstallReport): string {
     );
     lines.push(`Compiled outputs: ${parts.join(', ')}`);
   }
+  if (report.agentConfigsCopied.length > 0) {
+    lines.push(`Agent configs copied (${report.agentConfigsCopied.length}):`);
+    for (const p of report.agentConfigsCopied) lines.push(`  + ${p}`);
+  }
   if (report.agentsMdCompiled.length > 0) {
-    lines.push(`Compiled from AGENTS.md (${report.agentsMdCompiled.length}):`);
+    lines.push(`Compiled agent configs (${report.agentsMdCompiled.length}):`);
     for (const c of report.agentsMdCompiled) lines.push(`  → ${c.path}  (${c.target})`);
   }
   if (report.diffs && report.diffs.length > 0) {
