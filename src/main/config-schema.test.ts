@@ -169,26 +169,26 @@ describe('migrateRawSettings — invalid launcher entries', () => {
     const migrated = migrateRawSettings({
       terminal: {
         launchers: [
-          { symbol: 'mu', title: 'Kimi' },
-          { symbol: 'lambda', command: 'claude', title: 'Claude' },
+          { label: 'μ', title: 'Kimi' },
+          { label: 'λ', command: 'claude', title: 'Claude' },
         ],
       },
     }) as { terminal: { launchers: unknown[] } };
     expect(migrated.terminal.launchers).toEqual([
-      { symbol: 'lambda', command: 'claude', title: 'Claude' },
+      { label: 'λ', command: 'claude', title: 'Claude' },
     ]);
   });
 
   it('drops a launcher entry with an empty-string command', () => {
     const migrated = migrateRawSettings({
-      terminal: { launchers: [{ symbol: 'mu', command: '   ', title: 'Kimi' }] },
+      terminal: { launchers: [{ label: 'μ', command: '   ', title: 'Kimi' }] },
     }) as { terminal: Record<string, unknown> };
     expect('launchers' in migrated.terminal).toBe(false);
   });
 
   it('removes the launchers key entirely when every entry is invalid', () => {
     const migrated = migrateRawSettings({
-      terminal: { launchers: [{ symbol: 'mu', title: 'Kimi' }] },
+      terminal: { launchers: [{ label: 'μ', title: 'Kimi' }] },
     }) as { terminal: Record<string, unknown> };
     expect('launchers' in migrated.terminal).toBe(false);
   });
@@ -200,13 +200,13 @@ describe('migrateRawSettings — invalid launcher entries', () => {
     const json = JSON.stringify({
       terminal: {
         launchers: [
-          { symbol: 'mu', title: 'Kimi' },
-          { symbol: 'lambda', command: 'claude' },
+          { label: 'μ', title: 'Kimi' },
+          { label: 'λ', command: 'claude' },
         ],
       },
     });
     const canon = validateAndCanonicaliseConceptionConfig(json);
     const parsed = JSON.parse(canon);
-    expect(parsed.terminal.launchers).toEqual([{ symbol: 'lambda', command: 'claude' }]);
+    expect(parsed.terminal.launchers).toEqual([{ label: 'λ', command: 'claude' }]);
   });
 });

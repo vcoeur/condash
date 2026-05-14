@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { bootApp } from './fixtures/electron-app';
 
-test('terminal pane: + spawns an unpinned shell, λ spawns a pinned launcher tab', async ({}, testInfo) => {
+test('terminal pane: New shell spawns an unpinned shell, launcher spawns a pinned tab', async ({}, testInfo) => {
   testInfo.setTimeout(60_000);
   // Use `cat` as the launcher command: it's on every PATH and blocks on stdin,
   // so the pty stays alive for the full test (otherwise the renderer's
@@ -10,36 +10,38 @@ test('terminal pane: + spawns an unpinned shell, λ spawns a pinned launcher tab
   // first token — so we expect the label "cat".
   const booted = await bootApp({
     extraConfig: {
-      terminal: { launchers: [{ symbol: 'lambda', command: 'cat' }] },
+      terminal: { launchers: [{ label: 'Cat', command: 'cat' }] },
     },
   });
   try {
     const win = booted.window;
 
-    // Sanity probe: the renderer must see the λ launcher entry from settings.
-    // Schema rename in v2.28.0 — legacy `launcher_command` migrates into this
-    // array on load; the unit suite in effective-config.test.ts covers that path.
+    // Sanity probe: the renderer must see the launcher entry from settings.
     const prefs = await win.evaluate(() => window.condash.termGetPrefs());
     expect(prefs.launchers?.[0]?.command).toBe('cat');
 
     // The terminal pane is mounted but starts collapsed; the column header
-    // (with the +/λ buttons) is rendered regardless of `open`. Click each
-    // button and assert the resulting tab label.
+    // (with the spawn dropdown) is rendered regardless of `open`.
 
-    // First +: plain shell. We expect the label to be `shell` initially.
-    // OSC 7 will eventually arrive from the started shell and rewrite it to
-    // the cwd basename — that's the legacy behavior we deliberately keep.
-    const plusButton = win.locator('button.terminal-tab-add[title^="New shell tab"]').first();
-    await plusButton.click();
+    // First: select "New shell" from the dropdown. We expect the label to be
+    // `shell` initially. OSC 7 will eventually arrive from the started shell
+    // and rewrite it to the cwd basename — that's the legacy behavior we
+    // deliberately keep.
+    const dropdown = win.locator('.terminal-tab-dropdown').first();
+    await dropdown.click();
+    const menu = win.locator('.terminal-tab-dropdown-menu');
+    await expect(menu).toBeVisible();
+    await menu.locator('li', { hasText: 'New shell' }).click();
+
     const tabs = win.locator('.terminal-tab-label');
     await expect(tabs).toHaveCount(1);
 
-    // Launcher λ: must show literal "cat" (the launcher_command), and the
-    // pin must keep that label even after OSC 7 would otherwise have
-    // rewritten it.
-    const lambdaButton = win.locator('button.terminal-tab-add.launcher');
-    await expect(lambdaButton).toBeVisible();
-    await lambdaButton.click();
+    // Launcher: open the dropdown again and select the launcher option.
+    // Must show literal "cat" (the launcher command), and the pin must keep
+    // that label even after OSC 7 would otherwise have rewritten it.
+    await dropdown.click();
+    await expect(menu).toBeVisible();
+    await menu.locator('li', { hasText: 'Cat' }).click();
     await expect(tabs).toHaveCount(2);
     await expect(tabs.nth(1)).toHaveText('cat');
 

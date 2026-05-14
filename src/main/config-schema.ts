@@ -154,22 +154,18 @@ const terminalLoggingSettings = z
   })
   .strict();
 
-/** Single launcher slot. `symbol` is the identity (drives the glyph the
- *  renderer picks); `command` is the shell command run on spawn; `title`,
- *  when present, is the initial pinned tab label. */
+/** Single launcher slot. `label` is the user-defined display name shown
+ *  in the tab-strip dropdown; `command` is the shell command run on spawn;
+ *  `title`, when present, is the initial pinned tab label. */
 const launcherSchema = z
   .object({
-    symbol: z.enum(['lambda', 'mu']),
+    label: z.string().min(1, 'label must not be empty'),
     command: z.string().min(1, 'command must not be empty'),
     title: z.string().optional(),
   })
   .strict();
 
-const launchersSchema = z
-  .array(launcherSchema)
-  .refine((entries) => new Set(entries.map((e) => e.symbol)).size === entries.length, {
-    message: 'duplicate launcher symbol',
-  });
+const launchersSchema = z.array(launcherSchema);
 
 const terminalSettings = z
   .object({
@@ -326,10 +322,12 @@ export const DEFAULT_SKILLS_PATH = '.claude/skills';
  *
  * Current rules:
  * - `terminal.launcher_command` (scalar string) → `terminal.launchers[0]`
- *   with `symbol: 'lambda'`. Skipped if the user already has an explicit
+ *   with `label: 'λ'`. Skipped if the user already has an explicit
  *   `terminal.launchers` block — the array wins, the legacy scalar is
  *   discarded. The legacy key is removed in both cases so the strict
  *   schema accepts the result and the next write drops it from disk.
+ * - `terminal.launchers[]` entries with a legacy `symbol` field are
+ *   migrated to `label` ('lambda' → 'λ', 'mu' → 'μ').
  * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
  *   dropped in v2.23.0 when the rotation machinery and ANSI stripping
  *   were retired. Strip silently so existing `.condash/settings.json`
@@ -353,14 +351,30 @@ export function migrateRawSettings(parsed: unknown): unknown {
   if (typeof term.launcher_command === 'string') {
     const legacy = term.launcher_command.trim();
     if (legacy.length > 0 && !Array.isArray(term.launchers)) {
-      term.launchers = [{ symbol: 'lambda', command: legacy }];
+      term.launchers = [{ label: 'λ', command: legacy }];
     }
     delete term.launcher_command;
   } else if ('launcher_command' in term) {
     delete term.launcher_command;
   }
   if (Array.isArray(term.launchers)) {
-    const scrubbed = term.launchers.filter((entry) => {
+    const migrated = term.launchers.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const e = entry as Record<string, unknown>;
+      if (typeof e.symbol === 'string') {
+        const labelMap: Record<string, string> = { lambda: 'λ', mu: 'μ' };
+        const fallback =
+          typeof e.title === 'string' && e.title.length > 0
+            ? e.title
+            : typeof e.command === 'string'
+              ? e.command
+              : String(e.symbol);
+        e.label = labelMap[e.symbol] ?? fallback;
+        delete e.symbol;
+      }
+      return entry;
+    });
+    const scrubbed = migrated.filter((entry) => {
       if (!entry || typeof entry !== 'object') return false;
       const command = (entry as { command?: unknown }).command;
       return typeof command === 'string' && command.trim().length > 0;

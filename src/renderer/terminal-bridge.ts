@@ -2,14 +2,11 @@ import type { LauncherConfig, Project, RepoEntry, TerminalPrefs, Worktree } from
 import type { TerminalPaneHandle } from './terminal-pane';
 
 /** Pick the default launcher used when the dashboard auto-spawns a shell
- *  (per-card "work on", paste-to-term). Prefers the `lambda` slot to
- *  preserve the legacy single-launcher behaviour, falling back to the
- *  first configured entry. Returns `null` when no launcher has a non-empty
- *  command — callers spawn a plain shell in that case. */
+ *  (per-card "work on", paste-to-term). Returns the first configured entry
+ *  with a non-empty command, or `null` when none exist — callers spawn a
+ *  plain shell in that case. */
 function defaultLauncher(prefs: TerminalPrefs | undefined): LauncherConfig | null {
   const launchers = prefs?.launchers ?? [];
-  const lambda = launchers.find((l) => l.symbol === 'lambda' && l.command.trim().length > 0);
-  if (lambda) return lambda;
   return launchers.find((l) => l.command.trim().length > 0) ?? null;
 }
 

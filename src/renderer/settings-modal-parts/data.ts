@@ -1,7 +1,6 @@
 import type {
   CardMinWidthPrefs,
   LauncherConfig,
-  LauncherSymbol,
   Platform,
   TerminalPrefs,
   TerminalXtermPrefs,
@@ -171,37 +170,6 @@ export const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
   },
 ];
 
-/**
- * One settings-modal fieldset per launcher slot. Order is the visual
- * order. The renderer in `fields.tsx` walks this constant to produce one
- * `<fieldset>` per entry; the tab strip walks `prefs.launchers` (an
- * arbitrary subset of these symbols) to render the matching buttons.
- */
-export interface LauncherFieldsetMeta {
-  symbol: LauncherSymbol;
-  glyph: string;
-  label: string;
-  commandPlaceholder: Partial<Record<Platform | 'default', string>>;
-  titlePlaceholder: Partial<Record<Platform | 'default', string>>;
-}
-
-export const LAUNCHER_FIELDSETS: LauncherFieldsetMeta[] = [
-  {
-    symbol: 'lambda',
-    glyph: 'λ',
-    label: 'λ Launcher',
-    commandPlaceholder: { default: 'claude' },
-    titlePlaceholder: { default: 'Claude' },
-  },
-  {
-    symbol: 'mu',
-    glyph: 'μ',
-    label: 'μ Launcher',
-    commandPlaceholder: { default: 'python -m notebook' },
-    titlePlaceholder: { default: 'Jupyter' },
-  },
-];
-
 export const WORKSPACE_PLACEHOLDER: Partial<Record<Platform | 'default', string>> = {
   linux: '/home/you/src/vcoeur',
   darwin: '~/src/vcoeur',
@@ -350,47 +318,53 @@ export function moveItem<T>(arr: T[], index: number, delta: -1 | 1): T[] {
 }
 
 /**
- * Pure-function variant of the Settings modal's launcher patch. Given the
- * current `launchers` array (possibly undefined), apply one field edit
- * keyed by symbol and return the next array (or `undefined` if the result
- * is empty so the caller can omit `launchers` entirely from the saved
- * config).
- *
- * Drop rule: an entry whose `command` is empty after the edit is removed.
- * A title without a command renders no button on the terminal tab strip
- * (`terminal-pane/column.tsx` filters by non-empty command), and the
- * strict `launcherSchema` rejects `{ symbol, title }` with `expected
- * string, received undefined` because `pruneEmpty` strips the empty
- * `command` field on save.
+ * Pure-function helpers for the Settings modal's dynamic launcher list.
+ * All return `undefined` when the resulting array is empty so the caller
+ * can omit `launchers` entirely from the saved config.
  */
-export function applyLauncherEdit(
-  prevLaunchers: LauncherConfig[] | undefined,
-  symbol: LauncherSymbol,
-  field: 'command' | 'title',
-  value: string,
+
+export function patchLauncher(
+  prev: LauncherConfig[] | undefined,
+  index: number,
+  patch: Partial<LauncherConfig>,
 ): LauncherConfig[] | undefined {
-  const trimmed = value.trim();
-  const existing: LauncherConfig[] = (prevLaunchers ?? []).map((l) => ({ ...l }));
-  const idx = existing.findIndex((l) => l.symbol === symbol);
-  const current = idx >= 0 ? existing[idx] : { symbol, command: '', title: undefined };
-  const nextEntry: LauncherConfig = {
-    symbol,
-    command: field === 'command' ? trimmed : current.command,
-    title: field === 'title' ? trimmed || undefined : current.title,
-  };
-  const dropEntry = !nextEntry.command;
-  let nextList: LauncherConfig[];
-  if (idx >= 0) {
-    if (dropEntry) {
-      nextList = existing.filter((_, i) => i !== idx);
-    } else {
-      existing[idx] = nextEntry;
-      nextList = existing;
-    }
-  } else if (dropEntry) {
-    nextList = existing;
+  const existing = (prev ?? []).map((l) => ({ ...l }));
+  if (index < 0) return prev;
+  if (index >= existing.length) {
+    // Creating a new entry at the end.
+    existing.push({ label: '', command: '', ...patch });
   } else {
-    nextList = [...existing, nextEntry];
+    existing[index] = { ...existing[index], ...patch };
   }
-  return nextList.length > 0 ? nextList : undefined;
+  // Drop entries with empty command.
+  const kept = existing.filter((l) => l.command.trim().length > 0);
+  return kept.length > 0 ? kept : undefined;
+}
+
+export function addLauncher(prev: LauncherConfig[] | undefined): LauncherConfig[] {
+  return [...(prev ?? []), { label: '', command: '' }];
+}
+
+export function removeLauncher(
+  prev: LauncherConfig[] | undefined,
+  index: number,
+): LauncherConfig[] | undefined {
+  const existing = prev ?? [];
+  if (index < 0 || index >= existing.length) return prev;
+  const next = existing.filter((_, i) => i !== index);
+  return next.length > 0 ? next : undefined;
+}
+
+export function moveLauncher(
+  prev: LauncherConfig[] | undefined,
+  index: number,
+  delta: -1 | 1,
+): LauncherConfig[] | undefined {
+  const arr = prev ?? [];
+  const target = index + delta;
+  if (target < 0 || target >= arr.length) return prev;
+  const next = arr.slice();
+  const [removed] = next.splice(index, 1);
+  next.splice(target, 0, removed);
+  return next.length > 0 ? next : undefined;
 }

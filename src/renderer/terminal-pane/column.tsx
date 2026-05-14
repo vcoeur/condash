@@ -1,14 +1,7 @@
-import { For, Show } from 'solid-js';
-import type { LauncherConfig, LauncherSymbol } from '@shared/types';
+import { createSignal, For, Show } from 'solid-js';
+import type { LauncherConfig } from '@shared/types';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
-
-/** Maps each launcher slot to the glyph rendered on its tab-strip button.
- *  Symbol is the entry's identity in settings; glyph is rendering-only. */
-const LAUNCHER_GLYPH: Record<LauncherSymbol, string> = {
-  lambda: 'λ',
-  mu: 'μ',
-};
 
 export interface TerminalColumnProps {
   col: Column;
@@ -16,7 +9,7 @@ export interface TerminalColumnProps {
   activeId: string | null;
   isActiveColumn: boolean;
   renamingId: string | null;
-  /** Configured launcher slots. One button per entry whose `command` is
+  /** Configured launcher slots. One menu item per entry whose `command` is
    *  non-empty, in the order they appear in `terminal.launchers`. */
   launchers: readonly LauncherConfig[];
   /** True when the surrounding pane is currently visible. Drives the
@@ -32,13 +25,102 @@ export interface TerminalColumnProps {
   onCommitRename: (id: string, value: string) => void;
   onCancelRename: () => void;
   onCloseTab: (id: string) => void;
-  onSpawnShell: (col: Column, launcher: LauncherSymbol | null) => void;
+  onSpawnShell: (col: Column, launcherIndex: number | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
   /** Toggle the pane open/closed. The Terminal handle in the strip
    *  fires this. Only the left column renders the handle, so the pane
    *  has exactly one toggle regardless of split state. */
   onTogglePane: () => void;
+}
+
+/** Dropdown button + menu for spawning tabs. Replaces the fixed `+` / μ / λ
+ *  button row with a single control that lists all configured launchers. */
+function SpawnDropdown(props: {
+  launchers: readonly LauncherConfig[];
+  onSpawn: (index: number | null) => void;
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [highlighted, setHighlighted] = createSignal(0);
+
+  const items = () => [
+    { label: 'New shell', value: null as number | null },
+    ...props.launchers
+      .filter((l) => l.command.trim().length > 0)
+      .map((l, i) => ({
+        label: l.label || l.title || l.command,
+        value: i,
+      })),
+  ];
+
+  const select = (value: number | null) => {
+    props.onSpawn(value);
+    setOpen(false);
+    setHighlighted(0);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!open()) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    const count = items().length;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlighted((h) => (h + 1) % count);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlighted((h) => (h - 1 + count) % count);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      select(items()[highlighted()].value);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div class="terminal-tab-dropdown-wrap">
+      <button
+        class="terminal-tab-dropdown"
+        aria-haspopup="listbox"
+        aria-expanded={open()}
+        aria-label="Spawn new terminal"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        onKeyDown={handleKeyDown}
+      >
+        <span>New shell</span>
+        <span aria-hidden="true">▼</span>
+      </button>
+      <Show when={open()}>
+        <ul class="terminal-tab-dropdown-menu" role="listbox" aria-label="Terminal spawn options">
+          <For each={items()}>
+            {(item, idx) => (
+              <li
+                role="option"
+                aria-selected={highlighted() === idx()}
+                classList={{ highlighted: highlighted() === idx() }}
+                onMouseEnter={() => setHighlighted(idx())}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  select(item.value);
+                }}
+              >
+                {item.label}
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+    </div>
+  );
 }
 
 /** One column of the bottom terminal pane: tab strip on top + xterm host
@@ -149,31 +231,10 @@ export function TerminalColumn(props: TerminalColumnProps) {
             </div>
           )}
         </For>
-        <button
-          class="terminal-tab-add"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onSpawnShell(props.col, null);
-          }}
-          title="New shell tab (cwd: conception)"
-        >
-          +
-        </button>
-        <For each={props.launchers.filter((l) => l.command.trim().length > 0)}>
-          {(launcher) => (
-            <button
-              class="terminal-tab-add launcher"
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onSpawnShell(props.col, launcher.symbol);
-              }}
-              title={`New ${launcher.title || launcher.command} tab (cwd: conception)`}
-              aria-label={`New ${launcher.title || launcher.command} tab`}
-            >
-              {LAUNCHER_GLYPH[launcher.symbol]}
-            </button>
-          )}
-        </For>
+        <SpawnDropdown
+          launchers={props.launchers}
+          onSpawn={(index) => props.onSpawnShell(props.col, index)}
+        />
         <span class="terminal-tab-strip-spacer" />
         <button
           class="terminal-tab-add"

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { applyLauncherEdit, buildSavePayload, compactRepos } from './data';
+import {
+  addLauncher,
+  buildSavePayload,
+  compactRepos,
+  moveLauncher,
+  patchLauncher,
+  removeLauncher,
+} from './data';
 import { conceptionConfigSchema } from '../../main/config-schema';
 
 describe('buildSavePayload — repositories', () => {
@@ -84,65 +91,104 @@ describe('compactRepos — invariants', () => {
   });
 });
 
-describe('applyLauncherEdit', () => {
+describe('patchLauncher', () => {
   it('does not create an entry when only the title is set (command empty)', () => {
-    // Reproduces the v2.28.0 incident: typing into Title without a Command
-    // would persist a `{ symbol, command: '', title }` entry, which `pruneEmpty`
-    // strips to `{ symbol, title }` — then the strict launcherSchema rejects
-    // it with `expected string, received undefined`.
-    expect(applyLauncherEdit(undefined, 'lambda', 'title', 'My title')).toBeUndefined();
+    expect(patchLauncher(undefined, 0, { title: 'My title' })).toBeUndefined();
   });
 
   it('creates an entry once the command is filled', () => {
-    expect(applyLauncherEdit(undefined, 'lambda', 'command', 'claude')).toEqual([
-      { symbol: 'lambda', command: 'claude', title: undefined },
+    expect(patchLauncher(undefined, 0, { label: 'Claude', command: 'claude' })).toEqual([
+      { label: 'Claude', command: 'claude' },
     ]);
   });
 
   it('attaches a title to an existing command entry', () => {
-    const next = applyLauncherEdit(
-      [{ symbol: 'lambda', command: 'claude' }],
-      'lambda',
-      'title',
-      'CLD',
-    );
-    expect(next).toEqual([{ symbol: 'lambda', command: 'claude', title: 'CLD' }]);
+    const next = patchLauncher([{ label: 'λ', command: 'claude' }], 0, { title: 'CLD' });
+    expect(next).toEqual([{ label: 'λ', command: 'claude', title: 'CLD' }]);
   });
 
   it('drops the entry when its command is cleared, even if title was set', () => {
-    const next = applyLauncherEdit(
-      [{ symbol: 'lambda', command: 'claude', title: 'CLD' }],
-      'lambda',
-      'command',
-      '',
-    );
+    const next = patchLauncher([{ label: 'λ', command: 'claude', title: 'CLD' }], 0, {
+      command: '',
+    });
     expect(next).toBeUndefined();
   });
 
-  it('preserves the other slot when one slot is cleared', () => {
-    const next = applyLauncherEdit(
+  it('preserves the other entry when one is cleared', () => {
+    const next = patchLauncher(
       [
-        { symbol: 'lambda', command: 'claude' },
-        { symbol: 'mu', command: 'python -m notebook' },
+        { label: 'λ', command: 'claude' },
+        { label: 'μ', command: 'python -m notebook' },
       ],
-      'lambda',
-      'command',
-      '',
+      0,
+      { command: '' },
     );
-    expect(next).toEqual([{ symbol: 'mu', command: 'python -m notebook' }]);
+    expect(next).toEqual([{ label: 'μ', command: 'python -m notebook' }]);
   });
 
   it('produces a schema-valid payload through buildSavePayload + launcherSchema', () => {
-    const launchers = applyLauncherEdit(undefined, 'lambda', 'command', 'claude');
+    const launchers = patchLauncher(undefined, 0, { label: 'λ', command: 'claude' });
     const payload = buildSavePayload({ terminal: { launchers } });
     const result = conceptionConfigSchema.safeParse(payload);
     expect(result.success).toBe(true);
   });
+});
 
-  it('title-only edit yields a payload that the strict schema accepts (no orphan entry)', () => {
-    const launchers = applyLauncherEdit(undefined, 'lambda', 'title', 'CLD');
-    const payload = buildSavePayload({ terminal: { launchers } });
-    const result = conceptionConfigSchema.safeParse(payload);
-    expect(result.success).toBe(true);
+describe('addLauncher', () => {
+  it('appends a blank launcher row', () => {
+    expect(addLauncher(undefined)).toEqual([{ label: '', command: '' }]);
+  });
+
+  it('appends to an existing list', () => {
+    expect(addLauncher([{ label: 'λ', command: 'claude' }])).toEqual([
+      { label: 'λ', command: 'claude' },
+      { label: '', command: '' },
+    ]);
+  });
+});
+
+describe('removeLauncher', () => {
+  it('removes the entry at the given index', () => {
+    expect(
+      removeLauncher(
+        [
+          { label: 'λ', command: 'claude' },
+          { label: 'μ', command: 'python -m notebook' },
+        ],
+        0,
+      ),
+    ).toEqual([{ label: 'μ', command: 'python -m notebook' }]);
+  });
+
+  it('returns undefined when the last entry is removed', () => {
+    expect(removeLauncher([{ label: 'λ', command: 'claude' }], 0)).toBeUndefined();
+  });
+});
+
+describe('moveLauncher', () => {
+  it('swaps two entries', () => {
+    expect(
+      moveLauncher(
+        [
+          { label: 'λ', command: 'claude' },
+          { label: 'μ', command: 'python -m notebook' },
+        ],
+        0,
+        1,
+      ),
+    ).toEqual([
+      { label: 'μ', command: 'python -m notebook' },
+      { label: 'λ', command: 'claude' },
+    ]);
+  });
+
+  it('refuses to move past the start', () => {
+    const list = [{ label: 'λ', command: 'claude' }];
+    expect(moveLauncher(list, 0, -1)).toBe(list);
+  });
+
+  it('refuses to move past the end', () => {
+    const list = [{ label: 'λ', command: 'claude' }];
+    expect(moveLauncher(list, 0, 1)).toBe(list);
   });
 });
