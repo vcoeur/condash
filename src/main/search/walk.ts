@@ -70,6 +70,22 @@ export async function collectSkillFiles(skillsRoot: string): Promise<string[]> {
   return out;
 }
 
+/**
+ * Walk every saved session log under `<conception>/.condash/logs/`. The
+ * tree shape is `YYYY/MM/DD/HHMMSS-<sid>.txt` or `.txt.gz` after the
+ * janitor's compression pass. Uses a custom predicate because `.txt.gz`
+ * is a double extension the generic `walkExtensions` helper can't match.
+ */
+export async function collectLogFiles(logsRoot: string): Promise<string[]> {
+  const out: string[] = [];
+  await walkPredicate(
+    logsRoot,
+    (name) => name.endsWith('.txt') || name.endsWith('.txt.gz'),
+    (file) => out.push(file),
+  );
+  return out;
+}
+
 const RESOURCE_EXTS = new Set(['.md', '.markdown', '.txt']);
 const SKILL_EXTS = new Set(['.md']);
 
@@ -101,6 +117,34 @@ async function walkMarkdown(dir: string, visit: (file: string) => void): Promise
       if (SKIP_DIR_NAMES.has(entry.name)) continue;
       await walkMarkdown(full, visit);
     } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+      visit(full);
+    }
+  }
+}
+
+/**
+ * Recursive walker keyed on a name predicate. Same dot-prefix and
+ * SKIP_DIR_NAMES rules as the walkers above; the root itself is always
+ * descended into so log roots under `.condash/` work. */
+async function walkPredicate(
+  dir: string,
+  match: (name: string) => boolean,
+  visit: (file: string) => void,
+): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIR_NAMES.has(entry.name)) continue;
+      await walkPredicate(full, match, visit);
+    } else if (entry.isFile() && match(entry.name.toLowerCase())) {
       visit(full);
     }
   }

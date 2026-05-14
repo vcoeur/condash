@@ -35,7 +35,7 @@ interface Line {
 
 export function buildRegions(
   raw: string,
-  source: 'project' | 'knowledge' | 'resources' | 'skills',
+  source: 'project' | 'knowledge' | 'resources' | 'skills' | 'logs',
 ): RegionLookup {
   const lines: Line[] = [];
   let pos = 0;

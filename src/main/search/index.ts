@@ -3,6 +3,7 @@ import type { SearchResults } from '../../shared/types';
 import { toPosix } from '../../shared/path';
 import {
   collectKnowledgeFiles,
+  collectLogFiles,
   collectProjectFiles,
   collectResourceFiles,
   collectSkillFiles,
@@ -10,6 +11,7 @@ import {
 import { matchFile, type MatchOutput } from './match';
 import { parseQuery } from './query';
 import { resolveConceptionPaths } from '../conception-paths';
+import { condashLogsRoot } from '../condash-dir';
 
 /** Maximum number of hits returned to the renderer. The renderer's grouping
  * pass collapses project-side hits afterwards, so this caps raw files, not
@@ -35,11 +37,12 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
 
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);
 
-  const [projectFiles, knowledgeFiles, resourceFiles, skillFiles] = await Promise.all([
+  const [projectFiles, knowledgeFiles, resourceFiles, skillFiles, logFiles] = await Promise.all([
     collectProjectFiles(join(conceptionPath, 'projects')),
     collectKnowledgeFiles(join(conceptionPath, 'knowledge')),
     collectResourceFiles(join(conceptionPath, resources)),
     collectSkillFiles(join(conceptionPath, skills)),
+    collectLogFiles(condashLogsRoot(conceptionPath)),
   ]);
 
   const matchPromises: Promise<MatchOutput | null>[] = [];
@@ -84,6 +87,17 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
         path: toPosix(path),
         relPath: toPosix(relative(conceptionPath, path)),
         source: 'skills',
+        terms,
+      }),
+    );
+  }
+
+  for (const path of logFiles) {
+    matchPromises.push(
+      matchFile({
+        path: toPosix(path),
+        relPath: toPosix(relative(conceptionPath, path)),
+        source: 'logs',
         terms,
       }),
     );

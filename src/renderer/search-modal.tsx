@@ -32,12 +32,15 @@ const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, t
  * both — projects (with their notes) and knowledge files. The pill
  * filter sits on the search modal header. The backend doesn't know
  * about the filter; we just hide non-matching buckets in the UI. */
-type SourceFilter = 'all' | 'projects' | 'knowledge' | 'resources' | 'skills';
+type SourceFilter = 'all' | 'projects' | 'knowledge' | 'resources' | 'skills' | 'logs';
 
 export function SearchModal(props: {
   onClose: () => void;
   onOpenProject: (projectPath: string) => void;
   onOpenFile: (filePath: string) => void;
+  /** Optional — when provided, log hits are surfaced as their own row
+   * type that, on click, opens the Logs pane and selects that session. */
+  onOpenLog?: (logPath: string) => void;
 }) {
   const [input, setInput] = createSignal('');
   const [query, setQuery] = createSignal('');
@@ -63,14 +66,16 @@ export function SearchModal(props: {
   const knowledgeCount = createMemo(() => grouped().knowledge.length);
   const resourcesCount = createMemo(() => grouped().resources.length);
   const skillsCount = createMemo(() => grouped().skills.length);
+  const logsCount = createMemo(() => grouped().logs.length);
   const totalCount = createMemo(
-    () => projectCount() + knowledgeCount() + resourcesCount() + skillsCount(),
+    () => projectCount() + knowledgeCount() + resourcesCount() + skillsCount() + logsCount(),
   );
 
   const showProjects = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'projects';
   const showKnowledge = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'knowledge';
   const showResources = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'resources';
   const showSkills = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'skills';
+  const showLogs = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'logs';
 
   // Visible-results count under the active filter — drives the
   // "no matches in this source" empty state.
@@ -79,6 +84,7 @@ export function SearchModal(props: {
     if (sourceFilter() === 'knowledge') return knowledgeCount();
     if (sourceFilter() === 'resources') return resourcesCount();
     if (sourceFilter() === 'skills') return skillsCount();
+    if (sourceFilter() === 'logs') return logsCount();
     return totalCount();
   });
 
@@ -113,6 +119,10 @@ export function SearchModal(props: {
     props.onOpenFile(path);
     props.onClose();
   };
+  const openLogAndClose = (path: string): void => {
+    if (props.onOpenLog) props.onOpenLog(path);
+    props.onClose();
+  };
 
   return (
     <div class="modal-backdrop search-modal-backdrop" onClick={props.onClose}>
@@ -128,7 +138,7 @@ export function SearchModal(props: {
             ref={(el) => (inputEl = el)}
             class="search-input search-modal-input"
             type="search"
-            placeholder='Search projects + knowledge — "phrases" stay together'
+            placeholder='Search projects, knowledge, logs — "phrases" stay together'
             value={input()}
             onInput={(e) => onInput(e.currentTarget.value)}
           />
@@ -188,6 +198,15 @@ export function SearchModal(props: {
             >
               Skills <span class="search-source-count">{skillsCount()}</span>
             </button>
+            <button
+              class="search-source-pill"
+              classList={{ active: sourceFilter() === 'logs' }}
+              role="radio"
+              aria-checked={sourceFilter() === 'logs'}
+              onClick={() => setSourceFilter('logs')}
+            >
+              Logs <span class="search-source-count">{logsCount()}</span>
+            </button>
           </div>
         </Show>
         <div class="search-modal-body">
@@ -226,6 +245,11 @@ export function SearchModal(props: {
                   <Show when={showSkills()}>
                     <For each={grouped().skills}>
                       {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                    </For>
+                  </Show>
+                  <Show when={showLogs()}>
+                    <For each={grouped().logs}>
+                      {(hit) => <LogResultRow hit={hit} onOpen={openLogAndClose} />}
                     </For>
                   </Show>
                 </ul>
@@ -307,6 +331,33 @@ function FileResultRow(props: { hit: SearchHit; onOpen: (path: string) => void }
         <div class="search-head">
           <span class="search-title">{props.hit.title}</span>
           <span class="badge">{props.hit.source}</span>
+          <span class="search-count">{props.hit.score}</span>
+        </div>
+        <ResultPath relPath={props.hit.relPath} pathMatches={props.hit.pathMatches} />
+        <SnippetList snippets={props.hit.snippets} />
+      </button>
+    </li>
+  );
+}
+
+/** Log hit row — title is derived from the rel-path so a session shows
+ * as `YYYY-MM-DD HH:MM:SS` instead of a meaningless first line of the
+ * transcript. Activating it sends an open-log request the Logs pane
+ * reacts to. */
+function LogResultRow(props: { hit: SearchHit; onOpen: (path: string) => void }) {
+  const niceTitle = (): string => {
+    // relPath: `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt(.gz)`
+    const m = /\/(\d{4})\/(\d{2})\/(\d{2})\/(\d{2})(\d{2})(\d{2})-/.exec(props.hit.relPath);
+    if (!m) return props.hit.title;
+    const [, y, mo, d, hh, mm, ss] = m;
+    return `${y}-${mo}-${d} ${hh}:${mm}:${ss}`;
+  };
+  return (
+    <li class="search-result">
+      <button class="search-row" onClick={() => props.onOpen(props.hit.path)}>
+        <div class="search-head">
+          <span class="search-title">{niceTitle()}</span>
+          <span class="badge">log</span>
           <span class="search-count">{props.hit.score}</span>
         </div>
         <ResultPath relPath={props.hit.relPath} pathMatches={props.hit.pathMatches} />

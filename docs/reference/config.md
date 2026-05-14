@@ -83,12 +83,12 @@ Typed keystrokes are *not* captured separately — the pty echoes them back thro
 
 | Key             | Type           | Default | Meaning                                                                                                                                                                                                       |
 |-----------------|----------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `enabled`       | boolean        | `true`  | Toggle capture entirely. Disabling stops new writes; existing files stay on disk for the janitor.                                                                                                              |
+| `enabled`       | boolean        | `false` | Toggle capture entirely. Default flipped to opt-in for privacy (2.25.0). Disabling stops new writes on the next session spawn; existing files stay on disk for the janitor. The Logs pane stays usable for browsing past transcripts even when disabled. |
 | `retentionDays` | integer ≥ 0    | `14`    | Day-directories older than this are removed on next janitor run. `0` disables age-based eviction (the size cap still applies).                                                                                |
 | `maxDirMb`      | integer ≥ 0    | `500`   | Total cap on `<conception>/.condash/logs/`. The janitor evicts oldest day-directories first while over cap, regardless of age.                                                                                |
 | `scrollback`    | integer ≥ 100  | `10000` | Scrollback lines retained by the per-session headless xterm. Larger → more history captured, larger `.txt` files; smaller → older output rolls off the top of the buffer (same semantics as the live pane). |
 
-The janitor runs at app startup and every 24 hours. Errors are logged to stderr and never propagate into the IPC layer.
+The janitor runs at app startup and every 24 hours: it (1) deletes day-dirs older than `retentionDays`, (2) gzips any uncompressed `.txt` in day-dirs at least one day old (today's day-dir is always skipped to avoid racing with the writer), then (3) evicts the oldest surviving day-dir while total size is over `maxDirMb`. The viewer + the global search backend transparently read either `.txt` or `.txt.gz` — the on-disk extension is an implementation detail. Errors are logged to stderr and never propagate into the IPC layer.
 
 condash ≤ 2.22 wrote a JSONL event stream (`HHMMSS-<sid>.jsonl`) instead. The new viewer ignores those files; only the janitor's age-based eviction touches them. To clear the legacy format immediately, delete `<conception>/.condash/logs/` and start fresh.
 
