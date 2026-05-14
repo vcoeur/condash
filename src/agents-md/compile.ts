@@ -1,38 +1,24 @@
 /**
- * Compile a unified `AGENTS.md` source into per-agent flavours.
+ * Compile per-agent config files from a `.agents/agents/` source tree.
  *
- * The source is plain Markdown with two extensions:
+ * Source layout:
+ *   - `.agents/agents/common.md`      — shared content (must contain `## Specifics`)
+ *   - `.agents/agents/claude.md`      — Claude-only fragment
+ *   - `.agents/agents/kimi.md`        — Kimi-only fragment
  *
- *   1. **Target-tagged sections.** A heading `### Claude` (or `### Kimi`)
- *      starts a section that's kept for the matching target and stripped
- *      for the other. The section ends at the next sibling `### ` heading
- *      OR any heading of equal-or-higher level (`## `, `# `). The blank
- *      lines surrounding the heading are also collapsed so the stripped
- *      output reads cleanly.
- *
- *   2. **Variable substitution.** `{{ var }}` tokens (whitespace around the
- *      name is tolerated) are replaced from the per-target variable map.
- *      If a key isn't in the map for the current target, the token is
- *      replaced with the empty string.
- *
- * Output:
- *
- *   - Claude target → contents intended for `<conception>/.claude/CLAUDE.md`
- *   - Kimi target   → contents intended for `<conception>/.kimi/AGENTS.md`
- *
- * The compiler is intentionally minimal: no full Markdown AST, just a
- * line-based scan of `### ` and `## `/`# ` headings. This keeps it cheap
- * and predictable, and matches how authors actually structure these docs.
+ * The compile step inserts the agent-specific fragment into `common.md`
+ * immediately before the `## Specifics` heading, then applies `{{ var }}`
+ * variable substitution from the per-target map.
  */
 
 export type AgentsMdTarget = 'claude' | 'kimi';
 
 export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = ['claude', 'kimi'] as const;
 
-/** Heading text that introduces a target-tagged H3 section. */
-const TARGET_HEADINGS: Record<AgentsMdTarget, string> = {
-  claude: 'Claude',
-  kimi: 'Kimi',
+/** Output path per target, relative to the conception root. */
+export const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
+  claude: '.claude/CLAUDE.md',
+  kimi: '.kimi/AGENTS.md',
 };
 
 /** Default variable map per target, applied via `{{ var }}` substitution. */
@@ -56,57 +42,69 @@ export function defaultVariables(target: AgentsMdTarget): Record<string, string>
   }
 }
 
-export interface CompileAgentsMdOptions {
+export interface CompileAgentConfigOptions {
   /** Override / extend the default variable map for this target. */
   variables?: Record<string, string>;
 }
 
-export function compileAgentsMd(
-  source: string,
+/**
+ * Merge `common.md` with the per-agent fragment and substitute variables.
+ *
+ * The agent fragment is spliced in just before the first `## Specifics`
+ * heading in common.md. If common.md lacks that heading, the fragment is
+ * appended. If the agent file is empty or missing, common.md is returned
+ * unchanged (after variable substitution).
+ */
+export function compileAgentConfig(
+  common: string,
+  agentFragment: string,
   target: AgentsMdTarget,
-  opts: CompileAgentsMdOptions = {},
+  opts: CompileAgentConfigOptions = {},
 ): string {
   const variables = { ...defaultVariables(target), ...(opts.variables ?? {}) };
-  const stripped = stripOffTargetSections(source, target);
-  return substituteVariables(stripped, variables);
+  let merged: string;
+
+  if (!agentFragment.trim()) {
+    merged = common;
+  } else {
+    merged = spliceBeforeSpecifics(common, agentFragment);
+  }
+
+  return substituteVariables(merged, variables);
 }
 
 /**
- * Walk the source line by line. When a `### <off-target>` heading is hit,
- * skip every following line until the next heading of equal-or-higher level
- * (`### `, `## `, `# `) or end-of-file. Drop the surrounding blank lines
- * so the output reads cleanly.
+ * Find the first `## Specifics` heading in `common` and insert `fragment`
+ * immediately before it, separated by a single blank line.
  */
-function stripOffTargetSections(source: string, keepTarget: AgentsMdTarget): string {
-  const offTargets = AGENTS_MD_TARGETS.filter((t) => t !== keepTarget);
-  const offHeadings = new Set(offTargets.map((t) => TARGET_HEADINGS[t]));
-
-  const lines = source.split('\n');
-  const out: string[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    const h3 = line.match(/^### +(.+?)\s*$/);
-    if (h3 && offHeadings.has(h3[1].trim())) {
-      // Eat preceding blank lines we already pushed (so the strip leaves no
-      // double blank).
-      while (out.length > 0 && out[out.length - 1] === '') out.pop();
-      // Skip the heading and everything until the next sibling/parent heading.
-      i += 1;
-      while (i < lines.length) {
-        const probe = lines[i];
-        if (/^#{1,3} +/.test(probe)) break;
-        i += 1;
-      }
-      // Eat trailing blank lines before the next heading so we don't end up
-      // with a double-blank seam.
-      while (i < lines.length && lines[i] === '') i += 1;
-      continue;
+function spliceBeforeSpecifics(common: string, fragment: string): string {
+  const lines = common.split('\n');
+  let insertIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+Specifics\s*$/.test(lines[i])) {
+      insertIndex = i;
+      break;
     }
-    out.push(line);
-    i += 1;
   }
-  return out.join('\n');
+
+  const trimmedFragment = fragment.trimEnd();
+  if (insertIndex === -1) {
+    // No ## Specifics — append with a blank line separator.
+    const sep = common.endsWith('\n') ? '' : '\n';
+    return common + sep + '\n' + trimmedFragment + '\n';
+  }
+
+  const before = lines.slice(0, insertIndex);
+  const after = lines.slice(insertIndex);
+  // Ensure a blank line between the preceding content and the fragment.
+  const result = [...before];
+  if (result.length > 0 && result[result.length - 1] !== '') {
+    result.push('');
+  }
+  result.push(trimmedFragment);
+  result.push('');
+  result.push(...after);
+  return result.join('\n') + '\n';
 }
 
 const VARIABLE_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;

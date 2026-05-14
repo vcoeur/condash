@@ -20,21 +20,6 @@ This section is shipped by condash and refreshed by `condash skills install`. Ed
 - **Autonomy**: when the next action is obvious from context, proceed — don't ask. Ask when the call is genuinely ambiguous or the action is hard to reverse. Terse prompts like "redo now", "close it", "ship" are explicit permission to run end-to-end without per-step confirmation.
 - **Keep the project README live as you work**: every project under `projects/YYYY-MM/<slug>/` is the cold-recovery contract. The moment you start, finish, partially complete, or get blocked on a `## Steps` item, flip its marker (`[ ]` `[~]` `[x]` `[!]`); append a one-line dated timeline entry on each material event (decision, PR opened, blocker found); lift inline user answers from chat into `## Notes` or `notes/NN-…md`. Goal: if this session crashes or is interrupted right now, the next reader answers "what shipped, what's left, what's blocking" from the README alone. Don't batch updates to the end of a pass.
 
-### Claude
-
-- **Auto-memory opt-out**: this tree does not use the harness auto-memory. Durable team rules go under `## Specifics` below; durable reference material lives under [`knowledge/`](knowledge/index.md). Never write to `{{ memory_dir }}` for this tree.
-
-### Kimi
-
-When operating inside this conception with Kimi Code CLI, the following are auto-approved without per-action confirmation:
-
-- Read, edit, and create any file inside the conception directory (`projects/`, `knowledge/`, `notes/`, and any other path under the conception root).
-- Run `condash` with any arguments.
-- Edit code in `<workspace_path>/<repo>/` (main app checkouts) and `<worktrees_path>/<branch>/<repo>/` (PR worktrees).
-- Run any shell command needed to test or verify app behaviour (test runners, dev servers, build commands, package installs).
-
-**Why:** Kimi Code CLI's default permission boundary treats the working directory as the only safe zone. Conception work routinely requires touching sibling repos, running the condash CLI, and executing tests. A single explicit rule removes friction that would otherwise require the user to confirm every file write or command execution.
-
 ### What `## Specifics` should contain
 
 `## Specifics` is per-conception — user-owned, never touched by `condash skills install`. Open it with the **Apps** table; everything below the table is durable team rules and workspace facts.

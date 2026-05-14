@@ -2,12 +2,10 @@
  * Top-level shipped-file install for `condash skills install`.
  *
  * Each entry in `SHIPPED_FILES` lives at the conception root and ships the
- * body of one heading-delimited region. Two entries today:
- *   - `AGENTS.md` — `## General` (markdown H2). Renamed from `CLAUDE.md`
- *     in v2.29.0; an existing `CLAUDE.md` (without an `AGENTS.md` sibling)
- *     is auto-renamed on first install so legacy installs migrate cleanly.
- *   - `.gitignore` — `# General` (gitignore-comment style; sibling
- *     `# Specifics` terminates the region).
+ * body of one heading-delimited region. Today only `.gitignore` uses this
+ * path; `AGENTS.md` was removed from shipped files in favour of a
+ * `.agents/agents/` source tree that compiles to per-agent outputs.
+ *
  * The surrounding text — anything before the General heading and the
  * user-owned `Specifics` section that follows — is never touched. Hash-based
  * safe-update model matching the agent-skill source files:
@@ -16,8 +14,7 @@
  *   - region differs from manifest → user edited → refuse without --force.
  *   - region present but file not in manifest → orphan → treat as edited.
  *   - heading absent or ambiguous → no region to write through; refuse without
- *     --force. With --force, write the entire shipped file (everything before
- *     `General` + `General` body + placeholder `Specifics` section).
+ *     --force. With --force, write the entire shipped file.
  *   - file absent entirely → fresh install path → write the shipped file.
  *   - shipped bundle no longer ships the file (a previous condash version
  *     installed it; the current one dropped it) → source-missing. Skipped
@@ -31,7 +28,12 @@
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { AGENTS_MD_TARGETS, compileAgentsMd, type AgentsMdTarget } from '../../agents-md';
+import {
+  AGENTS_MD_TARGETS,
+  AGENTS_MD_OUTPUTS,
+  compileAgentConfig,
+  type AgentsMdTarget,
+} from '../../agents-md';
 import { CliError, ExitCodes } from '../output';
 import {
   cheapDiff,
@@ -41,12 +43,6 @@ import {
   type ManifestRegionEntry,
 } from './install-shared';
 import { DEFAULT_MARK, extractRegion, replaceRegion, type HeadingOpts } from './regions';
-
-/** Compiled-output path per target, relative to the conception root. */
-const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
-  claude: '.claude/CLAUDE.md',
-  kimi: '.kimi/AGENTS.md',
-};
 
 export interface ShippedFile {
   /** Path relative to dest root, e.g. "AGENTS.md". */
@@ -72,7 +68,6 @@ export interface ShippedFile {
  * a one-line append plus a new entry in `conception-template/`.
  */
 export const SHIPPED_FILES: ShippedFile[] = [
-  { path: 'AGENTS.md', region: 'General' },
   { path: '.gitignore', region: 'General', mark: '#', siblings: ['Specifics'] },
 ];
 
@@ -289,27 +284,39 @@ export async function installShippedFile(
 }
 
 /**
- * Compile AGENTS.md → per-target output files (`.claude/CLAUDE.md` +
+ * Path of the agent-config source tree relative to the conception root.
+ */
+const AGENTS_SOURCE_RELPATH = '.agents/agents';
+
+/**
+ * Compile `.agents/agents/` → per-target output files (`.claude/CLAUDE.md` +
  * `.kimi/AGENTS.md`). Compiled outputs are deterministic from the source
  * and aren't tracked by the manifest — they're regenerated on every
- * install. Returns the empty array (and writes nothing) if AGENTS.md
- * doesn't exist on disk.
+ * install. Returns the empty array (and writes nothing) if the source
+ * tree doesn't exist on disk.
  */
-export async function compileAgentsMdToTargets(
+export async function compileAgentConfigs(
   dest: string,
   dryRun: boolean,
 ): Promise<{ target: AgentsMdTarget; path: string }[]> {
-  const agentsMdPath = join(dest, 'AGENTS.md');
-  let source: string | null = null;
+  const sourceDir = join(dest, AGENTS_SOURCE_RELPATH);
+  let common: string | null = null;
   try {
-    source = await fs.readFile(agentsMdPath, 'utf8');
+    common = await fs.readFile(join(sourceDir, 'common.md'), 'utf8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
-  if (source === null) return [];
+  if (common === null) return [];
+
   const written: { target: AgentsMdTarget; path: string }[] = [];
   for (const target of AGENTS_MD_TARGETS) {
-    const compiled = compileAgentsMd(source, target);
+    let fragment = '';
+    try {
+      fragment = await fs.readFile(join(sourceDir, `${target}.md`), 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    const compiled = compileAgentConfig(common, fragment, target);
     const outputPath = join(dest, AGENTS_MD_OUTPUTS[target]);
     if (!dryRun) await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
     written.push({ target, path: AGENTS_MD_OUTPUTS[target] });
@@ -459,6 +466,58 @@ export function listShippedFiles(manifest: Manifest | null): FileListRow[] {
       shippedVersion: entry?.shippedVersion ?? null,
     };
   });
+}
+
+/**
+ * Copy the `.agents/agents/` source tree from the shipped template to the
+ * destination. Overwrites on every install (no refuse-on-edit for these
+ * small source fragments; user edits should go into `## Specifics` in the
+ * compiled output, not the source files).
+ *
+ * Returns the list of relative paths copied.
+ */
+export async function installAgentConfigSources(dest: string, dryRun: boolean): Promise<string[]> {
+  const shippedDir = join(locateShippedFilesRoot(), '.agents', 'agents');
+  const targetDir = join(dest, '.agents', 'agents');
+  const copied: string[] = [];
+
+  async function walk(src: string, dst: string, prefix: string): Promise<void> {
+    const entries = await fs.readdir(src, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const srcPath = join(src, entry.name);
+      const dstPath = join(dst, entry.name);
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (!dryRun) await fs.mkdir(dstPath, { recursive: true });
+        await walk(srcPath, dstPath, relPath);
+      } else if (entry.isFile()) {
+        const content = await fs.readFile(srcPath);
+        let shouldWrite = true;
+        try {
+          const existing = await fs.readFile(dstPath);
+          if (existing.equals(content)) shouldWrite = false;
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        }
+        if (shouldWrite) {
+          if (!dryRun) await writeFileMkdir(dstPath, content);
+          copied.push(relPath);
+        }
+      }
+    }
+  }
+
+  try {
+    await fs.access(shippedDir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+
+  if (!dryRun) await fs.mkdir(targetDir, { recursive: true });
+  await walk(shippedDir, targetDir, '');
+  return copied;
 }
 
 /**
