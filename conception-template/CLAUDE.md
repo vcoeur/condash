@@ -19,7 +19,7 @@ This section is shipped by condash and refreshed by `condash templates install`.
 
 - **Autonomy**: when the next action is obvious from context, proceed — don't ask. Ask when the call is genuinely ambiguous or the action is hard to reverse. Terse prompts like "redo now", "close it", "ship" are explicit permission to run end-to-end without per-step confirmation.
 - **Auto-memory opt-out**: this tree does not use the harness auto-memory. Durable team rules go under `## Specifics` below; durable reference material lives under [`knowledge/`](knowledge/index.md). Never write to `~/.claude/projects/<encoded-path>/memory/` for this tree.
-- **"Doesn't work" reports**: ask one clarifying question about the actual symptom before editing — especially before touching shared infrastructure (skill files, settings, hook scripts). Search `## Specifics` and `knowledge/` for keywords from the report first.
+- **Keep the project README live as you work**: every project under `projects/YYYY-MM/<slug>/` is the cold-recovery contract. The moment you start, finish, partially complete, or get blocked on a `## Steps` item, flip its marker (`[ ]` `[~]` `[x]` `[!]`); append a one-line dated timeline entry on each material event (decision, PR opened, blocker found); lift inline user answers from chat into `## Notes` or `notes/NN-…md`. Goal: if this session crashes or is interrupted right now, the next reader answers "what shipped, what's left, what's blocking" from the README alone. Don't batch updates to the end of a pass.
 
 ### What `## Specifics` should contain
 

@@ -196,7 +196,10 @@ The manifest at `.claude/skills/.condash-skills.json` tracks the shipped version
 
 ### `templates`
 
-Manage condash-shipped *partial-file* templates — top-level files where condash owns the body of one H2 section (today: `CLAUDE.md`'s `## General`). The text outside that section — H1, intro paragraph, and the user-owned `## Specifics` — is never touched.
+Manage condash-shipped *partial-file* templates — top-level files where condash owns the body of one heading-delimited section. Two shipped today:
+
+- `CLAUDE.md` — `## General` (markdown H2). Text outside that section (H1, intro paragraph, and the user-owned `## Specifics`) is never touched.
+- `.gitignore` — `# General` (gitignore comment style). Patterns under `# Specifics` are never touched.
 
 | Verb | What it does |
 |---|---|
@@ -204,7 +207,11 @@ Manage condash-shipped *partial-file* templates — top-level files where condas
 | `install [<path>...]` | Update the shipped region inside `<conception>/<path>`. With no args, runs all shipped templates. Refuses on edits without `--force`; `--diff` shows the unified diff |
 | `status` | Compare local regions against the shipped versions and the recorded SHA256 (states: `unchanged` / `outdated` / `edited` / `missing` / `missing-heading` / `orphan`) |
 
-The manifest reuses `.claude/skills/.condash-skills.json` (`templates` namespace alongside `skills`). The recorded SHA256 hashes the **body of the H2 section, exclusive of the heading line and the trailing blank line before the next H2** — so the user can reorder content above or below the section without invalidating the manifest. Manifests written by older condash versions used `region: "condash:general"` (the HTML-comment-marker namespace); they migrate transparently to `region: "General"` on the next install.
+The manifest reuses `.claude/skills/.condash-skills.json` (`templates` namespace alongside `skills`). The recorded SHA256 hashes the **body of the section, exclusive of the heading line and the trailing blank line before the next heading** — so the user can reorder content above or below the section without invalidating the manifest. Manifests written by older condash versions used `region: "condash:general"` (the HTML-comment-marker namespace); they migrate transparently to `region: "General"` on the next install.
+
+For `.gitignore`, the heading style is gitignore-comment (`# General` / `# Specifics`) — every comment line shares the `#` prefix with the section markers, so the parser uses a fixed sibling list (`Specifics`) to detect the body end rather than treating any `# …` line as a heading. The match is whole-line, case- and whitespace-sensitive (`# General` only — `# General — shipped` or `#General` won't match).
+
+**First-time adoption on an existing conception.** A `.gitignore` predating this change has no `# General` / `# Specifics` markers, so `templates install` reports `missing-heading` and refuses without `--force`. The recommended migration is a one-time hand-edit: wrap your existing patterns under a `# Specifics` heading and let `templates install` write the shipped `# General` block on top. `--force` is the alternative but wipes any custom patterns.
 
 ### `config`
 

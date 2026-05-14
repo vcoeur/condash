@@ -1,18 +1,21 @@
 /**
  * `condash templates <list|install|status>`
  *
- * Ships the body of a top-level heading (`## <region>`) inside selected files
- * instead of the whole file. Today this is just `CLAUDE.md`'s `## General`
- * section; the surrounding text — H1, intro paragraph, and the user-owned
- * `## Specifics` section that follows — is never touched. Same hash-based
- * safe-update model as `condash skills install`:
+ * Ships the body of one heading-delimited section inside selected files
+ * instead of the whole file. Two templates today:
+ *   - `CLAUDE.md` — `## General` (markdown H2).
+ *   - `.gitignore` — `# General` (gitignore-comment style; sibling
+ *     `# Specifics` terminates the region).
+ * The surrounding text — anything before the General heading and the
+ * user-owned `Specifics` section that follows — is never touched. Same
+ * hash-based safe-update model as `condash skills install`:
  *
  *   - region matches manifest → unchanged → safe to push the new shipped region.
  *   - region differs from manifest → user edited → refuse without --force.
  *   - region present but template not in manifest → orphan → treat as edited.
  *   - heading absent or ambiguous → no region to write through; refuse without
- *     --force. With --force, write the entire shipped file (H1 + intro +
- *     `## General` body + placeholder `## Specifics` section).
+ *     --force. With --force, write the entire shipped file (everything before
+ *     `General` + `General` body + placeholder `Specifics` section).
  *   - file absent entirely → fresh install path → write the shipped file.
  *
  * The manifest entry sits alongside `skills` in
@@ -41,13 +44,42 @@ interface ShippedTemplate {
   path: string;
   /** Heading text for the shipped region, e.g. "General" — matches `## General`. */
   region: string;
+  /**
+   * Heading prefix without trailing whitespace. Default '##' (markdown H2 —
+   * used by CLAUDE.md). For gitignore-style files use '#'.
+   */
+  mark?: string;
+  /**
+   * Fixed sibling section names that end this region's body. When set, the
+   * "next heading" regex matches *only* these names — required for gitignore-
+   * style files where every comment line shares the mark with section
+   * headings. When unset, any line starting with `mark` ends the region
+   * (markdown H2 behaviour).
+   */
+  siblings?: string[];
 }
 
 /**
- * Hardcoded list of files condash ships partially. Today there's only one;
- * adding more is a one-line append plus a new entry in `conception-template/`.
+ * Hardcoded list of files condash ships partially. Adding more is a one-line
+ * append plus a new entry in `conception-template/`.
  */
-const SHIPPED_TEMPLATES: ShippedTemplate[] = [{ path: 'CLAUDE.md', region: 'General' }];
+const SHIPPED_TEMPLATES: ShippedTemplate[] = [
+  { path: 'CLAUDE.md', region: 'General' },
+  { path: '.gitignore', region: 'General', mark: '#', siblings: ['Specifics'] },
+];
+
+/** Default heading mark for templates that don't specify one. Markdown H2. */
+const DEFAULT_MARK = '##';
+
+/** Options threaded into findHeading; defaults to markdown H2 with no sibling list. */
+interface HeadingOpts {
+  mark?: string;
+  siblings?: string[];
+}
+
+function optsFor(t: ShippedTemplate): HeadingOpts {
+  return { mark: t.mark ?? DEFAULT_MARK, siblings: t.siblings };
+}
 
 /**
  * Older condash versions stored the HTML-comment-marker namespace
@@ -165,9 +197,10 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
   };
 
   for (const t of selected) {
+    const opts = optsFor(t);
     const sourceFullPath = join(locateShippedTemplatesRoot(), t.path);
     const sourceContent = await fs.readFile(sourceFullPath, 'utf8');
-    const sourceRegion = extractRegion(sourceContent, t.region);
+    const sourceRegion = extractRegion(sourceContent, t.region, opts);
     if (sourceRegion === null) {
       throw new CliError(
         ExitCodes.RUNTIME,
@@ -197,7 +230,7 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
       continue;
     }
 
-    const onDiskRegion = extractRegion(onDisk, t.region);
+    const onDiskRegion = extractRegion(onDisk, t.region, opts);
 
     // Markers absent: there's no region to update through. Without --force,
     // refuse so the user knows the file isn't being touched. With --force,
@@ -222,7 +255,7 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
         report.refused.push({
           path: t.path,
           region: t.region,
-          reason: `heading "## ${t.region}" not found (or ambiguous)`,
+          reason: `heading "${opts.mark} ${t.region}" not found (or ambiguous)`,
         });
       }
       continue;
@@ -248,7 +281,7 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
       // Region matches manifest (user hasn't edited since last install) →
       // safe to push the new shipped region.
       if (!dryRun) {
-        const updated = replaceRegion(onDisk, t.region, sourceRegion);
+        const updated = replaceRegion(onDisk, t.region, sourceRegion, opts);
         await writeFileMkdir(targetPath, Buffer.from(updated, 'utf8'));
       }
       templates[t.path] = {
@@ -270,7 +303,7 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
     }
     if (force) {
       if (!dryRun) {
-        const updated = replaceRegion(onDisk, t.region, sourceRegion);
+        const updated = replaceRegion(onDisk, t.region, sourceRegion, opts);
         await writeFileMkdir(targetPath, Buffer.from(updated, 'utf8'));
       }
       templates[t.path] = {
@@ -352,6 +385,7 @@ async function templatesStatus(args: ParsedArgs, ctx: OutputContext): Promise<vo
 
   const rows: StatusRow[] = [];
   for (const t of SHIPPED_TEMPLATES) {
+    const opts = optsFor(t);
     const entry = templates[t.path];
     const targetPath = join(dest, t.path);
     let onDisk: string | null = null;
@@ -373,7 +407,7 @@ async function templatesStatus(args: ParsedArgs, ctx: OutputContext): Promise<vo
       }
       continue;
     }
-    const onDiskRegion = extractRegion(onDisk, t.region);
+    const onDiskRegion = extractRegion(onDisk, t.region, opts);
     if (onDiskRegion === null) {
       rows.push({
         path: t.path,
@@ -402,7 +436,7 @@ async function templatesStatus(args: ParsedArgs, ctx: OutputContext): Promise<vo
     let sourceRegion: string | null = null;
     try {
       const sourceContent = await fs.readFile(sourcePath, 'utf8');
-      sourceRegion = extractRegion(sourceContent, t.region);
+      sourceRegion = extractRegion(sourceContent, t.region, opts);
     } catch {
       /* fall through */
     }
@@ -483,34 +517,51 @@ function locateShippedTemplatesRoot(): string {
 }
 
 /**
- * Extract the body of an H2 section identified by its heading text.
+ * Extract the body of a section identified by its heading text.
  *
- * The region body is everything between the line `## <region>` (exclusive)
- * and the next H2 heading (`## …`, exclusive) or end-of-file. The heading
- * line itself and any trailing blank line before the next H2 are not part
- * of the body — they are structural and would otherwise leak into the hash.
+ * Default (no `opts`) is markdown H2: region body is everything between
+ * `## <region>` (exclusive) and the next `## …` (exclusive) or end-of-file.
+ *
+ * With `opts.mark = '#'` and `opts.siblings = [...]`, parses gitignore-style
+ * sections: region body runs between `# <region>` and the next line matching
+ * `# <one-of-siblings>` (exclusive) or end-of-file. The fixed sibling list
+ * is required because every gitignore comment line starts with `#` — a
+ * generic "any heading at this level" stop would match user comments.
+ *
+ * The heading line itself and any trailing blank line before the next
+ * heading are not part of the body — they are structural and would otherwise
+ * leak into the hash.
  *
  * Returns `null` when the heading is missing or appears more than once
  * (ambiguous) — both cases are treated as `missing-heading` upstream so the
  * user is asked rather than silently overwritten.
  *
- * The match is case- and whitespace-sensitive on the heading text itself
- * (`## General` only — `## general` or `##  General` won't match). Three or
- * more `#` (H3+) never match: the regex demands exactly two.
+ * The match is case- and whitespace-sensitive on the heading text itself.
+ * For markdown mode, H3+ (`### …`) never match: the regex demands exactly
+ * two `#`.
  */
-export function extractRegion(content: string, region: string): string | null {
-  const heading = findHeading(content, region);
+export function extractRegion(
+  content: string,
+  region: string,
+  opts: HeadingOpts = {},
+): string | null {
+  const heading = findHeading(content, region, opts);
   if (heading === null) return null;
   return content.slice(heading.bodyStart, heading.bodyEnd);
 }
 
 /**
- * Replace the body of the H2 section identified by `region`, preserving the
+ * Replace the body of the section identified by `region`, preserving the
  * heading line and everything outside the region. Throws when the heading is
  * missing or ambiguous; callers should use `extractRegion` first to gate.
  */
-export function replaceRegion(content: string, region: string, replacement: string): string {
-  const heading = findHeading(content, region);
+export function replaceRegion(
+  content: string,
+  region: string,
+  replacement: string,
+  opts: HeadingOpts = {},
+): string {
+  const heading = findHeading(content, region, opts);
   if (heading === null) {
     throw new Error(`Region ${region} not found in content`);
   }
@@ -521,8 +572,8 @@ export function replaceRegion(content: string, region: string, replacement: stri
     // ends cleanly.
     return `${before}${replacement}\n`;
   }
-  // A blank line separates the body from the next H2. We always emit one,
-  // normalising whatever the user had before.
+  // A blank line separates the body from the next heading. We always emit
+  // one, normalising whatever the user had before.
   return `${before}${replacement}\n\n${after}`;
 }
 
@@ -530,16 +581,18 @@ interface HeadingSpan {
   /** Index of the first byte of the body content (after the heading line). */
   bodyStart: number;
   /** Index of the last byte + 1 of the body content (after trimming the
-   *  trailing newlines that separate body from next H2 or EOF). Used for
-   *  hashing and extraction. */
+   *  trailing newlines that separate body from next heading or EOF). Used
+   *  for hashing and extraction. */
   bodyEnd: number;
-  /** Index of the start of the tail region — i.e. the next H2 or EOF.
-   *  Used by `replaceRegion` so the trailing newlines don't get duplicated. */
+  /** Index of the start of the tail region — i.e. the next sibling heading
+   *  or EOF. Used by `replaceRegion` so the trailing newlines don't get
+   *  duplicated. */
   tailStart: number;
 }
 
-function findHeading(content: string, region: string): HeadingSpan | null {
-  const headingRe = new RegExp(`^##[ \\t]+${escapeRegex(region)}[ \\t]*$`, 'gm');
+function findHeading(content: string, region: string, opts: HeadingOpts): HeadingSpan | null {
+  const mark = opts.mark ?? DEFAULT_MARK;
+  const headingRe = new RegExp(`^${escapeRegex(mark)}[ \\t]+${escapeRegex(region)}[ \\t]*$`, 'gm');
   const matches = [...content.matchAll(headingRe)];
   if (matches.length !== 1) return null;
   const match = matches[0];
@@ -549,11 +602,19 @@ function findHeading(content: string, region: string): HeadingSpan | null {
   let bodyStart = headingEnd;
   if (content[bodyStart] === '\n') bodyStart += 1;
 
-  // Find the next H2 (`^##\s`) after the body start. H3+ (`###`) is excluded
-  // by the lookahead: `##` followed by space or tab.
-  const nextH2Re = /^##(?=[ \t])/gm;
-  nextH2Re.lastIndex = bodyStart;
-  const next = nextH2Re.exec(content);
+  // Next-heading regex. With siblings, match only those names — the fixed
+  // list is what makes gitignore parsing safe (every comment shares `#`).
+  // Without siblings, fall back to the markdown lookahead: any line starting
+  // with the mark followed by space/tab is a sibling heading (H3+ excluded
+  // because the lookahead demands whitespace immediately after the mark).
+  const nextRe = opts.siblings
+    ? new RegExp(
+        `^${escapeRegex(mark)}[ \\t]+(?:${opts.siblings.map(escapeRegex).join('|')})[ \\t]*$`,
+        'gm',
+      )
+    : new RegExp(`^${escapeRegex(mark)}(?=[ \\t])`, 'gm');
+  nextRe.lastIndex = bodyStart;
+  const next = nextRe.exec(content);
   const tailStart = next ? next.index : content.length;
   // Trim trailing newlines so the hash is stable when the user adds or
   // removes blank lines before the next heading.
