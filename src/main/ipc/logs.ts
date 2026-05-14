@@ -2,10 +2,14 @@ import { ipcMain } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { TermLogSessionMeta, TermLogSessionRead } from '../../shared/types';
-import { META_LINE_PREFIX } from '../terminal-logger';
+import { parseMetaLine, splitContent, type FooterJson, type HeaderJson } from '../logs-format';
 import { condashLogsRoot } from '../condash-dir';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings } from '../settings';
+
+// Re-exported so callers that historically imported `splitContent` from this
+// file keep working. New code should import directly from `../logs-format`.
+export { splitContent };
 
 /**
  * IPC surface for the Logs pane.
@@ -132,21 +136,6 @@ async function readSessionMetaSummary(
   };
 }
 
-interface HeaderJson {
-  sid?: string;
-  side?: string;
-  repo?: string;
-  cwd?: string;
-  cmd?: string;
-  argv?: string[];
-  started?: string;
-}
-
-interface FooterJson {
-  finished?: string;
-  exitCode?: number;
-}
-
 function composeCmdLabel(header: HeaderJson | null): string | undefined {
   if (!header?.cmd) return undefined;
   if (header.argv && header.argv.length > 0) {
@@ -192,15 +181,6 @@ async function readHeadAndTailMeta(
     if (handle) await handle.close().catch(() => undefined);
   }
   return { header, footer };
-}
-
-function parseMetaLine(line: string): HeaderJson | null {
-  if (!line.startsWith(META_LINE_PREFIX)) return null;
-  try {
-    return JSON.parse(line.slice(META_LINE_PREFIX.length));
-  } catch {
-    return null;
-  }
 }
 
 function findLastFooterLine(text: string): FooterJson | null {
@@ -249,39 +229,6 @@ async function readSession(filePath: string): Promise<TermLogSessionRead> {
         }
       : null;
   return { text, meta };
-}
-
-/** Strip the leading `# condash:` header line + its following blank, and
- * the trailing blank + `# condash:` footer line if present. Returns the
- * naked body plus the parsed JSON blobs for the caller. */
-export function splitContent(raw: string): {
-  text: string;
-  header: HeaderJson | null;
-  footer: FooterJson | null;
-} {
-  if (raw.length === 0) return { text: '', header: null, footer: null };
-  const allLines = raw.split('\n');
-  let header: HeaderJson | null = null;
-  let start = 0;
-  if (allLines.length > 0 && allLines[0].startsWith(META_LINE_PREFIX)) {
-    header = parseMetaLine(allLines[0]);
-    start = 1;
-    if (start < allLines.length && allLines[start] === '') start++;
-  }
-  let end = allLines.length;
-  let footer: FooterJson | null = null;
-  // Drop a trailing empty line introduced by the file's terminating `\n`.
-  if (end > start && allLines[end - 1] === '') end--;
-  if (end > start && allLines[end - 1].startsWith(META_LINE_PREFIX)) {
-    const parsed = parseMetaLine(allLines[end - 1]);
-    if (parsed && ('exitCode' in parsed || 'finished' in parsed)) {
-      footer = parsed as FooterJson;
-      end--;
-      if (end > start && allLines[end - 1] === '') end--;
-    }
-  }
-  const text = allLines.slice(start, end).join('\n');
-  return { text, header, footer };
 }
 
 function deriveDay(filePath: string): string | null {
