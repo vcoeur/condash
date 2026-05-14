@@ -159,3 +159,54 @@ describe('migrateRawSettings — dropped terminal.logging fields', () => {
     expect(parsed.terminal.logging).toEqual({ retentionDays: 28, maxDirMb: 10000 });
   });
 });
+
+describe('migrateRawSettings — invalid launcher entries', () => {
+  it('drops a launcher entry with no command (title-only), preserving valid siblings', () => {
+    // Pre-v2.28.2 the renderer could persist `{ symbol, title }` when the
+    // user typed a title without a command. The strict schema then rejects
+    // the file with `terminal.launchers.<i>.command — expected string,
+    // received undefined`, locking the Settings modal out of every save.
+    const migrated = migrateRawSettings({
+      terminal: {
+        launchers: [
+          { symbol: 'mu', title: 'Kimi' },
+          { symbol: 'lambda', command: 'claude', title: 'Claude' },
+        ],
+      },
+    }) as { terminal: { launchers: unknown[] } };
+    expect(migrated.terminal.launchers).toEqual([
+      { symbol: 'lambda', command: 'claude', title: 'Claude' },
+    ]);
+  });
+
+  it('drops a launcher entry with an empty-string command', () => {
+    const migrated = migrateRawSettings({
+      terminal: { launchers: [{ symbol: 'mu', command: '   ', title: 'Kimi' }] },
+    }) as { terminal: Record<string, unknown> };
+    expect('launchers' in migrated.terminal).toBe(false);
+  });
+
+  it('removes the launchers key entirely when every entry is invalid', () => {
+    const migrated = migrateRawSettings({
+      terminal: { launchers: [{ symbol: 'mu', title: 'Kimi' }] },
+    }) as { terminal: Record<string, unknown> };
+    expect('launchers' in migrated.terminal).toBe(false);
+  });
+
+  it('lets `validateAndCanonicaliseConceptionConfig` re-serialise a body with one bad launcher', () => {
+    // Without the scrub this throws `terminal.launchers.0.command —
+    // expected string, received undefined` (the symptom in the v2.30.0
+    // user report) and the Settings modal cannot save.
+    const json = JSON.stringify({
+      terminal: {
+        launchers: [
+          { symbol: 'mu', title: 'Kimi' },
+          { symbol: 'lambda', command: 'claude' },
+        ],
+      },
+    });
+    const canon = validateAndCanonicaliseConceptionConfig(json);
+    const parsed = JSON.parse(canon);
+    expect(parsed.terminal.launchers).toEqual([{ symbol: 'lambda', command: 'claude' }]);
+  });
+});

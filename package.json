@@ -1,11 +1,11 @@
 {
   "name": "condash",
-  "version": "2.30.0",
+  "version": "3.0.0",
   "description": "Markdown project dashboard for the conception tree (Electron build)",
   "private": true,
   "main": "dist-electron/main/index.js",
   "bin": {
-    "condash-cli": "dist-cli/condash.cjs"
+    "condash": "dist-cli/condash.cjs"
   },
   "homepage": "https://github.com/vcoeur/condash",
   "repository": {

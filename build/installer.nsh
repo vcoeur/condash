@@ -1,7 +1,6 @@
 ; Custom electron-builder NSIS hook — append the install directory to
-; the per-user PATH so `condash` and `condash-cli` are reachable from any
-; shell, matching Linux's /usr/bin/condash[-cli] symlinks. See GitHub
-; issue #119.
+; the per-user PATH so `condash` is reachable from any shell, matching
+; Linux's /usr/bin/condash symlink. See GitHub issue #119.
 ;
 ; Implementation notes:
 ;

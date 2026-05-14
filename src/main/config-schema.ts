@@ -335,6 +335,14 @@ export const DEFAULT_SKILLS_PATH = '.claude/skills';
  *   were retired. Strip silently so existing `.condash/settings.json`
  *   files keep saving (otherwise every write fails with `Unrecognised
  *   key`, which also prevents the user from flipping `enabled: true`).
+ * - `terminal.launchers[]` entries missing a non-empty string `command`
+ *   are dropped. The renderer-side guard (`applyLauncherEdit`, v2.28.2)
+ *   already prevents writing `{ symbol, title }` entries, but a file
+ *   that ended up shaped that way through a pre-v2.28.2 session or an
+ *   external editor would otherwise fail every subsequent save with
+ *   `terminal.launchers.<i>.command — expected string, received
+ *   undefined` and lock the user out of the Settings modal. Scrub here
+ *   so the next write removes the bad entry from disk.
  */
 export function migrateRawSettings(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== 'object') return parsed;
@@ -350,6 +358,18 @@ export function migrateRawSettings(parsed: unknown): unknown {
     delete term.launcher_command;
   } else if ('launcher_command' in term) {
     delete term.launcher_command;
+  }
+  if (Array.isArray(term.launchers)) {
+    const scrubbed = term.launchers.filter((entry) => {
+      if (!entry || typeof entry !== 'object') return false;
+      const command = (entry as { command?: unknown }).command;
+      return typeof command === 'string' && command.trim().length > 0;
+    });
+    if (scrubbed.length === 0) {
+      delete term.launchers;
+    } else {
+      term.launchers = scrubbed;
+    }
   }
   const logging = term.logging;
   if (logging && typeof logging === 'object') {

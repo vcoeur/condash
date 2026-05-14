@@ -37,15 +37,15 @@ test.describe('Help loader', () => {
     });
   }
 
-  test("cli body mentions the legacy 'condash-cli' alias", async () => {
+  test('cli body shows the `condash gui [chromium-switch ...]` invocation row', async () => {
     const booted = await bootApp();
     try {
       const body = await booted.window.evaluate(() => window.condash.readHelpDoc('cli'));
       // Asserts on a string the live `docs/help/cli.md` body must contain so
       // the help loader is verified to be reading the *current* file, not a
-      // stale bundled copy. Picks the legacy-alias mention because it's the
-      // most stable token in the file post-unification (v2.24.0).
-      expect(body).toMatch(/condash-cli/);
+      // stale bundled copy. Picks the `condash gui` row because it documents
+      // the single-binary dispatch rule and is unlikely to change shape.
+      expect(body).toMatch(/condash gui \[chromium-switch \.\.\.\]/);
     } finally {
       await booted.cleanup();
     }
