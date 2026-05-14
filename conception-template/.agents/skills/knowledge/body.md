@@ -1,8 +1,3 @@
----
-allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(condash *), Bash(git -C * rev-parse *), Bash(git -C * status*)
-description: "Manage the conception knowledge/ tree — durable reference material for this workspace. Actions: retrieve (search + triage walk), update (add/edit a body file with citation + stamp rules), index (regenerate every knowledge/**/index.md), verify (audit stale verification stamps + tree audits). Every mechanical step shells out to `condash`. Invoke as /knowledge <action>."
----
-
 # /knowledge — conception `knowledge/` tree
 
 Durable reference material lives at `<conception>/knowledge/`. Each directory has its own `index.md` describing what goes there and listing its immediate children. The tree is self-describing: walk root → subdir index → body file.

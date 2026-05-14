@@ -3,7 +3,9 @@
  *
  * Ships the body of one heading-delimited section inside selected files
  * instead of the whole file. Two templates today:
- *   - `CLAUDE.md` — `## General` (markdown H2).
+ *   - `AGENTS.md` — `## General` (markdown H2). Renamed from `CLAUDE.md`
+ *     in v2.29.0; an existing `CLAUDE.md` (without an `AGENTS.md` sibling)
+ *     is auto-renamed on first install so legacy installs migrate cleanly.
  *   - `.gitignore` — `# General` (gitignore-comment style; sibling
  *     `# Specifics` terminates the region).
  * The surrounding text — anything before the General heading and the
@@ -30,6 +32,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { AGENTS_MD_TARGETS, compileAgentsMd, type AgentsMdTarget } from '../../agents-md';
 import {
   MANIFEST_VERSION,
   cheapDiff,
@@ -38,6 +41,41 @@ import {
   writeFileMkdir,
   writeManifest,
 } from './install-shared';
+
+/** Compiled-output path per target, relative to the conception root. */
+const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
+  claude: '.claude/CLAUDE.md',
+  kimi: '.kimi/AGENTS.md',
+};
+
+/**
+ * Migrate a legacy `<dest>/CLAUDE.md` to `<dest>/AGENTS.md` when the new
+ * filename doesn't yet exist. Returns true if a rename happened so the
+ * caller can also migrate the templates manifest entry.
+ */
+async function maybeRenameClaudeMdToAgentsMd(dest: string): Promise<boolean> {
+  const oldPath = join(dest, 'CLAUDE.md');
+  const newPath = join(dest, 'AGENTS.md');
+  let oldExists = false;
+  let newExists = false;
+  try {
+    await fs.access(oldPath);
+    oldExists = true;
+  } catch {
+    /* not present */
+  }
+  try {
+    await fs.access(newPath);
+    newExists = true;
+  } catch {
+    /* not present */
+  }
+  if (oldExists && !newExists) {
+    await fs.rename(oldPath, newPath);
+    return true;
+  }
+  return false;
+}
 
 interface ShippedTemplate {
   /** Path relative to dest root, e.g. "CLAUDE.md". */
@@ -64,7 +102,7 @@ interface ShippedTemplate {
  * append plus a new entry in `conception-template/`.
  */
 const SHIPPED_TEMPLATES: ShippedTemplate[] = [
-  { path: 'CLAUDE.md', region: 'General' },
+  { path: 'AGENTS.md', region: 'General' },
   { path: '.gitignore', region: 'General', mark: '#', siblings: ['Specifics'] },
 ];
 
@@ -156,6 +194,10 @@ interface InstallReport {
   unchanged: { path: string; region: string }[];
   refused: { path: string; region: string; reason: string }[];
   forced: { path: string; region: string }[];
+  /** Compiled outputs written from AGENTS.md after the region-merge pass. */
+  compiled: { target: AgentsMdTarget; path: string }[];
+  /** Set when a legacy CLAUDE.md was auto-renamed to AGENTS.md. */
+  renamedFromClaudeMd: boolean;
   diffs?: { path: string; region: string; diff: string }[];
 }
 
@@ -186,6 +228,14 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
   if (!manifest.templates) manifest.templates = {};
   const templates = manifest.templates;
 
+  // v2.29.0 migration: rename CLAUDE.md → AGENTS.md (and its manifest entry)
+  // when the user has an existing legacy install but no AGENTS.md yet.
+  const renamedFromClaudeMd = !dryRun ? await maybeRenameClaudeMdToAgentsMd(dest) : false;
+  if (renamedFromClaudeMd && templates['CLAUDE.md']) {
+    templates['AGENTS.md'] = templates['CLAUDE.md'];
+    delete templates['CLAUDE.md'];
+  }
+
   const report: InstallReport = {
     destination: dest,
     copied: [],
@@ -193,6 +243,8 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
     unchanged: [],
     refused: [],
     forced: [],
+    compiled: [],
+    renamedFromClaudeMd,
     diffs: showDiff ? [] : undefined,
   };
 
@@ -325,6 +377,28 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
     await writeManifest(dest, manifest);
   }
 
+  // Final pass: compile AGENTS.md → per-target output files (.claude/CLAUDE.md
+  // and .kimi/AGENTS.md). Compiled outputs are deterministic from the source
+  // and aren't tracked by the manifest — they're regenerated on every install.
+  // Skipped if AGENTS.md doesn't exist (e.g. user refused the template).
+  if (!dryRun) {
+    const agentsMdPath = join(dest, 'AGENTS.md');
+    let source: string | null = null;
+    try {
+      source = await fs.readFile(agentsMdPath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    if (source !== null) {
+      for (const target of AGENTS_MD_TARGETS) {
+        const compiled = compileAgentsMd(source, target);
+        const outputPath = join(dest, AGENTS_MD_OUTPUTS[target]);
+        await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
+        report.compiled.push({ target, path: AGENTS_MD_OUTPUTS[target] });
+      }
+    }
+  }
+
   emit(ctx, report, formatInstallHuman);
   if (report.refused.length > 0 && !force) {
     throw new CliError(
@@ -338,6 +412,9 @@ async function installTemplates(args: ParsedArgs, ctx: OutputContext): Promise<v
 function formatInstallHuman(report: InstallReport): string {
   const lines: string[] = [];
   lines.push(`Destination: ${report.destination}`);
+  if (report.renamedFromClaudeMd) {
+    lines.push(`Renamed: CLAUDE.md → AGENTS.md (legacy install migration)`);
+  }
   if (report.copied.length > 0) {
     lines.push(`Copied (${report.copied.length}):`);
     for (const f of report.copied) lines.push(`  + ${f.path}  (${f.region})`);
@@ -358,6 +435,10 @@ function formatInstallHuman(report: InstallReport): string {
     for (const f of report.refused) {
       lines.push(`  × ${f.path}  (${f.reason})`);
     }
+  }
+  if (report.compiled.length > 0) {
+    lines.push(`Compiled from AGENTS.md (${report.compiled.length}):`);
+    for (const c of report.compiled) lines.push(`  → ${c.path}  (${c.target})`);
   }
   if (report.diffs && report.diffs.length > 0) {
     for (const d of report.diffs) {

@@ -1,4 +1,4 @@
-# CLAUDE.md — conception
+# AGENTS.md — conception
 
 A **systems documentation tree**, not a code project. Everything here is Markdown — there is nothing to run.
 
@@ -8,18 +8,21 @@ This section is shipped by condash and refreshed by `condash templates install`.
 
 ### Pointers
 
-- `/projects` — items + worktrees. Canonical rules: [`projects/SKILL.md`](.claude/skills/projects/SKILL.md).
-- `/knowledge` — durable reference material. Canonical rules: [`knowledge/SKILL.md`](.claude/skills/knowledge/SKILL.md).
-- `/pr` — project-aware GitHub PR opener. Canonical rules: [`pr/SKILL.md`](.claude/skills/pr/SKILL.md).
-- `/skills` — pull condash-shipped skill updates. Canonical rules: [`skills/SKILL.md`](.claude/skills/skills/SKILL.md).
+- `/projects` — items + worktrees. Canonical rules: [`projects/SKILL.md`]({{ skills_dir }}projects/SKILL.md).
+- `/knowledge` — durable reference material. Canonical rules: [`knowledge/SKILL.md`]({{ skills_dir }}knowledge/SKILL.md).
+- `/pr` — project-aware GitHub PR opener. Canonical rules: [`pr/SKILL.md`]({{ skills_dir }}pr/SKILL.md).
+- `/skills` — pull condash-shipped skill updates. Canonical rules: [`skills/SKILL.md`]({{ skills_dir }}skills/SKILL.md).
 - Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
 - [`condash.json`](condash.json) — per-conception overrides read by condash. Top-level keys here replace the matching keys in `~/.config/condash/settings.json`. Legacy filename `configuration.json` is still read as a fallback.
 
 ### Workflow
 
 - **Autonomy**: when the next action is obvious from context, proceed — don't ask. Ask when the call is genuinely ambiguous or the action is hard to reverse. Terse prompts like "redo now", "close it", "ship" are explicit permission to run end-to-end without per-step confirmation.
-- **Auto-memory opt-out**: this tree does not use the harness auto-memory. Durable team rules go under `## Specifics` below; durable reference material lives under [`knowledge/`](knowledge/index.md). Never write to `~/.claude/projects/<encoded-path>/memory/` for this tree.
 - **Keep the project README live as you work**: every project under `projects/YYYY-MM/<slug>/` is the cold-recovery contract. The moment you start, finish, partially complete, or get blocked on a `## Steps` item, flip its marker (`[ ]` `[~]` `[x]` `[!]`); append a one-line dated timeline entry on each material event (decision, PR opened, blocker found); lift inline user answers from chat into `## Notes` or `notes/NN-…md`. Goal: if this session crashes or is interrupted right now, the next reader answers "what shipped, what's left, what's blocking" from the README alone. Don't batch updates to the end of a pass.
+
+### Claude
+
+- **Auto-memory opt-out**: this tree does not use the harness auto-memory. Durable team rules go under `## Specifics` below; durable reference material lives under [`knowledge/`](knowledge/index.md). Never write to `{{ memory_dir }}` for this tree.
 
 ### What `## Specifics` should contain
 
@@ -34,14 +37,14 @@ One row per app this conception covers. Columns:
 | **App**       | Logical name prefixed with `@` (e.g. `@alicepeintures.com`). The slug used in cross-references everywhere — knowledge files, project notes, skill docs. Pick once per app, lower-case, kebab-or-dot, matching the repo basename when possible. |
 | **Purpose**   | One line in plain English — what the app *is*. Lets a reader skim "what's in this conception" without opening anything.                                                                                                                       |
 | **Repo**      | Absolute path on this host (e.g. `~/src/<workspace>/<repo>`).                                                                                                                                                                                 |
-| **CLAUDE.md** | Path to the app's own CLAUDE.md. Usually `<repo>/CLAUDE.md`; spell it out when it lives elsewhere.                                                                                                                                            |
-| **Knowledge** | Path to the per-app knowledge entry-point in this conception (e.g. `knowledge/internal/<slug>.md`). The entry point is where deep details live — CLAUDE.md is the navigation layer.                                                           |
+| **Config**    | Path to the app's own agent-config file (typically `<repo>/{{ agent_config }}`). Spell it out when it lives elsewhere.                                                                                                                        |
+| **Knowledge** | Path to the per-app knowledge entry-point in this conception (e.g. `knowledge/internal/<slug>.md`). The entry point is where deep details live — Config is the navigation layer.                                                              |
 
 Keep the table tight: navigation fields only. Operational config (formatter, port, base branch, …) belongs in `condash.json`, not here.
 
 #### Submodules — subpath by default, promote when warranted
 
-A submodule (or any sub-repo / sub-package within a parent app) is reachable as `@<parent>/<submodule>/<path>` by default — one row in the table for the parent, submodules treated as internal structure. Promote a submodule to its own row when it earns the navigation cost: it has its own `CLAUDE.md`, its own `knowledge/internal/*.md` entry, or it's worked on in independent PR cycles.
+A submodule (or any sub-repo / sub-package within a parent app) is reachable as `@<parent>/<submodule>/<path>` by default — one row in the table for the parent, submodules treated as internal structure. Promote a submodule to its own row when it earns the navigation cost: it has its own `{{ agent_config }}`, its own `knowledge/internal/*.md` entry, or it's worked on in independent PR cycles.
 
 Naming for promoted submodules: bare `@<sub>` when the basename is unique workspace-wide; dotted `@<parent>.<sub>` (e.g. `@PaintingManager.app`) when the bare slug would collide with another app or another submodule.
 
@@ -68,6 +71,6 @@ Group rules under `### ` topical headings (e.g. `### Repo workflow`, `### Legal 
 
 The general section above is shipped by condash and applies to every conception. Add rules below that are specific to this conception. Start with the **Apps** table (one row per app — see the schema in `## General`), then add durable rules grouped under `### ` headings.
 
-| App                  | Purpose                       | Repo                                | CLAUDE.md              | Knowledge                          |
-|----------------------|-------------------------------|-------------------------------------|------------------------|------------------------------------|
-| _(populate per-app)_ | _(one line of plain English)_ | _(`~/src/<workspace>/<repo>`)_      | _(`<repo>/CLAUDE.md`)_ | _(`knowledge/internal/<slug>.md`)_ |
+| App                  | Purpose                       | Repo                                | Config                       | Knowledge                          |
+|----------------------|-------------------------------|-------------------------------------|------------------------------|------------------------------------|
+| _(populate per-app)_ | _(one line of plain English)_ | _(`~/src/<workspace>/<repo>`)_      | _(`<repo>/{{ agent_config }}`)_ | _(`knowledge/internal/<slug>.md`)_ |
