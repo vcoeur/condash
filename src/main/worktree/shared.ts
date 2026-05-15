@@ -111,18 +111,16 @@ export function rootRepoFromApp(app: string): string {
 }
 
 /**
- * Hard-reject branch names that could let `join(worktreesRoot, branch)`
+ * Hard-reject branch names that could let `join(worktreesRoot, branchToDir())`
  * escape the worktrees root. Git itself accepts a wide range of names; what
- * we care about here is that the result of `join(root, branch)` always lands
- * exactly one directory below `root`. Path separators, `..`, and NUL are the
- * only ways to break that invariant on POSIX.
+ * we care about here is that the result of `join(root, dir)` always lands
+ * exactly one directory below `root`. NUL, empty, and the literal `.`/`..`
+ * names are the remaining ways to break that invariant — slashes are
+ * flattened by branchToDir() (issue #168).
  */
 export function validateBranchName(branch: string): void {
   if (!branch) {
     throw new Error('Branch name must not be empty.');
-  }
-  if (branch.includes('/') || branch.includes('\\')) {
-    throw new Error(`Branch name '${branch}' contains a path separator — refusing.`);
   }
   if (branch === '.' || branch === '..') {
     throw new Error(`Branch name '${branch}' is a path component — refusing.`);
@@ -130,6 +128,24 @@ export function validateBranchName(branch: string): void {
   if (branch.includes('\0')) {
     throw new Error('Branch name contains NUL — refusing.');
   }
+  const dir = branchToDir(branch);
+  if (!dir || dir === '.' || dir === '..') {
+    throw new Error(`Branch name '${branch}' sanitises to an unsafe directory name — refusing.`);
+  }
+}
+
+/**
+ * Map a git branch name to the directory key used under `<worktrees_path>/`.
+ * Path separators (`/`, `\\`) are flattened to `-` so namespaced branches
+ * like `feature/foo` or `chore/x` get a flat `feature-foo/` directory while
+ * the underlying git ref keeps its real name. Closes #168.
+ *
+ * Collisions (e.g. `foo/bar` vs `foo-bar`) sanitise to the same key; the
+ * second `git worktree add` will refuse the directory before this code
+ * could trip on it.
+ */
+export function branchToDir(branch: string): string {
+  return branch.replace(/[\\/]/g, '-');
 }
 
 /** True when `ref` resolves in the repo — works for local branches,

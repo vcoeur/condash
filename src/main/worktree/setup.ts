@@ -10,6 +10,7 @@ import { exec } from '../exec';
 import { pathExists } from '../fs-helpers';
 import {
   branchExists,
+  branchToDir,
   currentBranch,
   defaultWorktreesPath,
   findItemsDeclaringBranch,
@@ -83,7 +84,8 @@ export async function setupBranchWorktrees(
     base: base ?? null,
   };
 
-  await fs.mkdir(join(worktreesRoot, branch), { recursive: true });
+  const branchDir = branchToDir(branch);
+  await fs.mkdir(join(worktreesRoot, branchDir), { recursive: true });
 
   for (const name of wanted) {
     const lookup = reposByName.get(name);
@@ -98,7 +100,7 @@ export async function setupBranchWorktrees(
       });
       continue;
     }
-    const target = join(worktreesRoot, branch, name);
+    const target = join(worktreesRoot, branchDir, name);
     if (await pathExists(target)) {
       result.alreadyPresent.push({ repo: name, path: target });
       continue;

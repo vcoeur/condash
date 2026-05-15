@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { exec } from '../exec';
 import { pathExists } from '../fs-helpers';
 import {
+  branchToDir,
   defaultWorktreesPath,
   findItemsDeclaringBranch,
   readConfig,
@@ -60,6 +61,7 @@ export async function removeBranchWorktrees(
   validateBranchName(branch);
   const config = await readConfig(conceptionPath);
   const worktreesRoot = config.worktrees_path ?? defaultWorktreesPath();
+  const branchDir = branchToDir(branch);
   const reposByName = repoLookupMap(config);
   const force = options.force === true || options.forceRm === true;
   const forceRm = options.forceRm === true;
@@ -106,7 +108,7 @@ export async function removeBranchWorktrees(
       result.notPresent.push(name);
       continue;
     }
-    const target = join(worktreesRoot, branch, name);
+    const target = join(worktreesRoot, branchDir, name);
     if (!(await pathExists(target))) {
       result.notPresent.push(name);
       continue;
@@ -146,17 +148,17 @@ export async function removeBranchWorktrees(
   }
 
   // If the parent dir is now empty, rmdir it. We only ever rmdir
-  // `<worktreesRoot>/<branch>` — branch names with path separators are
-  // rejected upfront by validateBranchName, and a realpath check below
-  // ensures we don't follow a symlink out of the worktrees root onto an
-  // unrelated directory. Issue #84 reported a sibling branch dir vanishing
-  // after `worktrees remove`; the path check makes that impossible by
-  // construction.
-  const branchRoot = join(worktreesRoot, branch);
+  // `<worktreesRoot>/<branchDir>` — slashes in branch names are flattened
+  // (#168) so this is always one level below `worktreesRoot`, and a realpath
+  // check below ensures we don't follow a symlink out of the worktrees root
+  // onto an unrelated directory. Issue #84 reported a sibling branch dir
+  // vanishing after `worktrees remove`; the path check makes that impossible
+  // by construction.
+  const branchRoot = join(worktreesRoot, branchDir);
   try {
     const expected = await fs.realpath(branchRoot).catch(() => branchRoot);
     const expectedParent = await fs.realpath(worktreesRoot).catch(() => worktreesRoot);
-    const expectedChild = join(expectedParent, branch);
+    const expectedChild = join(expectedParent, branchDir);
     if (expected !== expectedChild) {
       // Don't rmdir something the user pointed elsewhere via a symlink.
       // Surface this rather than silently skip — it's a config oddity worth
