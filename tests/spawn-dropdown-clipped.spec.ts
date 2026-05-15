@@ -72,6 +72,17 @@ test('spawn dropdown menu is visible + unclipped below the trigger', async ({}, 
     }));
     expect(dims.scroll).toBe(dims.client);
 
+    // Issue #170: the dropdown used to render with a transparent background
+    // because `.terminal-tab-dropdown-menu.portal` was reaching for the
+    // undefined `var(--bg-secondary)`. Surface must be opaque now — alpha
+    // must be 1 (an `rgb(...)` reply implies a=1; `rgba(...)` includes it
+    // explicitly).
+    const surface = await menu.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(surface).not.toBe('transparent');
+    expect(surface).not.toBe('rgba(0, 0, 0, 0)');
+    const rgba = surface.match(/^rgba\([^)]*,\s*([\d.]+)\)$/);
+    if (rgba) expect(parseFloat(rgba[1])).toBe(1);
+
     const items = menu.locator('li');
     await expect(items).toHaveCount(4);
     for (let i = 0; i < 4; i += 1) {

@@ -323,17 +323,20 @@
 /* The menu must escape `.terminal-tabs`'s `overflow: auto` — `position:
  * fixed` lifts it out of every clipping ancestor. Coords (top/left) come
  * from `createDropdownMenu({ align: 'left' })`, set inline from the
- * trigger's bottom-left in viewport space. */
+ * trigger's bottom-left in viewport space. Same surface treatment as the
+ * branch-pin / kebab popovers — `--bg-secondary` was undefined and resolved
+ * to transparent (issue #170). */
 .terminal-tab-dropdown-menu.portal {
   position: fixed;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   min-width: 140px;
   z-index: 1000;
   list-style: none;
   padding: 4px 0;
   margin: 0;
+  box-shadow: var(--shadow-lift);
 }
 
 .terminal-tab-dropdown-menu li {
