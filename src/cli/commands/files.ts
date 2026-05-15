@@ -47,6 +47,14 @@ import { DEFAULT_MARK, extractRegion, replaceRegion, type HeadingOpts } from './
 export interface ShippedFile {
   /** Path relative to dest root, e.g. "AGENTS.md". */
   path: string;
+  /**
+   * Path of the source under `conception-template/`, if it differs from
+   * `path`. Set when the on-disk destination name would otherwise be filtered
+   * out of the packaged asar — electron-builder's default file filter drops
+   * top-level `.gitignore` / `.gitattributes` before they ever reach the
+   * archive. Defaults to `path` when omitted.
+   */
+  sourcePath?: string;
   /** Heading text for the shipped region, e.g. "General" — matches `## General`. */
   region: string;
   /**
@@ -66,13 +74,28 @@ export interface ShippedFile {
 /**
  * Hardcoded list of top-level files condash ships partially. Adding more is
  * a one-line append plus a new entry in `conception-template/`.
+ *
+ * `.gitignore` ships under the alias `_gitignore` because electron-builder
+ * drops bare dotfiles like `.gitignore` from the asar by default; the
+ * rename round-trips through `sourcePath`.
  */
 export const SHIPPED_FILES: ShippedFile[] = [
-  { path: '.gitignore', region: 'General', mark: '#', siblings: ['Specifics'] },
+  {
+    path: '.gitignore',
+    sourcePath: '_gitignore',
+    region: 'General',
+    mark: '#',
+    siblings: ['Specifics'],
+  },
 ];
 
 export function optsFor(t: ShippedFile): HeadingOpts {
   return { mark: t.mark ?? DEFAULT_MARK, siblings: t.siblings };
+}
+
+/** Absolute path of the shipped source for a file (honours `sourcePath`). */
+function sourceFor(file: ShippedFile): string {
+  return join(locateShippedFilesRoot(), file.sourcePath ?? file.path);
 }
 
 export function locateShippedFilesRoot(): string {
@@ -164,7 +187,7 @@ export async function installShippedFile(
   if (!manifest.files) manifest.files = {};
   const files = manifest.files;
   const opts = optsFor(file);
-  const sourceFullPath = join(locateShippedFilesRoot(), file.path);
+  const sourceFullPath = sourceFor(file);
 
   let sourceContent: string;
   try {
@@ -372,11 +395,17 @@ export async function statusShippedFile(
   }
   const onDiskRegion = extractRegion(onDisk, file.region, opts);
   if (onDiskRegion === null) {
+    // No condash-owned region on disk. Only surface this when the manifest
+    // already tracks the file (so the user previously opted in) — otherwise
+    // the file is entirely user-owned and condash should stay silent. The
+    // phantom row in 3.4.1 was this leaking through with no manifest entry
+    // for any project that happened to have its own `.gitignore`.
+    if (!entry) return null;
     return {
       path: file.path,
       region: file.region,
       state: 'missing-heading',
-      shippedVersion: entry?.shippedVersion ?? null,
+      shippedVersion: entry.shippedVersion,
     };
   }
   const onDiskHash = sha256(onDiskRegion);
@@ -397,7 +426,7 @@ export async function statusShippedFile(
     };
   }
   // On disk matches manifest. Compare to currently-shipped to detect updates.
-  const sourcePath = join(locateShippedFilesRoot(), file.path);
+  const sourcePath = sourceFor(file);
   let sourceRegion: string | null = null;
   try {
     const sourceContent = await fs.readFile(sourcePath, 'utf8');

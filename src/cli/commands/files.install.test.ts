@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSkills } from './skills';
+import { SHIPPED_FILES, statusShippedFile } from './files';
 import { MANIFEST_RELPATH, readManifest } from './install-shared';
 import type { OutputContext } from '../output';
 
@@ -94,6 +95,32 @@ describe('condash skills install — top-level files', () => {
     // The stale entry survives the migration (it's still tracked in
     // `files` — only --prune removes it).
     expect(manifest!.files!['.gitignore']).toBeTruthy();
+  });
+
+  it('ships .gitignore under the alias _gitignore (electron-builder filter workaround)', async () => {
+    // The destination is .gitignore but the bundled source must be
+    // _gitignore — electron-builder drops a top-level .gitignore from the
+    // asar by default. The install must still write a `.gitignore` at dest.
+    const entry = SHIPPED_FILES.find((f) => f.path === '.gitignore');
+    expect(entry?.sourcePath).toBe('_gitignore');
+    await fs.access(join(TEMPLATE_ROOT, '_gitignore')); // shipped under alias
+    await install(['.gitignore']);
+    await fs.access(join(dest, '.gitignore')); // written under real name
+  });
+
+  it('status: no row for a user-owned .gitignore (no manifest, no markers)', async () => {
+    // Reproduces issue #167: in 3.4.1, `condash skills status` returned a
+    // phantom `.gitignore` row with state="missing-heading" whenever the
+    // conception had its own `.gitignore` without condash markers — even
+    // when the manifest was empty and `install` was a no-op. After the fix,
+    // statusShippedFile should report nothing for files condash doesn't
+    // manage.
+    await fs.writeFile(join(dest, '.gitignore'), 'node_modules\n*.log\n');
+    process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
+    const file = SHIPPED_FILES.find((f) => f.path === '.gitignore')!;
+    const manifest = { version: 3 as const, skills: {}, files: {} };
+    const row = await statusShippedFile(file, dest, manifest);
+    expect(row).toBeNull();
   });
 
   it('--prune drops manifest entries whose shipped source no longer exists', async () => {
