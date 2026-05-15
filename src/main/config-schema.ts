@@ -264,6 +264,10 @@ const sharedSchemaFields = {
   cardMinWidth: cardMinWidthSchema.optional(),
   treeExpansion: treeExpansionSchema.optional(),
   selectedBranches: z.array(z.string()).optional(),
+  /** Branch-pin "All (sticky)" mode — when true, every branch is shown and
+   *  newly-created branches are auto-pinned. When false, the `selectedBranches`
+   *  set is honoured exactly (empty = only main visible). Issue #169. */
+  branchFilterStickyAll: z.boolean().optional(),
 } as const;
 
 /**

@@ -191,6 +191,25 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     }));
   });
 
+  // Branch-pin sticky-all flag (issue #169). The getter applies the
+  // backwards-compatibility default: when the field is undefined, assume
+  // `true` if `selectedBranches` is empty/undefined (the user was relying
+  // on the old "empty = show all" semantics) and `false` otherwise (they
+  // had an explicit selection that should keep working).
+  ipcMain.handle('getBranchFilterStickyAll', async () => {
+    const { branchFilterStickyAll, selectedBranches } = await readSettings();
+    if (typeof branchFilterStickyAll === 'boolean') return branchFilterStickyAll;
+    const hasSelection = Array.isArray(selectedBranches) && selectedBranches.length > 0;
+    return !hasSelection;
+  });
+
+  ipcMain.handle('setBranchFilterStickyAll', async (_, raw: unknown) => {
+    if (typeof raw !== 'boolean') {
+      throw new Error('setBranchFilterStickyAll: expected boolean');
+    }
+    await updateSettings((cur) => ({ ...cur, branchFilterStickyAll: raw }));
+  });
+
   ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {
     const input = (raw ?? {}) as Record<string, unknown>;
     // Reject unknown keys outright — silently dropping them used to mask

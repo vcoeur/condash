@@ -121,6 +121,13 @@ export interface CondashApi {
   /** Persist the Code-pane pinned-branches set. Pass an empty array to
    *  hide every non-primary row (the on-purpose default). */
   setSelectedBranches(list: string[]): Promise<void>;
+  /** Whether the branch-pin selector is in "All (sticky)" mode — every
+   *  branch shown, new branches auto-pinned. Defaults to true when the
+   *  field is undefined and `selectedBranches` is empty (preserves the
+   *  old "empty = show all" behaviour). Issue #169. */
+  getBranchFilterStickyAll(): Promise<boolean>;
+  /** Persist the All-sticky mode flag. */
+  setBranchFilterStickyAll(value: boolean): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;

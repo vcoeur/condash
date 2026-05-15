@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { pathExists } from '../fs-helpers';
 import {
   branchExists,
+  branchToDir,
   currentBranch,
   defaultWorktreesPath,
   findItemsDeclaringBranch,
@@ -54,6 +55,7 @@ export async function checkBranchState(
 ): Promise<BranchCheckResult> {
   const config = await readConfig(conceptionPath);
   const worktreesRoot = config.worktrees_path ?? defaultWorktreesPath();
+  const branchDir = branchToDir(branch);
   const declaringItems = await findItemsDeclaringBranch(conceptionPath, branch);
 
   // Union of Apps from declaring items (active items only — done items don't
@@ -69,7 +71,7 @@ export async function checkBranchState(
   for (const name of [...wantedRepos].sort()) {
     const lookup = reposByName.get(name);
     if (!lookup) continue;
-    const expectedWorktree = join(worktreesRoot, branch, name);
+    const expectedWorktree = join(worktreesRoot, branchDir, name);
     const worktreeExists = await pathExists(expectedWorktree);
     const localBranchExists = await branchExists(lookup.cwd, branch);
     const primaryOnBranch = (await currentBranch(lookup.cwd)) === branch;
@@ -87,7 +89,7 @@ export async function checkBranchState(
   // Orphans: directories under <worktrees_path>/<branch>/ that aren't in our
   // wanted set.
   const orphan: string[] = [];
-  const branchRoot = join(worktreesRoot, branch);
+  const branchRoot = join(worktreesRoot, branchDir);
   if (await pathExists(branchRoot)) {
     const entries = await fs.readdir(branchRoot, { withFileTypes: true });
     for (const entry of entries) {

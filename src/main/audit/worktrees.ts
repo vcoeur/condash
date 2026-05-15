@@ -8,6 +8,7 @@ import { join, relative } from 'node:path';
 import { findProjectReadmes } from '../walk';
 import { readHeader } from '../header-io';
 import { pathExists } from '../fs-helpers';
+import { branchToDir } from '../worktree/shared';
 import { type AuditIssue, readConfig } from './shared';
 
 export async function checkWorktrees(conceptionPath: string): Promise<AuditIssue[]> {
@@ -23,7 +24,7 @@ export async function checkWorktrees(conceptionPath: string): Promise<AuditIssue
     if (!header) continue;
     if (header.status === 'done') continue;
     if (!header.branch) continue;
-    const wt = join(worktreesPath, header.branch);
+    const wt = join(worktreesPath, branchToDir(header.branch));
     if (await pathExists(wt)) continue;
     issues.push({
       check: 'worktrees',

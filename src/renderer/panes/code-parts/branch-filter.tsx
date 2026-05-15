@@ -4,17 +4,24 @@ import { ChevronDownIcon } from '../../icons';
 
 /**
  * Top-of-Code-pane branch filter. The control opens a checkbox list of
- * every non-primary branch known across the visible cards. With nothing
- * pinned the cards show every worktree; ticking branches narrows the
- * visible set to "primary + ticked branches" on every card that carries
- * them. The primary row is always present either way, so there is no
- * "Clear all" / "Select all" affordance.
+ * every non-primary branch known across the visible cards plus two
+ * header quick-actions (issue #169):
+ *
+ *   - **All (sticky)** — pin every branch *and* auto-pin any branch that
+ *     appears later. The state is persisted, so the user gets a true
+ *     "show everything, including future branches" mode in one click.
+ *   - **None** — clear every check; only the main row stays visible.
+ *
+ * Tickling an individual branch flips the popover into the implicit
+ * Custom mode (the parent store drops `stickyAll` automatically).
+ *
+ * Trigger label reflects the active mode:
+ *
+ *   - sticky-all → "Branches (all + future)"
+ *   - empty / custom → "Branches (N pinned)" or "Branches (none)"
  *
  * Empty `available` ⇒ the bar renders nothing (no non-primary worktrees
- * to filter). Visual states:
- *
- *   - `selected.size === 0` — trigger label is "Branches (all shown)".
- *   - otherwise — "Branches (N pinned)" with `selected.size`.
+ * to filter).
  *
  * Branches that match an active conception project (`status ∈ {now,
  * review}` with a non-null `**Branch**`) get a "project" badge so the
@@ -29,8 +36,11 @@ import { ChevronDownIcon } from '../../icons';
 export function BranchFilter(props: {
   available: readonly string[];
   selected: ReadonlySet<string>;
+  stickyAll: boolean;
   activeProjectBranches: ReadonlySet<string>;
   onToggle: (branch: string) => void;
+  onSetAllSticky: () => void;
+  onSetNone: () => void;
 }) {
   let triggerEl: HTMLElement | undefined;
   let popoverEl: HTMLElement | undefined;
@@ -42,9 +52,17 @@ export function BranchFilter(props: {
   });
 
   const triggerLabel = (): string => {
+    if (props.stickyAll) return 'Branches (all + future)';
     const n = props.selected.size;
-    if (n === 0) return 'Branches (all shown)';
+    if (n === 0) return 'Branches (none)';
     return `Branches (${n} pinned)`;
+  };
+
+  const hintText = (): string => {
+    if (props.stickyAll) {
+      return 'Main row always visible · All-sticky: every branch shown, new branches auto-pinned';
+    }
+    return 'Main row always visible · empty selection shows only main';
   };
 
   const toggleOpen = (e: MouseEvent): void => {
@@ -57,6 +75,8 @@ export function BranchFilter(props: {
     popover.setOpen(true);
   };
 
+  const isNoneMode = (): boolean => !props.stickyAll && props.selected.size === 0;
+
   return (
     <Show when={props.available.length > 0}>
       <div class="branch-filter-bar">
@@ -67,7 +87,7 @@ export function BranchFilter(props: {
           }}
           type="button"
           class="branch-filter-trigger"
-          classList={{ active: props.selected.size > 0 }}
+          classList={{ active: props.stickyAll || props.selected.size > 0 }}
           aria-haspopup="menu"
           aria-expanded={popover.open()}
           aria-label="Pin branches visible on every app card"
@@ -93,15 +113,37 @@ export function BranchFilter(props: {
             }}
           >
             <header class="branch-filter-menu-head">
-              <span>Pin branches</span>
-              <span class="branch-filter-menu-hint">
-                Main row always visible · empty selection shows every branch
-              </span>
+              <div class="branch-filter-menu-head-row">
+                <span>Pin branches</span>
+                <div class="branch-filter-menu-actions" role="group" aria-label="Quick actions">
+                  <button
+                    type="button"
+                    class="branch-filter-quick"
+                    classList={{ active: props.stickyAll }}
+                    aria-pressed={props.stickyAll}
+                    title="Show every branch · auto-pin new ones"
+                    onClick={() => props.onSetAllSticky()}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    class="branch-filter-quick"
+                    classList={{ active: isNoneMode() }}
+                    aria-pressed={isNoneMode()}
+                    title="Only the main row"
+                    onClick={() => props.onSetNone()}
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
+              <span class="branch-filter-menu-hint">{hintText()}</span>
             </header>
             <ul class="branch-filter-list">
               <For each={props.available}>
                 {(branch) => {
-                  const checked = (): boolean => props.selected.has(branch);
+                  const checked = (): boolean => props.stickyAll || props.selected.has(branch);
                   const isActiveProject = (): boolean => props.activeProjectBranches.has(branch);
                   return (
                     <li>

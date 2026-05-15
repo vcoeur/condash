@@ -18,6 +18,9 @@ export function RepoRow(props: {
    *  rows render only when their branch name is in here. An empty set
    *  collapses every card to its primary row alone. */
   selectedBranches: ReadonlySet<string>;
+  /** When true, `selectedBranches` is shadowed and every worktree shows
+   *  (the "All (sticky)" mode from issue #169). */
+  stickyAllBranches: boolean;
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
@@ -52,7 +55,7 @@ export function RepoRow(props: {
   };
 
   const visibleWorktrees = createMemo(() =>
-    filterWorktrees(orderedWorktrees(props.repo), props.selectedBranches),
+    filterWorktrees(orderedWorktrees(props.repo), props.selectedBranches, props.stickyAllBranches),
   );
 
   const hasRun = (): boolean => !props.repo.missing && !!props.repo.hasRun;

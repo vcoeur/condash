@@ -652,12 +652,49 @@
 .branch-filter-menu-head {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   padding: 8px 12px 6px;
   border-bottom: 1px solid var(--border);
   font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
+  color: var(--text);
+}
+
+.branch-filter-menu-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.branch-filter-menu-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.branch-filter-quick {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.branch-filter-quick:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.branch-filter-quick.active {
+  background: color-mix(in srgb, var(--col-running) 18%, transparent);
+  border-color: var(--col-running);
   color: var(--text);
 }
 
