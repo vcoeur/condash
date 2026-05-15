@@ -48,9 +48,13 @@ Each repo renders as a top-level row. Any sub-repos declared for that repo (see 
 
 The **primary worktree row** (the checkout under `workspace_path`) is always visible on every card and gets a subtly tinted background so it reads as the always-on reference row.
 
-By default — with nothing pinned — every other branch row is shown too: the cards display the full worktree set as-is. Click the **Branches** button at the top of the Code pane and tick one or more entries to narrow the view: each card then renders just its primary row plus any rows whose branch is in your pinned set, and is a silent no-op on cards that don't carry those branches. Unticking the last entry returns to the "show all" baseline; there is no "Clear all" affordance because removing every tick already restores it.
+Click the **Branches** button at the top of the Code pane to open the pin selector. Two quick-action buttons in the popover header switch between three explicit modes:
 
-The selection persists per-machine in `settings.json` under `selectedBranches`, so a coffee break or a reboot doesn't clear it. Branches that match a conception project with status `now` or `review` carry a small "project" badge in the dropdown so the most likely picks stand out from ad-hoc local branches.
+- **All (sticky)** — show every branch on every card *and* auto-pin any branch that appears later (e.g. one you've just created). The default on a fresh install.
+- **None** — show only the main row on every card.
+- **Custom** — ticking an individual branch implicitly drops out of sticky-all into a hand-picked set. Each card then renders just its primary row plus any rows whose branch is in your pinned set, and is a silent no-op on cards that don't carry those branches.
+
+The mode and selection persist per-machine in `settings.json` under `selectedBranches` + `branchFilterStickyAll`, so a coffee break or a reboot doesn't clear them. Branches that match a conception project with status `now` or `review` carry a small "project" badge in the dropdown so the most likely picks stand out from ad-hoc local branches.
 
 ## Submodules in a monorepo
 

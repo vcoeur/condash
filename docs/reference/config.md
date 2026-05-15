@@ -312,7 +312,8 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
     "resources": [],
     "skills": ["pr"]
   },
-  "selectedBranches": ["feature-foo", "release-2026-05"]
+  "selectedBranches": ["feature-foo", "release-2026-05"],
+  "branchFilterStickyAll": false
 }
 ```
 
@@ -326,7 +327,8 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `welcome`        | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                         |
 | `cardMinWidth`   | Per-pane card grid min-width. See [CardMinWidth](#cardminwidth) below.                                                                          |
 | `treeExpansion`  | Per-pane set of expanded directory `relPath`s for the Knowledge / Resources / Skills tree panes. Empty (or missing) means everything is collapsed — the on-purpose first-load state per #89. |
-| `selectedBranches` | Branches pinned by the Code-pane top-of-pane filter. The primary worktree row is always rendered; this set is additive on top of it. Empty (or missing) means every card shows only its primary row. |
+| `selectedBranches` | Branches pinned by the Code-pane top-of-pane filter. The primary worktree row is always rendered; this set is additive on top of it. Honoured only when `branchFilterStickyAll` is false. |
+| `branchFilterStickyAll` | True ⇒ Code-pane filter is in **All (sticky)** mode: every branch is shown and new ones auto-pin. False ⇒ honour `selectedBranches` exactly (empty = main only). Defaults to true on first read when no explicit selection was ever made, false otherwise. |
 
 Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`) are also valid in `settings.json` — they act as global defaults that any conception's `.condash/settings.json` may override. The reverse direction is forbidden: a conception's `settings.json` cannot set `lastConceptionPath` or `recentConceptionPaths`, since those describe the tree's own location and the user's machine-local recents list.
 
