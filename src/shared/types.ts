@@ -213,6 +213,13 @@ export interface Settings {
    * set is additive on top of it. Per-machine because the answer is "what
    * I'm actively working on right now on this laptop", not a team rule. */
   selectedBranches?: string[];
+  /** Whether the branch-pin selector is in "All (sticky)" mode: every
+   *  branch is shown and any branch created later is implicitly pinned.
+   *  False = custom (`selectedBranches` is honoured exactly; empty means
+   *  "only main"). Defaults to true on first read when `selectedBranches`
+   *  is empty/undefined, false otherwise — preserves existing behaviour
+   *  for users with an explicit selection. Issue #169. */
+  branchFilterStickyAll?: boolean;
 }
 
 /** Sets of expanded directory `relPath`s for the three tree panes. The

@@ -29,32 +29,33 @@ describe('filterWorktrees', () => {
   const bar = wt('feature-bar');
   const detached = wt(null);
 
-  it('keeps every worktree when the selection is empty', () => {
-    const out = filterWorktrees([primary, foo, bar], new Set());
+  it('All-sticky mode shows every worktree regardless of the selection', () => {
+    const out = filterWorktrees([primary, foo, bar], new Set(), true);
     expect(out).toEqual([primary, foo, bar]);
   });
 
-  it('includes detached worktrees in the empty-selection passthrough', () => {
-    // Empty selection = unfiltered. Detached non-primary rows survive
-    // here even though they would be dropped by an active filter.
-    const out = filterWorktrees([primary, foo, detached], new Set());
+  it('All-sticky includes detached non-primary rows too', () => {
+    const out = filterWorktrees([primary, foo, detached], new Set(), true);
     expect(out).toEqual([primary, foo, detached]);
   });
 
-  it('keeps the primary plus any selected non-primary branches', () => {
-    const out = filterWorktrees([primary, foo, bar], new Set(['feature-foo']));
+  it('None mode (sticky=false, empty set) returns only the primary row (issue #169)', () => {
+    const out = filterWorktrees([primary, foo, bar], new Set(), false);
+    expect(out).toEqual([primary]);
+  });
+
+  it('Custom mode keeps the primary plus any selected non-primary branches', () => {
+    const out = filterWorktrees([primary, foo, bar], new Set(['feature-foo']), false);
     expect(out).toEqual([primary, foo]);
   });
 
-  it('drops detached / no-branch worktrees when the filter is active', () => {
-    // Detached has no name to pin — once the selection is non-empty it
-    // falls out of the visible set. Acceptable: rare edge case.
-    const out = filterWorktrees([primary, foo, detached], new Set(['feature-foo']));
+  it('Custom mode drops detached / no-branch worktrees', () => {
+    const out = filterWorktrees([primary, foo, detached], new Set(['feature-foo']), false);
     expect(out).toEqual([primary, foo]);
   });
 
-  it('returns just the primary when none of its non-primary branches match', () => {
-    const out = filterWorktrees([primary, foo], new Set(['feature-missing']));
+  it('Custom mode returns just the primary when no non-primary branches match', () => {
+    const out = filterWorktrees([primary, foo], new Set(['feature-missing']), false);
     expect(out).toEqual([primary]);
   });
 
@@ -63,12 +64,16 @@ describe('filterWorktrees', () => {
     // data layer couldn't list real worktrees. That row must survive
     // even when the filter is active and the primary has no branch name.
     const detachedPrimary = wt(null, true);
-    const out = filterWorktrees([detachedPrimary, foo], new Set(['feature-foo']));
+    const out = filterWorktrees([detachedPrimary, foo], new Set(['feature-foo']), false);
     expect(out).toEqual([detachedPrimary, foo]);
   });
 
   it('preserves the input order (does not re-sort)', () => {
-    const out = filterWorktrees([bar, primary, foo], new Set(['feature-foo', 'feature-bar']));
+    const out = filterWorktrees(
+      [bar, primary, foo],
+      new Set(['feature-foo', 'feature-bar']),
+      false,
+    );
     expect(out.map((w) => w.branch)).toEqual(['feature-bar', 'main', 'feature-foo']);
   });
 });

@@ -32,8 +32,15 @@ export function CodeView(props: {
    *  {now, review}`). The filter dropdown badges these so the most
    *  meaningful picks stand out from ad-hoc local branches. */
   activeProjectBranches: ReadonlySet<string>;
+  /** "All (sticky)" mode: every branch is shown regardless of
+   *  `selectedBranches`; new branches auto-track in. Issue #169. */
+  stickyAllBranches: boolean;
   /** Toggle a single branch in the pinned set and persist. */
   onToggleBranch: (branch: string) => void;
+  /** Switch the branch filter into All-sticky mode. */
+  onSetAllSticky: () => void;
+  /** Switch the branch filter into "only main" mode. */
+  onSetNoneBranches: () => void;
   onOpen: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
@@ -81,8 +88,11 @@ export function CodeView(props: {
         <BranchFilter
           available={filterable()}
           selected={props.selectedBranches}
+          stickyAll={props.stickyAllBranches}
           activeProjectBranches={props.activeProjectBranches}
           onToggle={props.onToggleBranch}
+          onSetAllSticky={props.onSetAllSticky}
+          onSetNone={props.onSetNoneBranches}
         />
         <For each={grouped()}>
           {(group) => {
@@ -106,6 +116,7 @@ export function CodeView(props: {
                   live={props.liveRepos.has(repo.name)}
                   liveBranch={liveBranch()}
                   selectedBranches={props.selectedBranches}
+                  stickyAllBranches={props.stickyAllBranches}
                   onOpen={props.onOpen}
                   onLaunch={props.onLaunch}
                   onForceStop={props.onForceStop}

@@ -1103,7 +1103,10 @@ function App() {
                         xtermPrefs={terminalPrefs()?.xterm}
                         selectedBranches={branchFilter.selectedBranches()}
                         activeProjectBranches={activeProjectBranches()}
+                        stickyAllBranches={branchFilter.stickyAll()}
                         onToggleBranch={branchFilter.toggleBranch}
+                        onSetAllSticky={branchFilter.setAllSticky}
+                        onSetNoneBranches={branchFilter.setNone}
                         onOpen={handleOpenInEditor}
                         onLaunch={(slot, path) => void handleLaunch(slot, path)}
                         onForceStop={(r) => void handleForceStop(r)}
