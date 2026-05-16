@@ -1099,21 +1099,21 @@ function userTargetRoot(target: CompileTarget): string {
 function userScriptSourceRoot(category: ScriptCategory): string {
   if (category === 'agents') {
     return (
-      process.env.CONDASH_USER_AGENTS_SCRIPTS_ROOT
-      ?? join(homedir(), '.config', 'agents', 'agents-scripts')
+      process.env.CONDASH_USER_AGENTS_SCRIPTS_ROOT ??
+      join(homedir(), '.config', 'agents', 'agents-scripts')
     );
   }
   return (
-    process.env.CONDASH_USER_CLAUDE_SCRIPTS_ROOT
-    ?? join(homedir(), '.config', 'agents', 'claude-scripts')
+    process.env.CONDASH_USER_CLAUDE_SCRIPTS_ROOT ??
+    join(homedir(), '.config', 'agents', 'claude-scripts')
   );
 }
 
 function userScriptTargetRoot(category: ScriptCategory): string {
   if (category === 'agents') {
     return (
-      process.env.CONDASH_USER_AGENTS_SCRIPTS_TARGET
-      ?? join(homedir(), '.config', 'agents', 'scripts')
+      process.env.CONDASH_USER_AGENTS_SCRIPTS_TARGET ??
+      join(homedir(), '.config', 'agents', 'scripts')
     );
   }
   return process.env.CONDASH_USER_CLAUDE_SCRIPTS_TARGET ?? join(homedir(), '.claude', 'scripts');
@@ -1310,7 +1310,9 @@ function formatUserInstallHuman(report: UserInstallReport): string {
     const parts = (['agents', 'claude'] as const)
       .filter((c) => byCategory.has(c))
       .map((c) => `${c}=${byCategory.get(c)}`);
-    lines.push(`Scripts installed → ${report.scripts.targets.agents}, ${report.scripts.targets.claude} (${parts.join(', ')})`);
+    lines.push(
+      `Scripts installed → ${report.scripts.targets.agents}, ${report.scripts.targets.claude} (${parts.join(', ')})`,
+    );
   }
   return lines.join('\n') + '\n';
 }
@@ -1328,7 +1330,10 @@ async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
     allowedOnHost: hostAllowed(s, hostLabel),
   }));
   const scripts = await readUserScripts();
-  const scriptsByCategory: Record<ScriptCategory, { source: string; target: string; files: string[] }> = {
+  const scriptsByCategory: Record<
+    ScriptCategory,
+    { source: string; target: string; files: string[] }
+  > = {
     agents: {
       source: userScriptSourceRoot('agents'),
       target: userScriptTargetRoot('agents'),
@@ -1450,8 +1455,12 @@ async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<v
     (data) => {
       const d = data as { source: string; hostLabel: string | null; items: UserStatusEntry[] };
       if (d.items.length === 0) return `(nothing tracked under ${d.source})\n`;
-      const skillRows = d.items.filter((r): r is Extract<UserStatusEntry, { kind: 'skill' }> => r.kind === 'skill');
-      const scriptRows = d.items.filter((r): r is Extract<UserStatusEntry, { kind: 'script' }> => r.kind === 'script');
+      const skillRows = d.items.filter(
+        (r): r is Extract<UserStatusEntry, { kind: 'skill' }> => r.kind === 'skill',
+      );
+      const scriptRows = d.items.filter(
+        (r): r is Extract<UserStatusEntry, { kind: 'script' }> => r.kind === 'script',
+      );
       const lines: string[] = [];
       if (skillRows.length > 0) {
         const widths = {
