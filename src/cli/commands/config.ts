@@ -12,15 +12,43 @@ import { atomicWrite } from '../../main/atomic-write';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { UNIVERSAL_FOOTER } from '../help';
+
+const KNOWN_FLAGS_CONCEPTION_PATH: readonly string[] = [];
+const KNOWN_FLAGS_PATH: readonly string[] = [];
+const KNOWN_FLAGS_LIST = ['effective', 'global'] as const;
+const KNOWN_FLAGS_GET = ['effective', 'global'] as const;
+const KNOWN_FLAGS_SET = ['global'] as const;
+const KNOWN_FLAGS_MIGRATE: readonly string[] = [];
+
+const NOUN_FLAGS: readonly string[] = [
+  ...new Set<string>([
+    ...KNOWN_FLAGS_CONCEPTION_PATH,
+    ...KNOWN_FLAGS_PATH,
+    ...KNOWN_FLAGS_LIST,
+    ...KNOWN_FLAGS_GET,
+    ...KNOWN_FLAGS_SET,
+    ...KNOWN_FLAGS_MIGRATE,
+  ]),
+];
 
 export async function runConfig(
   verb: string | null,
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
+  universalHelp = false,
 ): Promise<void> {
+  if (verb === 'help') {
+    printHelp(args.positional[0] ?? null);
+    return;
+  }
+  if (universalHelp) {
+    printHelp(verb);
+    return;
+  }
   if (verb === 'conception-path') {
-    assertNoExtraFlags(args);
+    assertNoExtraFlags(args, NOUN_FLAGS);
     const resolved = await resolveConception(undefined);
     emit(
       ctx,
@@ -30,7 +58,7 @@ export async function runConfig(
     return;
   }
   if (verb === 'path') {
-    assertNoExtraFlags(args);
+    assertNoExtraFlags(args, NOUN_FLAGS);
     const conception = await resolveConceptionConfigPath(conceptionPath);
     const data = { global: settingsPath(), conception };
     emit(ctx, data, () => `global:    ${data.global}\nconception: ${data.conception}\n`);
@@ -39,10 +67,10 @@ export async function runConfig(
   if (verb === null || verb === 'list') {
     const useEffective = consumeFlag(args, '--effective');
     const useGlobal = consumeFlag(args, '--global');
+    assertNoExtraFlags(args, NOUN_FLAGS);
     if (useEffective && useGlobal) {
       throw new CliError(ExitCodes.USAGE, '--effective and --global are mutually exclusive');
     }
-    assertNoExtraFlags(args);
     let config: unknown;
     if (useGlobal) {
       const raw = await fs.readFile(settingsPath(), 'utf8').catch((err) => {
@@ -60,15 +88,15 @@ export async function runConfig(
     return;
   }
   if (verb === 'get') {
+    const useEffective = consumeFlag(args, '--effective');
+    const useGlobal = consumeFlag(args, '--global');
+    assertNoExtraFlags(args, NOUN_FLAGS);
     const key = args.positional[0];
     if (!key)
       throw new CliError(ExitCodes.USAGE, 'Usage: condash config get <key> [--effective|--global]');
-    const useEffective = consumeFlag(args, '--effective');
-    const useGlobal = consumeFlag(args, '--global');
     if (useEffective && useGlobal) {
       throw new CliError(ExitCodes.USAGE, '--effective and --global are mutually exclusive');
     }
-    assertNoExtraFlags(args);
     let config: unknown;
     let source: string;
     if (useGlobal) {
@@ -93,13 +121,13 @@ export async function runConfig(
     return;
   }
   if (verb === 'set') {
+    const writeGlobal = consumeFlag(args, '--global');
+    assertNoExtraFlags(args, NOUN_FLAGS);
     const key = args.positional[0];
     const value = args.positional[1];
     if (!key || value === undefined) {
       throw new CliError(ExitCodes.USAGE, 'Usage: condash config set <key> <value> [--global]');
     }
-    const writeGlobal = consumeFlag(args, '--global');
-    assertNoExtraFlags(args);
     // Parse value as JSON when it looks like a primitive / object / array;
     // otherwise treat as a literal string (the common case).
     let parsedValue: unknown = value;
@@ -137,7 +165,7 @@ export async function runConfig(
     return;
   }
   if (verb === 'migrate') {
-    assertNoExtraFlags(args);
+    assertNoExtraFlags(args, NOUN_FLAGS);
     const result = await migrateLegacyConfig(conceptionPath);
     emit(ctx, result, (d) => {
       const r = d as Awaited<ReturnType<typeof migrateLegacyConfig>>;
@@ -204,6 +232,136 @@ async function mutateJsonFile(
   // mkdir -p before writing.
   await fs.mkdir(dirname(path), { recursive: true });
   await atomicWrite(path, JSON.stringify(current, null, 2) + '\n');
+}
+
+function printHelp(verb: string | null): void {
+  switch (verb) {
+    case 'conception-path':
+      process.stdout.write(
+        [
+          'condash config conception-path',
+          '',
+          'Print the resolved conception path + how it was resolved.',
+          '',
+          'Examples:',
+          '  condash config conception-path',
+          '  condash config conception-path --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'path':
+      process.stdout.write(
+        [
+          'condash config path',
+          '',
+          'Print the on-disk path of the global + conception settings files.',
+          '',
+          'Examples:',
+          '  condash config path',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'list':
+    case null:
+      process.stdout.write(
+        [
+          'condash config list [--effective|--global]',
+          '',
+          'Print the merged config. Default: per-conception view.',
+          '',
+          'Optional:',
+          '  --effective   Show the merged effective config (global + conception).',
+          '  --global      Show the global ~/.config/condash/settings.json only.',
+          '',
+          'Examples:',
+          '  condash config list',
+          '  condash config list --effective --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'get':
+      process.stdout.write(
+        [
+          'condash config get <key> [--effective|--global]',
+          '',
+          'Read one config key (dotted path).',
+          '',
+          'Examples:',
+          '  condash config get repos[0].path',
+          '  condash config get audit.thresholds.binary --effective',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'set':
+      process.stdout.write(
+        [
+          'condash config set <key> <value> [--global]',
+          '',
+          'Write one config key. Value is parsed as JSON when it looks like one,',
+          'otherwise treated as a literal string. Default target: .condash/settings.json.',
+          '',
+          'Optional:',
+          '  --global   Write to ~/.config/condash/settings.json instead.',
+          '',
+          'Examples:',
+          '  condash config set repos[0].path /home/me/src/foo',
+          '  condash config set audit.thresholds.binary 5242880 --global',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'migrate':
+      process.stdout.write(
+        [
+          'condash config migrate',
+          '',
+          'One-shot: copy legacy condash.json / configuration.json to .condash/settings.json',
+          'and add .condash/ to .gitignore (if needed).',
+          '',
+          'Examples:',
+          '  condash config migrate',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    default:
+      printSubHelp();
+  }
+}
+
+function printSubHelp(): void {
+  process.stdout.write(
+    [
+      'condash config <verb> [args]',
+      '',
+      'Verbs:',
+      '  conception-path   Print the resolved conception path.',
+      '  path              Print the on-disk paths of the settings files.',
+      '  list              Print merged config (default: per-conception view).',
+      '  get <key>         Read one config key (dotted path).',
+      '  set <key> <val>   Write one config key.',
+      '  migrate           Copy legacy condash.json / configuration.json to .condash/settings.json.',
+      '',
+      UNIVERSAL_FOOTER,
+      '',
+    ].join('\n'),
+  );
 }
 
 function pickByDottedPath(obj: unknown, dotted: string): unknown {

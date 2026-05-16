@@ -134,43 +134,47 @@ async function dispatch(
 ): Promise<number> {
   // Commands that don't need conception path resolution.
   if (args.noun === 'config' && args.verb === 'conception-path') {
-    await runConfig(args.verb, args, ctx, '');
+    await runConfig(args.verb, args, ctx, '', universal.help);
     return ExitCodes.OK;
   }
 
   const resolved = await resolveConception(universal.conceptionPath);
   const conceptionPath = resolved.path;
 
+  // `--help` always wins. Each runNoun honours `universalHelp` by short-
+  // circuiting to per-verb help text before any required-arg check.
+  const help = universal.help;
+
   switch (args.noun) {
     case 'project':
-      await runProject(args.verb, args, ctx);
+      await runProject(args.verb, args, ctx, help);
       return ExitCodes.OK;
     case 'projects':
-      await runProjects(args.verb, args, ctx, conceptionPath);
+      await runProjects(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'knowledge':
-      await runKnowledge(args.verb, args, ctx, conceptionPath);
+      await runKnowledge(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'search':
-      await runSearch(args, ctx, conceptionPath);
+      await runSearch(args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'repos':
-      await runRepos(args.verb, args, ctx, conceptionPath);
+      await runRepos(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'worktrees':
-      await runWorktrees(args.verb, args, ctx, conceptionPath);
+      await runWorktrees(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'audit':
-      await runAuditCommand(args, ctx, conceptionPath);
+      await runAuditCommand(args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'dirty':
-      await runDirty(args.verb, args, ctx, conceptionPath);
+      await runDirty(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'skills':
-      await runSkills(args.verb, args, ctx);
+      await runSkills(args.verb, args, ctx, help);
       return ExitCodes.OK;
     case 'config':
-      await runConfig(args.verb, args, ctx, conceptionPath);
+      await runConfig(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     default:
       throw new CliError(ExitCodes.USAGE, `Unknown noun: ${args.noun}`);

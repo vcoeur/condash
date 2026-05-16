@@ -175,6 +175,13 @@ function emitNdjson<T>(data: T, shape: NdjsonShape): void {
 }
 
 export function reportError(ctx: OutputContext, err: unknown): ExitCode {
+  // Promote UsageError (parser-level, e.g. unknown-flag rejections from
+  // `assertNoExtraFlags`) to a USAGE CliError so consumers see exit code 2
+  // instead of the generic RUNTIME (1). Without this, every typo a verb's
+  // assertNoExtraFlags catches surfaces as exit 1.
+  if (err && typeof err === 'object' && (err as { name?: string }).name === 'UsageError') {
+    err = new CliError(ExitCodes.USAGE, (err as Error).message);
+  }
   if (err instanceof CliError) {
     if (ctx.json || ctx.ndjson) {
       const envelope: JsonEnvelope<never> = {

@@ -10,6 +10,7 @@ import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { parseHeader, validateHeader, validateBody, type HeaderFields } from '../../shared/header';
 import { readHeader } from '../../main/header-io';
 import { assertNoExtraFlags, parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
+import { NOUN_FLAGS } from './projects';
 
 interface ProjectListRow {
   slug: string;
@@ -39,7 +40,7 @@ export async function listProjects(
   const branchFilter = typeof args.flags.branch === 'string' ? args.flags.branch : null;
   const sort = (args.flags.sort as string | undefined) ?? 'status';
   for (const k of ['status', 'kind', 'apps', 'branch', 'sort']) delete args.flags[k];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
 
   const readmes = await findProjectReadmes(conceptionPath);
   const rows: ProjectListRow[] = [];
@@ -114,6 +115,9 @@ export async function readProject(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const withNotes = args.flags['with-notes'] === true;
+  delete args.flags['with-notes'];
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
   if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects read <slug>');
   const candidate = await resolveSlug(conceptionPath, slug);
@@ -138,9 +142,6 @@ export async function readProject(
     deliverableCount: project.deliverableCount,
     extra: header.extra,
   };
-  const withNotes = args.flags['with-notes'] === true;
-  delete args.flags['with-notes'];
-  assertNoExtraFlags(args);
   if (withNotes) {
     const notesDir = join(candidate.itemDir, 'notes');
     data.notes = await readNotesDir(notesDir);
@@ -191,9 +192,9 @@ export async function resolveCommand(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
   if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects resolve <slug>');
-  assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   emit(
     ctx,
@@ -212,13 +213,13 @@ export async function searchProjects(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const query = args.positional.join(' ');
-  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects search <query>');
   const limit = parseIntFlag(args.flags.limit, 50);
   const statusFilter = parseCsvFlag(args.flags.status);
   const kindFilter = parseCsvFlag(args.flags.kind);
   for (const k of ['limit', 'status', 'kind']) delete args.flags[k];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
+  const query = args.positional.join(' ');
+  if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects search <query>');
 
   const results = await searchAll(conceptionPath, query);
   const projectHits = results.hits.filter((h) => h.source === 'project');
@@ -292,7 +293,7 @@ export async function validateCommand(
   const explicitPath = typeof args.flags.path === 'string' ? args.flags.path : null;
   const slug = args.positional[0];
   for (const k of ['all', 'path']) delete args.flags[k];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
 
   let readmes: string[];
   if (all) {

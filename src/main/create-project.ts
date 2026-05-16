@@ -34,6 +34,8 @@ export interface CreateProjectInput {
   base: string | null;
   /** ISO YYYY-MM-DD; defaults to today. */
   date?: string;
+  /** Initial status; defaults to 'now'. The CLI rejects 'done' here — see createCommand. */
+  status?: string;
   severity: string | null;
   severityImpact: string | null;
   environment: string | null;
@@ -47,6 +49,7 @@ export interface CreateProjectResult {
   kind: string;
   title: string;
   date: string;
+  status: string;
   apps: string[];
   branch: string | null;
   base: string | null;
@@ -105,10 +108,16 @@ export async function createProjectCore(
     );
   }
 
+  // Default to 'now' for callers (e.g. the GUI's quick-create form) that
+  // omit the field. The CLI's createCommand has already validated against
+  // the 4-status enum and rejected 'done'.
+  const status = (input.status ?? '').trim() || 'now';
+
   const readmeBody = renderTemplate({
     kind: kind as (typeof ITEM_KINDS)[number],
     title,
     date,
+    status,
     apps,
     branch,
     base,
@@ -145,6 +154,7 @@ export async function createProjectCore(
     kind,
     title,
     date,
+    status,
     apps,
     branch,
     base,
@@ -155,6 +165,7 @@ interface TemplateInputs {
   kind: (typeof ITEM_KINDS)[number];
   title: string;
   date: string;
+  status: string;
   apps: string[];
   branch: string | null;
   base: string | null;
@@ -167,7 +178,7 @@ function renderTemplate(input: TemplateInputs): string {
   const fmLines: string[] = ['---'];
   fmLines.push(`date: ${input.date}`);
   fmLines.push(`kind: ${input.kind}`);
-  fmLines.push(`status: now`);
+  fmLines.push(`status: ${input.status}`);
   if (input.apps.length === 0) {
     fmLines.push('apps: []');
   } else {

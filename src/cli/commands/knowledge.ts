@@ -8,18 +8,44 @@ import { isoToday } from '../../shared/iso-today';
 import type { KnowledgeNode } from '../../shared/types';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { assertNoExtraFlags, parseIntFlag, type ParsedArgs } from '../parser';
+import { UNIVERSAL_FOOTER } from '../help';
 
 const DEFAULT_MAX_AGE_DAYS = 30;
+
+const KNOWN_FLAGS_TREE = ['depth'] as const;
+const KNOWN_FLAGS_VERIFY = ['max-age'] as const;
+const KNOWN_FLAGS_RETRIEVE = ['mode'] as const;
+const KNOWN_FLAGS_STAMP = ['where', 'date', 'insert-after'] as const;
+const KNOWN_FLAGS_INDEX = ['dry-run', 'rewrite-aggregated'] as const;
+
+const NOUN_FLAGS: readonly string[] = [
+  ...new Set<string>([
+    ...KNOWN_FLAGS_TREE,
+    ...KNOWN_FLAGS_VERIFY,
+    ...KNOWN_FLAGS_RETRIEVE,
+    ...KNOWN_FLAGS_STAMP,
+    ...KNOWN_FLAGS_INDEX,
+  ]),
+];
 
 export async function runKnowledge(
   verb: string | null,
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
+  universalHelp = false,
 ): Promise<void> {
+  if (verb === 'help') {
+    printHelp(args.positional[0] ?? null);
+    return;
+  }
+  if (universalHelp) {
+    printHelp(verb);
+    return;
+  }
   switch (verb) {
     case null:
-      printSubHelp();
+      printHelp(null);
       return;
     case 'tree':
       return await treeCommand(args, ctx, conceptionPath);
@@ -45,7 +71,7 @@ async function indexCommand(
   const rewriteAggregated = args.flags['rewrite-aggregated'] === true;
   delete args.flags['dry-run'];
   delete args.flags['rewrite-aggregated'];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const report = await regenerateIndex(conceptionPath, knowledgeStrategy, {
     dryRun,
     rewriteAggregated,
@@ -99,7 +125,7 @@ async function treeCommand(
 ): Promise<void> {
   const depth = parseIntFlag(args.flags.depth, Infinity);
   delete args.flags.depth;
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const root = await readKnowledgeTree(conceptionPath);
   if (!root) throw new CliError(ExitCodes.NOT_FOUND, 'No knowledge/ tree found');
   const trimmed = trimDepth(root, depth);
@@ -156,7 +182,7 @@ async function verifyCommand(
 ): Promise<void> {
   const maxAge = parseIntFlag(args.flags['max-age'], DEFAULT_MAX_AGE_DAYS);
   delete args.flags['max-age'];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const knowledgeRoot = join(conceptionPath, 'knowledge');
   const files = await collectKnowledgeFiles(knowledgeRoot);
 
@@ -266,16 +292,17 @@ async function retrieveCommand(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const modeFlag = args.flags.mode;
+  delete args.flags.mode;
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const query = args.positional.join(' ').trim();
   if (!query) {
     throw new CliError(ExitCodes.USAGE, 'Usage: condash knowledge retrieve <query>');
   }
-  const mode = (args.flags.mode as string | undefined) ?? 'both';
+  const mode = (modeFlag as string | undefined) ?? 'both';
   if (!['triage', 'grep', 'both'].includes(mode)) {
     throw new CliError(ExitCodes.USAGE, `--mode must be triage|grep|both`);
   }
-  delete args.flags.mode;
-  assertNoExtraFlags(args);
 
   const knowledgeRoot = join(conceptionPath, 'knowledge');
   const triage: TriageMatch[] = [];
@@ -426,6 +453,12 @@ async function stampCommand(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const where = args.flags.where;
+  const dateFlag = args.flags.date;
+  const insertAfter =
+    typeof args.flags['insert-after'] === 'string' ? (args.flags['insert-after'] as string) : null;
+  for (const k of ['where', 'date', 'insert-after']) delete args.flags[k];
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const target = args.positional[0];
   if (!target) {
     throw new CliError(
@@ -433,18 +466,13 @@ async function stampCommand(
       'Usage: condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD]',
     );
   }
-  const where = args.flags.where;
   if (typeof where !== 'string' || !where.trim()) {
     throw new CliError(ExitCodes.USAGE, '--where is required (e.g. "<app>@<sha> on <branch>")');
   }
-  const date = typeof args.flags.date === 'string' ? args.flags.date : isoToday();
+  const date = typeof dateFlag === 'string' ? dateFlag : isoToday();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     validation(`--date must be YYYY-MM-DD; got '${date}'`);
   }
-  const insertAfter =
-    typeof args.flags['insert-after'] === 'string' ? (args.flags['insert-after'] as string) : null;
-  for (const k of ['where', 'date', 'insert-after']) delete args.flags[k];
-  assertNoExtraFlags(args);
   const targetPath = isAbsoluteLike(target) ? target : join(conceptionPath, target);
   // The stamp writes a body file — refuse anywhere outside the conception
   // tree so a `--target ../../etc/passwd` argument can't prepend a Verified
@@ -535,6 +563,113 @@ function isAbsoluteLike(p: string): boolean {
   return p.startsWith('/') || /^[A-Za-z]:\\/.test(p);
 }
 
+function printHelp(verb: string | null): void {
+  switch (verb) {
+    case 'tree':
+      process.stdout.write(
+        [
+          'condash knowledge tree [--depth N]',
+          '',
+          'Hierarchical view of knowledge/.',
+          '',
+          'Optional:',
+          '  --depth   Cap recursion at N levels (default: unlimited).',
+          '',
+          'Examples:',
+          '  condash knowledge tree',
+          '  condash knowledge tree --depth 2 --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'verify':
+      process.stdout.write(
+        [
+          'condash knowledge verify [--max-age N]',
+          '',
+          'Audit **Verified:** stamps; report any older than --max-age days.',
+          '',
+          'Optional:',
+          `  --max-age   Threshold in days (default: ${DEFAULT_MAX_AGE_DAYS}).`,
+          '',
+          'Examples:',
+          '  condash knowledge verify',
+          '  condash knowledge verify --max-age 60 --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'retrieve':
+      process.stdout.write(
+        [
+          'condash knowledge retrieve <query> [--mode <mode>]',
+          '',
+          'Match a query against index.md keywords; falls back to grep.',
+          '',
+          'Optional:',
+          '  --mode    triage | grep | both   (default: both)',
+          '',
+          'Examples:',
+          '  condash knowledge retrieve "session cookie"',
+          '  condash knowledge retrieve gdpr --mode triage --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'stamp':
+      process.stdout.write(
+        [
+          'condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD] [--insert-after <heading>]',
+          '',
+          'Idempotently write a **Verified:** line into a file.',
+          '',
+          'Required:',
+          '  --where         Provenance string (e.g. "condash@abc1234 on main").',
+          '',
+          'Optional:',
+          '  --date          Stamp date (default: today).',
+          '  --insert-after  Heading after which to insert when no stamp exists yet.',
+          '',
+          'Examples:',
+          '  condash knowledge stamp knowledge/internal/condash.md --where "condash@abc1234 on main"',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'index':
+      process.stdout.write(
+        [
+          'condash knowledge index [--dry-run] [--rewrite-aggregated]',
+          '',
+          'Regenerate every knowledge/**/index.md.',
+          '',
+          'Optional:',
+          '  --dry-run                Preview without writing.',
+          '  --rewrite-aggregated     One-shot migration: re-derive every subdir bullet',
+          '                           from descendants and mark drafted.',
+          '',
+          'Examples:',
+          '  condash knowledge index',
+          '  condash knowledge index --dry-run --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    default:
+      printSubHelp();
+  }
+}
+
 function printSubHelp(): void {
   process.stdout.write(
     [
@@ -546,8 +681,8 @@ function printSubHelp(): void {
       '  retrieve    Match a query against index.md keywords; falls back to grep.',
       '  stamp       Idempotently write a **Verified:** line into a file.',
       '  index       Regenerate every knowledge/**/index.md.',
-      '              Flags: --dry-run, --rewrite-aggregated (one-shot migration:',
-      '              re-derive every subdir bullet from descendants, mark drafted).',
+      '',
+      UNIVERSAL_FOOTER,
       '',
     ].join('\n'),
   );

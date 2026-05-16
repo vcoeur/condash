@@ -4,6 +4,7 @@ import {
   parseArgs,
   parseCsvFlag,
   parseIntFlag,
+  suggestFlag,
   takeUniversalFlags,
   UsageError,
 } from './parser';
@@ -136,6 +137,37 @@ describe('assertNoExtraFlags', () => {
       expect(msg).toMatch(/--bar/);
       expect(msg).toMatch(/Unknown flags/);
     }
+  });
+
+  it('appends a `(did you mean --X?)` hint when a sibling pool is supplied', () => {
+    const args = parseArgs(['x', 'y', '--app', 'foo']);
+    expect(() => assertNoExtraFlags(args, ['apps', 'kind', 'slug', 'title'])).toThrow(
+      /Unknown flag: --app \(did you mean --apps\?\)/,
+    );
+  });
+
+  it('emits no hint when nothing is within distance 2', () => {
+    const args = parseArgs(['x', 'y', '--xyzzy', 'foo']);
+    expect(() => assertNoExtraFlags(args, ['apps', 'kind', 'slug', 'title'])).toThrow(
+      /^Unknown flag: --xyzzy$/,
+    );
+  });
+});
+
+describe('suggestFlag', () => {
+  it('returns the closest valid flag at distance ≤ 2', () => {
+    expect(suggestFlag('app', ['apps', 'kind', 'slug'])).toBe('apps');
+    expect(suggestFlag('aps', ['apps', 'kind'])).toBe('apps');
+    expect(suggestFlag('bracnh', ['branch', 'base'])).toBe('branch');
+  });
+
+  it('returns null when nothing is within distance 2', () => {
+    expect(suggestFlag('xyzzy', ['apps', 'kind', 'slug'])).toBeNull();
+  });
+
+  it('returns null when two candidates tie', () => {
+    // 'aps' is distance 1 from both 'apps' and 'ape' — a tie.
+    expect(suggestFlag('aps', ['apps', 'ape'])).toBeNull();
   });
 });
 
