@@ -9,17 +9,43 @@ import {
 } from '../../main/worktree-ops';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, parseCsvFlag, type ParsedArgs } from '../parser';
+import { UNIVERSAL_FOOTER } from '../help';
 import { runRepos } from './repos';
+
+const KNOWN_FLAGS_LIST = ['include-worktrees'] as const;
+const KNOWN_FLAGS_CHECK: readonly string[] = [];
+const KNOWN_FLAGS_MISMATCH: readonly string[] = [];
+const KNOWN_FLAGS_SETUP = ['repo', 'copy-env', 'no-env', 'no-install', 'install', 'base'] as const;
+const KNOWN_FLAGS_REMOVE = ['repo', 'force', 'force-rm'] as const;
+
+const NOUN_FLAGS: readonly string[] = [
+  ...new Set<string>([
+    ...KNOWN_FLAGS_LIST,
+    ...KNOWN_FLAGS_CHECK,
+    ...KNOWN_FLAGS_MISMATCH,
+    ...KNOWN_FLAGS_SETUP,
+    ...KNOWN_FLAGS_REMOVE,
+  ]),
+];
 
 export async function runWorktrees(
   verb: string | null,
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
+  universalHelp = false,
 ): Promise<void> {
+  if (verb === 'help') {
+    printHelp(args.positional[0] ?? null);
+    return;
+  }
+  if (universalHelp) {
+    printHelp(verb);
+    return;
+  }
   switch (verb) {
     case null:
-      printWorktreesHelp();
+      printHelp(null);
       return;
     case 'list':
       // Full repo list with worktrees included — same payload `repos list
@@ -30,7 +56,7 @@ export async function runWorktrees(
     case 'check':
       return await worktreeCheck(args, ctx, conceptionPath);
     case 'mismatch':
-      return await worktreeMismatch(ctx, conceptionPath);
+      return await worktreeMismatch(args, ctx, conceptionPath);
     case 'setup':
       return await worktreeSetup(args, ctx, conceptionPath);
     case 'remove':
@@ -45,11 +71,11 @@ async function worktreeCheck(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const branch = args.positional[0];
   if (!branch) {
     throw new CliError(ExitCodes.USAGE, 'Usage: condash worktrees check <branch>');
   }
-  assertNoExtraFlags(args);
   const result = await checkBranchState(conceptionPath, branch);
   emit(ctx, result, formatBranchCheck);
 }
@@ -87,7 +113,12 @@ function formatBranchCheck(result: BranchCheckResult): string {
   return lines.join('\n') + '\n';
 }
 
-async function worktreeMismatch(ctx: OutputContext, conceptionPath: string): Promise<void> {
+async function worktreeMismatch(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const report = await runAudit(conceptionPath, ['worktrees']);
   emit(
     ctx,
@@ -109,6 +140,22 @@ async function worktreeSetup(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
+  const copyEnv = args.flags['copy-env'] === true;
+  const skipEnv = args.flags['no-env'] === true;
+  const skipInstall = args.flags['no-install'] === true;
+  const installDeprecated = args.flags.install === true;
+  const baseFlag = args.flags.base;
+  const base = typeof baseFlag === 'string' && baseFlag.length > 0 ? baseFlag : undefined;
+  for (const k of ['repo', 'copy-env', 'no-env', 'no-install', 'install', 'base']) {
+    delete args.flags[k];
+  }
+  assertNoExtraFlags(args, NOUN_FLAGS);
+  if (installDeprecated) {
+    process.stderr.write(
+      '[deprecated] --install is now the default for repos that declare install: in .condash/settings.json. Use --no-install to skip.\n',
+    );
+  }
   const branch = args.positional[0];
   if (!branch) {
     throw new CliError(
@@ -116,21 +163,6 @@ async function worktreeSetup(
       'Usage: condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
     );
   }
-  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
-  const copyEnv = args.flags['copy-env'] === true;
-  const skipEnv = args.flags['no-env'] === true;
-  const skipInstall = args.flags['no-install'] === true;
-  if (args.flags.install === true) {
-    process.stderr.write(
-      '[deprecated] --install is now the default for repos that declare install: in .condash/settings.json. Use --no-install to skip.\n',
-    );
-  }
-  const baseFlag = args.flags.base;
-  const base = typeof baseFlag === 'string' && baseFlag.length > 0 ? baseFlag : undefined;
-  for (const k of ['repo', 'copy-env', 'no-env', 'no-install', 'install', 'base']) {
-    delete args.flags[k];
-  }
-  assertNoExtraFlags(args);
   const result = await setupBranchWorktrees(conceptionPath, branch, {
     repos,
     copyEnv,
@@ -175,6 +207,11 @@ async function worktreeRemove(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
+  const force = args.flags.force === true;
+  const forceRm = args.flags['force-rm'] === true;
+  for (const k of ['repo', 'force', 'force-rm']) delete args.flags[k];
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const branch = args.positional[0];
   if (!branch) {
     throw new CliError(
@@ -182,11 +219,6 @@ async function worktreeRemove(
       'Usage: condash worktrees remove <branch> [--repo <r>...] [--force] [--force-rm]',
     );
   }
-  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
-  const force = args.flags.force === true;
-  const forceRm = args.flags['force-rm'] === true;
-  for (const k of ['repo', 'force', 'force-rm']) delete args.flags[k];
-  assertNoExtraFlags(args);
   const result = await removeBranchWorktrees(conceptionPath, branch, { repos, force, forceRm });
   emit(ctx, result, formatRemoveResult);
 }
@@ -217,28 +249,117 @@ function formatRemoveResult(result: RemoveResult): string {
   return lines.join('\n') + '\n';
 }
 
-function printWorktreesHelp(): void {
+function printHelp(verb: string | null): void {
+  switch (verb) {
+    case 'list':
+      process.stdout.write(
+        [
+          'condash worktrees list',
+          '',
+          'List configured repos with their worktrees (alias of `repos list --include-worktrees`).',
+          '',
+          'Examples:',
+          '  condash worktrees list',
+          '  condash worktrees list --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'check':
+      process.stdout.write(
+        [
+          'condash worktrees check <branch>',
+          '',
+          'Per-repo state for one branch: declaring items, on-disk worktrees, local branches.',
+          '',
+          'Examples:',
+          '  condash worktrees check condash-cli-ux-fixes',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'mismatch':
+      process.stdout.write(
+        [
+          'condash worktrees mismatch',
+          '',
+          'List items declaring **Branch** but missing on-disk worktrees.',
+          '',
+          'Examples:',
+          '  condash worktrees mismatch',
+          '  condash worktrees mismatch --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'setup':
+      process.stdout.write(
+        [
+          'condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
+          '',
+          'Create worktrees for every repo in the union of **Apps** declaring this branch.',
+          '',
+          'Optional:',
+          '  --repo         Restrict to specific repos (comma-separated).',
+          '  --no-env       Skip the per-repo env-file copy declared in .condash/settings.json.',
+          '  --no-install   Skip the per-repo install command declared in .condash/settings.json.',
+          '  --copy-env     Legacy: opportunistic .env / .env.local copy for repos without `env:`.',
+          '  --base         Base ref. Defaults to **Base** from declaring item READMEs (must agree).',
+          '',
+          'Examples:',
+          '  condash worktrees setup condash-cli-ux-fixes',
+          '  condash worktrees setup feature-x --repo condash --no-install',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'remove':
+      process.stdout.write(
+        [
+          'condash worktrees remove <branch> [--repo <r>...] [--force] [--force-rm]',
+          '',
+          'Remove worktrees for this branch, protected-set aware.',
+          '',
+          'Optional:',
+          '  --repo       Restrict to specific repos (comma-separated).',
+          '  --force      Pass through to `git worktree remove --force` (deletes even if dirty).',
+          '  --force-rm   Implies --force; if git deregisters but leaves files behind, `rm -rf` them.',
+          '',
+          'Examples:',
+          '  condash worktrees remove condash-cli-ux-fixes',
+          '  condash worktrees remove feature-x --force-rm',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    default:
+      printSubHelp();
+  }
+}
+
+function printSubHelp(): void {
   process.stdout.write(
     [
       'condash worktrees <verb> [args]',
       '',
       'Verbs:',
-      '  list             Repos with their worktrees (alias of repos list --include-worktrees).',
-      '  check <branch>   Per-repo state for one branch (declaring items, on-disk worktrees, local branches).',
+      '  list             Repos with their worktrees (alias of `repos list --include-worktrees`).',
+      '  check <branch>   Per-repo state for one branch.',
       '  mismatch         Items declaring **Branch** but missing on-disk worktrees.',
-      '  setup <branch>   Create worktrees for every repo in the union of **Apps** declaring this branch.',
-      '                   Flags: --repo <r>... (override) --no-env --no-install --copy-env --base <ref>',
-      '                   Base ref defaults to the **Base** field on declaring item READMEs (must agree).',
-      '                   Repos with `env: [...]` in .condash/settings.json have those files copied by default;',
-      '                   --no-env opts out. Repos with `install: <cmd>` have it run by default; --no-install',
-      '                   opts out. --copy-env is the legacy opportunistic .env / .env.local copy for repos',
-      '                   without `env:` declared.',
+      '  setup <branch>   Create worktrees for every repo declaring this branch.',
       '  remove <branch>  Remove worktrees for this branch, protected-set aware.',
-      '                   Flags: --repo <r>... (override) --force --force-rm.',
-      '                   --force passes through to `git worktree remove --force` (deletes even if dirty).',
-      '                   --force-rm implies --force; if git deregisters but leaves files behind',
-      '                   (e.g. node_modules), `rm -rf` the leftover dir to finish the job.',
-      '                   Without --force-rm, half-removed entries land in `partiallyRemoved[]`.',
+      '',
+      UNIVERSAL_FOOTER,
       '',
     ].join('\n'),
   );

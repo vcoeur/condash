@@ -17,6 +17,7 @@ import { isValidSlugTail } from '../../shared/slug';
 import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { assertNoExtraFlags, parseCsvFlag, type ParsedArgs } from '../parser';
+import { NOUN_FLAGS } from './projects';
 
 // createProjectCore + CreateProjectInput + CreateProjectResult moved to
 // src/main/create-project.ts in pass-10 — re-exported here so external
@@ -37,7 +38,7 @@ export async function indexCommand(
   const rewriteAggregated = args.flags['rewrite-aggregated'] === true;
   delete args.flags['dry-run'];
   delete args.flags['rewrite-aggregated'];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const report = await regenerateIndex(conceptionPath, projectsStrategy, {
     dryRun,
     rewriteAggregated,
@@ -100,14 +101,22 @@ function relativeIfPossible(path: string, rootPath: string): string {
   return relative(conceptionRoot, path) || path;
 }
 
+// Statuses accepted at create time. `done` is intentionally excluded — it
+// requires a Closed Timeline entry that only `condash projects close` writes.
+const CREATE_STATUSES = ['now', 'review', 'later', 'backlog'] as const;
+
 export async function createCommand(
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  // Pull every known flag into a local first, then delete the keys from
+  // args.flags, so assertNoExtraFlags can fire on typos *before* the
+  // required-arg validation below. Without this ordering, `--app foo`
+  // gets reported as "missing --apps" rather than "did you mean --apps?".
   const apps = parseCsvFlag(args.flags.apps) ?? [];
-  if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
-  const input = {
+  const rawStatus = typeof args.flags.status === 'string' ? args.flags.status.toLowerCase() : '';
+  const input: CreateProjectInput = {
     kind: String(args.flags.kind ?? '').toLowerCase(),
     slug: String(args.flags.slug ?? '').trim(),
     title: String(args.flags.title ?? '').trim(),
@@ -115,6 +124,7 @@ export async function createCommand(
     branch: typeof args.flags.branch === 'string' ? args.flags.branch.trim() || null : null,
     base: typeof args.flags.base === 'string' ? args.flags.base.trim() || null : null,
     date: typeof args.flags.date === 'string' ? args.flags.date.trim() : undefined,
+    status: rawStatus || 'now',
     severity:
       typeof args.flags.severity === 'string' ? args.flags.severity.toLowerCase() || null : null,
     severityImpact:
@@ -134,13 +144,31 @@ export async function createCommand(
     'branch',
     'base',
     'date',
+    'status',
     'severity',
     'severity-impact',
     'environment',
   ]) {
     delete args.flags[k];
   }
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
+
+  // `--status done` rejected with a pointer: closing an item requires the
+  // close-side Timeline entry + leftover-branch probe, neither of which
+  // create runs. (See lifecycle rule in conception/.claude/CLAUDE.md.)
+  if (rawStatus === 'done') {
+    validation(
+      `--status done is not allowed at create time; create with status=now, then \`condash projects close ${input.slug || '<slug>'}\`.`,
+    );
+  }
+  if (rawStatus && !(CREATE_STATUSES as readonly string[]).includes(rawStatus)) {
+    validation(
+      `--status must be one of {${CREATE_STATUSES.join(', ')}}; got '${rawStatus}'. ` +
+        `(Use \`condash projects close\` for done.)`,
+    );
+  }
+  if (apps.length === 0) validation(`--apps is required (comma-separated, may be backticked)`);
+
   const result = await createProjectCore(conceptionPath, input);
   emit(ctx, result, (data) => {
     const d = data as { relPath: string; readme: string };
@@ -153,11 +181,11 @@ export async function scanPromotionsCommand(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
   if (!slug) {
     throw new CliError(ExitCodes.USAGE, 'Usage: condash projects scan-promotions <slug>');
   }
-  assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   const notesDir = join(candidate.itemDir, 'notes');
   let entries: string[];
@@ -222,7 +250,7 @@ export async function rewriteHeadersCommand(
 ): Promise<void> {
   const dryRun = args.flags['dry-run'] === true;
   delete args.flags['dry-run'];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const report = await rewriteHeadersInTree(conceptionPath, { dryRun });
   emit(ctx, { ...report, dryRun }, (data) => {
     const d = data as RewriteHeadersReport & { dryRun: boolean };
@@ -270,7 +298,7 @@ export async function backfillClosed(
 ): Promise<void> {
   const dryRun = args.flags['dry-run'] === true;
   delete args.flags['dry-run'];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const readmes = await findProjectReadmes(conceptionPath);
   const candidates: BackfillEntry[] = [];
   const skipped: { slug: string; reason: string }[] = [];

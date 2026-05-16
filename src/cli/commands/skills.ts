@@ -59,6 +59,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { UNIVERSAL_FOOTER } from '../help';
 import { type AgentsMdTarget } from '../../agents-md';
 import {
   COMPILE_TARGETS,
@@ -93,6 +94,20 @@ import {
   type ShippedFile,
 } from './files';
 
+const KNOWN_FLAGS_LIST = ['dest', 'user'] as const;
+const KNOWN_FLAGS_INSTALL = ['dest', 'user', 'force', 'diff', 'dry-run', 'prune'] as const;
+const KNOWN_FLAGS_STATUS = ['dest', 'user'] as const;
+const KNOWN_FLAGS_VALIDATE = ['dest', 'user'] as const;
+
+const NOUN_FLAGS: readonly string[] = [
+  ...new Set<string>([
+    ...KNOWN_FLAGS_LIST,
+    ...KNOWN_FLAGS_INSTALL,
+    ...KNOWN_FLAGS_STATUS,
+    ...KNOWN_FLAGS_VALIDATE,
+  ]),
+];
+
 /** Path of the skillspec source tree relative to the conception root. */
 const SOURCE_RELPATH = '.agents/skills';
 
@@ -116,7 +131,16 @@ export async function runSkills(
   verb: string | null,
   args: ParsedArgs,
   ctx: OutputContext,
+  universalHelp = false,
 ): Promise<void> {
+  if (verb === 'help') {
+    printHelp(args.positional[0] ?? null);
+    return;
+  }
+  if (universalHelp) {
+    printHelp(verb);
+    return;
+  }
   const userScope = args.flags.user === true;
   if (userScope && args.flags.dest !== undefined) {
     throw new CliError(ExitCodes.USAGE, '`--user` is incompatible with `--dest`');
@@ -151,7 +175,7 @@ async function listRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const shipped = await readShippedSkills();
   const dest = await resolveDest(args).catch(() => null);
   delete args.flags.dest;
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const manifest = dest ? await readManifest(dest) : null;
   const skillsRows = shipped.map((s) => {
     const installedFiles = manifest?.skills[s.name]?.source;
@@ -260,7 +284,7 @@ async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> 
   const dryRun = args.flags['dry-run'] === true;
   const prune = args.flags.prune === true;
   for (const k of ['dest', 'force', 'diff', 'dry-run', 'prune']) delete args.flags[k];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const shippedVersion = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
   const manifest: Manifest = (await readManifest(dest)) ?? {
@@ -703,7 +727,7 @@ interface RepoStatusReport {
 async function repoStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const dest = await resolveDest(args);
   delete args.flags.dest;
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const sourceRoot = join(dest, SOURCE_RELPATH);
   const shipped = await readShippedSkills();
   const manifest: Manifest = (await readManifest(dest)) ?? {
@@ -857,7 +881,7 @@ interface ValidateReport {
 async function validateSkills(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const requestedNames = args.positional.length > 0 ? args.positional : null;
   delete args.flags.dest;
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
 
   const shipped = await readShippedSkills();
   const selected = requestedNames
@@ -1142,7 +1166,7 @@ async function installUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<
 
   const dryRun = args.flags['dry-run'] === true;
   for (const k of ['user', 'dry-run']) delete args.flags[k];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
 
   const hostLabel = await readHostLabel();
   const report: UserInstallReport = {
@@ -1198,7 +1222,7 @@ function formatUserInstallHuman(report: UserInstallReport): string {
 
 async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   delete args.flags.user;
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const all = await readUserSkills();
   const hostLabel = await readHostLabel();
   const rows = all.map((s) => ({
@@ -1244,7 +1268,7 @@ interface UserStatusEntry {
 
 async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   delete args.flags.user;
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const all = await readUserSkills();
   const hostLabel = await readHostLabel();
   const items: UserStatusEntry[] = [];
@@ -1303,7 +1327,7 @@ async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<v
 async function validateUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const requestedNames = args.positional.length > 0 ? args.positional : null;
   delete args.flags.user;
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const all = await readUserSkills();
   const selected = requestedNames ? all.filter((s) => requestedNames.includes(s.name)) : all;
   if (requestedNames) {
@@ -1358,3 +1382,109 @@ async function validateUserSkills(args: ParsedArgs, ctx: OutputContext): Promise
 // Re-export utility for tests that previously imported from templates.ts.
 // New code should import directly from `./regions` and `./files`.
 export { locateShippedFilesRoot };
+
+function printHelp(verb: string | null): void {
+  switch (verb) {
+    case 'list':
+    case null:
+      process.stdout.write(
+        [
+          'condash skills list [--user] [--dest <path>]',
+          '',
+          'List shipped skills + top-level files (and their install status).',
+          '',
+          'Optional:',
+          '  --user        Switch to user scope (~/.config/agents/skills).',
+          '  --dest <path> Override repo-scope destination (default: resolved conception).',
+          '',
+          'Examples:',
+          '  condash skills list',
+          '  condash skills list --user',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'install':
+      process.stdout.write(
+        [
+          'condash skills install [<skill-or-file>...] [--user] [--dest <path>]',
+          '                       [--force] [--diff] [--dry-run] [--prune]',
+          '',
+          'Install (or refresh) shipped skills + top-level files into the conception.',
+          'Refuses to overwrite user-edited sources unless --force.',
+          '',
+          'Optional:',
+          '  --user        User scope (~/.config/agents/skills → ~/.claude/, ~/.kimi/).',
+          '  --dest <path> Override repo-scope destination.',
+          '  --force       Override refuse-on-edit (repo scope only).',
+          '  --diff        Show a unified diff per refused item.',
+          '  --dry-run     Report what would change; touch nothing.',
+          '  --prune       Drop manifest entries whose shipped source has been removed.',
+          '',
+          'Examples:',
+          '  condash skills install',
+          '  condash skills install pr knowledge --diff',
+          '  condash skills install --user --dry-run',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'status':
+      process.stdout.write(
+        [
+          'condash skills status [--user] [--dest <path>]',
+          '',
+          'Per-skill / per-file install state (tracked, edited, missing on source).',
+          '',
+          'Examples:',
+          '  condash skills status',
+          '  condash skills status --user --json',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    case 'validate':
+      process.stdout.write(
+        [
+          'condash skills validate [--user] [--dest <path>]',
+          '',
+          'Lint shipped skill specs + top-level file regions.',
+          '',
+          'Examples:',
+          '  condash skills validate',
+          '  condash skills validate --user',
+          '',
+          UNIVERSAL_FOOTER,
+          '',
+        ].join('\n'),
+      );
+      return;
+    default:
+      printSubHelp();
+  }
+}
+
+function printSubHelp(): void {
+  process.stdout.write(
+    [
+      'condash skills <verb> [args]',
+      '',
+      'Verbs:',
+      '  list       List shipped skills + top-level files.',
+      '  install    Install (or refresh) shipped artefacts.',
+      '  status     Per-skill / per-file install state.',
+      '  validate   Lint shipped skill specs + top-level file regions.',
+      '',
+      'Scopes: pass --user for user-scope (~/.config/agents/skills); default is repo scope.',
+      '',
+      UNIVERSAL_FOOTER,
+      '',
+    ].join('\n'),
+  );
+}
