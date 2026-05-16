@@ -81,9 +81,45 @@
 }
 
 .group-block.drag-over {
-  background: color-mix(in srgb, var(--col-status, var(--accent)) 8%, transparent);
-  outline: 1px dashed var(--col-status, var(--accent));
+  background: color-mix(in srgb, var(--col-status, var(--accent)) 18%, transparent);
+  outline: 2px solid var(--col-status, var(--accent));
   outline-offset: 2px;
+}
+
+/* Drag-in-progress: only EMPTY sections inflate (they have no cards to
+ * read as a drop target, so we have to give them a visible rectangle).
+ * Non-empty sections keep their resting size — their cards are already
+ * the visible drop target, the section just listens for the drop. The
+ * active hover lane gets a solid status-hue outline + tint regardless
+ * of empty-ness so the user always sees which lane is being targeted.
+ *
+ * The floating drag image is rendered in JS as our own translucent
+ * <article> clone that follows the cursor; the source card stays
+ * opaque. */
+body[data-dragging='project'] .group-block[data-empty='true'] {
+  opacity: 1;
+  min-height: 96px;
+  padding: 18px 0 28px;
+  outline: 2px dashed color-mix(in srgb, var(--col-status, var(--text-faint)) 55%, transparent);
+  outline-offset: -6px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--col-status, var(--accent)) 3%, transparent);
+}
+
+body[data-dragging='project'] .group-block[data-empty='true'] .group-header {
+  /* Empty headers normally shrink to a thin line — restore comfortable
+   * padding only during drag so the label sits naturally inside the
+   * inflated rectangle, then drop back when the drag ends. */
+  padding: 6px 6px 12px;
+}
+
+/* The active hover target wins regardless of empty-ness: solid 2 px in
+ * the section's status hue + 18 % background tint, so the lane the
+ * cursor is on is unambiguously the active drop target. */
+body[data-dragging='project'] .group-block.drag-over {
+  outline: 2px solid var(--col-status, var(--accent));
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--col-status, var(--accent)) 18%, transparent);
 }
 
 .group-header {

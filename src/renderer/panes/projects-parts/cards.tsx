@@ -77,6 +77,11 @@ export function GroupBlock(props: {
     if (!isAcceptable(e)) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    // Self-heal: dragenter/dragleave can race when a fixed-position ghost
+    // hovers above the section, occasionally clearing the over state mid-
+    // hover. dragover fires continuously while the cursor is on the
+    // target, so re-asserting here keeps the highlight stable.
+    setOver(true);
   };
 
   const handleDragLeave = (e: DragEvent) => {
@@ -233,10 +238,62 @@ export function Card(props: {
     props.onOpen(props.item);
   };
 
+  // Custom ghost state — Chromium in this Electron build ignores opacity
+  // on setDragImage clones (the native snapshotter falls back to the
+  // opaque source screenshot regardless of how we position or style the
+  // element we hand to setDragImage). Instead: hide the native drag
+  // image with a 1×1 transparent png, then render our own translucent
+  // ghost div that follows the cursor via a document-level dragover
+  // listener. The ghost is removed on dragend.
+  let ghostElement: HTMLElement | null = null;
+  let ghostOffsetX = 0;
+  let ghostOffsetY = 0;
+  const onGlobalDragOver = (e: DragEvent) => {
+    if (!ghostElement) return;
+    ghostElement.style.transform = `translate(${e.clientX - ghostOffsetX}px, ${e.clientY - ghostOffsetY}px)`;
+  };
+
   const handleDragStart = (event: DragEvent) => {
     if (!event.dataTransfer) return;
     event.dataTransfer.setData(DRAG_MIME, props.item.path);
     event.dataTransfer.effectAllowed = 'move';
+
+    // Hide the native drag image — Chromium's auto-snapshot would
+    // otherwise render an opaque copy of the source card.
+    const blank = new Image();
+    blank.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    event.dataTransfer.setDragImage(blank, 0, 0);
+
+    // Build a translucent clone to use as our own ghost. Positioned
+    // fixed so its transform follows the cursor regardless of scroll.
+    const source = event.currentTarget as HTMLElement;
+    const sourceWidth = source.offsetWidth;
+    ghostOffsetX = sourceWidth / 2;
+    ghostOffsetY = 24;
+    ghostElement = source.cloneNode(true) as HTMLElement;
+    ghostElement.style.position = 'fixed';
+    ghostElement.style.top = '0';
+    ghostElement.style.left = '0';
+    ghostElement.style.width = `${sourceWidth}px`;
+    ghostElement.style.opacity = '0.55';
+    ghostElement.style.pointerEvents = 'none';
+    ghostElement.style.zIndex = '99999';
+    ghostElement.style.transform = `translate(${event.clientX - ghostOffsetX}px, ${event.clientY - ghostOffsetY}px)`;
+    document.body.appendChild(ghostElement);
+    document.addEventListener('dragover', onGlobalDragOver);
+
+    // body flag lets every .group-block inflate its drop zone via CSS
+    // without each section having to listen for a global drag.
+    document.body.dataset.dragging = 'project';
+  };
+
+  const handleDragEnd = () => {
+    delete document.body.dataset.dragging;
+    if (ghostElement) {
+      ghostElement.remove();
+      ghostElement = null;
+    }
+    document.removeEventListener('dragover', onGlobalDragOver);
   };
 
   // Cmd/Ctrl+1..N maps to KNOWN_STATUSES[0..N-1]; ignore anything else so
@@ -271,6 +328,7 @@ export function Card(props: {
       draggable={isDraggable()}
       tabIndex={0}
       onDragStart={isDraggable() ? handleDragStart : undefined}
+      onDragEnd={isDraggable() ? handleDragEnd : undefined}
       onKeyDown={handleKeyDown}
     >
       <div class="row-head" onClick={handleHeaderClick}>
