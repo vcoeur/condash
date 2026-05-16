@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readSkillsTree } from './skills';
+import { readKimiSkillsTree, readSkillsTree } from './skills';
 
 let tmp: string;
 
@@ -124,5 +124,53 @@ describe('readSkillsTree', () => {
     const tree = (await readSkillsTree(tmp, '.claude/skills'))!;
     const claude = (tree.children ?? []).filter((c) => c.name === 'CLAUDE.md');
     expect(claude.length).toBe(0);
+  });
+});
+
+function setupKimiSkills(): void {
+  mkdirSync(join(tmp, '.kimi'));
+  mkdirSync(join(tmp, '.kimi', 'skills'));
+  mkdirSync(join(tmp, '.kimi', 'skills', 'projects'));
+  writeFileSync(
+    join(tmp, '.kimi', 'skills', 'projects', 'SKILL.md'),
+    '# Projects skill\n\nLead paragraph.\n',
+  );
+}
+
+describe('readKimiSkillsTree', () => {
+  it('returns null when the directory is missing', async () => {
+    const tree = await readKimiSkillsTree(tmp);
+    expect(tree).toBeNull();
+  });
+
+  it('injects synthetic AGENTS.md entries when present at the conception root', async () => {
+    setupKimiSkills();
+    writeFileSync(join(tmp, 'AGENTS.md'), '# Project AGENTS\n\nProject-level rules.\n');
+    writeFileSync(join(tmp, '.kimi', 'AGENTS.md'), '# Inner AGENTS\n\nKimi-dir rules.\n');
+    const tree = (await readKimiSkillsTree(tmp))!;
+    const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
+    // Both candidates surface, in stable order (root first, then `.kimi/`).
+    expect(agents.length).toBe(2);
+    expect(agents[0]?.title).toBe('Project AGENTS');
+    expect(agents[0]?.path).toContain('AGENTS.md');
+    expect(agents[0]?.relPath.startsWith('__kimi__/')).toBe(true);
+    expect(agents[1]?.title).toBe('Inner AGENTS');
+    expect(agents[1]?.relPath).toBe('__kimi__/.kimi/AGENTS.md');
+  });
+
+  it('skips AGENTS.md when neither location exists', async () => {
+    setupKimiSkills();
+    const tree = (await readKimiSkillsTree(tmp))!;
+    const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
+    expect(agents.length).toBe(0);
+  });
+
+  it('surfaces only the `.kimi/AGENTS.md` entry when the conception root lacks AGENTS.md', async () => {
+    setupKimiSkills();
+    writeFileSync(join(tmp, '.kimi', 'AGENTS.md'), '# Inner AGENTS\n\nKimi-dir rules.\n');
+    const tree = (await readKimiSkillsTree(tmp))!;
+    const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
+    expect(agents.length).toBe(1);
+    expect(agents[0]?.relPath).toBe('__kimi__/.kimi/AGENTS.md');
   });
 });

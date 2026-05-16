@@ -14,6 +14,10 @@ import './skills-pane.css';
 // the Generic tab also accepts source-edit mutations. The Kimi tab is
 // read-only because its content is regenerated on every `condash skills
 // install` — see notes/02-design.md §Q1.
+//
+// Each compiled tab also surfaces the conception's agent-config file as a
+// synthetic root-level entry: CLAUDE.md on the Claude tab, AGENTS.md on
+// the Kimi tab (injected in src/main/skills.ts).
 const EDITABLE_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
 const READONLY_AFFORDANCES: ReadonlyArray<TreeAffordance> = [];
 
@@ -34,6 +38,14 @@ function isSkillIndex(node: SkillNode): boolean {
  *  skills root (`relPath` starts with the `__claude__/` sentinel). */
 function isClaudeMd(node: SkillNode): boolean {
   return node.kind === 'file' && node.name === 'CLAUDE.md';
+}
+
+/** Recognise a synthetic AGENTS.md entry injected by the main-process
+ *  skills walker for the Kimi tab. Carries `name === 'AGENTS.md'` and
+ *  lives only at the skills root (`relPath` starts with the `__kimi__/`
+ *  sentinel). */
+function isAgentsMd(node: SkillNode): boolean {
+  return node.kind === 'file' && node.name === 'AGENTS.md';
 }
 
 function isYamlSpec(node: SkillNode): boolean {
@@ -201,13 +213,16 @@ export function SkillsView(props: {
                 // CLAUDE.md only surfaces in the Claude tab at the root level
                 // (Generic and Kimi readers do not inject the synthetic entry).
                 if (dir.relPath === '' && props.tab === 'claude' && isClaudeMd(file)) return true;
+                // AGENTS.md mirrors CLAUDE.md but for the Kimi tab.
+                if (dir.relPath === '' && props.tab === 'kimi' && isAgentsMd(file)) return true;
                 // Compiled tabs surface SKILL.md inside skill subdirs.
                 if (props.tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file))
                   return true;
                 return false;
               }}
               renderSpecialFile={(file, dir) => {
-                if (isClaudeMd(file)) {
+                if (isClaudeMd(file) || isAgentsMd(file)) {
+                  const badge = isClaudeMd(file) ? 'CLAUDE' : 'AGENTS';
                   return (
                     <button
                       type="button"
@@ -219,7 +234,7 @@ export function SkillsView(props: {
                       title={`Open ${file.path}`}
                       aria-label={`Open ${file.path}`}
                     >
-                      <span class="tree-special-badge">CLAUDE</span>
+                      <span class="tree-special-badge">{badge}</span>
                       <span class="tree-special-title">{file.title}</span>
                       <span class="tree-special-meta">{file.relPath}</span>
                     </button>

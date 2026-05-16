@@ -68,8 +68,11 @@ export async function readGenericSkillsTree(conceptionPath: string): Promise<Ski
 
 /**
  * Read the Kimi skills tree at `<conceptionPath>/.kimi/skills/`.
- * Same `.md`-only filter as `readSkillsTree`. No synthetic `CLAUDE.md`
- * injection. Uses `buildShippedLookup` on `.kimi/skills/`.
+ * Same `.md`-only filter as `readSkillsTree`. Injects synthetic
+ * root-level entries for `<conception>/AGENTS.md` and
+ * `<conception>/.kimi/AGENTS.md` when present — mirrors the
+ * `readSkillsTree` CLAUDE.md handling. Uses `buildShippedLookup` on
+ * `.kimi/skills/`.
  */
 export async function readKimiSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
   const root = join(conceptionPath, '.kimi', 'skills');
@@ -79,7 +82,20 @@ export async function readKimiSkillsTree(conceptionPath: string): Promise<SkillN
     return null;
   }
   const shipped = await buildShippedLookup(root);
-  return walk(root, '', 'skills', new Set<string>(), shipped, root, /* acceptYaml */ false);
+  const tree = await walk(
+    root,
+    '',
+    'skills',
+    new Set<string>(),
+    shipped,
+    root,
+    /* acceptYaml */ false,
+  );
+  const agentsEntries = await readConceptionAgentsMd(conceptionPath);
+  if (agentsEntries.length > 0) {
+    tree.children = [...agentsEntries, ...(tree.children ?? [])];
+  }
+  return tree;
 }
 
 /**
@@ -100,10 +116,28 @@ export async function readSkillsTreeForTab(
  *  `relPath` is sentinel-prefixed (`__claude__/...`) so it can't collide with
  *  any real path inside the skills tree. */
 async function readConceptionClaudeMd(conceptionPath: string): Promise<SkillNode[]> {
-  const candidates: Array<{ rel: string; abs: string }> = [
+  return readConceptionAgentConfig(conceptionPath, [
     { rel: '__claude__/CLAUDE.md', abs: join(conceptionPath, 'CLAUDE.md') },
     { rel: '__claude__/.claude/CLAUDE.md', abs: join(conceptionPath, '.claude', 'CLAUDE.md') },
-  ];
+  ]);
+}
+
+/** Probe `<conceptionPath>/AGENTS.md` and `<conceptionPath>/.kimi/AGENTS.md`
+ *  and return synthetic SkillNode entries for whichever exist. The synthetic
+ *  `relPath` is sentinel-prefixed (`__kimi__/...`) so it can't collide with
+ *  any real path inside the skills tree. Mirrors `readConceptionClaudeMd`
+ *  for the Kimi tab. */
+async function readConceptionAgentsMd(conceptionPath: string): Promise<SkillNode[]> {
+  return readConceptionAgentConfig(conceptionPath, [
+    { rel: '__kimi__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md') },
+    { rel: '__kimi__/.kimi/AGENTS.md', abs: join(conceptionPath, '.kimi', 'AGENTS.md') },
+  ]);
+}
+
+async function readConceptionAgentConfig(
+  _conceptionPath: string,
+  candidates: ReadonlyArray<{ rel: string; abs: string }>,
+): Promise<SkillNode[]> {
   const found: SkillNode[] = [];
   for (const { rel, abs } of candidates) {
     try {
@@ -112,11 +146,12 @@ async function readConceptionClaudeMd(conceptionPath: string): Promise<SkillNode
     } catch {
       continue;
     }
-    const meta = await readMarkdownMeta(abs, 'CLAUDE.md');
+    const name = basename(abs);
+    const meta = await readMarkdownMeta(abs, name);
     found.push({
       relPath: rel,
       path: toPosix(abs),
-      name: 'CLAUDE.md',
+      name,
       title: meta.title,
       kind: 'file',
       summary: meta.summary,
