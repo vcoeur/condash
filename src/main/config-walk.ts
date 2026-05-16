@@ -62,8 +62,17 @@ export interface RepoLookup {
   section?: string;
 }
 
-/** Resolve an entry's absolute cwd from `workspace_path` + optional parent + name,
- *  or from an explicit `path` when present. */
+/**
+ * Resolve an entry's absolute cwd. `explicitPath` (when set) takes the place of
+ * `name` in path resolution; `name` then serves only as the display identifier.
+ *
+ * Resolution rules:
+ *   - Absolute `explicitPath` / `name` → returned as-is.
+ *   - Relative path under a `parent` (submodule) → `<workspace>/<parent>/<path>`
+ *     i.e. the explicit path is interpreted relative to the parent directory,
+ *     not to `workspace_path`.
+ *   - Relative path with no parent → `<workspace>/<path>`.
+ */
 export function resolveCwd(
   workspace: string | undefined,
   parent: string | undefined,

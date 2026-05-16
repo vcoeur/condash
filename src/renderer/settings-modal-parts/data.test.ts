@@ -66,6 +66,20 @@ describe('compactRepos — invariants', () => {
     expect(compactRepos([{ name: 'foo', submodules: [] }])).toEqual(['foo']);
   });
 
+  it('drops `path` when identical to `name`', () => {
+    expect(compactRepos([{ name: 'foo', path: 'foo' }])).toEqual(['foo']);
+  });
+
+  it('drops an empty `path` field', () => {
+    expect(compactRepos([{ name: 'foo', path: '' }])).toEqual(['foo']);
+  });
+
+  it('keeps `path` when it differs from `name`', () => {
+    expect(compactRepos([{ name: 'display', path: '/mnt/elsewhere' }])).toEqual([
+      { name: 'display', path: '/mnt/elsewhere' },
+    ]);
+  });
+
   it('preserves section markers verbatim, never adding a phantom name field', () => {
     expect(
       compactRepos([

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isSectionMarker,
+  resolveCwd,
   walkRepos,
   type ConfigShape,
   type RawRepo,
@@ -60,6 +61,53 @@ describe('walkRepos sections', () => {
     const flat = collect(config);
     expect(flat).toHaveLength(1);
     expect(flat[0].section).toBe('Second');
+  });
+});
+
+describe('resolveCwd', () => {
+  it('joins workspace + name when no explicit path is given', () => {
+    expect(resolveCwd('/ws', undefined, 'foo')).toBe('/ws/foo');
+  });
+
+  it('returns an absolute name unchanged', () => {
+    expect(resolveCwd('/ws', undefined, '/abs/foo')).toBe('/abs/foo');
+  });
+
+  it('returns an absolute explicit path unchanged, ignoring workspace and name', () => {
+    expect(resolveCwd('/ws', undefined, 'display-only', '/mnt/backup/foo')).toBe('/mnt/backup/foo');
+  });
+
+  it('resolves a relative explicit path under workspace_path', () => {
+    expect(resolveCwd('/ws', undefined, 'display', 'custom/foo')).toBe('/ws/custom/foo');
+  });
+
+  it('resolves a relative explicit path under <workspace>/<parent> for submodules', () => {
+    expect(resolveCwd('/ws', 'mono', 'display', 'pkg/sub')).toBe('/ws/mono/pkg/sub');
+  });
+
+  it('falls back to name as the path when explicit path is undefined', () => {
+    expect(resolveCwd('/ws', 'mono', 'sub')).toBe('/ws/mono/sub');
+  });
+
+  it('handles a missing workspace by returning name relative to root', () => {
+    expect(resolveCwd(undefined, undefined, 'foo')).toBe('foo');
+  });
+});
+
+describe('walkRepos with explicit path', () => {
+  it('threads `entry.path` through to `cwd`', () => {
+    const config: ConfigShape = {
+      workspace_path: '/ws',
+      repositories: [
+        { name: 'display-name', path: '/mnt/backup/elsewhere' },
+        { name: 'rel', path: 'custom/loc' },
+      ],
+    };
+    const flat = collect(config);
+    expect(flat.map((e) => [e.display, e.cwd])).toEqual([
+      ['display-name', '/mnt/backup/elsewhere'],
+      ['rel', '/ws/custom/loc'],
+    ]);
   });
 });
 

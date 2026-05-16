@@ -210,8 +210,8 @@ Per-entry launcher slots rendered in the terminal tab-strip spawn dropdown. The 
 ```
 
 | Key       | Type             | Required | Meaning                                                                                                                                                                                                              |
-| --------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | --------------------------------- |
-| `label`   | string           | yes      | User-defined name shown in the spawn dropdown. Falls back to `title                                                                                                                                                  |     | command` if empty at render time. |
+| --------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `label`   | string           | yes      | User-defined name shown in the spawn dropdown. Falls back to `title` then to `command` if empty at render time.                                                                                                      |
 | `command` | non-empty string | yes      | Shell-style command spawned when the entry is selected. Resolved through the configured `shell` so pipelines and aliases work. Empty / whitespace is treated as the entry being unset (no dropdown option rendered). |
 | `title`   | string           | no       | Initial pinned tab label at spawn time. When unset, the tab is labelled with the `command` (current behaviour for legacy `launcher_command`). The user's inline rename always wins over this.                        |
 
