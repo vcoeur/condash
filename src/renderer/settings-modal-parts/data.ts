@@ -235,6 +235,7 @@ export function compactRepos(repos: RawRepo[]): RawRepo[] {
     // Repo-object variant from here on.
     const copy = { ...entry } as {
       name: string;
+      path?: string;
       label?: string;
       run?: string;
       force_stop?: string;
@@ -251,6 +252,8 @@ export function compactRepos(repos: RawRepo[]): RawRepo[] {
       if (k === 'name') continue;
       if (copy[k] === undefined || copy[k] === '') delete copy[k];
     }
+    // Drop path when it is redundant (identical to name).
+    if (copy.path === copy.name) delete copy.path;
     const extras = (Object.keys(copy) as (keyof typeof copy)[]).filter((k) => k !== 'name');
     // Only compact to a bare string when there is an actual name to compact
     // to — a blank placeholder row keeps the object shape so the user sees

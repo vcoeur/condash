@@ -18,6 +18,7 @@ const submoduleRepoEntry: z.ZodType<RawSubmoduleRepo> = z.union([
   z
     .object({
       name: z.string(),
+      path: z.string().optional(),
       label: z.string().min(1).optional(),
       run: z.string().optional(),
       force_stop: z.string().optional(),
@@ -40,6 +41,7 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
   z
     .object({
       name: z.string(),
+      path: z.string().optional(),
       label: z.string().min(1).optional(),
       run: z.string().optional(),
       force_stop: z.string().optional(),
@@ -69,6 +71,7 @@ export type RawSubmoduleRepo =
   | string
   | {
       name: string;
+      path?: string;
       label?: string;
       run?: string;
       force_stop?: string;
@@ -81,6 +84,7 @@ export type RawRepo =
   | string
   | {
       name: string;
+      path?: string;
       label?: string;
       run?: string;
       force_stop?: string;
