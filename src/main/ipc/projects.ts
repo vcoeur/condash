@@ -183,17 +183,15 @@ export function registerProjectsIpc(): void {
         apps: [],
         branch: null,
         base: null,
+        // The renderer asked for status `now | review | later | backlog`.
+        // createProjectCore writes it into the YAML directly — no post-flip
+        // via transitionStatus needed, since none of the four edges
+        // transitionStatus's done-edge logic.
+        status: input.status,
         severity: input.severity ?? null,
         severityImpact: input.severityImpact ?? null,
         environment: input.environment ?? null,
       });
-      // The renderer asked for status `now | review | later | backlog`, but
-      // createProjectCore always renders `Status: now`. If the user picked
-      // anything else, flip it now via the same transitionStatus primitive
-      // — that keeps the status-write path single-source.
-      if (input.status !== 'now') {
-        await transitionStatus(result.readme, input.status);
-      }
       return {
         slug: result.slug,
         path: result.path,

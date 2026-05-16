@@ -6,17 +6,20 @@ import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { readHeader } from '../../main/header-io';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { NOUN_FLAGS } from './projects';
 
 export async function statusCommand(
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const summary = typeof args.flags.summary === 'string' ? args.flags.summary.trim() : undefined;
+  delete args.flags.summary;
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const sub = args.positional[0];
   if (sub === 'get') {
     const slug = args.positional[1];
     if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects status get <slug>');
-    assertNoExtraFlags(args);
     const candidate = await resolveSlug(conceptionPath, slug);
     const header = await readHeader(candidate.readmePath);
     emit(
@@ -35,9 +38,6 @@ export async function statusCommand(
     if (!(KNOWN_STATUSES as readonly string[]).includes(value)) {
       validation(`Status '${value}' not in {${KNOWN_STATUSES.join(', ')}}`);
     }
-    const summary = typeof args.flags.summary === 'string' ? args.flags.summary.trim() : undefined;
-    delete args.flags.summary;
-    assertNoExtraFlags(args);
     const candidate = await resolveSlug(conceptionPath, slug);
     const transition = await transitionStatus(candidate.readmePath, value, { summary });
     const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
@@ -66,16 +66,16 @@ export async function closeProject(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects close <slug>');
   const newStatus = (args.flags.status as string | undefined) ?? 'done';
-  if (!(KNOWN_STATUSES as readonly string[]).includes(newStatus)) {
-    validation(`Status '${newStatus}' not in {${KNOWN_STATUSES.join(', ')}}`);
-  }
   const summary = (args.flags.summary as string | undefined)?.trim();
   const noTouchDirty = args.flags['no-touch-dirty'] === true;
   for (const k of ['status', 'summary', 'no-touch-dirty']) delete args.flags[k];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
+  const slug = args.positional[0];
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects close <slug>');
+  if (!(KNOWN_STATUSES as readonly string[]).includes(newStatus)) {
+    validation(`Status '${newStatus}' not in {${KNOWN_STATUSES.join(', ')}}`);
+  }
 
   const candidate = await resolveSlug(conceptionPath, slug);
   const header = await readHeader(candidate.readmePath);
@@ -108,17 +108,17 @@ export async function reopenProject(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const target = (args.flags.status as string | undefined) ?? 'now';
+  delete args.flags.status;
+  assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
   if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects reopen <slug>');
-  const target = (args.flags.status as string | undefined) ?? 'now';
   if (!(KNOWN_STATUSES as readonly string[]).includes(target)) {
     validation(`Status '${target}' not in {${KNOWN_STATUSES.join(', ')}}`);
   }
   if (target === 'done') {
     validation(`reopen target cannot be 'done' — use \`condash projects close\` instead`);
   }
-  delete args.flags.status;
-  assertNoExtraFlags(args);
   const candidate = await resolveSlug(conceptionPath, slug);
   const header = await readHeader(candidate.readmePath);
   const previous = (header.status ?? '').toLowerCase();

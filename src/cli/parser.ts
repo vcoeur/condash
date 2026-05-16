@@ -207,12 +207,70 @@ export function takeUniversalFlags(args: ParsedArgs): UniversalFlags {
  * but every command was silently dropping unknown flags. Call this at
  * the END of a command's flag extraction (after pulling each known key
  * into a local) to catch typos like `--sortx status`.
+ *
+ * When `siblingPool` is supplied, each unknown flag is matched against it
+ * via Levenshtein distance ≤ 2; the closest unique match is appended as
+ * `(did you mean --X?)`. Pass the union of every flag valid on the noun
+ * (across its verbs), not just the current verb's set, so a typo of a
+ * sibling-verb flag is suggested even when this verb wouldn't accept it.
+ * Pre-2026-05-16 callers of `assertNoExtraFlags(args)` keep working
+ * unchanged (no suggestion, same single-flag error).
  */
-export function assertNoExtraFlags(args: ParsedArgs): void {
+export function assertNoExtraFlags(args: ParsedArgs, siblingPool?: readonly string[]): void {
   const extras = Object.keys(args.flags);
   if (extras.length === 0) return;
   const word = extras.length === 1 ? 'flag' : 'flags';
-  throw new UsageError(`Unknown ${word}: ${extras.map((k) => `--${k}`).join(', ')}`);
+  const tagged = extras.map((k) => {
+    if (!siblingPool) return `--${k}`;
+    const hint = suggestFlag(k, siblingPool);
+    return hint ? `--${k} (did you mean --${hint}?)` : `--${k}`;
+  });
+  throw new UsageError(`Unknown ${word}: ${tagged.join(', ')}`);
+}
+
+/**
+ * Closest match for `typo` within Levenshtein distance ≤ 2; returns null
+ * when nothing is close enough or when two candidates tie. Used by
+ * `assertNoExtraFlags` to attach a `(did you mean --X?)` hint to unknown
+ * flag errors.
+ */
+export function suggestFlag(typo: string, candidates: readonly string[]): string | null {
+  let best: { name: string; dist: number } | null = null;
+  for (const cand of candidates) {
+    if (cand === typo) continue; // shouldn't happen — typo by definition isn't valid
+    const d = levenshtein(typo, cand);
+    if (d > 2) continue;
+    if (!best || d < best.dist) {
+      best = { name: cand, dist: d };
+    } else if (d === best.dist && cand !== best.name) {
+      // Two candidates at the same distance — prefer no suggestion over a
+      // coin-flip.
+      return null;
+    }
+  }
+  return best?.name ?? null;
+}
+
+/**
+ * Iterative Levenshtein with a single rolling row. ~12 lines instead of a
+ * dependency; runs once per unknown flag against ~20-flag pools.
+ */
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  let prev = new Array<number>(b.length + 1);
+  let curr = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[b.length];
 }
 
 /**

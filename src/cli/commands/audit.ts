@@ -1,17 +1,35 @@
 import { runAudit, type AuditCheckName, type AuditReport } from '../../main/audit';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { UNIVERSAL_FOOTER } from '../help';
 
 const ALL_AUDIT_CHECKS: AuditCheckName[] = ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index'];
+
+const KNOWN_FLAGS_AUDIT = ['include'] as const;
+
+const NOUN_FLAGS: readonly string[] = [...new Set<string>([...KNOWN_FLAGS_AUDIT])];
 
 export async function runAuditCommand(
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
+  universalHelp = false,
 ): Promise<void> {
+  // `audit` is verbless. The two help triggers are:
+  //   - `condash audit --help`
+  //   - `condash audit help` (positional alias)
+  // Either prints the same usage block.
+  if (universalHelp || (args.positional[0] === 'help' && args.positional.length === 1)) {
+    printHelp();
+    return;
+  }
+  const includeFlag = args.flags.include;
+  delete args.flags.include;
+  assertNoExtraFlags(args, NOUN_FLAGS);
+
   const includeRaw =
-    typeof args.flags.include === 'string'
-      ? args.flags.include
+    typeof includeFlag === 'string'
+      ? includeFlag
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
@@ -28,10 +46,29 @@ export async function runAuditCommand(
       );
     }
   }
-  delete args.flags.include;
-  assertNoExtraFlags(args);
   const report = await runAudit(conceptionPath, include as AuditCheckName[]);
   emit(ctx, report, formatAuditPretty, [], { streamField: 'issues' });
+}
+
+function printHelp(): void {
+  process.stdout.write(
+    [
+      'condash audit [--include <checks>]',
+      '',
+      'Run umbrella audits across the conception tree.',
+      '',
+      'Optional:',
+      `  --include    Comma-separated subset of {${ALL_AUDIT_CHECKS.join(', ')}}, or 'all' (default).`,
+      '',
+      'Examples:',
+      '  condash audit',
+      '  condash audit --include lfs,binaries --json',
+      '  condash audit --include all',
+      '',
+      UNIVERSAL_FOOTER,
+      '',
+    ].join('\n'),
+  );
 }
 
 function formatAuditPretty(report: AuditReport): string {

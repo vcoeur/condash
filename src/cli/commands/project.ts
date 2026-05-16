@@ -12,6 +12,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { UNIVERSAL_FOOTER } from '../help';
 import {
   AGENTS_MD_TARGETS,
   AGENTS_MD_OUTPUTS,
@@ -19,6 +20,10 @@ import {
   type AgentsMdTarget,
 } from '../../agents-md';
 import { writeFileMkdir } from './install-shared';
+
+const KNOWN_FLAGS_BUILD = ['dest', 'dry-run'] as const;
+
+const NOUN_FLAGS: readonly string[] = [...new Set<string>([...KNOWN_FLAGS_BUILD])];
 
 interface BuildReport {
   sourceDir: string;
@@ -30,7 +35,16 @@ export async function runProject(
   verb: string | null,
   args: ParsedArgs,
   ctx: OutputContext,
+  universalHelp = false,
 ): Promise<void> {
+  if (verb === 'help') {
+    printHelp(args.positional[0] ?? null);
+    return;
+  }
+  if (universalHelp) {
+    printHelp(verb);
+    return;
+  }
   switch (verb) {
     case 'build':
       return await buildProject(args, ctx);
@@ -40,10 +54,12 @@ export async function runProject(
 }
 
 async function buildProject(args: ParsedArgs, ctx: OutputContext): Promise<void> {
-  const dest = await resolveDest(args);
   const dryRun = args.flags['dry-run'] === true;
+  // `dest` is read inside resolveDest; stash + clear before assertNoExtraFlags.
+  const destFlag = args.flags.dest;
   for (const k of ['dest', 'dry-run']) delete args.flags[k];
-  assertNoExtraFlags(args);
+  assertNoExtraFlags(args, NOUN_FLAGS);
+  const dest = await resolveDest(destFlag);
 
   const sourceDir = join(dest, '.agents', 'agents');
   const commonPath = join(sourceDir, 'common.md');
@@ -82,8 +98,7 @@ async function buildProject(args: ParsedArgs, ctx: OutputContext): Promise<void>
   });
 }
 
-async function resolveDest(args: ParsedArgs): Promise<string> {
-  const explicit = args.flags.dest;
+async function resolveDest(explicit: string | boolean | undefined): Promise<string> {
   if (typeof explicit === 'string') {
     return isAbsolute(explicit) ? explicit : resolve(process.cwd(), explicit);
   }
@@ -93,4 +108,44 @@ async function resolveDest(args: ParsedArgs): Promise<string> {
   } catch {
     return process.cwd();
   }
+}
+
+function printHelp(verb: string | null): void {
+  if (verb === 'build' || verb === null) {
+    process.stdout.write(
+      [
+        'condash project build [--dest <path>] [--dry-run]',
+        '',
+        "Compile the conception's `.agents/agents/` source tree into per-agent",
+        'output files (`.claude/CLAUDE.md` and `.kimi/AGENTS.md`).',
+        '',
+        'Optional:',
+        '  --dest      Conception root to build (default: resolved conception or cwd).',
+        '  --dry-run   Show what would be written without modifying anything.',
+        '',
+        'Examples:',
+        '  condash project build',
+        '  condash project build --dest ~/src/vcoeur/conception --dry-run',
+        '',
+        UNIVERSAL_FOOTER,
+        '',
+      ].join('\n'),
+    );
+    return;
+  }
+  printSubHelp();
+}
+
+function printSubHelp(): void {
+  process.stdout.write(
+    [
+      'condash project <verb> [args]',
+      '',
+      'Verbs:',
+      '  build   Compile .agents/agents/ → .claude/CLAUDE.md + .kimi/AGENTS.md.',
+      '',
+      UNIVERSAL_FOOTER,
+      '',
+    ].join('\n'),
+  );
 }
