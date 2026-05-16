@@ -16,6 +16,7 @@ Short pages, one per surface. Look things up here; learn them in **[Get started]
 - [Keyboard shortcuts](shortcuts.md) — dashboard and terminal.
 - [README format](readme-format.md) — header fields and rules.
 - [Status, steps, deliverables](conception-convention.md) — the content-level conventions.
+- [AGENTS.md style guide](agents-md-style.md) — how to write the per-conception `## Specifics` section.
 
 **Advanced**
 
