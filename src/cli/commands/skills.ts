@@ -1063,12 +1063,28 @@ interface UserSkill {
   hosts: string[] | null;
 }
 
+type ScriptCategory = 'agents' | 'claude';
+
+interface UserScript {
+  category: ScriptCategory;
+  source: string;
+  target: string;
+  relPath: string;
+}
+
+interface UserScriptsReport {
+  sources: Record<ScriptCategory, string>;
+  targets: Record<ScriptCategory, string>;
+  installed: { category: ScriptCategory; relPath: string }[];
+}
+
 interface UserInstallReport {
   source: string;
   outputs: Record<CompileTarget, string>;
   hostLabel: string | null;
   skipped: { skill: string; hosts: string[] }[];
   compiled: { skill: string; target: CompileTarget; relPath: string }[];
+  scripts: UserScriptsReport;
 }
 
 function userSourceRoot(): string {
@@ -1080,8 +1096,50 @@ function userTargetRoot(target: CompileTarget): string {
   return process.env[envName] ?? join(homedir(), `.${target}`, 'skills');
 }
 
+function userScriptSourceRoot(category: ScriptCategory): string {
+  if (category === 'agents') {
+    return (
+      process.env.CONDASH_USER_AGENTS_SCRIPTS_ROOT
+      ?? join(homedir(), '.config', 'agents', 'agents-scripts')
+    );
+  }
+  return (
+    process.env.CONDASH_USER_CLAUDE_SCRIPTS_ROOT
+    ?? join(homedir(), '.config', 'agents', 'claude-scripts')
+  );
+}
+
+function userScriptTargetRoot(category: ScriptCategory): string {
+  if (category === 'agents') {
+    return (
+      process.env.CONDASH_USER_AGENTS_SCRIPTS_TARGET
+      ?? join(homedir(), '.config', 'agents', 'scripts')
+    );
+  }
+  return process.env.CONDASH_USER_CLAUDE_SCRIPTS_TARGET ?? join(homedir(), '.claude', 'scripts');
+}
+
 function userHostFile(): string {
   return process.env.CONDASH_USER_HOST_FILE ?? join(homedir(), '.claude', '.host');
+}
+
+async function readUserScripts(): Promise<UserScript[]> {
+  const out: UserScript[] = [];
+  for (const category of ['agents', 'claude'] as const) {
+    const source = userScriptSourceRoot(category);
+    const target = userScriptTargetRoot(category);
+    let files: string[];
+    try {
+      files = await collectFilesRelative(source);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw err;
+    }
+    for (const relPath of files) {
+      out.push({ category, source, target, relPath });
+    }
+  }
+  return out;
 }
 
 async function readHostLabel(): Promise<string | null> {
@@ -1175,6 +1233,17 @@ async function installUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<
     hostLabel,
     skipped: [],
     compiled: [],
+    scripts: {
+      sources: {
+        agents: userScriptSourceRoot('agents'),
+        claude: userScriptSourceRoot('claude'),
+      },
+      targets: {
+        agents: userScriptTargetRoot('agents'),
+        claude: userScriptTargetRoot('claude'),
+      },
+      installed: [],
+    },
   };
 
   for (const skill of selected) {
@@ -1192,6 +1261,22 @@ async function installUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<
         report.compiled.push({ skill: skill.name, target, relPath });
       }
     }
+  }
+
+  // Scripts: rsync from staging dirs to final targets with +x. No compile,
+  // no manifest, no refuse-on-edit. Always run regardless of skill positional
+  // filter — scripts have no spec.yaml and no name addressable on the CLI.
+  // Sources silently absent → zero rows, no error.
+  const scripts = await readUserScripts();
+  for (const script of scripts) {
+    const srcPath = join(script.source, script.relPath);
+    const dstPath = join(script.target, script.relPath);
+    const buf = await fs.readFile(srcPath);
+    if (!dryRun) {
+      await writeFileMkdir(dstPath, buf);
+      await fs.chmod(dstPath, 0o755);
+    }
+    report.scripts.installed.push({ category: script.category, relPath: script.relPath });
   }
 
   emit(ctx, report, formatUserInstallHuman);
@@ -1217,6 +1302,16 @@ function formatUserInstallHuman(report: UserInstallReport): string {
     );
     lines.push(`Compiled outputs: ${parts.join(', ')}`);
   }
+  if (report.scripts.installed.length > 0) {
+    const byCategory = new Map<ScriptCategory, number>();
+    for (const s of report.scripts.installed) {
+      byCategory.set(s.category, (byCategory.get(s.category) ?? 0) + 1);
+    }
+    const parts = (['agents', 'claude'] as const)
+      .filter((c) => byCategory.has(c))
+      .map((c) => `${c}=${byCategory.get(c)}`);
+    lines.push(`Scripts installed → ${report.scripts.targets.agents}, ${report.scripts.targets.claude} (${parts.join(', ')})`);
+  }
   return lines.join('\n') + '\n';
 }
 
@@ -1225,21 +1320,35 @@ async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   assertNoExtraFlags(args, NOUN_FLAGS);
   const all = await readUserSkills();
   const hostLabel = await readHostLabel();
-  const rows = all.map((s) => ({
+  const skillRows = all.map((s) => ({
     name: s.name,
     description: s.description,
     files: s.files.length,
     hosts: s.hosts,
     allowedOnHost: hostAllowed(s, hostLabel),
   }));
+  const scripts = await readUserScripts();
+  const scriptsByCategory: Record<ScriptCategory, { source: string; target: string; files: string[] }> = {
+    agents: {
+      source: userScriptSourceRoot('agents'),
+      target: userScriptTargetRoot('agents'),
+      files: scripts.filter((s) => s.category === 'agents').map((s) => s.relPath),
+    },
+    claude: {
+      source: userScriptSourceRoot('claude'),
+      target: userScriptTargetRoot('claude'),
+      files: scripts.filter((s) => s.category === 'claude').map((s) => s.relPath),
+    },
+  };
   emit(
     ctx,
-    { source: userSourceRoot(), hostLabel, skills: rows },
+    { source: userSourceRoot(), hostLabel, skills: skillRows, scripts: scriptsByCategory },
     (data) => {
       const d = data as {
         source: string;
         hostLabel: string | null;
-        skills: typeof rows;
+        skills: typeof skillRows;
+        scripts: typeof scriptsByCategory;
       };
       const lines: string[] = [`Source: ${d.source}`];
       if (d.hostLabel !== null) lines.push(`Host: ${d.hostLabel}`);
@@ -1252,6 +1361,12 @@ async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
               : ' [skipped: not for this host]';
         lines.push(`  ${r.name.padEnd(20)} ${(r.description ?? '').slice(0, 80)}${hostTag}`);
       }
+      for (const category of ['agents', 'claude'] as const) {
+        const block = d.scripts[category];
+        if (block.files.length === 0) continue;
+        lines.push(`Scripts (${category}): ${block.source} → ${block.target}`);
+        for (const relPath of block.files) lines.push(`  ${relPath}`);
+      }
       return lines.join('\n') + '\n';
     },
     [],
@@ -1259,12 +1374,20 @@ async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   );
 }
 
-interface UserStatusEntry {
-  skill: string;
-  target: CompileTarget;
-  relPath: string;
-  state: 'ok' | 'stale' | 'missing' | 'skipped';
-}
+type UserStatusEntry =
+  | {
+      kind: 'skill';
+      skill: string;
+      target: CompileTarget;
+      relPath: string;
+      state: 'ok' | 'stale' | 'missing' | 'skipped';
+    }
+  | {
+      kind: 'script';
+      category: ScriptCategory;
+      relPath: string;
+      state: 'ok' | 'stale' | 'missing';
+    };
 
 async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   delete args.flags.user;
@@ -1275,7 +1398,13 @@ async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<v
 
   for (const skill of all) {
     if (!hostAllowed(skill, hostLabel)) {
-      items.push({ skill: skill.name, target: 'claude', relPath: '-', state: 'skipped' });
+      items.push({
+        kind: 'skill',
+        skill: skill.name,
+        target: 'claude',
+        relPath: '-',
+        state: 'skipped',
+      });
       continue;
     }
     const parsed = await parseSkillspec(skill.sourceDir);
@@ -1290,13 +1419,29 @@ async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<v
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
         }
-        let state: UserStatusEntry['state'];
+        let state: 'ok' | 'stale' | 'missing';
         if (onDisk === null) state = 'missing';
         else if (Buffer.compare(onDisk, content) === 0) state = 'ok';
         else state = 'stale';
-        items.push({ skill: skill.name, target, relPath, state });
+        items.push({ kind: 'skill', skill: skill.name, target, relPath, state });
       }
     }
+  }
+
+  const scripts = await readUserScripts();
+  for (const script of scripts) {
+    const srcContent = await fs.readFile(join(script.source, script.relPath));
+    let onDisk: Buffer | null = null;
+    try {
+      onDisk = await fs.readFile(join(script.target, script.relPath));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    let state: 'ok' | 'stale' | 'missing';
+    if (onDisk === null) state = 'missing';
+    else if (Buffer.compare(onDisk, srcContent) === 0) state = 'ok';
+    else state = 'stale';
+    items.push({ kind: 'script', category: script.category, relPath: script.relPath, state });
   }
 
   emit(
@@ -1304,20 +1449,35 @@ async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<v
     { source: userSourceRoot(), hostLabel, items },
     (data) => {
       const d = data as { source: string; hostLabel: string | null; items: UserStatusEntry[] };
-      if (d.items.length === 0) return `(no skillspecs under ${d.source})\n`;
-      const widths = {
-        skill: Math.max(5, ...d.items.map((r) => r.skill.length)),
-        target: 6,
-        file: Math.max(4, ...d.items.map((r) => r.relPath.length)),
-      };
-      return (
-        d.items
-          .map(
-            (r) =>
-              `  ${r.skill.padEnd(widths.skill)}  ${r.target.padEnd(widths.target)}  ${r.relPath.padEnd(widths.file)}  ${r.state}`,
-          )
-          .join('\n') + '\n'
-      );
+      if (d.items.length === 0) return `(nothing tracked under ${d.source})\n`;
+      const skillRows = d.items.filter((r): r is Extract<UserStatusEntry, { kind: 'skill' }> => r.kind === 'skill');
+      const scriptRows = d.items.filter((r): r is Extract<UserStatusEntry, { kind: 'script' }> => r.kind === 'script');
+      const lines: string[] = [];
+      if (skillRows.length > 0) {
+        const widths = {
+          skill: Math.max(5, ...skillRows.map((r) => r.skill.length)),
+          target: 6,
+          file: Math.max(4, ...skillRows.map((r) => r.relPath.length)),
+        };
+        for (const r of skillRows) {
+          lines.push(
+            `  ${r.skill.padEnd(widths.skill)}  ${r.target.padEnd(widths.target)}  ${r.relPath.padEnd(widths.file)}  ${r.state}`,
+          );
+        }
+      }
+      if (scriptRows.length > 0) {
+        if (skillRows.length > 0) lines.push('');
+        const widths = {
+          category: Math.max(8, ...scriptRows.map((r) => `script-${r.category}`.length)),
+          file: Math.max(4, ...scriptRows.map((r) => r.relPath.length)),
+        };
+        for (const r of scriptRows) {
+          lines.push(
+            `  ${`script-${r.category}`.padEnd(widths.category)}  ${r.relPath.padEnd(widths.file)}  ${r.state}`,
+          );
+        }
+      }
+      return lines.join('\n') + '\n';
     },
     [],
     { streamField: 'items' },
@@ -1415,8 +1575,13 @@ function printHelp(verb: string | null): void {
           'Install (or refresh) shipped skills + top-level files into the conception.',
           'Refuses to overwrite user-edited sources unless --force.',
           '',
+          'User scope (--user) also installs script trees (rsync + chmod +x, no compile):',
+          '  ~/.config/agents/agents-scripts/  → ~/.config/agents/scripts/',
+          '  ~/.config/agents/claude-scripts/  → ~/.claude/scripts/',
+          'Sources are silently skipped when absent.',
+          '',
           'Optional:',
-          '  --user        User scope (~/.config/agents/skills → ~/.claude/, ~/.kimi/).',
+          '  --user        User scope (~/.config/agents/skills → ~/.claude/, ~/.kimi/; plus script trees above).',
           '  --dest <path> Override repo-scope destination.',
           '  --force       Override refuse-on-edit (repo scope only).',
           '  --diff        Show a unified diff per refused item.',
