@@ -37,13 +37,28 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
 
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);
 
-  const [projectFiles, knowledgeFiles, resourceFiles, skillFiles, logFiles] = await Promise.all([
+  // Skills search covers all three trees (Generic / Claude / Kimi). The
+  // source label stays `skills` for every hit; the relPath shown to the
+  // user (e.g. `.agents/skills/...` vs `.claude/skills/...`) is what
+  // distinguishes them in the result list.
+  const [
+    projectFiles,
+    knowledgeFiles,
+    resourceFiles,
+    skillFilesClaude,
+    skillFilesGeneric,
+    skillFilesKimi,
+    logFiles,
+  ] = await Promise.all([
     collectProjectFiles(join(conceptionPath, 'projects')),
     collectKnowledgeFiles(join(conceptionPath, 'knowledge')),
     collectResourceFiles(join(conceptionPath, resources)),
     collectSkillFiles(join(conceptionPath, skills)),
+    collectSkillFiles(join(conceptionPath, '.agents', 'skills')),
+    collectSkillFiles(join(conceptionPath, '.kimi', 'skills')),
     collectLogFiles(condashLogsRoot(conceptionPath)),
   ]);
+  const skillFiles = [...skillFilesClaude, ...skillFilesGeneric, ...skillFilesKimi];
 
   const matchPromises: Promise<MatchOutput | null>[] = [];
 

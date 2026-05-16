@@ -105,7 +105,7 @@ Legacy formats — JSONL event streams from condash ≤ 2.22, compressed `.txt.g
 | `workspace_path` | Directory condash resolves relative repo paths against. Every direct subdirectory containing a `.git/` shows up in the **Code** pane. If unset, the pane is hidden. Repos with an explicit `path` may live outside this root.                                                    |
 | `worktrees_path` | Additional sandbox for the "open in IDE" buttons. Paths outside `workspace_path` and `worktrees_path` are rejected before the shell sees them.                                                                                                                                   |
 | `resources_path` | Directory backing the **Resources** pane. Relative paths are resolved against `<conception_path>`; default `"resources"`. Every file under this tree (any extension) shows up as a card. Unset = same as default. See [Resources pane guide](../guides/resources-pane.md).       |
-| `skills_path`    | Directory backing the **Skills** pane. Relative paths are resolved against `<conception_path>`; default `".claude/skills"`. Markdown only. Each skill renders as a section with its `SKILL.md` body. Unset = same as default. See [Skills pane guide](../guides/skills-pane.md). |
+| `skills_path`    | Directory backing the **Skills** pane's **Claude** tab. Relative paths are resolved against `<conception_path>`; default `".claude/skills"`. Markdown only. Each skill renders as a section with its `SKILL.md` body. Unset = same as default. The pane's other two tabs (**Generic**, **Kimi**) read from fixed paths — `.agents/skills/` and `.kimi/skills/` respectively — and are not user-configurable. See [Skills pane guide](../guides/skills-pane.md). |
 
 ### `repositories`
 
@@ -308,10 +308,13 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
   "treeExpansion": {
     "knowledge": ["topics", "topics/security"],
     "resources": [],
-    "skills": ["pr"]
+    "skillsGeneric": [],
+    "skillsClaude": ["pr"],
+    "skillsKimi": []
   },
   "selectedBranches": ["feature-foo", "release-2026-05"],
-  "branchFilterStickyAll": false
+  "branchFilterStickyAll": false,
+  "skillsActiveTab": "claude"
 }
 ```
 
@@ -324,9 +327,10 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `layout`                | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                                                                                                                             |
 | `welcome`               | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                                                                                                                                    |
 | `cardMinWidth`          | Per-pane card grid min-width. See [CardMinWidth](#cardminwidth) below.                                                                                                                                                                                     |
-| `treeExpansion`         | Per-pane set of expanded directory `relPath`s for the Knowledge / Resources / Skills tree panes. Empty (or missing) means everything is collapsed — the on-purpose first-load state per #89.                                                               |
+| `treeExpansion`         | Per-pane set of expanded directory `relPath`s for the Knowledge / Resources / Skills tree panes. Skills carries three independent sets — `skillsGeneric`, `skillsClaude`, `skillsKimi` — one per tab. Empty (or missing) means everything is collapsed — the on-purpose first-load state per #89. The legacy `skills` key is migrated into `skillsClaude` on first read and never written back. |
 | `selectedBranches`      | Branches pinned by the Code-pane top-of-pane filter. The primary worktree row is always rendered; this set is additive on top of it. Honoured only when `branchFilterStickyAll` is false.                                                                  |
 | `branchFilterStickyAll` | True ⇒ Code-pane filter is in **All (sticky)** mode: every branch is shown and new ones auto-pin. False ⇒ honour `selectedBranches` exactly (empty = main only). Defaults to true on first read when no explicit selection was ever made, false otherwise. |
+| `skillsActiveTab`       | Active tab in the Skills pane — `generic`, `claude`, or `kimi`. Defaults to `claude` (preserves pre-tabs behaviour for users without an explicit selection). Persisted on every tab switch.                                                                |
 
 Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`) are also valid in `settings.json` — they act as global defaults that any conception's `.condash/settings.json` may override. The reverse direction is forbidden: a conception's `settings.json` cannot set `lastConceptionPath` or `recentConceptionPaths`, since those describe the tree's own location and the user's machine-local recents list.
 
