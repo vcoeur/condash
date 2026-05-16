@@ -21,6 +21,19 @@ export async function getCurrentBranch(repoPath: string): Promise<string | null>
 }
 
 /**
+ * Probe whether `repoPath` is inside a git repository.
+ * Returns false when the path doesn't exist or isn't a git repo.
+ */
+export async function isGitRepo(repoPath: string): Promise<boolean> {
+  try {
+    await exec('git', ['rev-parse', '--git-dir'], { cwd: repoPath });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * `git worktree list --porcelain` parser. Returns an empty list when the path
  * is not a git repository. Each worktree block looks like:
  *

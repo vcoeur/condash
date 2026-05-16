@@ -353,6 +353,9 @@ export interface RepoEntry {
   dirty: number | null;
   /** True when path doesn't exist or isn't a git repo. */
   missing: boolean;
+  /** True when the path exists and is a git repository. False or omitted
+   *  for plain directories that are not under git. */
+  isGit?: boolean;
   /** True when condash.json sets a `force_stop:` for this entry. */
   hasForceStop?: boolean;
   /** True when condash.json sets a `run:` for this entry. The renderer

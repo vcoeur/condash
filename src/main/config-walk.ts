@@ -12,6 +12,7 @@ export type RawSubmoduleRepo =
   | string
   | {
       name: string;
+      path?: string;
       label?: string;
       run?: string;
       force_stop?: string;
@@ -21,6 +22,7 @@ export type RawRepo =
   | string
   | {
       name: string;
+      path?: string;
       label?: string;
       run?: string;
       force_stop?: string;
@@ -60,17 +62,29 @@ export interface RepoLookup {
   section?: string;
 }
 
-/** Resolve an entry's absolute cwd from `workspace_path` + optional parent + name. */
+/**
+ * Resolve an entry's absolute cwd. `explicitPath` (when set) takes the place of
+ * `name` in path resolution; `name` then serves only as the display identifier.
+ *
+ * Resolution rules:
+ *   - Absolute `explicitPath` / `name` → returned as-is.
+ *   - Relative path under a `parent` (submodule) → `<workspace>/<parent>/<path>`
+ *     i.e. the explicit path is interpreted relative to the parent directory,
+ *     not to `workspace_path`.
+ *   - Relative path with no parent → `<workspace>/<path>`.
+ */
 export function resolveCwd(
   workspace: string | undefined,
   parent: string | undefined,
   name: string,
+  explicitPath?: string,
 ): string {
-  if (isAbsolute(name)) return name;
+  const target = explicitPath ?? name;
+  if (isAbsolute(target)) return target;
   const segments: string[] = [];
   if (workspace) segments.push(workspace);
   if (parent) segments.push(parent);
-  segments.push(name);
+  segments.push(target);
   return segments.length === 1 ? segments[0] : join(...segments);
 }
 
@@ -117,7 +131,7 @@ function visitOne(
     name: entry.name,
     label: entry.label,
     parent,
-    cwd: resolveCwd(workspace, parent, entry.name),
+    cwd: resolveCwd(workspace, parent, entry.name, entry.path),
     run: entry.run,
     forceStop: entry.force_stop,
     section,
