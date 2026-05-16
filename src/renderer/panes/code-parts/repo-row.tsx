@@ -48,6 +48,8 @@ export function RepoRow(props: {
     return props.repo.label === name ? null : name;
   };
 
+  const isPlainDirectory = (): boolean => !props.repo.missing && props.repo.isGit === false;
+
   const branchStatus = (wt: Worktree): RepoStatus => {
     if (props.repo.missing) return 'missing';
     if (wt.dirty == null) return 'unknown';
@@ -66,6 +68,16 @@ export function RepoRow(props: {
     // No branch known — fall back to a generic running marker so the card
     // still surfaces the live state on the face.
     return '(running)';
+  };
+
+  const branchLabel = (wt: Worktree): string => {
+    if (isPlainDirectory()) return 'Directory';
+    return wt.branch ?? '(no branch)';
+  };
+
+  const branchTitle = (wt: Worktree): string => {
+    if (isPlainDirectory()) return 'Plain directory';
+    return wt.branch ? wt.branch : 'Detached HEAD — git is on a specific commit, not a branch';
   };
 
   return (
@@ -109,17 +121,12 @@ export function RepoRow(props: {
               data-primary={wt.primary ? 'true' : undefined}
             >
               <span class="branch-dot" aria-hidden="true" />
-              <span
-                class="branch-name"
-                title={
-                  wt.branch
-                    ? wt.branch
-                    : 'Detached HEAD — git is on a specific commit, not a branch'
-                }
-              >
-                {wt.branch ?? '(no branch)'}
+              <span class="branch-name" title={branchTitle(wt)}>
+                {branchLabel(wt)}
               </span>
-              <BranchInfoBadges worktree={wt} subtreeScoped={!!props.repo.parent} />
+              <Show when={!isPlainDirectory()}>
+                <BranchInfoBadges worktree={wt} subtreeScoped={!!props.repo.parent} />
+              </Show>
               <Show when={props.live && (props.liveBranch ?? null) === (wt.branch ?? null)}>
                 <span class="branch-live-dot" title="Running" aria-label="Running" />
               </Show>
