@@ -71,6 +71,18 @@ export function RepoRow(props: {
       </div>
       <div class="settings-repo-row-detail">
         <label>
+          <span>Path</span>
+          <input
+            type="text"
+            placeholder="defaults to name"
+            {...props.bindText(
+              `${props.idPrefix}.path`,
+              () => obj().path,
+              (v) => patchObj({ path: v || undefined }),
+            )}
+          />
+        </label>
+        <label>
           <span>Label</span>
           <input
             type="text"
