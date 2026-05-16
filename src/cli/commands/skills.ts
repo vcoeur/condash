@@ -56,11 +56,12 @@
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
 import { UNIVERSAL_FOOTER } from '../help';
-import { type AgentsMdTarget } from '../../agents-md';
+import { AGENTS_MD_TARGETS, compileAgentConfig, type AgentsMdTarget } from '../../agents-md';
 import {
   COMPILE_TARGETS,
   compileSkillspec,
@@ -1078,6 +1079,12 @@ interface UserScriptsReport {
   installed: { category: ScriptCategory; relPath: string }[];
 }
 
+interface UserAgentConfigsReport {
+  source: string;
+  outputs: Record<AgentsMdTarget, string>;
+  compiled: { target: AgentsMdTarget; path: string }[];
+}
+
 interface UserInstallReport {
   source: string;
   outputs: Record<CompileTarget, string>;
@@ -1085,6 +1092,7 @@ interface UserInstallReport {
   skipped: { skill: string; hosts: string[] }[];
   compiled: { skill: string; target: CompileTarget; relPath: string }[];
   scripts: UserScriptsReport;
+  agentConfigs: UserAgentConfigsReport;
 }
 
 function userSourceRoot(): string {
@@ -1117,6 +1125,72 @@ function userScriptTargetRoot(category: ScriptCategory): string {
     );
   }
   return process.env.CONDASH_USER_CLAUDE_SCRIPTS_TARGET ?? join(homedir(), '.claude', 'scripts');
+}
+
+function userAgentConfigRoot(): string {
+  return (
+    process.env.CONDASH_USER_AGENT_CONFIG_ROOT ?? join(homedir(), '.config', 'agents', 'agents')
+  );
+}
+
+function userAgentConfigOutput(target: AgentsMdTarget): string {
+  if (target === 'claude') {
+    return process.env.CONDASH_USER_CLAUDE_AGENT_OUTPUT ?? join(homedir(), '.claude', 'CLAUDE.md');
+  }
+  // Kimi: write inline into the global-agent.yaml's ROLE_ADDITIONAL field, not a standalone markdown file.
+  return (
+    process.env.CONDASH_USER_KIMI_AGENT_OUTPUT ?? join(homedir(), '.kimi', 'global-agent.yaml')
+  );
+}
+
+/**
+ * Write the compiled Kimi content into the `agent.system_prompt_args.ROLE_ADDITIONAL`
+ * field of the global-agent.yaml at `path`. Preserves all other fields. Creates a
+ * minimal default structure if the file doesn't exist yet.
+ */
+async function writeKimiGlobalAgent(path: string, compiledContent: string): Promise<void> {
+  let doc: Record<string, unknown>;
+  try {
+    const existing = await fs.readFile(path, 'utf8');
+    const parsed = parseYaml(existing);
+    doc = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    doc = {};
+  }
+  if (typeof doc.version !== 'number') doc.version = 1;
+  const agent =
+    typeof doc.agent === 'object' && doc.agent !== null
+      ? (doc.agent as Record<string, unknown>)
+      : ((doc.agent = {}), doc.agent as Record<string, unknown>);
+  if (agent.extend === undefined) agent.extend = 'default';
+  const promptArgs =
+    typeof agent.system_prompt_args === 'object' && agent.system_prompt_args !== null
+      ? (agent.system_prompt_args as Record<string, unknown>)
+      : ((agent.system_prompt_args = {}), agent.system_prompt_args as Record<string, unknown>);
+  promptArgs.ROLE_ADDITIONAL = compiledContent;
+  const serialized = stringifyYaml(doc, { blockQuote: 'literal', lineWidth: 0 });
+  await writeFileMkdir(path, Buffer.from(serialized, 'utf8'));
+}
+
+/** Read `common.md` from the user-scope agent-config source. Returns null if absent. */
+async function readUserAgentCommon(): Promise<string | null> {
+  try {
+    return await fs.readFile(join(userAgentConfigRoot(), 'common.md'), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** Read a per-agent fragment (claude.md or kimi.md). Returns empty string if missing. */
+async function readUserAgentFragment(target: AgentsMdTarget): Promise<string> {
+  try {
+    return await fs.readFile(join(userAgentConfigRoot(), `${target}.md`), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+    throw err;
+  }
 }
 
 function userHostFile(): string {
@@ -1244,6 +1318,14 @@ async function installUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<
       },
       installed: [],
     },
+    agentConfigs: {
+      source: userAgentConfigRoot(),
+      outputs: {
+        claude: userAgentConfigOutput('claude'),
+        kimi: userAgentConfigOutput('kimi'),
+      },
+      compiled: [],
+    },
   };
 
   for (const skill of selected) {
@@ -1277,6 +1359,33 @@ async function installUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<
       await fs.chmod(dstPath, 0o755);
     }
     report.scripts.installed.push({ category: script.category, relPath: script.relPath });
+  }
+
+  // Agent configs: compile `~/.config/agents/agents/{common,claude,kimi}.md`.
+  // - Claude: write the full compiled markdown to `~/.claude/CLAUDE.md`.
+  // - Kimi: embed the compiled content into `~/.kimi/global-agent.yaml`'s
+  //   `agent.system_prompt_args.ROLE_ADDITIONAL` field (read-modify-write,
+  //   preserving other yaml fields). Kimi reads that file when launched with
+  //   `--agent-file ~/.kimi/global-agent.yaml`.
+  // Sources silently absent → no compile, no error. Outputs are always
+  // regenerated (no manifest, no refuse-on-edit).
+  const agentCommon = await readUserAgentCommon();
+  if (agentCommon !== null) {
+    for (const target of AGENTS_MD_TARGETS) {
+      const fragment = await readUserAgentFragment(target);
+      const compiled = compileAgentConfig(agentCommon, fragment, target, {
+        sourceDescription: userAgentConfigRoot(),
+      });
+      const outputPath = userAgentConfigOutput(target);
+      if (!dryRun) {
+        if (target === 'claude') {
+          await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
+        } else {
+          await writeKimiGlobalAgent(outputPath, compiled);
+        }
+      }
+      report.agentConfigs.compiled.push({ target, path: outputPath });
+    }
   }
 
   emit(ctx, report, formatUserInstallHuman);
@@ -1314,6 +1423,12 @@ function formatUserInstallHuman(report: UserInstallReport): string {
       `Scripts installed → ${report.scripts.targets.agents}, ${report.scripts.targets.claude} (${parts.join(', ')})`,
     );
   }
+  if (report.agentConfigs.compiled.length > 0) {
+    lines.push(`Agent configs compiled (${report.agentConfigs.compiled.length}):`);
+    for (const c of report.agentConfigs.compiled) {
+      lines.push(`  → ${c.path}  (${c.target})`);
+    }
+  }
   return lines.join('\n') + '\n';
 }
 
@@ -1345,15 +1460,31 @@ async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
       files: scripts.filter((s) => s.category === 'claude').map((s) => s.relPath),
     },
   };
+  const agentCommon = await readUserAgentCommon();
+  const agentConfigsList = {
+    source: userAgentConfigRoot(),
+    present: agentCommon !== null,
+    outputs: {
+      claude: userAgentConfigOutput('claude'),
+      kimi: userAgentConfigOutput('kimi'),
+    },
+  };
   emit(
     ctx,
-    { source: userSourceRoot(), hostLabel, skills: skillRows, scripts: scriptsByCategory },
+    {
+      source: userSourceRoot(),
+      hostLabel,
+      skills: skillRows,
+      scripts: scriptsByCategory,
+      agentConfigs: agentConfigsList,
+    },
     (data) => {
       const d = data as {
         source: string;
         hostLabel: string | null;
         skills: typeof skillRows;
         scripts: typeof scriptsByCategory;
+        agentConfigs: typeof agentConfigsList;
       };
       const lines: string[] = [`Source: ${d.source}`];
       if (d.hostLabel !== null) lines.push(`Host: ${d.hostLabel}`);
@@ -1371,6 +1502,11 @@ async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
         if (block.files.length === 0) continue;
         lines.push(`Scripts (${category}): ${block.source} → ${block.target}`);
         for (const relPath of block.files) lines.push(`  ${relPath}`);
+      }
+      if (d.agentConfigs.present) {
+        lines.push(`Agent configs: ${d.agentConfigs.source}`);
+        lines.push(`  → ${d.agentConfigs.outputs.claude}  (claude)`);
+        lines.push(`  → ${d.agentConfigs.outputs.kimi}  (kimi)`);
       }
       return lines.join('\n') + '\n';
     },
@@ -1391,6 +1527,12 @@ type UserStatusEntry =
       kind: 'script';
       category: ScriptCategory;
       relPath: string;
+      state: 'ok' | 'stale' | 'missing';
+    }
+  | {
+      kind: 'agent-config';
+      target: AgentsMdTarget;
+      path: string;
       state: 'ok' | 'stale' | 'missing';
     };
 
@@ -1449,6 +1591,47 @@ async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<v
     items.push({ kind: 'script', category: script.category, relPath: script.relPath, state });
   }
 
+  const agentCommon = await readUserAgentCommon();
+  if (agentCommon !== null) {
+    for (const target of AGENTS_MD_TARGETS) {
+      const fragment = await readUserAgentFragment(target);
+      const expected = compileAgentConfig(agentCommon, fragment, target, {
+        sourceDescription: userAgentConfigRoot(),
+      });
+      const outputPath = userAgentConfigOutput(target);
+      let state: 'ok' | 'stale' | 'missing';
+      if (target === 'claude') {
+        let onDisk: string | null = null;
+        try {
+          onDisk = await fs.readFile(outputPath, 'utf8');
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        }
+        if (onDisk === null) state = 'missing';
+        else if (onDisk === expected) state = 'ok';
+        else state = 'stale';
+      } else {
+        // Kimi: parse yaml, extract ROLE_ADDITIONAL, compare.
+        let yamlText: string | null = null;
+        try {
+          yamlText = await fs.readFile(outputPath, 'utf8');
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        }
+        if (yamlText === null) {
+          state = 'missing';
+        } else {
+          const parsed = parseYaml(yamlText);
+          const actual = (
+            parsed as { agent?: { system_prompt_args?: { ROLE_ADDITIONAL?: string } } }
+          )?.agent?.system_prompt_args?.ROLE_ADDITIONAL;
+          state = actual === expected ? 'ok' : 'stale';
+        }
+      }
+      items.push({ kind: 'agent-config', target, path: outputPath, state });
+    }
+  }
+
   emit(
     ctx,
     { source: userSourceRoot(), hostLabel, items },
@@ -1483,6 +1666,21 @@ async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<v
         for (const r of scriptRows) {
           lines.push(
             `  ${`script-${r.category}`.padEnd(widths.category)}  ${r.relPath.padEnd(widths.file)}  ${r.state}`,
+          );
+        }
+      }
+      const agentRows = d.items.filter(
+        (r): r is Extract<UserStatusEntry, { kind: 'agent-config' }> => r.kind === 'agent-config',
+      );
+      if (agentRows.length > 0) {
+        if (skillRows.length > 0 || scriptRows.length > 0) lines.push('');
+        const widths = {
+          target: 12,
+          path: Math.max(4, ...agentRows.map((r) => r.path.length)),
+        };
+        for (const r of agentRows) {
+          lines.push(
+            `  ${`agent-${r.target}`.padEnd(widths.target)}  ${r.path.padEnd(widths.path)}  ${r.state}`,
           );
         }
       }
@@ -1587,6 +1785,11 @@ function printHelp(verb: string | null): void {
           'User scope (--user) also installs script trees (rsync + chmod +x, no compile):',
           '  ~/.config/agents/agents-scripts/  → ~/.config/agents/scripts/',
           '  ~/.config/agents/claude-scripts/  → ~/.claude/scripts/',
+          'And compiles user-scope agent configs from ~/.config/agents/agents/:',
+          '  {common,claude}.md  → ~/.claude/CLAUDE.md  (Claude global)',
+          '  {common,kimi}.md    → ~/.kimi/global-agent.yaml  (Kimi --agent-file)',
+          'Kimi target is embedded inline into agent.system_prompt_args.ROLE_ADDITIONAL,',
+          'preserving any other fields the user set in the yaml.',
           'Sources are silently skipped when absent.',
           '',
           'Optional:',
