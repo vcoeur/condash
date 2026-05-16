@@ -2,7 +2,7 @@ import { relative } from 'node:path';
 import type { RepoEntry, Worktree } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { getDirtyCount, getUpstreamStatus } from './git-status-cache';
-import { getCurrentBranch, listWorktrees } from './worktrees';
+import { getCurrentBranch, isGitRepo, listWorktrees } from './worktrees';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
 import { pathExists } from './fs-helpers';
 import { getEffectiveConceptionConfig } from './effective-config';
@@ -72,14 +72,19 @@ async function buildEntry(
       section: entry.section,
     } satisfies RepoEntry;
   }
-  const worktrees = entry.parent
-    ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
-    : await listWorktrees(entry.cwd).catch(() => []);
-  // Submodule entries (those with a `parent`) often live inside the
-  // parent repo's git tree — without `-- .` scoping, `git status` would
-  // surface the parent repo's dirty entries on the submodule card.
-  const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
-  const dirty = await getDirtyCount(entry.cwd, dirtyOpts);
+  const isGit = await isGitRepo(entry.cwd);
+  let worktrees: Worktree[] | undefined;
+  let dirty: number | null;
+  if (isGit) {
+    worktrees = entry.parent
+      ? await deriveSubWorktrees(entry, parentByName, parentWorktrees)
+      : await listWorktrees(entry.cwd).catch(() => []);
+    const dirtyOpts = entry.parent ? { scopeToSubtree: true } : {};
+    dirty = await getDirtyCount(entry.cwd, dirtyOpts);
+  } else {
+    worktrees = undefined;
+    dirty = null;
+  }
   return {
     name: entry.display,
     label: entry.label,
@@ -87,9 +92,10 @@ async function buildEntry(
     parent: entry.parent,
     dirty,
     missing: false,
+    isGit,
     hasForceStop,
     hasRun,
-    worktrees: worktrees.length > 0 ? worktrees : undefined,
+    worktrees: worktrees && worktrees.length > 0 ? worktrees : undefined,
     section: entry.section,
   } satisfies RepoEntry;
 }

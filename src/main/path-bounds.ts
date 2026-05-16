@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { sep } from 'node:path';
 import { readSettings } from './settings';
 import { getEffectiveConceptionConfig } from './effective-config';
+import { walkRepos, type ConfigShape } from './config-walk';
 
 /**
  * Throw unless `path` resolves to a location under `root`.
@@ -99,6 +100,15 @@ async function readWorkspaceRoots(conceptionPath: string): Promise<string[]> {
   }
   if (typeof config.worktrees_path === 'string' && config.worktrees_path.length > 0) {
     out.push(config.worktrees_path);
+  }
+  // Include configured repo paths so arbitrary directories are valid targets
+  // for bounds-checked operations (Open in IDE, terminal spawn, etc.).
+  const configShape = config as ConfigShape;
+  if (configShape.repositories) {
+    walkRepos(configShape, (entry) => {
+      out.push(entry.cwd);
+      return true; // keep walking
+    });
   }
   return out;
 }
