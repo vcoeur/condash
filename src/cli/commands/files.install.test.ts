@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSkills } from './skills';
-import { SHIPPED_FILES, statusShippedFile } from './files';
+import { AGENT_CONFIG_COMMON, SHIPPED_FILES, statusShippedFile } from './files';
 import { MANIFEST_RELPATH, readManifest } from './install-shared';
 import type { OutputContext } from '../output';
 
@@ -121,6 +121,87 @@ describe('condash skills install — top-level files', () => {
     const manifest = { version: 3 as const, skills: {}, files: {} };
     const row = await statusShippedFile(file, dest, manifest);
     expect(row).toBeNull();
+  });
+
+  it('preserves a user-customised `## Specifics` in .agents/agents/common.md across reinstall', async () => {
+    // First install scaffolds the agent-config tree with the shipped common.md.
+    await install();
+    const commonPath = join(dest, '.agents/agents/common.md');
+    const initial = await fs.readFile(commonPath, 'utf8');
+    expect(initial).toContain('## General');
+    expect(initial).toContain('## Specifics');
+
+    // User customises the Specifics body (the Apps table + a team rule).
+    const customSpecifics = [
+      '## Specifics',
+      '',
+      '| App         | Purpose          | Repo                       | Config             | Knowledge   |',
+      '|-------------|------------------|----------------------------|--------------------|-------------|',
+      '| `@my-app`   | example app      | `~/src/example/my-app`     | `<repo>/CLAUDE.md` | _(none)_    |',
+      '',
+      '### Repo workflow',
+      '',
+      '- Always run `make format` after every code change.',
+      '',
+    ].join('\n');
+    // Split on the actual `## Specifics` heading (start-of-line) — there's
+    // also a backticked `## Specifics` inside the General body that we must
+    // not match.
+    const specHeading = initial.search(/^## Specifics\s*$/m);
+    expect(specHeading).toBeGreaterThan(0);
+    const beforeSpecifics = initial.slice(0, specHeading).trimEnd();
+    const customised = `${beforeSpecifics}\n\n${customSpecifics}`;
+    await fs.writeFile(commonPath, customised);
+
+    // Second install must NOT clobber Specifics. General region stays
+    // identical (no user edit there), so the install just refreshes the
+    // manifest.
+    await install();
+    const after = await fs.readFile(commonPath, 'utf8');
+    expect(after).toContain('`@my-app`');
+    expect(after).toContain('Always run `make format`');
+    expect(after).not.toContain('_(populate per-app)_');
+
+    // Compiled outputs must carry the customised Specifics rows.
+    const claude = await fs.readFile(join(dest, '.claude/CLAUDE.md'), 'utf8');
+    expect(claude).toContain('`@my-app`');
+    expect(claude).toContain('Always run `make format`');
+    const kimi = await fs.readFile(join(dest, '.kimi/AGENTS.md'), 'utf8');
+    expect(kimi).toContain('`@my-app`');
+
+    // Manifest tracks common.md alongside the user-selectable files.
+    const manifest = await readManifest(dest);
+    expect(manifest!.files![AGENT_CONFIG_COMMON.path]).toBeTruthy();
+    expect(manifest!.files![AGENT_CONFIG_COMMON.path].region).toBe('General');
+  });
+
+  it('refuses to overwrite a hand-edited `## General` in common.md without --force', async () => {
+    await install();
+    const commonPath = join(dest, '.agents/agents/common.md');
+    const shipped = await fs.readFile(commonPath, 'utf8');
+
+    // User edits the General region (between `## General` and `## Specifics`).
+    const tampered = shipped.replace('### Pointers', '### Pointers (locally edited)');
+    expect(tampered).not.toBe(shipped);
+    await fs.writeFile(commonPath, tampered);
+
+    // Re-install: General region differs from manifest hash → install exits
+    // non-zero with `refused` listed. The on-disk file must stay edited.
+    await expect(install()).rejects.toThrow(/refused/);
+    const after = await fs.readFile(commonPath, 'utf8');
+    expect(after).toContain('### Pointers (locally edited)');
+  });
+
+  it('--prune does not drop the .agents/agents/common.md manifest entry', async () => {
+    await install();
+    process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
+    await runSkills(
+      'install',
+      { noun: 'skills', verb: 'install', positional: [], flags: { dest, prune: true } },
+      ctx(),
+    );
+    const manifest = await readManifest(dest);
+    expect(manifest!.files![AGENT_CONFIG_COMMON.path]).toBeTruthy();
   });
 
   it('--prune drops manifest entries whose shipped source no longer exists', async () => {

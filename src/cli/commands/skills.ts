@@ -478,8 +478,19 @@ async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> 
     }
   }
 
-  // Pass 1c: copy agent-config sources.
-  report.agentConfigsCopied = await installAgentConfigSources(dest, dryRun);
+  // Pass 1c: copy agent-config sources. `common.md` goes through the
+  // region-aware install path so a user-customised `## Specifics` survives;
+  // the per-agent fragments (`claude.md`, `kimi.md`) overwrite in full.
+  const agentInstall = await installAgentConfigSources({
+    dest,
+    shippedVersion,
+    force,
+    showDiff,
+    dryRun,
+    manifest,
+  });
+  report.agentConfigsCopied = agentInstall.copied;
+  if (agentInstall.commonOutcome) recordFileOutcome(report, agentInstall.commonOutcome);
 
   // Pass 2b: compile .agents/agents/ → per-target outputs (no-op if source tree isn't on disk).
   report.agentsMdCompiled = await compileAgentConfigs(dest, dryRun);

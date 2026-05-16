@@ -312,6 +312,31 @@ export async function installShippedFile(
 const AGENTS_SOURCE_RELPATH = '.agents/agents';
 
 /**
+ * `common.md` carries a `## General` region (condash-owned, refreshed on
+ * install) and a `## Specifics` region (user-owned, never touched). Treated
+ * as a region-aware shipped file, with the same hash/manifest model as
+ * `.gitignore`. The per-agent fragments (`claude.md`, `kimi.md`) ship via
+ * the same install path as the rest of the agent-config tree — they have
+ * no Specifics heading and are condash-owned in full.
+ */
+export const AGENT_CONFIG_COMMON: ShippedFile = {
+  path: `${AGENTS_SOURCE_RELPATH}/common.md`,
+  region: 'General',
+  mark: '##',
+  siblings: ['Specifics'],
+};
+
+/**
+ * Union of every file path condash knows how to (re)install — both the
+ * user-selectable `SHIPPED_FILES` entries and the always-installed
+ * agent-config sources. Used by status / prune helpers so a manifest entry
+ * for `AGENT_CONFIG_COMMON.path` isn't mistaken for a stale source.
+ */
+function knownShippedFilePaths(): Set<string> {
+  return new Set([...SHIPPED_FILES.map((f) => f.path), AGENT_CONFIG_COMMON.path]);
+}
+
+/**
  * Compile `.agents/agents/` → per-target output files (`.claude/CLAUDE.md` +
  * `.kimi/AGENTS.md`). Compiled outputs are deterministic from the source
  * and aren't tracked by the manifest — they're regenerated on every
@@ -464,7 +489,7 @@ export async function statusShippedFile(
  * top-level file.
  */
 export function sourceMissingFileRows(manifest: Manifest): FileStatusRow[] {
-  const shippedSet = new Set(SHIPPED_FILES.map((f) => f.path));
+  const shippedSet = knownShippedFilePaths();
   const rows: FileStatusRow[] = [];
   for (const [path, entry] of Object.entries(manifest.files ?? {})) {
     if (shippedSet.has(path)) continue;
@@ -497,23 +522,59 @@ export function listShippedFiles(manifest: Manifest | null): FileListRow[] {
   });
 }
 
+export interface AgentConfigInstallResult {
+  /** Per-agent fragment paths (relative to `.agents/agents/`) that were written. */
+  copied: string[];
+  /**
+   * Outcome of the region-aware install for `common.md`. `null` only when the
+   * shipped agent-config tree is missing from the bundle (returns early).
+   */
+  commonOutcome: FileInstallOutcome | null;
+}
+
 /**
- * Copy the `.agents/agents/` source tree from the shipped template to the
- * destination. Overwrites on every install (no refuse-on-edit for these
- * small source fragments; user edits should go into `## Specifics` in the
- * compiled output, not the source files).
+ * Install the `.agents/agents/` source tree from the shipped template:
  *
- * Returns the list of relative paths copied.
+ * - `common.md` ships through `installShippedFile` so the `## General` region
+ *   gets refreshed but `## Specifics` (user-owned per-conception content like
+ *   the Apps table and durable team rules) is preserved across installs.
+ *   Refused without `--force` when General has been hand-edited.
+ * - Per-agent fragments (`claude.md`, `kimi.md`) overwrite on every install —
+ *   they're small, condash-owned, and have no `## Specifics` heading to
+ *   protect.
+ *
+ * Returns the per-agent fragment paths that were (re)written plus the
+ * region-aware outcome for `common.md`.
  */
-export async function installAgentConfigSources(dest: string, dryRun: boolean): Promise<string[]> {
+export async function installAgentConfigSources(
+  params: FileInstallParams,
+): Promise<AgentConfigInstallResult> {
+  const { dest, dryRun } = params;
   const shippedDir = join(locateShippedFilesRoot(), '.agents', 'agents');
   const targetDir = join(dest, '.agents', 'agents');
   const copied: string[] = [];
 
+  try {
+    await fs.access(shippedDir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { copied: [], commonOutcome: null };
+    }
+    throw err;
+  }
+
+  if (!dryRun) await fs.mkdir(targetDir, { recursive: true });
+
+  // common.md: region-aware install via the same machinery as `.gitignore`.
+  const commonOutcome = await installShippedFile(AGENT_CONFIG_COMMON, params);
+
+  // Per-agent fragments + any future nested files: full-overwrite.
   async function walk(src: string, dst: string, prefix: string): Promise<void> {
     const entries = await fs.readdir(src, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue;
+      // common.md is handled above with refuse-on-edit semantics.
+      if (prefix === '' && entry.name === 'common.md') continue;
       const srcPath = join(src, entry.name);
       const dstPath = join(dst, entry.name);
       const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
@@ -537,16 +598,8 @@ export async function installAgentConfigSources(dest: string, dryRun: boolean): 
     }
   }
 
-  try {
-    await fs.access(shippedDir);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw err;
-  }
-
-  if (!dryRun) await fs.mkdir(targetDir, { recursive: true });
   await walk(shippedDir, targetDir, '');
-  return copied;
+  return { copied, commonOutcome };
 }
 
 /**
@@ -560,7 +613,7 @@ export function pruneSourceMissingFileEntries(manifest: Manifest): {
   shippedVersion: string;
 }[] {
   if (!manifest.files) return [];
-  const shippedSet = new Set(SHIPPED_FILES.map((f) => f.path));
+  const shippedSet = knownShippedFilePaths();
   const dropped: { path: string; region: string; shippedVersion: string }[] = [];
   for (const [path, entry] of Object.entries(manifest.files)) {
     if (shippedSet.has(path)) continue;
