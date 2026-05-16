@@ -68,6 +68,7 @@ import {
   type CompileTarget,
 } from '../../skillspec';
 import {
+  MANIFEST_RELPATH,
   MANIFEST_VERSION,
   cheapDiff,
   readManifest,
@@ -395,6 +396,16 @@ async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> 
   // propagates to the target trees — that's the install/compile decoupling
   // promise.
   const compileTargets = await collectInstalledSkillNames(sourceRoot, shipped);
+
+  // Per-target compiled manifest builders: skillName -> { files: { relPath -> entry } }
+  const compiledManifests: Record<
+    CompileTarget,
+    Record<string, { files: Record<string, { sha256: string; shippedVersion: string }> }>
+  > = {
+    claude: {},
+    kimi: {},
+  };
+
   for (const skillName of compileTargets) {
     const skill = shipped.find((s) => s.name === skillName);
     const compileFromDir = dryRun && skill ? skill.sourceDir : join(sourceRoot, skillName);
@@ -415,10 +426,30 @@ async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> 
       // Wipe stale outputs so previously-shipped-but-now-deleted assets
       // don't linger. Skipped on dry-run.
       if (!dryRun) await rmTreeIfPresent(outputRoot);
+      compiledManifests[target][skillName] = { files: {} };
       for (const [relPath, content] of Object.entries(compiled.files)) {
         if (!dryRun) await writeFileMkdir(join(outputRoot, relPath), content);
         report.compiled.push({ skill: skillName, target, relPath });
+        compiledManifests[target][skillName].files[relPath] = {
+          sha256: sha256(content),
+          shippedVersion,
+        };
       }
+    }
+  }
+
+  // Write compiled manifests for each target.
+  for (const target of COMPILE_TARGETS) {
+    const compiledManifest = {
+      version: MANIFEST_VERSION,
+      skills: compiledManifests[target],
+    };
+    const manifestPath = join(dest, TARGET_RELPATHS[target], MANIFEST_RELPATH);
+    if (!dryRun) {
+      await writeFileMkdir(
+        manifestPath,
+        Buffer.from(JSON.stringify(compiledManifest, null, 2) + '\n', 'utf8'),
+      );
     }
   }
 

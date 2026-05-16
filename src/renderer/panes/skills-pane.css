@@ -1,8 +1,53 @@
 .skills-pane {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-base);
+}
+
+.skills-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.skills-tab {
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition:
+    color 120ms,
+    border-bottom-color 120ms;
+}
+
+.skills-tab:hover {
+  color: var(--text-primary);
+}
+
+.skills-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.skills-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.skills-tree {
+  flex: 1;
   overflow-y: auto;
   padding: 12px 14px 24px;
-  background: var(--bg-base);
+  min-height: 0;
 }
 
 .skills-group {
@@ -85,6 +130,23 @@
 
 .skills-card[data-shipped='diverged'] {
   border-left: 2px solid var(--warn);
+}
+
+/* YAML spec cards (Generic tab only) — same chrome as a markdown card,
+ * with a slim accent stripe on the left so the eye separates skill
+ * bodies from skillspec metadata in a glance. */
+.skills-card[data-kind='yaml'] {
+  border-left: 2px solid var(--accent);
+}
+
+.skills-card-kind {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
 }
 
 .skills-card-head {

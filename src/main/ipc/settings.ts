@@ -2,11 +2,28 @@ import { ipcMain } from 'electron';
 import { toPosix } from '../../shared/path';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../settings';
-import type { CardMinWidthPrefs, LayoutState, Theme, TreeExpansionPrefs } from '../../shared/types';
-import { DEFAULT_CARD_MIN_WIDTH } from '../../shared/types';
+import type {
+  CardMinWidthPrefs,
+  LayoutState,
+  SkillTab,
+  Theme,
+  TreeExpansionPrefs,
+} from '../../shared/types';
+import { DEFAULT_CARD_MIN_WIDTH, SKILL_TABS } from '../../shared/types';
 
-const TREE_EXPANSION_KEYS = ['knowledge', 'resources', 'skills'] as const;
+// Note: the legacy `skills` key is accepted on read (migrated to
+// `skillsClaude`) but never written back. New writers emit the three
+// per-tab keys.
+const TREE_EXPANSION_KEYS = [
+  'knowledge',
+  'resources',
+  'skillsGeneric',
+  'skillsClaude',
+  'skillsKimi',
+] as const;
 type TreeExpansionKey = (typeof TREE_EXPANSION_KEYS)[number];
+
+const SKILL_TAB_SET: ReadonlySet<SkillTab> = new Set(SKILL_TABS);
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
@@ -115,11 +132,23 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('getTreeExpansion', async () => {
     const { treeExpansion } = await readSettings();
-    const out: Required<TreeExpansionPrefs> = {
+    const out: Required<Pick<TreeExpansionPrefs, TreeExpansionKey>> = {
       knowledge: [],
       resources: [],
-      skills: [],
+      skillsGeneric: [],
+      skillsClaude: [],
+      skillsKimi: [],
     };
+    // Legacy `skills` key migrates into `skillsClaude` so users keep their
+    // existing expansion state when the tabs ship for the first time.
+    const legacySkills = Array.isArray(treeExpansion?.skills) ? treeExpansion.skills : null;
+    if (legacySkills) {
+      const seen = new Set<string>();
+      for (const entry of legacySkills) {
+        if (typeof entry === 'string') seen.add(entry);
+      }
+      out.skillsClaude = Array.from(seen);
+    }
     for (const key of TREE_EXPANSION_KEYS) {
       const v = treeExpansion?.[key];
       if (Array.isArray(v)) {
@@ -146,7 +175,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     const sanitised: TreeExpansionPrefs = {};
     let nonEmpty = false;
     for (const key of TREE_EXPANSION_KEYS) {
-      const v = input[key as TreeExpansionKey];
+      const v = input[key];
       if (!Array.isArray(v)) continue;
       const seen = new Set<string>();
       for (const entry of v) {
@@ -157,6 +186,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
         nonEmpty = true;
       }
     }
+    // Always drop the legacy `skills` key on write — the read path has
+    // already migrated it to `skillsClaude`.
     await updateSettings((cur) => ({
       ...cur,
       treeExpansion: nonEmpty ? sanitised : undefined,
@@ -208,6 +239,23 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
       throw new Error('setBranchFilterStickyAll: expected boolean');
     }
     await updateSettings((cur) => ({ ...cur, branchFilterStickyAll: raw }));
+  });
+
+  // Skills-pane active tab (per-machine). Default is `claude` — preserves
+  // the pre-tabs behaviour for existing users.
+  ipcMain.handle('getSkillsActiveTab', async (): Promise<SkillTab> => {
+    const { skillsActiveTab } = await readSettings();
+    if (typeof skillsActiveTab === 'string' && SKILL_TAB_SET.has(skillsActiveTab as SkillTab)) {
+      return skillsActiveTab as SkillTab;
+    }
+    return 'claude';
+  });
+
+  ipcMain.handle('setSkillsActiveTab', async (_, raw: unknown) => {
+    if (typeof raw !== 'string' || !SKILL_TAB_SET.has(raw as SkillTab)) {
+      throw new Error('setSkillsActiveTab: expected generic | claude | kimi');
+    }
+    await updateSettings((cur) => ({ ...cur, skillsActiveTab: raw as SkillTab }));
   });
 
   ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {

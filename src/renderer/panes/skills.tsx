@@ -1,5 +1,6 @@
-import { Show } from 'solid-js';
-import type { SkillNode } from '@shared/types';
+import { For, Show } from 'solid-js';
+import type { SkillNode, SkillTab } from '@shared/types';
+import { SKILL_TABS } from '@shared/types';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import {
   TreeView,
@@ -9,7 +10,18 @@ import {
 } from './tree-view';
 import './skills-pane.css';
 
-const SKILLS_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
+// Compiled tabs (Claude / Kimi) accept the same SKILL_AFFORDANCES as before;
+// the Generic tab also accepts source-edit mutations. The Kimi tab is
+// read-only because its content is regenerated on every `condash skills
+// install` — see notes/02-design.md §Q1.
+const EDITABLE_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
+const READONLY_AFFORDANCES: ReadonlyArray<TreeAffordance> = [];
+
+const TAB_LABELS: Record<SkillTab, string> = {
+  generic: 'Generic',
+  claude: 'Claude',
+  kimi: 'Kimi',
+};
 
 function isSkillIndex(node: SkillNode): boolean {
   // Case-sensitive — that's how the manifest stores it and how
@@ -24,7 +36,15 @@ function isClaudeMd(node: SkillNode): boolean {
   return node.kind === 'file' && node.name === 'CLAUDE.md';
 }
 
+function isYamlSpec(node: SkillNode): boolean {
+  if (node.kind !== 'file') return false;
+  const lower = node.name.toLowerCase();
+  return lower.endsWith('.yaml') || lower.endsWith('.yml');
+}
+
 export function SkillsView(props: {
+  tab: SkillTab;
+  onSelectTab: (tab: SkillTab) => void;
   root: SkillNode | null;
   onOpen: (path: string, title: string, shipped?: SkillNode['shipped']) => void;
   /** Open Settings (so the user can adjust `skills_path`). */
@@ -39,122 +59,189 @@ export function SkillsView(props: {
   onAfterMutation: (newPath: string, kind: TreeAffordance, sourceDirRelPath: string) => void;
   onError: (message: string) => void;
 }) {
-  const scrollRef = usePaneScrollMemory('skills');
+  // Per-tab scroll memory so flipping tabs restores the prior position.
+  const scrollRef = usePaneScrollMemory(() => `skills-${props.tab}`);
+
+  const affordances = (): ReadonlyArray<TreeAffordance> =>
+    props.tab === 'kimi' ? READONLY_AFFORDANCES : EDITABLE_AFFORDANCES;
+
+  const emptyState = () => {
+    if (props.tab === 'generic') {
+      return (
+        <div class="empty">
+          <p>No source skills.</p>
+          <p>
+            Run <code>condash skills install</code> to lay down bundled skillspecs under{' '}
+            <code>.agents/skills/</code>.
+          </p>
+          <div class="empty-actions">
+            <Show when={props.onCopyInstallCommand}>
+              <button
+                type="button"
+                class="empty-cta"
+                onClick={() => props.onCopyInstallCommand?.()}
+              >
+                Copy install command
+              </button>
+            </Show>
+          </div>
+        </div>
+      );
+    }
+    if (props.tab === 'kimi') {
+      return (
+        <div class="empty">
+          <p>No Kimi skills installed.</p>
+          <p>
+            Run <code>condash skills install</code> to compile bundled skills for Kimi under{' '}
+            <code>.kimi/skills/</code>.
+          </p>
+          <div class="empty-actions">
+            <Show when={props.onCopyInstallCommand}>
+              <button
+                type="button"
+                class="empty-cta"
+                onClick={() => props.onCopyInstallCommand?.()}
+              >
+                Copy install command
+              </button>
+            </Show>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div class="empty">
+        <p>No skills installed.</p>
+        <p>
+          Run <code>condash skills install</code> to lay down the bundled skills, or change{' '}
+          <code>skills_path</code> in Settings.
+        </p>
+        <div class="empty-actions">
+          <Show when={props.onCopyInstallCommand}>
+            <button type="button" class="empty-cta" onClick={() => props.onCopyInstallCommand?.()}>
+              Copy install command
+            </button>
+          </Show>
+          <Show when={props.onOpenSettings}>
+            <button type="button" class="empty-cta" onClick={() => props.onOpenSettings?.()}>
+              Edit settings
+            </button>
+          </Show>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div class="skills-pane" ref={scrollRef}>
-      <Show
-        when={props.root}
-        fallback={
-          <div class="empty">
-            <p>No skills installed.</p>
-            <p>
-              Run <code>condash skills install</code> to lay down the bundled skills, or change{' '}
-              <code>skills_path</code> in Settings.
-            </p>
-            <div class="empty-actions">
-              <Show when={props.onCopyInstallCommand}>
-                <button
-                  type="button"
-                  class="empty-cta"
-                  onClick={() => props.onCopyInstallCommand?.()}
-                >
-                  Copy install command
-                </button>
-              </Show>
-              <Show when={props.onOpenSettings}>
-                <button type="button" class="empty-cta" onClick={() => props.onOpenSettings?.()}>
-                  Edit settings
-                </button>
-              </Show>
-            </div>
-          </div>
-        }
-      >
-        {(root) => (
-          <TreeView<SkillNode>
-            treeKey="skills"
-            root={root()}
-            expanded={props.expanded}
-            onToggleExpand={props.onToggleExpand}
-            affordances={SKILLS_AFFORDANCES}
-            mutations={props.mutations}
-            prompts={props.prompts}
-            onAfterMutation={props.onAfterMutation}
-            onError={props.onError}
-            specialFile={(file, dir) => {
-              // Sub-directories surface their SKILL.md; the synthetic
-              // CLAUDE.md entries surface only at the root level.
-              if (dir.relPath === '') return isClaudeMd(file);
-              return isSkillIndex(file);
-            }}
-            renderSpecialFile={(file, dir) => {
-              if (isClaudeMd(file)) {
+    <div class="skills-pane">
+      <div class="skills-tabs" role="tablist" aria-label="Skills source">
+        <For each={SKILL_TABS}>
+          {(tab) => (
+            <button
+              type="button"
+              role="tab"
+              class="skills-tab"
+              classList={{ active: props.tab === tab }}
+              aria-selected={props.tab === tab}
+              onClick={() => props.onSelectTab(tab)}
+            >
+              {TAB_LABELS[tab]}
+            </button>
+          )}
+        </For>
+      </div>
+      <div class="skills-tree" ref={scrollRef}>
+        <Show when={props.root} fallback={emptyState()}>
+          {(root) => (
+            <TreeView<SkillNode>
+              treeKey="skills"
+              root={root()}
+              expanded={props.expanded}
+              onToggleExpand={props.onToggleExpand}
+              affordances={affordances()}
+              mutations={props.mutations}
+              prompts={props.prompts}
+              onAfterMutation={props.onAfterMutation}
+              onError={props.onError}
+              specialFile={(file, dir) => {
+                // CLAUDE.md only surfaces in the Claude tab at the root level
+                // (Generic and Kimi readers do not inject the synthetic entry).
+                if (dir.relPath === '' && props.tab === 'claude' && isClaudeMd(file)) return true;
+                // Compiled tabs surface SKILL.md inside skill subdirs.
+                if (props.tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file))
+                  return true;
+                return false;
+              }}
+              renderSpecialFile={(file, dir) => {
+                if (isClaudeMd(file)) {
+                  return (
+                    <button
+                      type="button"
+                      class="tree-special-file claude-special-file"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        props.onOpen(file.path, file.title, file.shipped);
+                      }}
+                      title={`Open ${file.path}`}
+                      aria-label={`Open ${file.path}`}
+                    >
+                      <span class="tree-special-badge">CLAUDE</span>
+                      <span class="tree-special-title">{file.title}</span>
+                      <span class="tree-special-meta">{file.relPath}</span>
+                    </button>
+                  );
+                }
+                const shipped = file.shipped;
                 return (
                   <button
                     type="button"
-                    class="tree-special-file claude-special-file"
+                    class="tree-special-file skill-special-file"
+                    classList={{
+                      shipped: !!shipped,
+                      diverged: !!shipped?.diverged,
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      props.onOpen(file.path, file.title, file.shipped);
+                      props.onOpen(file.path, file.title, shipped);
                     }}
-                    title={`Open ${file.path}`}
-                    aria-label={`Open ${file.path}`}
+                    aria-label={`Open SKILL.md for ${dir.relPath || 'skills'}${
+                      shipped?.diverged ? ' (shipped, locally edited)' : shipped ? ' (shipped)' : ''
+                    }`}
+                    title={
+                      shipped?.diverged
+                        ? 'SKILL.md (shipped, locally edited)'
+                        : shipped
+                          ? 'SKILL.md (shipped)'
+                          : 'SKILL.md'
+                    }
                   >
-                    <span class="tree-special-badge">CLAUDE</span>
+                    <span class="tree-special-badge">SKILL</span>
                     <span class="tree-special-title">{file.title}</span>
-                    <span class="tree-special-meta">{file.relPath}</span>
+                    <Show when={shipped}>
+                      <span class="tree-special-meta">
+                        {shipped?.diverged ? 'diverged' : 'shipped'}
+                      </span>
+                    </Show>
                   </button>
                 );
-              }
-              const shipped = file.shipped;
-              return (
-                <button
-                  type="button"
-                  class="tree-special-file skill-special-file"
-                  classList={{
-                    shipped: !!shipped,
-                    diverged: !!shipped?.diverged,
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    props.onOpen(file.path, file.title, shipped);
-                  }}
-                  aria-label={`Open SKILL.md for ${dir.relPath || 'skills'}${
-                    shipped?.diverged ? ' (shipped, locally edited)' : shipped ? ' (shipped)' : ''
-                  }`}
-                  title={
-                    shipped?.diverged
-                      ? 'SKILL.md (shipped, locally edited)'
-                      : shipped
-                        ? 'SKILL.md (shipped)'
-                        : 'SKILL.md'
-                  }
-                >
-                  <span class="tree-special-badge">SKILL</span>
-                  <span class="tree-special-title">{file.title}</span>
-                  <Show when={shipped}>
-                    <span class="tree-special-meta">
-                      {shipped?.diverged ? 'diverged' : 'shipped'}
-                    </span>
-                  </Show>
-                </button>
-              );
-            }}
-            renderFile={(file) => (
-              <SkillCard
-                node={file}
-                onOpen={() => props.onOpen(file.path, file.title, file.shipped)}
-              />
-            )}
-          />
-        )}
-      </Show>
+              }}
+              renderFile={(file) => (
+                <SkillCard
+                  node={file}
+                  isYaml={isYamlSpec(file)}
+                  onOpen={() => props.onOpen(file.path, file.title, file.shipped)}
+                />
+              )}
+            />
+          )}
+        </Show>
+      </div>
     </div>
   );
 }
 
-function SkillCard(props: { node: SkillNode; onOpen: () => void }) {
+function SkillCard(props: { node: SkillNode; isYaml: boolean; onOpen: () => void }) {
   const shippedStatus = (): 'none' | 'clean' | 'diverged' => {
     const s = props.node.shipped;
     if (!s) return 'none';
@@ -165,10 +252,11 @@ function SkillCard(props: { node: SkillNode; onOpen: () => void }) {
     <article
       class="skills-card"
       data-shipped={shippedStatus()}
+      data-kind={props.isYaml ? 'yaml' : 'md'}
       title={props.node.path}
       tabIndex={0}
       role="button"
-      aria-label={`Open skill ${props.node.title}`}
+      aria-label={`Open ${props.isYaml ? 'spec' : 'skill'} ${props.node.title}`}
       onClick={() => props.onOpen()}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -180,6 +268,9 @@ function SkillCard(props: { node: SkillNode; onOpen: () => void }) {
     >
       <header class="skills-card-head">
         <h3 class="skills-card-title">{props.node.title}</h3>
+        <Show when={props.isYaml}>
+          <span class="skills-card-kind">YAML</span>
+        </Show>
         <Show when={props.node.shipped}>
           {(stamp) => (
             <span

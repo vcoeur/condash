@@ -12,6 +12,7 @@ import type {
   RepoEntry,
   ResourceNode,
   SkillNode,
+  SkillTab,
   Step,
   TerminalPrefs,
   Theme,
@@ -220,8 +221,13 @@ function App() {
   };
 
   const treeExpansion = createTreeExpansion({ flashToast });
-  const { knowledgeExpanded, resourcesExpanded, skillsExpanded, toggleTreeExpand, expandTreeDir } =
-    treeExpansion;
+  const {
+    knowledgeExpanded,
+    resourcesExpanded,
+    skillsExpandedByTab,
+    toggleTreeExpand,
+    expandTreeDir,
+  } = treeExpansion;
 
   const branchFilter = createBranchFilterStore({ flashToast });
 
@@ -230,6 +236,18 @@ function App() {
       window.condash.treeCreateMd(root, dirRelPath, filename),
     mkdir: (root, dirRelPath, name) => window.condash.treeMkdir(root, dirRelPath, name),
     importFile: (root, dirRelPath) => window.condash.treeImportFile(root, dirRelPath),
+  };
+  // Skills mutations pre-bind the currently-active Skills tab so source
+  // edits land in `.agents/skills/` and Claude edits in `<skills_path>`.
+  // The Kimi tab uses the affordance allowlist to suppress the buttons
+  // entirely; the main-process resolver enforces the rule as a backstop.
+  const skillsMutations: TreeViewMutationApi = {
+    createMd: (root, dirRelPath, filename) =>
+      window.condash.treeCreateMd(root, dirRelPath, filename, skillsActiveTab()),
+    mkdir: (root, dirRelPath, name) =>
+      window.condash.treeMkdir(root, dirRelPath, name, skillsActiveTab()),
+    importFile: (root, dirRelPath) =>
+      window.condash.treeImportFile(root, dirRelPath, skillsActiveTab()),
   };
   const treePrompts: TreeViewPromptApi = {
     prompt: openPrompt,
@@ -257,7 +275,16 @@ function App() {
       reloadProjects: reloadProjects,
       reloadKnowledge: knowledgeStore.reload,
       reloadResources: resourcesStore.reload,
-      reloadSkills: skillsStore.reload,
+      reloadSkills: () =>
+        // The renderer can't know which tab(s) a tree event affects without
+        // duplicating the path-routing logic that lives in the main
+        // process. Reload all three; each fetcher is cheap and operates
+        // against a small tree (~10–50 files).
+        Promise.all([
+          skillsStores.generic.reload(),
+          skillsStores.claude.reload(),
+          skillsStores.kimi.reload(),
+        ]).then(() => undefined),
       reloadConfig: reloadConfig,
       // Repos do not subscribe to tree events directly — repo-events
       // covers scalar / structural updates; `config` is the only path
@@ -323,12 +350,41 @@ function App() {
   });
   const resources = resourcesStore.root;
 
-  const skillsStore = createTreeStore<SkillNode>({
-    conceptionPath,
-    fetcher: () => window.condash.readSkillsTree(),
-    key: 'relPath',
-  });
-  const skills = skillsStore.root;
+  // One tree store per Skills tab. The trees back independent on-disk roots
+  // (`.agents/skills/`, `<skills_path>`, `.kimi/skills/`), so each gets its
+  // own fetcher, store, and reload trigger. All three are eagerly loaded
+  // when the conception path is set so tab switching is paint-only.
+  const skillsStores: Record<SkillTab, ReturnType<typeof createTreeStore<SkillNode>>> = {
+    generic: createTreeStore<SkillNode>({
+      conceptionPath,
+      fetcher: () => window.condash.readSkillsTree('generic'),
+      key: 'relPath',
+    }),
+    claude: createTreeStore<SkillNode>({
+      conceptionPath,
+      fetcher: () => window.condash.readSkillsTree('claude'),
+      key: 'relPath',
+    }),
+    kimi: createTreeStore<SkillNode>({
+      conceptionPath,
+      fetcher: () => window.condash.readSkillsTree('kimi'),
+      key: 'relPath',
+    }),
+  };
+  // Active tab (defaults to `claude` to preserve pre-tabs behaviour; the
+  // hydrate-from-IPC `then` below replaces it with the persisted value).
+  const [skillsActiveTab, setSkillsActiveTabSig] = createSignal<SkillTab>('claude');
+  void window.condash.getSkillsActiveTab().then((tab) => setSkillsActiveTabSig(tab));
+  const persistSkillsActiveTab = (tab: SkillTab): void => {
+    void window.condash.setSkillsActiveTab(tab).catch((err) => {
+      flashToast(`Could not persist Skills tab: ${(err as Error).message}`, 'error');
+    });
+  };
+  const handleSkillsTabSelect = (tab: SkillTab): void => {
+    setSkillsActiveTabSig(tab);
+    persistSkillsActiveTab(tab);
+  };
+  const activeSkillsRoot = createMemo(() => skillsStores[skillsActiveTab()].root());
 
   // Code-pane repos store. Owns the scalar/set-membership split and the
   // structural-event debouncer; see `./repos-store.ts` for the contract.
@@ -514,7 +570,9 @@ function App() {
       reloadProjects(),
       knowledgeStore.reload(),
       resourcesStore.reload(),
-      skillsStore.reload(),
+      skillsStores.generic.reload(),
+      skillsStores.claude.reload(),
+      skillsStores.kimi.reload(),
       reloadConfig(),
       reloadRepos(),
     ]);
@@ -648,6 +706,7 @@ function App() {
     newPath: string,
     kind: TreeAffordance,
     sourceDirRelPath: string,
+    skillTab?: SkillTab,
   ): void => {
     // Reload the affected tree explicitly — the chokidar watcher does
     // fire on the new file, but the open-the-newly-created-file branch
@@ -655,8 +714,11 @@ function App() {
     // the new entry on the same frame.
     if (treeKey === 'knowledge') void knowledgeStore.reload();
     else if (treeKey === 'resources') void resourcesStore.reload();
-    else void skillsStore.reload();
-    expandTreeDir(treeKey, sourceDirRelPath);
+    else {
+      const tab = skillTab ?? skillsActiveTab();
+      void skillsStores[tab].reload();
+    }
+    expandTreeDir(treeKey, sourceDirRelPath, skillTab);
     if (kind === 'mkdir') return;
     if (treeKey === 'knowledge') {
       handleOpenKnowledgeFile(newPath);
@@ -1049,7 +1111,9 @@ function App() {
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <SkillsView
-                      root={skills() ?? null}
+                      tab={skillsActiveTab()}
+                      onSelectTab={handleSkillsTabSelect}
+                      root={activeSkillsRoot() ?? null}
                       onOpen={handleOpenSkillFile}
                       onOpenSettings={() => setSettingsOpen(true)}
                       onCopyInstallCommand={() => {
@@ -1060,12 +1124,12 @@ function App() {
                             flashToast(`Copy failed: ${(err as Error).message}`, 'error'),
                           );
                       }}
-                      expanded={skillsExpanded}
-                      onToggleExpand={(rel) => toggleTreeExpand('skills', rel)}
-                      mutations={treeMutations}
+                      expanded={() => skillsExpandedByTab(skillsActiveTab())()}
+                      onToggleExpand={(rel) => toggleTreeExpand('skills', rel, skillsActiveTab())}
+                      mutations={skillsMutations}
                       prompts={treePrompts}
                       onAfterMutation={(newPath, kind, source) =>
-                        handleAfterTreeMutation('skills', newPath, kind, source)
+                        handleAfterTreeMutation('skills', newPath, kind, source, skillsActiveTab())
                       }
                       onError={treeError}
                     />

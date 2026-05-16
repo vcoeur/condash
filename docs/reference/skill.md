@@ -74,7 +74,15 @@ Install or refresh the shipped skills. Use it after upgrading condash to pull up
 | `status` | `/skills status` | `condash skills status` (compare local vs shipped via SHA256) |
 | `install` | `/skills install` | `condash skills install` (per-file diff + confirmation walk) |
 
-The manifest at `<conception>/.claude/skills/.condash-skills.json` tracks the shipped version + SHA256 per file so updates can detect local edits.
+`condash skills install` writes three independent manifests so each tree gets its own shipped/diverged tracking:
+
+| Manifest path | Purpose | Schema |
+|---|---|---|
+| `<conception>/.agents/.condash-skills.json` | Source refuse-on-edit (CLI internal) | `skills.<name>.source` |
+| `<conception>/.claude/skills/.condash-skills.json` | Claude compiled tracking | `skills.<name>.files` |
+| `<conception>/.kimi/skills/.condash-skills.json` | Kimi compiled tracking | `skills.<name>.files` |
+
+The source manifest moved from `.claude/skills/.condash-skills.json` to `.agents/.condash-skills.json` when the skillspec compiler shipped. `readManifest` migrates the legacy path on first read (one-shot, transparent — the legacy file is moved, not copied).
 
 ## `/pr`
 

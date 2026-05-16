@@ -2,11 +2,11 @@ import { ipcMain } from 'electron';
 import { resolveConceptionPaths } from '../conception-paths';
 import { readKnowledgeTree } from '../knowledge';
 import { readResourcesTree } from '../resources';
-import { readSkillsTree } from '../skills';
+import { readSkillsTreeForTab } from '../skills';
 import { search } from '../search';
 import { readSettings } from '../settings';
 import { treeCreateMd, treeImportFile, treeMkdir } from '../tree-mutations';
-import type { TreeRoot } from '../../shared/types';
+import type { SkillTab, TreeRoot } from '../../shared/types';
 import { withConception } from './utils';
 
 /**
@@ -27,23 +27,27 @@ export function registerTreesIpc(): void {
     }, null),
   );
 
-  ipcMain.handle('readSkillsTree', () =>
+  ipcMain.handle('readSkillsTree', (_, tab: SkillTab) =>
     withConception(async (conceptionPath) => {
       const { skills } = await resolveConceptionPaths(conceptionPath);
-      return readSkillsTree(conceptionPath, skills);
+      return readSkillsTreeForTab(conceptionPath, tab, skills);
     }, null),
   );
 
-  ipcMain.handle('treeCreateMd', (_, root: TreeRoot, dirRelPath: string, filename: string) =>
-    treeCreateMd(root, dirRelPath, filename),
+  ipcMain.handle(
+    'treeCreateMd',
+    (_, root: TreeRoot, dirRelPath: string, filename: string, skillTab?: SkillTab) =>
+      treeCreateMd(root, dirRelPath, filename, skillTab),
   );
 
-  ipcMain.handle('treeMkdir', (_, root: TreeRoot, dirRelPath: string, name: string) =>
-    treeMkdir(root, dirRelPath, name),
+  ipcMain.handle(
+    'treeMkdir',
+    (_, root: TreeRoot, dirRelPath: string, name: string, skillTab?: SkillTab) =>
+      treeMkdir(root, dirRelPath, name, skillTab),
   );
 
-  ipcMain.handle('treeImportFile', (_, root: TreeRoot, dirRelPath: string) =>
-    treeImportFile(root, dirRelPath),
+  ipcMain.handle('treeImportFile', (_, root: TreeRoot, dirRelPath: string, skillTab?: SkillTab) =>
+    treeImportFile(root, dirRelPath, skillTab),
   );
 
   // The original handler returned `[]` when no conception path was set;
