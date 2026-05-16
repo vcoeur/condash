@@ -165,14 +165,28 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     // key so it doesn't linger indefinitely for users who never trigger a
     // tree-expansion mutation. Fire-and-forget — failure here is non-fatal
     // and the next read will simply re-migrate.
-    if (legacySkills && treeExpansion) {
-      const { skills: _drop, ...rest } = treeExpansion;
-      void _drop;
-      const rewritten: TreeExpansionPrefs = {
-        ...rest,
-        skillsClaude: out.skillsClaude.length > 0 ? out.skillsClaude : rest.skillsClaude,
-      };
-      void updateSettings((cur) => ({ ...cur, treeExpansion: rewritten })).catch(() => undefined);
+    //
+    // The mutator re-reads `cur.treeExpansion` under `withSettingsQueue`
+    // rather than reusing the outer snapshot, so a parallel
+    // `setTreeExpansion` that landed between our read and this mutator
+    // running is preserved instead of being clobbered with stale state.
+    if (legacySkills) {
+      void updateSettings((cur) => {
+        const curTreeExpansion = cur.treeExpansion;
+        // Another mutator already dropped the legacy key — nothing to do.
+        if (!curTreeExpansion?.skills) return cur;
+        const { skills: legacyOnDisk, ...rest } = curTreeExpansion;
+        const migrated = new Set<string>();
+        for (const entry of Array.isArray(legacyOnDisk) ? legacyOnDisk : []) {
+          if (typeof entry === 'string') migrated.add(entry);
+        }
+        // Explicit `skillsClaude` (if any) wins; legacy only fills the gap.
+        const skillsClaude =
+          rest.skillsClaude ?? (migrated.size > 0 ? Array.from(migrated) : undefined);
+        const merged: TreeExpansionPrefs = { ...rest };
+        if (skillsClaude !== undefined) merged.skillsClaude = skillsClaude;
+        return { ...cur, treeExpansion: merged };
+      }).catch(() => undefined);
     }
     return out;
   });
