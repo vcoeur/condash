@@ -102,16 +102,20 @@ async function main(): Promise<number> {
 
   if (!parsed.noun || parsed.noun === 'help') {
     if (parsed.noun === 'help' && parsed.verb) {
-      // Re-dispatch into the noun's --help path so we don't keep two help strings.
+      // Re-dispatch into the noun's --help path so we don't keep two help
+      // strings. `condash help <noun>` → noun-level help; `condash help
+      // <noun> <verb>` → verb-level help (forwards the third token as the
+      // verb so the runNoun's per-verb printHelp picks it up).
+      const subVerb = parsed.positional[0] ?? null;
       const subArgs = {
         ...parsed,
         noun: parsed.verb,
-        verb: null,
-        positional: [],
-        flags: { help: true },
+        verb: subVerb,
+        positional: parsed.positional.slice(1),
+        flags: {},
       };
       try {
-        return await dispatch(subArgs, ctx, universal);
+        return await dispatch(subArgs, ctx, { ...universal, help: true });
       } catch (err) {
         return reportError(ctx, err);
       }
