@@ -428,9 +428,7 @@ describe('condash skills install --user (scripts)', () => {
         ctx(),
       ),
     );
-    expect(env.data.scripts.installed).toEqual([
-      { category: 'agents', relPath: 'md_to_pdf.sh' },
-    ]);
+    expect(env.data.scripts.installed).toEqual([{ category: 'agents', relPath: 'md_to_pdf.sh' }]);
     await expect(fs.access(join(agentsScriptsTarget, 'md_to_pdf.sh'))).rejects.toThrow();
   });
 
@@ -440,7 +438,9 @@ describe('condash skills install --user (scripts)', () => {
     await install();
 
     type StatusEnv = {
-      data: { items: ({ kind: string; relPath: string; state: string } | Record<string, unknown>)[] };
+      data: {
+        items: ({ kind: string; relPath: string; state: string } | Record<string, unknown>)[];
+      };
     };
 
     // After install: both scripts should report ok.
@@ -451,9 +451,9 @@ describe('condash skills install --user (scripts)', () => {
         ctx(),
       ),
     );
-    const scriptRows = (env.data.items as { kind: string; relPath: string; state: string }[]).filter(
-      (r) => r.kind === 'script',
-    );
+    const scriptRows = (
+      env.data.items as { kind: string; relPath: string; state: string }[]
+    ).filter((r) => r.kind === 'script');
     expect(scriptRows.length).toBe(2);
     expect(scriptRows.every((r) => r.state === 'ok')).toBe(true);
 
@@ -466,8 +466,9 @@ describe('condash skills install --user (scripts)', () => {
         ctx(),
       ),
     );
-    const tamperedRow = (env.data.items as { kind: string; relPath: string; state: string }[])
-      .find((r) => r.kind === 'script' && r.relPath === 'md_to_pdf.sh');
+    const tamperedRow = (env.data.items as { kind: string; relPath: string; state: string }[]).find(
+      (r) => r.kind === 'script' && r.relPath === 'md_to_pdf.sh',
+    );
     expect(tamperedRow?.state).toBe('stale');
 
     // Remove a target: should report missing.
@@ -479,8 +480,9 @@ describe('condash skills install --user (scripts)', () => {
         ctx(),
       ),
     );
-    const missingRow = (env.data.items as { kind: string; relPath: string; state: string }[])
-      .find((r) => r.kind === 'script' && r.relPath === 'cp-hook.sh');
+    const missingRow = (env.data.items as { kind: string; relPath: string; state: string }[]).find(
+      (r) => r.kind === 'script' && r.relPath === 'cp-hook.sh',
+    );
     expect(missingRow?.state).toBe('missing');
   });
 
