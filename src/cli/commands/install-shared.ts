@@ -8,10 +8,17 @@
  *   - **Top-level files** at the conception root (e.g. AGENTS.md, .gitignore)
  *     — heading-delimited regions, hash-tracked per file by region body.
  *
- * Both kinds write to the same manifest at
- * `<dest>/.claude/skills/.condash-skills.json`. The file lives under
- * `.claude/skills/` for historical reasons; top-level files are written
- * elsewhere but reusing the path avoids two manifests that can drift.
+ * The CLI writes three independent manifests on each install:
+ *   - `<dest>/.agents/.condash-skills.json` — source refuse-on-edit. Tracks
+ *     each shipped source file under `.agents/skills/`. Used by the
+ *     skills walker to flag local edits before re-installing.
+ *   - `<dest>/.claude/skills/.condash-skills.json` — Claude compiled output.
+ *   - `<dest>/.kimi/skills/.condash-skills.json` — Kimi compiled output.
+ *
+ * The source manifest moved from `.claude/skills/.condash-skills.json` to
+ * `.agents/.condash-skills.json` when the skillspec compiler shipped.
+ * `readManifest` migrates the legacy file on first read (one-shot, the
+ * legacy file is moved rather than copied).
  */
 
 import { createHash } from 'node:crypto';
@@ -79,7 +86,11 @@ export interface Manifest {
   files?: Record<string, ManifestRegionEntry>;
 }
 
-/** Read the manifest at `<dest>/.claude/skills/.condash-skills.json`.
+/** Read the source manifest at `<dest>/.agents/.condash-skills.json`.
+ *
+ * If the new location doesn't exist, falls back to the legacy path
+ * `<dest>/.claude/skills/.condash-skills.json` and **moves** it to
+ * `.agents/` transparently. This is a one-time migration.
  *
  * Migrates older schemas in-memory on read:
  *
@@ -94,45 +105,75 @@ export interface Manifest {
  * `writeManifest` call.
  */
 export async function readManifest(dest: string): Promise<Manifest | null> {
-  const path = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
+  const newPath = join(dest, '.agents', MANIFEST_RELPATH);
+  const legacyPath = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
   type LegacyManifest = Manifest & { templates?: Record<string, ManifestRegionEntry> };
+
+  let path = newPath;
+  let raw: string;
   try {
-    const raw = await fs.readFile(path, 'utf8');
-    const parsed = JSON.parse(raw) as LegacyManifest;
-    if (parsed.version === 1) {
-      return {
-        version: MANIFEST_VERSION,
-        skills: {},
-        files: parsed.templates,
-      };
-    }
-    if (parsed.version === 2) {
-      return {
-        version: MANIFEST_VERSION,
-        skills: parsed.skills ?? {},
-        files: parsed.templates,
-      };
-    }
-    if (parsed.version !== MANIFEST_VERSION) {
+    raw = await fs.readFile(newPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw new CliError(
         ExitCodes.RUNTIME,
-        `Manifest at ${path} has unknown version ${parsed.version} (expected ${MANIFEST_VERSION})`,
+        `Could not read manifest at ${newPath}: ${(err as Error).message}`,
       );
     }
-    if (!parsed.skills) parsed.skills = {};
-    return parsed;
+    // Fall back to legacy path and migrate if present.
+    try {
+      raw = await fs.readFile(legacyPath, 'utf8');
+      path = legacyPath;
+    } catch (err2) {
+      if ((err2 as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw new CliError(
+        ExitCodes.RUNTIME,
+        `Could not read manifest at ${legacyPath}: ${(err2 as Error).message}`,
+      );
+    }
+  }
+
+  let parsed: LegacyManifest;
+  try {
+    parsed = JSON.parse(raw) as LegacyManifest;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    if (err instanceof CliError) throw err;
     throw new CliError(
       ExitCodes.RUNTIME,
-      `Could not read manifest at ${path}: ${(err as Error).message}`,
+      `Could not parse manifest at ${path}: ${(err as Error).message}`,
     );
   }
+
+  if (parsed.version === 1) {
+    parsed = {
+      version: MANIFEST_VERSION,
+      skills: {},
+      files: parsed.templates,
+    };
+  } else if (parsed.version === 2) {
+    parsed = {
+      version: MANIFEST_VERSION,
+      skills: parsed.skills ?? {},
+      files: parsed.templates,
+    };
+  } else if (parsed.version !== MANIFEST_VERSION) {
+    throw new CliError(
+      ExitCodes.RUNTIME,
+      `Manifest at ${path} has unknown version ${parsed.version} (expected ${MANIFEST_VERSION})`,
+    );
+  }
+  if (!parsed.skills) parsed.skills = {};
+
+  // One-time transparent migration: legacy path → new path.
+  if (path === legacyPath) {
+    await fs.mkdir(dirname(newPath), { recursive: true });
+    await fs.rename(legacyPath, newPath);
+  }
+
+  return parsed;
 }
 
 export async function writeManifest(dest: string, manifest: Manifest): Promise<void> {
-  const path = join(dest, '.claude', 'skills', MANIFEST_RELPATH);
+  const path = join(dest, '.agents', MANIFEST_RELPATH);
   await writeFileMkdir(path, Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8'));
 }
 

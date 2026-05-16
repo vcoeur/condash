@@ -17,6 +17,7 @@ import type {
   ResourceNode,
   SearchResults,
   SkillNode,
+  SkillTab,
   StepMarker,
   TermDataMessage,
   TermExitMessage,
@@ -40,10 +41,13 @@ export interface CondashApi {
    * carrying mime + coarse category for the renderer's icon picker.
    * Resolves to null when the directory is missing. */
   readResourcesTree(): Promise<ResourceNode | null>;
-  /** Tree under <conception>/<skills_path> — `.md` files only, with
-   * shipped-SHA stamps populated from `.condash-skills.json` when present.
+  /** Tree under the active skills tab's root:
+   *  - generic → `.agents/skills/` (`.md` and `.yaml` files)
+   *  - claude  → `<conception>/<skills_path>` (`.md` only)
+   *  - kimi    → `.kimi/skills/` (`.md` only)
+   * Shipped-SHA stamps are populated from `.condash-skills.json` when present.
    * Resolves to null when the directory is missing. */
-  readSkillsTree(): Promise<SkillNode | null>;
+  readSkillsTree(tab: SkillTab): Promise<SkillNode | null>;
   search(query: string): Promise<SearchResults>;
   listRepos(): Promise<RepoEntry[]>;
   /** Per-primary partial reload — returns the primary's `RepoEntry` plus
@@ -128,6 +132,9 @@ export interface CondashApi {
   getBranchFilterStickyAll(): Promise<boolean>;
   /** Persist the All-sticky mode flag. */
   setBranchFilterStickyAll(value: boolean): Promise<void>;
+  /** Active tab in the Skills pane. Persisted per-machine in settings.json. */
+  getSkillsActiveTab(): Promise<SkillTab>;
+  setSkillsActiveTab(tab: SkillTab): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;
@@ -271,17 +278,28 @@ export interface CondashApi {
    *  `.md` extension is appended when missing. Resources accept any
    *  extension; knowledge / skills always force `.md`. Refuses to overwrite
    *  an existing file. Returns the new file's absolute path so the caller
-   *  can re-fetch the tree and open the file in the editor. */
-  treeCreateMd(root: TreeRoot, dirRelPath: string, filename: string): Promise<string>;
+   *  can re-fetch the tree and open the file in the editor.
+   *  When `root === 'skills'`, `skillTab` selects which tab's directory is
+   *  the target (generic / claude / kimi). Kimi rejects with an error. */
+  treeCreateMd(
+    root: TreeRoot,
+    dirRelPath: string,
+    filename: string,
+    skillTab?: SkillTab,
+  ): Promise<string>;
   /** Create a new subdirectory under one of the three tree panes'
    *  directories. Same `dirRelPath` semantics as `treeCreateMd`. `name` is
    *  sanitised to lowercase-hyphen. Idempotent: a no-op if the directory
-   *  already exists, but always returns its absolute path. */
-  treeMkdir(root: TreeRoot, dirRelPath: string, name: string): Promise<string>;
+   *  already exists, but always returns its absolute path.
+   *  When `root === 'skills'`, `skillTab` selects which tab's directory is
+   *  the target (generic / claude / kimi). Kimi rejects with an error. */
+  treeMkdir(root: TreeRoot, dirRelPath: string, name: string, skillTab?: SkillTab): Promise<string>;
   /** Pop an OS file picker, then copy the chosen file into the target tree
    *  directory. Resolves to the destination's absolute path, or `null` when
-   *  the user cancels. Refuses to overwrite an existing file. */
-  treeImportFile(root: TreeRoot, dirRelPath: string): Promise<string | null>;
+   *  the user cancels. Refuses to overwrite an existing file.
+   *  When `root === 'skills'`, `skillTab` selects which tab's directory is
+   *  the target (generic / claude / kimi). Kimi rejects with an error. */
+  treeImportFile(root: TreeRoot, dirRelPath: string, skillTab?: SkillTab): Promise<string | null>;
   /** Trigger app quit. Renderer is responsible for any user confirmation. */
   quitApp(): Promise<void>;
   /** App version + bundled release metadata used by the About modal.

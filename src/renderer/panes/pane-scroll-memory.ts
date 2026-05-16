@@ -1,4 +1,4 @@
-import { onCleanup } from 'solid-js';
+import { createEffect, onCleanup } from 'solid-js';
 
 /**
  * Per-pane in-session scroll-position memory.
@@ -12,21 +12,28 @@ import { onCleanup } from 'solid-js';
  * Module-level Map: lives for the lifetime of the renderer process. Not
  * persisted across launches — saving scroll positions to settings.json
  * would carry too much per-session noise.
+ *
+ * The `paneId` argument may be a plain string or a getter. A getter lets
+ * callers thread a reactive sub-id (e.g. the active Skills tab) so the
+ * hook saves the current scrollTop under the previous id and restores
+ * the next id's position in the same scroller — no remount required.
  */
 const positions = new Map<string, number>();
 
-/**
- * Solid hook: returns a ref callback. Pass it to the pane's scroll
- * container. On mount, restores the saved scrollTop (if any). On
- * unmount, captures the current scrollTop into the module-level Map.
- */
-export function usePaneScrollMemory(paneId: string): (el: HTMLElement | undefined) => void {
+export function usePaneScrollMemory(
+  paneId: string | (() => string),
+): (el: HTMLElement | undefined) => void {
   let scroller: HTMLElement | undefined;
+  let lastId: string | undefined;
+
+  const resolveId = (): string => (typeof paneId === 'string' ? paneId : paneId());
 
   const ref = (el: HTMLElement | undefined): void => {
     scroller = el;
     if (!el) return;
-    const saved = positions.get(paneId);
+    const id = resolveId();
+    lastId = id;
+    const saved = positions.get(id);
     if (saved !== undefined) {
       // queueMicrotask so the restore happens after the pane's children
       // have laid out — otherwise scrollTop assignment hits an empty
@@ -37,8 +44,29 @@ export function usePaneScrollMemory(paneId: string): (el: HTMLElement | undefine
     }
   };
 
+  // Reactively follow `paneId` changes when a getter is passed: save the
+  // current scrollTop under the *previous* id, then restore the new id's
+  // position. The first invocation only records the initial id.
+  if (typeof paneId !== 'string') {
+    createEffect(() => {
+      const nextId = paneId();
+      if (!scroller) {
+        lastId = nextId;
+        return;
+      }
+      if (lastId !== undefined && lastId !== nextId) {
+        positions.set(lastId, scroller.scrollTop);
+      }
+      lastId = nextId;
+      const saved = positions.get(nextId);
+      queueMicrotask(() => {
+        if (scroller) scroller.scrollTop = saved ?? 0;
+      });
+    });
+  }
+
   onCleanup(() => {
-    if (scroller) positions.set(paneId, scroller.scrollTop);
+    if (scroller && lastId !== undefined) positions.set(lastId, scroller.scrollTop);
   });
 
   return ref;

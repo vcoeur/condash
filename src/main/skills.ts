@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
-import type { SkillNode } from '../shared/types';
+import type { SkillNode, SkillTab } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { parseHead } from './knowledge';
 import { readFileHead } from './read-file-head';
@@ -41,12 +41,58 @@ export async function readSkillsTree(
     new Set<string>(),
     shipped,
     root,
+    /* acceptYaml */ false,
   );
   const claudeEntries = await readConceptionClaudeMd(conceptionPath);
   if (claudeEntries.length > 0) {
     tree.children = [...claudeEntries, ...(tree.children ?? [])];
   }
   return tree;
+}
+
+/**
+ * Read the generic skills tree at `<conceptionPath>/.agents/skills/`.
+ * Accepts both `.md` and `.yaml` files. No synthetic `CLAUDE.md` entries.
+ * Uses `buildShippedLookup` on the root `.agents/skills/`.
+ */
+export async function readGenericSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
+  const root = join(conceptionPath, '.agents', 'skills');
+  try {
+    await fs.access(root);
+  } catch {
+    return null;
+  }
+  const shipped = await buildShippedLookup(root);
+  return walk(root, '', 'skills', new Set<string>(), shipped, root, /* acceptYaml */ true);
+}
+
+/**
+ * Read the Kimi skills tree at `<conceptionPath>/.kimi/skills/`.
+ * Same `.md`-only filter as `readSkillsTree`. No synthetic `CLAUDE.md`
+ * injection. Uses `buildShippedLookup` on `.kimi/skills/`.
+ */
+export async function readKimiSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
+  const root = join(conceptionPath, '.kimi', 'skills');
+  try {
+    await fs.access(root);
+  } catch {
+    return null;
+  }
+  const shipped = await buildShippedLookup(root);
+  return walk(root, '', 'skills', new Set<string>(), shipped, root, /* acceptYaml */ false);
+}
+
+/**
+ * Router that delegates to the tab-specific reader.
+ */
+export async function readSkillsTreeForTab(
+  conceptionPath: string,
+  tab: SkillTab,
+  skillsRelPath: string,
+): Promise<SkillNode | null> {
+  if (tab === 'generic') return readGenericSkillsTree(conceptionPath);
+  if (tab === 'kimi') return readKimiSkillsTree(conceptionPath);
+  return readSkillsTree(conceptionPath, skillsRelPath);
 }
 
 /** Probe `<conceptionPath>/CLAUDE.md` and `<conceptionPath>/.claude/CLAUDE.md`
@@ -86,6 +132,7 @@ async function walk(
   visitedDirs: Set<string>,
   shipped: ShippedLookup,
   root: string,
+  acceptYaml: boolean,
 ): Promise<SkillNode> {
   const stat = await fs.stat(absPath);
   if (stat.isFile()) {
@@ -125,14 +172,18 @@ async function walk(
   const accepted = entries.filter((e) => {
     if (HIDDEN_PREFIX.test(e.name)) return false;
     if (e.isDirectory()) return true;
-    return e.isFile() && e.name.toLowerCase().endsWith('.md');
+    if (!e.isFile()) return false;
+    const lower = e.name.toLowerCase();
+    if (lower.endsWith('.md')) return true;
+    if (acceptYaml && (lower.endsWith('.yaml') || lower.endsWith('.yml'))) return true;
+    return false;
   });
 
   const children = await Promise.all(
     accepted.map(async (entry) => {
       const childAbs = join(absPath, entry.name);
       const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
-      return walk(childAbs, childRel, entry.name, nextVisited, shipped, root);
+      return walk(childAbs, childRel, entry.name, nextVisited, shipped, root, acceptYaml);
     }),
   );
 

@@ -1,7 +1,7 @@
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import { basename, extname, join, normalize } from 'node:path';
 import { dialog } from 'electron';
-import type { TreeRoot } from '../shared/types';
+import type { SkillTab, TreeRoot } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { readSettings } from './settings';
 import { resolveConceptionPaths } from './conception-paths';
@@ -20,14 +20,21 @@ import { requirePathUnder } from './path-bounds';
 
 /** Resolve a tree root to its absolute on-disk path. Knowledge is hardcoded
  * to `<conception>/knowledge/`; resources + skills come from
- * `condash.json`. */
-async function resolveRoot(root: TreeRoot): Promise<string> {
+ * `condash.json`. When `root === 'skills'`, `skillTab` selects the
+ * per-tab directory (generic / claude / kimi). */
+async function resolveRoot(root: TreeRoot, skillTab?: SkillTab): Promise<string> {
   const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) throw new Error('no conception path is set');
   if (root === 'knowledge') return join(conceptionPath, 'knowledge');
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);
   if (root === 'resources') return join(conceptionPath, resources);
-  if (root === 'skills') return join(conceptionPath, skills);
+  if (root === 'skills') {
+    const tab = skillTab ?? 'claude';
+    if (tab === 'generic') return join(conceptionPath, '.agents', 'skills');
+    if (tab === 'claude') return join(conceptionPath, skills);
+    if (tab === 'kimi') throw new Error('Kimi skills tree is read-only');
+    throw new Error(`unknown skill tab: ${tab}`);
+  }
   throw new Error(`unknown tree root: ${root as string}`);
 }
 
@@ -64,8 +71,9 @@ async function resolveChildBounded(
   root: TreeRoot,
   dirRelPath: string,
   childName: string,
+  skillTab?: SkillTab,
 ): Promise<{ rootAbs: string; targetAbs: string }> {
-  const rootAbs = await resolveRoot(root);
+  const rootAbs = await resolveRoot(root, skillTab);
   if (typeof dirRelPath !== 'string') {
     throw new Error('dirRelPath must be a string');
   }
@@ -97,27 +105,37 @@ export async function treeCreateMd(
   root: TreeRoot,
   dirRelPath: string,
   filename: string,
+  skillTab?: SkillTab,
 ): Promise<string> {
   const sanitised = buildFilename(root, filename);
-  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised);
+  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised, skillTab);
   // `wx` flag refuses to overwrite — surfaces a clear error to the
   // renderer when the user picks a name that's already taken.
   await fs.writeFile(targetAbs, '', { encoding: 'utf8', flag: 'wx' });
   return toPosix(targetAbs);
 }
 
-export async function treeMkdir(root: TreeRoot, dirRelPath: string, name: string): Promise<string> {
+export async function treeMkdir(
+  root: TreeRoot,
+  dirRelPath: string,
+  name: string,
+  skillTab?: SkillTab,
+): Promise<string> {
   const sanitised = sanitiseSegment(name, '').replace(/\.+/g, '-');
   if (sanitised.length === 0) throw new Error('directory name is empty after sanitisation');
-  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised);
+  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised, skillTab);
   await fs.mkdir(targetAbs, { recursive: true });
   return toPosix(targetAbs);
 }
 
-export async function treeImportFile(root: TreeRoot, dirRelPath: string): Promise<string | null> {
+export async function treeImportFile(
+  root: TreeRoot,
+  dirRelPath: string,
+  skillTab?: SkillTab,
+): Promise<string | null> {
   // Resolve + bounds-check the destination before opening the dialog so
   // we never copy a file just to throw away on a bad target.
-  const rootAbs = await resolveRoot(root);
+  const rootAbs = await resolveRoot(root, skillTab);
   const cleanedDir = normalize(dirRelPath ?? '');
   const dirAbs = cleanedDir === '' || cleanedDir === '.' ? rootAbs : join(rootAbs, cleanedDir);
   await requirePathUnder(dirAbs, rootAbs);

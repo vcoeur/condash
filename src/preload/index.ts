@@ -13,7 +13,7 @@ const api: CondashApi = {
   getProject: (path) => ipcRenderer.invoke('getProject', path),
   readKnowledgeTree: () => ipcRenderer.invoke('readKnowledgeTree'),
   readResourcesTree: () => ipcRenderer.invoke('readResourcesTree'),
-  readSkillsTree: () => ipcRenderer.invoke('readSkillsTree'),
+  readSkillsTree: (tab) => ipcRenderer.invoke('readSkillsTree', tab),
   search: (query) => ipcRenderer.invoke('search', query),
   listRepos: () => ipcRenderer.invoke('listRepos'),
   listReposForPrimary: (primaryName) => ipcRenderer.invoke('listReposForPrimary', primaryName),
@@ -46,6 +46,8 @@ const api: CondashApi = {
   setSelectedBranches: (list) => ipcRenderer.invoke('setSelectedBranches', list),
   getBranchFilterStickyAll: () => ipcRenderer.invoke('getBranchFilterStickyAll'),
   setBranchFilterStickyAll: (value) => ipcRenderer.invoke('setBranchFilterStickyAll', value),
+  getSkillsActiveTab: () => ipcRenderer.invoke('getSkillsActiveTab'),
+  setSkillsActiveTab: (tab) => ipcRenderer.invoke('setSkillsActiveTab', tab),
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
   getGlobalSettingsRaw: () => ipcRenderer.invoke('getGlobalSettingsRaw'),
   writeGlobalSettings: (expectedContent, newContent) =>
@@ -111,10 +113,12 @@ const api: CondashApi = {
   openPath: (target: string) => ipcRenderer.invoke('openPath', target),
   createProjectNote: (projectPath: string, slug: string) =>
     ipcRenderer.invoke('createProjectNote', projectPath, slug),
-  treeCreateMd: (root, dirRelPath, filename) =>
-    ipcRenderer.invoke('treeCreateMd', root, dirRelPath, filename),
-  treeMkdir: (root, dirRelPath, name) => ipcRenderer.invoke('treeMkdir', root, dirRelPath, name),
-  treeImportFile: (root, dirRelPath) => ipcRenderer.invoke('treeImportFile', root, dirRelPath),
+  treeCreateMd: (root, dirRelPath, filename, skillTab) =>
+    ipcRenderer.invoke('treeCreateMd', root, dirRelPath, filename, skillTab),
+  treeMkdir: (root, dirRelPath, name, skillTab) =>
+    ipcRenderer.invoke('treeMkdir', root, dirRelPath, name, skillTab),
+  treeImportFile: (root, dirRelPath, skillTab) =>
+    ipcRenderer.invoke('treeImportFile', root, dirRelPath, skillTab),
   quitApp: () => ipcRenderer.invoke('quitApp'),
   getAppInfo: () => ipcRenderer.invoke('getAppInfo'),
   pdfToFileUrl: (path: string) => ipcRenderer.invoke('pdfToFileUrl', path),

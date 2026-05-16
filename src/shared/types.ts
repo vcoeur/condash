@@ -158,6 +158,11 @@ export interface LogsOpenRequest {
  * All four are mutually exclusive: showing one swaps the others out. */
 export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
 
+/** Active tab in the Skills pane. */
+export type SkillTab = 'generic' | 'claude' | 'kimi';
+
+export const SKILL_TABS: readonly SkillTab[] = ['generic', 'claude', 'kimi'] as const;
+
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, working surface on the right) and a bottom band (Terminal).
  * Each band can be hidden independently; the working surface is also
@@ -220,6 +225,10 @@ export interface Settings {
    *  is empty/undefined, false otherwise — preserves existing behaviour
    *  for users with an explicit selection. Issue #169. */
   branchFilterStickyAll?: boolean;
+  /** Active tab in the Skills pane. Persisted per-machine so the next
+   *  launch reopens whichever tab the user last looked at. Defaults to
+   *  `claude` (preserves pre-tabs behaviour for existing users). */
+  skillsActiveTab?: SkillTab;
 }
 
 /** Sets of expanded directory `relPath`s for the three tree panes. The
@@ -227,7 +236,13 @@ export interface Settings {
 export interface TreeExpansionPrefs {
   knowledge?: string[];
   resources?: string[];
+  /** Legacy key — migrated to `skillsClaude` on first read. Kept for
+   *  backwards compatibility during load; writers always emit the three
+   *  per-tab keys below. */
   skills?: string[];
+  skillsGeneric?: string[];
+  skillsClaude?: string[];
+  skillsKimi?: string[];
 }
 
 /** Discriminator for the three tree panes. Used by the `tree.*` IPC verbs
