@@ -161,6 +161,19 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
         out[key] = Array.from(seen);
       }
     }
+    // Opportunistically rewrite settings.json without the legacy `skills`
+    // key so it doesn't linger indefinitely for users who never trigger a
+    // tree-expansion mutation. Fire-and-forget — failure here is non-fatal
+    // and the next read will simply re-migrate.
+    if (legacySkills && treeExpansion) {
+      const { skills: _drop, ...rest } = treeExpansion;
+      void _drop;
+      const rewritten: TreeExpansionPrefs = {
+        ...rest,
+        skillsClaude: out.skillsClaude.length > 0 ? out.skillsClaude : rest.skillsClaude,
+      };
+      void updateSettings((cur) => ({ ...cur, treeExpansion: rewritten })).catch(() => undefined);
+    }
     return out;
   });
 

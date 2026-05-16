@@ -237,18 +237,6 @@ function App() {
     mkdir: (root, dirRelPath, name) => window.condash.treeMkdir(root, dirRelPath, name),
     importFile: (root, dirRelPath) => window.condash.treeImportFile(root, dirRelPath),
   };
-  // Skills mutations pre-bind the currently-active Skills tab so source
-  // edits land in `.agents/skills/` and Claude edits in `<skills_path>`.
-  // The Kimi tab uses the affordance allowlist to suppress the buttons
-  // entirely; the main-process resolver enforces the rule as a backstop.
-  const skillsMutations: TreeViewMutationApi = {
-    createMd: (root, dirRelPath, filename) =>
-      window.condash.treeCreateMd(root, dirRelPath, filename, skillsActiveTab()),
-    mkdir: (root, dirRelPath, name) =>
-      window.condash.treeMkdir(root, dirRelPath, name, skillsActiveTab()),
-    importFile: (root, dirRelPath) =>
-      window.condash.treeImportFile(root, dirRelPath, skillsActiveTab()),
-  };
   const treePrompts: TreeViewPromptApi = {
     prompt: openPrompt,
   };
@@ -385,6 +373,20 @@ function App() {
     persistSkillsActiveTab(tab);
   };
   const activeSkillsRoot = createMemo(() => skillsStores[skillsActiveTab()].root());
+  // Skills mutations pre-bind the currently-active Skills tab so source
+  // edits land in `.agents/skills/` and Claude edits in `<skills_path>`.
+  // The Kimi tab uses the affordance allowlist to suppress the buttons
+  // entirely; the main-process resolver enforces the rule as a backstop.
+  // Declared after `skillsActiveTab` so the closures don't carry forward
+  // references to a not-yet-initialised signal.
+  const skillsMutations: TreeViewMutationApi = {
+    createMd: (root, dirRelPath, filename) =>
+      window.condash.treeCreateMd(root, dirRelPath, filename, skillsActiveTab()),
+    mkdir: (root, dirRelPath, name) =>
+      window.condash.treeMkdir(root, dirRelPath, name, skillsActiveTab()),
+    importFile: (root, dirRelPath) =>
+      window.condash.treeImportFile(root, dirRelPath, skillsActiveTab()),
+  };
 
   // Code-pane repos store. Owns the scalar/set-membership split and the
   // structural-event debouncer; see `./repos-store.ts` for the contract.

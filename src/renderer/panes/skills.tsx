@@ -65,6 +65,34 @@ export function SkillsView(props: {
   const affordances = (): ReadonlyArray<TreeAffordance> =>
     props.tab === 'kimi' ? READONLY_AFFORDANCES : EDITABLE_AFFORDANCES;
 
+  // Per-tab button refs so the ARIA keyboard handler below can move focus
+  // to the next/previous tab without a global DOM query.
+  const tabRefs: Partial<Record<SkillTab, HTMLButtonElement>> = {};
+
+  // ARIA tab pattern: Left/Right (and Home/End) cycle the tab strip when
+  // a tab button has focus. We focus the next tab so screen readers
+  // re-announce and the visible focus ring follows. Wraps end-to-end.
+  const handleTabKeyDown = (event: KeyboardEvent, tab: SkillTab): void => {
+    const current = SKILL_TABS.indexOf(tab);
+    if (current < 0) return;
+    let nextIndex: number;
+    if (event.key === 'ArrowLeft') {
+      nextIndex = (current - 1 + SKILL_TABS.length) % SKILL_TABS.length;
+    } else if (event.key === 'ArrowRight') {
+      nextIndex = (current + 1) % SKILL_TABS.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = SKILL_TABS.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    const nextTab = SKILL_TABS[nextIndex];
+    props.onSelectTab(nextTab);
+    tabRefs[nextTab]?.focus();
+  };
+
   const emptyState = () => {
     if (props.tab === 'generic') {
       return (
@@ -135,7 +163,7 @@ export function SkillsView(props: {
 
   return (
     <div class="skills-pane">
-      <div class="skills-tabs" role="tablist" aria-label="Skills source">
+      <div class="skills-tabs" role="tablist" aria-label="Skill tree source">
         <For each={SKILL_TABS}>
           {(tab) => (
             <button
@@ -144,7 +172,12 @@ export function SkillsView(props: {
               class="skills-tab"
               classList={{ active: props.tab === tab }}
               aria-selected={props.tab === tab}
+              tabIndex={props.tab === tab ? 0 : -1}
+              ref={(el) => {
+                tabRefs[tab] = el;
+              }}
               onClick={() => props.onSelectTab(tab)}
+              onKeyDown={(e) => handleTabKeyDown(e, tab)}
             >
               {TAB_LABELS[tab]}
             </button>
