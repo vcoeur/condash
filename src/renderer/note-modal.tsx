@@ -1,5 +1,6 @@
 import {
   createEffect,
+  createMemo,
   createResource,
   createSignal,
   For,
@@ -177,13 +178,13 @@ export function NoteModal(props: {
     async (path) => (path ? await window.condash.readNote(path) : null),
   );
 
-  const html = (): string => {
+  const html = createMemo(() => {
     const text = content();
     if (text == null) return '';
     const path = props.state?.path ?? null;
     const baseDir = path ? path.replace(/\/[^/]*$/, '') : undefined;
     return renderMarkdown(text, { baseDir });
-  };
+  });
 
   let bodyRef: HTMLDivElement | undefined;
   let editorParent: HTMLDivElement | undefined;

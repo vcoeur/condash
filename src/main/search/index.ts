@@ -29,11 +29,18 @@ const RAW_HIT_CAP = 100;
  * for example, swapping the brute-force `walk + match` for a pre-built index
  * would only touch one boundary.
  */
-export async function search(conceptionPath: string, query: string): Promise<SearchResults> {
+export async function search(
+  conceptionPath: string,
+  query: string,
+  scopes?: string[],
+): Promise<SearchResults> {
   const terms = parseQuery(query);
   if (terms.length === 0) {
     return { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
   }
+
+  const wants = (source: string): boolean =>
+    !scopes || scopes.length === 0 || scopes.includes(source);
 
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);
 
@@ -50,15 +57,25 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
     skillFilesKimi,
     logFiles,
   ] = await Promise.all([
-    collectProjectFiles(join(conceptionPath, 'projects')),
-    collectKnowledgeFiles(join(conceptionPath, 'knowledge')),
-    collectResourceFiles(join(conceptionPath, resources)),
-    collectSkillFiles(join(conceptionPath, skills)),
-    collectSkillFiles(join(conceptionPath, '.agents', 'skills')),
-    collectSkillFiles(join(conceptionPath, '.kimi', 'skills')),
-    collectLogFiles(condashLogsRoot(conceptionPath)),
+    wants('projects') ? collectProjectFiles(join(conceptionPath, 'projects')) : Promise.resolve([]),
+    wants('knowledge')
+      ? collectKnowledgeFiles(join(conceptionPath, 'knowledge'))
+      : Promise.resolve([]),
+    wants('resources')
+      ? collectResourceFiles(join(conceptionPath, resources))
+      : Promise.resolve([]),
+    wants('skills') ? collectSkillFiles(join(conceptionPath, skills)) : Promise.resolve([]),
+    wants('skills')
+      ? collectSkillFiles(join(conceptionPath, '.agents', 'skills'))
+      : Promise.resolve([]),
+    wants('skills')
+      ? collectSkillFiles(join(conceptionPath, '.kimi', 'skills'))
+      : Promise.resolve([]),
+    wants('logs') ? collectLogFiles(condashLogsRoot(conceptionPath)) : Promise.resolve([]),
   ]);
-  const skillFiles = [...skillFilesClaude, ...skillFilesGeneric, ...skillFilesKimi];
+  const skillFiles = wants('skills')
+    ? [...skillFilesClaude, ...skillFilesGeneric, ...skillFilesKimi]
+    : [];
 
   const matchPromises: Promise<MatchOutput | null>[] = [];
 

@@ -12,6 +12,7 @@ description: The short list of environment variables condash reads.
 | Name | Purpose | Default | Accepted values |
 |---|---|---|---|
 | `CONDASH_CONCEPTION_PATH` | One-shot conception-path override (legacy alias `CONDASH_CONCEPTION` still accepted) | unset | Any absolute path |
+| `CLAUDE_PROJECT_DIR` | Back-compat alias for `CONDASH_CONCEPTION_PATH` in Claude Code sessions | unset | Any absolute path |
 | `CONDASH_FORCE_DEVICE_SCALE_FACTOR` | Force a fixed integer scale (Wayland fallback) | unset | Positive number |
 | `CONDASH_FORCE_PROD` | Force the renderer to load the packaged build (Playwright fixture) | unset | `1` or unset |
 | `SHELL` | Fallback for `terminal.shell` | `/bin/bash` | Absolute path to an interactive shell |
@@ -47,6 +48,10 @@ A one-shot override for the conception path. When set, it wins over the `concept
 The override is **session-scoped** — it is not persisted back into `settings.json`, and the next launch without the env var falls back to the saved value.
 
 The legacy name `CONDASH_CONCEPTION` is still accepted for back-compat (skills and scripts written before the rename keep working); when both are set, `CONDASH_CONCEPTION_PATH` wins.
+
+## `CLAUDE_PROJECT_DIR`
+
+Back-compat alias for `CONDASH_CONCEPTION_PATH`. Used by Claude Code sessions where the `CLAUDE_PROJECT_DIR` variable is already set. When both are set, `CONDASH_CONCEPTION_PATH` wins.
 
 ## `CONDASH_FORCE_DEVICE_SCALE_FACTOR`
 

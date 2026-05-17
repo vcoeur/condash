@@ -42,6 +42,8 @@ function isKnowledgeIndex(node: KnowledgeNode): boolean {
   return node.kind === 'file' && node.name.toLowerCase() === 'index.md';
 }
 
+const todayISO = new Date().toISOString().slice(0, 10);
+
 export function KnowledgeView(props: {
   root: KnowledgeNode;
   onOpen: (path: string, title?: string) => void;
@@ -52,7 +54,6 @@ export function KnowledgeView(props: {
   onAfterMutation: (newPath: string, kind: TreeAffordance, sourceDirRelPath: string) => void;
   onError: (message: string) => void;
 }) {
-  const todayISO = new Date().toISOString().slice(0, 10);
   const scrollRef = usePaneScrollMemory('knowledge');
 
   return (

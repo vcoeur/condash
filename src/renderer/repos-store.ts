@@ -124,6 +124,15 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
   });
 
   const offRepoEvents = window.condash.onRepoEvents((events) => {
+    const currentPath = deps.conceptionPath();
+    if (!currentPath) return;
+    // Guard against stray events from a recently-switched conception that
+    // arrive before the old listener is torn down.
+    if (events.length > 0) {
+      const first = events[0];
+      const firstPath = 'path' in first ? first.path : first.repoPath;
+      if (!firstPath.startsWith(currentPath)) return;
+    }
     applyRepoEvents(events, {
       repos,
       setRepos,

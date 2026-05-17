@@ -119,10 +119,6 @@ function makeId(): string {
   return `t-${randomBytes(4).toString('hex')}`;
 }
 
-async function readRawConfig(conceptionPath: string): Promise<ConfigShape> {
-  return (await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape;
-}
-
 function defaultShell(configured?: string): string {
   if (configured && configured.trim()) return configured;
   // SHELL is reliably set on POSIX. On Windows it is usually unset; fall
@@ -166,7 +162,9 @@ export async function spawnTerminal(
   webContents: WebContents,
   request: TermSpawnRequest,
 ): Promise<{ id: string; cwd: string }> {
-  const config = conceptionPath ? await readRawConfig(conceptionPath) : {};
+  const config = conceptionPath
+    ? ((await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape)
+    : {};
   const settings = await readSettings();
   const shell = defaultShell(settings.terminal?.shell);
 
@@ -507,10 +505,13 @@ export async function killAll(forWebContents?: WebContents): Promise<void> {
   if (targets.length === 0) return;
 
   const stops = targets.map(([id]) => stopSession(id, { removeEntry: false }));
-  await Promise.race([
-    Promise.allSettled(stops),
-    new Promise((resolve) => setTimeout(resolve, 1000)),
-  ]);
+  let safetyTimer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<void>((resolve) => {
+    safetyTimer = setTimeout(resolve, 1000);
+  });
+  await Promise.race([Promise.allSettled(stops), timeout]).finally(() => {
+    clearTimeout(safetyTimer);
+  });
 
   for (const [id] of targets) sessions.delete(id);
   broadcastSessions();

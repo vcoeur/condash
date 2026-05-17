@@ -154,6 +154,16 @@ if (isDev) {
 
 let mainWindow: BrowserWindow | null = null;
 
+// Cached conception path used by the note-asset protocol handler.
+// Updated on boot and whenever the user switches conceptions so that
+// embedded images in notes don't trigger a disk read per request.
+let cachedConceptionPath: string | null = null;
+
+// Handle for the recurring log-janitor interval. Cleared and re-created
+// whenever the active conception changes so the sweep targets the right
+// tree.
+let janitorInterval: ReturnType<typeof setInterval> | null = null;
+
 function windowTitleFor(path: string | null): string {
   return path ? `Condash - ${path}` : 'Condash';
 }
@@ -240,8 +250,7 @@ function registerNoteAssetProtocol(): void {
     const host = decodeURIComponent(url.host);
     const path = decodeURIComponent(url.pathname);
     const requested = host ? `/${host}${path}` : path;
-    const settings = await readSettings();
-    const root = settings.lastConceptionPath;
+    const root = cachedConceptionPath;
     if (!root) return new Response('no conception path', { status: 403 });
     // Reject `..` traversal at the URL layer before we touch the filesystem.
     // realpath() alone could resolve a symlink that escapes the conception,
@@ -264,12 +273,12 @@ function registerNoteAssetProtocol(): void {
 // `child.startsWith(parent + sep)` test that handles both `/` and `\` so a
 // Windows realpath result with backslashes still gets the trailing-separator
 // terminator that prevents `/foo-evil/` from matching `/foo`.
+function trail(s: string): string {
+  if (s.endsWith('/') || s.endsWith('\\')) return s;
+  // sep('\\') only matters on Windows; on POSIX the realpath always uses '/'.
+  return process.platform === 'win32' ? s + '\\' : s + '/';
+}
 function isPathUnder(child: string, parent: string): boolean {
-  const trail = (s: string): string => {
-    if (s.endsWith('/') || s.endsWith('\\')) return s;
-    // sep('\\') only matters on Windows; on POSIX the realpath always uses '/'.
-    return process.platform === 'win32' ? s + '\\' : s + '/';
-  };
   const c = trail(child);
   const p = trail(parent);
   return c === p || c.startsWith(p);
@@ -301,8 +310,10 @@ function registerIpc(): void {
   registerSettingsIpc({ onLayoutChange: rebuildMenu });
   registerSystemIpc({
     onConceptionPicked: (picked) => {
+      cachedConceptionPath = picked;
       updateWindowTitle(picked);
       void rebuildMenuFromSettings();
+      startJanitor(picked);
     },
     onRecentsChange: () => {
       void rebuildMenuFromSettings();
@@ -320,14 +331,14 @@ app.whenReady().then(async () => {
   await migrateTerminalFromConfigIfNeeded();
   const settings = await readSettings();
   const conceptionPath = settings.lastConceptionPath;
+  cachedConceptionPath = conceptionPath;
   await setWatchedConception(conceptionPath);
   // Sweep `.condash/logs/` for expired day-directories. Runs once at
   // startup and on a 24 h interval. Bounded by the effective
   // `terminal.logging.retentionDays` / `maxDirMb` settings; defaults are
   // 14 days / 500 MB.
   if (conceptionPath) {
-    void runJanitorSafe(conceptionPath);
-    setInterval(() => void runJanitorSafe(conceptionPath), 24 * 60 * 60 * 1000);
+    startJanitor(conceptionPath);
   }
   buildMenu(settings.layout ?? DEFAULT_LAYOUT, {
     paths: settings.recentConceptionPaths ?? [],
@@ -382,4 +393,13 @@ async function runJanitorSafe(conceptionPath: string): Promise<void> {
   } catch (err) {
     process.stderr.write(`condash terminal-logs janitor: ${(err as Error).message}\n`);
   }
+}
+
+/** Start (or re-point) the 24-hour log-janitor interval for `conceptionPath`.
+ *  Clears any existing interval first so conception switches don't leave
+ *  stale sweepers targeting the old tree. */
+function startJanitor(conceptionPath: string): void {
+  if (janitorInterval) clearInterval(janitorInterval);
+  void runJanitorSafe(conceptionPath);
+  janitorInterval = setInterval(() => void runJanitorSafe(conceptionPath), 24 * 60 * 60 * 1000);
 }
