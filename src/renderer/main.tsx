@@ -16,6 +16,7 @@ import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
+import { usableActionTemplates } from './settings-modal-parts/data';
 import { NewProjectModal } from './new-project-modal';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
@@ -421,10 +422,14 @@ function App() {
                         onToggleStep={handleToggleStep}
                         onDropProject={handleDropOnColumn}
                         onWorkOn={(p) => void bridge.handleWorkOn(p)}
-                        projectActions={terminalPrefs()?.projectActions ?? []}
+                        projectActions={usableActionTemplates(
+                          terminalPrefs()?.projectActions ?? [],
+                        )}
                         onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
                         onNewProject={() => setNewProjectOpen(true)}
-                        newProjectActions={terminalPrefs()?.newProjectActions ?? []}
+                        newProjectActions={usableActionTemplates(
+                          terminalPrefs()?.newProjectActions ?? [],
+                        )}
                         onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
                       />
                     </Show>
@@ -630,7 +635,7 @@ function App() {
         onOpenInEditor={handleOpenInEditor}
         onOpenDeliverable={handleOpenDeliverableFromPreview}
         onWorkOn={(p) => void bridge.handleWorkOn(p)}
-        projectActions={terminalPrefs()?.projectActions ?? []}
+        projectActions={usableActionTemplates(terminalPrefs()?.projectActions ?? [])}
         onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
         onCreateNote={(p) => void handleCreateProjectNote(p)}
       />

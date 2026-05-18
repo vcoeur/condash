@@ -10,6 +10,7 @@ import {
   patchLauncher,
   removeActionTemplate,
   removeLauncher,
+  usableActionTemplates,
 } from './data';
 import { conceptionConfigSchema } from '../../main/config-schema';
 
@@ -110,7 +111,10 @@ describe('compactRepos — invariants', () => {
 });
 
 describe('patchLauncher', () => {
-  it('does not create an entry when only the title is set (command empty)', () => {
+  it('drops a row whose only filled field is `title` (label + command still blank)', () => {
+    // The keep-on-partial-typing rule looks at the two required text fields
+    // (`label`, `command`). `title` alone never carries a row — a launcher
+    // without a command can't spawn anything.
     expect(patchLauncher(undefined, 0, { title: 'My title' })).toBeUndefined();
   });
 
@@ -125,21 +129,29 @@ describe('patchLauncher', () => {
     expect(next).toEqual([{ label: 'λ', command: 'claude', title: 'CLD' }]);
   });
 
-  it('drops the entry when its command is cleared, even if title was set', () => {
+  it('keeps the row when only command is cleared (label still set)', () => {
     const next = patchLauncher([{ label: 'λ', command: 'claude', title: 'CLD' }], 0, {
+      command: '',
+    });
+    expect(next).toEqual([{ label: 'λ', command: '', title: 'CLD' }]);
+  });
+
+  it('drops the row when both label and command are blank, even if title is set', () => {
+    const next = patchLauncher([{ label: 'λ', command: 'claude', title: 'CLD' }], 0, {
+      label: '',
       command: '',
     });
     expect(next).toBeUndefined();
   });
 
-  it('preserves the other entry when one is cleared', () => {
+  it('preserves the other entry when one is fully cleared', () => {
     const next = patchLauncher(
       [
         { label: 'λ', command: 'claude' },
         { label: 'μ', command: 'python -m notebook' },
       ],
       0,
-      { command: '' },
+      { label: '', command: '' },
     );
     expect(next).toEqual([{ label: 'μ', command: 'python -m notebook' }]);
   });
@@ -147,6 +159,20 @@ describe('patchLauncher', () => {
   it('produces a schema-valid payload through buildSavePayload + launcherSchema', () => {
     const launchers = patchLauncher(undefined, 0, { label: 'λ', command: 'claude' });
     const payload = buildSavePayload({ terminal: { launchers } });
+    const result = conceptionConfigSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+  });
+
+  it('round-trips a blank-row launcher through buildSavePayload + schema', () => {
+    // Regression: "+ Add launcher" used to fail with
+    // `terminal.launchers.0.command — expected string, received undefined`
+    // because pruneEmpty stripped the empty `label`/`command` fields, leaving
+    // `{}` rows that the schema rejected. The schema relaxation + compactor
+    // bypass keep the blank row intact end-to-end.
+    const payload = buildSavePayload({
+      terminal: { launchers: [{ label: '', command: '' }] },
+    });
+    expect(payload.terminal).toEqual({ launchers: [{ label: '', command: '' }] });
     const result = conceptionConfigSchema.safeParse(payload);
     expect(result.success).toBe(true);
   });
@@ -212,11 +238,19 @@ describe('moveLauncher', () => {
 });
 
 describe('patchActionTemplate', () => {
-  it('does not create an entry when only the label is set (template empty)', () => {
-    expect(patchActionTemplate(undefined, 0, { label: 'My label' })).toBeUndefined();
+  it('keeps a row that has only the label set (template still empty)', () => {
+    expect(patchActionTemplate(undefined, 0, { label: 'My label' })).toEqual([
+      { label: 'My label', template: '' },
+    ]);
   });
 
-  it('creates an entry once both label and template are filled', () => {
+  it('keeps a row that has only the template set (label still empty)', () => {
+    expect(patchActionTemplate(undefined, 0, { template: 'echo {slug}' })).toEqual([
+      { label: '', template: 'echo {slug}' },
+    ]);
+  });
+
+  it('creates a fully-filled entry once both label and template are set', () => {
     expect(
       patchActionTemplate(undefined, 0, {
         label: 'Claude review',
@@ -236,32 +270,41 @@ describe('patchActionTemplate', () => {
     ]);
   });
 
-  it('drops the entry when its label is cleared', () => {
+  it('keeps the row when only the label is cleared (template still set)', () => {
     const next = patchActionTemplate(
       [{ label: 'Claude review', template: 'claude "review {slug}"' }],
       0,
       { label: '' },
     );
-    expect(next).toBeUndefined();
+    expect(next).toEqual([{ label: '', template: 'claude "review {slug}"' }]);
   });
 
-  it('drops the entry when its template is cleared', () => {
+  it('keeps the row when only the template is cleared (label still set)', () => {
     const next = patchActionTemplate(
       [{ label: 'Claude review', template: 'claude "review {slug}"' }],
       0,
       { template: '' },
     );
+    expect(next).toEqual([{ label: 'Claude review', template: '' }]);
+  });
+
+  it('drops the row when both label and template are blank', () => {
+    const next = patchActionTemplate(
+      [{ label: 'Claude review', template: 'claude "review {slug}"' }],
+      0,
+      { label: '', template: '' },
+    );
     expect(next).toBeUndefined();
   });
 
-  it('preserves the other entry when one is cleared', () => {
+  it('preserves the other entry when one is fully cleared', () => {
     const next = patchActionTemplate(
       [
         { label: 'Claude review', template: 'claude "review {slug}"' },
         { label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' },
       ],
       0,
-      { label: '' },
+      { label: '', template: '' },
     );
     expect(next).toEqual([{ label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' }]);
   });
@@ -273,6 +316,18 @@ describe('patchActionTemplate', () => {
       submit: true,
     });
     const payload = buildSavePayload({ terminal: { projectActions: actions } });
+    const result = conceptionConfigSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+  });
+
+  it('round-trips a blank-row action template through buildSavePayload + schema', () => {
+    // Regression: "+ Add action" produced
+    // `terminal.projectActions.0.label — expected string, received undefined`
+    // because pruneEmpty collapsed `{ label: '', template: '' }` into `{}`.
+    const payload = buildSavePayload({
+      terminal: { projectActions: [{ label: '', template: '' }] },
+    });
+    expect(payload.terminal).toEqual({ projectActions: [{ label: '', template: '' }] });
     const result = conceptionConfigSchema.safeParse(payload);
     expect(result.success).toBe(true);
   });
@@ -338,5 +393,33 @@ describe('moveActionTemplate', () => {
   it('refuses to move past the end', () => {
     const list = [{ label: 'Claude review', template: 'claude "review {slug}"' }];
     expect(moveActionTemplate(list, 0, 1)).toBe(list);
+  });
+});
+
+describe('usableActionTemplates', () => {
+  it('keeps fully-filled rows in order', () => {
+    const rows = [
+      { label: 'Claude', template: 'claude {slug}' },
+      { label: 'Kimi', template: 'kimi {slug}' },
+    ];
+    expect(usableActionTemplates(rows)).toEqual(rows);
+  });
+
+  it('drops blank-row placeholders so dropdowns never render empty items', () => {
+    expect(
+      usableActionTemplates([
+        { label: '', template: '' },
+        { label: 'Claude', template: 'claude {slug}' },
+      ]),
+    ).toEqual([{ label: 'Claude', template: 'claude {slug}' }]);
+  });
+
+  it('drops half-typed rows where either field is blank', () => {
+    expect(
+      usableActionTemplates([
+        { label: 'Half', template: '' },
+        { label: '', template: 'half' },
+      ]),
+    ).toEqual([]);
   });
 });
