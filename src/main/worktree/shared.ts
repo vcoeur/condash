@@ -105,9 +105,12 @@ export async function findItemsDeclaringBranch(
 }
 
 export function rootRepoFromApp(app: string): string {
-  // Apps may be `condash`, `vcoeur.com`, or `condash/frontend`. The worktree
-  // is always at the top-level repo, so strip the inner path.
-  return app.split('/')[0];
+  // Apps may be `condash`, `@condash`, `vcoeur.com`, or `condash/frontend`.
+  // The `@` prefix is the conception's display convention (mirrors the Apps
+  // table column) and is not part of the canonical repo name in
+  // condash.json. The worktree is always at the top-level repo, so strip
+  // both the `@` and the inner path.
+  return app.replace(/^@/, '').split('/')[0];
 }
 
 /**
