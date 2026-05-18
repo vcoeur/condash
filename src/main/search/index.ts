@@ -19,6 +19,34 @@ import { condashLogsRoot } from '../condash-dir';
  * on" query and well under the point where the modal starts feeling slow. */
 const RAW_HIT_CAP = 100;
 
+/** Cap on concurrent `fs.readFile` calls in matchFile. A conception tree can
+ * carry several thousand markdown files (projects + knowledge + logs); a
+ * naive `Promise.all` over the lot was opening file descriptors as fast as
+ * the OS would allow, occasionally tripping EMFILE on dense trees. 32 is
+ * comfortably above what node's default uv thread pool can chew through and
+ * well below the typical ulimit -n. */
+const READ_CONCURRENCY = 32;
+
+async function runWithConcurrency<T>(
+  factories: ReadonlyArray<() => Promise<T>>,
+  limit: number,
+): Promise<T[]> {
+  const results: T[] = new Array(factories.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= factories.length) return;
+      results[i] = await factories[i]();
+    }
+  }
+  const workers: Promise<void>[] = [];
+  const n = Math.min(limit, factories.length);
+  for (let i = 0; i < n; i++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Run a query against the conception tree. Returns ordered hits + the parsed
  * terms (used by the renderer for multi-token highlighting) + truncation
@@ -29,11 +57,18 @@ const RAW_HIT_CAP = 100;
  * for example, swapping the brute-force `walk + match` for a pre-built index
  * would only touch one boundary.
  */
-export async function search(conceptionPath: string, query: string): Promise<SearchResults> {
+export async function search(
+  conceptionPath: string,
+  query: string,
+  scopes?: string[],
+): Promise<SearchResults> {
   const terms = parseQuery(query);
   if (terms.length === 0) {
     return { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
   }
+
+  const wants = (source: string): boolean =>
+    !scopes || scopes.length === 0 || scopes.includes(source);
 
   const { resources, skills } = await resolveConceptionPaths(conceptionPath);
 
@@ -50,20 +85,30 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
     skillFilesKimi,
     logFiles,
   ] = await Promise.all([
-    collectProjectFiles(join(conceptionPath, 'projects')),
-    collectKnowledgeFiles(join(conceptionPath, 'knowledge')),
-    collectResourceFiles(join(conceptionPath, resources)),
-    collectSkillFiles(join(conceptionPath, skills)),
-    collectSkillFiles(join(conceptionPath, '.agents', 'skills')),
-    collectSkillFiles(join(conceptionPath, '.kimi', 'skills')),
-    collectLogFiles(condashLogsRoot(conceptionPath)),
+    wants('projects') ? collectProjectFiles(join(conceptionPath, 'projects')) : Promise.resolve([]),
+    wants('knowledge')
+      ? collectKnowledgeFiles(join(conceptionPath, 'knowledge'))
+      : Promise.resolve([]),
+    wants('resources')
+      ? collectResourceFiles(join(conceptionPath, resources))
+      : Promise.resolve([]),
+    wants('skills') ? collectSkillFiles(join(conceptionPath, skills)) : Promise.resolve([]),
+    wants('skills')
+      ? collectSkillFiles(join(conceptionPath, '.agents', 'skills'))
+      : Promise.resolve([]),
+    wants('skills')
+      ? collectSkillFiles(join(conceptionPath, '.kimi', 'skills'))
+      : Promise.resolve([]),
+    wants('logs') ? collectLogFiles(condashLogsRoot(conceptionPath)) : Promise.resolve([]),
   ]);
-  const skillFiles = [...skillFilesClaude, ...skillFilesGeneric, ...skillFilesKimi];
+  const skillFiles = wants('skills')
+    ? [...skillFilesClaude, ...skillFilesGeneric, ...skillFilesKimi]
+    : [];
 
-  const matchPromises: Promise<MatchOutput | null>[] = [];
+  const matchFactories: Array<() => Promise<MatchOutput | null>> = [];
 
   for (const file of projectFiles) {
-    matchPromises.push(
+    matchFactories.push(() =>
       matchFile({
         path: toPosix(file.path),
         relPath: toPosix(relative(conceptionPath, file.path)),
@@ -75,7 +120,7 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
   }
 
   for (const path of knowledgeFiles) {
-    matchPromises.push(
+    matchFactories.push(() =>
       matchFile({
         path: toPosix(path),
         relPath: toPosix(relative(conceptionPath, path)),
@@ -86,7 +131,7 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
   }
 
   for (const path of resourceFiles) {
-    matchPromises.push(
+    matchFactories.push(() =>
       matchFile({
         path: toPosix(path),
         relPath: toPosix(relative(conceptionPath, path)),
@@ -97,7 +142,7 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
   }
 
   for (const path of skillFiles) {
-    matchPromises.push(
+    matchFactories.push(() =>
       matchFile({
         path: toPosix(path),
         relPath: toPosix(relative(conceptionPath, path)),
@@ -108,7 +153,7 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
   }
 
   for (const path of logFiles) {
-    matchPromises.push(
+    matchFactories.push(() =>
       matchFile({
         path: toPosix(path),
         relPath: toPosix(relative(conceptionPath, path)),
@@ -118,7 +163,7 @@ export async function search(conceptionPath: string, query: string): Promise<Sea
     );
   }
 
-  const settled = await Promise.all(matchPromises);
+  const settled = await runWithConcurrency(matchFactories, READ_CONCURRENCY);
   const matched = settled.filter((m): m is MatchOutput => m !== null);
 
   matched.sort((a, b) => {

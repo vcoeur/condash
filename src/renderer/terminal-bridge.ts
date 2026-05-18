@@ -56,6 +56,25 @@ export interface TerminalBridge {
   handlePasteToTerm: (text: string) => Promise<void>;
 }
 
+/** Upper bound on animation frames waited for the pane to mount after
+ *  `ensureTerminalOpen()`. At ~60 Hz this is ~200 ms — comfortably more
+ *  than a Solid render pass yet still tight enough to surface a genuine
+ *  mount failure as a no-op rather than an indefinite hang. */
+const HANDLE_WAIT_FRAMES = 12;
+
+/** Wait until `deps.terminalHandle()` returns non-null, or the frame cap
+ *  expires. The previous `queueMicrotask` spin (single microtask) was just
+ *  shy of an actual paint and intermittently returned before the Solid
+ *  effect that registered the handle had run. */
+async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<TerminalPaneHandle | null> {
+  for (let i = 0; i < HANDLE_WAIT_FRAMES; i++) {
+    const handle = deps.terminalHandle();
+    if (handle) return handle;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+  return deps.terminalHandle();
+}
+
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
  *  screenshot paste) and the terminal pane. Centralises the "spawn a
  *  shell first if there isn't one" dance so callers don't repeat it. */
@@ -64,7 +83,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   const ensureTermAndShell = async (): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
-      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+      await waitForTerminalHandle(deps);
     }
     const handle = deps.terminalHandle();
     if (!handle) return null;
@@ -117,7 +136,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   const handleOpenInTerm = async (repo: RepoEntry, worktree: Worktree): Promise<void> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
-      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+      await waitForTerminalHandle(deps);
     }
     const handle = deps.terminalHandle();
     if (!handle) return;
@@ -166,7 +185,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   const handlePasteToTerm = async (text: string): Promise<void> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
-      await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+      await waitForTerminalHandle(deps);
     }
     const handle = deps.terminalHandle();
     if (!handle) {

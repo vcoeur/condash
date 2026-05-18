@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import type { Deliverable, ItemKind, Project, Step, StepMarker } from '../shared/types';
-import { HEADING2, parseHeader } from '../shared/header';
+import { HEADING2, parseHeader, type HeaderFields } from '../shared/header';
 import { countSteps } from '../shared/projects';
 import { toPosix } from '../shared/path';
 import { parseTimelineEntries } from './mutate';
@@ -19,9 +19,26 @@ const CLOSED_LINE = /^\s*-\s+(\d{4}-\d{2}-\d{2})\s+—\s+Closed(\.|$|\s)/;
 
 export async function parseReadme(path: string): Promise<Project> {
   const raw = await fs.readFile(path, 'utf8');
+  return parseReadmeFromRaw(raw, path);
+}
+
+/**
+ * Same as {@link parseReadme} but returns the parsed header alongside the
+ * project shape — used by CLI handlers that need `date`, `base`, `extra`,
+ * or per-field warnings without re-reading and re-parsing the README. */
+export async function parseReadmeWithHeader(
+  path: string,
+): Promise<{ project: Project; header: HeaderFields; raw: string }> {
+  const raw = await fs.readFile(path, 'utf8');
+  const header = parseHeader(raw);
+  const project = parseReadmeFromRaw(raw, path, header);
+  return { project, header, raw };
+}
+
+function parseReadmeFromRaw(raw: string, path: string, preparsedHeader?: HeaderFields): Project {
   const lines = raw.split(/\r?\n/);
 
-  const header = parseHeader(raw);
+  const header = preparsedHeader ?? parseHeader(raw);
   const summary = extractSummary(lines);
   const steps = extractSteps(lines);
   const stepCounts = countSteps(steps);

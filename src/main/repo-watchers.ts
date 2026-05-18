@@ -300,19 +300,20 @@ export async function recomputeAllWatchedRepos(): Promise<void> {
     scopeToSubtree,
   }));
   if (targets.length === 0) return;
-  const events: RepoEvent[] = [];
-  await Promise.all(
+  const eventTuples = await Promise.all(
     targets.map(async (t) => {
       invalidateForPath(t.path);
       const [dirty, upstream] = await Promise.all([
         getDirtyCount(t.path, t.scopeToSubtree ? { scopeToSubtree: true } : {}),
         getUpstreamStatus(t.path),
       ]);
-      events.push({ kind: 'repo-dirty', path: t.path, dirty });
-      events.push({ kind: 'repo-upstream', path: t.path, upstream });
+      return [
+        { kind: 'repo-dirty' as const, path: t.path, dirty },
+        { kind: 'repo-upstream' as const, path: t.path, upstream },
+      ];
     }),
   );
-  broadcast(events);
+  broadcast(eventTuples.flat());
 }
 
 /** Tear down everything. Called on app quit and conception-path change. */

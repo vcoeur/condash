@@ -1,3 +1,18 @@
+/**
+ * Per-file matcher. For each candidate file:
+ *   1. Read + lowercase the content, build the region map (h1/meta/heading/body).
+ *   2. For each term, scan both content + relPath, recording every occurrence
+ *      with its region tag. Drop the file if any term has zero hits — AND
+ *      semantics across the query.
+ *   3. Hand the occurrences to `scorer.scoreOccurrences` for ranking — see
+ *      `./scorer.ts` for the region-weight table and bonus rationale (h1
+ *      dominates, path floors at 5 so slug-only hits still surface, phrase
+ *      and adjacency bonuses promote tighter matches).
+ *   4. Build snippets via `./snippets.ts` for the renderer's hit preview.
+ *
+ * Scoring rationale stays in `scorer.ts` so a future tweak of the weights
+ * only needs to touch one file — this module just plumbs occurrences in.
+ */
 import { promises as fs } from 'node:fs';
 import type { SearchHighlight, SearchHit, SearchTerm } from '../../shared/types';
 import { splitContent } from '../logs-format';
@@ -90,7 +105,7 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
 
   const score = scoreOccurrences(occurrences, input.terms);
   const matchCount = occurrences.length;
-  const title = extractFirstHeading(raw) ?? input.relPath;
+  const title = extractFirstHeadingOrLine(raw) ?? input.relPath;
   const snippets = buildSnippets(raw, input.terms, regions);
 
   return {
@@ -109,7 +124,12 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
   };
 }
 
-function extractFirstHeading(raw: string): string | null {
+/** Best-effort title: returns the first non-empty line with leading
+ *  Markdown heading hashes stripped. If the file has no heading, body
+ *  text becomes the title — this is intentional so every hit has a
+ *  displayable label, but the name is deliberately `…OrLine` to warn
+ *  callers that it is not strictly an H1 extractor. */
+function extractFirstHeadingOrLine(raw: string): string | null {
   const limit = Math.min(raw.length, 4096);
   for (const line of raw.slice(0, limit).split(/\r?\n/)) {
     const trimmed = line.trim();

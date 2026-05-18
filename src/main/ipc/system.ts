@@ -96,14 +96,7 @@ export function registerSystemIpc(opts: {
     return { created };
   });
 
-  ipcMain.handle('pickConceptionPath', async () => {
-    const result = await dialog.showOpenDialog({
-      title: 'Choose conception directory',
-      properties: ['openDirectory'],
-    });
-    if (result.canceled || result.filePaths.length === 0) return null;
-
-    const picked = toPosix(result.filePaths[0]);
+  async function switchConception(picked: string): Promise<void> {
     await updateSettings((cur) => ({
       ...cur,
       lastConceptionPath: picked,
@@ -116,6 +109,17 @@ export function registerSystemIpc(opts: {
     await setWatchedConception(picked);
     opts.onConceptionPicked(picked);
     fireRecentsChange();
+  }
+
+  ipcMain.handle('pickConceptionPath', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose conception directory',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const picked = toPosix(result.filePaths[0]);
+    await switchConception(picked);
     return picked;
   });
 
@@ -131,15 +135,7 @@ export function registerSystemIpc(opts: {
       throw new Error('openConception: path must be a non-empty string');
     }
     const picked = toPosix(path);
-    await updateSettings((cur) => ({
-      ...cur,
-      lastConceptionPath: picked,
-      recentConceptionPaths: prependRecent(cur.recentConceptionPaths, picked),
-    }));
-    await disposeRepoWatchers();
-    await setWatchedConception(picked);
-    opts.onConceptionPicked(picked);
-    fireRecentsChange();
+    await switchConception(picked);
     return picked;
   });
 

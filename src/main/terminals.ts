@@ -119,10 +119,6 @@ function makeId(): string {
   return `t-${randomBytes(4).toString('hex')}`;
 }
 
-async function readRawConfig(conceptionPath: string): Promise<ConfigShape> {
-  return (await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape;
-}
-
 function defaultShell(configured?: string): string {
   if (configured && configured.trim()) return configured;
   // SHELL is reliably set on POSIX. On Windows it is usually unset; fall
@@ -166,7 +162,9 @@ export async function spawnTerminal(
   webContents: WebContents,
   request: TermSpawnRequest,
 ): Promise<{ id: string; cwd: string }> {
-  const config = conceptionPath ? await readRawConfig(conceptionPath) : {};
+  const config = conceptionPath
+    ? ((await getEffectiveConceptionConfig(conceptionPath)) as ConfigShape)
+    : {};
   const settings = await readSettings();
   const shell = defaultShell(settings.terminal?.shell);
 
@@ -240,8 +238,7 @@ export async function spawnTerminal(
           cwd,
           spawn: { cmd: program, argv },
         },
-        (config as { terminal?: { logging?: import('../shared/types').TerminalLoggingPrefs } })
-          .terminal?.logging,
+        config.terminal?.logging,
       )
     : null;
   const session: Session = {
@@ -337,6 +334,13 @@ function isAlive(p: pty.IPty | null): boolean {
   }
 }
 
+/** Cap for how long stopSession will wait for force_stop to settle before
+ * moving on to the SIGKILL grace period. The detached child is unref'd at
+ * spawn time so the main process exit isn't blocked; this timeout just
+ * unblocks the awaiter so a slow / hung force_stop script can't stall the
+ * tab-close path. */
+const FORCE_STOP_TIMEOUT_MS = 3000;
+
 function runForceStop(command: string): Promise<void> {
   // Tokenise + shell:false to mirror launchers.runForceStopRepo. Routing
   // the user-configured force_stop: string through the shell costs us
@@ -355,12 +359,19 @@ function runForceStop(command: string): Promise<void> {
       stdio: 'ignore',
       shell: false,
     });
+    // Detach the child from the main process event loop so a script that
+    // outlives the kill path (intentional or hung) doesn't hold the awaiter
+    // open beyond the timeout.
+    child.unref();
     let settled = false;
+    let timer: NodeJS.Timeout | null = null;
     const finish = () => {
       if (settled) return;
       settled = true;
+      if (timer) clearTimeout(timer);
       resolve();
     };
+    timer = setTimeout(finish, FORCE_STOP_TIMEOUT_MS);
     child.on('error', finish);
     child.on('exit', finish);
   });
@@ -507,10 +518,13 @@ export async function killAll(forWebContents?: WebContents): Promise<void> {
   if (targets.length === 0) return;
 
   const stops = targets.map(([id]) => stopSession(id, { removeEntry: false }));
-  await Promise.race([
-    Promise.allSettled(stops),
-    new Promise((resolve) => setTimeout(resolve, 1000)),
-  ]);
+  let safetyTimer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<void>((resolve) => {
+    safetyTimer = setTimeout(resolve, 1000);
+  });
+  await Promise.race([Promise.allSettled(stops), timeout]).finally(() => {
+    clearTimeout(safetyTimer);
+  });
 
   for (const [id] of targets) sessions.delete(id);
   broadcastSessions();
