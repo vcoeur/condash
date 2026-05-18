@@ -1,0 +1,255 @@
+/**
+ * Foundation module for user-scope `condash skills` (`--user`): path
+ * resolvers, source-tree readers, the host-label filter, and the Kimi
+ * global-agent.yaml inline writer.
+ *
+ * In user scope there is no shipped tree and no manifest: the user owns the
+ * source tree at `~/.config/agents/skills/<name>/` directly. The compile
+ * pipeline is the same one as repo scope (`parseSkillspec` +
+ * `compileSkillspec`), pointed at different roots, and the outputs land in
+ * `~/.claude/skills/` and `~/.kimi/skills/`. Outputs are always regenerated
+ * (no refuse-on-edit — the user knows the outputs are derived).
+ *
+ * The `hosts:` field on a spec.yaml restricts a skill to a list of host
+ * labels (e.g. `hosts: [vcoeur]`). When present, condash reads the host
+ * label from `~/.claude/.host` (single line, whitespace-stripped) and
+ * skips skills whose `hosts:` does not contain the current label. This
+ * is the multi-host filter previously enforced by agentsconf's
+ * `/sync-config`; moving it here lets a single source-of-truth feed all
+ * hosts without per-host pruning at sync time.
+ *
+ * Paths are env-overridable for tests:
+ *   CONDASH_USER_SKILLS_ROOT  — replaces ~/.config/agents/skills
+ *   CONDASH_USER_CLAUDE_ROOT  — replaces ~/.claude/skills
+ *   CONDASH_USER_KIMI_ROOT    — replaces ~/.kimi/skills
+ *   CONDASH_USER_HOST_FILE    — replaces ~/.claude/.host
+ */
+
+import { promises as fs } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { CliError, ExitCodes } from '../output';
+import { parseSkillspec, type CompileTarget } from '../../skillspec';
+import type { AgentsMdTarget } from '../../agents-md';
+import { writeFileMkdir } from './install-shared';
+import { collectFilesRelative, extractDescriptionFromSpec } from './skills-shipped';
+
+export interface UserSkill {
+  name: string;
+  sourceDir: string;
+  files: string[];
+  description: string | null;
+  /** Parsed `hosts:` list from spec.yaml; null if the field is absent. */
+  hosts: string[] | null;
+}
+
+export type ScriptCategory = 'agents' | 'claude';
+
+export interface UserScript {
+  category: ScriptCategory;
+  source: string;
+  target: string;
+  relPath: string;
+}
+
+export interface UserScriptsReport {
+  sources: Record<ScriptCategory, string>;
+  targets: Record<ScriptCategory, string>;
+  installed: { category: ScriptCategory; relPath: string }[];
+}
+
+export interface UserAgentConfigsReport {
+  source: string;
+  outputs: Record<AgentsMdTarget, string>;
+  compiled: { target: AgentsMdTarget; path: string }[];
+}
+
+export function userSourceRoot(): string {
+  return process.env.CONDASH_USER_SKILLS_ROOT ?? join(homedir(), '.config', 'agents', 'skills');
+}
+
+export function userTargetRoot(target: CompileTarget): string {
+  const envName = target === 'claude' ? 'CONDASH_USER_CLAUDE_ROOT' : 'CONDASH_USER_KIMI_ROOT';
+  return process.env[envName] ?? join(homedir(), `.${target}`, 'skills');
+}
+
+export function userScriptSourceRoot(category: ScriptCategory): string {
+  if (category === 'agents') {
+    return (
+      process.env.CONDASH_USER_AGENTS_SCRIPTS_ROOT ??
+      join(homedir(), '.config', 'agents', 'agents-scripts')
+    );
+  }
+  return (
+    process.env.CONDASH_USER_CLAUDE_SCRIPTS_ROOT ??
+    join(homedir(), '.config', 'agents', 'claude-scripts')
+  );
+}
+
+export function userScriptTargetRoot(category: ScriptCategory): string {
+  if (category === 'agents') {
+    return (
+      process.env.CONDASH_USER_AGENTS_SCRIPTS_TARGET ??
+      join(homedir(), '.config', 'agents', 'scripts')
+    );
+  }
+  return process.env.CONDASH_USER_CLAUDE_SCRIPTS_TARGET ?? join(homedir(), '.claude', 'scripts');
+}
+
+export function userAgentConfigRoot(): string {
+  return (
+    process.env.CONDASH_USER_AGENT_CONFIG_ROOT ?? join(homedir(), '.config', 'agents', 'agents')
+  );
+}
+
+export function userAgentConfigOutput(target: AgentsMdTarget): string {
+  if (target === 'claude') {
+    return process.env.CONDASH_USER_CLAUDE_AGENT_OUTPUT ?? join(homedir(), '.claude', 'CLAUDE.md');
+  }
+  // Kimi: write inline into the global-agent.yaml's ROLE_ADDITIONAL field, not a standalone markdown file.
+  return (
+    process.env.CONDASH_USER_KIMI_AGENT_OUTPUT ?? join(homedir(), '.kimi', 'global-agent.yaml')
+  );
+}
+
+export function userHostFile(): string {
+  return process.env.CONDASH_USER_HOST_FILE ?? join(homedir(), '.claude', '.host');
+}
+
+/**
+ * Write the compiled Kimi content into the `agent.system_prompt_args.ROLE_ADDITIONAL`
+ * field of the global-agent.yaml at `path`. Preserves all other fields. Creates a
+ * minimal default structure if the file doesn't exist yet.
+ */
+export async function writeKimiGlobalAgent(path: string, compiledContent: string): Promise<void> {
+  let doc: Record<string, unknown>;
+  try {
+    const existing = await fs.readFile(path, 'utf8');
+    const parsed = parseYaml(existing);
+    doc = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    doc = {};
+  }
+  if (typeof doc.version !== 'number') doc.version = 1;
+  const agent =
+    typeof doc.agent === 'object' && doc.agent !== null
+      ? (doc.agent as Record<string, unknown>)
+      : ((doc.agent = {}), doc.agent as Record<string, unknown>);
+  if (agent.extend === undefined) agent.extend = 'default';
+  const promptArgs =
+    typeof agent.system_prompt_args === 'object' && agent.system_prompt_args !== null
+      ? (agent.system_prompt_args as Record<string, unknown>)
+      : ((agent.system_prompt_args = {}), agent.system_prompt_args as Record<string, unknown>);
+  promptArgs.ROLE_ADDITIONAL = compiledContent;
+  const serialized = stringifyYaml(doc, { blockQuote: 'literal', lineWidth: 0 });
+  await writeFileMkdir(path, Buffer.from(serialized, 'utf8'));
+}
+
+/** Read `common.md` from the user-scope agent-config source. Returns null if absent. */
+export async function readUserAgentCommon(): Promise<string | null> {
+  try {
+    return await fs.readFile(join(userAgentConfigRoot(), 'common.md'), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** Read a per-agent fragment (claude.md or kimi.md). Returns empty string if missing. */
+export async function readUserAgentFragment(target: AgentsMdTarget): Promise<string> {
+  try {
+    return await fs.readFile(join(userAgentConfigRoot(), `${target}.md`), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return '';
+    throw err;
+  }
+}
+
+export async function readUserScripts(): Promise<UserScript[]> {
+  const out: UserScript[] = [];
+  for (const category of ['agents', 'claude'] as const) {
+    const source = userScriptSourceRoot(category);
+    const target = userScriptTargetRoot(category);
+    let files: string[];
+    try {
+      files = await collectFilesRelative(source);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw err;
+    }
+    for (const relPath of files) {
+      out.push({ category, source, target, relPath });
+    }
+  }
+  return out;
+}
+
+export async function readHostLabel(): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(userHostFile(), 'utf8');
+    const label = raw.trim();
+    return label.length > 0 ? label : null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/**
+ * Coerce a spec.yaml `hosts:` value to a string list, or null if the field
+ * is absent. Accepts a YAML list (`[vcoeur, oomade]`) or a single scalar
+ * treated as a one-element list.
+ */
+export function normalizeHosts(value: unknown): string[] | null {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim()).filter((v) => v.length > 0);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  }
+  return [];
+}
+
+export async function readUserSkills(): Promise<UserSkill[]> {
+  const root = userSourceRoot();
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw new CliError(
+      ExitCodes.RUNTIME,
+      `Could not read user skillspecs at ${root}: ${(err as Error).message}`,
+    );
+  }
+  const out: UserSkill[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const sourceDir = join(root, entry.name);
+    let hosts: string[] | null = null;
+    try {
+      const parsed = await parseSkillspec(sourceDir);
+      hosts = normalizeHosts(parsed.spec.hosts);
+    } catch {
+      // Leave hosts as null; validation will catch malformed specs.
+    }
+    const files = await collectFilesRelative(sourceDir);
+    const description = await extractDescriptionFromSpec(join(sourceDir, 'spec.yaml')).catch(
+      () => null,
+    );
+    out.push({ name: entry.name, sourceDir, files, description, hosts });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+export function hostAllowed(skill: UserSkill, hostLabel: string | null): boolean {
+  if (skill.hosts === null) return true;
+  if (skill.hosts.length === 0) return true;
+  if (hostLabel === null) return false;
+  return skill.hosts.includes(hostLabel);
+}
