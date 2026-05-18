@@ -190,6 +190,8 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `screenshot_dir`            | `~/Pictures/Screenshots` on Linux, `~/Desktop` on macOS | Directory scanned for "most recent screenshot" by the paste shortcut.                                                                          |
 | `screenshot_paste_shortcut` | `Ctrl+Shift+V`                                          | Inserts the absolute path of the newest image in `screenshot_dir` into the active terminal. No `Enter` — you confirm.                          |
 | `launchers[]`               | `[]`                                                    | Configurable launcher slots — see [`terminal.launchers`](#terminallaunchers) below. Each entry adds an option to the tab-strip spawn dropdown. |
+| `projectActions[]`          | `[]`                                                    | Configurable per-project actions — see [`terminal.projectActions`](#terminalprojectactions) below. Each entry adds an option to the dropdown next to a project's **Work on** button. |
+| `newProjectActions[]`       | `[]`                                                    | Configurable starter prompts — see [`terminal.newProjectActions`](#terminalnewprojectactions) below. Each entry adds an option to the dropdown next to the **+ New project** button. |
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                                          |
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                                         |
 | `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section.         |
@@ -216,6 +218,49 @@ Per-entry launcher slots rendered in the terminal tab-strip spawn dropdown. The 
 | `title`   | string           | no       | Initial pinned tab label at spawn time. When unset, the tab is labelled with the `command` (current behaviour for legacy `launcher_command`). The user's inline rename always wins over this.                        |
 
 **Migration from `launcher_command`:** the scalar key from condash ≤ 2.27 is rewritten in-flight on every read into `launchers[0]` with `label: 'λ'` (no `title`). Legacy `symbol`-based entries (`lambda` → `λ`, `mu` → `μ`) are also migrated to `label` automatically. The legacy key is dropped on the next settings write — no manual action. A file that has both the legacy scalar and an explicit `launchers` array keeps the array and discards the scalar.
+
+### `terminal.projectActions` { #terminalprojectactions }
+
+Per-entry actions rendered in the dropdown next to a project's **Work on** button on the Projects pane. When `projectActions` is empty or missing, the button stays a single icon button as it was before v3.11.0. When at least one entry is configured, the button becomes a split button: the left half still triggers the built-in **Work on <slug>** action, and the right-half caret opens a menu.
+
+```json
+{
+  "terminal": {
+    "projectActions": [
+      { "label": "Claude review", "template": "claude \"review project {shortSlug}\"", "submit": true },
+      { "label": "Kimi summary", "template": "kimi \"summarise {shortSlug}\"", "submit": true }
+    ]
+  }
+}
+```
+
+| Key       | Type             | Required | Meaning                                                                                                                                                                                                         |
+| --------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `label`   | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset (no dropdown option rendered).                                |
+| `template`| string           | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). Unknown placeholders are left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
+| `submit`  | bool             | no       | When `true`, condash presses Enter after pasting the template. Default `false` — matches the current **Work on** behaviour and lets templates that end with a colon wait for the user to type the variable bit. |
+
+### `terminal.newProjectActions` { #terminalnewprojectactions }
+
+Per-entry starter prompts rendered in the dropdown next to the **+ New project** button. When `newProjectActions` is empty or missing, the button stays a single button that opens the New project modal. When at least one entry is configured, the button becomes a split button: the left half still opens the modal, and the right-half caret opens a menu of starter prompts that get pasted into the terminal.
+
+```json
+{
+  "terminal": {
+    "newProjectActions": [
+      { "label": "Spec + design starter", "template": "start project for new feature, make spec.md note with functional specification, and design.md note with design plan:", "submit": false }
+    ]
+  }
+}
+```
+
+| Key       | Type             | Required | Meaning                                                                                                                                                                                                         |
+| --------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `label`   | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset.                                                              |
+| `template`| string           | yes      | Text pasted into the focused terminal. May contain global placeholders only: `{today}`, `{conception}`, `{conceptionPath}`. Unknown placeholders are left verbatim. Empty or whitespace is treated as the entry being unset. |
+| `submit`  | bool             | no       | When `true`, condash presses Enter after pasting. Default `false`.                                                                                             |
+
+> **Note.** Selecting a new-project action does **not** create a project automatically — it only types a starter prompt into the terminal. The user then prompts their agent to create the project via `condash projects create`.
 
 ### `terminal.xterm` { #terminalxterm }
 

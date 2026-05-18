@@ -1,5 +1,5 @@
 import { For, Show } from 'solid-js';
-import type { Project, Step } from '@shared/types';
+import type { ActionTemplate, Project, Step } from '@shared/types';
 import './projects-pane.css';
 import {
   COLLAPSED_BY_DEFAULT,
@@ -9,6 +9,7 @@ import {
 } from './projects-parts/data';
 import { GroupBlock, SubGroup } from './projects-parts/cards';
 import { usePaneScrollMemory } from './pane-scroll-memory';
+import { ActionSplitButton } from '../action-split-button';
 
 // Public API re-exports — kept here so existing consumers
 // (`./panes/projects`) keep importing from the same module path.
@@ -31,10 +32,14 @@ export function ProjectsView(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
+  projectActions?: ActionTemplate[];
+  onProjectAction?: (project: Project, action: ActionTemplate) => void;
   /** Open the "+ New project" modal. Rendered as a top-of-pane button when
    * the user isn't searching. Optional so consumers that don't expose the
    * create flow keep working unchanged. */
   onNewProject?: () => void;
+  newProjectActions?: ActionTemplate[];
+  onNewProjectAction?: (action: ActionTemplate) => void;
 }) {
   const scrollRef = usePaneScrollMemory('projects');
   return (
@@ -49,17 +54,29 @@ export function ProjectsView(props: {
           const headerAction =
             group.status === 'now' && props.onNewProject
               ? () => (
-                  <button
-                    type="button"
+                  <ActionSplitButton
+                    primary={
+                      <>
+                        <span class="new-project-button-plus" aria-hidden="true">
+                          +
+                        </span>
+                        <span>New project</span>
+                      </>
+                    }
+                    primaryTitle="Create a new project / incident / document"
+                    onPrimary={() => props.onNewProject?.()}
+                    defaultLabel="New project (modal)"
+                    items={props.newProjectActions ?? []}
+                    onItem={(idx) => {
+                      if (idx === -1) {
+                        props.onNewProject?.();
+                      } else {
+                        const action = props.newProjectActions?.[idx];
+                        if (action) props.onNewProjectAction?.(action);
+                      }
+                    }}
                     class="new-project-button"
-                    onClick={() => props.onNewProject?.()}
-                    title="Create a new project / incident / document"
-                  >
-                    <span class="new-project-button-plus" aria-hidden="true">
-                      +
-                    </span>
-                    <span>New project</span>
-                  </button>
+                  />
                 )
               : undefined;
           if (group.status === 'done' && group.items.length > 0) {
@@ -72,6 +89,8 @@ export function ProjectsView(props: {
                 onToggleStep={props.onToggleStep}
                 onDropProject={props.onDropProject}
                 onWorkOn={props.onWorkOn}
+                projectActions={props.projectActions}
+                onProjectAction={props.onProjectAction}
                 headerAction={headerAction}
                 bodySlot={() => (
                   <div class="group-body subgroups">
@@ -86,6 +105,8 @@ export function ProjectsView(props: {
                         onToggleStep={props.onToggleStep}
                         onWorkOn={props.onWorkOn}
                         onChangeStatus={props.onDropProject}
+                        projectActions={props.projectActions}
+                        onProjectAction={props.onProjectAction}
                       />
                     </Show>
                     <For each={grouping.byMonth}>
@@ -99,6 +120,8 @@ export function ProjectsView(props: {
                           onToggleStep={props.onToggleStep}
                           onWorkOn={props.onWorkOn}
                           onChangeStatus={props.onDropProject}
+                          projectActions={props.projectActions}
+                          onProjectAction={props.onProjectAction}
                         />
                       )}
                     </For>
@@ -115,6 +138,8 @@ export function ProjectsView(props: {
               onToggleStep={props.onToggleStep}
               onDropProject={props.onDropProject}
               onWorkOn={props.onWorkOn}
+              projectActions={props.projectActions}
+              onProjectAction={props.onProjectAction}
               headerAction={headerAction}
             />
           );

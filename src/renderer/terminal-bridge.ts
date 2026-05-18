@@ -1,4 +1,12 @@
-import type { LauncherConfig, Project, RepoEntry, TerminalPrefs, Worktree } from '@shared/types';
+import type {
+  ActionTemplate,
+  LauncherConfig,
+  Project,
+  RepoEntry,
+  TerminalPrefs,
+  Worktree,
+} from '@shared/types';
+import { globalContext, projectContext, substitute } from '@shared/action-template';
 import type { TerminalPaneHandle } from './terminal-pane';
 
 /** Pick the default launcher used when the dashboard auto-spawns a shell
@@ -20,6 +28,8 @@ export interface TerminalBridgeDeps {
   terminalPrefs: () => TerminalPrefs | undefined;
   /** Surface a transient toast in the renderer. */
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
+  /** Current conception path for global-context substitution. */
+  conceptionPath: () => string | null;
 }
 
 export interface TerminalBridge {
@@ -27,6 +37,13 @@ export interface TerminalBridge {
    *  terminal. Opens the pane and spawns a shell first if neither
    *  exists, so the action never silently no-ops. Does not press Enter. */
   handleWorkOn: (project: Project) => Promise<void>;
+  /** Execute a configured project action — substitute template, type into
+   *  the focused terminal, and press Enter when `submit` is true. */
+  handleProjectAction: (project: Project, action: ActionTemplate) => Promise<void>;
+  /** Execute a configured "+ New project" starter action — substitute
+   *  global template, type into the focused terminal, and press Enter
+   *  when `submit` is true. */
+  handleNewProjectAction: (action: ActionTemplate) => Promise<void>;
   /** Open a project-scoped shell in the pane at the given worktree. */
   handleOpenInTerm: (repo: RepoEntry, worktree: Worktree) => Promise<void>;
   /** Paste the most recent screenshot path (under `screenshot_dir`) into
@@ -43,24 +60,58 @@ export interface TerminalBridge {
  *  screenshot paste) and the terminal pane. Centralises the "spawn a
  *  shell first if there isn't one" dance so callers don't repeat it. */
 export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
-  const handleWorkOn = async (project: Project): Promise<void> => {
-    const text = `work on ${project.slug}`;
+  /** Shared preamble: ensure pane is open, spawn a shell if none active. */
+  const ensureTermAndShell = async (): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
     }
     const handle = deps.terminalHandle();
-    if (!handle) return;
+    if (!handle) return null;
     deps.ensureTerminalOpen();
     if (!handle.hasActive()) {
       try {
         await handle.spawnUserShell(defaultLauncher(deps.terminalPrefs()), 'my');
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
-        return;
+        return null;
       }
     }
+    return handle;
+  };
+
+  const handleWorkOn = async (project: Project): Promise<void> => {
+    const text = `work on ${project.slug}`;
+    const handle = await ensureTermAndShell();
+    if (!handle) return;
     handle.typeIntoActive(text);
+  };
+
+  const handleProjectAction = async (project: Project, action: ActionTemplate): Promise<void> => {
+    const ctx = projectContext(project, deps.conceptionPath() ?? undefined);
+    const text = substitute(action.template, ctx);
+    const handle = await ensureTermAndShell();
+    if (!handle) return;
+    handle.typeIntoActive(text);
+    if (action.submit) {
+      // Small delay so the terminal has time to ingest the typed text
+      // before the Enter key arrives.
+      await new Promise((r) => setTimeout(r, 50));
+      handle.typeIntoActive('\r');
+    }
+  };
+
+  const handleNewProjectAction = async (action: ActionTemplate): Promise<void> => {
+    const today = new Date().toISOString().slice(0, 10);
+    const ctx = globalContext(today, deps.conceptionPath() ?? '');
+    const text = substitute(action.template, ctx);
+    const handle = await ensureTermAndShell();
+    if (!handle) return;
+    handle.typeIntoActive(text);
+    if (action.submit) {
+      await new Promise((r) => setTimeout(r, 50));
+      handle.typeIntoActive('\r');
+    }
   };
 
   const handleOpenInTerm = async (repo: RepoEntry, worktree: Worktree): Promise<void> => {
@@ -134,5 +185,12 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
-  return { handleWorkOn, handleOpenInTerm, handleScreenshotPaste, handlePasteToTerm };
+  return {
+    handleWorkOn,
+    handleProjectAction,
+    handleNewProjectAction,
+    handleOpenInTerm,
+    handleScreenshotPaste,
+    handlePasteToTerm,
+  };
 }

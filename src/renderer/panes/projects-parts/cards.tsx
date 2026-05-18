@@ -1,7 +1,8 @@
 import { createSignal, For, Show } from 'solid-js';
-import type { Project, Step } from '@shared/types';
+import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { TerminalIcon } from '../../icons';
+import { ActionSplitButton } from '../../action-split-button';
 import {
   DRAG_MIME,
   Group,
@@ -41,6 +42,8 @@ export function GroupBlock(props: {
   onToggleStep: (project: Project, step: Step) => void;
   onDropProject: (path: string, newStatus: string) => void;
   onWorkOn: (project: Project) => void;
+  projectActions?: ActionTemplate[];
+  onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
   // Keyboard alternative for the status drag — same callback as the drop,
   // signature `(path, newStatus)`, so cards can call it directly.
@@ -139,6 +142,8 @@ export function GroupBlock(props: {
                     onToggleStep={props.onToggleStep}
                     onWorkOn={props.onWorkOn}
                     onChangeStatus={onChangeStatus}
+                    projectActions={props.projectActions}
+                    onProjectAction={props.onProjectAction}
                   />
                 )}
               </For>
@@ -171,6 +176,8 @@ export function SubGroup(props: {
   /** Same shape as GroupBlock.onDropProject — threaded so cards in done
    * subgroups still respond to the Cmd/Ctrl+1..N keyboard shortcut. */
   onChangeStatus?: (path: string, newStatus: string) => void;
+  projectActions?: ActionTemplate[];
+  onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
   const initialStored = readCollapseMap()[props.storageKey];
   const [userExpanded, setUserExpanded] = createSignal<boolean | null>(
@@ -209,6 +216,8 @@ export function SubGroup(props: {
                 onToggleStep={props.onToggleStep}
                 onWorkOn={props.onWorkOn}
                 onChangeStatus={props.onChangeStatus}
+                projectActions={props.projectActions}
+                onProjectAction={props.onProjectAction}
               />
             )}
           </For>
@@ -230,6 +239,8 @@ export function Card(props: {
    * reflects via drop). */
   onChangeStatus?: (path: string, newStatus: string) => void;
   draggable?: boolean;
+  projectActions?: ActionTemplate[];
+  onProjectAction?: (project: Project, action: ActionTemplate) => void;
 }) {
   const [expanded, setExpanded] = createSignal(false);
 
@@ -342,17 +353,22 @@ export function Card(props: {
             <span class="title-text">{props.item.title}</span>
           </h3>
           <div class="title-actions">
-            <button
-              class="row-action work-on"
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onWorkOn(props.item);
+            <ActionSplitButton
+              primary={<TerminalIcon />}
+              primaryTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
+              onPrimary={() => props.onWorkOn(props.item)}
+              defaultLabel={`Work on ${props.item.slug}`}
+              items={props.projectActions ?? []}
+              onItem={(idx) => {
+                if (idx === -1) {
+                  props.onWorkOn(props.item);
+                } else {
+                  const action = props.projectActions?.[idx];
+                  if (action) props.onProjectAction?.(props.item, action);
+                }
               }}
-              title={`Paste 'work on ${props.item.slug}' into the focused terminal`}
-              aria-label={`Paste 'work on ${props.item.slug}' into the focused terminal`}
-            >
-              <TerminalIcon />
-            </button>
+              class="row-action work-on"
+            />
           </div>
         </div>
 

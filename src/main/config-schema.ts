@@ -171,6 +171,16 @@ const launcherSchema = z
 
 const launchersSchema = z.array(launcherSchema);
 
+/** One user-configurable action template for project cards or the
+ *  "+ New project" button. */
+const actionTemplateSchema = z
+  .object({
+    label: z.string().min(1, 'label must not be empty'),
+    template: z.string(),
+    submit: z.boolean().optional(),
+  })
+  .strict();
+
 const terminalSettings = z
   .object({
     shell: z.string().optional(),
@@ -182,6 +192,8 @@ const terminalSettings = z
     move_tab_right_shortcut: z.string().optional(),
     xterm: xtermSettings.optional(),
     logging: terminalLoggingSettings.optional(),
+    projectActions: z.array(actionTemplateSchema).optional(),
+    newProjectActions: z.array(actionTemplateSchema).optional(),
   })
   .strict();
 

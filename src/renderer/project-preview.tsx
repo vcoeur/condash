@@ -1,8 +1,9 @@
 import { For, Show, createResource, createSignal, onCleanup, onMount } from 'solid-js';
-import type { Deliverable, Project, Step, StepMarker } from '@shared/types';
+import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { KindGlyph, StepIcon } from './panes/projects';
 import { ChevronDownIcon, IconClose, IconExternal } from './icons';
+import { ActionSplitButton } from './action-split-button';
 import {
   buildFileTree,
   FileTreeRows,
@@ -65,6 +66,8 @@ export function ProjectPreview(props: {
   onOpenInEditor: (path: string) => void;
   onOpenDeliverable: (deliverable: Deliverable) => void;
   onWorkOn: (project: Project) => void;
+  projectActions?: ActionTemplate[];
+  onProjectAction?: (project: Project, action: ActionTemplate) => void;
   onCreateNote?: (project: Project) => void;
 }) {
   const [statusMenu, setStatusMenu] = createSignal(false);
@@ -258,14 +261,22 @@ export function ProjectPreview(props: {
                 {project().slug.slice(0, 10)}
               </span>
 
-              <button
+              <ActionSplitButton
+                primary={<IconTerminal />}
+                primaryTitle={`Paste 'work on ${project().slug}' into the focused terminal`}
+                onPrimary={() => props.onWorkOn(project())}
+                defaultLabel={`Work on ${project().slug}`}
+                items={props.projectActions ?? []}
+                onItem={(idx) => {
+                  if (idx === -1) {
+                    props.onWorkOn(project());
+                  } else {
+                    const action = props.projectActions?.[idx];
+                    if (action) props.onProjectAction?.(project(), action);
+                  }
+                }}
                 class="modal-button work-on-button"
-                onClick={() => props.onWorkOn(project())}
-                title={`Paste 'work on ${project().slug}' into the focused terminal`}
-                aria-label="Paste work-on command into focused terminal"
-              >
-                <IconTerminal />
-              </button>
+              />
               <button
                 class="modal-button"
                 onClick={() => props.onOpenInEditor(projectDir(project().path))}

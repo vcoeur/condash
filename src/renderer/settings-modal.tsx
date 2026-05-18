@@ -10,13 +10,17 @@ import type {
 } from '@shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import {
+  addActionTemplate,
   addLauncher,
   buildSavePayload,
   type ColorEntry,
+  moveActionTemplate,
   moveLauncher,
+  patchActionTemplate,
   patchLauncher,
   pruneEmpty,
   type RawConfig,
+  removeActionTemplate,
   removeLauncher,
   type Section,
   SECTIONS,
@@ -525,6 +529,70 @@ export function SettingsModal(props: {
       launchers: moveLauncher(p.launchers, index, delta),
     }));
 
+  const patchProjectActionField = (
+    target: SettingsTab,
+    index: number,
+    patch: Partial<import('@shared/types').ActionTemplate>,
+  ): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      projectActions: patchActionTemplate(p.projectActions, index, patch),
+    }));
+
+  const addProjectActionField = (target: SettingsTab): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      projectActions: addActionTemplate(p.projectActions),
+    }));
+
+  const removeProjectActionField = (target: SettingsTab, index: number): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      projectActions: removeActionTemplate(p.projectActions, index),
+    }));
+
+  const moveProjectActionField = (
+    target: SettingsTab,
+    index: number,
+    delta: -1 | 1,
+  ): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      projectActions: moveActionTemplate(p.projectActions, index, delta),
+    }));
+
+  const patchNewProjectActionField = (
+    target: SettingsTab,
+    index: number,
+    patch: Partial<import('@shared/types').ActionTemplate>,
+  ): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      newProjectActions: patchActionTemplate(p.newProjectActions, index, patch),
+    }));
+
+  const addNewProjectActionField = (target: SettingsTab): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      newProjectActions: addActionTemplate(p.newProjectActions),
+    }));
+
+  const removeNewProjectActionField = (target: SettingsTab, index: number): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      newProjectActions: removeActionTemplate(p.newProjectActions, index),
+    }));
+
+  const moveNewProjectActionField = (
+    target: SettingsTab,
+    index: number,
+    delta: -1 | 1,
+  ): Promise<void> =>
+    patchTerminal(target, (p) => ({
+      ...p,
+      newProjectActions: moveActionTemplate(p.newProjectActions, index, delta),
+    }));
+
   const xtermPrefsFor = (target: SettingsTab): TerminalXtermPrefs =>
     terminalPrefsFor(target).xterm ?? {};
 
@@ -769,6 +837,16 @@ export function SettingsModal(props: {
                 addLauncher={() => addLauncherField('global')}
                 removeLauncher={(i) => removeLauncherField('global', i)}
                 moveLauncher={(i, d) => moveLauncherField('global', i, d)}
+                projectActions={() => terminalPrefsFor('global').projectActions ?? []}
+                patchProjectAction={(i, p) => patchProjectActionField('global', i, p)}
+                addProjectAction={() => addProjectActionField('global')}
+                removeProjectAction={(i) => removeProjectActionField('global', i)}
+                moveProjectAction={(i, d) => moveProjectActionField('global', i, d)}
+                newProjectActions={() => terminalPrefsFor('global').newProjectActions ?? []}
+                patchNewProjectAction={(i, p) => patchNewProjectActionField('global', i, p)}
+                addNewProjectAction={() => addNewProjectActionField('global')}
+                removeNewProjectAction={(i) => removeNewProjectActionField('global', i)}
+                moveNewProjectAction={(i, d) => moveNewProjectActionField('global', i, d)}
                 updateXterm={(p) => updateXterm('global', p)}
                 updateColor={(k, v) => updateColor('global', k, v)}
                 updateLogging={(p) => updateLogging('global', p)}
@@ -836,6 +914,16 @@ export function SettingsModal(props: {
                 addLauncher={() => addLauncherField('conception')}
                 removeLauncher={(i) => removeLauncherField('conception', i)}
                 moveLauncher={(i, d) => moveLauncherField('conception', i, d)}
+                projectActions={() => terminalPrefsFor('conception').projectActions ?? []}
+                patchProjectAction={(i, p) => patchProjectActionField('conception', i, p)}
+                addProjectAction={() => addProjectActionField('conception')}
+                removeProjectAction={(i) => removeProjectActionField('conception', i)}
+                moveProjectAction={(i, d) => moveProjectActionField('conception', i, d)}
+                newProjectActions={() => terminalPrefsFor('conception').newProjectActions ?? []}
+                patchNewProjectAction={(i, p) => patchNewProjectActionField('conception', i, p)}
+                addNewProjectAction={() => addNewProjectActionField('conception')}
+                removeNewProjectAction={(i) => removeNewProjectActionField('conception', i)}
+                moveNewProjectAction={(i, d) => moveNewProjectActionField('conception', i, d)}
                 updateXterm={(p) => updateXterm('conception', p)}
                 updateColor={(k, v) => updateColor('conception', k, v)}
                 updateLogging={(p) => updateLogging('conception', p)}

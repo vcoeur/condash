@@ -39,6 +39,7 @@ export async function parseReadme(path: string): Promise<Project> {
     status: (header.status ?? 'backlog').toLowerCase(),
     apps: header.apps,
     branch: header.branch,
+    base: header.base,
     summary,
     steps,
     stepCounts,

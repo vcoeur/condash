@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addActionTemplate,
   addLauncher,
   buildSavePayload,
   compactRepos,
+  moveActionTemplate,
   moveLauncher,
+  patchActionTemplate,
   patchLauncher,
+  removeActionTemplate,
   removeLauncher,
 } from './data';
 import { conceptionConfigSchema } from '../../main/config-schema';
@@ -204,5 +208,135 @@ describe('moveLauncher', () => {
   it('refuses to move past the end', () => {
     const list = [{ label: 'λ', command: 'claude' }];
     expect(moveLauncher(list, 0, 1)).toBe(list);
+  });
+});
+
+describe('patchActionTemplate', () => {
+  it('does not create an entry when only the label is set (template empty)', () => {
+    expect(patchActionTemplate(undefined, 0, { label: 'My label' })).toBeUndefined();
+  });
+
+  it('creates an entry once both label and template are filled', () => {
+    expect(
+      patchActionTemplate(undefined, 0, {
+        label: 'Claude review',
+        template: 'claude "review {slug}"',
+      }),
+    ).toEqual([{ label: 'Claude review', template: 'claude "review {slug}"' }]);
+  });
+
+  it('attaches submit flag to an existing entry', () => {
+    const next = patchActionTemplate(
+      [{ label: 'Claude review', template: 'claude "review {slug}"' }],
+      0,
+      { submit: true },
+    );
+    expect(next).toEqual([
+      { label: 'Claude review', template: 'claude "review {slug}"', submit: true },
+    ]);
+  });
+
+  it('drops the entry when its label is cleared', () => {
+    const next = patchActionTemplate(
+      [{ label: 'Claude review', template: 'claude "review {slug}"' }],
+      0,
+      { label: '' },
+    );
+    expect(next).toBeUndefined();
+  });
+
+  it('drops the entry when its template is cleared', () => {
+    const next = patchActionTemplate(
+      [{ label: 'Claude review', template: 'claude "review {slug}"' }],
+      0,
+      { template: '' },
+    );
+    expect(next).toBeUndefined();
+  });
+
+  it('preserves the other entry when one is cleared', () => {
+    const next = patchActionTemplate(
+      [
+        { label: 'Claude review', template: 'claude "review {slug}"' },
+        { label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' },
+      ],
+      0,
+      { label: '' },
+    );
+    expect(next).toEqual([{ label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' }]);
+  });
+
+  it('produces a schema-valid payload through buildSavePayload + actionTemplateSchema', () => {
+    const actions = patchActionTemplate(undefined, 0, {
+      label: 'Claude review',
+      template: 'claude "review {slug}"',
+      submit: true,
+    });
+    const payload = buildSavePayload({ terminal: { projectActions: actions } });
+    const result = conceptionConfigSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('addActionTemplate', () => {
+  it('appends a blank action row', () => {
+    expect(addActionTemplate(undefined)).toEqual([{ label: '', template: '' }]);
+  });
+
+  it('appends to an existing list', () => {
+    expect(
+      addActionTemplate([{ label: 'Claude review', template: 'claude "review {slug}"' }]),
+    ).toEqual([
+      { label: 'Claude review', template: 'claude "review {slug}"' },
+      { label: '', template: '' },
+    ]);
+  });
+});
+
+describe('removeActionTemplate', () => {
+  it('removes the entry at the given index', () => {
+    expect(
+      removeActionTemplate(
+        [
+          { label: 'Claude review', template: 'claude "review {slug}"' },
+          { label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' },
+        ],
+        0,
+      ),
+    ).toEqual([{ label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' }]);
+  });
+
+  it('returns undefined when the last entry is removed', () => {
+    expect(
+      removeActionTemplate([{ label: 'Claude review', template: 'claude "review {slug}"' }], 0),
+    ).toBeUndefined();
+  });
+});
+
+describe('moveActionTemplate', () => {
+  it('swaps two entries', () => {
+    expect(
+      moveActionTemplate(
+        [
+          { label: 'Claude review', template: 'claude "review {slug}"' },
+          { label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' },
+        ],
+        0,
+        1,
+      ),
+    ).toEqual([
+      { label: 'Kimi summary', template: 'kimi "summarise {shortSlug}"' },
+      { label: 'Claude review', template: 'claude "review {slug}"' },
+    ]);
+  });
+
+  it('refuses to move past the start', () => {
+    const list = [{ label: 'Claude review', template: 'claude "review {slug}"' }];
+    expect(moveActionTemplate(list, 0, -1)).toBe(list);
+  });
+
+  it('refuses to move past the end', () => {
+    const list = [{ label: 'Claude review', template: 'claude "review {slug}"' }];
+    expect(moveActionTemplate(list, 0, 1)).toBe(list);
   });
 });
