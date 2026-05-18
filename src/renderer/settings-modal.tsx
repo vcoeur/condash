@@ -211,49 +211,37 @@ export function SettingsModal(props: {
   const parseError = createMemo<string | null>(() => parseErrorOf(content() ?? ''));
   const globalParseError = createMemo<string | null>(() => parseErrorOf(globalContent() ?? ''));
 
-  // --- patchConfig (condash.json) -------------------------------------
+  // --- patchFile factory ----------------------------------------------
 
-  /**
-   * Apply `mutator` to the parsed condash.json, drop empty leaves, and
-   * persist via the same atomic CAS path used by every other note write.
-   */
-  const patchConfig = async (mutator: (config: RawConfig) => void): Promise<void> => {
-    const text = content() ?? '';
-    let parsedConfig: RawConfig;
+  /** Apply `mutator` to a parsed JSON file, drop empty leaves, and
+   *  persist via the caller-supplied write IPC's atomic CAS. Wraps the
+   *  shared parse → mutate → stringify → write flow that both
+   *  patchConfig (condash.json) and patchSettings (settings.json) need —
+   *  the two files differ only in where they read from and how they
+   *  write, captured by `read` / `write`. */
+  const patchFile = async (
+    fileLabel: string,
+    read: () => string,
+    write: (text: string, next: string) => Promise<string>,
+    onWritten: (written: string) => void,
+    mutator: (config: RawConfig) => void,
+  ): Promise<void> => {
+    const text = read();
+    let parsed: RawConfig;
     try {
-      parsedConfig = (text ? (JSON.parse(text) as RawConfig) : {}) as RawConfig;
+      parsed = (text ? (JSON.parse(text) as RawConfig) : {}) as RawConfig;
     } catch (err) {
-      setError(`condash.json is invalid: ${(err as Error).message}. Open it externally to repair.`);
+      setError(`${fileLabel} is invalid: ${(err as Error).message}. Open it externally to repair.`);
       return;
     }
-    mutator(parsedConfig);
-    const next = JSON.stringify(buildSavePayload(parsedConfig), null, 2) + '\n';
+    mutator(parsed);
+    const next = JSON.stringify(buildSavePayload(parsed), null, 2) + '\n';
     if (next === text) return;
     setError(null);
     setPending(true);
     try {
-      // The conception config is canonicalised through the Zod schema on
-      // the main side, so the bytes that reach disk can differ from
-      // `next` (e.g. Zod reorders new keys into schema order). Cache the
-      // actual written content so the next save's CAS baseline matches
-      // disk.
-      //
-      // Path swap: read from configurationPath() (which may be the
-      // legacy configuration.json) and always write to writePath
-      // (canonical condash.json). On the first write to a fresh
-      // condash.json the file doesn't yet exist, so writeNote's drift
-      // check sees `''` on disk — pass `''` as the expected baseline
-      // when writing to a new path.
-      const readFrom = configurationPath();
-      const expected = readFrom === writePath ? text : '';
-      const written = await window.condash.writeNote(writePath, expected, next);
-      mutateContent(written);
-      // After a successful write, the canonical condash.json now exists
-      // (or has been updated) — re-point the read resource so the next
-      // refresh round-trip lands on the right file.
-      if (readFrom !== writePath) {
-        mutateReadPath(writePath);
-      }
+      const written = await write(text, next);
+      onWritten(written);
       setSavedAt(Date.now());
       scheduleSavedAtClear();
     } catch (err) {
@@ -263,43 +251,50 @@ export function SettingsModal(props: {
     }
   };
 
-  // --- patchSettings (settings.json) ---------------------------------
-
-  /**
-   * Apply `mutator` to the parsed settings.json, drop empty leaves, and
-   * persist via the new `writeGlobalSettings` IPC's atomic CAS. Mirrors
-   * `patchConfig` but writes to the per-machine file. Every Global-tab
-   * editor goes through this; the long-standing `setTheme` / `setLayout`
-   * / `termSetPrefs` IPC verbs continue to write here too for the rest of
-   * the app.
-   */
-  const patchSettings = async (mutator: (settings: RawConfig) => void): Promise<void> => {
-    const text = globalContent() ?? '';
-    let parsedSettings: RawConfig;
-    try {
-      parsedSettings = (text ? (JSON.parse(text) as RawConfig) : {}) as RawConfig;
-    } catch (err) {
-      setError(
-        `settings.json is invalid: ${(err as Error).message}. Open it externally to repair.`,
-      );
-      return;
-    }
-    mutator(parsedSettings);
-    const next = JSON.stringify(buildSavePayload(parsedSettings), null, 2) + '\n';
-    if (next === text) return;
-    setError(null);
-    setPending(true);
-    try {
-      const written = await window.condash.writeGlobalSettings(text, next);
-      mutateGlobalContent(written);
-      setSavedAt(Date.now());
-      scheduleSavedAtClear();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setPending(false);
-    }
+  /** Apply `mutator` to the parsed condash.json, drop empty leaves, and
+   *  persist via the same atomic CAS path used by every other note write.
+   *  Path swap: read from configurationPath() (which may be the legacy
+   *  configuration.json) and always write to writePath (canonical
+   *  condash.json). On the first write to a fresh condash.json the file
+   *  doesn't yet exist, so writeNote's drift check sees `''` on disk —
+   *  pass `''` as the expected baseline when writing to a new path.
+   *  After a successful write, the canonical condash.json now exists
+   *  (or has been updated) — re-point the read resource so the next
+   *  refresh round-trip lands on the right file. The conception config
+   *  is canonicalised through the Zod schema on the main side, so the
+   *  bytes that reach disk can differ from `next` (e.g. Zod reorders new
+   *  keys into schema order). Cache the actual written content so the
+   *  next save's CAS baseline matches disk. */
+  const patchConfig = (mutator: (config: RawConfig) => void): Promise<void> => {
+    const readFrom = configurationPath();
+    return patchFile(
+      'condash.json',
+      () => content() ?? '',
+      (text, next) => {
+        const expected = readFrom === writePath ? text : '';
+        return window.condash.writeNote(writePath, expected, next);
+      },
+      (written) => {
+        mutateContent(written);
+        if (readFrom !== writePath) mutateReadPath(writePath);
+      },
+      mutator,
+    );
   };
+
+  /** Apply `mutator` to the parsed settings.json, drop empty leaves, and
+   *  persist via writeGlobalSettings' atomic CAS. Mirrors patchConfig but
+   *  writes to the per-machine file. Every Global-tab editor goes through
+   *  this; the long-standing setTheme / setLayout / termSetPrefs IPC verbs
+   *  continue to write here too for the rest of the app. */
+  const patchSettings = (mutator: (settings: RawConfig) => void): Promise<void> =>
+    patchFile(
+      'settings.json',
+      () => globalContent() ?? '',
+      (text, next) => window.condash.writeGlobalSettings(text, next),
+      mutateGlobalContent,
+      mutator,
+    );
 
   /** Patch the right file based on `target`. */
   const patchFor = (target: SettingsTab) => (target === 'global' ? patchSettings : patchConfig);
