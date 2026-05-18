@@ -46,7 +46,7 @@ Manage durable reference material in `<conception>/knowledge/`.
 
 | Action | Trigger | Wraps |
 |---|---|---|
-| `retrieve` | `/knowledge retrieve <query>` — triage walk (names / bodies / both) | `condash knowledge retrieve` |
+| `retrieve` | `/knowledge retrieve <query>` — triage walk (`triage` / `grep` / `both`) | `condash knowledge retrieve` |
 | `update` | `/knowledge update <path>` — add or edit a body file with citation + verification stamp | direct file edits + `condash knowledge stamp` |
 | `index` | `/knowledge index` — regenerate every `knowledge/**/index.md` | `condash knowledge index` |
 | `verify` | `/knowledge verify` — audit stale `**Verified:** YYYY-MM-DD` stamps + tree audits | `condash knowledge verify` |

@@ -364,6 +364,9 @@ function printSubHelp(): void {
   );
 }
 
+/** Traverse `obj` along a dotted path such as `terminal.logging.enabled`
+ *  or `repos[0].path`. Returns `undefined` when any segment is missing or
+ *  when an array index is applied to a non-array. */
 function pickByDottedPath(obj: unknown, dotted: string): unknown {
   const parts = dotted.split('.');
   let current: unknown = obj;

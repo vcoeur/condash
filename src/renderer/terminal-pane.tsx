@@ -106,6 +106,10 @@ export function TerminalPane(props: {
   // the right column, not always 'left'.
   let nextSpawnColumn: Column = 'left';
 
+  // Tracks tabs that are already in the process of closing so that
+  // user-initiated close (× button) and process-exit close don't race.
+  const closingTabs = new Set<string>();
+
   const xterms = new Map<
     string,
     {
@@ -400,7 +404,7 @@ export function TerminalPane(props: {
     // button. If the user wants to inspect the buffer, the Save-buffer
     // button on the tab strip dumps it to a .txt before close lands.
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: _code } : t)));
-    closeTab(id);
+    if (!closingTabs.has(id)) closeTab(id);
   });
   onCleanup(() => {
     offTermData();
@@ -414,6 +418,8 @@ export function TerminalPane(props: {
   });
 
   const closeTab = (id: string) => {
+    if (closingTabs.has(id)) return;
+    closingTabs.add(id);
     void window.condash.termClose(id);
     deleteMeta(id);
   };

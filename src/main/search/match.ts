@@ -90,7 +90,7 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
 
   const score = scoreOccurrences(occurrences, input.terms);
   const matchCount = occurrences.length;
-  const title = extractFirstHeading(raw) ?? input.relPath;
+  const title = extractFirstHeadingOrLine(raw) ?? input.relPath;
   const snippets = buildSnippets(raw, input.terms, regions);
 
   return {
@@ -109,7 +109,12 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
   };
 }
 
-function extractFirstHeading(raw: string): string | null {
+/** Best-effort title: returns the first non-empty line with leading
+ *  Markdown heading hashes stripped. If the file has no heading, body
+ *  text becomes the title — this is intentional so every hit has a
+ *  displayable label, but the name is deliberately `…OrLine` to warn
+ *  callers that it is not strictly an H1 extractor. */
+function extractFirstHeadingOrLine(raw: string): string | null {
   const limit = Math.min(raw.length, 4096);
   for (const line of raw.slice(0, limit).split(/\r?\n/)) {
     const trimmed = line.trim();
