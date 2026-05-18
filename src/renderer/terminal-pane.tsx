@@ -106,6 +106,11 @@ export function TerminalPane(props: {
   // the right column, not always 'left'.
   let nextSpawnColumn: Column = 'left';
 
+  // Stash of caller-supplied label/pinned per spawned id. `reconcile` is the
+  // sole writer of the tabs signal; `spawn` records intent here so the
+  // following onTermSessions broadcast inserts the tab with the right label.
+  const pendingSpawnIntent = new Map<string, { label: string; pinned?: boolean }>();
+
   // Tracks tabs that are already in the process of closing so that
   // user-initiated close (× button) and process-exit close don't race.
   const closingTabs = new Set<string>();
@@ -270,22 +275,28 @@ export function TerminalPane(props: {
     const known = new Set(tabs().map((t) => t.id));
     for (const s of snap) {
       if (s.side !== 'my' || known.has(s.id)) continue;
+      // Await termAttach first so that any in-flight `spawn` invoke reply has
+      // resolved by the time we build the tab — `pendingSpawnIntent` is set
+      // synchronously after `termSpawn` returns, and we want to read it here.
+      const attach = await window.condash.termAttach(s.id);
+      const intent = pendingSpawnIntent.get(s.id);
+      pendingSpawnIntent.delete(s.id);
       const meta = readMeta()[s.id];
-      const label = meta?.label ?? (s.repo ? `${s.repo} (run)` : 'shell');
+      const label = intent?.label ?? meta?.label ?? (s.repo ? `${s.repo} (run)` : 'shell');
       const column: Column = meta?.column ?? nextSpawnColumn;
       nextSpawnColumn = 'left';
+      const pinned = intent?.pinned ?? meta?.pinned;
       const tab: Tab = {
         id: s.id,
         side: 'my',
         column,
         label,
         customName: meta?.customName,
-        pinned: meta?.pinned,
+        pinned,
         exited: s.exited,
       };
       setTabs((prev) => [...prev, tab]);
-      setMeta(s.id, { label, customName: meta?.customName, column, pinned: meta?.pinned });
-      const attach = await window.condash.termAttach(s.id);
+      setMeta(s.id, { label, customName: meta?.customName, column, pinned });
       mountForSession(s.id, column, attach?.output);
       setActiveIn(column, s.id);
       setActiveColumn(column);
@@ -349,13 +360,11 @@ export function TerminalPane(props: {
   ): Promise<string> => {
     const { id } = await window.condash.termSpawn(request);
     const pinned = opts?.pinned;
+    // Record intent first — reconcile reads it before falling back to meta
+    // or default labels. Setting intent before setMeta keeps the two reads
+    // synchronous from reconcile's perspective.
+    pendingSpawnIntent.set(id, { label, pinned });
     setMeta(id, { label, column: nextSpawnColumn, pinned });
-    // `broadcastSessions()` in main fires before the `termSpawn` invoke
-    // reply resolves here, so reconcile typically inserts the Tab with the
-    // fallback label ('shell' / '<repo> (run)') and no `pinned` flag —
-    // readMeta returns nothing because we hadn't written yet. Patch the
-    // Tab with the caller's intent now that we know the id.
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, label, pinned } : t)));
     return id;
   };
 
