@@ -1,4 +1,5 @@
 import { isAbsolute, join } from 'node:path';
+import type { TerminalPrefs } from '../shared/types';
 
 /**
  * Shared configuration-walk helpers. Both `repos.ts` (for the flat repo list
@@ -33,6 +34,7 @@ export type RawRepo =
 export interface ConfigShape {
   workspace_path?: string;
   repositories?: RawRepo[];
+  terminal?: TerminalPrefs;
 }
 
 /** True when `entry` is a section-marker variant of `RawRepo`. */

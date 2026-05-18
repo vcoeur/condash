@@ -3,7 +3,7 @@
 // data through the same termWrite / termResize / onTermData IPC. Putting the
 // setup in one place avoids drift between the two surfaces.
 
-import { Terminal, type FontWeight, type IDecoration, type IDisposable } from '@xterm/xterm';
+import { Terminal, type FontWeight, type IDecoration } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -183,7 +183,6 @@ export function mountXterm(
   }
 
   // ---- write/data wiring + clipboard fallback for Ctrl+C/V ----
-  const customKeyDisposers: IDisposable[] = [];
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
     const ctrl = ev.ctrlKey && !ev.metaKey;
@@ -384,7 +383,6 @@ export function mountXterm(
       if (disposed) return;
       disposed = true;
       liveTerms.delete(mounted);
-      for (const d of customKeyDisposers) d.dispose();
       for (const d of promptDecorations) d.dispose();
       term.dispose();
     },

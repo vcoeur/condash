@@ -1,3 +1,10 @@
+/** `dirty` noun — manage the conception-wide dirty marker.
+ *
+ *  A "dirty" conception is one whose worktrees or branches have drifted
+ *  since the last explicit sync: unmerged branches, stale worktrees, or
+ *  projects whose status no longer matches their README markers. The
+ *  `check` verb reports this state; `clear` removes the marker after the
+ *  user has manually resolved the drift. */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { touchDirtyMarker } from '../../main/dirty';

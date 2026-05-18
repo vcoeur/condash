@@ -1,4 +1,4 @@
-import { createSignal, Show } from 'solid-js';
+import { createMemo, createSignal, Show } from 'solid-js';
 import type { ResourceCategory, ResourceNode } from '@shared/types';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import {
@@ -42,6 +42,13 @@ export function ResourcesView(props: {
 }) {
   const scrollRef = usePaneScrollMemory('resources');
 
+  // Memoise the inline file renderer so toggling one directory's expansion
+  // doesn't invalidate every file card in the rest of the tree — see
+  // notes/01-design.md.
+  const renderFile = createMemo(() => (file: ResourceNode) => (
+    <ResourceCard node={file} actions={props.actions} />
+  ));
+
   return (
     <div class="resources-pane" ref={scrollRef}>
       <Show
@@ -83,7 +90,7 @@ export function ResourcesView(props: {
             prompts={props.prompts}
             onAfterMutation={props.onAfterMutation}
             onError={props.onError}
-            renderFile={(file) => <ResourceCard node={file} actions={props.actions} />}
+            renderFile={renderFile()}
           />
         )}
       </Show>

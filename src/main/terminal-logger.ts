@@ -1,5 +1,4 @@
-import { mkdirSync } from 'node:fs';
-import { rename, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Terminal } from '@xterm/headless';
 import type { TermSide, TerminalLoggingPrefs } from '../shared/types';
@@ -166,6 +165,9 @@ export class SessionLogger {
       cols: COLS,
       rows: ROWS,
       scrollback: this.prefs.scrollback,
+      // Required since xterm.js 5.4 for `ILinkProvider` and the buffer-line
+      // APIs used by `renderBufferAsPlainText`. Safe to leave enabled — the
+      // flag only unlocks stable APIs that haven't been promoted to default.
       allowProposedApi: true,
     });
   }
@@ -271,7 +273,7 @@ export class SessionLogger {
     const body = renderBufferAsPlainText(this.term);
     const text = this.composeFileContent(body);
     try {
-      mkdirSync(dirname(this.txtPath), { recursive: true });
+      await mkdir(dirname(this.txtPath), { recursive: true });
       const tmp = `${this.txtPath}.tmp`;
       await writeFile(tmp, text, 'utf8');
       await rename(tmp, this.txtPath);

@@ -176,6 +176,8 @@ async function walkExtensions(
     } else if (entry.isFile()) {
       const lower = entry.name.toLowerCase();
       const dot = lower.lastIndexOf('.');
+      // `slice(dot)` keeps the leading dot, so `exts` must contain `'.md'`
+      // rather than `'md'`. This convention is shared with the call sites.
       if (dot >= 0 && exts.has(lower.slice(dot))) visit(full);
     }
   }

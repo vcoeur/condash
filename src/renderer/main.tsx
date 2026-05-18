@@ -165,7 +165,10 @@ function App() {
   });
   const [promptState, setPromptState] = createSignal<PromptModalState | null>(null);
   const [welcomeDismissed, setWelcomeDismissed] = createSignal<boolean>(false);
-  void window.condash.getWelcomeDismissed().then(setWelcomeDismissed);
+  void window.condash
+    .getWelcomeDismissed()
+    .then(setWelcomeDismissed)
+    .catch((err) => console.error('hydration: getWelcomeDismissed failed', err));
 
   // Track the active dismiss timer so a fast burst of flashes — or app
   // teardown within the 4 s window — doesn't leave a callback running
@@ -189,12 +192,23 @@ function App() {
     });
   let terminalHandle: TerminalPaneHandle | null = null;
 
-  void window.condash.getConceptionPath().then(setConceptionPath);
-  void window.condash.getTheme().then((t) => {
-    setTheme(t);
-    applyTheme(t);
-  });
-  void window.condash.getLayout().then(setLayoutState);
+  void window.condash
+    .getConceptionPath()
+    .then(setConceptionPath)
+    .catch((err) =>
+      flashToast(`Could not load conception path: ${(err as Error).message}`, 'error'),
+    );
+  void window.condash
+    .getTheme()
+    .then((t) => {
+      setTheme(t);
+      applyTheme(t);
+    })
+    .catch((err) => flashToast(`Could not load theme: ${(err as Error).message}`, 'error'));
+  void window.condash
+    .getLayout()
+    .then(setLayoutState)
+    .catch((err) => flashToast(`Could not load layout: ${(err as Error).message}`, 'error'));
 
   // Card min-widths drive the n→n+1 reflow on the three pane grids.
   // Track them in a signal so the settings modal can publish updates
@@ -362,7 +376,10 @@ function App() {
   // Active tab (defaults to `claude` to preserve pre-tabs behaviour; the
   // hydrate-from-IPC `then` below replaces it with the persisted value).
   const [skillsActiveTab, setSkillsActiveTabSig] = createSignal<SkillTab>('claude');
-  void window.condash.getSkillsActiveTab().then((tab) => setSkillsActiveTabSig(tab));
+  void window.condash
+    .getSkillsActiveTab()
+    .then((tab) => setSkillsActiveTabSig(tab))
+    .catch((err) => flashToast(`Could not load Skills tab: ${(err as Error).message}`, 'error'));
   const persistSkillsActiveTab = (tab: SkillTab): void => {
     void window.condash.setSkillsActiveTab(tab).catch((err) => {
       flashToast(`Could not persist Skills tab: ${(err as Error).message}`, 'error');

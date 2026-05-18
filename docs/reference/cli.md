@@ -33,7 +33,7 @@ The two launchers are physically separate scripts. `condash` always boots the El
 CLI nouns:
 
 ```
-projects   knowledge   search   repos   worktrees   audit   dirty   skills   templates   config   help
+projects   knowledge   search   repos   worktrees   audit   dirty   skills   config   help
 ```
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
@@ -66,17 +66,20 @@ Available on every noun:
 6  ambiguous
 ```
 
-Code 5 means the CLI could not resolve a conception path — pass `--conception <path>` or set one with `condash config conception-path <path>`.
+Code 5 means the CLI could not resolve a conception path — pass `--conception <path>` or set `lastConceptionPath` via `condash config set lastConceptionPath <path>`.
 
 ## Conception-path resolution
 
 The CLI honours the same chain as the GUI, minus the folder picker:
 
 1. `--conception <path>` flag.
-2. `conceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or platform equivalent).
-3. Hard error (exit 5).
+2. `CONDASH_CONCEPTION_PATH` environment variable (legacy alias `CONDASH_CONCEPTION` still accepted).
+3. `CLAUDE_PROJECT_DIR` environment variable (back-compat for Claude Code sessions).
+4. Walk-up from the current working directory looking for `condash.json` or `configuration.json` next to a `projects/` directory.
+5. `lastConceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or platform equivalent).
+6. Hard error (exit 5).
 
-`condash config conception-path` and `condash config conception-path <path>` read or write the saved value.
+`condash config conception-path` prints the currently resolved conception path. To change it, use `condash config set lastConceptionPath <path>`.
 
 ## Nouns
 
@@ -97,7 +100,7 @@ Item lifecycle and reads.
 | `backfill-closed [--dry-run]` | Append a `Closed.` timeline entry to legacy `done` items missing one |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
 | `create --kind <k> --slug <s> --title "<t>" --apps "<a>" [--status <s>]` | Create a new project / incident / document folder + README from the canonical template. `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. Incidents add `--severity` + `--severity-impact` + `--environment` |
-| `scan-promotions [--limit N]` | Walk closed items for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
+| `scan-promotions <slug>` | Walk a closed item's notes for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
 | `rewrite-headers [--dry-run]` | One-shot migration of legacy bold-prose headers to YAML frontmatter; idempotent (already-YAML files are no-ops). Skips any README whose body has unexpected content between the meta block and the first `##` heading |
 
 Slug forms accepted:
@@ -114,7 +117,7 @@ Knowledge-tree operations.
 |---|---|
 | `tree` | Render the knowledge index as a tree, depth-limited via `--depth` |
 | `verify` | Audit verification stamps (`**Verified:** YYYY-MM-DD`) and report stale ones |
-| `retrieve <query>` | Triage walk — find relevant knowledge files for a topic, by `--mode` (`names`, `bodies`, `both`) |
+| `retrieve <query>` | Triage walk — find relevant knowledge files for a topic, by `--mode` (`triage`, `grep`, `both`) |
 | `stamp <path>` | Add or refresh a verification stamp on a knowledge file, optionally `--where <field>` and `--date <iso>`. `<path>` must resolve inside the conception tree |
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `knowledge/**/index.md` from the on-disk tree; clear `knowledge/.index-dirty` |
 
@@ -133,13 +136,12 @@ condash search "session cookie" --scope all
 List configured repositories from `condash.json`.
 
 ```bash
-condash repos list                       # configured repos, no worktrees
-condash repos list --include-worktrees   # add worktrees in <worktrees_path>/
+condash repos list                       # configured repos
 ```
 
 ### `worktrees`
 
-Worktree-centric operations on top of `condash.json`'s repositories. Both `repos list --include-worktrees` and these verbs share the same per-repo dirty/upstream cache.
+Worktree-centric operations on top of `condash.json`'s repositories.
 
 | Verb | What it does |
 |---|---|
@@ -200,26 +202,7 @@ Manage Claude Code + Kimi skills. Two scopes:
 
 A user skillspec's `spec.yaml` may carry a `hosts:` list — e.g. `hosts: [vcoeur]`. When present, condash reads the current host label from `~/.claude/.host` and skips any skill whose `hosts:` does not include that label. Absent `hosts:` means install everywhere. This replaces the multi-host filter previously enforced by ClaudeConfig's `/sync-config`.
 
-The manifest at `.claude/skills/.condash-skills.json` (repo scope only) tracks the shipped version and SHA256 per file, so updates can detect local edits.
-
-### `templates`
-
-Manage condash-shipped *partial-file* templates — top-level files where condash owns the body of one heading-delimited section. Two shipped today:
-
-- `CLAUDE.md` — `## General` (markdown H2). Text outside that section (H1, intro paragraph, and the user-owned `## Specifics`) is never touched.
-- `.gitignore` — `# General` (gitignore comment style). Patterns under `# Specifics` are never touched.
-
-| Verb | What it does |
-|---|---|
-| `list` | Print every template that ships with this condash version, with installed/version status |
-| `install [<path>...]` | Update the shipped region inside `<conception>/<path>`. With no args, runs all shipped templates. Refuses on edits without `--force`; `--diff` shows the unified diff |
-| `status` | Compare local regions against the shipped versions and the recorded SHA256 (states: `unchanged` / `outdated` / `edited` / `missing` / `missing-heading` / `orphan`) |
-
-The manifest reuses `.claude/skills/.condash-skills.json` (`templates` namespace alongside `skills`). The recorded SHA256 hashes the **body of the section, exclusive of the heading line and the trailing blank line before the next heading** — so the user can reorder content above or below the section without invalidating the manifest. Manifests written by older condash versions used `region: "condash:general"` (the HTML-comment-marker namespace); they migrate transparently to `region: "General"` on the next install.
-
-For `.gitignore`, the heading style is gitignore-comment (`# General` / `# Specifics`) — every comment line shares the `#` prefix with the section markers, so the parser uses a fixed sibling list (`Specifics`) to detect the body end rather than treating any `# …` line as a heading. The match is whole-line, case- and whitespace-sensitive (`# General` only — `# General — shipped` or `#General` won't match).
-
-**First-time adoption on an existing conception.** A `.gitignore` predating this change has no `# General` / `# Specifics` markers, so `templates install` reports `missing-heading` and refuses without `--force`. The recommended migration is a one-time hand-edit: wrap your existing patterns under a `# Specifics` heading and let `templates install` write the shipped `# General` block on top. `--force` is the alternative but wipes any custom patterns.
+The manifest at `.agents/.condash-skills.json` (repo scope only) tracks the shipped version and SHA256 per file, so updates can detect local edits.
 
 ### `config`
 
@@ -227,14 +210,13 @@ Read or change condash configuration.
 
 | Verb | What it does |
 |---|---|
-| `conception-path` | Print the saved conception path |
-| `conception-path <path>` | Save a new conception path to `settings.json` |
+| `conception-path` | Print the resolved conception path |
 | `path` | Print both config file paths (`settings.json` + `condash.json`) |
 | `list [--global\|--effective]` | Print every key. Default reads `condash.json`; `--global` reads `settings.json`; `--effective` shows the merged view (conception ⊕ global) |
 | `get <key> [--global\|--effective]` | Print one key's value, dot-separated path (`terminal.shell`). Same flag axis as `list` |
 | `set <key> <value> [--global]` | Write a key. Default writes `condash.json`; `--global` writes `settings.json` |
 
-`config conception-path` is the only verb that does not need an existing conception path — it sets one.
+`config conception-path` is the only verb that does not need an existing conception path — it prints the resolved one.
 
 ### `help`
 

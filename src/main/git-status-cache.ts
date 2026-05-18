@@ -92,11 +92,10 @@ export async function getDirtyCount(
     const out = await git.raw(args);
     const lines = out.split('\n').filter((l) => l.length > 0);
 
-    let count = 0;
-    for (const line of lines) {
-      if (await isZeroByteUntracked(line, path)) continue;
-      count++;
-    }
+    const untrackedChecks = await Promise.all(
+      lines.map(async (line) => ({ line, skip: await isZeroByteUntracked(line, path) })),
+    );
+    const count = untrackedChecks.filter((c) => !c.skip).length;
     cache.set(key, { dirty: count, capturedAt: now });
     return count;
   } catch {

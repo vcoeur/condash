@@ -53,10 +53,14 @@ export function createSessionsStore(): SessionsStore {
     allSessions().filter((s) => s.side === 'code'),
   );
 
+  let hasReceivedEvent = false;
   const offTermSessions = window.condash.onTermSessions((sessions) => {
+    hasReceivedEvent = true;
     setAllSessions(sessions);
   });
-  void window.condash.termList().then(setAllSessions);
+  void window.condash.termList().then((sessions) => {
+    if (!hasReceivedEvent) setAllSessions(sessions);
+  });
   onCleanup(offTermSessions);
 
   return { allSessions, liveRepos, liveSessionCwds, codeRunSessions };
