@@ -3,6 +3,7 @@ import {
   createResource,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -89,14 +90,28 @@ export function NoteModal(props: {
     props.state?.readOnly ? 'view' : (props.state?.initialMode ?? 'view'),
   );
 
-  createEffect(() => {
-    if (props.state?.readOnly) {
-      setMode('view');
-      return;
-    }
-    if (props.state?.initialMode) setMode(props.state.initialMode);
-    else if (props.state && !isMarkdown(props.state.path)) setMode('edit');
-  });
+  // Key the mode-reset on the specific state fields that drive it. Without
+  // `on`, this effect tracks every property read on `props.state` and
+  // re-fires whenever the host hands us a reference-equal-but-new state
+  // object (which it does freely on unrelated re-renders) — silently
+  // clobbering the user's current view/edit choice.
+  createEffect(
+    on(
+      [
+        () => props.state?.readOnly ?? false,
+        () => props.state?.initialMode,
+        () => props.state?.path,
+      ],
+      ([readOnly, initialMode, path]) => {
+        if (readOnly) {
+          setMode('view');
+          return;
+        }
+        if (initialMode) setMode(initialMode);
+        else if (path && !isMarkdown(path)) setMode('edit');
+      },
+    ),
+  );
   const [draft, setDraft] = createSignal('');
   const [dirty, setDirty] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);

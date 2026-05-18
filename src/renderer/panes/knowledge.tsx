@@ -1,4 +1,4 @@
-import { Show } from 'solid-js';
+import { createMemo, Show } from 'solid-js';
 import type { KnowledgeNode } from '@shared/types';
 import { BookIcon } from '../icons';
 import { usePaneScrollMemory } from './pane-scroll-memory';
@@ -55,6 +55,43 @@ export function KnowledgeView(props: {
   const todayISO = new Date().toISOString().slice(0, 10);
   const scrollRef = usePaneScrollMemory('knowledge');
 
+  // Wrap pane-level callbacks in createMemo so prop identity stays stable
+  // across unrelated parent re-runs (e.g. `expanded` flips). Without this,
+  // every toggle re-creates these arrows, invalidates DirectoryBody's
+  // specialChild / childFiles memos, and forces <For> to re-render every
+  // file card in the directory. See notes/01-design.md.
+  const renderSpecialFile = createMemo(() => (file: KnowledgeNode, dir: KnowledgeNode) => (
+    <button
+      type="button"
+      class="tree-special-file knowledge-special-file"
+      data-bucket={bucketOf(dir.relPath)}
+      onClick={(e) => {
+        e.stopPropagation();
+        props.onOpen(file.path, file.title);
+      }}
+      title={`Open ${dir.relPath || 'knowledge'} index`}
+    >
+      <span class="tree-special-badge">INDEX</span>
+      <span class="tree-special-title">{file.title}</span>
+      <Show when={file.verifiedAt}>
+        <span
+          class="tree-special-meta"
+          data-fresh={freshnessOf(file.verifiedAt, todayISO)}
+          title={`Verified ${file.verifiedAt}`}
+        >
+          {file.verifiedAt}
+        </span>
+      </Show>
+    </button>
+  ));
+  const renderFile = createMemo(() => (file: KnowledgeNode) => (
+    <KnowledgeCard
+      node={file}
+      todayISO={todayISO}
+      onOpen={() => props.onOpen(file.path, file.title)}
+    />
+  ));
+
   return (
     <div class="knowledge-pane" ref={scrollRef}>
       <TreeView<KnowledgeNode>
@@ -67,38 +104,9 @@ export function KnowledgeView(props: {
         prompts={props.prompts}
         onAfterMutation={props.onAfterMutation}
         onError={props.onError}
-        specialFile={(file) => isKnowledgeIndex(file)}
-        renderSpecialFile={(file, dir) => (
-          <button
-            type="button"
-            class="tree-special-file knowledge-special-file"
-            data-bucket={bucketOf(dir.relPath)}
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onOpen(file.path, file.title);
-            }}
-            title={`Open ${dir.relPath || 'knowledge'} index`}
-          >
-            <span class="tree-special-badge">INDEX</span>
-            <span class="tree-special-title">{file.title}</span>
-            <Show when={file.verifiedAt}>
-              <span
-                class="tree-special-meta"
-                data-fresh={freshnessOf(file.verifiedAt, todayISO)}
-                title={`Verified ${file.verifiedAt}`}
-              >
-                {file.verifiedAt}
-              </span>
-            </Show>
-          </button>
-        )}
-        renderFile={(file) => (
-          <KnowledgeCard
-            node={file}
-            todayISO={todayISO}
-            onOpen={() => props.onOpen(file.path, file.title)}
-          />
-        )}
+        specialFile={isKnowledgeIndex}
+        renderSpecialFile={renderSpecialFile()}
+        renderFile={renderFile()}
       />
     </div>
   );
