@@ -160,11 +160,17 @@ const terminalLoggingSettings = z
 
 /** Single launcher slot. `label` is the user-defined display name shown
  *  in the tab-strip dropdown; `command` is the shell command run on spawn;
- *  `title`, when present, is the initial pinned tab label. */
+ *  `title`, when present, is the initial pinned tab label.
+ *
+ *  `label` and `command` accept empty strings so a freshly-added blank row
+ *  ("+ Add launcher") survives the round-trip to disk and stays visible for
+ *  the user to fill in. The tab-strip dropdown skips entries whose `command`
+ *  is empty — same effective behaviour as the previous `.min(1)` constraint
+ *  but without the failed-save UX. */
 const launcherSchema = z
   .object({
-    label: z.string().min(1, 'label must not be empty'),
-    command: z.string().min(1, 'command must not be empty'),
+    label: z.string(),
+    command: z.string(),
     title: z.string().optional(),
   })
   .strict();
@@ -172,10 +178,13 @@ const launcherSchema = z
 const launchersSchema = z.array(launcherSchema);
 
 /** One user-configurable action template for project cards or the
- *  "+ New project" button. */
+ *  "+ New project" button. Same blank-row tolerance as `launcherSchema`:
+ *  `label` and `template` accept empty strings so a freshly-added row is
+ *  schema-valid; the project-card dropdown skips entries whose `template`
+ *  is empty. */
 const actionTemplateSchema = z
   .object({
-    label: z.string().min(1, 'label must not be empty'),
+    label: z.string(),
     template: z.string(),
     submit: z.boolean().optional(),
   })
@@ -353,14 +362,16 @@ export const DEFAULT_SKILLS_PATH = '.claude/skills';
  *   were retired. Strip silently so existing `.condash/settings.json`
  *   files keep saving (otherwise every write fails with `Unrecognised
  *   key`, which also prevents the user from flipping `enabled: true`).
- * - `terminal.launchers[]` entries missing a non-empty string `command`
- *   are dropped. The renderer-side guard (`applyLauncherEdit`, v2.28.2)
- *   already prevents writing `{ symbol, title }` entries, but a file
- *   that ended up shaped that way through a pre-v2.28.2 session or an
- *   external editor would otherwise fail every subsequent save with
- *   `terminal.launchers.<i>.command — expected string, received
- *   undefined` and lock the user out of the Settings modal. Scrub here
- *   so the next write removes the bad entry from disk.
+ * - `terminal.launchers[]` entries missing a string `command` are dropped.
+ *   The renderer-side guard (`applyLauncherEdit`, v2.28.2) already prevents
+ *   writing `{ symbol, title }` entries, but a file that ended up shaped
+ *   that way through a pre-v2.28.2 session or an external editor would
+ *   otherwise fail every subsequent save with `terminal.launchers.<i>.command
+ *   — expected string, received undefined` and lock the user out of the
+ *   Settings modal. Scrub here so the next write removes the bad entry from
+ *   disk. Blank-row placeholders (`{ label: '', command: '' }`) are kept —
+ *   they're valid since v3.12.2's schema relaxation and need to survive a
+ *   reload so the user can fill them in.
  */
 export function migrateRawSettings(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== 'object') return parsed;
@@ -397,7 +408,11 @@ export function migrateRawSettings(parsed: unknown): unknown {
     const scrubbed = migrated.filter((entry) => {
       if (!entry || typeof entry !== 'object') return false;
       const command = (entry as { command?: unknown }).command;
-      return typeof command === 'string' && command.trim().length > 0;
+      if (typeof command !== 'string') return false;
+      // Empty string is a blank-row placeholder ("+ Add launcher" before
+      // typing); keep it so the user can fill it in after reload. Whitespace
+      // -only strings are treated as malformed legacy data and dropped.
+      return command === '' || command.trim().length > 0;
     });
     if (scrubbed.length === 0) {
       delete term.launchers;

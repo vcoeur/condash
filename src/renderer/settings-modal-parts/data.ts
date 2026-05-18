@@ -287,19 +287,96 @@ export function pruneEmpty(value: unknown): unknown {
 /**
  * Build the JSON payload that the Settings modal hands to `writeNote` (or
  * `writeGlobalSettings`). Strips empty leaves with `pruneEmpty` for everything
- * except the `repositories` array — `compactRepos` is the canonical
- * normaliser there. Routing repos through `pruneEmpty` would erase a freshly
- * added `{ name: '' }` row's only key, leaving an empty object that
- * `compactRepos` then maps to `undefined` → `null` on serialisation, which
- * the `repoEntry` schema rejects (`repositories.<index> — Invalid input`).
+ * except the `repositories` array and the `terminal.{launchers, projectActions,
+ * newProjectActions}` arrays — those have dedicated compactors that preserve
+ * blank-row placeholders (`{ name: '' }` / `{ label: '', command: '' }` /
+ * `{ label: '', template: '' }`). Routing them through `pruneEmpty` would
+ * strip the required string fields, leaving `{}` rows that the schema
+ * rejects with `expected string, received undefined`.
  */
 export function buildSavePayload(config: RawConfig): RawConfig {
-  const { repositories, ...rest } = config;
+  const { repositories, terminal, ...rest } = config;
   const pruned = pruneEmpty(rest) as RawConfig;
+  if (terminal !== undefined) {
+    const compacted = compactTerminal(terminal as RawTerminal);
+    if (compacted !== undefined) pruned.terminal = compacted;
+  }
   if (repositories !== undefined) {
     pruned.repositories = compactRepos(repositories);
   }
   return pruned;
+}
+
+type RawTerminal = {
+  launchers?: LauncherConfig[];
+  projectActions?: ActionTemplate[];
+  newProjectActions?: ActionTemplate[];
+  [k: string]: unknown;
+};
+
+/**
+ * Pull the dynamic-row arrays out of `terminal` before pruning so blank-row
+ * placeholders survive (`pruneEmpty` would strip their empty-string required
+ * fields, leaving `{}` rows the schema rejects). Each surviving array is
+ * normalised through its compactor: `{ submit: undefined }` and `{ title: '' }`
+ * get dropped, while `{ label: '', command/template: '' }` rows are kept so
+ * the user can fill them in after a reload.
+ */
+function compactTerminal(terminal: RawTerminal): RawTerminal | undefined {
+  const { launchers, projectActions, newProjectActions, ...rest } = terminal;
+  const cleaned = (pruneEmpty(rest) as RawTerminal) ?? {};
+  if (launchers !== undefined && launchers.length > 0) {
+    cleaned.launchers = compactLaunchers(launchers);
+  }
+  if (projectActions !== undefined && projectActions.length > 0) {
+    cleaned.projectActions = compactActionTemplates(projectActions);
+  }
+  if (newProjectActions !== undefined && newProjectActions.length > 0) {
+    cleaned.newProjectActions = compactActionTemplates(newProjectActions);
+  }
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
+/**
+ * Normalise `launcherSchema`-shaped rows for disk: keep `label` + `command`
+ * verbatim (even when empty), drop `title` when blank/missing. Used by
+ * `buildSavePayload` to side-step `pruneEmpty` on the launchers array.
+ */
+export function compactLaunchers(arr: LauncherConfig[]): LauncherConfig[] {
+  return arr.map((l) => {
+    const out: LauncherConfig = {
+      label: l.label ?? '',
+      command: l.command ?? '',
+    };
+    if (typeof l.title === 'string' && l.title.length > 0) out.title = l.title;
+    return out;
+  });
+}
+
+/**
+ * Normalise `actionTemplateSchema`-shaped rows for disk: keep `label` +
+ * `template` verbatim, attach `submit: true` only when explicitly set.
+ */
+export function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
+  return arr.map((a) => {
+    const out: ActionTemplate = {
+      label: a.label ?? '',
+      template: a.template ?? '',
+    };
+    if (a.submit === true) out.submit = true;
+    return out;
+  });
+}
+
+/**
+ * Filter project-card / new-project action rows down to the ones that can
+ * actually be rendered as menu items: both `label` and `template` non-empty.
+ * Blank-row placeholders ("+ Add action" with nothing typed yet) and
+ * half-typed rows live on disk so the Settings modal can present them, but
+ * the runtime dropdowns skip them.
+ */
+export function usableActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
+  return arr.filter((a) => a.label.trim().length > 0 && a.template.trim().length > 0);
 }
 
 export type BindTextFn = (
@@ -340,8 +417,11 @@ export function patchLauncher(
   } else {
     existing[index] = { ...existing[index], ...patch };
   }
-  // Drop entries with empty command.
-  const kept = existing.filter((l) => l.command.trim().length > 0);
+  // Drop the row only when both label and command are blank — keep partially
+  // typed rows alive so the user doesn't lose their text mid-edit. The
+  // tab-strip dropdown ignores rows with empty command, so a half-filled row
+  // is visible in Settings but inert at the terminal until it's completed.
+  const kept = existing.filter((l) => l.label.trim().length > 0 || l.command.trim().length > 0);
   return kept.length > 0 ? kept : undefined;
 }
 
@@ -391,8 +471,11 @@ export function patchActionTemplate(
   } else {
     existing[index] = { ...existing[index], ...patch };
   }
-  // Drop entries with empty label or empty template.
-  const kept = existing.filter((a) => a.label.trim().length > 0 && a.template.trim().length > 0);
+  // Drop the row only when both label and template are blank — keep partially
+  // typed rows so the user can fill the second field after the first. The
+  // project-card dropdown ignores rows where either field is empty, so a
+  // half-filled row is harmless at runtime.
+  const kept = existing.filter((a) => a.label.trim().length > 0 || a.template.trim().length > 0);
   return kept.length > 0 ? kept : undefined;
 }
 

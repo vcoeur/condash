@@ -474,14 +474,29 @@ export function SettingsModal(props: {
   const terminalPrefsFor = (target: SettingsTab): TerminalPrefs =>
     (parsedFor(target).terminal as TerminalPrefs | undefined) ?? {};
 
-  /** Mutate the `terminal` block on the given file via its patch fn. */
+  /** Mutate the `terminal` block on the given file via its patch fn.
+   *  Hold the dynamic-row arrays (`launchers`, `projectActions`,
+   *  `newProjectActions`) aside while `pruneEmpty` cleans the scalar keys —
+   *  otherwise pruneEmpty strips required `label`/`command`/`template`
+   *  fields whose value is '' (blank-row placeholders just added via the
+   *  "+ Add" buttons) and leaves `{}` rows that the schema rejects with
+   *  "expected string, received undefined". `buildSavePayload` runs the
+   *  matching bypass at serialise time. */
   const patchTerminal = (
     target: SettingsTab,
     mutator: (prefs: TerminalPrefs) => TerminalPrefs,
   ): Promise<void> =>
     patchFor(target)((c) => {
       const next = mutator({ ...((c.terminal as TerminalPrefs | undefined) ?? {}) });
-      const cleaned = (pruneEmpty(next) as TerminalPrefs) ?? {};
+      const { launchers, projectActions, newProjectActions, ...rest } = next;
+      const cleaned = (pruneEmpty(rest) as TerminalPrefs) ?? {};
+      if (launchers !== undefined && launchers.length > 0) cleaned.launchers = launchers;
+      if (projectActions !== undefined && projectActions.length > 0) {
+        cleaned.projectActions = projectActions;
+      }
+      if (newProjectActions !== undefined && newProjectActions.length > 0) {
+        cleaned.newProjectActions = newProjectActions;
+      }
       c.terminal = Object.keys(cleaned).length > 0 ? cleaned : undefined;
     });
 
