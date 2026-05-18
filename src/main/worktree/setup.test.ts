@@ -141,6 +141,62 @@ describe('setupBranchWorktrees with a slash-bearing branch', () => {
   });
 });
 
+describe('implicit-mode resolution with `@`-prefixed apps', () => {
+  // The Apps table column in the conception README accepts `@<repo>`; project
+  // headers mirror that. The canonical repo name in `condash.json` is bare,
+  // so the resolver must strip `@` before lookup. Issue: setup/remove
+  // returned empty `created[]` / `notPresent: ["@<name>"]` until the strip
+  // was added.
+  const branch = 'at-prefix-implicit';
+
+  function writeDeclaringReadme(): void {
+    const projectDir = join(conception, 'projects/2026-05/2026-05-14-at-prefix');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, 'README.md'),
+      [
+        '---',
+        'date: 2026-05-14',
+        'kind: project',
+        'status: now',
+        'apps:',
+        '  - "@demo"',
+        `branch: ${branch}`,
+        '---',
+        '',
+        '# Test',
+      ].join('\n'),
+    );
+  }
+
+  it('setup resolves `@demo` to repo `demo` in implicit mode', async () => {
+    writeDeclaringReadme();
+    const result = await setupBranchWorktrees(conception, branch);
+    expect(result.created).toEqual([{ repo: 'demo', path: join(worktreesRoot, branch, 'demo') }]);
+    expect(result.blocked).toEqual([]);
+    expect(existsSync(join(worktreesRoot, branch, 'demo'))).toBe(true);
+  });
+
+  it('check enumerates the `demo` per-repo state when the README says `@demo`', async () => {
+    writeDeclaringReadme();
+    await setupBranchWorktrees(conception, branch);
+    const state = await checkBranchState(conception, branch);
+    expect(state.repos).toHaveLength(1);
+    expect(state.repos[0].name).toBe('demo');
+    expect(state.repos[0].worktreeExists).toBe(true);
+    expect(state.missing).toEqual([]);
+  });
+
+  it('remove resolves `@demo` to repo `demo` in implicit mode', async () => {
+    writeDeclaringReadme();
+    await setupBranchWorktrees(conception, branch);
+    const result = await removeBranchWorktrees(conception, branch);
+    expect(result.removed).toEqual([{ repo: 'demo', path: join(worktreesRoot, branch, 'demo') }]);
+    expect(result.notPresent).toEqual([]);
+    expect(existsSync(join(worktreesRoot, branch, 'demo'))).toBe(false);
+  });
+});
+
 process.on('exit', () => {
   if (prevXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
   else process.env.XDG_CONFIG_HOME = prevXdgConfigHome;
