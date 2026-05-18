@@ -1,5 +1,6 @@
 /** Context bag for project-scoped template substitution. */
 export interface ProjectActionContext {
+  [key: string]: string;
   slug: string;
   shortSlug: string;
   title: string;
@@ -16,6 +17,7 @@ export interface ProjectActionContext {
 
 /** Context bag for global template substitution. */
 export interface GlobalActionContext {
+  [key: string]: string;
   today: string;
   conception: string;
   conceptionPath: string;

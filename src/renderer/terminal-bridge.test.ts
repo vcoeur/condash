@@ -3,7 +3,16 @@ import { createTerminalBridge } from './terminal-bridge';
 import type { TerminalPaneHandle } from './terminal-pane';
 import type { ActionTemplate, Project } from '@shared/types';
 
-function makeFakeHandle(): TerminalPaneHandle {
+type FakeHandle = {
+  spawn: ReturnType<typeof vi.fn>;
+  switchTo: ReturnType<typeof vi.fn>;
+  spawnUserShell: ReturnType<typeof vi.fn>;
+  moveActiveTab: ReturnType<typeof vi.fn>;
+  typeIntoActive: ReturnType<typeof vi.fn>;
+  hasActive: ReturnType<typeof vi.fn>;
+};
+
+function makeFakeHandle(): FakeHandle {
   return {
     spawn: vi.fn().mockResolvedValue(''),
     switchTo: vi.fn(),
@@ -14,9 +23,9 @@ function makeFakeHandle(): TerminalPaneHandle {
   };
 }
 
-function makeDeps(handle: TerminalPaneHandle | null = null) {
+function makeDeps(handle: FakeHandle | null = null) {
   return {
-    terminalHandle: () => handle,
+    terminalHandle: () => handle as unknown as TerminalPaneHandle | null,
     ensureTerminalOpen: vi.fn(),
     terminalPrefs: () => ({}),
     flashToast: vi.fn(),
@@ -33,6 +42,12 @@ const sampleProject: Project = {
   path: '/home/alice/src/vcoeur/conception/projects/2026-05/2026-05-17-foo-bar',
   branch: 'feat-foo',
   base: 'main',
+  steps: [],
+  stepCounts: { todo: 0, doing: 0, done: 0, dropped: 0 },
+  deliverables: [],
+  deliverableCount: 0,
+  closedAt: null,
+  timeline: [],
 };
 
 describe('handleWorkOn', () => {
