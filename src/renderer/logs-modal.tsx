@@ -75,19 +75,24 @@ export function LogsViewerModal(props: {
     setActiveHit(0);
   });
 
-  const ROW_HEIGHT = 19.04; // matches `--logs-row-height` in logs-modal.css
+  // Row height is the single source of truth in CSS (`--logs-row-height`)
+  // — read it from the mounted transcript so a future stylesheet change
+  // can't silently drift this virtualiser. Falls back to the published
+  // CSS default while the element is still measuring.
+  const DEFAULT_ROW_HEIGHT = 19.04;
+  const [rowHeight, setRowHeight] = createSignal(DEFAULT_ROW_HEIGHT);
   const OVERSCAN = 12;
   const [scrollTop, setScrollTop] = createSignal(0);
   const [viewportHeight, setViewportHeight] = createSignal(600);
 
-  const totalHeight = createMemo(() => lines().length * ROW_HEIGHT);
+  const totalHeight = createMemo(() => lines().length * rowHeight());
 
   const visible = createMemo<{ idx: number; text: string }[]>(() => {
     const arr = lines();
     if (arr.length === 0) return [];
     const vh = Math.max(viewportHeight(), 1);
-    const first = Math.max(0, Math.floor(scrollTop() / ROW_HEIGHT) - OVERSCAN);
-    const last = Math.min(arr.length, Math.ceil((scrollTop() + vh) / ROW_HEIGHT) + OVERSCAN);
+    const first = Math.max(0, Math.floor(scrollTop() / rowHeight()) - OVERSCAN);
+    const last = Math.min(arr.length, Math.ceil((scrollTop() + vh) / rowHeight()) + OVERSCAN);
     const out: { idx: number; text: string }[] = [];
     for (let i = first; i < last; i++) {
       out.push({ idx: i, text: arr[i] });
@@ -112,6 +117,11 @@ export function LogsViewerModal(props: {
     transcriptEl = el;
     setViewportHeight(el.clientHeight);
     setScrollTop(el.scrollTop);
+    // Resolve `--logs-row-height` from the rendered element so CSS
+    // remains the single source of truth. parseFloat strips the `px`.
+    const cssValue = getComputedStyle(el).getPropertyValue('--logs-row-height').trim();
+    const parsed = Number.parseFloat(cssValue);
+    if (Number.isFinite(parsed) && parsed > 0) setRowHeight(parsed);
     resizeObserver?.disconnect();
     resizeObserver = new ResizeObserver(() => {
       setViewportHeight(el.clientHeight);
@@ -136,7 +146,7 @@ export function LogsViewerModal(props: {
     if (!transcriptEl) return;
     const target = all[activeHit() % all.length];
     if (!target) return;
-    const desired = target.lineIdx * ROW_HEIGHT - transcriptEl.clientHeight / 2;
+    const desired = target.lineIdx * rowHeight() - transcriptEl.clientHeight / 2;
     transcriptEl.scrollTop = Math.max(0, desired);
   });
 
@@ -251,7 +261,7 @@ export function LogsViewerModal(props: {
               <div class="logs-transcript-spacer" style={{ height: `${totalHeight()}px` }}>
                 <For each={visible()}>
                   {(row) => (
-                    <div class="logs-line" style={{ top: `${row.idx * ROW_HEIGHT}px` }}>
+                    <div class="logs-line" style={{ top: `${row.idx * rowHeight()}px` }}>
                       <LineContents
                         text={row.text}
                         hits={hitsByLine().get(row.idx) ?? []}

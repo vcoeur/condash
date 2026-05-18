@@ -15,7 +15,29 @@ interface CodeRunRowsProps {
   onClose: (id: string) => void;
 }
 
+/** Single parent listener fans out term events into per-row handlers.
+ *  Previously each row registered its own `onTermData` / `onTermExit`
+ *  subscription — N rows meant N main↔renderer bridge listeners and N
+ *  per-event no-op id checks. Rows now claim/release a slot in these
+ *  Maps on mount/cleanup. */
+type DataHandler = (data: string) => void;
+type ExitHandler = (code: number) => void;
+
 export function CodeRunRows(props: CodeRunRowsProps) {
+  const dataHandlers = new Map<string, DataHandler>();
+  const exitHandlers = new Map<string, ExitHandler>();
+
+  const offData = window.condash.onTermData(({ id, data }) => {
+    dataHandlers.get(id)?.(data);
+  });
+  const offExit = window.condash.onTermExit(({ id, code }) => {
+    exitHandlers.get(id)?.(code);
+  });
+  onCleanup(() => {
+    offData();
+    offExit();
+  });
+
   return (
     <Show when={props.sessions.length > 0}>
       <section class="code-runs">
@@ -30,6 +52,8 @@ export function CodeRunRows(props: CodeRunRowsProps) {
                 session={session}
                 repos={props.repos}
                 xtermPrefs={props.xtermPrefs}
+                dataHandlers={dataHandlers}
+                exitHandlers={exitHandlers}
                 onClose={() => props.onClose(session.id)}
               />
             )}
@@ -73,6 +97,8 @@ function CodeRunRow(props: {
   session: TermSession;
   repos: readonly RepoEntry[];
   xtermPrefs?: TerminalXtermPrefs;
+  dataHandlers: Map<string, DataHandler>;
+  exitHandlers: Map<string, ExitHandler>;
   onClose: () => void;
 }) {
   // Active-run rows start collapsed — the user may have many running, and an
@@ -123,19 +149,20 @@ function CodeRunRow(props: {
   });
 
   // Stream live data into the local xterm. Buffered output is in main; the
-  // live stream goes through onTermData regardless of expand state.
-  const offData = window.condash.onTermData(({ id, data }) => {
-    if (id !== props.session.id) return;
+  // live stream goes through the parent's onTermData regardless of expand
+  // state. The parent fans events out via the shared Map keyed on session
+  // id so there is one main↔renderer bridge listener total, not one per
+  // row.
+  props.dataHandlers.set(props.session.id, (data) => {
     mounted?.term.write(data);
   });
-  const offExit = window.condash.onTermExit(({ id, code }) => {
-    if (id !== props.session.id) return;
+  props.exitHandlers.set(props.session.id, (code) => {
     mounted?.term.write(`\r\n\x1b[33m[process exited ${code}]\x1b[0m\r\n`);
   });
 
   onCleanup(() => {
-    offData();
-    offExit();
+    props.dataHandlers.delete(props.session.id);
+    props.exitHandlers.delete(props.session.id);
     mounted?.dispose();
     mounted = null;
     xtermElement.remove();
