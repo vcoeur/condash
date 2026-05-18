@@ -1,3 +1,18 @@
+/**
+ * Per-file matcher. For each candidate file:
+ *   1. Read + lowercase the content, build the region map (h1/meta/heading/body).
+ *   2. For each term, scan both content + relPath, recording every occurrence
+ *      with its region tag. Drop the file if any term has zero hits — AND
+ *      semantics across the query.
+ *   3. Hand the occurrences to `scorer.scoreOccurrences` for ranking — see
+ *      `./scorer.ts` for the region-weight table and bonus rationale (h1
+ *      dominates, path floors at 5 so slug-only hits still surface, phrase
+ *      and adjacency bonuses promote tighter matches).
+ *   4. Build snippets via `./snippets.ts` for the renderer's hit preview.
+ *
+ * Scoring rationale stays in `scorer.ts` so a future tweak of the weights
+ * only needs to touch one file — this module just plumbs occurrences in.
+ */
 import { promises as fs } from 'node:fs';
 import type { SearchHighlight, SearchHit, SearchTerm } from '../../shared/types';
 import { splitContent } from '../logs-format';
