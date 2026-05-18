@@ -56,6 +56,7 @@ function parseReadmeFromRaw(raw: string, path: string, preparsedHeader?: HeaderF
     status: (header.status ?? 'backlog').toLowerCase(),
     apps: header.apps,
     branch: header.branch,
+    base: header.base,
     summary,
     steps,
     stepCounts,

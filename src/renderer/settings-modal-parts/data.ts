@@ -1,4 +1,5 @@
 import type {
+  ActionTemplate,
   CardMinWidthPrefs,
   LauncherConfig,
   Platform,
@@ -363,6 +364,57 @@ export function moveLauncher(
   index: number,
   delta: -1 | 1,
 ): LauncherConfig[] | undefined {
+  const arr = prev ?? [];
+  const target = index + delta;
+  if (target < 0 || target >= arr.length) return prev;
+  const next = arr.slice();
+  const [removed] = next.splice(index, 1);
+  next.splice(target, 0, removed);
+  return next.length > 0 ? next : undefined;
+}
+
+/**
+ * Pure-function helpers for the Settings modal's dynamic action-template lists.
+ * Mirror the launcher helpers above; both `projectActions` and `newProjectActions`
+ * share the same `ActionTemplate` shape.
+ */
+
+export function patchActionTemplate(
+  prev: ActionTemplate[] | undefined,
+  index: number,
+  patch: Partial<ActionTemplate>,
+): ActionTemplate[] | undefined {
+  const existing = (prev ?? []).map((a) => ({ ...a }));
+  if (index < 0) return prev;
+  if (index >= existing.length) {
+    existing.push({ label: '', template: '', ...patch });
+  } else {
+    existing[index] = { ...existing[index], ...patch };
+  }
+  // Drop entries with empty label or empty template.
+  const kept = existing.filter((a) => a.label.trim().length > 0 && a.template.trim().length > 0);
+  return kept.length > 0 ? kept : undefined;
+}
+
+export function addActionTemplate(prev: ActionTemplate[] | undefined): ActionTemplate[] {
+  return [...(prev ?? []), { label: '', template: '' }];
+}
+
+export function removeActionTemplate(
+  prev: ActionTemplate[] | undefined,
+  index: number,
+): ActionTemplate[] | undefined {
+  const existing = prev ?? [];
+  if (index < 0 || index >= existing.length) return prev;
+  const next = existing.filter((_, i) => i !== index);
+  return next.length > 0 ? next : undefined;
+}
+
+export function moveActionTemplate(
+  prev: ActionTemplate[] | undefined,
+  index: number,
+  delta: -1 | 1,
+): ActionTemplate[] | undefined {
   const arr = prev ?? [];
   const target = index + delta;
   if (target < 0 || target >= arr.length) return prev;

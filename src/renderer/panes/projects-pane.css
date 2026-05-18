@@ -65,8 +65,10 @@
 
 /* Empty sections collapse to a single dim line — no body, no expand
  * affordance, no horizontal rule. Keeps the status enum visible without
- * giving zero-count buckets the same vertical weight as populated ones. */
-.group-block[data-empty='true'] {
+ * giving zero-count buckets the same vertical weight as populated ones.
+ * NOW is excluded: the "+ New project" button lives in its header and
+ * must stay fully opaque so the create-first-project affordance is legible. */
+.group-block[data-empty='true']:not([data-status='now']) {
   padding: 2px 0;
   opacity: 0.45;
 }
@@ -737,15 +739,6 @@ body[data-dragging='project'] .group-block.drag-over {
   font-size: var(--text-2xs);
   color: var(--text-faint);
   letter-spacing: 0.01em;
-}
-
-/* "+ New project" button — lives in the NOW section header.
- * When the NOW section is empty the surrounding block is dimmed
- * (`opacity: 0.45`) to read as a placeholder; the action slot fights its way
- * back to full strength so the create-first-project affordance stays
- * legible. */
-.group-block[data-empty='true'][data-status='now'] .group-header-action {
-  opacity: calc(1 / 0.45);
 }
 
 .new-project-button {

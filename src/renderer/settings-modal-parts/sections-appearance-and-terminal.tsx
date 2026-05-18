@@ -11,6 +11,7 @@
 
 import { Show, type JSX } from 'solid-js';
 import type {
+  ActionTemplate,
   CardMinWidthPrefs,
   LauncherConfig,
   Platform,
@@ -126,6 +127,16 @@ interface TerminalSectionProps {
   addLauncher: () => Promise<void>;
   removeLauncher: (index: number) => Promise<void>;
   moveLauncher: (index: number, delta: -1 | 1) => Promise<void>;
+  projectActions: () => ActionTemplate[];
+  patchProjectAction: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
+  addProjectAction: () => Promise<void>;
+  removeProjectAction: (index: number) => Promise<void>;
+  moveProjectAction: (index: number, delta: -1 | 1) => Promise<void>;
+  newProjectActions: () => ActionTemplate[];
+  patchNewProjectAction: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
+  addNewProjectAction: () => Promise<void>;
+  removeNewProjectAction: (index: number) => Promise<void>;
+  moveNewProjectAction: (index: number, delta: -1 | 1) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
@@ -177,6 +188,16 @@ export function TerminalSection(props: TerminalSectionProps): JSX.Element {
         addLauncher={props.addLauncher}
         removeLauncher={props.removeLauncher}
         moveLauncher={props.moveLauncher}
+        projectActions={props.projectActions}
+        patchProjectAction={props.patchProjectAction}
+        addProjectAction={props.addProjectAction}
+        removeProjectAction={props.removeProjectAction}
+        moveProjectAction={props.moveProjectAction}
+        newProjectActions={props.newProjectActions}
+        patchNewProjectAction={props.patchNewProjectAction}
+        addNewProjectAction={props.addNewProjectAction}
+        removeNewProjectAction={props.removeNewProjectAction}
+        moveNewProjectAction={props.moveNewProjectAction}
         updateXterm={props.updateXterm}
         updateColor={props.updateColor}
         updateLogging={props.updateLogging}

@@ -49,6 +49,7 @@ import type { Project, WorkingSurface } from '@shared/types';
 import './styles.css';
 import './modal-base.css';
 import './project-preview.css';
+import './action-split-button.css';
 import './welcome-screen.css';
 
 /** Right-strip handles in display order. Each entry binds the
@@ -204,6 +205,7 @@ function App() {
     ensureTerminalOpen,
     terminalPrefs,
     flashToast,
+    conceptionPath,
   });
 
   // --- Repo actions (Code-pane row callbacks) ---------------------------
@@ -419,7 +421,11 @@ function App() {
                         onToggleStep={handleToggleStep}
                         onDropProject={handleDropOnColumn}
                         onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                        projectActions={terminalPrefs()?.projectActions ?? []}
+                        onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
                         onNewProject={() => setNewProjectOpen(true)}
+                        newProjectActions={terminalPrefs()?.newProjectActions ?? []}
+                        onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
                       />
                     </Show>
                   </section>
@@ -624,6 +630,8 @@ function App() {
         onOpenInEditor={handleOpenInEditor}
         onOpenDeliverable={handleOpenDeliverableFromPreview}
         onWorkOn={(p) => void bridge.handleWorkOn(p)}
+        projectActions={terminalPrefs()?.projectActions ?? []}
+        onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
         onCreateNote={(p) => void handleCreateProjectNote(p)}
       />
 

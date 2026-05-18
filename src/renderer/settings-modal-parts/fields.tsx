@@ -1,6 +1,7 @@
 import { For, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type {
+  ActionTemplate,
   CardMinWidthPrefs,
   LauncherConfig,
   Platform,
@@ -116,6 +117,95 @@ export function CardDensityFields(props: {
   );
 }
 
+function ActionTemplateSection(props: {
+  title: string;
+  hint: string;
+  idPrefix: string;
+  bindText: (
+    id: string,
+    persisted: () => string | undefined,
+    save: (value: string) => Promise<void>,
+  ) => {
+    value: string;
+    onInput: (e: InputEvent & { currentTarget: HTMLInputElement }) => void;
+    onChange: (e: Event & { currentTarget: HTMLInputElement }) => void;
+  };
+  items: () => ActionTemplate[];
+  patch: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
+  add: () => Promise<void>;
+  remove: (index: number) => Promise<void>;
+  move: (index: number, delta: -1 | 1) => Promise<void>;
+}): JSX.Element {
+  return (
+    <>
+      <h3>{props.title}</h3>
+      <p class="settings-field-hint">{props.hint}</p>
+      <For each={props.items()}>
+        {(action, idx) => (
+          <div class="settings-launcher-row">
+            <label>
+              <span>Label</span>
+              <input
+                type="text"
+                placeholder="Claude review"
+                {...props.bindText(
+                  `${props.idPrefix}.${idx()}.label`,
+                  () => action.label || undefined,
+                  (v) => props.patch(idx(), { label: v }),
+                )}
+              />
+            </label>
+            <label>
+              <span>Template</span>
+              <input
+                type="text"
+                placeholder='claude "review project {shortSlug}"'
+                {...props.bindText(
+                  `${props.idPrefix}.${idx()}.template`,
+                  () => action.template || undefined,
+                  (v) => props.patch(idx(), { template: v }),
+                )}
+              />
+            </label>
+            <label class="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={action.submit === true}
+                onChange={(e) => void props.patch(idx(), { submit: e.currentTarget.checked })}
+              />
+              <span>Submit (press Enter after pasting)</span>
+            </label>
+            <div class="settings-launcher-actions">
+              <button type="button" title="Remove" onClick={() => props.remove(idx())}>
+                ×
+              </button>
+              <button
+                type="button"
+                title="Move up"
+                disabled={idx() === 0}
+                onClick={() => props.move(idx(), -1)}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                title="Move down"
+                disabled={idx() === props.items().length - 1}
+                onClick={() => props.move(idx(), 1)}
+              >
+                ↓
+              </button>
+            </div>
+          </div>
+        )}
+      </For>
+      <button type="button" class="settings-add-launcher" onClick={() => props.add()}>
+        + Add action
+      </button>
+    </>
+  );
+}
+
 /** Terminal section content — string fields, xterm font/cursor/buffer,
  *  colours. Shared between Global and Conception tabs. */
 export function TerminalFields(props: {
@@ -137,6 +227,16 @@ export function TerminalFields(props: {
   addLauncher: () => Promise<void>;
   removeLauncher: (index: number) => Promise<void>;
   moveLauncher: (index: number, delta: -1 | 1) => Promise<void>;
+  projectActions: () => ActionTemplate[];
+  patchProjectAction: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
+  addProjectAction: () => Promise<void>;
+  removeProjectAction: (index: number) => Promise<void>;
+  moveProjectAction: (index: number, delta: -1 | 1) => Promise<void>;
+  newProjectActions: () => ActionTemplate[];
+  patchNewProjectAction: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
+  addNewProjectAction: () => Promise<void>;
+  removeNewProjectAction: (index: number) => Promise<void>;
+  moveNewProjectAction: (index: number, delta: -1 | 1) => Promise<void>;
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
@@ -244,6 +344,30 @@ export function TerminalFields(props: {
       <button type="button" class="settings-add-launcher" onClick={() => props.addLauncher()}>
         + Add launcher
       </button>
+
+      <ActionTemplateSection
+        title="Project actions"
+        hint="Each entry appears in the dropdown next to the project's Work-on button. Templates accept {slug}, {title}, {branch}, {apps}, … (see Help)."
+        idPrefix={`${idPrefix}.projectActions`}
+        bindText={props.bindText}
+        items={props.projectActions}
+        patch={props.patchProjectAction}
+        add={props.addProjectAction}
+        remove={props.removeProjectAction}
+        move={props.moveProjectAction}
+      />
+
+      <ActionTemplateSection
+        title="New project actions"
+        hint="Each entry appears in the dropdown next to the + New project button. Templates accept {today}, {conception}, {conceptionPath}."
+        idPrefix={`${idPrefix}.newProjectActions`}
+        bindText={props.bindText}
+        items={props.newProjectActions}
+        patch={props.patchNewProjectAction}
+        add={props.addNewProjectAction}
+        remove={props.removeNewProjectAction}
+        move={props.moveNewProjectAction}
+      />
 
       <h3>Font</h3>
       <div class="settings-grid">

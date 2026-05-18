@@ -76,6 +76,8 @@ export interface Project {
    * `apps` so the renderer can show the branch on the card without a
    * second IPC call. */
   branch: string | null;
+  /** Auth value from `**Base**`. Null when the header has no `**Base**` line. */
+  base: string | null;
   summary?: string;
   steps: Step[];
   stepCounts: StepCounts;
@@ -437,6 +439,17 @@ export interface LauncherConfig {
   title?: string;
 }
 
+/** One user-configurable action template. Substituted at click time and
+ *  typed into the focused terminal. */
+export interface ActionTemplate {
+  /** User-facing label in the dropdown menu. */
+  label: string;
+  /** Template string with `{placeholder}` tokens. */
+  template: string;
+  /** When true, press Enter after typing. Default false. */
+  submit?: boolean;
+}
+
 export interface TerminalPrefs {
   shell?: string;
   shortcut?: string;
@@ -453,6 +466,13 @@ export interface TerminalPrefs {
    * `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. The folder
    * is fully gitignored by default. */
   logging?: TerminalLoggingPrefs;
+  /** Custom per-project actions exposed in the card / preview dropdown.
+   *  Empty or missing → only the built-in "Work on <slug>" default. */
+  projectActions?: ActionTemplate[];
+  /** Custom starter prompts exposed in the dropdown next to "+ New project".
+   *  Empty or missing → the button stays a single button that opens
+   *  NewProjectModal as today. */
+  newProjectActions?: ActionTemplate[];
 }
 
 /** Configuration for the per-session terminal log writer. Defaults are
