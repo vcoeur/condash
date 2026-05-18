@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { findProjectReadmes } from '../../main/walk';
-import { parseReadme } from '../../main/parse';
+import { parseReadmeWithHeader } from '../../main/parse';
 import { search as searchAll } from '../../main/search';
 import { type SearchHit } from '../../shared/types';
 import { statusOrder } from '../../shared/projects';
@@ -45,8 +45,7 @@ export async function listProjects(
   const readmes = await findProjectReadmes(conceptionPath);
   const rows: ProjectListRow[] = [];
   for (const readme of readmes) {
-    const project = await parseReadme(readme);
-    const headerFields = parseHeader(await fs.readFile(readme, 'utf8'));
+    const { project, header: headerFields } = await parseReadmeWithHeader(readme);
     const headerWarnings = validateHeader(headerFields, readme).warnings;
 
     const apps = headerFields.apps;
@@ -121,8 +120,7 @@ export async function readProject(
   const slug = args.positional[0];
   if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects read <slug>');
   const candidate = await resolveSlug(conceptionPath, slug);
-  const project = await parseReadme(candidate.readmePath);
-  const header = parseHeader(await fs.readFile(candidate.readmePath, 'utf8'));
+  const { project, header } = await parseReadmeWithHeader(candidate.readmePath);
   const data: Record<string, unknown> = {
     slug: candidate.slug,
     path: candidate.relPath,

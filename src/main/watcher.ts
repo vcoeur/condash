@@ -18,10 +18,38 @@ interface RootSet {
   skills: string;
 }
 
+/** Constant paths computed once per conception. `classify` referenced these
+ * by re-running `join + toPosix` on every chokidar event before — pre-
+ * compute them and close over the bundle so the hot path is just string
+ * compares. */
+interface WatchPaths {
+  conceptionP: string;
+  condashJson: string;
+  configJson: string;
+  claudeRoot: string;
+  claudeDot: string;
+  projectsPrefix: string;
+  knowledgePrefix: string;
+}
+
+function buildWatchPaths(conception: string): WatchPaths {
+  const conceptionP = toPosix(conception);
+  return {
+    conceptionP,
+    condashJson: toPosix(join(conception, 'condash.json')),
+    configJson: toPosix(join(conception, 'configuration.json')),
+    claudeRoot: toPosix(join(conception, 'CLAUDE.md')),
+    claudeDot: toPosix(join(conception, '.claude', 'CLAUDE.md')),
+    projectsPrefix: `${conceptionP}/projects/`,
+    knowledgePrefix: `${conceptionP}/knowledge/`,
+  };
+}
+
 let current: {
   path: string;
   watcher: FSWatcher;
   roots: RootSet;
+  paths: WatchPaths;
 } | null = null;
 let timer: NodeJS.Timeout | null = null;
 let pending: TreeEvent[] = [];
@@ -106,12 +134,13 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
     },
   );
 
-  watcher.on('all', (eventName, path) => onWatchEvent(conceptionPath, eventName, path, roots));
+  const paths = buildWatchPaths(conceptionPath);
+  watcher.on('all', (eventName, path) => onWatchEvent(eventName, path, roots, paths));
   watcher.on('error', (err) => {
     console.error('[watcher]', err);
   });
 
-  current = { path: conceptionPath, watcher, roots };
+  current = { path: conceptionPath, watcher, roots, paths };
 }
 
 /**
@@ -138,8 +167,8 @@ type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
 // chokidar handle or losing a config event entirely.
 let refreshChain: Promise<void> = Promise.resolve();
 
-function onWatchEvent(conception: string, eventName: string, path: string, roots: RootSet): void {
-  const event = classify(conception, eventName as ChokidarEvent, path, roots);
+function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: WatchPaths): void {
+  const event = classify(eventName as ChokidarEvent, path, roots, paths);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);
   // A condash.json edit may have changed `resources_path` /
@@ -158,10 +187,10 @@ function onWatchEvent(conception: string, eventName: string, path: string, roots
 }
 
 function classify(
-  conception: string,
   eventName: ChokidarEvent,
   path: string,
   roots: RootSet,
+  paths: WatchPaths,
 ): TreeEvent {
   const op = chokidarToOp(eventName);
   if (!op) return { kind: 'unknown' };
@@ -169,30 +198,24 @@ function classify(
   // Chokidar can emit native or POSIX separators depending on platform and
   // base-path shape. Compare on a POSIX-normalised view so prefix/suffix
   // checks work the same on macOS, Linux, and Windows.
-  const conceptionP = toPosix(conception);
   const pathP = toPosix(path);
 
   // Config files at the conception root. Both filenames participate so
   // an in-flight rename / hand-edit of either is reflected.
-  const condashJson = toPosix(join(conception, 'condash.json'));
-  const configJson = toPosix(join(conception, 'configuration.json'));
-  if (pathP === condashJson || pathP === configJson) {
+  if (pathP === paths.condashJson || pathP === paths.configJson) {
     return { kind: 'config', path };
   }
 
   // Conception-level CLAUDE.md surfaces in the Skills pane as a
   // synthetic entry — route changes through the `skills` event so
   // the pane refetches and the synthetic entry repaints.
-  const claudeRoot = toPosix(join(conception, 'CLAUDE.md'));
-  const claudeDot = toPosix(join(conception, '.claude', 'CLAUDE.md'));
-  if (pathP === claudeRoot || pathP === claudeDot) {
+  if (pathP === paths.claudeRoot || pathP === paths.claudeDot) {
     return { kind: 'skills', op, path };
   }
 
   // Project README: <conception>/projects/<month>/<slug>/README.md
-  const projectsPrefix = `${conceptionP}/projects/`;
-  if (pathP.startsWith(projectsPrefix) && pathP.endsWith('/README.md')) {
-    const tail = pathP.slice(projectsPrefix.length, -'/README.md'.length);
+  if (pathP.startsWith(paths.projectsPrefix) && pathP.endsWith('/README.md')) {
+    const tail = pathP.slice(paths.projectsPrefix.length, -'/README.md'.length);
     if (tail.split('/').length === 2) {
       return { kind: 'project', op, path };
     }
@@ -200,8 +223,7 @@ function classify(
   }
 
   // Knowledge: any `.md` under <conception>/knowledge/.
-  const knowledgePrefix = `${conceptionP}/knowledge/`;
-  if (pathP.startsWith(knowledgePrefix) && pathP.toLowerCase().endsWith('.md')) {
+  if (pathP.startsWith(paths.knowledgePrefix) && pathP.toLowerCase().endsWith('.md')) {
     return { kind: 'knowledge', op, path };
   }
 
