@@ -124,15 +124,13 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
   });
 
   const offRepoEvents = window.condash.onRepoEvents((events) => {
-    const currentPath = deps.conceptionPath();
-    if (!currentPath) return;
-    // Guard against stray events from a recently-switched conception that
-    // arrive before the old listener is torn down.
-    if (events.length > 0) {
-      const first = events[0];
-      const firstPath = 'path' in first ? first.path : first.repoPath;
-      if (!firstPath.startsWith(currentPath)) return;
-    }
+    // Drop events that arrive after the user has cleared the conception
+    // (e.g. switching to a folder picker). Stray events for a *different*
+    // conception's repos can't be filtered by path-prefix — repos live at
+    // arbitrary FS locations from `condash.json`, not under the conception
+    // tree — so the main process is responsible for tearing down watchers
+    // on conception change (which it already does).
+    if (!deps.conceptionPath()) return;
     applyRepoEvents(events, {
       repos,
       setRepos,
