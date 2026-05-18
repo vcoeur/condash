@@ -33,8 +33,9 @@ export async function runSearch(
   }
   const limit = parseIntFlag(limitFlag, 50);
 
-  const results = await searchAll(conceptionPath, query);
-  const filtered = scope === 'all' ? results.hits : results.hits.filter((h) => h.source === scope);
+  const scopes = scope === 'all' ? undefined : [scope];
+  const results = await searchAll(conceptionPath, query, scopes);
+  const filtered = results.hits;
 
   emit(
     ctx,

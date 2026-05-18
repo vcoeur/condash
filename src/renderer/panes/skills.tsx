@@ -1,4 +1,4 @@
-import { For, Show } from 'solid-js';
+import { createMemo, For, Show } from 'solid-js';
 import type { SkillNode, SkillTab } from '@shared/types';
 import { SKILL_TABS } from '@shared/types';
 import { usePaneScrollMemory } from './pane-scroll-memory';
@@ -76,6 +76,80 @@ export function SkillsView(props: {
 
   const affordances = (): ReadonlyArray<TreeAffordance> =>
     props.tab === 'kimi' ? READONLY_AFFORDANCES : EDITABLE_AFFORDANCES;
+
+  // Memoise pane-level callbacks so prop identity stays stable across
+  // unrelated parent re-runs (e.g. expanding one directory). Tracks
+  // `props.tab` so the special-file predicate updates when the user
+  // switches tab, but is otherwise a stable reference. See
+  // notes/01-design.md.
+  const specialFile = createMemo(() => {
+    const tab = props.tab;
+    return (file: SkillNode, dir: SkillNode): boolean => {
+      if (dir.relPath === '' && tab === 'claude' && isClaudeMd(file)) return true;
+      if (dir.relPath === '' && tab === 'kimi' && isAgentsMd(file)) return true;
+      if (tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file)) return true;
+      return false;
+    };
+  });
+  const renderSpecialFile = createMemo(() => (file: SkillNode, dir: SkillNode) => {
+    if (isClaudeMd(file) || isAgentsMd(file)) {
+      const badge = isClaudeMd(file) ? 'CLAUDE' : 'AGENTS';
+      return (
+        <button
+          type="button"
+          class="tree-special-file claude-special-file"
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onOpen(file.path, file.title, file.shipped);
+          }}
+          title={`Open ${file.path}`}
+          aria-label={`Open ${file.path}`}
+        >
+          <span class="tree-special-badge">{badge}</span>
+          <span class="tree-special-title">{file.title}</span>
+          <span class="tree-special-meta">{file.relPath}</span>
+        </button>
+      );
+    }
+    const shipped = file.shipped;
+    return (
+      <button
+        type="button"
+        class="tree-special-file skill-special-file"
+        classList={{
+          shipped: !!shipped,
+          diverged: !!shipped?.diverged,
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onOpen(file.path, file.title, shipped);
+        }}
+        aria-label={`Open SKILL.md for ${dir.relPath || 'skills'}${
+          shipped?.diverged ? ' (shipped, locally edited)' : shipped ? ' (shipped)' : ''
+        }`}
+        title={
+          shipped?.diverged
+            ? 'SKILL.md (shipped, locally edited)'
+            : shipped
+              ? 'SKILL.md (shipped)'
+              : 'SKILL.md'
+        }
+      >
+        <span class="tree-special-badge">SKILL</span>
+        <span class="tree-special-title">{file.title}</span>
+        <Show when={shipped}>
+          <span class="tree-special-meta">{shipped?.diverged ? 'diverged' : 'shipped'}</span>
+        </Show>
+      </button>
+    );
+  });
+  const renderFile = createMemo(() => (file: SkillNode) => (
+    <SkillCard
+      node={file}
+      isYaml={isYamlSpec(file)}
+      onOpen={() => props.onOpen(file.path, file.title, file.shipped)}
+    />
+  ));
 
   // Per-tab button refs so the ARIA keyboard handler below can move focus
   // to the next/previous tab without a global DOM query.
@@ -209,78 +283,9 @@ export function SkillsView(props: {
               prompts={props.prompts}
               onAfterMutation={props.onAfterMutation}
               onError={props.onError}
-              specialFile={(file, dir) => {
-                // CLAUDE.md only surfaces in the Claude tab at the root level
-                // (Generic and Kimi readers do not inject the synthetic entry).
-                if (dir.relPath === '' && props.tab === 'claude' && isClaudeMd(file)) return true;
-                // AGENTS.md mirrors CLAUDE.md but for the Kimi tab.
-                if (dir.relPath === '' && props.tab === 'kimi' && isAgentsMd(file)) return true;
-                // Compiled tabs surface SKILL.md inside skill subdirs.
-                if (props.tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file))
-                  return true;
-                return false;
-              }}
-              renderSpecialFile={(file, dir) => {
-                if (isClaudeMd(file) || isAgentsMd(file)) {
-                  const badge = isClaudeMd(file) ? 'CLAUDE' : 'AGENTS';
-                  return (
-                    <button
-                      type="button"
-                      class="tree-special-file claude-special-file"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        props.onOpen(file.path, file.title, file.shipped);
-                      }}
-                      title={`Open ${file.path}`}
-                      aria-label={`Open ${file.path}`}
-                    >
-                      <span class="tree-special-badge">{badge}</span>
-                      <span class="tree-special-title">{file.title}</span>
-                      <span class="tree-special-meta">{file.relPath}</span>
-                    </button>
-                  );
-                }
-                const shipped = file.shipped;
-                return (
-                  <button
-                    type="button"
-                    class="tree-special-file skill-special-file"
-                    classList={{
-                      shipped: !!shipped,
-                      diverged: !!shipped?.diverged,
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      props.onOpen(file.path, file.title, shipped);
-                    }}
-                    aria-label={`Open SKILL.md for ${dir.relPath || 'skills'}${
-                      shipped?.diverged ? ' (shipped, locally edited)' : shipped ? ' (shipped)' : ''
-                    }`}
-                    title={
-                      shipped?.diverged
-                        ? 'SKILL.md (shipped, locally edited)'
-                        : shipped
-                          ? 'SKILL.md (shipped)'
-                          : 'SKILL.md'
-                    }
-                  >
-                    <span class="tree-special-badge">SKILL</span>
-                    <span class="tree-special-title">{file.title}</span>
-                    <Show when={shipped}>
-                      <span class="tree-special-meta">
-                        {shipped?.diverged ? 'diverged' : 'shipped'}
-                      </span>
-                    </Show>
-                  </button>
-                );
-              }}
-              renderFile={(file) => (
-                <SkillCard
-                  node={file}
-                  isYaml={isYamlSpec(file)}
-                  onOpen={() => props.onOpen(file.path, file.title, file.shipped)}
-                />
-              )}
+              specialFile={specialFile()}
+              renderSpecialFile={renderSpecialFile()}
+              renderFile={renderFile()}
             />
           )}
         </Show>

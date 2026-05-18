@@ -74,6 +74,9 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   const ignored = (path: string): boolean => {
     if (NODE_MODULES_RE.test(path) || DIST_RE.test(path) || TARGET_RE.test(path)) return true;
     if (!DOTFILE_SEGMENT_RE.test(path)) return false;
+    // toPosix is only needed for the dotfile bypass checks below; the three
+    // regexes above filter out the vast majority of paths, so we avoid the
+    // string-replacement cost on every chokidar event for those.
     const posix = toPosix(path);
     if (posix === roots.resources || posix.startsWith(`${roots.resources}/`)) return false;
     if (posix === roots.skills || posix.startsWith(`${roots.skills}/`)) return false;

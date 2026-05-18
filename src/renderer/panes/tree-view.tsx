@@ -48,10 +48,10 @@ export interface TreeViewPromptApi {
 
 export interface TreeViewProps<TFile extends TreeViewBaseNode> {
   treeKey: TreeRoot;
-  /** The pane's root node. The root header is never rendered — its
-   *  children render directly so the pane keeps its current top-level
-   *  silhouette and the affordance buttons sit on every nested directory
-   *  (and on a synthetic ROOT chip when the root needs them). */
+  /** The directory to render. At the top level this is the pane's root —
+   *  the root header is never rendered, only its children, so the pane
+   *  keeps its current silhouette. For nested calls (recursion) it is the
+   *  subdirectory whose header + body should render here. */
   root: TFile;
   /** Read-only accessor for the set of currently-expanded directory
    *  relPaths. Solid signal so the tree re-renders on toggle. */
@@ -95,61 +95,22 @@ export interface TreeViewProps<TFile extends TreeViewBaseNode> {
   onAfterMutation: (newPath: string, kind: TreeAffordance, sourceDirRelPath: string) => void;
   /** Fires when an IPC verb rejects so the pane can surface a toast. */
   onError: (message: string) => void;
-}
-
-export function TreeView<TFile extends TreeViewBaseNode>(props: TreeViewProps<TFile>): JSX.Element {
-  return (
-    <div class="tree-view">
-      <DirectoryBody
-        node={props.root}
-        depth={0}
-        isRoot={true}
-        treeKey={props.treeKey}
-        expanded={props.expanded}
-        onToggleExpand={props.onToggleExpand}
-        renderFile={props.renderFile}
-        renderDirSuffix={props.renderDirSuffix}
-        specialFile={props.specialFile}
-        renderSpecialFile={props.renderSpecialFile}
-        skipFile={props.skipFile}
-        affordances={props.affordances}
-        mutations={props.mutations}
-        prompts={props.prompts}
-        onAfterMutation={props.onAfterMutation}
-        onError={props.onError}
-      />
-    </div>
-  );
-}
-
-interface DirectoryBodyProps<TFile extends TreeViewBaseNode> {
-  node: TFile;
-  depth: number;
-  isRoot: boolean;
-  treeKey: TreeRoot;
-  expanded: () => ReadonlySet<string>;
-  onToggleExpand: (relPath: string) => void;
-  renderFile: (file: TFile) => JSX.Element;
-  renderDirSuffix?: (dir: TFile) => JSX.Element;
-  specialFile?: (file: TFile, dir: TFile) => boolean;
-  renderSpecialFile?: (file: TFile, dir: TFile) => JSX.Element;
-  skipFile?: (file: TFile) => boolean;
-  affordances: ReadonlyArray<TreeAffordance>;
-  mutations: TreeViewMutationApi;
-  prompts: TreeViewPromptApi;
-  onAfterMutation: (newPath: string, kind: TreeAffordance, sourceDirRelPath: string) => void;
-  onError: (message: string) => void;
+  /** Recursion bookkeeping — caller-side defaults are top-level. */
+  depth?: number;
+  isRoot?: boolean;
 }
 
 /** Render one directory: header (always visible) plus children when
- *  expanded. Root is always rendered expanded so an all-collapsed pane
- *  still shows its top-level entries. */
-function DirectoryBody<TFile extends TreeViewBaseNode>(
-  props: DirectoryBodyProps<TFile>,
-): JSX.Element {
+ *  expanded. The top-level call (`isRoot`, default true) is what the
+ *  panes invoke and adds the `<div class="tree-view">` wrapper; the
+ *  recursion below re-enters the same component with `isRoot={false}`. */
+export function TreeView<TFile extends TreeViewBaseNode>(props: TreeViewProps<TFile>): JSX.Element {
+  const depth = (): number => props.depth ?? 0;
+  const isRoot = (): boolean => props.isRoot ?? true;
+
   const childDirs = createMemo<TFile[]>(() => {
     const out: TFile[] = [];
-    for (const child of props.node.children ?? []) {
+    for (const child of props.root.children ?? []) {
       if (child.kind === 'directory') out.push(child as TFile);
     }
     return out;
@@ -157,10 +118,10 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
   const specialChild = createMemo<TFile | null>(() => {
     const test = props.specialFile;
     if (!test) return null;
-    for (const child of props.node.children ?? []) {
+    for (const child of props.root.children ?? []) {
       if (child.kind !== 'file') continue;
       const file = child as TFile;
-      if (test(file, props.node)) return file;
+      if (test(file, props.root)) return file;
     }
     return null;
   });
@@ -168,7 +129,7 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
     const out: TFile[] = [];
     const skip = props.skipFile;
     const special = specialChild();
-    for (const child of props.node.children ?? []) {
+    for (const child of props.root.children ?? []) {
       if (child.kind !== 'file') continue;
       const file = child as TFile;
       if (special && file === special) continue;
@@ -178,16 +139,12 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
     return out;
   });
 
-  return (
-    <section
-      class="tree-directory"
-      data-depth={props.depth}
-      data-root={props.isRoot ? 'true' : 'false'}
-    >
+  const body = (): JSX.Element => (
+    <section class="tree-directory" data-depth={depth()} data-root={isRoot() ? 'true' : 'false'}>
       <DirectoryHeader
-        node={props.node}
-        depth={props.depth}
-        isRoot={props.isRoot}
+        node={props.root}
+        depth={depth()}
+        isRoot={isRoot()}
         treeKey={props.treeKey}
         expanded={props.expanded}
         onToggleExpand={props.onToggleExpand}
@@ -199,16 +156,16 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
         onError={props.onError}
         directFileCount={childFiles().length + (specialChild() ? 1 : 0)}
       />
-      <Show when={isExpanded(props.expanded(), props.node.relPath, props.isRoot)}>
+      <Show when={isExpanded(props.expanded(), props.root.relPath, isRoot())}>
         <div class="tree-children">
           <Show when={specialChild() && props.renderSpecialFile}>
-            <div class="tree-special">{props.renderSpecialFile!(specialChild()!, props.node)}</div>
+            <div class="tree-special">{props.renderSpecialFile!(specialChild()!, props.root)}</div>
           </Show>
           <For each={childDirs()}>
             {(dir) => (
-              <DirectoryBody
-                node={dir}
-                depth={props.depth + 1}
+              <TreeView
+                root={dir}
+                depth={depth() + 1}
                 isRoot={false}
                 treeKey={props.treeKey}
                 expanded={props.expanded}
@@ -234,6 +191,12 @@ function DirectoryBody<TFile extends TreeViewBaseNode>(
         </div>
       </Show>
     </section>
+  );
+
+  return (
+    <Show when={isRoot()} fallback={body()}>
+      <div class="tree-view">{body()}</div>
+    </Show>
   );
 }
 
