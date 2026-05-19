@@ -147,7 +147,9 @@ async function dispatch(
   // touching the resolved path, so handing them an empty string is safe.
   // Previously `resolveConception` ran unconditionally and exited with
   // `NO_CONCEPTION` (exit 5) on a fresh machine.
-  const conceptionPath = universal.help ? '' : (await resolveConception(universal.conceptionPath)).path;
+  const conceptionPath = universal.help
+    ? ''
+    : (await resolveConception(universal.conceptionPath)).path;
 
   // `--help` always wins. Each runNoun honours `universalHelp` by short-
   // circuiting to per-verb help text before any required-arg check.
