@@ -52,8 +52,16 @@ beforeEach(async () => {
   vi.resetModules();
   tmp = mkdtempSync(join(tmpdir(), 'condash-settings-ipc-'));
   settingsPathValue = join(tmp, 'settings.json');
-  // Override the user-data dir so `settingsPath()` lands in the temp dir.
-  vi.doMock('../user-data-dir', () => ({ userDataDir: () => tmp }));
+  // Capture this test's tmp path as a *local const* inside the factory
+  // closure. Without this, the factory references the module-scope
+  // `let tmp` by name — and a fire-and-forget `withSettingsQueue` write
+  // queued during the previous test resolves `settingsPath()` (which
+  // calls `userDataDir() => tmp`) *after* `tmp` has been reassigned in
+  // this test's beforeEach, leaking the previous test's write into this
+  // test's settings.json. Surfaced 2026-05-19 in the v3.18.0 release CI
+  // (test 3 saw `['explicit']` from test 2's `skillsClaude` write).
+  const isolatedTmp = tmp;
+  vi.doMock('../user-data-dir', () => ({ userDataDir: () => isolatedTmp }));
 
   handlers = {};
   const { ipcMain } = await import('electron');
@@ -67,7 +75,18 @@ beforeEach(async () => {
   registerSettingsIpc({ onLayoutChange: () => undefined });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Drain the settings queue before removing the tmp dir so any pending
+  // opportunistic writes can complete (or fail safely) before their
+  // target disappears. The module-scope `settingsQueue` lives in the
+  // *previous* import of `../settings`; reading it back via the still-
+  // cached import keeps that exact instance.
+  try {
+    const { drainSettingsQueue } = await import('../settings');
+    await drainSettingsQueue();
+  } catch {
+    // The module may not be loaded yet (very-first test) — that's fine.
+  }
   rmSync(tmp, { recursive: true, force: true });
   vi.doUnmock('../user-data-dir');
 });
