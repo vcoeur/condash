@@ -9,7 +9,7 @@ description: Point condash at your workspace, list the repos surfaced on the Cod
 
 **When to read this.** The **Code** pane shows the wrong repos, the order isn't what you want, or the "open in IDE" button launches the wrong thing (or nothing).
 
-Everything on this page lives in `<conception_path>/condash.json` (legacy filename `configuration.json` is read as a fallback). Per-machine overrides go in `settings.json` and win on overlap.
+Everything on this page lives in `<conception_path>/.condash/settings.json` (legacy filenames `condash.json` and `configuration.json` are read as fallbacks). Note that `settings.json` (per-machine, global) and `.condash/settings.json` (per-conception, per-host) share the same schema; top-level keys in the per-conception file override the global ones.
 
 ## Workspace and worktrees paths
 
@@ -81,7 +81,7 @@ A submodule entry is either a string (`"apps/web"`) or an inline object (`{"name
 
 ## The three `open_with` slots
 
-Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **terminal**. Wire them in `condash.json`:
+Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **terminal**. Wire them in `.condash/settings.json`:
 
 ```json
 {
@@ -100,11 +100,11 @@ Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **termina
 
 Commands are parsed shell-style, so quoting works the way you'd expect: `"/Applications/JetBrains Toolbox/idea.app" {path}` is a single argv[0] + `{path}`.
 
-Built-in defaults for the three slots reproduce the previous IntelliJ / VS Code / terminal behaviour, so a `condash.json` without any `open_with` section still gives functional buttons. Override only the slots you want to customise.
+Built-in defaults for the three slots reproduce the previous IntelliJ / VS Code / terminal behaviour, so a configuration without any `open_with` section still gives functional buttons. Override only the slots you want to customise.
 
 ## Editing via the Settings modal
 
-Open **File → Settings…** (`Ctrl+,`) and pick the **Workspace**, **Repositories**, or **Open with** tab — each has form fields backed by `condash.json`. There is no in-modal JSON editor; for keys outside the modal (e.g. nested `repositories[].submodules` shapes, `pdf_viewer`), use the **Open externally** button in the header to edit the raw JSON in your `$EDITOR`. Either path runs through the same atomic save + strict zod schema.
+Open **File → Settings…** (`Ctrl+,`) and pick the **Workspace**, **Repositories**, or **Open with** tab — each has form fields backed by `.condash/settings.json`. There is no in-modal JSON editor; for keys outside the modal (e.g. nested `repositories[].submodules` shapes, `pdf_viewer`), use the **Open externally** button in the header to edit the raw JSON in your `$EDITOR`. Either path runs through the same atomic save + strict zod schema.
 
 Changes to `open_with` and `terminal` reload the dashboard live; `workspace_path`, `worktrees_path`, and the `repositories` list need a restart.
 

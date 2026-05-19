@@ -35,6 +35,9 @@ name: pr
 # for ~5 min per PR.
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -57,13 +60,16 @@ jobs:
         run: npm ci
 
       - name: Format check
-        run: npx prettier --check "src/**/*.{ts,tsx,css,html,json}"
+        run: make format-check
 
       - name: Typecheck
         run: npm run typecheck
 
       - name: Build renderer + main
         run: npm run build
+
+      - name: Vitest unit suite
+        run: make test-unit
 
   installer-smoke:
     name: Installer smoke (${{ matrix.os }})

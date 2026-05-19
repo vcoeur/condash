@@ -138,12 +138,18 @@ async function dispatch(
 ): Promise<number> {
   // Commands that don't need conception path resolution.
   if (args.noun === 'config' && args.verb === 'conception-path') {
-    await runConfig(args.verb, args, ctx, '', universal.help);
+    await runConfig(args.verb, args, ctx, '', universal.help, universal.conceptionPath);
     return ExitCodes.OK;
   }
 
-  const resolved = await resolveConception(universal.conceptionPath);
-  const conceptionPath = resolved.path;
+  // `condash help <noun>` (and `--help` on any verb) must not require an
+  // initialised conception. The runNoun help paths short-circuit before
+  // touching the resolved path, so handing them an empty string is safe.
+  // Previously `resolveConception` ran unconditionally and exited with
+  // `NO_CONCEPTION` (exit 5) on a fresh machine.
+  const conceptionPath = universal.help
+    ? ''
+    : (await resolveConception(universal.conceptionPath)).path;
 
   // `--help` always wins. Each runNoun honours `universalHelp` by short-
   // circuiting to per-verb help text before any required-arg check.

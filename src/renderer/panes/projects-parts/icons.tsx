@@ -1,7 +1,7 @@
 import { Match, Switch } from 'solid-js';
 import type { StepCounts, StepMarker } from '@shared/types';
 
-/* StepIcon — single shape vocabulary for the four step states. Drawn as a
+/* StepIcon — single shape vocabulary for the five step states. Drawn as a
  * 16×16 SVG so the same component renders the card's next-step marker, the
  * expanded step list in the card, and the popup's step list. Colour comes
  * from `currentColor` so the per-state color tokens cascade through.
@@ -9,6 +9,7 @@ import type { StepCounts, StepMarker } from '@shared/types';
  *   ' ' (todo)    → outlined rounded square
  *   '~' (doing)   → outlined square + concentric inner filled square
  *   'x' (done)    → filled square with negative-space check mark
+ *   '!' (blocked) → outlined square + bold exclamation glyph
  *   '-' (dropped) → outlined square crossed out
  *
  * Each branch is wrapped in <Match> so the rendered SVG swaps reactively
@@ -74,6 +75,20 @@ export function StepIcon(props: { marker: StepMarker }) {
           <path d="M5.25 8.25l2 2L10.75 6.5" stroke="var(--bg-elevated)" stroke-width="1.8" />
         </svg>
       </Match>
+      <Match when={props.marker === '!'}>
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="2.5" y="2.5" width="11" height="11" rx="2.25" />
+          <path d="M8 5v4" stroke-width="1.8" />
+          <circle cx="8" cy="11.25" r="0.85" fill="currentColor" stroke="none" />
+        </svg>
+      </Match>
       <Match when={props.marker === '-'}>
         <svg
           viewBox="0 0 16 16"
@@ -91,20 +106,26 @@ export function StepIcon(props: { marker: StepMarker }) {
   );
 }
 
-/* Step progress — both done and dropped count as "resolved" so the bar
- * fills when every step has been decided one way or the other. The X/Y
- * text uses the same numerator (done + dropped). Reaches 100% when no
- * todo or doing steps remain, even if some were dropped along the way. */
+/* Step progress — done and dropped count as "resolved" so the bar fills when
+ * every step has been decided one way or the other. Blocked steps count
+ * toward the total (they're real milestones still in play) but not toward
+ * resolved — a blocked step is unfinished business demanding attention.
+ * Reaches 100% when no todo, doing, or blocked steps remain, even if some
+ * were dropped along the way. */
 export function StepProgress(props: { counts: StepCounts }) {
   const total = (): number =>
-    props.counts.todo + props.counts.doing + props.counts.done + props.counts.dropped;
+    props.counts.todo +
+    props.counts.doing +
+    props.counts.done +
+    props.counts.blocked +
+    props.counts.dropped;
   const resolved = (): number => props.counts.done + props.counts.dropped;
   const ratio = (): number => {
     const t = total();
     return t === 0 ? 0 : Math.min(1, resolved() / t);
   };
   const title = (): string =>
-    `${props.counts.todo} todo, ${props.counts.doing} doing, ${props.counts.done} done, ${props.counts.dropped} dropped`;
+    `${props.counts.todo} todo, ${props.counts.doing} doing, ${props.counts.done} done, ${props.counts.blocked} blocked, ${props.counts.dropped} dropped`;
   return (
     <span class="step-progress-inner" title={title()}>
       <span class="progress-track">

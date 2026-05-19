@@ -16,14 +16,21 @@ export function statusOrder(status: string): number {
   return idx === -1 ? KNOWN_STATUSES.length : idx;
 }
 
-/** Tally `[ ] / [~] / [x] / [-]` markers across a step list. */
+/** Tally `[ ] / [~] / [x] / [!] / [-]` markers in the README's `## Steps`
+ * section only — milestone count. Entries living under `## Step details`,
+ * `## Notes`, or any other section are tracked by the parser for editing
+ * purposes but excluded from the card-face "N/M steps" tally, which is
+ * meant to reflect just the milestones. Case-insensitive on the section
+ * name; multiple `## Steps` headings (rare but legal) all contribute. */
 export function countSteps(steps: readonly Step[]): StepCounts {
-  const counts: StepCounts = { todo: 0, doing: 0, done: 0, dropped: 0 };
+  const counts: StepCounts = { todo: 0, doing: 0, done: 0, blocked: 0, dropped: 0 };
   for (const step of steps) {
+    if (step.section.trim().toLowerCase() !== 'steps') continue;
     const marker: StepMarker = step.marker;
     if (marker === ' ') counts.todo++;
     else if (marker === '~') counts.doing++;
     else if (marker === 'x') counts.done++;
+    else if (marker === '!') counts.blocked++;
     else if (marker === '-') counts.dropped++;
   }
   return counts;

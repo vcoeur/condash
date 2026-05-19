@@ -71,7 +71,7 @@ Refresh the dashboard; the PDF badge lights up and the viewer picks up the file.
 
 Click **↗** in the embedded viewer's header. condash hands the file to `shell.openPath()`, which uses whatever app your OS has registered for `.pdf` (Evince / Okular on Linux, Preview on macOS, the bundled Reader / Acrobat on Windows). On Linux you can change that default through `xdg-mime default`; condash itself does no path resolution.
 
-> **Note.** `condash.json` accepts a `pdf_viewer: string[]` key (a fallback chain like `["xdg-open {path}", "evince {path}"]`) — but it is currently parsed and ignored. The OS default wins regardless. If you want the chain honoured, file an issue or open a PR; the schema slot is already there.
+> **Note.** `.condash/settings.json` accepts a `pdf_viewer: string[]` key (a fallback chain like `["xdg-open {path}", "evince {path}"]`) — but it is currently parsed and ignored. The OS default wins regardless. If you want the chain honoured, file an issue or open a PR; the schema slot is already there.
 
 ## Deliverable lifecycle
 

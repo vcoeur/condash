@@ -28,12 +28,13 @@ export interface StepCounts {
   todo: number;
   doing: number;
   done: number;
+  blocked: number;
   dropped: number;
 }
 
-export type StepMarker = ' ' | '~' | 'x' | '-';
+export type StepMarker = ' ' | '~' | 'x' | '!' | '-';
 
-export const STEP_MARKERS: readonly StepMarker[] = [' ', '~', 'x', '-'];
+export const STEP_MARKERS: readonly StepMarker[] = [' ', '~', 'x', '!', '-'];
 
 export interface Step {
   lineIndex: number;

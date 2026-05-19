@@ -327,6 +327,44 @@ function registerIpc(): void {
   });
 }
 
+/**
+ * Defence-in-depth: clamp every newly-created `<webview>`'s preferences
+ * to the same hardened defaults the main BrowserWindow uses, and re-apply
+ * the navigate/window-open denials. A future widget that forgets to set
+ * the right attributes won't open a Node-enabled, non-isolated child
+ * process; an in-PDF link click can't navigate the webview off-domain.
+ *
+ * Runs at module top-level so it's wired before any window — and any
+ * webview — is created.
+ */
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() !== 'webview') return;
+  // Mutating `webPreferences` post-creation is best-effort: Electron has
+  // already attached the preload, but flipping these fields off now still
+  // hardens any future load this contents serves.
+  contents.on('will-attach-webview', (_e, webPreferences) => {
+    webPreferences.contextIsolation = true;
+    webPreferences.nodeIntegration = false;
+    webPreferences.sandbox = true;
+  });
+  contents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    if (/^(https?|mailto):/i.test(url)) {
+      void shell
+        .openExternal(url)
+        .catch((err) => console.error('[shell] openExternal failed', url, err));
+    }
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^(https?|mailto):/i.test(url)) {
+      void shell
+        .openExternal(url)
+        .catch((err) => console.error('[shell] openExternal failed', url, err));
+    }
+    return { action: 'deny' };
+  });
+});
+
 app.whenReady().then(async () => {
   registerIpc();
   registerNoteAssetProtocol();

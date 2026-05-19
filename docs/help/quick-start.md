@@ -100,7 +100,7 @@ condash picks it up live.
 
 **File → Settings…** (`Ctrl+,`) opens a two-tab modal — **Global**
 (per-machine, writes to `settings.json`) and **This conception**
-(per-tree, writes to `condash.json`).
+(per-tree, writes to `.condash/settings.json`).
 
 - **Global** carries Recent conceptions, Appearance, Terminal — all
   per-machine defaults.
@@ -112,14 +112,16 @@ condash picks it up live.
 
 There is no in-modal JSON editor — each preference has its own form
 control. The **Open externally** button at the bottom of the rail
-opens the active tab's file (`condash.json` or `settings.json`) with
-your OS default handler.
+opens the active tab's file (`.condash/settings.json` or `settings.json`)
+with your OS default handler.
 
 → Full breakdown: [Configuration](configuration.md).
 
-Per-tree config (`<conception>/condash.json`, with `configuration.json`
-read indefinitely as a legacy fallback) is shared with teammates via git
-— workspace path, repos, launcher commands. Per-machine config
+Per-tree config (`<conception>/.condash/settings.json`, with the legacy
+`condash.json` / `configuration.json` read indefinitely as fallbacks) is
+**per-host** by default — the `.condash/` directory is gitignored. Un-ignore
+`.condash/settings.json` in your `.gitignore` to share workspace path,
+repos, and launcher commands with teammates via git. Per-machine config
 (`settings.json`) is local to this laptop — your editor binary, your
 terminal, your theme.
 

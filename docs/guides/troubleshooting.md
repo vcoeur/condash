@@ -42,7 +42,7 @@ condash should remember the conception path you picked. If the picker reappears 
 cat ${XDG_CONFIG_HOME:-~/.config}/condash/settings.json
 ```
 
-If `conceptionPath` is not set or points to a directory that no longer exists, condash falls back to the picker. Edit the file by hand to fix it, or pick the right path through the picker once more — condash writes the choice on success.
+If `lastConceptionPath` is not set or points to a directory that no longer exists, condash falls back to the picker. Edit the file by hand to fix it, or pick the right path through the picker once more — condash writes the choice on success.
 
 ## Empty dashboard
 
@@ -60,9 +60,9 @@ Fix: `git mv` the items into the right shape, or use the [`condash projects`](..
 
 ### Code pane is empty / "Code (0)"
 
-The Code pane scans `workspace_path` from `condash.json` for direct subdirectories containing a `.git/`. Two common reasons it's empty:
+The Code pane scans `workspace_path` from `.condash/settings.json` (or the legacy `condash.json`) for direct subdirectories containing a `.git/`. Two common reasons it's empty:
 
-- `workspace_path` is unset in `condash.json`. Set it to the directory containing your repos.
+- `workspace_path` is unset. Set it to the directory containing your repos.
 - `workspace_path` points at a parent directory whose direct children are *not* git repos (e.g. an extra nesting level — `~/src/` when your repos are in `~/src/projects/`). The scan is one level deep.
 
 Fix: open the gear modal and edit `workspace_path` to point at the right directory. The Code pane refreshes within a couple of seconds.
@@ -91,7 +91,7 @@ The terminal works on all three platforms. If the pane fails to open on Windows,
 
 ## "Open in IDE" buttons do nothing
 
-The buttons spawn the command in `open_with.<slot>.command` from `settings.json` (per-machine) or `condash.json` (tree-wide). Two failure modes:
+The buttons spawn the command in `open_with.<slot>.command` from `settings.json` (per-machine) or `.condash/settings.json` (tree-wide; legacy `condash.json` still read). Two failure modes:
 
 - The command isn't on `$PATH` (typical for macOS GUI editors that don't install a shell launcher). Use the `open -na` form on macOS — see [Config files — Per-OS recipes](../reference/config.md#per-os-recipes).
 - The path being passed isn't under `workspace_path` or `worktrees_path`. condash refuses to spawn launchers outside those sandboxes; check the toast message.
@@ -122,7 +122,7 @@ xterm.js renders a lot of cells on every paint. Two knobs help:
 - Lower `terminal.xterm.scrollback` from the default 10 000 to something smaller (1 000).
 - Toggle `terminal.xterm.ligatures` off — the ligatures addon is expensive on long lines.
 
-Both keys live in `condash.json` under `terminal.xterm`. The Settings → Terminal tab in the gear modal edits them live.
+Both keys live under `terminal.xterm` in `.condash/settings.json` (or the legacy `condash.json`). The Settings → Terminal tab in the gear modal edits them live.
 
 ## CLI
 

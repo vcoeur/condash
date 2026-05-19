@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { addStep, transitionStatus } from './mutate';
+import { addStep, CLOSED_LINE, parseTimelineEntries, transitionStatus } from './mutate';
 
 describe('addStep', () => {
   let dir: string;
@@ -182,5 +182,32 @@ describe('transitionStatus', () => {
     const out = await fs.readFile(path, 'utf8');
     expect(out).toContain('status: review');
     expect(out).toContain('status: maybe.');
+  });
+});
+
+describe('parseTimelineEntries ↔ CLOSED_LINE agreement', () => {
+  it('the close lines parseTimelineEntries yields all match CLOSED_LINE', () => {
+    // Every close that `condash projects close --summary` writes should be
+    // both a valid timeline entry AND match the close-detection regex used
+    // by extractClosedAt. If these two regexes drift apart, an old close
+    // appears in the timeline but extractClosedAt reports `closedAt: null`.
+    const raw = [
+      '# T',
+      '',
+      '## Timeline',
+      '',
+      '- 2026-05-19 — Closed.',
+      '- 2026-05-15 — Closed. Shipped as v3.14.1.',
+      '- 2026-05-14 — Reopened.',
+      '- 2026-05-13 — Closed. Shipped in v3.13.0.',
+      '',
+    ].join('\n');
+    const entries = parseTimelineEntries(raw);
+    const closeEntries = entries.filter((e) => /^Closed/.test(e.text));
+    expect(closeEntries).toHaveLength(3);
+    for (const e of closeEntries) {
+      const line = `- ${e.date} — ${e.text}`;
+      expect(line).toMatch(CLOSED_LINE);
+    }
   });
 });

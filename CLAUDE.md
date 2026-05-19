@@ -15,8 +15,18 @@ Electron build of condash. As of 2026-04-27 this **is** the canonical condash �
 ### Adding a new main-process dep
 
 1. `npm install <pkg>`. ESM-only is fine — esbuild bundles it as CJS.
-2. If the dep is **native** (has a `binding.gyp` or ships prebuilt `.node` files — e.g. `node-pty`), add it to the `EXTERNAL` array in `scripts/build-electron.mjs` so esbuild leaves it alone, and wire `electron-rebuild` if needed.
+2. If the dep is **native** (has a `binding.gyp` or ships prebuilt `.node` files — e.g. `node-pty`), add it to `scripts/shared/externals.mjs` (`SHARED_EXTERNALS`) so esbuild leaves it alone for both the Electron and CLI builds, and wire `electron-rebuild` if needed. Per-target externals (Electron-only or CLI-only) go in the per-script `EXTERNAL` array instead.
 3. Pure-JS deps need no further work.
+
+### Dependencies
+
+#### `@xterm/*` beta pinning
+
+The xterm v6 line only ships as `beta.NNN` prereleases on npm — there is no stable v6 yet. Every `@xterm/*` package therefore carries an **exact** pin (no caret), and all packages in the family must stay on the **same** `beta.NNN` minor so their internal peer ranges resolve. When bumping xterm:
+
+- Pick the latest `beta.NNN` of `@xterm/xterm` and align every other `@xterm/*` package to the same `beta.NNN` in one commit.
+- One known exception: `@xterm/addon-webgl@0.20.0-beta.NNN` declares a peer of `@xterm/xterm@^6.1.0-beta.(NNN+1)`, so the addon ends up one tag *behind* the rest of the family. This is upstream metadata, not a bug — accept the off-by-one until upstream tags catch up.
+- `@xterm/addon-fit` and `@xterm/headless` still publish stable releases (`^0.11.0`, `^6.0.0`) and are excluded from the beta-pin sweep.
 
 ## Locked decisions
 

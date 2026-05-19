@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 dist-cli/
+*.tsbuildinfo
 release/
 .vite/
 .cache/

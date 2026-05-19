@@ -11,7 +11,7 @@ Things condash will deliberately not do. Each entry has a *why* — read it befo
 
 ## No code editing in condash
 
-condash is a Markdown reader/editor and a project dashboard. Source files (`.ts`, `.py`, `.tsx`, etc.) open in the user's IDE via the `open_with` slots. The CodeMirror editor inside the renderer is for Markdown content only — project READMEs, knowledge notes, and the JSON `condash.json` file (which uses CodeMirror's JSON mode for syntax highlighting in the gear modal).
+condash is a Markdown reader/editor and a project dashboard. Source files (`.ts`, `.py`, `.tsx`, etc.) open in the user's IDE via the `open_with` slots. The CodeMirror editor inside the renderer is for Markdown content only — project READMEs, knowledge notes, and the JSON config file `.condash/settings.json` (which uses CodeMirror's JSON mode for syntax highlighting in the gear modal).
 
 **Why**: an IDE is a different product. Trying to be one would mean LSP integration, language servers, multi-file refactoring, debugger UI — none of which serve the dashboard's role. Users already have a real IDE configured via `open_with.main_ide`.
 
@@ -35,7 +35,7 @@ What *is* in scope, even though one could argue it edges toward "real terminal":
 
 ## No JSON-format migration
 
-`condash.json` stays JSON. Migrating to YAML, TOML, or a fenced Markdown block is a non-goal.
+`.condash/settings.json` stays JSON. Migrating to YAML, TOML, or a fenced Markdown block is a non-goal.
 
 **Why**: see [Config files](../reference/config.md) — stdlib parsing, strict schema validation, reliable in-app editing. A Markdown-first tree can comfortably contain one structured-data file.
 

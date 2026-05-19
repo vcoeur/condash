@@ -1,21 +1,20 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import type { Deliverable, ItemKind, Project, Step, StepMarker } from '../shared/types';
-import { HEADING2, parseHeader, type HeaderFields } from '../shared/header';
+import {
+  HEADING2,
+  CLOSED_LINE,
+  iterUnfencedLines,
+  parseHeader,
+  type HeaderFields,
+} from '../shared/header';
 import { countSteps } from '../shared/projects';
 import { toPosix } from '../shared/path';
 import { parseTimelineEntries } from './mutate';
 
-const STEP_LINE = /^\s*-\s\[([ ~x-])\]\s+(.*)$/;
+const STEP_LINE = /^\s*-\s\[([ ~x!-])\]\s+(.*)$/;
 const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
 const SUMMARY_MAX = 300;
-/** Matches a Timeline list item recording a close, e.g.
- *    - 2026-05-02 — Closed.
- *    - 2026-05-02 — Closed. Shipped in v2.9.4.
- * Used by extractClosedAt to find the latest close date. The trailing class
- * tolerates the bare form, an end-of-line, or a space (allowing the optional
- * summary that condash projects close --summary writes). */
-const CLOSED_LINE = /^\s*-\s+(\d{4}-\d{2}-\d{2})\s+—\s+Closed(\.|$|\s)/;
 
 export async function parseReadme(path: string): Promise<Project> {
   const raw = await fs.readFile(path, 'utf8');
@@ -69,12 +68,14 @@ function parseReadmeFromRaw(raw: string, path: string, preparsedHeader?: HeaderF
 
 /* Last close date from `## Timeline`, or null when the section is missing or
  * carries no Closed line. Scans the section bottom-up so a reopened project
- * (Closed → reopened → Closed again) yields the most recent date. */
+ * (Closed → reopened → Closed again) yields the most recent date. Fence-aware:
+ * a `## Timeline` heading inside a fenced code block doesn't open the
+ * section, and a `- YYYY-MM-DD — Closed.` line inside one doesn't count. */
 function extractClosedAt(lines: readonly string[]): string | null {
   let timelineStart = -1;
   let timelineEnd = lines.length;
-  for (let i = 0; i < lines.length; i++) {
-    const heading = lines[i].match(HEADING2);
+  for (const { index: i, line } of iterUnfencedLines(lines)) {
+    const heading = line.match(HEADING2);
     if (!heading) continue;
     if (heading[1].trim().toLowerCase() === 'timeline') {
       timelineStart = i + 1;
@@ -84,8 +85,14 @@ function extractClosedAt(lines: readonly string[]): string | null {
     }
   }
   if (timelineStart === -1) return null;
-  for (let i = timelineEnd - 1; i >= timelineStart; i--) {
-    const m = lines[i].match(CLOSED_LINE);
+  // Re-collect unfenced indices inside the timeline window so we skip fenced
+  // bullet lines on the bottom-up walk too.
+  const unfencedInWindow: number[] = [];
+  for (const { index: i } of iterUnfencedLines(lines)) {
+    if (i >= timelineStart && i < timelineEnd) unfencedInWindow.push(i);
+  }
+  for (let k = unfencedInWindow.length - 1; k >= 0; k--) {
+    const m = lines[unfencedInWindow[k]].match(CLOSED_LINE);
     if (m) return m[1];
   }
   return null;
@@ -122,8 +129,7 @@ function extractSteps(lines: readonly string[]): Step[] {
   const out: Step[] = [];
   let section = '';
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const { index: i, line } of iterUnfencedLines(lines)) {
     const heading = line.match(HEADING2);
     if (heading) {
       section = heading[1].trim();

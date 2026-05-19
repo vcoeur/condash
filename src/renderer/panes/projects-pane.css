@@ -734,6 +734,14 @@ body[data-dragging='project'] .group-block.drag-over {
 .step-marker-dropped .step-toggle {
   color: var(--text-faint);
 }
+
+/* Blocked steps stay legible (no strikethrough) but tint amber so they
+ * read as "needs attention" wherever the marker appears. Uses
+ * `--col-warn` when defined; falls back to the same orange-amber the
+ * unknown-status warning glyph uses. */
+.step-marker-blocked .step-toggle {
+  color: var(--col-warn, #d97706);
+}
 .row .slug {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);

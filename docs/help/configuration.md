@@ -7,18 +7,19 @@ any workspace key can live in either file.
 | File | Where | Lifecycle |
 |---|---|---|
 | `settings.json` | `~/.config/condash/settings.json` (Linux) | Per-machine. Owns `lastConceptionPath` + `recentConceptionPaths` (cap 5) and global defaults for every other key. |
-| `condash.json` | `<conception>/condash.json` (legacy fallback `configuration.json`) | Per-conception, versioned in git. Carries overrides that win at top-level granularity. |
+| `.condash/settings.json` | `<conception>/.condash/settings.json` (legacy fallbacks `condash.json`, `configuration.json`) | Per-conception, **per-host** (gitignored by default). Carries overrides that win at top-level granularity. |
 
-**Override model**: top-level keys in `condash.json` replace the matching
-keys in `settings.json` entirely (arrays replace, objects replace
+**Override model**: top-level keys in `.condash/settings.json` replace the
+matching keys in `settings.json` entirely (arrays replace, objects replace
 whole, no deep merge). The only fields a conception cannot describe
 are `lastConceptionPath` and `recentConceptionPaths`.
 
-**Read precedence** for the per-conception file: `condash.json` →
-`configuration.json` (legacy fallback, supported indefinitely). Writes
-always target `condash.json`.
+**Read precedence** for the per-conception file: `.condash/settings.json`
+(canonical) → `condash.json` (legacy) → `configuration.json` (legacy²).
+Both legacy filenames are read indefinitely with no deprecation date;
+writes always target `.condash/settings.json`.
 
-## `condash.json` — minimal example
+## `.condash/settings.json` — minimal example
 
 ```json
 {
@@ -78,8 +79,8 @@ unless you set it explicitly via the toolbar toggle.
 
 Workspace keys (`workspace_path`, `worktrees_path`, `repositories`,
 `open_with`, `pdf_viewer`, …) are also valid in `settings.json` as
-global defaults. A conception's `condash.json` may override any of
-them per-tree.
+global defaults. A conception's `.condash/settings.json` may override
+any of them per-tree.
 
 ## Editing in the app
 
@@ -94,8 +95,9 @@ its own form control.
 - **Appearance** — theme; per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences.
 
-**This conception** tab (writes to `condash.json`; the legacy
-`configuration.json` is read but never written to):
+**This conception** tab (writes to `.condash/settings.json`; the
+legacy `condash.json` and `configuration.json` are read but never
+written to):
 
 - **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
   `skills_path`.
@@ -108,14 +110,14 @@ its own form control.
 Inheritance badges on the **This conception** tab call out where each
 top-level key sits relative to the global value:
 
-- **Inherits** — no override in `condash.json`. The effective value is
-  whatever `settings.json` (or the bundled default) provides. Editing
-  the field on this tab writes the override.
-- **Overridden** — `condash.json` sets the key to a value that differs
-  from `settings.json`. A **Reset to global** button drops the
+- **Inherits** — no override in `.condash/settings.json`. The effective
+  value is whatever `settings.json` (or the bundled default) provides.
+  Editing the field on this tab writes the override.
+- **Overridden** — `.condash/settings.json` sets the key to a value that
+  differs from `settings.json`. A **Reset to global** button drops the
   override and falls back to inheritance.
-- **Matches global** — `condash.json` carries the key but the value
-  matches `settings.json` exactly. The override is redundant; a
+- **Matches global** — `.condash/settings.json` carries the key but the
+  value matches `settings.json` exactly. The override is redundant; a
   **Remove override** button clears the line so the key inherits.
 
 The rail at the left of the modal carries **Save** (flush focused-but-
@@ -137,13 +139,13 @@ The `condash config` verbs read and write the same files:
 
 ```sh
 condash config path                       # show both file paths
-condash config list                       # show condash.json
+condash config list                       # show .condash/settings.json
 condash config list --global              # show settings.json
 condash config list --effective           # show merged view (conception ⊕ global)
 condash config get repositories[0]        # query the conception layer
 condash config get theme --effective      # query the merged view
 condash config get theme --global         # query settings.json
-condash config set theme dark             # write to condash.json
+condash config set theme dark             # write to .condash/settings.json
 condash config set theme dark --global    # write to settings.json
 ```
 

@@ -65,7 +65,7 @@ The flags are informational only — local edits are never blocked. They exist s
 
 `skills_path` controls only the **Claude** tab's root directory. The Generic and Kimi tabs always read from `.agents/skills/` and `.kimi/skills/` respectively — those paths are not user-configurable.
 
-Set the Claude tab's directory by editing `condash.json` at the conception root (per-tree, versioned with the conception), or via **Settings → Workspace → Skills directory**. The value is **not** in `settings.json` — it's tree-side so teammates see the same skills tree.
+Set the Claude tab's directory by editing `.condash/settings.json` at the conception root (per-tree, per-host), or via **Settings → Workspace → Skills directory**. The value lives on the tree side; the global `settings.json` carries only defaults.
 
 ```json
 {

@@ -108,8 +108,8 @@ The skills resolve the conception path the same way the CLI does:
 
 1. `--conception <path>` flag (when invoked with explicit args).
 2. The `CONDASH_CONCEPTION` environment variable.
-3. `conceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`.
-4. Walk-up from the current working directory looking for a `condash.json` (or legacy `configuration.json`) next to a `projects/` directory.
+3. `lastConceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`.
+4. Walk-up from the current working directory looking for `.condash/settings.json` (or legacy `condash.json` / `configuration.json`) next to a `projects/` directory.
 
 See [Environment variables](env.md) for the full list.
 
@@ -119,7 +119,7 @@ See [Environment variables](env.md) for the full list.
 |---|---|
 | Generate PDFs | Out of scope. Use [`scripts/md_to_pdf.sh`](https://github.com/vcoeur/condash/tree/main/scripts) or your own pipeline. |
 | Move or archive items | Items live at `projects/YYYY-MM/YYYY-MM-DD-slug/` for life. Status flips, directories don't. |
-| Edit `condash.json` | Use the dashboard's Settings modal or your editor. |
+| Edit `.condash/settings.json` | Use the dashboard's Settings modal or your editor. |
 | Push to a remote without confirmation | The `/pr` skill always confirms before `git push`. |
 
 ## Related

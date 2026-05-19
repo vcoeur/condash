@@ -81,7 +81,7 @@ The patterns below are realistic shapes — copy and adapt to your tree.
 condash worktrees setup <branch> --copy-env
 ```
 
-Run it only when the new item has a `branch` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash worktrees setup` itself is the canonical path — it knows where worktrees live (`<condash.json>.worktrees_path`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
+Run it only when the new item has a `branch` field. The shipped `/projects create` already prompts for it; the wrapper just observes the result and runs the setup command. `condash worktrees setup` itself is the canonical path — it knows where worktrees live (the `worktrees_path` key in `.condash/settings.json`), runs the per-repo `install:` hook by default, and copies env files from the main checkout when `--copy-env` is set.
 
 ### Deliverable generation on close
 

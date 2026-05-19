@@ -16,6 +16,7 @@ const MARKER_LABEL: Record<StepMarker, string> = {
   ' ': 'todo',
   '~': 'doing',
   x: 'done',
+  '!': 'blocked',
   '-': 'dropped',
 };
 
@@ -51,6 +52,7 @@ function markerClass(m: StepMarker): string {
   if (m === ' ') return 'todo';
   if (m === '~') return 'doing';
   if (m === 'x') return 'done';
+  if (m === '!') return 'blocked';
   return 'dropped';
 }
 
@@ -235,14 +237,16 @@ export function ProjectPreview(props: {
               <Show when={project().steps.length > 0}>
                 {(() => {
                   const c = project().stepCounts;
-                  const total = c.todo + c.doing + c.done + c.dropped;
+                  const total = c.todo + c.doing + c.done + c.blocked + c.dropped;
                   const resolved = c.done + c.dropped;
                   const ratio = total === 0 ? 0 : Math.min(1, resolved / total);
                   return (
                     <span
                       class="head-progress"
                       data-complete={
-                        total > 0 && c.todo === 0 && c.doing === 0 ? 'true' : undefined
+                        total > 0 && c.todo === 0 && c.doing === 0 && c.blocked === 0
+                          ? 'true'
+                          : undefined
                       }
                       title={`${resolved} of ${total} steps resolved`}
                     >

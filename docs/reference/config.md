@@ -389,7 +389,7 @@ Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `ski
 | Field           | Type                                                       | Meaning                                                                                                                       |
 | --------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `projects`      | bool                                                       | Show or hide the Projects pane on the left edge.                                                                              |
-| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| null` | Five-state. `'code'`, `'knowledge'`, `'resources'`, or `'skills'` shows that pane in the working slot; `null` hides them all. |
+| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null` | Six-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, or `'logs'` shows that pane in the working slot; `null` hides them all. |
 | `terminal`      | bool                                                       | Show or hide the Terminal pane at the bottom.                                                                                 |
 | `projectsWidth` | non-negative int                                           | Pixel width of the Projects pane after the user drags the splitter.                                                           |
 

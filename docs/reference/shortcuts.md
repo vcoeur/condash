@@ -35,7 +35,8 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | View | Show Knowledge | `Ctrl+Shift+K` / `Cmd+Shift+K` | Show the Knowledge pane in the working slot. |
 | View | Show Resources | `Ctrl+R` / `Cmd+R` | Show the Resources pane in the working slot. |
 | View | Show Skills | `Ctrl+L` / `Cmd+L` | Show the Skills pane in the working slot. |
-| View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills) is in the working slot. |
+| View | Show Logs | `Ctrl+Shift+L` / `Cmd+Shift+L` | Show the Logs pane (per-session terminal log viewer) in the working slot. |
+| View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills / Logs) is in the working slot. |
 | View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
 | View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). The bare `Ctrl+R` slot is taken by **Show Resources**. |
@@ -91,7 +92,7 @@ Inside the CodeMirror edit pane:
 
 ## Embedded terminal — pane-level
 
-These live at the dashboard level and can fire from outside the terminal pane (e.g. toggle it open from anywhere). Configurable via the `terminal:` block in `settings.json` (preferred, per-machine) or `condash.json` (tree default). Shortcut strings follow the `KeyboardEvent.key` convention — modifiers are `Ctrl`, `Shift`, `Alt`, `Meta`.
+These live at the dashboard level and can fire from outside the terminal pane (e.g. toggle it open from anywhere). Configurable via the `terminal:` block in `settings.json` (preferred, per-machine) or `.condash/settings.json` (tree default). Shortcut strings follow the `KeyboardEvent.key` convention — modifiers are `Ctrl`, `Shift`, `Alt`, `Meta`.
 
 | Default | Action | Config key |
 |---|---|---|
@@ -148,4 +149,4 @@ This keeps `` Ctrl+` `` from firing while you're typing in the search modal, but
 
 ## Reloading shortcut changes
 
-`terminal` shortcut changes saved via the gear modal take effect **live** — chokidar fires a `config` event, the renderer reloads the parsed shortcut specs. No restart needed. Changes made by hand-editing `condash.json` or `settings.json` likewise re-render via the watcher; only `workspace_path` / `worktrees_path` / the `repositories` list need an actual restart.
+`terminal` shortcut changes saved via the gear modal take effect **live** — chokidar fires a `config` event, the renderer reloads the parsed shortcut specs. No restart needed. Changes made by hand-editing `.condash/settings.json` or `settings.json` likewise re-render via the watcher; only `workspace_path` / `worktrees_path` / the `repositories` list need an actual restart.

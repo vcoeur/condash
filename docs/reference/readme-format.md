@@ -17,7 +17,7 @@ From condash v2.16.0 onward, the canonical header shape is **YAML frontmatter** 
 |---|---|---|---|---|---|
 | Date | `date` | `**Date**` | no | all | ISO `YYYY-MM-DD`. Defaults to the directory's date prefix when missing. |
 | Kind | `kind` | `**Kind**` | no | all | `project` / `incident` / `document`. Defaults to `project`. |
-| Status | `status` | `**Status**` | **yes** | all | `now` / `review` / `later` / `backlog` / `done`. Unknown values coerce to `backlog`, log a parser warning, and surface a `!?` badge on the card. |
+| Status | `status` | `**Status**` | **yes** | all | `now` / `review` / `later` / `backlog` / `done`. Unknown values are preserved verbatim (no silent rewrite), log a parser warning, and surface a `!? <value>` badge on the card. |
 | Apps | `apps` (sequence) | `**Apps**` | no | all | YAML list of app names; legacy form is comma-separated, backtick-wrapped. Powers the per-app filter. |
 | Branch | `branch` | `**Branch**` | no | projects | Git branch name. Hints the `/pr` skill + worktree isolation rules. |
 | Base | `base` | `**Base**` | no | projects | Base branch for `/pr`. Defaults to `origin/HEAD`. |
@@ -174,15 +174,15 @@ Five values, in this exact order:
 now → review → later → backlog → done
 ```
 
-Anything outside this set is **coerced to `backlog`** with two side-effects so the typo doesn't slip past you:
+Anything outside this set is **preserved verbatim** — the parser does not rewrite the value. Two side-effects keep typos from slipping past:
 
-- The parser logs a `WARNING` with the offending value and the item's path, e.g. `unknown Status 'wip' in projects/2026-04/2026-04-17-foo/README.md — coerced to 'backlog'`.
-- The card renders a red **`!? <value>`** badge next to the status pill, with a tooltip showing the valid enum. It disappears as soon as the README is fixed — the next poll cycle re-parses, finds a valid Status, and drops the badge.
+- The parser logs a `WARNING` with the offending value and the item's path, e.g. `unknown Status 'wip' in projects/2026-04/2026-04-17-foo/README.md`.
+- The card renders a red **`!? <value>`** badge next to the status pill, with a tooltip showing the valid enum. Sort order falls back to "after every known value" (per `statusOrder` in [`src/shared/projects.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/projects.ts)), so the typo sits visibly at the end of the list until corrected. The badge disappears as soon as the README is fixed — the next poll cycle re-parses, finds a valid Status, and drops the badge.
 
 ![Backlog card showing a red `!? WIP` badge next to its status pill](../assets/screenshots/status-unknown-badge-light.png#only-light)
 ![Backlog card showing a red `!? WIP` badge next to its status pill](../assets/screenshots/status-unknown-badge-dark.png#only-dark)
 
-Without the badge, a typo like `active` would silently land in the `backlog` column; with it, the item sticks out visibly until corrected.
+Without the badge, a typo like `active` would silently sit at the tail of the sort with no visible marker; with it, the item sticks out until corrected.
 
 See [conception convention](conception-convention.md) for the status model and what each value means.
 

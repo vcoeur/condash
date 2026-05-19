@@ -27,7 +27,10 @@ function sanitiseSlug(slug: string): string {
 }
 
 /** Find the next free `NN-` prefix in `notes/`. Files are scanned for a leading
- * two-digit prefix; counter is `max(found) + 1`, starting from `01`. */
+ * two-or-more-digit prefix; counter is `max(found) + 1`, starting from `01`.
+ * Width is dynamic: stays at 2 digits up to `99`, widens to match the current
+ * max once the count crosses the next decade (so a project's hundredth note
+ * lands as `100-…`, with the prior `01-…` filenames left alone). */
 async function nextNotePrefix(notesDir: string): Promise<string> {
   let entries: string[] = [];
   try {
@@ -37,13 +40,14 @@ async function nextNotePrefix(notesDir: string): Promise<string> {
   }
   let maxIndex = 0;
   for (const name of entries) {
-    const match = /^(\d{2})-/.exec(name);
+    const match = /^(\d{2,})-/.exec(name);
     if (!match) continue;
     const idx = Number(match[1]);
     if (Number.isFinite(idx) && idx > maxIndex) maxIndex = idx;
   }
   const next = maxIndex + 1;
-  return next.toString().padStart(2, '0');
+  const width = Math.max(2, String(next).length);
+  return next.toString().padStart(width, '0');
 }
 
 /** Create a new note file under `<projectPath>/notes/NN-<slug>.md`. The
