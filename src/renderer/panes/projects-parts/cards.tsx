@@ -2,7 +2,7 @@ import { createSignal, For, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { TerminalIcon } from '../../icons';
-import { ActionSplitButton } from '../../action-split-button';
+import { ActionDropdownButton } from '../../action-dropdown-button';
 import {
   DRAG_MIME,
   Group,
@@ -353,10 +353,9 @@ export function Card(props: {
             <span class="title-text">{props.item.title}</span>
           </h3>
           <div class="title-actions">
-            <ActionSplitButton
-              primary={<TerminalIcon />}
-              primaryTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
-              onPrimary={() => props.onWorkOn(props.item)}
+            <ActionDropdownButton
+              trigger={<TerminalIcon />}
+              triggerTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
               defaultLabel={`Work on ${props.item.slug.replace(/^\d{4}-\d{2}-\d{2}-/, '')}`}
               items={props.projectActions ?? []}
               onItem={(idx) => {

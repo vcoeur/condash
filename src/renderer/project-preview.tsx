@@ -3,7 +3,7 @@ import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@sh
 import { KNOWN_STATUSES } from '@shared/types';
 import { KindGlyph, StepIcon } from './panes/projects';
 import { ChevronDownIcon, IconClose, IconExternal } from './icons';
-import { ActionSplitButton } from './action-split-button';
+import { ActionDropdownButton } from './action-dropdown-button';
 import {
   buildFileTree,
   FileTreeRows,
@@ -265,10 +265,9 @@ export function ProjectPreview(props: {
                 {project().slug.slice(0, 10)}
               </span>
 
-              <ActionSplitButton
-                primary={<IconTerminal />}
-                primaryTitle={`Paste 'work on ${project().slug}' into the focused terminal`}
-                onPrimary={() => props.onWorkOn(project())}
+              <ActionDropdownButton
+                trigger={<IconTerminal />}
+                triggerTitle={`Paste 'work on ${project().slug}' into the focused terminal`}
                 defaultLabel={`Work on ${project().slug.replace(/^\d{4}-\d{2}-\d{2}-/, '')}`}
                 items={props.projectActions ?? []}
                 onItem={(idx) => {

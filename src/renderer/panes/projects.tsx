@@ -9,7 +9,7 @@ import {
 } from './projects-parts/data';
 import { GroupBlock, SubGroup } from './projects-parts/cards';
 import { usePaneScrollMemory } from './pane-scroll-memory';
-import { ActionSplitButton } from '../action-split-button';
+import { ActionDropdownButton } from '../action-dropdown-button';
 
 // Public API re-exports — kept here so existing consumers
 // (`./panes/projects`) keep importing from the same module path.
@@ -54,8 +54,8 @@ export function ProjectsView(props: {
           const headerAction =
             group.status === 'now' && props.onNewProject
               ? () => (
-                  <ActionSplitButton
-                    primary={
+                  <ActionDropdownButton
+                    trigger={
                       <>
                         <span class="new-project-button-plus" aria-hidden="true">
                           +
@@ -63,8 +63,7 @@ export function ProjectsView(props: {
                         <span>New project</span>
                       </>
                     }
-                    primaryTitle="Create a new project / incident / document"
-                    onPrimary={() => props.onNewProject?.()}
+                    triggerTitle="Create a new project / incident / document"
                     defaultLabel="New project (modal)"
                     items={props.newProjectActions ?? []}
                     onItem={(idx) => {
