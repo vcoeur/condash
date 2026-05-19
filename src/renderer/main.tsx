@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createSignal, For, Show } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode, SkillTab } from '@shared/types';
 import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
@@ -197,6 +197,21 @@ function App() {
 
   // --- Config bindings (Open With + terminal prefs) ---------------------
   const { openWithSlots, terminalPrefs, reloadConfig } = useConfigBindings({ conceptionPath });
+
+  // Stable references to the filtered action-template arrays. `usableActionTemplates`
+  // returns a *fresh* filtered array on every call; without memoising, any reactive
+  // re-read of these props allocates a new array, which makes Solid's `<For>` inside
+  // ActionSplitButton's dropdown re-create every menu item on each re-render. The
+  // detach-then-reattach cycle is fast enough to be invisible but races every click —
+  // the menu item DOM node gets replaced *between* mousedown and mouseup, so the
+  // click never fires and the dropdown looks dead. createMemo gives `<For>` a stable
+  // reference whenever the underlying template list is unchanged.
+  const projectActionItems = createMemo(() =>
+    usableActionTemplates(terminalPrefs()?.projectActions ?? []),
+  );
+  const newProjectActionItems = createMemo(() =>
+    usableActionTemplates(terminalPrefs()?.newProjectActions ?? []),
+  );
 
   // --- Modal router + terminal bridge -----------------------------------
   let terminalHandle: TerminalPaneHandle | null = null;
@@ -422,14 +437,10 @@ function App() {
                         onToggleStep={handleToggleStep}
                         onDropProject={handleDropOnColumn}
                         onWorkOn={(p) => void bridge.handleWorkOn(p)}
-                        projectActions={usableActionTemplates(
-                          terminalPrefs()?.projectActions ?? [],
-                        )}
+                        projectActions={projectActionItems()}
                         onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
                         onNewProject={() => setNewProjectOpen(true)}
-                        newProjectActions={usableActionTemplates(
-                          terminalPrefs()?.newProjectActions ?? [],
-                        )}
+                        newProjectActions={newProjectActionItems()}
                         onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
                       />
                     </Show>
@@ -635,7 +646,7 @@ function App() {
         onOpenInEditor={handleOpenInEditor}
         onOpenDeliverable={handleOpenDeliverableFromPreview}
         onWorkOn={(p) => void bridge.handleWorkOn(p)}
-        projectActions={usableActionTemplates(terminalPrefs()?.projectActions ?? [])}
+        projectActions={projectActionItems()}
         onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
         onCreateNote={(p) => void handleCreateProjectNote(p)}
       />

@@ -66,7 +66,19 @@ export function createDropdownMenu(options: CreateDropdownMenuOptions = {}): Dro
     if (menuH > 0 && top + menuH > window.innerHeight - margin) {
       top = Math.max(margin, rect.top - 4 - menuH);
     }
-    setAnchor({ top, left: align === 'left' ? rect.left : rect.right });
+    const left = align === 'left' ? rect.left : rect.right;
+    // De-dupe so an unchanged position does not emit. The menu body in
+    // action-split-button.tsx reads `anchor()` inside a JSX expression
+    // slot (an IIFE that returns the menu div); Solid wraps the slot in
+    // a reactive computation, so any emit re-runs the IIFE — recreating
+    // the menu div *and every child <button>*. `setMenu` then re-schedules
+    // positionMenu via requestAnimationFrame on the new mount, which used
+    // to setAnchor with a fresh object even for identical coordinates →
+    // infinite re-render → menu items detach between mousedown and mouseup
+    // → clicks never fire. This guard breaks the loop.
+    const current = anchor();
+    if (current && current.top === top && current.left === left) return;
+    setAnchor({ top, left });
   };
 
   const onDocClick = (e: MouseEvent): void => {
