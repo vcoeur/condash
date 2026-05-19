@@ -109,8 +109,8 @@ Native modules (`electron`, `node-pty`) stay external — esbuild leaves them as
 
 Two GitHub Actions workflows guard `main`:
 
-- **`.github/workflows/pr.yml`** runs on every `pull_request` to `main`. A single Ubuntu job runs `prettier --check` + `npm run typecheck` + `npm run build` + `npx vitest run`. That's it — no installer build, no Playwright. The complete suite runs on tag push (see below). Push to `main` does **not** re-trigger this workflow; merges are quiet.
-- **`.github/workflows/release.yml`** runs on tag push (`v*`). After validating tag shape + `package.json` version match, it runs the fast checks again on the tag SHA, then the full Playwright suite (Ubuntu + xvfb), then the three-OS installer matrix (`electron-builder --publish never` on Ubuntu / macOS / Windows including the AppImage AppRun patch). Only when all of those succeed does the `publish` job create the GitHub Release and upload assets. Anything red blocks publish — the tag stays in git but nothing public ships. The Windows installer leg is the load-bearing one: `build/installer.nsh`'s NSIS hooks only get assembled into the full installer template when `electron-builder` runs, so NSIS warning 6010 (treated as an error) only surfaces here. Gating publish on it means a broken Windows installer can no longer ship a tag.
+- **`.github/workflows/pr.yml`** runs on every `pull_request` to `main`. A single Ubuntu job runs `prettier --check` + `npm run typecheck` + `npm run build` + `npx vitest run`. That's it — no installer build, no Playwright. Target wall-clock is ≤ 90 s so the runs-often pipeline stays fast. Push to `main` does **not** trigger `pr.yml` — `main.yml` covers that.
+- **`.github/workflows/main.yml`** runs on every push to `main` **and** every `v*` tag. It runs the fast checks, the full Playwright suite (Ubuntu + xvfb), and the three-OS installer matrix (`electron-builder --publish never` on Ubuntu / macOS / Windows including the AppImage AppRun patch). On a push to `main` it stops there — installer artefacts are uploaded and dropped after a day; nothing is published. On a `v*` tag push it additionally runs `validate-tag` (tag shape + `package.json` version match + tag SHA reachable from `origin/main`) and `publish` (creates the GitHub Release and uploads assets). The `publish` job depends on `validate-tag` + `build` via `needs:` — pure CI gating, no out-of-band commit-status checks — so anything red blocks the release. The tag stays in git but nothing public ships. The Windows installer leg is the load-bearing one: `build/installer.nsh`'s NSIS hooks only get assembled into the full installer template when `electron-builder` runs, so NSIS warning 6010 (treated as an error) only surfaces here. Gating publish on it means a broken Windows installer can no longer ship a tag — and now the same matrix also catches the regression at merge time, before any tag is pushed.
 
 ## Documentation changes
 
@@ -134,7 +134,7 @@ Every code change that affects user-visible behaviour ships with a docs update i
 
 - **Issues** — file at [`github.com/vcoeur/condash/issues`](https://github.com/vcoeur/condash/issues). For bugs, include the OS, the condash version (footer of the dashboard), and a minimal repro tree if you can.
 - **PRs** — branch from `main`, open a PR against `main`. The PR template asks for a Summary, a Changes list, and an optional Impact / Watchpoints section.
-- **Releases** — tagged `vMAJOR.MINOR.PATCH`. PATCH for bug fixes and docs; MINOR for new behaviour; MAJOR for breaking config or Markdown changes. Tag pushes trigger the release workflow automatically.
+- **Releases** — tagged `vMAJOR.MINOR.PATCH`. PATCH for bug fixes and docs; MINOR for new behaviour; MAJOR for breaking config or Markdown changes. Tag pushes trigger `main.yml`'s `publish` job automatically (gated behind the heavy CI matrix).
 
 ## What to work on
 

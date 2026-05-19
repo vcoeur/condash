@@ -4,12 +4,17 @@ name: Pages (docs + apt repo)
 #   - mkdocs site at the root
 #   - Debian apt repository under /apt/
 #
-# Trigger: a GitHub Release is published by release.yml on tag push,
-# or manual dispatch. release.yml ships plain `vX.Y.Z` as a stable
+# Trigger: a GitHub Release is published by main.yml on tag push,
+# or manual dispatch. main.yml ships plain `vX.Y.Z` as a stable
 # release and `vX.Y.Z-rc.N` / `-alpha*` / `-beta*` as a prerelease.
 # Both kinds carry .deb assets, so the apt scan below includes
 # prereleases (and skips drafts, whose assets aren't reachable via
 # gh release download).
+#
+# main.yml fires on push-to-main as well as tag push, but only the
+# tag-push runs go through the publish job. The build job below
+# filters out non-tag runs so we don't rebuild the apt repo on
+# every commit.
 #
 # The apt repo is rebuilt deterministically from scratch on every
 # run, but the .deb assets it ingests are cached across runs (keyed
@@ -24,15 +29,15 @@ name: Pages (docs + apt repo)
 # the GitHub Releases page; only the apt index is trimmed.
 
 on:
-  # `workflow_run` instead of `release: [published]` because release.yml
+  # `workflow_run` instead of `release: [published]` because main.yml
   # creates the prerelease via the workflow's own GITHUB_TOKEN — and
   # release events fired by GITHUB_TOKEN do NOT cascade into other
   # workflows (documented GitHub anti-loop rule). workflow_run is the
   # one trigger that DOES cascade across that boundary, and it lets us
-  # gate on release.yml succeeding so we never publish apt metadata for
+  # gate on main.yml succeeding so we never publish apt metadata for
   # a release that didn't finish uploading its .debs.
   workflow_run:
-    workflows: [release]
+    workflows: [main]
     types: [completed]
   workflow_dispatch:
 
@@ -54,10 +59,17 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Skip when the upstream release run failed. workflow_dispatch fires
-    # without a workflow_run context, so the conclusion check evaluates
-    # to '' — we accept that case too.
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    # Two filters on workflow_run triggers:
+    #   1. main.yml must have succeeded — we never rebuild the apt repo
+    #      against a half-published release.
+    #   2. The upstream run must have been triggered by a tag push, not a
+    #      branch push. main.yml runs on every commit to main as well as
+    #      every `v*` tag; only the tag-push runs go through publish, so
+    #      docs only needs to rebuild for those.
+    # workflow_dispatch fires without a workflow_run context (so both
+    # checks evaluate against null/empty values) — we accept that case
+    # explicitly for manual rebuilds.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v')) }}
     steps:
       - uses: actions/checkout@v4
 
