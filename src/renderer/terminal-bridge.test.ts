@@ -43,7 +43,7 @@ const sampleProject: Project = {
   branch: 'feat-foo',
   base: 'main',
   steps: [],
-  stepCounts: { todo: 0, doing: 0, done: 0, dropped: 0 },
+  stepCounts: { todo: 0, doing: 0, done: 0, blocked: 0, dropped: 0 },
   deliverables: [],
   deliverableCount: 0,
   closedAt: null,

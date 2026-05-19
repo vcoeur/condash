@@ -1,13 +1,20 @@
 import type { Project, Step, StepCounts, StepMarker } from '@shared/types';
-import { KNOWN_STATUSES, STEP_MARKERS } from '@shared/types';
+import { KNOWN_STATUSES } from '@shared/types';
 import { countSteps } from '@shared/projects';
 
 export const MARKER_LABEL: Record<StepMarker, string> = {
   ' ': 'todo',
   '~': 'doing',
   x: 'done',
+  '!': 'blocked',
   '-': 'dropped',
 };
+
+/** Click-toggle cycle for the in-card step button. Skips `!` (blocked) on
+ * purpose — that state is set deliberately when the work is stuck, not
+ * cycled through on every click. Keeps the toggle aligned with the
+ * pre-`!` user habit: todo → doing → done → dropped → back to todo. */
+const CLICK_CYCLE: readonly StepMarker[] = [' ', '~', 'x', '-'];
 
 export const DRAG_MIME = 'application/x-condash-project-path';
 
@@ -166,8 +173,11 @@ export function groupDone(done: readonly Project[], today: string): DoneGrouping
 export type Group = { status: string; items: Project[] };
 
 export function nextMarker(current: StepMarker): StepMarker {
-  const idx = STEP_MARKERS.indexOf(current);
-  return STEP_MARKERS[(idx + 1) % STEP_MARKERS.length];
+  const idx = CLICK_CYCLE.indexOf(current);
+  // `!` is not in the cycle; clicking on a blocked step advances it back to
+  // todo so the user can re-take ownership of the workflow.
+  if (idx === -1) return CLICK_CYCLE[0];
+  return CLICK_CYCLE[(idx + 1) % CLICK_CYCLE.length];
 }
 
 export function applyStepMarker(
@@ -188,15 +198,17 @@ export function applyStatus(items: Project[], path: string, status: string): Pro
 }
 
 export function hasSteps(c: StepCounts): boolean {
-  return c.todo + c.doing + c.done + c.dropped > 0;
+  return c.todo + c.doing + c.done + c.blocked + c.dropped > 0;
 }
 
-/** True when no step is still open (todo or doing). Resolved-by-drop
+/** True when no step is still open (todo, doing, or blocked). Resolved-by-drop
  * counts as "done enough" to dim the expander — the bar reaches 100%
- * the moment every step has been decided one way or the other. */
+ * the moment every step has been decided one way or the other. Blocked
+ * steps keep the project incomplete because they're surfacing a problem
+ * that still needs a decision. */
 export function isStepCountsComplete(c: StepCounts): boolean {
-  const total = c.todo + c.doing + c.done + c.dropped;
-  return total > 0 && c.todo === 0 && c.doing === 0;
+  const total = c.todo + c.doing + c.done + c.blocked + c.dropped;
+  return total > 0 && c.todo === 0 && c.doing === 0 && c.blocked === 0;
 }
 
 /** First step whose marker is not 'x' (done). Returns undefined if every step
@@ -236,5 +248,6 @@ export function markerClass(m: StepMarker): string {
   if (m === ' ') return 'todo';
   if (m === '~') return 'doing';
   if (m === 'x') return 'done';
+  if (m === '!') return 'blocked';
   return 'dropped';
 }

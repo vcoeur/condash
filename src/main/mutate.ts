@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import { basename, dirname, resolve as resolvePath } from 'node:path';
 import type { StepMarker, TransitionResult } from '../shared/types';
 import { KNOWN_STATUSES, STEP_MARKERS } from '../shared/types';
+import { CLOSED_LINE } from '../shared/header';
 import { isoToday } from '../shared/iso-today';
 import { atomicWrite } from './atomic-write';
 import { isConceptionSettingsPath } from './condash-dir';
@@ -15,7 +16,7 @@ import {
 // ignore the trailing group. Replaces a near-byte-identical pair where
 // the only difference was whether `(.*)` lived inside or outside the
 // `]\s` capture — easy to drift, never observed working independently.
-const STEP_LINE_RE = /^(\s*-\s\[)([ ~x-])(\]\s)(.*)$/;
+const STEP_LINE_RE = /^(\s*-\s\[)([ ~x!-])(\]\s)(.*)$/;
 const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)(\S+)\s*$/i;
 // Bare YAML mapping line within the frontmatter block. Tolerates an optional
 // surrounding quote on the value so `status: "now"` and `status: 'now'`
@@ -26,13 +27,22 @@ const FRONTMATTER_OPEN_RE = /^---\s*$/;
 const HEADING2_RE = /^##\s+(.+)$/;
 
 /**
- * Detect the line ending used in `raw`. Files authored on Windows with
- * `core.autocrlf=false` ship CRLF; rejoining with `\n` would flip the entire
- * file on every step toggle and the user would see a whole-file diff in
- * `git status`. Returns `'\r\n'` if any CRLF is present, otherwise `'\n'`.
+ * Detect the line ending used in `raw` by majority vote. Files authored on
+ * Windows with `core.autocrlf=false` ship CRLF; rejoining with `\n` would
+ * flip the entire file on every step toggle and the user would see a
+ * whole-file diff in `git status`. Single-line files (no separator) and
+ * mostly-LF files return `'\n'`; a single stray CRLF in an otherwise LF
+ * file doesn't flip the verdict.
  */
 function detectEol(raw: string): '\n' | '\r\n' {
-  return /\r\n/.test(raw) ? '\r\n' : '\n';
+  let crlf = 0;
+  let lf = 0;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw.charCodeAt(i) !== 10) continue;
+    if (i > 0 && raw.charCodeAt(i - 1) === 13) crlf++;
+    else lf++;
+  }
+  return crlf > lf ? '\r\n' : '\n';
 }
 
 const queues = new Map<string, Promise<unknown>>();
@@ -42,17 +52,22 @@ const queues = new Map<string, Promise<unknown>>();
  * A failure in `work` doesn't poison the queue — the next caller re-runs against
  * fresh state — but each caller still sees its own error. The renderer surfaces
  * a clean message either way.
+ *
+ * The queue key is the resolved-absolute path: callers that pass slightly
+ * different spellings of the same file (`./a/b.md`, `a/b.md`, `a/./b.md`)
+ * still serialise against one queue entry instead of racing on disjoint keys.
  */
 async function withFileQueue<T>(path: string, work: () => Promise<T>): Promise<T> {
-  const prev = queues.get(path) ?? Promise.resolve();
+  const key = resolvePath(path);
+  const prev = queues.get(key) ?? Promise.resolve();
   // Swallow the previous run's error for queueing purposes (so a failed mutation
   // doesn't block subsequent ones), then run our own work and rethrow any error
   // the caller cares about.
   const next: Promise<T> = prev.catch(() => undefined).then(work);
   queues.set(
-    path,
+    key,
     next.finally(() => {
-      if (queues.get(path) === next) queues.delete(path);
+      if (queues.get(key) === next) queues.delete(key);
     }),
   );
   return next;
@@ -468,9 +483,19 @@ export function parseTimelineEntries(raw: string): { date: string; text: string 
       continue;
     }
     if (!inTimeline) continue;
+    // Date + separator + text. The separator class accepts em-dash (the
+    // canonical form `condash projects close` writes) and hyphen variants
+    // for hand-edited entries. The close-specific subset must keep matching
+    // `CLOSED_LINE` in shared/header.ts — that regex anchors only on the
+    // em-dash because the `close` writer never emits a hyphen.
     const m = line.match(/^\s*-\s+(\d{4}-\d{2}-\d{2})\s+(?:—|--?)\s+(.+?)\s*$/);
     if (!m) continue;
     out.push({ date: m[1], text: m[2] });
   }
   return out;
 }
+
+// Re-export so callers that import `parseTimelineEntries` from this module
+// also reach the close-line regex through a stable surface, while the
+// canonical literal still lives in shared/header.ts.
+export { CLOSED_LINE };

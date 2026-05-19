@@ -9,6 +9,7 @@ This section is shipped by condash and refreshed by `condash skills install`. Ed
 ### Pointers
 
 - Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
+- Workflow skills: [`{{ skills_dir }}projects/SKILL.md`]({{ skills_dir }}projects/SKILL.md) drives every project / incident / document mutation; [`{{ skills_dir }}knowledge/SKILL.md`]({{ skills_dir }}knowledge/SKILL.md) drives durable reference material.
 - [`condash.json`](condash.json) — per-conception overrides read by condash. Top-level keys here replace the matching keys in `~/.config/condash/settings.json`. Legacy filename `configuration.json` is still read as a fallback.
 
 ### Workflow

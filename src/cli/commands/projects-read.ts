@@ -24,7 +24,7 @@ interface ProjectListRow {
   base: string | null;
   date: string | null;
   closedAt: string | null;
-  stepCounts: { todo: number; doing: number; done: number; dropped: number };
+  stepCounts: { todo: number; doing: number; done: number; blocked: number; dropped: number };
   deliverableCount: number;
   headerWarnings: { field: string; message: string }[];
 }
@@ -174,9 +174,15 @@ function formatReadHuman(data: Record<string, unknown>): string {
   if (data.branch) lines.push(`Branch: ${data.branch}`);
   if (data.base) lines.push(`Base:   ${data.base}`);
   lines.push(`Path:   ${data.path}`);
-  const counts = data.stepCounts as { todo: number; doing: number; done: number; dropped: number };
+  const counts = data.stepCounts as {
+    todo: number;
+    doing: number;
+    done: number;
+    blocked: number;
+    dropped: number;
+  };
   lines.push(
-    `Steps:  ${counts.todo} todo, ${counts.doing} in-progress, ${counts.done} done, ${counts.dropped} dropped`,
+    `Steps:  ${counts.todo} todo, ${counts.doing} in-progress, ${counts.done} done, ${counts.blocked} blocked, ${counts.dropped} dropped`,
   );
   if (data.summary) {
     lines.push('');

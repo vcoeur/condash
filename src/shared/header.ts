@@ -22,8 +22,50 @@ import { KNOWN_STATUSES } from './types';
 
 export const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
 export const HEADING2 = /^##\s+(.+)$/;
-const BACKTICK = /`([^`]+)`/g;
+/** Triple-backtick or triple-tilde fence-open/close marker. Tildes count too —
+ * pandoc / CommonMark accept both. Used by `iterUnfencedLines` to skip
+ * fenced code blocks when scanning README bodies for step / timeline /
+ * link patterns. */
+export const FENCE_LINE = /^\s*(?:```|~~~)/;
+/** Matches a Timeline list item recording a close, e.g.
+ *    - 2026-05-02 — Closed.
+ *    - 2026-05-02 — Closed. Shipped in v2.9.4.
+ * The trailing class tolerates the bare form, an end-of-line, or a space
+ * (allowing the optional summary that `condash projects close --summary`
+ * writes). Single source of truth — `parse.ts:extractClosedAt` and
+ * `mutate.ts:parseTimelineEntries` both anchor to this literal. */
+export const CLOSED_LINE = /^\s*-\s+(\d{4}-\d{2}-\d{2})\s+—\s+Closed(\.|$|\s)/;
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+/** UTF-8 byte-order mark (U+FEFF). Strip from the front of a README on
+ * parse — Windows / some editors emit it and unstripped it shifts the
+ * first character past column 0, breaking H1 + frontmatter detection. */
+const BOM = '﻿';
+
+/**
+ * Yield each line of `raw` together with its 0-based index, skipping lines
+ * inside triple-backtick or triple-tilde fenced code blocks. A bare fence
+ * marker still yields nothing (the fence-toggle line itself is consumed),
+ * matching how every caller expects it to behave.
+ *
+ * Used by parser/validator passes (`extractSteps`, `extractClosedAt`,
+ * `validateBody`) that need to ignore Markdown-shaped tokens inside fences
+ * — a `- [ ]` line in `## Goal`'s example code block must not inflate the
+ * step count, and a `## Heading` inside a fenced shell prompt must not be
+ * mistaken for a section anchor.
+ */
+export function* iterUnfencedLines(
+  lines: readonly string[],
+): IterableIterator<{ index: number; line: string }> {
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (FENCE_LINE.test(lines[i])) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    yield { index: i, line: lines[i] };
+  }
+}
 
 export const KNOWN_KINDS = ['project', 'incident', 'document'] as const;
 
@@ -64,6 +106,15 @@ export interface HeaderIssue {
 }
 
 export function parseHeader(raw: string): HeaderFields {
+  // Strip a leading UTF-8 BOM so a Windows-/editor-prefixed file still
+  // matches the frontmatter regex and the bold-prose H1 line. Without
+  // this the first character is U+FEFF, not `-`, and neither parser
+  // branch finds anything.
+  if (raw.charCodeAt(0) === 0xfeff) {
+    raw = raw.slice(1);
+  } else if (raw.startsWith(BOM)) {
+    raw = raw.slice(BOM.length);
+  }
   const fmMatch = raw.match(FRONTMATTER_RE);
   if (fmMatch) {
     return parseYamlFrontmatterHeader(fmMatch[1], raw.slice(fmMatch[0].length));
@@ -227,10 +278,13 @@ function parentFolderName(readmePath: string): string {
 }
 
 function extractBackticked(value: string): string[] {
+  // A fresh regex per call avoids the global `lastIndex` carry-over that
+  // a module-scope `/.../g` would leak between concurrent parses. Cheap —
+  // `parseHeader` runs once per README, not per line.
+  const re = /`([^`]+)`/g;
   const out: string[] = [];
   let m: RegExpExecArray | null;
-  BACKTICK.lastIndex = 0;
-  while ((m = BACKTICK.exec(value))) {
+  while ((m = re.exec(value))) {
     out.push(m[1].trim());
   }
   return out;
@@ -299,7 +353,6 @@ export function validateHeader(fields: HeaderFields, readmePath: string): Header
 }
 
 const STEPS_HEADING = /^##\s+Steps\s*$/i;
-const FENCE = /^\s*```/;
 const WIKILINK = /\[\[[^\]]+\]\]/;
 const MD_LINK = /\[[^\]]*\]\(([^)]+)\)/;
 
@@ -311,22 +364,16 @@ const MD_LINK = /\[[^\]]*\]\(([^)]+)\)/;
  * inside the `## Steps` section is surfaced as a warning. The Projects-tab
  * card renderer prints step lines verbatim, and links wrap as raw text there.
  *
- * Fenced code blocks inside `## Steps` are skipped — a backticked or fenced
- * snippet that happens to contain link-shaped characters is fine.
+ * Fenced code blocks inside `## Steps` are skipped via `iterUnfencedLines`
+ * — a backticked or fenced snippet that happens to contain link-shaped
+ * characters is fine.
  */
 export function validateBody(raw: string): HeaderValidation {
   const errors: HeaderIssue[] = [];
   const warnings: HeaderIssue[] = [];
   const lines = raw.split(/\r?\n/);
   let inSteps = false;
-  let inFence = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (FENCE.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
+  for (const { index: i, line } of iterUnfencedLines(lines)) {
     if (STEPS_HEADING.test(line)) {
       inSteps = true;
       continue;
