@@ -12,6 +12,7 @@ import { rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, context } from 'esbuild';
+import { SHARED_EXTERNALS } from './shared/externals.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -20,20 +21,9 @@ const watchMode = process.argv.includes('--watch');
 const devMode = watchMode || process.argv.includes('--dev');
 
 /** Modules that must NOT be bundled — they need to live in node_modules at
- *  runtime (Electron-internal wiring or native bindings). */
-const EXTERNAL = [
-  'electron',
-  // Native modules — bundle skips them and they resolve from node_modules.
-  // Add new native deps to this list.
-  'node-pty',
-  'fsevents',
-  // electron-updater pulls in `lzma-native`, `7zip-bin`, and reaches for
-  // `original-fs` (an Electron-internal module). Inlining the whole graph
-  // explodes the bundle and breaks runtime loading; keep it external so it
-  // resolves from node_modules at runtime.
-  'electron-updater',
-  'original-fs',
-];
+ *  runtime (Electron-internal wiring or native bindings). The shared list
+ *  lives in `scripts/shared/externals.mjs`; per-target additions go here. */
+const EXTERNAL = [...SHARED_EXTERNALS];
 
 /** @type {import('esbuild').BuildOptions} */
 const shared = {

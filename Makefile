@@ -1,19 +1,22 @@
-.PHONY: help install dev build start package typecheck format test clean kill
+.PHONY: help install dev build start package typecheck format format-check test test-unit clean kill
 
 DEV_PORT     ?= 5600
 PREVIEW_PORT ?= 5601
 
 help:
 	@echo "Targets:"
-	@echo "  install     npm install"
-	@echo "  dev         run main + renderer + electron in watch mode"
-	@echo "  build       compile main and renderer for production"
-	@echo "  start       launch the packaged electron build"
-	@echo "  package     produce installers via electron-builder"
-	@echo "  typecheck   run tsc on both main and renderer"
-	@echo "  format      run prettier on src/"
-	@echo "  kill        free dev port $(DEV_PORT)"
-	@echo "  clean       remove build outputs"
+	@echo "  install      npm install"
+	@echo "  dev          run main + renderer + electron in watch mode"
+	@echo "  build        compile main and renderer for production"
+	@echo "  start        launch the packaged electron build"
+	@echo "  package      produce installers via electron-builder"
+	@echo "  typecheck    run tsc on both main and renderer"
+	@echo "  format       run prettier on src/"
+	@echo "  format-check check prettier formatting without writing"
+	@echo "  test         build then run the Playwright suite"
+	@echo "  test-unit    run vitest unit suite"
+	@echo "  kill         free dev port $(DEV_PORT)"
+	@echo "  clean        remove build outputs"
 
 install:
 	npm install
@@ -36,9 +39,15 @@ typecheck:
 format:
 	npm run format
 
+format-check:
+	npx prettier --check "src/**/*.{ts,tsx,css,html,json}"
+
 test:
 	npm run build
 	npm run test
+
+test-unit:
+	npx vitest run
 
 kill:
 	@lsof -ti:$(DEV_PORT) | xargs -r kill -9 || true

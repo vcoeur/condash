@@ -33,8 +33,49 @@ permissions:
   contents: write
 
 jobs:
+  validate-tag:
+    name: Validate tag + package.json version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Reject malformed tags before any matrix job spins up. The release
+      # workflow only handles stable `vX.Y.Z` tags; prerelease suffixes
+      # (`-rc.N`, `-alpha*`, `-beta*`) ride through the same publish job
+      # but still need the leading semver triplet to match. Catches typos
+      # like `v3.12..1` or `v3.12` before they create a broken Release.
+      - name: Validate tag shape
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]]; then
+            echo "Tag '$TAG' is not a valid vX.Y.Z[-suffix] release tag." >&2
+            exit 1
+          fi
+          echo "Tag $TAG is valid."
+
+      # Assert that package.json's version matches the tag (sans leading
+      # `v`). Catches "forgot to bump" — the bump commit must land on
+      # main before the tag is pushed, per the conception release rule.
+      - name: Assert package.json version matches tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED="${TAG#v}"
+          if [[ "$PKG_VERSION" != "$EXPECTED" ]]; then
+            echo "package.json version ($PKG_VERSION) does not match tag ($EXPECTED)." >&2
+            echo "Bump package.json before pushing the tag." >&2
+            exit 1
+          fi
+          echo "package.json version $PKG_VERSION matches tag $TAG."
+
   build:
     name: Build (${{ matrix.os }})
+    needs: validate-tag
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

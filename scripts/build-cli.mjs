@@ -21,6 +21,7 @@ import { readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { SHARED_EXTERNALS } from './shared/externals.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -29,13 +30,9 @@ const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 const watchMode = process.argv.includes('--watch');
 const devMode = watchMode || process.argv.includes('--dev');
 
-const EXTERNAL = [
-  'electron',
-  'node-pty',
-  'fsevents',
-  'electron-updater',
-  'original-fs',
-];
+// CLI-only externals (none today) get appended here. Shared entries live in
+// `scripts/shared/externals.mjs`.
+const EXTERNAL = [...SHARED_EXTERNALS];
 
 const outfile = resolve(root, 'dist-cli/condash.cjs');
 rmSync(resolve(root, 'dist-cli'), { recursive: true, force: true });

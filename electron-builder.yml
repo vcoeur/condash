@@ -10,6 +10,12 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - dist-cli/**/*
+  # docs/help/* needed by in-app help — do not drop. src/main/help.ts reads
+  # `<appPath>/docs/help/<name>.md` at runtime via the PATHS allowlist;
+  # dropping this entry would 500 the Help menu on packaged builds. The
+  # broader docs/ tree ships alongside because the help loader resolves
+  # through `app.getAppPath()` and a narrower glob would diverge from the
+  # repo layout — keep all of docs/ until the in-app help is split off.
   - docs/**/*
   - conception-template/**/*
   - package.json

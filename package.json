@@ -18,6 +18,9 @@
     "email": "alice@vcoeur.com"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev:main": "node scripts/build-electron.mjs --watch",
     "dev:renderer": "vite",
