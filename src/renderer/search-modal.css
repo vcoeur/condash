@@ -3,7 +3,7 @@
 /* Top-anchored backdrop — the modal hugs the top of the viewport (command-
  * palette feel) and only grows downward as results come in. The double-
  * class selector beats `.modal-backdrop`'s single-class default centring,
- * which lives in note-modal.css and loads after this file. */
+ * which lives in modal-base.css. */
 .modal-backdrop.search-modal-backdrop {
   align-items: flex-start;
   padding-top: 6vh;
@@ -70,6 +70,11 @@
     background 120ms ease,
     color 120ms ease,
     border-color 120ms ease;
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search-source-pill:hover {
@@ -114,6 +119,16 @@
   background: var(--bg-hover);
 }
 
+.search-row[data-selected='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.search-modal-body .search-project-header[data-selected='true'],
+.search-modal-body .search-project-files .search-row[data-selected='true'] {
+  background: var(--bg-hover);
+}
+
 /* Per-token highlight palette. The mark element ships token-index-modulo-4
  * variants so multi-word queries paint each token a distinct colour. The
  * `dim` modifier lowers the saturation for the path-line highlight so the
@@ -123,18 +138,23 @@
   padding: 0 1px;
   border-radius: 2px;
   background: color-mix(in srgb, var(--col-later) 35%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col-later) 20%, transparent);
 }
 .search-mark-0 {
   background: color-mix(in srgb, var(--col-later) 35%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col-later) 20%, transparent);
 }
 .search-mark-1 {
   background: color-mix(in srgb, var(--col-soon) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col-soon) 20%, transparent);
 }
 .search-mark-2 {
   background: color-mix(in srgb, var(--col-now) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col-now) 20%, transparent);
 }
 .search-mark-3 {
   background: color-mix(in srgb, var(--col-review) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col-review) 20%, transparent);
 }
 .search-mark.dim {
   background: color-mix(in srgb, currentColor 14%, transparent);
@@ -253,6 +273,22 @@
   background: var(--bg-subtle);
   border-radius: var(--radius);
   text-align: center;
+}
+
+.search-source-hints {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.search-source-hint-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 /* "where in the file" tags surfaced before each snippet — tiny chip that

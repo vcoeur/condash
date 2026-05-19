@@ -6,7 +6,8 @@
 
 .note-modal {
   width: min(85vw, 1600px);
-  height: 100%;
+  height: auto;
+  max-height: calc(100% - 48px);
 }
 
 .modal-button.work-on-button:hover {
@@ -237,13 +238,13 @@
 }
 
 .find-hit {
-  background: rgba(241, 196, 15, 0.45);
+  background: color-mix(in srgb, var(--col-soon) 40%, transparent);
   border-radius: 2px;
 }
 
 .find-current {
-  background: rgba(241, 196, 15, 0.85);
-  outline: 1px solid #b58900;
+  background: color-mix(in srgb, var(--col-soon) 75%, transparent);
+  outline: 1px solid var(--col-soon);
 }
 
 .md-rendered a.wikilink {

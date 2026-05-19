@@ -118,13 +118,24 @@
 }
 
 .new-project-radio input[type='radio'] {
-  margin: 0;
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
 .new-project-radio:has(input:checked) {
   border-color: var(--accent);
   background: var(--bg-hover);
   color: var(--accent);
+}
+
+.new-project-radio:has(input:checked)::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .new-project-error {

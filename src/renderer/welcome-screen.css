@@ -27,18 +27,18 @@
 .welcome-tagline {
   text-align: center;
   margin: 0;
-  color: var(--color-fg-muted, #6c7686);
+  color: var(--text-muted);
 }
 
 .welcome-path {
   text-align: center;
   margin: 0 0 1.5rem 0;
   font-size: 0.85rem;
-  color: var(--color-fg-muted, #6c7686);
+  color: var(--text-muted);
 }
 
 .welcome-path code {
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.04));
+  background: var(--bg-subtle);
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
@@ -57,13 +57,13 @@
 
 .welcome-intro {
   margin: 0 0 0.5rem 0;
-  color: var(--color-fg, #2a2f37);
+  color: var(--text);
   font-size: 0.95rem;
   line-height: 1.5;
 }
 
 .welcome-intro code {
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.04));
+  background: var(--bg-hover);
   padding: 0.05rem 0.35rem;
   border-radius: 3px;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
@@ -79,8 +79,8 @@
 .welcome-card {
   text-align: start;
   padding: 1rem;
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition:
@@ -120,7 +120,7 @@
 }
 
 .welcome-card-body {
-  color: var(--color-fg-muted, #6c7686);
+  color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -136,15 +136,16 @@
 }
 
 .welcome-dismiss-link {
-  background: none;
-  border: none;
-  color: var(--color-fg-muted, #6c7686);
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  background: transparent;
   cursor: pointer;
   font-size: 0.85rem;
-  text-decoration: underline;
-  padding: 0.4rem;
 }
 
 .welcome-dismiss-link:hover {
-  color: var(--color-fg, #2a2f37);
+  background: var(--bg-hover);
+  color: var(--text);
 }

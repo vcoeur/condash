@@ -68,7 +68,7 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
   return (
     <div class="modal-backdrop" onClick={props.onClose}>
       <div
-        class="modal note-modal"
+        class="modal help-modal"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
