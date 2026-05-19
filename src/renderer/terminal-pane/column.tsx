@@ -261,6 +261,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
         <span class="terminal-tab-strip-spacer" />
         <button
           class="terminal-tab-add"
+          data-label="save"
           onClick={(e) => {
             e.stopPropagation();
             props.onSaveBuffer(props.col);
@@ -272,6 +273,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
         </button>
         <button
           class="terminal-tab-add"
+          data-label="find"
           onClick={(e) => {
             e.stopPropagation();
             props.onOpenSearch(props.col);

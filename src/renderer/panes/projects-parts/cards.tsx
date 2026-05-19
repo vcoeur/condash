@@ -281,14 +281,10 @@ export function Card(props: {
     const sourceWidth = source.offsetWidth;
     ghostOffsetX = sourceWidth / 2;
     ghostOffsetY = 24;
-    const head = source.querySelector('.row-head');
-    ghostElement = (head ? head.cloneNode(true) : source.cloneNode(true)) as HTMLElement;
+    ghostElement = source.cloneNode(true) as HTMLElement;
     ghostElement.querySelectorAll('.title-actions').forEach((el) => el.remove());
-    ghostElement.style.padding = '12px 16px';
-    ghostElement.style.borderRadius = 'var(--radius-lg)';
-    ghostElement.style.background = 'var(--bg-elevated)';
-    ghostElement.style.border = '1px solid var(--border)';
-    ghostElement.style.boxShadow = '0 8px 24px rgba(0,0,0,0.18)';
+    ghostElement.querySelectorAll('.step-list').forEach((el) => el.remove());
+    ghostElement.style.opacity = '0.85';
     ghostElement.style.position = 'fixed';
     ghostElement.style.top = '0';
     ghostElement.style.left = '0';

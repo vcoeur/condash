@@ -293,6 +293,12 @@
   font-weight: 600;
 }
 
+.terminal-tab-add[data-label] {
+  width: auto;
+  padding: 0 6px;
+  font-size: var(--text-xs);
+}
+
 .terminal-tab-add.launcher {
   width: auto;
   min-width: 22px;
