@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTerminalBridge } from './terminal-bridge';
 import type { TerminalPaneHandle } from './terminal-pane';
-import type { ActionTemplate, Project } from '@shared/types';
+import type { ActionTemplate, Project, TerminalPrefs } from '@shared/types';
 
 type FakeHandle = {
   spawn: ReturnType<typeof vi.fn>;
@@ -23,11 +23,11 @@ function makeFakeHandle(): FakeHandle {
   };
 }
 
-function makeDeps(handle: FakeHandle | null = null) {
+function makeDeps(handle: FakeHandle | null = null, prefs: TerminalPrefs = {}) {
   return {
     terminalHandle: () => handle as unknown as TerminalPaneHandle | null,
     ensureTerminalOpen: vi.fn(),
-    terminalPrefs: () => ({}),
+    terminalPrefs: (): TerminalPrefs => prefs,
     flashToast: vi.fn(),
     conceptionPath: () => '/home/alice/src/vcoeur/conception',
   };
@@ -148,5 +148,84 @@ describe('handleNewProjectAction', () => {
     expect(handle.typeIntoActive).toHaveBeenLastCalledWith('\r');
     expect(handle.typeIntoActive).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
+  });
+
+  it('spawns the bound launcher and types into the new tab when action.launcher is set', async () => {
+    const handle = makeFakeHandle();
+    const prefs: TerminalPrefs = {
+      launchers: [
+        { label: 'Claude', command: 'claude' },
+        { label: 'KimiKimi', command: 'kimi-kimi' },
+      ],
+    };
+    const bridge = createTerminalBridge(makeDeps(handle, prefs));
+    const action: ActionTemplate = {
+      label: 'Start new project',
+      template: 'Start new project ',
+      launcher: 'KimiKimi',
+    };
+    await bridge.handleNewProjectAction(action);
+    // Spawned the bound launcher, not the default
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { label: 'KimiKimi', command: 'kimi-kimi' },
+      'my',
+    );
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
+  });
+
+  it('falls back to the focused-tab flow when action.launcher does not match any configured launcher', async () => {
+    const handle = makeFakeHandle();
+    const prefs: TerminalPrefs = {
+      launchers: [{ label: 'Claude', command: 'claude' }],
+    };
+    const bridge = createTerminalBridge(makeDeps(handle, prefs));
+    const action: ActionTemplate = {
+      label: 'Start new project',
+      template: 'Start new project ',
+      launcher: 'NonExistent',
+    };
+    await bridge.handleNewProjectAction(action);
+    // No spawn — handle is already active, fell through to the default flow
+    expect(handle.spawnUserShell).not.toHaveBeenCalled();
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
+  });
+
+  it('skips a launcher whose command is empty (treats it as not configured)', async () => {
+    const handle = makeFakeHandle();
+    const prefs: TerminalPrefs = {
+      launchers: [
+        { label: 'Claude', command: 'claude' },
+        { label: 'EmptyLauncher', command: '' },
+      ],
+    };
+    const bridge = createTerminalBridge(makeDeps(handle, prefs));
+    const action: ActionTemplate = {
+      label: 'Start new project',
+      template: 'Start new project ',
+      launcher: 'EmptyLauncher',
+    };
+    await bridge.handleNewProjectAction(action);
+    expect(handle.spawnUserShell).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleProjectAction with launcher binding', () => {
+  it('spawns the bound launcher before typing the substituted template', async () => {
+    const handle = makeFakeHandle();
+    const prefs: TerminalPrefs = {
+      launchers: [{ label: 'Claude', command: 'claude' }],
+    };
+    const bridge = createTerminalBridge(makeDeps(handle, prefs));
+    const action: ActionTemplate = {
+      label: 'Review',
+      template: 'review {shortSlug}',
+      launcher: 'Claude',
+    };
+    await bridge.handleProjectAction(sampleProject, action);
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { label: 'Claude', command: 'claude' },
+      'my',
+    );
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('review foo-bar');
   });
 });

@@ -75,6 +75,19 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   return deps.terminalHandle();
 }
 
+/** Look up a launcher by `label` from current terminal prefs. Returns null
+ *  for an empty/missing label or when no configured launcher matches by
+ *  label *and* has a non-empty command (matches `defaultLauncher`'s
+ *  "usable" rule). */
+function findLauncherByLabel(
+  prefs: TerminalPrefs | undefined,
+  label: string | undefined,
+): LauncherConfig | null {
+  if (!label) return null;
+  const launchers = prefs?.launchers ?? [];
+  return launchers.find((l) => l.label === label && l.command.trim().length > 0) ?? null;
+}
+
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
  *  screenshot paste) and the terminal pane. Centralises the "spawn a
  *  shell first if there isn't one" dance so callers don't repeat it. */
@@ -99,6 +112,40 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     return handle;
   };
 
+  /** Action-aware preamble: when the action binds a launcher (one of the
+   *  configured `terminal.launchers[].label`), spawn a fresh tab using
+   *  that launcher's command on every click — keeps "Start new project →
+   *  Claude" predictable instead of typing into whatever tab happens to
+   *  be focused. Falls back to `ensureTermAndShell()` when no launcher
+   *  is bound or the bound label no longer resolves. */
+  const ensureTermForAction = async (
+    action: ActionTemplate,
+  ): Promise<TerminalPaneHandle | null> => {
+    const launcher = findLauncherByLabel(deps.terminalPrefs(), action.launcher);
+    if (!launcher) return ensureTermAndShell();
+    if (!deps.terminalHandle()) {
+      deps.ensureTerminalOpen();
+      await waitForTerminalHandle(deps);
+    }
+    const handle = deps.terminalHandle();
+    if (!handle) return null;
+    deps.ensureTerminalOpen();
+    try {
+      await handle.spawnUserShell(launcher, 'my');
+    } catch (err) {
+      deps.flashToast(`Could not spawn ${launcher.label}: ${(err as Error).message}`, 'error');
+      return null;
+    }
+    // The session arrives via the onTermSessions snapshot listener, which
+    // reconciles + sets the new tab active. Give it one paint (≈ a frame)
+    // to land so the immediately-following typeIntoActive writes to the
+    // new tab and not the previously-focused one. setTimeout(0) instead
+    // of requestAnimationFrame so this stays callable in unit tests
+    // (jsdom env doesn't define rAF).
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    return handle;
+  };
+
   const handleWorkOn = async (project: Project): Promise<void> => {
     const text = `work on ${project.slug}`;
     const handle = await ensureTermAndShell();
@@ -109,7 +156,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   const handleProjectAction = async (project: Project, action: ActionTemplate): Promise<void> => {
     const ctx = projectContext(project, deps.conceptionPath() ?? undefined);
     const text = substitute(action.template, ctx);
-    const handle = await ensureTermAndShell();
+    const handle = await ensureTermForAction(action);
     if (!handle) return;
     handle.typeIntoActive(text);
     if (action.submit) {
@@ -124,7 +171,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const today = new Date().toISOString().slice(0, 10);
     const ctx = globalContext(today, deps.conceptionPath() ?? '');
     const text = substitute(action.template, ctx);
-    const handle = await ensureTermAndShell();
+    const handle = await ensureTermForAction(action);
     if (!handle) return;
     handle.typeIntoActive(text);
     if (action.submit) {

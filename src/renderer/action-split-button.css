@@ -134,34 +134,60 @@
   flex-shrink: 0;
 }
 
-/* Card-specific sizing override. */
-.row-action.work-on .action-split-button {
+/* Card-specific sizing override. The selectors are *compound* (no space)
+ * because `row-action` and `work-on` live on the same element as
+ * `action-split-button` — a descendant combinator would never match. */
+.action-split-button.row-action.work-on {
+  /* `.row .row-action` in projects-pane.css forces a hard 28×28 box on every
+   * row action button. That sizing fits a single-icon button but squeezes
+   * this two-child split button so the caret either renders at 0 px or is
+   * clipped by `overflow: hidden`. Reset to natural width / height + drop
+   * the row-action chrome we don't want here (the inner buttons supply
+   * their own background and padding). */
+  width: auto;
+  height: auto;
   border: none;
   background: transparent;
   padding: 0;
+  overflow: visible;
 }
 
-.row-action.work-on .action-split-primary {
-  padding: 4px;
-}
-
-.row-action.work-on .action-split-caret {
-  width: 16px;
-  border-left: none;
-}
-
-/* Modal-header sizing override. */
-.modal-button.work-on-button .action-split-button {
-  border: none;
+.action-split-button.row-action.work-on:hover {
   background: transparent;
-  padding: 0;
+  border-color: transparent;
 }
 
-.modal-button.work-on-button .action-split-primary {
+.action-split-button.row-action.work-on .action-split-primary {
   padding: 4px;
 }
 
-.modal-button.work-on-button .action-split-caret {
+.action-split-button.row-action.work-on .action-split-caret {
   width: 18px;
   border-left: none;
+}
+
+/* Modal-header sizing override — same compound-selector fix as above. */
+.action-split-button.modal-button.work-on-button {
+  width: auto;
+  height: auto;
+  border: none;
+  background: transparent;
+  padding: 0;
+  overflow: visible;
+}
+
+.action-split-button.modal-button.work-on-button .action-split-primary {
+  padding: 4px;
+}
+
+.action-split-button.modal-button.work-on-button .action-split-caret {
+  width: 20px;
+  border-left: none;
+}
+
+/* "+ New project" header action — pad the caret enough that the chevron
+ * gets a comfortable 24 px hit target instead of the default 22 px so the
+ * dropdown isn't a pixel-hunt next to the primary text. */
+.action-split-button.new-project-button .action-split-caret {
+  width: 24px;
 }
