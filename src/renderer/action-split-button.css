@@ -61,9 +61,13 @@
   height: 12px;
 }
 
-/* Menu portal'd below the trigger. */
+/* Menu portal'd below the trigger. width: max-content + min/max so the
+ * menu grows to fit the widest row instead of letting the label/badge
+ * ellipsis kick in at 260 px. */
 .action-split-menu {
-  min-width: 220px;
+  width: max-content;
+  min-width: 260px;
+  max-width: 520px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -132,6 +136,28 @@
   font-size: var(--text-2xs);
   margin-left: auto;
   flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Inline launcher hint on configured action items — surfaces the bound
+ * launcher right next to the action so users see at a glance which term
+ * mode the entry will spawn into. Sits between the label (which ellipses
+ * if long) and the trailing submit glyph. */
+.action-split-menu-launcher {
+  color: var(--accent);
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.action-split-menu-launcher + .action-split-menu-submit {
+  margin-left: 6px;
 }
 
 /* Card-specific sizing override. The selectors are *compound* (no space)

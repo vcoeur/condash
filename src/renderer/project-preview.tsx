@@ -265,7 +265,7 @@ export function ProjectPreview(props: {
                 primary={<IconTerminal />}
                 primaryTitle={`Paste 'work on ${project().slug}' into the focused terminal`}
                 onPrimary={() => props.onWorkOn(project())}
-                defaultLabel={`Work on ${project().slug}`}
+                defaultLabel={`Work on ${project().slug.replace(/^\d{4}-\d{2}-\d{2}-/, '')}`}
                 items={props.projectActions ?? []}
                 onItem={(idx) => {
                   if (idx === -1) {

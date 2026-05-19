@@ -62,6 +62,15 @@ export interface TerminalBridge {
  *  mount failure as a no-op rather than an indefinite hang. */
 const HANDLE_WAIT_FRAMES = 12;
 
+/** Delay between spawning a launcher-bound tab and typing the template
+ *  into it. Covers two races: the renderer's onTermSessions reconcile
+ *  (must run before the new tab becomes the active typeIntoActive
+ *  target) and the launcher process's own boot time (claude / kimi need
+ *  to print their prompt before accepting input). 350 ms is the smallest
+ *  value that didn't drop characters across the launchers we've tried;
+ *  imperceptible to a user clicking a menu item. */
+const LAUNCHER_SPAWN_SETTLE_MS = 350;
+
 /** Wait until `deps.terminalHandle()` returns non-null, or the frame cap
  *  expires. The previous `queueMicrotask` spin (single microtask) was just
  *  shy of an actual paint and intermittently returned before the Solid
@@ -136,13 +145,15 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast(`Could not spawn ${launcher.label}: ${(err as Error).message}`, 'error');
       return null;
     }
-    // The session arrives via the onTermSessions snapshot listener, which
-    // reconciles + sets the new tab active. Give it one paint (≈ a frame)
-    // to land so the immediately-following typeIntoActive writes to the
-    // new tab and not the previously-focused one. setTimeout(0) instead
-    // of requestAnimationFrame so this stays callable in unit tests
-    // (jsdom env doesn't define rAF).
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    // Two-step settle: (1) reconcile needs at least one tick to receive
+    // the onTermSessions snapshot, attach the xterm, and set the new tab
+    // as active; (2) the launcher process itself (e.g. `claude`, `kimi`)
+    // needs time to print its prompt before it will accept typed input —
+    // typing during init drops characters or lands in a not-yet-ready
+    // REPL. LAUNCHER_SPAWN_SETTLE_MS covers both. setTimeout (not
+    // requestAnimationFrame) so this stays callable in unit tests
+    // (jsdom env has no rAF).
+    await new Promise<void>((resolve) => setTimeout(resolve, LAUNCHER_SPAWN_SETTLE_MS));
     return handle;
   };
 

@@ -151,6 +151,7 @@ describe('handleNewProjectAction', () => {
   });
 
   it('spawns the bound launcher and types into the new tab when action.launcher is set', async () => {
+    vi.useFakeTimers();
     const handle = makeFakeHandle();
     const prefs: TerminalPrefs = {
       launchers: [
@@ -164,13 +165,16 @@ describe('handleNewProjectAction', () => {
       template: 'Start new project ',
       launcher: 'KimiKimi',
     };
-    await bridge.handleNewProjectAction(action);
-    // Spawned the bound launcher, not the default
+    const promise = bridge.handleNewProjectAction(action);
+    // Drain the launcher-spawn settle delay (~350 ms).
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(
       { label: 'KimiKimi', command: 'kimi-kimi' },
       'my',
     );
     expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
+    vi.useRealTimers();
   });
 
   it('falls back to the focused-tab flow when action.launcher does not match any configured launcher', async () => {
@@ -211,6 +215,7 @@ describe('handleNewProjectAction', () => {
 
 describe('handleProjectAction with launcher binding', () => {
   it('spawns the bound launcher before typing the substituted template', async () => {
+    vi.useFakeTimers();
     const handle = makeFakeHandle();
     const prefs: TerminalPrefs = {
       launchers: [{ label: 'Claude', command: 'claude' }],
@@ -221,11 +226,14 @@ describe('handleProjectAction with launcher binding', () => {
       template: 'review {shortSlug}',
       launcher: 'Claude',
     };
-    await bridge.handleProjectAction(sampleProject, action);
+    const promise = bridge.handleProjectAction(sampleProject, action);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(
       { label: 'Claude', command: 'claude' },
       'my',
     );
     expect(handle.typeIntoActive).toHaveBeenCalledWith('review foo-bar');
+    vi.useRealTimers();
   });
 });

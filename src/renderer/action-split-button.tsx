@@ -1,4 +1,5 @@
 import { For, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import type { JSX } from 'solid-js';
 import { createDropdownMenu } from './dropdown-menu';
 import { TerminalIcon, ChevronDownIcon } from './icons';
@@ -6,6 +7,10 @@ import { TerminalIcon, ChevronDownIcon } from './icons';
 export interface SplitActionItem {
   label: string;
   submit?: boolean;
+  /** When set, the menu item renders an inline `→ <launcher>` hint so the
+   *  user can see at a glance which launcher this entry will spawn into,
+   *  matching the per-row Launcher dropdown in Settings. */
+  launcher?: string;
 }
 
 interface ActionSplitButtonProps {
@@ -68,21 +73,24 @@ export function ActionSplitButton(props: ActionSplitButtonProps): JSX.Element {
       </div>
 
       <Show when={menu.isOpen() && menu.anchor()}>
-        {(() => {
-          const anchor = menu.anchor()!;
-          return (
-            <div
-              ref={menu.setMenu}
-              class="action-split-menu portal"
-              style={{
-                position: 'fixed',
-                top: `${anchor.top}px`,
-                left: `${anchor.left}px`,
-                transform: 'translateX(-100%)',
-                'z-index': '1000',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
+        <Portal>
+          {/* True portal: attach the menu to document.body so the
+           * `position: fixed` coordinates are viewport-relative. Otherwise
+           * an ancestor with `contain: layout paint` (e.g. .group-block)
+           * becomes the containing block, offsetting the menu by the
+           * ancestor's top/left and pushing it past the trigger. */}
+          <div
+            ref={menu.setMenu}
+            class="action-split-menu portal"
+            style={{
+              position: 'fixed',
+              top: `${menu.anchor()!.top}px`,
+              left: `${menu.anchor()!.left}px`,
+              transform: 'translateX(-100%)',
+              'z-index': '1000',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
               <button
                 type="button"
                 class="action-split-menu-item action-split-menu-default"
@@ -117,6 +125,14 @@ export function ActionSplitButton(props: ActionSplitButtonProps): JSX.Element {
                       ▸
                     </span>
                     <span class="action-split-menu-label">{item.label}</span>
+                    <Show when={item.launcher}>
+                      <span
+                        class="action-split-menu-launcher"
+                        title={`Spawns a fresh ${item.launcher} tab`}
+                      >
+                        → {item.launcher}
+                      </span>
+                    </Show>
                     <Show when={item.submit}>
                       <span class="action-split-menu-submit" aria-hidden="true">
                         ⏎
@@ -125,9 +141,8 @@ export function ActionSplitButton(props: ActionSplitButtonProps): JSX.Element {
                   </button>
                 )}
               </For>
-            </div>
-          );
-        })()}
+          </div>
+        </Portal>
       </Show>
     </>
   );

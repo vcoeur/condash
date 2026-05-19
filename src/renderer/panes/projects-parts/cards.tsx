@@ -357,7 +357,7 @@ export function Card(props: {
               primary={<TerminalIcon />}
               primaryTitle={`Paste 'work on ${props.item.slug}' into the focused terminal`}
               onPrimary={() => props.onWorkOn(props.item)}
-              defaultLabel={`Work on ${props.item.slug}`}
+              defaultLabel={`Work on ${props.item.slug.replace(/^\d{4}-\d{2}-\d{2}-/, '')}`}
               items={props.projectActions ?? []}
               onItem={(idx) => {
                 if (idx === -1) {
