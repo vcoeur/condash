@@ -43,7 +43,24 @@ export function PdfModal(props: {
           </button>
         </header>
         <div class="pdf-body">
-          <Show when={resolved()?.url}>{(url) => <webview src={url()} class="pdf-webview" />}</Show>
+          <Show when={resolved()?.url}>
+            {(url) => (
+              // Lockdown the embedded webview that renders the PDF:
+              //   - `partition="pdfs"` isolates session storage so no
+              //     cookies / localStorage spill into the main session.
+              //   - `webpreferences=...` keeps Node off, isolates the
+              //     context, and runs the renderer in the OS sandbox.
+              // A defence-in-depth `web-contents-created` handler in
+              // main/index.ts also re-applies these settings if a
+              // future webview ships without the attribute.
+              <webview
+                src={url()}
+                class="pdf-webview"
+                partition="pdfs"
+                webpreferences="contextIsolation=true,nodeIntegration=false,sandbox=true"
+              />
+            )}
+          </Show>
         </div>
       </div>
     </div>

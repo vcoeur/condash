@@ -11,6 +11,7 @@ import {
   writeTerminal,
 } from '../terminals';
 import { latestScreenshot } from '../screenshot';
+import { requireScreenshotDir } from '../path-bounds';
 import { readSettings } from '../settings';
 import type { TermSpawnRequest } from '../../shared/types';
 
@@ -56,6 +57,12 @@ export function registerTerminalIpc(): void {
   });
 
   ipcMain.handle('termLatestScreenshot', async (_, dir: string) => {
-    return latestScreenshot(dir);
+    // Bound the renderer-supplied directory to `terminal.screenshot_dir`
+    // from settings — without this a compromised renderer could pass any
+    // path through and have us stat it. `requireScreenshotDir` realpaths
+    // both sides so a symlinked target outside the configured root is
+    // rejected too.
+    const canonical = await requireScreenshotDir(dir);
+    return latestScreenshot(canonical);
   });
 }

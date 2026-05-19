@@ -82,12 +82,11 @@ async function resolveChildBounded(
   if (/^(\.\.([\\/]|$))/.test(cleanedDir) || cleanedDir.startsWith('/')) {
     throw new Error('dirRelPath escapes the pane root');
   }
-  if (cleanedDir.includes('..')) {
-    // normalize() may leave a literal `..` mid-path if the prefix wasn't
-    // resolvable; reject defensively.
-    const segments = cleanedDir.split(/[\\/]/);
-    if (segments.includes('..')) throw new Error('dirRelPath escapes the pane root');
-  }
+  // After `normalize`, only literal `..` segments survive a traversal
+  // attempt. A whole-string `.includes('..')` would also flag innocent
+  // filenames like `foo..bar` mid-path, so split + segment-match.
+  const segments = cleanedDir.split(/[\\/]/);
+  if (segments.includes('..')) throw new Error('dirRelPath escapes the pane root');
   const dirAbs = cleanedDir === '' || cleanedDir === '.' ? rootAbs : join(rootAbs, cleanedDir);
   // The directory must already exist on disk and stay under the root.
   await requirePathUnder(dirAbs, rootAbs);
@@ -99,6 +98,25 @@ async function resolveChildBounded(
     throw new Error('invalid child name');
   }
   return { rootAbs, targetAbs };
+}
+
+/** Throw if `path` exists on disk and is a symbolic link. Used before any
+ * filesystem op that would follow a symlink at the final target (mkdir,
+ * non-`wx` write, copyFile without `COPYFILE_EXCL`). `wx` and
+ * `COPYFILE_EXCL` already refuse a pre-existing target; this guard
+ * exists for the operations that don't. ENOENT (target doesn't exist
+ * yet) is fine — that's the legitimate create path. */
+async function rejectSymlinkTarget(path: string): Promise<void> {
+  let st;
+  try {
+    st = await fs.lstat(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
+  }
+  if (st.isSymbolicLink()) {
+    throw new Error(`refusing to follow symlink at ${basename(path)}`);
+  }
 }
 
 export async function treeCreateMd(
@@ -124,6 +142,9 @@ export async function treeMkdir(
   const sanitised = sanitiseSegment(name, '').replace(/\.+/g, '-');
   if (sanitised.length === 0) throw new Error('directory name is empty after sanitisation');
   const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised, skillTab);
+  // `mkdir({recursive:true})` follows a symlink at `targetAbs` and creates
+  // through it — reject if the entry exists as a symlink before we touch it.
+  await rejectSymlinkTarget(targetAbs);
   await fs.mkdir(targetAbs, { recursive: true });
   return toPosix(targetAbs);
 }

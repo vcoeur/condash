@@ -502,7 +502,11 @@ async function stampCommand(
       `--target must resolve inside the conception tree: ${target}`,
     );
   }
-  const raw = await fs.readFile(targetPath, 'utf8');
+  // Read AND write against the canonical (realpath'd) path, not the
+  // renderer-supplied `targetPath`: otherwise a symlink that resolved
+  // safely under `resolvedRoot` would still let fs follow it to a
+  // different inode on the actual I/O, slipping past the bounds check.
+  const raw = await fs.readFile(realTarget, 'utf8');
   const stampLine = `**Verified:** ${date} ${where.trim()}`;
   const lines = raw.split(/\r?\n/);
   let replaced = false;
@@ -534,11 +538,11 @@ async function stampCommand(
       lines.unshift(stampLine, '');
     }
   }
-  await atomicWrite(targetPath, lines.join('\n'));
+  await atomicWrite(realTarget, lines.join('\n'));
   emit(
     ctx,
     {
-      path: targetPath,
+      path: realTarget,
       verifiedAt: date,
       where: where.trim(),
       replaced,
