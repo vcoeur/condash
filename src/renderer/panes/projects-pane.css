@@ -749,31 +749,10 @@ body[data-dragging='project'] .group-block.drag-over {
   letter-spacing: 0.01em;
 }
 
-/* `.new-project-button` is the outer wrapper of the ActionSplitButton (it
- * carries both `.action-split-button` and `.new-project-button` classes).
- * Keep the border/background/font tokens here but *don't* add padding on
- * the wrapper — the inner primary button supplies its own padding and any
- * wrapper padding becomes a dead zone that visually looks like the
- * "+ New project" button but doesn't fire its onClick. The wrapper is also
- * inert pointer-wise (no onClick); only its child <button>s are. */
-.new-project-button {
-  font: inherit;
-  font-size: var(--text-md);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.new-project-button .action-split-primary {
-  padding: 6px 8px 6px 8px;
-}
-
-.new-project-button .action-split-primary,
-.new-project-button .action-split-caret {
-  /* Pull the wrapper's "look like a button" colour onto the inner buttons
-   * so the hover transition still moves the entire control as one. */
-  color: var(--text);
-}
-
+/* `.new-project-button` adds the `+ New project` flavour on top of the
+ * shared `.action-dropdown-button` chrome (border, background, font). The
+ * dropdown component is itself a single <button>, so no wrapper padding
+ * or per-child overrides are needed here — just the plus glyph sizing. */
 .new-project-button-plus {
   font-weight: 700;
   font-size: 16px;

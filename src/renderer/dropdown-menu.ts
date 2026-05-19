@@ -71,7 +71,7 @@ export function createDropdownMenu(options: CreateDropdownMenuOptions = {}): Dro
     }
     const left = align === 'left' ? rect.left : rect.right;
     // De-dupe so an unchanged position does not emit. The menu body in
-    // action-split-button.tsx reads `anchor()` inside a JSX expression
+    // action-dropdown-button.tsx reads `anchor()` inside a JSX expression
     // slot (an IIFE that returns the menu div); Solid wraps the slot in
     // a reactive computation, so any emit re-runs the IIFE — recreating
     // the menu div *and every child <button>*. `setMenu` then re-schedules

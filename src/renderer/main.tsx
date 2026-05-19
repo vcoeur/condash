@@ -50,7 +50,7 @@ import type { Project, WorkingSurface } from '@shared/types';
 import './styles.css';
 import './modal-base.css';
 import './project-preview.css';
-import './action-split-button.css';
+import './action-dropdown-button.css';
 import './welcome-screen.css';
 
 /** Right-strip handles in display order. Each entry binds the
@@ -201,7 +201,7 @@ function App() {
   // Stable references to the filtered action-template arrays. `usableActionTemplates`
   // returns a *fresh* filtered array on every call; without memoising, any reactive
   // re-read of these props allocates a new array, which makes Solid's `<For>` inside
-  // ActionSplitButton's dropdown re-create every menu item on each re-render. The
+  // ActionDropdownButton's menu re-create every menu item on each re-render. The
   // detach-then-reattach cycle is fast enough to be invisible but races every click —
   // the menu item DOM node gets replaced *between* mousedown and mouseup, so the
   // click never fires and the dropdown looks dead. createMemo gives `<For>` a stable

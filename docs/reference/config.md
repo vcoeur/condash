@@ -221,7 +221,7 @@ Per-entry launcher slots rendered in the terminal tab-strip spawn dropdown. The 
 
 ### `terminal.projectActions` { #terminalprojectactions }
 
-Per-entry actions rendered in the dropdown next to a project's **Work on** button on the Projects pane. When `projectActions` is empty or missing, the button stays a single icon button as it was before v3.11.0. When at least one entry is configured, the button becomes a split button: the left half still triggers the built-in **Work on <slug>** action, and the right-half caret opens a menu.
+Per-entry actions rendered in the per-card **Work on** dropdown on the Projects pane. The control is a single dropdown button: clicking it opens a menu whose first row is the built-in **Work on <slug>** action and whose remaining rows are the entries below. When `projectActions` is empty or missing, the menu still opens but contains only the default row.
 
 ```json
 {
@@ -243,7 +243,7 @@ Per-entry actions rendered in the dropdown next to a project's **Work on** butto
 
 ### `terminal.newProjectActions` { #terminalnewprojectactions }
 
-Per-entry starter prompts rendered in the dropdown next to the **+ New project** button. When `newProjectActions` is empty or missing, the button stays a single button that opens the New project modal. When at least one entry is configured, the button becomes a split button: the left half still opens the modal, and the right-half caret opens a menu of starter prompts that get pasted into the terminal.
+Per-entry starter prompts rendered in the **+ New project** dropdown. The control is a single dropdown button: clicking it opens a menu whose first row opens the New project modal (the built-in default) and whose remaining rows are the configured starter prompts. When `newProjectActions` is empty or missing, the menu still opens but contains only the default row.
 
 ```json
 {

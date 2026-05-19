@@ -1,0 +1,185 @@
+/* Single-button dropdown trigger. Used on project cards, the project preview
+ * modal header, and the "+ New project" header action. The whole button opens
+ * the menu — there is no separate primary-click hit zone. Row 1 of the menu
+ * is the built-in default action. */
+
+.action-dropdown-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: 600;
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
+}
+
+.action-dropdown-button:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-hover));
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.action-dropdown-trigger-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.action-dropdown-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.action-dropdown-caret svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Menu portal'd below the trigger. width: max-content + min/max so the
+ * menu grows to fit the widest row instead of letting the label/badge
+ * ellipsis kick in at 260 px. */
+.action-dropdown-menu {
+  width: max-content;
+  min-width: 260px;
+  max-width: 520px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.action-dropdown-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  transition: background 80ms ease;
+}
+
+.action-dropdown-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.action-dropdown-menu-default {
+  font-weight: 500;
+}
+
+.action-dropdown-menu-divider {
+  height: 1px;
+  margin: 2px 6px;
+  background: var(--border);
+}
+
+.action-dropdown-menu-icon svg,
+.action-dropdown-menu-bullet {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.action-dropdown-menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-dropdown-menu-submit {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.action-dropdown-menu-badge {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  margin-left: auto;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Inline launcher hint on configured action items — surfaces the bound
+ * launcher right next to the action so users see at a glance which term
+ * mode the entry will spawn into. */
+.action-dropdown-menu-launcher {
+  color: var(--accent);
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.action-dropdown-menu-launcher + .action-dropdown-menu-submit {
+  margin-left: 6px;
+}
+
+/* Row-card variant — the parent `.row .row-action` rule forces a 28×28 box
+ * around every row-action slot. The trigger is a single button so it fits
+ * naturally; reset the chrome so the icon + caret render flush instead of
+ * inside a nested button-in-button. */
+.action-dropdown-button.row-action.work-on {
+  width: auto;
+  height: auto;
+  padding: 4px 6px;
+  border: none;
+  background: transparent;
+  font-weight: 500;
+}
+
+.action-dropdown-button.row-action.work-on:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+/* Modal-header variant — same treatment as row-card so the trigger blends
+ * into the header instead of carrying full button chrome. */
+.action-dropdown-button.modal-button.work-on-button {
+  width: auto;
+  height: auto;
+  padding: 4px 6px;
+  border: none;
+  background: transparent;
+  font-weight: 500;
+}
+
+.action-dropdown-button.modal-button.work-on-button:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+  border-color: transparent;
+}

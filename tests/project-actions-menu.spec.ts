@@ -22,13 +22,13 @@ test('project action menu opens and shows configured items', async () => {
   try {
     const card = booted.window.locator('.row', { hasText: 'Sample project' }).first();
     await card.waitFor({ state: 'visible' });
-    const caret = card.locator('.action-split-caret');
-    await expect(caret).toBeVisible();
-    await caret.click();
+    const trigger = card.locator('.action-dropdown-button');
+    await expect(trigger).toBeVisible();
+    await trigger.click();
 
-    const menu = booted.window.locator('.action-split-menu');
+    const menu = booted.window.locator('.action-dropdown-menu');
     await menu.waitFor({ state: 'visible' });
-    const items = menu.locator('.action-split-menu-item');
+    const items = menu.locator('.action-dropdown-menu-item');
     await expect(items).toHaveCount(2);
 
     // Verify the custom entry label is present.
@@ -55,14 +55,16 @@ test('new project action menu opens and shows configured items', async () => {
   });
 
   try {
-    const nowHeader = booted.window.locator('.group-block[data-status="now"] .group-header').first();
-    const caret = nowHeader.locator('.action-split-caret');
-    await expect(caret).toBeVisible();
-    await caret.click();
+    const nowHeader = booted.window
+      .locator('.group-block[data-status="now"] .group-header')
+      .first();
+    const trigger = nowHeader.locator('.action-dropdown-button');
+    await expect(trigger).toBeVisible();
+    await trigger.click();
 
-    const menu = booted.window.locator('.action-split-menu');
+    const menu = booted.window.locator('.action-dropdown-menu');
     await menu.waitFor({ state: 'visible' });
-    const items = menu.locator('.action-split-menu-item');
+    const items = menu.locator('.action-dropdown-menu-item');
     await expect(items).toHaveCount(2);
 
     await expect(items.filter({ hasText: 'Spec starter' })).toBeVisible();
