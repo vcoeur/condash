@@ -20,6 +20,18 @@ function withSettingsQueue<T>(work: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/**
+ * Wait for every queued settings write to settle. Test-only surface —
+ * `afterEach` calls this so the in-flight opportunistic rewrite from
+ * `getTreeExpansion` (and any future fire-and-forget queue user)
+ * finishes before the next test's `vi.doMock('../user-data-dir', …)`
+ * swaps the path under it. Resolves once the chain is drained, even if
+ * individual entries rejected.
+ */
+export async function drainSettingsQueue(): Promise<void> {
+  await settingsQueue.catch(() => undefined);
+}
+
 export const DEFAULT_LAYOUT: LayoutState = {
   projects: true,
   working: 'code',
