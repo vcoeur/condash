@@ -125,6 +125,14 @@
   border-left-color: var(--accent, #609fff);
 }
 
+/* Sealed by the boot-time orphan-footer recovery — session is definitely
+ * ended but the exit code was lost when condash exited before flushing.
+ * Muted left-rail + italic status pill so it visually reads as "wrapped
+ * up, but partial". */
+.logs-session-card.sealed {
+  border-left-color: var(--text-faint, #777);
+}
+
 .logs-session-time {
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -165,6 +173,11 @@
 
 .logs-session-card.running .logs-session-exit {
   color: var(--accent, #609fff);
+}
+
+.logs-session-card.sealed .logs-session-exit {
+  color: var(--text-faint, #777);
+  font-style: italic;
 }
 
 .logs-pane .empty {

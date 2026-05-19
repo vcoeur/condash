@@ -132,8 +132,20 @@ async function readSessionMetaSummary(
     repo: typeof header?.repo === 'string' ? header.repo : undefined,
     cwd: typeof header?.cwd === 'string' ? header.cwd : undefined,
     cmd: composeCmdLabel(header),
-    exitCode: typeof footer?.exitCode === 'number' ? footer.exitCode : undefined,
+    exitCode: extractExitCode(footer),
+    exitSealed: footer?.sealedByRecovery === true || undefined,
   };
+}
+
+/** Extract the exit code in the tri-state form the renderer consumes:
+ * a number when the session exited cleanly; `null` when the recovery
+ * sweep sealed an orphan footer; `undefined` when the session is still
+ * live (no footer on disk). */
+function extractExitCode(footer: FooterJson | null): number | null | undefined {
+  if (!footer) return undefined;
+  if (typeof footer.exitCode === 'number') return footer.exitCode;
+  if (footer.exitCode === null) return null;
+  return undefined;
 }
 
 function composeCmdLabel(header: HeaderJson | null): string | undefined {
@@ -225,7 +237,8 @@ async function readSession(filePath: string): Promise<TermLogSessionRead> {
           repo: typeof header?.repo === 'string' ? header.repo : undefined,
           cwd: typeof header?.cwd === 'string' ? header.cwd : undefined,
           cmd: composeCmdLabel(header),
-          exitCode: typeof footer?.exitCode === 'number' ? footer.exitCode : undefined,
+          exitCode: extractExitCode(footer),
+          exitSealed: footer?.sealedByRecovery === true || undefined,
         }
       : null;
   return { text, meta };

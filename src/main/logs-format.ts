@@ -31,7 +31,13 @@ export interface HeaderJson {
 
 export interface FooterJson {
   finished?: string;
-  exitCode?: number;
+  /** Number when the pty exited cleanly. `null` when the recovery sweep
+   * sealed an orphan log (process gone before the footer could land), so
+   * the Logs UI can render "ended (unknown)" instead of "running". */
+  exitCode?: number | null;
+  /** True when this footer was written by the boot-time orphan-seal pass
+   * rather than the live logger's exit() handler. UI-only signal. */
+  sealedByRecovery?: boolean;
 }
 
 /** Parse one line as a `# condash: {...}` meta line. Returns the parsed JSON

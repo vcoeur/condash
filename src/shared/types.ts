@@ -127,8 +127,15 @@ export interface TermLogSessionMeta {
   /** Spawn command argv joined (truncated to 80 chars in the renderer). */
   cmd?: string;
   /** Exit code, if `exit` was reached; undefined while a long-running
-   * session is still alive. */
-  exitCode?: number;
+   * session is still alive; `null` when the boot-time orphan-seal pass
+   * found a session without a footer (process gone before the footer
+   * could flush) — UI renders this as "ended (unknown)" instead of
+   * "running". */
+  exitCode?: number | null;
+  /** True when the footer was synthesised by the orphan-seal recovery
+   * (i.e. condash exited before SessionLogger.exit() could flush). UI
+   * uses this to render a distinct status pill. */
+  exitSealed?: boolean;
 }
 
 /** Contents of a session — plain-text body + parsed metadata. Returned

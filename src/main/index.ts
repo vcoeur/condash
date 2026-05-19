@@ -11,6 +11,7 @@ import { setWatchedConception } from './watcher';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll, migrateTerminalFromConfigIfNeeded } from './terminals';
 import { runLogJanitor } from './terminal-logger-janitor';
+import { sealOrphanLogs } from './seal-orphan-logs';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { buildMenu, rebuildMenu, rebuildMenuFromSettings, setMenuWindow } from './menu';
 import { registerProjectsIpc } from './ipc/projects';
@@ -314,6 +315,11 @@ function registerIpc(): void {
       updateWindowTitle(picked);
       void rebuildMenuFromSettings();
       startJanitor(picked);
+      // Heal any orphan "running" logs in the newly-picked conception so
+      // the Logs pane reflects reality on first render.
+      void sealOrphanLogs(picked).catch((err) => {
+        process.stderr.write(`condash seal-orphan-logs: ${(err as Error).message}\n`);
+      });
     },
     onRecentsChange: () => {
       void rebuildMenuFromSettings();
@@ -339,6 +345,15 @@ app.whenReady().then(async () => {
   // 14 days / 500 MB.
   if (conceptionPath) {
     startJanitor(conceptionPath);
+    // One-shot orphan-footer seal. When condash exits abruptly
+    // (SIGKILL, OS shutdown, dev hot reload), SessionLogger.exit()
+    // queues the footer write but the process dies before flushChain
+    // drains, leaving the file looking "running" forever. Seal pass
+    // appends a synthetic footer to every such orphan so the Logs UI
+    // shows "ended ?" instead of a phantom "running" forever.
+    void sealOrphanLogs(conceptionPath).catch((err) => {
+      process.stderr.write(`condash seal-orphan-logs: ${(err as Error).message}\n`);
+    });
   }
   buildMenu(settings.layout ?? DEFAULT_LAYOUT, {
     paths: settings.recentConceptionPaths ?? [],
