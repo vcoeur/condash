@@ -91,56 +91,56 @@ export function ActionSplitButton(props: ActionSplitButtonProps): JSX.Element {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-              <button
-                type="button"
-                class="action-split-menu-item action-split-menu-default"
-                onClick={() => {
-                  menu.close();
-                  props.onItem(-1);
-                }}
-              >
-                <span class="action-split-menu-icon">{props.defaultIcon ?? <TerminalIcon />}</span>
-                <span class="action-split-menu-label">{props.defaultLabel}</span>
-                <Show when={props.defaultSubmit}>
-                  <span class="action-split-menu-submit" aria-hidden="true">
-                    ⏎
-                  </span>
-                </Show>
-                <span class="action-split-menu-badge">default</span>
-              </button>
-              <Show when={props.items.length > 0}>
-                <div class="action-split-menu-divider" />
+            <button
+              type="button"
+              class="action-split-menu-item action-split-menu-default"
+              onClick={() => {
+                menu.close();
+                props.onItem(-1);
+              }}
+            >
+              <span class="action-split-menu-icon">{props.defaultIcon ?? <TerminalIcon />}</span>
+              <span class="action-split-menu-label">{props.defaultLabel}</span>
+              <Show when={props.defaultSubmit}>
+                <span class="action-split-menu-submit" aria-hidden="true">
+                  ⏎
+                </span>
               </Show>
-              <For each={props.items}>
-                {(item, idx) => (
-                  <button
-                    type="button"
-                    class="action-split-menu-item"
-                    onClick={() => {
-                      menu.close();
-                      props.onItem(idx());
-                    }}
-                  >
-                    <span class="action-split-menu-bullet" aria-hidden="true">
-                      ▸
+              <span class="action-split-menu-badge">default</span>
+            </button>
+            <Show when={props.items.length > 0}>
+              <div class="action-split-menu-divider" />
+            </Show>
+            <For each={props.items}>
+              {(item, idx) => (
+                <button
+                  type="button"
+                  class="action-split-menu-item"
+                  onClick={() => {
+                    menu.close();
+                    props.onItem(idx());
+                  }}
+                >
+                  <span class="action-split-menu-bullet" aria-hidden="true">
+                    ▸
+                  </span>
+                  <span class="action-split-menu-label">{item.label}</span>
+                  <Show when={item.launcher}>
+                    <span
+                      class="action-split-menu-launcher"
+                      title={`Spawns a fresh ${item.launcher} tab`}
+                    >
+                      → {item.launcher}
                     </span>
-                    <span class="action-split-menu-label">{item.label}</span>
-                    <Show when={item.launcher}>
-                      <span
-                        class="action-split-menu-launcher"
-                        title={`Spawns a fresh ${item.launcher} tab`}
-                      >
-                        → {item.launcher}
-                      </span>
-                    </Show>
-                    <Show when={item.submit}>
-                      <span class="action-split-menu-submit" aria-hidden="true">
-                        ⏎
-                      </span>
-                    </Show>
-                  </button>
-                )}
-              </For>
+                  </Show>
+                  <Show when={item.submit}>
+                    <span class="action-split-menu-submit" aria-hidden="true">
+                      ⏎
+                    </span>
+                  </Show>
+                </button>
+              )}
+            </For>
           </div>
         </Portal>
       </Show>

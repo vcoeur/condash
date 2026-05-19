@@ -8,18 +8,20 @@
   border-radius: 6px;
   background: var(--bg-subtle);
   overflow: hidden;
-  transition:
-    background 100ms ease,
-    border-color 100ms ease;
+  /* No transition / no hover on the wrapper itself — each inner button
+   * owns its own hover. With the wrapper also reacting to hover, the
+   * primary and caret looked like one merged button when the user
+   * hovered either half. */
 }
 
-.action-split-button:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-}
-
-.action-split-button:hover .action-split-primary,
-.action-split-button:hover .action-split-caret {
+/* Hover each inner button INDEPENDENTLY so the user sees which half
+ * they're about to fire. The half they're NOT on stays at the wrapper's
+ * resting bg-subtle — the contrast across the divider is the visual
+ * cue. color-mix amps the hover background a notch over bg-hover so
+ * the two halves don't look identical in dark mode. */
+.action-split-button .action-split-primary:hover,
+.action-split-button .action-split-caret:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-hover));
   color: var(--accent);
 }
 

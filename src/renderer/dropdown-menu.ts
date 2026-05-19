@@ -61,10 +61,13 @@ export function createDropdownMenu(options: CreateDropdownMenuOptions = {}): Dro
     if (!triggerEl) return;
     const rect = triggerEl.getBoundingClientRect();
     const margin = 8;
-    let top = rect.bottom + 4;
+    // 8 px gap (was 4 px) so the menu doesn't visually merge with the
+    // trigger button; matches the "+ New project" button's visual rhythm.
+    const gap = 8;
+    let top = rect.bottom + gap;
     const menuH = menuEl?.getBoundingClientRect().height ?? 0;
     if (menuH > 0 && top + menuH > window.innerHeight - margin) {
-      top = Math.max(margin, rect.top - 4 - menuH);
+      top = Math.max(margin, rect.top - gap - menuH);
     }
     const left = align === 'left' ? rect.left : rect.right;
     // De-dupe so an unchanged position does not emit. The menu body in
