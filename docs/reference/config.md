@@ -42,7 +42,7 @@ Lives at `<conception_path>/.condash/settings.json`. Don't commit it — the aut
   "workspace_path": "/home/you/src",
   "worktrees_path": "/home/you/src/worktrees",
   "resources_path": "resources",
-  "skills_path": ".claude/skills",
+  "skills_path": ".agents/skills",
   "repositories": [
     "condash",
     {
