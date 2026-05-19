@@ -268,7 +268,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
           title="Save the active terminal buffer to a file"
           aria-label="Save buffer"
         >
-          🖫
+          Save
         </button>
         <button
           class="terminal-tab-add"
@@ -279,10 +279,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
           title="Find in buffer (Ctrl+F)"
           aria-label="Find"
         >
-          {/* U+1F50D + U+FE0E forces the text-style monochrome glyph, so
-           *  the lens matches the floppy's weight instead of the colour
-           *  emoji default. */}
-          🔍︎
+          Find
         </button>
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />

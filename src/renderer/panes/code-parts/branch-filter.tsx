@@ -78,7 +78,22 @@ export function BranchFilter(props: {
   const isNoneMode = (): boolean => !props.stickyAll && props.selected.size === 0;
 
   return (
-    <Show when={props.available.length > 0}>
+    <Show
+      when={props.available.length > 0}
+      fallback={
+        <div class="branch-filter-bar">
+          <button
+            type="button"
+            class="branch-filter-trigger"
+            disabled
+            title="No multi-branch repos to filter"
+          >
+            <span class="branch-filter-trigger-label">Branches (none)</span>
+            <ChevronDownIcon />
+          </button>
+        </div>
+      }
+    >
       <div class="branch-filter-bar">
         <button
           ref={(el) => {
@@ -157,7 +172,9 @@ export function BranchFilter(props: {
                           onChange={() => props.onToggle(branch)}
                           aria-label={`Pin branch ${branch}`}
                         />
-                        <span class="branch-filter-item-name">{branch}</span>
+                        <span class="branch-filter-item-name" title={branch}>
+                          {branch}
+                        </span>
                         <Show when={isActiveProject()}>
                           <span
                             class="branch-filter-item-badge"

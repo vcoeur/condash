@@ -29,18 +29,21 @@
   /* Warm-paper light theme — feels like an editorial page. */
   --bg: #ece9dd;
   --bg-panel: var(--bg);
+  --bg-base: var(--bg-panel);
   --bg-elevated: #ffffff;
   --bg-subtle: #f3f1ea;
+  --bg-tertiary: var(--bg-subtle);
   --bg-hover: #e3dfd0;
   --text: #1a1a1c;
+  --text-primary: var(--text);
   --text-body: #3a3933;
   --text-muted: #6b6960;
   /* Bumped from #a09c91 — that was ~2.6:1 over bg, failing AA. */
-  --text-faint: #807c70;
+  --text-faint: #706c60;
   --border: #e8e3d6;
   --border-strong: #d6cfbf;
   --accent: #4f46e5;
-  --warn: #c0392b;
+  --warn: #b03020;
 
   /* Status palette — saturated red→green temperature scale so the six
    * statuses are still distinguishable at 8 px. The previous mauve-to-
@@ -53,8 +56,8 @@
    *   done     = neutral gray (archived)
    * Light-mode values; dark-mode mirrors below. */
   --col-now: #c0392b;
-  --col-review: #d97e2c;
-  --col-soon: #d6a31f;
+  --col-review: #c96e1c;
+  --col-soon: #c09010;
   --col-later: #3a78c2;
   --col-backlog: #5b7088;
   --col-done: #5a6068;
@@ -120,11 +123,13 @@
    * --text-sm section headers, --text-md body/summaries, --text-lg
    * card titles). Glyph-sized rules (expander arrow 9px, twisty 14px,
    * + button 16px) keep raw px because they're icons, not text. */
-  --text-2xs: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-lg: 15px;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+
+  color-scheme: light;
 }
 
 /* Dark theme — applied either by OS preference (when no [data-theme] override)
@@ -180,6 +185,11 @@
     --kind-incident: #d68a4a;
     --kind-document: #c9b35a;
     color-scheme: dark;
+
+    ::selection {
+      background: var(--accent);
+      color: #14120e;
+    }
   }
 }
 
@@ -220,6 +230,11 @@
   color-scheme: dark;
 }
 
+[data-theme='dark'] ::selection {
+  background: var(--accent);
+  color: #14120e;
+}
+
 [data-theme='light'] {
   color-scheme: light;
 }
@@ -254,6 +269,11 @@
 }
 .kind-glyph[data-kind='document'] {
   --kind-color: var(--kind-document);
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
 }
 
 * {
@@ -570,6 +590,7 @@ button:hover {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
   font-size: var(--text-sm);
   max-width: 80vw;
+  animation: toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toast[data-kind='error'] {
@@ -588,4 +609,24 @@ button:hover {
 .toast[data-kind='info'] {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
   color: var(--text-primary);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: pretty;
 }

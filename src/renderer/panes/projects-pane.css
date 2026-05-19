@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 22px 28px 28px;
+  padding: 24px 28px 28px;
   min-height: 0;
   overflow-y: auto;
   background: var(--bg-panel);
@@ -11,11 +11,11 @@
 
 .projects-filter {
   position: sticky;
-  top: -22px;
+  top: -24px;
   z-index: 3;
   background: var(--bg-panel);
   padding: 12px 0 8px;
-  margin: -22px 0 0;
+  margin: -24px 0 0;
 }
 
 .projects-filter-input {
@@ -70,7 +70,14 @@
  * must stay fully opaque so the create-first-project affordance is legible. */
 .group-block[data-empty='true']:not([data-status='now']) {
   padding: 2px 0;
-  opacity: 0.45;
+}
+
+.group-block[data-empty='true']:not([data-status='now']) .group-header {
+  color: var(--text-faint);
+}
+
+.group-block[data-empty='true']:not([data-status='now']) .group-header .dot {
+  background: var(--border-strong);
 }
 
 .group-block[data-empty='true'] .group-header {
@@ -181,7 +188,6 @@ body[data-dragging='project'] .group-block.drag-over {
   border-radius: 50%;
   background: var(--col-status, var(--text-faint));
   flex-shrink: 0;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-status, var(--text-faint)) 18%, transparent);
 }
 
 .group-header .name {
@@ -214,7 +220,7 @@ body[data-dragging='project'] .group-block.drag-over {
    * shrunken card on narrow windows. The min is set from settings.json
    * (`cardMinWidth.projects`); the fallback below mirrors the bundled
    * default in `DEFAULT_CARD_MIN_WIDTH`. */
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-projects, 650px), 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-projects, 520px), 100%), 1fr));
   gap: 12px;
   padding: 0;
 }
@@ -277,7 +283,9 @@ body[data-dragging='project'] .group-block.drag-over {
   contain: layout paint;
   transition:
     background-color 140ms ease,
-    border-color 140ms ease;
+    border-color 140ms ease,
+    transform 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .row::before {
@@ -317,6 +325,14 @@ body[data-dragging='project'] .group-block.drag-over {
 .row:hover {
   border-color: var(--border-strong);
   background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lift);
+}
+
+.row:hover .title-actions,
+.row:focus-visible .title-actions,
+.row:focus-within .title-actions {
+  opacity: 1;
 }
 
 /* Focus ring on cards. The card is tabIndex={0} so the user can land on
@@ -360,6 +376,8 @@ body[data-dragging='project'] .group-block.drag-over {
    * line of text — the button is 28 px tall, the title cap height
    * sits a couple of pixels below the box top. */
   margin-top: -1px;
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
 
 .row .title {
@@ -414,9 +432,9 @@ body[data-dragging='project'] .group-block.drag-over {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: var(--text-md);
-  line-height: 1.5;
-  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text-body);
 }
 
 .row .summary.next-step .next-step-marker {
@@ -470,17 +488,9 @@ body[data-dragging='project'] .group-block.drag-over {
   min-width: 0;
 }
 
-/* Card body has two stacked meta rows now:
- *   .meta-context — apps + branch (top one, only rendered when there's
- *     anything to show).
- *   .meta-bottom  — step progress + dates (always rendered when there's
- *     either, dates pinned to the right).
- * The shared `.meta` rules above (flex, gap, font-size) cover layout;
- * these only tweak spacing between the two rows. */
-.row .meta-context {
-  margin-top: 4px;
-}
-
+/* Single meta row at the bottom of the card: step progress + apps +
+ * branch + dates (dates pinned to the right). The shared `.meta` rules
+ * above (flex, gap, font-size) cover layout; this only tweaks spacing. */
 .row .meta-bottom {
   margin-top: 2px;
 }
@@ -490,9 +500,6 @@ body[data-dragging='project'] .group-block.drag-over {
   font-size: var(--text-2xs);
   color: var(--text-faint);
   letter-spacing: 0.01em;
-}
-
-.row .meta-icon.branch .branch-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -597,7 +604,7 @@ body[data-dragging='project'] .group-block.drag-over {
  * grey too — green at 100% reads as "celebrate", which isn't what we
  * want when scanning a Done bucket. */
 .row .meta-icon.expander[data-complete='true'] {
-  opacity: 0.55;
+  color: var(--text-faint);
 }
 
 .row .meta-icon.expander[data-complete='true'] .progress-fill {
@@ -611,8 +618,8 @@ body[data-dragging='project'] .group-block.drag-over {
 }
 
 .row .meta-icon.expander .progress-track {
-  width: 36px;
-  height: 4px;
+  width: clamp(56px, 12%, 96px);
+  height: 5px;
   border-radius: 2px;
   background: var(--bg-subtle);
   overflow: hidden;
@@ -634,9 +641,9 @@ body[data-dragging='project'] .group-block.drag-over {
 }
 
 .row .meta-icon.expander .expander-arrow {
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: var(--text-faint);
-  margin-left: 2px;
+  margin-left: 4px;
 }
 
 .row .meta-icon.warn {

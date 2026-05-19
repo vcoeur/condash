@@ -281,7 +281,14 @@ export function Card(props: {
     const sourceWidth = source.offsetWidth;
     ghostOffsetX = sourceWidth / 2;
     ghostOffsetY = 24;
-    ghostElement = source.cloneNode(true) as HTMLElement;
+    const head = source.querySelector('.row-head');
+    ghostElement = (head ? head.cloneNode(true) : source.cloneNode(true)) as HTMLElement;
+    ghostElement.querySelectorAll('.title-actions').forEach((el) => el.remove());
+    ghostElement.style.padding = '12px 16px';
+    ghostElement.style.borderRadius = 'var(--radius-lg)';
+    ghostElement.style.background = 'var(--bg-elevated)';
+    ghostElement.style.border = '1px solid var(--border)';
+    ghostElement.style.boxShadow = '0 8px 24px rgba(0,0,0,0.18)';
     ghostElement.style.position = 'fixed';
     ghostElement.style.top = '0';
     ghostElement.style.left = '0';
@@ -335,6 +342,7 @@ export function Card(props: {
     <article
       class="row"
       title={props.item.path}
+      aria-label={`${props.item.title}, ${props.item.status}`}
       data-status-card={props.item.status}
       draggable={isDraggable()}
       tabIndex={0}
@@ -347,7 +355,7 @@ export function Card(props: {
             work-on action pinned to the right. */}
         <div class="title-row">
           <h3 class="title">
-            <Show when={props.item.kind !== 'unknown'}>
+            <Show when={props.item.kind !== 'unknown' && props.item.kind !== 'project'}>
               <KindGlyph kind={props.item.kind} />
             </Show>
             <span class="title-text">{props.item.title}</span>
@@ -383,32 +391,15 @@ export function Card(props: {
           )}
         </Show>
 
-        {/* Row 3: apps + branch — the project's where/in. Pulled out of
-            the packed meta row so the card has a clean "context" line
-            independent of step progress. */}
-        <Show when={props.item.apps.length > 0 || props.item.branch}>
-          <div class="meta meta-context">
-            <Show when={props.item.apps.length > 0}>
-              <span class="meta-icon apps" title={props.item.apps.join(', ')}>
-                <span class="apps-text">{props.item.apps.join(', ')}</span>
-              </span>
-            </Show>
-            <Show when={props.item.branch}>
-              <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
-                <span class="branch-text">{props.item.branch}</span>
-              </span>
-            </Show>
-          </div>
-        </Show>
-
-        {/* Row 4: step completion (left) + first/last dates (right).
-            Last row on the card. The dates come from the slug
-            (creation) and the most recent ## Timeline entry. */}
+        {/* Row 3: step completion + apps + branch + dates. Last row on
+            the card. The dates come from the slug (creation) and the
+            most recent ## Timeline entry. */}
         <div class="meta meta-bottom">
           <Show when={hasSteps(props.item.stepCounts)}>
             <button
               class="meta-icon expander"
               data-complete={isStepCountsComplete(props.item.stepCounts) ? 'true' : undefined}
+              aria-expanded={expanded()}
               onClick={(e) => {
                 e.stopPropagation();
                 setExpanded((v) => !v);
@@ -418,6 +409,16 @@ export function Card(props: {
               <StepProgress counts={props.item.stepCounts} />
               <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
             </button>
+          </Show>
+          <Show when={props.item.apps.length > 0}>
+            <span class="meta-icon apps" title={props.item.apps.join(', ')}>
+              {props.item.apps.join(', ')}
+            </span>
+          </Show>
+          <Show when={props.item.branch}>
+            <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
+              {props.item.branch}
+            </span>
           </Show>
           <Show when={statusUnknown()}>
             <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
