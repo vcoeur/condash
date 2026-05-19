@@ -58,6 +58,7 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
       <div class="settings-grid settings-grid--wide">
         <FieldWithBadge
           label="Workspace path"
+          pathScope="abs"
           state={props.stateOf('workspace_path')}
           onRemove={() => void props.removeOverride('workspace_path')}
         >
@@ -73,6 +74,7 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
         </FieldWithBadge>
         <FieldWithBadge
           label="Worktrees path"
+          pathScope="abs"
           state={props.stateOf('worktrees_path')}
           onRemove={() => void props.removeOverride('worktrees_path')}
         >
@@ -88,6 +90,7 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
         </FieldWithBadge>
         <FieldWithBadge
           label="Resources directory"
+          pathScope="rel"
           hint="Relative to the conception root. Browsed by the Resources pane."
           state={props.stateOf('resources_path')}
           onRemove={() => void props.removeOverride('resources_path')}
@@ -104,6 +107,7 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
         </FieldWithBadge>
         <FieldWithBadge
           label="Skills directory"
+          pathScope="rel"
           hint="Relative to the conception root. Markdown files here are editable from the Skills pane."
           state={props.stateOf('skills_path')}
           onRemove={() => void props.removeOverride('skills_path')}

@@ -55,6 +55,23 @@ export const SECTIONS: SectionMeta[] = [
   { id: 'terminal:conception', label: 'Terminal', tab: 'conception' },
 ];
 
+/**
+ * Top-level RawConfig keys that each section reads/writes. Used by the
+ * rail's dirty-pip computation: a section is dirty when any of its keys
+ * differ between disk and the active draft. `recents:global` is intentionally
+ * empty — recents are managed outside the settings modal.
+ */
+export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
+  'recents:global': [],
+  'appearance:global': ['theme', 'cardMinWidth'],
+  'terminal:global': ['terminal'],
+  'workspace:conception': ['workspace_path', 'worktrees_path', 'resources_path', 'skills_path'],
+  'repositories:conception': ['repositories'],
+  'open-with:conception': ['open_with'],
+  'appearance:conception': ['theme', 'cardMinWidth'],
+  'terminal:conception': ['terminal'],
+};
+
 export interface TabMeta {
   id: SettingsTab;
   label: string;
@@ -133,12 +150,17 @@ export type TerminalStringFieldKey =
   | 'move_tab_left_shortcut'
   | 'move_tab_right_shortcut';
 
+export type TerminalStringFieldKind = 'plain' | 'path' | 'shortcut';
+
 export interface TerminalStringField {
   key: TerminalStringFieldKey;
   label: string;
   /** Per-OS placeholder. `default` is used when the platform is unknown. */
   placeholder: Partial<Record<Platform | 'default', string>>;
   hint?: string;
+  /** Drives field-specific rendering: 'path' adds an [abs] chip, 'shortcut'
+   *  swaps in a click-to-capture button. Defaults to 'plain'. */
+  kind?: TerminalStringFieldKind;
 }
 
 export const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
@@ -146,6 +168,7 @@ export const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
     key: 'shell',
     label: 'Shell',
     placeholder: { linux: '/bin/bash', darwin: '/bin/zsh', win32: 'cmd.exe', default: '/bin/bash' },
+    kind: 'path',
   },
   {
     key: 'screenshot_dir',
@@ -156,18 +179,31 @@ export const TERMINAL_STRING_FIELDS: TerminalStringField[] = [
       win32: 'C:\\Users\\you\\Pictures\\Screenshots',
       default: '~/Pictures/Screenshots',
     },
+    kind: 'path',
   },
-  { key: 'shortcut', label: 'Toggle terminal pane', placeholder: { default: 'Ctrl+`' } },
+  {
+    key: 'shortcut',
+    label: 'Toggle terminal pane',
+    placeholder: { default: 'Ctrl+`' },
+    kind: 'shortcut',
+  },
   {
     key: 'screenshot_paste_shortcut',
     label: 'Paste latest screenshot path',
     placeholder: { default: 'Ctrl+Shift+V' },
+    kind: 'shortcut',
   },
-  { key: 'move_tab_left_shortcut', label: 'Move tab left', placeholder: { default: 'Ctrl+Left' } },
+  {
+    key: 'move_tab_left_shortcut',
+    label: 'Move tab left',
+    placeholder: { default: 'Ctrl+Left' },
+    kind: 'shortcut',
+  },
   {
     key: 'move_tab_right_shortcut',
     label: 'Move tab right',
     placeholder: { default: 'Ctrl+Right' },
+    kind: 'shortcut',
   },
 ];
 
@@ -379,6 +415,18 @@ export function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] 
  */
 export function usableActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
   return arr.filter((a) => a.label.trim().length > 0 && a.template.trim().length > 0);
+}
+
+/** Shared drag-and-drop callback bundle. The owning parent (e.g.
+ *  `RepositoriesSection`) holds the dragging-state signals; rows just emit
+ *  events and read flags. */
+export interface DndHandlers {
+  onDragStart: (index: number) => void;
+  onDragOver: (index: number) => void;
+  onDrop: (index: number) => void;
+  onDragEnd: () => void;
+  isDragging: (index: number) => boolean;
+  isDropTarget: (index: number) => boolean;
 }
 
 export type BindTextFn = (

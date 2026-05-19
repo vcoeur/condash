@@ -215,7 +215,10 @@
 }
 
 .settings-rail-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -231,6 +234,18 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.settings-rail-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-rail-item-pip {
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1;
 }
 
 .settings-rail-item:hover {
@@ -567,14 +582,28 @@
   background: var(--bg-subtle);
 }
 
+/* E2 — Section markers now read as inline headings rather than dashed
+ * card boxes that mimic repo rows. No border + transparent background +
+ * a § glyph signal the row is a label, not editable repo data. */
 .settings-repo-row--section {
-  background: var(--bg-subtle);
-  border-style: dashed;
-  margin-top: 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  margin: 18px 0 4px;
+  padding: 6px 4px 4px;
 }
 
 .settings-repo-row--section:first-child {
   margin-top: 0;
+}
+
+.settings-repo-section-marker {
+  font-family: var(--font-display);
+  color: var(--text-faint);
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .settings-repo-section-name {
@@ -582,6 +611,13 @@
   min-width: 0;
   font-weight: 600;
   font-size: 14px;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.settings-repo-section-name:focus {
+  background: var(--bg-subtle) !important;
+  border-color: var(--accent) !important;
 }
 
 .settings-repo-row-detail label {
@@ -819,4 +855,560 @@
    * input styles set on bare `label > input` selectors elsewhere; the
    * extra wrapping div would otherwise lose those rules. */
   margin-top: 2px;
+}
+
+/* ---- Search bar -------------------------------------------------------- */
+
+.settings-search-bar {
+  position: relative;
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.settings-search {
+  width: 100%;
+  padding: 7px 32px 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.settings-search-clear {
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.settings-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ---- Header Save button -- emphasises the primary action when dirty.  */
+
+.settings-save {
+  font-weight: 500;
+}
+
+.settings-save--dirty {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+.settings-save--dirty:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* ---- Collapsible subgroup -- promoted from <h3> into a <details> tag. */
+
+.settings-subgroup {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.settings-subgroup > .settings-subgroup-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 8px;
+}
+
+.settings-subgroup > .settings-subgroup-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-subgroup > .settings-subgroup-summary:hover {
+  background: var(--bg-hover);
+}
+
+.settings-subgroup-chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.settings-subgroup[open] > .settings-subgroup-summary .settings-subgroup-chevron {
+  transform: rotate(90deg);
+}
+
+.settings-subgroup > .settings-subgroup-summary h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-subgroup-body {
+  padding: 6px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- Colour field — swatch + text + hidden native picker ------------- */
+
+.settings-color-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-color-swatch {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, var(--bg-subtle) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--bg-subtle) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--bg-subtle) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--bg-subtle) 75%);
+  background-size: 8px 8px;
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-color-swatch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: inherit;
+}
+
+.settings-color-swatch:hover {
+  border-color: var(--accent);
+}
+
+.settings-color-input input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-color-picker {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+}
+
+/* ---- Live terminal preview (under the colour grid) ------------------- */
+
+.settings-terminal-preview {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  background: var(--preview-bg, #1a1b26);
+  color: var(--preview-fg, #c0caf5);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.settings-terminal-preview .preview-muted {
+  color: var(--preview-muted, #565f89);
+}
+.settings-terminal-preview .preview-green {
+  color: var(--preview-green, #9ece6a);
+}
+.settings-terminal-preview .preview-red {
+  color: var(--preview-red, #f7768e);
+}
+.settings-terminal-preview .preview-yellow {
+  color: var(--preview-yellow, #e0af68);
+}
+.settings-terminal-preview .preview-blue {
+  color: var(--preview-blue, #7aa2f7);
+}
+.settings-terminal-preview .preview-magenta {
+  color: var(--preview-magenta, #bb9af7);
+}
+.settings-terminal-preview .preview-cyan {
+  color: var(--preview-cyan, #7dcfff);
+}
+.settings-terminal-preview .preview-cursor {
+  color: var(--preview-cursor, #f7768e);
+  animation: preview-cursor-blink 1s steps(2, end) infinite;
+}
+
+@keyframes preview-cursor-blink {
+  to {
+    opacity: 0.25;
+  }
+}
+
+/* ---- Card-density preview strip -------------------------------------- */
+
+.settings-density-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 16px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.settings-density-preview-card {
+  flex-shrink: 0;
+  height: 56px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.settings-density-preview-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.settings-density-preview-width {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* ---- Path chip ([abs] / [rel]) -------------------------------------- */
+
+.settings-path-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  vertical-align: middle;
+  text-transform: lowercase;
+}
+
+.settings-path-chip--rel {
+  background: var(--bg-elevated);
+  color: var(--text-faint);
+}
+
+/* ---- Field label row ------------------------------------------------- */
+
+.settings-field-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ---- Shortcut capture button ---------------------------------------- */
+
+.settings-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 5px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  min-height: 28px;
+}
+
+.settings-shortcut:hover {
+  border-color: var(--accent);
+}
+
+.settings-shortcut--capturing {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-style: italic;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.settings-shortcut:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---- Inline link (jump to subgroup) --------------------------------- */
+
+.settings-inline-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-inline-link:hover {
+  filter: brightness(1.2);
+}
+
+/* ---- Open-with remove ------------------------------------------------ */
+
+.settings-open-with-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-open-with-remove {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.settings-open-with-remove:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* ---- Inline validation (D3) + required (D2) -------------------------- */
+
+.settings-input--invalid {
+  border-color: var(--danger, #d44) !important;
+  outline-color: var(--danger, #d44);
+}
+
+.settings-input--invalid:focus {
+  border-color: var(--danger, #d44) !important;
+}
+
+.settings-field-error {
+  color: var(--danger, #d44);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.settings-repo-name-error {
+  color: var(--danger, #d44);
+  font-size: 11px;
+  margin: 4px 0 0;
+}
+
+.settings-repo-row[data-invalid='true'] {
+  border-color: var(--danger, #d44);
+  background: color-mix(in srgb, var(--danger, #d44) 4%, transparent);
+}
+
+/* ---- Repo row: collapse + drag ------------------------------------- */
+
+.settings-repo-row--collapsed {
+  padding-bottom: 8px;
+}
+
+.settings-repo-toggle {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.settings-repo-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.settings-repo-toggle-chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.settings-repo-row:not(.settings-repo-row--collapsed) .settings-repo-toggle-chevron {
+  transform: rotate(90deg);
+}
+
+.settings-repo-summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.settings-repo-summary:hover {
+  color: var(--text-muted);
+}
+
+.settings-repo-drag-handle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  color: var(--text-faint);
+  cursor: grab;
+  font-size: 11px;
+  user-select: none;
+}
+
+.settings-repo-drag-handle:hover {
+  color: var(--text-muted);
+}
+
+.settings-repo-row--dragging {
+  opacity: 0.5;
+}
+
+.settings-repo-row--drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---- Diff view toggle (G1) ----------------------------------------- */
+
+.settings-diff-toggle {
+  font-size: 12px;
+}
+
+.settings-diff-toggle--on {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+.settings-modal[data-diff-only='true'] .settings-section-frame[data-section-state='inherits'] {
+  display: none;
+}
+
+/* ---- Recents: click-to-open --------------------------------------- */
+
+.settings-recents-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-recents-open {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  overflow: hidden;
+}
+
+.settings-recents-open:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.settings-recents-open .settings-recents-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-recents-remove {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.settings-empty-hint {
+  margin-top: 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.settings-empty-hint kbd {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
