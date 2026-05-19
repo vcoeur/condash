@@ -136,9 +136,9 @@ condash --conception ~/src/conception projects list
 
 Or set the path through `condash config conception-path ~/src/conception` (writes to `settings.json`, picked up by both the GUI and the CLI).
 
-### `condash` says "'projects' is a CLI command, not a GUI option"
+### `condash` reports an unknown noun
 
-From v2.14.0 the GUI launcher (`condash`) and the CLI launcher (`condash`) are split. `condash <noun>` errors out with a hint. Re-run as `condash <noun>`. See [`condash --help`](../reference/cli.md) for the full list of nouns.
+The single `condash` binary dispatches GUI vs. CLI based on argv (see [CLI — How dispatch works](../reference/cli.md#how-dispatch-works)). If you typed a typo for a CLI noun (e.g. `condash projct list`), `condash` reports `unknown noun` and exits with code 2. Re-run with the correct noun — `condash --help` lists every accepted one.
 
 ## Reading the toasts
 

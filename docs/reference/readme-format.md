@@ -205,6 +205,23 @@ Bold-prose form: comma-separated, backtick-wrapped. Trailing `(…)` parenthetic
 
 Either way, the resulting list powers the dashboard's per-app filter chips.
 
+## Step markers
+
+The `## Steps` list uses five canonical markers, recognised by the parser
+and round-tripped by every writer (CLI mutation verbs, GUI step-toggle,
+the markdown editor):
+
+- `- [ ]` — **todo.** Not yet started.
+- `- [~]` — **doing.** In flight.
+- `- [x]` — **done.** Resolved successfully.
+- `- [!]` — **blocked.** Surfacing a problem that needs attention; counts
+  toward the milestone total but not toward resolved.
+- `- [-]` — **dropped.** Resolved by removing the work; counts as resolved
+  for the progress bar.
+
+The canonical list lives in `src/shared/types.ts` (`STEP_MARKERS`). Any
+marker outside this set is treated as plain prose by the parser.
+
 ## Body conventions
 
 Header fields only describe the item's metadata. The body (everything after the title, in YAML form; everything after the first `##`, in bold-prose form) carries the content — goal, scope, steps, timeline, deliverables, notes. See:

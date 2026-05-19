@@ -7,7 +7,7 @@ description: The condash command-line surface — list projects, search, manage 
 
 > **Audience.** Daily user and Developer.
 
-`condash` is the command-line companion to the dashboard. From v2.14.0 the GUI launcher (`condash`) and the CLI launcher (`condash`) are two separate entries on PATH. The .deb / AppImage / DMG / NSIS installers drop both — same packaged Electron binary underneath, different launchers. `condash` runs the binary in plain-Node mode (`ELECTRON_RUN_AS_NODE=1`) against the bundled CLI script. No Chromium boots, no window opens, output goes to stdout / stderr.
+`condash` is the command-line companion to the dashboard. A single binary on PATH dispatches both modes: bare `condash` (no args, or `condash gui`) launches the packaged Electron GUI; `condash <noun> <verb> [args]` runs the bundled CLI script with no window — output goes to stdout / stderr.
 
 ```
 condash <noun> <verb> [args] [--flags]
@@ -23,12 +23,12 @@ The CLI exists because skills (`/projects`, `/knowledge`, `/tidy`) and shell scr
 | `condash --help` | Print the top-level CLI help |
 | `condash --version` | Print the CLI version |
 | `condash <noun> <verb>` | Run a CLI verb against the resolved conception path |
-| `make dev` (from source) | Watch mode: tsc + vite + Electron with `--no-sandbox` |
-| `make package` (from source) | Per-OS installers under `release/` via electron-builder |
+
+For running condash from a source clone (`make install`, `make dev`, `make package`), see [Dev launch](../guides/dev-launch.md).
 
 ## How dispatch works
 
-The two launchers are physically separate scripts. `condash` always boots the Electron GUI; if it sees a CLI noun (`projects`, `knowledge`, …) on its argv it errors with a hint to use `condash` instead. `condash` always runs the bundled CLI script under plain Node — it never starts Chromium.
+One binary, one launcher: the `condash` entry on PATH inspects its argv. With no positional argument (or with the literal `gui` first), it boots the Electron GUI. With a known CLI noun (`projects`, `knowledge`, …) first, it runs the bundled CLI script in plain-Node mode (no Chromium, no window). An unknown first positional reports an unknown noun and exits with code 2 (usage).
 
 CLI nouns:
 
@@ -272,24 +272,6 @@ condash skills install
 # Pipe to jq.
 condash projects list --json | jq '.data[] | select(.kind == "incident")'
 ```
-
-## Dev launch
-
-From a clone of the repo:
-
-```bash
-make install      # one-off — npm install + electron-rebuild
-make dev          # watch: esbuild rebuilds main + cli, vite serves renderer, electron reloads
-```
-
-`make dev` runs the Electron build with `--no-sandbox` to avoid per-worktree `chrome-sandbox` ownership fixes. The dev window only loads `localhost:5600` and local `file://` URLs — the threat surface is local-only. Drop `--no-sandbox` from `dev:electron` in `package.json` if you want the sandbox on, then once per worktree:
-
-```bash
-sudo chown root node_modules/electron/dist/chrome-sandbox
-sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-```
-
-macOS and Windows are unaffected.
 
 ## What's not in the CLI
 
