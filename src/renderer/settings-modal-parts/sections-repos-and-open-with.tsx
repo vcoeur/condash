@@ -6,7 +6,7 @@
  * modal shell.
  */
 
-import { For, Show, type JSX } from 'solid-js';
+import { createSignal, For, Show, type JSX } from 'solid-js';
 import { isSectionMarker, type RawRepo } from '../../main/config-schema';
 import { type BindTextFn, OPEN_WITH_SLOTS, type RawConfig } from './data';
 import { FieldBadgeRow, type InheritanceState } from './badges';
@@ -48,8 +48,53 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
       return next;
     });
 
+  /** Move `from` to `to`, clamping `to` into the valid range. Used by the
+   *  drag-and-drop drop handler — `to` is the target slot, which may be
+   *  past the array's end when dropping below the last row. */
+  const moveRepoTo = (from: number, to: number): Promise<void> =>
+    updateRepos((entries) => {
+      if (from === to) return entries;
+      const next = entries.slice();
+      const [removed] = next.splice(from, 1);
+      const clamped = Math.max(0, Math.min(to, next.length));
+      next.splice(clamped, 0, removed);
+      return next;
+    });
+
   const updateRepoEntry = (index: number, patch: (entry: RawRepo) => RawRepo): Promise<void> =>
     updateRepos((entries) => entries.map((e, i) => (i === index ? patch(e) : e)));
+
+  // Drag-and-drop state. `dragIndex` is the row currently being dragged;
+  // `dropIndex` is the gap we'd insert before if the user released now.
+  // Both reset on dragend so a cancelled drag doesn't leave stale outlines.
+  const [dragIndex, setDragIndex] = createSignal<number | null>(null);
+  const [dropIndex, setDropIndex] = createSignal<number | null>(null);
+  const dnd = {
+    onDragStart: (index: number) => {
+      setDragIndex(index);
+    },
+    onDragOver: (index: number) => {
+      if (dragIndex() === null) return;
+      setDropIndex(index);
+    },
+    onDrop: (index: number) => {
+      const from = dragIndex();
+      if (from === null) return;
+      setDragIndex(null);
+      setDropIndex(null);
+      // When dragging downward, the source slot moved up by 1 once we
+      // remove it; compensate so "drop above row 5" lands at index 4 (not
+      // index 5 — which would skip over the source's old neighbour).
+      const target = from < index ? index - 1 : index;
+      void moveRepoTo(from, target);
+    },
+    onDragEnd: () => {
+      setDragIndex(null);
+      setDropIndex(null);
+    },
+    isDragging: (index: number): boolean => dragIndex() === index,
+    isDropTarget: (index: number): boolean => dropIndex() === index && dragIndex() !== index,
+  };
 
   return (
     <section id="settings-section-repositories:conception" class="settings-section">
@@ -82,6 +127,7 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
                   onMove={(delta) => void moveRepo(index(), delta)}
                   onRemove={() => void removeRepo(index())}
                   onPatch={(next) => updateRepoEntry(index(), () => next)}
+                  dnd={dnd}
                 />
               }
             >
@@ -94,6 +140,7 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
                 onMove={(delta) => void moveRepo(index(), delta)}
                 onRemove={() => void removeRepo(index())}
                 onPatch={(next) => updateRepoEntry(index(), () => next)}
+                dnd={dnd}
               />
             </Show>
           )}
@@ -147,16 +194,30 @@ export function OpenWithSection(props: OpenWithSectionProps): JSX.Element {
       </div>
       <p class="settings-hint">
         Three slots used by the per-folder &quot;Open in…&quot; menu. <code>{'{path}'}</code> is
-        substituted with the absolute path. Clear the command to remove the slot.
+        substituted with the absolute path.
       </p>
       <div class="settings-grid settings-grid--wide">
         <For each={OPEN_WITH_SLOTS}>
           {(slot) => {
             const current = (): { label?: string; command?: string } =>
               props.parsed().open_with?.[slot.key] ?? {};
+            const hasContent = (): boolean => Boolean(current().label || current().command);
             return (
               <div class="settings-open-with">
-                <span class="settings-field-label">{slot.label}</span>
+                <div class="settings-open-with-head">
+                  <span class="settings-field-label">{slot.label}</span>
+                  <Show when={hasContent()}>
+                    <button
+                      type="button"
+                      class="settings-open-with-remove"
+                      title={`Remove ${slot.label} slot`}
+                      aria-label={`Remove ${slot.label} slot`}
+                      onClick={() => void updateOpenWithSlot(slot.key, { command: '', label: '' })}
+                    >
+                      ×
+                    </button>
+                  </Show>
+                </div>
                 <input
                   type="text"
                   placeholder={`Open in ${slot.label.toLowerCase()}`}

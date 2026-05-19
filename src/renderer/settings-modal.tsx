@@ -24,12 +24,14 @@ import {
   removeLauncher,
   type Section,
   SECTIONS,
+  SECTION_KEYS,
   type SettingsTab,
   TABS,
   TERMINAL_STRING_FIELDS,
 } from './settings-modal-parts/data';
-import { inheritanceState } from './settings-modal-parts/badges';
+import { inheritanceState, stableEqual } from './settings-modal-parts/badges';
 import type { InheritanceState } from './settings-modal-parts/badges';
+import { SearchProvider } from './settings-modal-parts/fields';
 import { parseErrorOf, parseRawConfig } from './settings-modal-parts/parse';
 import {
   AppearanceSection,
@@ -130,14 +132,51 @@ export function SettingsModal(props: {
   const [savedAt, setSavedAt] = createSignal<number | null>(null);
   const [pending, setPending] = createSignal(false);
 
-  // Buffered text-input drafts. Each text field updates a draft on `onInput`
-  // and commits on `onChange` (blur / Enter). The dirty signal drives the
-  // back-arrow confirm dialog: drafts present means there are typed-but-
-  // unblurred edits that haven't reached disk yet.
-  const [drafts, setDrafts] = createSignal<Record<string, string>>({});
+  // Two-layer draft model.
+  //
+  // - **Tree drafts** (globalDraft / conceptionDraft): the entire RawConfig
+  //   object as it would be saved. Non-null means the user has staged at
+  //   least one mutation (toggle, dropdown, array op, blurred text commit)
+  //   that hasn't reached disk. Cleared by Save (after flush) or Discard.
+  //
+  // - **Text drafts** (textDrafts): per-input-id ephemeral string for
+  //   mid-typing UX. Commits to its tree draft on blur via the saver
+  //   registered by `bindText`. Cleared on flush.
+  //
+  // Tree-draft existence is the single source of truth for "dirty"; text
+  // drafts are a UX-only buffer so the input doesn't fight the user's
+  // cursor while they type.
+  const [globalDraft, setGlobalDraft] = createSignal<RawConfig | null>(null);
+  const [conceptionDraft, setConceptionDraft] = createSignal<RawConfig | null>(null);
+  const [textDrafts, setTextDrafts] = createSignal<Record<string, string>>({});
   const [closeConfirm, setCloseConfirm] = createSignal(false);
+  // Search filter — empty string disables filtering. Passed through
+  // SearchProvider so every Subgroup (and any other component that calls
+  // useSearch()) can match its own keywords against the active query.
+  const [searchQuery, setSearchQuery] = createSignal('');
+  // Diff view (G1) — when on, the Conception tab hides every section
+  // whose top-level keys all inherit from global. Acts as a quick way to
+  // audit "what does this conception actually change?". Persisted per-
+  // machine so the user doesn't re-toggle on every open.
+  const DIFF_KEY = 'condash:settings-modal:diff-only';
+  const [diffOnly, setDiffOnly] = createSignal(
+    typeof window !== 'undefined' && window.localStorage.getItem(DIFF_KEY) === '1',
+  );
+  const toggleDiff = (): void => {
+    setDiffOnly((d) => {
+      const next = !d;
+      try {
+        window.localStorage.setItem(DIFF_KEY, next ? '1' : '0');
+      } catch {
+        // localStorage may throw in private mode — same fallback shape as
+        // the rest of this modal: the preference simply resets on next open.
+      }
+      return next;
+    });
+  };
 
-  const isDirty = (): boolean => Object.keys(drafts()).length > 0;
+  const isDirty = (): boolean =>
+    globalDraft() !== null || conceptionDraft() !== null || Object.keys(textDrafts()).length > 0;
 
   const [content, { mutate: mutateContent }] = createResource(
     () => configurationPath(),
@@ -208,102 +247,59 @@ export function SettingsModal(props: {
   });
 
   // --- Parsed memos ---------------------------------------------------
+  //
+  // `disk*` memos reflect what's on disk right now (CAS baseline at save
+  // time). `parsed` / `globalParsed` overlay the active tree draft on top
+  // so every section component, badge, and bound input automatically reads
+  // the draft-aware view. Sections take a `parsed: () => RawConfig` getter
+  // and don't need to know drafts exist.
 
-  const parsed = createMemo<RawConfig>(() => parseRawConfig(content() ?? ''));
-  const globalParsed = createMemo<RawConfig>(() => parseRawConfig(globalContent() ?? ''));
+  const diskConception = createMemo<RawConfig>(() => parseRawConfig(content() ?? ''));
+  const diskGlobal = createMemo<RawConfig>(() => parseRawConfig(globalContent() ?? ''));
+
+  const parsed = createMemo<RawConfig>(() => conceptionDraft() ?? diskConception());
+  const globalParsed = createMemo<RawConfig>(() => globalDraft() ?? diskGlobal());
 
   const parseError = createMemo<string | null>(() => parseErrorOf(content() ?? ''));
   const globalParseError = createMemo<string | null>(() => parseErrorOf(globalContent() ?? ''));
 
-  // --- patchFile factory ----------------------------------------------
+  // --- Stage (draft-tree mutators) -----------------------------------
 
-  /** Apply `mutator` to a parsed JSON file, drop empty leaves, and
-   *  persist via the caller-supplied write IPC's atomic CAS. Wraps the
-   *  shared parse → mutate → stringify → write flow that both
-   *  patchConfig (condash.json) and patchSettings (settings.json) need —
-   *  the two files differ only in where they read from and how they
-   *  write, captured by `read` / `write`. */
-  const patchFile = async (
-    fileLabel: string,
-    read: () => string,
-    write: (text: string, next: string) => Promise<string>,
-    onWritten: (written: string) => void,
-    mutator: (config: RawConfig) => void,
-  ): Promise<void> => {
-    const text = read();
-    let parsed: RawConfig;
-    try {
-      parsed = (text ? (JSON.parse(text) as RawConfig) : {}) as RawConfig;
-    } catch (err) {
-      setError(`${fileLabel} is invalid: ${(err as Error).message}. Open it externally to repair.`);
-      return;
+  /** Mutate the tree draft for `target`, lazily seeding from disk on
+   *  first stage. Synchronous: the caller's mutator runs, the draft
+   *  signal updates, and every consumer (badges, inputs, previews)
+   *  re-derives without any IPC round-trip. Returns Promise<void> for
+   *  call-site compatibility with the pre-draft API — every existing
+   *  `await patchConfig(...)` still resolves immediately. */
+  const stage = (target: SettingsTab, mutator: (c: RawConfig) => void): Promise<void> => {
+    if (target === 'global') {
+      setGlobalDraft((current) => {
+        const base: RawConfig = current ? { ...current } : structuredClone(diskGlobal());
+        mutator(base);
+        return base;
+      });
+    } else {
+      setConceptionDraft((current) => {
+        const base: RawConfig = current ? { ...current } : structuredClone(diskConception());
+        mutator(base);
+        return base;
+      });
     }
-    mutator(parsed);
-    const next = JSON.stringify(buildSavePayload(parsed), null, 2) + '\n';
-    if (next === text) return;
-    setError(null);
-    setPending(true);
-    try {
-      const written = await write(text, next);
-      onWritten(written);
-      setSavedAt(Date.now());
-      scheduleSavedAtClear();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setPending(false);
-    }
+    return Promise.resolve();
   };
 
-  /** Apply `mutator` to the parsed condash.json, drop empty leaves, and
-   *  persist via the same atomic CAS path used by every other note write.
-   *  Path swap: read from configurationPath() (which may be the legacy
-   *  configuration.json) and always write to writePath (canonical
-   *  condash.json). On the first write to a fresh condash.json the file
-   *  doesn't yet exist, so writeNote's drift check sees `''` on disk —
-   *  pass `''` as the expected baseline when writing to a new path.
-   *  After a successful write, the canonical condash.json now exists
-   *  (or has been updated) — re-point the read resource so the next
-   *  refresh round-trip lands on the right file. The conception config
-   *  is canonicalised through the Zod schema on the main side, so the
-   *  bytes that reach disk can differ from `next` (e.g. Zod reorders new
-   *  keys into schema order). Cache the actual written content so the
-   *  next save's CAS baseline matches disk. */
-  const patchConfig = (mutator: (config: RawConfig) => void): Promise<void> => {
-    const readFrom = configurationPath();
-    return patchFile(
-      'condash.json',
-      () => content() ?? '',
-      (text, next) => {
-        const expected = readFrom === writePath ? text : '';
-        return window.condash.writeNote(writePath, expected, next);
-      },
-      (written) => {
-        mutateContent(written);
-        if (readFrom !== writePath) mutateReadPath(writePath);
-      },
-      mutator,
-    );
-  };
+  /** Stage a mutation to the conception tree draft. */
+  const patchConfig = (mutator: (config: RawConfig) => void): Promise<void> =>
+    stage('conception', mutator);
 
-  /** Apply `mutator` to the parsed settings.json, drop empty leaves, and
-   *  persist via writeGlobalSettings' atomic CAS. Mirrors patchConfig but
-   *  writes to the per-machine file. Every Global-tab editor goes through
-   *  this; the long-standing setTheme / setLayout / termSetPrefs IPC verbs
-   *  continue to write here too for the rest of the app. */
+  /** Stage a mutation to the global tree draft. */
   const patchSettings = (mutator: (settings: RawConfig) => void): Promise<void> =>
-    patchFile(
-      'settings.json',
-      () => globalContent() ?? '',
-      (text, next) => window.condash.writeGlobalSettings(text, next),
-      mutateGlobalContent,
-      mutator,
-    );
+    stage('global', mutator);
 
   /** Patch the right file based on `target`. */
   const patchFor = (target: SettingsTab) => (target === 'global' ? patchSettings : patchConfig);
 
-  /** Read the parsed source-of-truth for the given target. */
+  /** Read the parsed source-of-truth for the given target. Draft-aware. */
   const parsedFor = (target: SettingsTab): RawConfig =>
     target === 'global' ? globalParsed() : parsed();
 
@@ -311,6 +307,35 @@ export function SettingsModal(props: {
 
   const stateOf = <K extends keyof RawConfig>(key: K): InheritanceState =>
     inheritanceState(key, globalParsed(), parsed());
+
+  /** True when any of the keys owned by `id` differ between the disk
+   *  snapshot and the active draft. Drives the rail's unsaved-changes pip
+   *  next to each section label. */
+  const sectionDirty = (id: Section): boolean => {
+    const keys = SECTION_KEYS[id];
+    if (keys.length === 0) return false;
+    const isGlobal = id.endsWith(':global');
+    const disk = isGlobal ? diskGlobal() : diskConception();
+    const effective = isGlobal ? globalParsed() : parsed();
+    for (const k of keys) {
+      if (!stableEqual(disk[k], effective[k])) return true;
+    }
+    return false;
+  };
+
+  /** True when every conception-side key owned by `id` is in the
+   *  'inherits' state (i.e. the conception doesn't override anything in
+   *  that section). Used by the diff-view to hide pure-inheritance
+   *  sections on the Conception tab. */
+  const sectionFullyInherits = (id: Section): boolean => {
+    if (!id.endsWith(':conception')) return false;
+    const keys = SECTION_KEYS[id];
+    if (keys.length === 0) return true;
+    for (const k of keys) {
+      if (stateOf(k) !== 'inherits') return false;
+    }
+    return true;
+  };
 
   /** Drop a top-level key from condash.json. Used by the "Remove
    *  override" / "Reset to global" buttons. */
@@ -334,19 +359,20 @@ export function SettingsModal(props: {
 
   // --- Draft-buffered text input -------------------------------------
 
-  // Maps each text-field id to its current commit handler so that the
-  // close-confirm "Save and close" path can flush all uncommitted drafts
-  // in one go without re-deriving each field's save logic.
-  const draftSavers = new Map<string, (value: string) => Promise<void>>();
+  // Maps each text-field id to its current commit handler so we can drain
+  // any uncommitted text drafts into their tree drafts before writing.
+  const draftSavers = new Map<string, (value: string) => Promise<void> | void>();
 
   /**
-   * Bind a text input to the draft buffer + commit-on-blur flow.
-   * Returns the props an `<input>` should spread: value, onInput, onChange.
+   * Bind a text input. On every keystroke the value lives in `textDrafts`
+   * (so the cursor doesn't fight a re-render); on blur the value commits
+   * via `save`, which stages it into the tree draft. Nothing reaches disk
+   * until Save is clicked.
    */
   const bindText = (
     id: string,
     persisted: () => string | undefined,
-    save: (value: string) => Promise<void>,
+    save: (value: string) => Promise<void> | void,
   ): {
     value: string;
     onInput: (e: InputEvent & { currentTarget: HTMLInputElement }) => void;
@@ -354,14 +380,14 @@ export function SettingsModal(props: {
   } => {
     draftSavers.set(id, save);
     return {
-      value: drafts()[id] ?? persisted() ?? '',
+      value: textDrafts()[id] ?? persisted() ?? '',
       onInput: (e) => {
         const next = e.currentTarget.value;
-        setDrafts((d) => ({ ...d, [id]: next }));
+        setTextDrafts((d) => ({ ...d, [id]: next }));
       },
       onChange: (e) => {
         const next = e.currentTarget.value;
-        setDrafts((d) => {
+        setTextDrafts((d) => {
           const copy = { ...d };
           delete copy[id];
           return copy;
@@ -371,28 +397,118 @@ export function SettingsModal(props: {
     };
   };
 
-  /** Flush every draft to disk in parallel; resolve once all writes settle. */
-  const flushDrafts = async (): Promise<void> => {
-    const snapshot = drafts();
+  /** Drain the text-draft layer into tree drafts. Called as the first step
+   *  of any flush so on-screen typed-but-unblurred edits don't get lost. */
+  const drainTextDrafts = async (): Promise<void> => {
+    const snapshot = textDrafts();
     const ids = Object.keys(snapshot);
     if (ids.length === 0) return;
-    setDrafts({});
-    await Promise.all(
-      ids.map((id) => {
-        const saver = draftSavers.get(id);
-        return saver ? saver(snapshot[id]) : Promise.resolve();
-      }),
-    );
+    setTextDrafts({});
+    for (const id of ids) {
+      const saver = draftSavers.get(id);
+      if (saver) await saver(snapshot[id]);
+    }
+  };
+
+  /** Write a single tree draft to disk through its CAS write IPC. Returns
+   *  true if it actually wrote (false when the serialized draft matches
+   *  disk byte-for-byte — common right after a Discard-then-edit-back). */
+  const writeTreeDraft = async (
+    draft: RawConfig,
+    expected: string,
+    write: (text: string, next: string) => Promise<string>,
+    onWritten: (written: string) => void,
+  ): Promise<boolean> => {
+    const next = JSON.stringify(buildSavePayload(draft), null, 2) + '\n';
+    if (next === expected) return false;
+    const written = await write(expected, next);
+    onWritten(written);
+    return true;
+  };
+
+  /** Persist all staged drafts (text + tree) in one round. Writes proceed
+   *  in parallel across the two files but each goes through its own CAS
+   *  guard so a concurrent external edit surfaces as a per-file error. */
+  const flushDrafts = async (): Promise<void> => {
+    await drainTextDrafts();
+    if (!globalDraft() && !conceptionDraft()) {
+      // Nothing to write — the text drain may have produced no tree-level
+      // changes (e.g. blurred field re-typed to its original value).
+      setSavedAt(Date.now());
+      scheduleSavedAtClear();
+      return;
+    }
+    setError(null);
+    setPending(true);
+    try {
+      const tasks: Promise<unknown>[] = [];
+      const gd = globalDraft();
+      if (gd) {
+        tasks.push(
+          writeTreeDraft(
+            gd,
+            globalContent() ?? '',
+            (text, next) => window.condash.writeGlobalSettings(text, next),
+            (written) => {
+              mutateGlobalContent(written);
+              // Live-fire the theme + card-min-width props once the global
+              // file actually changed, so the rest of the app picks up the
+              // new CSS variables without a re-mount.
+              const g = parseRawConfig(written);
+              if (g.theme && g.theme !== props.theme) props.onChangeTheme(g.theme);
+              if (g.cardMinWidth) props.onChangeCardMinWidth(g.cardMinWidth);
+              setGlobalDraft(null);
+            },
+          ),
+        );
+      }
+      const cd = conceptionDraft();
+      if (cd) {
+        const readFrom = configurationPath();
+        const expectedConception = readFrom === writePath ? (content() ?? '') : '';
+        tasks.push(
+          writeTreeDraft(
+            cd,
+            expectedConception,
+            (text, next) => window.condash.writeNote(writePath, text, next),
+            (written) => {
+              mutateContent(written);
+              if (readFrom !== writePath) mutateReadPath(writePath);
+              setConceptionDraft(null);
+            },
+          ),
+        );
+      }
+      await Promise.all(tasks);
+      setSavedAt(Date.now());
+      scheduleSavedAtClear();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  /** Drop every staged change. The next render falls back to disk content.
+   *  Doesn't restore the live theme prop if the user previewed a different
+   *  one via the radio — that prop only fires on Save. */
+  const discardDrafts = (): void => {
+    setGlobalDraft(null);
+    setConceptionDraft(null);
+    setTextDrafts({});
+    setError(null);
   };
 
   const handleSaveAndClose = async (): Promise<void> => {
     setCloseConfirm(false);
     await flushDrafts();
-    props.onClose();
+    // If the save errored, leave the modal open so the user sees the
+    // banner. Otherwise close.
+    if (!error()) props.onClose();
   };
 
   const handleDiscardAndClose = (): void => {
-    setDrafts({});
+    discardDrafts();
     setCloseConfirm(false);
     props.onClose();
   };
@@ -417,9 +533,9 @@ export function SettingsModal(props: {
       }
       c.cardMinWidth = Object.keys(merged).length > 0 ? merged : undefined;
     });
-    // Notify the rest of the app via the existing prop callback so the
-    // CSS variables update without a re-mount.
-    props.onChangeCardMinWidth(patch);
+    // Live preview only inside the modal (see card-density preview strip
+    // in C3). The app-wide CSS variables update when the user clicks Save
+    // — see flushDrafts.
   };
 
   const setConceptionCardMinWidth = (patch: CardMinWidthPrefs): Promise<void> =>
@@ -454,8 +570,9 @@ export function SettingsModal(props: {
     await patchSettings((c) => {
       c.theme = next;
     });
-    // Keep the live theme prop in lock-step with settings.json.
-    props.onChangeTheme(next);
+    // The live theme prop only updates when the user clicks Save — the
+    // radio shows the staged choice inside the modal via themeFor(),
+    // while the rest of the app keeps the disk theme until flush.
   };
 
   const setConceptionTheme = (next: Theme): Promise<void> =>
@@ -676,6 +793,7 @@ export function SettingsModal(props: {
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
+        data-diff-only={diffOnly() ? 'true' : 'false'}
         onClick={(e) => e.stopPropagation()}
       >
         <header class="modal-head settings-head">
@@ -697,17 +815,50 @@ export function SettingsModal(props: {
               …
             </span>
           </Show>
-          <Show when={savedAt() !== null && !pending()}>
+          <Show when={savedAt() !== null && !pending() && !isDirty()}>
             <span class="modal-saved" title="Saved">
               ✓
             </span>
           </Show>
           <Show when={isDirty() && !pending()}>
-            <span class="modal-dirty" title="Unsaved edits in a focused field">
+            <span class="modal-dirty" title="Unsaved changes — click Save to write to disk">
               ●
             </span>
           </Show>
           <span class="settings-head-spacer" />
+          <Show when={tab() === 'conception'}>
+            <button
+              type="button"
+              class="modal-button settings-diff-toggle"
+              classList={{ 'settings-diff-toggle--on': diffOnly() }}
+              onClick={toggleDiff}
+              title={
+                diffOnly()
+                  ? 'Showing only sections this conception overrides — click to show all'
+                  : 'Hide sections that fully inherit from global'
+              }
+              aria-pressed={diffOnly()}
+            >
+              {diffOnly() ? 'Overrides only ✓' : 'Overrides only'}
+            </button>
+          </Show>
+          <button
+            class="modal-button settings-save"
+            classList={{ 'settings-save--dirty': isDirty() }}
+            onClick={() => void flushDrafts()}
+            disabled={!isDirty() || pending()}
+            title="Save staged changes to disk"
+          >
+            Save
+          </button>
+          <button
+            class="modal-button"
+            onClick={discardDrafts}
+            disabled={!isDirty() || pending()}
+            title="Drop every staged change and revert to the file on disk"
+          >
+            Discard
+          </button>
           <button
             class="modal-button"
             onClick={attemptClose}
@@ -741,6 +892,28 @@ export function SettingsModal(props: {
           </For>
         </div>
 
+        <div class="settings-search-bar">
+          <input
+            type="search"
+            class="settings-search"
+            placeholder="Search settings…"
+            value={searchQuery()}
+            onInput={(e) => setSearchQuery(e.currentTarget.value)}
+            aria-label="Filter settings"
+          />
+          <Show when={searchQuery().trim().length > 0}>
+            <button
+              type="button"
+              class="settings-search-clear"
+              onClick={() => setSearchQuery('')}
+              title="Clear search"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          </Show>
+        </div>
+
         <Show when={parseError()}>
           <div class="modal-error">
             condash.json failed to parse — {parseError()}. Edit it externally to repair.
@@ -767,21 +940,22 @@ export function SettingsModal(props: {
                       classList={{ active: section() === s.id }}
                       onClick={() => scrollToSection(s.id)}
                     >
-                      {s.label}
+                      <span class="settings-rail-item-label">{s.label}</span>
+                      <Show when={sectionDirty(s.id)}>
+                        <span
+                          class="settings-rail-item-pip"
+                          title="Section has unsaved changes"
+                          aria-label="Unsaved changes"
+                        >
+                          ●
+                        </span>
+                      </Show>
                     </button>
                   </li>
                 )}
               </For>
             </ul>
             <div class="settings-rail-actions">
-              <button
-                class="modal-button"
-                onClick={() => void flushDrafts()}
-                disabled={!isDirty()}
-                title="Flush any focused-but-unblurred edits to disk"
-              >
-                Save
-              </button>
               <button
                 class="modal-button"
                 onClick={() => {
@@ -818,132 +992,169 @@ export function SettingsModal(props: {
               });
             }}
           >
-            {/* Global tabpanel ----------------------------------------- */}
-            <div
-              role="tabpanel"
-              id="settings-panel-global"
-              aria-labelledby="settings-tab-global"
-              class="settings-tabpanel"
-              classList={{ 'settings-tabpanel--hidden': tab() !== 'global' }}
-            >
-              <RecentConceptionsSection />
+            <SearchProvider query={searchQuery}>
+              {/* Global tabpanel ----------------------------------------- */}
+              <div
+                role="tabpanel"
+                id="settings-panel-global"
+                aria-labelledby="settings-tab-global"
+                class="settings-tabpanel"
+                classList={{ 'settings-tabpanel--hidden': tab() !== 'global' }}
+              >
+                <RecentConceptionsSection />
 
-              <AppearanceSection
-                target="global"
-                themeFor={themeFor}
-                setTheme={setGlobalTheme}
-                cardMinWidthFor={cardMinWidthFor}
-                setCardMinWidth={setGlobalCardMinWidth}
-              />
+                <AppearanceSection
+                  target="global"
+                  themeFor={themeFor}
+                  setTheme={setGlobalTheme}
+                  cardMinWidthFor={cardMinWidthFor}
+                  setCardMinWidth={setGlobalCardMinWidth}
+                />
 
-              <TerminalSection
-                target="global"
-                bindText={bindText}
-                prefs={() => terminalPrefsFor('global')}
-                xterm={() => xtermPrefsFor('global')}
-                setString={(k, v) => setTerminalString('global', k, v)}
-                launchers={() => terminalPrefsFor('global').launchers ?? []}
-                patchLauncher={(i, p) => patchLauncherField('global', i, p)}
-                addLauncher={() => addLauncherField('global')}
-                removeLauncher={(i) => removeLauncherField('global', i)}
-                moveLauncher={(i, d) => moveLauncherField('global', i, d)}
-                projectActions={() => terminalPrefsFor('global').projectActions ?? []}
-                patchProjectAction={(i, p) => patchProjectActionField('global', i, p)}
-                addProjectAction={() => addProjectActionField('global')}
-                removeProjectAction={(i) => removeProjectActionField('global', i)}
-                moveProjectAction={(i, d) => moveProjectActionField('global', i, d)}
-                newProjectActions={() => terminalPrefsFor('global').newProjectActions ?? []}
-                patchNewProjectAction={(i, p) => patchNewProjectActionField('global', i, p)}
-                addNewProjectAction={() => addNewProjectActionField('global')}
-                removeNewProjectAction={(i) => removeNewProjectActionField('global', i)}
-                moveNewProjectAction={(i, d) => moveNewProjectActionField('global', i, d)}
-                updateXterm={(p) => updateXterm('global', p)}
-                updateColor={(k, v) => updateColor('global', k, v)}
-                updateLogging={(p) => updateLogging('global', p)}
-                platform={platform}
-              />
-            </div>
+                <TerminalSection
+                  target="global"
+                  bindText={bindText}
+                  prefs={() => terminalPrefsFor('global')}
+                  xterm={() => xtermPrefsFor('global')}
+                  setString={(k, v) => setTerminalString('global', k, v)}
+                  launchers={() => terminalPrefsFor('global').launchers ?? []}
+                  patchLauncher={(i, p) => patchLauncherField('global', i, p)}
+                  addLauncher={() => addLauncherField('global')}
+                  removeLauncher={(i) => removeLauncherField('global', i)}
+                  moveLauncher={(i, d) => moveLauncherField('global', i, d)}
+                  projectActions={() => terminalPrefsFor('global').projectActions ?? []}
+                  patchProjectAction={(i, p) => patchProjectActionField('global', i, p)}
+                  addProjectAction={() => addProjectActionField('global')}
+                  removeProjectAction={(i) => removeProjectActionField('global', i)}
+                  moveProjectAction={(i, d) => moveProjectActionField('global', i, d)}
+                  newProjectActions={() => terminalPrefsFor('global').newProjectActions ?? []}
+                  patchNewProjectAction={(i, p) => patchNewProjectActionField('global', i, p)}
+                  addNewProjectAction={() => addNewProjectActionField('global')}
+                  removeNewProjectAction={(i) => removeNewProjectActionField('global', i)}
+                  moveNewProjectAction={(i, d) => moveNewProjectActionField('global', i, d)}
+                  updateXterm={(p) => updateXterm('global', p)}
+                  updateColor={(k, v) => updateColor('global', k, v)}
+                  updateLogging={(p) => updateLogging('global', p)}
+                  platform={platform}
+                />
+              </div>
 
-            {/* Conception tabpanel ----------------------------------- */}
-            <div
-              role="tabpanel"
-              id="settings-panel-conception"
-              aria-labelledby="settings-tab-conception"
-              class="settings-tabpanel"
-              classList={{ 'settings-tabpanel--hidden': tab() !== 'conception' }}
-            >
-              <WorkspaceSection
-                bindText={bindText}
-                parsed={parsed}
-                stateOf={stateOf}
-                removeOverride={removeOverride}
-                patchConfig={patchConfig}
-                platform={platform}
-              />
+              {/* Conception tabpanel ----------------------------------- */}
+              <div
+                role="tabpanel"
+                id="settings-panel-conception"
+                aria-labelledby="settings-tab-conception"
+                class="settings-tabpanel"
+                classList={{ 'settings-tabpanel--hidden': tab() !== 'conception' }}
+              >
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('workspace:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <WorkspaceSection
+                    bindText={bindText}
+                    parsed={parsed}
+                    stateOf={stateOf}
+                    removeOverride={removeOverride}
+                    patchConfig={patchConfig}
+                    platform={platform}
+                  />
+                </div>
 
-              <RepositoriesSection
-                parsed={parsed}
-                bindText={bindText}
-                stateOf={stateOf}
-                removeOverride={removeOverride}
-                patchConfig={patchConfig}
-              />
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('repositories:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <RepositoriesSection
+                    parsed={parsed}
+                    bindText={bindText}
+                    stateOf={stateOf}
+                    removeOverride={removeOverride}
+                    patchConfig={patchConfig}
+                  />
+                </div>
 
-              <OpenWithSection
-                parsed={parsed}
-                bindText={bindText}
-                stateOf={stateOf}
-                removeOverride={removeOverride}
-                patchConfig={patchConfig}
-              />
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('open-with:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <OpenWithSection
+                    parsed={parsed}
+                    bindText={bindText}
+                    stateOf={stateOf}
+                    removeOverride={removeOverride}
+                    patchConfig={patchConfig}
+                  />
+                </div>
 
-              <AppearanceSection
-                target="conception"
-                themeFor={themeFor}
-                setTheme={setConceptionTheme}
-                cardMinWidthFor={cardMinWidthFor}
-                setCardMinWidth={setConceptionCardMinWidth}
-                themeBadge={{
-                  stateOf: () => stateOf('theme'),
-                  removeOverride: () => void removeOverride('theme'),
-                }}
-                cardMinWidthBadge={{
-                  stateOf: () => stateOf('cardMinWidth'),
-                  removeOverride: () => void removeOverride('cardMinWidth'),
-                }}
-              />
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('appearance:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <AppearanceSection
+                    target="conception"
+                    themeFor={themeFor}
+                    setTheme={setConceptionTheme}
+                    cardMinWidthFor={cardMinWidthFor}
+                    setCardMinWidth={setConceptionCardMinWidth}
+                    themeBadge={{
+                      stateOf: () => stateOf('theme'),
+                      removeOverride: () => void removeOverride('theme'),
+                    }}
+                    cardMinWidthBadge={{
+                      stateOf: () => stateOf('cardMinWidth'),
+                      removeOverride: () => void removeOverride('cardMinWidth'),
+                    }}
+                  />
+                </div>
 
-              <TerminalSection
-                target="conception"
-                bindText={bindText}
-                prefs={() => terminalPrefsFor('conception')}
-                xterm={() => xtermPrefsFor('conception')}
-                setString={(k, v) => setTerminalString('conception', k, v)}
-                launchers={() => terminalPrefsFor('conception').launchers ?? []}
-                patchLauncher={(i, p) => patchLauncherField('conception', i, p)}
-                addLauncher={() => addLauncherField('conception')}
-                removeLauncher={(i) => removeLauncherField('conception', i)}
-                moveLauncher={(i, d) => moveLauncherField('conception', i, d)}
-                projectActions={() => terminalPrefsFor('conception').projectActions ?? []}
-                patchProjectAction={(i, p) => patchProjectActionField('conception', i, p)}
-                addProjectAction={() => addProjectActionField('conception')}
-                removeProjectAction={(i) => removeProjectActionField('conception', i)}
-                moveProjectAction={(i, d) => moveProjectActionField('conception', i, d)}
-                newProjectActions={() => terminalPrefsFor('conception').newProjectActions ?? []}
-                patchNewProjectAction={(i, p) => patchNewProjectActionField('conception', i, p)}
-                addNewProjectAction={() => addNewProjectActionField('conception')}
-                removeNewProjectAction={(i) => removeNewProjectActionField('conception', i)}
-                moveNewProjectAction={(i, d) => moveNewProjectActionField('conception', i, d)}
-                updateXterm={(p) => updateXterm('conception', p)}
-                updateColor={(k, v) => updateColor('conception', k, v)}
-                updateLogging={(p) => updateLogging('conception', p)}
-                platform={platform}
-                badge={{
-                  stateOf: () => stateOf('terminal'),
-                  removeOverride: () => void removeOverride('terminal'),
-                }}
-              />
-            </div>
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('terminal:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <TerminalSection
+                    target="conception"
+                    bindText={bindText}
+                    prefs={() => terminalPrefsFor('conception')}
+                    xterm={() => xtermPrefsFor('conception')}
+                    setString={(k, v) => setTerminalString('conception', k, v)}
+                    launchers={() => terminalPrefsFor('conception').launchers ?? []}
+                    patchLauncher={(i, p) => patchLauncherField('conception', i, p)}
+                    addLauncher={() => addLauncherField('conception')}
+                    removeLauncher={(i) => removeLauncherField('conception', i)}
+                    moveLauncher={(i, d) => moveLauncherField('conception', i, d)}
+                    projectActions={() => terminalPrefsFor('conception').projectActions ?? []}
+                    patchProjectAction={(i, p) => patchProjectActionField('conception', i, p)}
+                    addProjectAction={() => addProjectActionField('conception')}
+                    removeProjectAction={(i) => removeProjectActionField('conception', i)}
+                    moveProjectAction={(i, d) => moveProjectActionField('conception', i, d)}
+                    newProjectActions={() => terminalPrefsFor('conception').newProjectActions ?? []}
+                    patchNewProjectAction={(i, p) => patchNewProjectActionField('conception', i, p)}
+                    addNewProjectAction={() => addNewProjectActionField('conception')}
+                    removeNewProjectAction={(i) => removeNewProjectActionField('conception', i)}
+                    moveNewProjectAction={(i, d) => moveNewProjectActionField('conception', i, d)}
+                    updateXterm={(p) => updateXterm('conception', p)}
+                    updateColor={(k, v) => updateColor('conception', k, v)}
+                    updateLogging={(p) => updateLogging('conception', p)}
+                    platform={platform}
+                    badge={{
+                      stateOf: () => stateOf('terminal'),
+                      removeOverride: () => void removeOverride('terminal'),
+                    }}
+                  />
+                </div>
+              </div>
+            </SearchProvider>
           </div>
         </div>
 
@@ -957,13 +1168,13 @@ export function SettingsModal(props: {
               onClick={(e) => e.stopPropagation()}
             >
               <h3>Save before closing?</h3>
-              <p>You have edits in a focused field that haven't been written yet.</p>
+              <p>You have staged changes that haven't been written to disk yet.</p>
               <div class="settings-confirm-actions">
                 <button class="modal-button" onClick={() => setCloseConfirm(false)}>
-                  Cancel
+                  Keep editing
                 </button>
                 <button class="modal-button" onClick={handleDiscardAndClose}>
-                  Discard
+                  Discard and close
                 </button>
                 <button class="modal-button" onClick={() => void handleSaveAndClose()}>
                   Save and close

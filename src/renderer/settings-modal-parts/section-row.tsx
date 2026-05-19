@@ -1,6 +1,6 @@
-import type { JSX } from 'solid-js';
+import { Show, type JSX } from 'solid-js';
 import type { RawRepo } from '../../main/config-schema';
-import type { BindTextFn } from './data';
+import type { BindTextFn, DndHandlers } from './data';
 
 /**
  * One row in the repositories list that is a `{ section: "…" }` marker — a
@@ -17,10 +17,44 @@ export function SectionRow(props: {
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
   onPatch: (next: RawRepo) => Promise<void>;
+  dnd?: DndHandlers;
 }): JSX.Element {
   return (
-    <div class="settings-repo-row settings-repo-row--section">
+    <div
+      class="settings-repo-row settings-repo-row--section"
+      classList={{
+        'settings-repo-row--dragging': props.dnd?.isDragging(props.index) ?? false,
+        'settings-repo-row--drop-target': props.dnd?.isDropTarget(props.index) ?? false,
+      }}
+      draggable={props.dnd ? true : undefined}
+      onDragStart={(e) => {
+        if (!props.dnd) return;
+        e.dataTransfer?.setData('text/plain', String(props.index));
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        props.dnd.onDragStart(props.index);
+      }}
+      onDragOver={(e) => {
+        if (!props.dnd) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        props.dnd.onDragOver(props.index);
+      }}
+      onDrop={(e) => {
+        if (!props.dnd) return;
+        e.preventDefault();
+        props.dnd.onDrop(props.index);
+      }}
+      onDragEnd={() => props.dnd?.onDragEnd()}
+    >
       <div class="settings-repo-row-head">
+        <Show when={props.dnd}>
+          <span class="settings-repo-drag-handle" title="Drag to reorder" aria-hidden="true">
+            ⋮⋮
+          </span>
+        </Show>
+        <span class="settings-repo-section-marker" aria-hidden="true">
+          §
+        </span>
         <input
           type="text"
           class="settings-repo-section-name"

@@ -23,6 +23,10 @@ export function RecentConceptionsSection(): JSX.Element {
     setVersion((v) => v + 1);
   };
 
+  const handleOpen = (path: string): void => {
+    void window.condash.openConception(path);
+  };
+
   return (
     <section id="settings-section-recents:global" class="settings-section">
       <h2>Recent conception paths</h2>
@@ -32,20 +36,35 @@ export function RecentConceptionsSection(): JSX.Element {
       </p>
       <Show
         when={(recents() ?? []).length > 0}
-        fallback={<p class="settings-empty">No recents yet.</p>}
+        fallback={
+          <div class="settings-empty">
+            <p>No recent conceptions yet.</p>
+            <p class="settings-empty-hint">
+              Use <kbd>File → Open conception…</kbd> or drop a folder on the dock icon to add one.
+            </p>
+          </div>
+        }
       >
         <ul class="settings-recents-list">
           <For each={recents()}>
             {(path) => (
               <li class="settings-recents-row">
-                <code class="settings-recents-path">{path}</code>
                 <button
                   type="button"
-                  class="modal-button"
+                  class="settings-recents-open"
+                  onClick={() => handleOpen(path)}
+                  title="Switch to this conception"
+                >
+                  <code class="settings-recents-path">{path}</code>
+                </button>
+                <button
+                  type="button"
+                  class="modal-button settings-recents-remove"
                   onClick={() => void handleRemove(path)}
                   title="Remove from recents"
+                  aria-label={`Remove ${path} from recents`}
                 >
-                  Remove
+                  ×
                 </button>
               </li>
             )}
