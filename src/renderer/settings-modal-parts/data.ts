@@ -355,7 +355,8 @@ export function compactLaunchers(arr: LauncherConfig[]): LauncherConfig[] {
 
 /**
  * Normalise `actionTemplateSchema`-shaped rows for disk: keep `label` +
- * `template` verbatim, attach `submit: true` only when explicitly set.
+ * `template` verbatim, attach `submit: true` only when explicitly set, and
+ * attach `launcher` only when set to a non-empty string.
  */
 export function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
   return arr.map((a) => {
@@ -364,6 +365,7 @@ export function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] 
       template: a.template ?? '',
     };
     if (a.submit === true) out.submit = true;
+    if (typeof a.launcher === 'string' && a.launcher.length > 0) out.launcher = a.launcher;
     return out;
   });
 }

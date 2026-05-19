@@ -181,12 +181,21 @@ const launchersSchema = z.array(launcherSchema);
  *  "+ New project" button. Same blank-row tolerance as `launcherSchema`:
  *  `label` and `template` accept empty strings so a freshly-added row is
  *  schema-valid; the project-card dropdown skips entries whose `template`
- *  is empty. */
+ *  is empty.
+ *
+ *  `launcher`, when set, names one of `terminal.launchers[].label`. The
+ *  action spawns a fresh tab with that launcher's command then types the
+ *  template into it — gives users a way to bind, e.g., "Start new project"
+ *  to a Claude / Kimi / shell launcher instead of typing into whatever
+ *  shell happens to be focused. Empty / missing keeps the legacy behaviour
+ *  (type into the focused tab; spawn the default launcher only if no tab
+ *  exists). */
 const actionTemplateSchema = z
   .object({
     label: z.string(),
     template: z.string(),
     submit: z.boolean().optional(),
+    launcher: z.string().optional(),
   })
   .strict();
 

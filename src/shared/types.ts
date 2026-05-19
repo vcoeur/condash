@@ -448,6 +448,12 @@ export interface ActionTemplate {
   template: string;
   /** When true, press Enter after typing. Default false. */
   submit?: boolean;
+  /** When set, names one of `terminal.launchers[].label`. The action then
+   *  spawns a fresh tab using that launcher's command before typing the
+   *  template (e.g. bind "Start new project" to a Claude / Kimi / shell
+   *  launcher). Empty / missing → type into the focused tab, spawning the
+   *  default launcher only if no tab exists. */
+  launcher?: string;
 }
 
 export interface TerminalPrefs {

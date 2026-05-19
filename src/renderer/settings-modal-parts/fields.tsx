@@ -131,11 +131,18 @@ function ActionTemplateSection(props: {
     onChange: (e: Event & { currentTarget: HTMLInputElement }) => void;
   };
   items: () => ActionTemplate[];
+  /** Configured launchers, exposed in the per-row Launcher dropdown. Only
+   *  entries with a non-empty label/command are useful — the picker
+   *  filters again at render time so freshly-added blank rows don't show
+   *  up as ghost options. */
+  launchers: () => LauncherConfig[];
   patch: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
   add: () => Promise<void>;
   remove: (index: number) => Promise<void>;
   move: (index: number, delta: -1 | 1) => Promise<void>;
 }): JSX.Element {
+  const usableLaunchers = (): LauncherConfig[] =>
+    props.launchers().filter((l) => l.label.trim().length > 0 && l.command.trim().length > 0);
   return (
     <>
       <h3>{props.title}</h3>
@@ -166,6 +173,28 @@ function ActionTemplateSection(props: {
                   (v) => props.patch(idx(), { template: v }),
                 )}
               />
+            </label>
+            <label>
+              <span>Launcher</span>
+              <select
+                value={action.launcher ?? ''}
+                onChange={(e) => {
+                  const value = e.currentTarget.value;
+                  void props.patch(idx(), { launcher: value || undefined });
+                }}
+              >
+                <option value="">(focused tab)</option>
+                <For each={usableLaunchers()}>
+                  {(l) => <option value={l.label}>{l.label}</option>}
+                </For>
+                <Show
+                  when={
+                    action.launcher && !usableLaunchers().some((l) => l.label === action.launcher)
+                  }
+                >
+                  <option value={action.launcher!}>{action.launcher} (not configured)</option>
+                </Show>
+              </select>
             </label>
             <label class="settings-checkbox">
               <input
@@ -347,10 +376,11 @@ export function TerminalFields(props: {
 
       <ActionTemplateSection
         title="Project actions"
-        hint="Each entry appears in the dropdown next to the project's Work-on button. Templates accept {slug}, {title}, {branch}, {apps}, … (see Help)."
+        hint="Each entry appears in the dropdown next to the project's Work-on button. Templates accept {slug}, {title}, {branch}, {apps}, … (see Help). Launcher (when set) spawns a fresh tab using that launcher's command instead of typing into the focused tab."
         idPrefix={`${idPrefix}.projectActions`}
         bindText={props.bindText}
         items={props.projectActions}
+        launchers={props.launchers}
         patch={props.patchProjectAction}
         add={props.addProjectAction}
         remove={props.removeProjectAction}
@@ -359,10 +389,11 @@ export function TerminalFields(props: {
 
       <ActionTemplateSection
         title="New project actions"
-        hint="Each entry appears in the dropdown next to the + New project button. Templates accept {today}, {conception}, {conceptionPath}."
+        hint="Each entry appears in the dropdown next to the + New project button. Templates accept {today}, {conception}, {conceptionPath}. Launcher (when set) spawns a fresh tab — e.g. bind 'Start new project' to a Claude launcher to get a fresh Claude shell on every click."
         idPrefix={`${idPrefix}.newProjectActions`}
         bindText={props.bindText}
         items={props.newProjectActions}
+        launchers={props.launchers}
         patch={props.patchNewProjectAction}
         add={props.addNewProjectAction}
         remove={props.removeNewProjectAction}

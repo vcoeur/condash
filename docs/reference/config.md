@@ -228,17 +228,18 @@ Per-entry actions rendered in the dropdown next to a project's **Work on** butto
   "terminal": {
     "projectActions": [
       { "label": "Claude review", "template": "claude \"review project {shortSlug}\"", "submit": true },
-      { "label": "Kimi summary", "template": "kimi \"summarise {shortSlug}\"", "submit": true }
+      { "label": "Kimi summary", "template": "kimi \"summarise {shortSlug}\"", "submit": true, "launcher": "KimiKimi" }
     ]
   }
 }
 ```
 
-| Key       | Type             | Required | Meaning                                                                                                                                                                                                         |
-| --------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `label`   | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset (no dropdown option rendered).                                |
-| `template`| string           | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). Unknown placeholders are left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
-| `submit`  | bool             | no       | When `true`, condash presses Enter after pasting the template. Default `false` — matches the current **Work on** behaviour and lets templates that end with a colon wait for the user to type the variable bit. |
+| Key        | Type             | Required | Meaning                                                                                                                                                                                                         |
+| ---------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset (no dropdown option rendered).                                |
+| `template` | string           | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). Unknown placeholders are left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
+| `submit`   | bool             | no       | When `true`, condash presses Enter after pasting the template. Default `false` — matches the current **Work on** behaviour and lets templates that end with a colon wait for the user to type the variable bit. |
+| `launcher` | string           | no       | When set, names one of `terminal.launchers[].label`. The action spawns a fresh tab using that launcher's command before typing the template — useful for binding an action to a specific agent (Claude / Kimi / shell). Empty / missing → type into the focused tab (default-launcher fallback when no tab exists, as before). A label that no longer matches a configured launcher falls through to the focused-tab flow. |
 
 ### `terminal.newProjectActions` { #terminalnewprojectactions }
 
@@ -248,17 +249,19 @@ Per-entry starter prompts rendered in the dropdown next to the **+ New project**
 {
   "terminal": {
     "newProjectActions": [
-      { "label": "Spec + design starter", "template": "start project for new feature, make spec.md note with functional specification, and design.md note with design plan:", "submit": false }
+      { "label": "Spec + design starter", "template": "start project for new feature, make spec.md note with functional specification, and design.md note with design plan:", "submit": false },
+      { "label": "Start new project (Claude)", "template": "Start new project ", "launcher": "Claude" }
     ]
   }
 }
 ```
 
-| Key       | Type             | Required | Meaning                                                                                                                                                                                                         |
-| --------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `label`   | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset.                                                              |
-| `template`| string           | yes      | Text pasted into the focused terminal. May contain global placeholders only: `{today}`, `{conception}`, `{conceptionPath}`. Unknown placeholders are left verbatim. Empty or whitespace is treated as the entry being unset. |
-| `submit`  | bool             | no       | When `true`, condash presses Enter after pasting. Default `false`.                                                                                             |
+| Key        | Type             | Required | Meaning                                                                                                                                                                                                         |
+| ---------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset.                                                              |
+| `template` | string           | yes      | Text pasted into the focused terminal. May contain global placeholders only: `{today}`, `{conception}`, `{conceptionPath}`. Unknown placeholders are left verbatim. Empty or whitespace is treated as the entry being unset. |
+| `submit`   | bool             | no       | When `true`, condash presses Enter after pasting. Default `false`.                                                                                             |
+| `launcher` | string           | no       | When set, names one of `terminal.launchers[].label`. The action spawns a fresh tab using that launcher's command and types the template into the new tab — gives each entry a predictable starting environment (e.g. **Start new project → Claude** always opens a fresh Claude shell). Empty / missing keeps the legacy "type into focused tab" behaviour. |
 
 > **Note.** Selecting a new-project action does **not** create a project automatically — it only types a starter prompt into the terminal. The user then prompts their agent to create the project via `condash projects create`.
 
