@@ -151,7 +151,7 @@ async function worktreeSetup(
     delete args.flags[k];
   }
   assertNoExtraFlags(args, NOUN_FLAGS);
-  if (installDeprecated) {
+  if (installDeprecated && !ctx.quiet) {
     process.stderr.write(
       '[deprecated] --install is now the default for repos that declare install: in .condash/settings.json. Use --no-install to skip.\n',
     );

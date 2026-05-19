@@ -244,8 +244,18 @@ export async function searchProjects(
     }
     let header = headerCache.get(projectPath);
     if (!header) {
-      header = await readHeader(join(projectPath, 'README.md')).catch(() => null as never);
-      if (header) headerCache.set(projectPath, header);
+      // readHeader can return null on a parse failure / missing README;
+      // `as never` would smuggle the null through the type but every
+      // downstream guard below expects it to be possible. Cast to the
+      // honest union so the falsy check on the next line carries type
+      // information through.
+      const fetched = await readHeader(join(projectPath, 'README.md')).catch(
+        () => null as Awaited<ReturnType<typeof readHeader>> | null,
+      );
+      if (fetched) {
+        header = fetched;
+        headerCache.set(projectPath, fetched);
+      }
     }
     if (!header) {
       enriched.push(hit);

@@ -38,6 +38,7 @@ export async function runConfig(
   ctx: OutputContext,
   conceptionPath: string,
   universalHelp = false,
+  universalConceptionPath?: string,
 ): Promise<void> {
   if (verb === 'help') {
     printHelp(args.positional[0] ?? null);
@@ -49,7 +50,11 @@ export async function runConfig(
   }
   if (verb === 'conception-path') {
     assertNoExtraFlags(args, NOUN_FLAGS);
-    const resolved = await resolveConception(undefined);
+    // Honour `--conception <path>` here — the universal flag means "resolve
+    // against this path", and passing it through lets `condash --conception
+    // <p> config conception-path` print the same answer the rest of the
+    // CLI would use for that invocation.
+    const resolved = await resolveConception(universalConceptionPath);
     emit(
       ctx,
       { path: resolved.path, source: resolved.source },
@@ -128,11 +133,15 @@ export async function runConfig(
     if (!key || value === undefined) {
       throw new CliError(ExitCodes.USAGE, 'Usage: condash config set <key> <value> [--global]');
     }
-    // Parse value as JSON when it looks like a primitive / object / array;
-    // otherwise treat as a literal string (the common case).
+    // Parse value as JSON only when it looks unambiguously JSON-shaped:
+    // a number, a quoted string, an array, or an object. Bare `true` /
+    // `false` / `null` are common string values (branch names, flag-named
+    // configuration paths) — treat those as plain strings to avoid eating
+    // a legitimate string assignment. Callers that genuinely want a
+    // boolean / null can write `--json` (TODO) or quote it: `"true"`.
     let parsedValue: unknown = value;
     const trimmed = value.trim();
-    if (/^(true|false|null|-?\d|"|\[|\{)/.test(trimmed)) {
+    if (/^(-?\d|"|\[|\{)/.test(trimmed)) {
       try {
         parsedValue = JSON.parse(trimmed);
       } catch {
