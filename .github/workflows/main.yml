@@ -1,93 +1,57 @@
-name: release
+name: main
 
-# Tag-driven release pipeline. Triggered only by `git push origin v*`.
+# Heavy CI on every push to main and every `v*` tag, with publish
+# gated by `needs:` chains — no out-of-band API queries.
 #
 # Shape:
 #
-#   validate-tag ──┬── fast-on-tag ────┐
-#                  │                   ├── build (matrix) ── publish
-#                  └── playwright ─────┘
+#                          ┌── fast ─────────┐
+#                          │                 │
+#   on push: main          ├── playwright ───┼── build (matrix) ──┐
+#   on push: tags v*       │                 │                    │
+#                          └── validate-tag ─┴─────────────────── publish
+#                              (tag push only)              (tag push only)
 #
-# The fast-on-tag + playwright jobs are the publish gate: typecheck,
-# vitest, and the full Electron Playwright suite all run against the
-# tag SHA. If anything fails, `build` never starts, no GH Release is
-# created, no assets are uploaded — the tag itself stays in git but
-# nothing public ships. Recovery: fix on a follow-up commit, bump,
-# re-tag, re-push.
+# Push to main: fast + playwright + build run. validate-tag and
+# publish are skipped (no tag ref). The 3-OS installer matrix
+# uploads workflow artefacts that are then discarded (retention=1d).
 #
-# Why gate at tag time rather than on push to main: PR coverage is
-# intentionally minimal (fast checks only — see pr.yml). The complete
-# suite — installer matrix on three OSes, full Playwright, NSIS 6010
-# detection — runs here, once, immediately before publication.
+# Tag push: same heavy CI plus validate-tag and publish. publish
+# `needs: [validate-tag, build]` — if anything before it failed,
+# `needs:` itself blocks the job from starting. No GH Release is
+# created and no assets uploaded.
 #
-# Why not matrix-publishes-directly: GitHub's API is inconsistent
-# between the by-tag lookup, the by-id lookup, and the list endpoint
-# (verified live: a freshly-created prerelease was findable by id/tag but
-# absent from /releases?per_page=100 for several minutes). electron-builder's
-# release lookup loses the race against this lag — it doesn't find the
-# pre-existing release and tries to create its own, fragmenting assets
-# across N drafts/prereleases per matrix job.
+# Why heavy CI runs twice per release (once on the merge to main,
+# once on the tag against the same SHA): keeping the gate as a pure
+# `needs:` chain inside one workflow is the cheapest possible
+# guarantee that "publish only if green for this SHA" — no commit-
+# status lookups, no workflow_run plumbing carrying state between
+# workflows. The duplicate run is ~7 minutes of GHA time per release.
 #
-# Bulletproof pattern: each matrix job builds locally with `--publish
-# never`, uploads its `release/` directory as a workflow artifact, and a
-# final `publish` job downloads all of them and runs a single `gh release
-# upload` against one release. Only one process ever talks to the GH
-# Release API.
+# Why one combined workflow rather than main-then-release via
+# workflow_run: artefact handoff across workflow_run boundaries is
+# possible but fragile, and the `needs:` form leaves the publish
+# job's gate visible in one file.
+#
+# Recovery on tag-time failure: fix on a follow-up commit, bump,
+# re-tag against the new SHA, re-push. The tag itself stays in git
+# but nothing public ships.
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
 permissions:
-  # contents:write is required for the publish job to create the GH
-  # Release and upload assets via the workflow's GITHUB_TOKEN.
+  # publish needs contents:write to create the GH Release and upload
+  # assets via the workflow's GITHUB_TOKEN.
   contents: write
 
 jobs:
-  validate-tag:
-    name: Validate tag + package.json version
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Reject malformed tags before any matrix job spins up. The release
-      # workflow only handles stable `vX.Y.Z` tags; prerelease suffixes
-      # (`-rc.N`, `-alpha*`, `-beta*`) ride through the same publish job
-      # but still need the leading semver triplet to match. Catches typos
-      # like `v3.12..1` or `v3.12` before they create a broken Release.
-      - name: Validate tag shape
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]]; then
-            echo "Tag '$TAG' is not a valid vX.Y.Z[-suffix] release tag." >&2
-            exit 1
-          fi
-          echo "Tag $TAG is valid."
-
-      # Assert that package.json's version matches the tag (sans leading
-      # `v`). Catches "forgot to bump" — the bump commit must land on
-      # main before the tag is pushed, per the conception release rule.
-      - name: Assert package.json version matches tag
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          EXPECTED="${TAG#v}"
-          if [[ "$PKG_VERSION" != "$EXPECTED" ]]; then
-            echo "package.json version ($PKG_VERSION) does not match tag ($EXPECTED)." >&2
-            echo "Bump package.json before pushing the tag." >&2
-            exit 1
-          fi
-          echo "package.json version $PKG_VERSION matches tag $TAG."
-
-  fast-on-tag:
+  fast:
     name: Fast checks (typecheck + unit)
-    needs: validate-tag
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -99,6 +63,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # Cache node_modules + the electron/electron-builder caches. On a
+      # hit we skip npm ci entirely — the `electron-rebuild` postinstall
+      # output for node-pty is part of node_modules and is restored too,
+      # so we don't pay the ~20-40 s native rebuild on warm runs.
       - name: Cache node_modules + electron caches
         id: deps-cache
         uses: actions/cache@v4
@@ -127,7 +95,6 @@ jobs:
 
   playwright:
     name: Playwright suite
-    needs: validate-tag
     runs-on: ubuntu-latest
     # The suite takes ~1-2 min locally; CI runners are slower and need
     # generous headroom for the screenshots spec (~20 s) and Electron's
@@ -170,9 +137,6 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        # `@playwright/test` ships the Electron driver, but the
-        # `_electron` API still relies on Playwright's bundled bits being
-        # downloaded. `--with-deps` covers any extra system libs.
         run: npx playwright install --with-deps chromium
 
       - name: Build renderer + main
@@ -191,17 +155,75 @@ jobs:
             tests/screenshots-out/
           if-no-files-found: ignore
 
+  validate-tag:
+    name: Validate tag (shape + version + reachable from main)
+    # Only runs for `v*` tag pushes — never on commits to main.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for ancestry check)
+        uses: actions/checkout@v4
+        with:
+          # Need enough history to run `git merge-base --is-ancestor`
+          # against origin/main. Shallow clones miss the ancestry.
+          fetch-depth: 0
+
+      # Reject malformed tags before any matrix job spins up. The release
+      # path only handles stable `vX.Y.Z` tags and prerelease suffixes
+      # (`-rc.N`, `-alpha*`, `-beta*`); they all need the leading semver
+      # triplet to match. Catches typos like `v3.12..1` or `v3.12`.
+      - name: Validate tag shape
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]]; then
+            echo "Tag '$TAG' is not a valid vX.Y.Z[-suffix] release tag." >&2
+            exit 1
+          fi
+          echo "Tag $TAG is valid."
+
+      # Assert that package.json's version matches the tag (sans leading
+      # `v`). Catches "forgot to bump" — the bump commit must land on
+      # main before the tag is pushed, per the conception release rule.
+      - name: Assert package.json version matches tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED="${TAG#v}"
+          if [[ "$PKG_VERSION" != "$EXPECTED" ]]; then
+            echo "package.json version ($PKG_VERSION) does not match tag ($EXPECTED)." >&2
+            echo "Bump package.json before pushing the tag." >&2
+            exit 1
+          fi
+          echo "package.json version $PKG_VERSION matches tag $TAG."
+
+      # Refuse to release a tag that isn't reachable from origin/main.
+      # This enforces "tags ship code that has landed in main" — no
+      # one-off feature-branch tags, no detached commits.
+      - name: Assert tag SHA is reachable from origin/main
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          TAG_SHA=$(git rev-parse "$TAG^{commit}")
+          if ! git merge-base --is-ancestor "$TAG_SHA" origin/main; then
+            echo "Tag $TAG ($TAG_SHA) is not reachable from origin/main." >&2
+            echo "Tags must point at commits that have landed on main." >&2
+            exit 1
+          fi
+          echo "Tag $TAG ($TAG_SHA) is reachable from origin/main."
+
   build:
     name: Build (${{ matrix.os }})
-    # build is the installer matrix. It only starts after the fast checks
-    # + Playwright pass for the tag SHA — that's the publish gate.
-    # Windows installer-smoke catches NSIS warning 6010 (unreferenced
-    # Function, treated as an error by electron-builder); v2.18.24/.25
-    # shipped broken because that build only ran on tag push and the
-    # failures only appeared after the tag was already pushed. With the
-    # gate in place, build failures here block publish before any GH
-    # Release exists, so the same kind of slip can't repeat.
-    needs: [fast-on-tag, playwright]
+    # The installer matrix gates publish via `needs:`. On a main push the
+    # build still runs (validates that the merged SHA produces installers
+    # cleanly on all three OSes), but its artefacts are dropped after a
+    # day. On a tag push the same artefacts feed publish.
+    needs: [fast, playwright]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -316,11 +338,8 @@ jobs:
           fi
           echo "AppImage AppRun patch verified."
 
-      # Capture only the installer bundles + channel files. Skip the
-      # `linux-unpacked/`, `mac/`, `win-unpacked/` working directories,
-      # the `builder-debug.yml`, and the `.blockmap` artifacts ship as
-      # standalone files (no skip needed). `if-no-files-found: error` so
-      # an empty release dir fails the matrix job loudly instead of
+      # Capture only the installer bundles + channel files. `if-no-files-found:
+      # error` so an empty release dir fails the matrix job loudly instead of
       # silently producing an empty publish.
       - name: Upload installers as workflow artifact
         uses: actions/upload-artifact@v4
@@ -338,7 +357,10 @@ jobs:
 
   publish:
     name: Publish to GitHub Release
-    needs: build
+    # Only on tag push, and only if validate-tag + build (and thus
+    # fast + playwright by transitive `needs:` chain) all succeeded.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [validate-tag, build]
     runs-on: ubuntu-latest
     steps:
       - name: Download all installer artifacts

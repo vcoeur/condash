@@ -5,16 +5,14 @@ name: pr
 # Scope: format-check, typecheck, build, vitest. That's it.
 #
 # What's deliberately NOT here:
-#   - Playwright (moved to release.yml — runs at tag time, gates publish).
+#   - Playwright (moved to main.yml — runs on every push to main and
+#     every `v*` tag, gates publish).
 #   - Installer-smoke (electron-builder on ubuntu/windows/macos —
-#     moved to release.yml's build matrix, also gates publish).
-# The complete suite runs once per tag, immediately before any GH
-# Release is created. PR coverage stays minimal so the runs-often
-# pipeline is actually fast.
-#
-# Push to main is intentionally NOT a trigger here. After a PR merges
-# the bump commit lands quietly on main; nothing runs again until a
-# `vX.Y.Z` tag is pushed.
+#     moved to main.yml's build matrix, also gates publish).
+# The heavy suite runs once per merge to main and once per tag. PR
+# coverage stays minimal so the runs-often pipeline is actually fast,
+# and the post-merge / pre-tag gate stays inside CI rather than
+# spread across out-of-band checks.
 
 on:
   pull_request:
@@ -27,7 +25,7 @@ on:
 
 concurrency:
   # Cancel in-flight PR runs when a newer commit lands on the same PR
-  # branch. Tag-time release runs never cancel each other (see release.yml).
+  # branch. main.yml runs never cancel each other.
   group: pr-${{ github.ref }}
   cancel-in-progress: true
 
