@@ -1,14 +1,26 @@
 name: release
 
-# Build unsigned cross-platform installers + publish them (plus the
-# `latest*.yml` metadata files electron-builder emits) to a single
-# GitHub Release tied to the pushed `v*` tag.
+# Tag-driven release pipeline. Triggered only by `git push origin v*`.
 #
-# Triggered by tags only — `git push origin v2.0.0`. The workflow does NOT
-# create the tag itself; humans cut the tag locally with `git tag -a vX`
-# after a clean main and push it.
+# Shape:
 #
-# Why this isn't matrix-publishes-directly: GitHub's API is inconsistent
+#   validate-tag ──┬── fast-on-tag ────┐
+#                  │                   ├── build (matrix) ── publish
+#                  └── playwright ─────┘
+#
+# The fast-on-tag + playwright jobs are the publish gate: typecheck,
+# vitest, and the full Electron Playwright suite all run against the
+# tag SHA. If anything fails, `build` never starts, no GH Release is
+# created, no assets are uploaded — the tag itself stays in git but
+# nothing public ships. Recovery: fix on a follow-up commit, bump,
+# re-tag, re-push.
+#
+# Why gate at tag time rather than on push to main: PR coverage is
+# intentionally minimal (fast checks only — see pr.yml). The complete
+# suite — installer matrix on three OSes, full Playwright, NSIS 6010
+# detection — runs here, once, immediately before publication.
+#
+# Why not matrix-publishes-directly: GitHub's API is inconsistent
 # between the by-tag lookup, the by-id lookup, and the list endpoint
 # (verified live: a freshly-created prerelease was findable by id/tag but
 # absent from /releases?per_page=100 for several minutes). electron-builder's
@@ -73,9 +85,123 @@ jobs:
           fi
           echo "package.json version $PKG_VERSION matches tag $TAG."
 
+  fast-on-tag:
+    name: Fast checks (typecheck + unit)
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules + electron caches
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33
+
+      - name: Install dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Format check
+        run: make format-check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build renderer + main
+        run: npm run build
+
+      - name: Vitest unit suite
+        run: npx vitest run
+
+  playwright:
+    name: Playwright suite
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    # The suite takes ~1-2 min locally; CI runners are slower and need
+    # generous headroom for the screenshots spec (~20 s) and Electron's
+    # first cold start.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules + electron caches
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: deps-ubuntu-${{ hashFiles('package-lock.json') }}-electron-33
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install xvfb
+        # Electron Playwright needs a display server on Linux. xvfb-run -a
+        # wraps the suite so each invocation gets an isolated virtual
+        # display.
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Install dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Install Playwright browsers
+        # `@playwright/test` ships the Electron driver, but the
+        # `_electron` API still relies on Playwright's bundled bits being
+        # downloaded. `--with-deps` covers any extra system libs.
+        run: npx playwright install --with-deps chromium
+
+      - name: Build renderer + main
+        run: npm run build
+
+      - name: Run Playwright suite
+        run: xvfb-run -a npm test -- --reporter=list
+
+      - name: Upload Playwright artefacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-artefacts
+          path: |
+            test-results/
+            tests/screenshots-out/
+          if-no-files-found: ignore
+
   build:
     name: Build (${{ matrix.os }})
-    needs: validate-tag
+    # build is the installer matrix. It only starts after the fast checks
+    # + Playwright pass for the tag SHA — that's the publish gate.
+    # Windows installer-smoke catches NSIS warning 6010 (unreferenced
+    # Function, treated as an error by electron-builder); v2.18.24/.25
+    # shipped broken because that build only ran on tag push and the
+    # failures only appeared after the tag was already pushed. With the
+    # gate in place, build failures here block publish before any GH
+    # Release exists, so the same kind of slip can't repeat.
+    needs: [fast-on-tag, playwright]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
