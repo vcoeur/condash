@@ -126,16 +126,28 @@ export async function createProjectCore(
     environment,
   });
 
-  await fs.mkdir(join(itemDir, 'notes'), { recursive: true });
+  const notesDir = join(itemDir, 'notes');
+  const itemDirCreated = !(await pathExists(itemDir));
+  await fs.mkdir(notesDir, { recursive: true });
   const readmePath = join(itemDir, 'README.md');
   // `wx` flag (write-exclusive) closes the check-then-act race on the
   // pre-flight `pathExists` above: if two concurrent creates pass that
   // check, the second writeFile fails with EEXIST instead of clobbering
-  // the first one's content.
+  // the first one's content. On EEXIST we also drop the empty `notes/`
+  // (and the parent `<date>-<slug>/` when we created it) so a failed
+  // concurrent attempt doesn't leave an orphan directory tree behind.
   try {
     await fs.writeFile(readmePath, readmeBody, { encoding: 'utf8', flag: 'wx' });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      try {
+        await fs.rmdir(notesDir);
+        if (itemDirCreated) await fs.rmdir(itemDir);
+      } catch {
+        // rmdir refuses non-empty dirs; if the loser-of-the-race notes/ or
+        // itemDir already has siblings (concurrent winner's README + notes),
+        // leave them — only the empty case is ours to clean up.
+      }
       throw new CliError(
         ExitCodes.VALIDATION,
         `Item already exists at projects/${month}/${folderName}`,
