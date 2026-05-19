@@ -41,7 +41,7 @@ Switch to the **Code** pane. Three helio repos render as rows: `helio`, `helio-w
 
 Each repo has four icon buttons: README preview, code browser, embedded terminal, and "open in main IDE". Click the IDE icon on `helio` — your main editor launches in that directory.
 
-The launcher command lives in `condash.json`, under `open_with.main_ide.command` — a single command string with `{path}` substituted at launch time. See [Repositories and open-with buttons](../guides/repositories-and-open-with.md) for how to wire your own editor in.
+The launcher command lives in `.condash/settings.json`, under `open_with.main_ide.command` — a single command string with `{path}` substituted at launch time. See [Repositories and open-with buttons](../guides/repositories-and-open-with.md) for how to wire your own editor in.
 
 ## 3. Run the repro in the embedded terminal
 

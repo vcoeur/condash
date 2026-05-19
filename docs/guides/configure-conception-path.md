@@ -13,7 +13,7 @@ The conception path is the only piece of configuration condash needs before it c
 
 ## Option 1 — first-launch folder picker
 
-On first launch with no tree configured, condash opens a native folder picker. Pick the directory containing your `projects/` + (optional) `condash.json` and condash writes the choice to `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or the platform equivalent — see [Config files](../reference/config.md#at-a-glance)). Subsequent launches reuse the saved path automatically.
+On first launch with no tree configured, condash opens a native folder picker. Pick the directory containing your `projects/` + (optional) `.condash/settings.json` and condash writes the choice to `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or the platform equivalent — see [Config files](../reference/config.md#at-a-glance)). Subsequent launches reuse the saved path automatically.
 
 This is the right setup for your main tree — the path you work in every day.
 
@@ -27,7 +27,7 @@ Change the saved path without re-launching the picker by editing `${XDG_CONFIG_H
 
 ```json
 {
-  "conceptionPath": "/home/you/another-tree"
+  "lastConceptionPath": "/home/you/another-tree"
 }
 ```
 
@@ -48,7 +48,7 @@ The env var wins over `settings.json` for that launch only. It is **not** persis
 On startup condash checks, in order:
 
 1. `CONDASH_CONCEPTION_PATH` environment variable (one-shot override).
-2. `conceptionPath` in `settings.json`.
+2. `lastConceptionPath` in `settings.json`.
 3. First-launch folder picker. Writes the choice back to `settings.json`.
 4. Hard error — condash refuses to start.
 
@@ -72,4 +72,4 @@ Then either edit `settings.json` to point at `/tmp/scratch-tree`, or delete `set
 
 ## Multiple machines pointed at the same tree
 
-`conceptionPath` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `condash.json` at its root; per-machine preferences stay in `settings.json`.
+`lastConceptionPath` lives in `settings.json` and is per-machine — absolute paths typically differ across hosts (different users, different mount points). The tree itself carries `.condash/settings.json` at its root; per-machine preferences stay in the global `settings.json`.

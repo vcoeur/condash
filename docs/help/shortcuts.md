@@ -11,6 +11,7 @@ The few you'll actually use.
 | `Ctrl+K` / `Ctrl+Shift+F` | **Search…** — cross-tree fuzzy search |
 | `Ctrl+R` | Show **Resources** pane |
 | `Ctrl+L` | Show **Skills** pane |
+| `Ctrl+Shift+L` | Show **Logs** pane (per-session terminal log viewer) |
 | `F5` | **Refresh** — re-read repos, drop git-status cache |
 | `Ctrl+Shift+R` | **Reload window** — full hard reload |
 | `Ctrl+Shift+I` | Toggle DevTools |

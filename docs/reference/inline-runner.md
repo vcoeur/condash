@@ -19,7 +19,7 @@ For one-off commands (a test run, a manual repro), keep using the embedded termi
 
 ## Configuring a runner
 
-The runner is opt-in per repo and per sub-repo. Declare it in [`condash.json`](config.md#repositories) with the `run:` field:
+The runner is opt-in per repo and per sub-repo. Declare it in [`.condash/settings.json`](config.md#repositories) with the `run:` field:
 
 ```json
 {
@@ -45,7 +45,7 @@ Rules:
 - **`{path}`** in the template is substituted with the absolute path of the checkout the click originated from (main or a worktree). Omit it and the command runs with `cwd` set to that checkout — either form works.
 - **Inheritance is off.** A parent's `run:` doesn't cascade to its submodules; a submodule without its own `run:` has no Run button. This is deliberate — a repo's top-level dev command is almost never what a subdir wants.
 
-The gear modal's JSON editor lets you tweak `run` directly in `condash.json` — no special UI.
+The gear modal's JSON editor lets you tweak `run` directly in `.condash/settings.json` — no special UI.
 
 ## The Run button lifecycle
 

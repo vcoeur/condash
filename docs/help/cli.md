@@ -30,7 +30,6 @@ condash <noun> <verb> [args] [--flags]
 | `audit` | `--include lfs,binaries,cross-repo,worktrees,index` |
 | `dirty` | `list`, `touch <tree>`, `clear <tree\|all>` |
 | `skills` | `list`, `install`, `status` |
-| `templates` | `list`, `install [<path>...]`, `status` |
 | `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>` (`--global` / `--effective` on read verbs) |
 | `help` | `condash help <noun>` |
 

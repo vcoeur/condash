@@ -23,7 +23,7 @@ Open `## Specifics` with the **Apps** table — one row per app the conception c
 | **Config** | Path to the app's own agent-config file (typically `<repo>/AGENTS.md`). Spell it out when it lives elsewhere. |
 | **Knowledge** | Path to the per-app knowledge entry-point in this conception (e.g. `knowledge/internal/<slug>.md`). The entry point is where deep details live — Config is the navigation layer. |
 
-Keep the table tight: navigation fields only. Operational config (formatter, port, base branch, …) belongs in `condash.json`, not here.
+Keep the table tight: navigation fields only. Operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`, not here.
 
 ### Submodules
 
@@ -31,13 +31,13 @@ A submodule (or any sub-repo / sub-package within a parent app) is reachable as 
 
 Naming for promoted submodules: bare `@<sub>` when the basename is unique workspace-wide; dotted `@<parent>.<sub>` (e.g. `@PaintingManager.app`) when the bare slug would collide with another app or another submodule.
 
-`condash.json`'s `submodules:` block is orthogonal — that block lists runnable targets for the dashboard (what `make dev` to invoke, what to force-stop). The Apps table is the human / agent navigation index. They can disagree without harm; align by intent, not by mirroring.
+The `submodules:` block in `.condash/settings.json` is orthogonal — that block lists runnable targets for the dashboard (what `make dev` to invoke, what to force-stop). The Apps table is the human / agent navigation index. They can disagree without harm; align by intent, not by mirroring.
 
 ### Cross-references via `@<app>/<path>`
 
 Knowledge entries, project notes, and rule bodies refer to source code as `@<app>/<path-in-repo>` (e.g. `@<app>/src/server.ts:42`) instead of `~/src/<workspace>/<app>/...`. The `@` prefix makes references grep-friendly and decouples prose from any one host's filesystem layout — the Apps table is the only place the absolute path appears.
 
-When in doubt: an `@<name>/...` token is *always* an app reference; a path with no leading `@` is a path inside *this* conception (`projects/...`, `knowledge/...`, `condash.json`).
+When in doubt: an `@<name>/...` token is *always* an app reference; a path with no leading `@` is a path inside *this* conception (`projects/...`, `knowledge/...`, `.condash/settings.json`).
 
 ## Rules
 

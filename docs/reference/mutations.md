@@ -13,7 +13,7 @@ The dashboard's **write surface is small**. It touches three places only:
 
 1. An item's `README.md` (step + status edits).
 2. Files under an item's root, mostly the `notes/` subdirectory (create, rename, upload, overwrite).
-3. The tree-level `<conception_path>/condash.json`.
+3. The tree-level `<conception_path>/.condash/settings.json` (canonical write target; legacy `condash.json` and `configuration.json` are read but not written).
 
 It does **not** touch `.git/`, does not move or rename item directories, does not run shell commands other than the user-configured `open_with.*` / `pdf_viewer` / `terminal.launchers[].command` chains and the `repositories[].run` / `force_stop` strings.
 
@@ -33,7 +33,7 @@ All operate on the item's `README.md` in place. Paths are validated against the 
 
 All mutation verbs are routed through [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts), which:
 
-- Validates the path is inside `conceptionPath`.
+- Validates the path is inside the resolved conception path.
 - Acquires the per-file write queue (`withFileQueue`) so concurrent toggles on the same file never interleave.
 - Performs the drift check (compare the expected marker / text / content against what's on disk).
 - Writes via `tmp` → `fsync` → `rename`.
@@ -47,7 +47,7 @@ All paths live under an item's directory (`projects/YYYY-MM/YYYY-MM-DD-slug/...`
 | Action | IPC verb | Trigger | Effect |
 |---|---|---|---|
 | Read a note | `readNote` | Click a file in the card | Returns plain bytes — no write |
-| Overwrite a note | `writeNote` | Save in the note editor | Atomic rewrite via `.tmp` + rename. Full-content drift check refuses stale overwrites. For `condash.json`, the bytes written may differ from the input (Zod canonicalisation reorders keys). |
+| Overwrite a note | `writeNote` | Save in the note editor | Atomic rewrite via `.tmp` + rename. Full-content drift check refuses stale overwrites. For `.condash/settings.json` (or the legacy `condash.json`), the bytes written may differ from the input (Zod canonicalisation reorders keys). |
 | Create a note | `createProjectNote` | Click "+ Note" in the card | Creates `<projectPath>/notes/NN-<slug>.md` with the next zero-padded counter; returns the new path. |
 | List item files | `listProjectFiles` | Open the notes panel | Lists files under the item's `notes/` directory — no write |
 
@@ -55,11 +55,11 @@ The `writeNote` verb takes `(path, expectedContent, newContent)`. If `expectedCo
 
 ## Config edits
 
-The tree-level `<conception_path>/condash.json` is editable through the gear modal's plain-text JSON editor. The dashboard does not expose a typed config API — the user edits the JSON directly, and condash reparses on save.
+The tree-level `<conception_path>/.condash/settings.json` is editable through the gear modal's plain-text JSON editor (legacy `condash.json` / `configuration.json` are read but never written). The dashboard does not expose a typed config API — the user edits the JSON directly, and condash reparses on save.
 
 The watcher fires a `config` event on `tree-events`, the renderer bumps `refreshKey`, and most changes reload live. Structural changes (`workspace_path`, `worktrees_path`, the `repositories` list shape) require a restart for paths to be re-resolved.
 
-`settings.json` (per-user, per-machine — `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`) is partially written by the IPC layer: `pickConceptionPath`, `setTheme`, `setLayout`, `setWelcomeDismissed`, and `termSetPrefs` each touch a single narrow key (`conceptionPath`, `theme`, `layout`, `welcome.dismissed`, `terminal`). Anything else still needs a hand-edit; condash reads the file on the next launch.
+`settings.json` (per-user, per-machine — `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`) is partially written by the IPC layer: `pickConceptionPath`, `setTheme`, `setLayout`, `setWelcomeDismissed`, and `termSetPrefs` each touch a single narrow key (`lastConceptionPath`, `theme`, `layout`, `welcome.dismissed`, `terminal`). Anything else still needs a hand-edit; condash reads the file on the next launch.
 
 See [Config files](config.md) for the full key schema and which file owns which key.
 
@@ -70,11 +70,11 @@ The launcher verbs spawn an external process. These **do not** write to the conc
 | Action | IPC verb | Accepted path | Command run |
 |---|---|---|---|
 | Open in IDE / terminal | `launchOpenWith(slot, path)` | Must resolve under `workspace_path` **or** `worktrees_path` | The `open_with.<slot>.command` template, with `{path}` substituted at the argv level (no shell expansion) |
-| Open in editor | `openInEditor(path)` | Must resolve under `conceptionPath` | The configured editor (or the OS default for non-text files) |
-| Open conception root | `openConceptionDirectory()` | Always `conceptionPath` | OS default file manager |
+| Open in editor | `openInEditor(path)` | Must resolve under the resolved conception path | The configured editor (or the OS default for non-text files) |
+| Open conception root | `openConceptionDirectory()` | Always the resolved conception path | OS default file manager |
 | Open a local path | `openPath(target)` | Absolute path, OS-validated | OS default handler — used by the Settings modal "Open externally" buttons |
 | Open an external URL | `openExternal(target)` | Scheme must be `http:`, `https:`, or `mailto:` | OS default handler |
-| Force-stop a repo | `forceStopRepo(repoName)` | Repo must be in `condash.json` | The repo's `force_stop:` shell command — no path argument |
+| Force-stop a repo | `forceStopRepo(repoName)` | Repo must be in the conception's `repositories` (resolved from `.condash/settings.json` or the legacy `condash.json`) | The repo's `force_stop:` shell command — no path argument |
 
 Paths outside the configured sandbox are rejected **before the shell sees them**. The validation lives in [`src/main/launchers.ts`](https://github.com/vcoeur/condash/blob/main/src/main/launchers.ts) (path checks) and the per-verb handlers in [`src/main/index.ts`](https://github.com/vcoeur/condash/blob/main/src/main/index.ts).
 
@@ -85,7 +85,7 @@ The embedded terminal (`termSpawn`) takes a `cwd` field that goes through the sa
 | Never | Why |
 |---|---|
 | Anything under `.git/` | Out of scope. Use your editor / CLI. |
-| Anything outside `conceptionPath` | Path validation rejects escapes. |
+| Anything outside the resolved conception path | Path validation rejects escapes. |
 | Item directory renames / moves | The flat-month layout means items stay put for life; slug / date changes need `git mv` in the user's shell. |
 | `knowledge/` tree | Read-only from the dashboard. Edit in your editor (or via the `/knowledge` skill). |
 | Caches or indices | There are none — the tree is re-parsed on each call, with chokidar pushing events for staleness only. |

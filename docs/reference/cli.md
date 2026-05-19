@@ -75,7 +75,7 @@ The CLI honours the same chain as the GUI, minus the folder picker:
 1. `--conception <path>` flag.
 2. `CONDASH_CONCEPTION_PATH` environment variable (legacy alias `CONDASH_CONCEPTION` still accepted).
 3. `CLAUDE_PROJECT_DIR` environment variable (back-compat for Claude Code sessions).
-4. Walk-up from the current working directory looking for `condash.json` or `configuration.json` next to a `projects/` directory.
+4. Walk-up from the current working directory looking for `.condash/settings.json`, `condash.json`, or `configuration.json` next to a `projects/` directory.
 5. `lastConceptionPath` in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (or platform equivalent).
 6. Hard error (exit 5).
 
@@ -133,7 +133,7 @@ condash search "session cookie" --scope all
 
 ### `repos`
 
-List configured repositories from `condash.json`.
+List configured repositories from `.condash/settings.json` (or the legacy `condash.json`).
 
 ```bash
 condash repos list                       # configured repos
@@ -141,7 +141,7 @@ condash repos list                       # configured repos
 
 ### `worktrees`
 
-Worktree-centric operations on top of `condash.json`'s repositories.
+Worktree-centric operations on top of the conception's configured repositories (`.condash/settings.json`, or legacy `condash.json`).
 
 | Verb | What it does |
 |---|---|
@@ -211,10 +211,10 @@ Read or change condash configuration.
 | Verb | What it does |
 |---|---|
 | `conception-path` | Print the resolved conception path |
-| `path` | Print both config file paths (`settings.json` + `condash.json`) |
-| `list [--global\|--effective]` | Print every key. Default reads `condash.json`; `--global` reads `settings.json`; `--effective` shows the merged view (conception ⊕ global) |
+| `path` | Print both config file paths (`settings.json` + `.condash/settings.json`) |
+| `list [--global\|--effective]` | Print every key. Default reads `.condash/settings.json` (with legacy `condash.json` / `configuration.json` as read fallbacks); `--global` reads `settings.json`; `--effective` shows the merged view (conception ⊕ global) |
 | `get <key> [--global\|--effective]` | Print one key's value, dot-separated path (`terminal.shell`). Same flag axis as `list` |
-| `set <key> <value> [--global]` | Write a key. Default writes `condash.json`; `--global` writes `settings.json` |
+| `set <key> <value> [--global]` | Write a key. Default writes `.condash/settings.json`; `--global` writes the global `settings.json` |
 
 `config conception-path` is the only verb that does not need an existing conception path — it prints the resolved one.
 
