@@ -61,7 +61,7 @@ Five ordered values, highest-urgency first:
 | `backlog` | Possible; worth keeping, not committed |
 | `done` | Closed. Stays in its `YYYY-MM/` folder indefinitely. |
 
-The parser normalises the value to lowercase and falls back to `backlog` for anything unrecognised. Unknown values also log a parser warning and make the card sprout a red `!? <value>` badge next to its status pill so typos (`wip`, `active`, …) don't silently vanish into `backlog`; see [README format — Status](readme-format.md#status) for the full rule. Inside the dashboard, status changes via drag-and-drop rewrite the status line in place — `status:` for YAML-frontmatter READMEs, `**Status**:` for legacy bold-prose READMEs. See [mutations](mutations.md).
+The parser normalises the value to lowercase and preserves it verbatim — there is **no silent rewrite** to `backlog`. Unknown values log a parser warning, sort after every known value (per `statusOrder` in [`src/shared/projects.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/projects.ts)), and make the card sprout a red `!? <value>` badge next to its status pill so typos (`wip`, `active`, …) stick out until corrected. A `status:` line that is absent altogether defaults to `backlog` (no badge). See [README format — Status](readme-format.md#status) for the full rule. Inside the dashboard, status changes via drag-and-drop rewrite the status line in place — `status:` for YAML-frontmatter READMEs, `**Status**:` for legacy bold-prose READMEs. See [mutations](mutations.md).
 
 ## Steps
 
@@ -72,7 +72,7 @@ Markdown checklists inside any `##`-level section. The dashboard's default "add 
 
 - [ ] Audit current session-cookie usage
 - [~] Implement the hybrid read path
-- [ ] Migration script for existing tokens
+- [!] Migration script for existing tokens (blocked on schema sign-off)
 - [x] Decide on cookie attributes
 - [-] Feature flag (abandoned — shipping directly)
 ```
@@ -83,10 +83,13 @@ Markdown checklists inside any `##`-level section. The dashboard's default "add 
 |---|---|---|
 | `[ ]` | `open` | no |
 | `[~]` | `progress` | no |
+| `[!]` | `blocked` | no |
 | `[x]` or `[X]` | `done` | yes |
 | `[-]` | `abandoned` | yes |
 
-The dashboard's checkbox-click cycle is `open → progress → done → abandoned → open`, implemented in [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) (writer) and [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx) (UI cycle order in `STEP_MARKERS`).
+The dashboard's checkbox-click cycle is `open → progress → done → abandoned → open`, implemented in [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) (writer) and [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx) (UI cycle order). The `[!]` (blocked) marker is **not** part of the cycle — set it by editing the README directly when work on a step is paused waiting for an external decision; the parser, counter, writer, and renderer all round-trip it without loss.
+
+The canonical list of markers (and the parsing regex bracket class) lives in [`src/shared/types.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/types.ts) as `STEP_MARKERS`.
 
 ### Where to put steps
 
