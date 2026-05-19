@@ -101,9 +101,9 @@
   align-items: center;
   gap: 10px;
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -358,7 +358,7 @@
   margin-right: 4px;
   border-radius: 50%;
   background: var(--bg-elevated);
-  box-shadow: 0 0 6px var(--bg-elevated);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--col-running) 50%, transparent);
   animation: repo-live-pulse 1.6s ease-in-out infinite;
 }
 
@@ -522,9 +522,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 5px 0;
   font-size: 12px;
   border-radius: 4px;
+}
+
+.branch-row:hover {
+  background: var(--bg-hover);
 }
 
 .branch-row + .branch-row {

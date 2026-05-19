@@ -88,22 +88,24 @@ export function RepoRow(props: {
       }}
     >
       <header class="repo-head">
-        <span class="repo-name">{cardTitle()}</span>
-        <Show when={secondaryName()}>
-          <span class="repo-dirname" title={`Directory: ${displayName()}`}>
-            {secondaryName()}
-          </span>
-        </Show>
-        <Show when={liveBranchLabel()}>
-          <span
-            class="repo-live-branch"
-            title={`Running: ${liveBranchLabel()}`}
-            aria-label={`Running on ${liveBranchLabel()}`}
-          >
-            <span class="repo-live-dot-inline" aria-hidden="true" />
-            <span class="repo-live-branch-label">{liveBranchLabel()}</span>
-          </span>
-        </Show>
+        <span style={{ display: 'flex', 'align-items': 'center', gap: '8px', 'flex-wrap': 'wrap' }}>
+          <span class="repo-name">{cardTitle()}</span>
+          <Show when={secondaryName()}>
+            <span class="repo-dirname" title={`Directory: ${displayName()}`}>
+              {secondaryName()}
+            </span>
+          </Show>
+          <Show when={liveBranchLabel()}>
+            <span
+              class="repo-live-branch"
+              title={`Running: ${liveBranchLabel()}`}
+              aria-label={`Running on ${liveBranchLabel()}`}
+            >
+              <span class="repo-live-dot-inline" aria-hidden="true" />
+              <span class="repo-live-branch-label">{liveBranchLabel()}</span>
+            </span>
+          </Show>
+        </span>
         <span class="spacer" />
         <Show when={props.repo.parent}>
           <span class="repo-kind-tag" title="Submodule, configured under repositories">

@@ -145,9 +145,24 @@
   cursor: col-resize;
   background: var(--border);
   transition: background 100ms ease;
+  position: relative;
 }
 
-.terminal-splitter:hover {
+.terminal-splitter::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 24px;
+  background: color-mix(in srgb, var(--text-muted) 25%, transparent);
+  border-radius: 1px;
+  transition: background 100ms ease;
+}
+
+.terminal-splitter:hover,
+.terminal-splitter:hover::after {
   background: var(--accent);
 }
 
@@ -178,10 +193,11 @@
   padding: 2px 4px 2px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
   background: var(--bg-elevated);
   max-width: 220px;
+  min-width: 80px;
   flex-shrink: 0;
 }
 
@@ -277,21 +293,18 @@
   font-weight: 600;
 }
 
+.terminal-tab-add[data-label] {
+  width: auto;
+  padding: 0 6px;
+  font-size: var(--text-xs);
+}
+
 .terminal-tab-add.launcher {
   width: auto;
   min-width: 22px;
   padding: 0 8px;
   font-size: 14px;
   letter-spacing: 0.02em;
-}
-
-/* Both the floppy (U+1F5AB) and the magnifying glass (U+1F50D + U+FE0E)
- * are pictograms, not text. Drop the strip's default 600 weight back to
- * normal so they don't render visually heavier than the +/λ glyphs. */
-.terminal-tab-add[aria-label='Save buffer'],
-.terminal-tab-add[aria-label='Find'] {
-  font-size: 15px;
-  font-weight: 400;
 }
 
 .terminal-tab[draggable='true'] {

@@ -1,4 +1,5 @@
 import {
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -45,6 +46,7 @@ export function SearchModal(props: {
   const [input, setInput] = createSignal('');
   const [query, setQuery] = createSignal('');
   const [sourceFilter, setSourceFilter] = createSignal<SourceFilter>('all');
+  const [selectedIndex, setSelectedIndex] = createSignal<number>(-1);
   let inputEl: HTMLInputElement | undefined;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -88,8 +90,39 @@ export function SearchModal(props: {
     return totalCount();
   });
 
+  const filterHints = createMemo(() => {
+    const current = sourceFilter();
+    const hints: { label: string; filter: SourceFilter; count: number }[] = [];
+    if (current !== 'projects' && projectCount() > 0)
+      hints.push({ label: 'Projects', filter: 'projects', count: projectCount() });
+    if (current !== 'knowledge' && knowledgeCount() > 0)
+      hints.push({ label: 'Knowledge', filter: 'knowledge', count: knowledgeCount() });
+    if (current !== 'resources' && resourcesCount() > 0)
+      hints.push({ label: 'Resources', filter: 'resources', count: resourcesCount() });
+    if (current !== 'skills' && skillsCount() > 0)
+      hints.push({ label: 'Skills', filter: 'skills', count: skillsCount() });
+    if (current !== 'logs' && logsCount() > 0)
+      hints.push({ label: 'Logs', filter: 'logs', count: logsCount() });
+    return hints;
+  });
+
+  createEffect(() => {
+    const idx = selectedIndex();
+    // Track results so the effect re-runs when rows are added/removed.
+    results();
+    document.querySelectorAll('.search-row').forEach((el, i) => {
+      el.toggleAttribute('data-selected', i === idx);
+    });
+  });
+
+  const changeFilter = (filter: SourceFilter): void => {
+    setSelectedIndex(-1);
+    setSourceFilter(filter);
+  };
+
   const onInput = (value: string): void => {
     setInput(value);
+    setSelectedIndex(-1);
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => setQuery(value), 200);
   };
@@ -99,6 +132,26 @@ export function SearchModal(props: {
       e.preventDefault();
       e.stopPropagation();
       props.onClose();
+      return;
+    }
+    const rows = document.querySelectorAll('.search-row');
+    const totalVisibleResults = rows.length;
+    if (totalVisibleResults === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.min(i + 1, totalVisibleResults - 1));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.max(i - 1, 0));
+      return;
+    }
+    if (e.key === 'Enter' && selectedIndex() >= 0) {
+      e.preventDefault();
+      const selected = rows[selectedIndex()] as HTMLElement | undefined;
+      selected?.click();
+      return;
     }
   };
 
@@ -158,7 +211,7 @@ export function SearchModal(props: {
               classList={{ active: sourceFilter() === 'all' }}
               role="radio"
               aria-checked={sourceFilter() === 'all'}
-              onClick={() => setSourceFilter('all')}
+              onClick={() => changeFilter('all')}
             >
               All <span class="search-source-count">{totalCount()}</span>
             </button>
@@ -167,7 +220,7 @@ export function SearchModal(props: {
               classList={{ active: sourceFilter() === 'projects' }}
               role="radio"
               aria-checked={sourceFilter() === 'projects'}
-              onClick={() => setSourceFilter('projects')}
+              onClick={() => changeFilter('projects')}
             >
               Projects <span class="search-source-count">{projectCount()}</span>
             </button>
@@ -176,7 +229,7 @@ export function SearchModal(props: {
               classList={{ active: sourceFilter() === 'knowledge' }}
               role="radio"
               aria-checked={sourceFilter() === 'knowledge'}
-              onClick={() => setSourceFilter('knowledge')}
+              onClick={() => changeFilter('knowledge')}
             >
               Knowledge <span class="search-source-count">{knowledgeCount()}</span>
             </button>
@@ -185,7 +238,7 @@ export function SearchModal(props: {
               classList={{ active: sourceFilter() === 'resources' }}
               role="radio"
               aria-checked={sourceFilter() === 'resources'}
-              onClick={() => setSourceFilter('resources')}
+              onClick={() => changeFilter('resources')}
             >
               Resources <span class="search-source-count">{resourcesCount()}</span>
             </button>
@@ -194,7 +247,7 @@ export function SearchModal(props: {
               classList={{ active: sourceFilter() === 'skills' }}
               role="radio"
               aria-checked={sourceFilter() === 'skills'}
-              onClick={() => setSourceFilter('skills')}
+              onClick={() => changeFilter('skills')}
             >
               Skills <span class="search-source-count">{skillsCount()}</span>
             </button>
@@ -203,7 +256,7 @@ export function SearchModal(props: {
               classList={{ active: sourceFilter() === 'logs' }}
               role="radio"
               aria-checked={sourceFilter() === 'logs'}
-              onClick={() => setSourceFilter('logs')}
+              onClick={() => changeFilter('logs')}
             >
               Logs <span class="search-source-count">{logsCount()}</span>
             </button>
@@ -217,6 +270,24 @@ export function SearchModal(props: {
                 fallback={
                   <div class="empty">
                     {grouped().total === 0 ? 'No matches.' : `No matches in ${sourceFilter()}.`}
+                    <Show when={grouped().total > 0 && sourceFilter() !== 'all'}>
+                      <div class="search-source-hints">
+                        Also found in{' '}
+                        <For each={filterHints()}>
+                          {(hint, i) => (
+                            <span class="search-source-hint-item">
+                              <Show when={i() > 0}>, </Show>
+                              <button
+                                class="search-source-hint-link"
+                                onClick={() => changeFilter(hint.filter)}
+                              >
+                                {hint.label} ({hint.count})
+                              </button>
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
                   </div>
                 }
               >
