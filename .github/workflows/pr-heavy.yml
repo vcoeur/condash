@@ -1,0 +1,112 @@
+name: pr-heavy
+
+# Complete pre-merge gate: full Playwright suite + 3-OS installer matrix.
+# Runs only when a PR is NOT a draft AND actually changes code (not docs/
+# assets only). On success, `gate-stamp` writes a `release-gate` commit
+# status on the PR head SHA, which release.yml's validate-tag reads at tag
+# time — that's how a tag publishes without re-running the suite.
+#
+# Filtering is at the JOB level (the `changes` job + draft guard), not a
+# workflow-level `paths-ignore`: the `pr-heavy-gate` aggregator must always
+# report so branch protection can require it without wedging docs-only PRs.
+# Require `pr-heavy-gate` (not the inner playwright/build checks) in branch
+# protection.
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-heavy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.f.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: f
+        name: Detect non-docs changes
+        run: |
+          set -euo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          # code = any changed file outside docs/, assets/, or *.md.
+          if git diff --name-only "$base" HEAD | grep -qEv '^(docs/|assets/)|\.md$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Code changes detected — heavy lane will run."
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs/assets-only change — heavy lane skipped (gate still reports)."
+          fi
+
+  playwright:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event.pull_request.draft == false
+    uses: ./.github/workflows/_playwright.yml
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event.pull_request.draft == false
+    uses: ./.github/workflows/_build.yml
+
+  gate-stamp:
+    name: Stamp release-gate status on head SHA
+    needs: [playwright, build]
+    # Only when the heavy lane actually ran and passed (skipped on docs-only
+    # or draft PRs — there's nothing to ship from those).
+    if: ${{ needs.playwright.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      # Writing a commit status needs statuses:write. Available because PR
+      # branches in this repo are pushed by the maintainer (not forks),
+      # which get a read/write GITHUB_TOKEN.
+      statuses: write
+    steps:
+      - name: Stamp release-gate = success on the PR head commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/$GH_REPO/statuses/$SHA" \
+            -f state=success \
+            -f context=release-gate \
+            -f description="pr-heavy: Playwright + 3-OS installer matrix green" >/dev/null
+          echo "Stamped release-gate=success on $SHA."
+
+  pr-heavy-gate:
+    # The single required check for this workflow. Always runs so it always
+    # reports; passes when the heavy lane succeeded or was skipped (docs-only
+    # / draft), fails when playwright or build failed. Require THIS in branch
+    # protection — the inner playwright/build checks don't report on a skipped
+    # docs-only PR.
+    name: pr-heavy-gate
+    needs: [changes, playwright, build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require heavy lane green or skipped
+        run: |
+          set -euo pipefail
+          changes='${{ needs.changes.result }}'
+          pw='${{ needs.playwright.result }}'
+          bd='${{ needs.build.result }}'
+          if [[ "$changes" != "success" ]]; then
+            echo "changes job did not succeed ($changes)." >&2
+            exit 1
+          fi
+          for r in "$pw" "$bd"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "a heavy lane job failed (playwright=$pw build=$bd)." >&2
+              exit 1
+            fi
+          done
+          echo "pr-heavy-gate ok (playwright=$pw build=$bd)."

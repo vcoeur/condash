@@ -4,14 +4,14 @@ name: Pages (docs + apt repo)
 #   - mkdocs site at the root
 #   - Debian apt repository under /apt/
 #
-# Trigger: a GitHub Release is published by main.yml on tag push,
-# or manual dispatch. main.yml ships plain `vX.Y.Z` as a stable
+# Trigger: a GitHub Release is published by release.yml on tag push,
+# or manual dispatch. release.yml ships plain `vX.Y.Z` as a stable
 # release and `vX.Y.Z-rc.N` / `-alpha*` / `-beta*` as a prerelease.
 # Both kinds carry .deb assets, so the apt scan below includes
 # prereleases (and skips drafts, whose assets aren't reachable via
 # gh release download).
 #
-# main.yml fires on push-to-main as well as tag push, but only the
+# release.yml fires on push-to-main as well as tag push, but only the
 # tag-push runs go through the publish job. The build job below
 # filters out non-tag runs so we don't rebuild the apt repo on
 # every commit.
@@ -29,15 +29,15 @@ name: Pages (docs + apt repo)
 # the GitHub Releases page; only the apt index is trimmed.
 
 on:
-  # `workflow_run` instead of `release: [published]` because main.yml
+  # `workflow_run` instead of `release: [published]` because release.yml
   # creates the prerelease via the workflow's own GITHUB_TOKEN — and
   # release events fired by GITHUB_TOKEN do NOT cascade into other
   # workflows (documented GitHub anti-loop rule). workflow_run is the
   # one trigger that DOES cascade across that boundary, and it lets us
-  # gate on main.yml succeeding so we never publish apt metadata for
+  # gate on release.yml succeeding so we never publish apt metadata for
   # a release that didn't finish uploading its .debs.
   workflow_run:
-    workflows: [main]
+    workflows: [release]
     types: [completed]
   workflow_dispatch:
 
@@ -60,12 +60,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     # Two filters on workflow_run triggers:
-    #   1. main.yml must have succeeded — we never rebuild the apt repo
+    #   1. release.yml must have succeeded — we never rebuild the apt repo
     #      against a half-published release.
     #   2. The upstream run must have been triggered by a tag push, not a
-    #      branch push. main.yml runs on every commit to main as well as
+    #      branch push. release.yml runs on every commit to main as well as
     #      every `v*` tag; only the tag-push runs go through publish, so
-    #      docs only needs to rebuild for those.
+    #      docs only needs to rebuild for those (head_branch is the tag
+    #      name 'vX.Y.Z' for tag pushes, 'main' for branch pushes).
     # workflow_dispatch fires without a workflow_run context (so both
     # checks evaluate against null/empty values) — we accept that case
     # explicitly for manual rebuilds.

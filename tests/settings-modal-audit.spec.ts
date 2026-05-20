@@ -71,11 +71,14 @@ function dig(obj: Record<string, unknown> | undefined, path: string): unknown {
   return cur;
 }
 
-/** Poll the file until `predicate` is true or timeout. */
+/** Poll the file until `predicate` is true or timeout. The revamped modal
+ *  defers writes behind Save, so a single IPC round-trip happens after each
+ *  `commitSave`; 2 s of headroom covers that on a slow CI runner while still
+ *  bounding total runtime for the fields that genuinely never land. */
 async function waitForFile(
   path: string,
   predicate: (parsed: Record<string, unknown>) => boolean,
-  timeoutMs = 800,
+  timeoutMs = 2000,
 ): Promise<Record<string, unknown>> {
   const start = Date.now();
   let parsed: Record<string, unknown> = await readJson(path);
@@ -103,6 +106,20 @@ async function safeScroll(loc: Locator): Promise<void> {
   await loc.scrollIntoViewIfNeeded({ timeout: SCROLL_TIMEOUT_MS }).catch(() => undefined);
 }
 
+/**
+ * Flush staged edits to disk. The revamped modal (v3.18.0) defers every
+ * write behind the Save button — edits only mutate an in-memory draft until
+ * Save fires. Each audit field stages, then calls this, then polls the file.
+ * No-op when the modal isn't dirty (Save is disabled), so a field that didn't
+ * actually change state records its finding without a stray click.
+ */
+async function commitSave(page: Page): Promise<void> {
+  const saveBtn = page.locator('.settings-modal button.settings-save');
+  if (await saveBtn.isEnabled().catch(() => false)) {
+    await saveBtn.click({ timeout: 3000 }).catch(() => undefined);
+  }
+}
+
 async function auditText(opts: {
   scope: 'global' | 'conception';
   section: string;
@@ -116,6 +133,7 @@ async function auditText(opts: {
     await safeScroll(opts.input);
     await opts.input.fill(opts.value, { timeout: 3000 });
     await opts.input.blur({ timeout: 1500 }).catch(() => undefined);
+    await commitSave(opts.input.page());
     const parsed = await waitForFile(
       opts.filePath,
       (p) => dig(p, opts.expectedKey) === opts.value,
@@ -155,8 +173,9 @@ async function auditNumber(opts: {
 }): Promise<void> {
   try {
     await safeScroll(opts.input);
-    await opts.input.fill(String(opts.value));
-    await opts.input.blur();
+    await opts.input.fill(String(opts.value), { timeout: 3000 });
+    await opts.input.blur({ timeout: 1500 }).catch(() => undefined);
+    await commitSave(opts.input.page());
     const parsed = await waitForFile(
       opts.filePath,
       (p) => dig(p, opts.expectedKey) === opts.value,
@@ -196,7 +215,8 @@ async function auditSelect(opts: {
 }): Promise<void> {
   try {
     await safeScroll(opts.select);
-    await opts.select.selectOption(opts.value);
+    await opts.select.selectOption(opts.value, { timeout: 3000 });
+    await commitSave(opts.select.page());
     const parsed = await waitForFile(
       opts.filePath,
       (p) => dig(p, opts.expectedKey) === opts.value,
@@ -237,10 +257,11 @@ async function auditCheckbox(opts: {
   try {
     await safeScroll(opts.checkbox);
     if (opts.value) {
-      await opts.checkbox.check();
+      await opts.checkbox.check({ timeout: 3000 });
     } else {
-      await opts.checkbox.uncheck();
+      await opts.checkbox.uncheck({ timeout: 3000 });
     }
+    await commitSave(opts.checkbox.page());
     const parsed = await waitForFile(
       opts.filePath,
       (p) => dig(p, opts.expectedKey) === opts.value,
@@ -288,7 +309,10 @@ async function openSettings(window: Page, app: BootedApp['app']): Promise<Locato
 }
 
 test('settings modal: audit every field round-trips edit → on-disk', async () => {
-  test.setTimeout(300_000);
+  // ~70 fields, each staged then flushed via Save (one IPC write apiece). Runs
+  // ~2.5 min locally; give generous margin for a slower CI runner so a single
+  // pass never brushes the timeout (retries would otherwise stack 3×).
+  test.setTimeout(480_000);
   const booted = await bootApp({ extraConfig: {} });
   const settingsPath = join(booted.userDataDir, 'condash', 'settings.json');
   const conceptionPath = join(booted.conceptionDir, '.condash', 'settings.json');
@@ -313,6 +337,7 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
       try {
         await safeScroll(darkRadio);
         await darkRadio.check({ timeout: 3000 });
+        await commitSave(booted.window);
         const parsed = await waitForFile(settingsPath, (p) => p.theme === 'dark');
         findings.push({
           scope: 'global',
@@ -645,6 +670,7 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
       try {
         await safeScroll(darkRadio);
         await darkRadio.check({ timeout: 3000 });
+        await commitSave(booted.window);
         const parsed = await waitForFile(conceptionPath, (p) => p.theme === 'light');
         findings.push({
           scope: 'conception',
@@ -798,6 +824,7 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
       const removeBtn = themeSubhead.locator('button.settings-remove-override');
       try {
         await removeBtn.click({ timeout: 3000 });
+        await commitSave(booted.window);
         const parsed = await waitForFile(
           conceptionPath,
           (p) => !Object.prototype.hasOwnProperty.call(p, 'theme'),

@@ -43,6 +43,11 @@ test('Settings: + Add section appends a section marker to condash.json', async (
     });
     await addSectionBtn.click();
 
+    // The revamped modal stages edits in an in-memory draft and only writes
+    // to disk when Save is clicked — clicking "+ Add section" alone never
+    // touches the file.
+    await modal.locator('button.settings-save').click();
+
     const condashPath = join(booted.conceptionDir, '.condash', 'settings.json');
     await expect
       .poll(async () => {
