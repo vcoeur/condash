@@ -44,7 +44,7 @@ jobs:
     outputs:
       changed: ${{ steps.check.outputs.changed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Need both parents of the merge commit for the tree diff.
           fetch-depth: 0
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history for ancestry check)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -168,7 +168,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all installer artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release-staging
           # merge-multiple flattens installers-<os>/ into one directory so
