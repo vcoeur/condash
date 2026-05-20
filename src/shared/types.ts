@@ -46,7 +46,9 @@ export interface Step {
 export interface Deliverable {
   /** Label as written between the [ ] of `- [label](path) — desc`. */
   label: string;
-  /** Resolved absolute path on disk. */
+  /** The link target. A local file is a resolved absolute (posix) path on
+   *  disk; an http(s) link is kept verbatim as the URL. Callers distinguish
+   *  the two by an `https?://` prefix test. */
   path: string;
   /** Optional trailing description after ' — '. */
   description?: string;
@@ -168,6 +170,10 @@ export interface LogsOpenRequest {
  * All four are mutually exclusive: showing one swaps the others out. */
 export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
 
+/** Left-band view — which pane fills the left band when it is visible.
+ * Switched by the `[Projects][Outputs]` tab strip at the top of the band. */
+export type LeftView = 'projects' | 'outputs';
+
 /** Active tab in the Skills pane. */
 export type SkillTab = 'generic' | 'claude' | 'kimi';
 
@@ -180,6 +186,10 @@ export const SKILL_TABS: readonly SkillTab[] = ['generic', 'claude', 'kimi'] as 
  * restores its previous dimensions. */
 export interface LayoutState {
   projects: boolean;
+  /** Which view fills the left band when it is visible. Projects is the
+   * default; Outputs aggregates every project's `## Deliverables`. Switched
+   * by the left-band tab strip; the band's visibility is still `projects`. */
+  leftView: LeftView;
   /** Code / Knowledge / hidden — single right-slot tristate. */
   working: WorkingSurface;
   terminal: boolean;

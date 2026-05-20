@@ -9,7 +9,9 @@ description: The `## Deliverables` section syntax, filename conventions, PDF gen
 
 **When to read this.** Your item produces a tangible output — a report, a design doc, an incident post-mortem — and you want it to show up on the card with a download link and an embedded viewer.
 
-Deliverables are a first-class concept: a `## Deliverables` section in a README lists one or more PDF files, and condash renders a download badge on the card plus a viewer in the expanded card.
+Deliverables are a first-class concept: a `## Deliverables` section in a README lists one or more artifacts, and condash renders them in the expanded card, in the cross-project **[Outputs pane](outputs-pane.md)**, and opens each in a type-appropriate viewer.
+
+A deliverable link can point at **any local file** (PDF, Markdown, HTML, image, …) or an **http(s) URL** (e.g. a deployed page). PDF-only was the pre-3.20 behaviour.
 
 ## The `## Deliverables` section
 
@@ -29,10 +31,24 @@ Per line:
 ```
 
 - **Label** — text shown on the card and in the viewer header.
-- **Path** — relative to the item's directory. Must end in `.pdf`.
+- **Path** — a local file relative to the item's directory (any extension), or an absolute `http(s)://` URL kept verbatim. `mailto:` and in-page `#anchor` links are ignored.
 - **Description** (optional, after ` — `) — a one-line note shown under the label.
 
 Multiple deliverables per item are fine; each renders as its own row in the Deliverables section of the item modal.
+
+### How each type opens
+
+The viewer is chosen by the link's type:
+
+| Link | Opens in |
+|------|----------|
+| `http(s)://…` | your external browser (`shell.openExternal`) |
+| `.pdf` | the in-app PDF viewer modal |
+| `.html` / `.htm` | the in-app HTML preview (sandboxed `condash-file://` webview, with an **↗ Open externally** button) |
+| `.md` / `.markdown` | the in-app note modal, read-only |
+| anything else | your OS default application (`shell.openPath`) |
+
+The HTML preview loads the file over the `condash-file://` scheme, so **relative** references inside it (`<img src="sibling.png">`, relative CSS/JS) resolve against the deliverable's own directory. Root-absolute paths (`/assets/…`) and remote assets may not load under the renderer's CSP — use **↗ Open externally** for those.
 
 ## Filename convention
 

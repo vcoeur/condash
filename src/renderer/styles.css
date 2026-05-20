@@ -492,6 +492,38 @@ button:hover {
   border-right: 1px solid var(--border);
 }
 
+/* Left-band tab strip — switches the left pane between Projects and Outputs.
+ * Fixed-height row at the top; the active view's scroller flexes below it. */
+.left-tabs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 6px 8px 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.left-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.left-tab:hover {
+  color: var(--text-primary);
+}
+
+.left-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
 .empty {
   display: flex;
   flex-direction: column;

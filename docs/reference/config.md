@@ -343,6 +343,7 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
   },
   "layout": {
     "projects": true,
+    "leftView": "projects",
     "working": "code",
     "terminal": false,
     "projectsWidth": 420
@@ -388,7 +389,8 @@ Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `ski
 
 | Field           | Type                                                       | Meaning                                                                                                                       |
 | --------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `projects`      | bool                                                       | Show or hide the Projects pane on the left edge.                                                                              |
+| `projects`      | bool                                                       | Show or hide the left band.                                                                                                  |
+| `leftView`      | `'projects' \| 'outputs'`                                  | Which view fills the left band — the Projects list or the Outputs aggregation of every project's `## Deliverables`. Switched by the band's tab strip. Defaults to `'projects'`. |
 | `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null` | Six-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, or `'logs'` shows that pane in the working slot; `null` hides them all. |
 | `terminal`      | bool                                                       | Show or hide the Terminal pane at the bottom.                                                                                 |
 | `projectsWidth` | non-negative int                                           | Pixel width of the Projects pane after the user drags the splitter.                                                           |

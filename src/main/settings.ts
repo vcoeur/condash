@@ -34,6 +34,7 @@ export async function drainSettingsQueue(): Promise<void> {
 
 export const DEFAULT_LAYOUT: LayoutState = {
   projects: true,
+  leftView: 'projects',
   working: 'code',
   terminal: true,
   projectsWidth: 320,

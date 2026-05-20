@@ -77,7 +77,21 @@ function relativeToCondashFile(baseDir: string, src: string): string {
     if (seg === '..') baseSegments.pop();
     else baseSegments.push(seg);
   }
-  const encoded = baseSegments.map((s) => encodeURIComponent(s)).join('/');
+  return pathToCondashFileUrl(baseSegments.join('/'));
+}
+
+/** Build a `condash-file:///<abs>` URL for an absolute path (posix or native).
+ *  Each path segment is URI-encoded; the triple slash means "no host" so the
+ *  pathname carries the full absolute path. The custom protocol handler in
+ *  main/index.ts serves it from inside the conception tree. Shared by the
+ *  relative-image rewriter above and the HTML preview modal. */
+export function pathToCondashFileUrl(absPath: string): string {
+  const encoded = absPath
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
   return `condash-file:///${encoded}`;
 }
 

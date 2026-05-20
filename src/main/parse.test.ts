@@ -264,3 +264,82 @@ apps: []
     expect(project.stepCounts.done).toBe(1);
   });
 });
+
+describe('deliverables parsing', () => {
+  const header = `---
+date: 2026-05-20
+kind: project
+status: done
+apps: []
+---
+
+# Test
+`;
+
+  it('accepts local links of any extension, not just PDF', async () => {
+    const body = `${header}
+## Deliverables
+
+- [Report](report.pdf) — the compiled report
+- [Module 1](outputs/module-1.html)
+- [Notes export](notes/summary.md)
+- [Diagram](assets/diagram.svg)
+`;
+    const path = await writeReadme('2026-05-20-mixed', body);
+    const project = await parseReadme(path);
+    const dir = join(tmp, '2026-05-20-mixed');
+    expect(project.deliverableCount).toBe(4);
+    expect(project.deliverables.map((d) => d.label)).toEqual([
+      'Report',
+      'Module 1',
+      'Notes export',
+      'Diagram',
+    ]);
+    // Local targets resolve to absolute posix paths under the project dir.
+    expect(project.deliverables[0].path).toBe(join(dir, 'report.pdf').split('\\').join('/'));
+    expect(project.deliverables[1].path).toBe(
+      join(dir, 'outputs/module-1.html').split('\\').join('/'),
+    );
+    expect(project.deliverables[0].description).toBe('the compiled report');
+  });
+
+  it('keeps http(s) URLs verbatim', async () => {
+    const body = `${header}
+## Deliverables
+
+- [Live module](https://example.netlify.app/module) — deployed
+`;
+    const path = await writeReadme('2026-05-20-url', body);
+    const project = await parseReadme(path);
+    expect(project.deliverables).toHaveLength(1);
+    expect(project.deliverables[0].path).toBe('https://example.netlify.app/module');
+  });
+
+  it('skips mailto: and in-page anchors', async () => {
+    const body = `${header}
+## Deliverables
+
+- [Email me](mailto:alice@example.com)
+- [Section](#summary)
+- [Real](file.pdf)
+`;
+    const path = await writeReadme('2026-05-20-skip', body);
+    const project = await parseReadme(path);
+    expect(project.deliverables.map((d) => d.label)).toEqual(['Real']);
+  });
+
+  it('only collects links under the ## Deliverables heading', async () => {
+    const body = `${header}
+## Notes
+
+- [Not a deliverable](elsewhere.pdf)
+
+## Deliverables
+
+- [Yes](yes.pdf)
+`;
+    const path = await writeReadme('2026-05-20-scope', body);
+    const project = await parseReadme(path);
+    expect(project.deliverables.map((d) => d.label)).toEqual(['Yes']);
+  });
+});

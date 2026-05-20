@@ -5,10 +5,12 @@ import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { PdfModal } from './pdf-modal';
+import { HtmlModal } from './html-modal';
 import { HelpModal } from './help-modal';
 import { WelcomeScreen } from './welcome-screen';
 import { PromptModal } from './prompt-modal';
 import { ProjectsView } from './panes/projects';
+import { OutputsView } from './panes/outputs';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
@@ -96,6 +98,8 @@ function App() {
     setPreviewPath,
     pdfPath,
     setPdfPath,
+    htmlPath,
+    setHtmlPath,
     helpDoc,
     setHelpDoc,
     searchModalOpen,
@@ -127,6 +131,7 @@ function App() {
     updateLayout,
     toggleProjects,
     toggleTerminal,
+    setLeftView,
     selectWorking,
     ensureTerminalOpen,
     topBandVisible,
@@ -254,6 +259,7 @@ function App() {
     openPrompt,
     setModal,
     setPdfPath,
+    setHtmlPath,
     setSettingsOpen,
     bridge,
     flashToast,
@@ -279,6 +285,7 @@ function App() {
     setModal,
     setPreviewPath,
     setPdfPath,
+    setHtmlPath,
     openPrompt,
     flashToast,
   });
@@ -427,21 +434,54 @@ function App() {
               <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
                 <Show when={layout().projects}>
                   <section class="pane pane-projects">
+                    {/* Left-band tab strip: Projects | Outputs. The band's
+                        visibility is still `layout().projects`; this only swaps
+                        which view fills it. */}
+                    <div class="left-tabs" role="tablist" aria-label="Left pane">
+                      <button
+                        class="left-tab"
+                        classList={{ active: layout().leftView === 'projects' }}
+                        role="tab"
+                        aria-selected={layout().leftView === 'projects'}
+                        onClick={() => setLeftView('projects')}
+                      >
+                        Projects
+                      </button>
+                      <button
+                        class="left-tab"
+                        classList={{ active: layout().leftView === 'outputs' }}
+                        role="tab"
+                        aria-selected={layout().leftView === 'outputs'}
+                        onClick={() => setLeftView('outputs')}
+                      >
+                        Outputs
+                      </button>
+                    </div>
                     <Show
-                      when={(projects() ?? []).length > 0}
-                      fallback={<div class="empty">No projects found under projects/.</div>}
+                      when={layout().leftView === 'outputs'}
+                      fallback={
+                        <Show
+                          when={(projects() ?? []).length > 0}
+                          fallback={<div class="empty">No projects found under projects/.</div>}
+                        >
+                          <ProjectsView
+                            buckets={projectsTabGroups()}
+                            onOpen={handleOpenProject}
+                            onToggleStep={handleToggleStep}
+                            onDropProject={handleDropOnColumn}
+                            onWorkOn={(p) => void bridge.handleWorkOn(p)}
+                            projectActions={projectActionItems()}
+                            onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
+                            onNewProject={() => setNewProjectOpen(true)}
+                            newProjectActions={newProjectActionItems()}
+                            onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
+                          />
+                        </Show>
+                      }
                     >
-                      <ProjectsView
-                        buckets={projectsTabGroups()}
-                        onOpen={handleOpenProject}
-                        onToggleStep={handleToggleStep}
-                        onDropProject={handleDropOnColumn}
-                        onWorkOn={(p) => void bridge.handleWorkOn(p)}
-                        projectActions={projectActionItems()}
-                        onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
-                        onNewProject={() => setNewProjectOpen(true)}
-                        newProjectActions={newProjectActionItems()}
-                        onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
+                      <OutputsView
+                        projects={projects() ?? []}
+                        onOpenDeliverable={(d) => handleOpenDeliverable(d.path)}
                       />
                     </Show>
                   </section>
@@ -686,6 +726,14 @@ function App() {
           path={pdfPath()!}
           onClose={() => router.closeChildModal(() => setPdfPath(null))}
           onOpenInOs={handleOpenInEditor}
+        />
+      </Show>
+
+      <Show when={htmlPath()}>
+        <HtmlModal
+          path={htmlPath()!}
+          onClose={() => router.closeChildModal(() => setHtmlPath(null))}
+          onOpenExternally={(p) => void window.condash.openExternal(p)}
         />
       </Show>
 

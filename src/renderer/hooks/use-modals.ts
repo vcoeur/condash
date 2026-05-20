@@ -10,6 +10,8 @@ export interface UseModals {
   setPreviewPath: Setter<string | null>;
   pdfPath: () => string | null;
   setPdfPath: Setter<string | null>;
+  htmlPath: () => string | null;
+  setHtmlPath: Setter<string | null>;
   helpDoc: () => HelpDoc | null;
   setHelpDoc: Setter<HelpDoc | null>;
   searchModalOpen: () => boolean;
@@ -45,6 +47,7 @@ export function useModals(): UseModals {
   const [modal, setModal] = createSignal<ModalState>(null);
   const [previewPath, setPreviewPath] = createSignal<string | null>(null);
   const [pdfPath, setPdfPath] = createSignal<string | null>(null);
+  const [htmlPath, setHtmlPath] = createSignal<string | null>(null);
   const [helpDoc, setHelpDoc] = createSignal<HelpDoc | null>(null);
   const [searchModalOpen, setSearchModalOpen] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
@@ -69,6 +72,8 @@ export function useModals(): UseModals {
     setPreviewPath,
     pdfPath,
     setPdfPath,
+    htmlPath,
+    setHtmlPath,
     helpDoc,
     setHelpDoc,
     searchModalOpen,
