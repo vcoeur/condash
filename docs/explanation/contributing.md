@@ -80,15 +80,17 @@ For renderer-only features (UI states, animations, derived signals), only the re
 ## Testing
 
 ```bash
-make typecheck    # tsc --noEmit on both projects
-make test         # vitest unit tests
-make e2e          # Playwright against a real Electron build
+make typecheck     # tsc --noEmit on both projects
+make test          # build, then the Playwright E2E suite
+make test-unit     # vitest unit tests
 ```
 
-- **Vitest** — `src/**/*.test.ts`. Fast. Pure-function tests (parsers, path helpers, regexes). `environment: 'node'`.
-- **Playwright** — `tests/*.spec.ts`. Drives the real Electron app. Slower, more authoritative. The Playwright fixture launches Electron with `CONDASH_FORCE_PROD=1` so the renderer loads the real `dist/` build, not the Vite dev server.
+- **Vitest** (`make test-unit`) — `src/**/*.test.ts`. Fast. Pure-function tests (parsers, path helpers, regexes). `environment: 'node'`.
+- **Playwright** (`make test`) — `tests/*.spec.ts`. Drives the real Electron app. Slower, more authoritative. The Playwright fixture launches Electron with `CONDASH_FORCE_PROD=1` so the renderer loads the real `dist/` build, not the Vite dev server.
 
 For a feature that touches the dashboard's behaviour, prefer Playwright. The e2e suite seeds a temporary conception tree, exercises the feature, and asserts on real DOM + real file writes.
+
+Driving the real Electron app means the suite opens an on-screen window unless it runs against a virtual display. On Linux, `make test` wraps the suite in `xvfb-run` when it's installed, so the window never appears or steals focus — the same thing CI does. `make test-headless` forces that wrap (and errors if `xvfb-run` is missing); `make test-visible` runs with the window visible when you want to watch a run. On macOS/Windows (no `xvfb`), `make test` runs visibly.
 
 ## Style and conventions
 
