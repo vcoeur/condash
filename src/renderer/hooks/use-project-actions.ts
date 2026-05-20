@@ -95,6 +95,10 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
   };
 
   const handleOpenDeliverableFromPreview = (deliverable: Deliverable): void => {
+    if (deliverable.kind === 'wikilink') {
+      handleWikilink(deliverable.path);
+      return;
+    }
     openDeliverableTarget(deliverable.path, {
       setPdfPath: deps.setPdfPath,
       setHtmlPath: deps.setHtmlPath,

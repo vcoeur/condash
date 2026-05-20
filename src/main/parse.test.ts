@@ -313,6 +313,29 @@ apps: []
     const project = await parseReadme(path);
     expect(project.deliverables).toHaveLength(1);
     expect(project.deliverables[0].path).toBe('https://example.netlify.app/module');
+    expect(project.deliverables[0].kind).toBe('url');
+    expect(project.deliverables[0].description).toBe('deployed');
+  });
+
+  it('tags local-file and wikilink kinds', async () => {
+    const body = `${header}
+## Deliverables
+
+- [Report](report.pdf)
+- [[2026-04-01-other-project]] — see the predecessor
+- [[note-slug|Design note]] — rationale
+`;
+    const path = await writeReadme('2026-05-20-kinds', body);
+    const project = await parseReadme(path);
+    expect(project.deliverables.map((d) => d.kind)).toEqual(['file', 'wikilink', 'wikilink']);
+    // Wikilink: path is the raw slug; label/comment parsed.
+    expect(project.deliverables[1].path).toBe('2026-04-01-other-project');
+    expect(project.deliverables[1].label).toBe('2026-04-01-other-project');
+    expect(project.deliverables[1].description).toBe('see the predecessor');
+    // Wikilink with explicit label after `|`.
+    expect(project.deliverables[2].path).toBe('note-slug');
+    expect(project.deliverables[2].label).toBe('Design note');
+    expect(project.deliverables[2].description).toBe('rationale');
   });
 
   it('skips mailto: and in-page anchors', async () => {

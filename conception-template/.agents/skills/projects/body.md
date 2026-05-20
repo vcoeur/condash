@@ -58,6 +58,20 @@ Kind-specific additions (incidents only): `environment: <PROD/STAGING/DEV>`, `se
 
 `apps` is a YAML list (one entry per line). `branch`'s value is authoritative. `date` always matches the month directory — changing it requires a `git mv`.
 
+## Deliverables
+
+A `## Deliverables` section lists an item's tangible outputs. condash renders them on the project card and in the **Deliverables** pane, and opens each by type. One bullet per item, in one of two forms:
+
+```markdown
+- [<label>](<target>) — <optional comment>      # local file or http(s) URL
+- [[<slug>]] — <optional comment>                # wikilink (or [[<slug>|<label>]])
+```
+
+- **Target** — a local file relative to the item's directory (any extension: pdf, md, html, image, …), an `http(s)://` URL kept verbatim, or a `[[slug]]` wikilink to another conception item. `mailto:` and in-page `#anchor` links are ignored.
+- **Comment** — optional, after ` — ` (or `-` / `:`); shown next to the label in the Deliverables pane.
+- **Opens by type**: wikilink → navigates within condash; URL → external browser; `.pdf` / `.html` → in-app viewer; `.md` → read-only; anything else → OS default app.
+- Links **are allowed** here — this is the one README section exempt from the "no links in `## Steps`" rule, because deliverables are meant to be links.
+
 ## Slug resolution
 
 Item folder names match `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`. `<slug>` accepts three forms:

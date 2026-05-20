@@ -43,14 +43,22 @@ export interface Step {
   section: string;
 }
 
+/** What a deliverable link points at — drives how it opens:
+ *  - `file`: a local artifact (resolved absolute posix path) → in-app viewer / OS default.
+ *  - `url`: an external `http(s)` link → opens in the browser.
+ *  - `wikilink`: an internal `[[slug]]` reference → navigates within condash. */
+export type DeliverableKind = 'file' | 'url' | 'wikilink';
+
 export interface Deliverable {
-  /** Label as written between the [ ] of `- [label](path) — desc`. */
+  /** Display label. For `[label](target)` it's the bracket text; for a
+   *  `[[slug|label]]` wikilink it's the label (or the slug when no `|`). */
   label: string;
-  /** The link target. A local file is a resolved absolute (posix) path on
-   *  disk; an http(s) link is kept verbatim as the URL. Callers distinguish
-   *  the two by an `https?://` prefix test. */
+  /** The link target, interpreted per `kind`: a resolved absolute (posix)
+   *  path for `file`, the verbatim URL for `url`, the raw slug for `wikilink`. */
   path: string;
-  /** Optional trailing description after ' — '. */
+  /** Whether the target is a local file, an external URL, or a wikilink. */
+  kind: DeliverableKind;
+  /** Optional trailing comment after ' — ' (or '-' / ':'), shown in the view. */
   description?: string;
 }
 
@@ -171,8 +179,8 @@ export interface LogsOpenRequest {
 export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
 
 /** Left-band view — which pane fills the left band when it is visible.
- * Switched by the `[Projects][Outputs]` tab strip at the top of the band. */
-export type LeftView = 'projects' | 'outputs';
+ * Selected by the left edge-strip handles (Projects / Deliverables). */
+export type LeftView = 'projects' | 'deliverables';
 
 /** Active tab in the Skills pane. */
 export type SkillTab = 'generic' | 'claude' | 'kimi';

@@ -1,15 +1,16 @@
 import { For, Show } from 'solid-js';
 import type { Deliverable, Project } from '@shared/types';
-import './outputs-pane.css';
+import './deliverables-pane.css';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 
 const KNOWN_STATUSES = ['now', 'review', 'later', 'backlog', 'done'];
 
-/** Coarse type tag shown next to each deliverable, derived from its target.
- *  http(s) links are URLs; everything else is keyed off the extension. */
-function deliverableKind(path: string): string {
-  if (/^https?:\/\//i.test(path)) return 'url';
-  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+/** Coarse type tag shown next to each deliverable. Wikilinks and URLs key off
+ *  `kind`; local files key off the extension. */
+function deliverableKind(deliverable: Deliverable): string {
+  if (deliverable.kind === 'wikilink') return 'wiki';
+  if (deliverable.kind === 'url') return 'url';
+  const ext = deliverable.path.slice(deliverable.path.lastIndexOf('.') + 1).toLowerCase();
   if (ext === 'pdf') return 'pdf';
   if (ext === 'html' || ext === 'htm') return 'html';
   if (ext === 'md' || ext === 'markdown') return 'md';
@@ -18,15 +19,15 @@ function deliverableKind(path: string): string {
 }
 
 /**
- * Outputs pane — aggregates every project's `## Deliverables` across the whole
- * conception, grouped by project (newest first). Parse-only: it consumes the
- * already-loaded projects list rather than scanning the filesystem.
+ * Deliverables pane — aggregates every project's `## Deliverables` across the
+ * whole conception, grouped by project (newest first). Parse-only: it consumes
+ * the already-loaded projects list rather than scanning the filesystem.
  */
-export function OutputsView(props: {
+export function DeliverablesView(props: {
   projects: Project[];
   onOpenDeliverable: (deliverable: Deliverable) => void;
 }) {
-  const scrollRef = usePaneScrollMemory('outputs');
+  const scrollRef = usePaneScrollMemory('deliverables');
 
   // Slug starts with the ISO date, so a descending slug sort is newest-first.
   const groups = (): Project[] =>
@@ -39,35 +40,35 @@ export function OutputsView(props: {
     groups().reduce((sum, project) => sum + project.deliverables.length, 0);
 
   return (
-    <div class="outputs-stack" ref={scrollRef}>
+    <div class="deliverables-stack" ref={scrollRef}>
       <Show
         when={groups().length > 0}
         fallback={
-          <div class="outputs-empty">
-            No project outputs yet — link artifacts under a project's
+          <div class="deliverables-empty">
+            No deliverables yet — link artifacts under a project's
             <code>## Deliverables</code>.
           </div>
         }
       >
-        <div class="outputs-head">
+        <div class="deliverables-head">
           {groups().length} {groups().length === 1 ? 'project' : 'projects'} · {totalItems()}{' '}
           {totalItems() === 1 ? 'item' : 'items'}
         </div>
         <For each={groups()}>
           {(project) => (
-            <details class="outputs-group" open>
-              <summary class="outputs-group-head">
-                <span class="outputs-caret" aria-hidden="true" />
-                <span class="outputs-group-title">{project.title}</span>
+            <details class="deliverables-group" open>
+              <summary class="deliverables-group-head">
+                <span class="deliverables-caret" aria-hidden="true" />
+                <span class="deliverables-group-title">{project.title}</span>
                 <span
-                  class="outputs-status"
+                  class="deliverables-status"
                   data-status={KNOWN_STATUSES.includes(project.status) ? project.status : '?'}
                 >
                   {project.status}
                 </span>
-                <span class="outputs-group-date">{project.slug.slice(0, 10)}</span>
+                <span class="deliverables-group-date">{project.slug.slice(0, 10)}</span>
               </summary>
-              <ul class="deliverables-list outputs-deliverables">
+              <ul class="deliverables-list deliverables-rows">
                 <For each={project.deliverables}>
                   {(deliverable) => (
                     <li class="deliverable-row">
@@ -76,14 +77,18 @@ export function OutputsView(props: {
                         onClick={() => props.onOpenDeliverable(deliverable)}
                         title={deliverable.path}
                       >
-                        <span class="outputs-kind" data-kind={deliverableKind(deliverable.path)}>
-                          {deliverableKind(deliverable.path)}
+                        <span class="deliverables-kind" data-kind={deliverableKind(deliverable)}>
+                          {deliverableKind(deliverable)}
                         </span>
                         <span class="deliverable-label">{deliverable.label}</span>
                         <Show when={deliverable.description}>
                           <span class="deliverable-desc">— {deliverable.description}</span>
                         </Show>
-                        <span class="deliverable-path">{deliverable.path}</span>
+                        <span class="deliverable-path">
+                          {deliverable.kind === 'wikilink'
+                            ? `[[${deliverable.path}]]`
+                            : deliverable.path}
+                        </span>
                       </button>
                     </li>
                   )}

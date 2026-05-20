@@ -219,8 +219,9 @@ const layoutSchema = z
   .object({
     projects: z.boolean(),
     // Optional: layouts persisted before `leftView` existed omit it; the read
-    // path back-fills from DEFAULT_LAYOUT.
-    leftView: z.union([z.literal('projects'), z.literal('outputs')]).optional(),
+    // path back-fills from DEFAULT_LAYOUT. The legacy `'outputs'` value (v3.20.0)
+    // is migrated to `'deliverables'` in migrateRawSettings.
+    leftView: z.union([z.literal('projects'), z.literal('deliverables')]).optional(),
     working: z.union([
       z.literal('code'),
       z.literal('knowledge'),
@@ -388,6 +389,11 @@ export const DEFAULT_SKILLS_PATH = '.claude/skills';
 export function migrateRawSettings(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== 'object') return parsed;
   const root = parsed as Record<string, unknown>;
+  // v3.20.0 → v3.21.0: the left-band pane was renamed Outputs → Deliverables.
+  if (root.layout && typeof root.layout === 'object') {
+    const layout = root.layout as Record<string, unknown>;
+    if (layout.leftView === 'outputs') layout.leftView = 'deliverables';
+  }
   const terminal = root.terminal;
   if (!terminal || typeof terminal !== 'object') return parsed;
   const term = terminal as Record<string, unknown>;

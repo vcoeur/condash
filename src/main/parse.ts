@@ -21,6 +21,10 @@ const STEP_LINE = /^\s*-\s\[([ ~x!-])\]\s+(.*)$/;
 const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
 const DELIVERABLE_URL = /^https?:\/\//i;
 const DELIVERABLE_SKIP = /^(mailto:|#)/i;
+// `- [[slug]] — comment` or `- [[slug|label]] — comment`: a wikilink to another
+// conception item, with an optional trailing comment. Checked before the
+// markdown-link form (which can't match `[[…]]` anyway).
+const DELIVERABLE_WIKILINK = /^\s*-\s\[\[([^\]|]+)(?:\|([^\]]+))?\]\](?:\s*[—\-:]\s*(.*))?\s*$/;
 const SUMMARY_MAX = 300;
 
 export async function parseReadme(path: string): Promise<Project> {
@@ -165,6 +169,20 @@ function extractDeliverables(lines: readonly string[], itemDir: string): Deliver
       continue;
     }
     if (!inDeliverables) continue;
+
+    // Wikilink form first: `- [[slug]]` / `- [[slug|label]]`, optional comment.
+    const wiki = line.match(DELIVERABLE_WIKILINK);
+    if (wiki) {
+      const [, slug, wikiLabel, wikiDesc] = wiki;
+      out.push({
+        label: (wikiLabel ?? slug).trim(),
+        path: slug.trim(),
+        kind: 'wikilink',
+        description: wikiDesc?.trim() || undefined,
+      });
+      continue;
+    }
+
     const match = line.match(DELIVERABLE_LINE);
     if (!match) continue;
     const [, label, rawPath, description] = match;
@@ -172,12 +190,12 @@ function extractDeliverables(lines: readonly string[], itemDir: string): Deliver
     // mailto: and in-page anchors are navigation, not deliverables.
     if (DELIVERABLE_SKIP.test(target)) continue;
     // URLs are kept verbatim; local links resolve against the project dir.
-    const value = DELIVERABLE_URL.test(target)
-      ? target
-      : toPosix(isAbsolute(target) ? target : resolve(itemDir, target));
+    const isUrl = DELIVERABLE_URL.test(target);
+    const value = isUrl ? target : toPosix(isAbsolute(target) ? target : resolve(itemDir, target));
     out.push({
       label: label.trim(),
       path: value,
+      kind: isUrl ? 'url' : 'file',
       description: description?.trim() || undefined,
     });
   }

@@ -12,6 +12,7 @@ import {
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
+import type { Deliverable } from '@shared/types';
 import { ConfirmModal } from './confirm-modal';
 import { IconClose, IconEdit, IconExternal, IconSave, IconView } from './note-modal-parts/icons';
 import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './note-modal-parts/find';
@@ -31,7 +32,7 @@ export type ModalState = {
   /** Force edit mode on open (used by the preferences modal). */
   initialMode?: 'view' | 'edit';
   /** Deliverables to surface as a section above the rendered body, when known. */
-  deliverables?: { label: string; path: string; description?: string }[];
+  deliverables?: Deliverable[];
   /** When set, render a leading "← Back to <label>" button in the modal head.
    * Clicking it calls onClose, which the parent routes back to the originating
    * preview via the previewBackPath plumbing. */
@@ -64,7 +65,7 @@ export function NoteModal(props: {
   state: ModalState;
   onClose: () => void;
   onOpenInEditor: (path: string) => void;
-  onOpenDeliverable: (path: string) => void;
+  onOpenDeliverable: (deliverable: Deliverable) => void;
   onWikilink: (slug: string) => void;
   /** Open a markdown file referenced by a relative `[text](path.md)` link in
    * the rendered body — replaces the current note in the same modal. */
@@ -673,7 +674,7 @@ export function NoteModal(props: {
                       <li>
                         <button
                           class="deliverable-link"
-                          onClick={() => props.onOpenDeliverable(d.path)}
+                          onClick={() => props.onOpenDeliverable(d)}
                           title={d.path}
                         >
                           ⬇ {d.label}

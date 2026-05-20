@@ -1,9 +1,9 @@
-/* Outputs pane — left-band aggregation of every project's `## Deliverables`,
+/* Deliverables pane — left-band aggregation of every project's `## Deliverables`,
  * grouped by project. Deliverable rows reuse the global `.deliverable-*`
  * classes from project-preview.css; only the grouping scaffolding and the
  * per-item kind tag live here. */
 
-.outputs-stack {
+.deliverables-stack {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -11,7 +11,7 @@
   background: var(--bg-panel);
 }
 
-.outputs-head {
+.deliverables-head {
   font-size: 11px;
   color: var(--text-muted);
   padding: 0 2px 8px;
@@ -19,11 +19,11 @@
   margin-bottom: 8px;
 }
 
-.outputs-group {
+.deliverables-group {
   margin-bottom: 10px;
 }
 
-.outputs-group-head {
+.deliverables-group-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -32,12 +32,12 @@
   list-style: none;
   user-select: none;
 }
-.outputs-group-head::-webkit-details-marker {
+.deliverables-group-head::-webkit-details-marker {
   display: none;
 }
 
 /* Disclosure caret — a right-pointing triangle that rotates open. */
-.outputs-caret {
+.deliverables-caret {
   flex: none;
   width: 0;
   height: 0;
@@ -46,11 +46,11 @@
   border-color: transparent transparent transparent var(--text-muted);
   transition: transform 0.12s ease;
 }
-.outputs-group[open] > .outputs-group-head .outputs-caret {
+.deliverables-group[open] > .deliverables-group-head .deliverables-caret {
   transform: rotate(90deg);
 }
 
-.outputs-group-title {
+.deliverables-group-title {
   flex: 1 1 auto;
   font-weight: 600;
   color: var(--text-primary);
@@ -59,7 +59,7 @@
   text-overflow: ellipsis;
 }
 
-.outputs-group-date {
+.deliverables-group-date {
   flex: none;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -68,7 +68,7 @@
 
 /* Status pill — colour keyed off the same per-status variables the
  * Projects pane uses. */
-.outputs-status {
+.deliverables-status {
   flex: none;
   font-size: 10px;
   text-transform: uppercase;
@@ -78,31 +78,31 @@
   color: var(--col-status, var(--text-muted));
   border: 1px solid var(--col-status, var(--border));
 }
-.outputs-status[data-status='now'] {
+.deliverables-status[data-status='now'] {
   --col-status: var(--col-now);
 }
-.outputs-status[data-status='review'] {
+.deliverables-status[data-status='review'] {
   --col-status: var(--col-review);
 }
-.outputs-status[data-status='later'] {
+.deliverables-status[data-status='later'] {
   --col-status: var(--col-later);
 }
-.outputs-status[data-status='backlog'] {
+.deliverables-status[data-status='backlog'] {
   --col-status: var(--col-backlog);
 }
-.outputs-status[data-status='done'] {
+.deliverables-status[data-status='done'] {
   --col-status: var(--col-done);
 }
-.outputs-status[data-status='?'] {
+.deliverables-status[data-status='?'] {
   --col-status: var(--col-unknown);
 }
 
-.outputs-deliverables {
+.deliverables-rows {
   padding: 4px 0 4px 14px;
 }
 
 /* Coarse type tag in front of each deliverable label. */
-.outputs-kind {
+.deliverables-kind {
   flex: none;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -114,19 +114,19 @@
   min-width: 34px;
   text-align: center;
 }
-.outputs-kind[data-kind='url'] {
+.deliverables-kind[data-kind='url'] {
   color: var(--accent);
   border-color: var(--accent);
 }
 
-.outputs-empty {
+.deliverables-empty {
   padding: 20px 16px;
   color: var(--text-muted);
   font-size: 13px;
   text-align: center;
   line-height: 1.5;
 }
-.outputs-empty code {
+.deliverables-empty code {
   font-family: var(--font-mono);
   font-size: 12px;
 }

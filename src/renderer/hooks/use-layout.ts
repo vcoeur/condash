@@ -25,9 +25,10 @@ export interface UseLayout {
   updateLayout: (patch: Partial<LayoutState>) => void;
   toggleProjects: () => void;
   toggleTerminal: () => void;
-  /** Switch the left band between Projects and Outputs. Showing a view also
-   *  ensures the left band is visible. */
-  setLeftView: (next: LeftView) => void;
+  /** Left edge-strip handle action: clicking the active view (band visible +
+   *  that view) hides the band; clicking the other shows the band on it.
+   *  Mirrors the right strip's mutually-exclusive working-surface toggle. */
+  toggleLeftView: (view: LeftView) => void;
   selectWorking: (next: WorkingSurface) => void;
   ensureTerminalOpen: () => void;
   /** Any of the three top-band panes is on — when all three are off only
@@ -70,9 +71,13 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
 
   const toggleProjects = (): void => updateLayout({ projects: !layout().projects });
   const toggleTerminal = (): void => updateLayout({ terminal: !layout().terminal });
-  // Selecting a left view also opens the band, so the tab can't switch to a
-  // pane that isn't shown.
-  const setLeftView = (next: LeftView): void => updateLayout({ leftView: next, projects: true });
+  const toggleLeftView = (view: LeftView): void => {
+    if (layout().projects && layout().leftView === view) {
+      updateLayout({ projects: false });
+    } else {
+      updateLayout({ projects: true, leftView: view });
+    }
+  };
   const selectWorking = (next: WorkingSurface): void => updateLayout({ working: next });
   const ensureTerminalOpen = (): void => {
     if (!layout().terminal) updateLayout({ terminal: true });
@@ -131,7 +136,7 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     updateLayout,
     toggleProjects,
     toggleTerminal,
-    setLeftView,
+    toggleLeftView,
     selectWorking,
     ensureTerminalOpen,
     topBandVisible,
