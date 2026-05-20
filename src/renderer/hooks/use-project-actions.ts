@@ -2,6 +2,7 @@ import { createMemo, type Setter } from 'solid-js';
 import type { Deliverable, KnowledgeNode, Project, Step } from '@shared/types';
 import { applyStatus, applyStepMarker, groupByStatus, nextMarker } from '../panes/projects';
 import { buildSlugIndex } from '../wikilinks';
+import { openDeliverableTarget } from '../deliverable-open';
 import type { ModalState } from '../note-modal';
 import type { ModalRouter } from '../modal-router';
 import type { PromptModalState } from '../prompt-modal';
@@ -14,6 +15,7 @@ export interface UseProjectActionsDeps {
   setModal: Setter<ModalState>;
   setPreviewPath: Setter<string | null>;
   setPdfPath: Setter<string | null>;
+  setHtmlPath: Setter<string | null>;
   openPrompt: (init: Omit<PromptModalState, 'resolve'>) => Promise<string | null>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
@@ -93,11 +95,11 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
   };
 
   const handleOpenDeliverableFromPreview = (deliverable: Deliverable): void => {
-    if (deliverable.path.toLowerCase().endsWith('.pdf')) {
-      deps.setPdfPath(deliverable.path);
-    } else {
-      void window.condash.openInEditor(deliverable.path);
-    }
+    openDeliverableTarget(deliverable.path, {
+      setPdfPath: deps.setPdfPath,
+      setHtmlPath: deps.setHtmlPath,
+      setModal: deps.setModal,
+    });
   };
 
   const handleOpenFileFromPreview = (path: string, previewPath: () => string | null): void => {

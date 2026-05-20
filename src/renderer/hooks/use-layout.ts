@@ -1,5 +1,16 @@
 import { createSignal } from 'solid-js';
-import type { LayoutState, WorkingSurface } from '@shared/types';
+import type { LayoutState, LeftView, WorkingSurface } from '@shared/types';
+
+/** Renderer-side default; mirrors the main-process `DEFAULT_LAYOUT`. Used both
+ *  for the pre-load signal value and to back-fill fields a persisted layout
+ *  predates (e.g. `leftView`). */
+const DEFAULT_LAYOUT: LayoutState = {
+  projects: true,
+  leftView: 'projects',
+  working: 'code',
+  terminal: true,
+  projectsWidth: 320,
+};
 
 export interface UseLayoutDeps {
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -14,6 +25,9 @@ export interface UseLayout {
   updateLayout: (patch: Partial<LayoutState>) => void;
   toggleProjects: () => void;
   toggleTerminal: () => void;
+  /** Switch the left band between Projects and Outputs. Showing a view also
+   *  ensures the left band is visible. */
+  setLeftView: (next: LeftView) => void;
   selectWorking: (next: WorkingSurface) => void;
   ensureTerminalOpen: () => void;
   /** Any of the three top-band panes is on — when all three are off only
@@ -37,16 +51,13 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   // Composite-layout state — replaces the prior single-`tab` selector.
   // Default mirrors the persisted server-side default until the real
   // value loads (avoids a frame of empty UI).
-  const [layout, setLayoutState] = createSignal<LayoutState>({
-    projects: true,
-    working: 'code',
-    terminal: true,
-    projectsWidth: 320,
-  });
+  const [layout, setLayoutState] = createSignal<LayoutState>({ ...DEFAULT_LAYOUT });
 
   void window.condash
     .getLayout()
-    .then(setLayoutState)
+    // Merge over the defaults so a layout persisted before a field existed
+    // (e.g. `leftView`) is back-filled rather than landing as `undefined`.
+    .then((loaded) => setLayoutState({ ...DEFAULT_LAYOUT, ...loaded }))
     .catch((err) => deps.flashToast(`Could not load layout: ${(err as Error).message}`, 'error'));
 
   const updateLayout = (patch: Partial<LayoutState>): void => {
@@ -59,6 +70,9 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
 
   const toggleProjects = (): void => updateLayout({ projects: !layout().projects });
   const toggleTerminal = (): void => updateLayout({ terminal: !layout().terminal });
+  // Selecting a left view also opens the band, so the tab can't switch to a
+  // pane that isn't shown.
+  const setLeftView = (next: LeftView): void => updateLayout({ leftView: next, projects: true });
   const selectWorking = (next: WorkingSurface): void => updateLayout({ working: next });
   const ensureTerminalOpen = (): void => {
     if (!layout().terminal) updateLayout({ terminal: true });
@@ -117,6 +131,7 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
     updateLayout,
     toggleProjects,
     toggleTerminal,
+    setLeftView,
     selectWorking,
     ensureTerminalOpen,
     topBandVisible,

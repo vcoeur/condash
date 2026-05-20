@@ -1,0 +1,132 @@
+/* Outputs pane — left-band aggregation of every project's `## Deliverables`,
+ * grouped by project. Deliverable rows reuse the global `.deliverable-*`
+ * classes from project-preview.css; only the grouping scaffolding and the
+ * per-item kind tag live here. */
+
+.outputs-stack {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 16px;
+  background: var(--bg-panel);
+}
+
+.outputs-head {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  margin-bottom: 8px;
+}
+
+.outputs-group {
+  margin-bottom: 10px;
+}
+
+.outputs-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.outputs-group-head::-webkit-details-marker {
+  display: none;
+}
+
+/* Disclosure caret — a right-pointing triangle that rotates open. */
+.outputs-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent var(--text-muted);
+  transition: transform 0.12s ease;
+}
+.outputs-group[open] > .outputs-group-head .outputs-caret {
+  transform: rotate(90deg);
+}
+
+.outputs-group-title {
+  flex: 1 1 auto;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outputs-group-date {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Status pill — colour keyed off the same per-status variables the
+ * Projects pane uses. */
+.outputs-status {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--col-status, var(--text-muted));
+  border: 1px solid var(--col-status, var(--border));
+}
+.outputs-status[data-status='now'] {
+  --col-status: var(--col-now);
+}
+.outputs-status[data-status='review'] {
+  --col-status: var(--col-review);
+}
+.outputs-status[data-status='later'] {
+  --col-status: var(--col-later);
+}
+.outputs-status[data-status='backlog'] {
+  --col-status: var(--col-backlog);
+}
+.outputs-status[data-status='done'] {
+  --col-status: var(--col-done);
+}
+.outputs-status[data-status='?'] {
+  --col-status: var(--col-unknown);
+}
+
+.outputs-deliverables {
+  padding: 4px 0 4px 14px;
+}
+
+/* Coarse type tag in front of each deliverable label. */
+.outputs-kind {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  min-width: 34px;
+  text-align: center;
+}
+.outputs-kind[data-kind='url'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.outputs-empty {
+  padding: 20px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+.outputs-empty code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}

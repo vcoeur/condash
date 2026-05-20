@@ -3,6 +3,7 @@ import type { SkillNode, SkillTab, TreeRoot } from '@shared/types';
 import type { TreeAffordance, TreeViewMutationApi, TreeViewPromptApi } from '../panes/tree-view';
 import type { ResourcesViewActions } from '../panes/resources';
 import type { ModalState } from '../note-modal';
+import { openDeliverableTarget } from '../deliverable-open';
 import type { createTreeStore } from '../tree-store';
 import type { TerminalBridge } from '../terminal-bridge';
 import type { PromptModalState } from '../prompt-modal';
@@ -18,6 +19,7 @@ export interface UseTreeActionsDeps {
   openPrompt: (init: Omit<PromptModalState, 'resolve'>) => Promise<string | null>;
   setModal: Setter<ModalState>;
   setPdfPath: Setter<string | null>;
+  setHtmlPath: Setter<string | null>;
   setSettingsOpen: Setter<boolean>;
   bridge: TerminalBridge;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -87,11 +89,11 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
   };
 
   const handleOpenDeliverable = (path: string): void => {
-    if (path.toLowerCase().endsWith('.pdf')) {
-      deps.setPdfPath(path);
-    } else {
-      void window.condash.openInEditor(path);
-    }
+    openDeliverableTarget(path, {
+      setPdfPath: deps.setPdfPath,
+      setHtmlPath: deps.setHtmlPath,
+      setModal: deps.setModal,
+    });
   };
 
   const handleOpenKnowledgeFile = (path: string, title?: string): void => {

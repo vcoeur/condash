@@ -218,6 +218,9 @@ const terminalSettings = z
 const layoutSchema = z
   .object({
     projects: z.boolean(),
+    // Optional: layouts persisted before `leftView` existed omit it; the read
+    // path back-fills from DEFAULT_LAYOUT.
+    leftView: z.union([z.literal('projects'), z.literal('outputs')]).optional(),
     working: z.union([
       z.literal('code'),
       z.literal('knowledge'),

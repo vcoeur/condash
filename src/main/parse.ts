@@ -13,7 +13,14 @@ import { toPosix } from '../shared/path';
 import { parseTimelineEntries } from './mutate';
 
 const STEP_LINE = /^\s*-\s\[([ ~x!-])\]\s+(.*)$/;
-const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+\.pdf)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
+// `- [label](target) — optional description`. `target` is any link: a local
+// file of any extension (resolved relative to the project dir) or an http(s)
+// URL (kept verbatim). `mailto:` and in-page `#anchor` targets are filtered in
+// extractDeliverables. Broadened from PDF-only so md / html / image / URL
+// deliverables surface in the Outputs pane.
+const DELIVERABLE_LINE = /^\s*-\s\[([^\]]+)\]\(([^)]+)\)(?:\s*[—\-:]\s*(.*))?\s*$/i;
+const DELIVERABLE_URL = /^https?:\/\//i;
+const DELIVERABLE_SKIP = /^(mailto:|#)/i;
 const SUMMARY_MAX = 300;
 
 export async function parseReadme(path: string): Promise<Project> {
@@ -161,10 +168,16 @@ function extractDeliverables(lines: readonly string[], itemDir: string): Deliver
     const match = line.match(DELIVERABLE_LINE);
     if (!match) continue;
     const [, label, rawPath, description] = match;
-    const absolute = isAbsolute(rawPath) ? rawPath : resolve(itemDir, rawPath);
+    const target = rawPath.trim();
+    // mailto: and in-page anchors are navigation, not deliverables.
+    if (DELIVERABLE_SKIP.test(target)) continue;
+    // URLs are kept verbatim; local links resolve against the project dir.
+    const value = DELIVERABLE_URL.test(target)
+      ? target
+      : toPosix(isAbsolute(target) ? target : resolve(itemDir, target));
     out.push({
       label: label.trim(),
-      path: toPosix(absolute),
+      path: value,
       description: description?.trim() || undefined,
     });
   }
