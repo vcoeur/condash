@@ -72,10 +72,10 @@ jobs:
     # explicitly for manual rebuilds.
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v')) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           # No uv.lock in this repo (we use ephemeral `uv run --with`).
@@ -89,7 +89,7 @@ jobs:
           sudo apt-get install -y aptly gnupg
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Build mkdocs site
         run: uv run --with "mkdocs-material==9.5.49" mkdocs build --strict
@@ -118,7 +118,7 @@ jobs:
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
       - name: Cache .deb assets
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: debs
           key: condash-debs-v1-${{ steps.tags.outputs.fingerprint }}
@@ -196,7 +196,7 @@ jobs:
           ls -la site/apt/
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ./site
 
@@ -209,4 +209,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
