@@ -1,37 +1,15 @@
-name: pr
+name: _fast
 
-# Fast PR gate. Single ubuntu job, target ≤ 90 s wall-clock.
-#
-# Scope: format-check, typecheck, build, vitest. That's it.
-#
-# What's deliberately NOT here:
-#   - Playwright (moved to main.yml — runs on every push to main and
-#     every `v*` tag, gates publish).
-#   - Installer-smoke (electron-builder on ubuntu/windows/macos —
-#     moved to main.yml's build matrix, also gates publish).
-# The heavy suite runs once per merge to main and once per tag. PR
-# coverage stays minimal so the runs-often pipeline is actually fast,
-# and the post-merge / pre-tag gate stays inside CI rather than
-# spread across out-of-band checks.
+# Reusable fast lane: format-check + typecheck + build + vitest. Target
+# ≤ 90 s wall-clock. Called by pr-fast.yml (every PR) and by release.yml's
+# guarded main path (non-trivial merges only). Never publishes anything.
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-      - 'assets/**'
-
-concurrency:
-  # Cancel in-flight PR runs when a newer commit lands on the same PR
-  # branch. main.yml runs never cancel each other.
-  group: pr-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
   fast:
-    name: Typecheck + unit
+    name: Fast checks (typecheck + unit)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,7 +25,6 @@ jobs:
       # hit we skip npm ci entirely — the `electron-rebuild` postinstall
       # output for node-pty is part of node_modules and is restored too,
       # so we don't pay the ~20-40 s native rebuild on warm runs.
-      # Key includes electron major version so a bump invalidates.
       - name: Cache node_modules + electron caches
         id: deps-cache
         uses: actions/cache@v4

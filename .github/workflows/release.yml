@@ -1,0 +1,232 @@
+name: release
+
+# Two responsibilities, disjoint by trigger:
+#
+#  1. push to main  — a `guard` job diffs the merge commit against the PR
+#     head it merged (HEAD vs HEAD^2). If they're byte-identical, the PR
+#     already tested this exact tree, so heavy CI is SKIPPED. Heavy CI
+#     (fast + playwright + build) runs only when the merge actually combined
+#     something the PR didn't test (main advanced, or a direct push with no
+#     second parent → run, fail-safe). This is informational: it surfaces a
+#     broken merge but does not gate anything (the push already happened).
+#
+#  2. push tag v*   — validate-tag (shape + version + reachable-from-main +
+#     a green `release-gate` status on the tag commit) → build → publish.
+#     The suite is NOT re-run here: pr-heavy already ran it and stamped the
+#     commit, and validate-tag refuses to publish a commit without that
+#     green stamp. So "ship only if green" is enforced by reading GitHub's
+#     own recorded status, not by re-running tests.
+#
+# Why one combined file: the two paths never share jobs (their `if:`
+# conditions are mutually exclusive on ref), so there's no cross-path
+# `needs:` to entangle. The shared lanes (_fast / _playwright / _build) are
+# reusable workflows, called from both here and the pr-* triggers.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  # publish creates the GH Release + uploads assets (contents:write).
+  # validate-tag reads the commit's release-gate status (statuses:read).
+  contents: write
+  statuses: read
+
+jobs:
+  # ===== main-push path: guarded heavy CI on non-trivial merges =====
+  guard:
+    name: Guard — did the merge change anything vs the PR head?
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need both parents of the merge commit for the tree diff.
+          fetch-depth: 0
+      - id: check
+        name: Compare merge tree to its PR-head parent
+        run: |
+          set -euo pipefail
+          # A --no-ff merge has the PR head as HEAD^2. If the merge tree is
+          # byte-identical to that parent, the PR already tested this exact
+          # code → skip heavy CI. If there's no second parent (direct push,
+          # squash/rebase) or the trees differ (main advanced), run it.
+          if git rev-parse HEAD^2 >/dev/null 2>&1 && git diff --quiet HEAD HEAD^2; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Merge tree matches PR head (HEAD^2) — already tested, skipping heavy CI."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Merge introduced changes beyond the PR head (or direct push) — running heavy CI."
+          fi
+
+  main-fast:
+    needs: guard
+    if: needs.guard.outputs.changed == 'true'
+    uses: ./.github/workflows/_fast.yml
+
+  main-playwright:
+    needs: guard
+    if: needs.guard.outputs.changed == 'true'
+    uses: ./.github/workflows/_playwright.yml
+
+  main-build:
+    needs: [main-fast, main-playwright]
+    uses: ./.github/workflows/_build.yml
+
+  # ===== tag-push path: validate (incl. green-check) + build + publish =====
+  validate-tag:
+    name: Validate tag (shape + version + reachable + CI green)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for ancestry check)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Reject malformed tags. Stable `vX.Y.Z` and prerelease suffixes
+      # (`-rc.N`, `-alpha*`, `-beta*`) both need the leading semver triplet.
+      - name: Validate tag shape
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]]; then
+            echo "Tag '$TAG' is not a valid vX.Y.Z[-suffix] release tag." >&2
+            exit 1
+          fi
+          echo "Tag $TAG is valid."
+
+      # The bump commit must land on main before the tag is pushed.
+      - name: Assert package.json version matches tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED="${TAG#v}"
+          if [[ "$PKG_VERSION" != "$EXPECTED" ]]; then
+            echo "package.json version ($PKG_VERSION) does not match tag ($EXPECTED)." >&2
+            echo "Bump package.json before pushing the tag." >&2
+            exit 1
+          fi
+          echo "package.json version $PKG_VERSION matches tag $TAG."
+
+      # Tags must point at commits that have landed on main — no one-off
+      # feature-branch tags, no detached commits.
+      - name: Assert tag SHA is reachable from origin/main
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          TAG_SHA=$(git rev-parse "$TAG^{commit}")
+          if ! git merge-base --is-ancestor "$TAG_SHA" origin/main; then
+            echo "Tag $TAG ($TAG_SHA) is not reachable from origin/main." >&2
+            echo "Tags must point at commits that have landed on main." >&2
+            exit 1
+          fi
+          echo "Tag $TAG ($TAG_SHA) is reachable from origin/main."
+
+      # The publish gate. pr-heavy stamps `release-gate=success` on the PR
+      # head commit (= the bump commit you tag) once the full suite passes.
+      # Refuse to publish a commit that doesn't carry that green stamp — a
+      # commit whose heavy lane never ran (mid-PR SHA, pr-heavy skipped while
+      # draft, direct push) has no stamp and is rejected here. This reads
+      # GitHub's own recorded status; the suite is not re-run.
+      - name: Assert release-gate CI was green for the tag commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG_SHA=$(git rev-parse "$TAG^{commit}")
+          # /statuses lists most-recent first; take the latest release-gate.
+          STATE=$(gh api "repos/$GH_REPO/commits/$TAG_SHA/statuses" --paginate \
+            --jq 'map(select(.context=="release-gate")) | (.[0].state // "missing")')
+          if [[ "$STATE" != "success" ]]; then
+            echo "release-gate status for $TAG_SHA is '$STATE' (need 'success')." >&2
+            echo "pr-heavy must have stamped this commit green before it can ship." >&2
+            exit 1
+          fi
+          echo "release-gate status for $TAG_SHA is green."
+
+  tag-build:
+    needs: validate-tag
+    uses: ./.github/workflows/_build.yml
+
+  publish:
+    name: Publish to GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [validate-tag, tag-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-staging
+          # merge-multiple flattens installers-<os>/ into one directory so
+          # the upload glob is a single flat dir.
+          merge-multiple: true
+
+      - name: List staged release files
+        run: ls -la release-staging/
+
+      - name: Create or reuse release for tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # `vX.Y.Z-rc.N` / `-alpha*` / `-beta*` ship as prereleases (not
+          # surfaced as `latest`). Plain `vX.Y.Z` ships as latest.
+          if [[ "$TAG" == *-rc.* || "$TAG" == *-alpha* || "$TAG" == *-beta* ]]; then
+            IS_PRE=true
+            MAKE_LATEST=false
+            echo "Tag $TAG matches prerelease pattern; publishing as prerelease."
+          else
+            IS_PRE=false
+            MAKE_LATEST=true
+            echo "Tag $TAG is a stable tag; publishing as latest release."
+          fi
+          if REL_ID=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq .id 2>/dev/null); then
+            gh api -X PATCH "repos/$GH_REPO/releases/$REL_ID" \
+              -F draft=false \
+              -F prerelease=$IS_PRE \
+              -f make_latest=$MAKE_LATEST >/dev/null
+            echo "Release for $TAG already exists ($REL_ID); state re-asserted, uploading into it."
+          else
+            BODY=$'Unsigned Electron build of condash.\n\nInstall bypass per OS:\n- Windows: SmartScreen → "More info" → "Run anyway".\n- macOS: System Settings → Privacy & Security → "Open Anyway".\n- Linux: `chmod +x` the AppImage, run.'
+            gh api -X POST "repos/$GH_REPO/releases" \
+              -f tag_name="$TAG" \
+              -F draft=false \
+              -F prerelease=$IS_PRE \
+              -f make_latest=$MAKE_LATEST \
+              -f name="condash $TAG" \
+              -f body="$BODY" \
+              --jq '"Created release " + (.id|tostring) + " for " + .tag_name'
+          fi
+
+      # Single uploader, no race. `--clobber` so a re-run replaces existing
+      # assets cleanly without 422'ing on duplicate filenames.
+      - name: Upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release-staging/*)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No assets staged — nothing to upload" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" --repo "$GH_REPO" --clobber "${assets[@]}"

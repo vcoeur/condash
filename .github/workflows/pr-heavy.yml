@@ -1,0 +1,59 @@
+name: pr-heavy
+
+# Complete pre-merge gate: full Playwright suite + 3-OS installer matrix.
+# Runs only when a PR is NOT a draft (the `ready_for_review` type + the
+# draft==false guard), so work-in-progress drafts stay on the cheap pr-fast
+# lane and the expensive suite fires once the PR is opened for review.
+#
+# On success, `gate-stamp` writes a `release-gate` commit status on the PR's
+# head SHA. release.yml's validate-tag reads that status back at tag time —
+# that's how a tag publishes without re-running the suite while still
+# proving the exact commit was green. The head SHA is the bump commit you
+# tag, so the status lands on the commit the tag points at.
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'assets/**'
+
+concurrency:
+  group: pr-heavy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    if: github.event.pull_request.draft == false
+    uses: ./.github/workflows/_playwright.yml
+
+  build:
+    if: github.event.pull_request.draft == false
+    uses: ./.github/workflows/_build.yml
+
+  gate-stamp:
+    name: Stamp release-gate status on head SHA
+    needs: [playwright, build]
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      # Writing a commit status needs statuses:write. Available because PR
+      # branches in this repo are pushed by the maintainer (not forks),
+      # which get a read/write GITHUB_TOKEN.
+      statuses: write
+    steps:
+      - name: Stamp release-gate = success on the PR head commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/$GH_REPO/statuses/$SHA" \
+            -f state=success \
+            -f context=release-gate \
+            -f description="pr-heavy: Playwright + 3-OS installer matrix green" >/dev/null
+          echo "Stamped release-gate=success on $SHA."

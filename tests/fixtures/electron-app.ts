@@ -90,6 +90,25 @@ export async function bootApp(
   const window = await app.firstWindow();
   await window.waitForLoadState('domcontentloaded');
 
+  // The v3.18.0 settings revamp added enter/transition animations. Playwright's
+  // actionability check waits for an element to be "stable" (not mid-animation)
+  // before clicking; under xvfb those transitions make buttons intermittently
+  // never settle, so clicks time out. Tests assert on settled state, not motion
+  // — collapse every animation/transition to zero duration app-wide so the DOM
+  // is immediately stable. Final rendered pixels are unaffected (only the
+  // tweening between states), so screenshot specs stay valid.
+  await window
+    .addStyleTag({
+      content: `*, *::before, *::after {
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+        scroll-behavior: auto !important;
+      }`,
+    })
+    .catch(() => undefined);
+
   return {
     app,
     window,

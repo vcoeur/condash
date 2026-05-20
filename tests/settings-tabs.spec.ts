@@ -98,9 +98,10 @@ test('settings modal: reset-to-global drops the override key from condash.json',
     const resetButton = skillsField.locator('button.settings-remove-override');
     await resetButton.click();
 
-    // After the click the badge flips to "Inherits" and the key is
-    // dropped from condash.json on disk.
+    // After the click the badge flips to "Inherits" immediately (draft-aware
+    // UI), but the revamped modal only writes to disk on Save.
     await expect(skillsField.locator('.settings-badge--inherits')).toBeVisible();
+    await modal.locator('button.settings-save').click();
 
     const condashPath = join(booted.conceptionDir, '.condash', 'settings.json');
     await expect

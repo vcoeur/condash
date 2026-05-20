@@ -1,0 +1,24 @@
+name: pr-fast
+
+# Fast gate on every PR (including drafts) — format-check + typecheck +
+# build + vitest, target ≤ 90 s. This is the always-on lane so iterating on
+# a PR stays cheap. The heavy lane (Playwright + installer matrix) lives in
+# pr-heavy.yml and only fires once the PR is marked ready for review.
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'assets/**'
+
+concurrency:
+  # Cancel in-flight runs when a newer commit lands on the same PR branch.
+  group: pr-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    uses: ./.github/workflows/_fast.yml
