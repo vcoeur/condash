@@ -55,6 +55,10 @@ When changing the dev port, update **every** file:
 | `make dev` / `npm run dev` | watch mode: tsc + vite + electron |
 | `make build` / `npm run build` | compile main + renderer |
 | `make package` / `npm run package` | electron-builder installers (Linux/macOS/Windows) |
+| `make test` | build, then the Playwright suite (headless via `xvfb-run` when present) |
+| `make test-headless` | build, then Playwright under `xvfb-run` (no window; errors if `xvfb-run` absent) |
+| `make test-visible` | build, then Playwright with the window visible (watch the run) |
+| `make test-unit` / `npm run test:unit` | vitest unit suite |
 | `make typecheck` | tsc on both projects, no emit |
 | `make format` | prettier on `src/` |
 | `make kill` | free port 5600 |
