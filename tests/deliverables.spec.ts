@@ -1,9 +1,9 @@
 /**
- * Outputs pane e2e — boots the production build against a fixture project that
- * carries a `## Deliverables` section with mixed link types (pdf / html / md /
- * URL), switches the left band to the Outputs tab, and opens the in-app HTML
- * preview. Also doubles as the manual-verification screenshot source
- * (tests/screenshots-out/outputs/).
+ * Deliverables pane e2e — boots the production build against a fixture project
+ * whose `## Deliverables` section carries mixed item types (pdf / html / md /
+ * external URL / wikilink), opens the pane from its own left edge-strip handle,
+ * and previews the local HTML deliverable in-app. Also doubles as the manual-
+ * verification screenshot source (tests/screenshots-out/deliverables/).
  */
 
 import { test, expect } from '@playwright/test';
@@ -11,7 +11,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { bootApp } from './fixtures/electron-app';
 
-const outDir = resolve(__dirname, 'screenshots-out', 'outputs');
+const outDir = resolve(__dirname, 'screenshots-out', 'deliverables');
 
 async function seedDeliverables(conceptionDir: string): Promise<void> {
   const projectDir = join(conceptionDir, 'projects', '2026-05', '2026-05-20-demo-outputs');
@@ -35,7 +35,8 @@ async function seedDeliverables(conceptionDir: string): Promise<void> {
       '- [Module 1](outputs/module-1.html) — interactive module',
       '- [Report](outputs/report.pdf) — compiled report',
       '- [Summary](outputs/summary.md)',
-      '- [Live deploy](https://example.com/module)',
+      '- [Live deploy](https://example.com/module) — deployed',
+      '- [[2026-04-01-predecessor]] — earlier work',
       '',
     ].join('\n'),
     'utf8',
@@ -67,25 +68,29 @@ async function seedDeliverables(conceptionDir: string): Promise<void> {
   await writeFile(join(outputs, 'report.pdf'), '%PDF-1.4\n% demo\n', 'utf8');
 }
 
-test('outputs tab aggregates deliverables and previews HTML', async () => {
+test('deliverables pane aggregates deliverables and previews HTML', async () => {
   const booted = await bootApp({ prepare: seedDeliverables });
   const { app, window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
     await window.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
 
-    // Switch the left band from Projects to Outputs via the in-pane tab.
-    await window.locator('.left-tab', { hasText: 'Outputs' }).click();
+    // Open the Deliverables pane from its own left edge-strip handle (a peer of
+    // Projects — not a tab inside the Projects pane).
+    await window.locator('.edge-strip-left .edge-handle', { hasText: 'Deliverables' }).click();
 
-    // One group (only the project that has deliverables), four rows.
-    const groups = window.locator('.outputs-group');
+    // One group (only the project that has deliverables), five rows.
+    const groups = window.locator('.deliverables-group');
     await expect(groups).toHaveCount(1);
-    await expect(window.locator('.outputs-group-title')).toHaveText('Demo outputs');
-    const rows = window.locator('.outputs-deliverables .deliverable-row');
-    await expect(rows).toHaveCount(4);
+    await expect(window.locator('.deliverables-group-title')).toHaveText('Demo outputs');
+    const rows = window.locator('.deliverables-rows .deliverable-row');
+    await expect(rows).toHaveCount(5);
+    // A wikilink deliverable renders with the `wiki` kind tag.
+    await expect(window.locator('.deliverables-kind[data-kind="wiki"]')).toHaveCount(1);
+    await expect(window.locator('.deliverables-kind[data-kind="url"]')).toHaveCount(1);
 
     await mkdir(outDir, { recursive: true });
-    await window.screenshot({ path: join(outDir, 'outputs-pane.png') });
+    await window.screenshot({ path: join(outDir, 'deliverables-pane.png') });
 
     // Open the local HTML deliverable → in-app preview over condash-file://.
     await window.locator('.deliverable-button', { hasText: 'Module 1' }).click();

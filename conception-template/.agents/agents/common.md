@@ -16,6 +16,7 @@ This section is shipped by condash and refreshed by `condash skills install`. Ed
 
 - **Autonomy**: when the next action is obvious from context, proceed — don't ask. Ask when the call is genuinely ambiguous or the action is hard to reverse. Terse prompts like "redo now", "close it", "ship" are explicit permission to run end-to-end without per-step confirmation.
 - **Keep the project README live as you work**: every project under `projects/YYYY-MM/<slug>/` is the cold-recovery contract. The moment you start, finish, partially complete, or get blocked on a `## Steps` item, flip its marker (`[ ]` `[~]` `[x]` `[!]`); append a one-line dated timeline entry on each material event (decision, PR opened, blocker found); lift inline user answers from chat into `## Notes` or `notes/NN-…md`. Goal: if this session crashes or is interrupted right now, the next reader answers "what shipped, what's left, what's blocking" from the README alone. Don't batch updates to the end of a pass.
+- **Deliverables format**: a project's tangible outputs go in a `## Deliverables` section, one bullet each — `- [label](file-or-URL) — comment` (a local file of any type or an `http(s)` URL) or `- [[slug]] — comment` (a wikilink to another item). The trailing comment is optional. They surface on the project card and in condash's **Deliverables** pane, each opening by type. Full spec in the `projects` skill.
 
 ## Specifics
 

@@ -10,7 +10,7 @@ import { HelpModal } from './help-modal';
 import { WelcomeScreen } from './welcome-screen';
 import { PromptModal } from './prompt-modal';
 import { ProjectsView } from './panes/projects';
-import { OutputsView } from './panes/outputs';
+import { DeliverablesView } from './panes/deliverables';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
@@ -48,7 +48,7 @@ import { useConception } from './hooks/use-conception';
 import { useWelcome } from './hooks/use-welcome';
 import { useSkillsTab } from './hooks/use-skills-tab';
 import { useTreeEvents } from './hooks/use-tree-events';
-import type { Project, WorkingSurface } from '@shared/types';
+import type { Deliverable, Project, WorkingSurface } from '@shared/types';
 import './styles.css';
 import './modal-base.css';
 import './project-preview.css';
@@ -131,7 +131,7 @@ function App() {
     updateLayout,
     toggleProjects,
     toggleTerminal,
-    setLeftView,
+    toggleLeftView,
     selectWorking,
     ensureTerminalOpen,
     topBandVisible,
@@ -305,6 +305,13 @@ function App() {
   } = projectActions;
   const previewProject = (): Project | null => projectActions.previewProject(previewPath);
 
+  // Open a deliverable by kind: wikilinks navigate within condash; file/URL
+  // links route through the type-aware opener (PDF/HTML modal, browser, …).
+  const openDeliverable = (deliverable: Deliverable): void => {
+    if (deliverable.kind === 'wikilink') handleWikilink(deliverable.path);
+    else handleOpenDeliverable(deliverable.path);
+  };
+
   // --- Welcome screen ---------------------------------------------------
   const knowledgeIsEmpty = (): boolean => {
     const k = knowledge();
@@ -385,13 +392,31 @@ function App() {
         <aside class="edge-strip edge-strip-left">
           <button
             class="edge-handle edge-handle-vertical"
-            classList={{ active: layout().projects }}
-            aria-pressed={layout().projects}
-            onClick={toggleProjects}
+            classList={{ active: layout().projects && layout().leftView === 'projects' }}
+            aria-pressed={layout().projects && layout().leftView === 'projects'}
+            onClick={() => toggleLeftView('projects')}
             disabled={!handlesEnabled()}
-            title={layout().projects ? 'Hide Projects' : 'Show Projects'}
+            title={
+              layout().projects && layout().leftView === 'projects'
+                ? 'Hide Projects'
+                : 'Show Projects'
+            }
           >
             <span class="edge-handle-label">Projects</span>
+          </button>
+          <button
+            class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().projects && layout().leftView === 'deliverables' }}
+            aria-pressed={layout().projects && layout().leftView === 'deliverables'}
+            onClick={() => toggleLeftView('deliverables')}
+            disabled={!handlesEnabled()}
+            title={
+              layout().projects && layout().leftView === 'deliverables'
+                ? 'Hide Deliverables'
+                : 'Show Deliverables'
+            }
+          >
+            <span class="edge-handle-label">Deliverables</span>
           </button>
         </aside>
 
@@ -421,7 +446,8 @@ function App() {
                 <h2>All panes are hidden</h2>
                 <p>Bring one back to start working:</p>
                 <div class="all-panes-hidden-actions">
-                  <button onClick={toggleProjects}>Show Projects</button>
+                  <button onClick={() => toggleLeftView('projects')}>Show Projects</button>
+                  <button onClick={() => toggleLeftView('deliverables')}>Show Deliverables</button>
                   <button onClick={() => selectWorking('code')}>Show Code</button>
                   <button onClick={() => selectWorking('knowledge')}>Show Knowledge</button>
                   <button onClick={() => selectWorking('resources')}>Show Resources</button>
@@ -433,32 +459,14 @@ function App() {
             <Show when={topBandVisible()}>
               <div class="top-band" ref={(el) => (topBandRef = el)} style={topBandStyle()}>
                 <Show when={layout().projects}>
-                  <section class="pane pane-projects">
-                    {/* Left-band tab strip: Projects | Outputs. The band's
-                        visibility is still `layout().projects`; this only swaps
-                        which view fills it. */}
-                    <div class="left-tabs" role="tablist" aria-label="Left pane">
-                      <button
-                        class="left-tab"
-                        classList={{ active: layout().leftView === 'projects' }}
-                        role="tab"
-                        aria-selected={layout().leftView === 'projects'}
-                        onClick={() => setLeftView('projects')}
-                      >
-                        Projects
-                      </button>
-                      <button
-                        class="left-tab"
-                        classList={{ active: layout().leftView === 'outputs' }}
-                        role="tab"
-                        aria-selected={layout().leftView === 'outputs'}
-                        onClick={() => setLeftView('outputs')}
-                      >
-                        Outputs
-                      </button>
-                    </div>
+                  <section
+                    class="pane pane-projects"
+                    classList={{ 'pane-deliverables': layout().leftView === 'deliverables' }}
+                  >
+                    {/* Left band shows one pane at a time, selected by the left
+                        edge-strip handles (Projects / Deliverables). */}
                     <Show
-                      when={layout().leftView === 'outputs'}
+                      when={layout().leftView === 'deliverables'}
                       fallback={
                         <Show
                           when={(projects() ?? []).length > 0}
@@ -479,9 +487,9 @@ function App() {
                         </Show>
                       }
                     >
-                      <OutputsView
+                      <DeliverablesView
                         projects={projects() ?? []}
-                        onOpenDeliverable={(d) => handleOpenDeliverable(d.path)}
+                        onOpenDeliverable={openDeliverable}
                       />
                     </Show>
                   </section>
@@ -696,7 +704,7 @@ function App() {
           state={modal()}
           onClose={() => router.closeChildModal(() => setModal(null))}
           onOpenInEditor={handleOpenInEditor}
-          onOpenDeliverable={handleOpenDeliverable}
+          onOpenDeliverable={openDeliverable}
           onWikilink={handleWikilink}
           onOpenMarkdown={(path) => router.navigateInModal({ path })}
           onBack={router.handleModalBack}

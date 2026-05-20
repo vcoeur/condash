@@ -9,9 +9,9 @@ description: The `## Deliverables` section syntax, filename conventions, PDF gen
 
 **When to read this.** Your item produces a tangible output — a report, a design doc, an incident post-mortem — and you want it to show up on the card with a download link and an embedded viewer.
 
-Deliverables are a first-class concept: a `## Deliverables` section in a README lists one or more artifacts, and condash renders them in the expanded card, in the cross-project **[Outputs pane](outputs-pane.md)**, and opens each in a type-appropriate viewer.
+Deliverables are a first-class concept: a `## Deliverables` section in a README lists one or more artifacts, and condash renders them in the expanded card, in the cross-project **[Deliverables pane](deliverables-pane.md)**, and opens each in a type-appropriate viewer.
 
-A deliverable link can point at **any local file** (PDF, Markdown, HTML, image, …) or an **http(s) URL** (e.g. a deployed page). PDF-only was the pre-3.20 behaviour.
+A deliverable item can be **any local file** (PDF, Markdown, HTML, image, …), an **http(s) URL** (e.g. a deployed page), or a **`[[wikilink]]`** to another conception item. PDF-only was the pre-3.20 behaviour.
 
 ## The `## Deliverables` section
 
@@ -22,26 +22,30 @@ Add to your README:
 
 - [Plugin API proposal — current draft](deliverables/plugin-api-proposal.pdf) — Distributed to the team for review, 2026-04-15.
 - [Appendix A: risks](deliverables/plugin-api-proposal-appendix-a.pdf)
+- [Live demo](https://plugin-api.example.com) — staging deploy
+- [[2026-04-10-plugin-api-proposal]] — superseding design
 ```
 
-Per line:
+Per line, one of:
 
 ```markdown
-- [<label>](<path>.pdf) — <optional description>
+- [<label>](<target>) — <optional comment>      # local file or http(s) URL
+- [[<slug>]] — <optional comment>                # wikilink (or [[<slug>|<label>]])
 ```
 
-- **Label** — text shown on the card and in the viewer header.
-- **Path** — a local file relative to the item's directory (any extension), or an absolute `http(s)://` URL kept verbatim. `mailto:` and in-page `#anchor` links are ignored.
-- **Description** (optional, after ` — `) — a one-line note shown under the label.
+- **Label** — text shown on the card and in the viewer header. For a bare wikilink the slug is used; `[[slug|label]]` overrides it.
+- **Target** — a local file relative to the item's directory (any extension), an absolute `http(s)://` URL kept verbatim, or a `[[slug]]` wikilink to another conception item. `mailto:` and in-page `#anchor` links are ignored.
+- **Comment** (optional, after ` — `, `-`, or `:`) — a one-line note shown next to the label, for any item type.
 
 Multiple deliverables per item are fine; each renders as its own row in the Deliverables section of the item modal.
 
-### How each type opens
+### How each item opens
 
-The viewer is chosen by the link's type:
+The viewer is chosen by the item's type:
 
-| Link | Opens in |
+| Item | Opens in |
 |------|----------|
+| `[[slug]]` wikilink | the linked conception item, navigated to within condash |
 | `http(s)://…` | your external browser (`shell.openExternal`) |
 | `.pdf` | the in-app PDF viewer modal |
 | `.html` / `.htm` | the in-app HTML preview (sandboxed `condash-file://` webview, with an **↗ Open externally** button) |
