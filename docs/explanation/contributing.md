@@ -115,7 +115,9 @@ CI is split into a fast lane, a heavy lane, and a release pipeline. The two test
 
 The `release-gate` status is required-green at tag time, so a tag whose commit never passed `pr-heavy` (a mid-PR SHA, a draft PR, a direct push) is refused before any Release is created. The tag stays in git but nothing public ships. The Windows installer leg is the load-bearing build check: `build/installer.nsh`'s NSIS hooks only assemble into the full installer template when `electron-builder` runs, so NSIS warning 6010 (treated as an error) only surfaces in the matrix — which now runs pre-merge on every ready PR, catching it before a tag is ever pushed.
 
-For the tag-time `release-gate` check to mean anything, **branch protection on `main` must require `pr-heavy` to pass before merge** (configured in the repo settings, not in YAML). Without that, a red PR could merge and the heavy lane would never stamp the commit — `validate-tag` would then correctly refuse to publish, but the breakage would only surface at release time.
+For the tag-time `release-gate` check to mean anything, **branch protection on `main` must require the heavy lane to pass before merge** (configured in repo settings, not in YAML). Without that, a red PR could merge and the heavy lane would never stamp the commit — `validate-tag` would then correctly refuse to publish, but the breakage would only surface at release time.
+
+The checks to require are the two aggregator jobs **`pr-fast-gate`** and **`pr-heavy-gate`** — not the inner `fast` / `playwright` / `build` checks. Each PR workflow filters at the job level (a `changes` job skips the real lanes for docs/assets-only PRs) and ends in an always-running gate job that reports success when its lane succeeded *or* was skipped. Requiring the gate (rather than an inner check that simply doesn't report on a skipped docs-only PR) keeps required checks from wedging trivial PRs in a permanent "Expected" state.
 
 ## Documentation changes
 
