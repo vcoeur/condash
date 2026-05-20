@@ -45,18 +45,23 @@ export function PdfModal(props: {
         <div class="pdf-body">
           <Show when={resolved()?.url}>
             {(url) => (
-              // Lockdown the embedded webview that renders the PDF:
-              //   - `partition="pdfs"` isolates session storage so no
-              //     cookies / localStorage spill into the main session.
+              // Harden the embedded webview that renders the PDF:
               //   - `webpreferences=...` keeps Node off, isolates the
               //     context, and runs the renderer in the OS sandbox.
               // A defence-in-depth `web-contents-created` handler in
-              // main/index.ts also re-applies these settings if a
-              // future webview ships without the attribute.
+              // main/index.ts re-applies these settings if a future
+              // webview ships without the attribute.
+              //
+              // Deliberately NO `partition`: Chromium's built-in PDF
+              // viewer is a component extension registered only in the
+              // default session, so a custom partition loads the viewer
+              // chrome (scrollbars) but never paints the pages — a blank
+              // PDF. The webview only ever loads a local, path-validated
+              // `file://` PDF that sets no cookies or localStorage, so a
+              // partition would isolate nothing while breaking rendering.
               <webview
                 src={url()}
                 class="pdf-webview"
-                partition="pdfs"
                 webpreferences="contextIsolation=true,nodeIntegration=false,sandbox=true"
               />
             )}
