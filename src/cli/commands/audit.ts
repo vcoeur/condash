@@ -3,7 +3,14 @@ import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
 import { UNIVERSAL_FOOTER } from '../help';
 
-const ALL_AUDIT_CHECKS: AuditCheckName[] = ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index'];
+const ALL_AUDIT_CHECKS: AuditCheckName[] = [
+  'lfs',
+  'binaries',
+  'cross-repo',
+  'worktrees',
+  'index',
+  'knowledge-recheck',
+];
 
 const KNOWN_FLAGS_AUDIT = ['include'] as const;
 

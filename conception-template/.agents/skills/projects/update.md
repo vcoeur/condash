@@ -40,3 +40,21 @@ After every notes write — not just at close — re-read the paragraph you just
 Three yes → invoke `/knowledge update` now (don't wait for `/projects close`), link the resulting body file under `## Notes` in the project README, and stamp the origin paragraph in the note: `**Transferred:** YYYY-MM-DD → <knowledge-path>`. Any no → leave it in `notes/` only.
 
 Catching durable findings at write-time keeps `knowledge/` fresh while context is loaded; deferring them all to `/projects close` risks losing the fact in heuristic-grep blind spots. `/projects close` still performs a final pass and stamping for anything that slipped through.
+
+### Deferred promotion — when the *only* failing answer is #3
+
+A finding can be durable (#1) and cross-cutting (#2) yet fail #3 because its truth is *established by this PR* (a field rename, a new convention, a behaviour the change introduces) — until the PR merges, writing it to `knowledge/` would assert something a review could still invalidate. Don't promote it, but don't silently drop it either: record a **deferred promotion** so it gets re-tested after merge.
+
+Append a `## Timeline` entry carrying the open marker, naming the fact and the candidate location:
+
+```
+- YYYY-MM-DD — [knowledge-recheck:pending] <fact one-liner>; re-test after PR #NNN merges → candidate knowledge/<path>.md
+```
+
+When the PR merges, re-run the three-question test. Whatever the outcome — promote via `/knowledge update`, or drop because it didn't survive review — append the closing marker:
+
+```
+- YYYY-MM-DD — [knowledge-recheck:done] promoted → knowledge/<path>.md   (or: dropped — <reason>)
+```
+
+The `knowledge-recheck` audit check (`condash audit`, `/tidy`) flags any `[knowledge-recheck:pending]` not matched by a later `[knowledge-recheck:done]`, **including in `done` projects** — so a deferral closing the project doesn't bury it. Matching is by chronological order (each close resolves the most recent open), so re-deferral and multiple concurrent deferrals both work.
