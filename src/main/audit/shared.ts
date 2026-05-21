@@ -12,7 +12,24 @@ import { exec } from '../exec';
 import type { ConfigShape } from '../config-walk';
 import { getEffectiveConceptionConfig } from '../effective-config';
 
-export type AuditCheckName = 'lfs' | 'binaries' | 'cross-repo' | 'worktrees' | 'index';
+export type AuditCheckName =
+  | 'lfs'
+  | 'binaries'
+  | 'cross-repo'
+  | 'worktrees'
+  | 'index'
+  | 'knowledge-recheck';
+
+/**
+ * Timeline tokens for the deferred-knowledge-promotion state machine
+ * (the `knowledge-recheck` check). An entry carrying the *pending* token
+ * records a finding that passed the three-yes durability test except that
+ * its truth depended on a not-yet-merged PR; the *done* token, in a later
+ * entry, records that the deferral was resolved after merge (promoted or
+ * dropped). See `conception-template/knowledge/conventions.md`.
+ */
+export const RECHECK_PENDING_MARKER = '[knowledge-recheck:pending]';
+export const RECHECK_DONE_MARKER = '[knowledge-recheck:done]';
 
 export interface AuditIssue {
   check: AuditCheckName | string;

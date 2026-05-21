@@ -167,6 +167,7 @@ condash audit --include lfs,binaries
 | `cross-repo` | Cross-repo wikilinks or relative paths that escape the conception |
 | `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
 | `index` | `index.md` files out of sync with the on-disk tree |
+| `knowledge-recheck` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
 
 `--include <list>` restricts to a comma-separated subset.
 

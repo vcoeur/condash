@@ -19,7 +19,7 @@ For an at-a-glance read without the triage walk, `condash audit` and `condash kn
 
 | Arg                 | Meaning                                                                                       |
 |---------------------|-----------------------------------------------------------------------------------------------|
-| `check=<list>`      | Comma-separated subset of `lfs,binaries,cross-repo,worktrees,index,stale_verification`. Default: all. |
+| `check=<list>`      | Comma-separated subset of `lfs,binaries,cross-repo,worktrees,index,knowledge-recheck,stale_verification`. Default: all. |
 | `dry-run`           | Print the proposed fixes but do not apply, even after confirmation.                           |
 
 ## Procedure
@@ -35,7 +35,7 @@ condash knowledge verify --json
 
 If the user passed `check=...`:
 
-- For values in `lfs,binaries,cross-repo,worktrees,index`: forward as `--include <list>` to `audit` (drop `stale_verification` from the list).
+- For values in `lfs,binaries,cross-repo,worktrees,index,knowledge-recheck`: forward as `--include <list>` to `audit` (drop `stale_verification` from the list).
 - If the list contains `stale_verification`: still call `verify`. Otherwise skip it.
 
 The two responses share the same per-issue shape:
@@ -120,6 +120,7 @@ Surface every issue with `fix.autoFix === false` as a numbered list, grouped by 
 
 - `binaries` — "consider migrating to LFS or removing". Decision is per-file: large fixtures legitimately stay; cached PDFs should usually go.
 - `cross-repo` (after the rename hunt found nothing) — print the file + line and the dangling reference. The user has to decide whether to update the link or drop the source paragraph.
+- `knowledge-recheck` — print the project + the `opened` date + the deferred fact from the message. A finding was parked (durable + cross-cutting, but its truth waited on a PR) and never re-tested. If that PR has merged, re-run the three-question durability test now: promote via `/knowledge update` then append a `[knowledge-recheck:done]` timeline marker, or drop with a `done` marker noting why. Never auto-promote — condition 3 needs human judgement, which is why `autoFix` is `false`.
 - `stale_verification` — print the path:line, the date, and the `**Verified:**` `where` field. Ask the user to either *re-confirm* (re-read the source, then `condash knowledge stamp <path>` to bump the date) or *update the surrounding text*. Never bump the date on the user's behalf — that lies about freshness.
 - `install_git_lfs` (info from `lfs` check) — only emitted when `git-lfs` is missing on the host. One-line "install git-lfs to enable this check".
 - `create_knowledge_dir` — only emitted when `knowledge/` is missing. Could be intentional (early-stage conception). Surface and move on.

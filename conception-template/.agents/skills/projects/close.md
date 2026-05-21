@@ -24,7 +24,7 @@ Trigger: `/projects close <slug>`.
       2. Applies to more than one app, or to the ecosystem?
       3. Stays true regardless of this PR's outcome? (Survives both merge and abandonment.)
 
-      Three yes → keep. Any no → drop silently. Findings often hide outside the heuristic's reach — `## Description`, `## Steps` prose, `## Timeline`, or observation-phrased notes — so don't rely on the backstop alone.
+      Three yes → keep. Any no → drop silently — **except** when the only failing answer is #3 (the finding is durable and cross-cutting, but its truth is *established by* the not-yet-merged PR). That is a **deferred promotion**, handled in sub-step (d), not a drop. Findings often hide outside the heuristic's reach — `## Description`, `## Steps` prose, `## Timeline`, or observation-phrased notes — so don't rely on the backstop alone.
 
    b. **Run the heuristic backstop:**
 
@@ -41,6 +41,15 @@ Trigger: `/projects close <slug>`.
    - **n** → skip.
 
    Zero candidates from both reading and scan → say so and move on. Don't synthesise a prompt to fish for one.
+
+   d. **Deferred-promotion markers.** Two directions, both riding the `## Timeline`:
+
+      - **New deferral** (a candidate from (a)/(b) that fails *only* #3): don't promote, don't drop. Append an open marker naming the fact + candidate location:
+        `- YYYY-MM-DD — [knowledge-recheck:pending] <fact>; re-test after PR #NNN merges → candidate knowledge/<path>.md`.
+      - **Resolve existing**: re-walk the timeline for any `[knowledge-recheck:pending]` not matched by a later `[knowledge-recheck:done]`. If that PR has now merged, re-run the three-question test → promote via `/knowledge update` (then stamp `**Transferred:**`) or drop, and append the closing marker:
+        `- YYYY-MM-DD — [knowledge-recheck:done] promoted → knowledge/<path>.md` (or `dropped — <reason>`).
+
+      Closing the project does **not** clear an unresolved `pending` marker — if its PR is still open, leave it; the `knowledge-recheck` audit (`condash audit`, `/tidy`) keeps surfacing it across closed projects until a `done` marker lands.
 
 5. **Flip status + append timeline:**
 

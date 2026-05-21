@@ -10,7 +10,9 @@ import {
   makeTmpConception,
   parseJsonEnvelope,
   rmConception,
+  writeProjectReadme,
 } from './test-helpers';
+import type { AuditIssue } from '../../main/audit';
 import { CliError } from '../output';
 
 let conceptionPath: string;
@@ -64,9 +66,60 @@ describe('runAuditCommand', () => {
     );
     const checks = parseJsonEnvelope<{ summary: { checksRun: string[] } }>(stdout).data!.summary
       .checksRun;
-    for (const c of ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index']) {
+    for (const c of ['lfs', 'binaries', 'cross-repo', 'worktrees', 'index', 'knowledge-recheck']) {
       expect(checks).toContain(c);
     }
+  });
+
+  it('flags an unresolved knowledge-recheck marker, even on a done project', async () => {
+    await writeProjectReadme(conceptionPath, 'deferred-thing', {
+      date: '2026-05-22',
+      kind: 'project',
+      status: 'done',
+      body: [
+        '## Timeline',
+        '',
+        '- 2026-05-22 — [knowledge-recheck:pending] field rename; re-test after PR #5 merges.',
+        '- 2026-05-23 — Closed. Shipped.',
+        '',
+      ].join('\n'),
+    });
+    const { stdout } = await captureStdout(() =>
+      runAuditCommand(
+        { noun: 'audit', verb: '', positional: [], flags: { include: 'knowledge-recheck' } },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const issues = parseJsonEnvelope<{ issues: AuditIssue[] }>(stdout).data!.issues;
+    const recheck = issues.filter((i) => i.check === 'knowledge-recheck');
+    expect(recheck).toHaveLength(1);
+    expect(recheck[0].severity).toBe('warn');
+    expect(recheck[0].message).toContain('field rename');
+  });
+
+  it('does not flag a knowledge-recheck that was later resolved', async () => {
+    await writeProjectReadme(conceptionPath, 'resolved-thing', {
+      date: '2026-05-22',
+      kind: 'project',
+      status: 'done',
+      body: [
+        '## Timeline',
+        '',
+        '- 2026-05-22 — [knowledge-recheck:pending] field rename; re-test after PR #5 merges.',
+        '- 2026-06-01 — [knowledge-recheck:done] promoted to knowledge/topics/ops/x.md.',
+        '',
+      ].join('\n'),
+    });
+    const { stdout } = await captureStdout(() =>
+      runAuditCommand(
+        { noun: 'audit', verb: '', positional: [], flags: { include: 'knowledge-recheck' } },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const issues = parseJsonEnvelope<{ issues: AuditIssue[] }>(stdout).data!.issues;
+    expect(issues.filter((i) => i.check === 'knowledge-recheck')).toHaveLength(0);
   });
 
   it('rejects an unknown --include check with USAGE', async () => {
