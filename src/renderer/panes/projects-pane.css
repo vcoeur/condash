@@ -257,11 +257,17 @@ body[data-dragging='project'] .group-block.drag-over {
   color: var(--text-muted);
 }
 
-.row[draggable='true'] {
+.row.draggable {
   cursor: grab;
+  /* Pointer-drag uses mousedown+move; suppress text selection so a drag
+   * doesn't paint a selection across the card. */
+  user-select: none;
 }
 
-.row[draggable='true']:active {
+/* While a card is being dragged, show the grabbing cursor across the pane
+ * regardless of which lane the pointer is over. */
+body[data-dragging='project'],
+body[data-dragging='project'] .row {
   cursor: grabbing;
 }
 
