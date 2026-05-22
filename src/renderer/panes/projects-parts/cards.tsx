@@ -4,7 +4,6 @@ import { KNOWN_STATUSES } from '@shared/types';
 import { TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import {
-  DRAG_MIME,
   Group,
   MARKER_LABEL,
   dateRangeLabel,
@@ -19,6 +18,15 @@ import {
   writeCollapseEntry,
 } from './data';
 import { KindGlyph, StepIcon, StepProgress, WarnIcon } from './icons';
+
+// Status lane the pointer currently hovers during a card drag (null = none).
+// Module scope so every GroupBlock highlights its lane reactively while the
+// dragged Card drives the gesture, without threading a signal through props.
+const [overStatus, setOverStatus] = createSignal<string | null>(null);
+
+// Movement past this many pixels turns a press into a drag — below it the
+// press stays a click so cards still open on a plain click.
+const DRAG_THRESHOLD_PX = 4;
 
 export function GroupBlock(props: {
   group: Group;
@@ -48,7 +56,6 @@ export function GroupBlock(props: {
   // Keyboard alternative for the status drag — same callback as the drop,
   // signature `(path, newStatus)`, so cards can call it directly.
   const onChangeStatus = props.onDropProject;
-  const [over, setOver] = createSignal(false);
   const initialStored = readCollapseMap()[props.group.status];
   const [userExpanded, setUserExpanded] = createSignal<boolean | null>(
     typeof initialStored === 'boolean' ? initialStored : null,
@@ -65,51 +72,16 @@ export function GroupBlock(props: {
     writeCollapseEntry(props.group.status, next);
   };
 
-  const isAcceptable = (event: DragEvent): boolean => {
-    const types = event.dataTransfer?.types;
-    return types ? Array.from(types).includes(DRAG_MIME) : false;
-  };
-
-  const handleDragEnter = (e: DragEvent) => {
-    if (!isAcceptable(e)) return;
-    e.preventDefault();
-    setOver(true);
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    if (!isAcceptable(e)) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    // Self-heal: dragenter/dragleave can race when a fixed-position ghost
-    // hovers above the section, occasionally clearing the over state mid-
-    // hover. dragover fires continuously while the cursor is on the
-    // target, so re-asserting here keeps the highlight stable.
-    setOver(true);
-  };
-
-  const handleDragLeave = (e: DragEvent) => {
-    if (e.currentTarget === e.target) setOver(false);
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    if (!isAcceptable(e)) return;
-    e.preventDefault();
-    setOver(false);
-    const path = e.dataTransfer?.getData(DRAG_MIME);
-    if (path) props.onDropProject(path, props.group.status);
-  };
-
+  // Drop detection lives on the dragged Card (pointer hit-test on release);
+  // the lane only needs to highlight when the pointer is over it. `overStatus`
+  // is the shared module signal the dragging Card writes.
   const isEmpty = (): boolean => props.group.items.length === 0;
   return (
     <section
       class="group-block"
-      classList={{ 'drag-over': over(), collapsed: !isOpen() }}
+      classList={{ 'drag-over': overStatus() === props.group.status, collapsed: !isOpen() }}
       data-status={props.group.status}
       data-empty={isEmpty() ? 'true' : 'false'}
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       <header
         class="group-header"
@@ -245,69 +217,133 @@ export function Card(props: {
   const [expanded, setExpanded] = createSignal(false);
 
   const handleHeaderClick = (event: MouseEvent) => {
+    // A click synthesised at the end of a drag must not also open the card.
+    if (draggedThisGesture) {
+      draggedThisGesture = false;
+      return;
+    }
     if ((event.target as HTMLElement).closest('.step-toggle, .expander, .row-action')) return;
     props.onOpen(props.item);
   };
 
-  // Custom ghost state — Chromium in this Electron build ignores opacity
-  // on setDragImage clones (the native snapshotter falls back to the
-  // opaque source screenshot regardless of how we position or style the
-  // element we hand to setDragImage). Instead: hide the native drag
-  // image with a 1×1 transparent png, then render our own translucent
-  // ghost div that follows the cursor via a document-level dragover
-  // listener. The ghost is removed on dragend.
-  let ghostElement: HTMLElement | null = null;
+  // Pointer-based status drag. Native HTML5 drag-and-drop is silently broken
+  // under Chromium's Wayland Ozone backend (electron#49907 / #42252), which
+  // condash forces on Wayland sessions for crisp fractional-scaling text — so
+  // the card drag is built on pointer events instead. We capture the pointer
+  // on the source card and never reparent it mid-gesture (pointer-drag
+  // invariant shared with condash-python); a translucent clone follows the
+  // cursor and the drop lane is hit-tested from the pointer on release.
+  let dragPointerId: number | null = null;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragging = false;
+  // Set when a gesture crossed the move threshold; consumed by the click that
+  // the browser synthesises on release so the drag doesn't also open the card.
+  let draggedThisGesture = false;
+  let ghost: HTMLElement | null = null;
   let ghostOffsetX = 0;
   let ghostOffsetY = 0;
-  const onGlobalDragOver = (e: DragEvent) => {
-    if (!ghostElement) return;
-    ghostElement.style.transform = `translate(${e.clientX - ghostOffsetX}px, ${e.clientY - ghostOffsetY}px)`;
+
+  // Status lane under the pointer. The ghost is `pointer-events: none`, so
+  // elementFromPoint sees the lane beneath it.
+  const statusUnderPointer = (clientX: number, clientY: number): string | null => {
+    const el = document.elementFromPoint(clientX, clientY);
+    const block = el?.closest('.group-block[data-status]') as HTMLElement | null;
+    return block?.dataset.status ?? null;
   };
 
-  const handleDragStart = (event: DragEvent) => {
-    if (!event.dataTransfer) return;
-    event.dataTransfer.setData(DRAG_MIME, props.item.path);
-    event.dataTransfer.effectAllowed = 'move';
+  const positionGhost = (clientX: number, clientY: number) => {
+    if (!ghost) return;
+    ghost.style.transform = `translate(${clientX - ghostOffsetX}px, ${clientY - ghostOffsetY}px)`;
+  };
 
-    // Hide the native drag image — Chromium's auto-snapshot would
-    // otherwise render an opaque copy of the source card.
-    const blank = new Image();
-    blank.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    event.dataTransfer.setDragImage(blank, 0, 0);
-
-    // Build a translucent clone to use as our own ghost. Positioned
-    // fixed so its transform follows the cursor regardless of scroll.
-    const source = event.currentTarget as HTMLElement;
-    const sourceWidth = source.offsetWidth;
+  const beginDrag = (card: HTMLElement, clientX: number, clientY: number) => {
+    dragging = true;
+    draggedThisGesture = true;
+    const sourceWidth = card.offsetWidth;
     ghostOffsetX = sourceWidth / 2;
     ghostOffsetY = 24;
-    ghostElement = source.cloneNode(true) as HTMLElement;
-    ghostElement.querySelectorAll('.title-actions').forEach((el) => el.remove());
-    ghostElement.querySelectorAll('.step-list').forEach((el) => el.remove());
-    ghostElement.style.opacity = '0.85';
-    ghostElement.style.position = 'fixed';
-    ghostElement.style.top = '0';
-    ghostElement.style.left = '0';
-    ghostElement.style.width = `${sourceWidth}px`;
-    ghostElement.style.opacity = '0.55';
-    ghostElement.style.pointerEvents = 'none';
-    ghostElement.style.zIndex = '99999';
-    ghostElement.style.transform = `translate(${event.clientX - ghostOffsetX}px, ${event.clientY - ghostOffsetY}px)`;
-    document.body.appendChild(ghostElement);
-    document.addEventListener('dragover', onGlobalDragOver);
-
-    // body flag lets every .group-block inflate its drop zone via CSS
-    // without each section having to listen for a global drag.
+    // A plain fixed-position clone we own renders exactly as styled (unlike a
+    // setDragImage clone, whose opacity Chromium ignores).
+    ghost = card.cloneNode(true) as HTMLElement;
+    ghost.querySelectorAll('.title-actions, .steps-list').forEach((el) => el.remove());
+    ghost.style.position = 'fixed';
+    ghost.style.top = '0';
+    ghost.style.left = '0';
+    ghost.style.margin = '0';
+    ghost.style.width = `${sourceWidth}px`;
+    ghost.style.opacity = '0.55';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.zIndex = '99999';
+    document.body.appendChild(ghost);
+    positionGhost(clientX, clientY);
+    // body flag lets every empty .group-block inflate its drop zone via CSS.
     document.body.dataset.dragging = 'project';
   };
 
-  const handleDragEnd = () => {
-    delete document.body.dataset.dragging;
-    if (ghostElement) {
-      ghostElement.remove();
-      ghostElement = null;
+  const endDrag = () => {
+    if (ghost) {
+      ghost.remove();
+      ghost = null;
     }
-    document.removeEventListener('dragover', onGlobalDragOver);
+    delete document.body.dataset.dragging;
+    dragging = false;
+    setOverStatus(null);
+  };
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (!isDraggable() || event.button !== 0) return;
+    // Let interactive children (work-on dropdown, expander, step toggles)
+    // keep their own click behaviour.
+    if (
+      (event.target as HTMLElement).closest('.title-actions, .expander, .step-toggle, .row-action')
+    ) {
+      return;
+    }
+    dragPointerId = event.pointerId;
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    dragging = false;
+    draggedThisGesture = false;
+    // No capture yet — a press that never crosses the threshold stays a plain
+    // click, so card-open / child clicks are untouched. Capture is taken in
+    // handlePointerMove the moment the drag actually begins.
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (dragPointerId !== event.pointerId) return;
+    if (!dragging) {
+      if (Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY) < DRAG_THRESHOLD_PX) {
+        return;
+      }
+      const card = event.currentTarget as HTMLElement;
+      // Capture so move/up keep arriving even once the cursor leaves the card.
+      card.setPointerCapture(event.pointerId);
+      beginDrag(card, event.clientX, event.clientY);
+    }
+    positionGhost(event.clientX, event.clientY);
+    setOverStatus(statusUnderPointer(event.clientX, event.clientY));
+  };
+
+  const handlePointerUp = (event: PointerEvent) => {
+    if (dragPointerId !== event.pointerId) return;
+    const card = event.currentTarget as HTMLElement;
+    const wasDragging = dragging;
+    const targetStatus = wasDragging ? statusUnderPointer(event.clientX, event.clientY) : null;
+    if (card.hasPointerCapture(event.pointerId)) card.releasePointerCapture(event.pointerId);
+    dragPointerId = null;
+    endDrag();
+    if (wasDragging && targetStatus && props.onChangeStatus && targetStatus !== props.item.status) {
+      props.onChangeStatus(props.item.path, targetStatus);
+    }
+  };
+
+  const handlePointerCancel = (event: PointerEvent) => {
+    if (dragPointerId !== event.pointerId) return;
+    const card = event.currentTarget as HTMLElement;
+    if (card.hasPointerCapture(event.pointerId)) card.releasePointerCapture(event.pointerId);
+    dragPointerId = null;
+    endDrag();
   };
 
   // Cmd/Ctrl+1..N maps to KNOWN_STATUSES[0..N-1]; ignore anything else so
@@ -337,13 +373,15 @@ export function Card(props: {
   return (
     <article
       class="row"
+      classList={{ draggable: isDraggable() }}
       title={props.item.path}
       aria-label={`${props.item.title}, ${props.item.status}`}
       data-status-card={props.item.status}
-      draggable={isDraggable()}
       tabIndex={0}
-      onDragStart={isDraggable() ? handleDragStart : undefined}
-      onDragEnd={isDraggable() ? handleDragEnd : undefined}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onKeyDown={handleKeyDown}
     >
       <div class="row-head" onClick={handleHeaderClick}>

@@ -116,6 +116,10 @@ F5 / View → Refresh covers both: it drops the git-status TTL cache, recomputes
 
 Subscriptions (`onTreeEvents`, `onTermData`, `onTermExit`, `onTermSessions`) return an unsubscribe function; the renderer holds it and calls it from `onCleanup`.
 
+### 8. In-window drag uses pointer events, not HTML5 drag-and-drop
+
+On Wayland sessions condash forces the native Wayland Ozone backend for crisp fractional-scaling text (`src/main/index.ts`). Chromium's HTML5 drag-and-drop (`draggable` + `dragstart` / `dataTransfer`) is broken under that backend — drags silently no-op ([electron#49907](https://github.com/electron/electron/issues/49907), [electron#42252](https://github.com/electron/electron/issues/42252)) — so any in-window drag must be built on **pointer events** (`pointerdown` / `pointermove` / `pointerup` + `setPointerCapture`), never HTML5 DnD. The pattern: capture the pointer on the source element once movement crosses a small threshold, never reparent the captured element mid-gesture, follow the cursor with a `pointer-events: none` clone, and commit on `pointerup` (hit-test the drop target with `elementFromPoint`). The Projects-pane status drag (`src/renderer/panes/projects-parts/cards.tsx`) follows this. **Still on HTML5 DnD and therefore broken on Wayland:** terminal-pane tab reorder (`src/renderer/terminal-pane/drag-drop.ts`) and settings-modal repo/section reorder (`repo-row.tsx`, `section-row.tsx`) — convert them the same way when next touched.
+
 ## Environment hygiene { #environment-hygiene }
 
 condash spawns subprocesses (terminals, runners, `force_stop` commands, open-with launchers). The main process scrubs the environment before each spawn to avoid leaking interpreter-specific vars into unrelated child programs:
