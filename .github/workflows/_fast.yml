@@ -1,8 +1,9 @@
 name: _fast
 
 # Reusable fast lane: format-check + typecheck + build + vitest. Target
-# ≤ 90 s wall-clock. Called by pr-fast.yml (every PR) and by release.yml's
-# guarded main path (non-trivial merges only). Never publishes anything.
+# ≤ 90 s wall-clock. Called by ci.yml (every PR + every push to main) and
+# by release.yml (first stage of the real gate at tag time). Never
+# publishes anything.
 
 on:
   workflow_call:

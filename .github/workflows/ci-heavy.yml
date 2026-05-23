@@ -1,0 +1,80 @@
+name: ci-heavy
+
+# Optional heavy feedback on ready (non-draft) PRs.
+# Runs the full Playwright suite + 3-OS installer matrix.
+# This workflow is NOT required by branch protection -- it gives developers
+# early signal but does not block merge. The real gate is at publish time
+# (release.yml runs the same suite sequentially before publishing).
+#
+# Filtering is at the JOB level (the `changes` job + draft guard), not a
+# workflow-level `paths-ignore`: the `ci-heavy-gate` aggregator must always
+# report so it is visible on PRs even when skipped.
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ci-heavy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.f.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: f
+        name: Detect non-docs changes
+        run: |
+          set -euo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          # code = any changed file outside docs/, assets/, or *.md.
+          if git diff --name-only "$base" HEAD | grep -qEv '^(docs/|assets/)|\.md$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Code changes detected -- heavy lane will run."
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs/assets-only change -- heavy lane skipped (gate still reports)."
+          fi
+
+  playwright:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event.pull_request.draft == false
+    uses: ./.github/workflows/_playwright.yml
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event.pull_request.draft == false
+    uses: ./.github/workflows/_build.yml
+
+  ci-heavy-gate:
+    # Aggregator that always reports. Not required by branch protection.
+    name: ci-heavy-gate
+    needs: [changes, playwright, build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require heavy lane green or skipped
+        run: |
+          set -euo pipefail
+          changes='${{ needs.changes.result }}'
+          pw='${{ needs.playwright.result }}'
+          bd='${{ needs.build.result }}'
+          if [[ "$changes" != "success" ]]; then
+            echo "changes job did not succeed ($changes)." >&2
+            exit 1
+          fi
+          for r in "$pw" "$bd"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "a heavy lane job failed (playwright=$pw build=$bd)." >&2
+              exit 1
+            fi
+          done
+          echo "ci-heavy-gate ok (playwright=$pw build=$bd)."

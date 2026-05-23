@@ -11,10 +11,10 @@ name: Pages (docs + apt repo)
 # prereleases (and skips drafts, whose assets aren't reachable via
 # gh release download).
 #
-# release.yml fires on push-to-main as well as tag push, but only the
-# tag-push runs go through the publish job. The build job below
-# filters out non-tag runs so we don't rebuild the apt repo on
-# every commit.
+# release.yml fires only on `v*` tag push, so every completed run is a
+# publish. The build job below still guards on head_branch starting with
+# 'v' as belt-and-braces, so a stray non-tag run (or a future trigger
+# change) can never rebuild the apt repo off a non-release commit.
 #
 # The apt repo is rebuilt deterministically from scratch on every
 # run, but the .deb assets it ingests are cached across runs (keyed
@@ -66,11 +66,10 @@ jobs:
     # Two filters on workflow_run triggers:
     #   1. release.yml must have succeeded — we never rebuild the apt repo
     #      against a half-published release.
-    #   2. The upstream run must have been triggered by a tag push, not a
-    #      branch push. release.yml runs on every commit to main as well as
-    #      every `v*` tag; only the tag-push runs go through publish, so
-    #      docs only needs to rebuild for those (head_branch is the tag
-    #      name 'vX.Y.Z' for tag pushes, 'main' for branch pushes).
+    #   2. The upstream run's head_branch must start with 'v'. release.yml
+    #      now fires only on `v*` tags, so head_branch is always the tag
+    #      name 'vX.Y.Z'; this guard is belt-and-braces against a future
+    #      trigger change ever feeding a non-release commit into the build.
     # workflow_dispatch fires without a workflow_run context (so both
     # checks evaluate against null/empty values) — we accept that case
     # explicitly for manual rebuilds.

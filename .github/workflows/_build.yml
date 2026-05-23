@@ -2,10 +2,10 @@ name: _build
 
 # Reusable 3-OS installer matrix. Builds with `electron-builder --publish
 # never` and uploads each OS's installers as a workflow artifact
-# (installers-<os>, retention 1 day). Called by pr-heavy.yml (pre-merge
-# validation — artefacts discarded), release.yml's guarded main path
-# (post-merge validation — discarded), and release.yml's tag path (where
-# the publish job downloads the artefacts and uploads them to the Release).
+# (installers-<os>, retention 1 day). Called by ci-heavy.yml (optional
+# pre-merge validation on ready PRs — artefacts discarded) and by
+# release.yml (third stage of the real gate at tag time, where the publish
+# job downloads the artefacts and uploads them to the Release).
 #
 # This is the single source of truth for the gnarly AppImage AppRun patch —
 # keep it here, not duplicated across callers.
