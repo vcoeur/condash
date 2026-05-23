@@ -15,6 +15,7 @@ Each guide answers one specific question.
 **Daily**
 
 - **[Embedded terminal](terminal.md)** — toggle, dock, prefer your shell, screenshot paste.
+- **[Agent CLIs and model providers](agent-clis-and-models.md)** — pair any agent CLI with any model provider via wrapper scripts, run each as a launcher, inject a global AGENTS.md into Kimi.
 - **[Wikilinks between items](wikilinks.md)** — `[[other-item]]` resolves across the tree.
 - **[The knowledge tree](knowledge-tree.md)** — your reference notes, organised as cards.
 - **[The Resources pane](resources-pane.md)** — every file under `resources/` as a card with copy / open / paste-to-term actions.
