@@ -17,7 +17,8 @@ test('terminal pane: New shell spawns an unpinned shell; agents populate the spa
         join(dir, 'agents', 'opencode-demo.json'),
         JSON.stringify({
           harness: 'opencode',
-          modelVariant: 'demo',
+          name: 'opencode-demo',
+          slug: 'opencode-demo',
           config: { model: 'deepseek/demo', disableExternalSkills: true },
         }),
         'utf8',
