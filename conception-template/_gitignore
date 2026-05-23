@@ -38,6 +38,11 @@ projects/**/local/**
 .kimi/AGENTS.md
 .opencode/AGENTS.md
 
+# NOT ignored on purpose: the conception-root `opencode.json`. `condash skills
+# install` writes/merges only its `instructions` entry (pointing OpenCode at the
+# compiled `.opencode/AGENTS.md`) and never clobbers other keys, so it's a
+# versioned pointer you can commit and extend — do not add it here.
+
 # condash workspace state (per-host: settings.json + terminal logs).
 # Note: ignoring the dir contents with `.condash/*` (not the dir itself)
 # is what lets the negation re-include the starter example. A bare

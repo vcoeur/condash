@@ -26,10 +26,12 @@ export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = HARNESS_IDS;
  * OpenCode's config lands inside its own `.opencode/` dir — **never** the
  * conception-root `AGENTS.md`, which condash manages via the shipped-files
  * migration (see `src/cli/commands/files.ts`). OpenCode does not
- * auto-discover `.opencode/AGENTS.md`, so a project points to it with an
- * `opencode.json` `instructions` entry (`[".opencode/AGENTS.md"]`) — see the
- * skills-pane guide. User scope instead writes `~/.config/opencode/AGENTS.md`,
- * which OpenCode reads natively as global config (`userAgentConfigOutput`).
+ * auto-discover `.opencode/AGENTS.md`, so `condash skills install` writes (or
+ * merges) the pointer into the conception-root `opencode.json`
+ * (`instructions: [".opencode/AGENTS.md"]`) — see `ensureOpencodeConfig` in
+ * `src/cli/commands/files.ts`. User scope instead writes
+ * `~/.config/opencode/AGENTS.md`, which OpenCode reads natively as global
+ * config (`userAgentConfigOutput`).
  */
 export const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
   claude: HARNESSES.claude.agentsMdOutput,

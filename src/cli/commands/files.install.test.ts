@@ -8,7 +8,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSkills } from './skills';
-import { AGENT_CONFIG_COMMON, SHIPPED_FILES, statusShippedFile } from './files';
+import {
+  AGENT_CONFIG_COMMON,
+  SHIPPED_FILES,
+  ensureOpencodeConfig,
+  statusShippedFile,
+} from './files';
 import { MANIFEST_RELPATH, readManifest } from './install-shared';
 import type { OutputContext } from '../output';
 
@@ -51,6 +56,34 @@ describe('condash skills install — top-level files', () => {
     expect(kimi).toContain('.kimi/skills/projects/SKILL.md');
     // Claude fragment excluded from Kimi output.
     expect(kimi).not.toContain('Auto-memory opt-out');
+  });
+
+  it('writes a conception-root opencode.json pointing at the compiled .opencode/AGENTS.md', async () => {
+    await install();
+    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
+    expect(cfg.$schema).toBe('https://opencode.ai/config.json');
+    expect(cfg.instructions).toContain('.opencode/AGENTS.md');
+  });
+
+  it('merges into an existing opencode.json without clobbering other keys', async () => {
+    await fs.writeFile(
+      join(dest, 'opencode.json'),
+      JSON.stringify({
+        $schema: 'https://opencode.ai/config.json',
+        model: 'deepseek/deepseek-v4-pro',
+      }),
+    );
+    await install();
+    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
+    expect(cfg.model).toBe('deepseek/deepseek-v4-pro');
+    expect(cfg.instructions).toEqual(['.opencode/AGENTS.md']);
+  });
+
+  it('is idempotent — a second install does not duplicate the instructions entry', async () => {
+    await install();
+    await install();
+    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
+    expect(cfg.instructions).toEqual(['.opencode/AGENTS.md']);
   });
 
   it('writes .gitignore with region replacement', async () => {
@@ -247,5 +280,59 @@ describe('condash skills install — top-level files', () => {
 
     const manifest = await readManifest(dest);
     expect(manifest!.files!['CLAUDE.md']).toBeUndefined();
+  });
+});
+
+describe('ensureOpencodeConfig', () => {
+  it('creates opencode.json with the schema + instructions entry when absent', async () => {
+    const outcome = await ensureOpencodeConfig(dest, false);
+    expect(outcome.state).toBe('created');
+    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
+    expect(cfg).toEqual({
+      $schema: 'https://opencode.ai/config.json',
+      instructions: ['.opencode/AGENTS.md'],
+    });
+  });
+
+  it('merges the entry into an existing config, preserving other keys + entries', async () => {
+    await fs.writeFile(
+      join(dest, 'opencode.json'),
+      JSON.stringify({ model: 'x', instructions: ['docs/extra.md'] }),
+    );
+    const outcome = await ensureOpencodeConfig(dest, false);
+    expect(outcome.state).toBe('merged');
+    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
+    expect(cfg.model).toBe('x');
+    expect(cfg.instructions).toEqual(['docs/extra.md', '.opencode/AGENTS.md']);
+  });
+
+  it('is a no-op when the entry is already present', async () => {
+    await fs.writeFile(
+      join(dest, 'opencode.json'),
+      JSON.stringify({ instructions: ['.opencode/AGENTS.md'] }),
+    );
+    const before = await fs.readFile(join(dest, 'opencode.json'), 'utf8');
+    const outcome = await ensureOpencodeConfig(dest, false);
+    expect(outcome.state).toBe('unchanged');
+    expect(await fs.readFile(join(dest, 'opencode.json'), 'utf8')).toBe(before);
+  });
+
+  it('skips a malformed existing opencode.json instead of clobbering it', async () => {
+    await fs.writeFile(join(dest, 'opencode.json'), '{ not valid json ');
+    const outcome = await ensureOpencodeConfig(dest, false);
+    expect(outcome.state).toBe('skipped');
+    expect(await fs.readFile(join(dest, 'opencode.json'), 'utf8')).toBe('{ not valid json ');
+  });
+
+  it('skips when "instructions" exists but is not an array', async () => {
+    await fs.writeFile(join(dest, 'opencode.json'), JSON.stringify({ instructions: 'oops' }));
+    const outcome = await ensureOpencodeConfig(dest, false);
+    expect(outcome.state).toBe('skipped');
+  });
+
+  it('writes nothing in dry-run', async () => {
+    const outcome = await ensureOpencodeConfig(dest, true);
+    expect(outcome.state).toBe('created');
+    await expect(fs.access(join(dest, 'opencode.json'))).rejects.toThrow();
   });
 });
