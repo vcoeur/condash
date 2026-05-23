@@ -233,18 +233,24 @@ export class MissingAgentSecretError extends Error {
  * Build the spawn spec for an agent. `resolveSecret` looks a name up in the
  * conception's `agents/.env`; it returns `undefined` for an absent/blank key.
  * Throws `MissingAgentSecretError` when a declared secret is unresolved.
+ *
+ * `initialPrompt` is an optional first user message injected as a CLI argument
+ * so the prompt lands as part of the spawn command rather than via pty.write()
+ * after a blind settle delay. Supported by claude (positional arg) and opencode
+ * (`tui --prompt`); ignored by kimi (no interactive initial-prompt support).
  */
 export function buildSpawn(
   def: AgentDef,
   resolveSecret: (name: string) => string | undefined,
+  initialPrompt?: string,
 ): SpawnSpec {
   switch (def.harness) {
     case 'claude':
-      return buildClaudeSpawn(def, resolveSecret);
+      return buildClaudeSpawn(def, resolveSecret, initialPrompt);
     case 'kimi':
       return buildKimiSpawn(def, resolveSecret);
     case 'opencode':
-      return buildOpencodeSpawn(def, resolveSecret);
+      return buildOpencodeSpawn(def, resolveSecret, initialPrompt);
   }
 }
 
@@ -274,14 +280,16 @@ export function previewCommandLine(def: AgentDef): string {
 function buildClaudeSpawn(
   def: Extract<AgentDef, { harness: 'claude' }>,
   resolveSecret: (name: string) => string | undefined,
+  initialPrompt?: string,
 ): SpawnSpec {
   const cfg = def.config;
+  const extraArgs = initialPrompt ? [initialPrompt] : [];
 
   // Native claude (no provider remap): an empty baseUrl means "run bare
   // `claude`" — claude uses the user's own Anthropic login + model config, so
   // condash sets nothing.
   if (!cfg.baseUrl.trim()) {
-    return { command: HARNESSES.claude.binary, args: [], env: {}, unsetEnv: [] };
+    return { command: HARNESSES.claude.binary, args: extraArgs, env: {}, unsetEnv: [] };
   }
 
   const env: Record<string, string> = {};
@@ -326,7 +334,7 @@ function buildClaudeSpawn(
     'CLAUDE_CODE_USE_MANTLE',
   );
 
-  return { command: HARNESSES.claude.binary, args: [], env, unsetEnv };
+  return { command: HARNESSES.claude.binary, args: extraArgs, env, unsetEnv };
 }
 
 function buildKimiSpawn(
@@ -351,6 +359,7 @@ function buildKimiSpawn(
 function buildOpencodeSpawn(
   def: Extract<AgentDef, { harness: 'opencode' }>,
   resolveSecret: (name: string) => string | undefined,
+  initialPrompt?: string,
 ): SpawnSpec {
   const cfg = def.config;
   const env: Record<string, string> = {};
@@ -372,7 +381,8 @@ function buildOpencodeSpawn(
   if (Object.keys(agent).length > 0) config.agent = agent;
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
 
-  return { command: HARNESSES.opencode.binary, args: [], env, unsetEnv: [] };
+  const extraArgs = initialPrompt ? ['tui', '--prompt', initialPrompt] : [];
+  return { command: HARNESSES.opencode.binary, args: extraArgs, env, unsetEnv: [] };
 }
 
 // ---------------------------------------------------------------------------

@@ -100,6 +100,20 @@ describe('buildSpawn — claude', () => {
     const spec = buildSpawn(native, resolve({}));
     expect(spec).toEqual({ command: 'claude', args: [], env: {}, unsetEnv: [] });
   });
+
+  it('appends initialPrompt as a positional argument', () => {
+    const spec = buildSpawn(def, resolve({ DEEPSEEK_API_KEY: 'sk-test' }), 'fix the bug');
+    expect(spec.args).toEqual(['fix the bug']);
+    // Native path also works.
+    const native: AgentDef = {
+      harness: 'claude',
+      name: 'native',
+      slug: 'claude-native',
+      config: CLAUDE_PRESETS.native.config,
+    };
+    const nativeSpec = buildSpawn(native, resolve({}), 'review PR');
+    expect(nativeSpec.args).toEqual(['review PR']);
+  });
 });
 
 describe('buildSpawn — kimi-cli', () => {
@@ -163,6 +177,17 @@ describe('buildSpawn — opencode', () => {
     });
   });
 
+  it('appends tui --prompt with initialPrompt', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'deepseek-v4-pro',
+      slug: 'opencode-deepseek-v4-pro',
+      config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
+    };
+    const spec = buildSpawn(def, resolve({}), 'explain this code');
+    expect(spec.args).toEqual(['tui', '--prompt', 'explain this code']);
+  });
+
   it('routes build/plan overrides and merges extra config underneath', () => {
     const spec = buildSpawn(
       {
@@ -187,6 +212,19 @@ describe('buildSpawn — opencode', () => {
         plan: { model: 'deepseek/deepseek-v4-pro' },
       },
     });
+  });
+});
+
+describe('buildSpawn — kimi ignores initialPrompt', () => {
+  it('does not add initialPrompt to args (no interactive support)', () => {
+    const def: AgentDef = {
+      harness: 'kimi',
+      name: 'native',
+      slug: 'kimi-cli-native',
+      config: defaultKimiConfig(),
+    };
+    const spec = buildSpawn(def, resolve({}), 'some prompt');
+    expect(spec.args).toEqual([]);
   });
 });
 

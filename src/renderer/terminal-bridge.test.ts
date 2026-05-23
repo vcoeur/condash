@@ -11,6 +11,8 @@ type FakeHandle = {
   moveActiveTab: ReturnType<typeof vi.fn>;
   typeIntoActive: ReturnType<typeof vi.fn>;
   hasActive: ReturnType<typeof vi.fn>;
+  getActiveSessionId: ReturnType<typeof vi.fn>;
+  waitForReady: ReturnType<typeof vi.fn>;
 };
 
 function makeFakeHandle(): FakeHandle {
@@ -21,6 +23,8 @@ function makeFakeHandle(): FakeHandle {
     moveActiveTab: vi.fn(),
     typeIntoActive: vi.fn(),
     hasActive: vi.fn().mockReturnValue(true),
+    getActiveSessionId: vi.fn().mockReturnValue('session-1'),
+    waitForReady: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -42,6 +46,14 @@ const claudeAgent: AgentListItem = {
   secretEnv: 'DEEPSEEK_API_KEY',
   tokenPresent: true,
   command: 'claude',
+};
+const opencodeAgent: AgentListItem = {
+  slug: 'opencode-deepseek-v4-pro',
+  name: 'deepseek-v4-pro',
+  harness: 'opencode',
+  secretEnv: 'DEEPSEEK_API_KEY',
+  tokenPresent: true,
+  command: 'opencode',
 };
 const kimiAgent: AgentListItem = {
   slug: 'kimi-cli-native',
@@ -181,7 +193,7 @@ describe('handleNewProjectAction', () => {
     // Drain the agent-spawn settle delay (~350 ms).
     await vi.advanceTimersByTimeAsync(400);
     await promise;
-    expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my');
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my', undefined);
     expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
     vi.useRealTimers();
   });
@@ -214,21 +226,21 @@ describe('handleProjectAction with agent binding', () => {
     const promise = bridge.handleProjectAction(sampleProject, action);
     await vi.advanceTimersByTimeAsync(400);
     await promise;
-    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my');
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my', undefined);
     expect(handle.typeIntoActive).toHaveBeenCalledWith('review foo-bar');
     vi.useRealTimers();
   });
 });
 
 describe('runTask', () => {
-  it('spawns the task agent, types the filled prompt, and submits', async () => {
+  it('kimi + submit=true spawns, settles, types via pty, and submits', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
-    const promise = bridge.runTask('claude-deepseek-v4-pro', 'review the docs', true);
-    await vi.advanceTimersByTimeAsync(400);
+    const bridge = createTerminalBridge(makeDeps(handle, [kimiAgent]));
+    const promise = bridge.runTask('kimi-cli-native', 'review the docs', true);
+    await vi.advanceTimersByTimeAsync(600);
     await promise;
-    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my');
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my', undefined);
     expect(handle.typeIntoActive).toHaveBeenCalledWith('review the docs');
     expect(handle.typeIntoActive).toHaveBeenLastCalledWith('\r');
     vi.useRealTimers();
@@ -257,5 +269,82 @@ describe('runTask', () => {
     );
     expect(handle.spawnUserShell).not.toHaveBeenCalled();
     expect(handle.typeIntoActive).not.toHaveBeenCalled();
+  });
+
+  it('claude + submit=true passes initialPrompt to spawnUserShell, skips typeIntoActive', async () => {
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
+    await bridge.runTask('claude-deepseek-v4-pro', 'review the docs', true);
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my', 'review the docs');
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(handle.waitForReady).not.toHaveBeenCalled();
+  });
+
+  it('opencode + submit=true passes initialPrompt to spawnUserShell, skips typeIntoActive', async () => {
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [opencodeAgent]));
+    await bridge.runTask('opencode-deepseek-v4-pro', 'explain this', true);
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(opencodeAgent, 'my', 'explain this');
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    expect(handle.waitForReady).not.toHaveBeenCalled();
+  });
+
+  it('claude + submit=false falls back to pty path (no initialPrompt, settles, types)', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
+    const promise = bridge.runTask('claude-deepseek-v4-pro', 'just type this', false);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my', undefined);
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('just type this');
+    expect(handle.typeIntoActive).toHaveBeenCalledTimes(1);
+    expect(handle.waitForReady).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('waits for kimi prompt marker before typing', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    // Simulate waitForReady resolving after a short delay.
+    handle.waitForReady.mockImplementation(
+      () => new Promise<void>((resolve) => setTimeout(resolve, 200)),
+    );
+    const bridge = createTerminalBridge(makeDeps(handle, [kimiAgent]));
+    const promise = bridge.runTask('kimi-cli-native', 'review the docs', true);
+    // Drain settle delay + waitForReady resolve.
+    await vi.advanceTimersByTimeAsync(600);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my', undefined);
+    expect(handle.waitForReady).toHaveBeenCalledWith('session-1', /▸/);
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('review the docs');
+    expect(handle.typeIntoActive).toHaveBeenLastCalledWith('\r');
+    vi.useRealTimers();
+  });
+
+  it('types anyway when kimi readiness times out', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    handle.waitForReady.mockRejectedValue(new Error('Timed out'));
+    const bridge = createTerminalBridge(makeDeps(handle, [kimiAgent]));
+    const promise = bridge.runTask('kimi-cli-native', 'text', false);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.waitForReady).toHaveBeenCalled();
+    // Still types despite the timeout.
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('text');
+    vi.useRealTimers();
+  });
+
+  it('skips readiness wait for non-kimi agents', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
+    const promise = bridge.runTask('claude-deepseek-v4-pro', 'text', false);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.waitForReady).not.toHaveBeenCalled();
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('text');
+    vi.useRealTimers();
   });
 });

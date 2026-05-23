@@ -200,7 +200,7 @@ export async function spawnTerminal(
     // Resolve the agent slug to its binary + args + env (token injected from
     // agents/.env). Run it through the login shell so PATH and `~` expansion
     // match a hand-typed invocation.
-    agentSpec = await resolveAgentSpawn(conceptionPath, request.agentSlug);
+    agentSpec = await resolveAgentSpawn(conceptionPath, request.agentSlug, request.initialPrompt);
     const parts = [agentSpec.command, ...agentSpec.args.map((a) => quoteArg(expandHome(a)))];
     program = shell;
     argv = wrapForShell(shell, parts.join(' '));
