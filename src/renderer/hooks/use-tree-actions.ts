@@ -111,7 +111,9 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
   ): void => {
     let bannerKind: 'shipped' | 'shipped-diverged' | undefined;
     if (shipped) bannerKind = shipped.diverged ? 'shipped-diverged' : 'shipped';
-    deps.setModal({ path, title, bannerKind });
+    // The Skills pane is read-only in both scopes; `readWith: 'skill'` lets the
+    // viewer load global-scope files that live outside the conception.
+    deps.setModal({ path, title, bannerKind, readOnly: true, readWith: 'skill' });
   };
 
   const handleAfterTreeMutation = (

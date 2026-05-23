@@ -3,6 +3,7 @@ import { sep } from 'node:path';
 import { readSettings } from './settings';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { walkRepos, type ConfigShape } from './config-walk';
+import { userScopeReadableDirs, userScopeReadableFiles } from './user-scope-paths';
 
 /**
  * Throw unless `path` resolves to a location under `root`.
@@ -87,6 +88,62 @@ export async function requirePathUnderWorkspace(path: string): Promise<string> {
     if (child === parent || child.startsWith(parent)) return real;
   }
   throw new Error('path is outside the workspace');
+}
+
+/**
+ * Throw unless `path` resolves to a readable Skills-pane location: under the
+ * active conception, OR under one of the user-scope skill roots, OR equal to
+ * one of the user-scope compiled agent-config files. Returns the realpath.
+ *
+ * Read-only — the Skills pane surfaces the global scope but never writes it,
+ * so this guards `readSkillFile` and nothing else. Narrow on purpose: the
+ * specific skill roots and config files only, never their parents, so
+ * `~/.kimi/credentials/` and friends stay unreachable through this path.
+ */
+export async function requireReadableSkillPath(path: string): Promise<string> {
+  if (typeof path !== 'string' || path.length === 0) {
+    throw new Error('path must be a non-empty string');
+  }
+  let real: string;
+  try {
+    real = await fs.realpath(path);
+  } catch {
+    throw new Error(`path does not resolve: ${path}`);
+  }
+  const child = real.endsWith(sep) ? real : real + sep;
+
+  const { lastConceptionPath } = await readSettings();
+  const dirs = [...(lastConceptionPath ? [lastConceptionPath] : []), ...userScopeReadableDirs()];
+  const dirReals = await Promise.all(
+    dirs.map(async (root) => {
+      try {
+        const rootReal = await fs.realpath(root);
+        return rootReal.endsWith(sep) ? rootReal : rootReal + sep;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  for (const parent of dirReals) {
+    if (parent === null) continue;
+    if (child === parent || child.startsWith(parent)) return real;
+  }
+
+  // The compiled agent-config files live directly in dirs we don't expose
+  // wholesale (`~/.claude`, `~/.kimi`, `~/.config/opencode`) — match them
+  // exactly by realpath instead.
+  const fileReals = await Promise.all(
+    userScopeReadableFiles().map(async (file) => {
+      try {
+        return await fs.realpath(file);
+      } catch {
+        return null;
+      }
+    }),
+  );
+  if (fileReals.includes(real)) return real;
+
+  throw new Error('path is not a readable skills location');
 }
 
 async function readWorkspaceRoots(conceptionPath: string): Promise<string[]> {

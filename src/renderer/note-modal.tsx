@@ -44,6 +44,10 @@ export type ModalState = {
    * tracked by `.condash-skills.json` whose disk SHA matches the manifest;
    * `'shipped-diverged'` flags a local edit. */
   bannerKind?: 'shipped' | 'shipped-diverged';
+  /** Which IPC reads the body. `'skill'` uses `readSkillFile` (permits the
+   * user-scope skill / agent-config locations the global Skills scope lives
+   * in); the default reads `readNote` (conception-bounded). */
+  readWith?: 'note' | 'skill';
 } | null;
 
 type Mode = 'view' | 'edit';
@@ -191,7 +195,12 @@ export function NoteModal(props: {
 
   const [content, { mutate: mutateContent, refetch: refetchContent }] = createResource(
     () => props.state?.path,
-    async (path) => (path ? await window.condash.readNote(path) : null),
+    async (path) => {
+      if (!path) return null;
+      return props.state?.readWith === 'skill'
+        ? await window.condash.readSkillFile(path)
+        : await window.condash.readNote(path);
+    },
   );
 
   const html = createMemo(() => {

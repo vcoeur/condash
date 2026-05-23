@@ -1,5 +1,5 @@
-import { createMemo, For, Show } from 'solid-js';
-import type { SkillNode, SkillTab } from '@shared/types';
+import { createMemo, For, Show, type JSX } from 'solid-js';
+import type { SkillNode, SkillScope, SkillTab } from '@shared/types';
 import { SKILL_TABS } from '@shared/types';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import {
@@ -10,15 +10,9 @@ import {
 } from './tree-view';
 import './skills-pane.css';
 
-// Compiled tabs (Claude / Kimi / OpenCode) accept the same SKILL_AFFORDANCES
-// as before; the Generic tab also accepts source-edit mutations. The Kimi and
-// OpenCode tabs are read-only because their content is regenerated on every
-// `condash skills install` — see notes/02-design.md §Q1.
-//
-// Each compiled tab also surfaces the conception's agent-config file as a
-// synthetic root-level entry: CLAUDE.md on the Claude tab, AGENTS.md on the
-// Kimi and OpenCode tabs (injected in src/main/skills.ts).
-const EDITABLE_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
+// The Skills pane is read-only in both scopes (user decision 2026-05-23):
+// it surfaces conception-local and per-machine-global skills + agent configs
+// but never edits them. No tab gets create/mkdir/import affordances.
 const READONLY_AFFORDANCES: ReadonlyArray<TreeAffordance> = [];
 
 const TAB_LABELS: Record<SkillTab, string> = {
@@ -28,25 +22,18 @@ const TAB_LABELS: Record<SkillTab, string> = {
   opencode: 'OpenCode',
 };
 
+// Scope toggle order (row 1). `global` first per the request; `local` is the
+// default. Labels are deliberately terse to fit the segmented control.
+const SCOPE_ORDER: ReadonlyArray<SkillScope> = ['global', 'local'];
+const SCOPE_LABELS: Record<SkillScope, string> = {
+  global: 'Global',
+  local: 'Local',
+};
+
 function isSkillIndex(node: SkillNode): boolean {
   // Case-sensitive — that's how the manifest stores it and how
   // `condash skills install` reasons about file identity.
   return node.kind === 'file' && node.name === 'SKILL.md';
-}
-
-/** Recognise a synthetic CLAUDE.md entry injected by the main-process
- *  skills walker. Carries `name === 'CLAUDE.md'` and lives only at the
- *  skills root (`relPath` starts with the `__claude__/` sentinel). */
-function isClaudeMd(node: SkillNode): boolean {
-  return node.kind === 'file' && node.name === 'CLAUDE.md';
-}
-
-/** Recognise a synthetic AGENTS.md entry injected by the main-process
- *  skills walker for the Kimi tab. Carries `name === 'AGENTS.md'` and
- *  lives only at the skills root (`relPath` starts with the `__kimi__/`
- *  sentinel). */
-function isAgentsMd(node: SkillNode): boolean {
-  return node.kind === 'file' && node.name === 'AGENTS.md';
 }
 
 function isYamlSpec(node: SkillNode): boolean {
@@ -55,7 +42,17 @@ function isYamlSpec(node: SkillNode): boolean {
   return lower.endsWith('.yaml') || lower.endsWith('.yml');
 }
 
+/** Strip the `__sentinel__/` prefix off an injected agent-config relPath for
+ *  display (`__claude__/.claude/CLAUDE.md` → `.claude/CLAUDE.md`). */
+function configMeta(relPath: string): string {
+  return relPath.replace(/^__[^/]+__\//, '');
+}
+
 export function SkillsView(props: {
+  scope: SkillScope;
+  onSelectScope: (scope: SkillScope) => void;
+  /** Reload the active (scope, tab) tree. */
+  onRefresh: () => void;
   tab: SkillTab;
   onSelectTab: (tab: SkillTab) => void;
   root: SkillNode | null;
@@ -73,46 +70,49 @@ export function SkillsView(props: {
   onError: (message: string) => void;
 }) {
   // Per-tab scroll memory so flipping tabs restores the prior position.
-  const scrollRef = usePaneScrollMemory(() => `skills-${props.tab}`);
-
-  const affordances = (): ReadonlyArray<TreeAffordance> =>
-    props.tab === 'kimi' || props.tab === 'opencode' ? READONLY_AFFORDANCES : EDITABLE_AFFORDANCES;
+  const scrollRef = usePaneScrollMemory(() => `skills-${props.scope}-${props.tab}`);
 
   // Memoise pane-level callbacks so prop identity stays stable across
   // unrelated parent re-runs (e.g. expanding one directory). Tracks
   // `props.tab` so the special-file predicate updates when the user
   // switches tab, but is otherwise a stable reference. See
   // notes/01-design.md.
+  // The injected agent-config entries (badge != null) are lifted out of the
+  // tree into their own band above it — there can be several (the Generic
+  // common.md + <model>.md sources; two CLAUDE.md candidates), and TreeView
+  // only ever promotes one special file per directory. Everything else
+  // (real skills + their SKILL.md) flows through TreeView unchanged.
+  const configNodes = createMemo<SkillNode[]>(() =>
+    (props.root?.children ?? []).filter((c) => c.badge != null),
+  );
+  const treeRoot = createMemo<SkillNode | null>(() => {
+    const root = props.root;
+    if (!root) return null;
+    return { ...root, children: (root.children ?? []).filter((c) => c.badge == null) };
+  });
+
+  const renderConfigCallout = (file: SkillNode): JSX.Element => (
+    <button
+      type="button"
+      class="tree-special-file claude-special-file"
+      onClick={() => props.onOpen(file.path, file.title, file.shipped)}
+      title={`Open ${file.path}`}
+      aria-label={`Open ${file.path}`}
+    >
+      <span class="tree-special-badge">{file.badge}</span>
+      <span class="tree-special-title">{file.title}</span>
+      <span class="tree-special-meta">{configMeta(file.relPath)}</span>
+    </button>
+  );
+
+  // The only special file TreeView still promotes is a sub-skill dir's
+  // SKILL.md (not on the Generic tab, never at the root).
   const specialFile = createMemo(() => {
     const tab = props.tab;
-    return (file: SkillNode, dir: SkillNode): boolean => {
-      if (dir.relPath === '' && tab === 'claude' && isClaudeMd(file)) return true;
-      if (dir.relPath === '' && tab === 'kimi' && isAgentsMd(file)) return true;
-      if (dir.relPath === '' && tab === 'opencode' && isAgentsMd(file)) return true;
-      if (tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file)) return true;
-      return false;
-    };
+    return (file: SkillNode, dir: SkillNode): boolean =>
+      tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file);
   });
   const renderSpecialFile = createMemo(() => (file: SkillNode, dir: SkillNode) => {
-    if (isClaudeMd(file) || isAgentsMd(file)) {
-      const badge = isClaudeMd(file) ? 'CLAUDE' : 'AGENTS';
-      return (
-        <button
-          type="button"
-          class="tree-special-file claude-special-file"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onOpen(file.path, file.title, file.shipped);
-          }}
-          title={`Open ${file.path}`}
-          aria-label={`Open ${file.path}`}
-        >
-          <span class="tree-special-badge">{badge}</span>
-          <span class="tree-special-title">{file.title}</span>
-          <span class="tree-special-meta">{file.relPath}</span>
-        </button>
-      );
-    }
     const shipped = file.shipped;
     return (
       <button
@@ -273,6 +273,32 @@ export function SkillsView(props: {
 
   return (
     <div class="skills-pane">
+      <div class="skills-scope-row">
+        <div class="skills-scope" role="group" aria-label="Skill scope">
+          <For each={SCOPE_ORDER}>
+            {(scope) => (
+              <button
+                type="button"
+                class="skills-scope-btn"
+                classList={{ active: props.scope === scope }}
+                aria-pressed={props.scope === scope}
+                onClick={() => props.onSelectScope(scope)}
+              >
+                {SCOPE_LABELS[scope]}
+              </button>
+            )}
+          </For>
+        </div>
+        <button
+          type="button"
+          class="skills-refresh"
+          onClick={() => props.onRefresh()}
+          title="Refresh"
+          aria-label="Refresh skills"
+        >
+          ↻
+        </button>
+      </div>
       <div class="skills-tabs" role="tablist" aria-label="Skill tree source">
         <For each={SKILL_TABS}>
           {(tab) => (
@@ -296,13 +322,18 @@ export function SkillsView(props: {
       </div>
       <div class="skills-tree" ref={scrollRef}>
         <Show when={props.root} fallback={emptyState()}>
-          {(root) => (
+          <Show when={configNodes().length > 0}>
+            <div class="skills-config-band">
+              <For each={configNodes()}>{(file) => renderConfigCallout(file)}</For>
+            </div>
+          </Show>
+          <Show when={treeRoot() && (treeRoot()!.children?.length ?? 0) > 0}>
             <TreeView<SkillNode>
               treeKey="skills"
-              root={root()}
+              root={treeRoot()!}
               expanded={props.expanded}
               onToggleExpand={props.onToggleExpand}
-              affordances={affordances()}
+              affordances={READONLY_AFFORDANCES}
               mutations={props.mutations}
               prompts={props.prompts}
               onAfterMutation={props.onAfterMutation}
@@ -311,7 +342,7 @@ export function SkillsView(props: {
               renderSpecialFile={renderSpecialFile()}
               renderFile={renderFile()}
             />
-          )}
+          </Show>
         </Show>
       </div>
     </div>

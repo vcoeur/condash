@@ -3,16 +3,34 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readKimiSkillsTree, readSkillsTree } from './skills';
+import { readKimiSkillsTree, readSkillsTree, readSkillsTreeForTab } from './skills';
 
 let tmp: string;
 
+const USER_ENV_KEYS = [
+  'CONDASH_USER_SKILLS_ROOT',
+  'CONDASH_USER_CLAUDE_ROOT',
+  'CONDASH_USER_KIMI_ROOT',
+  'CONDASH_USER_OPENCODE_ROOT',
+  'CONDASH_USER_AGENT_CONFIG_ROOT',
+  'CONDASH_USER_CLAUDE_AGENT_OUTPUT',
+  'CONDASH_USER_KIMI_AGENT_OUTPUT',
+  'CONDASH_USER_OPENCODE_AGENT_OUTPUT',
+] as const;
+let savedEnv: Record<string, string | undefined>;
+
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'condash-skills-'));
+  savedEnv = {};
+  for (const key of USER_ENV_KEYS) savedEnv[key] = process.env[key];
 });
 
 afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
+  for (const key of USER_ENV_KEYS) {
+    if (savedEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = savedEnv[key];
+  }
 });
 
 function setupSkills(): void {
@@ -172,5 +190,114 @@ describe('readKimiSkillsTree', () => {
     const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
     expect(agents.length).toBe(1);
     expect(agents[0]?.relPath).toBe('__kimi__/.kimi/AGENTS.md');
+  });
+});
+
+describe('Generic agent-config sources (local scope)', () => {
+  it('injects common.md + <model>.md sources with uppercase badges', async () => {
+    mkdirSync(join(tmp, '.agents', 'agents'), { recursive: true });
+    mkdirSync(join(tmp, '.agents', 'skills', 'commit'), { recursive: true });
+    writeFileSync(join(tmp, '.agents', 'agents', 'common.md'), '# Common\n\nShared base.\n');
+    writeFileSync(join(tmp, '.agents', 'agents', 'claude.md'), '# Claude overlay\n');
+    writeFileSync(join(tmp, '.agents', 'agents', 'kimi.md'), '# Kimi overlay\n');
+    writeFileSync(join(tmp, '.agents', 'skills', 'commit', 'spec.yaml'), 'description: commit\n');
+
+    const tree = (await readSkillsTreeForTab('local', tmp, 'generic', ''))!;
+    const sources = (tree.children ?? []).filter((c) => c.relPath.startsWith('__agents__/'));
+    const byName = Object.fromEntries(sources.map((c) => [c.name, c]));
+    // opencode.md is absent → not surfaced; the three present sources are.
+    expect(Object.keys(byName).sort()).toEqual(['claude.md', 'common.md', 'kimi.md']);
+    expect(byName['common.md']?.badge).toBe('COMMON');
+    expect(byName['claude.md']?.badge).toBe('CLAUDE');
+    expect(byName['common.md']?.title).toBe('Common');
+    // The skillspec tree still follows the sources.
+    expect((tree.children ?? []).some((c) => c.name === 'commit')).toBe(true);
+  });
+});
+
+describe('global scope', () => {
+  function setupGlobal(): void {
+    // Generic source skills + agent-config sources.
+    mkdirSync(join(tmp, 'g-skills', 'pr'), { recursive: true });
+    writeFileSync(join(tmp, 'g-skills', 'pr', 'spec.yaml'), 'description: pr\n');
+    mkdirSync(join(tmp, 'g-agents'), { recursive: true });
+    writeFileSync(join(tmp, 'g-agents', 'common.md'), '# Global common\n');
+    writeFileSync(join(tmp, 'g-agents', 'kimi.md'), '# Global kimi\n');
+    // Per-model compiled skill trees + agent-config outputs.
+    mkdirSync(join(tmp, 'c-skills', 'commit'), { recursive: true });
+    writeFileSync(join(tmp, 'c-skills', 'commit', 'SKILL.md'), '# Commit\n\nCommit skill.\n');
+    mkdirSync(join(tmp, 'k-skills'), { recursive: true });
+    mkdirSync(join(tmp, 'o-skills'), { recursive: true });
+    // Outputs keep their canonical basenames (CLAUDE.md / global-agent.yaml /
+    // AGENTS.md) so the surfaced node `name` matches production.
+    mkdirSync(join(tmp, 'claude-out'), { recursive: true });
+    mkdirSync(join(tmp, 'kimi-out'), { recursive: true });
+    mkdirSync(join(tmp, 'oc-out'), { recursive: true });
+    writeFileSync(join(tmp, 'claude-out', 'CLAUDE.md'), '# Global CLAUDE\n\nGlobal rules.\n');
+    writeFileSync(
+      join(tmp, 'kimi-out', 'global-agent.yaml'),
+      'agent:\n  system_prompt_args:\n    ROLE_ADDITIONAL: hi\n',
+    );
+    writeFileSync(join(tmp, 'oc-out', 'AGENTS.md'), '# Global OpenCode AGENTS\n');
+
+    process.env.CONDASH_USER_SKILLS_ROOT = join(tmp, 'g-skills');
+    process.env.CONDASH_USER_AGENT_CONFIG_ROOT = join(tmp, 'g-agents');
+    process.env.CONDASH_USER_CLAUDE_ROOT = join(tmp, 'c-skills');
+    process.env.CONDASH_USER_KIMI_ROOT = join(tmp, 'k-skills');
+    process.env.CONDASH_USER_OPENCODE_ROOT = join(tmp, 'o-skills');
+    process.env.CONDASH_USER_CLAUDE_AGENT_OUTPUT = join(tmp, 'claude-out', 'CLAUDE.md');
+    process.env.CONDASH_USER_KIMI_AGENT_OUTPUT = join(tmp, 'kimi-out', 'global-agent.yaml');
+    process.env.CONDASH_USER_OPENCODE_AGENT_OUTPUT = join(tmp, 'oc-out', 'AGENTS.md');
+  }
+
+  it('reads the generic global tree with agent-config sources', async () => {
+    setupGlobal();
+    const tree = (await readSkillsTreeForTab('global', tmp, 'generic', ''))!;
+    const sources = (tree.children ?? []).filter((c) => c.relPath.startsWith('__agents__/'));
+    expect(sources.map((c) => c.name).sort()).toEqual(['common.md', 'kimi.md']);
+    expect(sources.find((c) => c.name === 'common.md')?.badge).toBe('COMMON');
+    // The .yaml skillspec is surfaced (Generic accepts yaml).
+    expect((tree.children ?? []).some((c) => c.name === 'pr')).toBe(true);
+  });
+
+  it('injects the compiled CLAUDE.md on the global Claude tab', async () => {
+    setupGlobal();
+    const tree = (await readSkillsTreeForTab('global', tmp, 'claude', ''))!;
+    const claude = (tree.children ?? []).find((c) => c.relPath.startsWith('__claude__/'));
+    expect(claude?.badge).toBe('CLAUDE');
+    expect(claude?.title).toBe('Global CLAUDE');
+    expect((tree.children ?? []).some((c) => c.name === 'commit')).toBe(true);
+  });
+
+  it('injects global-agent.yaml on the global Kimi tab with a KIMI badge', async () => {
+    setupGlobal();
+    const tree = (await readSkillsTreeForTab('global', tmp, 'kimi', ''))!;
+    const kimi = (tree.children ?? []).find((c) => c.relPath.startsWith('__kimi__/'));
+    expect(kimi?.badge).toBe('KIMI');
+    expect(kimi?.name).toBe('global-agent.yaml');
+  });
+
+  it('injects AGENTS.md on the global OpenCode tab', async () => {
+    setupGlobal();
+    const tree = (await readSkillsTreeForTab('global', tmp, 'opencode', ''))!;
+    const oc = (tree.children ?? []).find((c) => c.relPath.startsWith('__opencode__/'));
+    expect(oc?.badge).toBe('AGENTS');
+    expect(oc?.name).toBe('AGENTS.md');
+  });
+
+  it('surfaces a synthetic root when only the agent-config file exists (no skills dir)', async () => {
+    setupGlobal();
+    rmSync(join(tmp, 'c-skills'), { recursive: true, force: true });
+    const tree = await readSkillsTreeForTab('global', tmp, 'claude', '');
+    expect(tree).not.toBeNull();
+    expect((tree?.children ?? []).some((c) => c.badge === 'CLAUDE')).toBe(true);
+  });
+
+  it('returns null when neither the skills dir nor the config file exists', async () => {
+    setupGlobal();
+    rmSync(join(tmp, 'o-skills'), { recursive: true, force: true });
+    rmSync(join(tmp, 'oc-out', 'AGENTS.md'), { force: true });
+    const tree = await readSkillsTreeForTab('global', tmp, 'opencode', '');
+    expect(tree).toBeNull();
   });
 });

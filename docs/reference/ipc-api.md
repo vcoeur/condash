@@ -33,7 +33,8 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 | `listProjectFiles(path)` | `ProjectFileEntry[]` | List files under a project directory (notes plus any other subdirectories). |
 | `readKnowledgeTree()` | `KnowledgeNode \| null` | Walk `knowledge/`, return the directory + file structure (or `null` if no `knowledge/` exists). |
 | `readResourcesTree()` | `ResourceNode \| null` | Walk the configured `resources_path` (default `resources/`), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
-| `readSkillsTree()` | `SkillNode \| null` | Walk the configured `skills_path` (default `.claude/skills/`), return markdown files only with title / summary parsed from the head, plus optional `shipped` / `diverged` chips driven by `.condash-skills.json`. `null` if the directory doesn't exist. |
+| `readSkillsTree(scope, tab)` | `SkillNode \| null` | Walk the `(scope, tab)` skills directory — `local` reads the conception, `global` reads the per-machine user scope (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only (Generic also accepts `.yaml`), with title / summary parsed from the head and optional `shipped` / `diverged` chips. Synthetic read-only agent-config entries (badged `CLAUDE` / `AGENTS` / `KIMI` / the Generic `COMMON` + `<model>` sources) are prepended at the root. `null` only when both the directory and all config files are absent. |
+| `readSkillFile(path)` | `string` | Read-only content fetch for a Skills-pane file. Like `readNote` but also permits the user-scope skill + agent-config locations (the global scope lives outside the conception); rejects anything else. |
 | `search(query)` | `SearchResults` | Full-text search across every project + knowledge file. Re-walks the tree each call (no index — see [Internals](../explanation/internals.md#why-no-search-index)). |
 
 ## Mutations
@@ -141,7 +142,8 @@ The three tree panes (Knowledge / Resources / Skills) expose create-file / creat
 | `getTreeExpansion()` / `setTreeExpansion(prefs)` | Read or write the per-pane set of expanded directory `relPath`s (Knowledge / Resources / Skills tabs). Empty values mean every directory is collapsed — the on-purpose first-load state. |
 | `getSelectedBranches()` / `setSelectedBranches(list)` | Read or write the Code-pane top-of-pane branch filter selection. Honoured only when `branchFilterStickyAll` is false. |
 | `getBranchFilterStickyAll()` / `setBranchFilterStickyAll(value)` | Read or write the "All (sticky)" mode flag for the Code-pane branch filter — when true, every branch is shown and new branches auto-pin. |
-| `getSkillsActiveTab()` / `setSkillsActiveTab(tab)` | Read or write the active tab in the Skills pane (`generic` / `claude` / `kimi`). Persisted per-machine. |
+| `getSkillsActiveTab()` / `setSkillsActiveTab(tab)` | Read or write the active tab in the Skills pane (`generic` / `claude` / `kimi` / `opencode`). Persisted per-machine. |
+| `getSkillsActiveScope()` / `setSkillsActiveScope(scope)` | Read or write the active scope in the Skills pane (`local` / `global`). Persisted per-machine; defaults to `local`. |
 | `getGlobalSettingsRaw()` | Return the raw JSON text of the global `settings.json` (or `''` if the file does not exist). Used by the Settings modal to seed its in-memory editor without parsing through the Zod schema. |
 | `writeGlobalSettings(expectedContent, newContent)` | Atomic rewrite of the global `settings.json` with a full-content drift check, mirroring `writeNote`. Returns the bytes actually written (after Zod canonicalisation). |
 | `getAppInfo()` | About-modal payload: `{ name, version, electron, chrome, node, platform }`. `platform` is the Node string (`linux`/`darwin`/`win32`). |

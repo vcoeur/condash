@@ -5,11 +5,12 @@ import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../s
 import type {
   CardMinWidthPrefs,
   LayoutState,
+  SkillScope,
   SkillTab,
   Theme,
   TreeExpansionPrefs,
 } from '../../shared/types';
-import { DEFAULT_CARD_MIN_WIDTH, SKILL_TABS } from '../../shared/types';
+import { DEFAULT_CARD_MIN_WIDTH, SKILL_SCOPES, SKILL_TABS } from '../../shared/types';
 
 // Note: the legacy `skills` key is accepted on read (migrated to
 // `skillsClaude`) but never written back. New writers emit the three
@@ -24,6 +25,8 @@ const TREE_EXPANSION_KEYS = [
 type TreeExpansionKey = (typeof TREE_EXPANSION_KEYS)[number];
 
 const SKILL_TAB_SET: ReadonlySet<SkillTab> = new Set(SKILL_TABS);
+
+const SKILL_SCOPE_SET: ReadonlySet<SkillScope> = new Set(SKILL_SCOPES);
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
@@ -283,6 +286,26 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
       throw new Error('setSkillsActiveTab: expected generic | claude | kimi');
     }
     await updateSettings((cur) => ({ ...cur, skillsActiveTab: raw as SkillTab }));
+  });
+
+  // Skills-pane active scope (per-machine). Default is `local` — preserves
+  // the conception-only behaviour for existing users.
+  ipcMain.handle('getSkillsActiveScope', async (): Promise<SkillScope> => {
+    const { skillsActiveScope } = await readSettings();
+    if (
+      typeof skillsActiveScope === 'string' &&
+      SKILL_SCOPE_SET.has(skillsActiveScope as SkillScope)
+    ) {
+      return skillsActiveScope as SkillScope;
+    }
+    return 'local';
+  });
+
+  ipcMain.handle('setSkillsActiveScope', async (_, raw: unknown) => {
+    if (typeof raw !== 'string' || !SKILL_SCOPE_SET.has(raw as SkillScope)) {
+      throw new Error('setSkillsActiveScope: expected local | global');
+    }
+    await updateSettings((cur) => ({ ...cur, skillsActiveScope: raw as SkillScope }));
   });
 
   ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {

@@ -28,6 +28,10 @@ export async function bootApp(
   options: {
     extraConfig?: Record<string, unknown>;
     prepare?: (conceptionDir: string) => Promise<void>;
+    /** Extra env vars merged into the Electron launch — e.g. the
+     *  `CONDASH_USER_*` overrides that point the global Skills scope at a
+     *  fixture instead of the real `~/.config/agents` etc. */
+    env?: Record<string, string>;
   } = {},
 ): Promise<BootedApp> {
   const conceptionDir = await mkdtemp(join(tmpdir(), 'condash-test-conception-'));
@@ -85,6 +89,7 @@ export async function bootApp(
       // Electron honours XDG_CONFIG_HOME for app.getPath('userData') on Linux.
       XDG_CONFIG_HOME: userDataDir,
       CONDASH_FORCE_PROD: '1',
+      ...(options.env ?? {}),
     },
   });
   const window = await app.firstWindow();

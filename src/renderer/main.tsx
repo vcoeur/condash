@@ -47,6 +47,7 @@ import { useRepoActions } from './hooks/use-repo-actions';
 import { useConception } from './hooks/use-conception';
 import { useWelcome } from './hooks/use-welcome';
 import { useSkillsTab } from './hooks/use-skills-tab';
+import { useSkillsScope } from './hooks/use-skills-scope';
 import { useTreeEvents } from './hooks/use-tree-events';
 import type { Deliverable, Project, WorkingSurface } from '@shared/types';
 import './styles.css';
@@ -171,29 +172,37 @@ function App() {
   });
   const resources = resourcesStore.root;
 
-  // One tree store per Skills tab. The trees back independent on-disk
-  // roots (`.agents/skills/`, `<skills_path>`, `.kimi/skills/`), so each
-  // gets its own fetcher, store, and reload trigger. All three are eagerly
-  // loaded when the conception path is set so tab switching is paint-only.
+  // Local/global scope toggle. Created before the skills stores: each store's
+  // fetcher reads `skillsActiveScope()`, and that reactive read is what makes
+  // the store reload when the scope flips (the store's conception-path effect
+  // also tracks the scope signal through the synchronous fetcher call).
+  const { skillsActiveScope, handleSkillsScopeSelect } = useSkillsScope({ flashToast });
+
+  // One tree store per Skills tab. The trees back independent on-disk roots
+  // (`.agents/skills/`, `<skills_path>`, `.kimi/skills/`, `.opencode/skills/`
+  // locally; the `~/.config/agents` + `~/.claude` + `~/.kimi` + `~/.config/
+  // opencode` mirrors globally), so each gets its own fetcher, store, and
+  // reload trigger. All are eagerly loaded for the active conception + scope
+  // so tab switching within a scope is paint-only.
   const skillsStores: Record<SkillTab, ReturnType<typeof createTreeStore<SkillNode>>> = {
     generic: createTreeStore<SkillNode>({
       conceptionPath,
-      fetcher: () => window.condash.readSkillsTree('generic'),
+      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'generic'),
       key: 'relPath',
     }),
     claude: createTreeStore<SkillNode>({
       conceptionPath,
-      fetcher: () => window.condash.readSkillsTree('claude'),
+      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'claude'),
       key: 'relPath',
     }),
     kimi: createTreeStore<SkillNode>({
       conceptionPath,
-      fetcher: () => window.condash.readSkillsTree('kimi'),
+      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'kimi'),
       key: 'relPath',
     }),
     opencode: createTreeStore<SkillNode>({
       conceptionPath,
-      fetcher: () => window.condash.readSkillsTree('opencode'),
+      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'opencode'),
       key: 'relPath',
     }),
   };
@@ -566,6 +575,9 @@ function App() {
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <SkillsView
+                      scope={skillsActiveScope()}
+                      onSelectScope={handleSkillsScopeSelect}
+                      onRefresh={() => void skillsStores[skillsActiveTab()].reload()}
                       tab={skillsActiveTab()}
                       onSelectTab={handleSkillsTabSelect}
                       root={activeSkillsRoot() ?? null}
