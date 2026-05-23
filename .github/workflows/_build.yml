@@ -40,7 +40,10 @@ jobs:
       # bump. `_build.yml` runs only from release.yml (tag push), so ref_name is
       # the tag. electron-builder reads this version into installers + latest*.yml.
       - name: Set version from tag
+        # shell: bash so the ${VAR#v} stripping works on Windows too (default
+        # shell there is PowerShell, which doesn't do bash parameter expansion).
         run: npm pkg set version="${GITHUB_REF_NAME#v}"
+        shell: bash
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
 
