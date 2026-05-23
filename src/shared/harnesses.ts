@@ -137,28 +137,56 @@ export interface OpencodeAgentConfig {
 
 /**
  * A stored agent definition. Persisted as one JSON file per agent at
- * `<conception>/agents/<harness>-<model_variant>.json`. Carries NO secret
- * value — only `secretEnv`, the name of the var in `agents/.env` to resolve at
- * spawn time. Discriminated union on `harness`.
+ * `<conception>/agents/<slug>.json`. Identity is the `slug` (the filename stem);
+ * `name` is a free-form display label. Carries NO secret value — only
+ * `secretEnv`, the name of the var in `agents/.env` to resolve at spawn time.
+ * Discriminated union on `harness`.
  */
 export type AgentDef =
-  | { harness: 'claude'; modelVariant: string; secretEnv?: string; config: ClaudeAgentConfig }
-  | { harness: 'kimi'; modelVariant: string; secretEnv?: string; config: KimiAgentConfig }
-  | { harness: 'opencode'; modelVariant: string; secretEnv?: string; config: OpencodeAgentConfig };
+  | { harness: 'claude'; name: string; slug: string; secretEnv?: string; config: ClaudeAgentConfig }
+  | { harness: 'kimi'; name: string; slug: string; secretEnv?: string; config: KimiAgentConfig }
+  | {
+      harness: 'opencode';
+      name: string;
+      slug: string;
+      secretEnv?: string;
+      config: OpencodeAgentConfig;
+    };
 
-/** Derived agent name `<harness-label>-<model_variant>` (e.g. `claude-deepseek-v4-pro`,
- *  `kimi-cli-native`, `opencode-deepseek-v4-pro`). Never stored — always derived so
- *  the naming convention can't drift. Also the JSON filename stem + tab label. */
-export function agentName(def: Pick<AgentDef, 'harness' | 'modelVariant'>): string {
-  return `${HARNESSES[def.harness].label}-${def.modelVariant}`;
+/** Lowercase-kebab slug pattern: the agent identity / filename stem. */
+export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** True when `value` is a valid agent slug (lowercase letters, digits, single
+ *  hyphens — no leading/trailing/double hyphen). Enforced on write. */
+export function isValidSlug(value: string): boolean {
+  return SLUG_PATTERN.test(value);
+}
+
+/** Reduce free text to a lowercase-kebab slug: lowercase, non-alphanumerics
+ *  collapse to single hyphens, leading/trailing hyphens trimmed. Returns `''`
+ *  for input with no alphanumerics. */
+export function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Suggested slug for a new agent: the display name slugified under the
+ *  harness's label prefix (e.g. opencode + "DeepSeek Auto" → `opencode-deepseek-auto`).
+ *  The prefix keeps slugs unique across harnesses that share a display name. */
+export function suggestSlug(harness: HarnessId, name: string): string {
+  return slugify(`${HARNESSES[harness].label}-${name}`);
 }
 
 /** Renderer-facing agent summary. Carries token *presence* — never the value
  *  (secrets stay in the main process). */
 export interface AgentListItem {
+  /** Stable identity = filename stem; the IPC + list key. */
+  slug: string;
+  /** Free-form display label. */
   name: string;
   harness: HarnessId;
-  modelVariant: string;
   secretEnv?: string;
   tokenPresent: boolean;
   /** One-line preview of the command this agent launches (binary + args, token
@@ -231,7 +259,7 @@ function injectSecret(
 ): void {
   if (!def.secretEnv) return;
   const key = resolveSecret(def.secretEnv);
-  if (!key) throw new MissingAgentSecretError(def.secretEnv, agentName(def));
+  if (!key) throw new MissingAgentSecretError(def.secretEnv, def.name);
   env[def.secretEnv] = key;
 }
 
@@ -261,7 +289,7 @@ function buildClaudeSpawn(
 
   const key = def.secretEnv ? resolveSecret(def.secretEnv) : undefined;
   if (def.secretEnv && !key) {
-    throw new MissingAgentSecretError(def.secretEnv, agentName(def));
+    throw new MissingAgentSecretError(def.secretEnv, def.name);
   }
 
   env.ANTHROPIC_BASE_URL = cfg.baseUrl;

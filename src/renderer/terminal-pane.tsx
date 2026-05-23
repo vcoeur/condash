@@ -374,7 +374,7 @@ export function TerminalPane(props: {
     return spawn(
       {
         side: sd,
-        agentName: agent?.name,
+        agentSlug: agent?.slug,
         cwd: props.cwd ?? undefined,
       },
       label,
@@ -382,12 +382,12 @@ export function TerminalPane(props: {
     );
   };
 
-  /** Resolve an agent name (or null) to its `AgentListItem` from props.agents.
-   *  Returns null for a missing name — callers treat that as the plain
+  /** Resolve an agent slug (or null) to its `AgentListItem` from props.agents.
+   *  Returns null for a missing slug — callers treat that as the plain
    *  `New shell` path. */
-  const resolveAgent = (name: string | null): AgentChoice => {
-    if (name === null) return null;
-    return props.agents.find((a) => a.name === name) ?? null;
+  const resolveAgent = (slug: string | null): AgentChoice => {
+    if (slug === null) return null;
+    return props.agents.find((a) => a.slug === slug) ?? null;
   };
 
   // ---- live data + exit notification ----
@@ -547,10 +547,10 @@ export function TerminalPane(props: {
       onCommitRename={commitRename}
       onCancelRename={() => setRenamingId(null)}
       onCloseTab={closeTab}
-      onSpawnShell={(c, agentName) => {
+      onSpawnShell={(c, agentSlug) => {
         nextSpawnColumn = c;
         setActiveColumn(c);
-        void spawnUserShell(resolveAgent(agentName), 'my');
+        void spawnUserShell(resolveAgent(agentSlug), 'my');
       }}
       onSaveBuffer={(c) => {
         setActiveColumn(c);
