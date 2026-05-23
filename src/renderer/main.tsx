@@ -16,6 +16,7 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
+import { AgentsView } from './panes/agents';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { usableActionTemplates } from './settings-modal-parts/data';
@@ -71,6 +72,7 @@ const WORKING_SURFACE_HANDLES: ReadonlyArray<{
   { key: 'resources', label: 'Resources', shortcut: 'Ctrl+R' },
   { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L' },
   { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
+  { key: 'agents', label: 'Agents', shortcut: 'Ctrl+Shift+A' },
 ];
 
 function App() {
@@ -228,7 +230,27 @@ function App() {
     }
   });
   const agents = () => agentsResource() ?? [];
-  void reloadAgents;
+
+  /** Open a terminal tab running the named agent (Agents-pane Launch button). */
+  const launchAgent = (name: string): void => {
+    const item = agents().find((a) => a.name === name) ?? null;
+    if (!item) return;
+    ensureTerminalOpen();
+    void terminalHandle?.spawnUserShell(item, 'my');
+  };
+
+  /** Open `<conception>/agents/.env` in the OS default editor so the user can
+   *  fill in API tokens. Surfaces the path in a toast for the create-it case. */
+  const editAgentTokens = async (): Promise<void> => {
+    const envPath = await window.condash.getAgentsEnvPath();
+    if (!envPath) return;
+    try {
+      await window.condash.openPath(envPath);
+      flashToast(`Editing ${envPath}`, 'info');
+    } catch (err) {
+      flashToast(`Create ${envPath} (NAME=value lines): ${(err as Error).message}`, 'error');
+    }
+  };
 
   // Stable references to the filtered action-template arrays. `usableActionTemplates`
   // returns a *fresh* filtered array on every call; without memoising, any reactive
@@ -583,6 +605,19 @@ function App() {
                 <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
                     <LogsView openRequest={logsOpenRequest} />
+                  </section>
+                </Show>
+
+                <Show when={layout().working === 'agents'}>
+                  <section class="pane pane-working">
+                    <AgentsView
+                      agents={agents}
+                      reload={() => void reloadAgents()}
+                      hasConception={() => conceptionPath() !== null}
+                      flashToast={flashToast}
+                      onLaunch={launchAgent}
+                      onEditTokens={() => void editAgentTokens()}
+                    />
                   </section>
                 </Show>
 

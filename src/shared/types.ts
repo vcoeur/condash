@@ -176,7 +176,14 @@ export interface LogsOpenRequest {
 /** Right-slot working surface — picks which of Code / Knowledge / Resources /
  * Skills is shown in the top-band right pane, or `null` to leave it hidden.
  * All four are mutually exclusive: showing one swaps the others out. */
-export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
+export type WorkingSurface =
+  | 'code'
+  | 'knowledge'
+  | 'resources'
+  | 'skills'
+  | 'logs'
+  | 'agents'
+  | null;
 
 /** Left-band view — which pane fills the left band when it is visible.
  * Selected by the left edge-strip handles (Projects / Deliverables). */

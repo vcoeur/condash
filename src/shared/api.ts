@@ -373,6 +373,7 @@ export type MenuCommand =
   | 'show-resources'
   | 'show-skills'
   | 'show-logs'
+  | 'show-agents'
   | 'hide-working'
   | 'refresh'
   | 'about'
