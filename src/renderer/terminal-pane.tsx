@@ -57,14 +57,23 @@ export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string, opts?: SpawnOptions): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
   /** Add a fresh user shell tab to "My terms". `agent` may be an
-   *  `AgentListItem` to pin and run that agent, or `null` for a plain shell. */
-  spawnUserShell(agent?: AgentChoice, side?: TermSide): Promise<string>;
+   *  `AgentListItem` to pin and run that agent, or `null` for a plain shell.
+   *  `initialPrompt` is passed through to `TermSpawnRequest` so harnesses that
+   *  support it (claude, opencode) receive the prompt as a CLI argument. */
+  spawnUserShell(agent?: AgentChoice, side?: TermSide, initialPrompt?: string): Promise<string>;
   /** Move the active tab within its column strip. */
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
   typeIntoActive(text: string): void;
   /** True when there is an active session in the active column. */
   hasActive(): boolean;
+  /** Return the active session ID for the active column, or null. */
+  getActiveSessionId(): string | null;
+  /** Wait until the accumulated output for `sessionId` matches `pattern`,
+   *  or reject after `timeoutMs` (default 15 s). Resolves immediately if
+   *  the pattern already matches. ANSI escape sequences are stripped before
+   *  matching so patterns can target visible text only. */
+  waitForReady(sessionId: string, pattern: RegExp, timeoutMs?: number): Promise<void>;
 }
 
 export function TerminalPane(props: {
@@ -110,6 +119,45 @@ export function TerminalPane(props: {
   // user-initiated close (× button) and process-exit close don't race.
   const closingTabs = new Set<string>();
 
+  // Accumulated raw pty output per session (ANSI codes included). Used by
+  // waitForReady to detect agent prompt markers without re-parsing xterm buffers.
+  const sessionData = new Map<string, string>();
+
+  // Pending readiness waiters keyed by session id.
+  const readyWaiters = new Map<
+    string,
+    {
+      pattern: RegExp;
+      resolve: () => void;
+      reject: (err: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }[]
+  >();
+
+  const stripAnsi = (text: string): string =>
+    text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\x1b\][0-9;]*[^\x07]*\x07/g, '');
+
+  const checkReadyWaiters = (sessionId: string): void => {
+    const waiters = readyWaiters.get(sessionId);
+    if (!waiters || waiters.length === 0) return;
+    const raw = sessionData.get(sessionId) || '';
+    const cleaned = stripAnsi(raw);
+    const remaining = waiters.filter((w) => {
+      if (w.pattern.test(cleaned)) {
+        clearTimeout(w.timer);
+        w.resolve();
+        return false;
+      }
+      return true;
+    });
+    if (remaining.length === 0) {
+      readyWaiters.delete(sessionId);
+      sessionData.delete(sessionId);
+    } else {
+      readyWaiters.set(sessionId, remaining);
+    }
+  };
+
   const xterms = new Map<
     string,
     {
@@ -146,6 +194,10 @@ export function TerminalPane(props: {
     element.style.display = 'none';
     const host = hostFor(column);
     if (host) host.appendChild(element);
+    if (replay) {
+      const prev = sessionData.get(id) || '';
+      sessionData.set(id, prev + replay);
+    }
     const mounted = mountXterm(element, id, {
       replay,
       prefs: props.xtermPrefs,
@@ -314,6 +366,15 @@ export function TerminalPane(props: {
       handle?.mounted.dispose();
       handle?.element.remove();
       xterms.delete(id);
+      sessionData.delete(id);
+      const waiters = readyWaiters.get(id);
+      if (waiters) {
+        for (const w of waiters) {
+          clearTimeout(w.timer);
+          w.reject(new Error('Session closed'));
+        }
+        readyWaiters.delete(id);
+      }
     }
     if (toDrop.length > 0) {
       setTabs((prev) => prev.filter((t) => !toDrop.includes(t.id)));
@@ -366,6 +427,7 @@ export function TerminalPane(props: {
   const spawnUserShell = async (
     agent: AgentChoice = null,
     sd: TermSide = 'my',
+    initialPrompt?: string,
   ): Promise<string> => {
     const label = uniqueLabel(agent?.name || 'shell');
     // Pin the label only when the caller picked an agent. The bare "New shell"
@@ -376,6 +438,7 @@ export function TerminalPane(props: {
         side: sd,
         agentSlug: agent?.slug,
         cwd: props.cwd ?? undefined,
+        initialPrompt,
       },
       label,
       { pinned: agent !== null },
@@ -392,6 +455,9 @@ export function TerminalPane(props: {
 
   // ---- live data + exit notification ----
   const offTermData = window.condash.onTermData(({ id, data }) => {
+    const prev = sessionData.get(id) || '';
+    sessionData.set(id, prev + data);
+    checkReadyWaiters(id);
     const handle = xterms.get(id);
     handle?.term.write(data);
   });
@@ -412,6 +478,14 @@ export function TerminalPane(props: {
       element.remove();
     }
     xterms.clear();
+    for (const waiters of readyWaiters.values()) {
+      for (const w of waiters) {
+        clearTimeout(w.timer);
+        w.reject(new Error('Pane closed'));
+      }
+    }
+    readyWaiters.clear();
+    sessionData.clear();
   });
 
   const closeTab = (id: string) => {
@@ -520,6 +594,27 @@ export function TerminalPane(props: {
       queueMicrotask(focusActive);
     },
     hasActive: () => Boolean(activeIdIn(activeColumn())),
+    getActiveSessionId: () => activeIdIn(activeColumn()),
+    waitForReady: (sessionId, pattern, timeoutMs = 15000) =>
+      new Promise<void>((resolve, reject) => {
+        const raw = sessionData.get(sessionId) || '';
+        if (pattern.test(stripAnsi(raw))) {
+          resolve();
+          return;
+        }
+        const timer = setTimeout(() => {
+          const waiters = readyWaiters.get(sessionId);
+          if (waiters) {
+            const filtered = waiters.filter((w) => w.resolve !== resolve);
+            if (filtered.length === 0) readyWaiters.delete(sessionId);
+            else readyWaiters.set(sessionId, filtered);
+          }
+          reject(new Error(`Timed out waiting for agent prompt (${timeoutMs}ms)`));
+        }, timeoutMs);
+        const entry = { pattern, resolve, reject, timer };
+        const existing = readyWaiters.get(sessionId) || [];
+        readyWaiters.set(sessionId, [...existing, entry]);
+      }),
   };
   onMount(() => props.registerHandle(handle));
   onCleanup(() => props.registerHandle(null));

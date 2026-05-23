@@ -297,11 +297,15 @@ export async function deleteAgent(conceptionPath: string, slug: string): Promise
  * from `agents/.env`. Throws `MissingAgentSecretError` (from buildSpawn) when a
  * declared secret is unresolved, and a plain error when the agent is unknown.
  */
-export async function resolveAgentSpawn(conceptionPath: string, slug: string): Promise<SpawnSpec> {
+export async function resolveAgentSpawn(
+  conceptionPath: string,
+  slug: string,
+  initialPrompt?: string,
+): Promise<SpawnSpec> {
   const def = await readAgent(conceptionPath, slug);
   if (!def) throw new Error(`unknown agent: ${slug}`);
   const env = await readEnv(conceptionPath);
-  const spec = buildSpawn(def, (key) => env[key] || undefined);
+  const spec = buildSpawn(def, (key) => env[key] || undefined, initialPrompt);
   // kimi: inject instructions at spawn by wrapping the plain instructions file
   // (default ~/.kimi/AGENTS.md) into a transient `--agent-file` YAML.
   if (def.harness === 'kimi' && def.config.instructionsFile?.trim()) {
