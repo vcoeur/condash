@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { OpenWithSlots, OpenWithSlotKey } from '../shared/types';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
+import { spawnEnv } from './shell-env';
 
 interface RawSlot {
   label?: string;
@@ -94,6 +95,9 @@ export async function launchOpenWith(
     detached: true,
     stdio: 'ignore',
     shell: false,
+    // Resolved login PATH so a launcher referencing a user-installed binary
+    // (e.g. a CLI on ~/.local/bin) resolves under GUI-launched condash.
+    env: await spawnEnv(),
   });
   child.on('error', (err) => {
     console.error(`[launchers] ${slot} → ${program}`, err);
@@ -121,6 +125,7 @@ export async function forceStopRepo(conceptionPath: string, repoName: string): P
     detached: true,
     stdio: 'ignore',
     shell: false,
+    env: await spawnEnv(),
   });
   await new Promise<void>((resolve, reject) => {
     child.on('error', (err) => reject(err));

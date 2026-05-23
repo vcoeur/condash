@@ -81,6 +81,14 @@ The shell process exited immediately. Three common causes:
 - The shell rc-file (`.bashrc`, `.zshrc`) errors out. Open the same shell in a separate terminal to see the error.
 - (Linux only) `node-pty` was built against the wrong Node ABI. This shouldn't happen for the packaged `.AppImage` / `.deb`. If it does, file an issue with the version.
 
+### A command on my PATH isn't found in the terminal
+
+condash resolves your **login-shell PATH** at startup and uses it for the embedded terminal, repo **Run** commands, and launchers — so CLIs you added in `~/.profile` / `~/.zprofile` (`opencode`, `~/bin` wrappers, `~/.local/bin` tools) resolve even when condash was started from the GUI. If a command still isn't found:
+
+- Confirm it's actually on PATH in a **login** shell: `bash -lic 'command -v <cmd>'`. If that fails too, the entry is missing from your login dotfiles — not a condash problem.
+- Resolution runs once at startup. If you edited a dotfile after launching condash, restart condash to re-resolve.
+- A broken rc-file can make the probe time out (5 s), leaving the inherited PATH. Open the same shell in a separate terminal to check for errors.
+
 ### `Ctrl+C` copies instead of sending SIGINT (or vice versa)
 
 `Ctrl+C` does **double duty**: copy the current selection if there is one, otherwise send SIGINT. So if you've highlighted some output and hit `Ctrl+C`, you'll copy it. Click somewhere else to clear the selection, then `Ctrl+C` interrupts.
