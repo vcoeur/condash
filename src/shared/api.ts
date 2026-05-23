@@ -246,9 +246,10 @@ export interface CondashApi {
   /** Spawn preview for the pane's "view full config" — auth vars show
    *  `$SECRET_ENV` references, never a token. Null when the agent is absent. */
   previewAgent(name: string): Promise<AgentSpawnPreview | null>;
-  /** Absolute path to `<conception>/agents/.env` (for the Settings-style
-   *  "open externally" button). Null when no conception is active. */
-  getAgentsEnvPath(): Promise<string | null>;
+  /** Create `<conception>/agents/.env` (seeding a commented template if it is
+   *  absent) and open it in the OS default editor. Returns the path, or null
+   *  when no conception is active; rejects on an open failure. */
+  openAgentsEnv(): Promise<string | null>;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;

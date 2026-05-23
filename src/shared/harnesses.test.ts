@@ -11,6 +11,7 @@ import {
   HARNESS_IDS,
   HARNESSES,
   MissingAgentSecretError,
+  previewCommandLine,
 } from './harnesses';
 
 const resolve = (env: Record<string, string>) => (name: string) => env[name] || undefined;
@@ -70,6 +71,16 @@ describe('buildSpawn — claude', () => {
   it('throws MissingAgentSecretError when the declared secret is unset', () => {
     expect(() => buildSpawn(def, resolve({}))).toThrow(MissingAgentSecretError);
   });
+
+  it('native (empty baseUrl) runs bare claude with no env or unsets', () => {
+    const native: AgentDef = {
+      harness: 'claude',
+      modelVariant: 'native',
+      config: CLAUDE_PRESETS.native.config,
+    };
+    const spec = buildSpawn(native, resolve({}));
+    expect(spec).toEqual({ command: 'claude', args: [], env: {}, unsetEnv: [] });
+  });
 });
 
 describe('buildSpawn — kimi-cli', () => {
@@ -78,6 +89,26 @@ describe('buildSpawn — kimi-cli', () => {
     const spec = buildSpawn(def, resolve({}));
     expect(spec.command).toBe('kimi');
     expect(spec.args).toEqual(['--agent-file', '~/.kimi/global-agent.yaml']);
+  });
+});
+
+describe('previewCommandLine', () => {
+  it('renders the binary + args with the token as a $ref, never the value', () => {
+    const def: AgentDef = {
+      harness: 'claude',
+      modelVariant: 'deepseek-v4-pro',
+      secretEnv: 'DEEPSEEK_API_KEY',
+      config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+    };
+    // claude takes no positional args, so the line is just the binary.
+    expect(previewCommandLine(def)).toBe('claude');
+    expect(
+      previewCommandLine({
+        harness: 'opencode',
+        modelVariant: 'deepseek-v4-pro',
+        config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
+      }),
+    ).toBe('opencode --model deepseek/deepseek-v4-pro');
   });
 });
 

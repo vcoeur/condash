@@ -137,6 +137,9 @@ export interface AgentListItem {
   modelVariant: string;
   secretEnv?: string;
   tokenPresent: boolean;
+  /** One-line preview of the command this agent launches (binary + args, token
+   *  not included), shown on the agent row. */
+  command: string;
 }
 
 /** Spawn preview for the Agents pane "view full config" panel. The secret value
@@ -193,11 +196,27 @@ export function buildSpawn(
   }
 }
 
+/** One-line `binary args` preview of how an agent launches (the token value is
+ *  never shown — auth vars resolve to a `$SECRET_ENV` reference). Pure, so the
+ *  renderer can compute a live preview without an IPC round-trip. */
+export function previewCommandLine(def: AgentDef): string {
+  const spec = buildSpawn(def, (name) => `$${name}`);
+  return [spec.command, ...spec.args].join(' ');
+}
+
 function buildClaudeSpawn(
   def: Extract<AgentDef, { harness: 'claude' }>,
   resolveSecret: (name: string) => string | undefined,
 ): SpawnSpec {
   const cfg = def.config;
+
+  // Native claude (no provider remap): an empty baseUrl means "run bare
+  // `claude`" — claude uses the user's own Anthropic login + model config, so
+  // condash sets nothing.
+  if (!cfg.baseUrl.trim()) {
+    return { command: HARNESSES.claude.binary, args: [], env: {}, unsetEnv: [] };
+  }
+
   const env: Record<string, string> = {};
   const unsetEnv: string[] = [];
 
@@ -289,6 +308,28 @@ export interface ClaudePreset {
  * variant; advanced overrides edit individual fields afterwards.
  */
 export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
+  native: {
+    // No provider remap: empty baseUrl + no token → condash runs bare `claude`,
+    // which uses the user's own Anthropic login and model config.
+    secretEnv: '',
+    config: {
+      baseUrl: '',
+      authStyle: 'bearer',
+      model: '',
+      smallFastModel: '',
+      haikuAlias: '',
+      sonnetAlias: '',
+      opusAlias: '',
+      subagentModel: '',
+      maxContextTokens: 0,
+      disableCaching: false,
+      disable1M: false,
+      disableAdaptiveThinking: false,
+      disableTelemetry: false,
+      disableErrorReporting: false,
+      disableClaudeApiSkill: false,
+    },
+  },
   'deepseek-v4-pro': {
     secretEnv: 'DEEPSEEK_API_KEY',
     config: {

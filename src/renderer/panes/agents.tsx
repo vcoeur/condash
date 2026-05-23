@@ -9,6 +9,7 @@ import {
   type KimiAgentConfig,
   type OpencodeAgentConfig,
   agentName,
+  buildSpawn,
   CLAUDE_PRESETS,
   defaultKimiConfig,
   defaultOpencodeConfig,
@@ -174,8 +175,13 @@ export function AgentsView(props: {
                     {(agent) => (
                       <div class="agents-row">
                         <div class="agents-row-main">
-                          <span class="agents-row-name">{agent.name}</span>
-                          <TokenBadge agent={agent} />
+                          <div class="agents-row-top">
+                            <span class="agents-row-name">{agent.name}</span>
+                            <TokenBadge agent={agent} />
+                          </div>
+                          <code class="agents-row-cmd" title="Command launched (token not shown)">
+                            {agent.command}
+                          </code>
                         </div>
                         <div class="agents-row-actions">
                           <button
@@ -368,7 +374,7 @@ function AgentEditor(props: {
 
       <Show when={d().harness === 'opencode'}>
         <label>
-          <span>Model (--model provider/model)</span>
+          <span>Default model (--model provider/model)</span>
           <input
             type="text"
             value={d().opencode.model}
@@ -389,6 +395,13 @@ function AgentEditor(props: {
           />
           <span>Disable external skills (OPENCODE_DISABLE_EXTERNAL_SKILLS)</span>
         </label>
+        <p class="agents-editor-note">
+          Sets opencode's <strong>default</strong> model via <code>--model</code>. The{' '}
+          <strong>plan</strong> and <strong>build</strong> agents take their own models from the
+          project's <code>opencode.json</code> (<code>agent.plan.model</code> /{' '}
+          <code>agent.build.model</code>); set <code>default_agent</code> there to pick which one
+          starts. condash launches opencode with <code>--model</code> only.
+        </p>
       </Show>
 
       <Show when={d().harness === 'claude'}>
@@ -480,6 +493,11 @@ function AgentEditor(props: {
           </For>
         </details>
       </Show>
+
+      <div class="agents-config-view agents-editor-preview">
+        <span class="agents-editor-preview-label">Will launch (as configured):</span>
+        <pre>{formatPreview(buildSpawn(buildDef(d()), (k) => `$${k}`))}</pre>
+      </div>
 
       <div class="agents-editor-actions">
         <button type="button" onClick={props.onSave}>

@@ -92,9 +92,49 @@
 
 .agents-row-main {
   display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.agents-row-top {
+  display: flex;
   align-items: center;
   gap: 0.6rem;
   min-width: 0;
+}
+
+.agents-row-cmd {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.agents-editor-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 0.5rem;
+}
+
+.agents-editor-note code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.agents-editor-preview {
+  margin-top: 0.5rem;
+}
+
+.agents-editor-preview-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
 }
 
 .agents-row-name {

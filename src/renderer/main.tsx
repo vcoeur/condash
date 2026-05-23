@@ -239,16 +239,14 @@ function App() {
     void terminalHandle?.spawnUserShell(item, 'my');
   };
 
-  /** Open `<conception>/agents/.env` in the OS default editor so the user can
-   *  fill in API tokens. Surfaces the path in a toast for the create-it case. */
+  /** Create (if missing) and open `<conception>/agents/.env` in the OS default
+   *  editor so the user can fill in API tokens. */
   const editAgentTokens = async (): Promise<void> => {
-    const envPath = await window.condash.getAgentsEnvPath();
-    if (!envPath) return;
     try {
-      await window.condash.openPath(envPath);
-      flashToast(`Editing ${envPath}`, 'info');
+      const envPath = await window.condash.openAgentsEnv();
+      if (envPath) flashToast(`Editing ${envPath}`, 'info');
     } catch (err) {
-      flashToast(`Create ${envPath} (NAME=value lines): ${(err as Error).message}`, 'error');
+      flashToast(`Could not open agents/.env: ${(err as Error).message}`, 'error');
     }
   };
 

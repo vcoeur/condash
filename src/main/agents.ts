@@ -16,6 +16,7 @@ import {
   type AgentSpawnPreview,
   agentName,
   buildSpawn,
+  previewCommandLine,
   type SpawnSpec,
 } from '../shared/harnesses';
 
@@ -71,6 +72,27 @@ function agentsDir(conceptionPath: string): string {
 /** Absolute path to the per-conception secrets file. */
 export function agentsEnvPath(conceptionPath: string): string {
   return join(agentsDir(conceptionPath), ENV_FILENAME);
+}
+
+const ENV_TEMPLATE = `# agents/.env — API tokens for condash agents (gitignored; never commit).
+# One NAME=value per line. Each agent's "secretEnv" names the variable it reads.
+# Example:
+# DEEPSEEK_API_KEY=sk-...
+# KIMI_API_KEY=sk-...
+`;
+
+/** Ensure `<conception>/agents/.env` exists (seeding a commented template on
+ *  first use) and return its path. Lets the "Edit tokens" button open a real
+ *  file instead of erroring on a missing path. */
+export async function ensureAgentsEnv(conceptionPath: string): Promise<string> {
+  await fs.mkdir(agentsDir(conceptionPath), { recursive: true });
+  const file = agentsEnvPath(conceptionPath);
+  try {
+    await fs.writeFile(file, ENV_TEMPLATE, { flag: 'wx' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+  return file;
 }
 
 /** Reject anything that isn't a bare, safe filename stem (no slashes / `..`). */
@@ -145,6 +167,7 @@ export async function listAgents(conceptionPath: string): Promise<AgentListItem[
         modelVariant: def.modelVariant,
         secretEnv: def.secretEnv,
         tokenPresent: def.secretEnv ? Boolean(env[def.secretEnv]) : true,
+        command: previewCommandLine(def),
       });
     } catch (err) {
       console.error(`[agents] skipping ${file}: ${(err as Error).message}`);

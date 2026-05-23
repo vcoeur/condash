@@ -1,8 +1,8 @@
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import type { AgentDef } from '../../shared/harnesses';
 import {
-  agentsEnvPath,
   deleteAgent,
+  ensureAgentsEnv,
   listAgents,
   previewAgent,
   readAgent,
@@ -35,5 +35,14 @@ export function registerAgentsIpc(): void {
     withConception((c) => previewAgent(c, name), null),
   );
 
-  ipcMain.handle('getAgentsEnvPath', () => withConception((c) => agentsEnvPath(c), null));
+  // Create agents/.env (with a commented template) if missing, then open it in
+  // the OS default editor. Returns the path; throws on an openPath failure.
+  ipcMain.handle('openAgentsEnv', () =>
+    withConception(async (c) => {
+      const file = await ensureAgentsEnv(c);
+      const err = await shell.openPath(file);
+      if (err) throw new Error(err);
+      return file;
+    }, null),
+  );
 }

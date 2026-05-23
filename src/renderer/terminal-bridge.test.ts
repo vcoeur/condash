@@ -41,12 +41,14 @@ const claudeAgent: AgentListItem = {
   modelVariant: 'deepseek-v4-pro',
   secretEnv: 'DEEPSEEK_API_KEY',
   tokenPresent: true,
+  command: 'claude',
 };
 const kimiAgent: AgentListItem = {
   name: 'kimi-cli-native',
   harness: 'kimi',
   modelVariant: 'native',
   tokenPresent: true,
+  command: 'kimi --agent-file ~/.kimi/global-agent.yaml',
 };
 
 const sampleProject: Project = {
