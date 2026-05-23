@@ -97,6 +97,35 @@ describe('opencode build/plan persistence', () => {
   });
 });
 
+describe('kimi instructions injection', () => {
+  it('wraps instructionsFile into a transient --agent-file at spawn', async () => {
+    const mdPath = join(dir, 'kimi-instructions.md');
+    await fs.writeFile(mdPath, '# Rules\nbe nice');
+    await writeAgent(dir, {
+      harness: 'kimi',
+      modelVariant: 'native',
+      config: { instructionsFile: mdPath, model: 'kimi-k2.6' },
+    });
+    const spec = await resolveAgentSpawn(dir, 'kimi-cli-native');
+    expect(spec.command).toBe('kimi');
+    expect(spec.args[0]).toBe('--agent-file');
+    const generated = await fs.readFile(spec.args[1], 'utf8');
+    expect(generated).toContain('ROLE_ADDITIONAL: |');
+    expect(generated).toContain('be nice');
+    expect(spec.args).toContain('--model'); // flags still follow the injected agent-file
+  });
+
+  it('omits --agent-file when the instructions file is absent', async () => {
+    await writeAgent(dir, {
+      harness: 'kimi',
+      modelVariant: 'native',
+      config: { instructionsFile: join(dir, 'missing.md') },
+    });
+    const spec = await resolveAgentSpawn(dir, 'kimi-cli-native');
+    expect(spec.args).not.toContain('--agent-file');
+  });
+});
+
 describe('agents/.env editor', () => {
   it('returns a commented template when absent, then round-trips writes', async () => {
     expect(await readAgentsEnv(dir)).toContain('agents/.env');

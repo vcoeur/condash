@@ -99,8 +99,11 @@ export interface ClaudeAgentConfig {
 
 /** kimi-cli harness config. */
 export interface KimiAgentConfig {
-  /** `--agent-file <file>` — custom agent YAML. Blank = omit the flag. */
-  agentFile: string;
+  /** Plain markdown injected as the agent's system instructions. condash reads
+   *  it at spawn and wraps it into a transient `--agent-file` (kimi's
+   *  `agent.system_prompt_args.ROLE_ADDITIONAL`). Default `~/.kimi/AGENTS.md`,
+   *  written by `condash skills install`. Blank = no injected instructions. */
+  instructionsFile?: string;
   /** `--model <model>`. Blank = use the kimi config-file default. */
   model?: string;
   /** `--thinking` (true) / `--no-thinking` (false) / config default (undefined). */
@@ -304,7 +307,9 @@ function buildKimiSpawn(
 ): SpawnSpec {
   const cfg = def.config;
   const args: string[] = [];
-  if (cfg.agentFile.trim()) args.push('--agent-file', cfg.agentFile);
+  // Note: `--agent-file` is added by the main-process launcher
+  // (`resolveAgentSpawn`), which generates a transient agent-file from
+  // `instructionsFile` at spawn — it isn't known to this pure builder.
   if (cfg.model?.trim()) args.push('--model', cfg.model);
   if (cfg.thinking === true) args.push('--thinking');
   else if (cfg.thinking === false) args.push('--no-thinking');
@@ -454,7 +459,15 @@ export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
 
 /** Default kimi-cli config. */
 export function defaultKimiConfig(): KimiAgentConfig {
-  return { agentFile: '~/.kimi/global-agent.yaml' };
+  return { instructionsFile: '~/.kimi/AGENTS.md' };
+}
+
+/** Build the kimi agent-file YAML that injects `instructions` as the agent's
+ *  `system_prompt_args.ROLE_ADDITIONAL` (extending the default agent). The
+ *  launcher writes this to a transient file and passes it as `--agent-file`. */
+export function kimiAgentFileYaml(instructions: string): string {
+  const indented = instructions.replace(/\n/g, '\n      ');
+  return `version: 1\nagent:\n  extend: default\n  system_prompt_args:\n    ROLE_ADDITIONAL: |\n      ${indented}\n`;
 }
 
 /** Default opencode config for a `<provider>/<model>` string. */
@@ -474,17 +487,22 @@ export interface OpencodePreset {
  * premium model and defaults everything else to the cheap one — exactly the
  * `opencode-deepseek-auto` wrapper's behaviour.
  */
+// opencode authenticates providers through its own auth store (`opencode auth
+// login`), not an env-var key — the agentsconf `opencode-*` wrappers carried no
+// key for exactly this reason. So presets leave `secretEnv` empty; injecting a
+// stray `DEEPSEEK_API_KEY` can collide with opencode's OAuth and hang launch.
+// Set a token only if your provider genuinely reads one from the environment.
 export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
   'deepseek-v4-pro': {
-    secretEnv: 'DEEPSEEK_API_KEY',
+    secretEnv: '',
     config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true },
   },
   'deepseek-v4-flash': {
-    secretEnv: 'DEEPSEEK_API_KEY',
+    secretEnv: '',
     config: { model: 'deepseek/deepseek-v4-flash', disableExternalSkills: true },
   },
   'deepseek-auto': {
-    secretEnv: 'DEEPSEEK_API_KEY',
+    secretEnv: '',
     config: {
       model: 'deepseek/deepseek-v4-flash',
       buildModel: 'deepseek/deepseek-v4-pro',

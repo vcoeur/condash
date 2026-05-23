@@ -432,15 +432,24 @@ function AgentEditor(props: {
 
       <Show when={d().harness === 'kimi'}>
         <label>
-          <span>Agent file (--agent-file)</span>
+          <span>Instructions file (injected as system prompt)</span>
           <input
             type="text"
-            value={d().kimi.agentFile}
+            placeholder="~/.kimi/AGENTS.md (blank = none)"
+            value={d().kimi.instructionsFile ?? ''}
             onInput={(e) =>
-              props.patch({ kimi: { ...d().kimi, agentFile: e.currentTarget.value } })
+              props.patch({
+                kimi: { ...d().kimi, instructionsFile: e.currentTarget.value || undefined },
+              })
             }
           />
         </label>
+        <p class="agents-editor-note">
+          condash reads this plain markdown at launch and wraps it into a transient{' '}
+          <code>--agent-file</code> (kimi's <code>ROLE_ADDITIONAL</code>) — so it's not shown in the
+          command preview below. <code>condash skills install</code> writes{' '}
+          <code>~/.kimi/AGENTS.md</code>.
+        </p>
         <label>
           <span>Model (--model, blank = config default)</span>
           <input
@@ -572,7 +581,9 @@ function AgentEditor(props: {
           condash inlines this as <code>OPENCODE_CONFIG_CONTENT</code> (no{' '}
           <code>opencode.json</code> needed): top-level <code>model</code> is the default;
           build/plan overrides become <code>agent.build.model</code> / <code>agent.plan.model</code>
-          . Extra JSON is merged underneath.
+          . Extra JSON is merged underneath. Auth via <code>opencode auth login</code> — leave the
+          token field blank unless your provider reads a key from the environment (a stray key can
+          collide with opencode's OAuth).
         </p>
       </Show>
 

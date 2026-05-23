@@ -8,6 +8,7 @@
  * process through the spawn environment, never the renderer.
  */
 import { promises as fs } from 'fs';
+import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
 import {
@@ -16,6 +17,7 @@ import {
   type AgentSpawnPreview,
   agentName,
   buildSpawn,
+  kimiAgentFileYaml,
   previewCommandLine,
   type SpawnSpec,
 } from '../shared/harnesses';
@@ -42,7 +44,7 @@ const claudeConfigSchema = z.object({
 });
 
 const kimiConfigSchema = z.object({
-  agentFile: z.string(),
+  instructionsFile: z.string().optional(),
   model: z.string().optional(),
   thinking: z.boolean().optional(),
   plan: z.boolean().optional(),
@@ -257,7 +259,36 @@ export async function resolveAgentSpawn(conceptionPath: string, name: string): P
   const def = await readAgent(conceptionPath, name);
   if (!def) throw new Error(`unknown agent: ${name}`);
   const env = await readEnv(conceptionPath);
-  return buildSpawn(def, (key) => env[key] || undefined);
+  const spec = buildSpawn(def, (key) => env[key] || undefined);
+  // kimi: inject instructions at spawn by wrapping the plain instructions file
+  // (default ~/.kimi/AGENTS.md) into a transient `--agent-file` YAML.
+  if (def.harness === 'kimi' && def.config.instructionsFile?.trim()) {
+    const agentFile = await generateKimiAgentFile(def.config.instructionsFile, name);
+    if (agentFile) spec.args = ['--agent-file', agentFile, ...spec.args];
+  }
+  return spec;
+}
+
+/** Read the plain kimi instructions file and write a transient agent-file YAML
+ *  to the OS temp dir, returning its path. Returns null when the instructions
+ *  file is absent (kimi then falls back to its own defaults). */
+async function generateKimiAgentFile(
+  instructionsFile: string,
+  name: string,
+): Promise<string | null> {
+  const expanded = instructionsFile.startsWith('~/')
+    ? join(homedir(), instructionsFile.slice(2))
+    : instructionsFile;
+  let instructions: string;
+  try {
+    instructions = await fs.readFile(expanded, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+  const out = join(tmpdir(), `condash-kimi-${name.replace(/[^A-Za-z0-9._-]/g, '_')}.agent.yaml`);
+  await fs.writeFile(out, kimiAgentFileYaml(instructions), 'utf8');
+  return out;
 }
 
 /**

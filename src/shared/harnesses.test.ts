@@ -10,6 +10,7 @@ import {
   defaultOpencodeConfig,
   HARNESS_IDS,
   HARNESSES,
+  kimiAgentFileYaml,
   MissingAgentSecretError,
   previewCommandLine,
 } from './harnesses';
@@ -84,11 +85,18 @@ describe('buildSpawn — claude', () => {
 });
 
 describe('buildSpawn — kimi-cli', () => {
-  it('points kimi at its --agent-file YAML', () => {
+  it('spawns bare kimi — the --agent-file is injected at launch, not by the pure builder', () => {
     const def: AgentDef = { harness: 'kimi', modelVariant: 'native', config: defaultKimiConfig() };
     const spec = buildSpawn(def, resolve({}));
     expect(spec.command).toBe('kimi');
-    expect(spec.args).toEqual(['--agent-file', '~/.kimi/global-agent.yaml']);
+    expect(spec.args).toEqual([]);
+  });
+
+  it('wraps instructions into an agent-file YAML (ROLE_ADDITIONAL)', () => {
+    const yaml = kimiAgentFileYaml('# Instructions\nline two');
+    expect(yaml).toContain('ROLE_ADDITIONAL: |');
+    expect(yaml).toContain('# Instructions');
+    expect(yaml).toContain('extend: default');
   });
 });
 
@@ -185,13 +193,13 @@ describe('buildSpawn — opencode/kimi token injection', () => {
 });
 
 describe('buildSpawn — kimi extra flags', () => {
-  it('adds --model, --thinking, --plan, and inline --config when set', () => {
+  it('adds --model, --thinking, --plan, and inline --config when set (no --agent-file here)', () => {
     const spec = buildSpawn(
       {
         harness: 'kimi',
         modelVariant: 'k2',
         config: {
-          agentFile: '~/.kimi/global-agent.yaml',
+          instructionsFile: '~/.kimi/AGENTS.md',
           model: 'kimi-k2.6',
           thinking: true,
           plan: true,
@@ -201,9 +209,8 @@ describe('buildSpawn — kimi extra flags', () => {
       resolve({}),
     );
     expect(spec.command).toBe('kimi');
+    // `--agent-file` is added by the launcher (resolveAgentSpawn), not here.
     expect(spec.args).toEqual([
-      '--agent-file',
-      '~/.kimi/global-agent.yaml',
       '--model',
       'kimi-k2.6',
       '--thinking',
