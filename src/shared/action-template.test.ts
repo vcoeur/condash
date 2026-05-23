@@ -135,4 +135,36 @@ describe('substitute', () => {
       'start project for 2026-05-18 in conception',
     );
   });
+
+  describe('{KEY:default} fallback', () => {
+    it('uses the context value over the default when present', () => {
+      expect(substitute('{AREA:docs/}', { AREA: 'src/' })).toBe('src/');
+    });
+
+    it('falls back to the default when the key is absent', () => {
+      expect(substitute('{AREA:docs/}', {})).toBe('docs/');
+    });
+
+    it('uses an empty default for {KEY:}', () => {
+      expect(substitute('a{X:}b', {})).toBe('ab');
+    });
+
+    it('allows spaces in the default value', () => {
+      expect(substitute('focus: {AREA:CLAUDE.md and docs/}', {})).toBe(
+        'focus: CLAUDE.md and docs/',
+      );
+    });
+
+    it('leaves a default-less unknown token verbatim', () => {
+      expect(substitute('{UNSET}', {})).toBe('{UNSET}');
+    });
+
+    it('prefers an empty-string context value over the default', () => {
+      expect(substitute('{AREA:docs/}', { AREA: '' })).toBe('');
+    });
+
+    it('resolves a mix of filled, defaulted, and verbatim tokens in one pass', () => {
+      expect(substitute('{a} {b:two} {c}', { a: 'one' })).toBe('one two {c}');
+    });
+  });
 });

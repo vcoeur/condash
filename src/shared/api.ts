@@ -1,4 +1,5 @@
 import type { AgentDef, AgentListItem, AgentSpawnPreview } from './harnesses';
+import type { TaskDef, TaskListItem } from './tasks';
 import type {
   CardMinWidthPrefs,
   ConceptionInitState,
@@ -253,6 +254,18 @@ export interface CondashApi {
   readAgentsEnv(): Promise<string | null>;
   /** Write the token editor's contents back to `<conception>/agents/.env`. */
   writeAgentsEnv(content: string): Promise<void>;
+
+  /** List tasks defined under `<conception>/tasks/*`, each with its referenced
+   *  agent, agent presence, and parsed markers. Empty when no conception. */
+  listTasks(): Promise<TaskListItem[]>;
+  /** Read one task by slug (name / agent / submit / prompt). Null when absent. */
+  readTask(slug: string): Promise<TaskDef | null>;
+  /** Create / update a task directory (`task.json` + `prompt.md`). When
+   *  `previousSlug` differs from `slug`, the old directory is removed (rename).
+   *  Returns the resolved slug. */
+  writeTask(slug: string, def: TaskDef, previousSlug?: string): Promise<string>;
+  /** Delete a task directory by slug. */
+  deleteTask(slug: string): Promise<void>;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;

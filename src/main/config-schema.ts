@@ -208,7 +208,9 @@ const layoutSchema = z
     // Optional: layouts persisted before `leftView` existed omit it; the read
     // path back-fills from DEFAULT_LAYOUT. The legacy `'outputs'` value (v3.20.0)
     // is migrated to `'deliverables'` in migrateRawSettings.
-    leftView: z.union([z.literal('projects'), z.literal('deliverables')]).optional(),
+    leftView: z
+      .union([z.literal('projects'), z.literal('tasks'), z.literal('deliverables')])
+      .optional(),
     working: z.union([
       z.literal('code'),
       z.literal('knowledge'),

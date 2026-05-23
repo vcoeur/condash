@@ -186,8 +186,8 @@ export type WorkingSurface =
   | null;
 
 /** Left-band view — which pane fills the left band when it is visible.
- * Selected by the left edge-strip handles (Projects / Deliverables). */
-export type LeftView = 'projects' | 'deliverables';
+ * Selected by the left edge-strip handles (Projects / Tasks / Deliverables). */
+export type LeftView = 'projects' | 'tasks' | 'deliverables';
 
 /** Active tab in the Skills pane. */
 export type SkillTab = 'generic' | 'claude' | 'kimi' | 'opencode';

@@ -42,6 +42,10 @@ export interface TerminalBridge {
    *  "Paste path → Term" button — re-uses the same "open pane, spawn
    *  shell if needed" dance as `handleWorkOn`. Does not press Enter. */
   handlePasteToTerm: (text: string) => Promise<void>;
+  /** Run a Tasks-pane task: spawn a fresh tab running `agentName`, type the
+   *  already-substituted `text`, and press Enter when `submit` is true. Same
+   *  spawn-and-type path as an agent-bound project action. */
+  runTask: (agentName: string, text: string, submit: boolean) => Promise<void>;
 }
 
 /** Upper bound on animation frames waited for the pane to mount after
@@ -106,17 +110,15 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     return handle;
   };
 
-  /** Action-aware preamble: when the action binds an agent (`action.agent`,
-   *  one of the agents under `<conception>/agents/`), spawn a fresh tab
-   *  running that agent on every click — keeps "Start new project →
-   *  claude-deepseek-v4-pro" predictable instead of typing into whatever tab
-   *  happens to be focused. Falls back to `ensureTermAndShell()` (a plain
-   *  shell) when no agent is bound or the bound name no longer resolves. */
-  const ensureTermForAction = async (
-    action: ActionTemplate,
-  ): Promise<TerminalPaneHandle | null> => {
-    const agent = findAgentByName(deps.agents(), action.agent);
-    if (!agent) return ensureTermAndShell();
+  /** Spawn a fresh tab running `agent` and settle. Two-step settle:
+   *  (1) reconcile needs at least one tick to receive the onTermSessions
+   *  snapshot, attach the xterm, and set the new tab as active;
+   *  (2) the agent process itself (e.g. `claude`, `kimi`) needs time to print
+   *  its prompt before it will accept typed input — typing during init drops
+   *  characters or lands in a not-yet-ready REPL. AGENT_SPAWN_SETTLE_MS covers
+   *  both. setTimeout (not requestAnimationFrame) so this stays callable in
+   *  unit tests (jsdom env has no rAF). */
+  const spawnAgentTab = async (agent: AgentListItem): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -130,16 +132,22 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast(`Could not spawn ${agent.name}: ${(err as Error).message}`, 'error');
       return null;
     }
-    // Two-step settle: (1) reconcile needs at least one tick to receive
-    // the onTermSessions snapshot, attach the xterm, and set the new tab
-    // as active; (2) the agent process itself (e.g. `claude`, `kimi`)
-    // needs time to print its prompt before it will accept typed input —
-    // typing during init drops characters or lands in a not-yet-ready
-    // REPL. AGENT_SPAWN_SETTLE_MS covers both. setTimeout (not
-    // requestAnimationFrame) so this stays callable in unit tests
-    // (jsdom env has no rAF).
     await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
     return handle;
+  };
+
+  /** Action-aware preamble: when the action binds an agent (`action.agent`,
+   *  one of the agents under `<conception>/agents/`), spawn a fresh tab
+   *  running that agent on every click — keeps "Start new project →
+   *  claude-deepseek-v4-pro" predictable instead of typing into whatever tab
+   *  happens to be focused. Falls back to `ensureTermAndShell()` (a plain
+   *  shell) when no agent is bound or the bound name no longer resolves. */
+  const ensureTermForAction = async (
+    action: ActionTemplate,
+  ): Promise<TerminalPaneHandle | null> => {
+    const agent = findAgentByName(deps.agents(), action.agent);
+    if (!agent) return ensureTermAndShell();
+    return spawnAgentTab(agent);
   };
 
   const handleWorkOn = async (project: Project): Promise<void> => {
@@ -247,6 +255,23 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
+  const runTask = async (agentName: string, text: string, submit: boolean): Promise<void> => {
+    const agent = findAgentByName(deps.agents(), agentName);
+    if (!agent) {
+      deps.flashToast(`Task agent not found: ${agentName}`, 'error');
+      return;
+    }
+    const handle = await spawnAgentTab(agent);
+    if (!handle) return;
+    handle.typeIntoActive(text);
+    if (submit) {
+      // Small delay so the terminal has time to ingest the typed text
+      // before the Enter key arrives.
+      await new Promise((r) => setTimeout(r, 50));
+      handle.typeIntoActive('\r');
+    }
+  };
+
   return {
     handleWorkOn,
     handleProjectAction,
@@ -254,5 +279,6 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handleOpenInTerm,
     handleScreenshotPaste,
     handlePasteToTerm,
+    runTask,
   };
 }
