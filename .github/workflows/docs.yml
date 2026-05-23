@@ -48,7 +48,11 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  # Cancel a still-pending pages deploy when a newer run supersedes it. The apt
+  # index + mkdocs site are rebuilt deterministically from scratch every run, so
+  # the latest run always wins; a stale queued/in-progress run must not block or
+  # clobber it. (Previously false, which let a wedged run jam the whole group.)
+  cancel-in-progress: true
 
 env:
   APT_SIGNING_KEY_FPR: BC6C98E8D6D80FFBC408057FD1D69E3E4A005621
