@@ -1,17 +1,18 @@
 # The Skills pane
 
-The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot (`Ctrl+L` to switch in). It surfaces three trees through a single tab bar at the top of the pane — **Generic** (agent-neutral source skillspecs), **Claude** (compiled output for Claude Code), and **Kimi** (compiled output for Kimi CLI).
+The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot (`Ctrl+L` to switch in). It surfaces four trees through a single tab bar at the top of the pane — **Generic** (agent-neutral source skillspecs), **Claude** (compiled output for Claude Code), **Kimi** (compiled output for Kimi CLI), and **OpenCode** (compiled output for OpenCode).
 
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-light.png#only-light)
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-dark.png#only-dark)
 
-## The three tabs
+## The four tabs
 
 | Tab | Reads from | Editable? | Notes |
 |---|---|---|---|
 | **Generic** | `<conception>/.agents/skills/` | Yes | Agent-neutral source — `.md` body files and `.yaml` spec / target overlays. |
 | **Claude** | `<conception>/<skills_path>` (default `.claude/skills/`) | Yes (but see warning) | Compiled output. Edits here are overwritten on the next `condash skills install`. |
 | **Kimi** | `<conception>/.kimi/skills/` | No | Compiled output. Always regenerated from source — buttons are hidden. |
+| **OpenCode** | `<conception>/.opencode/skills/` | No | Compiled output. Always regenerated from source — buttons are hidden. |
 
 The currently-selected tab is remembered per-machine in `settings.json` (`skillsActiveTab`), so the next launch reopens the same view. The first launch after the tabs ship defaults to **Claude** to match the pre-tabs behaviour.
 
@@ -40,6 +41,18 @@ Identical to the pre-tabs Skills pane:
 
 Same layout as Claude, but rooted at `.kimi/skills/` and without the synthetic `CLAUDE.md` injection (Kimi uses `AGENTS.md`, not `CLAUDE.md`). The tab is read-only: tree-mutation buttons are suppressed and the main-process resolver refuses to write under `.kimi/skills/`. Edit the matching source skillspec under `.agents/skills/` and re-run `condash skills install` to regenerate.
 
+### OpenCode (compiled)
+
+Same layout as Kimi, rooted at `.opencode/skills/`, with a synthetic `AGENTS.md` root entry. Read-only and regenerated from `.agents/skills/` on every `condash skills install`.
+
+**Telling OpenCode to read condash's config.** condash compiles the conception's agent config to `.opencode/AGENTS.md` (project scope) and `~/.config/opencode/AGENTS.md` (user scope, with `--user`). OpenCode reads the global `~/.config/opencode/AGENTS.md` automatically. It does **not** auto-discover the project-scope `.opencode/AGENTS.md` (condash never touches the conception-root `AGENTS.md`, which it manages separately), so point OpenCode at it from the project's `opencode.json`:
+
+```json
+{ "instructions": [".opencode/AGENTS.md"] }
+```
+
+Skills need no such step — OpenCode discovers `.opencode/skills/` (and `~/.config/opencode/skills/`) on its own. But OpenCode *also* scans `.claude/skills/` and `.agents/skills/`, and resolves a duplicate skill name by a non-deterministic race (no stable precedence), so run OpenCode with `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` to have it read only its own dirs and treat condash's `.opencode/` output as the single source.
+
 ## Editing skills
 
 Click any card to open the file in the note modal — the same editor used elsewhere in condash, with atomic-write save through `writeNote`. Wikilinks and relative markdown links route through the in-modal navigator just like Knowledge files.
@@ -53,6 +66,7 @@ Each tree carries its own `.condash-skills.json` manifest, populated by `condash
 - `<conception>/.agents/.condash-skills.json` — source refuse-on-edit tracking (CLI internal).
 - `<conception>/<skills_path>/.condash-skills.json` — Claude compiled tracking.
 - `<conception>/.kimi/skills/.condash-skills.json` — Kimi compiled tracking.
+- `<conception>/.opencode/skills/.condash-skills.json` — OpenCode compiled tracking.
 
 The pane uses each manifest to flag two states on the matching tab:
 
@@ -63,7 +77,7 @@ The flags are informational only — local edits are never blocked. They exist s
 
 ## Configuration
 
-`skills_path` controls only the **Claude** tab's root directory. The Generic and Kimi tabs always read from `.agents/skills/` and `.kimi/skills/` respectively — those paths are not user-configurable.
+`skills_path` controls only the **Claude** tab's root directory. The Generic, Kimi, and OpenCode tabs always read from `.agents/skills/`, `.kimi/skills/`, and `.opencode/skills/` respectively — those paths are not user-configurable.
 
 Set the Claude tab's directory by editing `.condash/settings.json` at the conception root (per-tree, per-host), or via **Settings → Workspace → Skills directory**. The value lives on the tree side; the global `settings.json` carries only defaults.
 

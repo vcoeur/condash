@@ -70,6 +70,12 @@ export function userSourceRoot(): string {
 }
 
 export function userTargetRoot(target: CompileTarget): string {
+  // OpenCode reads user skills from the XDG config dir, not `~/.opencode/skills`.
+  if (target === 'opencode') {
+    return (
+      process.env.CONDASH_USER_OPENCODE_ROOT ?? join(homedir(), '.config', 'opencode', 'skills')
+    );
+  }
   const envName = target === 'claude' ? 'CONDASH_USER_CLAUDE_ROOT' : 'CONDASH_USER_KIMI_ROOT';
   return process.env[envName] ?? join(homedir(), `.${target}`, 'skills');
 }
@@ -106,6 +112,13 @@ export function userAgentConfigRoot(): string {
 export function userAgentConfigOutput(target: AgentsMdTarget): string {
   if (target === 'claude') {
     return process.env.CONDASH_USER_CLAUDE_AGENT_OUTPUT ?? join(homedir(), '.claude', 'CLAUDE.md');
+  }
+  if (target === 'opencode') {
+    // OpenCode reads global rules from ~/.config/opencode/AGENTS.md.
+    return (
+      process.env.CONDASH_USER_OPENCODE_AGENT_OUTPUT ??
+      join(homedir(), '.config', 'opencode', 'AGENTS.md')
+    );
   }
   // Kimi: write inline into the global-agent.yaml's ROLE_ADDITIONAL field, not a standalone markdown file.
   return (

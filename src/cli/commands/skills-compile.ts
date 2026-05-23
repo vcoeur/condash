@@ -53,7 +53,11 @@ export async function compileAllSkillspecs(opts: CompileAllOptions): Promise<Com
     string,
     { files: Record<string, { sha256: string; shippedVersion: string }> }
   >;
-  const compiledManifests: Record<CompileTarget, CompiledManifest> = { claude: {}, kimi: {} };
+  const compiledManifests: Record<CompileTarget, CompiledManifest> = {
+    claude: {},
+    kimi: {},
+    opencode: {},
+  };
   const compiled: CompileAllResult['compiled'] = [];
 
   for (const skillName of skillNames) {

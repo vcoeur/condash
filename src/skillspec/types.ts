@@ -5,8 +5,9 @@
  * `<conception>/.agents/skills/<name>/` (or `~/.config/agents/skills/<name>/`)
  * that compiles into agent-native skill formats:
  *
- *   - Claude → `<conception>/.claude/skills/<name>/SKILL.md` + sibling assets
- *   - Kimi   → `<conception>/.kimi/skills/<name>/SKILL.md`   + sibling assets
+ *   - Claude   → `<conception>/.claude/skills/<name>/SKILL.md`   + sibling assets
+ *   - Kimi     → `<conception>/.kimi/skills/<name>/SKILL.md`     + sibling assets
+ *   - OpenCode → `<conception>/.opencode/skills/<name>/SKILL.md` + sibling assets
  *
  * Source layout:
  *
@@ -16,14 +17,15 @@
  *   ├── body.md                  # required — SKILL.md body without frontmatter
  *   ├── targets/                 # optional — per-target frontmatter overlays
  *   │   ├── claude.yaml
- *   │   └── kimi.yaml
+ *   │   ├── kimi.yaml
+ *   │   └── opencode.yaml
  *   └── …                        # any other file/dir is a sibling asset,
  *                                 #   copied verbatim under the same path.
  */
 
-export type CompileTarget = 'claude' | 'kimi';
+export type CompileTarget = 'claude' | 'kimi' | 'opencode';
 
-export const COMPILE_TARGETS: readonly CompileTarget[] = ['claude', 'kimi'] as const;
+export const COMPILE_TARGETS: readonly CompileTarget[] = ['claude', 'kimi', 'opencode'] as const;
 
 /**
  * Parsed source directory. `spec` and `targets[t]` carry frontmatter as parsed

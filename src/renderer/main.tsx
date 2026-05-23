@@ -191,6 +191,11 @@ function App() {
       fetcher: () => window.condash.readSkillsTree('kimi'),
       key: 'relPath',
     }),
+    opencode: createTreeStore<SkillNode>({
+      conceptionPath,
+      fetcher: () => window.condash.readSkillsTree('opencode'),
+      key: 'relPath',
+    }),
   };
   const { skillsActiveTab, handleSkillsTabSelect, activeSkillsRoot } = useSkillsTab({
     skillsStores,

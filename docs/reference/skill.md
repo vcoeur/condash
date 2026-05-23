@@ -81,6 +81,7 @@ Install or refresh the shipped skills. Use it after upgrading condash to pull up
 | `<conception>/.agents/.condash-skills.json` | Source refuse-on-edit (CLI internal) | `skills.<name>.source` |
 | `<conception>/.claude/skills/.condash-skills.json` | Claude compiled tracking | `skills.<name>.files` |
 | `<conception>/.kimi/skills/.condash-skills.json` | Kimi compiled tracking | `skills.<name>.files` |
+| `<conception>/.opencode/skills/.condash-skills.json` | OpenCode compiled tracking | `skills.<name>.files` |
 
 The source manifest moved from `.claude/skills/.condash-skills.json` to `.agents/.condash-skills.json` when the skillspec compiler shipped. `readManifest` migrates the legacy path on first read (one-shot, transparent — the legacy file is moved, not copied).
 

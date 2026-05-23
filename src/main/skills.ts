@@ -99,6 +99,36 @@ export async function readKimiSkillsTree(conceptionPath: string): Promise<SkillN
 }
 
 /**
+ * Read the OpenCode skills tree at `<conceptionPath>/.opencode/skills/`.
+ * `.md`-only filter like the other compiled tabs. Injects a synthetic
+ * root-level entry for the conception's root `AGENTS.md` (OpenCode's context
+ * file, emitted by `condash skills install`) when present.
+ */
+export async function readOpencodeSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
+  const root = join(conceptionPath, '.opencode', 'skills');
+  try {
+    await fs.access(root);
+  } catch {
+    return null;
+  }
+  const shipped = await buildShippedLookup(root);
+  const tree = await walk(
+    root,
+    '',
+    'skills',
+    new Set<string>(),
+    shipped,
+    root,
+    /* acceptYaml */ false,
+  );
+  const agentsEntries = await readConceptionOpencodeAgentsMd(conceptionPath);
+  if (agentsEntries.length > 0) {
+    tree.children = [...agentsEntries, ...(tree.children ?? [])];
+  }
+  return tree;
+}
+
+/**
  * Router that delegates to the tab-specific reader.
  */
 export async function readSkillsTreeForTab(
@@ -108,6 +138,7 @@ export async function readSkillsTreeForTab(
 ): Promise<SkillNode | null> {
   if (tab === 'generic') return readGenericSkillsTree(conceptionPath);
   if (tab === 'kimi') return readKimiSkillsTree(conceptionPath);
+  if (tab === 'opencode') return readOpencodeSkillsTree(conceptionPath);
   return readSkillsTree(conceptionPath, skillsRelPath);
 }
 
@@ -131,6 +162,15 @@ async function readConceptionAgentsMd(conceptionPath: string): Promise<SkillNode
   return readConceptionAgentConfig(conceptionPath, [
     { rel: '__kimi__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md') },
     { rel: '__kimi__/.kimi/AGENTS.md', abs: join(conceptionPath, '.kimi', 'AGENTS.md') },
+  ]);
+}
+
+/** Probe `<conceptionPath>/AGENTS.md` (OpenCode's root context file) and
+ *  return a synthetic SkillNode entry when it exists. Sentinel-prefixed
+ *  `__opencode__/` so it can't collide with a real skills-tree path. */
+async function readConceptionOpencodeAgentsMd(conceptionPath: string): Promise<SkillNode[]> {
+  return readConceptionAgentConfig(conceptionPath, [
+    { rel: '__opencode__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md') },
   ]);
 }
 

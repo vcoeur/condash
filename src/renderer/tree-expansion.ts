@@ -43,6 +43,9 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
     new Set(),
   );
   const [skillsKimiExpanded, setSkillsKimiExpanded] = createSignal<ReadonlySet<string>>(new Set());
+  const [skillsOpencodeExpanded, setSkillsOpencodeExpanded] = createSignal<ReadonlySet<string>>(
+    new Set(),
+  );
 
   void window.condash.getTreeExpansion().then((prefs) => {
     setKnowledgeExpanded(new Set(prefs.knowledge));
@@ -50,6 +53,7 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
     setSkillsGenericExpanded(new Set(prefs.skillsGeneric));
     setSkillsClaudeExpanded(new Set(prefs.skillsClaude));
     setSkillsKimiExpanded(new Set(prefs.skillsKimi));
+    setSkillsOpencodeExpanded(new Set(prefs.skillsOpencode));
   });
 
   const skillsGetter = (tab: SkillTab): Accessor<ReadonlySet<string>> =>
@@ -57,13 +61,17 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
       ? skillsGenericExpanded
       : tab === 'kimi'
         ? skillsKimiExpanded
-        : skillsClaudeExpanded;
+        : tab === 'opencode'
+          ? skillsOpencodeExpanded
+          : skillsClaudeExpanded;
   const skillsSetter = (tab: SkillTab) =>
     tab === 'generic'
       ? setSkillsGenericExpanded
       : tab === 'kimi'
         ? setSkillsKimiExpanded
-        : setSkillsClaudeExpanded;
+        : tab === 'opencode'
+          ? setSkillsOpencodeExpanded
+          : setSkillsClaudeExpanded;
 
   /** Persist the union of every pane / tab set to settings.json.
    *  Fire-and-forget — a write failure surfaces as a toast but the
@@ -75,6 +83,7 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
       skillsGeneric: Array.from(skillsGenericExpanded()),
       skillsClaude: Array.from(skillsClaudeExpanded()),
       skillsKimi: Array.from(skillsKimiExpanded()),
+      skillsOpencode: Array.from(skillsOpencodeExpanded()),
     };
     void window.condash.setTreeExpansion(prefs).catch((err) => {
       deps.flashToast(`Could not persist tree expansion: ${(err as Error).message}`, 'error');

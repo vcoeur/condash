@@ -86,4 +86,13 @@ describe('compileAgentConfig — variable substitution', () => {
     });
     expect(body(out)).toBe('custom/');
   });
+
+  it('substitutes OpenCode variables', () => {
+    expect(body(compileAgentConfig('{{ agent_name }}', '', 'opencode'))).toBe('OpenCode');
+    expect(body(compileAgentConfig('{{ skills_dir }}', '', 'opencode'))).toBe('.opencode/skills/');
+    expect(body(compileAgentConfig('{{ agent_config }}', '', 'opencode'))).toBe(
+      '.opencode/AGENTS.md',
+    );
+    expect(body(compileAgentConfig('{{ memory_dir }}', '', 'opencode'))).toBe('');
+  });
 });
