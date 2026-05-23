@@ -219,3 +219,43 @@ describe('handleProjectAction with agent binding', () => {
     vi.useRealTimers();
   });
 });
+
+describe('runTask', () => {
+  it('spawns the task agent, types the filled prompt, and submits', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
+    const promise = bridge.runTask('claude-deepseek-v4-pro', 'review the docs', true);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my');
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('review the docs');
+    expect(handle.typeIntoActive).toHaveBeenLastCalledWith('\r');
+    vi.useRealTimers();
+  });
+
+  it('types without Enter when submit is false', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
+    const promise = bridge.runTask('claude-deepseek-v4-pro', 'just type this', false);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.typeIntoActive).toHaveBeenCalledWith('just type this');
+    expect(handle.typeIntoActive).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('toasts and does nothing when the agent is unknown', async () => {
+    const handle = makeFakeHandle();
+    const deps = makeDeps(handle, [claudeAgent]);
+    const bridge = createTerminalBridge(deps);
+    await bridge.runTask('does-not-exist', 'text', true);
+    expect(deps.flashToast).toHaveBeenCalledWith(
+      expect.stringContaining('Task agent not found'),
+      'error',
+    );
+    expect(handle.spawnUserShell).not.toHaveBeenCalled();
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+  });
+});

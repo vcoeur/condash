@@ -206,6 +206,16 @@ The terminal tab-strip spawn dropdown lists **agents** (it always offers `New sh
 
 Define, edit, launch, and inspect agents from the Agents pane rather than hand-editing these files. **Compatibility:** a legacy file that predates the name/slug split (carrying `modelVariant`, possibly with spaces/uppercase in its filename) still loads and launches — its `name` comes from `modelVariant` and its `slug` from the filename stem; it migrates to the clean shape the next time it's saved. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read (replaced by agents).
 
+### Tasks { #tasks }
+
+**Tasks** are reusable, parameterized agent prompts — like agents, they live under the conception (not a `condash.json` key), managed by the **Tasks** pane (left-edge strip → **Tasks**). A task is a referenced agent plus a markdown prompt with fillable `{markers}`.
+
+- **Definition** — `<conception>/tasks/<slug>/`, one directory per task. `task.json` carries `name`, `agent` (the `slug` of an agent from above), and `submit` (optional bool, default `true`); `prompt.md` is the raw markdown prompt with markers. Config in JSON, prose in markdown — both are safe to commit. The slug is the directory name (`^[a-z0-9-]+$`); the `tasks/` tree is created on first save.
+- **Markers** — `{KEY}` (required field) or `{KEY:default}` (prefilled). Reserved `{APP}` / `{PROJECT}` (and their `{APP_PATH}` / `{PROJECT_BRANCH}` / … sub-tokens) render as searchable pickers; one selection fills the whole family.
+- **Run** — spawns the task's agent in a fresh terminal tab (cwd = conception root), types the substituted prompt, and presses Enter when `submit` is true.
+
+See the [Tasks pane guide](../guides/tasks-pane.md). The same `{KEY:default}` fallback applies to the project / new-project action templates below.
+
 ### `terminal.projectActions` { #terminalprojectactions }
 
 Per-entry actions rendered in the per-card **Work on** dropdown on the Projects pane. The control is a single dropdown button: clicking it opens a menu whose first row is the built-in **Work on <slug>** action and whose remaining rows are the entries below. When `projectActions` is empty or missing, the menu still opens but contains only the default row.
@@ -224,7 +234,7 @@ Per-entry actions rendered in the per-card **Work on** dropdown on the Projects 
 | Key        | Type             | Required | Meaning                                                                                                                                                                                                         |
 | ---------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
 | `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset (no dropdown option rendered).                                |
-| `template` | string           | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). Unknown placeholders are left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
+| `template` | string           | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). A `{placeholder:default}` form falls back to `default` when the placeholder is unknown; a default-less unknown placeholder is left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
 | `submit`   | bool             | no       | When `true`, condash presses Enter after pasting the template. Default `false` — matches the current **Work on** behaviour and lets templates that end with a colon wait for the user to type the variable bit. |
 | `agent`    | string           | no       | When set, the `slug` of an agent under `<conception>/agents/`. The action spawns a fresh tab running that agent before typing the template — useful for binding an action to a specific agent. Empty / missing → type into the focused tab (a plain shell when no tab exists). A slug that no longer matches an agent falls through to the focused-tab flow. |
 
@@ -246,7 +256,7 @@ Per-entry starter prompts rendered in the **+ New project** dropdown. The contro
 | Key        | Type             | Required | Meaning                                                                                                                                                                                                         |
 | ---------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
 | `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset.                                                              |
-| `template` | string           | yes      | Text pasted into the focused terminal. May contain global placeholders only: `{today}`, `{conception}`, `{conceptionPath}`. Unknown placeholders are left verbatim. Empty or whitespace is treated as the entry being unset. |
+| `template` | string           | yes      | Text pasted into the focused terminal. May contain global placeholders only: `{today}`, `{conception}`, `{conceptionPath}`. A `{placeholder:default}` form falls back to `default`; a default-less unknown placeholder is left verbatim. Empty or whitespace is treated as the entry being unset. |
 | `submit`   | bool             | no       | When `true`, condash presses Enter after pasting. Default `false`.                                                                                             |
 | `agent`    | string           | no       | When set, the `slug` of an agent under `<conception>/agents/`. The action spawns a fresh tab running that agent and types the template into the new tab — gives each entry a predictable starting environment (e.g. **Start new project → claude-deepseek-v4-pro** always opens a fresh agent shell). Empty / missing keeps the "type into focused tab" behaviour. |
 

@@ -70,11 +70,21 @@ export function globalContext(today: string, conceptionPath: string): GlobalActi
   };
 }
 
-/** Single-pass template substitution. Known `{name}` tokens are replaced;
- *  anything else is left verbatim so typos remain visible. */
+/** Marker grammar shared by `substitute` and `extractMarkers`. A token is a
+ *  `{KEY}` or `{KEY:default value}`: `KEY` is `[A-Za-z_][A-Za-z0-9_]*`; the
+ *  optional `:default` runs to the next `}` (spaces allowed, no nested braces).
+ *  The capture groups are `(key, default?)`. */
+export const MARKER_RE = /\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]*))?\}/g;
+
+/** Single-pass template substitution. A `{KEY}` token resolves to `ctx[KEY]`
+ *  when present; otherwise a `{KEY:default}` token falls back to its default,
+ *  and a default-less unknown token is left verbatim so typos remain visible.
+ *  Backward-compatible with the prior `{name}`-only behaviour: existing tokens
+ *  still resolve, and `{KEY:default}` (previously left verbatim) now resolves. */
 export function substitute(template: string, ctx: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_match, name) => {
+  return template.replace(MARKER_RE, (match, name: string, def: string | undefined) => {
     if (name in ctx) return ctx[name];
-    return `{${name}}`;
+    if (def !== undefined) return def;
+    return match;
   });
 }

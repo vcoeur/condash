@@ -1,0 +1,258 @@
+/* Tasks pane — reusable, parameterized agent prompts. A card list plus a fill
+ * view (pickers + fields + preview → Run) and an editor stacked below. Mirrors
+ * agents-pane.css; uses the shared theme variables. */
+
+.tasks-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem 0.75rem 1rem;
+}
+
+.tasks-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.tasks-pane-header h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.tasks-pane-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tasks-pane button {
+  font-size: 0.82rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tasks-pane button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.tasks-pane button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tasks-pane button.tasks-danger:hover:not(:disabled) {
+  background: var(--warn, #c44);
+  color: #fff;
+}
+
+.tasks-pane button.tasks-run {
+  border-color: var(--accent, #2f7);
+}
+
+.tasks-pane-empty {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  padding: 1rem 0.25rem;
+  line-height: 1.5;
+}
+
+.tasks-pane-empty code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.tasks-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
+
+.tasks-row-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.tasks-row-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.tasks-row-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+
+.tasks-agent {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-agent-ok {
+  color: var(--text-muted);
+}
+
+.tasks-agent-missing {
+  color: var(--warn, #c44);
+  border-color: #c4444433;
+  background: #c4444414;
+}
+
+.tasks-markers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.tasks-marker {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.02rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.tasks-marker[data-kind='app'] {
+  color: #1a7f37;
+  border-color: #1a7f3733;
+  background: #1a7f3714;
+}
+
+.tasks-marker[data-kind='project'] {
+  color: #2563eb;
+  border-color: #2563eb33;
+  background: #2563eb14;
+}
+
+.tasks-config-view,
+.tasks-editor {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+.tasks-editor header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.tasks-editor h3 {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.tasks-editor-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 0.5rem;
+}
+
+.tasks-editor-note code,
+.tasks-editor code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.tasks-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.tasks-editor label.tasks-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tasks-editor input[type='text'],
+.tasks-editor select,
+.tasks-editor textarea {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.tasks-prompt-textarea {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  min-height: 7rem;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tasks-preview {
+  margin-top: 0.5rem;
+}
+
+.tasks-preview-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.tasks-preview pre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  color: var(--text);
+}
+
+.tasks-editor-markers {
+  margin-top: 0.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.tasks-editor-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}

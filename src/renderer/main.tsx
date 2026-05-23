@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode, SkillTab } from '@shared/types';
 import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
@@ -11,6 +11,7 @@ import { WelcomeScreen } from './welcome-screen';
 import { PromptModal } from './prompt-modal';
 import { ProjectsView } from './panes/projects';
 import { DeliverablesView } from './panes/deliverables';
+import { TasksView } from './panes/tasks';
 import { KnowledgeView } from './panes/knowledge';
 import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
@@ -71,8 +72,8 @@ const WORKING_SURFACE_HANDLES: ReadonlyArray<{
   { key: 'knowledge', label: 'Knowledge', shortcut: 'Ctrl+Shift+K' },
   { key: 'resources', label: 'Resources', shortcut: 'Ctrl+R' },
   { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L' },
-  { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
   { key: 'agents', label: 'Agents', shortcut: 'Ctrl+Shift+A' },
+  { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
 ];
 
 function App() {
@@ -238,6 +239,25 @@ function App() {
     ensureTerminalOpen();
     void terminalHandle?.spawnUserShell(item, 'my');
   };
+
+  // --- Tasks (left-pane reusable agent prompts) -------------------------
+  // Re-fetched whenever the conception changes; `reloadTasks` refreshes the
+  // pane after a create / edit / delete so the card list stays live.
+  const [tasksResource, { refetch: reloadTasks }] = createResource(conceptionPath, async () => {
+    try {
+      return await window.condash.listTasks();
+    } catch {
+      return [];
+    }
+  });
+  const tasks = () => tasksResource() ?? [];
+
+  // App options for the Tasks fill form's `{APP}` picker — every configured
+  // repo as `{ alias: '@<name>', name, path }`. Reads the repos store, so it
+  // re-derives when the repo list changes.
+  const appOptions = createMemo(() =>
+    repos.map((r) => ({ alias: `@${r.name}`, name: r.name, path: r.path })),
+  );
 
   // Stable references to the filtered action-template arrays. `usableActionTemplates`
   // returns a *fresh* filtered array on every call; without memoising, any reactive
@@ -443,6 +463,16 @@ function App() {
           </button>
           <button
             class="edge-handle edge-handle-vertical"
+            classList={{ active: layout().projects && layout().leftView === 'tasks' }}
+            aria-pressed={layout().projects && layout().leftView === 'tasks'}
+            onClick={() => toggleLeftView('tasks')}
+            disabled={!handlesEnabled()}
+            title={layout().projects && layout().leftView === 'tasks' ? 'Hide Tasks' : 'Show Tasks'}
+          >
+            <span class="edge-handle-label">Tasks</span>
+          </button>
+          <button
+            class="edge-handle edge-handle-vertical"
             classList={{ active: layout().projects && layout().leftView === 'deliverables' }}
             aria-pressed={layout().projects && layout().leftView === 'deliverables'}
             onClick={() => toggleLeftView('deliverables')}
@@ -484,6 +514,7 @@ function App() {
                 <p>Bring one back to start working:</p>
                 <div class="all-panes-hidden-actions">
                   <button onClick={() => toggleLeftView('projects')}>Show Projects</button>
+                  <button onClick={() => toggleLeftView('tasks')}>Show Tasks</button>
                   <button onClick={() => toggleLeftView('deliverables')}>Show Deliverables</button>
                   <button onClick={() => selectWorking('code')}>Show Code</button>
                   <button onClick={() => selectWorking('knowledge')}>Show Knowledge</button>
@@ -498,13 +529,36 @@ function App() {
                 <Show when={layout().projects}>
                   <section
                     class="pane pane-projects"
-                    classList={{ 'pane-deliverables': layout().leftView === 'deliverables' }}
+                    classList={{
+                      'pane-deliverables': layout().leftView === 'deliverables',
+                      'pane-tasks': layout().leftView === 'tasks',
+                    }}
                   >
                     {/* Left band shows one pane at a time, selected by the left
-                        edge-strip handles (Projects / Deliverables). */}
-                    <Show
-                      when={layout().leftView === 'deliverables'}
-                      fallback={
+                        edge-strip handles (Projects / Tasks / Deliverables). */}
+                    <Switch>
+                      <Match when={layout().leftView === 'deliverables'}>
+                        <DeliverablesView
+                          projects={projects() ?? []}
+                          onOpenDeliverable={openDeliverable}
+                        />
+                      </Match>
+                      <Match when={layout().leftView === 'tasks'}>
+                        <TasksView
+                          tasks={tasks}
+                          reload={() => void reloadTasks()}
+                          hasConception={() => conceptionPath() !== null}
+                          conceptionPath={conceptionPath}
+                          agents={agents}
+                          projects={() => projects() ?? []}
+                          apps={appOptions}
+                          flashToast={flashToast}
+                          onRun={(agentSlug, text, submit) =>
+                            void bridge.runTask(agentSlug, text, submit)
+                          }
+                        />
+                      </Match>
+                      <Match when={layout().leftView === 'projects'}>
                         <Show
                           when={(projects() ?? []).length > 0}
                           fallback={<div class="empty">No projects found under projects/.</div>}
@@ -522,13 +576,8 @@ function App() {
                             onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
                           />
                         </Show>
-                      }
-                    >
-                      <DeliverablesView
-                        projects={projects() ?? []}
-                        onOpenDeliverable={openDeliverable}
-                      />
-                    </Show>
+                      </Match>
+                    </Switch>
                   </section>
                 </Show>
 
