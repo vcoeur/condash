@@ -12,9 +12,13 @@
  * variable substitution from the per-target map.
  */
 
-export type AgentsMdTarget = 'claude' | 'kimi' | 'opencode';
+import { type HarnessId, HARNESS_IDS, HARNESSES } from '../shared/harnesses';
 
-export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = ['claude', 'kimi', 'opencode'] as const;
+/** An AGENTS.md target is exactly a harness — sourced from the unified registry
+ *  (`src/shared/harnesses.ts`). */
+export type AgentsMdTarget = HarnessId;
+
+export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = HARNESS_IDS;
 
 /**
  * Output path per target, relative to the conception root.
@@ -28,9 +32,9 @@ export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = ['claude', 'kimi', '
  * which OpenCode reads natively as global config (`userAgentConfigOutput`).
  */
 export const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
-  claude: '.claude/CLAUDE.md',
-  kimi: '.kimi/AGENTS.md',
-  opencode: '.opencode/AGENTS.md',
+  claude: HARNESSES.claude.agentsMdOutput,
+  kimi: HARNESSES.kimi.agentsMdOutput,
+  opencode: HARNESSES.opencode.agentsMdOutput,
 };
 
 /** Default variable map per target, applied via `{{ var }}` substitution. */

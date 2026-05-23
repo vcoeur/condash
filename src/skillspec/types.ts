@@ -23,9 +23,13 @@
  *                                 #   copied verbatim under the same path.
  */
 
-export type CompileTarget = 'claude' | 'kimi' | 'opencode';
+import { type HarnessId, HARNESS_IDS } from '../shared/harnesses';
 
-export const COMPILE_TARGETS: readonly CompileTarget[] = ['claude', 'kimi', 'opencode'] as const;
+/** A compile target is exactly a harness — sourced from the unified registry
+ *  (`src/shared/harnesses.ts`) so the set is defined in one place. */
+export type CompileTarget = HarnessId;
+
+export const COMPILE_TARGETS: readonly CompileTarget[] = HARNESS_IDS;
 
 /**
  * Parsed source directory. `spec` and `targets[t]` carry frontmatter as parsed

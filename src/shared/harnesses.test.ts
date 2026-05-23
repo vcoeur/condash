@@ -1,0 +1,96 @@
+import { describe, expect, it } from 'vitest';
+import { AGENTS_MD_OUTPUTS } from '../agents-md/compile';
+import { COMPILE_TARGETS } from '../skillspec/types';
+import {
+  type AgentDef,
+  agentName,
+  buildSpawn,
+  CLAUDE_PRESETS,
+  defaultKimiConfig,
+  defaultOpencodeConfig,
+  HARNESS_IDS,
+  HARNESSES,
+  MissingAgentSecretError,
+} from './harnesses';
+
+const resolve = (env: Record<string, string>) => (name: string) => env[name] || undefined;
+
+describe('harness registry is the single source of truth', () => {
+  it('drives the skills + AGENTS.md compile targets', () => {
+    expect([...COMPILE_TARGETS]).toEqual([...HARNESS_IDS]);
+    for (const id of HARNESS_IDS) {
+      expect(AGENTS_MD_OUTPUTS[id]).toBe(HARNESSES[id].agentsMdOutput);
+    }
+  });
+});
+
+describe('agentName', () => {
+  it('derives <label>-<modelVariant>, using the CLI label (kimi-cli)', () => {
+    expect(agentName({ harness: 'claude', modelVariant: 'deepseek-v4-pro' })).toBe(
+      'claude-deepseek-v4-pro',
+    );
+    expect(agentName({ harness: 'kimi', modelVariant: 'native' })).toBe('kimi-cli-native');
+    expect(agentName({ harness: 'opencode', modelVariant: 'deepseek-v4-pro' })).toBe(
+      'opencode-deepseek-v4-pro',
+    );
+  });
+});
+
+describe('buildSpawn — claude', () => {
+  const def: AgentDef = {
+    harness: 'claude',
+    modelVariant: 'deepseek-v4-pro',
+    secretEnv: 'DEEPSEEK_API_KEY',
+    config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+  };
+
+  it('builds the ANTHROPIC_* env with a bearer token and defensive unsets', () => {
+    const spec = buildSpawn(def, resolve({ DEEPSEEK_API_KEY: 'sk-test' }));
+    expect(spec.command).toBe('claude');
+    expect(spec.args).toEqual([]);
+    expect(spec.env.ANTHROPIC_BASE_URL).toBe('https://api.deepseek.com/anthropic');
+    expect(spec.env.ANTHROPIC_AUTH_TOKEN).toBe('sk-test');
+    expect(spec.env.ANTHROPIC_MODEL).toBe('deepseek-v4-pro');
+    expect(spec.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe('1000000');
+    expect(spec.env.CLAUDE_CODE_DISABLE_1M_CONTEXT).toBe('1');
+    expect(spec.unsetEnv).toContain('ANTHROPIC_API_KEY');
+    expect(spec.unsetEnv).toEqual(expect.arrayContaining(['CLAUDE_CODE_USE_BEDROCK']));
+  });
+
+  it('uses x-api-key style when authStyle is apikey', () => {
+    const apikeyDef: AgentDef = {
+      ...def,
+      config: { ...def.config, authStyle: 'apikey' },
+    };
+    const spec = buildSpawn(apikeyDef, resolve({ DEEPSEEK_API_KEY: 'sk-test' }));
+    expect(spec.env.ANTHROPIC_API_KEY).toBe('sk-test');
+    expect(spec.unsetEnv).toContain('ANTHROPIC_AUTH_TOKEN');
+  });
+
+  it('throws MissingAgentSecretError when the declared secret is unset', () => {
+    expect(() => buildSpawn(def, resolve({}))).toThrow(MissingAgentSecretError);
+  });
+});
+
+describe('buildSpawn — kimi-cli', () => {
+  it('points kimi at its --agent-file YAML', () => {
+    const def: AgentDef = { harness: 'kimi', modelVariant: 'native', config: defaultKimiConfig() };
+    const spec = buildSpawn(def, resolve({}));
+    expect(spec.command).toBe('kimi');
+    expect(spec.args).toEqual(['--agent-file', '~/.kimi/global-agent.yaml']);
+  });
+});
+
+describe('buildSpawn — opencode', () => {
+  it('passes --model and disables external skills', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      modelVariant: 'deepseek-v4-pro',
+      config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
+    };
+    const spec = buildSpawn(def, resolve({}));
+    expect(spec.command).toBe('opencode');
+    expect(spec.args).toEqual(['--model', 'deepseek/deepseek-v4-pro']);
+    expect(spec.env.OPENCODE_DISABLE_EXTERNAL_SKILLS).toBe('1');
+  });
+});
