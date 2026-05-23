@@ -196,11 +196,11 @@ export async function spawnTerminal(
   // childEnv is built). Resolved here so a missing token throws before spawn.
   let agentSpec: SpawnSpec | null = null;
 
-  if (request.agentName && conceptionPath) {
-    // Resolve `<harness>-<model_variant>` to its binary + args + env (token
-    // injected from agents/.env). Run it through the login shell so PATH and
-    // `~` expansion match a hand-typed invocation.
-    agentSpec = await resolveAgentSpawn(conceptionPath, request.agentName);
+  if (request.agentSlug && conceptionPath) {
+    // Resolve the agent slug to its binary + args + env (token injected from
+    // agents/.env). Run it through the login shell so PATH and `~` expansion
+    // match a hand-typed invocation.
+    agentSpec = await resolveAgentSpawn(conceptionPath, request.agentSlug);
     const parts = [agentSpec.command, ...agentSpec.args.map((a) => quoteArg(expandHome(a)))];
     program = shell;
     argv = wrapForShell(shell, parts.join(' '));

@@ -27,10 +27,18 @@ afterEach(async () => {
 
 const claudeAgent: AgentDef = {
   harness: 'claude',
-  modelVariant: 'deepseek-v4-pro',
+  name: 'deepseek-v4-pro',
+  slug: 'claude-deepseek-v4-pro',
   secretEnv: 'DEEPSEEK_API_KEY',
   config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
 };
+
+/** Write a raw JSON agent file (bypassing writeAgent) to simulate legacy /
+ *  hand-edited files on disk. */
+async function writeRaw(filename: string, content: unknown): Promise<void> {
+  await fs.mkdir(join(dir, 'agents'), { recursive: true });
+  await fs.writeFile(join(dir, 'agents', filename), JSON.stringify(content), 'utf8');
+}
 
 describe('parseEnv', () => {
   it('parses KEY=value lines, ignoring comments/blanks and stripping quotes', () => {
@@ -39,30 +47,58 @@ describe('parseEnv', () => {
 });
 
 describe('agent storage round-trip', () => {
-  it('writes a derived filename and lists it back with token presence', async () => {
-    const name = await writeAgent(dir, claudeAgent);
-    expect(name).toBe('claude-deepseek-v4-pro');
+  it('writes <slug>.json and lists it back with name + token presence', async () => {
+    const slug = await writeAgent(dir, claudeAgent);
+    expect(slug).toBe('claude-deepseek-v4-pro');
     await fs.access(join(dir, 'agents', 'claude-deepseek-v4-pro.json'));
 
     // No .env yet → token absent.
     let items = await listAgents(dir);
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ name, harness: 'claude', tokenPresent: false });
+    expect(items[0]).toMatchObject({
+      slug: 'claude-deepseek-v4-pro',
+      name: 'deepseek-v4-pro',
+      harness: 'claude',
+      tokenPresent: false,
+    });
 
     await fs.writeFile(agentsEnvPath(dir), 'DEEPSEEK_API_KEY=sk-real\n');
     items = await listAgents(dir);
     expect(items[0].tokenPresent).toBe(true);
 
-    const def = await readAgent(dir, name);
+    const def = await readAgent(dir, slug);
     expect(def?.harness).toBe('claude');
+    expect(def?.name).toBe('deepseek-v4-pro');
+    expect(def?.slug).toBe('claude-deepseek-v4-pro');
   });
 
-  it('rename via previousName removes the old file', async () => {
+  it('rejects a non-kebab slug on write', async () => {
+    await expect(writeAgent(dir, { ...claudeAgent, slug: 'Claude DeepSeek' })).rejects.toThrow(
+      /invalid agent slug/,
+    );
+    await expect(writeAgent(dir, { ...claudeAgent, slug: 'a--b' })).rejects.toThrow(
+      /invalid agent slug/,
+    );
+  });
+
+  it('rename via previousSlug removes the old file', async () => {
     await writeAgent(dir, claudeAgent);
-    const renamed: AgentDef = { ...claudeAgent, modelVariant: 'deepseek-v4-flash' };
+    const renamed: AgentDef = {
+      ...claudeAgent,
+      name: 'deepseek-v4-flash',
+      slug: 'claude-deepseek-v4-flash',
+    };
     await writeAgent(dir, renamed, 'claude-deepseek-v4-pro');
-    const names = (await listAgents(dir)).map((a) => a.name);
-    expect(names).toEqual(['claude-deepseek-v4-flash']);
+    const slugs = (await listAgents(dir)).map((a) => a.slug);
+    expect(slugs).toEqual(['claude-deepseek-v4-flash']);
+  });
+
+  it('re-saving with an unchanged slug does not delete the file', async () => {
+    await writeAgent(dir, claudeAgent);
+    await writeAgent(dir, { ...claudeAgent, name: 'renamed display' }, 'claude-deepseek-v4-pro');
+    const items = await listAgents(dir);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ slug: 'claude-deepseek-v4-pro', name: 'renamed display' });
   });
 
   it('deleteAgent is idempotent', async () => {
@@ -77,11 +113,60 @@ describe('agent storage round-trip', () => {
   });
 });
 
+describe('legacy + space-named files', () => {
+  it('launches a legacy agent whose filename contains a space (regression)', async () => {
+    // Pre-name/slug shape, space in the filename — the old safeName rejected
+    // this on launch with "invalid agent name".
+    await writeRaw('opencode-DeepSeek Auto.json', {
+      harness: 'opencode',
+      modelVariant: 'DeepSeek Auto',
+      config: { model: 'deepseek/deepseek-v4-flash', disableExternalSkills: true },
+    });
+
+    const items = await listAgents(dir);
+    expect(items[0]).toMatchObject({
+      slug: 'opencode-DeepSeek Auto',
+      name: 'DeepSeek Auto',
+      harness: 'opencode',
+    });
+
+    // The bug: this used to throw before resolving. Now it spawns.
+    const spec = await resolveAgentSpawn(dir, 'opencode-DeepSeek Auto');
+    expect(spec.command).toBe('opencode');
+  });
+
+  it('normalises legacy modelVariant → name and slug = filename stem', async () => {
+    await writeRaw('claude-legacy.json', {
+      harness: 'claude',
+      modelVariant: 'legacy-label',
+      secretEnv: 'DEEPSEEK_API_KEY',
+      config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+    });
+    const def = await readAgent(dir, 'claude-legacy');
+    expect(def?.name).toBe('legacy-label');
+    expect(def?.slug).toBe('claude-legacy');
+  });
+
+  it('migrates a legacy/space file to a clean slug on re-save', async () => {
+    await writeRaw('opencode-DeepSeek Auto.json', {
+      harness: 'opencode',
+      modelVariant: 'DeepSeek Auto',
+      config: { model: 'deepseek/deepseek-v4-flash', disableExternalSkills: true },
+    });
+    const def = await readAgent(dir, 'opencode-DeepSeek Auto');
+    expect(def).toBeTruthy();
+    await writeAgent(dir, { ...def!, slug: 'opencode-deepseek-auto' }, 'opencode-DeepSeek Auto');
+    const slugs = (await listAgents(dir)).map((a) => a.slug);
+    expect(slugs).toEqual(['opencode-deepseek-auto']);
+  });
+});
+
 describe('opencode build/plan persistence', () => {
   it('round-trips build/plan model overrides + extra config through write → read', async () => {
     const def: AgentDef = {
       harness: 'opencode',
-      modelVariant: 'deepseek-auto',
+      name: 'deepseek-auto',
+      slug: 'opencode-deepseek-auto',
       secretEnv: 'DEEPSEEK_API_KEY',
       config: {
         model: 'deepseek/deepseek-v4-flash',
@@ -103,7 +188,8 @@ describe('kimi instructions injection', () => {
     await fs.writeFile(mdPath, '# Rules\nbe nice');
     await writeAgent(dir, {
       harness: 'kimi',
-      modelVariant: 'native',
+      name: 'native',
+      slug: 'kimi-cli-native',
       config: { instructionsFile: mdPath, model: 'kimi-k2.6' },
     });
     const spec = await resolveAgentSpawn(dir, 'kimi-cli-native');
@@ -118,7 +204,8 @@ describe('kimi instructions injection', () => {
   it('omits --agent-file when the instructions file is absent', async () => {
     await writeAgent(dir, {
       harness: 'kimi',
-      modelVariant: 'native',
+      name: 'native',
+      slug: 'kimi-cli-native',
       config: { instructionsFile: join(dir, 'missing.md') },
     });
     const spec = await resolveAgentSpawn(dir, 'kimi-cli-native');

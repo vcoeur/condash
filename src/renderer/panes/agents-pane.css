@@ -138,9 +138,15 @@
 }
 
 .agents-row-name {
-  font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text);
+}
+
+.agents-row-slug {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex: 0 0 auto;
 }
 
 .agents-row-actions {

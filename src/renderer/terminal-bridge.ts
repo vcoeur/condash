@@ -72,14 +72,14 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   return deps.terminalHandle();
 }
 
-/** Look up an agent by name from the current agent list. Returns null for an
- *  empty/missing name or when no agent matches. */
-function findAgentByName(
+/** Look up an agent by slug from the current agent list. Returns null for an
+ *  empty/missing slug or when no agent matches. */
+function findAgentBySlug(
   agents: readonly AgentListItem[],
-  name: string | undefined,
+  slug: string | undefined,
 ): AgentListItem | null {
-  if (!name) return null;
-  return agents.find((a) => a.name === name) ?? null;
+  if (!slug) return null;
+  return agents.find((a) => a.slug === slug) ?? null;
 }
 
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
@@ -111,11 +111,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  running that agent on every click — keeps "Start new project →
    *  claude-deepseek-v4-pro" predictable instead of typing into whatever tab
    *  happens to be focused. Falls back to `ensureTermAndShell()` (a plain
-   *  shell) when no agent is bound or the bound name no longer resolves. */
+   *  shell) when no agent is bound or the bound slug no longer resolves. */
   const ensureTermForAction = async (
     action: ActionTemplate,
   ): Promise<TerminalPaneHandle | null> => {
-    const agent = findAgentByName(deps.agents(), action.agent);
+    const agent = findAgentBySlug(deps.agents(), action.agent);
     if (!agent) return ensureTermAndShell();
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();

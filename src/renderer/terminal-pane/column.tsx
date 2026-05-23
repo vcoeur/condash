@@ -27,7 +27,7 @@ export interface TerminalColumnProps {
   onCommitRename: (id: string, value: string) => void;
   onCancelRename: () => void;
   onCloseTab: (id: string) => void;
-  onSpawnShell: (col: Column, agentName: string | null) => void;
+  onSpawnShell: (col: Column, agentSlug: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
   /** Toggle the pane open/closed. The Terminal handle in the strip
@@ -46,14 +46,14 @@ export interface TerminalColumnProps {
  */
 function SpawnDropdown(props: {
   agents: readonly AgentListItem[];
-  onSpawn: (agentName: string | null) => void;
+  onSpawn: (agentSlug: string | null) => void;
 }) {
   const menu = createDropdownMenu({ align: 'left' });
   const [highlighted, setHighlighted] = createSignal(0);
 
   const items = () => [
     { label: 'New shell', value: null as string | null },
-    ...props.agents.map((a) => ({ label: a.name, value: a.name as string | null })),
+    ...props.agents.map((a) => ({ label: a.name, value: a.slug as string | null })),
   ];
 
   const select = (value: string | null) => {
@@ -251,7 +251,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
         </For>
         <SpawnDropdown
           agents={props.agents}
-          onSpawn={(name) => props.onSpawnShell(props.col, name)}
+          onSpawn={(slug) => props.onSpawnShell(props.col, slug)}
         />
         <span class="terminal-tab-strip-spacer" />
         <button

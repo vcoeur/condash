@@ -1,22 +1,23 @@
 /**
  * Agent storage + token resolution (main process only).
  *
- * Agents are defined as one JSON file each at
- * `<conception>/agents/<harness>-<model_variant>.json`. The matching API
- * tokens live in a single gitignored `<conception>/agents/.env` of
- * `NAME=value` lines. Secrets are read here and only here — they reach a child
- * process through the spawn environment, never the renderer.
+ * Agents are defined as one JSON file each at `<conception>/agents/<slug>.json`,
+ * where the `slug` (a lowercase-kebab identity) is the filename stem and the
+ * stored `name` is a free-form display label. The matching API tokens live in a
+ * single gitignored `<conception>/agents/.env` of `NAME=value` lines. Secrets
+ * are read here and only here — they reach a child process through the spawn
+ * environment, never the renderer.
  */
 import { promises as fs } from 'fs';
 import { homedir, tmpdir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { z } from 'zod';
 import {
   type AgentDef,
   type AgentListItem,
   type AgentSpawnPreview,
-  agentName,
   buildSpawn,
+  isValidSlug,
   kimiAgentFileYaml,
   previewCommandLine,
   type SpawnSpec,
@@ -75,19 +76,28 @@ const opencodeConfigSchema = z.object({
 const agentDefSchema = z.discriminatedUnion('harness', [
   z.object({
     harness: z.literal('claude'),
-    modelVariant: z.string().min(1),
+    name: z.string().min(1),
+    // Loose on read so legacy / hand-edited stems still load; `writeAgent`
+    // enforces lowercase-kebab via `isValidSlug`.
+    slug: z.string().min(1),
     secretEnv: z.string().optional(),
     config: claudeConfigSchema,
   }),
   z.object({
     harness: z.literal('kimi'),
-    modelVariant: z.string().min(1),
+    name: z.string().min(1),
+    // Loose on read so legacy / hand-edited stems still load; `writeAgent`
+    // enforces lowercase-kebab via `isValidSlug`.
+    slug: z.string().min(1),
     secretEnv: z.string().optional(),
     config: kimiConfigSchema,
   }),
   z.object({
     harness: z.literal('opencode'),
-    modelVariant: z.string().min(1),
+    name: z.string().min(1),
+    // Loose on read so legacy / hand-edited stems still load; `writeAgent`
+    // enforces lowercase-kebab via `isValidSlug`.
+    slug: z.string().min(1),
     secretEnv: z.string().optional(),
     config: opencodeConfigSchema,
   }),
@@ -128,12 +138,19 @@ export async function writeAgentsEnv(conceptionPath: string, content: string): P
   await fs.writeFile(agentsEnvPath(conceptionPath), content, 'utf8');
 }
 
-/** Reject anything that isn't a bare, safe filename stem (no slashes / `..`). */
-function safeName(name: string): string {
-  if (!/^[A-Za-z0-9._-]+$/.test(name) || name === '.' || name === '..') {
-    throw new Error(`invalid agent name: ${name}`);
+/**
+ * Guard a slug that's about to become a filesystem path. Rejects only
+ * path-unsafe stems — separators, NUL, `.`/`..`, or empty — and otherwise lets
+ * the value through (spaces included). The stricter lowercase-kebab rule is a
+ * *write*-time concern (`isValidSlug`); read/delete must stay permissive so a
+ * legacy or hand-named file (e.g. `opencode-DeepSeek Auto.json`) can still be
+ * opened and launched.
+ */
+function safePathStem(slug: string): string {
+  if (slug === '' || slug === '.' || slug === '..' || /[/\\\0]/.test(slug)) {
+    throw new Error(`invalid agent slug: ${slug}`);
   }
-  return name;
+  return slug;
 }
 
 /** Minimal `.env` parser: `NAME=value` lines, `#` comments, optional quotes. */
@@ -169,9 +186,26 @@ async function readEnv(conceptionPath: string): Promise<Record<string, string>> 
   }
 }
 
+/**
+ * Normalise on-disk JSON to the current `AgentDef` shape. The filename stem is
+ * authoritative for `slug` (so a slug can never drift from its file); `name`
+ * falls back to a legacy `modelVariant`, then to the stem. Pre-`name`/`slug`
+ * files therefore load unchanged — they only migrate on disk when next written.
+ */
+function normalizeAgentJson(raw: Record<string, unknown>, stem: string): Record<string, unknown> {
+  const { modelVariant, name, slug: _ignoredSlug, ...rest } = raw;
+  return {
+    ...rest,
+    name: name ?? modelVariant ?? stem,
+    slug: stem,
+  };
+}
+
 async function readDefFromFile(file: string): Promise<AgentDef> {
   const text = await fs.readFile(file, 'utf8');
-  return agentDefSchema.parse(JSON.parse(text)) as AgentDef;
+  const raw = JSON.parse(text) as Record<string, unknown>;
+  const normalized = normalizeAgentJson(raw, basename(file, '.json'));
+  return agentDefSchema.parse(normalized) as AgentDef;
 }
 
 /**
@@ -195,9 +229,9 @@ export async function listAgents(conceptionPath: string): Promise<AgentListItem[
     try {
       const def = await readDefFromFile(join(agentsDir(conceptionPath), file));
       items.push({
-        name: agentName(def),
+        slug: def.slug,
+        name: def.name,
         harness: def.harness,
-        modelVariant: def.modelVariant,
         secretEnv: def.secretEnv,
         tokenPresent: def.secretEnv ? Boolean(env[def.secretEnv]) : true,
         command: previewCommandLine(def),
@@ -210,10 +244,10 @@ export async function listAgents(conceptionPath: string): Promise<AgentListItem[
   return items;
 }
 
-/** Read one agent definition by name. `null` when absent. Never includes a token. */
-export async function readAgent(conceptionPath: string, name: string): Promise<AgentDef | null> {
+/** Read one agent definition by slug. `null` when absent. Never includes a token. */
+export async function readAgent(conceptionPath: string, slug: string): Promise<AgentDef | null> {
   try {
-    return await readDefFromFile(join(agentsDir(conceptionPath), `${safeName(name)}.json`));
+    return await readDefFromFile(join(agentsDir(conceptionPath), `${safePathStem(slug)}.json`));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
@@ -221,30 +255,35 @@ export async function readAgent(conceptionPath: string, name: string): Promise<A
 }
 
 /**
- * Create or update an agent. The filename is derived from `agentName(def)` so
- * the `<harness>-<model_variant>` convention can't drift. When `previousName`
- * is given and differs from the new name, the old file is removed (rename).
+ * Create or update an agent. The filename is the def's `slug` (validated as
+ * lowercase-kebab here, so every written file is clean). The stored slug is
+ * pinned to the filename stem. When `previousSlug` is given and differs, the
+ * old file is removed (rename).
  */
 export async function writeAgent(
   conceptionPath: string,
   def: AgentDef,
-  previousName?: string,
+  previousSlug?: string,
 ): Promise<string> {
   const parsed = agentDefSchema.parse(def) as AgentDef;
-  const name = agentName(parsed);
-  await fs.mkdir(agentsDir(conceptionPath), { recursive: true });
-  const file = join(agentsDir(conceptionPath), `${name}.json`);
-  await fs.writeFile(file, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
-  if (previousName && previousName !== name) {
-    await deleteAgent(conceptionPath, previousName);
+  if (!isValidSlug(parsed.slug)) {
+    throw new Error(
+      `invalid agent slug: "${parsed.slug}" — use lowercase letters, digits, and single hyphens`,
+    );
   }
-  return name;
+  await fs.mkdir(agentsDir(conceptionPath), { recursive: true });
+  const file = join(agentsDir(conceptionPath), `${parsed.slug}.json`);
+  await fs.writeFile(file, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
+  if (previousSlug && previousSlug !== parsed.slug) {
+    await deleteAgent(conceptionPath, previousSlug);
+  }
+  return parsed.slug;
 }
 
-/** Delete an agent definition file. No-op when already absent. */
-export async function deleteAgent(conceptionPath: string, name: string): Promise<void> {
+/** Delete an agent definition file by slug. No-op when already absent. */
+export async function deleteAgent(conceptionPath: string, slug: string): Promise<void> {
   try {
-    await fs.unlink(join(agentsDir(conceptionPath), `${safeName(name)}.json`));
+    await fs.unlink(join(agentsDir(conceptionPath), `${safePathStem(slug)}.json`));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
@@ -255,15 +294,15 @@ export async function deleteAgent(conceptionPath: string, name: string): Promise
  * from `agents/.env`. Throws `MissingAgentSecretError` (from buildSpawn) when a
  * declared secret is unresolved, and a plain error when the agent is unknown.
  */
-export async function resolveAgentSpawn(conceptionPath: string, name: string): Promise<SpawnSpec> {
-  const def = await readAgent(conceptionPath, name);
-  if (!def) throw new Error(`unknown agent: ${name}`);
+export async function resolveAgentSpawn(conceptionPath: string, slug: string): Promise<SpawnSpec> {
+  const def = await readAgent(conceptionPath, slug);
+  if (!def) throw new Error(`unknown agent: ${slug}`);
   const env = await readEnv(conceptionPath);
   const spec = buildSpawn(def, (key) => env[key] || undefined);
   // kimi: inject instructions at spawn by wrapping the plain instructions file
   // (default ~/.kimi/AGENTS.md) into a transient `--agent-file` YAML.
   if (def.harness === 'kimi' && def.config.instructionsFile?.trim()) {
-    const agentFile = await generateKimiAgentFile(def.config.instructionsFile, name);
+    const agentFile = await generateKimiAgentFile(def.config.instructionsFile, def.slug);
     if (agentFile) spec.args = ['--agent-file', agentFile, ...spec.args];
   }
   return spec;
@@ -274,7 +313,7 @@ export async function resolveAgentSpawn(conceptionPath: string, name: string): P
  *  file is absent (kimi then falls back to its own defaults). */
 async function generateKimiAgentFile(
   instructionsFile: string,
-  name: string,
+  slug: string,
 ): Promise<string | null> {
   const expanded = instructionsFile.startsWith('~/')
     ? join(homedir(), instructionsFile.slice(2))
@@ -286,7 +325,7 @@ async function generateKimiAgentFile(
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
   }
-  const out = join(tmpdir(), `condash-kimi-${name.replace(/[^A-Za-z0-9._-]/g, '_')}.agent.yaml`);
+  const out = join(tmpdir(), `condash-kimi-${slug.replace(/[^A-Za-z0-9._-]/g, '_')}.agent.yaml`);
   await fs.writeFile(out, kimiAgentFileYaml(instructions), 'utf8');
   return out;
 }
@@ -298,9 +337,9 @@ async function generateKimiAgentFile(
  */
 export async function previewAgent(
   conceptionPath: string,
-  name: string,
+  slug: string,
 ): Promise<AgentSpawnPreview | null> {
-  const def = await readAgent(conceptionPath, name);
+  const def = await readAgent(conceptionPath, slug);
   if (!def) return null;
   const spec = buildSpawn(def, (key) => `$${key}`);
   return { command: spec.command, args: spec.args, env: spec.env, unsetEnv: spec.unsetEnv };

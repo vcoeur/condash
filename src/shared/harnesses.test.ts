@@ -3,16 +3,18 @@ import { AGENTS_MD_OUTPUTS } from '../agents-md/compile';
 import { COMPILE_TARGETS } from '../skillspec/types';
 import {
   type AgentDef,
-  agentName,
   buildSpawn,
   CLAUDE_PRESETS,
   defaultKimiConfig,
   defaultOpencodeConfig,
   HARNESS_IDS,
   HARNESSES,
+  isValidSlug,
   kimiAgentFileYaml,
   MissingAgentSecretError,
   previewCommandLine,
+  slugify,
+  suggestSlug,
 } from './harnesses';
 
 const resolve = (env: Record<string, string>) => (name: string) => env[name] || undefined;
@@ -26,22 +28,37 @@ describe('harness registry is the single source of truth', () => {
   });
 });
 
-describe('agentName', () => {
-  it('derives <label>-<modelVariant>, using the CLI label (kimi-cli)', () => {
-    expect(agentName({ harness: 'claude', modelVariant: 'deepseek-v4-pro' })).toBe(
-      'claude-deepseek-v4-pro',
-    );
-    expect(agentName({ harness: 'kimi', modelVariant: 'native' })).toBe('kimi-cli-native');
-    expect(agentName({ harness: 'opencode', modelVariant: 'deepseek-v4-pro' })).toBe(
-      'opencode-deepseek-v4-pro',
-    );
+describe('slug helpers', () => {
+  it('slugify reduces free text to lowercase-kebab', () => {
+    expect(slugify('DeepSeek Auto')).toBe('deepseek-auto');
+    expect(slugify('  Kimi  K2.6 ')).toBe('kimi-k2-6');
+    expect(slugify('a---b__c')).toBe('a-b-c');
+    expect(slugify('!!!')).toBe('');
+  });
+
+  it('isValidSlug accepts lowercase-kebab and rejects spaces / case / edges', () => {
+    expect(isValidSlug('claude-deepseek-v4-pro')).toBe(true);
+    expect(isValidSlug('k2')).toBe(true);
+    expect(isValidSlug('DeepSeek Auto')).toBe(false);
+    expect(isValidSlug('Claude')).toBe(false);
+    expect(isValidSlug('a--b')).toBe(false);
+    expect(isValidSlug('-x')).toBe(false);
+    expect(isValidSlug('a.b')).toBe(false);
+    expect(isValidSlug('')).toBe(false);
+  });
+
+  it('suggestSlug prefixes the harness label (kimi → kimi-cli)', () => {
+    expect(suggestSlug('claude', 'deepseek-v4-pro')).toBe('claude-deepseek-v4-pro');
+    expect(suggestSlug('kimi', 'native')).toBe('kimi-cli-native');
+    expect(suggestSlug('opencode', 'DeepSeek Auto')).toBe('opencode-deepseek-auto');
   });
 });
 
 describe('buildSpawn — claude', () => {
   const def: AgentDef = {
     harness: 'claude',
-    modelVariant: 'deepseek-v4-pro',
+    name: 'deepseek-v4-pro',
+    slug: 'claude-deepseek-v4-pro',
     secretEnv: 'DEEPSEEK_API_KEY',
     config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
   };
@@ -76,7 +93,8 @@ describe('buildSpawn — claude', () => {
   it('native (empty baseUrl) runs bare claude with no env or unsets', () => {
     const native: AgentDef = {
       harness: 'claude',
-      modelVariant: 'native',
+      name: 'native',
+      slug: 'claude-native',
       config: CLAUDE_PRESETS.native.config,
     };
     const spec = buildSpawn(native, resolve({}));
@@ -86,7 +104,12 @@ describe('buildSpawn — claude', () => {
 
 describe('buildSpawn — kimi-cli', () => {
   it('spawns bare kimi — the --agent-file is injected at launch, not by the pure builder', () => {
-    const def: AgentDef = { harness: 'kimi', modelVariant: 'native', config: defaultKimiConfig() };
+    const def: AgentDef = {
+      harness: 'kimi',
+      name: 'native',
+      slug: 'kimi-cli-native',
+      config: defaultKimiConfig(),
+    };
     const spec = buildSpawn(def, resolve({}));
     expect(spec.command).toBe('kimi');
     expect(spec.args).toEqual([]);
@@ -104,7 +127,8 @@ describe('previewCommandLine', () => {
   it('renders the binary + args with the token as a $ref, never the value', () => {
     const def: AgentDef = {
       harness: 'claude',
-      modelVariant: 'deepseek-v4-pro',
+      name: 'deepseek-v4-pro',
+      slug: 'claude-deepseek-v4-pro',
       secretEnv: 'DEEPSEEK_API_KEY',
       config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
     };
@@ -114,7 +138,8 @@ describe('previewCommandLine', () => {
     expect(
       previewCommandLine({
         harness: 'opencode',
-        modelVariant: 'deepseek-v4-pro',
+        name: 'deepseek-v4-pro',
+        slug: 'opencode-deepseek-v4-pro',
         config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
       }),
     ).toBe('opencode');
@@ -125,7 +150,8 @@ describe('buildSpawn — opencode', () => {
   it('inlines the default model via OPENCODE_CONFIG_CONTENT and disables external skills', () => {
     const def: AgentDef = {
       harness: 'opencode',
-      modelVariant: 'deepseek-v4-pro',
+      name: 'deepseek-v4-pro',
+      slug: 'opencode-deepseek-v4-pro',
       config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
     };
     const spec = buildSpawn(def, resolve({}));
@@ -141,7 +167,8 @@ describe('buildSpawn — opencode', () => {
     const spec = buildSpawn(
       {
         harness: 'opencode',
-        modelVariant: 'deepseek-auto',
+        name: 'deepseek-auto',
+        slug: 'opencode-deepseek-auto',
         config: {
           model: 'deepseek/deepseek-v4-flash',
           buildModel: 'deepseek/deepseek-v4-pro',
@@ -168,7 +195,8 @@ describe('buildSpawn — opencode/kimi token injection', () => {
     const spec = buildSpawn(
       {
         harness: 'opencode',
-        modelVariant: 'deepseek-v4-pro',
+        name: 'deepseek-v4-pro',
+        slug: 'opencode-deepseek-v4-pro',
         secretEnv: 'DEEPSEEK_API_KEY',
         config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
       },
@@ -182,7 +210,8 @@ describe('buildSpawn — opencode/kimi token injection', () => {
       buildSpawn(
         {
           harness: 'opencode',
-          modelVariant: 'x',
+          name: 'x',
+          slug: 'opencode-x',
           secretEnv: 'DEEPSEEK_API_KEY',
           config: defaultOpencodeConfig('deepseek/x'),
         },
@@ -197,7 +226,8 @@ describe('buildSpawn — kimi extra flags', () => {
     const spec = buildSpawn(
       {
         harness: 'kimi',
-        modelVariant: 'k2',
+        name: 'k2',
+        slug: 'kimi-cli-k2',
         config: {
           instructionsFile: '~/.kimi/AGENTS.md',
           model: 'kimi-k2.6',
