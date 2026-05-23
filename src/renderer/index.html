@@ -2,9 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      'wasm-unsafe-eval' lets @xterm/addon-image compile its Sixel decoder
+      (WebAssembly), which Chromium otherwise refuses under a bare 'self'
+      script-src — that refusal throws inside xterm's write loop and blanks any
+      terminal showing inline images (e.g. the opencode TUI). It permits WASM
+      compilation only, NOT JS eval/new Function, so do not strip it.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws://localhost:5600; img-src 'self' data: condash-file:"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ws://localhost:5600; img-src 'self' data: condash-file:"
     />
     <title>condash</title>
   </head>
