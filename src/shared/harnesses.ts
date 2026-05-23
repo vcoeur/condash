@@ -89,6 +89,10 @@ export interface ClaudeAgentConfig {
   opusAlias: string;
   subagentModel: string;
   maxContextTokens: number;
+  /** `CLAUDE_CODE_EFFORT_LEVEL` — reasoning-effort level handed to the harness
+   *  (e.g. `max` for alt-providers that map it onto their reasoning budget).
+   *  Blank = omit the var so the session's own `/effort` drives it. */
+  effortLevel: string;
   disableCaching: boolean;
   disable1M: boolean;
   disableAdaptiveThinking: boolean;
@@ -130,6 +134,9 @@ export interface OpencodeAgentConfig {
   planModel?: string;
   /** Sets `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` so only `.opencode/` skills load. */
   disableExternalSkills: boolean;
+  /** Top-level `options.reasoningEffort` in the inline config — reasoning-effort
+   *  level for the default model (e.g. `max`). Blank = omit. */
+  effortLevel?: string;
   /** Raw JSON merged into the inline config — escape hatch for any other
    *  opencode.json key (theme, provider, mcp, …). Blank = none. */
   extraConfigJson?: string;
@@ -310,6 +317,7 @@ function buildClaudeSpawn(
   env.ANTHROPIC_DEFAULT_OPUS_MODEL = cfg.opusAlias;
   env.CLAUDE_CODE_SUBAGENT_MODEL = cfg.subagentModel;
   env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(cfg.maxContextTokens);
+  if (cfg.effortLevel.trim()) env.CLAUDE_CODE_EFFORT_LEVEL = cfg.effortLevel;
 
   if (cfg.disableCaching) env.DISABLE_PROMPT_CACHING = '1';
   if (cfg.disable1M) env.CLAUDE_CODE_DISABLE_1M_CONTEXT = '1';
@@ -370,6 +378,12 @@ function buildOpencodeSpawn(
     agent.plan = { ...((agent.plan as Record<string, unknown>) ?? {}), model: cfg.planModel };
   }
   if (Object.keys(agent).length > 0) config.agent = agent;
+  if (cfg.effortLevel?.trim()) {
+    config.options = {
+      ...((config.options as Record<string, unknown>) ?? {}),
+      reasoningEffort: cfg.effortLevel,
+    };
+  }
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
 
   return { command: HARNESSES.opencode.binary, args: [], env, unsetEnv: [] };
@@ -415,6 +429,7 @@ export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
       opusAlias: '',
       subagentModel: '',
       maxContextTokens: 0,
+      effortLevel: '',
       disableCaching: false,
       disable1M: false,
       disableAdaptiveThinking: false,
@@ -435,6 +450,7 @@ export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
       opusAlias: 'deepseek-v4-pro',
       subagentModel: 'deepseek-v4-pro',
       maxContextTokens: 1000000,
+      effortLevel: 'max',
       ...CLAUDE_ALT_PROVIDER_TOGGLES,
     },
   },
@@ -450,6 +466,7 @@ export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
       opusAlias: 'deepseek-v4-flash',
       subagentModel: 'deepseek-v4-flash',
       maxContextTokens: 1000000,
+      effortLevel: 'max',
       ...CLAUDE_ALT_PROVIDER_TOGGLES,
     },
   },
@@ -465,6 +482,7 @@ export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
       opusAlias: 'deepseek-v4-pro',
       subagentModel: 'deepseek-v4-flash',
       maxContextTokens: 1000000,
+      effortLevel: 'max',
       ...CLAUDE_ALT_PROVIDER_TOGGLES,
     },
   },
@@ -480,6 +498,7 @@ export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
       opusAlias: 'kimi-k2.6',
       subagentModel: 'kimi-k2.6',
       maxContextTokens: 262144,
+      effortLevel: 'max',
       ...CLAUDE_ALT_PROVIDER_TOGGLES,
     },
   },
@@ -523,11 +542,15 @@ export interface OpencodePreset {
 export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
   'deepseek-v4-pro': {
     secretEnv: '',
-    config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true },
+    config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true, effortLevel: 'max' },
   },
   'deepseek-v4-flash': {
     secretEnv: '',
-    config: { model: 'deepseek/deepseek-v4-flash', disableExternalSkills: true },
+    config: {
+      model: 'deepseek/deepseek-v4-flash',
+      disableExternalSkills: true,
+      effortLevel: 'max',
+    },
   },
   'deepseek-auto': {
     secretEnv: '',
@@ -536,10 +559,15 @@ export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
       buildModel: 'deepseek/deepseek-v4-pro',
       planModel: 'deepseek/deepseek-v4-pro',
       disableExternalSkills: true,
+      effortLevel: 'max',
     },
   },
   kimi: {
     secretEnv: '',
-    config: { model: 'kimi-for-coding/kimi-k2-thinking', disableExternalSkills: true },
+    config: {
+      model: 'kimi-for-coding/kimi-k2-thinking',
+      disableExternalSkills: true,
+      effortLevel: 'max',
+    },
   },
 };
