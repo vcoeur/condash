@@ -63,6 +63,19 @@ describe('parseSkillspec', () => {
     expect(Object.keys(parsed.assets).sort()).toEqual(['subdir/visible.md']);
   });
 
+  it('skips package-manager / editor litter (e.g. dpkg conffile residue)', async () => {
+    await write('spec.yaml', 'description: x\n');
+    await write('body.md', 'b\n');
+    await write('body.md.dpkg-new', 'junk\n');
+    await write('body.md.dpkg-tmp', 'junk\n');
+    await write('keep.md', 'real asset\n');
+    await write('keep.md~', 'editor backup\n');
+    await write('subdir/foo.sh.dpkg-old', 'junk\n');
+
+    const parsed = await parseSkillspec(tmp);
+    expect(Object.keys(parsed.assets).sort()).toEqual(['keep.md']);
+  });
+
   it('throws when spec.yaml is missing', async () => {
     await write('body.md', 'b\n');
     await expect(parseSkillspec(tmp)).rejects.toThrow(SkillspecError);

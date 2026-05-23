@@ -309,7 +309,7 @@ describe('buildSpawn — effort level', () => {
     );
   });
 
-  it('opencode sets options.reasoningEffort when set, omits options when blank', () => {
+  it('opencode pins reasoning effort under per-model options, never top-level', () => {
     const set: AgentDef = {
       harness: 'opencode',
       name: 'oc',
@@ -317,10 +317,38 @@ describe('buildSpawn — effort level', () => {
       config: OPENCODE_PRESETS['deepseek-v4-pro'].config,
     };
     const setCfg = JSON.parse(buildSpawn(set, resolve({})).env.OPENCODE_CONFIG_CONTENT);
-    expect(setCfg.options.reasoningEffort).toBe('max');
+    // opencode's top-level Config is a closed schema — a top-level `options` key
+    // makes it reject the whole config. Effort lives under the freeform per-model
+    // `provider.<id>.models.<model>.options` instead.
+    expect(setCfg).not.toHaveProperty('options');
+    expect(setCfg.provider.deepseek.models['deepseek-v4-pro'].options.reasoningEffort).toBe('max');
 
     const blank: AgentDef = { ...set, config: { ...set.config, effortLevel: undefined } };
     const blankCfg = JSON.parse(buildSpawn(blank, resolve({})).env.OPENCODE_CONFIG_CONTENT);
     expect(blankCfg).not.toHaveProperty('options');
+    expect(blankCfg).not.toHaveProperty('provider');
+  });
+
+  it('opencode applies effort to the default + build/plan models, preserving extra config', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc-auto',
+      slug: 'opencode-auto',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        buildModel: 'deepseek/deepseek-v4-flash',
+        planModel: 'deepseek/deepseek-v4-flash',
+        disableExternalSkills: true,
+        effortLevel: 'max',
+        extraConfigJson: '{ "provider": { "deepseek": { "options": { "baseURL": "x" } } } }',
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    expect(cfg).not.toHaveProperty('options');
+    const ds = cfg.provider.deepseek;
+    expect(ds.models['deepseek-v4-pro'].options.reasoningEffort).toBe('max');
+    expect(ds.models['deepseek-v4-flash'].options.reasoningEffort).toBe('max');
+    // extraConfigJson's provider.options survives the per-model merge.
+    expect(ds.options.baseURL).toBe('x');
   });
 });

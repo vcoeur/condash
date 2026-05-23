@@ -121,7 +121,7 @@ opencode --model kimi-for-coding/kimi-k2-thinking
 
 Unlike `claude-kimi`, the credential is **not** in the wrapper. The model string is `<provider>/<model>`; the `kimi-for-coding` provider is registered once with `opencode auth login` and stored in OpenCode's auth file. The wrapper just selects the model and launches. (OpenCode is often installed as a self-contained binary, e.g. under `~/.opencode/bin` — make sure that directory is on your `PATH`.)
 
-To pin reasoning effort, add a top-level `"options": { "reasoningEffort": "max" }` to `opencode.json` — or set the agent's **Effort level** field in condash, which inlines the same key into `OPENCODE_CONFIG_CONTENT`. Providers that support a reasoning budget (e.g. DeepSeek) map it onto their `reasoning_effort`; leave it blank to omit.
+To pin reasoning effort, set it as a **per-model option** — `provider.<id>.models.<model>.options.reasoningEffort` — in `opencode.json`, or set the agent's **Effort level** field in condash, which inlines that key into `OPENCODE_CONFIG_CONTENT` for each model the agent references. OpenCode's top-level config is a closed schema with **no** `options` key, so a top-level `"options"` is rejected (`ConfigInvalidError`) and the launch fails — reasoning effort belongs under the model. Providers that support a reasoning budget (e.g. DeepSeek) map it onto their own setting; leave it blank to omit.
 
 ### `aider-kimi` — Aider via an OpenAI-compatible endpoint
 

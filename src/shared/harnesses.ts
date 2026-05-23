@@ -387,16 +387,53 @@ function buildOpencodeSpawn(
     agent.plan = { ...((agent.plan as Record<string, unknown>) ?? {}), model: cfg.planModel };
   }
   if (Object.keys(agent).length > 0) config.agent = agent;
+  // Reasoning effort is a *model* option in opencode. Its top-level Config is a
+  // closed schema (no `options` key), so emitting `options` there makes opencode
+  // reject the whole config (ConfigInvalidError) and every launch fails. Attach
+  // the effort under the freeform per-model `provider.<id>.models.<model>.options`
+  // for each model this agent references, so it follows whichever model runs.
   if (cfg.effortLevel?.trim()) {
-    config.options = {
-      ...((config.options as Record<string, unknown>) ?? {}),
-      reasoningEffort: cfg.effortLevel,
-    };
+    const effort = cfg.effortLevel.trim();
+    for (const modelRef of [cfg.model, cfg.buildModel, cfg.planModel]) {
+      if (modelRef?.trim()) setModelReasoningEffort(config, modelRef.trim(), effort);
+    }
   }
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
 
   const extraArgs = initialPrompt ? ['--prompt', initialPrompt] : [];
   return { command: HARNESSES.opencode.binary, args: extraArgs, env, unsetEnv: [] };
+}
+
+/**
+ * Set `reasoningEffort` on a `<provider>/<model>` reference inside an opencode
+ * config object, creating the `provider.<id>.models.<model>.options` nesting on
+ * demand and preserving anything already present (e.g. from `extraConfigJson`).
+ * No-op for a `modelRef` that isn't in `provider/model` form. The provider id is
+ * everything before the first `/`; the rest is the model id (which may itself
+ * contain slashes, e.g. `openrouter/anthropic/claude`).
+ */
+function setModelReasoningEffort(
+  config: Record<string, unknown>,
+  modelRef: string,
+  effort: string,
+): void {
+  const slash = modelRef.indexOf('/');
+  if (slash <= 0 || slash >= modelRef.length - 1) return;
+  const providerId = modelRef.slice(0, slash);
+  const modelId = modelRef.slice(slash + 1);
+
+  const provider = (config.provider as Record<string, unknown>) ?? {};
+  const providerEntry = (provider[providerId] as Record<string, unknown>) ?? {};
+  const models = (providerEntry.models as Record<string, unknown>) ?? {};
+  const modelEntry = (models[modelId] as Record<string, unknown>) ?? {};
+  const options = (modelEntry.options as Record<string, unknown>) ?? {};
+
+  options.reasoningEffort = effort;
+  modelEntry.options = options;
+  models[modelId] = modelEntry;
+  providerEntry.models = models;
+  provider[providerId] = providerEntry;
+  config.provider = provider;
 }
 
 // ---------------------------------------------------------------------------

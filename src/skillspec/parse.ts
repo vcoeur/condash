@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { isIgnoredSourceArtifact } from '../shared/source-artifacts';
 import { COMPILE_TARGETS, type Skillspec } from './types';
 
 /** Top-level entries the parser owns; everything else is a sibling asset. */
@@ -105,6 +106,7 @@ async function collectAssets(
   }
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
+    if (isIgnoredSourceArtifact(entry.name)) continue;
     if (current === rootDir && RESERVED_TOP.has(entry.name)) continue;
     const abs = join(current, entry.name);
     if (entry.isDirectory()) {

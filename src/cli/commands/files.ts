@@ -35,6 +35,7 @@ import {
   type AgentsMdTarget,
 } from '../../agents-md';
 import { CliError, ExitCodes } from '../output';
+import { isIgnoredSourceArtifact } from '../../shared/source-artifacts';
 import {
   cheapDiff,
   sha256,
@@ -659,6 +660,7 @@ export async function installAgentConfigSources(
     const entries = await fs.readdir(src, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue;
+      if (isIgnoredSourceArtifact(entry.name)) continue;
       // common.md is handled above with refuse-on-edit semantics.
       if (prefix === '' && entry.name === 'common.md') continue;
       const srcPath = join(src, entry.name);
