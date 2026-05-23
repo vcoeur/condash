@@ -169,6 +169,11 @@ function agentConfigCandidates(
     case 'opencode':
       return [
         { rel: '__opencode__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md'), badge: 'AGENTS' },
+        {
+          rel: '__opencode__/.opencode/AGENTS.md',
+          abs: join(conceptionPath, '.opencode', 'AGENTS.md'),
+          badge: 'AGENTS',
+        },
       ];
     default:
       return [];

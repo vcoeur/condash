@@ -3,7 +3,12 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readKimiSkillsTree, readSkillsTree, readSkillsTreeForTab } from './skills';
+import {
+  readKimiSkillsTree,
+  readOpencodeSkillsTree,
+  readSkillsTree,
+  readSkillsTreeForTab,
+} from './skills';
 
 let tmp: string;
 
@@ -190,6 +195,54 @@ describe('readKimiSkillsTree', () => {
     const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
     expect(agents.length).toBe(1);
     expect(agents[0]?.relPath).toBe('__kimi__/.kimi/AGENTS.md');
+  });
+});
+
+function setupOpencodeSkills(): void {
+  mkdirSync(join(tmp, '.opencode'));
+  mkdirSync(join(tmp, '.opencode', 'skills'));
+  mkdirSync(join(tmp, '.opencode', 'skills', 'projects'));
+  writeFileSync(
+    join(tmp, '.opencode', 'skills', 'projects', 'SKILL.md'),
+    '# Projects skill\n\nLead paragraph.\n',
+  );
+}
+
+describe('readOpencodeSkillsTree', () => {
+  it('returns null when the directory is missing', async () => {
+    const tree = await readOpencodeSkillsTree(tmp);
+    expect(tree).toBeNull();
+  });
+
+  it('injects synthetic AGENTS.md entry from .opencode/AGENTS.md', async () => {
+    setupOpencodeSkills();
+    writeFileSync(
+      join(tmp, '.opencode', 'AGENTS.md'),
+      '# OpenCode AGENTS\n\nOpenCode agent rules.\n',
+    );
+    const tree = (await readOpencodeSkillsTree(tmp))!;
+    const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
+    expect(agents.length).toBe(1);
+    expect(agents[0]?.title).toBe('OpenCode AGENTS');
+    expect(agents[0]?.relPath).toBe('__opencode__/.opencode/AGENTS.md');
+  });
+
+  it('surfaces root AGENTS.md when present, alongside .opencode/AGENTS.md', async () => {
+    setupOpencodeSkills();
+    writeFileSync(join(tmp, '.opencode', 'AGENTS.md'), '# OpenCode inner\n');
+    writeFileSync(join(tmp, 'AGENTS.md'), '# Root AGENTS\n');
+    const tree = (await readOpencodeSkillsTree(tmp))!;
+    const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
+    expect(agents.length).toBe(2);
+    expect(agents[0]?.relPath).toBe('__opencode__/AGENTS.md'); // root first
+    expect(agents[1]?.relPath).toBe('__opencode__/.opencode/AGENTS.md'); // subdir second
+  });
+
+  it('skips AGENTS.md when neither location exists', async () => {
+    setupOpencodeSkills();
+    const tree = (await readOpencodeSkillsTree(tmp))!;
+    const agents = (tree.children ?? []).filter((c) => c.name === 'AGENTS.md');
+    expect(agents.length).toBe(0);
   });
 });
 
