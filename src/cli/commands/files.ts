@@ -372,6 +372,92 @@ export async function compileAgentConfigs(
   return written;
 }
 
+/** The `instructions` entry pointing OpenCode at condash's compiled config. */
+const OPENCODE_INSTRUCTIONS_ENTRY = AGENTS_MD_OUTPUTS.opencode;
+/** OpenCode's published config schema URL — set on a freshly-created file. */
+const OPENCODE_CONFIG_SCHEMA = 'https://opencode.ai/config.json';
+
+export interface OpencodeConfigOutcome {
+  /** Always `opencode.json` (conception root). */
+  path: string;
+  /**
+   * `created` — wrote a fresh file. `merged` — added the instructions entry to
+   * an existing file, preserving every other key. `unchanged` — entry already
+   * present. `skipped` — existing file is malformed / unexpectedly shaped and
+   * was left untouched so the user's content isn't clobbered (see `reason`).
+   */
+  state: 'created' | 'merged' | 'unchanged' | 'skipped';
+  /** Human-readable explanation, set only for `skipped`. */
+  reason?: string;
+}
+
+/**
+ * Ensure the conception-root `opencode.json` points OpenCode at the compiled
+ * `.opencode/AGENTS.md`.
+ *
+ * OpenCode auto-discovers an `AGENTS.md` only by walking *up* from the working
+ * directory — it never looks inside `.opencode/` — so without this entry the
+ * project-scope agent config condash compiles is silently ignored. The
+ * `instructions` paths resolve relative to the config-file directory, so the
+ * file must sit at the conception root (not `.opencode/opencode.json`, which
+ * OpenCode does not read).
+ *
+ * Merge-not-clobber: an existing file keeps every other key (`$schema`,
+ * `model`, `theme`, `mcp`, …); only the missing instructions entry is added.
+ * Idempotent. A malformed or unexpectedly-shaped existing file is left
+ * untouched and reported as `skipped`.
+ */
+export async function ensureOpencodeConfig(
+  dest: string,
+  dryRun: boolean,
+): Promise<OpencodeConfigOutcome> {
+  const path = 'opencode.json';
+  const targetPath = join(dest, path);
+
+  let onDisk: string | null = null;
+  try {
+    onDisk = await fs.readFile(targetPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+
+  if (onDisk === null) {
+    const content =
+      JSON.stringify(
+        { $schema: OPENCODE_CONFIG_SCHEMA, instructions: [OPENCODE_INSTRUCTIONS_ENTRY] },
+        null,
+        2,
+      ) + '\n';
+    if (!dryRun) await writeFileMkdir(targetPath, Buffer.from(content, 'utf8'));
+    return { path, state: 'created' };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(onDisk);
+  } catch {
+    return { path, state: 'skipped', reason: 'existing opencode.json is not valid JSON' };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { path, state: 'skipped', reason: 'existing opencode.json is not a JSON object' };
+  }
+
+  const config = parsed as Record<string, unknown>;
+  const existing = config.instructions;
+  if (existing !== undefined && !Array.isArray(existing)) {
+    return { path, state: 'skipped', reason: 'existing "instructions" is not an array' };
+  }
+  const list = (existing as unknown[] | undefined) ?? [];
+  if (list.includes(OPENCODE_INSTRUCTIONS_ENTRY)) {
+    return { path, state: 'unchanged' };
+  }
+
+  config.instructions = [...list, OPENCODE_INSTRUCTIONS_ENTRY];
+  const content = JSON.stringify(config, null, 2) + '\n';
+  if (!dryRun) await writeFileMkdir(targetPath, Buffer.from(content, 'utf8'));
+  return { path, state: 'merged' };
+}
+
 export type FileStatusState =
   | 'unchanged'
   | 'edited'
