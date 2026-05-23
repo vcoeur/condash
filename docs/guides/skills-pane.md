@@ -54,11 +54,13 @@ Same layout as Claude, rooted at the Kimi skills dir. The config callout is `AGE
 
 Same layout as Kimi, rooted at the OpenCode skills dir, with an `AGENTS.md` config callout.
 
-**Telling OpenCode to read condash's config.** condash compiles the conception's agent config to `.opencode/AGENTS.md` (project scope) and `~/.config/opencode/AGENTS.md` (user scope, with `--user`). OpenCode reads the global `~/.config/opencode/AGENTS.md` automatically. It does **not** auto-discover the project-scope `.opencode/AGENTS.md` (condash never touches the conception-root `AGENTS.md`, which it manages separately), so point OpenCode at it from the project's `opencode.json`:
+**Telling OpenCode to read condash's config.** condash compiles the conception's agent config to `.opencode/AGENTS.md` (project scope) and `~/.config/opencode/AGENTS.md` (user scope, with `--user`). OpenCode reads the global `~/.config/opencode/AGENTS.md` automatically. It does **not** auto-discover the project-scope `.opencode/AGENTS.md` (condash never touches the conception-root `AGENTS.md`, which it manages separately) — OpenCode only finds an `AGENTS.md` by walking up from the working directory, never inside `.opencode/`. So `condash skills install` points OpenCode at it for you, by writing the conception-root `opencode.json`:
 
 ```json
-{ "instructions": [".opencode/AGENTS.md"] }
+{ "$schema": "https://opencode.ai/config.json", "instructions": [".opencode/AGENTS.md"] }
 ```
+
+The `instructions` paths resolve relative to the config file, so this lives at the conception **root** (not `.opencode/opencode.json`, which OpenCode doesn't read). If you already have an `opencode.json`, condash **merges** the `instructions` entry in and leaves every other key (`model`, `theme`, `mcp`, …) untouched. Unlike the compiled `.opencode/AGENTS.md` (gitignored, regenerated each install), `opencode.json` is a versioned pointer you can commit and extend — condash only ever adds the one entry.
 
 Skills need no such step — OpenCode discovers `.opencode/skills/` (and `~/.config/opencode/skills/`) on its own. But OpenCode *also* scans `.claude/skills/` and `.agents/skills/`, and resolves a duplicate skill name by a non-deterministic race (no stable precedence), so run OpenCode with `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` to have it read only its own dirs and treat condash's `.opencode/` output as the single source.
 

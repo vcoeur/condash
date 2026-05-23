@@ -37,11 +37,13 @@ import {
 import {
   SHIPPED_FILES,
   compileAgentConfigs,
+  ensureOpencodeConfig,
   installAgentConfigSources,
   installShippedFile,
   pruneSourceMissingFileEntries,
   sourceMissingFileRows,
   type FileInstallOutcome,
+  type OpencodeConfigOutcome,
   type ShippedFile,
 } from './files';
 import {
@@ -91,6 +93,7 @@ export interface InstallReport {
     sourceMissing: { path: string; region: string; shippedVersion: string }[];
   };
   agentsMdCompiled: { target: AgentsMdTarget; path: string }[];
+  opencodeConfig: OpencodeConfigOutcome | null;
   agentConfigsCopied: string[];
   pruned?: {
     skills: { skill: string; relPath: string; shippedVersion: string }[];
@@ -181,6 +184,7 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
       sourceMissing: [],
     },
     agentsMdCompiled: [],
+    opencodeConfig: null,
     agentConfigsCopied: [],
     diffs: showDiff ? [] : undefined,
   };
@@ -307,6 +311,12 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
 
   // Pass 2b: compile .agents/agents/ → per-target outputs (no-op if source tree isn't on disk).
   report.agentsMdCompiled = await compileAgentConfigs(dest, dryRun);
+
+  // Pass 2c: when an OpenCode config was compiled, ensure the conception-root
+  // opencode.json points OpenCode at it (it does not auto-discover `.opencode/`).
+  if (report.agentsMdCompiled.some((c) => c.target === 'opencode')) {
+    report.opencodeConfig = await ensureOpencodeConfig(dest, dryRun);
+  }
 
   // --prune: drop manifest entries whose shipped source is gone.
   if (prune) {
@@ -474,6 +484,11 @@ function formatInstallHuman(report: InstallReport): string {
   if (report.agentsMdCompiled.length > 0) {
     lines.push(`Compiled agent configs (${report.agentsMdCompiled.length}):`);
     for (const c of report.agentsMdCompiled) lines.push(`  → ${c.path}  (${c.target})`);
+  }
+  if (report.opencodeConfig && report.opencodeConfig.state !== 'unchanged') {
+    const o = report.opencodeConfig;
+    const suffix = o.reason ? ` — ${o.reason}` : '';
+    lines.push(`OpenCode config (${o.state}): ${o.path}${suffix}`);
   }
   if (report.diffs && report.diffs.length > 0) {
     for (const d of report.diffs) {
