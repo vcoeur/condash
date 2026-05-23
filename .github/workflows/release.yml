@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   validate-tag:
-    name: Validate tag (shape + version + reachable-from-main)
+    name: Validate tag (shape + reachable-from-main)
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -37,21 +37,6 @@ jobs:
             exit 1
           fi
           echo "Tag $TAG is valid."
-
-      # The bump commit must land on main before the tag is pushed.
-      - name: Assert package.json version matches tag
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          EXPECTED="${TAG#v}"
-          if [[ "$PKG_VERSION" != "$EXPECTED" ]]; then
-            echo "package.json version ($PKG_VERSION) does not match tag ($EXPECTED)." >&2
-            echo "Bump package.json before pushing the tag." >&2
-            exit 1
-          fi
-          echo "package.json version $PKG_VERSION matches tag $TAG."
 
       # Tags must point at commits that have landed on main -- no one-off
       # feature-branch tags, no detached commits.

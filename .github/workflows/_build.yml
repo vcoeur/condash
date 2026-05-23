@@ -36,6 +36,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Tag-derived version: the git tag is the source of truth, not a committed
+      # bump. `_build.yml` runs only from release.yml (tag push), so ref_name is
+      # the tag. electron-builder reads this version into installers + latest*.yml.
+      - name: Set version from tag
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
       - name: Build renderer + main
         run: npm run build
 
