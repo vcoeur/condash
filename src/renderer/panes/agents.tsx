@@ -599,6 +599,19 @@ function AgentEditor(props: {
             }
           />
         </label>
+        <label>
+          <span>Effort level (options.reasoningEffort)</span>
+          <input
+            type="text"
+            placeholder="omit"
+            value={d().opencode.effortLevel ?? ''}
+            onInput={(e) =>
+              props.patch({
+                opencode: { ...d().opencode, effortLevel: e.currentTarget.value || undefined },
+              })
+            }
+          />
+        </label>
         <label class="agents-checkbox">
           <input
             type="checkbox"
@@ -667,6 +680,7 @@ function AgentEditor(props: {
                 ['sonnetAlias', 'sonnet alias'],
                 ['opusAlias', 'opus alias'],
                 ['subagentModel', 'Subagent model'],
+                ['effortLevel', 'Effort level (CLAUDE_CODE_EFFORT_LEVEL)'],
               ] as [keyof ClaudeAgentConfig, string][]
             }
           >

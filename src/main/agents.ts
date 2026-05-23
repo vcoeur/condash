@@ -36,6 +36,8 @@ const claudeConfigSchema = z.object({
   opusAlias: z.string(),
   subagentModel: z.string(),
   maxContextTokens: z.number(),
+  // Default '' so agent JSON written before this field existed still validates.
+  effortLevel: z.string().default(''),
   disableCaching: z.boolean(),
   disable1M: z.boolean(),
   disableAdaptiveThinking: z.boolean(),
@@ -67,6 +69,7 @@ const opencodeConfigSchema = z.object({
   buildModel: z.string().optional(),
   planModel: z.string().optional(),
   disableExternalSkills: z.boolean(),
+  effortLevel: z.string().optional(),
   extraConfigJson: z
     .string()
     .optional()

@@ -75,6 +75,11 @@ export CLAUDE_CODE_SUBAGENT_MODEL="kimi-k2.6"
 # --- Context window (drives the "% context left" display + compaction) ---
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS=262144   # Kimi-k2.6 = 256K
 
+# --- Reasoning effort (optional) ---
+# Providers that map Claude Code's /effort onto their own reasoning budget
+# (e.g. DeepSeek) honour this; omit it to let the live session's /effort drive.
+export CLAUDE_CODE_EFFORT_LEVEL=max
+
 # --- Turn off Anthropic-only features the endpoint may not honour ---
 export DISABLE_PROMPT_CACHING=1                 # flip off if caching is confirmed
 export CLAUDE_CODE_DISABLE_1M_CONTEXT=1
@@ -115,6 +120,8 @@ opencode --model kimi-for-coding/kimi-k2-thinking
 ```
 
 Unlike `claude-kimi`, the credential is **not** in the wrapper. The model string is `<provider>/<model>`; the `kimi-for-coding` provider is registered once with `opencode auth login` and stored in OpenCode's auth file. The wrapper just selects the model and launches. (OpenCode is often installed as a self-contained binary, e.g. under `~/.opencode/bin` — make sure that directory is on your `PATH`.)
+
+To pin reasoning effort, add a top-level `"options": { "reasoningEffort": "max" }` to `opencode.json` — or set the agent's **Effort level** field in condash, which inlines the same key into `OPENCODE_CONFIG_CONTENT`. Providers that support a reasoning budget (e.g. DeepSeek) map it onto their `reasoning_effort`; leave it blank to omit.
 
 ### `aider-kimi` — Aider via an OpenAI-compatible endpoint
 

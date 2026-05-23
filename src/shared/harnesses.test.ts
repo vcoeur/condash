@@ -12,6 +12,7 @@ import {
   isValidSlug,
   kimiAgentFileYaml,
   MissingAgentSecretError,
+  OPENCODE_PRESETS,
   previewCommandLine,
   slugify,
   suggestSlug,
@@ -248,5 +249,40 @@ describe('buildSpawn — kimi extra flags', () => {
       '--config',
       '{"a":1}',
     ]);
+  });
+});
+
+describe('buildSpawn — effort level', () => {
+  it('claude emits CLAUDE_CODE_EFFORT_LEVEL when set, omits it when blank', () => {
+    const base: AgentDef = {
+      harness: 'claude',
+      name: 'ds',
+      slug: 'claude-ds',
+      secretEnv: 'DEEPSEEK_API_KEY',
+      config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+    };
+    expect(buildSpawn(base, resolve({ DEEPSEEK_API_KEY: 'sk' })).env.CLAUDE_CODE_EFFORT_LEVEL).toBe(
+      'max',
+    );
+
+    const blank: AgentDef = { ...base, config: { ...base.config, effortLevel: '' } };
+    expect(buildSpawn(blank, resolve({ DEEPSEEK_API_KEY: 'sk' })).env).not.toHaveProperty(
+      'CLAUDE_CODE_EFFORT_LEVEL',
+    );
+  });
+
+  it('opencode sets options.reasoningEffort when set, omits options when blank', () => {
+    const set: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: OPENCODE_PRESETS['deepseek-v4-pro'].config,
+    };
+    const setCfg = JSON.parse(buildSpawn(set, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    expect(setCfg.options.reasoningEffort).toBe('max');
+
+    const blank: AgentDef = { ...set, config: { ...set.config, effortLevel: undefined } };
+    const blankCfg = JSON.parse(buildSpawn(blank, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    expect(blankCfg).not.toHaveProperty('options');
   });
 });
