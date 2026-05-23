@@ -10,8 +10,10 @@ import {
   parseEnv,
   previewAgent,
   readAgent,
+  readAgentsEnv,
   resolveAgentSpawn,
   writeAgent,
+  writeAgentsEnv,
 } from './agents';
 
 let dir: string;
@@ -72,6 +74,17 @@ describe('agent storage round-trip', () => {
 
   it('listAgents returns [] when the agents dir is absent', async () => {
     expect(await listAgents(dir)).toEqual([]);
+  });
+});
+
+describe('agents/.env editor', () => {
+  it('returns a commented template when absent, then round-trips writes', async () => {
+    expect(await readAgentsEnv(dir)).toContain('agents/.env');
+    await writeAgentsEnv(dir, 'DEEPSEEK_API_KEY=sk-real\n');
+    expect(await readAgentsEnv(dir)).toBe('DEEPSEEK_API_KEY=sk-real\n');
+    // And the written value drives token presence.
+    await writeAgent(dir, claudeAgent);
+    expect((await listAgents(dir))[0].tokenPresent).toBe(true);
   });
 });
 

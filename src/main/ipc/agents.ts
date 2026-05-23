@@ -1,12 +1,13 @@
-import { ipcMain, shell } from 'electron';
+import { ipcMain } from 'electron';
 import type { AgentDef } from '../../shared/harnesses';
 import {
   deleteAgent,
-  ensureAgentsEnv,
   listAgents,
   previewAgent,
   readAgent,
+  readAgentsEnv,
   writeAgent,
+  writeAgentsEnv,
 } from '../agents';
 import { withConception } from './utils';
 
@@ -35,14 +36,13 @@ export function registerAgentsIpc(): void {
     withConception((c) => previewAgent(c, name), null),
   );
 
-  // Create agents/.env (with a commented template) if missing, then open it in
-  // the OS default editor. Returns the path; throws on an openPath failure.
-  ipcMain.handle('openAgentsEnv', () =>
+  // In-app token editing — raw read/write of agents/.env. The renderer's token
+  // editor is the one deliberate place secret values surface in the UI.
+  ipcMain.handle('readAgentsEnv', () => withConception((c) => readAgentsEnv(c), null));
+
+  ipcMain.handle('writeAgentsEnv', (_, content: string) =>
     withConception(async (c) => {
-      const file = await ensureAgentsEnv(c);
-      const err = await shell.openPath(file);
-      if (err) throw new Error(err);
-      return file;
-    }, null),
+      await writeAgentsEnv(c, content);
+    }, undefined),
   );
 }

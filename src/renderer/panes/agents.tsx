@@ -68,13 +68,32 @@ export function AgentsView(props: {
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
   /** Spawn a terminal tab running the named agent. */
   onLaunch: (name: string) => void;
-  /** Open `<conception>/agents/.env` in the OS default editor. */
-  onEditTokens: () => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [preview, setPreview] = createSignal<{ name: string; spec: AgentSpawnPreview } | null>(
     null,
   );
+  // In-app agents/.env editor: null = closed; string = open with that content.
+  const [tokens, setTokens] = createSignal<string | null>(null);
+
+  const openTokens = async () => {
+    setDraft(null);
+    setPreview(null);
+    setTokens((await window.condash.readAgentsEnv()) ?? '');
+  };
+
+  const saveTokens = async () => {
+    const content = tokens();
+    if (content === null) return;
+    try {
+      await window.condash.writeAgentsEnv(content);
+      props.flashToast('Saved agents/.env', 'success');
+      setTokens(null);
+      props.reload(); // refresh token-presence badges
+    } catch (err) {
+      props.flashToast(`Save failed: ${(err as Error).message}`, 'error');
+    }
+  };
 
   const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
   const patchClaude = (p: Partial<ClaudeAgentConfig>) =>
@@ -147,7 +166,7 @@ export function AgentsView(props: {
           <button type="button" onClick={startCreate} disabled={!props.hasConception()}>
             + New agent
           </button>
-          <button type="button" onClick={props.onEditTokens} disabled={!props.hasConception()}>
+          <button type="button" onClick={() => void openTokens()} disabled={!props.hasConception()}>
             Edit tokens (agents/.env)
           </button>
         </div>
@@ -215,6 +234,32 @@ export function AgentsView(props: {
         </Show>
       </Show>
 
+      <Show when={tokens() !== null}>
+        <section class="agents-editor agents-tokens-editor">
+          <header>
+            <h3>agents/.env — API tokens</h3>
+          </header>
+          <p class="agents-editor-note">
+            One <code>NAME=value</code> per line; gitignored. Each agent names the variable it reads
+            via its "Token env var" field — the value lives here.
+          </p>
+          <textarea
+            class="agents-tokens-textarea"
+            spellcheck={false}
+            value={tokens() ?? ''}
+            onInput={(e) => setTokens(e.currentTarget.value)}
+          />
+          <div class="agents-editor-actions">
+            <button type="button" onClick={() => void saveTokens()}>
+              Save
+            </button>
+            <button type="button" onClick={() => setTokens(null)}>
+              Cancel
+            </button>
+          </div>
+        </section>
+      </Show>
+
       <Show when={preview()}>
         {(p) => (
           <section class="agents-config-view">
@@ -272,6 +317,16 @@ function formatPreview(spec: AgentSpawnPreview): string {
   for (const [k, v] of Object.entries(spec.env)) lines.push(`export ${k}=${v}`);
   for (const k of spec.unsetEnv) lines.push(`unset ${k}`);
   return lines.join('\n');
+}
+
+/** Live editor preview, guarded so a half-typed JSON field (opencode's extra
+ *  config is parsed by buildSpawn) doesn't crash the render. */
+function safePreview(d: Draft): string {
+  try {
+    return formatPreview(buildSpawn(buildDef(d), (k) => `$${k}`));
+  } catch (err) {
+    return `(cannot preview: ${(err as Error).message})`;
+  }
 }
 
 function AgentEditor(props: {
@@ -367,19 +422,96 @@ function AgentEditor(props: {
           <input
             type="text"
             value={d().kimi.agentFile}
-            onInput={(e) => props.patch({ kimi: { agentFile: e.currentTarget.value } })}
+            onInput={(e) =>
+              props.patch({ kimi: { ...d().kimi, agentFile: e.currentTarget.value } })
+            }
+          />
+        </label>
+        <label>
+          <span>Model (--model, blank = config default)</span>
+          <input
+            type="text"
+            value={d().kimi.model ?? ''}
+            onInput={(e) =>
+              props.patch({ kimi: { ...d().kimi, model: e.currentTarget.value || undefined } })
+            }
+          />
+        </label>
+        <label>
+          <span>Thinking mode</span>
+          <select
+            value={d().kimi.thinking === undefined ? 'default' : d().kimi.thinking ? 'on' : 'off'}
+            onChange={(e) => {
+              const v = e.currentTarget.value;
+              props.patch({
+                kimi: { ...d().kimi, thinking: v === 'default' ? undefined : v === 'on' },
+              });
+            }}
+          >
+            <option value="default">config default</option>
+            <option value="on">--thinking</option>
+            <option value="off">--no-thinking</option>
+          </select>
+        </label>
+        <label class="agents-checkbox">
+          <input
+            type="checkbox"
+            checked={d().kimi.plan ?? false}
+            onChange={(e) =>
+              props.patch({ kimi: { ...d().kimi, plan: e.currentTarget.checked || undefined } })
+            }
+          />
+          <span>Start in plan mode (--plan)</span>
+        </label>
+        <label>
+          <span>Inline config (--config TOML/JSON, optional)</span>
+          <textarea
+            class="agents-config-textarea"
+            spellcheck={false}
+            value={d().kimi.configInline ?? ''}
+            onInput={(e) =>
+              props.patch({
+                kimi: { ...d().kimi, configInline: e.currentTarget.value || undefined },
+              })
+            }
           />
         </label>
       </Show>
 
       <Show when={d().harness === 'opencode'}>
         <label>
-          <span>Default model (--model provider/model)</span>
+          <span>Default model (provider/model)</span>
           <input
             type="text"
             value={d().opencode.model}
             onInput={(e) =>
               props.patch({ opencode: { ...d().opencode, model: e.currentTarget.value } })
+            }
+          />
+        </label>
+        <label>
+          <span>Build agent model (optional override)</span>
+          <input
+            type="text"
+            placeholder="inherit default"
+            value={d().opencode.buildModel ?? ''}
+            onInput={(e) =>
+              props.patch({
+                opencode: { ...d().opencode, buildModel: e.currentTarget.value || undefined },
+              })
+            }
+          />
+        </label>
+        <label>
+          <span>Plan agent model (optional override)</span>
+          <input
+            type="text"
+            placeholder="inherit default"
+            value={d().opencode.planModel ?? ''}
+            onInput={(e) =>
+              props.patch({
+                opencode: { ...d().opencode, planModel: e.currentTarget.value || undefined },
+              })
             }
           />
         </label>
@@ -395,12 +527,25 @@ function AgentEditor(props: {
           />
           <span>Disable external skills (OPENCODE_DISABLE_EXTERNAL_SKILLS)</span>
         </label>
+        <label>
+          <span>Extra config (JSON merged into OPENCODE_CONFIG_CONTENT)</span>
+          <textarea
+            class="agents-config-textarea"
+            spellcheck={false}
+            placeholder={'{ "theme": "…", "provider": { … } }'}
+            value={d().opencode.extraConfigJson ?? ''}
+            onInput={(e) =>
+              props.patch({
+                opencode: { ...d().opencode, extraConfigJson: e.currentTarget.value || undefined },
+              })
+            }
+          />
+        </label>
         <p class="agents-editor-note">
-          Sets opencode's <strong>default</strong> model via <code>--model</code>. The{' '}
-          <strong>plan</strong> and <strong>build</strong> agents take their own models from the
-          project's <code>opencode.json</code> (<code>agent.plan.model</code> /{' '}
-          <code>agent.build.model</code>); set <code>default_agent</code> there to pick which one
-          starts. condash launches opencode with <code>--model</code> only.
+          condash inlines this as <code>OPENCODE_CONFIG_CONTENT</code> (no{' '}
+          <code>opencode.json</code> needed): top-level <code>model</code> is the default;
+          build/plan overrides become <code>agent.build.model</code> / <code>agent.plan.model</code>
+          . Extra JSON is merged underneath.
         </p>
       </Show>
 
@@ -496,7 +641,7 @@ function AgentEditor(props: {
 
       <div class="agents-config-view agents-editor-preview">
         <span class="agents-editor-preview-label">Will launch (as configured):</span>
-        <pre>{formatPreview(buildSpawn(buildDef(d()), (k) => `$${k}`))}</pre>
+        <pre>{safePreview(d())}</pre>
       </div>
 
       <div class="agents-editor-actions">

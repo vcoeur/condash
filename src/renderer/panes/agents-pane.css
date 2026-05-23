@@ -222,13 +222,28 @@
 
 .agents-editor input[type='text'],
 .agents-editor input[type='number'],
-.agents-editor select {
+.agents-editor select,
+.agents-editor textarea {
   font-size: 0.85rem;
   padding: 0.25rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
   color: var(--text);
+}
+
+.agents-config-textarea,
+.agents-tokens-textarea {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  min-height: 5rem;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.agents-tokens-textarea {
+  min-height: 8rem;
 }
 
 .agents-editor-name {

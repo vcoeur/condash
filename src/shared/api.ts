@@ -246,10 +246,13 @@ export interface CondashApi {
   /** Spawn preview for the pane's "view full config" — auth vars show
    *  `$SECRET_ENV` references, never a token. Null when the agent is absent. */
   previewAgent(name: string): Promise<AgentSpawnPreview | null>;
-  /** Create `<conception>/agents/.env` (seeding a commented template if it is
-   *  absent) and open it in the OS default editor. Returns the path, or null
-   *  when no conception is active; rejects on an open failure. */
-  openAgentsEnv(): Promise<string | null>;
+  /** Raw contents of `<conception>/agents/.env` for the in-app token editor —
+   *  a commented template when the file is absent, or null when no conception
+   *  is active. This is the one verb that returns secret *values* to the
+   *  renderer, by explicit user action. */
+  readAgentsEnv(): Promise<string | null>;
+  /** Write the token editor's contents back to `<conception>/agents/.env`. */
+  writeAgentsEnv(content: string): Promise<void>;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;

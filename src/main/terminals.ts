@@ -169,6 +169,14 @@ function expandHome(arg: string): string {
   return arg.startsWith('~/') ? homedir() + arg.slice(1) : arg;
 }
 
+/** POSIX single-quote an agent arg unless it's already a bare safe token, so
+ *  spaces/braces/quotes (e.g. kimi-cli's inline `--config` JSON) survive being
+ *  joined into the shell command string. */
+function quoteArg(arg: string): string {
+  if (/^[A-Za-z0-9_/.\-:@=+,]+$/.test(arg)) return arg;
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
 export async function spawnTerminal(
   conceptionPath: string | null,
   webContents: WebContents,
@@ -193,7 +201,7 @@ export async function spawnTerminal(
     // injected from agents/.env). Run it through the login shell so PATH and
     // `~` expansion match a hand-typed invocation.
     agentSpec = await resolveAgentSpawn(conceptionPath, request.agentName);
-    const parts = [agentSpec.command, ...agentSpec.args.map(expandHome)];
+    const parts = [agentSpec.command, ...agentSpec.args.map((a) => quoteArg(expandHome(a)))];
     program = shell;
     argv = wrapForShell(shell, parts.join(' '));
   } else if (request.repo && conceptionPath) {

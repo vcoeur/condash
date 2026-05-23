@@ -41,8 +41,34 @@ const claudeConfigSchema = z.object({
   disableClaudeApiSkill: z.boolean(),
 });
 
-const kimiConfigSchema = z.object({ agentFile: z.string() });
-const opencodeConfigSchema = z.object({ model: z.string(), disableExternalSkills: z.boolean() });
+const kimiConfigSchema = z.object({
+  agentFile: z.string(),
+  model: z.string().optional(),
+  thinking: z.boolean().optional(),
+  plan: z.boolean().optional(),
+  configInline: z.string().optional(),
+});
+
+const isJsonOrBlank = (value: string | undefined): boolean => {
+  if (value == null || value.trim() === '') return true;
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const opencodeConfigSchema = z.object({
+  model: z.string(),
+  buildModel: z.string().optional(),
+  planModel: z.string().optional(),
+  disableExternalSkills: z.boolean(),
+  extraConfigJson: z
+    .string()
+    .optional()
+    .refine(isJsonOrBlank, { message: 'extraConfigJson must be valid JSON' }),
+});
 
 const agentDefSchema = z.discriminatedUnion('harness', [
   z.object({
@@ -81,18 +107,23 @@ const ENV_TEMPLATE = `# agents/.env — API tokens for condash agents (gitignore
 # KIMI_API_KEY=sk-...
 `;
 
-/** Ensure `<conception>/agents/.env` exists (seeding a commented template on
- *  first use) and return its path. Lets the "Edit tokens" button open a real
- *  file instead of erroring on a missing path. */
-export async function ensureAgentsEnv(conceptionPath: string): Promise<string> {
-  await fs.mkdir(agentsDir(conceptionPath), { recursive: true });
-  const file = agentsEnvPath(conceptionPath);
+/** Raw contents of `<conception>/agents/.env` for the in-app editor. Returns a
+ *  commented template (not written to disk) when the file is absent so the
+ *  editor opens with guidance. */
+export async function readAgentsEnv(conceptionPath: string): Promise<string> {
   try {
-    await fs.writeFile(file, ENV_TEMPLATE, { flag: 'wx' });
+    return await fs.readFile(agentsEnvPath(conceptionPath), 'utf8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return ENV_TEMPLATE;
+    throw err;
   }
-  return file;
+}
+
+/** Write the in-app editor's contents back to `<conception>/agents/.env`,
+ *  creating the `agents/` directory if needed. */
+export async function writeAgentsEnv(conceptionPath: string, content: string): Promise<void> {
+  await fs.mkdir(agentsDir(conceptionPath), { recursive: true });
+  await fs.writeFile(agentsEnvPath(conceptionPath), content, 'utf8');
 }
 
 /** Reject anything that isn't a bare, safe filename stem (no slashes / `..`). */

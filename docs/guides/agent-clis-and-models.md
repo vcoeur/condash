@@ -176,10 +176,13 @@ agent:
 Open the **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`) and click **+ New agent**:
 
 1. **Harness** — `claude`, `kimi-cli`, or `opencode`.
-2. **Model variant** — for claude, pick a preset (e.g. `deepseek-v4-pro`, `kimi`) to fill the endpoint + model knobs from the table above, or type a custom variant and edit the advanced fields. For opencode, set `--model <provider>/<model>`; for kimi-cli, the `--agent-file` YAML.
-3. **Token env var** — the name of the variable holding the API key (e.g. `DEEPSEEK_API_KEY`). Put the value in `<conception>/agents/.env` (one `NAME=value` per line) via **Edit tokens (agents/.env)** — it is gitignored and read only by condash's main process.
+2. **Model variant + config** — depends on the harness:
+   - **claude** — pick a preset: `native` (no remap — your own Anthropic login), `deepseek-v4-pro/-flash/-auto`, or `kimi`. A preset fills the endpoint + model knobs from the table above; "Advanced claude config" exposes every field.
+   - **opencode** — set the **default model** (`provider/model`) plus optional **build** / **plan** agent-model overrides, and an "Extra config (JSON)" escape hatch. condash inlines all of it as `OPENCODE_CONFIG_CONTENT` (build/plan become `agent.build.model` / `agent.plan.model`) — no `opencode.json` needed.
+   - **kimi-cli** — set the `--agent-file`, optional `--model`, thinking mode (`--thinking` / `--no-thinking`), `--plan`, and an inline `--config` (TOML/JSON) escape hatch.
+3. **Token env var** — the name of the variable holding the API key (e.g. `DEEPSEEK_API_KEY`). Set the value in **Edit tokens (agents/.env)**, an in-app editor for the gitignored `<conception>/agents/.env`.
 
-The agent is saved as `<conception>/agents/<harness>-<model_variant>.json` and appears in the terminal **spawn dropdown** and as a binding target for project / new-project actions. **Launch** opens a tab running it with the right environment injected; **Config** shows the fully-resolved command + env (token shown as a `$NAME` reference, never the value).
+The **Will launch** panel previews the exact command + environment as you edit. The agent is saved as `<conception>/agents/<harness>-<model_variant>.json` and appears in the terminal **spawn dropdown** and as a binding target for project / new-project actions. Each agent row shows its launch command; **Launch** opens a tab running it with the environment injected; **Config** shows the fully-resolved command + env (token shown as a `$NAME` reference, never the value).
 
 There is no wrapper script and nothing on `PATH` to maintain — condash builds the harness environment in-process. (condash ≤ 3.25 used `~/bin` wrapper scripts registered as `terminal.launchers`; that approach is retired.)
 

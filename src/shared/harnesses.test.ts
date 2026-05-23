@@ -102,18 +102,19 @@ describe('previewCommandLine', () => {
     };
     // claude takes no positional args, so the line is just the binary.
     expect(previewCommandLine(def)).toBe('claude');
+    // opencode's config rides in env now, so the command line is just the binary.
     expect(
       previewCommandLine({
         harness: 'opencode',
         modelVariant: 'deepseek-v4-pro',
         config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
       }),
-    ).toBe('opencode --model deepseek/deepseek-v4-pro');
+    ).toBe('opencode');
   });
 });
 
 describe('buildSpawn — opencode', () => {
-  it('passes --model and disables external skills', () => {
+  it('inlines the default model via OPENCODE_CONFIG_CONTENT and disables external skills', () => {
     const def: AgentDef = {
       harness: 'opencode',
       modelVariant: 'deepseek-v4-pro',
@@ -121,7 +122,65 @@ describe('buildSpawn — opencode', () => {
     };
     const spec = buildSpawn(def, resolve({}));
     expect(spec.command).toBe('opencode');
-    expect(spec.args).toEqual(['--model', 'deepseek/deepseek-v4-pro']);
+    expect(spec.args).toEqual([]);
     expect(spec.env.OPENCODE_DISABLE_EXTERNAL_SKILLS).toBe('1');
+    expect(JSON.parse(spec.env.OPENCODE_CONFIG_CONTENT)).toEqual({
+      model: 'deepseek/deepseek-v4-pro',
+    });
+  });
+
+  it('routes build/plan overrides and merges extra config underneath', () => {
+    const spec = buildSpawn(
+      {
+        harness: 'opencode',
+        modelVariant: 'deepseek-auto',
+        config: {
+          model: 'deepseek/deepseek-v4-flash',
+          buildModel: 'deepseek/deepseek-v4-pro',
+          planModel: 'deepseek/deepseek-v4-pro',
+          disableExternalSkills: true,
+          extraConfigJson: '{ "theme": "tokyonight" }',
+        },
+      },
+      resolve({}),
+    );
+    expect(JSON.parse(spec.env.OPENCODE_CONFIG_CONTENT)).toEqual({
+      theme: 'tokyonight',
+      model: 'deepseek/deepseek-v4-flash',
+      agent: {
+        build: { model: 'deepseek/deepseek-v4-pro' },
+        plan: { model: 'deepseek/deepseek-v4-pro' },
+      },
+    });
+  });
+});
+
+describe('buildSpawn — kimi extra flags', () => {
+  it('adds --model, --thinking, --plan, and inline --config when set', () => {
+    const spec = buildSpawn(
+      {
+        harness: 'kimi',
+        modelVariant: 'k2',
+        config: {
+          agentFile: '~/.kimi/global-agent.yaml',
+          model: 'kimi-k2.6',
+          thinking: true,
+          plan: true,
+          configInline: '{"a":1}',
+        },
+      },
+      resolve({}),
+    );
+    expect(spec.command).toBe('kimi');
+    expect(spec.args).toEqual([
+      '--agent-file',
+      '~/.kimi/global-agent.yaml',
+      '--model',
+      'kimi-k2.6',
+      '--thinking',
+      '--plan',
+      '--config',
+      '{"a":1}',
+    ]);
   });
 });

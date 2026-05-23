@@ -239,17 +239,6 @@ function App() {
     void terminalHandle?.spawnUserShell(item, 'my');
   };
 
-  /** Create (if missing) and open `<conception>/agents/.env` in the OS default
-   *  editor so the user can fill in API tokens. */
-  const editAgentTokens = async (): Promise<void> => {
-    try {
-      const envPath = await window.condash.openAgentsEnv();
-      if (envPath) flashToast(`Editing ${envPath}`, 'info');
-    } catch (err) {
-      flashToast(`Could not open agents/.env: ${(err as Error).message}`, 'error');
-    }
-  };
-
   // Stable references to the filtered action-template arrays. `usableActionTemplates`
   // returns a *fresh* filtered array on every call; without memoising, any reactive
   // re-read of these props allocates a new array, which makes Solid's `<For>` inside
@@ -614,7 +603,6 @@ function App() {
                       hasConception={() => conceptionPath() !== null}
                       flashToast={flashToast}
                       onLaunch={launchAgent}
-                      onEditTokens={() => void editAgentTokens()}
                     />
                   </section>
                 </Show>

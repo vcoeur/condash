@@ -99,16 +99,37 @@ export interface ClaudeAgentConfig {
 
 /** kimi-cli harness config. */
 export interface KimiAgentConfig {
-  /** YAML passed as `kimi --agent-file <agentFile>`. */
+  /** `--agent-file <file>` — custom agent YAML. Blank = omit the flag. */
   agentFile: string;
+  /** `--model <model>`. Blank = use the kimi config-file default. */
+  model?: string;
+  /** `--thinking` (true) / `--no-thinking` (false) / config default (undefined). */
+  thinking?: boolean;
+  /** `--plan` — start in plan mode. */
+  plan?: boolean;
+  /** `--config <string>` — inline TOML/JSON config (escape hatch). Blank = omit. */
+  configInline?: string;
 }
 
-/** opencode harness config. */
+/**
+ * opencode harness config. Rendered into an inline `OPENCODE_CONFIG_CONTENT`
+ * JSON document (no `opencode.json` file needed — same trick as the
+ * `opencode-deepseek-auto` wrapper): top-level `model` is the default; the
+ * per-agent `build` / `plan` model overrides and any `extraConfigJson` keys
+ * are merged in.
+ */
 export interface OpencodeAgentConfig {
-  /** `--model <provider>/<model>`. */
+  /** Top-level `model` (`<provider>/<model>`) — opencode's default model. */
   model: string;
+  /** `agent.build.model` override. Blank = inherit the default. */
+  buildModel?: string;
+  /** `agent.plan.model` override. Blank = inherit the default. */
+  planModel?: string;
   /** Sets `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` so only `.opencode/` skills load. */
   disableExternalSkills: boolean;
+  /** Raw JSON merged into the inline config — escape hatch for any other
+   *  opencode.json key (theme, provider, mcp, …). Blank = none. */
+  extraConfigJson?: string;
 }
 
 /**
@@ -263,23 +284,38 @@ function buildClaudeSpawn(
 }
 
 function buildKimiSpawn(def: Extract<AgentDef, { harness: 'kimi' }>): SpawnSpec {
-  return {
-    command: HARNESSES.kimi.binary,
-    args: ['--agent-file', def.config.agentFile],
-    env: {},
-    unsetEnv: [],
-  };
+  const cfg = def.config;
+  const args: string[] = [];
+  if (cfg.agentFile.trim()) args.push('--agent-file', cfg.agentFile);
+  if (cfg.model?.trim()) args.push('--model', cfg.model);
+  if (cfg.thinking === true) args.push('--thinking');
+  else if (cfg.thinking === false) args.push('--no-thinking');
+  if (cfg.plan) args.push('--plan');
+  if (cfg.configInline?.trim()) args.push('--config', cfg.configInline);
+  return { command: HARNESSES.kimi.binary, args, env: {}, unsetEnv: [] };
 }
 
 function buildOpencodeSpawn(def: Extract<AgentDef, { harness: 'opencode' }>): SpawnSpec {
+  const cfg = def.config;
   const env: Record<string, string> = {};
-  if (def.config.disableExternalSkills) env.OPENCODE_DISABLE_EXTERNAL_SKILLS = '1';
-  return {
-    command: HARNESSES.opencode.binary,
-    args: ['--model', def.config.model],
-    env,
-    unsetEnv: [],
-  };
+  if (cfg.disableExternalSkills) env.OPENCODE_DISABLE_EXTERNAL_SKILLS = '1';
+
+  // Inline config (no opencode.json needed). extraConfigJson seeds the base;
+  // model + per-agent overrides win over it.
+  const config: Record<string, unknown> = {};
+  if (cfg.extraConfigJson?.trim()) Object.assign(config, JSON.parse(cfg.extraConfigJson));
+  if (cfg.model.trim()) config.model = cfg.model;
+  const agent: Record<string, unknown> = { ...((config.agent as Record<string, unknown>) ?? {}) };
+  if (cfg.buildModel?.trim()) {
+    agent.build = { ...((agent.build as Record<string, unknown>) ?? {}), model: cfg.buildModel };
+  }
+  if (cfg.planModel?.trim()) {
+    agent.plan = { ...((agent.plan as Record<string, unknown>) ?? {}), model: cfg.planModel };
+  }
+  if (Object.keys(agent).length > 0) config.agent = agent;
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
+
+  return { command: HARNESSES.opencode.binary, args: [], env, unsetEnv: [] };
 }
 
 // ---------------------------------------------------------------------------
