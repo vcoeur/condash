@@ -23,7 +23,18 @@ condash itself reads almost no environment variables — configuration lives in 
 
 ## `SHELL`
 
-Standard POSIX shell variable. Used as the fallback command when `terminal.shell` is not configured in `.condash/settings.json` or `settings.json`. The embedded terminal spawns a node-pty session running this shell.
+Standard POSIX shell variable. Used as the fallback command when `terminal.shell` is not configured in `.condash/settings.json` or `settings.json`. The embedded terminal spawns a node-pty session running this shell. `$SHELL` is also the shell condash probes once at startup to resolve your login-shell PATH (next section).
+
+## Login-shell PATH for spawned subprocesses
+
+GUI-launched condash (a Wayland session, the macOS Dock, a `.desktop` entry) never sources your login dotfiles (`~/.profile`, `~/.zprofile`, `~/.bash_profile`), so the PATH it inherits is missing anything you added there. Without help, the embedded terminal, repo **Run** commands, `force_stop`, and "open in IDE" launchers can't find user-installed CLIs (`opencode`, `~/bin` wrappers, `~/.local/bin` tools).
+
+condash resolves this once at startup: it spawns `$SHELL` as a login + interactive shell, reads the PATH that shell exports, caches the result, and uses it as the PATH for every subprocess it spawns. No configuration and no dotfile changes are required — keep your PATH wherever your login shell already reads it.
+
+- **PATH only.** Every other variable keeps its inherited value; the [environment-hygiene scrub](../explanation/internals.md#environment-hygiene) is unaffected.
+- **Timeout-guarded.** A hung rc-file can't block startup — after 5 s condash falls back to the inherited PATH.
+- **Resolved once.** Edit a dotfile after launch → restart condash to pick it up.
+- **POSIX only.** On Windows the PATH is inherited as-is.
 
 ## `XDG_CONFIG_HOME`
 

@@ -10,6 +10,7 @@ import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { setWatchedConception } from './watcher';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll, migrateTerminalFromConfigIfNeeded } from './terminals';
+import { loginPath } from './shell-env';
 import { runLogJanitor } from './terminal-logger-janitor';
 import { sealOrphanLogs } from './seal-orphan-logs';
 import { getEffectiveConceptionConfig } from './effective-config';
@@ -368,6 +369,10 @@ app.on('web-contents-created', (_event, contents) => {
 app.whenReady().then(async () => {
   registerIpc();
   registerNoteAssetProtocol();
+  // Warm the login-shell PATH cache so the first terminal / launcher spawn
+  // doesn't pay the probe-shell latency. Fire-and-forget; resolveLoginPath
+  // swallows its own failures and falls back to the inherited PATH.
+  void loginPath();
   // One-shot: copy any pre-existing terminal block out of configuration.json
   // and into settings.json. Idempotent — does nothing once settings owns
   // the data. Runs before window creation so the renderer's first

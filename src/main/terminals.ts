@@ -11,6 +11,7 @@ import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
+import { spawnEnv } from './shell-env';
 import { SessionLogger } from './terminal-logger';
 
 interface Session {
@@ -152,8 +153,10 @@ function wrapForShell(shell: string, command: string): string[] {
   }
   // Non-login shell on POSIX: a login shell would re-source ~/.profile and
   // re-set PYTHONHOME/PYTHONPATH/PERLLIB/etc., undoing the env-scrub the
-  // pty spawn already applied. Users who want login behaviour can prefix
-  // their `run:` field with `bash -lc` themselves.
+  // pty spawn already applied. The login-shell PATH the run command needs is
+  // injected via spawnEnv() instead (see the childEnv base in spawnTerminal),
+  // so user CLIs resolve without paying the login-shell cost. Users who still
+  // want full login behaviour can prefix their `run:` field with `bash -lc`.
   return ['-c', command];
 }
 
@@ -208,13 +211,17 @@ export async function spawnTerminal(
   const cols = request.cols ?? 80;
   const rows = request.rows ?? 24;
 
-  // Electron itself runs through whatever shell the user launched it from,
-  // which on systems with a global npm install at /usr/local sets
-  // `npm_config_prefix=/usr/local` in the env. nvm refuses to load when that
-  // is set ("nvm is not compatible with the npm_config_prefix environment
-  // variable"), so user shells spawned here would dump that error on every
-  // boot. Strip the npm-cli leakage so spawned shells start clean.
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, TERM: 'xterm-256color' };
+  // Base env from spawnEnv(): a copy of process.env with PATH replaced by the
+  // resolved login-shell PATH, so user-installed CLIs (opencode, ~/bin
+  // wrappers) resolve even though GUI-launched condash never sourced
+  // ~/.profile.
+  //
+  // Then strip the npm-cli leakage: Electron runs through whatever shell
+  // launched it, which on systems with a global npm install at /usr/local
+  // sets `npm_config_prefix=/usr/local`. nvm refuses to load when that is set
+  // ("nvm is not compatible with the npm_config_prefix environment
+  // variable"), so user shells spawned here would dump that error on boot.
+  const childEnv: NodeJS.ProcessEnv = { ...(await spawnEnv()), TERM: 'xterm-256color' };
   delete childEnv.npm_config_prefix;
   delete childEnv.npm_config_globalconfig;
   delete childEnv.npm_config_userconfig;
@@ -341,12 +348,13 @@ function isAlive(p: pty.IPty | null): boolean {
  * tab-close path. */
 const FORCE_STOP_TIMEOUT_MS = 3000;
 
-function runForceStop(command: string): Promise<void> {
+async function runForceStop(command: string): Promise<void> {
   // Tokenise + shell:false to mirror launchers.runForceStopRepo. Routing
   // the user-configured force_stop: string through the shell costs us
   // shell-metacharacter surprises (stray `&`, unintended globs) and ${VAR}
   // interpolation against the main-process env — the argv shape avoids
   // both. Pass-9 closes the parity gap with launchers.ts.
+  const env = await spawnEnv();
   return new Promise<void>((resolve) => {
     const argv = tokenise(command, '');
     if (argv.length === 0) {
@@ -358,6 +366,7 @@ function runForceStop(command: string): Promise<void> {
       detached: true,
       stdio: 'ignore',
       shell: false,
+      env,
     });
     // Detach the child from the main process event loop so a script that
     // outlives the kill path (intentional or hung) doesn't hold the awaiter

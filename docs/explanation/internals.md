@@ -130,6 +130,8 @@ condash spawns subprocesses (terminals, runners, `force_stop` commands, open-wit
 
 This is defence in depth. The AppImage build also patches `AppRun` itself (see [Install — Linux AppImage](../get-started/index.md#linux-appimage)) so the leak doesn't reach launchers spawned *outside* of condash either.
 
+The inverse problem — a GUI launch *missing* entries the user put in their login dotfiles — is handled by `src/main/shell-env.ts`. A Wayland session, the macOS Dock, or a `.desktop` entry never sources `~/.profile` / `~/.zprofile`, so `process.env.PATH` lacks user-installed CLIs (`opencode`, `~/bin` wrappers). `spawnEnv()` resolves the login-shell PATH once at boot (`$SHELL -lic`, cached, 5 s timeout) the way VS Code's integrated terminal does, and replaces PATH on every spawned env. It rewrites **PATH only**, so the scrub above is untouched; on Windows and on any probe failure it falls back to the inherited PATH.
+
 ## Why no search index { #why-no-search-index }
 
 `search.ts` re-walks the tree on every query. At conception scale (a few hundred files), full-text search takes a handful of milliseconds — well under the 16 ms interaction-to-paint budget — and an index would be more state to keep coherent under concurrent edits. Revisit if it ever bites.
