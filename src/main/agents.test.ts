@@ -77,6 +77,26 @@ describe('agent storage round-trip', () => {
   });
 });
 
+describe('opencode build/plan persistence', () => {
+  it('round-trips build/plan model overrides + extra config through write → read', async () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      modelVariant: 'deepseek-auto',
+      secretEnv: 'DEEPSEEK_API_KEY',
+      config: {
+        model: 'deepseek/deepseek-v4-flash',
+        buildModel: 'deepseek/deepseek-v4-pro',
+        planModel: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        extraConfigJson: '{"theme":"tokyonight"}',
+      },
+    };
+    await writeAgent(dir, def);
+    const back = await readAgent(dir, 'opencode-deepseek-auto');
+    expect(back).toEqual(def);
+  });
+});
+
 describe('agents/.env editor', () => {
   it('returns a commented template when absent, then round-trips writes', async () => {
     expect(await readAgentsEnv(dir)).toContain('agents/.env');

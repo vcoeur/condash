@@ -155,6 +155,35 @@ describe('buildSpawn — opencode', () => {
   });
 });
 
+describe('buildSpawn — opencode/kimi token injection', () => {
+  it('exports the declared token under its own var name for opencode', () => {
+    const spec = buildSpawn(
+      {
+        harness: 'opencode',
+        modelVariant: 'deepseek-v4-pro',
+        secretEnv: 'DEEPSEEK_API_KEY',
+        config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
+      },
+      resolve({ DEEPSEEK_API_KEY: 'sk-real' }),
+    );
+    expect(spec.env.DEEPSEEK_API_KEY).toBe('sk-real');
+  });
+
+  it('throws when an opencode/kimi agent declares a missing token', () => {
+    expect(() =>
+      buildSpawn(
+        {
+          harness: 'opencode',
+          modelVariant: 'x',
+          secretEnv: 'DEEPSEEK_API_KEY',
+          config: defaultOpencodeConfig('deepseek/x'),
+        },
+        resolve({}),
+      ),
+    ).toThrow(MissingAgentSecretError);
+  });
+});
+
 describe('buildSpawn — kimi extra flags', () => {
   it('adds --model, --thinking, --plan, and inline --config when set', () => {
     const spec = buildSpawn(

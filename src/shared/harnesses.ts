@@ -211,10 +211,25 @@ export function buildSpawn(
     case 'claude':
       return buildClaudeSpawn(def, resolveSecret);
     case 'kimi':
-      return buildKimiSpawn(def);
+      return buildKimiSpawn(def, resolveSecret);
     case 'opencode':
-      return buildOpencodeSpawn(def);
+      return buildOpencodeSpawn(def, resolveSecret);
   }
+}
+
+/** Export a declared token under its own variable name (the name the user
+ *  chose, e.g. `DEEPSEEK_API_KEY`) so the harness's provider picks it up from
+ *  the environment. Throws when the secret is declared but unresolved. claude
+ *  handles its token specially (ANTHROPIC_*), so it does not use this. */
+function injectSecret(
+  def: AgentDef,
+  resolveSecret: (name: string) => string | undefined,
+  env: Record<string, string>,
+): void {
+  if (!def.secretEnv) return;
+  const key = resolveSecret(def.secretEnv);
+  if (!key) throw new MissingAgentSecretError(def.secretEnv, agentName(def));
+  env[def.secretEnv] = key;
 }
 
 /** One-line `binary args` preview of how an agent launches (the token value is
@@ -283,7 +298,10 @@ function buildClaudeSpawn(
   return { command: HARNESSES.claude.binary, args: [], env, unsetEnv };
 }
 
-function buildKimiSpawn(def: Extract<AgentDef, { harness: 'kimi' }>): SpawnSpec {
+function buildKimiSpawn(
+  def: Extract<AgentDef, { harness: 'kimi' }>,
+  resolveSecret: (name: string) => string | undefined,
+): SpawnSpec {
   const cfg = def.config;
   const args: string[] = [];
   if (cfg.agentFile.trim()) args.push('--agent-file', cfg.agentFile);
@@ -292,12 +310,18 @@ function buildKimiSpawn(def: Extract<AgentDef, { harness: 'kimi' }>): SpawnSpec 
   else if (cfg.thinking === false) args.push('--no-thinking');
   if (cfg.plan) args.push('--plan');
   if (cfg.configInline?.trim()) args.push('--config', cfg.configInline);
-  return { command: HARNESSES.kimi.binary, args, env: {}, unsetEnv: [] };
+  const env: Record<string, string> = {};
+  injectSecret(def, resolveSecret, env);
+  return { command: HARNESSES.kimi.binary, args, env, unsetEnv: [] };
 }
 
-function buildOpencodeSpawn(def: Extract<AgentDef, { harness: 'opencode' }>): SpawnSpec {
+function buildOpencodeSpawn(
+  def: Extract<AgentDef, { harness: 'opencode' }>,
+  resolveSecret: (name: string) => string | undefined,
+): SpawnSpec {
   const cfg = def.config;
   const env: Record<string, string> = {};
+  injectSecret(def, resolveSecret, env);
   if (cfg.disableExternalSkills) env.OPENCODE_DISABLE_EXTERNAL_SKILLS = '1';
 
   // Inline config (no opencode.json needed). extraConfigJson seeds the base;
@@ -437,3 +461,39 @@ export function defaultKimiConfig(): KimiAgentConfig {
 export function defaultOpencodeConfig(model: string): OpencodeAgentConfig {
   return { model, disableExternalSkills: true };
 }
+
+/** An opencode config preset + the env var it expects the token under. */
+export interface OpencodePreset {
+  config: OpencodeAgentConfig;
+  secretEnv: string;
+}
+
+/**
+ * Known opencode model-variant presets, mirroring the agentsconf
+ * `opencode-<provider>` wrappers. `deepseek-auto` tiers build/plan onto the
+ * premium model and defaults everything else to the cheap one — exactly the
+ * `opencode-deepseek-auto` wrapper's behaviour.
+ */
+export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
+  'deepseek-v4-pro': {
+    secretEnv: 'DEEPSEEK_API_KEY',
+    config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true },
+  },
+  'deepseek-v4-flash': {
+    secretEnv: 'DEEPSEEK_API_KEY',
+    config: { model: 'deepseek/deepseek-v4-flash', disableExternalSkills: true },
+  },
+  'deepseek-auto': {
+    secretEnv: 'DEEPSEEK_API_KEY',
+    config: {
+      model: 'deepseek/deepseek-v4-flash',
+      buildModel: 'deepseek/deepseek-v4-pro',
+      planModel: 'deepseek/deepseek-v4-pro',
+      disableExternalSkills: true,
+    },
+  },
+  kimi: {
+    secretEnv: '',
+    config: { model: 'kimi-for-coding/kimi-k2-thinking', disableExternalSkills: true },
+  },
+};

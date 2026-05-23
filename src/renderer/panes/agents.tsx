@@ -15,6 +15,7 @@ import {
   defaultOpencodeConfig,
   HARNESS_IDS,
   HARNESSES,
+  OPENCODE_PRESETS,
 } from '@shared/harnesses';
 import './agents-pane.css';
 
@@ -313,9 +314,12 @@ function TokenBadge(props: { agent: AgentListItem }): JSX.Element {
 }
 
 function formatPreview(spec: AgentSpawnPreview): string {
-  const lines = [`$ ${[spec.command, ...spec.args].join(' ')}`, ''];
+  // Environment is set before the command runs, so list exports / unsets first.
+  const lines: string[] = [];
   for (const [k, v] of Object.entries(spec.env)) lines.push(`export ${k}=${v}`);
   for (const k of spec.unsetEnv) lines.push(`unset ${k}`);
+  if (lines.length > 0) lines.push('');
+  lines.push(`$ ${[spec.command, ...spec.args].join(' ')}`);
   return lines.join('\n');
 }
 
@@ -358,6 +362,16 @@ function AgentEditor(props: {
       modelVariant: key,
       secretEnv: preset.secretEnv,
       claude: structuredClone(preset.config),
+    });
+  };
+
+  const applyOpencodePreset = (key: string) => {
+    const preset = OPENCODE_PRESETS[key];
+    if (!preset) return;
+    props.patch({
+      modelVariant: key,
+      secretEnv: preset.secretEnv,
+      opencode: structuredClone(preset.config),
     });
   };
 
@@ -479,6 +493,19 @@ function AgentEditor(props: {
       </Show>
 
       <Show when={d().harness === 'opencode'}>
+        <label>
+          <span>Preset</span>
+          <select onChange={(e) => applyOpencodePreset(e.currentTarget.value)}>
+            <option value="">(custom)</option>
+            <For each={Object.keys(OPENCODE_PRESETS)}>
+              {(k) => (
+                <option value={k} selected={k === d().modelVariant}>
+                  {k}
+                </option>
+              )}
+            </For>
+          </select>
+        </label>
         <label>
           <span>Default model (provider/model)</span>
           <input
