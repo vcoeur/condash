@@ -22,7 +22,7 @@ Each tab reads a skills directory plus the agent-config files for that tab, prep
 |---|---|---|---|
 | **Generic** | `<conception>/.agents/skills/` | `~/.config/agents/skills/` | `common.md` + `claude.md` / `kimi.md` / `opencode.md` from the matching `…/agents/agents/` |
 | **Claude** | `<conception>/<skills_path>` (default `.claude/skills/`) | `~/.claude/skills/` | the compiled `CLAUDE.md` |
-| **Kimi** | `<conception>/.kimi/skills/` | `~/.kimi/skills/` | `AGENTS.md` (local) / `global-agent.yaml` (global) |
+| **Kimi** | `<conception>/.kimi/skills/` | `~/.kimi/skills/` | `AGENTS.md` (local + global) |
 | **OpenCode** | `<conception>/.opencode/skills/` | `~/.config/opencode/skills/` | `AGENTS.md` |
 
 The currently-selected tab is remembered per-machine in `settings.json` (`skillsActiveTab`), so the next launch reopens the same view. The first launch after the tabs ship defaults to **Claude** to match the pre-tabs behaviour.
@@ -48,7 +48,7 @@ Above the tree, the agent-config **sources** render as read-only callouts: `comm
 
 ### Kimi (compiled)
 
-Same layout as Claude, rooted at the Kimi skills dir. The config callout is `AGENTS.md` locally and `~/.kimi/global-agent.yaml` globally (badged `KIMI`) — Kimi's compiled global config is embedded in that YAML's `ROLE_ADDITIONAL` field.
+Same layout as Claude, rooted at the Kimi skills dir. The config callout is `AGENTS.md` (badged `KIMI`) — `<conception>/.kimi/AGENTS.md` locally and `~/.kimi/AGENTS.md` globally. Kimi doesn't read these natively; the condash kimi agent wraps the file into a transient `--agent-file` (`ROLE_ADDITIONAL`) at launch.
 
 ### OpenCode (compiled)
 

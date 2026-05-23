@@ -163,8 +163,8 @@ function wrapForShell(shell: string, command: string): string[] {
 }
 
 /** Expand a leading `~/` in an agent argument to the user's home directory,
- *  so values like kimi-cli's `~/.kimi/global-agent.yaml` resolve once wrapped
- *  for the shell. Other args pass through untouched. */
+ *  so values like a `~/.kimi/...` path resolve once wrapped for the shell.
+ *  Other args pass through untouched. */
 function expandHome(arg: string): string {
   return arg.startsWith('~/') ? homedir() + arg.slice(1) : arg;
 }

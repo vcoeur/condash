@@ -48,7 +48,7 @@ export interface CondashApi {
    *  (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`):
    *  - generic → `…/skills/` (`.md` and `.yaml`) + `common.md`/`<model>.md` sources
    *  - claude  → `…/skills/` (`.md` only) + the compiled `CLAUDE.md`
-   *  - kimi    → `…/skills/` (`.md` only) + `AGENTS.md` / `global-agent.yaml`
+   *  - kimi    → `…/skills/` (`.md` only) + `AGENTS.md`
    *  - opencode→ `…/skills/` (`.md` only) + `AGENTS.md`
    * Shipped-SHA stamps are populated from `.condash-skills.json` when present.
    * Resolves to null when the directory and all agent-config files are absent. */

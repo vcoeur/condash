@@ -141,26 +141,25 @@ How you point a CLI at a non-native provider depends on how that CLI was built. 
 
 ## Inject a global AGENTS.md into Kimi
 
-Claude Code automatically reads a global instructions file at `~/.claude/CLAUDE.md`. Kimi has no global instructions file by default, but you get the equivalent with a **custom agent file** that you pass on launch:
+Claude Code automatically reads `~/.claude/CLAUDE.md`; Kimi has no global instructions file by default. condash bridges this for **kimi-cli agents**: `condash skills install` writes your compiled global rules to a plain **`~/.kimi/AGENTS.md`**, and when you launch a kimi agent condash reads that file and wraps it into a *transient* `--agent-file` at spawn — so the instructions are always current and there's no YAML to hand-maintain.
+
+The agent file condash generates at launch has this shape:
 
 ```yaml
-# ~/.kimi/global-agent.yaml
 version: 1
 agent:
   extend: default
   system_prompt_args:
     ROLE_ADDITIONAL: |
       # Global Instructions
-      <your global rules here — the equivalent of a global AGENTS.md / CLAUDE.md:
-       communication style, git conventions, safety rules, …>
+      <contents of ~/.kimi/AGENTS.md>
 ```
 
-- **`agent.extend: default`** starts from Kimi's built-in default agent and layers your additions on top, rather than replacing the agent wholesale.
-- **`system_prompt_args.ROLE_ADDITIONAL`** is spliced into the agent's system prompt. This block is where your global rules live — paste in the same content you would put in a global `AGENTS.md` / `CLAUDE.md`.
-- **Launch with the flag**: `kimi --agent-file ~/.kimi/global-agent.yaml`. Plain `kimi` does **not** auto-load this file — which is exactly why the `kimi-kimi` wrapper above passes `--agent-file`. Wrapping it means you never forget the flag.
+- **`agent.extend: default`** starts from Kimi's built-in default agent and layers your additions on top.
+- **`system_prompt_args.ROLE_ADDITIONAL`** is spliced into the agent's system prompt — the equivalent of a global `AGENTS.md` / `CLAUDE.md`.
+- Plain `kimi` does **not** auto-load instructions; condash always passes the generated `--agent-file`. The kimi agent's **Instructions file** field (default `~/.kimi/AGENTS.md`) selects the source.
 
-!!! tip "Generate it instead of hand-editing"
-    If you keep one source of truth for your global agent rules and compile it to several targets, condash can write the per-target instruction files for you (Claude's `CLAUDE.md`, Kimi's `AGENTS.md`/agent file, OpenCode's `AGENTS.md`). See the [`condash skills install` reference](../reference/cli.md#skills) and [Management skill](../reference/skill.md).
+If you run kimi outside condash, write a YAML of the shape above yourself and pass it as `--agent-file`.
 
 ## Add a new cell
 

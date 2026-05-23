@@ -17,7 +17,7 @@ import type { SkillTab } from '../shared/types';
  *   CONDASH_USER_OPENCODE_ROOT        ~/.config/opencode/skills
  *   CONDASH_USER_AGENT_CONFIG_ROOT    ~/.config/agents/agents   (common.md + <model>.md)
  *   CONDASH_USER_CLAUDE_AGENT_OUTPUT  ~/.claude/CLAUDE.md
- *   CONDASH_USER_KIMI_AGENT_OUTPUT    ~/.kimi/global-agent.yaml
+ *   CONDASH_USER_KIMI_AGENT_OUTPUT    ~/.kimi/AGENTS.md
  *   CONDASH_USER_OPENCODE_AGENT_OUTPUT ~/.config/opencode/AGENTS.md
  */
 
@@ -53,10 +53,9 @@ export function userAgentConfigOutput(tab: Exclude<SkillTab, 'generic'>): string
         process.env.CONDASH_USER_CLAUDE_AGENT_OUTPUT ?? join(homedir(), '.claude', 'CLAUDE.md')
       );
     case 'kimi':
-      // Kimi's compiled global config is embedded in this YAML file.
-      return (
-        process.env.CONDASH_USER_KIMI_AGENT_OUTPUT ?? join(homedir(), '.kimi', 'global-agent.yaml')
-      );
+      // Kimi's compiled global config is plain markdown; the kimi agent
+      // launcher wraps it into a transient --agent-file at spawn.
+      return process.env.CONDASH_USER_KIMI_AGENT_OUTPUT ?? join(homedir(), '.kimi', 'AGENTS.md');
     case 'opencode':
       return (
         process.env.CONDASH_USER_OPENCODE_AGENT_OUTPUT ??

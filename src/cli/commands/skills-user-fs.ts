@@ -1,7 +1,6 @@
 /**
  * Foundation module for user-scope `condash skills` (`--user`): path
- * resolvers, source-tree readers, the host-label filter, and the Kimi
- * global-agent.yaml inline writer.
+ * resolvers, source-tree readers, and the host-label filter.
  *
  * In user scope there is no shipped tree and no manifest: the user owns the
  * source tree at `~/.config/agents/skills/<name>/` directly. The compile

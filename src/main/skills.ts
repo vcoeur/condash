@@ -25,8 +25,8 @@ const GENERIC_AGENT_SOURCES = ['common.md', 'claude.md', 'kimi.md', 'opencode.md
  * Symlink loops are deduped via realpath.
  *
  * Synthetic read-only agent-config entries are prepended at the root: the
- * compiled `CLAUDE.md` (Claude), `AGENTS.md` / `global-agent.yaml` (Kimi /
- * OpenCode), and the `common.md` + `<model>.md` sources (Generic). Each
+ * compiled `CLAUDE.md` (Claude), `AGENTS.md` (Kimi / OpenCode), and the
+ * `common.md` + `<model>.md` sources (Generic). Each
  * carries a `badge` so the renderer draws a callout instead of a skill card.
  */
 export async function readSkillsTreeForTab(
