@@ -560,7 +560,7 @@ export interface TermSpawnRequest {
    *  `agents/.env`) and spawns that. Mutually exclusive with `repo` / `command`. */
   agentSlug?: string;
   /** When set, passes the initial prompt as a CLI argument to the agent
-   *  (claude: positional arg; opencode: `tui --prompt <text>`; kimi: ignored).
+   *  (claude: positional arg; opencode: `--prompt <text>`; kimi: ignored).
    *  Only meaningful with `agentSlug`; the prompt is added to argv directly,
    *  removing the race between process-start and pty.write(). */
   initialPrompt?: string;
