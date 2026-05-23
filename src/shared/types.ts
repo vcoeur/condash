@@ -183,9 +183,9 @@ export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'lo
 export type LeftView = 'projects' | 'deliverables';
 
 /** Active tab in the Skills pane. */
-export type SkillTab = 'generic' | 'claude' | 'kimi';
+export type SkillTab = 'generic' | 'claude' | 'kimi' | 'opencode';
 
-export const SKILL_TABS: readonly SkillTab[] = ['generic', 'claude', 'kimi'] as const;
+export const SKILL_TABS: readonly SkillTab[] = ['generic', 'claude', 'kimi', 'opencode'] as const;
 
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, working surface on the right) and a bottom band (Terminal).
@@ -271,6 +271,7 @@ export interface TreeExpansionPrefs {
   skillsGeneric?: string[];
   skillsClaude?: string[];
   skillsKimi?: string[];
+  skillsOpencode?: string[];
 }
 
 /** Discriminator for the three tree panes. Used by the `tree.*` IPC verbs

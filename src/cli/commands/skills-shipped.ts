@@ -20,6 +20,7 @@ export const SOURCE_RELPATH = '.agents/skills';
 export const TARGET_RELPATHS: Record<CompileTarget, string> = {
   claude: '.claude/skills',
   kimi: '.kimi/skills',
+  opencode: '.opencode/skills',
 };
 
 export const KNOWN_FLAGS_LIST = ['dest', 'user'] as const;

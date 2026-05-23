@@ -33,6 +33,7 @@ async function resolveRoot(root: TreeRoot, skillTab?: SkillTab): Promise<string>
     if (tab === 'generic') return join(conceptionPath, '.agents', 'skills');
     if (tab === 'claude') return join(conceptionPath, skills);
     if (tab === 'kimi') throw new Error('Kimi skills tree is read-only');
+    if (tab === 'opencode') throw new Error('OpenCode skills tree is read-only');
     throw new Error(`unknown skill tab: ${tab}`);
   }
   throw new Error(`unknown tree root: ${root as string}`);

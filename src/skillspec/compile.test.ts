@@ -89,4 +89,19 @@ describe('compileSkillspec', () => {
     // YAML lib should quote — we don't care about quote style, just that it parses back.
     expect(text).toMatch(/description: ['"]?Manage things: foo and bar['"]?/);
   });
+
+  it('emits OpenCode SKILL.md with compatibility + metadata pass-through', () => {
+    const out = compileSkillspec(
+      spec({
+        spec: { description: 'demo skill' },
+        targets: { opencode: { compatibility: 'opencode>=0.14', metadata: { x: 'y' } } },
+      }),
+      'opencode',
+    );
+    const text = out.files['SKILL.md'].toString('utf8');
+    expect(text).toContain('description: demo skill');
+    expect(text).toContain('compatibility: opencode>=0.14');
+    expect(text).toContain('metadata:');
+    expect(text).toContain('x: y');
+  });
 });

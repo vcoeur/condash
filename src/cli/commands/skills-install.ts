@@ -164,6 +164,7 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
     outputs: {
       claude: join(dest, TARGET_RELPATHS.claude),
       kimi: join(dest, TARGET_RELPATHS.kimi),
+      opencode: join(dest, TARGET_RELPATHS.opencode),
     },
     copied: [],
     updated: [],
@@ -506,7 +507,11 @@ export async function installUserSkills(args: ParsedArgs, ctx: OutputContext): P
   const hostLabel = await readHostLabel();
   const report: UserInstallReport = {
     source: userSourceRoot(),
-    outputs: { claude: userTargetRoot('claude'), kimi: userTargetRoot('kimi') },
+    outputs: {
+      claude: userTargetRoot('claude'),
+      kimi: userTargetRoot('kimi'),
+      opencode: userTargetRoot('opencode'),
+    },
     hostLabel,
     skipped: [],
     compiled: [],
@@ -526,6 +531,7 @@ export async function installUserSkills(args: ParsedArgs, ctx: OutputContext): P
       outputs: {
         claude: userAgentConfigOutput('claude'),
         kimi: userAgentConfigOutput('kimi'),
+        opencode: userAgentConfigOutput('opencode'),
       },
       compiled: [],
     },
@@ -581,10 +587,12 @@ export async function installUserSkills(args: ParsedArgs, ctx: OutputContext): P
       });
       const outputPath = userAgentConfigOutput(target);
       if (!dryRun) {
-        if (target === 'claude') {
-          await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
-        } else {
+        if (target === 'kimi') {
+          // Kimi has no standalone config file — write inline into global-agent.yaml.
           await writeKimiGlobalAgent(outputPath, compiled);
+        } else {
+          // Claude (CLAUDE.md) and OpenCode (AGENTS.md) are plain markdown files.
+          await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
         }
       }
       report.agentConfigs.compiled.push({ target, path: outputPath });

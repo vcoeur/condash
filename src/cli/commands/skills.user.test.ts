@@ -35,6 +35,8 @@ let claudeScriptsTarget: string;
 let agentConfigRoot: string;
 let claudeAgentOutput: string;
 let kimiAgentOutput: string;
+let opencodeRoot: string;
+let opencodeAgentOutput: string;
 
 beforeEach(async () => {
   root = await fs.mkdtemp(join(tmpdir(), 'skills-user-'));
@@ -49,6 +51,8 @@ beforeEach(async () => {
   agentConfigRoot = join(root, 'agent-config-src');
   claudeAgentOutput = join(root, 'claude-CLAUDE.md');
   kimiAgentOutput = join(root, 'kimi-global-agent.yaml');
+  opencodeRoot = join(root, 'opencode');
+  opencodeAgentOutput = join(root, 'opencode-AGENTS.md');
   await fs.mkdir(sourceRoot, { recursive: true });
   process.env.CONDASH_USER_SKILLS_ROOT = sourceRoot;
   process.env.CONDASH_USER_CLAUDE_ROOT = claudeRoot;
@@ -61,6 +65,8 @@ beforeEach(async () => {
   process.env.CONDASH_USER_AGENT_CONFIG_ROOT = agentConfigRoot;
   process.env.CONDASH_USER_CLAUDE_AGENT_OUTPUT = claudeAgentOutput;
   process.env.CONDASH_USER_KIMI_AGENT_OUTPUT = kimiAgentOutput;
+  process.env.CONDASH_USER_OPENCODE_ROOT = opencodeRoot;
+  process.env.CONDASH_USER_OPENCODE_AGENT_OUTPUT = opencodeAgentOutput;
 });
 
 afterEach(async () => {
@@ -76,6 +82,8 @@ afterEach(async () => {
   delete process.env.CONDASH_USER_AGENT_CONFIG_ROOT;
   delete process.env.CONDASH_USER_CLAUDE_AGENT_OUTPUT;
   delete process.env.CONDASH_USER_KIMI_AGENT_OUTPUT;
+  delete process.env.CONDASH_USER_OPENCODE_ROOT;
+  delete process.env.CONDASH_USER_OPENCODE_AGENT_OUTPUT;
 });
 
 function ctx(): OutputContext {
@@ -710,9 +718,10 @@ describe('condash skills install --user (agent-config compile)', () => {
         ctx(),
       ),
     );
-    expect(env.data.agentConfigs.compiled).toHaveLength(2);
+    expect(env.data.agentConfigs.compiled).toHaveLength(3);
     await expect(fs.access(claudeAgentOutput)).rejects.toThrow();
     await expect(fs.access(kimiAgentOutput)).rejects.toThrow();
+    await expect(fs.access(opencodeAgentOutput)).rejects.toThrow();
   });
 
   it('status reports ok / stale / missing for agent configs', async () => {
@@ -733,7 +742,7 @@ describe('condash skills install --user (agent-config compile)', () => {
       ),
     );
     const agentRows = env.data.items.filter((r) => r.kind === 'agent-config');
-    expect(agentRows).toHaveLength(2);
+    expect(agentRows).toHaveLength(3);
     expect(agentRows.every((r) => r.state === 'ok')).toBe(true);
 
     // Tamper one.

@@ -10,14 +10,14 @@ import {
 } from './tree-view';
 import './skills-pane.css';
 
-// Compiled tabs (Claude / Kimi) accept the same SKILL_AFFORDANCES as before;
-// the Generic tab also accepts source-edit mutations. The Kimi tab is
-// read-only because its content is regenerated on every `condash skills
-// install` — see notes/02-design.md §Q1.
+// Compiled tabs (Claude / Kimi / OpenCode) accept the same SKILL_AFFORDANCES
+// as before; the Generic tab also accepts source-edit mutations. The Kimi and
+// OpenCode tabs are read-only because their content is regenerated on every
+// `condash skills install` — see notes/02-design.md §Q1.
 //
 // Each compiled tab also surfaces the conception's agent-config file as a
-// synthetic root-level entry: CLAUDE.md on the Claude tab, AGENTS.md on
-// the Kimi tab (injected in src/main/skills.ts).
+// synthetic root-level entry: CLAUDE.md on the Claude tab, AGENTS.md on the
+// Kimi and OpenCode tabs (injected in src/main/skills.ts).
 const EDITABLE_AFFORDANCES: ReadonlyArray<TreeAffordance> = ['createMd', 'mkdir'];
 const READONLY_AFFORDANCES: ReadonlyArray<TreeAffordance> = [];
 
@@ -25,6 +25,7 @@ const TAB_LABELS: Record<SkillTab, string> = {
   generic: 'Generic',
   claude: 'Claude',
   kimi: 'Kimi',
+  opencode: 'OpenCode',
 };
 
 function isSkillIndex(node: SkillNode): boolean {
@@ -75,7 +76,7 @@ export function SkillsView(props: {
   const scrollRef = usePaneScrollMemory(() => `skills-${props.tab}`);
 
   const affordances = (): ReadonlyArray<TreeAffordance> =>
-    props.tab === 'kimi' ? READONLY_AFFORDANCES : EDITABLE_AFFORDANCES;
+    props.tab === 'kimi' || props.tab === 'opencode' ? READONLY_AFFORDANCES : EDITABLE_AFFORDANCES;
 
   // Memoise pane-level callbacks so prop identity stays stable across
   // unrelated parent re-runs (e.g. expanding one directory). Tracks
@@ -87,6 +88,7 @@ export function SkillsView(props: {
     return (file: SkillNode, dir: SkillNode): boolean => {
       if (dir.relPath === '' && tab === 'claude' && isClaudeMd(file)) return true;
       if (dir.relPath === '' && tab === 'kimi' && isAgentsMd(file)) return true;
+      if (dir.relPath === '' && tab === 'opencode' && isAgentsMd(file)) return true;
       if (tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file)) return true;
       return false;
     };
@@ -209,6 +211,28 @@ export function SkillsView(props: {
           <p>
             Run <code>condash skills install</code> to compile bundled skills for Kimi under{' '}
             <code>.kimi/skills/</code>.
+          </p>
+          <div class="empty-actions">
+            <Show when={props.onCopyInstallCommand}>
+              <button
+                type="button"
+                class="empty-cta"
+                onClick={() => props.onCopyInstallCommand?.()}
+              >
+                Copy install command
+              </button>
+            </Show>
+          </div>
+        </div>
+      );
+    }
+    if (props.tab === 'opencode') {
+      return (
+        <div class="empty">
+          <p>No OpenCode skills installed.</p>
+          <p>
+            Run <code>condash skills install</code> to compile bundled skills for OpenCode under{' '}
+            <code>.opencode/skills/</code>.
           </p>
           <div class="empty-actions">
             <Show when={props.onCopyInstallCommand}>

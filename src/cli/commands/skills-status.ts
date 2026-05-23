@@ -394,6 +394,7 @@ export async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<vo
     outputs: {
       claude: userAgentConfigOutput('claude'),
       kimi: userAgentConfigOutput('kimi'),
+      opencode: userAgentConfigOutput('opencode'),
     },
   };
   emit(
@@ -434,6 +435,7 @@ export async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<vo
         lines.push(`Agent configs: ${d.agentConfigs.source}`);
         lines.push(`  → ${d.agentConfigs.outputs.claude}  (claude)`);
         lines.push(`  → ${d.agentConfigs.outputs.kimi}  (kimi)`);
+        lines.push(`  → ${d.agentConfigs.outputs.opencode}  (opencode)`);
       }
       return lines.join('\n') + '\n';
     },
@@ -527,7 +529,8 @@ export async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Pr
       });
       const outputPath = userAgentConfigOutput(target);
       let state: 'ok' | 'stale' | 'missing';
-      if (target === 'claude') {
+      if (target === 'claude' || target === 'opencode') {
+        // Claude (CLAUDE.md) and OpenCode (AGENTS.md) are plain markdown files.
         let onDisk: string | null = null;
         try {
           onDisk = await fs.readFile(outputPath, 'utf8');

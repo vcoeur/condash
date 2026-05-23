@@ -5,20 +5,32 @@
  *   - `.agents/agents/common.md`      — shared content (must contain `## Specifics`)
  *   - `.agents/agents/claude.md`      — Claude-only fragment
  *   - `.agents/agents/kimi.md`        — Kimi-only fragment
+ *   - `.agents/agents/opencode.md`    — OpenCode-only fragment
  *
  * The compile step inserts the agent-specific fragment into `common.md`
  * immediately before the `## Specifics` heading, then applies `{{ var }}`
  * variable substitution from the per-target map.
  */
 
-export type AgentsMdTarget = 'claude' | 'kimi';
+export type AgentsMdTarget = 'claude' | 'kimi' | 'opencode';
 
-export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = ['claude', 'kimi'] as const;
+export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = ['claude', 'kimi', 'opencode'] as const;
 
-/** Output path per target, relative to the conception root. */
+/**
+ * Output path per target, relative to the conception root.
+ *
+ * OpenCode's config lands inside its own `.opencode/` dir — **never** the
+ * conception-root `AGENTS.md`, which condash manages via the shipped-files
+ * migration (see `src/cli/commands/files.ts`). OpenCode does not
+ * auto-discover `.opencode/AGENTS.md`, so a project points to it with an
+ * `opencode.json` `instructions` entry (`[".opencode/AGENTS.md"]`) — see the
+ * skills-pane guide. User scope instead writes `~/.config/opencode/AGENTS.md`,
+ * which OpenCode reads natively as global config (`userAgentConfigOutput`).
+ */
 export const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
   claude: '.claude/CLAUDE.md',
   kimi: '.kimi/AGENTS.md',
+  opencode: '.opencode/AGENTS.md',
 };
 
 /** Default variable map per target, applied via `{{ var }}` substitution. */
@@ -37,6 +49,14 @@ export function defaultVariables(target: AgentsMdTarget): Record<string, string>
         skills_dir: '.kimi/skills/',
         agent_config: 'AGENTS.md',
         // No native memory in Kimi — substitute empty.
+        memory_dir: '',
+      };
+    case 'opencode':
+      return {
+        agent_name: 'OpenCode',
+        skills_dir: '.opencode/skills/',
+        agent_config: '.opencode/AGENTS.md',
+        // No native curated memory in OpenCode — substitute empty.
         memory_dir: '',
       };
   }
