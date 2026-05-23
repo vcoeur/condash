@@ -13,7 +13,6 @@ import { Show, type JSX } from 'solid-js';
 import type {
   ActionTemplate,
   CardMinWidthPrefs,
-  LauncherConfig,
   Platform,
   TerminalLoggingPrefs,
   TerminalPrefs,
@@ -122,11 +121,6 @@ interface TerminalSectionProps {
   prefs: () => TerminalPrefs;
   xterm: () => TerminalXtermPrefs;
   setString: (key: TerminalStringFieldKey, value: string) => Promise<void>;
-  launchers: () => LauncherConfig[];
-  patchLauncher: (index: number, patch: Partial<LauncherConfig>) => Promise<void>;
-  addLauncher: () => Promise<void>;
-  removeLauncher: (index: number) => Promise<void>;
-  moveLauncher: (index: number, delta: -1 | 1) => Promise<void>;
   projectActions: () => ActionTemplate[];
   patchProjectAction: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
   addProjectAction: () => Promise<void>;
@@ -183,11 +177,6 @@ export function TerminalSection(props: TerminalSectionProps): JSX.Element {
         prefs={props.prefs}
         xterm={props.xterm}
         setString={props.setString}
-        launchers={props.launchers}
-        patchLauncher={props.patchLauncher}
-        addLauncher={props.addLauncher}
-        removeLauncher={props.removeLauncher}
-        moveLauncher={props.moveLauncher}
         projectActions={props.projectActions}
         patchProjectAction={props.patchProjectAction}
         addProjectAction={props.addProjectAction}

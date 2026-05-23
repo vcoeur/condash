@@ -1,7 +1,6 @@
 import type {
   ActionTemplate,
   CardMinWidthPrefs,
-  LauncherConfig,
   Platform,
   TerminalPrefs,
   TerminalXtermPrefs,
@@ -323,10 +322,10 @@ export function pruneEmpty(value: unknown): unknown {
 /**
  * Build the JSON payload that the Settings modal hands to `writeNote` (or
  * `writeGlobalSettings`). Strips empty leaves with `pruneEmpty` for everything
- * except the `repositories` array and the `terminal.{launchers, projectActions,
+ * except the `repositories` array and the `terminal.{projectActions,
  * newProjectActions}` arrays — those have dedicated compactors that preserve
- * blank-row placeholders (`{ name: '' }` / `{ label: '', command: '' }` /
- * `{ label: '', template: '' }`). Routing them through `pruneEmpty` would
+ * blank-row placeholders (`{ name: '' }` / `{ label: '', template: '' }`).
+ * Routing them through `pruneEmpty` would
  * strip the required string fields, leaving `{}` rows that the schema
  * rejects with `expected string, received undefined`.
  */
@@ -344,7 +343,6 @@ export function buildSavePayload(config: RawConfig): RawConfig {
 }
 
 type RawTerminal = {
-  launchers?: LauncherConfig[];
   projectActions?: ActionTemplate[];
   newProjectActions?: ActionTemplate[];
   [k: string]: unknown;
@@ -359,11 +357,8 @@ type RawTerminal = {
  * the user can fill them in after a reload.
  */
 function compactTerminal(terminal: RawTerminal): RawTerminal | undefined {
-  const { launchers, projectActions, newProjectActions, ...rest } = terminal;
+  const { projectActions, newProjectActions, ...rest } = terminal;
   const cleaned = (pruneEmpty(rest) as RawTerminal) ?? {};
-  if (launchers !== undefined && launchers.length > 0) {
-    cleaned.launchers = compactLaunchers(launchers);
-  }
   if (projectActions !== undefined && projectActions.length > 0) {
     cleaned.projectActions = compactActionTemplates(projectActions);
   }
@@ -374,25 +369,9 @@ function compactTerminal(terminal: RawTerminal): RawTerminal | undefined {
 }
 
 /**
- * Normalise `launcherSchema`-shaped rows for disk: keep `label` + `command`
- * verbatim (even when empty), drop `title` when blank/missing. Used by
- * `buildSavePayload` to side-step `pruneEmpty` on the launchers array.
- */
-export function compactLaunchers(arr: LauncherConfig[]): LauncherConfig[] {
-  return arr.map((l) => {
-    const out: LauncherConfig = {
-      label: l.label ?? '',
-      command: l.command ?? '',
-    };
-    if (typeof l.title === 'string' && l.title.length > 0) out.title = l.title;
-    return out;
-  });
-}
-
-/**
  * Normalise `actionTemplateSchema`-shaped rows for disk: keep `label` +
  * `template` verbatim, attach `submit: true` only when explicitly set, and
- * attach `launcher` only when set to a non-empty string.
+ * attach `agent` only when set to a non-empty string.
  */
 export function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
   return arr.map((a) => {
@@ -401,7 +380,7 @@ export function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] 
       template: a.template ?? '',
     };
     if (a.submit === true) out.submit = true;
-    if (typeof a.launcher === 'string' && a.launcher.length > 0) out.launcher = a.launcher;
+    if (typeof a.agent === 'string' && a.agent.length > 0) out.agent = a.agent;
     return out;
   });
 }
@@ -449,64 +428,10 @@ export function moveItem<T>(arr: T[], index: number, delta: -1 | 1): T[] {
 }
 
 /**
- * Pure-function helpers for the Settings modal's dynamic launcher list.
- * All return `undefined` when the resulting array is empty so the caller
- * can omit `launchers` entirely from the saved config.
- */
-
-export function patchLauncher(
-  prev: LauncherConfig[] | undefined,
-  index: number,
-  patch: Partial<LauncherConfig>,
-): LauncherConfig[] | undefined {
-  const existing = (prev ?? []).map((l) => ({ ...l }));
-  if (index < 0) return prev;
-  if (index >= existing.length) {
-    // Creating a new entry at the end.
-    existing.push({ label: '', command: '', ...patch });
-  } else {
-    existing[index] = { ...existing[index], ...patch };
-  }
-  // Drop the row only when both label and command are blank — keep partially
-  // typed rows alive so the user doesn't lose their text mid-edit. The
-  // tab-strip dropdown ignores rows with empty command, so a half-filled row
-  // is visible in Settings but inert at the terminal until it's completed.
-  const kept = existing.filter((l) => l.label.trim().length > 0 || l.command.trim().length > 0);
-  return kept.length > 0 ? kept : undefined;
-}
-
-export function addLauncher(prev: LauncherConfig[] | undefined): LauncherConfig[] {
-  return [...(prev ?? []), { label: '', command: '' }];
-}
-
-export function removeLauncher(
-  prev: LauncherConfig[] | undefined,
-  index: number,
-): LauncherConfig[] | undefined {
-  const existing = prev ?? [];
-  if (index < 0 || index >= existing.length) return prev;
-  const next = existing.filter((_, i) => i !== index);
-  return next.length > 0 ? next : undefined;
-}
-
-export function moveLauncher(
-  prev: LauncherConfig[] | undefined,
-  index: number,
-  delta: -1 | 1,
-): LauncherConfig[] | undefined {
-  const arr = prev ?? [];
-  const target = index + delta;
-  if (target < 0 || target >= arr.length) return prev;
-  const next = arr.slice();
-  const [removed] = next.splice(index, 1);
-  next.splice(target, 0, removed);
-  return next.length > 0 ? next : undefined;
-}
-
-/**
  * Pure-function helpers for the Settings modal's dynamic action-template lists.
- * Mirror the launcher helpers above; both `projectActions` and `newProjectActions`
- * share the same `ActionTemplate` shape.
+ * Both `projectActions` and `newProjectActions` share the `ActionTemplate`
+ * shape. Each returns `undefined` when the resulting array is empty so the
+ * caller can omit the key entirely from the saved config.
  */
 
 export function patchActionTemplate(

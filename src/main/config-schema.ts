@@ -167,35 +167,23 @@ const terminalLoggingSettings = z
  *  the user to fill in. The tab-strip dropdown skips entries whose `command`
  *  is empty — same effective behaviour as the previous `.min(1)` constraint
  *  but without the failed-save UX. */
-const launcherSchema = z
-  .object({
-    label: z.string(),
-    command: z.string(),
-    title: z.string().optional(),
-  })
-  .strict();
-
-const launchersSchema = z.array(launcherSchema);
-
 /** One user-configurable action template for project cards or the
- *  "+ New project" button. Same blank-row tolerance as `launcherSchema`:
- *  `label` and `template` accept empty strings so a freshly-added row is
- *  schema-valid; the project-card dropdown skips entries whose `template`
- *  is empty.
+ *  "+ New project" button. `label` and `template` accept empty strings so a
+ *  freshly-added row is schema-valid; the project-card dropdown skips entries
+ *  whose `template` is empty.
  *
- *  `launcher`, when set, names one of `terminal.launchers[].label`. The
- *  action spawns a fresh tab with that launcher's command then types the
- *  template into it — gives users a way to bind, e.g., "Start new project"
- *  to a Claude / Kimi / shell launcher instead of typing into whatever
- *  shell happens to be focused. Empty / missing keeps the legacy behaviour
- *  (type into the focused tab; spawn the default launcher only if no tab
- *  exists). */
+ *  `agent`, when set, names an agent (`<harness>-<model_variant>`) defined
+ *  under `<conception>/agents/`. The action spawns a fresh tab running that
+ *  agent then types the template into it — lets users bind, e.g., "Start new
+ *  project" to a specific agent instead of typing into whatever shell happens
+ *  to be focused. Empty / missing keeps the legacy behaviour (type into the
+ *  focused tab; spawn a plain shell only if no tab exists). */
 const actionTemplateSchema = z
   .object({
     label: z.string(),
     template: z.string(),
     submit: z.boolean().optional(),
-    launcher: z.string().optional(),
+    agent: z.string().optional(),
   })
   .strict();
 
@@ -205,7 +193,6 @@ const terminalSettings = z
     shortcut: z.string().optional(),
     screenshot_dir: z.string().optional(),
     screenshot_paste_shortcut: z.string().optional(),
-    launchers: launchersSchema.optional(),
     move_tab_left_shortcut: z.string().optional(),
     move_tab_right_shortcut: z.string().optional(),
     xterm: xtermSettings.optional(),
@@ -363,28 +350,19 @@ export const DEFAULT_SKILLS_PATH = '.claude/skills';
  * the stale keys outright.
  *
  * Current rules:
- * - `terminal.launcher_command` (scalar string) → `terminal.launchers[0]`
- *   with `label: 'λ'`. Skipped if the user already has an explicit
- *   `terminal.launchers` block — the array wins, the legacy scalar is
- *   discarded. The legacy key is removed in both cases so the strict
- *   schema accepts the result and the next write drops it from disk.
- * - `terminal.launchers[]` entries with a legacy `symbol` field are
- *   migrated to `label` ('lambda' → 'λ', 'mu' → 'μ').
+ * - `terminal.launchers` / `terminal.launcher_command` — dropped when the
+ *   tab-strip launcher concept was replaced by Agents (see the Agents pane).
+ *   Removed silently so existing `settings.json` / `condash.json` files keep
+ *   saving; the next write drops them from disk.
+ * - `terminal.{projectActions,newProjectActions}[].launcher` (named a launcher
+ *   label) → `agent` (names an agent). The old value is unlikely to match an
+ *   agent name, so the action degrades to focused-tab behaviour until the user
+ *   re-points it — strictly better than failing the strict-mode parse.
  * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
  *   dropped in v2.23.0 when the rotation machinery and ANSI stripping
  *   were retired. Strip silently so existing `.condash/settings.json`
  *   files keep saving (otherwise every write fails with `Unrecognised
  *   key`, which also prevents the user from flipping `enabled: true`).
- * - `terminal.launchers[]` entries missing a string `command` are dropped.
- *   The renderer-side guard (`applyLauncherEdit`, v2.28.2) already prevents
- *   writing `{ symbol, title }` entries, but a file that ended up shaped
- *   that way through a pre-v2.28.2 session or an external editor would
- *   otherwise fail every subsequent save with `terminal.launchers.<i>.command
- *   — expected string, received undefined` and lock the user out of the
- *   Settings modal. Scrub here so the next write removes the bad entry from
- *   disk. Blank-row placeholders (`{ label: '', command: '' }`) are kept —
- *   they're valid since v3.12.2's schema relaxation and need to survive a
- *   reload so the user can fill them in.
  */
 export function migrateRawSettings(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== 'object') return parsed;
@@ -397,45 +375,23 @@ export function migrateRawSettings(parsed: unknown): unknown {
   const terminal = root.terminal;
   if (!terminal || typeof terminal !== 'object') return parsed;
   const term = terminal as Record<string, unknown>;
-  if (typeof term.launcher_command === 'string') {
-    const legacy = term.launcher_command.trim();
-    if (legacy.length > 0 && !Array.isArray(term.launchers)) {
-      term.launchers = [{ label: 'λ', command: legacy }];
-    }
-    delete term.launcher_command;
-  } else if ('launcher_command' in term) {
-    delete term.launcher_command;
-  }
-  if (Array.isArray(term.launchers)) {
-    const migrated = term.launchers.map((entry) => {
-      if (!entry || typeof entry !== 'object') return entry;
-      const e = entry as Record<string, unknown>;
-      if (typeof e.symbol === 'string') {
-        const labelMap: Record<string, string> = { lambda: 'λ', mu: 'μ' };
-        const fallback =
-          typeof e.title === 'string' && e.title.length > 0
-            ? e.title
-            : typeof e.command === 'string'
-              ? e.command
-              : String(e.symbol);
-        e.label = labelMap[e.symbol] ?? fallback;
-        delete e.symbol;
+  // Launchers were replaced by Agents — drop the legacy keys so the strict
+  // schema accepts the file and the next write removes them from disk.
+  delete term.launchers;
+  delete term.launcher_command;
+  // Rename the legacy action binding `launcher` → `agent` on both action lists.
+  for (const listKey of ['projectActions', 'newProjectActions']) {
+    const list = term[listKey];
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      if (!entry || typeof entry !== 'object') continue;
+      const action = entry as Record<string, unknown>;
+      if ('launcher' in action) {
+        if (!('agent' in action) && typeof action.launcher === 'string') {
+          action.agent = action.launcher;
+        }
+        delete action.launcher;
       }
-      return entry;
-    });
-    const scrubbed = migrated.filter((entry) => {
-      if (!entry || typeof entry !== 'object') return false;
-      const command = (entry as { command?: unknown }).command;
-      if (typeof command !== 'string') return false;
-      // Empty string is a blank-row placeholder ("+ Add launcher" before
-      // typing); keep it so the user can fill it in after reload. Whitespace
-      // -only strings are treated as malformed legacy data and dropped.
-      return command === '' || command.trim().length > 0;
-    });
-    if (scrubbed.length === 0) {
-      delete term.launchers;
-    } else {
-      term.launchers = scrubbed;
     }
   }
   const logging = term.logging;

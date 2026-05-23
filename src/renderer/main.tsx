@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createMemo, createSignal, For, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode, SkillTab } from '@shared/types';
 import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
@@ -217,6 +217,19 @@ function App() {
   // --- Config bindings (Open With + terminal prefs) ---------------------
   const { openWithSlots, terminalPrefs, reloadConfig } = useConfigBindings({ conceptionPath });
 
+  // --- Agents (tab-strip spawn dropdown + action-template bindings) -----
+  // Re-fetched whenever the conception changes. `reloadAgents` is also handed
+  // to the Agents pane so create/edit/delete refreshes the dropdown live.
+  const [agentsResource, { refetch: reloadAgents }] = createResource(conceptionPath, async () => {
+    try {
+      return await window.condash.listAgents();
+    } catch {
+      return [];
+    }
+  });
+  const agents = () => agentsResource() ?? [];
+  void reloadAgents;
+
   // Stable references to the filtered action-template arrays. `usableActionTemplates`
   // returns a *fresh* filtered array on every call; without memoising, any reactive
   // re-read of these props allocates a new array, which makes Solid's `<For>` inside
@@ -239,6 +252,7 @@ function App() {
     terminalHandle: () => terminalHandle,
     ensureTerminalOpen,
     terminalPrefs,
+    agents,
     flashToast,
     conceptionPath,
   });
@@ -691,7 +705,7 @@ function App() {
         open={layout().terminal}
         onClose={() => updateLayout({ terminal: false })}
         onTogglePane={toggleTerminal}
-        launchers={terminalPrefs()?.launchers ?? []}
+        agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}
         registerHandle={(handle) => {

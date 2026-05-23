@@ -3,7 +3,6 @@ import type { JSX } from 'solid-js';
 import type {
   ActionTemplate,
   CardMinWidthPrefs,
-  LauncherConfig,
   Platform,
   TerminalLoggingPrefs,
   TerminalPrefs,
@@ -293,29 +292,11 @@ function ActionTemplateSection(props: {
     onChange: (e: Event & { currentTarget: HTMLInputElement }) => void;
   };
   items: () => ActionTemplate[];
-  /** Configured launchers, exposed in the per-row Launcher dropdown. Only
-   *  entries with a non-empty label/command are useful — the picker
-   *  filters again at render time so freshly-added blank rows don't show
-   *  up as ghost options. */
-  launchers: () => LauncherConfig[];
   patch: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
   add: () => Promise<void>;
   remove: (index: number) => Promise<void>;
   move: (index: number, delta: -1 | 1) => Promise<void>;
 }): JSX.Element {
-  const usableLaunchers = (): LauncherConfig[] =>
-    props.launchers().filter((l) => l.label.trim().length > 0 && l.command.trim().length > 0);
-  // Stable id for the sibling Launchers subgroup — the "Manage launchers"
-  // link uses this to scroll-into-view + force-open the disclosure.
-  const launchersAnchor = props.idPrefix.replace(/\.[^.]+$/, '.launchers');
-  const focusLaunchers = (): void => {
-    const el = document.querySelector<HTMLDetailsElement>(
-      `details[data-subgroup-id="${launchersAnchor}"]`,
-    );
-    if (!el) return;
-    el.open = true;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
   const body = (): JSX.Element => (
     <>
       <p class="settings-field-hint">{props.hint}</p>
@@ -347,36 +328,16 @@ function ActionTemplateSection(props: {
               />
             </label>
             <label>
-              <span class="settings-field-label-row">
-                <span>Launcher</span>
-                <button
-                  type="button"
-                  class="settings-inline-link"
-                  onClick={focusLaunchers}
-                  title="Jump to the Launchers list"
-                >
-                  Manage launchers →
-                </button>
-              </span>
-              <select
-                value={action.launcher ?? ''}
-                onChange={(e) => {
-                  const value = e.currentTarget.value;
-                  void props.patch(idx(), { launcher: value || undefined });
-                }}
-              >
-                <option value="">(focused tab)</option>
-                <For each={usableLaunchers()}>
-                  {(l) => <option value={l.label}>{l.label}</option>}
-                </For>
-                <Show
-                  when={
-                    action.launcher && !usableLaunchers().some((l) => l.label === action.launcher)
-                  }
-                >
-                  <option value={action.launcher!}>{action.launcher} (not configured)</option>
-                </Show>
-              </select>
+              <span>Agent</span>
+              <input
+                type="text"
+                placeholder="claude-deepseek-v4-pro (blank = focused tab)"
+                {...props.bindText(
+                  `${props.idPrefix}.${idx()}.agent`,
+                  () => action.agent || undefined,
+                  (v) => props.patch(idx(), { agent: v || undefined }),
+                )}
+              />
             </label>
             <label class="settings-checkbox">
               <input
@@ -651,11 +612,6 @@ export function TerminalFields(props: {
   prefs: () => TerminalPrefs;
   xterm: () => TerminalXtermPrefs;
   setString: (key: (typeof TERMINAL_STRING_FIELDS)[number]['key'], value: string) => Promise<void>;
-  launchers: () => LauncherConfig[];
-  patchLauncher: (index: number, patch: Partial<LauncherConfig>) => Promise<void>;
-  addLauncher: () => Promise<void>;
-  removeLauncher: (index: number) => Promise<void>;
-  moveLauncher: (index: number, delta: -1 | 1) => Promise<void>;
   projectActions: () => ActionTemplate[];
   patchProjectAction: (index: number, patch: Partial<ActionTemplate>) => Promise<void>;
   addProjectAction: () => Promise<void>;
@@ -736,94 +692,14 @@ export function TerminalFields(props: {
         </div>
       </Subgroup>
 
-      <Subgroup
-        id={subgroupId('launchers')}
-        title="Launchers"
-        keywords="launcher tab command title dropdown"
-        defaultOpen
-      >
-        <p class="settings-field-hint">
-          Each entry renders an option in the terminal tab-strip dropdown. Label is what you see in
-          the dropdown; title becomes the pinned tab name at spawn time (falls back to command); an
-          inline rename still wins.
-        </p>
-        <For each={props.launchers()}>
-          {(launcher, idx) => (
-            <div class="settings-launcher-row">
-              <label>
-                <span>Label</span>
-                <input
-                  type="text"
-                  placeholder="Claude"
-                  {...props.bindText(
-                    `${idPrefix}.launchers.${idx()}.label`,
-                    () => launcher.label || undefined,
-                    (v) => props.patchLauncher(idx(), { label: v }),
-                  )}
-                />
-              </label>
-              <label>
-                <span>Command</span>
-                <input
-                  type="text"
-                  placeholder="claude"
-                  {...props.bindText(
-                    `${idPrefix}.launchers.${idx()}.command`,
-                    () => launcher.command || undefined,
-                    (v) => props.patchLauncher(idx(), { command: v }),
-                  )}
-                />
-              </label>
-              <label>
-                <span>Title</span>
-                <input
-                  type="text"
-                  placeholder="Claude"
-                  {...props.bindText(
-                    `${idPrefix}.launchers.${idx()}.title`,
-                    () => launcher.title || undefined,
-                    (v) => props.patchLauncher(idx(), { title: v }),
-                  )}
-                />
-              </label>
-              <div class="settings-launcher-actions">
-                <button type="button" title="Remove" onClick={() => props.removeLauncher(idx())}>
-                  ×
-                </button>
-                <button
-                  type="button"
-                  title="Move up"
-                  disabled={idx() === 0}
-                  onClick={() => props.moveLauncher(idx(), -1)}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  title="Move down"
-                  disabled={idx() === props.launchers().length - 1}
-                  onClick={() => props.moveLauncher(idx(), 1)}
-                >
-                  ↓
-                </button>
-              </div>
-            </div>
-          )}
-        </For>
-        <button type="button" class="settings-add-launcher" onClick={() => props.addLauncher()}>
-          + Add launcher
-        </button>
-      </Subgroup>
-
       <ActionTemplateSection
         title="Project actions"
         subgroupId={subgroupId('project-actions')}
-        keywords="project action template launcher submit work-on"
-        hint="Each entry appears in the dropdown next to the project's Work-on button. Templates accept {slug}, {title}, {branch}, {apps}, … (see Help). Launcher (when set) spawns a fresh tab using that launcher's command instead of typing into the focused tab."
+        keywords="project action template agent submit work-on"
+        hint="Each entry appears in the dropdown next to the project's Work-on button. Templates accept {slug}, {title}, {branch}, {apps}, … (see Help). Agent (when set) spawns a fresh tab running that agent instead of typing into the focused tab."
         idPrefix={`${idPrefix}.projectActions`}
         bindText={props.bindText}
         items={props.projectActions}
-        launchers={props.launchers}
         patch={props.patchProjectAction}
         add={props.addProjectAction}
         remove={props.removeProjectAction}
@@ -833,12 +709,11 @@ export function TerminalFields(props: {
       <ActionTemplateSection
         title="New project actions"
         subgroupId={subgroupId('new-project-actions')}
-        keywords="new project action launcher template start"
-        hint="Each entry appears in the dropdown next to the + New project button. Templates accept {today}, {conception}, {conceptionPath}. Launcher (when set) spawns a fresh tab — e.g. bind 'Start new project' to a Claude launcher to get a fresh Claude shell on every click."
+        keywords="new project action agent template start"
+        hint="Each entry appears in the dropdown next to the + New project button. Templates accept {today}, {conception}, {conceptionPath}. Agent (when set) spawns a fresh tab — e.g. bind 'Start new project' to claude-deepseek-v4-pro to get a fresh agent shell on every click."
         idPrefix={`${idPrefix}.newProjectActions`}
         bindText={props.bindText}
         items={props.newProjectActions}
-        launchers={props.launchers}
         patch={props.patchNewProjectAction}
         add={props.addNewProjectAction}
         remove={props.removeNewProjectAction}
