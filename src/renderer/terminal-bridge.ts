@@ -120,7 +120,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  unit tests (jsdom env has no rAF).
    *
    *  When `initialPrompt` is set, it passes the prompt as a CLI argument to the
-   *  agent harness (claude: positional arg; opencode: `tui --prompt`). The settle
+   *  agent harness (claude: positional arg; opencode: `--prompt`). The settle
    *  delay is skipped in that case — the prompt is in argv, not typed via pty. */
   const spawnAgentTab = async (
     agent: AgentListItem,

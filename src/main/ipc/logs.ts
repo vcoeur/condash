@@ -94,8 +94,8 @@ async function listSessionsForDay(day: string): Promise<TermLogSessionMeta[]> {
     const meta = await readSessionMetaSummary(fullPath, day, name);
     if (meta) metas.push(meta);
   }
-  // Sort by HHMMSS — chronological within a day.
-  metas.sort((a, b) => (a.time < b.time ? -1 : 1));
+  // Sort by HHMMSS descending — most recent first within a day.
+  metas.sort((a, b) => (a.time < b.time ? 1 : -1));
   return metas;
 }
 

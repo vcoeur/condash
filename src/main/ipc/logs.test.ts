@@ -121,7 +121,7 @@ describe('logsListSessions', () => {
     await expect(handlers.logsListSessions({}, 'not-a-day')).rejects.toThrow(/invalid day/);
   });
 
-  it('returns per-session metadata parsed from header + footer, sorted by time', async () => {
+  it('returns per-session metadata parsed from header + footer, most recent first', async () => {
     writeSession(
       '2026-05-13',
       '142207',
@@ -145,11 +145,11 @@ describe('logsListSessions', () => {
       exitCode?: number;
       cmd?: string;
     }>;
-    expect(result.map((r) => r.sid)).toEqual(['t-bbb', 't-aaa']); // 09:30 before 14:22
-    expect(result[0].repo).toBe('condash');
-    expect(result[0].exitCode).toBe(0);
-    expect(result[0].cmd).toBe('make dev');
-    expect(result[1].exitCode).toBeUndefined(); // still running
+    expect(result.map((r) => r.sid)).toEqual(['t-aaa', 't-bbb']); // 14:22 before 09:30 — most recent first
+    expect(result[0].exitCode).toBeUndefined(); // 14:22 still running
+    expect(result[1].repo).toBe('condash');
+    expect(result[1].exitCode).toBe(0);
+    expect(result[1].cmd).toBe('make dev');
   });
 
   it('returns an empty list for an empty day', async () => {

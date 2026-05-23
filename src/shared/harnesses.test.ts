@@ -178,7 +178,7 @@ describe('buildSpawn — opencode', () => {
     });
   });
 
-  it('appends tui --prompt with initialPrompt', () => {
+  it('appends --prompt with initialPrompt', () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'deepseek-v4-pro',
@@ -186,7 +186,7 @@ describe('buildSpawn — opencode', () => {
       config: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
     };
     const spec = buildSpawn(def, resolve({}), 'explain this code');
-    expect(spec.args).toEqual(['tui', '--prompt', 'explain this code']);
+    expect(spec.args).toEqual(['--prompt', 'explain this code']);
   });
 
   it('routes build/plan overrides and merges extra config underneath', () => {

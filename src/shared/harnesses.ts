@@ -244,7 +244,7 @@ export class MissingAgentSecretError extends Error {
  * `initialPrompt` is an optional first user message injected as a CLI argument
  * so the prompt lands as part of the spawn command rather than via pty.write()
  * after a blind settle delay. Supported by claude (positional arg) and opencode
- * (`tui --prompt`); ignored by kimi (no interactive initial-prompt support).
+ * (`--prompt`); ignored by kimi (no interactive initial-prompt support).
  */
 export function buildSpawn(
   def: AgentDef,
@@ -395,7 +395,7 @@ function buildOpencodeSpawn(
   }
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
 
-  const extraArgs = initialPrompt ? ['tui', '--prompt', initialPrompt] : [];
+  const extraArgs = initialPrompt ? ['--prompt', initialPrompt] : [];
   return { command: HARNESSES.opencode.binary, args: extraArgs, env, unsetEnv: [] };
 }
 
