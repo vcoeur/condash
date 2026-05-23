@@ -1,8 +1,8 @@
 name: _playwright
 
-# Reusable Electron Playwright lane (Ubuntu + xvfb). Called by ci-heavy.yml
-# (optional feedback on ready, non-draft PRs) and by release.yml (second
-# stage of the real gate at tag time). Never publishes anything.
+# Reusable Electron Playwright lane (Ubuntu + xvfb). Called only by
+# release.yml (second stage of the real gate at tag time). Never publishes
+# anything.
 
 on:
   workflow_call:
