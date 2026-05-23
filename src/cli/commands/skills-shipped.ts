@@ -11,6 +11,7 @@ import { promises as fs } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes } from '../output';
 import { resolveConception } from '../conception';
+import { isIgnoredSourceArtifact } from '../../shared/source-artifacts';
 import type { CompileTarget } from '../../skillspec';
 
 /** Path of the skillspec source tree relative to the conception root. */
@@ -97,6 +98,7 @@ export async function collectFilesRelative(dir: string): Promise<string[]> {
     const entries = await fs.readdir(current, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue;
+      if (isIgnoredSourceArtifact(entry.name)) continue;
       const next = join(current, entry.name);
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isDirectory()) await walk(next, rel);
