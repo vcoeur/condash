@@ -61,6 +61,20 @@ describe('condash skills install — top-level files', () => {
     expect(gitignore).toContain('# Specifics');
   });
 
+  it('ignores every per-target compiled artefact for all agent targets', async () => {
+    await install(['.gitignore']);
+
+    const gitignore = await fs.readFile(join(dest, '.gitignore'), 'utf8');
+    // Compiled skill trees — one per agent target.
+    expect(gitignore).toContain('.claude/skills/');
+    expect(gitignore).toContain('.kimi/skills/');
+    expect(gitignore).toContain('.opencode/skills/');
+    // Compiled agent-config files — equally build output, from `.agents/agents/`.
+    expect(gitignore).toContain('.claude/CLAUDE.md');
+    expect(gitignore).toContain('.kimi/AGENTS.md');
+    expect(gitignore).toContain('.opencode/AGENTS.md');
+  });
+
   it('records .gitignore under the v3 files namespace (not templates)', async () => {
     await install(['.gitignore']);
     const manifest = await readManifest(dest);

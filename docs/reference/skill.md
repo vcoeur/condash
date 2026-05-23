@@ -85,6 +85,17 @@ Install or refresh the shipped skills. Use it after upgrading condash to pull up
 
 The source manifest moved from `.claude/skills/.condash-skills.json` to `.agents/.condash-skills.json` when the skillspec compiler shipped. `readManifest` migrates the legacy path on first read (one-shot, transparent — the legacy file is moved, not copied).
 
+### Compiled trees are gitignored build output
+
+Only the `.agents/` source tree (`.agents/skills/` skillspecs + `.agents/agents/` agent fragments) is committed. The shipped `conception-template/_gitignore` ignores **every** per-target compiled artefact — both the compiled skills and the compiled instruction files — so they regenerate on each `condash skills install` rather than living in version control:
+
+```
+.claude/skills/      .kimi/skills/      .opencode/skills/
+.claude/CLAUDE.md    .kimi/AGENTS.md    .opencode/AGENTS.md
+```
+
+`.claude/` is file-targeted (not a blanket `.claude/*`) because it also carries hand-maintained config — `settings.json`, `settings.local.json`, `hooks/` — which stays committed. A conception upgrading from condash ≤ v3.23.0 that had any of these compiled paths committed runs `git rm -r --cached` once on them (the exact command is in the General block of its `.gitignore`), then re-installs.
+
 ## `/pr`
 
 Open a GitHub PR from the current branch with condash's standard PR shape: title stating the objective, a short Summary, a Changes list, and the optional Impact / Watchpoints sections when relevant. Project-level wrappers (e.g. conception's `/pr`) defer body shape to this skill — read it before drafting.
