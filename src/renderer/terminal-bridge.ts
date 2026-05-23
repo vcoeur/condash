@@ -117,8 +117,15 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  its prompt before it will accept typed input — typing during init drops
    *  characters or lands in a not-yet-ready REPL. AGENT_SPAWN_SETTLE_MS covers
    *  both. setTimeout (not requestAnimationFrame) so this stays callable in
-   *  unit tests (jsdom env has no rAF). */
-  const spawnAgentTab = async (agent: AgentListItem): Promise<TerminalPaneHandle | null> => {
+   *  unit tests (jsdom env has no rAF).
+   *
+   *  When `initialPrompt` is set, it passes the prompt as a CLI argument to the
+   *  agent harness (claude: positional arg; opencode: `tui --prompt`). The settle
+   *  delay is skipped in that case — the prompt is in argv, not typed via pty. */
+  const spawnAgentTab = async (
+    agent: AgentListItem,
+    initialPrompt?: string,
+  ): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -127,12 +134,14 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (!handle) return null;
     deps.ensureTerminalOpen();
     try {
-      await handle.spawnUserShell(agent, 'my');
+      await handle.spawnUserShell(agent, 'my', initialPrompt);
     } catch (err) {
       deps.flashToast(`Could not spawn ${agent.name}: ${(err as Error).message}`, 'error');
       return null;
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+    if (!initialPrompt) {
+      await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
+    }
     return handle;
   };
 
@@ -255,14 +264,42 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
+  /** Harnesses whose CLI accepts an initial prompt as an argument, removing
+   *  the need to type into the pty after spawn. */
+  const NATIVE_INITIAL_PROMPT_HARNESSES = new Set(['claude', 'opencode']);
+
   const runTask = async (agentSlug: string, text: string, submit: boolean): Promise<void> => {
     const agent = findAgentBySlug(deps.agents(), agentSlug);
     if (!agent) {
       deps.flashToast(`Task agent not found: ${agentSlug}`, 'error');
       return;
     }
+
+    // When the harness supports it and submit is true, pass the prompt as a
+    // CLI argument in argv. The agent executes it on startup — no pty.write,
+    // no settle delay, no race.
+    if (submit && NATIVE_INITIAL_PROMPT_HARNESSES.has(agent.harness)) {
+      const handle = await spawnAgentTab(agent, text);
+      if (!handle) return;
+      return;
+    }
+
     const handle = await spawnAgentTab(agent);
     if (!handle) return;
+    // Kimi has no CLI flag for an initial prompt in interactive mode, so we
+    // must still type via the pty. Replace the blind 350 ms settle delay
+    // (built into spawnAgentTab) with a prompt-marker watch so we never
+    // send text before kimi is ready to read it.
+    if (agent.harness === 'kimi') {
+      const sessionId = handle.getActiveSessionId();
+      if (sessionId) {
+        try {
+          await handle.waitForReady(sessionId, /▸/);
+        } catch {
+          // Timeout — fall through and type anyway (best-effort).
+        }
+      }
+    }
     handle.typeIntoActive(text);
     if (submit) {
       // Small delay so the terminal has time to ingest the typed text

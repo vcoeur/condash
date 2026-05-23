@@ -559,6 +559,11 @@ export interface TermSpawnRequest {
    *  main process resolves it to the harness binary + args + env (token from
    *  `agents/.env`) and spawns that. Mutually exclusive with `repo` / `command`. */
   agentSlug?: string;
+  /** When set, passes the initial prompt as a CLI argument to the agent
+   *  (claude: positional arg; opencode: `tui --prompt <text>`; kimi: ignored).
+   *  Only meaningful with `agentSlug`; the prompt is added to argv directly,
+   *  removing the race between process-start and pty.write(). */
+  initialPrompt?: string;
   /** Override the cwd; defaults to $HOME (or the resolved repo cwd). */
   cwd?: string;
   cols?: number;
