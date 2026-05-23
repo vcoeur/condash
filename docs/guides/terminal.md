@@ -1,6 +1,6 @@
 ---
 title: Use the embedded terminal · condash guide
-description: Open the PTY pane, manage tabs across two sides, use the launcher button, paste screenshot paths, move tabs between sides.
+description: Open the PTY pane, manage tabs across two sides, spawn agents from the dropdown, paste screenshot paths, move tabs between sides.
 ---
 
 # Use the embedded terminal
@@ -29,7 +29,7 @@ The pane starts as a single column. The right column materialises only when at l
 
 Each side header carries:
 
-- **Spawn dropdown** — a single button that opens a menu with all configured launchers. The first option is always `New shell` (spawns the configured shell); below it are the entries from `terminal.launchers` whose `command` is non-empty. Selecting an option immediately spawns the corresponding tab. The menu is rendered through a Solid `<Portal>` to `document.body` (with `position: fixed` coordinates from `createDropdownMenu({ align: 'left' })`) so it escapes `.terminal-pane`'s `contain: layout paint` and the strip's `overflow: auto` — both of which would otherwise clip the menu down to the strip's 32 px height. A common use is one launcher per agent CLI / model pairing — see [Agent CLIs and model providers](agent-clis-and-models.md).
+- **Spawn dropdown** — a single button that opens a menu listing your **agents**. The first option is always `New shell` (spawns the configured shell); below it is one entry per agent (`<harness>-<model_variant>`) defined in the [Agents pane](agent-clis-and-models.md). Selecting an agent spawns a tab running it (with its env / token injected). The menu is rendered through a Solid `<Portal>` to `document.body` (with `position: fixed` coordinates from `createDropdownMenu({ align: 'left' })`) so it escapes `.terminal-pane`'s `contain: layout paint` and the strip's `overflow: auto` — both of which would otherwise clip the menu down to the strip's 32 px height.
 - **Tab strip** — click to focus the tab; middle-click to close. Clicking inside the xterm itself also promotes the tab to active (the click+focus listener was wired so a stray click never silently sends keys to a different tab than the one you're looking at).
 
 Tab titles depend on how the tab was spawned:
@@ -156,10 +156,6 @@ Everything lives under `terminal:` in `${XDG_CONFIG_HOME:-~/.config}/condash/set
     "shortcut": "Ctrl+`",
     "screenshot_dir": "/home/you/Pictures/Screenshots",
     "screenshot_paste_shortcut": "Ctrl+Shift+V",
-    "launchers": [
-      { "label": "Claude", "command": "claude", "title": "Claude" },
-      { "label": "Jupyter", "command": "python -m notebook", "title": "Jupyter" }
-    ],
     "move_tab_left_shortcut": "Ctrl+Left",
     "move_tab_right_shortcut": "Ctrl+Right"
   }
@@ -168,11 +164,11 @@ Everything lives under `terminal:` in `${XDG_CONFIG_HOME:-~/.config}/condash/set
 
 See the [config reference](../reference/config.md) for the full key table with defaults.
 
-The legacy scalar `terminal.launcher_command` from condash ≤ 2.27 is transparently migrated into `launchers[0]` (label: `λ`) on first load and dropped from the file on next write — no manual action. Legacy `symbol`-based entries (`lambda` → `λ`, `mu` → `μ`) are also migrated to `label` automatically.
+The spawn dropdown is populated from **agents**, not from a `terminal.*` key — define them in the [Agents pane](agent-clis-and-models.md). (condash ≤ 3.25 used a `terminal.launchers` array / `terminal.launcher_command` scalar; both are dropped on read.)
 
 ## Editing shortcuts
 
-The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Launchers appear as a dynamic list with **Label**, **Command**, and **Title** inputs per row. Use **+ Add launcher** to create new entries, the **×** button to remove, and **↑ / ↓** to reorder. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed.
+The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are managed in the [Agents pane](agent-clis-and-models.md), not the Settings modal.
 
 ## Platform notes
 

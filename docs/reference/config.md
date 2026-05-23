@@ -18,7 +18,7 @@ condash reads two JSON files. Both share **the same schema**. The per-machine `s
 
 Both files share the **same schema** modulo the two path-tracking keys above. Any other top-level key — `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches` — may live in either file. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge).
 
-**Exception: `terminal` merges one level deep.** Its sub-schema straddles per-machine input / device prefs (`shell`, `shortcut`, `screenshot_dir`, `launchers`, `xterm`, `screenshot_paste_shortcut`, `move_tab_{left,right}_shortcut`) and per-tree retention policy (`logging.{enabled, retentionDays, maxDirMb, scrollback}`). A pure replace meant any conception that customised `terminal.logging` silently lost every per-machine terminal pref — the launcher buttons vanished, the screenshot-paste shortcut toasted "no screenshot directory". Conception sub-keys win at the first level; sub-keys absent from the conception fall through to the global block. Nested values inside `terminal.xterm`, `terminal.logging`, and `terminal.launchers` still replace whole — only the immediate sub-keys of `terminal` merge.
+**Exception: `terminal` merges one level deep.** Its sub-schema straddles per-machine input / device prefs (`shell`, `shortcut`, `screenshot_dir`, `xterm`, `screenshot_paste_shortcut`, `move_tab_{left,right}_shortcut`) and per-tree retention policy (`logging.{enabled, retentionDays, maxDirMb, scrollback}`). A pure replace meant any conception that customised `terminal.logging` silently lost every per-machine terminal pref — the screenshot-paste shortcut toasted "no screenshot directory". Conception sub-keys win at the first level; sub-keys absent from the conception fall through to the global block. Nested values inside `terminal.xterm` and `terminal.logging` still replace whole — only the immediate sub-keys of `terminal` merge.
 
 ### The `.condash/` workspace directory
 
@@ -70,9 +70,9 @@ Lives at `<conception_path>/.condash/settings.json`. Don't commit it — the aut
 
 Paths may use `~` (expanded to `$HOME`) or absolute paths. JSON does not carry comments — keep prose documentation in the project README or the per-tree `CLAUDE.md`.
 
-A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — and unlike every other top-level key, the per-conception block **merges with** the global one (see the exception called out at the top of this page). A conception declaring `terminal.logging.retentionDays` keeps the global `terminal.launchers` / `terminal.screenshot_dir` it inherited.
+A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — and unlike every other top-level key, the per-conception block **merges with** the global one (see the exception called out at the top of this page). A conception declaring `terminal.logging.retentionDays` keeps the global `terminal.screenshot_dir` it inherited.
 
-The legacy scalar `terminal.launcher_command` from condash ≤ 2.27 is transparently migrated into `terminal.launchers[0]` with `label: 'λ'` on first load and dropped from the file on the next write. Legacy `symbol`-based entries (`lambda` → `λ`, `mu` → `μ`) are also migrated to `label` automatically. Mixed files — both the legacy scalar and the new array present — keep the array and discard the scalar.
+The legacy `terminal.launchers` array and the scalar `terminal.launcher_command` (condash ≤ 3.25, before the Agents pane) are dropped from the file on the next write — the tab-strip dropdown is now populated from [agents](#agents). A legacy action-template `launcher` binding is renamed to `agent` in place.
 
 ### Terminal logging
 
@@ -189,35 +189,22 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `shortcut`                  | `` Ctrl+` ``                                            | Toggle the terminal pane. Modifiers: `Ctrl`, `Shift`, `Alt`, `Meta`. Key names follow the HTML `KeyboardEvent.key` convention.                 |
 | `screenshot_dir`            | `~/Pictures/Screenshots` on Linux, `~/Desktop` on macOS | Directory scanned for "most recent screenshot" by the paste shortcut.                                                                          |
 | `screenshot_paste_shortcut` | `Ctrl+Shift+V`                                          | Inserts the absolute path of the newest image in `screenshot_dir` into the active terminal. No `Enter` — you confirm.                          |
-| `launchers[]`               | `[]`                                                    | Configurable launcher slots — see [`terminal.launchers`](#terminallaunchers) below. Each entry adds an option to the tab-strip spawn dropdown. |
+| _(agents)_                  | —                                                       | The tab-strip spawn dropdown lists **agents** defined under `<conception>/agents/` — these are not a `terminal.*` key. See [Agents](#agents) below. |
 | `projectActions[]`          | `[]`                                                    | Configurable per-project actions — see [`terminal.projectActions`](#terminalprojectactions) below. Each entry adds an option to the dropdown next to a project's **Work on** button. |
 | `newProjectActions[]`       | `[]`                                                    | Configurable starter prompts — see [`terminal.newProjectActions`](#terminalnewprojectactions) below. Each entry adds an option to the dropdown next to the **+ New project** button. |
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                                          |
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                                         |
 | `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section.         |
 
-### `terminal.launchers` { #terminallaunchers }
+### Agents { #agents }
 
-Per-entry launcher slots rendered in the terminal tab-strip spawn dropdown. The dropdown always offers `New shell` first; below it are the entries from `launchers` whose `command` is non-empty, in array order.
+The terminal tab-strip spawn dropdown lists **agents** (it always offers `New shell` first, then each agent). An agent is **not** a `terminal.*` config key — it is a JSON file under `<conception>/agents/`, managed by the **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`). An agent is a *harness* (`claude` / `kimi-cli` / `opencode`) plus a harness-specific config plus an optional API token, named `<harness>-<model_variant>`.
 
-```json
-{
-  "terminal": {
-    "launchers": [
-      { "label": "Claude", "command": "claude", "title": "Claude" },
-      { "label": "Jupyter", "command": "python -m notebook", "title": "Jupyter" }
-    ]
-  }
-}
-```
+- **Definition** — `<conception>/agents/<harness>-<model_variant>.json`, one file per agent. The file carries `harness`, `modelVariant`, the harness-specific `config` (e.g. claude's `ANTHROPIC_*` model + endpoint knobs), and `secretEnv` (the *name* of the token variable). It carries **no secret value**, so it is safe to commit.
+- **Tokens** — `<conception>/agents/.env` (`NAME=value` lines, gitignored) holds the API tokens. condash reads it only in the main process at spawn time; values never reach the renderer (the pane shows token *presence* only).
+- **Naming** — the agent's name is always `<harness-label>-<model_variant>` (e.g. `claude-deepseek-v4-pro`, `kimi-cli-native`), derived from the file's contents so it can't drift. It is also the JSON filename stem and the pinned tab label.
 
-| Key       | Type             | Required | Meaning                                                                                                                                                                                                              |
-| --------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `label`   | string           | yes      | User-defined name shown in the spawn dropdown. Falls back to `title` then to `command` if empty at render time.                                                                                                      |
-| `command` | non-empty string | yes      | Shell-style command spawned when the entry is selected. Resolved through the configured `shell` so pipelines and aliases work. Empty / whitespace is treated as the entry being unset (no dropdown option rendered). |
-| `title`   | string           | no       | Initial pinned tab label at spawn time. When unset, the tab is labelled with the `command` (current behaviour for legacy `launcher_command`). The user's inline rename always wins over this.                        |
-
-**Migration from `launcher_command`:** the scalar key from condash ≤ 2.27 is rewritten in-flight on every read into `launchers[0]` with `label: 'λ'` (no `title`). Legacy `symbol`-based entries (`lambda` → `λ`, `mu` → `μ`) are also migrated to `label` automatically. The legacy key is dropped on the next settings write — no manual action. A file that has both the legacy scalar and an explicit `launchers` array keeps the array and discards the scalar.
+Define, edit, launch, and inspect agents from the Agents pane rather than hand-editing these files. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read (replaced by agents).
 
 ### `terminal.projectActions` { #terminalprojectactions }
 
@@ -228,7 +215,7 @@ Per-entry actions rendered in the per-card **Work on** dropdown on the Projects 
   "terminal": {
     "projectActions": [
       { "label": "Claude review", "template": "claude \"review project {shortSlug}\"", "submit": true },
-      { "label": "Kimi summary", "template": "kimi \"summarise {shortSlug}\"", "submit": true, "launcher": "KimiKimi" }
+      { "label": "Kimi summary", "template": "summarise {shortSlug}", "submit": true, "agent": "kimi-cli-native" }
     ]
   }
 }
@@ -239,7 +226,7 @@ Per-entry actions rendered in the per-card **Work on** dropdown on the Projects 
 | `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset (no dropdown option rendered).                                |
 | `template` | string           | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). Unknown placeholders are left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
 | `submit`   | bool             | no       | When `true`, condash presses Enter after pasting the template. Default `false` — matches the current **Work on** behaviour and lets templates that end with a colon wait for the user to type the variable bit. |
-| `launcher` | string           | no       | When set, names one of `terminal.launchers[].label`. The action spawns a fresh tab using that launcher's command before typing the template — useful for binding an action to a specific agent (Claude / Kimi / shell). Empty / missing → type into the focused tab (default-launcher fallback when no tab exists, as before). A label that no longer matches a configured launcher falls through to the focused-tab flow. |
+| `agent`    | string           | no       | When set, names an agent (`<harness>-<model_variant>`) under `<conception>/agents/`. The action spawns a fresh tab running that agent before typing the template — useful for binding an action to a specific agent. Empty / missing → type into the focused tab (a plain shell when no tab exists). A name that no longer matches an agent falls through to the focused-tab flow. |
 
 ### `terminal.newProjectActions` { #terminalnewprojectactions }
 
@@ -250,7 +237,7 @@ Per-entry starter prompts rendered in the **+ New project** dropdown. The contro
   "terminal": {
     "newProjectActions": [
       { "label": "Spec + design starter", "template": "start project for new feature, make spec.md note with functional specification, and design.md note with design plan:", "submit": false },
-      { "label": "Start new project (Claude)", "template": "Start new project ", "launcher": "Claude" }
+      { "label": "Start new project (Claude)", "template": "Start new project ", "agent": "claude-deepseek-v4-pro" }
     ]
   }
 }
@@ -261,7 +248,7 @@ Per-entry starter prompts rendered in the **+ New project** dropdown. The contro
 | `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset.                                                              |
 | `template` | string           | yes      | Text pasted into the focused terminal. May contain global placeholders only: `{today}`, `{conception}`, `{conceptionPath}`. Unknown placeholders are left verbatim. Empty or whitespace is treated as the entry being unset. |
 | `submit`   | bool             | no       | When `true`, condash presses Enter after pasting. Default `false`.                                                                                             |
-| `launcher` | string           | no       | When set, names one of `terminal.launchers[].label`. The action spawns a fresh tab using that launcher's command and types the template into the new tab — gives each entry a predictable starting environment (e.g. **Start new project → Claude** always opens a fresh Claude shell). Empty / missing keeps the legacy "type into focused tab" behaviour. |
+| `agent`    | string           | no       | When set, names an agent (`<harness>-<model_variant>`) under `<conception>/agents/`. The action spawns a fresh tab running that agent and types the template into the new tab — gives each entry a predictable starting environment (e.g. **Start new project → claude-deepseek-v4-pro** always opens a fresh agent shell). Empty / missing keeps the "type into focused tab" behaviour. |
 
 > **Note.** Selecting a new-project action does **not** create a project automatically — it only types a starter prompt into the terminal. The user then prompts their agent to create the project via `condash projects create`.
 
@@ -335,10 +322,6 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
   "terminal": {
     "shell": "/bin/zsh",
     "shortcut": "Ctrl+T",
-    "launchers": [
-      { "label": "Claude", "command": "claude", "title": "Claude" },
-      { "label": "Jupyter", "command": "python -m notebook", "title": "Jupyter" }
-    ],
     "screenshot_dir": "/home/you/Pictures/Screenshots"
   },
   "layout": {

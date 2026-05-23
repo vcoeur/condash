@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import type { LauncherConfig } from '@shared/types';
+import type { AgentListItem } from '@shared/harnesses';
 import { createDropdownMenu } from '../dropdown-menu';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
@@ -11,9 +11,9 @@ export interface TerminalColumnProps {
   activeId: string | null;
   isActiveColumn: boolean;
   renamingId: string | null;
-  /** Configured launcher slots. One menu item per entry whose `command` is
-   *  non-empty, in the order they appear in `terminal.launchers`. */
-  launchers: readonly LauncherConfig[];
+  /** Agents defined under `<conception>/agents/`. One menu item each,
+   *  alphabetical, alongside the "New shell" option. */
+  agents: readonly AgentListItem[];
   /** True when the surrounding pane is currently visible. Drives the
    *  active state of the in-strip Terminal handle. */
   paneOpen: boolean;
@@ -27,7 +27,7 @@ export interface TerminalColumnProps {
   onCommitRename: (id: string, value: string) => void;
   onCancelRename: () => void;
   onCloseTab: (id: string) => void;
-  onSpawnShell: (col: Column, launcherIndex: number | null) => void;
+  onSpawnShell: (col: Column, agentName: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
   /** Toggle the pane open/closed. The Terminal handle in the strip
@@ -45,23 +45,18 @@ export interface TerminalColumnProps {
  *  box and the user sees only fragments of the menu items.
  */
 function SpawnDropdown(props: {
-  launchers: readonly LauncherConfig[];
-  onSpawn: (index: number | null) => void;
+  agents: readonly AgentListItem[];
+  onSpawn: (agentName: string | null) => void;
 }) {
   const menu = createDropdownMenu({ align: 'left' });
   const [highlighted, setHighlighted] = createSignal(0);
 
   const items = () => [
-    { label: 'New shell', value: null as number | null },
-    ...props.launchers
-      .filter((l) => l.command.trim().length > 0)
-      .map((l, i) => ({
-        label: l.label || l.title || l.command,
-        value: i,
-      })),
+    { label: 'New shell', value: null as string | null },
+    ...props.agents.map((a) => ({ label: a.name, value: a.name as string | null })),
   ];
 
-  const select = (value: number | null) => {
+  const select = (value: string | null) => {
     props.onSpawn(value);
     menu.close();
     setHighlighted(0);
@@ -255,8 +250,8 @@ export function TerminalColumn(props: TerminalColumnProps) {
           )}
         </For>
         <SpawnDropdown
-          launchers={props.launchers}
-          onSpawn={(index) => props.onSpawnShell(props.col, index)}
+          agents={props.agents}
+          onSpawn={(name) => props.onSpawnShell(props.col, name)}
         />
         <span class="terminal-tab-strip-spacer" />
         <button

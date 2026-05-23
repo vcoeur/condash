@@ -67,7 +67,6 @@ import {
   userScriptTargetRoot,
   userSourceRoot,
   userTargetRoot,
-  writeKimiGlobalAgent,
   type UserAgentConfigsReport,
   type UserScriptsReport,
 } from './skills-user-fs';
@@ -571,13 +570,11 @@ export async function installUserSkills(args: ParsedArgs, ctx: OutputContext): P
   }
 
   // Agent configs: compile `~/.config/agents/agents/{common,claude,kimi}.md`.
-  // - Claude: write the full compiled markdown to `~/.claude/CLAUDE.md`.
-  // - Kimi: embed the compiled content into `~/.kimi/global-agent.yaml`'s
-  //   `agent.system_prompt_args.ROLE_ADDITIONAL` field (read-modify-write,
-  //   preserving other yaml fields). Kimi reads that file when launched with
-  //   `--agent-file ~/.kimi/global-agent.yaml`.
-  // Sources silently absent → no compile, no error. Outputs are always
-  // regenerated (no manifest, no refuse-on-edit).
+  // All three targets write plain markdown — Claude → `~/.claude/CLAUDE.md`,
+  // OpenCode → `~/.config/opencode/AGENTS.md`, Kimi → `~/.kimi/AGENTS.md`. Kimi
+  // doesn't read AGENTS.md natively; the kimi agent launcher wraps it into a
+  // transient `--agent-file` (ROLE_ADDITIONAL) at spawn. Sources silently
+  // absent → no compile, no error. Outputs are always regenerated.
   const agentCommon = await readUserAgentCommon();
   if (agentCommon !== null) {
     for (const target of AGENTS_MD_TARGETS) {
@@ -587,13 +584,7 @@ export async function installUserSkills(args: ParsedArgs, ctx: OutputContext): P
       });
       const outputPath = userAgentConfigOutput(target);
       if (!dryRun) {
-        if (target === 'kimi') {
-          // Kimi has no standalone config file — write inline into global-agent.yaml.
-          await writeKimiGlobalAgent(outputPath, compiled);
-        } else {
-          // Claude (CLAUDE.md) and OpenCode (AGENTS.md) are plain markdown files.
-          await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
-        }
+        await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
       }
       report.agentConfigs.compiled.push({ target, path: outputPath });
     }

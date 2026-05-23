@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   addActionTemplate,
-  addLauncher,
   buildSavePayload,
   compactRepos,
   moveActionTemplate,
-  moveLauncher,
   patchActionTemplate,
-  patchLauncher,
   removeActionTemplate,
-  removeLauncher,
   usableActionTemplates,
 } from './data';
 import { conceptionConfigSchema } from '../../main/config-schema';
@@ -107,133 +103,6 @@ describe('compactRepos — invariants', () => {
     });
     const result = conceptionConfigSchema.safeParse(payload);
     expect(result.success).toBe(true);
-  });
-});
-
-describe('patchLauncher', () => {
-  it('drops a row whose only filled field is `title` (label + command still blank)', () => {
-    // The keep-on-partial-typing rule looks at the two required text fields
-    // (`label`, `command`). `title` alone never carries a row — a launcher
-    // without a command can't spawn anything.
-    expect(patchLauncher(undefined, 0, { title: 'My title' })).toBeUndefined();
-  });
-
-  it('creates an entry once the command is filled', () => {
-    expect(patchLauncher(undefined, 0, { label: 'Claude', command: 'claude' })).toEqual([
-      { label: 'Claude', command: 'claude' },
-    ]);
-  });
-
-  it('attaches a title to an existing command entry', () => {
-    const next = patchLauncher([{ label: 'λ', command: 'claude' }], 0, { title: 'CLD' });
-    expect(next).toEqual([{ label: 'λ', command: 'claude', title: 'CLD' }]);
-  });
-
-  it('keeps the row when only command is cleared (label still set)', () => {
-    const next = patchLauncher([{ label: 'λ', command: 'claude', title: 'CLD' }], 0, {
-      command: '',
-    });
-    expect(next).toEqual([{ label: 'λ', command: '', title: 'CLD' }]);
-  });
-
-  it('drops the row when both label and command are blank, even if title is set', () => {
-    const next = patchLauncher([{ label: 'λ', command: 'claude', title: 'CLD' }], 0, {
-      label: '',
-      command: '',
-    });
-    expect(next).toBeUndefined();
-  });
-
-  it('preserves the other entry when one is fully cleared', () => {
-    const next = patchLauncher(
-      [
-        { label: 'λ', command: 'claude' },
-        { label: 'μ', command: 'python -m notebook' },
-      ],
-      0,
-      { label: '', command: '' },
-    );
-    expect(next).toEqual([{ label: 'μ', command: 'python -m notebook' }]);
-  });
-
-  it('produces a schema-valid payload through buildSavePayload + launcherSchema', () => {
-    const launchers = patchLauncher(undefined, 0, { label: 'λ', command: 'claude' });
-    const payload = buildSavePayload({ terminal: { launchers } });
-    const result = conceptionConfigSchema.safeParse(payload);
-    expect(result.success).toBe(true);
-  });
-
-  it('round-trips a blank-row launcher through buildSavePayload + schema', () => {
-    // Regression: "+ Add launcher" used to fail with
-    // `terminal.launchers.0.command — expected string, received undefined`
-    // because pruneEmpty stripped the empty `label`/`command` fields, leaving
-    // `{}` rows that the schema rejected. The schema relaxation + compactor
-    // bypass keep the blank row intact end-to-end.
-    const payload = buildSavePayload({
-      terminal: { launchers: [{ label: '', command: '' }] },
-    });
-    expect(payload.terminal).toEqual({ launchers: [{ label: '', command: '' }] });
-    const result = conceptionConfigSchema.safeParse(payload);
-    expect(result.success).toBe(true);
-  });
-});
-
-describe('addLauncher', () => {
-  it('appends a blank launcher row', () => {
-    expect(addLauncher(undefined)).toEqual([{ label: '', command: '' }]);
-  });
-
-  it('appends to an existing list', () => {
-    expect(addLauncher([{ label: 'λ', command: 'claude' }])).toEqual([
-      { label: 'λ', command: 'claude' },
-      { label: '', command: '' },
-    ]);
-  });
-});
-
-describe('removeLauncher', () => {
-  it('removes the entry at the given index', () => {
-    expect(
-      removeLauncher(
-        [
-          { label: 'λ', command: 'claude' },
-          { label: 'μ', command: 'python -m notebook' },
-        ],
-        0,
-      ),
-    ).toEqual([{ label: 'μ', command: 'python -m notebook' }]);
-  });
-
-  it('returns undefined when the last entry is removed', () => {
-    expect(removeLauncher([{ label: 'λ', command: 'claude' }], 0)).toBeUndefined();
-  });
-});
-
-describe('moveLauncher', () => {
-  it('swaps two entries', () => {
-    expect(
-      moveLauncher(
-        [
-          { label: 'λ', command: 'claude' },
-          { label: 'μ', command: 'python -m notebook' },
-        ],
-        0,
-        1,
-      ),
-    ).toEqual([
-      { label: 'μ', command: 'python -m notebook' },
-      { label: 'λ', command: 'claude' },
-    ]);
-  });
-
-  it('refuses to move past the start', () => {
-    const list = [{ label: 'λ', command: 'claude' }];
-    expect(moveLauncher(list, 0, -1)).toBe(list);
-  });
-
-  it('refuses to move past the end', () => {
-    const list = [{ label: 'λ', command: 'claude' }];
-    expect(moveLauncher(list, 0, 1)).toBe(list);
   });
 });
 

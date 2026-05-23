@@ -45,6 +45,11 @@ projects/**/local/**
 .condash/*
 !.condash/settings.json.example
 
+# Agent API tokens — the per-conception secrets file consumed by the Agents
+# pane. The agent definition JSONs under `agents/` ARE committed (they carry
+# only a `secretEnv` *name*, never a value); only the secrets file is ignored.
+agents/.env
+
 # Common OS / editor cruft.
 .DS_Store
 Thumbs.db

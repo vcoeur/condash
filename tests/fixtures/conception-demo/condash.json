@@ -25,7 +25,6 @@
     "shortcut": "Ctrl+T",
     "screenshot_dir": "/tmp/conception-demo-screenshots",
     "screenshot_paste_shortcut": "Ctrl+Shift+V",
-    "launcher_command": "echo demo",
     "move_tab_left_shortcut": "Ctrl+Left",
     "move_tab_right_shortcut": "Ctrl+Right"
   }

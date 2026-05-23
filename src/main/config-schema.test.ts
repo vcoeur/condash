@@ -160,53 +160,51 @@ describe('migrateRawSettings — dropped terminal.logging fields', () => {
   });
 });
 
-describe('migrateRawSettings — invalid launcher entries', () => {
-  it('drops a launcher entry with no command (title-only), preserving valid siblings', () => {
-    // Pre-v2.28.2 the renderer could persist `{ symbol, title }` when the
-    // user typed a title without a command. The strict schema then rejects
-    // the file with `terminal.launchers.<i>.command — expected string,
-    // received undefined`, locking the Settings modal out of every save.
+describe('migrateRawSettings — launchers replaced by agents', () => {
+  it('drops the legacy `launchers` and `launcher_command` keys', () => {
     const migrated = migrateRawSettings({
       terminal: {
-        launchers: [
-          { label: 'μ', title: 'Kimi' },
-          { label: 'λ', command: 'claude', title: 'Claude' },
-        ],
+        launcher_command: 'claude',
+        launchers: [{ label: 'λ', command: 'claude' }],
+        shell: '/bin/bash',
       },
-    }) as { terminal: { launchers: unknown[] } };
-    expect(migrated.terminal.launchers).toEqual([
-      { label: 'λ', command: 'claude', title: 'Claude' },
-    ]);
-  });
-
-  it('drops a launcher entry with an empty-string command', () => {
-    const migrated = migrateRawSettings({
-      terminal: { launchers: [{ label: 'μ', command: '   ', title: 'Kimi' }] },
     }) as { terminal: Record<string, unknown> };
     expect('launchers' in migrated.terminal).toBe(false);
+    expect('launcher_command' in migrated.terminal).toBe(false);
+    // Unrelated keys survive.
+    expect(migrated.terminal.shell).toBe('/bin/bash');
   });
 
-  it('removes the launchers key entirely when every entry is invalid', () => {
+  it('renames an action `launcher` binding to `agent`', () => {
     const migrated = migrateRawSettings({
-      terminal: { launchers: [{ label: 'μ', title: 'Kimi' }] },
-    }) as { terminal: Record<string, unknown> };
-    expect('launchers' in migrated.terminal).toBe(false);
+      terminal: {
+        projectActions: [{ label: 'Review', template: 'review {slug}', launcher: 'Claude' }],
+        newProjectActions: [{ label: 'Start', template: 'start', launcher: 'Kimi' }],
+      },
+    }) as {
+      terminal: {
+        projectActions: Record<string, unknown>[];
+        newProjectActions: Record<string, unknown>[];
+      };
+    };
+    expect(migrated.terminal.projectActions[0]).toEqual({
+      label: 'Review',
+      template: 'review {slug}',
+      agent: 'Claude',
+    });
+    expect(migrated.terminal.newProjectActions[0].agent).toBe('Kimi');
+    expect('launcher' in migrated.terminal.projectActions[0]).toBe(false);
   });
 
-  it('lets `validateAndCanonicaliseConceptionConfig` re-serialise a body with one bad launcher', () => {
-    // Without the scrub this throws `terminal.launchers.0.command —
-    // expected string, received undefined` (the symptom in the v2.30.0
-    // user report) and the Settings modal cannot save.
+  it('lets `validateAndCanonicaliseConceptionConfig` re-serialise a body carrying legacy launchers', () => {
+    // The strict schema would reject the stale `launchers` key outright; the
+    // migration drops it first so the Settings modal can still save.
     const json = JSON.stringify({
-      terminal: {
-        launchers: [
-          { label: 'μ', title: 'Kimi' },
-          { label: 'λ', command: 'claude' },
-        ],
-      },
+      terminal: { launchers: [{ label: 'λ', command: 'claude' }], shell: '/bin/zsh' },
     });
     const canon = validateAndCanonicaliseConceptionConfig(json);
     const parsed = JSON.parse(canon);
-    expect(parsed.terminal.launchers).toEqual([{ label: 'λ', command: 'claude' }]);
+    expect(parsed.terminal.launchers).toBeUndefined();
+    expect(parsed.terminal.shell).toBe('/bin/zsh');
   });
 });

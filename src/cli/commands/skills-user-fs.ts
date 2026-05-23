@@ -1,7 +1,6 @@
 /**
  * Foundation module for user-scope `condash skills` (`--user`): path
- * resolvers, source-tree readers, the host-label filter, and the Kimi
- * global-agent.yaml inline writer.
+ * resolvers, source-tree readers, and the host-label filter.
  *
  * In user scope there is no shipped tree and no manifest: the user owns the
  * source tree at `~/.config/agents/skills/<name>/` directly. The compile
@@ -28,11 +27,9 @@
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { CliError, ExitCodes } from '../output';
 import { parseSkillspec, type CompileTarget } from '../../skillspec';
 import type { AgentsMdTarget } from '../../agents-md';
-import { writeFileMkdir } from './install-shared';
 import { collectFilesRelative, extractDescriptionFromSpec } from './skills-shipped';
 
 export interface UserSkill {
@@ -120,44 +117,13 @@ export function userAgentConfigOutput(target: AgentsMdTarget): string {
       join(homedir(), '.config', 'opencode', 'AGENTS.md')
     );
   }
-  // Kimi: write inline into the global-agent.yaml's ROLE_ADDITIONAL field, not a standalone markdown file.
-  return (
-    process.env.CONDASH_USER_KIMI_AGENT_OUTPUT ?? join(homedir(), '.kimi', 'global-agent.yaml')
-  );
+  // Kimi: a plain instructions markdown. The kimi agent launcher wraps it into
+  // a transient `--agent-file` (ROLE_ADDITIONAL) at spawn — no baked YAML.
+  return process.env.CONDASH_USER_KIMI_AGENT_OUTPUT ?? join(homedir(), '.kimi', 'AGENTS.md');
 }
 
 export function userHostFile(): string {
   return process.env.CONDASH_USER_HOST_FILE ?? join(homedir(), '.claude', '.host');
-}
-
-/**
- * Write the compiled Kimi content into the `agent.system_prompt_args.ROLE_ADDITIONAL`
- * field of the global-agent.yaml at `path`. Preserves all other fields. Creates a
- * minimal default structure if the file doesn't exist yet.
- */
-export async function writeKimiGlobalAgent(path: string, compiledContent: string): Promise<void> {
-  let doc: Record<string, unknown>;
-  try {
-    const existing = await fs.readFile(path, 'utf8');
-    const parsed = parseYaml(existing);
-    doc = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    doc = {};
-  }
-  if (typeof doc.version !== 'number') doc.version = 1;
-  const agent =
-    typeof doc.agent === 'object' && doc.agent !== null
-      ? (doc.agent as Record<string, unknown>)
-      : ((doc.agent = {}), doc.agent as Record<string, unknown>);
-  if (agent.extend === undefined) agent.extend = 'default';
-  const promptArgs =
-    typeof agent.system_prompt_args === 'object' && agent.system_prompt_args !== null
-      ? (agent.system_prompt_args as Record<string, unknown>)
-      : ((agent.system_prompt_args = {}), agent.system_prompt_args as Record<string, unknown>);
-  promptArgs.ROLE_ADDITIONAL = compiledContent;
-  const serialized = stringifyYaml(doc, { blockQuote: 'literal', lineWidth: 0 });
-  await writeFileMkdir(path, Buffer.from(serialized, 'utf8'));
 }
 
 /** Read `common.md` from the user-scope agent-config source. Returns null if absent. */

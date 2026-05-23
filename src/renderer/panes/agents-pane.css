@@ -1,0 +1,282 @@
+/* Agents pane — define and launch agents (harness + model + token).
+ * Rows are grouped by harness; the editor + config-view panels stack below
+ * the list. Uses the shared theme variables (see logs-pane.css). */
+
+.agents-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem 0.75rem 1rem;
+}
+
+.agents-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.agents-pane-header h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.agents-pane-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.agents-pane button {
+  font-size: 0.82rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.agents-pane button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.agents-pane button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.agents-pane button.agents-danger:hover:not(:disabled) {
+  background: var(--warn, #c44);
+  color: #fff;
+}
+
+.agents-pane-empty {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  padding: 1rem 0.25rem;
+  line-height: 1.5;
+}
+
+.agents-group {
+  margin-top: 0.75rem;
+}
+
+.agents-group h3 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 0.4rem;
+}
+
+.agents-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 0.3rem;
+}
+
+.agents-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.agents-row-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.agents-row-cmd {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.agents-editor-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 0.5rem;
+}
+
+.agents-editor-note code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.agents-editor-preview {
+  margin-top: 0.5rem;
+}
+
+.agents-editor-preview-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.agents-row-name {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.agents-row-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+
+.agents-token {
+  font-size: 0.72rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.agents-token-ok {
+  color: #1a7f37;
+  border-color: #1a7f3733;
+  background: #1a7f3714;
+}
+
+.agents-token-missing {
+  color: var(--warn, #c44);
+  border-color: #c4444433;
+  background: #c4444414;
+}
+
+.agents-token-none {
+  color: var(--text-muted);
+}
+
+.agents-config-view,
+.agents-editor {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+
+.agents-config-view header,
+.agents-editor header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.agents-config-view h3,
+.agents-editor h3 {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.agents-config-view pre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  color: var(--text);
+}
+
+.agents-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.agents-editor label.agents-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.agents-editor input[type='text'],
+.agents-editor input[type='number'],
+.agents-editor select,
+.agents-editor textarea {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.agents-config-textarea,
+.agents-tokens-textarea {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  min-height: 5rem;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.agents-tokens-textarea {
+  min-height: 8rem;
+}
+
+.agents-editor-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.agents-editor-name code,
+.agents-editor code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.agents-advanced {
+  margin: 0.4rem 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+}
+
+.agents-advanced summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.agents-advanced label {
+  margin-top: 0.5rem;
+}
+
+.agents-editor-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}

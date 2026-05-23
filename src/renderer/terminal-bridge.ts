@@ -1,22 +1,7 @@
-import type {
-  ActionTemplate,
-  LauncherConfig,
-  Project,
-  RepoEntry,
-  TerminalPrefs,
-  Worktree,
-} from '@shared/types';
+import type { AgentListItem } from '@shared/harnesses';
+import type { ActionTemplate, Project, RepoEntry, TerminalPrefs, Worktree } from '@shared/types';
 import { globalContext, projectContext, substitute } from '@shared/action-template';
 import type { TerminalPaneHandle } from './terminal-pane';
-
-/** Pick the default launcher used when the dashboard auto-spawns a shell
- *  (per-card "work on", paste-to-term). Returns the first configured entry
- *  with a non-empty command, or `null` when none exist — callers spawn a
- *  plain shell in that case. */
-function defaultLauncher(prefs: TerminalPrefs | undefined): LauncherConfig | null {
-  const launchers = prefs?.launchers ?? [];
-  return launchers.find((l) => l.command.trim().length > 0) ?? null;
-}
 
 export interface TerminalBridgeDeps {
   /** Read the current terminal pane handle (null until the pane is mounted). */
@@ -24,8 +9,11 @@ export interface TerminalBridgeDeps {
   /** Open the terminal pane if it isn't already (visual-only; the pane stays
    *  mounted whenever a session exists). */
   ensureTerminalOpen: () => void;
-  /** Read terminal preferences (for screenshot dir + launcher command). */
+  /** Read terminal preferences (for the screenshot directory). */
   terminalPrefs: () => TerminalPrefs | undefined;
+  /** Read the agents defined under `<conception>/agents/` (for action
+   *  templates that bind to a specific agent via `action.agent`). */
+  agents: () => readonly AgentListItem[];
   /** Surface a transient toast in the renderer. */
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
   /** Current conception path for global-context substitution. */
@@ -62,14 +50,14 @@ export interface TerminalBridge {
  *  mount failure as a no-op rather than an indefinite hang. */
 const HANDLE_WAIT_FRAMES = 12;
 
-/** Delay between spawning a launcher-bound tab and typing the template
- *  into it. Covers two races: the renderer's onTermSessions reconcile
- *  (must run before the new tab becomes the active typeIntoActive
- *  target) and the launcher process's own boot time (claude / kimi need
- *  to print their prompt before accepting input). 350 ms is the smallest
- *  value that didn't drop characters across the launchers we've tried;
- *  imperceptible to a user clicking a menu item. */
-const LAUNCHER_SPAWN_SETTLE_MS = 350;
+/** Delay between spawning an agent-bound tab and typing the template into it.
+ *  Covers two races: the renderer's onTermSessions reconcile (must run before
+ *  the new tab becomes the active typeIntoActive target) and the agent
+ *  process's own boot time (claude / kimi need to print their prompt before
+ *  accepting input). 350 ms is the smallest value that didn't drop characters
+ *  across the agents we've tried; imperceptible to a user clicking a menu
+ *  item. */
+const AGENT_SPAWN_SETTLE_MS = 350;
 
 /** Wait until `deps.terminalHandle()` returns non-null, or the frame cap
  *  expires. The previous `queueMicrotask` spin (single microtask) was just
@@ -84,17 +72,14 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   return deps.terminalHandle();
 }
 
-/** Look up a launcher by `label` from current terminal prefs. Returns null
- *  for an empty/missing label or when no configured launcher matches by
- *  label *and* has a non-empty command (matches `defaultLauncher`'s
- *  "usable" rule). */
-function findLauncherByLabel(
-  prefs: TerminalPrefs | undefined,
-  label: string | undefined,
-): LauncherConfig | null {
-  if (!label) return null;
-  const launchers = prefs?.launchers ?? [];
-  return launchers.find((l) => l.label === label && l.command.trim().length > 0) ?? null;
+/** Look up an agent by name from the current agent list. Returns null for an
+ *  empty/missing name or when no agent matches. */
+function findAgentByName(
+  agents: readonly AgentListItem[],
+  name: string | undefined,
+): AgentListItem | null {
+  if (!name) return null;
+  return agents.find((a) => a.name === name) ?? null;
 }
 
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
@@ -112,7 +97,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     deps.ensureTerminalOpen();
     if (!handle.hasActive()) {
       try {
-        await handle.spawnUserShell(defaultLauncher(deps.terminalPrefs()), 'my');
+        await handle.spawnUserShell(null, 'my');
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
         return null;
@@ -121,17 +106,17 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     return handle;
   };
 
-  /** Action-aware preamble: when the action binds a launcher (one of the
-   *  configured `terminal.launchers[].label`), spawn a fresh tab using
-   *  that launcher's command on every click — keeps "Start new project →
-   *  Claude" predictable instead of typing into whatever tab happens to
-   *  be focused. Falls back to `ensureTermAndShell()` when no launcher
-   *  is bound or the bound label no longer resolves. */
+  /** Action-aware preamble: when the action binds an agent (`action.agent`,
+   *  one of the agents under `<conception>/agents/`), spawn a fresh tab
+   *  running that agent on every click — keeps "Start new project →
+   *  claude-deepseek-v4-pro" predictable instead of typing into whatever tab
+   *  happens to be focused. Falls back to `ensureTermAndShell()` (a plain
+   *  shell) when no agent is bound or the bound name no longer resolves. */
   const ensureTermForAction = async (
     action: ActionTemplate,
   ): Promise<TerminalPaneHandle | null> => {
-    const launcher = findLauncherByLabel(deps.terminalPrefs(), action.launcher);
-    if (!launcher) return ensureTermAndShell();
+    const agent = findAgentByName(deps.agents(), action.agent);
+    if (!agent) return ensureTermAndShell();
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -140,20 +125,20 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (!handle) return null;
     deps.ensureTerminalOpen();
     try {
-      await handle.spawnUserShell(launcher, 'my');
+      await handle.spawnUserShell(agent, 'my');
     } catch (err) {
-      deps.flashToast(`Could not spawn ${launcher.label}: ${(err as Error).message}`, 'error');
+      deps.flashToast(`Could not spawn ${agent.name}: ${(err as Error).message}`, 'error');
       return null;
     }
     // Two-step settle: (1) reconcile needs at least one tick to receive
     // the onTermSessions snapshot, attach the xterm, and set the new tab
-    // as active; (2) the launcher process itself (e.g. `claude`, `kimi`)
+    // as active; (2) the agent process itself (e.g. `claude`, `kimi`)
     // needs time to print its prompt before it will accept typed input —
     // typing during init drops characters or lands in a not-yet-ready
-    // REPL. LAUNCHER_SPAWN_SETTLE_MS covers both. setTimeout (not
+    // REPL. AGENT_SPAWN_SETTLE_MS covers both. setTimeout (not
     // requestAnimationFrame) so this stays callable in unit tests
     // (jsdom env has no rAF).
-    await new Promise<void>((resolve) => setTimeout(resolve, LAUNCHER_SPAWN_SETTLE_MS));
+    await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
     return handle;
   };
 
@@ -253,7 +238,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     deps.ensureTerminalOpen();
     if (!handle.hasActive()) {
       try {
-        await handle.spawnUserShell(defaultLauncher(deps.terminalPrefs()), 'my');
+        await handle.spawnUserShell(null, 'my');
       } catch (err) {
         deps.flashToast(`Could not open a shell: ${(err as Error).message}`, 'error');
         return;

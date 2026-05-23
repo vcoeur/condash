@@ -1,3 +1,4 @@
+import type { AgentDef, AgentListItem, AgentSpawnPreview } from './harnesses';
 import type {
   CardMinWidthPrefs,
   ConceptionInitState,
@@ -47,7 +48,7 @@ export interface CondashApi {
    *  (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`):
    *  - generic → `…/skills/` (`.md` and `.yaml`) + `common.md`/`<model>.md` sources
    *  - claude  → `…/skills/` (`.md` only) + the compiled `CLAUDE.md`
-   *  - kimi    → `…/skills/` (`.md` only) + `AGENTS.md` / `global-agent.yaml`
+   *  - kimi    → `…/skills/` (`.md` only) + `AGENTS.md`
    *  - opencode→ `…/skills/` (`.md` only) + `AGENTS.md`
    * Shipped-SHA stamps are populated from `.condash-skills.json` when present.
    * Resolves to null when the directory and all agent-config files are absent. */
@@ -231,6 +232,28 @@ export interface CondashApi {
    */
   onRepoEvents(callback: (events: RepoEvent[]) => void): () => void;
 
+  /** List agents defined under `<conception>/agents/*.json`, each with token
+   *  presence (never the value). Empty when no conception / no agents. */
+  listAgents(): Promise<AgentListItem[]>;
+  /** Read one agent definition by name. Null when absent. Carries no token. */
+  readAgent(name: string): Promise<AgentDef | null>;
+  /** Create / update an agent JSON file. The filename is derived from the
+   *  def's `<harness>-<model_variant>`. When `previousName` differs from the
+   *  new name, the old file is removed (rename). Returns the resolved name. */
+  writeAgent(def: AgentDef, previousName?: string): Promise<string>;
+  /** Delete an agent definition file by name. */
+  deleteAgent(name: string): Promise<void>;
+  /** Spawn preview for the pane's "view full config" — auth vars show
+   *  `$SECRET_ENV` references, never a token. Null when the agent is absent. */
+  previewAgent(name: string): Promise<AgentSpawnPreview | null>;
+  /** Raw contents of `<conception>/agents/.env` for the in-app token editor —
+   *  a commented template when the file is absent, or null when no conception
+   *  is active. This is the one verb that returns secret *values* to the
+   *  renderer, by explicit user action. */
+  readAgentsEnv(): Promise<string | null>;
+  /** Write the token editor's contents back to `<conception>/agents/.env`. */
+  writeAgentsEnv(content: string): Promise<void>;
+
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;
   termResize(id: string, cols: number, rows: number): Promise<void>;
@@ -354,6 +377,7 @@ export type MenuCommand =
   | 'show-resources'
   | 'show-skills'
   | 'show-logs'
+  | 'show-agents'
   | 'hide-working'
   | 'refresh'
   | 'about'

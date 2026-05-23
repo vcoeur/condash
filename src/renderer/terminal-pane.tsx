@@ -17,13 +17,8 @@
 // - A draggable handle on the pane's top edge sets the pane height.
 
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import type {
-  LauncherConfig,
-  TermSide,
-  TermSpawnRequest,
-  TerminalPrefs,
-  TerminalXtermPrefs,
-} from '@shared/types';
+import type { AgentListItem } from '@shared/harnesses';
+import type { TermSide, TermSpawnRequest, TerminalPrefs, TerminalXtermPrefs } from '@shared/types';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
@@ -52,18 +47,18 @@ export interface SpawnOptions {
   pinned?: boolean;
 }
 
-/** Spawn-time launcher selector. Passing a `LauncherConfig` pins the tab
- *  label to `title || command` and runs `command`; passing `null` is the
- *  plain `+` behaviour (no command, unpinned label tracking OSC 7 cwd). */
-export type LauncherChoice = LauncherConfig | null;
+/** Spawn-time agent selector. Passing an `AgentListItem` pins the tab label to
+ *  the agent name and runs that agent (`<harness>-<model_variant>`); passing
+ *  `null` is the plain `+` behaviour (no command, unpinned label tracking
+ *  OSC 7 cwd). */
+export type AgentChoice = AgentListItem | null;
 
 export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string, opts?: SpawnOptions): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
-  /** Add a fresh user shell tab to "My terms". `launcher` may be a
-   *  `LauncherConfig` to pin and run the launcher command, or `null` for
-   *  a plain shell. */
-  spawnUserShell(launcher?: LauncherChoice, side?: TermSide): Promise<string>;
+  /** Add a fresh user shell tab to "My terms". `agent` may be an
+   *  `AgentListItem` to pin and run that agent, or `null` for a plain shell. */
+  spawnUserShell(agent?: AgentChoice, side?: TermSide): Promise<string>;
   /** Move the active tab within its column strip. */
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
@@ -79,9 +74,9 @@ export function TerminalPane(props: {
    *  handle which is visible whether the body is shown or not. */
   onTogglePane: () => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
-  /** Configured launcher slots. One button per entry whose `command` is
-   *  non-empty is rendered on each column's tab strip. */
-  launchers: readonly LauncherConfig[];
+  /** Agents defined under `<conception>/agents/`. Each renders as an option
+   *  in the tab-strip spawn dropdown (alongside "New shell"). */
+  agents: readonly AgentListItem[];
   /** Working directory passed to spawned user shells (typically the
    * conception path). */
   cwd?: string | null;
@@ -369,37 +364,30 @@ export function TerminalPane(props: {
   };
 
   const spawnUserShell = async (
-    launcher: LauncherChoice = null,
+    agent: AgentChoice = null,
     sd: TermSide = 'my',
   ): Promise<string> => {
-    const command = launcher?.command.trim() || '';
-    const titleHint = launcher?.title?.trim() || '';
-    const labelSource = titleHint || command || 'shell';
-    const label = uniqueLabel(labelSource);
-    // Pin the label only when the caller passed a launcher entry (one of
-    // the configured λ / μ buttons). The bare `+` button leaves the tab
-    // unpinned so the shell's OSC 7 cwd basename drives the displayed
-    // title.
-    const pinned = launcher !== null && command.length > 0;
+    const label = uniqueLabel(agent?.name || 'shell');
+    // Pin the label only when the caller picked an agent. The bare "New shell"
+    // path leaves the tab unpinned so the shell's OSC 7 cwd basename drives the
+    // displayed title.
     return spawn(
       {
         side: sd,
-        command: command || undefined,
+        agentName: agent?.name,
         cwd: props.cwd ?? undefined,
       },
       label,
-      { pinned },
+      { pinned: agent !== null },
     );
   };
 
-  /** Resolve a launcher index (or null) to its `LauncherConfig` from
-   *  props.launchers. Returns null for a missing entry or empty command —
-   *  callers treat that as the plain `New shell` path. */
-  const resolveLauncher = (index: number | null): LauncherChoice => {
-    if (index === null) return null;
-    const entry = props.launchers[index];
-    if (!entry || !entry.command.trim()) return null;
-    return entry;
+  /** Resolve an agent name (or null) to its `AgentListItem` from props.agents.
+   *  Returns null for a missing name — callers treat that as the plain
+   *  `New shell` path. */
+  const resolveAgent = (name: string | null): AgentChoice => {
+    if (name === null) return null;
+    return props.agents.find((a) => a.name === name) ?? null;
   };
 
   // ---- live data + exit notification ----
@@ -543,7 +531,7 @@ export function TerminalPane(props: {
       activeId={activeIdIn(col)}
       isActiveColumn={activeColumn() === col}
       renamingId={renamingId()}
-      launchers={props.launchers}
+      agents={props.agents}
       paneOpen={props.open}
       dnd={dnd}
       registerHost={(c, el) => {
@@ -559,10 +547,10 @@ export function TerminalPane(props: {
       onCommitRename={commitRename}
       onCancelRename={() => setRenamingId(null)}
       onCloseTab={closeTab}
-      onSpawnShell={(c, launcherIndex) => {
+      onSpawnShell={(c, agentName) => {
         nextSpawnColumn = c;
         setActiveColumn(c);
-        void spawnUserShell(resolveLauncher(launcherIndex), 'my');
+        void spawnUserShell(resolveAgent(agentName), 'my');
       }}
       onSaveBuffer={(c) => {
         setActiveColumn(c);

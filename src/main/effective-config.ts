@@ -40,17 +40,14 @@ import { migrateRawSettings } from './config-schema';
  * slot has to restate the others.
  *
  * One exception: `terminal`. Its sub-schema straddles per-machine input /
- * device prefs (`shell`, `shortcut`, `screenshot_dir`, `launchers`,
- * `xterm`, …) and per-tree retention policy (`logging.{retentionDays,
- * maxDirMb, …}`). A pure replace meant any tree that customised
- * `terminal.logging` silently lost every per-machine terminal pref — the
- * launcher buttons vanished and the screenshot-paste shortcut toasted
+ * device prefs (`shell`, `shortcut`, `screenshot_dir`, `xterm`, …) and
+ * per-tree retention policy (`logging.{retentionDays, maxDirMb, …}`). A pure
+ * replace meant any tree that customised `terminal.logging` silently lost
+ * every per-machine terminal pref — the screenshot-paste shortcut toasted
  * "no screenshot_dir". `terminal` therefore merges one level deep:
  * conception fields win at the sub-key level, missing sub-keys fall
  * through to the global block. Nested values inside `terminal.xterm` /
- * `terminal.logging` / `terminal.launchers` still replace whole — the
- * launchers array, in particular, replaces wholesale so a conception can
- * decisively swap in its own set rather than partially shadow.
+ * `terminal.logging` still replace whole.
  */
 export interface EffectiveConfig extends ConfigShape {
   workspace_path?: string;

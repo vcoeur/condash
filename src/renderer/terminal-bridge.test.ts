@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTerminalBridge } from './terminal-bridge';
 import type { TerminalPaneHandle } from './terminal-pane';
+import type { AgentListItem } from '@shared/harnesses';
 import type { ActionTemplate, Project, TerminalPrefs } from '@shared/types';
 
 type FakeHandle = {
@@ -23,15 +24,32 @@ function makeFakeHandle(): FakeHandle {
   };
 }
 
-function makeDeps(handle: FakeHandle | null = null, prefs: TerminalPrefs = {}) {
+function makeDeps(handle: FakeHandle | null = null, agents: AgentListItem[] = []) {
   return {
     terminalHandle: () => handle as unknown as TerminalPaneHandle | null,
     ensureTerminalOpen: vi.fn(),
-    terminalPrefs: (): TerminalPrefs => prefs,
+    terminalPrefs: (): TerminalPrefs => ({}),
+    agents: () => agents,
     flashToast: vi.fn(),
     conceptionPath: () => '/home/alice/src/vcoeur/conception',
   };
 }
+
+const claudeAgent: AgentListItem = {
+  name: 'claude-deepseek-v4-pro',
+  harness: 'claude',
+  modelVariant: 'deepseek-v4-pro',
+  secretEnv: 'DEEPSEEK_API_KEY',
+  tokenPresent: true,
+  command: 'claude',
+};
+const kimiAgent: AgentListItem = {
+  name: 'kimi-cli-native',
+  harness: 'kimi',
+  modelVariant: 'native',
+  tokenPresent: true,
+  command: 'kimi --agent-file ~/.kimi/global-agent.yaml',
+};
 
 const sampleProject: Project = {
   slug: '2026-05-17-foo-bar',
@@ -150,89 +168,53 @@ describe('handleNewProjectAction', () => {
     vi.useRealTimers();
   });
 
-  it('spawns the bound launcher and types into the new tab when action.launcher is set', async () => {
+  it('spawns the bound agent and types into the new tab when action.agent is set', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    const prefs: TerminalPrefs = {
-      launchers: [
-        { label: 'Claude', command: 'claude' },
-        { label: 'KimiKimi', command: 'kimi-kimi' },
-      ],
-    };
-    const bridge = createTerminalBridge(makeDeps(handle, prefs));
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent, kimiAgent]));
     const action: ActionTemplate = {
       label: 'Start new project',
       template: 'Start new project ',
-      launcher: 'KimiKimi',
+      agent: 'kimi-cli-native',
     };
     const promise = bridge.handleNewProjectAction(action);
-    // Drain the launcher-spawn settle delay (~350 ms).
+    // Drain the agent-spawn settle delay (~350 ms).
     await vi.advanceTimersByTimeAsync(400);
     await promise;
-    expect(handle.spawnUserShell).toHaveBeenCalledWith(
-      { label: 'KimiKimi', command: 'kimi-kimi' },
-      'my',
-    );
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my');
     expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
     vi.useRealTimers();
   });
 
-  it('falls back to the focused-tab flow when action.launcher does not match any configured launcher', async () => {
+  it('falls back to the focused-tab flow when action.agent matches no agent', async () => {
     const handle = makeFakeHandle();
-    const prefs: TerminalPrefs = {
-      launchers: [{ label: 'Claude', command: 'claude' }],
-    };
-    const bridge = createTerminalBridge(makeDeps(handle, prefs));
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
     const action: ActionTemplate = {
       label: 'Start new project',
       template: 'Start new project ',
-      launcher: 'NonExistent',
+      agent: 'nonexistent',
     };
     await bridge.handleNewProjectAction(action);
-    // No spawn — handle is already active, fell through to the default flow
+    // No spawn — handle is already active, fell through to the default flow.
     expect(handle.spawnUserShell).not.toHaveBeenCalled();
     expect(handle.typeIntoActive).toHaveBeenCalledWith('Start new project ');
   });
-
-  it('skips a launcher whose command is empty (treats it as not configured)', async () => {
-    const handle = makeFakeHandle();
-    const prefs: TerminalPrefs = {
-      launchers: [
-        { label: 'Claude', command: 'claude' },
-        { label: 'EmptyLauncher', command: '' },
-      ],
-    };
-    const bridge = createTerminalBridge(makeDeps(handle, prefs));
-    const action: ActionTemplate = {
-      label: 'Start new project',
-      template: 'Start new project ',
-      launcher: 'EmptyLauncher',
-    };
-    await bridge.handleNewProjectAction(action);
-    expect(handle.spawnUserShell).not.toHaveBeenCalled();
-  });
 });
 
-describe('handleProjectAction with launcher binding', () => {
-  it('spawns the bound launcher before typing the substituted template', async () => {
+describe('handleProjectAction with agent binding', () => {
+  it('spawns the bound agent before typing the substituted template', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
-    const prefs: TerminalPrefs = {
-      launchers: [{ label: 'Claude', command: 'claude' }],
-    };
-    const bridge = createTerminalBridge(makeDeps(handle, prefs));
+    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
     const action: ActionTemplate = {
       label: 'Review',
       template: 'review {shortSlug}',
-      launcher: 'Claude',
+      agent: 'claude-deepseek-v4-pro',
     };
     const promise = bridge.handleProjectAction(sampleProject, action);
     await vi.advanceTimersByTimeAsync(400);
     await promise;
-    expect(handle.spawnUserShell).toHaveBeenCalledWith(
-      { label: 'Claude', command: 'claude' },
-      'my',
-    );
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my');
     expect(handle.typeIntoActive).toHaveBeenCalledWith('review foo-bar');
     vi.useRealTimers();
   });

@@ -1,5 +1,5 @@
 import { render } from 'solid-js/web';
-import { createMemo, createSignal, For, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode, SkillTab } from '@shared/types';
 import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
@@ -16,6 +16,7 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
+import { AgentsView } from './panes/agents';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { usableActionTemplates } from './settings-modal-parts/data';
@@ -71,6 +72,7 @@ const WORKING_SURFACE_HANDLES: ReadonlyArray<{
   { key: 'resources', label: 'Resources', shortcut: 'Ctrl+R' },
   { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L' },
   { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
+  { key: 'agents', label: 'Agents', shortcut: 'Ctrl+Shift+A' },
 ];
 
 function App() {
@@ -217,6 +219,26 @@ function App() {
   // --- Config bindings (Open With + terminal prefs) ---------------------
   const { openWithSlots, terminalPrefs, reloadConfig } = useConfigBindings({ conceptionPath });
 
+  // --- Agents (tab-strip spawn dropdown + action-template bindings) -----
+  // Re-fetched whenever the conception changes. `reloadAgents` is also handed
+  // to the Agents pane so create/edit/delete refreshes the dropdown live.
+  const [agentsResource, { refetch: reloadAgents }] = createResource(conceptionPath, async () => {
+    try {
+      return await window.condash.listAgents();
+    } catch {
+      return [];
+    }
+  });
+  const agents = () => agentsResource() ?? [];
+
+  /** Open a terminal tab running the named agent (Agents-pane Launch button). */
+  const launchAgent = (name: string): void => {
+    const item = agents().find((a) => a.name === name) ?? null;
+    if (!item) return;
+    ensureTerminalOpen();
+    void terminalHandle?.spawnUserShell(item, 'my');
+  };
+
   // Stable references to the filtered action-template arrays. `usableActionTemplates`
   // returns a *fresh* filtered array on every call; without memoising, any reactive
   // re-read of these props allocates a new array, which makes Solid's `<For>` inside
@@ -239,6 +261,7 @@ function App() {
     terminalHandle: () => terminalHandle,
     ensureTerminalOpen,
     terminalPrefs,
+    agents,
     flashToast,
     conceptionPath,
   });
@@ -572,6 +595,18 @@ function App() {
                   </section>
                 </Show>
 
+                <Show when={layout().working === 'agents'}>
+                  <section class="pane pane-working">
+                    <AgentsView
+                      agents={agents}
+                      reload={() => void reloadAgents()}
+                      hasConception={() => conceptionPath() !== null}
+                      flashToast={flashToast}
+                      onLaunch={launchAgent}
+                    />
+                  </section>
+                </Show>
+
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <SkillsView
@@ -691,7 +726,7 @@ function App() {
         open={layout().terminal}
         onClose={() => updateLayout({ terminal: false })}
         onTogglePane={toggleTerminal}
-        launchers={terminalPrefs()?.launchers ?? []}
+        agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}
         registerHandle={(handle) => {

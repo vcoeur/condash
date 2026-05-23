@@ -11,17 +11,13 @@ import type {
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 import {
   addActionTemplate,
-  addLauncher,
   buildSavePayload,
   type ColorEntry,
   moveActionTemplate,
-  moveLauncher,
   patchActionTemplate,
-  patchLauncher,
   pruneEmpty,
   type RawConfig,
   removeActionTemplate,
-  removeLauncher,
   type Section,
   SECTIONS,
   SECTION_KEYS,
@@ -592,22 +588,20 @@ export function SettingsModal(props: {
     (parsedFor(target).terminal as TerminalPrefs | undefined) ?? {};
 
   /** Mutate the `terminal` block on the given file via its patch fn.
-   *  Hold the dynamic-row arrays (`launchers`, `projectActions`,
-   *  `newProjectActions`) aside while `pruneEmpty` cleans the scalar keys —
-   *  otherwise pruneEmpty strips required `label`/`command`/`template`
-   *  fields whose value is '' (blank-row placeholders just added via the
-   *  "+ Add" buttons) and leaves `{}` rows that the schema rejects with
-   *  "expected string, received undefined". `buildSavePayload` runs the
-   *  matching bypass at serialise time. */
+   *  Hold the dynamic-row arrays (`projectActions`, `newProjectActions`)
+   *  aside while `pruneEmpty` cleans the scalar keys — otherwise pruneEmpty
+   *  strips required `label`/`template` fields whose value is '' (blank-row
+   *  placeholders just added via the "+ Add" buttons) and leaves `{}` rows
+   *  that the schema rejects with "expected string, received undefined".
+   *  `buildSavePayload` runs the matching bypass at serialise time. */
   const patchTerminal = (
     target: SettingsTab,
     mutator: (prefs: TerminalPrefs) => TerminalPrefs,
   ): Promise<void> =>
     patchFor(target)((c) => {
       const next = mutator({ ...((c.terminal as TerminalPrefs | undefined) ?? {}) });
-      const { launchers, projectActions, newProjectActions, ...rest } = next;
+      const { projectActions, newProjectActions, ...rest } = next;
       const cleaned = (pruneEmpty(rest) as TerminalPrefs) ?? {};
-      if (launchers !== undefined && launchers.length > 0) cleaned.launchers = launchers;
       if (projectActions !== undefined && projectActions.length > 0) {
         cleaned.projectActions = projectActions;
       }
@@ -627,34 +621,6 @@ export function SettingsModal(props: {
       next[key] = value || undefined;
       return next as TerminalPrefs;
     });
-
-  const patchLauncherField = (
-    target: SettingsTab,
-    index: number,
-    patch: Partial<import('@shared/types').LauncherConfig>,
-  ): Promise<void> =>
-    patchTerminal(target, (p) => ({
-      ...p,
-      launchers: patchLauncher(p.launchers, index, patch),
-    }));
-
-  const addLauncherField = (target: SettingsTab): Promise<void> =>
-    patchTerminal(target, (p) => ({
-      ...p,
-      launchers: addLauncher(p.launchers),
-    }));
-
-  const removeLauncherField = (target: SettingsTab, index: number): Promise<void> =>
-    patchTerminal(target, (p) => ({
-      ...p,
-      launchers: removeLauncher(p.launchers, index),
-    }));
-
-  const moveLauncherField = (target: SettingsTab, index: number, delta: -1 | 1): Promise<void> =>
-    patchTerminal(target, (p) => ({
-      ...p,
-      launchers: moveLauncher(p.launchers, index, delta),
-    }));
 
   const patchProjectActionField = (
     target: SettingsTab,
@@ -1017,11 +983,6 @@ export function SettingsModal(props: {
                   prefs={() => terminalPrefsFor('global')}
                   xterm={() => xtermPrefsFor('global')}
                   setString={(k, v) => setTerminalString('global', k, v)}
-                  launchers={() => terminalPrefsFor('global').launchers ?? []}
-                  patchLauncher={(i, p) => patchLauncherField('global', i, p)}
-                  addLauncher={() => addLauncherField('global')}
-                  removeLauncher={(i) => removeLauncherField('global', i)}
-                  moveLauncher={(i, d) => moveLauncherField('global', i, d)}
                   projectActions={() => terminalPrefsFor('global').projectActions ?? []}
                   patchProjectAction={(i, p) => patchProjectActionField('global', i, p)}
                   addProjectAction={() => addProjectActionField('global')}
@@ -1128,11 +1089,6 @@ export function SettingsModal(props: {
                     prefs={() => terminalPrefsFor('conception')}
                     xterm={() => xtermPrefsFor('conception')}
                     setString={(k, v) => setTerminalString('conception', k, v)}
-                    launchers={() => terminalPrefsFor('conception').launchers ?? []}
-                    patchLauncher={(i, p) => patchLauncherField('conception', i, p)}
-                    addLauncher={() => addLauncherField('conception')}
-                    removeLauncher={(i) => removeLauncherField('conception', i)}
-                    moveLauncher={(i, d) => moveLauncherField('conception', i, d)}
                     projectActions={() => terminalPrefsFor('conception').projectActions ?? []}
                     patchProjectAction={(i, p) => patchProjectActionField('conception', i, p)}
                     addProjectAction={() => addProjectActionField('conception')}

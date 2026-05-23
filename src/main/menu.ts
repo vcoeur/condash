@@ -155,6 +155,13 @@ export function buildMenu(
       click: () => send('show-logs'),
     },
     {
+      label: 'Show Agents',
+      type: 'checkbox',
+      checked: layout.working === 'agents',
+      accelerator: 'CommandOrControl+Shift+A',
+      click: () => send('show-agents'),
+    },
+    {
       label: 'Hide working surface',
       enabled: layout.working !== null,
       click: () => send('hide-working'),

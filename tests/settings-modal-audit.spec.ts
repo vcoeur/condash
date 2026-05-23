@@ -394,7 +394,6 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
     // Terminal — string fields.
     const stringFields: { field: string; key: string }[] = [
       { field: 'Shell', key: 'shell' },
-      { field: 'Launcher command', key: 'launcher_command' },
       { field: 'Screenshot directory', key: 'screenshot_dir' },
       { field: 'Toggle terminal pane', key: 'shortcut' },
       { field: 'Paste latest screenshot path', key: 'screenshot_paste_shortcut' },

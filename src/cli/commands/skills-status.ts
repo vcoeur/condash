@@ -8,7 +8,6 @@
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
 import { AGENTS_MD_TARGETS, compileAgentConfig, type AgentsMdTarget } from '../../agents-md';
@@ -528,36 +527,16 @@ export async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Pr
         sourceDescription: userAgentConfigRoot(),
       });
       const outputPath = userAgentConfigOutput(target);
-      let state: 'ok' | 'stale' | 'missing';
-      if (target === 'claude' || target === 'opencode') {
-        // Claude (CLAUDE.md) and OpenCode (AGENTS.md) are plain markdown files.
-        let onDisk: string | null = null;
-        try {
-          onDisk = await fs.readFile(outputPath, 'utf8');
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-        }
-        if (onDisk === null) state = 'missing';
-        else if (onDisk === expected) state = 'ok';
-        else state = 'stale';
-      } else {
-        // Kimi: parse yaml, extract ROLE_ADDITIONAL, compare.
-        let yamlText: string | null = null;
-        try {
-          yamlText = await fs.readFile(outputPath, 'utf8');
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-        }
-        if (yamlText === null) {
-          state = 'missing';
-        } else {
-          const parsed = parseYaml(yamlText);
-          const actual = (
-            parsed as { agent?: { system_prompt_args?: { ROLE_ADDITIONAL?: string } } }
-          )?.agent?.system_prompt_args?.ROLE_ADDITIONAL;
-          state = actual === expected ? 'ok' : 'stale';
-        }
+      // All three targets are plain markdown on disk (Claude → CLAUDE.md,
+      // OpenCode + Kimi → AGENTS.md).
+      let onDisk: string | null = null;
+      try {
+        onDisk = await fs.readFile(outputPath, 'utf8');
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       }
+      const state: 'ok' | 'stale' | 'missing' =
+        onDisk === null ? 'missing' : onDisk === expected ? 'ok' : 'stale';
       items.push({ kind: 'agent-config', target, path: outputPath, state });
     }
   }

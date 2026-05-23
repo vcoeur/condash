@@ -1,16 +1,16 @@
 ---
 title: Agent CLIs and model providers · condash guide
-description: Pair any agent CLI (Claude Code, Kimi, OpenCode, Aider) with any model provider (Anthropic, Moonshot/Kimi) using small wrapper scripts, run them as condash terminal launchers, and inject a global AGENTS.md into Kimi.
+description: Pair any agent CLI (Claude Code, Kimi, OpenCode) with any model provider (Anthropic, DeepSeek, Moonshot/Kimi) as a condash agent, launched in one click from the terminal spawn dropdown.
 ---
 
 # Agent CLIs and model providers
 
-> **Audience.** Daily user who runs more than one coding agent — or one agent against more than one model provider — and wants each as a one-click launcher.
+> **Audience.** Daily user who runs more than one coding agent — or one agent against more than one model provider — and wants each as a one-click agent.
 
 **When to read this.** You want `claude` to talk to a non-Anthropic model, you juggle several agent CLIs, or you want Kimi to read a global instructions file the way Claude Code reads `~/.claude/CLAUDE.md`.
 
-!!! note "These are just examples"
-    condash launches whatever command you point a terminal launcher at — it has no opinion about which agent or model you run. The wrapper scripts on this page are **illustrative examples** of one tidy way to pin an agent CLI to a model provider. They are not a built-in feature and not an exhaustive list. Swap in whatever CLIs, providers, and models you actually use.
+!!! tip "Define agents in the Agents pane"
+    condash's **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`) is the built-in way to do all of this: an *agent* is a harness (claude / kimi-cli / opencode) + a model + an API token, named `<harness>-<model_variant>`. condash builds the harness's environment (claude's `ANTHROPIC_*`, opencode's `--model`, kimi-cli's `--agent-file`) for you and injects it when you launch the agent from the terminal spawn dropdown. The environment-variable details below are the **reference** for what each harness needs — you no longer hand-write wrapper scripts; you fill in a form. Tokens live in the gitignored `<conception>/agents/.env`.
 
 ## Two dimensions
 
@@ -141,26 +141,25 @@ How you point a CLI at a non-native provider depends on how that CLI was built. 
 
 ## Inject a global AGENTS.md into Kimi
 
-Claude Code automatically reads a global instructions file at `~/.claude/CLAUDE.md`. Kimi has no global instructions file by default, but you get the equivalent with a **custom agent file** that you pass on launch:
+Claude Code automatically reads `~/.claude/CLAUDE.md`; Kimi has no global instructions file by default. condash bridges this for **kimi-cli agents**: `condash skills install` writes your compiled global rules to a plain **`~/.kimi/AGENTS.md`**, and when you launch a kimi agent condash reads that file and wraps it into a *transient* `--agent-file` at spawn — so the instructions are always current and there's no YAML to hand-maintain.
+
+The agent file condash generates at launch has this shape:
 
 ```yaml
-# ~/.kimi/global-agent.yaml
 version: 1
 agent:
   extend: default
   system_prompt_args:
     ROLE_ADDITIONAL: |
       # Global Instructions
-      <your global rules here — the equivalent of a global AGENTS.md / CLAUDE.md:
-       communication style, git conventions, safety rules, …>
+      <contents of ~/.kimi/AGENTS.md>
 ```
 
-- **`agent.extend: default`** starts from Kimi's built-in default agent and layers your additions on top, rather than replacing the agent wholesale.
-- **`system_prompt_args.ROLE_ADDITIONAL`** is spliced into the agent's system prompt. This block is where your global rules live — paste in the same content you would put in a global `AGENTS.md` / `CLAUDE.md`.
-- **Launch with the flag**: `kimi --agent-file ~/.kimi/global-agent.yaml`. Plain `kimi` does **not** auto-load this file — which is exactly why the `kimi-kimi` wrapper above passes `--agent-file`. Wrapping it means you never forget the flag.
+- **`agent.extend: default`** starts from Kimi's built-in default agent and layers your additions on top.
+- **`system_prompt_args.ROLE_ADDITIONAL`** is spliced into the agent's system prompt — the equivalent of a global `AGENTS.md` / `CLAUDE.md`.
+- Plain `kimi` does **not** auto-load instructions; condash always passes the generated `--agent-file`. The kimi agent's **Instructions file** field (default `~/.kimi/AGENTS.md`) selects the source.
 
-!!! tip "Generate it instead of hand-editing"
-    If you keep one source of truth for your global agent rules and compile it to several targets, condash can write the per-target instruction files for you (Claude's `CLAUDE.md`, Kimi's `AGENTS.md`/agent file, OpenCode's `AGENTS.md`). See the [`condash skills install` reference](../reference/cli.md#skills) and [Management skill](../reference/skill.md).
+If you run kimi outside condash, write a YAML of the shape above yourself and pass it as `--agent-file`.
 
 ## Add a new cell
 
@@ -171,27 +170,23 @@ agent:
 5. **Secrets & permissions** — if a key is inline, `chmod 700` the file and never commit it. Prefer the CLI's own auth store (style 2) when it has one.
 6. **Smoke test** — launch it, confirm the model name in the CLI's status line, run one trivial tool call.
 
-## Run a wrapper as a condash launcher
+## Define it as a condash agent
 
-condash's embedded terminal has a **spawn dropdown** populated from `terminal.launchers`. Register each wrapper there to launch it in one click:
+Open the **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`) and click **+ New agent**:
 
-```json
-{
-  "terminal": {
-    "launchers": [
-      { "label": "Claude · Claude", "command": "claude",        "title": "claude" },
-      { "label": "Claude · Kimi",   "command": "claude-kimi",   "title": "claude-kimi" },
-      { "label": "Kimi · Kimi",     "command": "kimi-kimi",     "title": "kimi-kimi" },
-      { "label": "OpenCode · Kimi", "command": "opencode-kimi", "title": "opencode-kimi" }
-    ]
-  }
-}
-```
+1. **Harness** — `claude`, `kimi-cli`, or `opencode`.
+2. **Model variant + config** — depends on the harness:
+   - **claude** — pick a preset: `native` (no remap — your own Anthropic login), `deepseek-v4-pro/-flash/-auto`, or `kimi`. A preset fills the endpoint + model knobs from the table above; "Advanced claude config" exposes every field.
+   - **opencode** — set the **default model** (`provider/model`) plus optional **build** / **plan** agent-model overrides, and an "Extra config (JSON)" escape hatch. condash inlines all of it as `OPENCODE_CONFIG_CONTENT` (build/plan become `agent.build.model` / `agent.plan.model`) — no `opencode.json` needed.
+   - **kimi-cli** — set the `--agent-file`, optional `--model`, thinking mode (`--thinking` / `--no-thinking`), `--plan`, and an inline `--config` (TOML/JSON) escape hatch.
+3. **Token env var** — the name of the variable holding the API key (e.g. `DEEPSEEK_API_KEY`). Set the value in **Edit tokens (agents/.env)**, an in-app editor for the gitignored `<conception>/agents/.env`.
 
-Each entry's `command` must resolve on the spawn shell's `PATH` (so keep your wrapper directory, e.g. `~/bin`, on `PATH`). The `title` becomes the pinned tab label. See [Use the embedded terminal](terminal.md#editing-shortcuts) for editing launchers in the Settings modal, and [Config files](../reference/config.md) for the full `terminal.launchers` schema.
+The **Will launch** panel previews the exact command + environment as you edit. The agent is saved as `<conception>/agents/<harness>-<model_variant>.json` and appears in the terminal **spawn dropdown** and as a binding target for project / new-project actions. Each agent row shows its launch command; **Launch** opens a tab running it with the environment injected; **Config** shows the fully-resolved command + env (token shown as a `$NAME` reference, never the value).
+
+There is no wrapper script and nothing on `PATH` to maintain — condash builds the harness environment in-process. (condash ≤ 3.25 used `~/bin` wrapper scripts registered as `terminal.launchers`; that approach is retired.)
 
 ## See also
 
-- [Use the embedded terminal](terminal.md) — the spawn dropdown, tabs, and launchers that run these wrappers.
-- [Config files](../reference/config.md) — the `terminal.launchers` schema.
+- [Use the embedded terminal](terminal.md) — the spawn dropdown and tabs that run these agents.
+- [Config files](../reference/config.md#agents) — agent storage (`<conception>/agents/`) and the `agents/.env` tokens file.
 - [CLI reference](../reference/cli.md#skills) — `condash skills install` and the `--user` scope.

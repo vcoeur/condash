@@ -176,7 +176,14 @@ export interface LogsOpenRequest {
 /** Right-slot working surface — picks which of Code / Knowledge / Resources /
  * Skills is shown in the top-band right pane, or `null` to leave it hidden.
  * All four are mutually exclusive: showing one swaps the others out. */
-export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
+export type WorkingSurface =
+  | 'code'
+  | 'knowledge'
+  | 'resources'
+  | 'skills'
+  | 'logs'
+  | 'agents'
+  | null;
 
 /** Left-band view — which pane fills the left band when it is visible.
  * Selected by the left edge-strip handles (Projects / Deliverables). */
@@ -467,17 +474,6 @@ export interface TerminalXtermPrefs {
   colors?: TerminalXtermColors;
 }
 
-/** One configurable launcher entry. Each renders as an option in the
- *  terminal tab-strip dropdown when `command` is non-empty.
- *  `label` is the user-defined name shown in the dropdown.
- *  `title`, when set, becomes the pinned tab label at spawn time; an
- *  inline rename (`customName`) still wins forever after. */
-export interface LauncherConfig {
-  label: string;
-  command: string;
-  title?: string;
-}
-
 /** One user-configurable action template. Substituted at click time and
  *  typed into the focused terminal. */
 export interface ActionTemplate {
@@ -487,12 +483,11 @@ export interface ActionTemplate {
   template: string;
   /** When true, press Enter after typing. Default false. */
   submit?: boolean;
-  /** When set, names one of `terminal.launchers[].label`. The action then
-   *  spawns a fresh tab using that launcher's command before typing the
-   *  template (e.g. bind "Start new project" to a Claude / Kimi / shell
-   *  launcher). Empty / missing → type into the focused tab, spawning the
-   *  default launcher only if no tab exists. */
-  launcher?: string;
+  /** When set, names an agent (`<harness>-<model_variant>`). The action then
+   *  spawns a fresh tab running that agent before typing the template (e.g.
+   *  bind "Start new project" to a specific agent). Empty / missing → type
+   *  into the focused tab, spawning a plain shell only if no tab exists. */
+  agent?: string;
 }
 
 export interface TerminalPrefs {
@@ -500,10 +495,6 @@ export interface TerminalPrefs {
   shortcut?: string;
   screenshot_dir?: string;
   screenshot_paste_shortcut?: string;
-  /** Configurable launcher slots. Each entry renders a button on the tab
-   *  strip; the legacy scalar `launcher_command` is migrated transparently
-   *  into `launchers[0]` (label: 'λ') on first load. */
-  launchers?: LauncherConfig[];
   move_tab_left_shortcut?: string;
   move_tab_right_shortcut?: string;
   xterm?: TerminalXtermPrefs;
@@ -564,6 +555,11 @@ export interface TermSpawnRequest {
   repo?: string;
   /** Free-form command to run via `bash -lc`. Mutually exclusive with `repo`. */
   command?: string;
+  /** When set, names an agent (`<harness>-<model_variant>`) defined under
+   *  `<conception>/agents/`. The main process resolves it to the harness
+   *  binary + args + env (token from `agents/.env`) and spawns that. Mutually
+   *  exclusive with `repo` / `command`. */
+  agentName?: string;
   /** Override the cwd; defaults to $HOME (or the resolved repo cwd). */
   cwd?: string;
   cols?: number;
