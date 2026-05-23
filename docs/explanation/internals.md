@@ -120,6 +120,12 @@ Subscriptions (`onTreeEvents`, `onTermData`, `onTermExit`, `onTermSessions`) ret
 
 On Wayland sessions condash forces the native Wayland Ozone backend for crisp fractional-scaling text (`src/main/index.ts`). Chromium's HTML5 drag-and-drop (`draggable` + `dragstart` / `dataTransfer`) is broken under that backend — drags silently no-op ([electron#49907](https://github.com/electron/electron/issues/49907), [electron#42252](https://github.com/electron/electron/issues/42252)) — so any in-window drag must be built on **pointer events** (`pointerdown` / `pointermove` / `pointerup` + `setPointerCapture`), never HTML5 DnD. The pattern: capture the pointer on the source element once movement crosses a small threshold, never reparent the captured element mid-gesture, follow the cursor with a `pointer-events: none` clone, and commit on `pointerup` (hit-test the drop target with `elementFromPoint`). The Projects-pane status drag (`src/renderer/panes/projects-parts/cards.tsx`) follows this. **Still on HTML5 DnD and therefore broken on Wayland:** terminal-pane tab reorder (`src/renderer/terminal-pane/drag-drop.ts`) and settings-modal repo/section reorder (`repo-row.tsx`, `section-row.tsx`) — convert them the same way when next touched.
 
+### 9. Renderer CSP allows `'wasm-unsafe-eval'` for the terminal image addon
+
+The terminal pane loads `@xterm/addon-image` (`src/renderer/xterm-mount.ts`) to render inline-image escapes (Sixel + iTerm). Its Sixel path is a **WebAssembly** decoder compiled lazily on the first image payload. Chromium refuses to compile any WASM module under a bare `script-src 'self'`, and that refusal throws *inside xterm's synchronous write loop* (`_innerWrite`) — so a single inline-image escape blanks the whole terminal rather than just dropping the image. CLIs that emit Sixel on startup (notably the **opencode** TUI) trip this; claude/kimi don't, which is why only opencode terminals went blank.
+
+The renderer CSP (`src/renderer/index.html`) therefore carries `'wasm-unsafe-eval'` in `script-src`. That CSP3 keyword permits WebAssembly compilation **only** — it does not re-enable JS `eval` / `new Function`, so it is strictly narrower than `'unsafe-eval'`. Keep it; a CSP audit that strips it re-breaks every inline-image-emitting CLI.
+
 ## Environment hygiene { #environment-hygiene }
 
 condash spawns subprocesses (terminals, runners, `force_stop` commands, open-with launchers). The main process scrubs the environment before each spawn to avoid leaking interpreter-specific vars into unrelated child programs:
