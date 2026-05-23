@@ -15,6 +15,7 @@ import { runLogJanitor } from './terminal-logger-janitor';
 import { sealOrphanLogs } from './seal-orphan-logs';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { buildMenu, rebuildMenu, rebuildMenuFromSettings, setMenuWindow } from './menu';
+import { registerAgentsIpc } from './ipc/agents';
 import { registerProjectsIpc } from './ipc/projects';
 import { registerReposIpc } from './ipc/repos';
 import { registerSettingsIpc } from './ipc/settings';
@@ -305,6 +306,7 @@ function isPathUnder(child: string, parent: string): boolean {
  */
 function registerIpc(): void {
   registerProjectsIpc();
+  registerAgentsIpc();
   registerTreesIpc();
   registerReposIpc();
   registerTerminalIpc();

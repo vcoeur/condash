@@ -129,6 +129,25 @@ export function agentName(def: Pick<AgentDef, 'harness' | 'modelVariant'>): stri
   return `${HARNESSES[def.harness].label}-${def.modelVariant}`;
 }
 
+/** Renderer-facing agent summary. Carries token *presence* — never the value
+ *  (secrets stay in the main process). */
+export interface AgentListItem {
+  name: string;
+  harness: HarnessId;
+  modelVariant: string;
+  secretEnv?: string;
+  tokenPresent: boolean;
+}
+
+/** Spawn preview for the Agents pane "view full config" panel. The secret value
+ *  is never included — auth env vars show a `$SECRET_ENV` reference instead. */
+export interface AgentSpawnPreview {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  unsetEnv: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Spawn — how condash actually runs `<harness>-<model_variant>`
 // ---------------------------------------------------------------------------

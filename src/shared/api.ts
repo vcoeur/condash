@@ -1,3 +1,4 @@
+import type { AgentDef, AgentListItem, AgentSpawnPreview } from './harnesses';
 import type {
   CardMinWidthPrefs,
   ConceptionInitState,
@@ -230,6 +231,24 @@ export interface CondashApi {
    * Returns an unsubscribe function.
    */
   onRepoEvents(callback: (events: RepoEvent[]) => void): () => void;
+
+  /** List agents defined under `<conception>/agents/*.json`, each with token
+   *  presence (never the value). Empty when no conception / no agents. */
+  listAgents(): Promise<AgentListItem[]>;
+  /** Read one agent definition by name. Null when absent. Carries no token. */
+  readAgent(name: string): Promise<AgentDef | null>;
+  /** Create / update an agent JSON file. The filename is derived from the
+   *  def's `<harness>-<model_variant>`. When `previousName` differs from the
+   *  new name, the old file is removed (rename). Returns the resolved name. */
+  writeAgent(def: AgentDef, previousName?: string): Promise<string>;
+  /** Delete an agent definition file by name. */
+  deleteAgent(name: string): Promise<void>;
+  /** Spawn preview for the pane's "view full config" — auth vars show
+   *  `$SECRET_ENV` references, never a token. Null when the agent is absent. */
+  previewAgent(name: string): Promise<AgentSpawnPreview | null>;
+  /** Absolute path to `<conception>/agents/.env` (for the Settings-style
+   *  "open externally" button). Null when no conception is active. */
+  getAgentsEnvPath(): Promise<string | null>;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;
