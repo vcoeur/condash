@@ -125,22 +125,36 @@ jobs:
           restore-keys: |
             condash-debs-v1-
 
-      - name: Fetch .deb assets in parallel
+      - name: Fetch .deb assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p debs
-          # --skip-existing makes per-tag downloads idempotent, so a
-          # partial cache restore from restore-keys only re-fetches the
-          # delta. xargs -P parallelises across tags; ordering inside
-          # debs/ doesn't matter to aptly.
-          xargs -P 8 -I {} -a .release-tags.txt \
-            sh -c 'gh release download "$1" --pattern "*.deb" --dir debs/ --skip-existing || true' _ {}
+          while IFS= read -r tag; do
+            assets_json=$(curl -fsSL --retry 3 --retry-delay 1 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GH_REPO/releases/tags/$tag")
+            echo "$assets_json" | jq -r '.assets[] | select(.name | endswith(".deb")) | [.name, .url] | @tsv' | while IFS=$'\t' read -r name url; do
+              [ -n "$name" ] || continue
+              if [ -f "debs/$name" ]; then
+                echo "Skipping existing debs/$name"
+                continue
+              fi
+              echo "Downloading debs/$name ..."
+              curl -fsSL --retry 3 --retry-delay 1 \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/octet-stream" \
+                "$url" -o "debs/$name"
+            done
+          done < .release-tags.txt
 
       - name: Prune .debs outside the release window
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # Restore-key cache hits can carry .debs from a previous tag
@@ -149,8 +163,11 @@ jobs:
           # APT_HISTORY releases.
           : > .expected-debs.txt
           while IFS= read -r tag; do
-            gh release view "$tag" --json assets \
-              -q '.assets[].name | select(endswith(".deb"))' >> .expected-debs.txt
+            curl -fsSL --retry 3 --retry-delay 1 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GH_REPO/releases/tags/$tag" \
+              | jq -r '.assets[] | select(.name | endswith(".deb")) | .name' >> .expected-debs.txt
           done < .release-tags.txt
           sort -u .expected-debs.txt -o .expected-debs.txt
           find debs -maxdepth 1 -name '*.deb' -printf '%f\n' \
