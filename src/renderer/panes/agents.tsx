@@ -8,14 +8,15 @@ import {
   type HarnessId,
   type KimiAgentConfig,
   type OpencodeAgentConfig,
-  agentName,
   buildSpawn,
   CLAUDE_PRESETS,
   defaultKimiConfig,
   defaultOpencodeConfig,
   HARNESS_IDS,
   HARNESSES,
+  isValidSlug,
   OPENCODE_PRESETS,
+  suggestSlug,
 } from '@shared/harnesses';
 import './agents-pane.css';
 
@@ -24,29 +25,43 @@ import './agents-pane.css';
  *  active harness's slice. */
 interface Draft {
   harness: HarnessId;
-  modelVariant: string;
+  /** Free-form display name. */
+  name: string;
+  /** Lowercase-kebab identity = filename stem. Auto-suggested from `name` until
+   *  the user edits it (`slugTouched`), then frozen once the agent is saved. */
+  slug: string;
+  /** True once the user hand-edits the slug field, or always when editing an
+   *  existing agent — suppresses further auto-suggestion. */
+  slugTouched: boolean;
   secretEnv: string;
   claude: ClaudeAgentConfig;
   kimi: KimiAgentConfig;
   opencode: OpencodeAgentConfig;
-  /** Name of the agent being edited, or null when creating. */
-  editingName: string | null;
+  /** Slug of the agent being edited, or null when creating. The slug is the
+   *  stable identity, so it is read-only while editing. */
+  editingSlug: string | null;
 }
 
 function blankDraft(): Draft {
   return {
     harness: 'claude',
-    modelVariant: 'deepseek-v4-pro',
+    name: 'deepseek-v4-pro',
+    slug: suggestSlug('claude', 'deepseek-v4-pro'),
+    slugTouched: false,
     secretEnv: CLAUDE_PRESETS['deepseek-v4-pro'].secretEnv,
     claude: structuredClone(CLAUDE_PRESETS['deepseek-v4-pro'].config),
     kimi: defaultKimiConfig(),
     opencode: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
-    editingName: null,
+    editingSlug: null,
   };
 }
 
 function buildDef(d: Draft): AgentDef {
-  const base = { modelVariant: d.modelVariant.trim(), secretEnv: d.secretEnv.trim() || undefined };
+  const base = {
+    name: d.name.trim(),
+    slug: d.slug.trim(),
+    secretEnv: d.secretEnv.trim() || undefined,
+  };
   if (d.harness === 'kimi') return { harness: 'kimi', ...base, config: d.kimi };
   if (d.harness === 'opencode') return { harness: 'opencode', ...base, config: d.opencode };
   return { harness: 'claude', ...base, config: d.claude };
@@ -55,9 +70,10 @@ function buildDef(d: Draft): AgentDef {
 /**
  * Agents pane. Lists the agents defined under `<conception>/agents/`, grouped
  * by harness, and drives create / edit / delete plus per-agent launch. Each
- * agent is `<harness>-<model_variant>` — a harness (claude / kimi-cli /
- * opencode) plus a harness-specific config and an optional API token resolved
- * from the gitignored `agents/.env`.
+ * agent is a harness (claude / kimi-cli / opencode) plus a free-form display
+ * `name`, a stable lowercase-kebab `slug` (its filename + identity), a
+ * harness-specific config, and an optional API token resolved from the
+ * gitignored `agents/.env`.
  */
 export function AgentsView(props: {
   /** Current agent list (token presence only, never values). */
@@ -67,13 +83,15 @@ export function AgentsView(props: {
   /** Whether a conception is active (agents are conception-scoped). */
   hasConception: () => boolean;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
-  /** Spawn a terminal tab running the named agent. */
-  onLaunch: (name: string) => void;
+  /** Spawn a terminal tab running the agent with this slug. */
+  onLaunch: (slug: string) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
-  const [preview, setPreview] = createSignal<{ name: string; spec: AgentSpawnPreview } | null>(
-    null,
-  );
+  const [preview, setPreview] = createSignal<{
+    slug: string;
+    name: string;
+    spec: AgentSpawnPreview;
+  } | null>(null);
   // In-app agents/.env editor: null = closed; string = open with that content.
   const [tokens, setTokens] = createSignal<string | null>(null);
 
@@ -105,18 +123,20 @@ export function AgentsView(props: {
     setDraft(blankDraft());
   };
 
-  const startEdit = async (name: string) => {
+  const startEdit = async (slug: string) => {
     setPreview(null);
-    const def = await window.condash.readAgent(name);
+    const def = await window.condash.readAgent(slug);
     if (!def) {
-      props.flashToast(`Agent ${name} not found`, 'error');
+      props.flashToast(`Agent ${slug} not found`, 'error');
       return;
     }
     const d = blankDraft();
     d.harness = def.harness;
-    d.modelVariant = def.modelVariant;
+    d.name = def.name;
+    d.slug = def.slug;
+    d.slugTouched = true; // slug is the stable identity — frozen while editing
     d.secretEnv = def.secretEnv ?? '';
-    d.editingName = name;
+    d.editingSlug = slug;
     if (def.harness === 'claude') d.claude = def.config;
     else if (def.harness === 'kimi') d.kimi = def.config;
     else d.opencode = def.config;
@@ -126,13 +146,17 @@ export function AgentsView(props: {
   const save = async () => {
     const d = draft();
     if (!d) return;
-    if (!d.modelVariant.trim()) {
-      props.flashToast('Model variant is required', 'error');
+    if (!d.name.trim()) {
+      props.flashToast('Name is required', 'error');
+      return;
+    }
+    if (!isValidSlug(d.slug.trim())) {
+      props.flashToast('Slug must be lowercase letters, digits, and single hyphens', 'error');
       return;
     }
     try {
-      const name = await window.condash.writeAgent(buildDef(d), d.editingName ?? undefined);
-      props.flashToast(`Saved ${name}`, 'success');
+      const slug = await window.condash.writeAgent(buildDef(d), d.editingSlug ?? undefined);
+      props.flashToast(`Saved ${slug}`, 'success');
       setDraft(null);
       props.reload();
     } catch (err) {
@@ -140,21 +164,21 @@ export function AgentsView(props: {
     }
   };
 
-  const remove = async (name: string) => {
-    if (!confirm(`Delete agent ${name}? The agents/.env token is left untouched.`)) return;
+  const remove = async (agent: AgentListItem) => {
+    if (!confirm(`Delete agent ${agent.name}? The agents/.env token is left untouched.`)) return;
     try {
-      await window.condash.deleteAgent(name);
-      props.flashToast(`Deleted ${name}`, 'success');
-      if (preview()?.name === name) setPreview(null);
+      await window.condash.deleteAgent(agent.slug);
+      props.flashToast(`Deleted ${agent.name}`, 'success');
+      if (preview()?.slug === agent.slug) setPreview(null);
       props.reload();
     } catch (err) {
       props.flashToast(`Delete failed: ${(err as Error).message}`, 'error');
     }
   };
 
-  const viewConfig = async (name: string) => {
-    const spec = await window.condash.previewAgent(name);
-    if (spec) setPreview({ name, spec });
+  const viewConfig = async (agent: AgentListItem) => {
+    const spec = await window.condash.previewAgent(agent.slug);
+    if (spec) setPreview({ slug: agent.slug, name: agent.name, spec });
   };
 
   const grouped = (h: HarnessId) => props.agents().filter((a) => a.harness === h);
@@ -197,6 +221,9 @@ export function AgentsView(props: {
                         <div class="agents-row-main">
                           <div class="agents-row-top">
                             <span class="agents-row-name">{agent.name}</span>
+                            <code class="agents-row-slug" title="Slug (filename + identity)">
+                              {agent.slug}
+                            </code>
                             <TokenBadge agent={agent} />
                           </div>
                           <code class="agents-row-cmd" title="Command launched (token not shown)">
@@ -207,20 +234,20 @@ export function AgentsView(props: {
                           <button
                             type="button"
                             title="Open a tab running this agent"
-                            onClick={() => props.onLaunch(agent.name)}
+                            onClick={() => props.onLaunch(agent.slug)}
                           >
                             Launch
                           </button>
-                          <button type="button" onClick={() => void viewConfig(agent.name)}>
+                          <button type="button" onClick={() => void viewConfig(agent)}>
                             Config
                           </button>
-                          <button type="button" onClick={() => void startEdit(agent.name)}>
+                          <button type="button" onClick={() => void startEdit(agent.slug)}>
                             Edit
                           </button>
                           <button
                             type="button"
                             class="agents-danger"
-                            onClick={() => void remove(agent.name)}
+                            onClick={() => void remove(agent)}
                           >
                             Delete
                           </button>
@@ -342,26 +369,35 @@ function AgentEditor(props: {
 }): JSX.Element {
   const d = props.draft;
 
+  /** Re-suggest the slug from `name` under `harness`, unless the user has
+   *  hand-edited the slug or is editing an existing agent (slug is frozen). */
+  const reslug = (name: string, harness: HarnessId): Partial<Draft> =>
+    d().editingSlug || d().slugTouched ? {} : { slug: suggestSlug(harness, name) };
+
+  const onNameInput = (value: string) => {
+    props.patch({ name: value, ...reslug(value, d().harness) });
+  };
+
+  const onSlugInput = (value: string) => {
+    props.patch({ slug: value, slugTouched: true });
+  };
+
   const selectHarness = (h: HarnessId) => {
-    // Reset the variant + secret to the harness's natural default when the
-    // user switches harness mid-edit.
-    if (h === 'claude')
-      props.patch({
-        harness: h,
-        modelVariant: 'deepseek-v4-pro',
-        secretEnv: CLAUDE_PRESETS['deepseek-v4-pro'].secretEnv,
-      });
-    else if (h === 'kimi') props.patch({ harness: h, modelVariant: 'native', secretEnv: '' });
-    else props.patch({ harness: h, modelVariant: 'deepseek-v4-pro', secretEnv: '' });
+    // Reset the display name + secret to the harness's natural default when the
+    // user switches harness mid-edit, and re-suggest the slug to match.
+    const name = h === 'kimi' ? 'native' : 'deepseek-v4-pro';
+    const secretEnv = h === 'claude' ? CLAUDE_PRESETS['deepseek-v4-pro'].secretEnv : '';
+    props.patch({ harness: h, name, secretEnv, ...reslug(name, h) });
   };
 
   const applyPreset = (key: string) => {
     const preset = CLAUDE_PRESETS[key];
     if (!preset) return;
     props.patch({
-      modelVariant: key,
+      name: key,
       secretEnv: preset.secretEnv,
       claude: structuredClone(preset.config),
+      ...reslug(key, 'claude'),
     });
   };
 
@@ -369,16 +405,17 @@ function AgentEditor(props: {
     const preset = OPENCODE_PRESETS[key];
     if (!preset) return;
     props.patch({
-      modelVariant: key,
+      name: key,
       secretEnv: preset.secretEnv,
       opencode: structuredClone(preset.config),
+      ...reslug(key, 'opencode'),
     });
   };
 
   return (
     <section class="agents-editor">
       <header>
-        <h3>{d().editingName ? `Edit ${d().editingName}` : 'New agent'}</h3>
+        <h3>{d().editingSlug ? `Edit ${d().editingSlug}` : 'New agent'}</h3>
       </header>
 
       <label>
@@ -398,7 +435,7 @@ function AgentEditor(props: {
             <option value="">(custom)</option>
             <For each={Object.keys(CLAUDE_PRESETS)}>
               {(k) => (
-                <option value={k} selected={k === d().modelVariant}>
+                <option value={k} selected={k === d().name}>
                   {k}
                 </option>
               )}
@@ -408,16 +445,27 @@ function AgentEditor(props: {
       </Show>
 
       <label>
-        <span>Model variant</span>
+        <span>Name (display label)</span>
+        <input type="text" value={d().name} onInput={(e) => onNameInput(e.currentTarget.value)} />
+      </label>
+
+      <label>
+        <span>Slug (filename + identity)</span>
         <input
           type="text"
-          value={d().modelVariant}
-          onInput={(e) => props.patch({ modelVariant: e.currentTarget.value })}
+          value={d().slug}
+          disabled={d().editingSlug !== null}
+          title={
+            d().editingSlug !== null
+              ? 'The slug is the stable identity and cannot change after creation'
+              : 'Lowercase letters, digits, and single hyphens'
+          }
+          onInput={(e) => onSlugInput(e.currentTarget.value)}
         />
       </label>
 
       <p class="agents-editor-name">
-        Agent name: <code>{agentName(buildDef(d()))}</code>
+        File: <code>agents/{d().slug || '…'}.json</code>
       </p>
 
       <label>
@@ -508,7 +556,7 @@ function AgentEditor(props: {
             <option value="">(custom)</option>
             <For each={Object.keys(OPENCODE_PRESETS)}>
               {(k) => (
-                <option value={k} selected={k === d().modelVariant}>
+                <option value={k} selected={k === d().name}>
                   {k}
                 </option>
               )}

@@ -23,7 +23,8 @@ async function seedTask(conceptionDir: string): Promise<void> {
     JSON.stringify(
       {
         harness: 'claude',
-        modelVariant: 'deepseek-v4-pro',
+        name: 'deepseek-v4-pro',
+        slug: 'claude-deepseek-v4-pro',
         secretEnv: 'DEEPSEEK_API_KEY',
         config: {
           baseUrl: 'https://api.deepseek.com/anthropic',

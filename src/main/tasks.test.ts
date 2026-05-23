@@ -18,12 +18,14 @@ afterEach(async () => {
 
 const claudeAgent: AgentDef = {
   harness: 'claude',
-  modelVariant: 'deepseek-v4-pro',
+  name: 'deepseek-v4-pro',
+  slug: 'claude-deepseek-v4-pro',
   secretEnv: 'DEEPSEEK_API_KEY',
   config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
 };
 
 const task: TaskDef = {
+  // `agent` references the agent by its stable slug.
   name: 'Refresh app docs',
   agent: 'claude-deepseek-v4-pro',
   submit: true,

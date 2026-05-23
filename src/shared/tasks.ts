@@ -17,7 +17,8 @@ import { MARKER_RE, projectContext, type ProjectLike } from './action-template';
  *  separately by the IPC verbs (it is not stored inside `task.json`). */
 export interface TaskDef {
   name: string;
-  /** Referenced agent name (`<harness>-<model_variant>`). May dangle. */
+  /** Referenced agent — its stable `slug` (the agent's filename/IPC key). May
+   *  dangle if the agent was renamed/removed. */
   agent: string;
   /** Press Enter after typing the filled prompt. Default true. */
   submit: boolean;

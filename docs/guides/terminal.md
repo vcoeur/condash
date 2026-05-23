@@ -29,7 +29,7 @@ The pane starts as a single column. The right column materialises only when at l
 
 Each side header carries:
 
-- **Spawn dropdown** — a single button that opens a menu listing your **agents**. The first option is always `New shell` (spawns the configured shell); below it is one entry per agent (`<harness>-<model_variant>`) defined in the [Agents pane](agent-clis-and-models.md). Selecting an agent spawns a tab running it (with its env / token injected). The menu is rendered through a Solid `<Portal>` to `document.body` (with `position: fixed` coordinates from `createDropdownMenu({ align: 'left' })`) so it escapes `.terminal-pane`'s `contain: layout paint` and the strip's `overflow: auto` — both of which would otherwise clip the menu down to the strip's 32 px height.
+- **Spawn dropdown** — a single button that opens a menu listing your **agents**. The first option is always `New shell` (spawns the configured shell); below it is one entry per agent, shown by its display **name**, defined in the [Agents pane](agent-clis-and-models.md). Selecting an agent spawns a tab running it (with its env / token injected). The menu is rendered through a Solid `<Portal>` to `document.body` (with `position: fixed` coordinates from `createDropdownMenu({ align: 'left' })`) so it escapes `.terminal-pane`'s `contain: layout paint` and the strip's `overflow: auto` — both of which would otherwise clip the menu down to the strip's 32 px height.
 - **Tab strip** — click to focus the tab; middle-click to close. Clicking inside the xterm itself also promotes the tab to active (the click+focus listener was wired so a stray click never silently sends keys to a different tab than the one you're looking at).
 
 Tab titles depend on how the tab was spawned:

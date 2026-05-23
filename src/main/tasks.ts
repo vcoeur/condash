@@ -71,7 +71,7 @@ export async function listTasks(conceptionPath: string): Promise<TaskListItem[]>
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw err;
   }
-  const agentNames = new Set((await listAgents(conceptionPath)).map((a) => a.name));
+  const agentSlugs = new Set((await listAgents(conceptionPath)).map((a) => a.slug));
   const items: TaskListItem[] = [];
   for (const slug of entries) {
     if (!isValidSlugTail(slug)) continue;
@@ -82,7 +82,7 @@ export async function listTasks(conceptionPath: string): Promise<TaskListItem[]>
         slug,
         name: def.name,
         agent: def.agent,
-        agentPresent: agentNames.has(def.agent),
+        agentPresent: agentSlugs.has(def.agent),
         markers: extractMarkers(def.prompt),
       });
     } catch (err) {

@@ -232,9 +232,9 @@ function App() {
   });
   const agents = () => agentsResource() ?? [];
 
-  /** Open a terminal tab running the named agent (Agents-pane Launch button). */
-  const launchAgent = (name: string): void => {
-    const item = agents().find((a) => a.name === name) ?? null;
+  /** Open a terminal tab running the agent with this slug (Agents-pane Launch button). */
+  const launchAgent = (slug: string): void => {
+    const item = agents().find((a) => a.slug === slug) ?? null;
     if (!item) return;
     ensureTerminalOpen();
     void terminalHandle?.spawnUserShell(item, 'my');
@@ -553,8 +553,8 @@ function App() {
                           projects={() => projects() ?? []}
                           apps={appOptions}
                           flashToast={flashToast}
-                          onRun={(agentName, text, submit) =>
-                            void bridge.runTask(agentName, text, submit)
+                          onRun={(agentSlug, text, submit) =>
+                            void bridge.runTask(agentSlug, text, submit)
                           }
                         />
                       </Match>

@@ -36,17 +36,17 @@ function makeDeps(handle: FakeHandle | null = null, agents: AgentListItem[] = []
 }
 
 const claudeAgent: AgentListItem = {
-  name: 'claude-deepseek-v4-pro',
+  slug: 'claude-deepseek-v4-pro',
+  name: 'deepseek-v4-pro',
   harness: 'claude',
-  modelVariant: 'deepseek-v4-pro',
   secretEnv: 'DEEPSEEK_API_KEY',
   tokenPresent: true,
   command: 'claude',
 };
 const kimiAgent: AgentListItem = {
-  name: 'kimi-cli-native',
+  slug: 'kimi-cli-native',
+  name: 'native',
   harness: 'kimi',
-  modelVariant: 'native',
   tokenPresent: true,
   command: 'kimi --agent-file ~/.kimi/global-agent.yaml',
 };

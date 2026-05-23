@@ -42,10 +42,10 @@ export interface TerminalBridge {
    *  "Paste path → Term" button — re-uses the same "open pane, spawn
    *  shell if needed" dance as `handleWorkOn`. Does not press Enter. */
   handlePasteToTerm: (text: string) => Promise<void>;
-  /** Run a Tasks-pane task: spawn a fresh tab running `agentName`, type the
-   *  already-substituted `text`, and press Enter when `submit` is true. Same
-   *  spawn-and-type path as an agent-bound project action. */
-  runTask: (agentName: string, text: string, submit: boolean) => Promise<void>;
+  /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentSlug`,
+   *  type the already-substituted `text`, and press Enter when `submit` is true.
+   *  Same spawn-and-type path as an agent-bound project action. */
+  runTask: (agentSlug: string, text: string, submit: boolean) => Promise<void>;
 }
 
 /** Upper bound on animation frames waited for the pane to mount after
@@ -76,14 +76,14 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   return deps.terminalHandle();
 }
 
-/** Look up an agent by name from the current agent list. Returns null for an
- *  empty/missing name or when no agent matches. */
-function findAgentByName(
+/** Look up an agent by slug from the current agent list. Returns null for an
+ *  empty/missing slug or when no agent matches. */
+function findAgentBySlug(
   agents: readonly AgentListItem[],
-  name: string | undefined,
+  slug: string | undefined,
 ): AgentListItem | null {
-  if (!name) return null;
-  return agents.find((a) => a.name === name) ?? null;
+  if (!slug) return null;
+  return agents.find((a) => a.slug === slug) ?? null;
 }
 
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
@@ -141,11 +141,11 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  running that agent on every click — keeps "Start new project →
    *  claude-deepseek-v4-pro" predictable instead of typing into whatever tab
    *  happens to be focused. Falls back to `ensureTermAndShell()` (a plain
-   *  shell) when no agent is bound or the bound name no longer resolves. */
+   *  shell) when no agent is bound or the bound slug no longer resolves. */
   const ensureTermForAction = async (
     action: ActionTemplate,
   ): Promise<TerminalPaneHandle | null> => {
-    const agent = findAgentByName(deps.agents(), action.agent);
+    const agent = findAgentBySlug(deps.agents(), action.agent);
     if (!agent) return ensureTermAndShell();
     return spawnAgentTab(agent);
   };
@@ -255,10 +255,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
-  const runTask = async (agentName: string, text: string, submit: boolean): Promise<void> => {
-    const agent = findAgentByName(deps.agents(), agentName);
+  const runTask = async (agentSlug: string, text: string, submit: boolean): Promise<void> => {
+    const agent = findAgentBySlug(deps.agents(), agentSlug);
     if (!agent) {
-      deps.flashToast(`Task agent not found: ${agentName}`, 'error');
+      deps.flashToast(`Task agent not found: ${agentSlug}`, 'error');
       return;
     }
     const handle = await spawnAgentTab(agent);

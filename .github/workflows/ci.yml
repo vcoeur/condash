@@ -1,22 +1,25 @@
-name: pr-fast
+name: ci
 
-# Fast gate on every PR (including drafts) — format-check + typecheck +
-# build + vitest, target ≤ 90 s. The always-on lane so iterating stays cheap.
+# Light gate on every PR (including drafts) and every push to main.
+# Runs format-check + typecheck + build + vitest, target <= 90 s.
 #
 # Path filtering is done at the JOB level (via the `changes` job), not with
 # a workflow-level `paths-ignore`. That's deliberate: a required status check
 # whose workflow never triggers (filtered out) is stuck "Expected" forever
 # and blocks the PR. By always triggering and skipping the work instead, the
-# `pr-fast-gate` check always reports — so branch protection can require it
+# `ci-light-gate` check always reports -- so branch protection can require it
 # without wedging docs-only PRs.
 
 on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 concurrency:
-  group: pr-fast-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,14 +36,18 @@ jobs:
         name: Detect non-docs changes
         run: |
           set -euo pipefail
-          base='${{ github.event.pull_request.base.sha }}'
+          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
+            base='${{ github.event.pull_request.base.sha }}'
+          else
+            base='${{ github.event.before }}'
+          fi
           # code = any changed file outside docs/, assets/, or *.md.
           if git diff --name-only "$base" HEAD | grep -qEv '^(docs/|assets/)|\.md$'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "Code changes detected — fast lane will run."
+            echo "Code changes detected -- fast lane will run."
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "Docs/assets-only change — fast lane skipped (gate still reports)."
+            echo "Docs/assets-only change -- fast lane skipped (gate still reports)."
           fi
 
   fast:
@@ -48,12 +55,12 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/_fast.yml
 
-  pr-fast-gate:
+  ci-light-gate:
     # The single required check for this workflow. Always runs so it always
     # reports; passes when `fast` succeeded or was skipped (docs-only), fails
     # when it failed/was cancelled. Require THIS in branch protection, not the
-    # inner `fast / …` check (which doesn't report on a skipped docs-only PR).
-    name: pr-fast-gate
+    # inner `fast / ...` check (which doesn't report on a skipped docs-only PR).
+    name: ci-light-gate
     needs: [changes, fast]
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -71,4 +78,4 @@ jobs:
             echo "fast lane failed ($fast)." >&2
             exit 1
           fi
-          echo "pr-fast-gate ok (fast=$fast)."
+          echo "ci-light-gate ok (fast=$fast)."

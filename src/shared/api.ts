@@ -236,17 +236,18 @@ export interface CondashApi {
   /** List agents defined under `<conception>/agents/*.json`, each with token
    *  presence (never the value). Empty when no conception / no agents. */
   listAgents(): Promise<AgentListItem[]>;
-  /** Read one agent definition by name. Null when absent. Carries no token. */
-  readAgent(name: string): Promise<AgentDef | null>;
-  /** Create / update an agent JSON file. The filename is derived from the
-   *  def's `<harness>-<model_variant>`. When `previousName` differs from the
-   *  new name, the old file is removed (rename). Returns the resolved name. */
-  writeAgent(def: AgentDef, previousName?: string): Promise<string>;
-  /** Delete an agent definition file by name. */
-  deleteAgent(name: string): Promise<void>;
+  /** Read one agent definition by slug. Null when absent. Carries no token. */
+  readAgent(slug: string): Promise<AgentDef | null>;
+  /** Create / update an agent JSON file at `agents/<slug>.json` (the def's
+   *  lowercase-kebab `slug`, validated by the main process). When `previousSlug`
+   *  differs from the new slug, the old file is removed (rename). Returns the
+   *  resolved slug. */
+  writeAgent(def: AgentDef, previousSlug?: string): Promise<string>;
+  /** Delete an agent definition file by slug. */
+  deleteAgent(slug: string): Promise<void>;
   /** Spawn preview for the pane's "view full config" — auth vars show
    *  `$SECRET_ENV` references, never a token. Null when the agent is absent. */
-  previewAgent(name: string): Promise<AgentSpawnPreview | null>;
+  previewAgent(slug: string): Promise<AgentSpawnPreview | null>;
   /** Raw contents of `<conception>/agents/.env` for the in-app token editor —
    *  a commented template when the file is absent, or null when no conception
    *  is active. This is the one verb that returns secret *values* to the

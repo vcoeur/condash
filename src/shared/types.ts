@@ -483,10 +483,10 @@ export interface ActionTemplate {
   template: string;
   /** When true, press Enter after typing. Default false. */
   submit?: boolean;
-  /** When set, names an agent (`<harness>-<model_variant>`). The action then
-   *  spawns a fresh tab running that agent before typing the template (e.g.
-   *  bind "Start new project" to a specific agent). Empty / missing → type
-   *  into the focused tab, spawning a plain shell only if no tab exists. */
+  /** When set, the `slug` of an agent under `<conception>/agents/`. The action
+   *  then spawns a fresh tab running that agent before typing the template (e.g.
+   *  bind "Start new project" to a specific agent). Empty / missing → type into
+   *  the focused tab, spawning a plain shell only if no tab exists. */
   agent?: string;
 }
 
@@ -555,11 +555,10 @@ export interface TermSpawnRequest {
   repo?: string;
   /** Free-form command to run via `bash -lc`. Mutually exclusive with `repo`. */
   command?: string;
-  /** When set, names an agent (`<harness>-<model_variant>`) defined under
-   *  `<conception>/agents/`. The main process resolves it to the harness
-   *  binary + args + env (token from `agents/.env`) and spawns that. Mutually
-   *  exclusive with `repo` / `command`. */
-  agentName?: string;
+  /** When set, the `slug` of an agent defined under `<conception>/agents/`. The
+   *  main process resolves it to the harness binary + args + env (token from
+   *  `agents/.env`) and spawns that. Mutually exclusive with `repo` / `command`. */
+  agentSlug?: string;
   /** Override the cwd; defaults to $HOME (or the resolved repo cwd). */
   cwd?: string;
   cols?: number;

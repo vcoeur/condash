@@ -18,11 +18,11 @@ Each task is one directory under your conception:
 ```
 <conception>/tasks/
   refresh-app-docs/
-    task.json      { "name": "Refresh app docs", "agent": "claude-Claude", "submit": true }
+    task.json      { "name": "Refresh app docs", "agent": "claude-deepseek-v4-pro", "submit": true }
     prompt.md      Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}
 ```
 
-- **`task.json`** carries config only — `name`, `agent` (a name from the Agents pane), and `submit` (optional, default `true`).
+- **`task.json`** carries config only — `name`, `agent` (the **slug** of an agent from the Agents pane), and `submit` (optional, default `true`).
 - **`prompt.md`** is the raw markdown prompt with markers — a real, hand-editable, diffable file. Edit it in the pane or in your editor; both round-trip.
 - The directory name is the **slug** (`^[a-z0-9-]+$`). The `tasks/` tree is created on first save.
 
@@ -66,7 +66,7 @@ Run is disabled when the task's referenced agent is no longer defined (the card 
 Click **+ New task** (or **Edit** on a card):
 
 - **Name** — the card title. For a new task the **slug** auto-derives from the name until you hand-edit it.
-- **Agent** — a `<harness>-<model_variant>` from the [Agents pane](agent-clis-and-models.md#define-it-as-a-condash-agent).
+- **Agent** — pick an agent from the [Agents pane](agent-clis-and-models.md#define-it-as-a-condash-agent); the select shows the agent's display name and stores its stable `slug`.
 - **Submit** — press Enter after typing (on by default).
 - **Prompt** — markdown with `{MARKERS}`. The **Markers** chips below update live as you type so you can see the fields you're creating.
 

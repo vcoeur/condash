@@ -20,20 +20,20 @@ import { withConception } from './utils';
 export function registerAgentsIpc(): void {
   ipcMain.handle('listAgents', () => withConception((c) => listAgents(c), []));
 
-  ipcMain.handle('readAgent', (_, name: string) => withConception((c) => readAgent(c, name), null));
+  ipcMain.handle('readAgent', (_, slug: string) => withConception((c) => readAgent(c, slug), null));
 
-  ipcMain.handle('writeAgent', (_, def: AgentDef, previousName?: string) =>
-    withConception((c) => writeAgent(c, def, previousName), ''),
+  ipcMain.handle('writeAgent', (_, def: AgentDef, previousSlug?: string) =>
+    withConception((c) => writeAgent(c, def, previousSlug), ''),
   );
 
-  ipcMain.handle('deleteAgent', (_, name: string) =>
+  ipcMain.handle('deleteAgent', (_, slug: string) =>
     withConception(async (c) => {
-      await deleteAgent(c, name);
+      await deleteAgent(c, slug);
     }, undefined),
   );
 
-  ipcMain.handle('previewAgent', (_, name: string) =>
-    withConception((c) => previewAgent(c, name), null),
+  ipcMain.handle('previewAgent', (_, slug: string) =>
+    withConception((c) => previewAgent(c, slug), null),
   );
 
   // In-app token editing — raw read/write of agents/.env. The renderer's token

@@ -53,7 +53,7 @@ function blankDraft(agents: readonly AgentListItem[]): Draft {
     slug: '',
     slugDirty: false,
     name: '',
-    agent: agents[0]?.name ?? '',
+    agent: agents[0]?.slug ?? '',
     submit: true,
     prompt: '',
     editingSlug: null,
@@ -83,13 +83,14 @@ export function TasksView(props: {
   /** Apps available to the `{APP}` picker. */
   apps: () => readonly AppOption[];
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
-  /** Run a filled task: spawn the agent, type the substituted prompt, submit. */
-  onRun: (agentName: string, text: string, submit: boolean) => void;
+  /** Run a filled task: spawn the agent (by slug), type the substituted prompt,
+   *  submit. */
+  onRun: (agentSlug: string, text: string, submit: boolean) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
 
-  const agentExists = (name: string): boolean => props.agents().some((a) => a.name === name);
+  const agentExists = (slug: string): boolean => props.agents().some((a) => a.slug === slug);
 
   const patch = (p: Partial<Draft>): void => {
     setDraft((d) => (d ? { ...d, ...p } : d));
@@ -437,12 +438,16 @@ function TaskEditor(props: {
   const d = props.draft;
   const markers = createMemo(() => extractMarkers(d().prompt));
 
-  // Agent options: the live agent list, plus the draft's current agent when it
-  // dangles (renamed/removed) so editing doesn't silently drop the reference.
+  // Agent options keyed by slug (the stored identity) with the display name as
+  // label. Includes the draft's current slug when it dangles (renamed/removed)
+  // so editing doesn't silently drop the reference.
   const agentOptions = createMemo(() => {
-    const names = props.agents().map((a) => a.name);
+    const opts = props.agents().map((a) => ({ slug: a.slug, label: a.name }));
     const current = d().agent;
-    return current && !names.includes(current) ? [current, ...names] : names;
+    if (current && !opts.some((o) => o.slug === current)) {
+      return [{ slug: current, label: `${current} (missing)` }, ...opts];
+    }
+    return opts;
   });
 
   const onName = (value: string): void => {
@@ -484,7 +489,7 @@ function TaskEditor(props: {
               <option value="">(no agents defined)</option>
             </Match>
             <Match when={agentOptions().length > 0}>
-              <For each={agentOptions()}>{(name) => <option value={name}>{name}</option>}</For>
+              <For each={agentOptions()}>{(o) => <option value={o.slug}>{o.label}</option>}</For>
             </Match>
           </Switch>
         </select>
