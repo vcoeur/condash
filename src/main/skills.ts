@@ -1,185 +1,189 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
-import type { SkillNode, SkillTab } from '../shared/types';
+import type { SkillNode, SkillScope, SkillTab } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { parseHead } from './knowledge';
 import { readFileHead } from './read-file-head';
 import { buildShippedLookup, type ShippedLookup } from './skills-shipped';
+import { userAgentConfigOutput, userAgentConfigRoot, userSkillsRoot } from './user-scope-paths';
 
 const HIDDEN_PREFIX = /^\./;
 
+/** Agent-config source files surfaced (read-only) on the Generic tab — the
+ *  `common.md` + per-model `<model>.md` inputs that `condash skills install`
+ *  compiles into each agent's CLAUDE.md / AGENTS.md. */
+const GENERIC_AGENT_SOURCES = ['common.md', 'claude.md', 'kimi.md', 'opencode.md'] as const;
+
 /**
- * Read the skills tree at `<conceptionPath>/<skillsRelPath>`. Same shape as
- * Knowledge (recursive, only `.md` surfaced) plus an optional `shipped`
- * stamp on files tracked by `.condash-skills.json`. Symlink loops are
- * deduped via realpath.
+ * Read the skills tree for a (scope, tab) pair.
  *
- * Also injects synthetic root-level entries for the conception's
- * `CLAUDE.md` (root) and `.claude/CLAUDE.md`, when present. Those files
- * sit outside the skills directory but are surfaced here because they
- * carry the same kind of agent-instruction content as `SKILL.md` and
- * the user expects to reach them from the Skills pane. Each synthetic
- * entry is a `kind: 'file'` SkillNode with `name === 'CLAUDE.md'`; the
- * renderer detects that name to render a "CLAUDE" badge instead of the
- * usual skill-card layout.
- */
-export async function readSkillsTree(
-  conceptionPath: string,
-  skillsRelPath: string,
-): Promise<SkillNode | null> {
-  const root = join(conceptionPath, skillsRelPath);
-  try {
-    await fs.access(root);
-  } catch {
-    return null;
-  }
-  const shipped = await buildShippedLookup(root);
-  const tree = await walk(
-    root,
-    '',
-    basename(skillsRelPath) || 'skills',
-    new Set<string>(),
-    shipped,
-    root,
-    /* acceptYaml */ false,
-  );
-  const claudeEntries = await readConceptionClaudeMd(conceptionPath);
-  if (claudeEntries.length > 0) {
-    tree.children = [...claudeEntries, ...(tree.children ?? [])];
-  }
-  return tree;
-}
-
-/**
- * Read the generic skills tree at `<conceptionPath>/.agents/skills/`.
- * Accepts both `.md` and `.yaml` files. No synthetic `CLAUDE.md` entries.
- * Uses `buildShippedLookup` on the root `.agents/skills/`.
- */
-export async function readGenericSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
-  const root = join(conceptionPath, '.agents', 'skills');
-  try {
-    await fs.access(root);
-  } catch {
-    return null;
-  }
-  const shipped = await buildShippedLookup(root);
-  return walk(root, '', 'skills', new Set<string>(), shipped, root, /* acceptYaml */ true);
-}
-
-/**
- * Read the Kimi skills tree at `<conceptionPath>/.kimi/skills/`.
- * Same `.md`-only filter as `readSkillsTree`. Injects synthetic
- * root-level entries for `<conception>/AGENTS.md` and
- * `<conception>/.kimi/AGENTS.md` when present — mirrors the
- * `readSkillsTree` CLAUDE.md handling. Uses `buildShippedLookup` on
- * `.kimi/skills/`.
- */
-export async function readKimiSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
-  const root = join(conceptionPath, '.kimi', 'skills');
-  try {
-    await fs.access(root);
-  } catch {
-    return null;
-  }
-  const shipped = await buildShippedLookup(root);
-  const tree = await walk(
-    root,
-    '',
-    'skills',
-    new Set<string>(),
-    shipped,
-    root,
-    /* acceptYaml */ false,
-  );
-  const agentsEntries = await readConceptionAgentsMd(conceptionPath);
-  if (agentsEntries.length > 0) {
-    tree.children = [...agentsEntries, ...(tree.children ?? [])];
-  }
-  return tree;
-}
-
-/**
- * Read the OpenCode skills tree at `<conceptionPath>/.opencode/skills/`.
- * `.md`-only filter like the other compiled tabs. Injects a synthetic
- * root-level entry for the conception's root `AGENTS.md` (OpenCode's context
- * file, emitted by `condash skills install`) when present.
- */
-export async function readOpencodeSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
-  const root = join(conceptionPath, '.opencode', 'skills');
-  try {
-    await fs.access(root);
-  } catch {
-    return null;
-  }
-  const shipped = await buildShippedLookup(root);
-  const tree = await walk(
-    root,
-    '',
-    'skills',
-    new Set<string>(),
-    shipped,
-    root,
-    /* acceptYaml */ false,
-  );
-  const agentsEntries = await readConceptionOpencodeAgentsMd(conceptionPath);
-  if (agentsEntries.length > 0) {
-    tree.children = [...agentsEntries, ...(tree.children ?? [])];
-  }
-  return tree;
-}
-
-/**
- * Router that delegates to the tab-specific reader.
+ * `local` reads the active conception; `global` reads the per-machine user
+ * scope (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`).
+ * The tree is the recursive listing of the tab's skills directory — `.md`
+ * only, except the Generic tab which also surfaces `.yaml` skillspecs — plus
+ * an optional `shipped` stamp on files tracked by `.condash-skills.json`.
+ * Symlink loops are deduped via realpath.
+ *
+ * Synthetic read-only agent-config entries are prepended at the root: the
+ * compiled `CLAUDE.md` (Claude), `AGENTS.md` / `global-agent.yaml` (Kimi /
+ * OpenCode), and the `common.md` + `<model>.md` sources (Generic). Each
+ * carries a `badge` so the renderer draws a callout instead of a skill card.
  */
 export async function readSkillsTreeForTab(
+  scope: SkillScope,
   conceptionPath: string,
   tab: SkillTab,
   skillsRelPath: string,
 ): Promise<SkillNode | null> {
-  if (tab === 'generic') return readGenericSkillsTree(conceptionPath);
-  if (tab === 'kimi') return readKimiSkillsTree(conceptionPath);
-  if (tab === 'opencode') return readOpencodeSkillsTree(conceptionPath);
-  return readSkillsTree(conceptionPath, skillsRelPath);
+  const root = skillsRootFor(scope, conceptionPath, tab, skillsRelPath);
+  let tree: SkillNode | null = null;
+  try {
+    await fs.access(root);
+    const shipped = await buildShippedLookup(root);
+    tree = await walk(
+      root,
+      '',
+      basename(root) || 'skills',
+      new Set<string>(),
+      shipped,
+      root,
+      /* acceptYaml */ tab === 'generic',
+    );
+  } catch {
+    tree = null;
+  }
+  const configEntries = await readAgentConfigEntries(scope, conceptionPath, tab);
+  if (tree) {
+    if (configEntries.length > 0) {
+      tree.children = [...configEntries, ...(tree.children ?? [])];
+    }
+    return tree;
+  }
+  // No skills directory on disk, but the agent-config files may still exist
+  // (e.g. global Claude with `~/.claude/CLAUDE.md` but no `~/.claude/skills`).
+  // Surface them under a synthetic root so the pane isn't empty.
+  if (configEntries.length > 0) {
+    return {
+      relPath: '',
+      path: toPosix(root),
+      name: 'skills',
+      title: 'skills',
+      kind: 'directory',
+      children: configEntries,
+    };
+  }
+  return null;
 }
 
-/** Probe `<conceptionPath>/CLAUDE.md` and `<conceptionPath>/.claude/CLAUDE.md`
- *  and return synthetic SkillNode entries for whichever exist. The synthetic
- *  `relPath` is sentinel-prefixed (`__claude__/...`) so it can't collide with
- *  any real path inside the skills tree. */
-async function readConceptionClaudeMd(conceptionPath: string): Promise<SkillNode[]> {
-  return readConceptionAgentConfig(conceptionPath, [
-    { rel: '__claude__/CLAUDE.md', abs: join(conceptionPath, 'CLAUDE.md') },
-    { rel: '__claude__/.claude/CLAUDE.md', abs: join(conceptionPath, '.claude', 'CLAUDE.md') },
-  ]);
+/** Local-scope Claude tree at `<conceptionPath>/<skillsRelPath>`. Thin wrapper
+ *  over the scope-aware reader; kept for the existing call sites + tests. */
+export function readSkillsTree(
+  conceptionPath: string,
+  skillsRelPath: string,
+): Promise<SkillNode | null> {
+  return readSkillsTreeForTab('local', conceptionPath, 'claude', skillsRelPath);
 }
 
-/** Probe `<conceptionPath>/AGENTS.md` and `<conceptionPath>/.kimi/AGENTS.md`
- *  and return synthetic SkillNode entries for whichever exist. The synthetic
- *  `relPath` is sentinel-prefixed (`__kimi__/...`) so it can't collide with
- *  any real path inside the skills tree. Mirrors `readConceptionClaudeMd`
- *  for the Kimi tab. */
-async function readConceptionAgentsMd(conceptionPath: string): Promise<SkillNode[]> {
-  return readConceptionAgentConfig(conceptionPath, [
-    { rel: '__kimi__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md') },
-    { rel: '__kimi__/.kimi/AGENTS.md', abs: join(conceptionPath, '.kimi', 'AGENTS.md') },
-  ]);
+/** Local-scope Generic tree at `<conceptionPath>/.agents/skills/`. */
+export function readGenericSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
+  return readSkillsTreeForTab('local', conceptionPath, 'generic', '');
 }
 
-/** Probe `<conceptionPath>/AGENTS.md` (OpenCode's root context file) and
- *  return a synthetic SkillNode entry when it exists. Sentinel-prefixed
- *  `__opencode__/` so it can't collide with a real skills-tree path. */
-async function readConceptionOpencodeAgentsMd(conceptionPath: string): Promise<SkillNode[]> {
-  return readConceptionAgentConfig(conceptionPath, [
-    { rel: '__opencode__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md') },
-  ]);
+/** Local-scope Kimi tree at `<conceptionPath>/.kimi/skills/`. */
+export function readKimiSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
+  return readSkillsTreeForTab('local', conceptionPath, 'kimi', '');
 }
 
-async function readConceptionAgentConfig(
-  _conceptionPath: string,
-  candidates: ReadonlyArray<{ rel: string; abs: string }>,
+/** Local-scope OpenCode tree at `<conceptionPath>/.opencode/skills/`. */
+export function readOpencodeSkillsTree(conceptionPath: string): Promise<SkillNode | null> {
+  return readSkillsTreeForTab('local', conceptionPath, 'opencode', '');
+}
+
+/** Resolve the on-disk skills directory for a (scope, tab) pair. */
+function skillsRootFor(
+  scope: SkillScope,
+  conceptionPath: string,
+  tab: SkillTab,
+  skillsRelPath: string,
+): string {
+  if (scope === 'global') return userSkillsRoot(tab);
+  switch (tab) {
+    case 'generic':
+      return join(conceptionPath, '.agents', 'skills');
+    case 'kimi':
+      return join(conceptionPath, '.kimi', 'skills');
+    case 'opencode':
+      return join(conceptionPath, '.opencode', 'skills');
+    case 'claude':
+      return join(conceptionPath, skillsRelPath);
+  }
+}
+
+interface AgentConfigCandidate {
+  /** Sentinel-prefixed synthetic relPath; can't collide with a real skill. */
+  rel: string;
+  abs: string;
+  /** Short uppercase badge the renderer shows on the callout. */
+  badge: string;
+}
+
+/** The agent-config files to inject at the root for a (scope, tab) pair. */
+function agentConfigCandidates(
+  scope: SkillScope,
+  conceptionPath: string,
+  tab: SkillTab,
+): AgentConfigCandidate[] {
+  if (tab === 'generic') {
+    const dir =
+      scope === 'global' ? userAgentConfigRoot() : join(conceptionPath, '.agents', 'agents');
+    return GENERIC_AGENT_SOURCES.map((file) => ({
+      rel: `__agents__/${file}`,
+      abs: join(dir, file),
+      badge: file.replace(/\.md$/, '').toUpperCase(),
+    }));
+  }
+  if (scope === 'global') {
+    const abs = userAgentConfigOutput(tab);
+    const badge = tab === 'claude' ? 'CLAUDE' : tab === 'kimi' ? 'KIMI' : 'AGENTS';
+    return [{ rel: `__${tab}__/${basename(abs)}`, abs, badge }];
+  }
+  switch (tab) {
+    case 'claude':
+      return [
+        { rel: '__claude__/CLAUDE.md', abs: join(conceptionPath, 'CLAUDE.md'), badge: 'CLAUDE' },
+        {
+          rel: '__claude__/.claude/CLAUDE.md',
+          abs: join(conceptionPath, '.claude', 'CLAUDE.md'),
+          badge: 'CLAUDE',
+        },
+      ];
+    case 'kimi':
+      return [
+        { rel: '__kimi__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md'), badge: 'AGENTS' },
+        {
+          rel: '__kimi__/.kimi/AGENTS.md',
+          abs: join(conceptionPath, '.kimi', 'AGENTS.md'),
+          badge: 'AGENTS',
+        },
+      ];
+    case 'opencode':
+      return [
+        { rel: '__opencode__/AGENTS.md', abs: join(conceptionPath, 'AGENTS.md'), badge: 'AGENTS' },
+      ];
+    default:
+      return [];
+  }
+}
+
+/** Probe each candidate and return a synthetic SkillNode for whichever exist,
+ *  in declaration order. The `badge` field marks them read-only callouts. */
+async function readAgentConfigEntries(
+  scope: SkillScope,
+  conceptionPath: string,
+  tab: SkillTab,
 ): Promise<SkillNode[]> {
   const found: SkillNode[] = [];
-  for (const { rel, abs } of candidates) {
+  for (const { rel, abs, badge } of agentConfigCandidates(scope, conceptionPath, tab)) {
     try {
       const stat = await fs.stat(abs);
       if (!stat.isFile()) continue;
@@ -195,6 +199,7 @@ async function readConceptionAgentConfig(
       title: meta.title,
       kind: 'file',
       summary: meta.summary,
+      badge,
     });
   }
   return found;

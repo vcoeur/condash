@@ -17,6 +17,7 @@ import type {
   ResourceNode,
   SearchResults,
   SkillNode,
+  SkillScope,
   SkillTab,
   StepMarker,
   TermDataMessage,
@@ -41,13 +42,20 @@ export interface CondashApi {
    * carrying mime + coarse category for the renderer's icon picker.
    * Resolves to null when the directory is missing. */
   readResourcesTree(): Promise<ResourceNode | null>;
-  /** Tree under the active skills tab's root:
-   *  - generic → `.agents/skills/` (`.md` and `.yaml` files)
-   *  - claude  → `<conception>/<skills_path>` (`.md` only)
-   *  - kimi    → `.kimi/skills/` (`.md` only)
+  /** Tree under the active skills tab's root, for the given scope.
+   *  `local` reads the conception; `global` reads the per-machine user scope
+   *  (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`):
+   *  - generic → `…/skills/` (`.md` and `.yaml`) + `common.md`/`<model>.md` sources
+   *  - claude  → `…/skills/` (`.md` only) + the compiled `CLAUDE.md`
+   *  - kimi    → `…/skills/` (`.md` only) + `AGENTS.md` / `global-agent.yaml`
+   *  - opencode→ `…/skills/` (`.md` only) + `AGENTS.md`
    * Shipped-SHA stamps are populated from `.condash-skills.json` when present.
-   * Resolves to null when the directory is missing. */
-  readSkillsTree(tab: SkillTab): Promise<SkillNode | null>;
+   * Resolves to null when the directory and all agent-config files are absent. */
+  readSkillsTree(scope: SkillScope, tab: SkillTab): Promise<SkillNode | null>;
+  /** Read-only content of a Skills-pane file. Permits the active conception
+   *  and the user-scope skill / agent-config locations (global scope lives
+   *  outside the conception); rejects anything else. */
+  readSkillFile(path: string): Promise<string>;
   search(query: string): Promise<SearchResults>;
   listRepos(): Promise<RepoEntry[]>;
   /** Per-primary partial reload — returns the primary's `RepoEntry` plus
@@ -135,6 +143,10 @@ export interface CondashApi {
   /** Active tab in the Skills pane. Persisted per-machine in settings.json. */
   getSkillsActiveTab(): Promise<SkillTab>;
   setSkillsActiveTab(tab: SkillTab): Promise<void>;
+  /** Active scope (local conception vs global user scope) in the Skills pane.
+   *  Persisted per-machine; defaults to `local`. */
+  getSkillsActiveScope(): Promise<SkillScope>;
+  setSkillsActiveScope(scope: SkillScope): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
    * for the settings modal's "Open externally" button. */
   getSettingsPath(): Promise<string>;

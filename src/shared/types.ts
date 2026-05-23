@@ -187,6 +187,15 @@ export type SkillTab = 'generic' | 'claude' | 'kimi' | 'opencode';
 
 export const SKILL_TABS: readonly SkillTab[] = ['generic', 'claude', 'kimi', 'opencode'] as const;
 
+/** Scope toggle in the Skills pane. `local` reads the active conception's
+ *  skills + agent configs; `global` reads the per-machine user scope under
+ *  `~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`.
+ *  The global scope is read-only — it mirrors what `condash skills install
+ *  --user` lays down. */
+export type SkillScope = 'local' | 'global';
+
+export const SKILL_SCOPES: readonly SkillScope[] = ['local', 'global'] as const;
+
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, working surface on the right) and a bottom band (Terminal).
  * Each band can be hidden independently; the working surface is also
@@ -257,6 +266,9 @@ export interface Settings {
    *  launch reopens whichever tab the user last looked at. Defaults to
    *  `claude` (preserves pre-tabs behaviour for existing users). */
   skillsActiveTab?: SkillTab;
+  /** Active scope toggle in the Skills pane (local conception vs global
+   *  user scope). Persisted per-machine; defaults to `local`. */
+  skillsActiveScope?: SkillScope;
 }
 
 /** Sets of expanded directory `relPath`s for the three tree panes. The
@@ -777,6 +789,13 @@ export interface SkillNode {
   summary?: string;
   /** Shipped-file tracking, when the manifest covers this file. Files only. */
   shipped?: SkillShippedInfo;
+  /** Set on synthetic agent-config entries injected at the skills root
+   *  (CLAUDE.md / AGENTS.md / the Generic `common.md` + `<model>.md`
+   *  sources). Carries the short uppercase badge the renderer shows
+   *  ('CLAUDE', 'AGENTS', 'KIMI', 'COMMON', …); its presence is also how
+   *  the renderer tells these read-only callouts apart from real skill
+   *  files. Absent on every on-disk skill node. */
+  badge?: string;
 }
 
 /**
