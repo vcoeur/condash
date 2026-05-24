@@ -154,27 +154,24 @@ export interface OpencodeVariant {
   reasoningSummary?: string;
 }
 
-/** A per-agent default variant assignment → `agent.<name>.variant`. `variant` is
- *  the name of an `OpencodeVariant`. */
-export interface OpencodeAgentVariant {
+/** A per-agent override → `agent.<name>.{model,variant}`. Sets a different model
+ *  and/or a default variant for one opencode agent. `model` is a `<provider>/<model>`
+ *  string; `variant` is the name of an `OpencodeVariant`. Either may be blank. */
+export interface OpencodeAgentOverride {
   agent: string;
-  variant: string;
+  model?: string;
+  variant?: string;
 }
 
 /**
  * opencode harness config. Rendered into an inline `OPENCODE_CONFIG_CONTENT`
  * JSON document (no `opencode.json` file needed — same trick as the
- * `opencode-deepseek-auto` wrapper): top-level `model` is the default; the
- * per-agent `build` / `plan` model overrides and any `extraConfigJson` keys
- * are merged in.
+ * `opencode-deepseek-auto` wrapper): top-level `model` is the default; per-agent
+ * `{model,variant}` overrides and any `extraConfigJson` keys are merged in.
  */
 export interface OpencodeAgentConfig {
   /** Top-level `model` (`<provider>/<model>`) — opencode's default model. */
   model: string;
-  /** `agent.build.model` override. Blank = inherit the default. */
-  buildModel?: string;
-  /** `agent.plan.model` override. Blank = inherit the default. */
-  planModel?: string;
   /** Sets `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` so only `.opencode/` skills load. */
   disableExternalSkills: boolean;
   /** Named model variants → `provider.<id>.models.<model>.variants`. Each bundles
@@ -184,9 +181,10 @@ export interface OpencodeAgentConfig {
   /** Default variant applied to every agent → `agent.<name>.variant` for each
    *  built-in agent (unless overridden below). References a `variants` name. */
   defaultVariant?: string;
-  /** Per-agent variant overrides → `agent.<name>.variant`, winning over the
-   *  default for specific agents. References a `variants` name. */
-  agentVariants?: OpencodeAgentVariant[];
+  /** Per-agent overrides → `agent.<name>.model` / `agent.<name>.variant`. A model
+   *  override gives that agent its own model (e.g. plan vs build); a variant
+   *  override wins over `defaultVariant` for that agent. */
+  agentOverrides?: OpencodeAgentOverride[];
   /** Raw JSON merged into the inline config — escape hatch for any other
    *  opencode.json key (theme, provider, mcp, …). Blank = none. */
   extraConfigJson?: string;
@@ -429,40 +427,48 @@ function buildOpencodeSpawn(
   const config: Record<string, unknown> = {};
   if (cfg.extraConfigJson?.trim()) Object.assign(config, JSON.parse(cfg.extraConfigJson));
   if (cfg.model.trim()) config.model = cfg.model;
-  const agent: Record<string, unknown> = { ...((config.agent as Record<string, unknown>) ?? {}) };
-  if (cfg.buildModel?.trim()) {
-    agent.build = { ...((agent.build as Record<string, unknown>) ?? {}), model: cfg.buildModel };
-  }
-  if (cfg.planModel?.trim()) {
-    agent.plan = { ...((agent.plan as Record<string, unknown>) ?? {}), model: cfg.planModel };
-  }
-  // Variant assignment → `agent.<name>.variant`. The default variant applies to
-  // every built-in agent; a per-agent override wins for that agent. A variant
-  // only applies when the agent uses its configured model, so pin the agent's
-  // model too (its model override if one was set above, else the default model).
-  const defaultVariant = cfg.defaultVariant?.trim();
-  const variantOverrides = new Map(
-    (cfg.agentVariants ?? [])
-      .filter((av) => av.agent.trim() && av.variant.trim())
-      .map((av) => [av.agent.trim(), av.variant.trim()] as const),
+  const defaultModel = cfg.model.trim();
+
+  // Index the per-agent overrides by agent name (model and/or variant).
+  const overrides = new Map(
+    (cfg.agentOverrides ?? [])
+      .filter((o) => o.agent.trim())
+      .map(
+        (o) => [o.agent.trim(), { model: o.model?.trim(), variant: o.variant?.trim() }] as const,
+      ),
   );
+  const defaultVariant = cfg.defaultVariant?.trim();
+
+  // Per-agent `agent.<name>.{model,variant}`. The default variant applies to every
+  // built-in agent unless its override sets one; a variant only applies to the
+  // agent's configured model, so pin the agent's model (its override, else the
+  // default) whenever a variant is set.
+  const agent: Record<string, unknown> = { ...((config.agent as Record<string, unknown>) ?? {}) };
   for (const name of OPENCODE_AGENT_NAMES) {
-    const variant = variantOverrides.get(name) ?? defaultVariant;
-    if (!variant) continue;
+    const override = overrides.get(name);
+    const model = override?.model;
+    const variant = override?.variant || defaultVariant;
+    if (!model && !variant) continue;
     const entry = { ...((agent[name] as Record<string, unknown>) ?? {}) };
-    entry.variant = variant;
-    if (entry.model == null && cfg.model.trim()) entry.model = cfg.model.trim();
+    if (model) entry.model = model;
+    if (variant) {
+      entry.variant = variant;
+      if (entry.model == null && defaultModel) entry.model = defaultModel;
+    }
     agent[name] = entry;
   }
   if (Object.keys(agent).length > 0) config.agent = agent;
+
   // Named variants → `provider.<id>.models.<model>.variants` for every model the
-  // agent references, so `agent.<name>.variant` resolves whichever model runs and
-  // opencode's `variant_cycle` (ctrl+t) can switch between them in the TUI.
+  // agent references (the default + any per-agent model override), so a chosen
+  // `agent.<name>.variant` resolves and opencode's `variant_cycle` (ctrl+t) can
+  // switch between them in the TUI.
+  const referencedModels = new Set<string>();
+  if (defaultModel) referencedModels.add(defaultModel);
+  for (const o of overrides.values()) if (o.model) referencedModels.add(o.model);
   for (const variant of cfg.variants ?? []) {
     if (!variant.name.trim()) continue;
-    for (const modelRef of [cfg.model, cfg.buildModel, cfg.planModel]) {
-      if (modelRef?.trim()) setModelVariant(config, modelRef.trim(), variant);
-    }
+    for (const modelRef of referencedModels) setModelVariant(config, modelRef, variant);
   }
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
 
@@ -684,9 +690,11 @@ export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
     secretEnv: '',
     config: {
       model: 'deepseek/deepseek-v4-flash',
-      buildModel: 'deepseek/deepseek-v4-pro',
-      planModel: 'deepseek/deepseek-v4-pro',
       disableExternalSkills: true,
+      agentOverrides: [
+        { agent: 'build', model: 'deepseek/deepseek-v4-pro' },
+        { agent: 'plan', model: 'deepseek/deepseek-v4-pro' },
+      ],
     },
   },
   kimi: {

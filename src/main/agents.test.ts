@@ -162,7 +162,7 @@ describe('legacy + space-named files', () => {
 });
 
 describe('opencode build/plan persistence', () => {
-  it('round-trips build/plan model overrides + extra config through write → read', async () => {
+  it('round-trips per-agent model overrides + extra config through write → read', async () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'deepseek-auto',
@@ -170,9 +170,11 @@ describe('opencode build/plan persistence', () => {
       secretEnv: 'DEEPSEEK_API_KEY',
       config: {
         model: 'deepseek/deepseek-v4-flash',
-        buildModel: 'deepseek/deepseek-v4-pro',
-        planModel: 'deepseek/deepseek-v4-pro',
         disableExternalSkills: true,
+        agentOverrides: [
+          { agent: 'build', model: 'deepseek/deepseek-v4-pro' },
+          { agent: 'plan', model: 'deepseek/deepseek-v4-pro' },
+        ],
         extraConfigJson: '{"theme":"tokyonight"}',
       },
     };
@@ -204,7 +206,7 @@ describe('opencode build/plan persistence', () => {
     expect(cfg.defaultVariant).toBeUndefined();
   });
 
-  it('round-trips named variants + default + per-agent variant assignments', async () => {
+  it('round-trips variants + default + per-agent model/variant overrides', async () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'deepseek-pro',
@@ -217,7 +219,10 @@ describe('opencode build/plan persistence', () => {
           { name: 'fast', reasoningEffort: 'low', textVerbosity: 'low' },
         ],
         defaultVariant: 'fast',
-        agentVariants: [{ agent: 'plan', variant: 'deep' }],
+        agentOverrides: [
+          { agent: 'plan', model: 'deepseek/deepseek-v4-pro', variant: 'deep' },
+          { agent: 'general', variant: 'fast' },
+        ],
       },
     };
     await writeAgent(dir, def);

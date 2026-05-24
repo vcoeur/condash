@@ -322,7 +322,8 @@
   gap: 0.4rem;
 }
 
-.agents-override-row select {
+.agents-override-row select,
+.agents-override-row input {
   flex: 1 1 0;
   min-width: 0;
 }

@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createSignal, For, Index, onCleanup, onMount, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import {
   type AgentDef,
@@ -8,7 +8,7 @@ import {
   type HarnessId,
   type KimiAgentConfig,
   type OpencodeAgentConfig,
-  type OpencodeAgentVariant,
+  type OpencodeAgentOverride,
   type OpencodeVariant,
   buildSpawn,
   CLAUDE_PRESETS,
@@ -385,33 +385,33 @@ function AgentEditor(props: {
     setVariants(variants().map((v, i) => (i === idx ? { ...v, ...p } : v)));
   const removeVariant = (idx: number) => setVariants(variants().filter((_, i) => i !== idx));
 
-  // --- opencode per-agent variant assignment ---
-  const agentVariants = (): OpencodeAgentVariant[] => d().opencode.agentVariants ?? [];
   const variantNames = () =>
     variants()
       .map((v) => v.name.trim())
       .filter((n) => n.length > 0);
-  const usedVariantAgents = () => new Set(agentVariants().map((a) => a.agent));
-  const variantAgentOptions = (current: string) =>
-    OPENCODE_AGENT_NAMES.filter((n) => n === current || !usedVariantAgents().has(n));
-  const availableVariantAgents = () =>
-    OPENCODE_AGENT_NAMES.filter((n) => !usedVariantAgents().has(n));
-  const setAgentVariants = (next: OpencodeAgentVariant[]) =>
-    props.patch({
-      opencode: { ...d().opencode, agentVariants: next.length > 0 ? next : undefined },
-    });
-  const addAgentVariant = () => {
-    const agent = availableVariantAgents()[0];
-    const variant = variantNames()[0];
-    if (!agent || !variant) return;
-    setAgentVariants([...agentVariants(), { agent, variant }]);
-  };
-  const patchAgentVariant = (idx: number, p: Partial<OpencodeAgentVariant>) =>
-    setAgentVariants(agentVariants().map((a, i) => (i === idx ? { ...a, ...p } : a)));
-  const removeAgentVariant = (idx: number) =>
-    setAgentVariants(agentVariants().filter((_, i) => i !== idx));
   const setDefaultVariant = (name: string) =>
     props.patch({ opencode: { ...d().opencode, defaultVariant: name || undefined } });
+
+  // --- opencode per-agent overrides (model and/or variant) ---
+  const agentOverrides = (): OpencodeAgentOverride[] => d().opencode.agentOverrides ?? [];
+  const usedOverrideAgents = () => new Set(agentOverrides().map((o) => o.agent));
+  const overrideAgentOptions = (current: string) =>
+    OPENCODE_AGENT_NAMES.filter((n) => n === current || !usedOverrideAgents().has(n));
+  const availableOverrideAgents = () =>
+    OPENCODE_AGENT_NAMES.filter((n) => !usedOverrideAgents().has(n));
+  const setAgentOverrides = (next: OpencodeAgentOverride[]) =>
+    props.patch({
+      opencode: { ...d().opencode, agentOverrides: next.length > 0 ? next : undefined },
+    });
+  const addAgentOverride = () => {
+    const agent = availableOverrideAgents()[0];
+    if (!agent) return;
+    setAgentOverrides([...agentOverrides(), { agent }]);
+  };
+  const patchAgentOverride = (idx: number, p: Partial<OpencodeAgentOverride>) =>
+    setAgentOverrides(agentOverrides().map((o, i) => (i === idx ? { ...o, ...p } : o)));
+  const removeAgentOverride = (idx: number) =>
+    setAgentOverrides(agentOverrides().filter((_, i) => i !== idx));
 
   /** Re-suggest the slug from `name` under `harness`, unless the user has
    *  hand-edited the slug or is editing an existing agent (slug is frozen). */
@@ -631,63 +631,37 @@ function AgentEditor(props: {
                 }
               />
             </label>
-            <label>
-              <span>Build agent model (optional override)</span>
-              <input
-                type="text"
-                placeholder="inherit default"
-                value={d().opencode.buildModel ?? ''}
-                onInput={(e) =>
-                  props.patch({
-                    opencode: { ...d().opencode, buildModel: e.currentTarget.value || undefined },
-                  })
-                }
-              />
-            </label>
-            <label>
-              <span>Plan agent model (optional override)</span>
-              <input
-                type="text"
-                placeholder="inherit default"
-                value={d().opencode.planModel ?? ''}
-                onInput={(e) =>
-                  props.patch({
-                    opencode: { ...d().opencode, planModel: e.currentTarget.value || undefined },
-                  })
-                }
-              />
-            </label>
             <div class="agents-overrides">
               <span class="agents-overrides-label">
                 Variants — switch live in the opencode TUI with <code>ctrl+t</code>
               </span>
-              <For each={variants()}>
+              <Index each={variants()}>
                 {(v, i) => (
                   <div class="agents-variant-row">
                     <input
                       type="text"
                       class="agents-variant-name"
                       placeholder="name (e.g. deep)"
-                      value={v.name}
-                      onInput={(e) => patchVariant(i(), { name: e.currentTarget.value })}
+                      value={v().name}
+                      onInput={(e) => patchVariant(i, { name: e.currentTarget.value })}
                     />
                     <select
                       title="reasoningEffort"
-                      value={v.reasoningEffort ?? ''}
+                      value={v().reasoningEffort ?? ''}
                       onChange={(e) =>
-                        patchVariant(i(), { reasoningEffort: e.currentTarget.value || undefined })
+                        patchVariant(i, { reasoningEffort: e.currentTarget.value || undefined })
                       }
                     >
                       <option value="">effort —</option>
-                      <For each={effortOptions(v.reasoningEffort)}>
+                      <For each={effortOptions(v().reasoningEffort)}>
                         {(x) => <option value={x}>{x}</option>}
                       </For>
                     </select>
                     <select
                       title="textVerbosity"
-                      value={v.textVerbosity ?? ''}
+                      value={v().textVerbosity ?? ''}
                       onChange={(e) =>
-                        patchVariant(i(), { textVerbosity: e.currentTarget.value || undefined })
+                        patchVariant(i, { textVerbosity: e.currentTarget.value || undefined })
                       }
                     >
                       <option value="">verbosity —</option>
@@ -697,9 +671,9 @@ function AgentEditor(props: {
                     </select>
                     <select
                       title="reasoningSummary"
-                      value={v.reasoningSummary ?? ''}
+                      value={v().reasoningSummary ?? ''}
                       onChange={(e) =>
-                        patchVariant(i(), { reasoningSummary: e.currentTarget.value || undefined })
+                        patchVariant(i, { reasoningSummary: e.currentTarget.value || undefined })
                       }
                     >
                       <option value="">summary —</option>
@@ -711,13 +685,13 @@ function AgentEditor(props: {
                       type="button"
                       class="agents-danger agents-override-remove"
                       title="Remove this variant"
-                      onClick={() => removeVariant(i())}
+                      onClick={() => removeVariant(i)}
                     >
                       ×
                     </button>
                   </div>
                 )}
-              </For>
+              </Index>
               <button type="button" onClick={addVariant}>
                 + Add variant
               </button>
@@ -734,41 +708,55 @@ function AgentEditor(props: {
               </select>
             </label>
             <div class="agents-overrides">
-              <span class="agents-overrides-label">Per-agent variant (overrides the default)</span>
-              <For each={agentVariants()}>
-                {(av, i) => (
+              <span class="agents-overrides-label">
+                Per-agent override — own model and/or variant (e.g. plan vs build)
+              </span>
+              <Index each={agentOverrides()}>
+                {(o, i) => (
                   <div class="agents-override-row">
                     <select
-                      value={av.agent}
-                      onChange={(e) => patchAgentVariant(i(), { agent: e.currentTarget.value })}
+                      value={o().agent}
+                      onChange={(e) => patchAgentOverride(i, { agent: e.currentTarget.value })}
                     >
-                      <For each={variantAgentOptions(av.agent)}>
+                      <For each={overrideAgentOptions(o().agent)}>
                         {(n) => <option value={n}>{n}</option>}
                       </For>
                     </select>
+                    <input
+                      type="text"
+                      class="agents-override-model"
+                      placeholder="model (inherit default)"
+                      value={o().model ?? ''}
+                      onInput={(e) =>
+                        patchAgentOverride(i, { model: e.currentTarget.value || undefined })
+                      }
+                    />
                     <select
-                      value={av.variant}
-                      onChange={(e) => patchAgentVariant(i(), { variant: e.currentTarget.value })}
+                      value={o().variant ?? ''}
+                      onChange={(e) =>
+                        patchAgentOverride(i, { variant: e.currentTarget.value || undefined })
+                      }
                     >
+                      <option value="">variant —</option>
                       <For each={variantNames()}>{(n) => <option value={n}>{n}</option>}</For>
                     </select>
                     <button
                       type="button"
                       class="agents-danger agents-override-remove"
-                      title="Remove this assignment"
-                      onClick={() => removeAgentVariant(i())}
+                      title="Remove this override"
+                      onClick={() => removeAgentOverride(i)}
                     >
                       ×
                     </button>
                   </div>
                 )}
-              </For>
+              </Index>
               <button
                 type="button"
-                onClick={addAgentVariant}
-                disabled={variantNames().length === 0 || availableVariantAgents().length === 0}
+                onClick={addAgentOverride}
+                disabled={availableOverrideAgents().length === 0}
               >
-                + Assign variant to agent
+                + Add agent override
               </button>
             </div>
             <label class="agents-checkbox">
@@ -802,14 +790,14 @@ function AgentEditor(props: {
             </label>
             <p class="agents-editor-note">
               condash inlines this as <code>OPENCODE_CONFIG_CONTENT</code> (no{' '}
-              <code>opencode.json</code> needed): top-level <code>model</code> is the default;
-              build/plan overrides become <code>agent.build.model</code> /{' '}
-              <code>agent.plan.model</code>. Variants become{' '}
-              <code>provider.&lt;id&gt;.models.&lt;model&gt;.variants</code>; the default variant
-              (and per-agent overrides) set <code>agent.&lt;name&gt;.variant</code>. Extra JSON is
-              merged underneath. Auth via <code>opencode auth login</code> — leave the token field
-              blank unless your provider reads a key from the environment (a stray key can collide
-              with opencode's OAuth).
+              <code>opencode.json</code> needed): top-level <code>model</code> is the default.
+              Variants become <code>provider.&lt;id&gt;.models.&lt;model&gt;.variants</code>; the
+              default variant (and per-agent overrides) set <code>agent.&lt;name&gt;.variant</code>,
+              and a per-agent <strong>model</strong> sets <code>agent.&lt;name&gt;.model</code> (so
+              e.g. plan and build can run different models). Extra JSON is merged underneath. Auth
+              via <code>opencode auth login</code> — leave the token field blank unless your
+              provider reads a key from the environment (a stray key can collide with opencode's
+              OAuth).
             </p>
           </Show>
 
