@@ -70,6 +70,8 @@ const opencodeConfigSchema = z.object({
   planModel: z.string().optional(),
   disableExternalSkills: z.boolean(),
   effortLevel: z.string().optional(),
+  // Optional so agent JSON written before this field existed still validates.
+  reasoningOverrides: z.array(z.object({ agent: z.string(), effort: z.string() })).optional(),
   extraConfigJson: z
     .string()
     .optional()

@@ -352,3 +352,65 @@ describe('buildSpawn — effort level', () => {
     expect(ds.options.baseURL).toBe('x');
   });
 });
+
+describe('buildSpawn — opencode per-agent effort overrides', () => {
+  it('emits agent.<name>.options.reasoningEffort, coexisting with the default', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        effortLevel: 'medium',
+        reasoningOverrides: [
+          { agent: 'plan', effort: 'xhigh' },
+          { agent: 'general', effort: 'low' },
+        ],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    // default → base model option; overrides → per-agent options.
+    expect(cfg.provider.deepseek.models['deepseek-v4-pro'].options.reasoningEffort).toBe('medium');
+    expect(cfg.agent.plan.options.reasoningEffort).toBe('xhigh');
+    expect(cfg.agent.general.options.reasoningEffort).toBe('low');
+  });
+
+  it('merges an override into the same agent node as a model override', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-flash',
+        planModel: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        reasoningOverrides: [{ agent: 'plan', effort: 'xhigh' }],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    // agent.plan carries both the model override and the effort override.
+    expect(cfg.agent.plan).toEqual({
+      model: 'deepseek/deepseek-v4-pro',
+      options: { reasoningEffort: 'xhigh' },
+    });
+  });
+
+  it('skips blank overrides and emits no agent key when none apply', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-flash',
+        disableExternalSkills: true,
+        reasoningOverrides: [
+          { agent: '', effort: 'high' },
+          { agent: 'plan', effort: '  ' },
+        ],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    expect(cfg).not.toHaveProperty('agent');
+  });
+});

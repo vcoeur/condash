@@ -118,6 +118,30 @@ export interface KimiAgentConfig {
   configInline?: string;
 }
 
+/** A per-agent reasoning-effort override → `agent.<name>.options.reasoningEffort`
+ *  in the inline opencode config. `agent` is an opencode agent name (build,
+ *  plan, a subagent); `effort` is one of `OPENCODE_REASONING_EFFORTS`. */
+export interface OpencodeReasoningOverride {
+  agent: string;
+  effort: string;
+}
+
+/** Fixed reasoning-effort values offered in the UI, ascending. opencode's
+ *  documented enum (1.15.10); per-model/agent `options` is freeform, so a
+ *  provider that doesn't recognise a value just ignores it. */
+export const OPENCODE_REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+] as const;
+
+/** opencode's built-in agent names, offered as override targets. `agent.<name>`
+ *  is a freeform Record, so naming an agent that doesn't exist is harmless. */
+export const OPENCODE_AGENT_NAMES = ['build', 'plan', 'general', 'explore', 'scout'] as const;
+
 /**
  * opencode harness config. Rendered into an inline `OPENCODE_CONFIG_CONTENT`
  * JSON document (no `opencode.json` file needed — same trick as the
@@ -134,9 +158,12 @@ export interface OpencodeAgentConfig {
   planModel?: string;
   /** Sets `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` so only `.opencode/` skills load. */
   disableExternalSkills: boolean;
-  /** Top-level `options.reasoningEffort` in the inline config — reasoning-effort
-   *  level for the default model (e.g. `max`). Blank = omit. */
+  /** Default reasoning effort — `provider.<id>.models.<model>.options.reasoningEffort`
+   *  for every model the agent references. Blank = omit. */
   effortLevel?: string;
+  /** Per-opencode-agent reasoning-effort overrides, layered on top of the
+   *  default as `agent.<name>.options.reasoningEffort`. Blank/empty = none. */
+  reasoningOverrides?: OpencodeReasoningOverride[];
   /** Raw JSON merged into the inline config — escape hatch for any other
    *  opencode.json key (theme, provider, mcp, …). Blank = none. */
   extraConfigJson?: string;
@@ -385,6 +412,20 @@ function buildOpencodeSpawn(
   }
   if (cfg.planModel?.trim()) {
     agent.plan = { ...((agent.plan as Record<string, unknown>) ?? {}), model: cfg.planModel };
+  }
+  // Per-agent reasoning-effort overrides → `agent.<name>.options.reasoningEffort`,
+  // merged into the same node as any model override so e.g. `agent.plan` can
+  // carry both `model` and `options`. Last write wins on a duplicated agent name.
+  for (const override of cfg.reasoningOverrides ?? []) {
+    const name = override.agent.trim();
+    const effort = override.effort.trim();
+    if (!name || !effort) continue;
+    const entry = { ...((agent[name] as Record<string, unknown>) ?? {}) };
+    entry.options = {
+      ...((entry.options as Record<string, unknown>) ?? {}),
+      reasoningEffort: effort,
+    };
+    agent[name] = entry;
   }
   if (Object.keys(agent).length > 0) config.agent = agent;
   // Reasoning effort is a *model* option in opencode. Its top-level Config is a
