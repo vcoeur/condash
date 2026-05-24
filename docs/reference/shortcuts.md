@@ -131,12 +131,13 @@ These live inside xterm's `attachCustomKeyEventHandler` and only fire while a te
 |---|---|
 | `Ctrl+C` | Copy the selection if there is one; otherwise send `SIGINT` to the foreground process. |
 | `Ctrl+Shift+C` | Always copy (no-op with no selection). |
-| `Ctrl+V` / `Ctrl+Shift+V` | Paste from the system clipboard via the renderer's `navigator.clipboard` API. `Ctrl+Shift+V` is intercepted by the screenshot-paste handler unless rebound. |
+| `Ctrl+V` | Paste from the system clipboard. The clipboard is read in the main process (`clipboardReadText` IPC) and fed through `term.paste()`, which applies bracketed-paste wrapping when the program has that mode on. |
+| `Ctrl+Shift+V` | Paste the path of the newest screenshot — intercepted by the screenshot-paste handler unless rebound. |
 | `Ctrl+F` | Open the in-tab **search bar** (xterm search addon). `Esc` closes it. |
 | `Ctrl+Up` / `Ctrl+Down` | Jump to the previous / next OSC 133 prompt boundary in the active tab. Requires the [shell integration snippet](../guides/terminal.md#shell-integration); without it, the keys fall through to the shell. |
 | `Ctrl+Left` / `Ctrl+Right` | Same as the pane-level move-tab shortcuts — intercepted here because xterm consumes arrow keys. |
 
-Clipboard plumbing reads and writes the system clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API. There is no HTTP endpoint and no native bridge.
+Copy writes the system clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API. Paste reads it through the `clipboardReadText` IPC (main-process Electron `clipboard`), because `navigator.clipboard.readText()` is permission-gated and unreliable in the renderer. There is no HTTP endpoint.
 
 ## Input focus rules
 

@@ -81,6 +81,7 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 |---|---|
 | `termSpawn(request)` | Allocate a pty (setsid → own process group), return session id and resolved cwd. |
 | `termWrite(id, data)` | Forward stdin bytes. |
+| `clipboardReadText()` | Read the system clipboard via the main-process Electron `clipboard`. Backs the terminal's `Ctrl+V` handler — the renderer's `navigator.clipboard.readText()` is permission-gated and unreliable. |
 | `termResize(id, cols, rows)` | `TIOCSWINSZ` on the pty. |
 | `termClose(id)` | Run the kill pipeline: `SIGTERM` → optional `force_stop` → 500ms wait → `SIGKILL` on the process group. |
 | `termList()` | Snapshot of live (or recently-exited) sessions. Used by the panel rebuild on pane switch. |
@@ -199,7 +200,7 @@ Every entry maps one-to-one to a menu item — see [Keyboard shortcuts — Appli
 
 ## What is intentionally **not** here
 
-- **No HTTP fallback.** No clipboard endpoint, no asset routes, no embedded server. The renderer reads the system clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API.
+- **No HTTP fallback.** No clipboard endpoint, no asset routes, no embedded server. Copy writes the clipboard through the browser's native [`navigator.clipboard`](https://developer.mozilla.org/docs/Web/API/Clipboard_API) API; paste reads it through the `clipboardReadText` IPC (main-process Electron `clipboard`), since `navigator.clipboard.readText()` is permission-gated in the renderer.
 - **No vendored CDN bundles.** Electron ships Chromium directly; assets are bundled into the asar at package time.
 - **No auth layer.** condash is single-user, local-only.
 - **No `step set`-style verbs.** Step markers cycle only through `toggleStep`; there is no "set marker to X" verb. Use the cycle.

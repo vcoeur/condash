@@ -182,10 +182,7 @@ export function mountXterm(
     /* image addon optional */
   }
 
-  // ---- write/data wiring + clipboard copy (Ctrl+C) ----
-  // Ctrl+V is intentionally left to xterm.js's native paste via the browser's
-  // paste event on its hidden textarea. The previous navigator.clipboard.readText()
-  // fallback silently failed for external clipboard content in Electron.
+  // ---- write/data wiring + clipboard copy/paste (Ctrl+C / Ctrl+V) ----
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
     const ctrl = ev.ctrlKey && !ev.metaKey;
@@ -198,6 +195,23 @@ export function mountXterm(
         return false;
       }
       return true;
+    }
+    // Ctrl+V: read the system clipboard in the main process and paste through
+    // term.paste(), which applies bracketed-paste wrapping when the program
+    // has that mode on (opencode's TUI relies on it to treat a multi-line
+    // paste as one block). We can't lean on xterm.js's native paste here —
+    // the Electron menu's paste role does not reliably deliver a paste event
+    // to the hidden textarea, and navigator.clipboard.readText() is
+    // permission-gated in the renderer. See the clipboardReadText IPC.
+    if (ctrl && !ev.shiftKey && !ev.altKey && (ev.key === 'v' || ev.key === 'V')) {
+      ev.preventDefault();
+      void window.condash
+        .clipboardReadText()
+        .then((text) => {
+          if (text) term.paste(text);
+        })
+        .catch(() => undefined);
+      return false;
     }
     if (options.onCustomKey) return options.onCustomKey(ev);
     return true;

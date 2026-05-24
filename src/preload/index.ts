@@ -96,6 +96,7 @@ const api: CondashApi = {
   },
   termSpawn: (request) => ipcRenderer.invoke('termSpawn', request),
   termWrite: (id, data) => ipcRenderer.invoke('termWrite', id, data),
+  clipboardReadText: () => ipcRenderer.invoke('clipboardReadText'),
   termResize: (id, cols, rows) => ipcRenderer.invoke('termResize', id, cols, rows),
   termClose: (id) => ipcRenderer.invoke('termClose', id),
   termGetPrefs: () => ipcRenderer.invoke('termGetPrefs'),
