@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import {
   type AgentDef,
@@ -8,7 +8,8 @@ import {
   type HarnessId,
   type KimiAgentConfig,
   type OpencodeAgentConfig,
-  type OpencodeReasoningOverride,
+  type OpencodeAgentVariant,
+  type OpencodeVariant,
   buildSpawn,
   CLAUDE_PRESETS,
   defaultKimiConfig,
@@ -19,6 +20,8 @@ import {
   OPENCODE_AGENT_NAMES,
   OPENCODE_PRESETS,
   OPENCODE_REASONING_EFFORTS,
+  OPENCODE_REASONING_SUMMARIES,
+  OPENCODE_TEXT_VERBOSITIES,
   suggestSlug,
 } from '@shared/harnesses';
 import { ConfirmModal } from '../confirm-modal';
@@ -362,26 +365,53 @@ function AgentEditor(props: {
   const d = props.draft;
   const [confirmDelete, setConfirmDelete] = createSignal(false);
 
-  // --- opencode per-agent reasoning-effort overrides ---
-  const overrides = (): OpencodeReasoningOverride[] => d().opencode.reasoningOverrides ?? [];
-  const usedAgents = () => new Set(overrides().map((o) => o.agent));
-  /** Agent names selectable for a row: the unused built-ins, plus the row's own
-   *  current value so it stays selected. */
-  const agentOptions = (current: string) =>
-    OPENCODE_AGENT_NAMES.filter((n) => n === current || !usedAgents().has(n));
-  const availableAgents = () => OPENCODE_AGENT_NAMES.filter((n) => !usedAgents().has(n));
-  const setOverrides = (next: OpencodeReasoningOverride[]) =>
-    props.patch({
-      opencode: { ...d().opencode, reasoningOverrides: next.length > 0 ? next : undefined },
-    });
-  const addOverride = () => {
-    const agent = availableAgents()[0];
-    if (!agent) return;
-    setOverrides([...overrides(), { agent, effort: 'medium' }]);
+  // Esc closes the editor modal — but defer to the delete-confirm dialog when it
+  // is open (its own handler closes it first).
+  const handleKey = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && !confirmDelete()) {
+      event.preventDefault();
+      props.onCancel();
+    }
   };
-  const patchOverride = (idx: number, p: Partial<OpencodeReasoningOverride>) =>
-    setOverrides(overrides().map((o, i) => (i === idx ? { ...o, ...p } : o)));
-  const removeOverride = (idx: number) => setOverrides(overrides().filter((_, i) => i !== idx));
+  onMount(() => document.addEventListener('keydown', handleKey, true));
+  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
+
+  // --- opencode named variants ---
+  const variants = (): OpencodeVariant[] => d().opencode.variants ?? [];
+  const setVariants = (next: OpencodeVariant[]) =>
+    props.patch({ opencode: { ...d().opencode, variants: next.length > 0 ? next : undefined } });
+  const addVariant = () => setVariants([...variants(), { name: '', reasoningEffort: 'high' }]);
+  const patchVariant = (idx: number, p: Partial<OpencodeVariant>) =>
+    setVariants(variants().map((v, i) => (i === idx ? { ...v, ...p } : v)));
+  const removeVariant = (idx: number) => setVariants(variants().filter((_, i) => i !== idx));
+
+  // --- opencode per-agent variant assignment ---
+  const agentVariants = (): OpencodeAgentVariant[] => d().opencode.agentVariants ?? [];
+  const variantNames = () =>
+    variants()
+      .map((v) => v.name.trim())
+      .filter((n) => n.length > 0);
+  const usedVariantAgents = () => new Set(agentVariants().map((a) => a.agent));
+  const variantAgentOptions = (current: string) =>
+    OPENCODE_AGENT_NAMES.filter((n) => n === current || !usedVariantAgents().has(n));
+  const availableVariantAgents = () =>
+    OPENCODE_AGENT_NAMES.filter((n) => !usedVariantAgents().has(n));
+  const setAgentVariants = (next: OpencodeAgentVariant[]) =>
+    props.patch({
+      opencode: { ...d().opencode, agentVariants: next.length > 0 ? next : undefined },
+    });
+  const addAgentVariant = () => {
+    const agent = availableVariantAgents()[0];
+    const variant = variantNames()[0];
+    if (!agent || !variant) return;
+    setAgentVariants([...agentVariants(), { agent, variant }]);
+  };
+  const patchAgentVariant = (idx: number, p: Partial<OpencodeAgentVariant>) =>
+    setAgentVariants(agentVariants().map((a, i) => (i === idx ? { ...a, ...p } : a)));
+  const removeAgentVariant = (idx: number) =>
+    setAgentVariants(agentVariants().filter((_, i) => i !== idx));
+  const setDefaultVariant = (name: string) =>
+    props.patch({ opencode: { ...d().opencode, defaultVariant: name || undefined } });
 
   /** Re-suggest the slug from `name` under `harness`, unless the user has
    *  hand-edited the slug or is editing an existing agent (slug is frozen). */
@@ -427,405 +457,491 @@ function AgentEditor(props: {
   };
 
   return (
-    <section class="agents-editor">
-      <header>
-        <h3>{d().editingSlug ? `Edit ${d().editingSlug}` : 'New agent'}</h3>
-      </header>
+    <div class="modal-backdrop" onClick={props.onCancel}>
+      <div
+        class="modal agents-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={d().editingSlug ? `Edit ${d().editingSlug}` : 'New agent'}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <section class="agents-editor">
+          <header>
+            <h3>{d().editingSlug ? `Edit ${d().editingSlug}` : 'New agent'}</h3>
+          </header>
 
-      <label>
-        <span>Harness</span>
-        <select
-          value={d().harness}
-          onChange={(e) => selectHarness(e.currentTarget.value as HarnessId)}
-        >
-          <For each={HARNESS_IDS}>{(h) => <option value={h}>{HARNESSES[h].label}</option>}</For>
-        </select>
-      </label>
-
-      <Show when={d().harness === 'claude'}>
-        <label>
-          <span>Preset</span>
-          <select onChange={(e) => applyPreset(e.currentTarget.value)}>
-            <option value="">(custom)</option>
-            <For each={Object.keys(CLAUDE_PRESETS)}>
-              {(k) => (
-                <option value={k} selected={k === d().name}>
-                  {k}
-                </option>
-              )}
-            </For>
-          </select>
-        </label>
-      </Show>
-
-      <label>
-        <span>Name (display label)</span>
-        <input type="text" value={d().name} onInput={(e) => onNameInput(e.currentTarget.value)} />
-      </label>
-
-      <label>
-        <span>Slug (filename + identity)</span>
-        <input
-          type="text"
-          value={d().slug}
-          disabled={d().editingSlug !== null}
-          title={
-            d().editingSlug !== null
-              ? 'The slug is the stable identity and cannot change after creation'
-              : 'Lowercase letters, digits, and single hyphens'
-          }
-          onInput={(e) => onSlugInput(e.currentTarget.value)}
-        />
-      </label>
-
-      <p class="agents-editor-name">
-        File: <code>agents/{d().slug || '…'}.json</code>
-      </p>
-
-      <label>
-        <span>Token env var (in agents/.env)</span>
-        <input
-          type="text"
-          placeholder="DEEPSEEK_API_KEY (blank = no token)"
-          value={d().secretEnv}
-          onInput={(e) => props.patch({ secretEnv: e.currentTarget.value })}
-        />
-      </label>
-
-      <Show when={d().harness === 'kimi'}>
-        <label>
-          <span>Instructions file (injected as system prompt)</span>
-          <input
-            type="text"
-            placeholder="~/.kimi/AGENTS.md (blank = none)"
-            value={d().kimi.instructionsFile ?? ''}
-            onInput={(e) =>
-              props.patch({
-                kimi: { ...d().kimi, instructionsFile: e.currentTarget.value || undefined },
-              })
-            }
-          />
-        </label>
-        <p class="agents-editor-note">
-          condash reads this plain markdown at launch and wraps it into a transient{' '}
-          <code>--agent-file</code> (kimi's <code>ROLE_ADDITIONAL</code>) — so it's not shown in the
-          command preview below. <code>condash skills install</code> writes{' '}
-          <code>~/.kimi/AGENTS.md</code>.
-        </p>
-        <label>
-          <span>Model (--model, blank = config default)</span>
-          <input
-            type="text"
-            value={d().kimi.model ?? ''}
-            onInput={(e) =>
-              props.patch({ kimi: { ...d().kimi, model: e.currentTarget.value || undefined } })
-            }
-          />
-        </label>
-        <label>
-          <span>Thinking mode</span>
-          <select
-            value={d().kimi.thinking === undefined ? 'default' : d().kimi.thinking ? 'on' : 'off'}
-            onChange={(e) => {
-              const v = e.currentTarget.value;
-              props.patch({
-                kimi: { ...d().kimi, thinking: v === 'default' ? undefined : v === 'on' },
-              });
-            }}
-          >
-            <option value="default">config default</option>
-            <option value="on">--thinking</option>
-            <option value="off">--no-thinking</option>
-          </select>
-        </label>
-        <label class="agents-checkbox">
-          <input
-            type="checkbox"
-            checked={d().kimi.plan ?? false}
-            onChange={(e) =>
-              props.patch({ kimi: { ...d().kimi, plan: e.currentTarget.checked || undefined } })
-            }
-          />
-          <span>Start in plan mode (--plan)</span>
-        </label>
-        <label>
-          <span>Inline config (--config TOML/JSON, optional)</span>
-          <textarea
-            class="agents-config-textarea"
-            spellcheck={false}
-            value={d().kimi.configInline ?? ''}
-            onInput={(e) =>
-              props.patch({
-                kimi: { ...d().kimi, configInline: e.currentTarget.value || undefined },
-              })
-            }
-          />
-        </label>
-      </Show>
-
-      <Show when={d().harness === 'opencode'}>
-        <label>
-          <span>Preset</span>
-          <select onChange={(e) => applyOpencodePreset(e.currentTarget.value)}>
-            <option value="">(custom)</option>
-            <For each={Object.keys(OPENCODE_PRESETS)}>
-              {(k) => (
-                <option value={k} selected={k === d().name}>
-                  {k}
-                </option>
-              )}
-            </For>
-          </select>
-        </label>
-        <label>
-          <span>Default model (provider/model)</span>
-          <input
-            type="text"
-            value={d().opencode.model}
-            onInput={(e) =>
-              props.patch({ opencode: { ...d().opencode, model: e.currentTarget.value } })
-            }
-          />
-        </label>
-        <label>
-          <span>Build agent model (optional override)</span>
-          <input
-            type="text"
-            placeholder="inherit default"
-            value={d().opencode.buildModel ?? ''}
-            onInput={(e) =>
-              props.patch({
-                opencode: { ...d().opencode, buildModel: e.currentTarget.value || undefined },
-              })
-            }
-          />
-        </label>
-        <label>
-          <span>Plan agent model (optional override)</span>
-          <input
-            type="text"
-            placeholder="inherit default"
-            value={d().opencode.planModel ?? ''}
-            onInput={(e) =>
-              props.patch({
-                opencode: { ...d().opencode, planModel: e.currentTarget.value || undefined },
-              })
-            }
-          />
-        </label>
-        <label>
-          <span>Default reasoning effort (options.reasoningEffort)</span>
-          <select
-            value={d().opencode.effortLevel ?? ''}
-            onChange={(e) =>
-              props.patch({
-                opencode: { ...d().opencode, effortLevel: e.currentTarget.value || undefined },
-              })
-            }
-          >
-            <option value="">(model default)</option>
-            <For each={effortOptions(d().opencode.effortLevel)}>
-              {(v) => <option value={v}>{v}</option>}
-            </For>
-          </select>
-        </label>
-        <div class="agents-overrides">
-          <span class="agents-overrides-label">Per-agent effort overrides</span>
-          <For each={overrides()}>
-            {(ov, i) => (
-              <div class="agents-override-row">
-                <select
-                  value={ov.agent}
-                  onChange={(e) => patchOverride(i(), { agent: e.currentTarget.value })}
-                >
-                  <For each={agentOptions(ov.agent)}>{(n) => <option value={n}>{n}</option>}</For>
-                </select>
-                <select
-                  value={ov.effort}
-                  onChange={(e) => patchOverride(i(), { effort: e.currentTarget.value })}
-                >
-                  <For each={effortOptions(ov.effort)}>{(v) => <option value={v}>{v}</option>}</For>
-                </select>
-                <button
-                  type="button"
-                  class="agents-danger agents-override-remove"
-                  title="Remove this override"
-                  onClick={() => removeOverride(i())}
-                >
-                  ×
-                </button>
-              </div>
-            )}
-          </For>
-          <button type="button" onClick={addOverride} disabled={availableAgents().length === 0}>
-            + Add override
-          </button>
-        </div>
-        <label class="agents-checkbox">
-          <input
-            type="checkbox"
-            checked={d().opencode.disableExternalSkills}
-            onChange={(e) =>
-              props.patch({
-                opencode: { ...d().opencode, disableExternalSkills: e.currentTarget.checked },
-              })
-            }
-          />
-          <span>Disable external skills (OPENCODE_DISABLE_EXTERNAL_SKILLS)</span>
-        </label>
-        <label>
-          <span>Extra config (JSON merged into OPENCODE_CONFIG_CONTENT)</span>
-          <textarea
-            class="agents-config-textarea"
-            spellcheck={false}
-            placeholder={'{ "theme": "…", "provider": { … } }'}
-            value={d().opencode.extraConfigJson ?? ''}
-            onInput={(e) =>
-              props.patch({
-                opencode: { ...d().opencode, extraConfigJson: e.currentTarget.value || undefined },
-              })
-            }
-          />
-        </label>
-        <p class="agents-editor-note">
-          condash inlines this as <code>OPENCODE_CONFIG_CONTENT</code> (no{' '}
-          <code>opencode.json</code> needed): top-level <code>model</code> is the default;
-          build/plan overrides become <code>agent.build.model</code> / <code>agent.plan.model</code>
-          . The default effort sets <code>options.reasoningEffort</code> on each model; each
-          per-agent override sets <code>agent.&lt;name&gt;.options.reasoningEffort</code>. Extra
-          JSON is merged underneath. Auth via <code>opencode auth login</code> — leave the token
-          field blank unless your provider reads a key from the environment (a stray key can collide
-          with opencode's OAuth).
-        </p>
-      </Show>
-
-      <Show when={d().harness === 'claude'}>
-        <details class="agents-advanced">
-          <summary>Advanced claude config</summary>
           <label>
-            <span>Base URL</span>
-            <input
-              type="text"
-              value={d().claude.baseUrl}
-              onInput={(e) => props.patchClaude({ baseUrl: e.currentTarget.value })}
-            />
-          </label>
-          <label>
-            <span>Auth style</span>
+            <span>Harness</span>
             <select
-              value={d().claude.authStyle}
-              onChange={(e) =>
-                props.patchClaude({ authStyle: e.currentTarget.value as 'bearer' | 'apikey' })
-              }
+              value={d().harness}
+              onChange={(e) => selectHarness(e.currentTarget.value as HarnessId)}
             >
-              <option value="bearer">bearer (ANTHROPIC_AUTH_TOKEN)</option>
-              <option value="apikey">apikey (ANTHROPIC_API_KEY)</option>
+              <For each={HARNESS_IDS}>{(h) => <option value={h}>{HARNESSES[h].label}</option>}</For>
             </select>
           </label>
-          <For
-            each={
-              [
-                ['model', 'Main model'],
-                ['smallFastModel', 'Small/fast model'],
-                ['haikuAlias', 'haiku alias'],
-                ['sonnetAlias', 'sonnet alias'],
-                ['opusAlias', 'opus alias'],
-                ['subagentModel', 'Subagent model'],
-                ['effortLevel', 'Effort level (CLAUDE_CODE_EFFORT_LEVEL)'],
-              ] as [keyof ClaudeAgentConfig, string][]
-            }
-          >
-            {([key, label]) => (
-              <label>
-                <span>{label}</span>
-                <input
-                  type="text"
-                  value={String(d().claude[key])}
-                  onInput={(e) =>
-                    props.patchClaude({
-                      [key]: e.currentTarget.value,
-                    } as Partial<ClaudeAgentConfig>)
-                  }
-                />
-              </label>
-            )}
-          </For>
+
+          <Show when={d().harness === 'claude'}>
+            <label>
+              <span>Preset</span>
+              <select onChange={(e) => applyPreset(e.currentTarget.value)}>
+                <option value="">(custom)</option>
+                <For each={Object.keys(CLAUDE_PRESETS)}>
+                  {(k) => (
+                    <option value={k} selected={k === d().name}>
+                      {k}
+                    </option>
+                  )}
+                </For>
+              </select>
+            </label>
+          </Show>
+
           <label>
-            <span>Max context tokens</span>
+            <span>Name (display label)</span>
             <input
-              type="number"
-              value={d().claude.maxContextTokens}
-              onInput={(e) =>
-                props.patchClaude({ maxContextTokens: Number(e.currentTarget.value) || 0 })
-              }
+              type="text"
+              value={d().name}
+              onInput={(e) => onNameInput(e.currentTarget.value)}
             />
           </label>
-          <For
-            each={
-              [
-                ['disableCaching', 'Disable prompt caching'],
-                ['disable1M', 'Disable 1M context'],
-                ['disableAdaptiveThinking', 'Disable adaptive thinking'],
-                ['disableTelemetry', 'Disable telemetry'],
-                ['disableErrorReporting', 'Disable error reporting'],
-                ['disableClaudeApiSkill', 'Hide /claude-api skill'],
-              ] as [keyof ClaudeAgentConfig, string][]
-            }
-          >
-            {([key, label]) => (
-              <label class="agents-checkbox">
+
+          <label>
+            <span>Slug (filename + identity)</span>
+            <input
+              type="text"
+              value={d().slug}
+              disabled={d().editingSlug !== null}
+              title={
+                d().editingSlug !== null
+                  ? 'The slug is the stable identity and cannot change after creation'
+                  : 'Lowercase letters, digits, and single hyphens'
+              }
+              onInput={(e) => onSlugInput(e.currentTarget.value)}
+            />
+          </label>
+
+          <p class="agents-editor-name">
+            File: <code>agents/{d().slug || '…'}.json</code>
+          </p>
+
+          <label>
+            <span>Token env var (in agents/.env)</span>
+            <input
+              type="text"
+              placeholder="DEEPSEEK_API_KEY (blank = no token)"
+              value={d().secretEnv}
+              onInput={(e) => props.patch({ secretEnv: e.currentTarget.value })}
+            />
+          </label>
+
+          <Show when={d().harness === 'kimi'}>
+            <label>
+              <span>Instructions file (injected as system prompt)</span>
+              <input
+                type="text"
+                placeholder="~/.kimi/AGENTS.md (blank = none)"
+                value={d().kimi.instructionsFile ?? ''}
+                onInput={(e) =>
+                  props.patch({
+                    kimi: { ...d().kimi, instructionsFile: e.currentTarget.value || undefined },
+                  })
+                }
+              />
+            </label>
+            <p class="agents-editor-note">
+              condash reads this plain markdown at launch and wraps it into a transient{' '}
+              <code>--agent-file</code> (kimi's <code>ROLE_ADDITIONAL</code>) — so it's not shown in
+              the command preview below. <code>condash skills install</code> writes{' '}
+              <code>~/.kimi/AGENTS.md</code>.
+            </p>
+            <label>
+              <span>Model (--model, blank = config default)</span>
+              <input
+                type="text"
+                value={d().kimi.model ?? ''}
+                onInput={(e) =>
+                  props.patch({ kimi: { ...d().kimi, model: e.currentTarget.value || undefined } })
+                }
+              />
+            </label>
+            <label>
+              <span>Thinking mode</span>
+              <select
+                value={
+                  d().kimi.thinking === undefined ? 'default' : d().kimi.thinking ? 'on' : 'off'
+                }
+                onChange={(e) => {
+                  const v = e.currentTarget.value;
+                  props.patch({
+                    kimi: { ...d().kimi, thinking: v === 'default' ? undefined : v === 'on' },
+                  });
+                }}
+              >
+                <option value="default">config default</option>
+                <option value="on">--thinking</option>
+                <option value="off">--no-thinking</option>
+              </select>
+            </label>
+            <label class="agents-checkbox">
+              <input
+                type="checkbox"
+                checked={d().kimi.plan ?? false}
+                onChange={(e) =>
+                  props.patch({ kimi: { ...d().kimi, plan: e.currentTarget.checked || undefined } })
+                }
+              />
+              <span>Start in plan mode (--plan)</span>
+            </label>
+            <label>
+              <span>Inline config (--config TOML/JSON, optional)</span>
+              <textarea
+                class="agents-config-textarea"
+                spellcheck={false}
+                value={d().kimi.configInline ?? ''}
+                onInput={(e) =>
+                  props.patch({
+                    kimi: { ...d().kimi, configInline: e.currentTarget.value || undefined },
+                  })
+                }
+              />
+            </label>
+          </Show>
+
+          <Show when={d().harness === 'opencode'}>
+            <label>
+              <span>Preset</span>
+              <select onChange={(e) => applyOpencodePreset(e.currentTarget.value)}>
+                <option value="">(custom)</option>
+                <For each={Object.keys(OPENCODE_PRESETS)}>
+                  {(k) => (
+                    <option value={k} selected={k === d().name}>
+                      {k}
+                    </option>
+                  )}
+                </For>
+              </select>
+            </label>
+            <label>
+              <span>Default model (provider/model)</span>
+              <input
+                type="text"
+                value={d().opencode.model}
+                onInput={(e) =>
+                  props.patch({ opencode: { ...d().opencode, model: e.currentTarget.value } })
+                }
+              />
+            </label>
+            <label>
+              <span>Build agent model (optional override)</span>
+              <input
+                type="text"
+                placeholder="inherit default"
+                value={d().opencode.buildModel ?? ''}
+                onInput={(e) =>
+                  props.patch({
+                    opencode: { ...d().opencode, buildModel: e.currentTarget.value || undefined },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>Plan agent model (optional override)</span>
+              <input
+                type="text"
+                placeholder="inherit default"
+                value={d().opencode.planModel ?? ''}
+                onInput={(e) =>
+                  props.patch({
+                    opencode: { ...d().opencode, planModel: e.currentTarget.value || undefined },
+                  })
+                }
+              />
+            </label>
+            <div class="agents-overrides">
+              <span class="agents-overrides-label">
+                Variants — switch live in the opencode TUI with <code>ctrl+t</code>
+              </span>
+              <For each={variants()}>
+                {(v, i) => (
+                  <div class="agents-variant-row">
+                    <input
+                      type="text"
+                      class="agents-variant-name"
+                      placeholder="name (e.g. deep)"
+                      value={v.name}
+                      onInput={(e) => patchVariant(i(), { name: e.currentTarget.value })}
+                    />
+                    <select
+                      title="reasoningEffort"
+                      value={v.reasoningEffort ?? ''}
+                      onChange={(e) =>
+                        patchVariant(i(), { reasoningEffort: e.currentTarget.value || undefined })
+                      }
+                    >
+                      <option value="">effort —</option>
+                      <For each={effortOptions(v.reasoningEffort)}>
+                        {(x) => <option value={x}>{x}</option>}
+                      </For>
+                    </select>
+                    <select
+                      title="textVerbosity"
+                      value={v.textVerbosity ?? ''}
+                      onChange={(e) =>
+                        patchVariant(i(), { textVerbosity: e.currentTarget.value || undefined })
+                      }
+                    >
+                      <option value="">verbosity —</option>
+                      <For each={OPENCODE_TEXT_VERBOSITIES}>
+                        {(x) => <option value={x}>{x}</option>}
+                      </For>
+                    </select>
+                    <select
+                      title="reasoningSummary"
+                      value={v.reasoningSummary ?? ''}
+                      onChange={(e) =>
+                        patchVariant(i(), { reasoningSummary: e.currentTarget.value || undefined })
+                      }
+                    >
+                      <option value="">summary —</option>
+                      <For each={OPENCODE_REASONING_SUMMARIES}>
+                        {(x) => <option value={x}>{x}</option>}
+                      </For>
+                    </select>
+                    <button
+                      type="button"
+                      class="agents-danger agents-override-remove"
+                      title="Remove this variant"
+                      onClick={() => removeVariant(i())}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </For>
+              <button type="button" onClick={addVariant}>
+                + Add variant
+              </button>
+            </div>
+            <label>
+              <span>Default variant (applied to every agent)</span>
+              <select
+                value={d().opencode.defaultVariant ?? ''}
+                onChange={(e) => setDefaultVariant(e.currentTarget.value)}
+                disabled={variantNames().length === 0}
+              >
+                <option value="">(none — model default)</option>
+                <For each={variantNames()}>{(n) => <option value={n}>{n}</option>}</For>
+              </select>
+            </label>
+            <div class="agents-overrides">
+              <span class="agents-overrides-label">Per-agent variant (overrides the default)</span>
+              <For each={agentVariants()}>
+                {(av, i) => (
+                  <div class="agents-override-row">
+                    <select
+                      value={av.agent}
+                      onChange={(e) => patchAgentVariant(i(), { agent: e.currentTarget.value })}
+                    >
+                      <For each={variantAgentOptions(av.agent)}>
+                        {(n) => <option value={n}>{n}</option>}
+                      </For>
+                    </select>
+                    <select
+                      value={av.variant}
+                      onChange={(e) => patchAgentVariant(i(), { variant: e.currentTarget.value })}
+                    >
+                      <For each={variantNames()}>{(n) => <option value={n}>{n}</option>}</For>
+                    </select>
+                    <button
+                      type="button"
+                      class="agents-danger agents-override-remove"
+                      title="Remove this assignment"
+                      onClick={() => removeAgentVariant(i())}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </For>
+              <button
+                type="button"
+                onClick={addAgentVariant}
+                disabled={variantNames().length === 0 || availableVariantAgents().length === 0}
+              >
+                + Assign variant to agent
+              </button>
+            </div>
+            <label class="agents-checkbox">
+              <input
+                type="checkbox"
+                checked={d().opencode.disableExternalSkills}
+                onChange={(e) =>
+                  props.patch({
+                    opencode: { ...d().opencode, disableExternalSkills: e.currentTarget.checked },
+                  })
+                }
+              />
+              <span>Disable external skills (OPENCODE_DISABLE_EXTERNAL_SKILLS)</span>
+            </label>
+            <label>
+              <span>Extra config (JSON merged into OPENCODE_CONFIG_CONTENT)</span>
+              <textarea
+                class="agents-config-textarea"
+                spellcheck={false}
+                placeholder={'{ "theme": "…", "provider": { … } }'}
+                value={d().opencode.extraConfigJson ?? ''}
+                onInput={(e) =>
+                  props.patch({
+                    opencode: {
+                      ...d().opencode,
+                      extraConfigJson: e.currentTarget.value || undefined,
+                    },
+                  })
+                }
+              />
+            </label>
+            <p class="agents-editor-note">
+              condash inlines this as <code>OPENCODE_CONFIG_CONTENT</code> (no{' '}
+              <code>opencode.json</code> needed): top-level <code>model</code> is the default;
+              build/plan overrides become <code>agent.build.model</code> /{' '}
+              <code>agent.plan.model</code>. Variants become{' '}
+              <code>provider.&lt;id&gt;.models.&lt;model&gt;.variants</code>; the default variant
+              (and per-agent overrides) set <code>agent.&lt;name&gt;.variant</code>. Extra JSON is
+              merged underneath. Auth via <code>opencode auth login</code> — leave the token field
+              blank unless your provider reads a key from the environment (a stray key can collide
+              with opencode's OAuth).
+            </p>
+          </Show>
+
+          <Show when={d().harness === 'claude'}>
+            <details class="agents-advanced">
+              <summary>Advanced claude config</summary>
+              <label>
+                <span>Base URL</span>
                 <input
-                  type="checkbox"
-                  checked={Boolean(d().claude[key])}
+                  type="text"
+                  value={d().claude.baseUrl}
+                  onInput={(e) => props.patchClaude({ baseUrl: e.currentTarget.value })}
+                />
+              </label>
+              <label>
+                <span>Auth style</span>
+                <select
+                  value={d().claude.authStyle}
                   onChange={(e) =>
-                    props.patchClaude({
-                      [key]: e.currentTarget.checked,
-                    } as Partial<ClaudeAgentConfig>)
+                    props.patchClaude({ authStyle: e.currentTarget.value as 'bearer' | 'apikey' })
+                  }
+                >
+                  <option value="bearer">bearer (ANTHROPIC_AUTH_TOKEN)</option>
+                  <option value="apikey">apikey (ANTHROPIC_API_KEY)</option>
+                </select>
+              </label>
+              <For
+                each={
+                  [
+                    ['model', 'Main model'],
+                    ['smallFastModel', 'Small/fast model'],
+                    ['haikuAlias', 'haiku alias'],
+                    ['sonnetAlias', 'sonnet alias'],
+                    ['opusAlias', 'opus alias'],
+                    ['subagentModel', 'Subagent model'],
+                    ['effortLevel', 'Effort level (CLAUDE_CODE_EFFORT_LEVEL)'],
+                  ] as [keyof ClaudeAgentConfig, string][]
+                }
+              >
+                {([key, label]) => (
+                  <label>
+                    <span>{label}</span>
+                    <input
+                      type="text"
+                      value={String(d().claude[key])}
+                      onInput={(e) =>
+                        props.patchClaude({
+                          [key]: e.currentTarget.value,
+                        } as Partial<ClaudeAgentConfig>)
+                      }
+                    />
+                  </label>
+                )}
+              </For>
+              <label>
+                <span>Max context tokens</span>
+                <input
+                  type="number"
+                  value={d().claude.maxContextTokens}
+                  onInput={(e) =>
+                    props.patchClaude({ maxContextTokens: Number(e.currentTarget.value) || 0 })
                   }
                 />
-                <span>{label}</span>
               </label>
-            )}
-          </For>
-        </details>
-      </Show>
+              <For
+                each={
+                  [
+                    ['disableCaching', 'Disable prompt caching'],
+                    ['disable1M', 'Disable 1M context'],
+                    ['disableAdaptiveThinking', 'Disable adaptive thinking'],
+                    ['disableTelemetry', 'Disable telemetry'],
+                    ['disableErrorReporting', 'Disable error reporting'],
+                    ['disableClaudeApiSkill', 'Hide /claude-api skill'],
+                  ] as [keyof ClaudeAgentConfig, string][]
+                }
+              >
+                {([key, label]) => (
+                  <label class="agents-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(d().claude[key])}
+                      onChange={(e) =>
+                        props.patchClaude({
+                          [key]: e.currentTarget.checked,
+                        } as Partial<ClaudeAgentConfig>)
+                      }
+                    />
+                    <span>{label}</span>
+                  </label>
+                )}
+              </For>
+            </details>
+          </Show>
 
-      <div class="agents-config-view agents-editor-preview">
-        <span class="agents-editor-preview-label">Will launch (as configured):</span>
-        <pre>{safePreview(d())}</pre>
+          <div class="agents-config-view agents-editor-preview">
+            <span class="agents-editor-preview-label">Will launch (as configured):</span>
+            <pre>{safePreview(d())}</pre>
+          </div>
+
+          <div class="agents-editor-actions">
+            <button type="button" onClick={props.onSave}>
+              Save
+            </button>
+            <button type="button" onClick={props.onCancel}>
+              Cancel
+            </button>
+            <Show when={d().editingSlug}>
+              <button
+                type="button"
+                class="agents-danger agents-editor-delete"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete
+              </button>
+            </Show>
+          </div>
+
+          <Show when={confirmDelete()}>
+            <ConfirmModal
+              title={`Delete agent ${d().name}?`}
+              body="Removes the agent definition file. The agents/.env token is left untouched."
+              confirmLabel="Delete"
+              destructive
+              onCancel={() => setConfirmDelete(false)}
+              onConfirm={() => {
+                setConfirmDelete(false);
+                props.onDelete();
+              }}
+            />
+          </Show>
+        </section>
       </div>
-
-      <div class="agents-editor-actions">
-        <button type="button" onClick={props.onSave}>
-          Save
-        </button>
-        <button type="button" onClick={props.onCancel}>
-          Cancel
-        </button>
-        <Show when={d().editingSlug}>
-          <button
-            type="button"
-            class="agents-danger agents-editor-delete"
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete
-          </button>
-        </Show>
-      </div>
-
-      <Show when={confirmDelete()}>
-        <ConfirmModal
-          title={`Delete agent ${d().name}?`}
-          body="Removes the agent definition file. The agents/.env token is left untouched."
-          confirmLabel="Delete"
-          destructive
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            setConfirmDelete(false);
-            props.onDelete();
-          }}
-        />
-      </Show>
-    </section>
+    </div>
   );
 }

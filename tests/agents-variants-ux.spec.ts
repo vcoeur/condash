@@ -1,8 +1,9 @@
 /**
  * Agents pane e2e — boots the production build against a fixture conception that
- * carries one opencode agent with a default reasoning effort and one per-agent
- * override. Verifies the simplified card (a single Launch button, click-to-edit),
- * the effort + override selects in the edit view, and the in-editor Delete.
+ * carries one opencode agent with named variants, a default variant, and one
+ * per-agent variant override. Verifies the simplified card (a single Launch
+ * button, click-to-edit), that the editor opens as a popup modal, the variant
+ * editor + default-variant + per-agent controls, and the in-editor Delete.
  * Doubles as the manual-verification screenshot source (tests/screenshots-out/agents/).
  */
 
@@ -24,12 +25,14 @@ async function seedAgent(conceptionDir: string): Promise<void> {
         name: 'deepseek-auto',
         slug: 'opencode-deepseek-auto',
         config: {
-          model: 'deepseek/deepseek-v4-flash',
-          buildModel: 'deepseek/deepseek-v4-pro',
-          planModel: 'deepseek/deepseek-v4-pro',
+          model: 'deepseek/deepseek-v4-pro',
           disableExternalSkills: true,
-          effortLevel: 'medium',
-          reasoningOverrides: [{ agent: 'plan', effort: 'xhigh' }],
+          variants: [
+            { name: 'deep', reasoningEffort: 'xhigh', reasoningSummary: 'auto' },
+            { name: 'fast', reasoningEffort: 'low', textVerbosity: 'low' },
+          ],
+          defaultVariant: 'fast',
+          agentVariants: [{ agent: 'plan', variant: 'deep' }],
         },
       },
       null,
@@ -39,7 +42,7 @@ async function seedAgent(conceptionDir: string): Promise<void> {
   );
 }
 
-test('agent card is launch-only and click-to-edit; effort + overrides render', async () => {
+test('agent card is launch-only; editor is a popup with variants + default variant', async () => {
   const booted = await bootApp({ prepare: seedAgent });
   const { window, cleanup } = booted;
   try {
@@ -60,36 +63,39 @@ test('agent card is launch-only and click-to-edit; effort + overrides render', a
     await mkdir(outDir, { recursive: true });
     await window.screenshot({ path: join(outDir, 'agents-card.png') });
 
-    // Clicking the card body opens the edit view.
+    // Clicking the card body opens the edit view as a popup modal.
     await row.locator('.agents-row-main').click();
+    await expect(window.locator('.modal-backdrop .agents-editor-modal')).toBeVisible();
     const editor = window.locator('.agents-editor');
     await expect(editor).toBeVisible();
 
-    // Default effort select carries the stored value.
-    const effortSelect = editor.locator('select').nth(2); // harness, preset, effort
-    await expect(effortSelect).toHaveValue('medium');
+    // Two named variants; the first row's name is "deep".
+    const variantRows = editor.locator('.agents-variant-row');
+    await expect(variantRows).toHaveCount(2);
+    await expect(variantRows.nth(0).locator('.agents-variant-name')).toHaveValue('deep');
 
-    // One override row: plan → xhigh.
+    // Default variant select carries the stored value.
+    const defaultSelect = editor.locator('label', { hasText: 'Default variant' }).locator('select');
+    await expect(defaultSelect).toHaveValue('fast');
+
+    // One per-agent variant override: plan → deep.
     const overrideRow = editor.locator('.agents-override-row');
     await expect(overrideRow).toHaveCount(1);
     await expect(overrideRow.locator('select').nth(0)).toHaveValue('plan');
-    await expect(overrideRow.locator('select').nth(1)).toHaveValue('xhigh');
+    await expect(overrideRow.locator('select').nth(1)).toHaveValue('deep');
 
-    // The live preview reflects both the default and the override.
+    // The live preview reflects the variants + per-agent / default variant.
     const preview = editor.locator('.agents-editor-preview pre');
+    await expect(preview).toContainText('"variants"');
     await expect(preview).toContainText('"reasoningEffort":"xhigh"');
-    await expect(preview).toContainText('"reasoningEffort":"medium"');
+    await expect(preview).toContainText('"variant":"deep"'); // plan override
+    await expect(preview).toContainText('"variant":"fast"'); // default on other agents
 
-    // Delete lives in the editor (confirmed via modal).
-    await expect(editor.locator('.agents-editor-delete')).toHaveText('Delete');
-    // Scroll the new effort + overrides controls into view for the screenshot.
-    await effortSelect.scrollIntoViewIfNeeded();
+    await variantRows.first().scrollIntoViewIfNeeded();
     await window.screenshot({ path: join(outDir, 'agents-edit.png') });
 
-    // Add a second override and confirm the modal appears on Delete.
-    await editor.locator('.agents-overrides button', { hasText: 'Add override' }).click();
-    await expect(editor.locator('.agents-override-row')).toHaveCount(2);
-
+    // Delete lives in the editor, confirmed via a modal.
+    await expect(editor.locator('.agents-editor-delete')).toHaveText('Delete');
     await editor.locator('.agents-editor-delete').click();
     await expect(window.locator('.confirm-modal')).toBeVisible();
     await window.locator('.confirm-modal button', { hasText: 'Cancel' }).click();

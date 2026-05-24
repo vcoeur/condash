@@ -118,17 +118,9 @@ export interface KimiAgentConfig {
   configInline?: string;
 }
 
-/** A per-agent reasoning-effort override → `agent.<name>.options.reasoningEffort`
- *  in the inline opencode config. `agent` is an opencode agent name (build,
- *  plan, a subagent); `effort` is one of `OPENCODE_REASONING_EFFORTS`. */
-export interface OpencodeReasoningOverride {
-  agent: string;
-  effort: string;
-}
-
-/** Fixed reasoning-effort values offered in the UI, ascending. opencode's
- *  documented enum (1.15.10); per-model/agent `options` is freeform, so a
- *  provider that doesn't recognise a value just ignores it. */
+/** Fixed reasoning-effort values offered in the variant editor, ascending.
+ *  opencode's documented enum (1.15.10); the variant `options` bag is freeform,
+ *  so a provider that doesn't recognise a value just ignores it. */
 export const OPENCODE_REASONING_EFFORTS = [
   'none',
   'minimal',
@@ -141,6 +133,33 @@ export const OPENCODE_REASONING_EFFORTS = [
 /** opencode's built-in agent names, offered as override targets. `agent.<name>`
  *  is a freeform Record, so naming an agent that doesn't exist is harmless. */
 export const OPENCODE_AGENT_NAMES = ['build', 'plan', 'general', 'explore', 'scout'] as const;
+
+/** `textVerbosity` values opencode accepts (OpenAI-style). */
+export const OPENCODE_TEXT_VERBOSITIES = ['low', 'medium', 'high'] as const;
+
+/** `reasoningSummary` values offered in the UI. Freeform in opencode; `auto` is
+ *  the standard, `concise`/`detailed` are the OpenAI summary modes. */
+export const OPENCODE_REASONING_SUMMARIES = ['auto', 'concise', 'detailed'] as const;
+
+/** A named opencode model **variant** — a bundle of model options the user can
+ *  switch between live (opencode's `variant_cycle`, bound to ctrl+t by default;
+ *  the footer shows the active one). Emitted under
+ *  `provider.<id>.models.<model>.variants[name]` for every referenced model.
+ *  Blank option fields are omitted. */
+export interface OpencodeVariant {
+  /** Variant name — the key under `model.variants` and the value agents reference. */
+  name: string;
+  reasoningEffort?: string;
+  textVerbosity?: string;
+  reasoningSummary?: string;
+}
+
+/** A per-agent default variant assignment → `agent.<name>.variant`. `variant` is
+ *  the name of an `OpencodeVariant`. */
+export interface OpencodeAgentVariant {
+  agent: string;
+  variant: string;
+}
 
 /**
  * opencode harness config. Rendered into an inline `OPENCODE_CONFIG_CONTENT`
@@ -158,12 +177,16 @@ export interface OpencodeAgentConfig {
   planModel?: string;
   /** Sets `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` so only `.opencode/` skills load. */
   disableExternalSkills: boolean;
-  /** Default reasoning effort — `provider.<id>.models.<model>.options.reasoningEffort`
-   *  for every model the agent references. Blank = omit. */
-  effortLevel?: string;
-  /** Per-opencode-agent reasoning-effort overrides, layered on top of the
-   *  default as `agent.<name>.options.reasoningEffort`. Blank/empty = none. */
-  reasoningOverrides?: OpencodeReasoningOverride[];
+  /** Named model variants → `provider.<id>.models.<model>.variants`. Each bundles
+   *  reasoning effort / verbosity / summary; switchable live in the opencode TUI
+   *  (ctrl+t), and the footer shows the active one. */
+  variants?: OpencodeVariant[];
+  /** Default variant applied to every agent → `agent.<name>.variant` for each
+   *  built-in agent (unless overridden below). References a `variants` name. */
+  defaultVariant?: string;
+  /** Per-agent variant overrides → `agent.<name>.variant`, winning over the
+   *  default for specific agents. References a `variants` name. */
+  agentVariants?: OpencodeAgentVariant[];
   /** Raw JSON merged into the inline config — escape hatch for any other
    *  opencode.json key (theme, provider, mcp, …). Blank = none. */
   extraConfigJson?: string;
@@ -413,30 +436,32 @@ function buildOpencodeSpawn(
   if (cfg.planModel?.trim()) {
     agent.plan = { ...((agent.plan as Record<string, unknown>) ?? {}), model: cfg.planModel };
   }
-  // Per-agent reasoning-effort overrides → `agent.<name>.options.reasoningEffort`,
-  // merged into the same node as any model override so e.g. `agent.plan` can
-  // carry both `model` and `options`. Last write wins on a duplicated agent name.
-  for (const override of cfg.reasoningOverrides ?? []) {
-    const name = override.agent.trim();
-    const effort = override.effort.trim();
-    if (!name || !effort) continue;
+  // Variant assignment → `agent.<name>.variant`. The default variant applies to
+  // every built-in agent; a per-agent override wins for that agent. A variant
+  // only applies when the agent uses its configured model, so pin the agent's
+  // model too (its model override if one was set above, else the default model).
+  const defaultVariant = cfg.defaultVariant?.trim();
+  const variantOverrides = new Map(
+    (cfg.agentVariants ?? [])
+      .filter((av) => av.agent.trim() && av.variant.trim())
+      .map((av) => [av.agent.trim(), av.variant.trim()] as const),
+  );
+  for (const name of OPENCODE_AGENT_NAMES) {
+    const variant = variantOverrides.get(name) ?? defaultVariant;
+    if (!variant) continue;
     const entry = { ...((agent[name] as Record<string, unknown>) ?? {}) };
-    entry.options = {
-      ...((entry.options as Record<string, unknown>) ?? {}),
-      reasoningEffort: effort,
-    };
+    entry.variant = variant;
+    if (entry.model == null && cfg.model.trim()) entry.model = cfg.model.trim();
     agent[name] = entry;
   }
   if (Object.keys(agent).length > 0) config.agent = agent;
-  // Reasoning effort is a *model* option in opencode. Its top-level Config is a
-  // closed schema (no `options` key), so emitting `options` there makes opencode
-  // reject the whole config (ConfigInvalidError) and every launch fails. Attach
-  // the effort under the freeform per-model `provider.<id>.models.<model>.options`
-  // for each model this agent references, so it follows whichever model runs.
-  if (cfg.effortLevel?.trim()) {
-    const effort = cfg.effortLevel.trim();
+  // Named variants → `provider.<id>.models.<model>.variants` for every model the
+  // agent references, so `agent.<name>.variant` resolves whichever model runs and
+  // opencode's `variant_cycle` (ctrl+t) can switch between them in the TUI.
+  for (const variant of cfg.variants ?? []) {
+    if (!variant.name.trim()) continue;
     for (const modelRef of [cfg.model, cfg.buildModel, cfg.planModel]) {
-      if (modelRef?.trim()) setModelReasoningEffort(config, modelRef.trim(), effort);
+      if (modelRef?.trim()) setModelVariant(config, modelRef.trim(), variant);
     }
   }
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
@@ -446,17 +471,17 @@ function buildOpencodeSpawn(
 }
 
 /**
- * Set `reasoningEffort` on a `<provider>/<model>` reference inside an opencode
- * config object, creating the `provider.<id>.models.<model>.options` nesting on
- * demand and preserving anything already present (e.g. from `extraConfigJson`).
- * No-op for a `modelRef` that isn't in `provider/model` form. The provider id is
- * everything before the first `/`; the rest is the model id (which may itself
- * contain slashes, e.g. `openrouter/anthropic/claude`).
+ * Navigate to `provider.<id>.models.<model>` inside an opencode config object,
+ * creating the nesting on demand and preserving anything already present (e.g.
+ * from `extraConfigJson`), apply `mutate` to that model entry, and write the
+ * chain back. No-op for a `modelRef` not in `provider/model` form. The provider
+ * id is everything before the first `/`; the rest is the model id (which may
+ * itself contain slashes, e.g. `openrouter/anthropic/claude`).
  */
-function setModelReasoningEffort(
+function withModelEntry(
   config: Record<string, unknown>,
   modelRef: string,
-  effort: string,
+  mutate: (modelEntry: Record<string, unknown>) => void,
 ): void {
   const slash = modelRef.indexOf('/');
   if (slash <= 0 || slash >= modelRef.length - 1) return;
@@ -467,14 +492,33 @@ function setModelReasoningEffort(
   const providerEntry = (provider[providerId] as Record<string, unknown>) ?? {};
   const models = (providerEntry.models as Record<string, unknown>) ?? {};
   const modelEntry = (models[modelId] as Record<string, unknown>) ?? {};
-  const options = (modelEntry.options as Record<string, unknown>) ?? {};
 
-  options.reasoningEffort = effort;
-  modelEntry.options = options;
+  mutate(modelEntry);
+
   models[modelId] = modelEntry;
   providerEntry.models = models;
   provider[providerId] = providerEntry;
   config.provider = provider;
+}
+
+/** Add a named variant under `provider.<id>.models.<model>.variants`. Blank
+ *  option fields and a nameless variant are skipped. */
+function setModelVariant(
+  config: Record<string, unknown>,
+  modelRef: string,
+  variant: OpencodeVariant,
+): void {
+  const name = variant.name.trim();
+  if (!name) return;
+  const options: Record<string, unknown> = {};
+  if (variant.reasoningEffort?.trim()) options.reasoningEffort = variant.reasoningEffort.trim();
+  if (variant.textVerbosity?.trim()) options.textVerbosity = variant.textVerbosity.trim();
+  if (variant.reasoningSummary?.trim()) options.reasoningSummary = variant.reasoningSummary.trim();
+  withModelEntry(config, modelRef, (modelEntry) => {
+    const variants = (modelEntry.variants as Record<string, unknown>) ?? {};
+    variants[name] = options;
+    modelEntry.variants = variants;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -630,15 +674,11 @@ export interface OpencodePreset {
 export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
   'deepseek-v4-pro': {
     secretEnv: '',
-    config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true, effortLevel: 'max' },
+    config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true },
   },
   'deepseek-v4-flash': {
     secretEnv: '',
-    config: {
-      model: 'deepseek/deepseek-v4-flash',
-      disableExternalSkills: true,
-      effortLevel: 'max',
-    },
+    config: { model: 'deepseek/deepseek-v4-flash', disableExternalSkills: true },
   },
   'deepseek-auto': {
     secretEnv: '',
@@ -647,15 +687,10 @@ export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
       buildModel: 'deepseek/deepseek-v4-pro',
       planModel: 'deepseek/deepseek-v4-pro',
       disableExternalSkills: true,
-      effortLevel: 'max',
     },
   },
   kimi: {
     secretEnv: '',
-    config: {
-      model: 'kimi-for-coding/kimi-k2-thinking',
-      disableExternalSkills: true,
-      effortLevel: 'max',
-    },
+    config: { model: 'kimi-for-coding/kimi-k2-thinking', disableExternalSkills: true },
   },
 };

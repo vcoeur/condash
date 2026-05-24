@@ -335,3 +335,41 @@
 .agents-overrides > button {
   align-self: flex-start;
 }
+
+.agents-overrides-label code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+/* Named-variant definition row: name + effort/verbosity/summary selects. */
+.agents-variant-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.agents-variant-row .agents-variant-name {
+  flex: 1 1 7rem;
+  min-width: 0;
+}
+
+.agents-variant-row select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The agent editor rendered as a popup modal (reuses .modal / .modal-backdrop
+ * chrome from modal-base.css). Narrower than the default panel + scrollable;
+ * drop the inner section's own box so it doesn't double-frame. */
+.agents-editor-modal {
+  width: min(760px, 100%);
+  max-height: 100%;
+  overflow: auto;
+}
+
+.agents-editor-modal .agents-editor {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
