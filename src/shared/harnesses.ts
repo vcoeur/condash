@@ -421,91 +421,43 @@ function buildOpencodeSpawn(
   if (cfg.model.trim()) config.model = cfg.model;
   const defaultModel = cfg.model.trim();
 
-  // Translate the table into opencode variants (ctrl+t cycles them; the variant
-  // also drives the request's reasoning effort). Each distinct reasoning bundle
-  // (effort + verbosity + summary) is one variant. Its name is the effort alone
-  // when that effort is unique; when two bundles share an effort but differ in
-  // verbosity/summary, the differing parts are appended so the names never
-  // collide (e.g. `high`, `high-low`, `high-low-auto`).
-  const rows = new Map(
-    (cfg.agentOptions ?? []).filter((r) => r.agent.trim()).map((r) => [r.agent.trim(), r] as const),
-  );
-
-  interface VariantBundle {
-    effort: string;
-    textVerbosity?: string;
-    reasoningSummary?: string;
-  }
-  const bundleOf = (opts?: OpencodeAgentOptions): VariantBundle | undefined => {
-    const effort = opts?.reasoningEffort?.trim();
-    if (!effort) return undefined;
-    const bundle: VariantBundle = { effort };
-    if (opts?.textVerbosity?.trim()) bundle.textVerbosity = opts.textVerbosity.trim();
-    if (opts?.reasoningSummary?.trim()) bundle.reasoningSummary = opts.reasoningSummary.trim();
-    return bundle;
-  };
-  const bundleKey = (b: VariantBundle) =>
-    `${b.effort} ${b.textVerbosity ?? ''} ${b.reasoningSummary ?? ''}`;
-
-  const bundles = [bundleOf(cfg.defaultOptions), ...[...rows.values()].map(bundleOf)].filter(
-    (b): b is VariantBundle => b !== undefined,
-  );
-  // Distinct bundle keys per effort → whether that effort needs a qualified name.
-  const keysByEffort = new Map<string, Set<string>>();
-  for (const b of bundles) {
-    const set = keysByEffort.get(b.effort) ?? new Set<string>();
-    set.add(bundleKey(b));
-    keysByEffort.set(b.effort, set);
-  }
-  const nameOf = (b: VariantBundle): string =>
-    (keysByEffort.get(b.effort)?.size ?? 0) > 1
-      ? [b.effort, b.textVerbosity, b.reasoningSummary].filter(Boolean).join('-')
-      : b.effort;
-  const variantNameFor = (opts?: OpencodeAgentOptions): string | undefined => {
-    const bundle = bundleOf(opts);
-    return bundle ? nameOf(bundle) : undefined;
+  // The table emits plain model options (not variants - opencode's footer ignores
+  // configured variants anyway, and these reach the request the same way). The
+  // default row sets the default model's base `options` (every agent on that model
+  // inherits it); each per-agent row sets `agent.<name>.options` (+ `agent.<name>.model`),
+  // which opencode layers over the model base.
+  const optionsOf = (opts?: OpencodeAgentOptions): Record<string, unknown> | undefined => {
+    if (!opts) return undefined;
+    const out: Record<string, unknown> = {};
+    if (opts.reasoningEffort?.trim()) out.reasoningEffort = opts.reasoningEffort.trim();
+    if (opts.textVerbosity?.trim()) out.textVerbosity = opts.textVerbosity.trim();
+    if (opts.reasoningSummary?.trim()) out.reasoningSummary = opts.reasoningSummary.trim();
+    return Object.keys(out).length > 0 ? out : undefined;
   };
 
-  // name → options, for emission under each model's `variants`.
-  const variantOptions = new Map<string, Record<string, unknown>>();
-  for (const b of bundles) {
-    const options: Record<string, unknown> = { reasoningEffort: b.effort };
-    if (b.textVerbosity) options.textVerbosity = b.textVerbosity;
-    if (b.reasoningSummary) options.reasoningSummary = b.reasoningSummary;
-    variantOptions.set(nameOf(b), options);
-  }
+  // Default row -> base options on the default model.
+  const defaultOptions = optionsOf(cfg.defaultOptions);
+  if (defaultOptions && defaultModel) setModelOptions(config, defaultModel, defaultOptions);
 
-  const defaultVariant = variantNameFor(cfg.defaultOptions);
-
-  // Per-agent `agent.<name>.{model,variant}`. The default variant applies to every
-  // built-in agent unless its row sets an effort; a variant only applies to the
-  // agent's configured model, so pin the agent's model (its row's, else the
-  // default) whenever a variant is set.
+  // Per-agent rows -> `agent.<name>.{model,options}`. Explicit row options win; a
+  // row that only overrides the model carries the default options onto it (the
+  // default model's base options don't reach a different model).
   const agent: Record<string, unknown> = { ...((config.agent as Record<string, unknown>) ?? {}) };
-  for (const name of OPENCODE_AGENT_NAMES) {
-    const row = rows.get(name);
-    const model = row?.model?.trim();
-    const variant = variantNameFor(row) ?? defaultVariant;
-    if (!model && !variant) continue;
+  for (const row of cfg.agentOptions ?? []) {
+    const name = row.agent.trim();
+    if (!name) continue;
+    const model = row.model?.trim();
+    const options = optionsOf(row) ?? (model ? defaultOptions : undefined);
+    if (!model && !options) continue;
     const entry = { ...((agent[name] as Record<string, unknown>) ?? {}) };
     if (model) entry.model = model;
-    if (variant) {
-      entry.variant = variant;
-      if (entry.model == null && defaultModel) entry.model = defaultModel;
+    if (options) {
+      entry.options = { ...((entry.options as Record<string, unknown>) ?? {}), ...options };
     }
     agent[name] = entry;
   }
   if (Object.keys(agent).length > 0) config.agent = agent;
 
-  // Emit the collected variants under `provider.<id>.models.<model>.variants` for
-  // every model the agents reference (default + any per-agent model override), so
-  // each `agent.<name>.variant` resolves whichever model runs.
-  const referencedModels = new Set<string>();
-  if (defaultModel) referencedModels.add(defaultModel);
-  for (const row of rows.values()) if (row.model?.trim()) referencedModels.add(row.model.trim());
-  for (const [name, options] of variantOptions) {
-    for (const modelRef of referencedModels) setModelVariant(config, modelRef, name, options);
-  }
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
 
   const extraArgs = initialPrompt ? ['--prompt', initialPrompt] : [];
@@ -543,19 +495,15 @@ function withModelEntry(
   config.provider = provider;
 }
 
-/** Set the named variant `provider.<id>.models.<model>.variants[name]` to the
- *  given options object, preserving any sibling variants. */
-function setModelVariant(
+/** Merge `options` into `provider.<id>.models.<model>.options`, preserving any
+ *  keys already present (e.g. from `extraConfigJson`). */
+function setModelOptions(
   config: Record<string, unknown>,
   modelRef: string,
-  name: string,
   options: Record<string, unknown>,
 ): void {
-  if (!name) return;
   withModelEntry(config, modelRef, (modelEntry) => {
-    const variants = (modelEntry.variants as Record<string, unknown>) ?? {};
-    variants[name] = options;
-    modelEntry.variants = variants;
+    modelEntry.options = { ...((modelEntry.options as Record<string, unknown>) ?? {}), ...options };
   });
 }
 

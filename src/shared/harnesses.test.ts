@@ -312,7 +312,7 @@ describe('buildSpawn — effort level', () => {
 });
 
 describe('buildSpawn — opencode agent options table', () => {
-  it('derives effort-named variants + per-agent variant from default + agent rows', () => {
+  it('puts the default row on the model base options and only listed agents get their own', () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'oc',
@@ -325,18 +325,18 @@ describe('buildSpawn — opencode agent options table', () => {
       },
     };
     const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
-    const m = cfg.provider.deepseek.models['deepseek-v4-pro'];
-    // One variant per distinct effort, named by the effort.
-    expect(m.variants.low).toEqual({ reasoningEffort: 'low', textVerbosity: 'low' });
-    expect(m.variants.xhigh).toEqual({ reasoningEffort: 'xhigh', reasoningSummary: 'auto' });
-    // Default effort (low) on every agent except plan (xhigh); model pinned.
-    expect(cfg.agent.plan).toEqual({ variant: 'xhigh', model: 'deepseek/deepseek-v4-pro' });
-    for (const name of ['build', 'general', 'explore', 'scout']) {
-      expect(cfg.agent[name]).toEqual({ variant: 'low', model: 'deepseek/deepseek-v4-pro' });
-    }
+    // Default row → the default model's base options (inherited by every agent on it).
+    expect(cfg.provider.deepseek.models['deepseek-v4-pro'].options).toEqual({
+      reasoningEffort: 'low',
+      textVerbosity: 'low',
+    });
+    // Only plan has its own options; build/general/etc inherit the model base (no agent entry).
+    expect(cfg.agent.plan.options).toEqual({ reasoningEffort: 'xhigh', reasoningSummary: 'auto' });
+    expect(cfg.agent.build).toBeUndefined();
+    expect(cfg.agent.general).toBeUndefined();
   });
 
-  it('gives an agent its own model + effort, emitting the variant on that model too', () => {
+  it('gives an agent its own model + options; no model-level options without a default', () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'oc',
@@ -352,19 +352,40 @@ describe('buildSpawn — opencode agent options table', () => {
     };
     const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
     // plan runs kimi at high; build runs the default model at low.
-    expect(cfg.agent.plan).toEqual({ model: 'kimi-for-coding/kimi-k2-thinking', variant: 'high' });
-    expect(cfg.agent.build).toEqual({ variant: 'low', model: 'deepseek/deepseek-v4-pro' });
-    // 'high' variant is emitted on the kimi model so plan resolves it.
-    expect(
-      cfg.provider['kimi-for-coding'].models['kimi-k2-thinking'].variants.high.reasoningEffort,
-    ).toBe('high');
-    // 'low' variant on the default deepseek model for build.
-    expect(cfg.provider.deepseek.models['deepseek-v4-pro'].variants.low.reasoningEffort).toBe(
-      'low',
-    );
+    expect(cfg.agent.plan).toEqual({
+      model: 'kimi-for-coding/kimi-k2-thinking',
+      options: { reasoningEffort: 'high' },
+    });
+    expect(cfg.agent.build).toEqual({ options: { reasoningEffort: 'low' } });
+    // No default row → no model-level options block at all.
+    expect(cfg).not.toHaveProperty('provider');
   });
 
-  it('emits no variants/agents when neither default nor agent rows set an effort', () => {
+  it('a per-agent override wins; a model-only row carries the default options onto its model', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        defaultOptions: { reasoningEffort: 'medium' },
+        agentOptions: [
+          { agent: 'plan', reasoningEffort: 'low' }, // overrides the model-base medium
+          { agent: 'build', model: 'kimi-for-coding/kimi-k2-thinking' }, // carries default medium
+        ],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    expect(cfg.provider.deepseek.models['deepseek-v4-pro'].options.reasoningEffort).toBe('medium');
+    expect(cfg.agent.plan).toEqual({ options: { reasoningEffort: 'low' } });
+    expect(cfg.agent.build).toEqual({
+      model: 'kimi-for-coding/kimi-k2-thinking',
+      options: { reasoningEffort: 'medium' },
+    });
+  });
+
+  it('emits no options/agents when neither default nor agent rows set anything', () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'oc',
@@ -378,32 +399,5 @@ describe('buildSpawn — opencode agent options table', () => {
     const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
     expect(cfg).not.toHaveProperty('provider');
     expect(cfg).not.toHaveProperty('agent');
-  });
-
-  it('qualifies variant names when one effort is shared with different verbosity/summary', () => {
-    const def: AgentDef = {
-      harness: 'opencode',
-      name: 'oc',
-      slug: 'opencode-ds',
-      config: {
-        model: 'deepseek/deepseek-v4-pro',
-        disableExternalSkills: true,
-        defaultOptions: { reasoningEffort: 'high' },
-        agentOptions: [
-          { agent: 'plan', reasoningEffort: 'high', textVerbosity: 'low' },
-          { agent: 'build', reasoningEffort: 'high', reasoningSummary: 'auto' },
-        ],
-      },
-    };
-    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
-    const variants = cfg.provider.deepseek.models['deepseek-v4-pro'].variants;
-    // Three distinct `high` bundles → three non-colliding names, each preserved.
-    expect(variants.high).toEqual({ reasoningEffort: 'high' });
-    expect(variants['high-low']).toEqual({ reasoningEffort: 'high', textVerbosity: 'low' });
-    expect(variants['high-auto']).toEqual({ reasoningEffort: 'high', reasoningSummary: 'auto' });
-    // Each agent references its own qualified variant; the default stays bare `high`.
-    expect(cfg.agent.plan.variant).toBe('high-low');
-    expect(cfg.agent.build.variant).toBe('high-auto');
-    expect(cfg.agent.general.variant).toBe('high');
   });
 });
