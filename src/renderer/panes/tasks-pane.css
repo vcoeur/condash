@@ -77,13 +77,25 @@
 
 .tasks-row {
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
   padding: 0.5rem 0.6rem;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: 4px;
   margin-top: 0.5rem;
+}
+
+.tasks-row-clickable {
+  cursor: pointer;
+}
+
+.tasks-row-clickable:hover,
+.tasks-row-clickable:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--accent, var(--text-muted));
+  outline: none;
 }
 
 .tasks-row-main {
@@ -92,6 +104,7 @@
   align-items: flex-start;
   gap: 0.3rem;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .tasks-row-name {
@@ -164,6 +177,28 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-subtle);
+}
+
+/* The editor + run views are modal popups (chrome from modal-base.css); inside
+ * one the .tasks-editor block is flush — no margin/border/own background. */
+.tasks-editor-modal,
+.tasks-fill-modal {
+  width: min(720px, 100%);
+  max-height: 100%;
+  overflow: auto;
+}
+
+.tasks-editor-modal .tasks-editor,
+.tasks-fill-modal .tasks-editor {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Push Delete to the right edge of the editor's action row. */
+.tasks-editor-delete {
+  margin-left: auto;
 }
 
 .tasks-editor header {

@@ -3,8 +3,9 @@ import { AGENTS_MD_OUTPUTS } from '../agents-md/compile';
 import { COMPILE_TARGETS } from '../skillspec/types';
 import {
   type AgentDef,
+  type ClaudeAgentConfig,
   buildSpawn,
-  CLAUDE_PRESETS,
+  defaultClaudeConfig,
   defaultKimiConfig,
   defaultOpencodeConfig,
   HARNESS_IDS,
@@ -18,6 +19,27 @@ import {
 } from './harnesses';
 
 const resolve = (env: Record<string, string>) => (name: string) => env[name] || undefined;
+
+// A claude-on-deepseek config — the alt-provider remap the buildSpawn tests
+// assert against (previously sourced from the now-removed CLAUDE_PRESETS).
+const deepseekConfig: ClaudeAgentConfig = {
+  baseUrl: 'https://api.deepseek.com/anthropic',
+  authStyle: 'bearer',
+  model: 'deepseek-v4-pro',
+  smallFastModel: 'deepseek-v4-pro',
+  haikuAlias: 'deepseek-v4-pro',
+  sonnetAlias: 'deepseek-v4-pro',
+  opusAlias: 'deepseek-v4-pro',
+  subagentModel: 'deepseek-v4-pro',
+  maxContextTokens: 1000000,
+  effortLevel: 'max',
+  disableCaching: false,
+  disable1M: true,
+  disableAdaptiveThinking: true,
+  disableTelemetry: true,
+  disableErrorReporting: true,
+  disableClaudeApiSkill: true,
+};
 
 describe('harness registry is the single source of truth', () => {
   it('drives the skills + AGENTS.md compile targets', () => {
@@ -60,7 +82,7 @@ describe('buildSpawn — claude', () => {
     name: 'deepseek-v4-pro',
     slug: 'claude-deepseek-v4-pro',
     secretEnv: 'DEEPSEEK_API_KEY',
-    config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+    config: deepseekConfig,
   };
 
   it('builds the ANTHROPIC_* env with a bearer token and defensive unsets', () => {
@@ -95,7 +117,7 @@ describe('buildSpawn — claude', () => {
       harness: 'claude',
       name: 'native',
       slug: 'claude-native',
-      config: CLAUDE_PRESETS.native.config,
+      config: defaultClaudeConfig(),
     };
     const spec = buildSpawn(native, resolve({}));
     expect(spec).toEqual({ command: 'claude', args: [], env: {}, unsetEnv: [] });
@@ -109,7 +131,7 @@ describe('buildSpawn — claude', () => {
       harness: 'claude',
       name: 'native',
       slug: 'claude-native',
-      config: CLAUDE_PRESETS.native.config,
+      config: defaultClaudeConfig(),
     };
     const nativeSpec = buildSpawn(native, resolve({}), 'review PR');
     expect(nativeSpec.args).toEqual(['review PR']);
@@ -144,7 +166,7 @@ describe('previewCommandLine', () => {
       name: 'deepseek-v4-pro',
       slug: 'claude-deepseek-v4-pro',
       secretEnv: 'DEEPSEEK_API_KEY',
-      config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+      config: deepseekConfig,
     };
     // claude takes no positional args, so the line is just the binary.
     expect(previewCommandLine(def)).toBe('claude');
@@ -298,7 +320,7 @@ describe('buildSpawn — effort level', () => {
       name: 'ds',
       slug: 'claude-ds',
       secretEnv: 'DEEPSEEK_API_KEY',
-      config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+      config: deepseekConfig,
     };
     expect(buildSpawn(base, resolve({ DEEPSEEK_API_KEY: 'sk' })).env.CLAUDE_CODE_EFFORT_LEVEL).toBe(
       'max',

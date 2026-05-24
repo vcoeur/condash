@@ -11,14 +11,13 @@ import {
   type OpencodeAgentOptions,
   type OpencodeAgentRow,
   buildSpawn,
-  CLAUDE_PRESETS,
+  defaultClaudeConfig,
   defaultKimiConfig,
   defaultOpencodeConfig,
   HARNESS_IDS,
   HARNESSES,
   isValidSlug,
   OPENCODE_AGENT_NAMES,
-  OPENCODE_PRESETS,
   OPENCODE_REASONING_EFFORTS,
   OPENCODE_REASONING_SUMMARIES,
   OPENCODE_TEXT_VERBOSITIES,
@@ -37,28 +36,29 @@ interface Draft {
   /** Lowercase-kebab identity = filename stem. Auto-suggested from `name` until
    *  the user edits it (`slugTouched`), then frozen once the agent is saved. */
   slug: string;
-  /** True once the user hand-edits the slug field, or always when editing an
-   *  existing agent — suppresses further auto-suggestion. */
+  /** True once the user hand-edits the slug field — suppresses name-driven
+   *  auto-suggestion. Set on every edit of an existing agent so its stored slug
+   *  is the starting point (the field stays editable: a change is a rename). */
   slugTouched: boolean;
   secretEnv: string;
   claude: ClaudeAgentConfig;
   kimi: KimiAgentConfig;
   opencode: OpencodeAgentConfig;
-  /** Slug of the agent being edited, or null when creating. The slug is the
-   *  stable identity, so it is read-only while editing. */
+  /** Slug of the agent being edited, or null when creating. A new slug saved
+   *  over this renames the file (the old `<slug>.json` is removed). */
   editingSlug: string | null;
 }
 
 function blankDraft(): Draft {
   return {
     harness: 'claude',
-    name: 'deepseek-v4-pro',
-    slug: suggestSlug('claude', 'deepseek-v4-pro'),
+    name: '',
+    slug: '',
     slugTouched: false,
-    secretEnv: CLAUDE_PRESETS['deepseek-v4-pro'].secretEnv,
-    claude: structuredClone(CLAUDE_PRESETS['deepseek-v4-pro'].config),
+    secretEnv: '',
+    claude: defaultClaudeConfig(),
     kimi: defaultKimiConfig(),
-    opencode: defaultOpencodeConfig('deepseek/deepseek-v4-pro'),
+    opencode: defaultOpencodeConfig(''),
     editingSlug: null,
   };
 }
@@ -87,6 +87,9 @@ export function AgentsView(props: {
   agents: () => readonly AgentListItem[];
   /** Re-fetch the agent list after a mutation. */
   reload: () => void;
+  /** Re-fetch the task list — called after a slug rename cascades to tasks, so
+   *  the Tasks pane reflects the repointed `agent` without a manual refresh. */
+  reloadTasks: () => void;
   /** Whether a conception is active (agents are conception-scoped). */
   hasConception: () => boolean;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -133,7 +136,7 @@ export function AgentsView(props: {
     d.harness = def.harness;
     d.name = def.name;
     d.slug = def.slug;
-    d.slugTouched = true; // slug is the stable identity — frozen while editing
+    d.slugTouched = true; // start from the stored slug; editing it renames the file
     d.secretEnv = def.secretEnv ?? '';
     d.editingSlug = slug;
     if (def.harness === 'claude') d.claude = def.config;
@@ -154,8 +157,19 @@ export function AgentsView(props: {
       return;
     }
     try {
-      const slug = await window.condash.writeAgent(buildDef(d), d.editingSlug ?? undefined);
-      props.flashToast(`Saved ${slug}`, 'success');
+      const previousSlug = d.editingSlug ?? undefined;
+      const slug = await window.condash.writeAgent(buildDef(d), previousSlug);
+      // A slug change is a rename: repoint every task that referenced the old
+      // slug so it keeps resolving (cascade). Best-effort after the agent write.
+      let suffix = '';
+      if (previousSlug && previousSlug !== slug) {
+        const repointed = await window.condash.repointTasksAgent(previousSlug, slug);
+        if (repointed > 0) {
+          suffix = ` · repointed ${repointed} task${repointed === 1 ? '' : 's'}`;
+          props.reloadTasks(); // the cascade rewrote task files — refresh that pane
+        }
+      }
+      props.flashToast(`Saved ${slug}${suffix}`, 'success');
       setDraft(null);
       props.reload();
     } catch (err) {
@@ -427,33 +441,9 @@ function AgentEditor(props: {
   };
 
   const selectHarness = (h: HarnessId) => {
-    // Reset the display name + secret to the harness's natural default when the
-    // user switches harness mid-edit, and re-suggest the slug to match.
-    const name = h === 'kimi' ? 'native' : 'deepseek-v4-pro';
-    const secretEnv = h === 'claude' ? CLAUDE_PRESETS['deepseek-v4-pro'].secretEnv : '';
-    props.patch({ harness: h, name, secretEnv, ...reslug(name, h) });
-  };
-
-  const applyPreset = (key: string) => {
-    const preset = CLAUDE_PRESETS[key];
-    if (!preset) return;
-    props.patch({
-      name: key,
-      secretEnv: preset.secretEnv,
-      claude: structuredClone(preset.config),
-      ...reslug(key, 'claude'),
-    });
-  };
-
-  const applyOpencodePreset = (key: string) => {
-    const preset = OPENCODE_PRESETS[key];
-    if (!preset) return;
-    props.patch({
-      name: key,
-      secretEnv: preset.secretEnv,
-      opencode: structuredClone(preset.config),
-      ...reslug(key, 'opencode'),
-    });
+    // Switch harness, keeping whatever the user typed; re-suggest the slug so its
+    // harness-label prefix matches (skipped once the slug is hand-edited).
+    props.patch({ harness: h, ...reslug(d().name, h) });
   };
 
   return (
@@ -480,22 +470,6 @@ function AgentEditor(props: {
             </select>
           </label>
 
-          <Show when={d().harness === 'claude'}>
-            <label>
-              <span>Preset</span>
-              <select onChange={(e) => applyPreset(e.currentTarget.value)}>
-                <option value="">(custom)</option>
-                <For each={Object.keys(CLAUDE_PRESETS)}>
-                  {(k) => (
-                    <option value={k} selected={k === d().name}>
-                      {k}
-                    </option>
-                  )}
-                </For>
-              </select>
-            </label>
-          </Show>
-
           <label>
             <span>Name (display label)</span>
             <input
@@ -510,18 +484,19 @@ function AgentEditor(props: {
             <input
               type="text"
               value={d().slug}
-              disabled={d().editingSlug !== null}
-              title={
-                d().editingSlug !== null
-                  ? 'The slug is the stable identity and cannot change after creation'
-                  : 'Lowercase letters, digits, and single hyphens'
-              }
+              title="Lowercase letters, digits, and single hyphens. Changing it renames the agent file and repoints referencing tasks."
               onInput={(e) => onSlugInput(e.currentTarget.value)}
             />
           </label>
 
           <p class="agents-editor-name">
             File: <code>agents/{d().slug || '…'}.json</code>
+            <Show when={d().editingSlug && d().editingSlug !== d().slug.trim()}>
+              {' '}
+              <span class="agents-editor-rename">
+                (renamed from <code>{d().editingSlug}</code>)
+              </span>
+            </Show>
           </p>
 
           <label>
@@ -608,19 +583,6 @@ function AgentEditor(props: {
           </Show>
 
           <Show when={d().harness === 'opencode'}>
-            <label>
-              <span>Preset</span>
-              <select onChange={(e) => applyOpencodePreset(e.currentTarget.value)}>
-                <option value="">(custom)</option>
-                <For each={Object.keys(OPENCODE_PRESETS)}>
-                  {(k) => (
-                    <option value={k} selected={k === d().name}>
-                      {k}
-                    </option>
-                  )}
-                </For>
-              </select>
-            </label>
             <div class="agents-overrides agents-options-table">
               <span class="agents-overrides-label">
                 Per-agent reasoning — the <code>default</code> row applies to every agent; add rows

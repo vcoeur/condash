@@ -55,7 +55,11 @@ async function seedTask(conceptionDir: string): Promise<void> {
   await writeFile(
     join(taskDir, 'task.json'),
     JSON.stringify(
-      { name: 'Refresh app docs', agent: 'claude-deepseek-v4-pro', submit: true },
+      {
+        name: 'Refresh app docs',
+        agent: 'claude-deepseek-v4-pro',
+        submit: true,
+      },
       null,
       2,
     ),
@@ -78,10 +82,7 @@ test('tasks pane lists a task and fills its markers', async () => {
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
-    await window
-      .locator('.edge-strip-left')
-      .first()
-      .waitFor({ state: 'visible', timeout: 10_000 });
+    await window.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
 
     // Open the Tasks pane from its own left edge-strip handle.
     await window.locator('.edge-strip-left .edge-handle', { hasText: 'Tasks' }).click();
@@ -94,12 +95,19 @@ test('tasks pane lists a task and fills its markers', async () => {
     await expect(window.locator('.tasks-marker[data-kind="field"]')).toHaveText('{AREA}');
     // Agent resolves → no "missing" badge, Run enabled.
     await expect(window.locator('.tasks-agent-missing')).toHaveCount(0);
+    // The card carries a single action — Run… — and nothing else (edit/delete
+    // moved into the editor popup).
+    const cardActions = rows.locator('.tasks-row-actions button');
+    await expect(cardActions).toHaveCount(1);
+    await expect(cardActions).toHaveText('Run…');
 
     await mkdir(outDir, { recursive: true });
     await window.screenshot({ path: join(outDir, 'tasks-pane.png') });
 
-    // Open the fill view; the {APP} picker and the {AREA} field render.
+    // The Run… button opens the fill as a popup modal; the {APP} picker and the
+    // {AREA} field render.
     await window.locator('.tasks-row-actions button', { hasText: 'Run…' }).click();
+    await expect(window.locator('.modal-backdrop .tasks-fill-modal')).toBeVisible();
     await expect(window.locator('.tasks-fill')).toBeVisible();
 
     // The {AREA} field is prefilled from its default; the preview echoes it.
@@ -123,13 +131,11 @@ test('new task editor creates a task end-to-end', async () => {
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
-    await window
-      .locator('.edge-strip-left')
-      .first()
-      .waitFor({ state: 'visible', timeout: 10_000 });
+    await window.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
     await window.locator('.edge-strip-left .edge-handle', { hasText: 'Tasks' }).click();
 
     await window.locator('.tasks-pane-actions button', { hasText: 'New task' }).click();
+    await expect(window.locator('.modal-backdrop .tasks-editor-modal')).toBeVisible();
     const editor = window.locator('.tasks-editor');
     await expect(editor).toBeVisible();
 
@@ -143,6 +149,37 @@ test('new task editor creates a task end-to-end', async () => {
     // The new card joins the list (sorted by name: Refresh app docs, Triage incident).
     await expect(window.locator('.tasks-row')).toHaveCount(2);
     await expect(window.locator('.tasks-row-name').nth(1)).toHaveText('Triage incident');
+  } finally {
+    await cleanup();
+  }
+});
+
+test('clicking a card opens the editor; delete is confirmed and removes the task', async () => {
+  const booted = await bootApp({ prepare: seedTask });
+  const { window, cleanup } = booted;
+  try {
+    await window.setViewportSize({ width: 1400, height: 900 });
+    await window.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await window.locator('.edge-strip-left .edge-handle', { hasText: 'Tasks' }).click();
+
+    await expect(window.locator('.tasks-row')).toHaveCount(1);
+
+    // Clicking the card body (not the Run… button) opens the editor popup modal.
+    await window.locator('.tasks-row-main').click();
+    await expect(window.locator('.modal-backdrop .tasks-editor-modal')).toBeVisible();
+    const editor = window.locator('.tasks-editor');
+    await expect(editor).toBeVisible();
+    await expect(editor.locator('input[type="text"]').first()).toHaveValue('Refresh app docs');
+
+    // Delete lives in the editor and is confirmed via a modal before it fires.
+    await expect(editor.locator('.tasks-editor-delete')).toHaveText('Delete');
+    await editor.locator('.tasks-editor-delete').click();
+    await expect(window.locator('.confirm-modal')).toBeVisible();
+    await window.locator('.confirm-modal button', { hasText: 'Delete' }).click();
+
+    // Editor closes and the card is gone.
+    await expect(window.locator('.tasks-editor')).toHaveCount(0);
+    await expect(window.locator('.tasks-row')).toHaveCount(0);
   } finally {
     await cleanup();
   }

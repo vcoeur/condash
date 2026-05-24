@@ -2,10 +2,10 @@ import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CLAUDE_PRESETS, type AgentDef } from '../shared/harnesses';
+import { defaultClaudeConfig, type AgentDef } from '../shared/harnesses';
 import type { TaskDef } from '../shared/tasks';
 import { writeAgent } from './agents';
-import { deleteTask, listTasks, readTask, writeTask } from './tasks';
+import { deleteTask, listTasks, readTask, repointTasksAgent, writeTask } from './tasks';
 
 let dir: string;
 
@@ -21,7 +21,7 @@ const claudeAgent: AgentDef = {
   name: 'deepseek-v4-pro',
   slug: 'claude-deepseek-v4-pro',
   secretEnv: 'DEEPSEEK_API_KEY',
-  config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+  config: defaultClaudeConfig(),
 };
 
 const task: TaskDef = {
@@ -112,11 +112,46 @@ describe('writeTask rename + deleteTask', () => {
     expect(slugs).toEqual(['new-slug']);
   });
 
+  it('rejects a rename onto a slug that already holds another task', async () => {
+    await writeTask(dir, 'keep', { ...task, name: 'Keep' });
+    await writeTask(dir, 'rename-me', { ...task, name: 'Rename me' });
+    await expect(writeTask(dir, 'keep', task, 'rename-me')).rejects.toThrow(/already exists/);
+    // Both survive: the target was not clobbered and the source was not deleted.
+    const slugs = (await listTasks(dir)).map((t) => t.slug);
+    expect(slugs).toEqual(['keep', 'rename-me']);
+  });
+
   it('deleteTask is idempotent', async () => {
     await writeTask(dir, 'refresh-app-docs', task);
     await deleteTask(dir, 'refresh-app-docs');
     await deleteTask(dir, 'refresh-app-docs');
     expect(await listTasks(dir)).toEqual([]);
+  });
+});
+
+describe('repointTasksAgent (agent rename cascade)', () => {
+  it('rewrites only the tasks referencing the old agent and returns the count', async () => {
+    await writeTask(dir, 'a', { ...task, agent: 'claude-old' });
+    await writeTask(dir, 'b', { ...task, agent: 'claude-old' });
+    await writeTask(dir, 'c', { ...task, agent: 'kimi-other' });
+
+    const repointed = await repointTasksAgent(dir, 'claude-old', 'claude-new');
+    expect(repointed).toBe(2);
+
+    expect((await readTask(dir, 'a'))?.agent).toBe('claude-new');
+    expect((await readTask(dir, 'b'))?.agent).toBe('claude-new');
+    expect((await readTask(dir, 'c'))?.agent).toBe('kimi-other');
+  });
+
+  it('preserves each task name/submit/prompt while repointing', async () => {
+    await writeTask(dir, 'a', task);
+    await repointTasksAgent(dir, task.agent, 'claude-renamed');
+    expect(await readTask(dir, 'a')).toEqual({ ...task, agent: 'claude-renamed' });
+  });
+
+  it('is a no-op (0) when old and new slugs match or the tasks dir is absent', async () => {
+    expect(await repointTasksAgent(dir, 'x', 'x')).toBe(0);
+    expect(await repointTasksAgent(dir, 'absent', 'other')).toBe(0);
   });
 });
 

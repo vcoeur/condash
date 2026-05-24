@@ -101,7 +101,9 @@ export async function readTask(conceptionPath: string, slug: string): Promise<Ta
 /**
  * Create / update a task. Writes `task.json` + `prompt.md` under
  * `<conception>/tasks/<slug>/`, creating the tree as needed. When
- * `previousSlug` is given and differs, the old directory is removed (rename).
+ * `previousSlug` is given and differs, the old directory is removed (rename) —
+ * but a rename onto a slug that already holds another task is rejected so the
+ * write doesn't clobber it before the source is deleted.
  */
 export async function writeTask(
   conceptionPath: string,
@@ -110,6 +112,9 @@ export async function writeTask(
   previousSlug?: string,
 ): Promise<string> {
   const safe = safeSlug(slug);
+  if (previousSlug && previousSlug !== safe && (await readTaskDir(conceptionPath, safe)) !== null) {
+    throw new Error(`a task "${safe}" already exists — rename it or pick another slug`);
+  }
   const config = taskConfigSchema.parse({ name: def.name, agent: def.agent, submit: def.submit });
   const dir = join(tasksDir(conceptionPath), safe);
   await fs.mkdir(dir, { recursive: true });
@@ -119,6 +124,40 @@ export async function writeTask(
     await deleteTask(conceptionPath, previousSlug);
   }
   return safe;
+}
+
+/**
+ * Repoint every task that references `oldAgentSlug` to `newAgentSlug`, returning
+ * the number rewritten. Called after an agent is renamed (cascade) so its tasks
+ * keep resolving instead of dangling. Tasks that fail to parse are skipped.
+ */
+export async function repointTasksAgent(
+  conceptionPath: string,
+  oldAgentSlug: string,
+  newAgentSlug: string,
+): Promise<number> {
+  if (oldAgentSlug === newAgentSlug) return 0;
+  let entries: string[];
+  try {
+    entries = await fs.readdir(tasksDir(conceptionPath));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw err;
+  }
+  let repointed = 0;
+  for (const slug of entries) {
+    if (!isValidSlugTail(slug)) continue;
+    let def: TaskDef | null;
+    try {
+      def = await readTaskDir(conceptionPath, slug);
+    } catch {
+      continue; // unparseable task — leave it alone
+    }
+    if (!def || def.agent !== oldAgentSlug) continue;
+    await writeTask(conceptionPath, slug, { ...def, agent: newAgentSlug });
+    repointed += 1;
+  }
+  return repointed;
 }
 
 /** Delete a task directory. No-op when already absent. */

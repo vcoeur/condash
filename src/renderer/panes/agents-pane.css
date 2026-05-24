@@ -275,6 +275,10 @@
   color: var(--text);
 }
 
+.agents-editor-rename {
+  color: var(--warn, #c44);
+}
+
 .agents-advanced {
   margin: 0.4rem 0 0.6rem;
   border: 1px solid var(--border);

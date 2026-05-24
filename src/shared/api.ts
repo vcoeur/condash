@@ -267,6 +267,9 @@ export interface CondashApi {
   writeTask(slug: string, def: TaskDef, previousSlug?: string): Promise<string>;
   /** Delete a task directory by slug. */
   deleteTask(slug: string): Promise<void>;
+  /** Repoint every task referencing `oldAgentSlug` to `newAgentSlug` (cascade
+   *  after an agent rename). Returns how many tasks were rewritten. */
+  repointTasksAgent(oldAgentSlug: string, newAgentSlug: string): Promise<number>;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;

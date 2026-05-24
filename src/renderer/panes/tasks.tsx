@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { AgentListItem } from '@shared/harnesses';
 import type { Project } from '@shared/types';
@@ -14,6 +14,7 @@ import {
 } from '@shared/tasks';
 import { substitute } from '@shared/action-template';
 import { isValidSlugTail, slugify } from '@shared/slug';
+import { ConfirmModal } from '../confirm-modal';
 import './tasks-pane.css';
 
 /** One app the `{APP}` picker can select. `alias` is the `@<name>` form. */
@@ -165,12 +166,16 @@ export function TasksView(props: {
     }
   };
 
-  const remove = async (slug: string): Promise<void> => {
-    if (!confirm(`Delete task ${slug}?`)) return;
+  // Delete the task currently open in the editor. Confirmation is handled by the
+  // editor's own ConfirmModal before this runs.
+  const deleteEditing = async (): Promise<void> => {
+    const d = draft();
+    if (!d?.editingSlug) return;
     try {
-      await window.condash.deleteTask(slug);
-      props.flashToast(`Deleted ${slug}`, 'success');
-      if (fill()?.slug === slug) setFill(null);
+      await window.condash.deleteTask(d.editingSlug);
+      props.flashToast(`Deleted ${d.name || d.editingSlug}`, 'success');
+      if (fill()?.slug === d.editingSlug) setFill(null);
+      setDraft(null);
       props.reload();
     } catch (err) {
       props.flashToast(`Delete failed: ${(err as Error).message}`, 'error');
@@ -207,7 +212,19 @@ export function TasksView(props: {
         >
           <For each={props.tasks()}>
             {(task) => (
-              <div class="tasks-row">
+              <div
+                class="tasks-row tasks-row-clickable"
+                role="button"
+                tabindex={0}
+                title="Click to edit this task"
+                onClick={() => void startEdit(task.slug)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    void startEdit(task.slug);
+                  }
+                }}
+              >
                 <div class="tasks-row-main">
                   <span class="tasks-row-name">{task.name}</span>
                   <AgentBadge agent={task.agent} present={task.agentPresent} />
@@ -220,21 +237,19 @@ export function TasksView(props: {
                 <div class="tasks-row-actions">
                   <button
                     type="button"
+                    class="tasks-run"
                     title={
                       task.agentPresent
                         ? 'Fill markers and run'
                         : `Agent ${task.agent} is not defined`
                     }
                     disabled={!task.agentPresent}
-                    onClick={() => void startFill(task.slug)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void startFill(task.slug);
+                    }}
                   >
                     Run…
-                  </button>
-                  <button type="button" onClick={() => void startEdit(task.slug)}>
-                    Edit
-                  </button>
-                  <button type="button" class="tasks-danger" onClick={() => void remove(task.slug)}>
-                    Delete
                   </button>
                 </div>
               </div>
@@ -265,6 +280,7 @@ export function TasksView(props: {
             agents={props.agents}
             onSave={save}
             onCancel={() => setDraft(null)}
+            onDelete={deleteEditing}
           />
         )}
       </Show>
@@ -318,6 +334,18 @@ function TaskFill(props: {
   const needsApp = createMemo(() => markers().some((m) => isAppToken(m.key)));
   const needsProject = createMemo(() => markers().some((m) => isProjectToken(m.key)));
 
+  const close = (): void => props.setFill(null);
+
+  // Esc closes the run popup.
+  const handleKey = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    }
+  };
+  onMount(() => document.addEventListener('keydown', handleKey, true));
+  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
+
   const setField = (key: string, value: string): void => {
     const f = props.fill();
     props.setFill({ ...f, fields: { ...f.fields, [key]: value } });
@@ -336,93 +364,105 @@ function TaskFill(props: {
   const run = (): void => {
     const f = props.fill();
     props.onRun(f.def.agent, substitute(f.def.prompt, ctx()), f.def.submit);
-    props.setFill(null);
+    close();
   };
 
   return (
-    <section class="tasks-editor tasks-fill">
-      <header>
-        <h3>Run {props.fill().def.name}</h3>
-        <button type="button" onClick={() => props.setFill(null)}>
-          Close
-        </button>
-      </header>
-      <p class="tasks-editor-note">
-        Agent: <code>{props.fill().def.agent}</code>
-        {props.fill().def.submit ? ' · submits on run' : ' · types without submitting'}
-      </p>
+    <div class="modal-backdrop" onClick={close}>
+      <div
+        class="modal tasks-fill-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Run ${props.fill().def.name}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <section class="tasks-editor tasks-fill">
+          <header>
+            <h3>Run {props.fill().def.name}</h3>
+            <button type="button" onClick={close}>
+              Close
+            </button>
+          </header>
+          <p class="tasks-editor-note">
+            Agent: <code>{props.fill().def.agent}</code>
+            {props.fill().def.submit ? ' · submits on run' : ' · types without submitting'}
+          </p>
 
-      <Show when={needsApp()}>
-        <label>
-          <span>App {'{APP}'}</span>
-          <select
-            value={props.fill().app?.alias ?? ''}
-            onChange={(e) => {
-              const alias = e.currentTarget.value;
-              const app = props.apps().find((a) => a.alias === alias) ?? null;
-              props.setFill({ ...props.fill(), app });
-            }}
-          >
-            <option value="">(pick an app)</option>
-            <For each={props.apps()}>{(a) => <option value={a.alias}>{a.alias}</option>}</For>
-          </select>
-        </label>
-      </Show>
+          <Show when={needsApp()}>
+            <label>
+              <span>App {'{APP}'}</span>
+              <select
+                value={props.fill().app?.alias ?? ''}
+                onChange={(e) => {
+                  const alias = e.currentTarget.value;
+                  const app = props.apps().find((a) => a.alias === alias) ?? null;
+                  props.setFill({ ...props.fill(), app });
+                }}
+              >
+                <option value="">(pick an app)</option>
+                <For each={props.apps()}>{(a) => <option value={a.alias}>{a.alias}</option>}</For>
+              </select>
+            </label>
+          </Show>
 
-      <Show when={needsProject()}>
-        <label>
-          <span>Project {'{PROJECT}'}</span>
-          <select
-            value={props.fill().project?.slug ?? ''}
-            onChange={(e) => {
-              const slug = e.currentTarget.value;
-              const project = props.projects().find((p) => p.slug === slug) ?? null;
-              props.setFill({ ...props.fill(), project });
-            }}
-          >
-            <option value="">(pick a project)</option>
-            <For each={props.projects()}>
-              {(p) => <option value={p.slug}>{p.title || p.slug}</option>}
-            </For>
-          </select>
-        </label>
-      </Show>
+          <Show when={needsProject()}>
+            <label>
+              <span>Project {'{PROJECT}'}</span>
+              <select
+                value={props.fill().project?.slug ?? ''}
+                onChange={(e) => {
+                  const slug = e.currentTarget.value;
+                  const project = props.projects().find((p) => p.slug === slug) ?? null;
+                  props.setFill({ ...props.fill(), project });
+                }}
+              >
+                <option value="">(pick a project)</option>
+                <For each={props.projects()}>
+                  {(p) => <option value={p.slug}>{p.title || p.slug}</option>}
+                </For>
+              </select>
+            </label>
+          </Show>
 
-      <For each={textMarkers()}>
-        {(marker) => (
-          <label>
-            <span>{`{${marker.key}}`}</span>
-            <input
-              type="text"
-              value={props.fill().fields[marker.key] ?? ''}
-              onInput={(e) => setField(marker.key, e.currentTarget.value)}
-            />
-          </label>
-        )}
-      </For>
+          <For each={textMarkers()}>
+            {(marker) => (
+              <label>
+                <span>{`{${marker.key}}`}</span>
+                <input
+                  type="text"
+                  value={props.fill().fields[marker.key] ?? ''}
+                  onInput={(e) => setField(marker.key, e.currentTarget.value)}
+                />
+              </label>
+            )}
+          </For>
 
-      <div class="tasks-config-view tasks-preview">
-        <span class="tasks-preview-label">Prompt to run:</span>
-        <pre>{preview()}</pre>
+          <div class="tasks-config-view tasks-preview">
+            <span class="tasks-preview-label">Prompt to run:</span>
+            <pre>{preview()}</pre>
+          </div>
+
+          <div class="tasks-editor-actions">
+            <button
+              type="button"
+              class="tasks-run"
+              disabled={!agentOk()}
+              title={
+                agentOk()
+                  ? 'Spawn the agent and run'
+                  : `Agent ${props.fill().def.agent} is not defined`
+              }
+              onClick={run}
+            >
+              Run
+            </button>
+            <button type="button" onClick={close}>
+              Cancel
+            </button>
+          </div>
+        </section>
       </div>
-
-      <div class="tasks-editor-actions">
-        <button
-          type="button"
-          class="tasks-run"
-          disabled={!agentOk()}
-          title={
-            agentOk() ? 'Spawn the agent and run' : `Agent ${props.fill().def.agent} is not defined`
-          }
-          onClick={run}
-        >
-          Run
-        </button>
-        <button type="button" onClick={() => props.setFill(null)}>
-          Cancel
-        </button>
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -434,9 +474,22 @@ function TaskEditor(props: {
   agents: () => readonly AgentListItem[];
   onSave: () => void;
   onCancel: () => void;
+  onDelete: () => void;
 }): JSX.Element {
   const d = props.draft;
   const markers = createMemo(() => extractMarkers(d().prompt));
+  const [confirmDelete, setConfirmDelete] = createSignal(false);
+
+  // Esc closes the editor — but defer to the delete-confirm dialog when it is
+  // open (its own handler closes it first).
+  const handleKey = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && !confirmDelete()) {
+      event.preventDefault();
+      props.onCancel();
+    }
+  };
+  onMount(() => document.addEventListener('keydown', handleKey, true));
+  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
   // Agent options keyed by slug (the stored identity) with the display name as
   // label. Includes the draft's current slug when it dangles (renamed/removed)
@@ -461,75 +514,113 @@ function TaskEditor(props: {
   };
 
   return (
-    <section class="tasks-editor">
-      <header>
-        <h3>{d().editingSlug ? `Edit ${d().editingSlug}` : 'New task'}</h3>
-      </header>
+    <div class="modal-backdrop" onClick={props.onCancel}>
+      <div
+        class="modal tasks-editor-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={d().editingSlug ? `Edit ${d().editingSlug}` : 'New task'}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <section class="tasks-editor">
+          <header>
+            <h3>{d().editingSlug ? `Edit ${d().editingSlug}` : 'New task'}</h3>
+          </header>
 
-      <label>
-        <span>Name</span>
-        <input type="text" value={d().name} onInput={(e) => onName(e.currentTarget.value)} />
-      </label>
+          <label>
+            <span>Name</span>
+            <input type="text" value={d().name} onInput={(e) => onName(e.currentTarget.value)} />
+          </label>
 
-      <label>
-        <span>Slug (directory under tasks/)</span>
-        <input
-          type="text"
-          value={d().slug}
-          placeholder="refresh-app-docs"
-          onInput={(e) => props.patch({ slug: e.currentTarget.value, slugDirty: true })}
-        />
-      </label>
+          <label>
+            <span>Slug (directory under tasks/)</span>
+            <input
+              type="text"
+              value={d().slug}
+              placeholder="refresh-app-docs"
+              onInput={(e) => props.patch({ slug: e.currentTarget.value, slugDirty: true })}
+            />
+          </label>
 
-      <label>
-        <span>Agent</span>
-        <select value={d().agent} onChange={(e) => props.patch({ agent: e.currentTarget.value })}>
-          <Switch>
-            <Match when={agentOptions().length === 0}>
-              <option value="">(no agents defined)</option>
-            </Match>
-            <Match when={agentOptions().length > 0}>
-              <For each={agentOptions()}>{(o) => <option value={o.slug}>{o.label}</option>}</For>
-            </Match>
-          </Switch>
-        </select>
-      </label>
+          <label>
+            <span>Agent</span>
+            <select
+              value={d().agent}
+              onChange={(e) => props.patch({ agent: e.currentTarget.value })}
+            >
+              <Switch>
+                <Match when={agentOptions().length === 0}>
+                  <option value="">(no agents defined)</option>
+                </Match>
+                <Match when={agentOptions().length > 0}>
+                  <For each={agentOptions()}>
+                    {(o) => <option value={o.slug}>{o.label}</option>}
+                  </For>
+                </Match>
+              </Switch>
+            </select>
+          </label>
 
-      <label class="tasks-checkbox">
-        <input
-          type="checkbox"
-          checked={d().submit}
-          onChange={(e) => props.patch({ submit: e.currentTarget.checked })}
-        />
-        <span>Press Enter after typing (submit)</span>
-      </label>
+          <label class="tasks-checkbox">
+            <input
+              type="checkbox"
+              checked={d().submit}
+              onChange={(e) => props.patch({ submit: e.currentTarget.checked })}
+            />
+            <span>Press Enter after typing (submit)</span>
+          </label>
 
-      <label>
-        <span>Prompt (markdown with {'{MARKERS}'})</span>
-        <textarea
-          class="tasks-prompt-textarea"
-          spellcheck={false}
-          value={d().prompt}
-          placeholder={'Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}'}
-          onInput={(e) => props.patch({ prompt: e.currentTarget.value })}
-        />
-      </label>
+          <label>
+            <span>Prompt (markdown with {'{MARKERS}'})</span>
+            <textarea
+              class="tasks-prompt-textarea"
+              spellcheck={false}
+              value={d().prompt}
+              placeholder={'Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}'}
+              onInput={(e) => props.patch({ prompt: e.currentTarget.value })}
+            />
+          </label>
 
-      <Show when={markers().length > 0}>
-        <div class="tasks-markers tasks-editor-markers">
-          <span class="tasks-preview-label">Markers:</span>
-          <For each={markers()}>{(marker) => <MarkerChip marker={marker} />}</For>
-        </div>
-      </Show>
+          <Show when={markers().length > 0}>
+            <div class="tasks-markers tasks-editor-markers">
+              <span class="tasks-preview-label">Markers:</span>
+              <For each={markers()}>{(marker) => <MarkerChip marker={marker} />}</For>
+            </div>
+          </Show>
 
-      <div class="tasks-editor-actions">
-        <button type="button" onClick={props.onSave}>
-          Save
-        </button>
-        <button type="button" onClick={props.onCancel}>
-          Cancel
-        </button>
+          <div class="tasks-editor-actions">
+            <button type="button" onClick={props.onSave}>
+              Save
+            </button>
+            <button type="button" onClick={props.onCancel}>
+              Cancel
+            </button>
+            <Show when={d().editingSlug}>
+              <button
+                type="button"
+                class="tasks-danger tasks-editor-delete"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete
+              </button>
+            </Show>
+          </div>
+
+          <Show when={confirmDelete()}>
+            <ConfirmModal
+              title={`Delete task ${d().name || d().editingSlug}?`}
+              body="Removes the task directory (task.json + prompt.md)."
+              confirmLabel="Delete"
+              destructive
+              onCancel={() => setConfirmDelete(false)}
+              onConfirm={() => {
+                setConfirmDelete(false);
+                props.onDelete();
+              }}
+            />
+          </Show>
+        </section>
       </div>
-    </section>
+    </div>
   );
 }
