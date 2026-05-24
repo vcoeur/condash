@@ -143,7 +143,7 @@ Press `Ctrl+Shift+V` (configurable as `terminal.screenshot_paste_shortcut`) anyw
 
 Typical use: take a screenshot of a failing test → `Ctrl+Shift+V` → the path appears → prefix with `cat ` or drop into a `gh issue create --body-file ` command.
 
-Clipboard-based paste (`Ctrl+V`) also works for regular text, and uses the OS clipboard via a server-side bridge because xterm.js can't read the browser clipboard directly. Both `Ctrl+V` (paste) and `Ctrl+C` (copy) flow through this bridge.
+Regular text paste (`Ctrl+V`) reads the system clipboard in the main process (`clipboardReadText` IPC) and feeds it through `term.paste()`, so bracketed-paste mode is honoured — agent TUIs (e.g. opencode) see a multi-line paste as a single block. Copy (`Ctrl+C`, when there's a selection) writes the clipboard via the renderer's `navigator.clipboard`. Paste doesn't use the renderer clipboard because `navigator.clipboard.readText()` is permission-gated and unreliable in Electron.
 
 ## Configuration surface
 

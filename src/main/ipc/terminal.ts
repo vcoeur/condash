@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { clipboard, ipcMain } from 'electron';
 import {
   attachTerminal,
   closeSession,
@@ -25,6 +25,12 @@ export function registerTerminalIpc(): void {
   ipcMain.handle('termWrite', (_, id: string, data: string) => {
     writeTerminal(id, data);
   });
+
+  // Read the system clipboard from the main process. The renderer's
+  // navigator.clipboard.readText() is permission-gated (no clipboard-read
+  // permission handler is wired) and unreliable in Electron, so terminal
+  // paste reads through here instead. See xterm-mount.ts's Ctrl+V handler.
+  ipcMain.handle('clipboardReadText', () => clipboard.readText());
 
   ipcMain.handle('termResize', (_, id: string, cols: number, rows: number) => {
     resizeTerminal(id, cols, rows);

@@ -273,6 +273,10 @@ export interface CondashApi {
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;
+  /** Read the system clipboard via the main process. Used by the terminal's
+   * Ctrl+V handler — the renderer's navigator.clipboard.readText() is
+   * permission-gated and unreliable in Electron. */
+  clipboardReadText(): Promise<string>;
   termResize(id: string, cols: number, rows: number): Promise<void>;
   termClose(id: string): Promise<void>;
   termGetPrefs(): Promise<TerminalPrefs>;
