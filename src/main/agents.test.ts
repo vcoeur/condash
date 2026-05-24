@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CLAUDE_PRESETS, type AgentDef } from '../shared/harnesses';
+import type { AgentDef, ClaudeAgentConfig } from '../shared/harnesses';
 import {
   agentsEnvPath,
   deleteAgent,
@@ -15,6 +15,27 @@ import {
   writeAgent,
   writeAgentsEnv,
 } from './agents';
+
+// A claude-on-deepseek config (provider remap) — the fixture the spawn/token
+// tests need a non-empty baseUrl for. Inlined since CLAUDE_PRESETS was removed.
+const deepseekClaudeConfig: ClaudeAgentConfig = {
+  baseUrl: 'https://api.deepseek.com/anthropic',
+  authStyle: 'bearer',
+  model: 'deepseek-v4-pro',
+  smallFastModel: 'deepseek-v4-pro',
+  haikuAlias: 'deepseek-v4-pro',
+  sonnetAlias: 'deepseek-v4-pro',
+  opusAlias: 'deepseek-v4-pro',
+  subagentModel: 'deepseek-v4-pro',
+  maxContextTokens: 1000000,
+  effortLevel: 'max',
+  disableCaching: false,
+  disable1M: true,
+  disableAdaptiveThinking: true,
+  disableTelemetry: true,
+  disableErrorReporting: true,
+  disableClaudeApiSkill: true,
+};
 
 let dir: string;
 
@@ -30,7 +51,7 @@ const claudeAgent: AgentDef = {
   name: 'deepseek-v4-pro',
   slug: 'claude-deepseek-v4-pro',
   secretEnv: 'DEEPSEEK_API_KEY',
-  config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+  config: deepseekClaudeConfig,
 };
 
 /** Write a raw JSON agent file (bypassing writeAgent) to simulate legacy /
@@ -101,6 +122,17 @@ describe('agent storage round-trip', () => {
     expect(items[0]).toMatchObject({ slug: 'claude-deepseek-v4-pro', name: 'renamed display' });
   });
 
+  it('rejects a rename onto a slug that already holds another agent', async () => {
+    await writeAgent(dir, { ...claudeAgent, name: 'keep', slug: 'claude-keep' });
+    await writeAgent(dir, { ...claudeAgent, name: 'rename me', slug: 'claude-rename-me' });
+    await expect(
+      writeAgent(dir, { ...claudeAgent, slug: 'claude-keep' }, 'claude-rename-me'),
+    ).rejects.toThrow(/already exists/);
+    // Both survive: the target was not clobbered and the source was not deleted.
+    const slugs = (await listAgents(dir)).map((a) => a.slug).sort();
+    expect(slugs).toEqual(['claude-keep', 'claude-rename-me']);
+  });
+
   it('deleteAgent is idempotent', async () => {
     await writeAgent(dir, claudeAgent);
     await deleteAgent(dir, 'claude-deepseek-v4-pro');
@@ -140,7 +172,7 @@ describe('legacy + space-named files', () => {
       harness: 'claude',
       modelVariant: 'legacy-label',
       secretEnv: 'DEEPSEEK_API_KEY',
-      config: CLAUDE_PRESETS['deepseek-v4-pro'].config,
+      config: deepseekClaudeConfig,
     });
     const def = await readAgent(dir, 'claude-legacy');
     expect(def?.name).toBe('legacy-label');

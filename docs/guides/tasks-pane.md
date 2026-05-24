@@ -54,23 +54,25 @@ The app picker lists your configured [repositories](repositories-and-open-with.m
 
 ## Run a task
 
+A task card carries a single **Run…** button — clicking it opens the **run popup**:
+
 1. Open the **Tasks** handle and click **Run…** on a task card.
 2. Fill the markers — pick an app / project where prompted, edit the text fields (prefilled from defaults).
 3. The **Prompt to run** box previews the substituted text live.
 4. Click **Run**. condash spawns the task's agent in a fresh terminal tab (working directory = the conception root), types the filled prompt, and presses Enter when the task's **submit** flag is on.
 
-Run is disabled when the task's referenced agent is no longer defined (the card shows a *missing* badge) — open **Edit** and pick a current agent.
+Run is disabled when the task's referenced agent is no longer defined (the card shows a *missing* badge) — click the card to open the editor and pick a current agent.
 
 ## Create or edit a task
 
-Click **+ New task** (or **Edit** on a card):
+Click **+ New task**, or **click a task card** to open the **editor popup** for an existing task:
 
 - **Name** — the card title. For a new task the **slug** auto-derives from the name until you hand-edit it.
 - **Agent** — pick an agent from the [Agents pane](agent-clis-and-models.md#define-it-as-a-condash-agent); the select shows the agent's display name and stores its stable `slug`.
 - **Submit** — press Enter after typing (on by default).
 - **Prompt** — markdown with `{MARKERS}`. The **Markers** chips below update live as you type so you can see the fields you're creating.
 
-Renaming the slug moves the task directory; deleting removes it.
+The editor carries **Save** / **Cancel** and, for an existing task, a **Delete** button that asks for confirmation first. Renaming the slug moves the task directory.
 
 ## See also
 

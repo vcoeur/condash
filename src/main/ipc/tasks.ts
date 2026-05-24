@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import type { TaskDef } from '../../shared/tasks';
-import { deleteTask, listTasks, readTask, writeTask } from '../tasks';
+import { deleteTask, listTasks, readTask, repointTasksAgent, writeTask } from '../tasks';
 import { withConception } from './utils';
 
 /**
@@ -21,5 +21,9 @@ export function registerTasksIpc(): void {
     withConception(async (c) => {
       await deleteTask(c, slug);
     }, undefined),
+  );
+
+  ipcMain.handle('repointTasksAgent', (_, oldAgentSlug: string, newAgentSlug: string) =>
+    withConception((c) => repointTasksAgent(c, oldAgentSlug, newAgentSlug), 0),
   );
 }

@@ -508,119 +508,35 @@ function setModelOptions(
 }
 
 // ---------------------------------------------------------------------------
-// Defaults + presets — used by the Agents pane to scaffold a new agent
+// Defaults — used by the Agents pane to scaffold a new agent
 // ---------------------------------------------------------------------------
 
-/** The `DISABLE_*` toggle defaults shared by every claude-on-alt-provider preset. */
-const CLAUDE_ALT_PROVIDER_TOGGLES = {
-  disableCaching: false,
-  disable1M: true,
-  disableAdaptiveThinking: true,
-  disableTelemetry: true,
-  disableErrorReporting: true,
-  disableClaudeApiSkill: true,
-} as const;
-
-/** A claude config preset + the env var it expects the token under. */
-export interface ClaudePreset {
-  config: ClaudeAgentConfig;
-  secretEnv: string;
-}
-
 /**
- * Known claude model-variant presets, mirroring the agentsconf wrappers. The
- * Agents pane fills the full config from one of these when the user picks a
- * variant; advanced overrides edit individual fields afterwards.
+ * Default claude config: no provider remap. An empty `baseUrl` plus no token
+ * makes condash run bare `claude`, which uses the user's own Anthropic login
+ * and model config. The Agents editor exposes every field for the user to point
+ * the agent at an alt-provider endpoint by hand.
  */
-export const CLAUDE_PRESETS: Record<string, ClaudePreset> = {
-  native: {
-    // No provider remap: empty baseUrl + no token → condash runs bare `claude`,
-    // which uses the user's own Anthropic login and model config.
-    secretEnv: '',
-    config: {
-      baseUrl: '',
-      authStyle: 'bearer',
-      model: '',
-      smallFastModel: '',
-      haikuAlias: '',
-      sonnetAlias: '',
-      opusAlias: '',
-      subagentModel: '',
-      maxContextTokens: 0,
-      effortLevel: '',
-      disableCaching: false,
-      disable1M: false,
-      disableAdaptiveThinking: false,
-      disableTelemetry: false,
-      disableErrorReporting: false,
-      disableClaudeApiSkill: false,
-    },
-  },
-  'deepseek-v4-pro': {
-    secretEnv: 'DEEPSEEK_API_KEY',
-    config: {
-      baseUrl: 'https://api.deepseek.com/anthropic',
-      authStyle: 'bearer',
-      model: 'deepseek-v4-pro',
-      smallFastModel: 'deepseek-v4-pro',
-      haikuAlias: 'deepseek-v4-pro',
-      sonnetAlias: 'deepseek-v4-pro',
-      opusAlias: 'deepseek-v4-pro',
-      subagentModel: 'deepseek-v4-pro',
-      maxContextTokens: 1000000,
-      effortLevel: 'max',
-      ...CLAUDE_ALT_PROVIDER_TOGGLES,
-    },
-  },
-  'deepseek-v4-flash': {
-    secretEnv: 'DEEPSEEK_API_KEY',
-    config: {
-      baseUrl: 'https://api.deepseek.com/anthropic',
-      authStyle: 'bearer',
-      model: 'deepseek-v4-flash',
-      smallFastModel: 'deepseek-v4-flash',
-      haikuAlias: 'deepseek-v4-flash',
-      sonnetAlias: 'deepseek-v4-flash',
-      opusAlias: 'deepseek-v4-flash',
-      subagentModel: 'deepseek-v4-flash',
-      maxContextTokens: 1000000,
-      effortLevel: 'max',
-      ...CLAUDE_ALT_PROVIDER_TOGGLES,
-    },
-  },
-  'deepseek-auto': {
-    secretEnv: 'DEEPSEEK_API_KEY',
-    config: {
-      baseUrl: 'https://api.deepseek.com/anthropic',
-      authStyle: 'bearer',
-      model: 'deepseek-v4-flash',
-      smallFastModel: 'deepseek-v4-flash',
-      haikuAlias: 'deepseek-v4-flash',
-      sonnetAlias: 'deepseek-v4-pro',
-      opusAlias: 'deepseek-v4-pro',
-      subagentModel: 'deepseek-v4-flash',
-      maxContextTokens: 1000000,
-      effortLevel: 'max',
-      ...CLAUDE_ALT_PROVIDER_TOGGLES,
-    },
-  },
-  kimi: {
-    secretEnv: 'KIMI_API_KEY',
-    config: {
-      baseUrl: 'https://api.kimi.com/coding/',
-      authStyle: 'bearer',
-      model: 'kimi-k2.6',
-      smallFastModel: 'kimi-k2.6',
-      haikuAlias: 'kimi-k2.6',
-      sonnetAlias: 'kimi-k2.6',
-      opusAlias: 'kimi-k2.6',
-      subagentModel: 'kimi-k2.6',
-      maxContextTokens: 262144,
-      effortLevel: 'max',
-      ...CLAUDE_ALT_PROVIDER_TOGGLES,
-    },
-  },
-};
+export function defaultClaudeConfig(): ClaudeAgentConfig {
+  return {
+    baseUrl: '',
+    authStyle: 'bearer',
+    model: '',
+    smallFastModel: '',
+    haikuAlias: '',
+    sonnetAlias: '',
+    opusAlias: '',
+    subagentModel: '',
+    maxContextTokens: 0,
+    effortLevel: '',
+    disableCaching: false,
+    disable1M: false,
+    disableAdaptiveThinking: false,
+    disableTelemetry: false,
+    disableErrorReporting: false,
+    disableClaudeApiSkill: false,
+  };
+}
 
 /** Default kimi-cli config. */
 export function defaultKimiConfig(): KimiAgentConfig {
@@ -639,46 +555,3 @@ export function kimiAgentFileYaml(instructions: string): string {
 export function defaultOpencodeConfig(model: string): OpencodeAgentConfig {
   return { model, disableExternalSkills: true };
 }
-
-/** An opencode config preset + the env var it expects the token under. */
-export interface OpencodePreset {
-  config: OpencodeAgentConfig;
-  secretEnv: string;
-}
-
-/**
- * Known opencode model-variant presets, mirroring the agentsconf
- * `opencode-<provider>` wrappers. `deepseek-auto` tiers build/plan onto the
- * premium model and defaults everything else to the cheap one — exactly the
- * `opencode-deepseek-auto` wrapper's behaviour.
- */
-// opencode authenticates providers through its own auth store (`opencode auth
-// login`), not an env-var key — the agentsconf `opencode-*` wrappers carried no
-// key for exactly this reason. So presets leave `secretEnv` empty; injecting a
-// stray `DEEPSEEK_API_KEY` can collide with opencode's OAuth and hang launch.
-// Set a token only if your provider genuinely reads one from the environment.
-export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
-  'deepseek-v4-pro': {
-    secretEnv: '',
-    config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true },
-  },
-  'deepseek-v4-flash': {
-    secretEnv: '',
-    config: { model: 'deepseek/deepseek-v4-flash', disableExternalSkills: true },
-  },
-  'deepseek-auto': {
-    secretEnv: '',
-    config: {
-      model: 'deepseek/deepseek-v4-flash',
-      disableExternalSkills: true,
-      agentOptions: [
-        { agent: 'build', model: 'deepseek/deepseek-v4-pro' },
-        { agent: 'plan', model: 'deepseek/deepseek-v4-pro' },
-      ],
-    },
-  },
-  kimi: {
-    secretEnv: '',
-    config: { model: 'kimi-for-coding/kimi-k2-thinking', disableExternalSkills: true },
-  },
-};

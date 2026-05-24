@@ -649,6 +649,7 @@ function App() {
                     <AgentsView
                       agents={agents}
                       reload={() => void reloadAgents()}
+                      reloadTasks={() => void reloadTasks()}
                       hasConception={() => conceptionPath() !== null}
                       flashToast={flashToast}
                       onLaunch={launchAgent}

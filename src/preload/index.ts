@@ -62,6 +62,8 @@ const api: CondashApi = {
   readTask: (slug) => ipcRenderer.invoke('readTask', slug),
   writeTask: (slug, def, previousSlug) => ipcRenderer.invoke('writeTask', slug, def, previousSlug),
   deleteTask: (slug) => ipcRenderer.invoke('deleteTask', slug),
+  repointTasksAgent: (oldAgentSlug, newAgentSlug) =>
+    ipcRenderer.invoke('repointTasksAgent', oldAgentSlug, newAgentSlug),
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
   getGlobalSettingsRaw: () => ipcRenderer.invoke('getGlobalSettingsRaw'),
   writeGlobalSettings: (expectedContent, newContent) =>

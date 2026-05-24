@@ -271,7 +271,9 @@ export async function readAgent(conceptionPath: string, slug: string): Promise<A
  * Create or update an agent. The filename is the def's `slug` (validated as
  * lowercase-kebab here, so every written file is clean). The stored slug is
  * pinned to the filename stem. When `previousSlug` is given and differs, the
- * old file is removed (rename).
+ * old file is removed (rename) — but a rename onto a slug that already holds
+ * another agent is rejected so the write doesn't clobber it before the source
+ * is deleted.
  */
 export async function writeAgent(
   conceptionPath: string,
@@ -286,6 +288,15 @@ export async function writeAgent(
   }
   await fs.mkdir(agentsDir(conceptionPath), { recursive: true });
   const file = join(agentsDir(conceptionPath), `${parsed.slug}.json`);
+  if (previousSlug && previousSlug !== parsed.slug) {
+    const collides = await fs
+      .access(file)
+      .then(() => true)
+      .catch(() => false);
+    if (collides) {
+      throw new Error(`an agent "${parsed.slug}" already exists — rename it or pick another slug`);
+    }
+  }
   await fs.writeFile(file, `${JSON.stringify(parsed, null, 2)}\n`, 'utf8');
   if (previousSlug && previousSlug !== parsed.slug) {
     await deleteAgent(conceptionPath, previousSlug);
