@@ -141,50 +141,42 @@ export const OPENCODE_TEXT_VERBOSITIES = ['low', 'medium', 'high'] as const;
  *  the standard, `concise`/`detailed` are the OpenAI summary modes. */
 export const OPENCODE_REASONING_SUMMARIES = ['auto', 'concise', 'detailed'] as const;
 
-/** A named opencode model **variant** — a bundle of model options the user can
- *  switch between live (opencode's `variant_cycle`, bound to ctrl+t by default;
- *  the footer shows the active one). Emitted under
- *  `provider.<id>.models.<model>.variants[name]` for every referenced model.
- *  Blank option fields are omitted. */
-export interface OpencodeVariant {
-  /** Variant name — the key under `model.variants` and the value agents reference. */
-  name: string;
+/** A reasoning-options bundle for one row of the agent table. Blank fields are
+ *  omitted. The `reasoningEffort` doubles as the emitted variant **name** (so the
+ *  opencode footer shows the effort and ctrl+t cycles efforts). */
+export interface OpencodeAgentOptions {
   reasoningEffort?: string;
   textVerbosity?: string;
   reasoningSummary?: string;
 }
 
-/** A per-agent override → `agent.<name>.{model,variant}`. Sets a different model
- *  and/or a default variant for one opencode agent. `model` is a `<provider>/<model>`
- *  string; `variant` is the name of an `OpencodeVariant`. Either may be blank. */
-export interface OpencodeAgentOverride {
+/** A per-agent row of the options table: an opencode agent name, an optional own
+ *  model (e.g. plan-on-kimi), and its reasoning options. */
+export interface OpencodeAgentRow extends OpencodeAgentOptions {
   agent: string;
   model?: string;
-  variant?: string;
 }
 
 /**
  * opencode harness config. Rendered into an inline `OPENCODE_CONFIG_CONTENT`
  * JSON document (no `opencode.json` file needed — same trick as the
- * `opencode-deepseek-auto` wrapper): top-level `model` is the default; per-agent
- * `{model,variant}` overrides and any `extraConfigJson` keys are merged in.
+ * `opencode-deepseek-auto` wrapper). The reasoning UI is a single table: a
+ * `default` row (this `model` + `defaultOptions`) applied to every agent, and
+ * per-agent rows (`agentOptions`) that override the model and/or options. Under
+ * the hood condash emits opencode **variants** named by effort so the TUI footer
+ * shows each agent's effort and ctrl+t cycles them.
  */
 export interface OpencodeAgentConfig {
-  /** Top-level `model` (`<provider>/<model>`) — opencode's default model. */
+  /** Top-level `model` (`<provider>/<model>`) — the default row's model, used by
+   *  every agent that doesn't override it. */
   model: string;
   /** Sets `OPENCODE_DISABLE_EXTERNAL_SKILLS=1` so only `.opencode/` skills load. */
   disableExternalSkills: boolean;
-  /** Named model variants → `provider.<id>.models.<model>.variants`. Each bundles
-   *  reasoning effort / verbosity / summary; switchable live in the opencode TUI
-   *  (ctrl+t), and the footer shows the active one. */
-  variants?: OpencodeVariant[];
-  /** Default variant applied to every agent → `agent.<name>.variant` for each
-   *  built-in agent (unless overridden below). References a `variants` name. */
-  defaultVariant?: string;
-  /** Per-agent overrides → `agent.<name>.model` / `agent.<name>.variant`. A model
-   *  override gives that agent its own model (e.g. plan vs build); a variant
-   *  override wins over `defaultVariant` for that agent. */
-  agentOverrides?: OpencodeAgentOverride[];
+  /** The default row's reasoning options, applied to every agent (unless a
+   *  per-agent row overrides). */
+  defaultOptions?: OpencodeAgentOptions;
+  /** Per-agent rows: own model and/or reasoning options. */
+  agentOptions?: OpencodeAgentRow[];
   /** Raw JSON merged into the inline config — escape hatch for any other
    *  opencode.json key (theme, provider, mcp, …). Blank = none. */
   extraConfigJson?: string;
@@ -423,31 +415,77 @@ function buildOpencodeSpawn(
   if (cfg.disableExternalSkills) env.OPENCODE_DISABLE_EXTERNAL_SKILLS = '1';
 
   // Inline config (no opencode.json needed). extraConfigJson seeds the base;
-  // model + per-agent overrides win over it.
+  // the agent options table wins over it.
   const config: Record<string, unknown> = {};
   if (cfg.extraConfigJson?.trim()) Object.assign(config, JSON.parse(cfg.extraConfigJson));
   if (cfg.model.trim()) config.model = cfg.model;
   const defaultModel = cfg.model.trim();
 
-  // Index the per-agent overrides by agent name (model and/or variant).
-  const overrides = new Map(
-    (cfg.agentOverrides ?? [])
-      .filter((o) => o.agent.trim())
-      .map(
-        (o) => [o.agent.trim(), { model: o.model?.trim(), variant: o.variant?.trim() }] as const,
-      ),
+  // Translate the table into opencode variants (ctrl+t cycles them; the variant
+  // also drives the request's reasoning effort). Each distinct reasoning bundle
+  // (effort + verbosity + summary) is one variant. Its name is the effort alone
+  // when that effort is unique; when two bundles share an effort but differ in
+  // verbosity/summary, the differing parts are appended so the names never
+  // collide (e.g. `high`, `high-low`, `high-low-auto`).
+  const rows = new Map(
+    (cfg.agentOptions ?? []).filter((r) => r.agent.trim()).map((r) => [r.agent.trim(), r] as const),
   );
-  const defaultVariant = cfg.defaultVariant?.trim();
+
+  interface VariantBundle {
+    effort: string;
+    textVerbosity?: string;
+    reasoningSummary?: string;
+  }
+  const bundleOf = (opts?: OpencodeAgentOptions): VariantBundle | undefined => {
+    const effort = opts?.reasoningEffort?.trim();
+    if (!effort) return undefined;
+    const bundle: VariantBundle = { effort };
+    if (opts?.textVerbosity?.trim()) bundle.textVerbosity = opts.textVerbosity.trim();
+    if (opts?.reasoningSummary?.trim()) bundle.reasoningSummary = opts.reasoningSummary.trim();
+    return bundle;
+  };
+  const bundleKey = (b: VariantBundle) =>
+    `${b.effort} ${b.textVerbosity ?? ''} ${b.reasoningSummary ?? ''}`;
+
+  const bundles = [bundleOf(cfg.defaultOptions), ...[...rows.values()].map(bundleOf)].filter(
+    (b): b is VariantBundle => b !== undefined,
+  );
+  // Distinct bundle keys per effort → whether that effort needs a qualified name.
+  const keysByEffort = new Map<string, Set<string>>();
+  for (const b of bundles) {
+    const set = keysByEffort.get(b.effort) ?? new Set<string>();
+    set.add(bundleKey(b));
+    keysByEffort.set(b.effort, set);
+  }
+  const nameOf = (b: VariantBundle): string =>
+    (keysByEffort.get(b.effort)?.size ?? 0) > 1
+      ? [b.effort, b.textVerbosity, b.reasoningSummary].filter(Boolean).join('-')
+      : b.effort;
+  const variantNameFor = (opts?: OpencodeAgentOptions): string | undefined => {
+    const bundle = bundleOf(opts);
+    return bundle ? nameOf(bundle) : undefined;
+  };
+
+  // name → options, for emission under each model's `variants`.
+  const variantOptions = new Map<string, Record<string, unknown>>();
+  for (const b of bundles) {
+    const options: Record<string, unknown> = { reasoningEffort: b.effort };
+    if (b.textVerbosity) options.textVerbosity = b.textVerbosity;
+    if (b.reasoningSummary) options.reasoningSummary = b.reasoningSummary;
+    variantOptions.set(nameOf(b), options);
+  }
+
+  const defaultVariant = variantNameFor(cfg.defaultOptions);
 
   // Per-agent `agent.<name>.{model,variant}`. The default variant applies to every
-  // built-in agent unless its override sets one; a variant only applies to the
-  // agent's configured model, so pin the agent's model (its override, else the
+  // built-in agent unless its row sets an effort; a variant only applies to the
+  // agent's configured model, so pin the agent's model (its row's, else the
   // default) whenever a variant is set.
   const agent: Record<string, unknown> = { ...((config.agent as Record<string, unknown>) ?? {}) };
   for (const name of OPENCODE_AGENT_NAMES) {
-    const override = overrides.get(name);
-    const model = override?.model;
-    const variant = override?.variant || defaultVariant;
+    const row = rows.get(name);
+    const model = row?.model?.trim();
+    const variant = variantNameFor(row) ?? defaultVariant;
     if (!model && !variant) continue;
     const entry = { ...((agent[name] as Record<string, unknown>) ?? {}) };
     if (model) entry.model = model;
@@ -459,16 +497,14 @@ function buildOpencodeSpawn(
   }
   if (Object.keys(agent).length > 0) config.agent = agent;
 
-  // Named variants → `provider.<id>.models.<model>.variants` for every model the
-  // agent references (the default + any per-agent model override), so a chosen
-  // `agent.<name>.variant` resolves and opencode's `variant_cycle` (ctrl+t) can
-  // switch between them in the TUI.
+  // Emit the collected variants under `provider.<id>.models.<model>.variants` for
+  // every model the agents reference (default + any per-agent model override), so
+  // each `agent.<name>.variant` resolves whichever model runs.
   const referencedModels = new Set<string>();
   if (defaultModel) referencedModels.add(defaultModel);
-  for (const o of overrides.values()) if (o.model) referencedModels.add(o.model);
-  for (const variant of cfg.variants ?? []) {
-    if (!variant.name.trim()) continue;
-    for (const modelRef of referencedModels) setModelVariant(config, modelRef, variant);
+  for (const row of rows.values()) if (row.model?.trim()) referencedModels.add(row.model.trim());
+  for (const [name, options] of variantOptions) {
+    for (const modelRef of referencedModels) setModelVariant(config, modelRef, name, options);
   }
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
 
@@ -507,19 +543,15 @@ function withModelEntry(
   config.provider = provider;
 }
 
-/** Add a named variant under `provider.<id>.models.<model>.variants`. Blank
- *  option fields and a nameless variant are skipped. */
+/** Set the named variant `provider.<id>.models.<model>.variants[name]` to the
+ *  given options object, preserving any sibling variants. */
 function setModelVariant(
   config: Record<string, unknown>,
   modelRef: string,
-  variant: OpencodeVariant,
+  name: string,
+  options: Record<string, unknown>,
 ): void {
-  const name = variant.name.trim();
   if (!name) return;
-  const options: Record<string, unknown> = {};
-  if (variant.reasoningEffort?.trim()) options.reasoningEffort = variant.reasoningEffort.trim();
-  if (variant.textVerbosity?.trim()) options.textVerbosity = variant.textVerbosity.trim();
-  if (variant.reasoningSummary?.trim()) options.reasoningSummary = variant.reasoningSummary.trim();
   withModelEntry(config, modelRef, (modelEntry) => {
     const variants = (modelEntry.variants as Record<string, unknown>) ?? {};
     variants[name] = options;
@@ -691,7 +723,7 @@ export const OPENCODE_PRESETS: Record<string, OpencodePreset> = {
     config: {
       model: 'deepseek/deepseek-v4-flash',
       disableExternalSkills: true,
-      agentOverrides: [
+      agentOptions: [
         { agent: 'build', model: 'deepseek/deepseek-v4-pro' },
         { agent: 'plan', model: 'deepseek/deepseek-v4-pro' },
       ],

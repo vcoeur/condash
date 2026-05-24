@@ -64,28 +64,20 @@ const isJsonOrBlank = (value: string | undefined): boolean => {
   }
 };
 
+const opencodeReasoningOptions = {
+  reasoningEffort: z.string().optional(),
+  textVerbosity: z.string().optional(),
+  reasoningSummary: z.string().optional(),
+};
+
 const opencodeConfigSchema = z.object({
   model: z.string(),
   disableExternalSkills: z.boolean(),
   // Optional so agent JSON written before these fields existed still validates.
-  variants: z
+  defaultOptions: z.object(opencodeReasoningOptions).optional(),
+  agentOptions: z
     .array(
-      z.object({
-        name: z.string(),
-        reasoningEffort: z.string().optional(),
-        textVerbosity: z.string().optional(),
-        reasoningSummary: z.string().optional(),
-      }),
-    )
-    .optional(),
-  defaultVariant: z.string().optional(),
-  agentOverrides: z
-    .array(
-      z.object({
-        agent: z.string(),
-        model: z.string().optional(),
-        variant: z.string().optional(),
-      }),
+      z.object({ agent: z.string(), model: z.string().optional(), ...opencodeReasoningOptions }),
     )
     .optional(),
   extraConfigJson: z
