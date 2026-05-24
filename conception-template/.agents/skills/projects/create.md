@@ -2,7 +2,7 @@
 
 Create a new item (project / incident / document) in the current month's bucket. The CLI owns the templates, slug regex, date↔folder invariant, canonical Status/Kind enum, and atomic directory creation — the skill just gathers fields and reports.
 
-Trigger: `/projects create <kind>` with kind ∈ {`project`, `incident`, `document`}.
+Trigger: `/projects create` — all arguments are flags (`--kind`, `--slug`, `--title`, `--apps`, …); no positional arguments.
 
 ## Steps
 
@@ -56,4 +56,5 @@ Trigger: `/projects create <kind>` with kind ∈ {`project`, `incident`, `docume
 - The creation date and month are always **today** (CLI default), not a date the user gives. Backdating an item is a `git mv` + README edit, not a create.
 - Folder name must match `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` — CLI rejects violations.
 - Status / Kind values must be in the canonical enums — CLI rejects near-misses.
+- **All arguments to `condash projects create` must be flags.** The CLI silently ignores positional arguments; passing `create project "My Title"` produces a cascade of "missing --kind", "missing --slug", "missing --title" errors because `project` and `"My Title"` are discarded.
 - Never edit the README templates by hand. They live in the CLI; if a template needs to change, change it there and ship a new condash release.
