@@ -1,9 +1,10 @@
 /**
  * Agents pane e2e — boots the production build against a fixture conception that
- * carries one opencode agent with named variants, a default variant, and one
- * per-agent variant override. Verifies the simplified card (a single Launch
- * button, click-to-edit), that the editor opens as a popup modal, the variant
- * editor + default-variant + per-agent controls, and the in-editor Delete.
+ * carries one opencode agent configured via the per-agent options table (a
+ * default row + a plan row on its own model). Verifies the launch-only
+ * click-to-edit card, the popup modal, the options table (default + per-agent
+ * rows with model/effort/verbosity/summary), that typing in a model cell keeps
+ * focus, the variants-under-the-hood preview, and the confirmed in-editor Delete.
  * Doubles as the manual-verification screenshot source (tests/screenshots-out/agents/).
  */
 
@@ -27,12 +28,10 @@ async function seedAgent(conceptionDir: string): Promise<void> {
         config: {
           model: 'deepseek/deepseek-v4-pro',
           disableExternalSkills: true,
-          variants: [
-            { name: 'deep', reasoningEffort: 'xhigh', reasoningSummary: 'auto' },
-            { name: 'fast', reasoningEffort: 'low', textVerbosity: 'low' },
+          defaultOptions: { reasoningEffort: 'medium' },
+          agentOptions: [
+            { agent: 'plan', model: 'kimi-for-coding/kimi-k2-thinking', reasoningEffort: 'high' },
           ],
-          defaultVariant: 'fast',
-          agentOverrides: [{ agent: 'plan', model: 'deepseek/deepseek-v4-flash', variant: 'deep' }],
         },
       },
       null,
@@ -42,7 +41,7 @@ async function seedAgent(conceptionDir: string): Promise<void> {
   );
 }
 
-test('agent card is launch-only; editor is a popup with variants + default variant', async () => {
+test('agent card opens a popup options table; rows + focus + variant preview', async () => {
   const booted = await bootApp({ prepare: seedAgent });
   const { window, cleanup } = booted;
   try {
@@ -53,7 +52,7 @@ test('agent card is launch-only; editor is a popup with variants + default varia
       .waitFor({ state: 'visible', timeout: 10_000 });
     await window.locator('.edge-strip-right .edge-handle', { hasText: 'Agents' }).click();
 
-    // One card; its only action is Launch (Config / Edit / Delete are gone).
+    // One card; its only action is Launch.
     const row = window.locator('.agents-row');
     await expect(row).toHaveCount(1);
     const actions = row.locator('.agents-row-actions button');
@@ -69,45 +68,40 @@ test('agent card is launch-only; editor is a popup with variants + default varia
     const editor = window.locator('.agents-editor');
     await expect(editor).toBeVisible();
 
-    // Two named variants; the first row's name is "deep".
-    const variantRows = editor.locator('.agents-variant-row');
-    await expect(variantRows).toHaveCount(2);
-    await expect(variantRows.nth(0).locator('.agents-variant-name')).toHaveValue('deep');
+    // Options table: head row + default row + one per-agent (plan) row.
+    const rows = editor.locator('.agents-option-row');
+    await expect(rows).toHaveCount(3);
+    await expect(editor.locator('.agents-option-default')).toHaveText('(default)');
 
-    // Default variant select carries the stored value.
-    const defaultSelect = editor.locator('label', { hasText: 'Default variant' }).locator('select');
-    await expect(defaultSelect).toHaveValue('fast');
+    // Default row: model = the default model, effort = medium.
+    const defaultRow = rows.nth(1);
+    await expect(defaultRow.locator('input')).toHaveValue('deepseek/deepseek-v4-pro');
+    await expect(defaultRow.locator('select').nth(0)).toHaveValue('medium'); // effort
 
-    // One per-agent override: plan → its own model + the deep variant.
-    const overrideRow = editor.locator('.agents-override-row');
-    await expect(overrideRow).toHaveCount(1);
-    await expect(overrideRow.locator('select').nth(0)).toHaveValue('plan'); // agent
-    await expect(overrideRow.locator('input')).toHaveValue('deepseek/deepseek-v4-flash'); // model
-    await expect(overrideRow.locator('select').nth(1)).toHaveValue('deep'); // variant
+    // Plan row: agent = plan, its own model, effort = high.
+    const planRow = rows.nth(2);
+    await expect(planRow.locator('select').nth(0)).toHaveValue('plan'); // agent
+    await expect(planRow.locator('input')).toHaveValue('kimi-for-coding/kimi-k2-thinking'); // model
+    await expect(planRow.locator('select').nth(1)).toHaveValue('high'); // effort
 
-    // The live preview reflects variants + per-agent model/variant + the default.
+    // The live preview shows the under-the-hood variants + per-agent variant/model.
     const preview = editor.locator('.agents-editor-preview pre');
     await expect(preview).toContainText('"variants"');
-    await expect(preview).toContainText('"reasoningEffort":"xhigh"');
-    await expect(preview).toContainText('"model":"deepseek/deepseek-v4-flash"'); // plan model
-    await expect(preview).toContainText('"variant":"deep"'); // plan variant
-    await expect(preview).toContainText('"variant":"fast"'); // default on other agents
+    await expect(preview).toContainText('"reasoningEffort":"high"'); // high variant
+    await expect(preview).toContainText('"variant":"high"'); // plan
+    await expect(preview).toContainText('"variant":"medium"'); // default on others
+    await expect(preview).toContainText('"model":"kimi-for-coding/kimi-k2-thinking"'); // plan model
 
-    await variantRows.first().scrollIntoViewIfNeeded();
+    await rows.first().scrollIntoViewIfNeeded();
     await window.screenshot({ path: join(outDir, 'agents-edit.png') });
 
-    // Typing in a variant-name input must NOT lose focus per keystroke
-    // (regression: `<For>` re-created the row → now `<Index>`). Use a fresh
-    // scratch variant so the referenced ones above stay intact.
-    await editor.locator('.agents-overrides button', { hasText: 'Add variant' }).click();
-    const scratchName = editor
-      .locator('.agents-variant-row')
-      .last()
-      .locator('.agents-variant-name');
-    await scratchName.click();
-    await scratchName.pressSequentially('scratch');
-    await expect(scratchName).toBeFocused();
-    await expect(scratchName).toHaveValue('scratch');
+    // Typing in a model cell must NOT lose focus per keystroke (Index, not For).
+    await editor.locator('.agents-overrides button', { hasText: 'Add agent' }).click();
+    const newModel = editor.locator('.agents-option-row').last().locator('input');
+    await newModel.click();
+    await newModel.pressSequentially('deepseek/x');
+    await expect(newModel).toBeFocused();
+    await expect(newModel).toHaveValue('deepseek/x');
 
     // Delete lives in the editor, confirmed via a modal.
     await expect(editor.locator('.agents-editor-delete')).toHaveText('Delete');

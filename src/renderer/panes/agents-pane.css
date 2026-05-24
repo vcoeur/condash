@@ -316,18 +316,6 @@
   color: var(--text-muted);
 }
 
-.agents-override-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.agents-override-row select,
-.agents-override-row input {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
 .agents-override-remove {
   flex: 0 0 auto;
   line-height: 1;
@@ -342,28 +330,37 @@
   color: var(--text);
 }
 
-/* Named-variant definition row: name + effort/verbosity/summary selects. */
-.agents-variant-row {
-  display: flex;
+/* Agent options table: agent · model · effort · verbosity · summary · remove. */
+.agents-option-row {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 1fr) minmax(8rem, 2fr) 1fr 1fr 1fr auto;
   align-items: center;
   gap: 0.4rem;
 }
 
-.agents-variant-row .agents-variant-name {
-  flex: 1 1 7rem;
+.agents-option-row select,
+.agents-option-row input {
   min-width: 0;
 }
 
-.agents-variant-row select {
-  flex: 1 1 0;
-  min-width: 0;
+.agents-option-head {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.agents-option-default {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 /* The agent editor rendered as a popup modal (reuses .modal / .modal-backdrop
  * chrome from modal-base.css). Narrower than the default panel + scrollable;
  * drop the inner section's own box so it doesn't double-frame. */
 .agents-editor-modal {
-  width: min(760px, 100%);
+  width: min(880px, 100%);
   max-height: 100%;
   overflow: auto;
 }

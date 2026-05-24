@@ -197,7 +197,7 @@ describe('buildSpawn — opencode', () => {
         config: {
           model: 'deepseek/deepseek-v4-flash',
           disableExternalSkills: true,
-          agentOverrides: [
+          agentOptions: [
             { agent: 'build', model: 'deepseek/deepseek-v4-pro' },
             { agent: 'plan', model: 'deepseek/deepseek-v4-pro' },
           ],
@@ -311,8 +311,8 @@ describe('buildSpawn — effort level', () => {
   });
 });
 
-describe('buildSpawn — opencode named variants', () => {
-  it('emits model variants (blank fields dropped) and per-agent variant + pinned model', () => {
+describe('buildSpawn — opencode agent options table', () => {
+  it('derives effort-named variants + per-agent variant from default + agent rows', () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'oc',
@@ -320,73 +320,23 @@ describe('buildSpawn — opencode named variants', () => {
       config: {
         model: 'deepseek/deepseek-v4-pro',
         disableExternalSkills: true,
-        variants: [
-          { name: 'deep', reasoningEffort: 'high', reasoningSummary: 'auto' },
-          { name: 'fast', reasoningEffort: 'low', textVerbosity: 'low' },
-        ],
-        agentOverrides: [{ agent: 'plan', variant: 'deep' }],
+        defaultOptions: { reasoningEffort: 'low', textVerbosity: 'low' },
+        agentOptions: [{ agent: 'plan', reasoningEffort: 'xhigh', reasoningSummary: 'auto' }],
       },
     };
     const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
     const m = cfg.provider.deepseek.models['deepseek-v4-pro'];
-    expect(m.variants.deep).toEqual({ reasoningEffort: 'high', reasoningSummary: 'auto' });
-    expect(m.variants.fast).toEqual({ reasoningEffort: 'low', textVerbosity: 'low' });
-    // Per-agent variant pins the agent's model so the variant resolves.
-    expect(cfg.agent.plan).toEqual({ variant: 'deep', model: 'deepseek/deepseek-v4-pro' });
-  });
-
-  it('defines variants on each referenced model and a per-agent model+variant override', () => {
-    const def: AgentDef = {
-      harness: 'opencode',
-      name: 'oc',
-      slug: 'opencode-ds',
-      config: {
-        model: 'deepseek/deepseek-v4-flash',
-        disableExternalSkills: true,
-        variants: [{ name: 'deep', reasoningEffort: 'xhigh' }],
-        agentOverrides: [{ agent: 'plan', model: 'deepseek/deepseek-v4-pro', variant: 'deep' }],
-      },
-    };
-    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
-    // Variants emitted on both the default model and the per-agent override model.
-    expect(cfg.provider.deepseek.models['deepseek-v4-flash'].variants.deep.reasoningEffort).toBe(
-      'xhigh',
-    );
-    expect(cfg.provider.deepseek.models['deepseek-v4-pro'].variants.deep.reasoningEffort).toBe(
-      'xhigh',
-    );
-    // plan runs its own model and variant.
-    expect(cfg.agent.plan).toEqual({
-      model: 'deepseek/deepseek-v4-pro',
-      variant: 'deep',
-    });
-  });
-
-  it('applies the default variant to every built-in agent, with per-agent override winning', () => {
-    const def: AgentDef = {
-      harness: 'opencode',
-      name: 'oc',
-      slug: 'opencode-ds',
-      config: {
-        model: 'deepseek/deepseek-v4-pro',
-        disableExternalSkills: true,
-        variants: [
-          { name: 'fast', reasoningEffort: 'low' },
-          { name: 'deep', reasoningEffort: 'xhigh' },
-        ],
-        defaultVariant: 'fast',
-        agentOverrides: [{ agent: 'plan', variant: 'deep' }],
-      },
-    };
-    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    // One variant per distinct effort, named by the effort.
+    expect(m.variants.low).toEqual({ reasoningEffort: 'low', textVerbosity: 'low' });
+    expect(m.variants.xhigh).toEqual({ reasoningEffort: 'xhigh', reasoningSummary: 'auto' });
+    // Default effort (low) on every agent except plan (xhigh); model pinned.
+    expect(cfg.agent.plan).toEqual({ variant: 'xhigh', model: 'deepseek/deepseek-v4-pro' });
     for (const name of ['build', 'general', 'explore', 'scout']) {
-      expect(cfg.agent[name]).toEqual({ variant: 'fast', model: 'deepseek/deepseek-v4-pro' });
+      expect(cfg.agent[name]).toEqual({ variant: 'low', model: 'deepseek/deepseek-v4-pro' });
     }
-    // plan's per-agent override beats the default.
-    expect(cfg.agent.plan).toEqual({ variant: 'deep', model: 'deepseek/deepseek-v4-pro' });
   });
 
-  it('skips a nameless variant and a blank agent assignment', () => {
+  it('gives an agent its own model + effort, emitting the variant on that model too', () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'oc',
@@ -394,8 +344,35 @@ describe('buildSpawn — opencode named variants', () => {
       config: {
         model: 'deepseek/deepseek-v4-pro',
         disableExternalSkills: true,
-        variants: [{ name: '  ', reasoningEffort: 'high' }],
-        agentOverrides: [{ agent: 'plan', variant: '' }],
+        agentOptions: [
+          { agent: 'plan', model: 'kimi-for-coding/kimi-k2-thinking', reasoningEffort: 'high' },
+          { agent: 'build', reasoningEffort: 'low' },
+        ],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    // plan runs kimi at high; build runs the default model at low.
+    expect(cfg.agent.plan).toEqual({ model: 'kimi-for-coding/kimi-k2-thinking', variant: 'high' });
+    expect(cfg.agent.build).toEqual({ variant: 'low', model: 'deepseek/deepseek-v4-pro' });
+    // 'high' variant is emitted on the kimi model so plan resolves it.
+    expect(
+      cfg.provider['kimi-for-coding'].models['kimi-k2-thinking'].variants.high.reasoningEffort,
+    ).toBe('high');
+    // 'low' variant on the default deepseek model for build.
+    expect(cfg.provider.deepseek.models['deepseek-v4-pro'].variants.low.reasoningEffort).toBe(
+      'low',
+    );
+  });
+
+  it('emits no variants/agents when neither default nor agent rows set an effort', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        agentOptions: [{ agent: 'plan' }],
       },
     };
     const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);

@@ -171,7 +171,7 @@ describe('opencode build/plan persistence', () => {
       config: {
         model: 'deepseek/deepseek-v4-flash',
         disableExternalSkills: true,
-        agentOverrides: [
+        agentOptions: [
           { agent: 'build', model: 'deepseek/deepseek-v4-pro' },
           { agent: 'plan', model: 'deepseek/deepseek-v4-pro' },
         ],
@@ -183,9 +183,10 @@ describe('opencode build/plan persistence', () => {
     expect(back).toEqual(def);
   });
 
-  it('drops legacy effort fields and loads an opencode agent without the variant fields', async () => {
-    // A pre-variants file (with the retired effortLevel/reasoningOverrides keys)
-    // still loads; the unknown keys are stripped and the new fields are absent.
+  it('drops retired keys and loads an opencode agent without the options-table fields', async () => {
+    // A file carrying any retired key (effortLevel/reasoningOverrides/variants/
+    // defaultVariant/agentOverrides) still loads; unknown keys are stripped and
+    // the current fields are absent.
     await writeRaw('opencode-legacy.json', {
       harness: 'opencode',
       name: 'legacy',
@@ -194,19 +195,23 @@ describe('opencode build/plan persistence', () => {
         model: 'deepseek/deepseek-v4-pro',
         disableExternalSkills: true,
         effortLevel: 'max',
-        reasoningOverrides: [{ agent: 'plan', effort: 'xhigh' }],
+        variants: [{ name: 'deep', reasoningEffort: 'high' }],
+        defaultVariant: 'deep',
+        agentOverrides: [{ agent: 'plan', variant: 'deep' }],
       },
     });
     const back = await readAgent(dir, 'opencode-legacy');
     expect(back?.harness).toBe('opencode');
     const cfg = back?.config as Record<string, unknown>;
     expect(cfg.effortLevel).toBeUndefined();
-    expect(cfg.reasoningOverrides).toBeUndefined();
     expect(cfg.variants).toBeUndefined();
     expect(cfg.defaultVariant).toBeUndefined();
+    expect(cfg.agentOverrides).toBeUndefined();
+    expect(cfg.defaultOptions).toBeUndefined();
+    expect(cfg.agentOptions).toBeUndefined();
   });
 
-  it('round-trips variants + default + per-agent model/variant overrides', async () => {
+  it('round-trips the agent options table (default + per-agent model/effort)', async () => {
     const def: AgentDef = {
       harness: 'opencode',
       name: 'deepseek-pro',
@@ -214,14 +219,10 @@ describe('opencode build/plan persistence', () => {
       config: {
         model: 'deepseek/deepseek-v4-pro',
         disableExternalSkills: true,
-        variants: [
-          { name: 'deep', reasoningEffort: 'high', reasoningSummary: 'auto' },
-          { name: 'fast', reasoningEffort: 'low', textVerbosity: 'low' },
-        ],
-        defaultVariant: 'fast',
-        agentOverrides: [
-          { agent: 'plan', model: 'deepseek/deepseek-v4-pro', variant: 'deep' },
-          { agent: 'general', variant: 'fast' },
+        defaultOptions: { reasoningEffort: 'medium', textVerbosity: 'low' },
+        agentOptions: [
+          { agent: 'plan', model: 'kimi-for-coding/kimi-k2-thinking', reasoningEffort: 'high' },
+          { agent: 'build', reasoningEffort: 'low' },
         ],
       },
     };
