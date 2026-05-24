@@ -8,6 +8,7 @@ import {
   type HarnessId,
   type KimiAgentConfig,
   type OpencodeAgentConfig,
+  type OpencodeReasoningOverride,
   buildSpawn,
   CLAUDE_PRESETS,
   defaultKimiConfig,
@@ -15,9 +16,12 @@ import {
   HARNESS_IDS,
   HARNESSES,
   isValidSlug,
+  OPENCODE_AGENT_NAMES,
   OPENCODE_PRESETS,
+  OPENCODE_REASONING_EFFORTS,
   suggestSlug,
 } from '@shared/harnesses';
+import { ConfirmModal } from '../confirm-modal';
 import './agents-pane.css';
 
 /** Editor draft. Holds every harness's config so switching harness in the form
@@ -87,17 +91,11 @@ export function AgentsView(props: {
   onLaunch: (slug: string) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
-  const [preview, setPreview] = createSignal<{
-    slug: string;
-    name: string;
-    spec: AgentSpawnPreview;
-  } | null>(null);
   // In-app agents/.env editor: null = closed; string = open with that content.
   const [tokens, setTokens] = createSignal<string | null>(null);
 
   const openTokens = async () => {
     setDraft(null);
-    setPreview(null);
     setTokens((await window.condash.readAgentsEnv()) ?? '');
   };
 
@@ -119,12 +117,10 @@ export function AgentsView(props: {
     setDraft((d) => (d ? { ...d, claude: { ...d.claude, ...p } } : d));
 
   const startCreate = () => {
-    setPreview(null);
     setDraft(blankDraft());
   };
 
   const startEdit = async (slug: string) => {
-    setPreview(null);
     const def = await window.condash.readAgent(slug);
     if (!def) {
       props.flashToast(`Agent ${slug} not found`, 'error');
@@ -164,21 +160,19 @@ export function AgentsView(props: {
     }
   };
 
-  const remove = async (agent: AgentListItem) => {
-    if (!confirm(`Delete agent ${agent.name}? The agents/.env token is left untouched.`)) return;
+  // Delete the agent currently open in the editor. Confirmation is handled by
+  // the editor's own ConfirmModal before this runs.
+  const deleteEditing = async () => {
+    const d = draft();
+    if (!d?.editingSlug) return;
     try {
-      await window.condash.deleteAgent(agent.slug);
-      props.flashToast(`Deleted ${agent.name}`, 'success');
-      if (preview()?.slug === agent.slug) setPreview(null);
+      await window.condash.deleteAgent(d.editingSlug);
+      props.flashToast(`Deleted ${d.name}`, 'success');
+      setDraft(null);
       props.reload();
     } catch (err) {
       props.flashToast(`Delete failed: ${(err as Error).message}`, 'error');
     }
-  };
-
-  const viewConfig = async (agent: AgentListItem) => {
-    const spec = await window.condash.previewAgent(agent.slug);
-    if (spec) setPreview({ slug: agent.slug, name: agent.name, spec });
   };
 
   const grouped = (h: HarnessId) => props.agents().filter((a) => a.harness === h);
@@ -217,7 +211,19 @@ export function AgentsView(props: {
                   <h3>{HARNESSES[h].label}</h3>
                   <For each={grouped(h)}>
                     {(agent) => (
-                      <div class="agents-row">
+                      <div
+                        class="agents-row agents-row-clickable"
+                        role="button"
+                        tabindex={0}
+                        title="Click to edit this agent"
+                        onClick={() => void startEdit(agent.slug)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            void startEdit(agent.slug);
+                          }
+                        }}
+                      >
                         <div class="agents-row-main">
                           <div class="agents-row-top">
                             <span class="agents-row-name">{agent.name}</span>
@@ -234,22 +240,12 @@ export function AgentsView(props: {
                           <button
                             type="button"
                             title="Open a tab running this agent"
-                            onClick={() => props.onLaunch(agent.slug)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              props.onLaunch(agent.slug);
+                            }}
                           >
                             Launch
-                          </button>
-                          <button type="button" onClick={() => void viewConfig(agent)}>
-                            Config
-                          </button>
-                          <button type="button" onClick={() => void startEdit(agent.slug)}>
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            class="agents-danger"
-                            onClick={() => void remove(agent)}
-                          >
-                            Delete
                           </button>
                         </div>
                       </div>
@@ -288,20 +284,6 @@ export function AgentsView(props: {
         </section>
       </Show>
 
-      <Show when={preview()}>
-        {(p) => (
-          <section class="agents-config-view">
-            <header>
-              <h3>{p().name} — resolved spawn</h3>
-              <button type="button" onClick={() => setPreview(null)}>
-                Close
-              </button>
-            </header>
-            <pre>{formatPreview(p().spec)}</pre>
-          </section>
-        )}
-      </Show>
-
       <Show when={draft()}>
         {(d) => (
           <AgentEditor
@@ -310,6 +292,7 @@ export function AgentsView(props: {
             patchClaude={patchClaude}
             onSave={save}
             onCancel={() => setDraft(null)}
+            onDelete={deleteEditing}
           />
         )}
       </Show>
@@ -360,14 +343,45 @@ function safePreview(d: Draft): string {
   }
 }
 
+/** Effort `<select>` values: the fixed list, plus a stored off-list value (e.g.
+ *  a legacy `max`) prepended so it round-trips and stays selected. */
+function effortOptions(current: string | undefined): readonly string[] {
+  const fixed: readonly string[] = OPENCODE_REASONING_EFFORTS;
+  if (current && !fixed.includes(current)) return [current, ...fixed];
+  return fixed;
+}
+
 function AgentEditor(props: {
   draft: () => Draft;
   patch: (p: Partial<Draft>) => void;
   patchClaude: (p: Partial<ClaudeAgentConfig>) => void;
   onSave: () => void;
   onCancel: () => void;
+  onDelete: () => void;
 }): JSX.Element {
   const d = props.draft;
+  const [confirmDelete, setConfirmDelete] = createSignal(false);
+
+  // --- opencode per-agent reasoning-effort overrides ---
+  const overrides = (): OpencodeReasoningOverride[] => d().opencode.reasoningOverrides ?? [];
+  const usedAgents = () => new Set(overrides().map((o) => o.agent));
+  /** Agent names selectable for a row: the unused built-ins, plus the row's own
+   *  current value so it stays selected. */
+  const agentOptions = (current: string) =>
+    OPENCODE_AGENT_NAMES.filter((n) => n === current || !usedAgents().has(n));
+  const availableAgents = () => OPENCODE_AGENT_NAMES.filter((n) => !usedAgents().has(n));
+  const setOverrides = (next: OpencodeReasoningOverride[]) =>
+    props.patch({
+      opencode: { ...d().opencode, reasoningOverrides: next.length > 0 ? next : undefined },
+    });
+  const addOverride = () => {
+    const agent = availableAgents()[0];
+    if (!agent) return;
+    setOverrides([...overrides(), { agent, effort: 'medium' }]);
+  };
+  const patchOverride = (idx: number, p: Partial<OpencodeReasoningOverride>) =>
+    setOverrides(overrides().map((o, i) => (i === idx ? { ...o, ...p } : o)));
+  const removeOverride = (idx: number) => setOverrides(overrides().filter((_, i) => i !== idx));
 
   /** Re-suggest the slug from `name` under `harness`, unless the user has
    *  hand-edited the slug or is editing an existing agent (slug is frozen). */
@@ -600,18 +614,53 @@ function AgentEditor(props: {
           />
         </label>
         <label>
-          <span>Effort level (options.reasoningEffort)</span>
-          <input
-            type="text"
-            placeholder="omit"
+          <span>Default reasoning effort (options.reasoningEffort)</span>
+          <select
             value={d().opencode.effortLevel ?? ''}
-            onInput={(e) =>
+            onChange={(e) =>
               props.patch({
                 opencode: { ...d().opencode, effortLevel: e.currentTarget.value || undefined },
               })
             }
-          />
+          >
+            <option value="">(model default)</option>
+            <For each={effortOptions(d().opencode.effortLevel)}>
+              {(v) => <option value={v}>{v}</option>}
+            </For>
+          </select>
         </label>
+        <div class="agents-overrides">
+          <span class="agents-overrides-label">Per-agent effort overrides</span>
+          <For each={overrides()}>
+            {(ov, i) => (
+              <div class="agents-override-row">
+                <select
+                  value={ov.agent}
+                  onChange={(e) => patchOverride(i(), { agent: e.currentTarget.value })}
+                >
+                  <For each={agentOptions(ov.agent)}>{(n) => <option value={n}>{n}</option>}</For>
+                </select>
+                <select
+                  value={ov.effort}
+                  onChange={(e) => patchOverride(i(), { effort: e.currentTarget.value })}
+                >
+                  <For each={effortOptions(ov.effort)}>{(v) => <option value={v}>{v}</option>}</For>
+                </select>
+                <button
+                  type="button"
+                  class="agents-danger agents-override-remove"
+                  title="Remove this override"
+                  onClick={() => removeOverride(i())}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </For>
+          <button type="button" onClick={addOverride} disabled={availableAgents().length === 0}>
+            + Add override
+          </button>
+        </div>
         <label class="agents-checkbox">
           <input
             type="checkbox"
@@ -642,9 +691,11 @@ function AgentEditor(props: {
           condash inlines this as <code>OPENCODE_CONFIG_CONTENT</code> (no{' '}
           <code>opencode.json</code> needed): top-level <code>model</code> is the default;
           build/plan overrides become <code>agent.build.model</code> / <code>agent.plan.model</code>
-          . Extra JSON is merged underneath. Auth via <code>opencode auth login</code> — leave the
-          token field blank unless your provider reads a key from the environment (a stray key can
-          collide with opencode's OAuth).
+          . The default effort sets <code>options.reasoningEffort</code> on each model; each
+          per-agent override sets <code>agent.&lt;name&gt;.options.reasoningEffort</code>. Extra
+          JSON is merged underneath. Auth via <code>opencode auth login</code> — leave the token
+          field blank unless your provider reads a key from the environment (a stray key can collide
+          with opencode's OAuth).
         </p>
       </Show>
 
@@ -751,7 +802,30 @@ function AgentEditor(props: {
         <button type="button" onClick={props.onCancel}>
           Cancel
         </button>
+        <Show when={d().editingSlug}>
+          <button
+            type="button"
+            class="agents-danger agents-editor-delete"
+            onClick={() => setConfirmDelete(true)}
+          >
+            Delete
+          </button>
+        </Show>
       </div>
+
+      <Show when={confirmDelete()}>
+        <ConfirmModal
+          title={`Delete agent ${d().name}?`}
+          body="Removes the agent definition file. The agents/.env token is left untouched."
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            props.onDelete();
+          }}
+        />
+      </Show>
     </section>
   );
 }

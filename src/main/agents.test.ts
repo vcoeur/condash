@@ -180,6 +180,38 @@ describe('opencode build/plan persistence', () => {
     const back = await readAgent(dir, 'opencode-deepseek-auto');
     expect(back).toEqual(def);
   });
+
+  it('round-trips per-agent reasoning-effort overrides', async () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'deepseek-pro',
+      slug: 'opencode-deepseek-v4-pro',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        effortLevel: 'medium',
+        reasoningOverrides: [
+          { agent: 'plan', effort: 'xhigh' },
+          { agent: 'general', effort: 'low' },
+        ],
+      },
+    };
+    await writeAgent(dir, def);
+    const back = await readAgent(dir, 'opencode-deepseek-v4-pro');
+    expect(back).toEqual(def);
+  });
+
+  it('loads an opencode agent written before reasoningOverrides existed', async () => {
+    await writeRaw('opencode-legacy.json', {
+      harness: 'opencode',
+      name: 'legacy',
+      slug: 'opencode-legacy',
+      config: { model: 'deepseek/deepseek-v4-pro', disableExternalSkills: true },
+    });
+    const back = await readAgent(dir, 'opencode-legacy');
+    expect(back?.harness).toBe('opencode');
+    expect((back?.config as { reasoningOverrides?: unknown }).reasoningOverrides).toBeUndefined();
+  });
 });
 
 describe('kimi instructions injection', () => {

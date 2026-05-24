@@ -90,6 +90,17 @@
   margin-bottom: 0.3rem;
 }
 
+.agents-row-clickable {
+  cursor: pointer;
+}
+
+.agents-row-clickable:hover,
+.agents-row-clickable:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--accent, var(--text-muted));
+  outline: none;
+}
+
 .agents-row-main {
   display: flex;
   flex-direction: column;
@@ -285,4 +296,42 @@
   display: flex;
   gap: 0.4rem;
   margin-top: 0.5rem;
+}
+
+/* Push the destructive Delete action away from Save/Cancel. */
+.agents-editor-delete {
+  margin-left: auto;
+}
+
+/* opencode per-agent reasoning-effort overrides */
+.agents-overrides {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.agents-overrides-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.agents-override-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.agents-override-row select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.agents-override-remove {
+  flex: 0 0 auto;
+  line-height: 1;
+}
+
+.agents-overrides > button {
+  align-self: flex-start;
 }
