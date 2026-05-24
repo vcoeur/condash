@@ -182,7 +182,10 @@ export function mountXterm(
     /* image addon optional */
   }
 
-  // ---- write/data wiring + clipboard fallback for Ctrl+C/V ----
+  // ---- write/data wiring + clipboard copy (Ctrl+C) ----
+  // Ctrl+V is intentionally left to xterm.js's native paste via the browser's
+  // paste event on its hidden textarea. The previous navigator.clipboard.readText()
+  // fallback silently failed for external clipboard content in Electron.
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
     const ctrl = ev.ctrlKey && !ev.metaKey;
@@ -195,16 +198,6 @@ export function mountXterm(
         return false;
       }
       return true;
-    }
-    if (ctrl && !ev.shiftKey && !ev.altKey && (ev.key === 'v' || ev.key === 'V')) {
-      ev.preventDefault();
-      void navigator.clipboard
-        .readText()
-        .then((text) => {
-          if (text) void window.condash.termWrite(sessionId, text);
-        })
-        .catch(() => undefined);
-      return false;
     }
     if (options.onCustomKey) return options.onCustomKey(ev);
     return true;
