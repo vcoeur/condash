@@ -84,12 +84,12 @@ test('agent card opens a popup options table; rows + focus + variant preview', a
     await expect(planRow.locator('input')).toHaveValue('kimi-for-coding/kimi-k2-thinking'); // model
     await expect(planRow.locator('select').nth(1)).toHaveValue('high'); // effort
 
-    // The live preview shows the under-the-hood variants + per-agent variant/model.
+    // The live preview shows plain options: the default on the model base, plan's
+    // own model + options. (No variants — opencode footer ignores those anyway.)
     const preview = editor.locator('.agents-editor-preview pre');
-    await expect(preview).toContainText('"variants"');
-    await expect(preview).toContainText('"reasoningEffort":"high"'); // high variant
-    await expect(preview).toContainText('"variant":"high"'); // plan
-    await expect(preview).toContainText('"variant":"medium"'); // default on others
+    await expect(preview).not.toContainText('"variants"');
+    await expect(preview).toContainText('"options":{"reasoningEffort":"medium"'); // default → model base
+    await expect(preview).toContainText('"reasoningEffort":"high"'); // plan
     await expect(preview).toContainText('"model":"kimi-for-coding/kimi-k2-thinking"'); // plan model
 
     await rows.first().scrollIntoViewIfNeeded();

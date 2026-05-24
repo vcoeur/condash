@@ -624,8 +624,8 @@ function AgentEditor(props: {
             <div class="agents-overrides agents-options-table">
               <span class="agents-overrides-label">
                 Per-agent reasoning — the <code>default</code> row applies to every agent; add rows
-                to override model and/or effort. Each agent's effort is applied to its requests;{' '}
-                <code>ctrl+t</code> cycles the efforts live in the opencode TUI.
+                to override the model and/or options for a specific agent. Each agent's effort is
+                applied to its requests.
               </span>
               <div class="agents-option-row agents-option-head">
                 <span>agent</span>
@@ -787,13 +787,13 @@ function AgentEditor(props: {
             <p class="agents-editor-note">
               condash inlines this as <code>OPENCODE_CONFIG_CONTENT</code> (no{' '}
               <code>opencode.json</code> needed). The <code>default</code> row's model is top-level{' '}
-              <code>model</code>; each distinct effort becomes a variant named by the effort under{' '}
-              <code>provider.&lt;id&gt;.models.&lt;model&gt;.variants</code>, and each agent gets{' '}
-              <code>agent.&lt;name&gt;.variant</code> (applied to its requests; <code>ctrl+t</code>{' '}
-              cycles efforts live in the TUI) plus <code>agent.&lt;name&gt;.model</code> when it
-              overrides the model. Extra JSON is merged underneath. Auth via{' '}
-              <code>opencode auth login</code> — leave the token field blank unless your provider
-              reads a key from the environment (a stray key can collide with opencode's OAuth).
+              <code>model</code> and its options become that model's base <code>options</code>{' '}
+              (inherited by every agent on it); each per-agent row sets{' '}
+              <code>agent.&lt;name&gt;.options</code> (applied to its requests) plus{' '}
+              <code>agent.&lt;name&gt;.model</code> when it overrides the model. Extra JSON is
+              merged underneath. Auth via <code>opencode auth login</code> — leave the token field
+              blank unless your provider reads a key from the environment (a stray key can collide
+              with opencode's OAuth).
             </p>
           </Show>
 
