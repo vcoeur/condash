@@ -66,8 +66,6 @@ const isJsonOrBlank = (value: string | undefined): boolean => {
 
 const opencodeConfigSchema = z.object({
   model: z.string(),
-  buildModel: z.string().optional(),
-  planModel: z.string().optional(),
   disableExternalSkills: z.boolean(),
   // Optional so agent JSON written before these fields existed still validates.
   variants: z
@@ -81,7 +79,15 @@ const opencodeConfigSchema = z.object({
     )
     .optional(),
   defaultVariant: z.string().optional(),
-  agentVariants: z.array(z.object({ agent: z.string(), variant: z.string() })).optional(),
+  agentOverrides: z
+    .array(
+      z.object({
+        agent: z.string(),
+        model: z.string().optional(),
+        variant: z.string().optional(),
+      }),
+    )
+    .optional(),
   extraConfigJson: z
     .string()
     .optional()
