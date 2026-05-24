@@ -421,26 +421,61 @@ function buildOpencodeSpawn(
   if (cfg.model.trim()) config.model = cfg.model;
   const defaultModel = cfg.model.trim();
 
-  // Each distinct reasoning effort becomes a variant *named by the effort* (so
-  // the opencode footer shows the effort and ctrl+t cycles them); the variant
-  // carries that row's effort + verbosity + summary. Last write wins if the same
-  // effort appears with different verbosity/summary. `registerVariant` returns
-  // the effort name (= variant name) to assign, or undefined when no effort.
-  const variantOptions = new Map<string, Record<string, unknown>>();
-  const registerVariant = (opts?: OpencodeAgentOptions): string | undefined => {
-    const effort = opts?.reasoningEffort?.trim();
-    if (!effort) return undefined;
-    const variant: Record<string, unknown> = { reasoningEffort: effort };
-    if (opts?.textVerbosity?.trim()) variant.textVerbosity = opts.textVerbosity.trim();
-    if (opts?.reasoningSummary?.trim()) variant.reasoningSummary = opts.reasoningSummary.trim();
-    variantOptions.set(effort, variant);
-    return effort;
-  };
-
-  const defaultVariant = registerVariant(cfg.defaultOptions);
+  // Translate the table into opencode variants (ctrl+t cycles them; the variant
+  // also drives the request's reasoning effort). Each distinct reasoning bundle
+  // (effort + verbosity + summary) is one variant. Its name is the effort alone
+  // when that effort is unique; when two bundles share an effort but differ in
+  // verbosity/summary, the differing parts are appended so the names never
+  // collide (e.g. `high`, `high-low`, `high-low-auto`).
   const rows = new Map(
     (cfg.agentOptions ?? []).filter((r) => r.agent.trim()).map((r) => [r.agent.trim(), r] as const),
   );
+
+  interface VariantBundle {
+    effort: string;
+    textVerbosity?: string;
+    reasoningSummary?: string;
+  }
+  const bundleOf = (opts?: OpencodeAgentOptions): VariantBundle | undefined => {
+    const effort = opts?.reasoningEffort?.trim();
+    if (!effort) return undefined;
+    const bundle: VariantBundle = { effort };
+    if (opts?.textVerbosity?.trim()) bundle.textVerbosity = opts.textVerbosity.trim();
+    if (opts?.reasoningSummary?.trim()) bundle.reasoningSummary = opts.reasoningSummary.trim();
+    return bundle;
+  };
+  const bundleKey = (b: VariantBundle) =>
+    `${b.effort} ${b.textVerbosity ?? ''} ${b.reasoningSummary ?? ''}`;
+
+  const bundles = [bundleOf(cfg.defaultOptions), ...[...rows.values()].map(bundleOf)].filter(
+    (b): b is VariantBundle => b !== undefined,
+  );
+  // Distinct bundle keys per effort → whether that effort needs a qualified name.
+  const keysByEffort = new Map<string, Set<string>>();
+  for (const b of bundles) {
+    const set = keysByEffort.get(b.effort) ?? new Set<string>();
+    set.add(bundleKey(b));
+    keysByEffort.set(b.effort, set);
+  }
+  const nameOf = (b: VariantBundle): string =>
+    (keysByEffort.get(b.effort)?.size ?? 0) > 1
+      ? [b.effort, b.textVerbosity, b.reasoningSummary].filter(Boolean).join('-')
+      : b.effort;
+  const variantNameFor = (opts?: OpencodeAgentOptions): string | undefined => {
+    const bundle = bundleOf(opts);
+    return bundle ? nameOf(bundle) : undefined;
+  };
+
+  // name → options, for emission under each model's `variants`.
+  const variantOptions = new Map<string, Record<string, unknown>>();
+  for (const b of bundles) {
+    const options: Record<string, unknown> = { reasoningEffort: b.effort };
+    if (b.textVerbosity) options.textVerbosity = b.textVerbosity;
+    if (b.reasoningSummary) options.reasoningSummary = b.reasoningSummary;
+    variantOptions.set(nameOf(b), options);
+  }
+
+  const defaultVariant = variantNameFor(cfg.defaultOptions);
 
   // Per-agent `agent.<name>.{model,variant}`. The default variant applies to every
   // built-in agent unless its row sets an effort; a variant only applies to the
@@ -450,7 +485,7 @@ function buildOpencodeSpawn(
   for (const name of OPENCODE_AGENT_NAMES) {
     const row = rows.get(name);
     const model = row?.model?.trim();
-    const variant = registerVariant(row) ?? defaultVariant;
+    const variant = variantNameFor(row) ?? defaultVariant;
     if (!model && !variant) continue;
     const entry = { ...((agent[name] as Record<string, unknown>) ?? {}) };
     if (model) entry.model = model;

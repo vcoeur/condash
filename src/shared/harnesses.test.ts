@@ -379,4 +379,31 @@ describe('buildSpawn — opencode agent options table', () => {
     expect(cfg).not.toHaveProperty('provider');
     expect(cfg).not.toHaveProperty('agent');
   });
+
+  it('qualifies variant names when one effort is shared with different verbosity/summary', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        defaultOptions: { reasoningEffort: 'high' },
+        agentOptions: [
+          { agent: 'plan', reasoningEffort: 'high', textVerbosity: 'low' },
+          { agent: 'build', reasoningEffort: 'high', reasoningSummary: 'auto' },
+        ],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    const variants = cfg.provider.deepseek.models['deepseek-v4-pro'].variants;
+    // Three distinct `high` bundles → three non-colliding names, each preserved.
+    expect(variants.high).toEqual({ reasoningEffort: 'high' });
+    expect(variants['high-low']).toEqual({ reasoningEffort: 'high', textVerbosity: 'low' });
+    expect(variants['high-auto']).toEqual({ reasoningEffort: 'high', reasoningSummary: 'auto' });
+    // Each agent references its own qualified variant; the default stays bare `high`.
+    expect(cfg.agent.plan.variant).toBe('high-low');
+    expect(cfg.agent.build.variant).toBe('high-auto');
+    expect(cfg.agent.general.variant).toBe('high');
+  });
 });
