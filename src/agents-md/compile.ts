@@ -8,13 +8,14 @@
  *   - `.agents/agents/kimi.md`        — Kimi-only fragment
  *   - `.agents/agents/opencode.md`    — OpenCode-only fragment
  *
- * `condash.md` + `conception.md` concatenated reproduce the legacy single-file
- * `common.md` (head before `## Specifics`, then the Specifics tail), so the
+ * `condash.md` + `conception.md` concatenated form the combined `common.md`
+ * body (head before `## Specifics`, then the Specifics tail), so the
  * orchestrator (`compileAgentConfigs` in `files.ts`) joins them via
  * `combineAgentSource` and feeds the result to the unchanged `compileAgentConfig`:
  * the agent fragment is spliced in just before the `## Specifics` heading and
- * `{{ var }}` substitution runs over the merge. A legacy tree that still has
- * only `common.md` is handled by `splitLegacyCommon` (read + migrate).
+ * `{{ var }}` substitution runs over the merge. A conception authored as a
+ * single `common.md` (no split) is read back via `splitLegacyCommon` — a
+ * non-destructive read, never an on-disk rewrite.
  */
 
 import { type CompileHarnessId, COMPILE_HARNESS_IDS, HARNESSES } from '../shared/harnesses';
