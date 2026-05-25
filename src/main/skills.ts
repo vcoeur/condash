@@ -10,10 +10,11 @@ import { userAgentConfigOutput, userAgentConfigRoot, userSkillsRoot } from './us
 const HIDDEN_PREFIX = /^\./;
 
 /** Agent-config source files surfaced (read-only) on the Generic tab — the
- *  `condash.md` (shipped) + `conception.md` (user-owned) + per-model
- *  `<model>.md` inputs that `condash skills install` compiles into each agent's
- *  CLAUDE.md / AGENTS.md. `common.md` is listed for pre-split trees that
- *  haven't been migrated yet. */
+ *  `condash.md` (shipped) + `conception.md` (user-owned) split sources and the
+ *  per-model `<model>.md` inputs that `condash skills install` compiles into
+ *  each agent's CLAUDE.md / AGENTS.md. `common.md` is the combined body —
+ *  materialised from the split in a conception, hand-authored in the user
+ *  scope (`~/.config/agents/agents/`). */
 const GENERIC_AGENT_SOURCES = [
   'condash.md',
   'conception.md',

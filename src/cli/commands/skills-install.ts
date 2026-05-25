@@ -5,8 +5,9 @@
  * file regions with refuse-on-edit semantics; pass 2 compiles everything on
  * disk (via `compileAllSkillspecs`) so a refused source still propagates
  * through to the per-target trees. Pass 1c copies the agent-config sources
- * (region-aware for `common.md`, overwrite for the per-agent fragments);
- * pass 2b compiles them to `CLAUDE.md` / `AGENTS.md`.
+ * (region-aware for the `condash.md` head, overwrite for the per-agent
+ * fragments); pass 2b compiles them to `CLAUDE.md` / `AGENTS.md` and
+ * materialises the combined body as `common.md`.
  *
  * User scope (`installUserSkills`): no shipped tree, no manifest. Compile
  * the user's own skillspecs straight to `~/.claude/skills/` + `~/.kimi/skills/`,
@@ -295,9 +296,10 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
   });
   report.compiled = compileResult.compiled;
 
-  // Pass 1c: copy agent-config sources. `common.md` goes through the
-  // region-aware install path so a user-customised `## Specifics` survives;
-  // the per-agent fragments (`claude.md`, `kimi.md`) overwrite in full.
+  // Pass 1c: copy agent-config sources. The `condash.md` head goes through the
+  // region-aware install path (the user-owned `conception.md` `## Specifics` is
+  // scaffold-once); the per-agent fragments (`claude.md`, `kimi.md`) overwrite
+  // in full. Pass 2b then materialises the combined body as `common.md`.
   const agentInstall = await installAgentConfigSources({
     dest,
     shippedVersion,

@@ -38,7 +38,7 @@ The Generic tab walks the skills root and surfaces both `.md` and `.yaml` files:
 - `body.md` and sibling markdown files (`index.md`, `retrieve.md`, …) render as standard cards. Title is pulled from the first H1.
 - `spec.yaml` and `targets/<agent>.yaml` render as cards with a `YAML` badge — title falls back to the filename when no H1 is present (YAML has none).
 
-Above the tree, the agent-config **sources** render as read-only callouts: `condash.md` (the shipped `## General` head), `conception.md` (your `## Specifics`), and each present `<model>.md` overlay (`claude.md`, `kimi.md`, `opencode.md`), badged by name. (A pre-split tree still shows the legacy `common.md` until the next install migrates it.) These are the inputs `condash skills install` joins + splices into each agent's compiled `CLAUDE.md` / `AGENTS.md` — there is no single "generic" compiled config, so the Generic tab shows the sources instead.
+Above the tree, the agent-config **sources** render as read-only callouts: `condash.md` (the shipped `## General` head), `conception.md` (your `## Specifics`), the combined `common.md` body, and each present `<model>.md` overlay (`claude.md`, `kimi.md`, `opencode.md`), badged by name. (`common.md` is materialised from `condash.md` + `conception.md` on every install — and is the file you author directly in the user scope, which has no split.) These are the inputs `condash skills install` joins + splices into each agent's compiled `CLAUDE.md` / `AGENTS.md` — there is no single "generic" compiled config, so the Generic tab shows the sources instead.
 
 ### Claude (compiled)
 

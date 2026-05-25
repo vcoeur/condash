@@ -62,17 +62,28 @@ describe('condash skills install — top-level files', () => {
     expect(kimi).toContain('Kimi Code CLI');
   });
 
-  it('materialises body.md = condash.md + conception.md in the source dir', async () => {
+  it('materialises common.md = condash.md + conception.md in the source dir', async () => {
     await install();
     const agentsDir = join(dest, '.agents/agents');
     const condash = await fs.readFile(join(agentsDir, 'condash.md'), 'utf8');
     const conception = await fs.readFile(join(agentsDir, 'conception.md'), 'utf8');
-    const body = await fs.readFile(join(agentsDir, 'body.md'), 'utf8');
-    // body.md is the agent-neutral combined source: the condash.md head then
+    const common = await fs.readFile(join(agentsDir, 'common.md'), 'utf8');
+    // common.md is the agent-neutral combined body: the condash.md head then
     // the conception.md tail, placeholders intact (not substituted).
-    expect(body).toBe(combineAgentSource(condash, conception));
-    expect(body.indexOf('## General')).toBeLessThan(body.indexOf('## Specifics'));
-    expect(body).toContain('{{ skills_dir }}');
+    expect(common).toBe(combineAgentSource(condash, conception));
+    expect(common.indexOf('## General')).toBeLessThan(common.indexOf('## Specifics'));
+    expect(common).toContain('{{ skills_dir }}');
+  });
+
+  it('removes a stale body.md left by a pre-rename install', async () => {
+    await install();
+    const agentsDir = join(dest, '.agents/agents');
+    // An older condash materialised the combined body as body.md; the rename
+    // to common.md must clean it up so the source dir keeps a single body file.
+    await fs.writeFile(join(agentsDir, 'body.md'), 'stale\n');
+    await install();
+    await expect(fs.access(join(agentsDir, 'body.md'))).rejects.toThrow();
+    expect(await fs.readFile(join(agentsDir, 'common.md'), 'utf8')).toContain('## General');
   });
 
   it('writes a conception-root opencode.json pointing at the compiled .opencode/AGENTS.md', async () => {
@@ -239,42 +250,6 @@ describe('condash skills install — top-level files', () => {
     await install();
     const conception = await fs.readFile(join(dest, '.agents/agents/conception.md'), 'utf8');
     expect(conception).toContain('## Specifics');
-  });
-
-  it('migrates a legacy common.md into condash.md + conception.md, preserving Specifics', async () => {
-    // Scaffold the split tree, then reconstruct a pre-split state: a single
-    // common.md (head + a user Specifics), manifest tracking common.md, and
-    // the split files removed.
-    await install();
-    const agentsDir = join(dest, '.agents/agents');
-    const head = await fs.readFile(join(agentsDir, 'condash.md'), 'utf8');
-    const userSpecifics = '## Specifics\n\n- Team rule: always do X.\n';
-    await fs.writeFile(join(agentsDir, 'common.md'), `${head.trimEnd()}\n\n${userSpecifics}`);
-    await fs.rm(join(agentsDir, 'condash.md'));
-    await fs.rm(join(agentsDir, 'conception.md'));
-    // Re-point the manifest entry at the legacy common.md path.
-    const manifestPath = join(dest, '.agents', MANIFEST_RELPATH);
-    const m = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-    m.files['.agents/agents/common.md'] = m.files[AGENT_CONFIG_COMMON.path];
-    delete m.files[AGENT_CONFIG_COMMON.path];
-    await fs.writeFile(manifestPath, JSON.stringify(m, null, 2));
-
-    await install();
-
-    // common.md is split + removed; the split files exist.
-    await expect(fs.access(join(agentsDir, 'common.md'))).rejects.toThrow();
-    expect(await fs.readFile(join(agentsDir, 'condash.md'), 'utf8')).toContain('## General');
-    expect(await fs.readFile(join(agentsDir, 'conception.md'), 'utf8')).toContain(
-      'Team rule: always do X',
-    );
-    // The compiled output keeps the user's Specifics.
-    expect(await fs.readFile(join(dest, '.claude/CLAUDE.md'), 'utf8')).toContain(
-      'Team rule: always do X',
-    );
-    // Manifest entry carried forward to condash.md; stale common.md entry gone.
-    const manifest = await readManifest(dest);
-    expect(manifest!.files![AGENT_CONFIG_COMMON.path]).toBeTruthy();
-    expect(manifest!.files!['.agents/agents/common.md']).toBeUndefined();
   });
 
   it('--prune does not drop the .agents/agents/condash.md manifest entry', async () => {
