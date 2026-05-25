@@ -3,8 +3,10 @@
  * carries one opencode agent configured via the per-agent options table (a
  * default row + a plan row on its own model). Verifies the launch-only
  * click-to-edit card, the popup modal, the options table (default + per-agent
- * rows with model/effort/verbosity/summary), that typing in a model cell keeps
- * focus, the variants-under-the-hood preview, and the confirmed in-editor Delete.
+ * rows with model/effort/verbosity/summary + a primary toggle), that a built-in
+ * row's primary toggle is checked-and-disabled, that a new custom row is a
+ * primary emitting mode:"primary", that typing in a row cell keeps focus, the
+ * options preview, and the confirmed in-editor Delete.
  * Doubles as the manual-verification screenshot source (tests/screenshots-out/agents/).
  */
 
@@ -78,11 +80,18 @@ test('agent card opens a popup options table; rows + focus + variant preview', a
     await expect(defaultRow.locator('input')).toHaveValue('deepseek/deepseek-v4-pro');
     await expect(defaultRow.locator('select').nth(0)).toHaveValue('medium'); // effort
 
-    // Plan row: agent = plan, its own model, effort = high.
+    // Plan row: agent = plan (a built-in primary → its primary toggle is checked
+    // and disabled, since condash never overrides a built-in's mode), its own
+    // model, effort = high.
     const planRow = rows.nth(2);
-    await expect(planRow.locator('select').nth(0)).toHaveValue('plan'); // agent
-    await expect(planRow.locator('input')).toHaveValue('kimi-for-coding/kimi-k2-thinking'); // model
-    await expect(planRow.locator('select').nth(1)).toHaveValue('high'); // effort
+    await expect(planRow.locator('.agents-option-agent')).toHaveValue('plan'); // agent name
+    const planPrimary = planRow.locator('.agents-option-primary input');
+    await expect(planPrimary).toBeChecked();
+    await expect(planPrimary).toBeDisabled();
+    await expect(planRow.locator('input[placeholder="inherit default"]')).toHaveValue(
+      'kimi-for-coding/kimi-k2-thinking',
+    ); // model
+    await expect(planRow.locator('select').nth(0)).toHaveValue('high'); // effort
 
     // The live preview shows plain options: the default on the model base, plan's
     // own model + options. (No variants — opencode footer ignores those anyway.)
@@ -95,13 +104,28 @@ test('agent card opens a popup options table; rows + focus + variant preview', a
     await rows.first().scrollIntoViewIfNeeded();
     await window.screenshot({ path: join(outDir, 'agents-edit.png') });
 
-    // Typing in a model cell must NOT lose focus per keystroke (Index, not For).
+    // Add a custom agent row: it starts as a primary (toggle checked + enabled).
     await editor.locator('.agents-overrides button', { hasText: 'Add agent' }).click();
-    const newModel = editor.locator('.agents-option-row').last().locator('input');
+    const newRow = editor.locator('.agents-option-row').last();
+    const newPrimary = newRow.locator('.agents-option-primary input');
+    await expect(newPrimary).toBeChecked();
+    await expect(newPrimary).toBeEnabled();
+
+    // Typing in a row cell must NOT lose focus per keystroke (Index, not For).
+    const newName = newRow.locator('.agents-option-agent');
+    await newName.click();
+    await newName.pressSequentially('deep');
+    await expect(newName).toBeFocused();
+    await expect(newName).toHaveValue('deep');
+    const newModel = newRow.locator('input[placeholder="inherit default"]');
     await newModel.click();
     await newModel.pressSequentially('deepseek/x');
     await expect(newModel).toBeFocused();
     await expect(newModel).toHaveValue('deepseek/x');
+
+    // A custom primary row serializes agent.<name>.mode = "primary" (it also picks
+    // up the default options onto its model, asserted elsewhere — match just the mode).
+    await expect(preview).toContainText('"deep":{"mode":"primary"');
 
     // Delete lives in the editor, confirmed via a modal.
     await expect(editor.locator('.agents-editor-delete')).toHaveText('Delete');

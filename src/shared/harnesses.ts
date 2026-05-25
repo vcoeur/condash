@@ -130,9 +130,26 @@ export const OPENCODE_REASONING_EFFORTS = [
   'xhigh',
 ] as const;
 
-/** opencode's built-in agent names, offered as override targets. `agent.<name>`
- *  is a freeform Record, so naming an agent that doesn't exist is harmless. */
+/** opencode's built-in agent names, offered as datalist suggestions. `agent.<name>`
+ *  is a freeform Record, so any other (custom) name is equally valid. */
 export const OPENCODE_AGENT_NAMES = ['build', 'plan', 'general', 'explore', 'scout'] as const;
+
+/** The built-in agents opencode treats as *primary* (switchable with Tab). The
+ *  rest of `OPENCODE_AGENT_NAMES` (general/explore/scout) are subagents. */
+export const OPENCODE_PRIMARY_BUILTINS = ['build', 'plan'] as const;
+
+/** True when `name` is one of opencode's built-in agents. condash never writes a
+ *  `mode` for these — it preserves opencode's own default (build/plan primary;
+ *  general/explore/scout subagent). */
+export function isBuiltinOpencodeAgent(name: string): boolean {
+  return (OPENCODE_AGENT_NAMES as readonly string[]).includes(name);
+}
+
+/** True when `name` is a built-in *primary* agent (build/plan) — used to render
+ *  its primary toggle as checked-and-disabled. */
+export function isBuiltinPrimaryOpencodeAgent(name: string): boolean {
+  return (OPENCODE_PRIMARY_BUILTINS as readonly string[]).includes(name);
+}
 
 /** `textVerbosity` values opencode accepts (OpenAI-style). */
 export const OPENCODE_TEXT_VERBOSITIES = ['low', 'medium', 'high'] as const;
@@ -155,6 +172,11 @@ export interface OpencodeAgentOptions {
 export interface OpencodeAgentRow extends OpencodeAgentOptions {
   agent: string;
   model?: string;
+  /** Emit `agent.<name>.mode = "primary"` so a *custom* agent becomes switchable
+   *  in opencode (Tab). Ignored for built-in names — build/plan are already
+   *  primary, general/explore/scout are subagents, and condash never overrides a
+   *  built-in's mode. Defaults to true when a custom row is added in the UI. */
+  primary?: boolean;
 }
 
 /**
@@ -448,8 +470,12 @@ function buildOpencodeSpawn(
     if (!name) continue;
     const model = row.model?.trim();
     const options = optionsOf(row) ?? (model ? defaultOptions : undefined);
-    if (!model && !options) continue;
+    // A custom (non-built-in) row marked primary emits `mode: "primary"` so it
+    // shows up as a switchable agent. Built-in names keep opencode's own mode.
+    const primary = row.primary === true && !isBuiltinOpencodeAgent(name);
+    if (!model && !options && !primary) continue;
     const entry = { ...((agent[name] as Record<string, unknown>) ?? {}) };
+    if (primary) entry.mode = 'primary';
     if (model) entry.model = model;
     if (options) {
       entry.options = { ...((entry.options as Record<string, unknown>) ?? {}), ...options };

@@ -262,6 +262,30 @@ describe('opencode build/plan persistence', () => {
     const back = await readAgent(dir, 'opencode-deepseek-v4-pro');
     expect(back).toEqual(def);
   });
+
+  it('round-trips a custom primary agent row', async () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'deepseek-primaries',
+      slug: 'opencode-deepseek-primaries',
+      config: {
+        model: 'deepseek/deepseek-v4-flash',
+        disableExternalSkills: true,
+        agentOptions: [
+          {
+            agent: 'deep',
+            primary: true,
+            model: 'deepseek/deepseek-v4-pro',
+            reasoningEffort: 'high',
+          },
+          { agent: 'helper', primary: false, reasoningEffort: 'low' },
+        ],
+      },
+    };
+    await writeAgent(dir, def);
+    const back = await readAgent(dir, 'opencode-deepseek-primaries');
+    expect(back).toEqual(def);
+  });
 });
 
 describe('kimi instructions injection', () => {

@@ -10,6 +10,8 @@ import {
   defaultOpencodeConfig,
   HARNESS_IDS,
   HARNESSES,
+  isBuiltinOpencodeAgent,
+  isBuiltinPrimaryOpencodeAgent,
   isValidSlug,
   kimiAgentFileYaml,
   MissingAgentSecretError,
@@ -421,5 +423,87 @@ describe('buildSpawn — opencode agent options table', () => {
     const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
     expect(cfg).not.toHaveProperty('provider');
     expect(cfg).not.toHaveProperty('agent');
+  });
+
+  it('a custom row marked primary emits mode:primary — even with no model or options', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        agentOptions: [
+          {
+            agent: 'deep',
+            primary: true,
+            model: 'deepseek/deepseek-v4-pro',
+            reasoningEffort: 'xhigh',
+          },
+          { agent: 'quick', primary: true },
+        ],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    expect(cfg.agent.deep).toEqual({
+      mode: 'primary',
+      model: 'deepseek/deepseek-v4-pro',
+      options: { reasoningEffort: 'xhigh' },
+    });
+    // primary alone is enough to emit the entry (it isn't skipped for lacking model/options).
+    expect(cfg.agent.quick).toEqual({ mode: 'primary' });
+  });
+
+  it('never writes a mode for built-in names, even if primary is set', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        agentOptions: [
+          { agent: 'build', primary: true, reasoningEffort: 'low' },
+          { agent: 'plan', primary: true },
+        ],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    // build keeps its options but no mode override; plan with only primary is skipped entirely.
+    expect(cfg.agent.build).toEqual({ options: { reasoningEffort: 'low' } });
+    expect(cfg.agent.plan).toBeUndefined();
+  });
+
+  it('a custom row that is not primary emits no mode (falls back to opencode default)', () => {
+    const def: AgentDef = {
+      harness: 'opencode',
+      name: 'oc',
+      slug: 'opencode-ds',
+      config: {
+        model: 'deepseek/deepseek-v4-pro',
+        disableExternalSkills: true,
+        agentOptions: [{ agent: 'helper', primary: false, reasoningEffort: 'low' }],
+      },
+    };
+    const cfg = JSON.parse(buildSpawn(def, resolve({})).env.OPENCODE_CONFIG_CONTENT);
+    expect(cfg.agent.helper).toEqual({ options: { reasoningEffort: 'low' } });
+    expect(cfg.agent.helper).not.toHaveProperty('mode');
+  });
+});
+
+describe('opencode built-in agent helpers', () => {
+  it('classifies built-in vs custom names', () => {
+    expect(isBuiltinOpencodeAgent('build')).toBe(true);
+    expect(isBuiltinOpencodeAgent('scout')).toBe(true);
+    expect(isBuiltinOpencodeAgent('deep')).toBe(false);
+    expect(isBuiltinOpencodeAgent('')).toBe(false);
+  });
+
+  it('classifies built-in primaries (build/plan) vs built-in subagents', () => {
+    expect(isBuiltinPrimaryOpencodeAgent('build')).toBe(true);
+    expect(isBuiltinPrimaryOpencodeAgent('plan')).toBe(true);
+    expect(isBuiltinPrimaryOpencodeAgent('general')).toBe(false);
+    expect(isBuiltinPrimaryOpencodeAgent('explore')).toBe(false);
+    expect(isBuiltinPrimaryOpencodeAgent('deep')).toBe(false);
   });
 });
