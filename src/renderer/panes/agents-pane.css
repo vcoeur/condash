@@ -334,10 +334,10 @@
   color: var(--text);
 }
 
-/* Agent options table: agent · model · effort · verbosity · summary · remove. */
+/* Agent options table: agent · primary · model · effort · verbosity · summary · remove. */
 .agents-option-row {
   display: grid;
-  grid-template-columns: minmax(4.5rem, 1fr) minmax(8rem, 2fr) 1fr 1fr 1fr auto;
+  grid-template-columns: minmax(4.5rem, 1fr) auto minmax(8rem, 2fr) 1fr 1fr 1fr auto;
   align-items: center;
   gap: 0.4rem;
 }
@@ -345,6 +345,17 @@
 .agents-option-row select,
 .agents-option-row input {
   min-width: 0;
+}
+
+/* Primary toggle cell: centre the checkbox under its "primary" header. */
+.agents-option-primary {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.agents-option-primary input {
+  margin: 0;
 }
 
 .agents-option-head {

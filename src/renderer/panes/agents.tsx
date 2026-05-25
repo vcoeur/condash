@@ -16,6 +16,8 @@ import {
   defaultOpencodeConfig,
   HARNESS_IDS,
   HARNESSES,
+  isBuiltinOpencodeAgent,
+  isBuiltinPrimaryOpencodeAgent,
   isValidSlug,
   OPENCODE_AGENT_NAMES,
   OPENCODE_REASONING_EFFORTS,
@@ -410,22 +412,27 @@ function AgentEditor(props: {
 
   // Per-agent rows.
   const agentRows = (): OpencodeAgentRow[] => d().opencode.agentOptions ?? [];
-  const usedRowAgents = () => new Set(agentRows().map((r) => r.agent));
-  const rowAgentOptions = (current: string) =>
+  const usedRowAgents = () => new Set(agentRows().map((r) => r.agent.trim()));
+  // Built-in names not already used by another row — offered as datalist
+  // suggestions; the field itself accepts any custom name.
+  const rowAgentSuggestions = (current: string) =>
     OPENCODE_AGENT_NAMES.filter((n) => n === current || !usedRowAgents().has(n));
-  const availableRowAgents = () => OPENCODE_AGENT_NAMES.filter((n) => !usedRowAgents().has(n));
   const setAgentRows = (next: OpencodeAgentRow[]) =>
     props.patch({
       opencode: { ...d().opencode, agentOptions: next.length > 0 ? next : undefined },
     });
-  const addAgentRow = () => {
-    const agent = availableRowAgents()[0];
-    if (!agent) return;
-    setAgentRows([...agentRows(), { agent }]);
-  };
+  // New rows start as a blank *custom* primary agent — typing a built-in name
+  // turns the row into that built-in's override (its primary toggle auto-disables).
+  const addAgentRow = () => setAgentRows([...agentRows(), { agent: '', primary: true }]);
   const patchAgentRow = (idx: number, p: Partial<OpencodeAgentRow>) =>
     setAgentRows(agentRows().map((r, i) => (i === idx ? { ...r, ...p } : r)));
   const removeAgentRow = (idx: number) => setAgentRows(agentRows().filter((_, i) => i !== idx));
+  // Whether a row's "primary" toggle shows checked: built-ins reflect their fixed
+  // opencode mode (build/plan primary); custom rows default to primary.
+  const rowIsPrimary = (row: OpencodeAgentRow): boolean =>
+    isBuiltinOpencodeAgent(row.agent.trim())
+      ? isBuiltinPrimaryOpencodeAgent(row.agent.trim())
+      : (row.primary ?? true);
 
   /** Re-suggest the slug from `name` under `harness`, unless the user has
    *  hand-edited the slug or is editing an existing agent (slug is frozen). */
@@ -586,11 +593,13 @@ function AgentEditor(props: {
             <div class="agents-overrides agents-options-table">
               <span class="agents-overrides-label">
                 Per-agent reasoning — the <code>default</code> row applies to every agent; add rows
-                to override the model and/or options for a specific agent. Each agent's effort is
-                applied to its requests.
+                to override the model and/or options for a specific agent. Type a custom agent name
+                and mark it <code>primary</code> to add a new switchable agent (Tab) beyond{' '}
+                <code>build</code>/<code>plan</code>. Built-in agents keep their fixed mode.
               </span>
               <div class="agents-option-row agents-option-head">
                 <span>agent</span>
+                <span>primary</span>
                 <span>model</span>
                 <span>effort</span>
                 <span>verbosity</span>
@@ -599,6 +608,7 @@ function AgentEditor(props: {
               </div>
               <div class="agents-option-row">
                 <span class="agents-option-default">(default)</span>
+                <span />
                 <input
                   type="text"
                   placeholder="provider/model"
@@ -646,14 +656,32 @@ function AgentEditor(props: {
               <Index each={agentRows()}>
                 {(r, i) => (
                   <div class="agents-option-row">
-                    <select
+                    <input
+                      type="text"
+                      class="agents-option-agent"
+                      placeholder="agent name"
+                      list={`oc-agent-names-${i}`}
                       value={r().agent}
-                      onChange={(e) => patchAgentRow(i, { agent: e.currentTarget.value })}
+                      onInput={(e) => patchAgentRow(i, { agent: e.currentTarget.value })}
+                    />
+                    <datalist id={`oc-agent-names-${i}`}>
+                      <For each={rowAgentSuggestions(r().agent)}>{(n) => <option value={n} />}</For>
+                    </datalist>
+                    <label
+                      class="agents-option-primary"
+                      title={
+                        isBuiltinOpencodeAgent(r().agent.trim())
+                          ? `Built-in ${isBuiltinPrimaryOpencodeAgent(r().agent.trim()) ? 'primary' : 'subagent'} — mode fixed by opencode`
+                          : 'Switchable primary agent (emits mode: "primary")'
+                      }
                     >
-                      <For each={rowAgentOptions(r().agent)}>
-                        {(n) => <option value={n}>{n}</option>}
-                      </For>
-                    </select>
+                      <input
+                        type="checkbox"
+                        checked={rowIsPrimary(r())}
+                        disabled={isBuiltinOpencodeAgent(r().agent.trim())}
+                        onChange={(e) => patchAgentRow(i, { primary: e.currentTarget.checked })}
+                      />
+                    </label>
                     <input
                       type="text"
                       placeholder="inherit default"
@@ -709,11 +737,7 @@ function AgentEditor(props: {
                   </div>
                 )}
               </Index>
-              <button
-                type="button"
-                onClick={addAgentRow}
-                disabled={availableRowAgents().length === 0}
-              >
+              <button type="button" onClick={addAgentRow}>
                 + Add agent
               </button>
             </div>
@@ -752,10 +776,11 @@ function AgentEditor(props: {
               <code>model</code> and its options become that model's base <code>options</code>{' '}
               (inherited by every agent on it); each per-agent row sets{' '}
               <code>agent.&lt;name&gt;.options</code> (applied to its requests) plus{' '}
-              <code>agent.&lt;name&gt;.model</code> when it overrides the model. Extra JSON is
-              merged underneath. Auth via <code>opencode auth login</code> — leave the token field
-              blank unless your provider reads a key from the environment (a stray key can collide
-              with opencode's OAuth).
+              <code>agent.&lt;name&gt;.model</code> when it overrides the model, and{' '}
+              <code>agent.&lt;name&gt;.mode = "primary"</code> for a custom row marked primary.
+              Extra JSON is merged underneath. Auth via <code>opencode auth login</code> — leave the
+              token field blank unless your provider reads a key from the environment (a stray key
+              can collide with opencode's OAuth).
             </p>
           </Show>
 

@@ -77,7 +77,12 @@ const opencodeConfigSchema = z.object({
   defaultOptions: z.object(opencodeReasoningOptions).optional(),
   agentOptions: z
     .array(
-      z.object({ agent: z.string(), model: z.string().optional(), ...opencodeReasoningOptions }),
+      z.object({
+        agent: z.string(),
+        model: z.string().optional(),
+        primary: z.boolean().optional(),
+        ...opencodeReasoningOptions,
+      }),
     )
     .optional(),
   extraConfigJson: z
