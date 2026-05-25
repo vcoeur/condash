@@ -12,13 +12,23 @@ export interface UseConceptionDeps {
   reloadProjects: () => Promise<void>;
   reloadConfig: () => Promise<void>;
   reloadRepos: () => Promise<void>;
+  /** Refetch the Agents pane's createResource. Fire-and-forget. */
+  reloadAgents: () => void;
+  /** Refetch the Tasks pane's createResource. Fire-and-forget. */
+  reloadTasks: () => void;
+  /** Bump the Logs pane's external refresh trigger (the pane owns its own
+   *  createResource, so refresh is push-via-signal rather than a reload fn). */
+  reloadLogs: () => void;
   setInitConfirmState: (next: { path: string; missing: string[] } | null) => void;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
 
 export interface UseConception {
   /** Full fan-out reload. Used by View → Refresh and as the success tail
-   *  of initConception. Each store applies `reconcile` on swap-in so
+   *  of initConception. Covers every working surface: projects, code,
+   *  knowledge, resources, all four skill tabs, agents, tasks, and logs.
+   *  Deliverables are derived from the projects list, so reloadProjects
+   *  refreshes them too. Each store applies `reconcile` on swap-in so
    *  card / row DOM identity survives — the visible effect is content
    *  updating in place, not the pane blanking and rebuilding. */
   reloadAll: () => Promise<void>;
@@ -37,6 +47,12 @@ export interface UseConception {
 
 export function useConception(deps: UseConceptionDeps): UseConception {
   const reloadAll = async (): Promise<void> => {
+    // Panes that own their own createResource (agents / tasks) or push-refresh
+    // signal (logs) are kicked off synchronously — they don't return a promise
+    // to await alongside the store reloads.
+    deps.reloadAgents();
+    deps.reloadTasks();
+    deps.reloadLogs();
     await Promise.all([
       deps.reloadProjects(),
       deps.knowledgeStore.reload(),
@@ -44,6 +60,7 @@ export function useConception(deps: UseConceptionDeps): UseConception {
       deps.skillsStores.generic.reload(),
       deps.skillsStores.claude.reload(),
       deps.skillsStores.kimi.reload(),
+      deps.skillsStores.opencode.reload(),
       deps.reloadConfig(),
       deps.reloadRepos(),
     ]);

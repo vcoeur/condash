@@ -205,7 +205,7 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 
 ### Browsing logs
 
-`View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface — a **sessions list grouped by day**, newest day first. Each row is a card showing the spawn time, repo (when launched via Run), short command, size on disk, and exit code (or "running" while alive; the left edge tints red for non-zero exits).
+`View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface — sessions as a **collapsible card grid grouped by date**, newest first. The last 7 days each get their own collapsible group; **today is always expanded** while the other recent days start collapsed. Anything older is folded into collapsible **per-month** groups (with a day sub-header inside each). Each session card shows the spawn time, repo (when launched via Run), short command, size on disk, and exit code (or "running" while alive; the left edge tints red for non-zero exits).
 
 Clicking a card opens the **session viewer modal**: a wide overlay with the full plain-text transcript and a case-insensitive search box. The transcript is virtualised — only the visible window of lines is mounted, so even a 100 MB log scrolls smoothly. Long lines horizontal-scroll rather than wrap (every row stays exactly one line-height tall, which the virtualizer needs). Search precomputes per-line hit indices once per query; the n/N counter plus the ↑/↓ buttons cycle hits, `Enter` jumps forward, `Shift+Enter` backward, `Cmd/Ctrl+F` focuses the search box, `Esc` closes the modal.
 

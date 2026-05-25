@@ -383,8 +383,8 @@ Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `ski
 | Field           | Type                                                       | Meaning                                                                                                                       |
 | --------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `projects`      | bool                                                       | Show or hide the left band.                                                                                                  |
-| `leftView`      | `'projects' \| 'deliverables'`                             | Which pane fills the left band — the Projects list or the Deliverables aggregation of every project's `## Deliverables`. Selected by the left edge-strip handles. Defaults to `'projects'`. A persisted `'outputs'` (v3.20.0) is migrated to `'deliverables'`. |
-| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null` | Six-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, or `'logs'` shows that pane in the working slot; `null` hides them all. |
+| `leftView`      | `'projects' \| 'tasks' \| 'deliverables'`                  | Which pane fills the left band — the Projects list, the Tasks list, or the Deliverables aggregation of every project's `## Deliverables`. Selected by the left edge-strip handles. Defaults to `'projects'`. A persisted `'outputs'` (v3.20.0) is migrated to `'deliverables'`. |
+| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| 'agents' \| null` | Seven-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, `'logs'`, or `'agents'` shows that pane in the working slot; `null` hides them all. |
 | `terminal`      | bool                                                       | Show or hide the Terminal pane at the bottom.                                                                                 |
 | `projectsWidth` | non-negative int                                           | Pixel width of the Projects pane after the user drags the splitter.                                                           |
 
@@ -392,19 +392,23 @@ The IPC verbs `getLayout` / `setLayout` read and write this block atomically —
 
 ### CardMinWidth
 
-`cardMinWidth` controls the n→n+1 reflow threshold for the five card grids (Projects, Code, Knowledge, Resources, Skills). Each grid uses `minmax(min(<min>, 100%), 1fr)`, so a row of _n_ cards reflows to _n+1_ once the pane is wide enough to fit _n+1_ cards each at this width.
+`cardMinWidth` controls the n→n+1 reflow threshold for the nine card grids (Projects, Code, Knowledge, Resources, Skills, Agents, Logs, Tasks, Deliverables). Each grid uses `minmax(min(<min>, 100%), 1fr)`, so a row of _n_ cards reflows to _n+1_ once the pane is wide enough to fit _n+1_ cards each at this width.
 
-| Field       | Type                | Default | Meaning                                                      |
-| ----------- | ------------------- | ------- | ------------------------------------------------------------ |
-| `projects`  | int 120 – 2400 (px) | 650     | Min width of a project card on the Projects pane.            |
-| `code`      | int 120 – 2400 (px) | 650     | Min width of a repo card on the Code pane.                   |
-| `knowledge` | int 120 – 2400 (px) | 520     | Min width of a knowledge-section card on the Knowledge pane. |
-| `resources` | int 120 – 2400 (px) | 280     | Min width of a resource card on the Resources pane.          |
-| `skills`    | int 120 – 2400 (px) | 280     | Min width of a skill card on the Skills pane.                |
+| Field          | Type                | Default | Meaning                                                      |
+| -------------- | ------------------- | ------- | ------------------------------------------------------------ |
+| `projects`     | int 120 – 2400 (px) | 650     | Min width of a project card on the Projects pane.            |
+| `code`         | int 120 – 2400 (px) | 650     | Min width of a repo card on the Code pane.                   |
+| `knowledge`    | int 120 – 2400 (px) | 520     | Min width of a knowledge-section card on the Knowledge pane. |
+| `resources`    | int 120 – 2400 (px) | 280     | Min width of a resource card on the Resources pane.          |
+| `skills`       | int 120 – 2400 (px) | 280     | Min width of a skill card on the Skills pane.                |
+| `agents`       | int 120 – 2400 (px) | 360     | Min width of an agent card on the Agents pane.               |
+| `logs`         | int 120 – 2400 (px) | 400     | Min width of a session card on the Logs pane.                |
+| `tasks`        | int 120 – 2400 (px) | 340     | Min width of a task card on the Tasks pane.                  |
+| `deliverables` | int 120 – 2400 (px) | 340     | Min width of a deliverable card on the Deliverables pane.    |
 
 Lower numbers pack more cards per row at the same window size; higher numbers keep cards roomy. Values outside the `120–2400` range are silently dropped back to the default. Keys equal to the default are removed from disk so the bundled defaults can change in a future release without leaving stale literals on every machine.
 
-`getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`, `--card-min-resources`, `--card-min-skills`) so live edits in the Settings modal reflow the grids without a reload.
+`getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`, `--card-min-resources`, `--card-min-skills`, `--card-min-agents`, `--card-min-logs`, `--card-min-tasks`, `--card-min-deliverables`) so live edits in the Settings modal reflow the grids without a reload.
 
 Resolution order for the conception path, checked in sequence:
 

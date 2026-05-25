@@ -252,6 +252,12 @@ function App() {
   });
   const tasks = () => tasksResource() ?? [];
 
+  // --- Logs refresh trigger ---------------------------------------------
+  // The Logs pane owns its own createResource, so it can't expose a reload
+  // function the way the stores do. View → Refresh bumps this counter and the
+  // pane refetches via a deferred `on(...)` effect. See reloadLogs below.
+  const [logsRefreshTick, setLogsRefreshTick] = createSignal(0);
+
   // App options for the Tasks fill form's `{APP}` picker — every configured
   // repo as `{ alias: '@<name>', name, path }`. Reads the repos store, so it
   // re-derives when the repo list changes.
@@ -402,6 +408,9 @@ function App() {
     reloadProjects,
     reloadConfig,
     reloadRepos,
+    reloadAgents: () => void reloadAgents(),
+    reloadTasks: () => void reloadTasks(),
+    reloadLogs: () => setLogsRefreshTick((n) => n + 1),
     setInitConfirmState,
     flashToast,
   });
@@ -640,7 +649,7 @@ function App() {
 
                 <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
-                    <LogsView openRequest={logsOpenRequest} />
+                    <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
                   </section>
                 </Show>
 

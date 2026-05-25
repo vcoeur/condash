@@ -24,9 +24,11 @@ are still on disk; delete condash and the files don't move.
   shipped skills (`/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr`)
   — they appear automatically once `condash skills install` has run.
 - **Logs** (right pane, alternate, `Ctrl+Shift+L`) — per-session
-  terminal capture viewer. Lists past sessions grouped by day; opens
-  a full-overlay viewer with virtualised text + case-insensitive
-  search. Turn capture on under Settings → Terminal → Logging.
+  terminal capture viewer. Sessions are a collapsible card grid
+  grouped by date (last 7 days per-day with today always expanded,
+  older folded into per-month groups); opens a full-overlay viewer
+  with virtualised text + case-insensitive search. Turn capture on
+  under Settings → Terminal → Logging.
 - **Terminal** — toggle with `` Ctrl+` ``.
 - **Search** — `Ctrl+Shift+F` for cross-tree fuzzy search.
 

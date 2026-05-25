@@ -4,6 +4,7 @@ import {
   createResource,
   createSignal,
   For,
+  on,
   Show,
   type Accessor,
   type JSX,
@@ -33,7 +34,12 @@ import './logs-pane.css';
  * log hit in the search modal. The pane responds by opening the viewer
  * modal directly on that session.
  */
-export function LogsView(props: { openRequest?: Accessor<LogsOpenRequest | null> }): JSX.Element {
+export function LogsView(props: {
+  openRequest?: Accessor<LogsOpenRequest | null>;
+  /** Bumped by View → Refresh. Refetches days + sessions when it changes
+   *  (deferred, so the initial createResource fetch isn't doubled). */
+  refreshSignal?: Accessor<number>;
+}): JSX.Element {
   const [days, { refetch: refetchDays }] = createResource(() => window.condash.logsListDays());
 
   // For each known day, fetch its session list. Indexed by `day` string.
@@ -64,6 +70,16 @@ export function LogsView(props: { openRequest?: Accessor<LogsOpenRequest | null>
     void refetchSessions();
   };
 
+  // External refresh from View → Refresh. `defer: true` skips the run on mount
+  // so we don't refetch on top of the createResource initial load.
+  createEffect(
+    on(
+      () => props.refreshSignal?.(),
+      () => refreshAll(),
+      { defer: true },
+    ),
+  );
+
   const confirmDeleteSession = (sess: TermLogSessionMeta): void => {
     void window.condash.logsDeleteSession(sess.path).then(() => {
       setPendingDelete(null);
@@ -79,6 +95,35 @@ export function LogsView(props: { openRequest?: Accessor<LogsOpenRequest | null>
     for (const arr of map.values()) n += arr.length;
     return n;
   });
+
+  // Today + the start of the 7-day "recent" window (today and the 6 prior
+  // days). Day strings sort lexicographically === chronologically, so a plain
+  // string compare against the cutoff partitions the list. Computed once at
+  // mount — fine for a pane whose lifetime is a session.
+  const today = localDayStr();
+  const recentCutoff = daysAgoStr(6);
+
+  /** Last 7 days that have logs, newest-first (preserves `logsListDays` order). */
+  const recentDays = createMemo<KnownDay[]>(() =>
+    (days() ?? []).filter((d) => d.day >= recentCutoff),
+  );
+
+  /** Older days, grouped by `YYYY-MM`, months newest-first; days within a
+   *  month keep the newest-first order from `logsListDays`. */
+  const monthGroups = createMemo<{ key: string; days: KnownDay[] }[]>(() => {
+    const map = new Map<string, KnownDay[]>();
+    for (const d of (days() ?? []).filter((day) => day.day < recentCutoff)) {
+      const key = d.day.slice(0, 7);
+      const bucket = map.get(key);
+      if (bucket) bucket.push(d);
+      else map.set(key, [d]);
+    }
+    return [...map.keys()]
+      .sort((a, b) => (a < b ? 1 : -1))
+      .map((key) => ({ key, days: map.get(key)! }));
+  });
+
+  const sessionsFor = (day: string): TermLogSessionMeta[] => sessionsByDay()?.get(day) ?? [];
 
   return (
     <div class="logs-pane">
@@ -130,32 +175,115 @@ export function LogsView(props: { openRequest?: Accessor<LogsOpenRequest | null>
             when={(days() ?? []).length > 0}
             fallback={<div class="empty">No sessions captured yet.</div>}
           >
-            <For each={days() ?? []}>
-              {(d) => {
-                const list = (): TermLogSessionMeta[] => sessionsByDay()?.get(d.day) ?? [];
-                return (
-                  <div class="logs-day-group">
-                    <div class="logs-day-header">{d.day}</div>
-                    <Show
-                      when={list().length > 0}
-                      fallback={<div class="logs-day-empty">No sessions.</div>}
-                    >
-                      <ul class="logs-day-sessions">
-                        <For each={list()}>
-                          {(sess) => (
-                            <SessionCard sess={sess} onOpen={() => setActivePath(sess.path)} />
-                          )}
-                        </For>
-                      </ul>
-                    </Show>
-                  </div>
-                );
-              }}
+            {/* Recent band: one group per day for the last 7 days. Today is
+                always expanded and non-collapsible; the other days are
+                collapsible and default to collapsed. */}
+            <For each={recentDays()}>
+              {(d) => (
+                <Show
+                  when={d.day !== today}
+                  fallback={
+                    <div class="logs-day-group logs-day-today">
+                      <div class="logs-day-header logs-day-header-static">
+                        <span class="logs-day-label">Today · {dayLabel(d.day)}</span>
+                        <span class="logs-group-count">{sessionsFor(d.day).length}</span>
+                      </div>
+                      <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                    </div>
+                  }
+                >
+                  <details class="logs-day-group">
+                    <summary class="logs-day-header">
+                      <span class="logs-caret" aria-hidden="true" />
+                      <span class="logs-day-label">{dayLabel(d.day)}</span>
+                      <span class="logs-group-count">{sessionsFor(d.day).length}</span>
+                    </summary>
+                    <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                  </details>
+                </Show>
+              )}
+            </For>
+
+            {/* Older band: collapsible per-month groups, default collapsed,
+                with a light day sub-header inside each month. */}
+            <For each={monthGroups()}>
+              {(month) => (
+                <details class="logs-month-group">
+                  <summary class="logs-month-header">
+                    <span class="logs-caret" aria-hidden="true" />
+                    <span class="logs-month-label">{monthLabel(month.key)}</span>
+                    <span class="logs-group-count">
+                      {month.days.reduce((n, d) => n + sessionsFor(d.day).length, 0)}
+                    </span>
+                  </summary>
+                  <For each={month.days}>
+                    {(d) => (
+                      <div class="logs-day-subgroup">
+                        <div class="logs-day-subheader">{dayLabel(d.day)}</div>
+                        <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                      </div>
+                    )}
+                  </For>
+                </details>
+              )}
             </For>
           </Show>
         </Show>
       </section>
     </div>
+  );
+}
+
+/** One known log day as returned by `logsListDays` (newest-first). */
+type KnownDay = { day: string; path: string };
+
+/** Local-date `YYYY-MM-DD` for a `Date` (defaults to now). Local, not UTC, so
+ *  "today" matches the day strings the writer stamps from local time. */
+function localDayStr(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** `YYYY-MM-DD` of the day `n` days before now (local). */
+function daysAgoStr(n: number): string {
+  const now = new Date();
+  return localDayStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n));
+}
+
+/** "Mon 24 May" label for a `YYYY-MM-DD` day string. */
+function dayLabel(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
+/** "May 2026" label for a `YYYY-MM` month key. */
+function monthLabel(key: string): string {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+/** The session-card grid for one day, or an empty-state line. */
+function DaySessionGrid(props: {
+  sessions: TermLogSessionMeta[];
+  onOpen: (path: string) => void;
+}): JSX.Element {
+  return (
+    <Show
+      when={props.sessions.length > 0}
+      fallback={<div class="logs-day-empty">No sessions.</div>}
+    >
+      <ul class="logs-day-sessions">
+        <For each={props.sessions}>
+          {(sess) => <SessionCard sess={sess} onOpen={() => props.onOpen(sess.path)} />}
+        </For>
+      </ul>
+    </Show>
   );
 }
 

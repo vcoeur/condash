@@ -210,51 +210,53 @@ export function TasksView(props: {
             </p>
           }
         >
-          <For each={props.tasks()}>
-            {(task) => (
-              <div
-                class="tasks-row tasks-row-clickable"
-                role="button"
-                tabindex={0}
-                title="Click to edit this task"
-                onClick={() => void startEdit(task.slug)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    void startEdit(task.slug);
-                  }
-                }}
-              >
-                <div class="tasks-row-main">
-                  <span class="tasks-row-name">{task.name}</span>
-                  <AgentBadge agent={task.agent} present={task.agentPresent} />
-                  <Show when={task.markers.length > 0}>
-                    <div class="tasks-markers">
-                      <For each={task.markers}>{(marker) => <MarkerChip marker={marker} />}</For>
-                    </div>
-                  </Show>
-                </div>
-                <div class="tasks-row-actions">
-                  <button
-                    type="button"
-                    class="tasks-run"
-                    title={
-                      task.agentPresent
-                        ? 'Fill markers and run'
-                        : `Agent ${task.agent} is not defined`
+          <div class="tasks-grid">
+            <For each={props.tasks()}>
+              {(task) => (
+                <div
+                  class="tasks-row tasks-row-clickable"
+                  role="button"
+                  tabindex={0}
+                  title="Click to edit this task"
+                  onClick={() => void startEdit(task.slug)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      void startEdit(task.slug);
                     }
-                    disabled={!task.agentPresent}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void startFill(task.slug);
-                    }}
-                  >
-                    Run…
-                  </button>
+                  }}
+                >
+                  <div class="tasks-row-main">
+                    <span class="tasks-row-name">{task.name}</span>
+                    <AgentBadge agent={task.agent} present={task.agentPresent} />
+                    <Show when={task.markers.length > 0}>
+                      <div class="tasks-markers">
+                        <For each={task.markers}>{(marker) => <MarkerChip marker={marker} />}</For>
+                      </div>
+                    </Show>
+                  </div>
+                  <div class="tasks-row-actions">
+                    <button
+                      type="button"
+                      class="tasks-run"
+                      title={
+                        task.agentPresent
+                          ? 'Fill markers and run'
+                          : `Agent ${task.agent} is not defined`
+                      }
+                      disabled={!task.agentPresent}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void startFill(task.slug);
+                      }}
+                    >
+                      Run…
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </For>
+              )}
+            </For>
+          </div>
         </Show>
       </Show>
 

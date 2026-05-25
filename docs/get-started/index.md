@@ -143,7 +143,7 @@ You can also create items by hand — just `mkdir projects/<YYYY-MM>/<YYYY-MM-DD
 - **Knowledge** (right pane, alternate) — your reference notes, organised as cards. Hidden when `<conception>/knowledge/` is empty.
 - **Resources** (right pane, alternate, `Ctrl+R`) — every file under `resources/` (any extension) shown as a card with copy / open / paste-to-term actions. See [Resources pane](../guides/resources-pane.md).
 - **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under `.claude/skills/`, edited in place. See [Skills pane](../guides/skills-pane.md).
-- **Logs** (right pane, alternate, `Ctrl+Shift+L`) — per-session terminal capture viewer. Lists past sessions grouped by day and opens a full-overlay viewer with virtualised text + case-insensitive search. Capture is opt-in under `terminal.logging.enabled`.
+- **Logs** (right pane, alternate, `Ctrl+Shift+L`) — per-session terminal capture viewer. Sessions are a collapsible card grid grouped by date (last 7 days per-day with today always expanded, older folded into per-month groups); clicking one opens a full-overlay viewer with virtualised text + case-insensitive search. Capture is opt-in under `terminal.logging.enabled`.
 - **Terminal** — toggle with `` Ctrl+` `` (View → Show Terminal).
 - **Search** — `Ctrl+Shift+F` opens cross-tree fuzzy search.
 
