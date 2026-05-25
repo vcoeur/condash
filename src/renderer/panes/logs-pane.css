@@ -65,11 +65,18 @@
   padding: 0.5rem 0.75rem 1rem;
 }
 
-.logs-day-group {
+.logs-day-group,
+.logs-month-group {
   margin-bottom: 1rem;
 }
 
-.logs-day-header {
+/* Day / month group header. As a `<summary>` it is the collapse toggle; the
+ * `-static` variant (today) is a plain div with no caret. */
+.logs-day-header,
+.logs-month-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
@@ -78,6 +85,70 @@
   padding: 0.25rem 0;
   border-bottom: 1px solid var(--border);
   margin-bottom: 0.4rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.logs-day-header::-webkit-details-marker,
+.logs-month-header::-webkit-details-marker {
+  display: none;
+}
+.logs-day-header:hover,
+.logs-month-header:hover {
+  color: var(--text);
+}
+
+/* Today's header is always expanded — not a toggle. */
+.logs-day-header-static {
+  cursor: default;
+}
+
+.logs-month-header {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Disclosure caret — right-pointing triangle that rotates open (mirrors the
+ * Deliverables pane). */
+.logs-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent var(--text-muted);
+  transition: transform 0.12s ease;
+}
+.logs-day-group[open] > .logs-day-header .logs-caret,
+.logs-month-group[open] > .logs-month-header .logs-caret {
+  transform: rotate(90deg);
+}
+
+.logs-day-label,
+.logs-month-label {
+  flex: 1 1 auto;
+}
+
+/* Per-group session count pill at the right edge of the header. */
+.logs-group-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--text-faint, var(--text-muted));
+}
+
+/* Day sub-section nested inside a collapsed-by-default month group. */
+.logs-day-subgroup {
+  margin: 0.3rem 0 0.6rem;
+}
+
+.logs-day-subheader {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0;
+  margin-bottom: 0.3rem;
 }
 
 .logs-day-empty {
