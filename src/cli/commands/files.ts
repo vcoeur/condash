@@ -320,6 +320,10 @@ const AGENTS_SOURCE_RELPATH = '.agents/agents';
 const CONDASH_SOURCE = 'condash.md';
 const CONCEPTION_SOURCE = 'conception.md';
 const LEGACY_COMMON_SOURCE = 'common.md';
+/** Derived combined source `condash.md` + `conception.md`, materialised in the
+ *  source dir on every install. Committed (not gitignored) and not a compile
+ *  input or manifest entry — staged for a future single-body change. */
+const BODY_OUTPUT = 'body.md';
 
 /**
  * `condash.md` is the condash-shipped head — an H1/tagline preamble plus the
@@ -375,6 +379,13 @@ export async function compileAgentConfigs(
     if (!tail) tail = split.tail;
   }
   const combined = combineAgentSource(head, tail);
+
+  // Materialise the combined source (condash.md + conception.md) as body.md in
+  // the source dir. Committed (not gitignored), not a compile input and not
+  // manifest-tracked — staged for a future single-body change.
+  if (!dryRun) {
+    await writeFileMkdir(join(sourceDir, BODY_OUTPUT), Buffer.from(combined, 'utf8'));
+  }
 
   // Per-conception identity variables for the shipped condash.md preamble
   // (`# AGENTS.md — {{ conception_name }}` / `{{ description }}`). Existing
@@ -764,7 +775,12 @@ export async function installAgentConfigSources(
   // Per-agent fragments + any future nested files: full-overwrite. condash.md
   // (region-aware above) and conception.md (user-owned, scaffolded above) are
   // both excluded; legacy common.md is gone after migration but guarded too.
-  const ownedAtRoot = new Set([CONDASH_SOURCE, CONCEPTION_SOURCE, LEGACY_COMMON_SOURCE]);
+  const ownedAtRoot = new Set([
+    CONDASH_SOURCE,
+    CONCEPTION_SOURCE,
+    LEGACY_COMMON_SOURCE,
+    BODY_OUTPUT,
+  ]);
   async function walk(src: string, dst: string, prefix: string): Promise<void> {
     const entries = await fs.readdir(src, { withFileTypes: true });
     for (const entry of entries) {

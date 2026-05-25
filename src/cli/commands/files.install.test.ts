@@ -15,6 +15,7 @@ import {
   statusShippedFile,
 } from './files';
 import { MANIFEST_RELPATH, readManifest } from './install-shared';
+import { combineAgentSource } from '../../agents-md';
 import type { OutputContext } from '../output';
 
 const TEMPLATE_ROOT = resolve(__dirname, '..', '..', '..', 'conception-template');
@@ -59,6 +60,19 @@ describe('condash skills install — top-level files', () => {
     expect(kimi).toContain('.kimi/skills/projects/SKILL.md');
     // Kimi fragment spliced in before ## Specifics.
     expect(kimi).toContain('Kimi Code CLI');
+  });
+
+  it('materialises body.md = condash.md + conception.md in the source dir', async () => {
+    await install();
+    const agentsDir = join(dest, '.agents/agents');
+    const condash = await fs.readFile(join(agentsDir, 'condash.md'), 'utf8');
+    const conception = await fs.readFile(join(agentsDir, 'conception.md'), 'utf8');
+    const body = await fs.readFile(join(agentsDir, 'body.md'), 'utf8');
+    // body.md is the agent-neutral combined source: the condash.md head then
+    // the conception.md tail, placeholders intact (not substituted).
+    expect(body).toBe(combineAgentSource(condash, conception));
+    expect(body.indexOf('## General')).toBeLessThan(body.indexOf('## Specifics'));
+    expect(body).toContain('{{ skills_dir }}');
   });
 
   it('writes a conception-root opencode.json pointing at the compiled .opencode/AGENTS.md', async () => {
