@@ -10,6 +10,7 @@ This section is shipped by condash and refreshed by `condash skills install`. Ed
 
 - Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
 - Workflow skills: [`{{ skills_dir }}projects/SKILL.md`]({{ skills_dir }}projects/SKILL.md) drives every project / incident / document mutation; [`{{ skills_dir }}knowledge/SKILL.md`]({{ skills_dir }}knowledge/SKILL.md) drives durable reference material.
+- Skill provenance: skills under `{{ skills_dir }}` are conception-scoped (not user-scoped). condash ships and refreshes a fixed set on `condash skills install` — `projects`, `knowledge`, `pr`, `skills`, `tidy`, sourced from `.agents/skills/<name>/` — so to change one of those, edit it in condash. A conception may also carry additional skills here that condash does **not** ship; condash leaves them untouched, and `## Specifics` records where they come from.
 - [`condash.json`](condash.json) — per-conception overrides read by condash. Top-level keys here replace the matching keys in `~/.config/condash/settings.json`. Legacy filename `configuration.json` is still read as a fallback.
 
 ### Workflow
