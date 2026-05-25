@@ -15,6 +15,7 @@ import {
   statusShippedFile,
 } from './files';
 import { MANIFEST_RELPATH, readManifest } from './install-shared';
+import { combineAgentSource } from '../../agents-md';
 import type { OutputContext } from '../output';
 
 const TEMPLATE_ROOT = resolve(__dirname, '..', '..', '..', 'conception-template');
@@ -43,19 +44,35 @@ async function install(positional: string[] = []): Promise<void> {
 }
 
 describe('condash skills install — top-level files', () => {
-  it('compiles .agents/agents/ to .claude/CLAUDE.md + .kimi/AGENTS.md', async () => {
+  it('compiles condash.md + conception.md to .claude/CLAUDE.md + .kimi/AGENTS.md', async () => {
     await install();
 
     const claude = await fs.readFile(join(dest, '.claude/CLAUDE.md'), 'utf8');
     // Variable substitution: skills_dir → .claude/skills/
     expect(claude).toContain('.claude/skills/projects/SKILL.md');
-    // Claude fragment included.
-    expect(claude).toContain('Auto-memory opt-out');
+    // condash.md head (## General) + conception.md tail (## Specifics) both land.
+    expect(claude).toContain('## General');
+    expect(claude).toContain('## Specifics');
+    // Kimi-only fragment excluded from the Claude output.
+    expect(claude).not.toContain('Kimi Code CLI');
 
     const kimi = await fs.readFile(join(dest, '.kimi/AGENTS.md'), 'utf8');
     expect(kimi).toContain('.kimi/skills/projects/SKILL.md');
-    // Claude fragment excluded from Kimi output.
-    expect(kimi).not.toContain('Auto-memory opt-out');
+    // Kimi fragment spliced in before ## Specifics.
+    expect(kimi).toContain('Kimi Code CLI');
+  });
+
+  it('materialises body.md = condash.md + conception.md in the source dir', async () => {
+    await install();
+    const agentsDir = join(dest, '.agents/agents');
+    const condash = await fs.readFile(join(agentsDir, 'condash.md'), 'utf8');
+    const conception = await fs.readFile(join(agentsDir, 'conception.md'), 'utf8');
+    const body = await fs.readFile(join(agentsDir, 'body.md'), 'utf8');
+    // body.md is the agent-neutral combined source: the condash.md head then
+    // the conception.md tail, placeholders intact (not substituted).
+    expect(body).toBe(combineAgentSource(condash, conception));
+    expect(body.indexOf('## General')).toBeLessThan(body.indexOf('## Specifics'));
+    expect(body).toContain('{{ skills_dir }}');
   });
 
   it('writes a conception-root opencode.json pointing at the compiled .opencode/AGENTS.md', async () => {
@@ -170,43 +187,36 @@ describe('condash skills install — top-level files', () => {
     expect(row).toBeNull();
   });
 
-  it('preserves a user-customised `## Specifics` in .agents/agents/common.md across reinstall', async () => {
-    // First install scaffolds the agent-config tree with the shipped common.md.
+  it('never overwrites a user-customised conception.md across reinstall', async () => {
+    // First install scaffolds condash.md (head) + conception.md (Specifics stub).
     await install();
-    const commonPath = join(dest, '.agents/agents/common.md');
-    const initial = await fs.readFile(commonPath, 'utf8');
-    expect(initial).toContain('## General');
-    expect(initial).toContain('## Specifics');
+    const condashPath = join(dest, '.agents/agents/condash.md');
+    const conceptionPath = join(dest, '.agents/agents/conception.md');
+    const condash = await fs.readFile(condashPath, 'utf8');
+    expect(condash).toContain('## General');
+    // The head must not carry a `## Specifics` heading — that lives in conception.md.
+    expect(condash).not.toMatch(/^## Specifics\s*$/m);
+    expect(await fs.readFile(conceptionPath, 'utf8')).toContain('## Specifics');
 
-    // User customises the Specifics body (the Apps table + a team rule).
-    const customSpecifics = [
+    // User rewrites conception.md (Apps table + a team rule).
+    const customised = [
       '## Specifics',
       '',
-      '| App         | Purpose          | Repo                       | Config             | Knowledge   |',
-      '|-------------|------------------|----------------------------|--------------------|-------------|',
-      '| `@my-app`   | example app      | `~/src/example/my-app`     | `<repo>/CLAUDE.md` | _(none)_    |',
+      '| App       | Purpose     | Repo                   | Config             | Knowledge |',
+      '|-----------|-------------|------------------------|--------------------|-----------|',
+      '| `@my-app` | example app | `~/src/example/my-app` | `<repo>/CLAUDE.md` | _(none)_  |',
       '',
       '### Repo workflow',
       '',
       '- Always run `make format` after every code change.',
       '',
     ].join('\n');
-    // Split on the actual `## Specifics` heading (start-of-line) — there's
-    // also a backticked `## Specifics` inside the General body that we must
-    // not match.
-    const specHeading = initial.search(/^## Specifics\s*$/m);
-    expect(specHeading).toBeGreaterThan(0);
-    const beforeSpecifics = initial.slice(0, specHeading).trimEnd();
-    const customised = `${beforeSpecifics}\n\n${customSpecifics}`;
-    await fs.writeFile(commonPath, customised);
+    await fs.writeFile(conceptionPath, customised);
 
-    // Second install must NOT clobber Specifics. General region stays
-    // identical (no user edit there), so the install just refreshes the
-    // manifest.
+    // Second install must NOT touch conception.md (user-owned, never tracked).
     await install();
-    const after = await fs.readFile(commonPath, 'utf8');
-    expect(after).toContain('`@my-app`');
-    expect(after).toContain('Always run `make format`');
+    const after = await fs.readFile(conceptionPath, 'utf8');
+    expect(after).toBe(customised);
     expect(after).not.toContain('_(populate per-app)_');
 
     // Compiled outputs must carry the customised Specifics rows.
@@ -216,30 +226,58 @@ describe('condash skills install — top-level files', () => {
     const kimi = await fs.readFile(join(dest, '.kimi/AGENTS.md'), 'utf8');
     expect(kimi).toContain('`@my-app`');
 
-    // Manifest tracks common.md alongside the user-selectable files.
+    // Manifest tracks condash.md (the shipped head) — never conception.md.
     const manifest = await readManifest(dest);
     expect(manifest!.files![AGENT_CONFIG_COMMON.path]).toBeTruthy();
     expect(manifest!.files![AGENT_CONFIG_COMMON.path].region).toBe('General');
+    expect(manifest!.files!['.agents/agents/conception.md']).toBeUndefined();
   });
 
-  it('refuses to overwrite a hand-edited `## General` in common.md without --force', async () => {
+  it('scaffolds conception.md from the stub when absent', async () => {
     await install();
-    const commonPath = join(dest, '.agents/agents/common.md');
-    const shipped = await fs.readFile(commonPath, 'utf8');
-
-    // User edits the General region (between `## General` and `## Specifics`).
-    const tampered = shipped.replace('### Pointers', '### Pointers (locally edited)');
-    expect(tampered).not.toBe(shipped);
-    await fs.writeFile(commonPath, tampered);
-
-    // Re-install: General region differs from manifest hash → install exits
-    // non-zero with `refused` listed. The on-disk file must stay edited.
-    await expect(install()).rejects.toThrow(/refused/);
-    const after = await fs.readFile(commonPath, 'utf8');
-    expect(after).toContain('### Pointers (locally edited)');
+    await fs.rm(join(dest, '.agents/agents/conception.md'));
+    await install();
+    const conception = await fs.readFile(join(dest, '.agents/agents/conception.md'), 'utf8');
+    expect(conception).toContain('## Specifics');
   });
 
-  it('--prune does not drop the .agents/agents/common.md manifest entry', async () => {
+  it('migrates a legacy common.md into condash.md + conception.md, preserving Specifics', async () => {
+    // Scaffold the split tree, then reconstruct a pre-split state: a single
+    // common.md (head + a user Specifics), manifest tracking common.md, and
+    // the split files removed.
+    await install();
+    const agentsDir = join(dest, '.agents/agents');
+    const head = await fs.readFile(join(agentsDir, 'condash.md'), 'utf8');
+    const userSpecifics = '## Specifics\n\n- Team rule: always do X.\n';
+    await fs.writeFile(join(agentsDir, 'common.md'), `${head.trimEnd()}\n\n${userSpecifics}`);
+    await fs.rm(join(agentsDir, 'condash.md'));
+    await fs.rm(join(agentsDir, 'conception.md'));
+    // Re-point the manifest entry at the legacy common.md path.
+    const manifestPath = join(dest, '.agents', MANIFEST_RELPATH);
+    const m = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+    m.files['.agents/agents/common.md'] = m.files[AGENT_CONFIG_COMMON.path];
+    delete m.files[AGENT_CONFIG_COMMON.path];
+    await fs.writeFile(manifestPath, JSON.stringify(m, null, 2));
+
+    await install();
+
+    // common.md is split + removed; the split files exist.
+    await expect(fs.access(join(agentsDir, 'common.md'))).rejects.toThrow();
+    expect(await fs.readFile(join(agentsDir, 'condash.md'), 'utf8')).toContain('## General');
+    expect(await fs.readFile(join(agentsDir, 'conception.md'), 'utf8')).toContain(
+      'Team rule: always do X',
+    );
+    // The compiled output keeps the user's Specifics.
+    expect(await fs.readFile(join(dest, '.claude/CLAUDE.md'), 'utf8')).toContain(
+      'Team rule: always do X',
+    );
+    // Manifest entry carried forward to condash.md; stale common.md entry gone.
+    const manifest = await readManifest(dest);
+    expect(manifest!.files![AGENT_CONFIG_COMMON.path]).toBeTruthy();
+    expect(manifest!.files!['.agents/agents/common.md']).toBeUndefined();
+  });
+
+  it('--prune does not drop the .agents/agents/condash.md manifest entry', async () => {
     await install();
     process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
     await runSkills(

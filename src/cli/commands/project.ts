@@ -7,19 +7,13 @@
  * the compiled flavours without going through `condash skills install`.
  */
 
-import { promises as fs } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
 import { UNIVERSAL_FOOTER } from '../help';
-import {
-  AGENTS_MD_TARGETS,
-  AGENTS_MD_OUTPUTS,
-  compileAgentConfig,
-  type AgentsMdTarget,
-} from '../../agents-md';
-import { writeFileMkdir } from './install-shared';
+import type { AgentsMdTarget } from '../../agents-md';
+import { compileAgentConfigs } from './files';
 
 const KNOWN_FLAGS_BUILD = ['dest', 'dry-run'] as const;
 
@@ -62,33 +56,21 @@ async function buildProject(args: ParsedArgs, ctx: OutputContext): Promise<void>
   const dest = await resolveDest(destFlag);
 
   const sourceDir = join(dest, '.agents', 'agents');
-  const commonPath = join(sourceDir, 'common.md');
-  let common: string;
-  try {
-    common = await fs.readFile(commonPath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new CliError(
-        ExitCodes.NOT_FOUND,
-        `No agent-config source found at ${sourceDir}. Run \`condash skills install\` to seed it from the shipped template.`,
-      );
-    }
-    throw err;
+  // Delegate to the same split-aware compile as `condash skills install`:
+  // reads condash.md + conception.md (or splits a legacy common.md) and
+  // injects the per-conception preamble variables.
+  const written = await compileAgentConfigs(dest, dryRun);
+  if (written.length === 0) {
+    throw new CliError(
+      ExitCodes.NOT_FOUND,
+      `No agent-config source found at ${sourceDir}. Run \`condash skills install\` to seed it from the shipped template.`,
+    );
   }
 
-  const report: BuildReport = { sourceDir, outputs: [] };
-  for (const target of AGENTS_MD_TARGETS) {
-    let fragment = '';
-    try {
-      fragment = await fs.readFile(join(sourceDir, `${target}.md`), 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    }
-    const compiled = compileAgentConfig(common, fragment, target);
-    const outputPath = join(dest, AGENTS_MD_OUTPUTS[target]);
-    if (!dryRun) await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
-    report.outputs.push({ target, path: outputPath });
-  }
+  const report: BuildReport = {
+    sourceDir,
+    outputs: written.map((w) => ({ target: w.target, path: join(dest, w.path) })),
+  };
 
   emit(ctx, report, (data) => {
     const d = data as BuildReport;

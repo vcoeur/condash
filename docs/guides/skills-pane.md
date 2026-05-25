@@ -1,6 +1,6 @@
 # The Skills pane
 
-The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot (`Ctrl+L` to switch in). Its header has two rows: a **Local / Global** scope toggle (with a refresh button on the right), and below it a tab bar selecting one of four trees — **Generic** (agent-neutral source skillspecs plus the `common.md` / `<model>.md` agent-config sources), **Claude**, **Kimi**, and **OpenCode** (each agent's compiled skills + config). The pane is **read-only**: it surfaces skills and agent configs for browsing. Edit them at their source and re-run `condash skills install` to regenerate.
+The Skills pane sits alongside **Code**, **Knowledge**, and **Resources** in the right working-surface slot (`Ctrl+L` to switch in). Its header has two rows: a **Local / Global** scope toggle (with a refresh button on the right), and below it a tab bar selecting one of four trees — **Generic** (agent-neutral source skillspecs plus the `condash.md` / `conception.md` / `<model>.md` agent-config sources), **Claude**, **Kimi**, and **OpenCode** (each agent's compiled skills + config). The pane is **read-only**: it surfaces skills and agent configs for browsing. Edit them at their source and re-run `condash skills install` to regenerate.
 
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-light.png#only-light)
 ![Skills pane — skill sections with SKILL.md indices and body-file cards](../assets/screenshots/skills-pane-dark.png#only-dark)
@@ -20,7 +20,7 @@ Each tab reads a skills directory plus the agent-config files for that tab, prep
 
 | Tab | Local reads | Global reads | Config callouts |
 |---|---|---|---|
-| **Generic** | `<conception>/.agents/skills/` | `~/.config/agents/skills/` | `common.md` + `claude.md` / `kimi.md` / `opencode.md` from the matching `…/agents/agents/` |
+| **Generic** | `<conception>/.agents/skills/` | `~/.config/agents/skills/` | `condash.md` + `conception.md` + `claude.md` / `kimi.md` / `opencode.md` from the matching `…/agents/agents/` |
 | **Claude** | `<conception>/<skills_path>` (default `.claude/skills/`) | `~/.claude/skills/` | the compiled `CLAUDE.md` |
 | **Kimi** | `<conception>/.kimi/skills/` | `~/.kimi/skills/` | `AGENTS.md` (local + global) |
 | **OpenCode** | `<conception>/.opencode/skills/` | `~/.config/opencode/skills/` | `AGENTS.md` |
@@ -38,7 +38,7 @@ The Generic tab walks the skills root and surfaces both `.md` and `.yaml` files:
 - `body.md` and sibling markdown files (`index.md`, `retrieve.md`, …) render as standard cards. Title is pulled from the first H1.
 - `spec.yaml` and `targets/<agent>.yaml` render as cards with a `YAML` badge — title falls back to the filename when no H1 is present (YAML has none).
 
-Above the tree, the agent-config **sources** render as read-only callouts: `common.md` (the shared base) and each present `<model>.md` overlay (`claude.md`, `kimi.md`, `opencode.md`), badged by name (`COMMON`, `CLAUDE`, …). These are the inputs `condash skills install` splices into each agent's compiled `CLAUDE.md` / `AGENTS.md` — there is no single "generic" compiled config, so the Generic tab shows the sources instead.
+Above the tree, the agent-config **sources** render as read-only callouts: `condash.md` (the shipped `## General` head), `conception.md` (your `## Specifics`), and each present `<model>.md` overlay (`claude.md`, `kimi.md`, `opencode.md`), badged by name. (A pre-split tree still shows the legacy `common.md` until the next install migrates it.) These are the inputs `condash skills install` joins + splices into each agent's compiled `CLAUDE.md` / `AGENTS.md` — there is no single "generic" compiled config, so the Generic tab shows the sources instead.
 
 ### Claude (compiled)
 
