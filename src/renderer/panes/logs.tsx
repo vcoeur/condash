@@ -4,6 +4,7 @@ import {
   createResource,
   createSignal,
   For,
+  on,
   Show,
   type Accessor,
   type JSX,
@@ -33,7 +34,12 @@ import './logs-pane.css';
  * log hit in the search modal. The pane responds by opening the viewer
  * modal directly on that session.
  */
-export function LogsView(props: { openRequest?: Accessor<LogsOpenRequest | null> }): JSX.Element {
+export function LogsView(props: {
+  openRequest?: Accessor<LogsOpenRequest | null>;
+  /** Bumped by View → Refresh. Refetches days + sessions when it changes
+   *  (deferred, so the initial createResource fetch isn't doubled). */
+  refreshSignal?: Accessor<number>;
+}): JSX.Element {
   const [days, { refetch: refetchDays }] = createResource(() => window.condash.logsListDays());
 
   // For each known day, fetch its session list. Indexed by `day` string.
@@ -63,6 +69,16 @@ export function LogsView(props: { openRequest?: Accessor<LogsOpenRequest | null>
     void refetchDays();
     void refetchSessions();
   };
+
+  // External refresh from View → Refresh. `defer: true` skips the run on mount
+  // so we don't refetch on top of the createResource initial load.
+  createEffect(
+    on(
+      () => props.refreshSignal?.(),
+      () => refreshAll(),
+      { defer: true },
+    ),
+  );
 
   const confirmDeleteSession = (sess: TermLogSessionMeta): void => {
     void window.condash.logsDeleteSession(sess.path).then(() => {

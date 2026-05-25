@@ -78,6 +78,15 @@
   margin: 0 0 0.4rem;
 }
 
+/* Card grid like the Projects / Code panes — agent cards reflow to more
+ * columns as the pane widens. Min column width is the user's
+ * `cardMinWidth.agents` setting; the fallback mirrors DEFAULT_CARD_MIN_WIDTH. */
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-agents, 360px), 100%), 1fr));
+  gap: 0.3rem;
+}
+
 .agents-row {
   display: flex;
   align-items: center;
@@ -87,7 +96,6 @@
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: 4px;
-  margin-bottom: 0.3rem;
 }
 
 .agents-row-clickable {
@@ -111,7 +119,11 @@
 .agents-row-top {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  /* In the narrower card grid the name shares its line with the slug + token
+   * chips; let them wrap rather than overflow the card (which used to push the
+   * token chip under the Launch button). */
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
   min-width: 0;
 }
 
@@ -151,6 +163,7 @@
 .agents-row-name {
   font-size: 0.85rem;
   color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .agents-row-slug {

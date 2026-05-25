@@ -97,8 +97,19 @@
   --col-status: var(--col-unknown);
 }
 
-.deliverables-rows {
+/* Card grid like the Projects / Code panes — deliverable cards reflow to more
+ * columns as the pane widens. The compound selector outweighs the shared
+ * `.deliverables-list` flex rule (project-preview.css) regardless of load
+ * order. Min column width is the user's `cardMinWidth.deliverables` setting;
+ * the fallback mirrors DEFAULT_CARD_MIN_WIDTH. */
+.deliverables-list.deliverables-rows {
   padding: 4px 0 4px 14px;
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(var(--card-min-deliverables, 340px), 100%), 1fr)
+  );
+  gap: 4px;
 }
 
 /* Coarse type tag in front of each deliverable label. */

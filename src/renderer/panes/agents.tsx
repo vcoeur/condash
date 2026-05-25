@@ -228,48 +228,50 @@ export function AgentsView(props: {
               <Show when={grouped(h).length > 0}>
                 <section class="agents-group">
                   <h3>{HARNESSES[h].label}</h3>
-                  <For each={grouped(h)}>
-                    {(agent) => (
-                      <div
-                        class="agents-row agents-row-clickable"
-                        role="button"
-                        tabindex={0}
-                        title="Click to edit this agent"
-                        onClick={() => void startEdit(agent.slug)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            void startEdit(agent.slug);
-                          }
-                        }}
-                      >
-                        <div class="agents-row-main">
-                          <div class="agents-row-top">
-                            <span class="agents-row-name">{agent.name}</span>
-                            <code class="agents-row-slug" title="Slug (filename + identity)">
-                              {agent.slug}
+                  <div class="agents-grid">
+                    <For each={grouped(h)}>
+                      {(agent) => (
+                        <div
+                          class="agents-row agents-row-clickable"
+                          role="button"
+                          tabindex={0}
+                          title="Click to edit this agent"
+                          onClick={() => void startEdit(agent.slug)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              void startEdit(agent.slug);
+                            }
+                          }}
+                        >
+                          <div class="agents-row-main">
+                            <div class="agents-row-top">
+                              <span class="agents-row-name">{agent.name}</span>
+                              <code class="agents-row-slug" title="Slug (filename + identity)">
+                                {agent.slug}
+                              </code>
+                              <TokenBadge agent={agent} />
+                            </div>
+                            <code class="agents-row-cmd" title="Command launched (token not shown)">
+                              {agent.command}
                             </code>
-                            <TokenBadge agent={agent} />
                           </div>
-                          <code class="agents-row-cmd" title="Command launched (token not shown)">
-                            {agent.command}
-                          </code>
+                          <div class="agents-row-actions">
+                            <button
+                              type="button"
+                              title="Open a tab running this agent"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                props.onLaunch(agent.slug);
+                              }}
+                            >
+                              Launch
+                            </button>
+                          </div>
                         </div>
-                        <div class="agents-row-actions">
-                          <button
-                            type="button"
-                            title="Open a tab running this agent"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              props.onLaunch(agent.slug);
-                            }}
-                          >
-                            Launch
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </For>
+                      )}
+                    </For>
+                  </div>
                 </section>
               </Show>
             )}

@@ -307,9 +307,13 @@ export interface CardMinWidthPrefs {
   knowledge?: number;
   resources?: number;
   skills?: number;
+  agents?: number;
+  logs?: number;
+  tasks?: number;
+  deliverables?: number;
 }
 
-/** Built-in defaults for the five card grids. Match the literal pixel
+/** Built-in defaults for the nine card grids. Match the literal pixel
  * values previously baked into the pane stylesheets — changing one of
  * these silently changes the layout on every machine that hasn't set the
  * matching key in settings.json, so do it deliberately. */
@@ -319,6 +323,10 @@ export const DEFAULT_CARD_MIN_WIDTH = {
   knowledge: 520,
   resources: 280,
   skills: 280,
+  agents: 360,
+  logs: 400,
+  tasks: 340,
+  deliverables: 340,
 } as const satisfies Required<CardMinWidthPrefs>;
 
 /** One row of `git status --porcelain=v1` output, joined with the

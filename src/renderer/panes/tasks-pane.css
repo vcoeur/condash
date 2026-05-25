@@ -75,6 +75,16 @@
   color: var(--text);
 }
 
+/* Card grid like the Projects / Code panes — task cards reflow to more
+ * columns as the pane widens. Min column width is the user's
+ * `cardMinWidth.tasks` setting; the fallback mirrors DEFAULT_CARD_MIN_WIDTH. */
+.tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-tasks, 340px), 100%), 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .tasks-row {
   display: flex;
   align-items: center;
@@ -84,7 +94,6 @@
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: 4px;
-  margin-top: 0.5rem;
 }
 
 .tasks-row-clickable {

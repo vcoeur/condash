@@ -199,13 +199,17 @@ export function ThemePicker(props: {
   );
 }
 
-/** Five card-min-width fields — shared between tabs. */
+/** Card-min-width fields, one per pane — shared between tabs. */
 const CARD_DENSITY_FIELDS = [
   { key: 'projects', label: 'Project cards (Projects pane)', short: 'Project' },
   { key: 'code', label: 'Code cards (Code pane)', short: 'Code' },
   { key: 'knowledge', label: 'Knowledge cards (Knowledge pane)', short: 'Knowledge' },
   { key: 'resources', label: 'Resource cards (Resources pane)', short: 'Resource' },
   { key: 'skills', label: 'Skill cards (Skills pane)', short: 'Skill' },
+  { key: 'agents', label: 'Agent cards (Agents pane)', short: 'Agent' },
+  { key: 'logs', label: 'Log cards (Logs pane)', short: 'Log' },
+  { key: 'tasks', label: 'Task cards (Tasks pane)', short: 'Task' },
+  { key: 'deliverables', label: 'Deliverable cards (Deliverables pane)', short: 'Deliverable' },
 ] as const;
 
 export function CardDensityFields(props: {
