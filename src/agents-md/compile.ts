@@ -17,13 +17,14 @@
  * only `common.md` is handled by `splitLegacyCommon` (read + migrate).
  */
 
-import { type HarnessId, HARNESS_IDS, HARNESSES } from '../shared/harnesses';
+import { type CompileHarnessId, COMPILE_HARNESS_IDS, HARNESSES } from '../shared/harnesses';
 
-/** An AGENTS.md target is exactly a harness — sourced from the unified registry
- *  (`src/shared/harnesses.ts`). */
-export type AgentsMdTarget = HarnessId;
+/** An AGENTS.md target is a *compile-capable* harness — the subset of the unified
+ *  registry (`src/shared/harnesses.ts`) that compiles an AGENTS.md. The
+ *  launch-only `agentsconf` harness is excluded. */
+export type AgentsMdTarget = CompileHarnessId;
 
-export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = HARNESS_IDS;
+export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = COMPILE_HARNESS_IDS;
 
 /**
  * Output path per target, relative to the conception root.
@@ -39,9 +40,11 @@ export const AGENTS_MD_TARGETS: readonly AgentsMdTarget[] = HARNESS_IDS;
  * config (`userAgentConfigOutput`).
  */
 export const AGENTS_MD_OUTPUTS: Record<AgentsMdTarget, string> = {
-  claude: HARNESSES.claude.agentsMdOutput,
-  kimi: HARNESSES.kimi.agentsMdOutput,
-  opencode: HARNESSES.opencode.agentsMdOutput,
+  // Non-null: every compile-capable harness declares an agentsMdOutput (only the
+  // launch-only `agentsconf` leaves it unset, and it is not an AgentsMdTarget).
+  claude: HARNESSES.claude.agentsMdOutput!,
+  kimi: HARNESSES.kimi.agentsMdOutput!,
+  opencode: HARNESSES.opencode.agentsMdOutput!,
 };
 
 /** Default variable map per target, applied via `{{ var }}` substitution. */

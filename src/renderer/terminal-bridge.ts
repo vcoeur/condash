@@ -265,8 +265,9 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   };
 
   /** Harnesses whose CLI accepts an initial prompt as an argument, removing
-   *  the need to type into the pty after spawn. */
-  const NATIVE_INITIAL_PROMPT_HARNESSES = new Set(['claude', 'opencode']);
+   *  the need to type into the pty after spawn. agentsconf takes it as
+   *  `--run "<PROMPT>"`; claude positional; opencode `--prompt`. */
+  const NATIVE_INITIAL_PROMPT_HARNESSES = new Set(['claude', 'opencode', 'agentsconf']);
 
   const runTask = async (agentSlug: string, text: string, submit: boolean): Promise<void> => {
     const agent = findAgentBySlug(deps.agents(), agentSlug);

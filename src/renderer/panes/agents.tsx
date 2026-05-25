@@ -4,6 +4,7 @@ import {
   type AgentDef,
   type AgentListItem,
   type AgentSpawnPreview,
+  type AgentsconfAgentConfig,
   type ClaudeAgentConfig,
   type HarnessId,
   type KimiAgentConfig,
@@ -11,6 +12,7 @@ import {
   type OpencodeAgentOptions,
   type OpencodeAgentRow,
   buildSpawn,
+  defaultAgentsconfConfig,
   defaultClaudeConfig,
   defaultKimiConfig,
   defaultOpencodeConfig,
@@ -46,6 +48,7 @@ interface Draft {
   claude: ClaudeAgentConfig;
   kimi: KimiAgentConfig;
   opencode: OpencodeAgentConfig;
+  agentsconf: AgentsconfAgentConfig;
   /** Slug of the agent being edited, or null when creating. A new slug saved
    *  over this renames the file (the old `<slug>.json` is removed). */
   editingSlug: string | null;
@@ -61,6 +64,7 @@ function blankDraft(): Draft {
     claude: defaultClaudeConfig(),
     kimi: defaultKimiConfig(),
     opencode: defaultOpencodeConfig(''),
+    agentsconf: defaultAgentsconfConfig(),
     editingSlug: null,
   };
 }
@@ -73,6 +77,7 @@ function buildDef(d: Draft): AgentDef {
   };
   if (d.harness === 'kimi') return { harness: 'kimi', ...base, config: d.kimi };
   if (d.harness === 'opencode') return { harness: 'opencode', ...base, config: d.opencode };
+  if (d.harness === 'agentsconf') return { harness: 'agentsconf', ...base, config: d.agentsconf };
   return { harness: 'claude', ...base, config: d.claude };
 }
 
@@ -143,7 +148,8 @@ export function AgentsView(props: {
     d.editingSlug = slug;
     if (def.harness === 'claude') d.claude = def.config;
     else if (def.harness === 'kimi') d.kimi = def.config;
-    else d.opencode = def.config;
+    else if (def.harness === 'opencode') d.opencode = def.config;
+    else d.agentsconf = def.config;
     setDraft(d);
   };
 
@@ -218,8 +224,9 @@ export function AgentsView(props: {
           when={props.agents().length > 0}
           fallback={
             <p class="agents-pane-empty">
-              No agents yet. An agent is a harness (claude / kimi-cli / opencode) plus a model and
-              an API token. Click <strong>+ New agent</strong> to define one.
+              No agents yet. An agent is a harness (claude / kimi-cli / opencode / agentsconf) plus
+              a model and an API token, or — for agentsconf — just a binary name. Click{' '}
+              <strong>+ New agent</strong> to define one.
             </p>
           }
         >
@@ -508,15 +515,37 @@ function AgentEditor(props: {
             </Show>
           </p>
 
-          <label>
-            <span>Token env var (in agents/.env)</span>
-            <input
-              type="text"
-              placeholder="DEEPSEEK_API_KEY (blank = no token)"
-              value={d().secretEnv}
-              onInput={(e) => props.patch({ secretEnv: e.currentTarget.value })}
-            />
-          </label>
+          <Show when={d().harness !== 'agentsconf'}>
+            <label>
+              <span>Token env var (in agents/.env)</span>
+              <input
+                type="text"
+                placeholder="DEEPSEEK_API_KEY (blank = no token)"
+                value={d().secretEnv}
+                onInput={(e) => props.patch({ secretEnv: e.currentTarget.value })}
+              />
+            </label>
+          </Show>
+
+          <Show when={d().harness === 'agentsconf'}>
+            <label>
+              <span>Binary (on $PATH)</span>
+              <input
+                type="text"
+                placeholder="claude-deepseek-auto"
+                value={d().agentsconf.binary}
+                onInput={(e) =>
+                  props.patch({ agentsconf: { ...d().agentsconf, binary: e.currentTarget.value } })
+                }
+              />
+            </label>
+            <p class="agents-editor-note">
+              condash runs this binary as-is — <code>&lt;binary&gt;</code> for a terminal,{' '}
+              <code>&lt;binary&gt; --run "PROMPT"</code> for a task. The binary (shipped by
+              agentsconf) owns the model, env, instructions, and skills; condash sets nothing else
+              and resolves no token.
+            </p>
+          </Show>
 
           <Show when={d().harness === 'kimi'}>
             <label>

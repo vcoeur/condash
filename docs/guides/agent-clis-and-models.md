@@ -10,7 +10,7 @@ description: Pair any agent CLI (Claude Code, Kimi, OpenCode) with any model pro
 **When to read this.** You want `claude` to talk to a non-Anthropic model, you juggle several agent CLIs, or you want Kimi to read a global instructions file the way Claude Code reads `~/.claude/CLAUDE.md`.
 
 !!! tip "Define agents in the Agents pane"
-    condash's **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`) is the built-in way to do all of this: an *agent* is a harness (claude / kimi-cli / opencode) + a model + an API token, with a free-form display **name** and a stable lowercase-kebab **slug** (its filename + identity). condash builds the harness's environment (claude's `ANTHROPIC_*`, opencode's `--model`, kimi-cli's `--agent-file`) for you and injects it when you launch the agent from the terminal spawn dropdown. The environment-variable details below are the **reference** for what each harness needs — you no longer hand-write wrapper scripts; you fill in a form. Tokens live in the gitignored `<conception>/agents/.env`.
+    condash's **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`) is the built-in way to do all of this: an *agent* is a harness (claude / kimi-cli / opencode) + a model + an API token, with a free-form display **name** and a stable lowercase-kebab **slug** (its filename + identity). condash builds the harness's environment (claude's `ANTHROPIC_*`, opencode's `--model`, kimi-cli's `--agent-file`) for you and injects it when you launch the agent from the terminal spawn dropdown. The environment-variable details below are the **reference** for what each harness needs — you no longer hand-write wrapper scripts; you fill in a form. Tokens live in the gitignored `<conception>/agents/.env`. A fourth harness, **`agentsconf`**, does the opposite — it just runs a wrapper binary you name and lets that binary own all of the config (see [Run a wrapper binary directly](#run-a-wrapper-binary-directly-the-agentsconf-harness)).
 
 ## Two dimensions
 
@@ -179,17 +179,32 @@ If you run kimi outside condash, write a YAML of the shape above yourself and pa
 5. **Secrets & permissions** — if a key is inline, `chmod 700` the file and never commit it. Prefer the CLI's own auth store (style 2) when it has one.
 6. **Smoke test** — launch it, confirm the model name in the CLI's status line, run one trivial tool call.
 
+## Run a wrapper binary directly (the `agentsconf` harness)
+
+The `claude` / `kimi-cli` / `opencode` harnesses **reproduce** a wrapper's wiring in-process — condash builds the `ANTHROPIC_*` env, the `--model` flag, the agent file. The **`agentsconf`** harness is the inverse: it just runs a wrapper binary you name and treats it as a black box. The binary (e.g. one of the `~/bin/<agent-cli>-<provider>` wrappers above, or any launcher shipped by your agent-config repo) owns the model, env, instructions, and skills; condash sets nothing else and resolves no token.
+
+Its only config is the **binary** name. condash launches it two ways:
+
+- **terminal** (Launch button, spawn dropdown) → `<binary>`
+- **task** (a Tasks-pane run with a prompt) → `<binary> --run "<PROMPT>"`
+
+Use it when the wrapper already exists and you'd rather not duplicate its configuration in condash — or when the binary is the canonical owner of agent config and condash should stay a thin launcher. Any binary used this way must accept `--run "<prompt>"` for task mode and run interactively with no arguments for terminal mode.
+
+!!! note "Not the retired `terminal.launchers`"
+    This is a first-class **harness** (an agent stored at `agents/<slug>.json`), not the old per-machine `terminal.launchers` list that was retired in 3.25 (see the note at the end of the next section). The difference: an agentsconf agent is conception-scoped, slug-identified, editable, and launchable like any other agent.
+
 ## Define it as a condash agent
 
 Open the **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`) and click **+ New agent**:
 
-1. **Harness** — `claude`, `kimi-cli`, or `opencode`.
+1. **Harness** — `claude`, `kimi-cli`, `opencode`, or `agentsconf`.
 2. **Name + slug** — **Name** is a free-form display label (spaces and any case fine, e.g. `DeepSeek Auto`). **Slug** is the lowercase-kebab identity (the filename); it auto-fills from the name (as `<harness-label>-<slugified-name>`, e.g. `opencode-deepseek-auto`) until you hand-edit it. The slug stays editable after creation — changing it renames the agent file (`agents/<slug>.json`) and cascades to repoint every task that referenced the old slug.
 3. **Config** — depends on the harness:
    - **claude** — left at its defaults (empty Base URL, no token) condash runs bare `claude` against your own Anthropic login. To remap to an alt-provider, open "Advanced claude config" and fill the **Base URL**, **Auth style**, model + alias fields, effort level, and `DISABLE_*` toggles by hand (see the endpoint + model table above).
    - **opencode** — fill the **per-agent options table**: the `default` row sets the default model + reasoning effort / verbosity / summary for every agent, and each added row overrides one agent's model and/or options (e.g. plan-on-one-model, build-on-another), or — with a custom name and the **primary** toggle on — defines a new switchable agent (`agent.<name>.mode = "primary"`) beyond `build`/`plan`; plus an "Extra config (JSON)" escape hatch. condash translates the table into `OPENCODE_CONFIG_CONTENT` — the default row → the default model's base `options`, each per-agent row → `agent.<name>.options` (+ `agent.<name>.model`, + `mode` for a custom primary) — so each agent's effort reaches its requests. No `opencode.json` needed.
    - **kimi-cli** — set the `--agent-file`, optional `--model`, thinking mode (`--thinking` / `--no-thinking`), `--plan`, and an inline `--config` (TOML/JSON) escape hatch.
-4. **Token env var** — the name of the variable holding the API key (e.g. `DEEPSEEK_API_KEY`). Set the value in **Edit tokens (agents/.env)**, an in-app editor for the gitignored `<conception>/agents/.env`.
+   - **agentsconf** — fill in a single **Binary** (on `$PATH`, e.g. `claude-deepseek-auto`). No token, model, or env fields: the binary owns all of that. condash runs `<binary>` for a terminal and `<binary> --run "PROMPT"` for a task.
+4. **Token env var** — the name of the variable holding the API key (e.g. `DEEPSEEK_API_KEY`). Set the value in **Edit tokens (agents/.env)**, an in-app editor for the gitignored `<conception>/agents/.env`. (Not shown for the `agentsconf` harness, whose binary owns its own auth.)
 
 The **Will launch** panel previews the exact command + environment as you edit (token shown as a `$NAME` reference, never the value). The agent is saved as `<conception>/agents/<slug>.json` and appears in the terminal **spawn dropdown** (by its display name) and as a binding target for project / new-project actions. Each agent row shows its launch command and a single **Launch** button (opens a tab running it with the environment injected); **click the row** to open the edit view, which carries **Save** / **Cancel** and a confirmed **Delete**.
 

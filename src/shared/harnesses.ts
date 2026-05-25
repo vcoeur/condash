@@ -3,39 +3,66 @@
  * condash supports (claude, kimi-cli, opencode).
  *
  * A *harness* is the unit that carries every per-CLI specific. It has TWO
- * responsibilities, both keyed off this one list:
+ * responsibilities, which are now decoupled:
  *
  *   1. **skills + AGENTS.md compile target** — `COMPILE_TARGETS` and
- *      `AGENTS_MD_OUTPUTS` derive from `HARNESSES` so the set lives in one
- *      place (see `src/skillspec/types.ts`, `src/agents-md/compile.ts`).
+ *      `AGENTS_MD_OUTPUTS` derive from `COMPILE_HARNESS_IDS` (the compile-capable
+ *      subset), not from the full launchable set (see `src/skillspec/types.ts`,
+ *      `src/agents-md/compile.ts`). A launch-only harness produces no artefact.
  *   2. **agent configuration** — an *agent* is `<harness>-<model_variant>`
  *      (a harness + a harness-specific config + an optional API token). The
  *      `buildSpawn` adapter below knows the *correct* invocation to run each
  *      agent: claude exports `ANTHROPIC_*` env, kimi-cli points at its
- *      `--agent-file` YAML, opencode passes `--model`.
+ *      `--agent-file` YAML, opencode passes `--model`, and `agentsconf` simply
+ *      runs a named binary that owns its own config.
  *
  * Pure module — no Node / zod imports — so main, renderer, and the CLI bundle
  * can all import it. Runtime validation of the on-disk JSON lives in the main
  * loader (`src/main/agents/`).
  */
 
-/** Canonical harness id. Matches the on-disk config dirs (`.claude/`, `.kimi/`,
- *  `.opencode/`) and the existing skills/AGENTS.md compile targets. */
-export type HarnessId = 'claude' | 'kimi' | 'opencode';
+/** Canonical harness id. `claude` / `kimi` / `opencode` match the on-disk config
+ *  dirs (`.claude/`, `.kimi/`, `.opencode/`) and are skills/AGENTS.md compile
+ *  targets. `agentsconf` is a launch-only harness: it has no compile output —
+ *  condash just runs a named binary that owns its own config. */
+export type HarnessId = 'claude' | 'kimi' | 'opencode' | 'agentsconf';
 
-export const HARNESS_IDS: readonly HarnessId[] = ['claude', 'kimi', 'opencode'] as const;
+export const HARNESS_IDS: readonly HarnessId[] = [
+  'claude',
+  'kimi',
+  'opencode',
+  'agentsconf',
+] as const;
 
-/** Per-harness identity + the skills/AGENTS.md output locations. */
+/** The harnesses that are also skills/AGENTS.md **compile targets** — every
+ *  harness except `agentsconf`, which is launch-only. `COMPILE_TARGETS`
+ *  (`src/skillspec/types.ts`) and `AGENTS_MD_TARGETS` (`src/agents-md/compile.ts`)
+ *  derive from this, so "launchable harness" and "compile target" are decoupled:
+ *  a launch harness need not produce any compiled artefact. */
+export type CompileHarnessId = 'claude' | 'kimi' | 'opencode';
+
+export const COMPILE_HARNESS_IDS: readonly CompileHarnessId[] = [
+  'claude',
+  'kimi',
+  'opencode',
+] as const;
+
+/** Per-harness identity. Compile-capable harnesses also carry their skills /
+ *  AGENTS.md output locations; a launch-only harness (`agentsconf`) leaves those
+ *  unset and names no fixed binary (each agent supplies its own). */
 export interface HarnessMeta {
   id: HarnessId;
   /** User-facing label — the CLI's own product name (kimi's CLI is "kimi-cli"). */
   label: string;
-  /** Executable spawned on `$PATH`. Note kimi-cli's binary is `kimi`. */
+  /** Executable spawned on `$PATH`. Note kimi-cli's binary is `kimi`. Empty for
+   *  `agentsconf`, whose binary comes per-agent from `AgentsconfAgentConfig.binary`. */
   binary: string;
-  /** Compiled AGENTS.md / CLAUDE.md output path, relative to conception root. */
-  agentsMdOutput: string;
-  /** Compiled skills output dir, relative to conception root. */
-  skillsOutputDir: string;
+  /** Compiled AGENTS.md / CLAUDE.md output path, relative to conception root.
+   *  Unset for launch-only harnesses (no compile output). */
+  agentsMdOutput?: string;
+  /** Compiled skills output dir, relative to conception root. Unset for
+   *  launch-only harnesses. */
+  skillsOutputDir?: string;
 }
 
 export const HARNESSES: Record<HarnessId, HarnessMeta> = {
@@ -60,10 +87,16 @@ export const HARNESSES: Record<HarnessId, HarnessMeta> = {
     agentsMdOutput: '.opencode/AGENTS.md',
     skillsOutputDir: '.opencode/skills',
   },
+  agentsconf: {
+    id: 'agentsconf',
+    label: 'agentsconf',
+    // No fixed binary — each agent names its own (config.binary). No compile output.
+    binary: '',
+  },
 };
 
 export function isHarnessId(value: unknown): value is HarnessId {
-  return value === 'claude' || value === 'kimi' || value === 'opencode';
+  return value === 'claude' || value === 'kimi' || value === 'opencode' || value === 'agentsconf';
 }
 
 // ---------------------------------------------------------------------------
@@ -205,10 +238,23 @@ export interface OpencodeAgentConfig {
 }
 
 /**
+ * agentsconf harness config. Deliberately minimal: the only property is the
+ * binary to run. That binary (shipped by `@agentsconf` to `~/bin`) owns all
+ * agent configuration — model, env, instructions, skills — so condash sets
+ * nothing else. condash launches it as `<binary>` for a terminal and
+ * `<binary> --run "<PROMPT>"` for a task.
+ */
+export interface AgentsconfAgentConfig {
+  /** Executable on `$PATH` (e.g. `claude-deepseek-auto`). Run verbatim. */
+  binary: string;
+}
+
+/**
  * A stored agent definition. Persisted as one JSON file per agent at
  * `<conception>/agents/<slug>.json`. Identity is the `slug` (the filename stem);
  * `name` is a free-form display label. Carries NO secret value — only
- * `secretEnv`, the name of the var in `agents/.env` to resolve at spawn time.
+ * `secretEnv`, the name of the var in `agents/.env` to resolve at spawn time
+ * (unused by `agentsconf`, whose binary owns its own auth).
  * Discriminated union on `harness`.
  */
 export type AgentDef =
@@ -220,6 +266,13 @@ export type AgentDef =
       slug: string;
       secretEnv?: string;
       config: OpencodeAgentConfig;
+    }
+  | {
+      harness: 'agentsconf';
+      name: string;
+      slug: string;
+      secretEnv?: string;
+      config: AgentsconfAgentConfig;
     };
 
 /** Lowercase-kebab slug pattern: the agent identity / filename stem. */
@@ -320,6 +373,8 @@ export function buildSpawn(
       return buildKimiSpawn(def, resolveSecret);
     case 'opencode':
       return buildOpencodeSpawn(def, resolveSecret, initialPrompt);
+    case 'agentsconf':
+      return buildAgentsconfSpawn(def, initialPrompt);
   }
 }
 
@@ -491,6 +546,19 @@ function buildOpencodeSpawn(
 }
 
 /**
+ * agentsconf spawn — run the configured binary verbatim. The binary owns model,
+ * env, instructions, and skills, so condash sets no env. A task's initial prompt
+ * is passed as `--run "<PROMPT>"`; a terminal launch (no prompt) runs bare.
+ */
+function buildAgentsconfSpawn(
+  def: Extract<AgentDef, { harness: 'agentsconf' }>,
+  initialPrompt?: string,
+): SpawnSpec {
+  const args = initialPrompt ? ['--run', initialPrompt] : [];
+  return { command: def.config.binary, args, env: {}, unsetEnv: [] };
+}
+
+/**
  * Navigate to `provider.<id>.models.<model>` inside an opencode config object,
  * creating the nesting on demand and preserving anything already present (e.g.
  * from `extraConfigJson`), apply `mutate` to that model entry, and write the
@@ -580,4 +648,9 @@ export function kimiAgentFileYaml(instructions: string): string {
 /** Default opencode config for a `<provider>/<model>` string. */
 export function defaultOpencodeConfig(model: string): OpencodeAgentConfig {
   return { model, disableExternalSkills: true };
+}
+
+/** Default agentsconf config — an empty binary the user fills in. */
+export function defaultAgentsconfConfig(): AgentsconfAgentConfig {
+  return { binary: '' };
 }
