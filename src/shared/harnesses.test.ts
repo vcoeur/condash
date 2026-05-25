@@ -5,6 +5,8 @@ import {
   type AgentDef,
   type ClaudeAgentConfig,
   buildSpawn,
+  COMPILE_HARNESS_IDS,
+  defaultAgentsconfConfig,
   defaultClaudeConfig,
   defaultKimiConfig,
   defaultOpencodeConfig,
@@ -12,6 +14,7 @@ import {
   HARNESSES,
   isBuiltinOpencodeAgent,
   isBuiltinPrimaryOpencodeAgent,
+  isHarnessId,
   isValidSlug,
   kimiAgentFileYaml,
   MissingAgentSecretError,
@@ -43,12 +46,20 @@ const deepseekConfig: ClaudeAgentConfig = {
   disableClaudeApiSkill: true,
 };
 
-describe('harness registry is the single source of truth', () => {
-  it('drives the skills + AGENTS.md compile targets', () => {
-    expect([...COMPILE_TARGETS]).toEqual([...HARNESS_IDS]);
-    for (const id of HARNESS_IDS) {
+describe('harness registry: launch vs compile decoupled', () => {
+  it('compile targets are the compile-capable subset — no agentsconf', () => {
+    expect([...COMPILE_TARGETS]).toEqual([...COMPILE_HARNESS_IDS]);
+    expect(COMPILE_TARGETS).not.toContain('agentsconf');
+    for (const id of COMPILE_TARGETS) {
       expect(AGENTS_MD_OUTPUTS[id]).toBe(HARNESSES[id].agentsMdOutput);
     }
+  });
+
+  it('agentsconf is a launchable harness with no compile output', () => {
+    expect(HARNESS_IDS).toContain('agentsconf');
+    expect(isHarnessId('agentsconf')).toBe(true);
+    expect(HARNESSES.agentsconf.agentsMdOutput).toBeUndefined();
+    expect(HARNESSES.agentsconf.skillsOutputDir).toBeUndefined();
   });
 });
 
@@ -75,6 +86,35 @@ describe('slug helpers', () => {
     expect(suggestSlug('claude', 'deepseek-v4-pro')).toBe('claude-deepseek-v4-pro');
     expect(suggestSlug('kimi', 'native')).toBe('kimi-cli-native');
     expect(suggestSlug('opencode', 'DeepSeek Auto')).toBe('opencode-deepseek-auto');
+    expect(suggestSlug('agentsconf', 'DeepSeek Auto')).toBe('agentsconf-deepseek-auto');
+  });
+});
+
+describe('buildSpawn — agentsconf', () => {
+  const def: AgentDef = {
+    harness: 'agentsconf',
+    name: 'deepseek-auto',
+    slug: 'agentsconf-deepseek-auto',
+    config: { binary: 'claude-deepseek-auto' },
+  };
+
+  it('runs the bare binary for a terminal (no prompt), with no env or unsets', () => {
+    const spec = buildSpawn(def, resolve({}));
+    expect(spec).toEqual({ command: 'claude-deepseek-auto', args: [], env: {}, unsetEnv: [] });
+  });
+
+  it('passes a task prompt as --run "<PROMPT>"', () => {
+    const spec = buildSpawn(def, resolve({}), 'fix the bug');
+    expect(spec.command).toBe('claude-deepseek-auto');
+    expect(spec.args).toEqual(['--run', 'fix the bug']);
+  });
+
+  it('previewCommandLine shows just the binary (no token, no secret resolution)', () => {
+    expect(previewCommandLine(def)).toBe('claude-deepseek-auto');
+  });
+
+  it('defaultAgentsconfConfig is an empty binary', () => {
+    expect(defaultAgentsconfConfig()).toEqual({ binary: '' });
   });
 });
 

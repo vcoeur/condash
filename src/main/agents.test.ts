@@ -288,6 +288,38 @@ describe('opencode build/plan persistence', () => {
   });
 });
 
+describe('agentsconf harness', () => {
+  const agentsconfAgent: AgentDef = {
+    harness: 'agentsconf',
+    name: 'deepseek-auto',
+    slug: 'agentsconf-deepseek-auto',
+    config: { binary: 'claude-deepseek-auto' },
+  };
+
+  it('round-trips write → read and lists with no token required', async () => {
+    await writeAgent(dir, agentsconfAgent);
+    const items = await listAgents(dir);
+    expect(items[0]).toMatchObject({
+      slug: 'agentsconf-deepseek-auto',
+      name: 'deepseek-auto',
+      harness: 'agentsconf',
+      command: 'claude-deepseek-auto',
+      // No secretEnv → tokenPresent is vacuously true.
+      tokenPresent: true,
+    });
+    const back = await readAgent(dir, 'agentsconf-deepseek-auto');
+    expect(back).toEqual(agentsconfAgent);
+  });
+
+  it('resolveAgentSpawn runs the bare binary; with a prompt it adds --run', async () => {
+    await writeAgent(dir, agentsconfAgent);
+    const bare = await resolveAgentSpawn(dir, 'agentsconf-deepseek-auto');
+    expect(bare).toEqual({ command: 'claude-deepseek-auto', args: [], env: {}, unsetEnv: [] });
+    const task = await resolveAgentSpawn(dir, 'agentsconf-deepseek-auto', 'fix the bug');
+    expect(task.args).toEqual(['--run', 'fix the bug']);
+  });
+});
+
 describe('kimi instructions injection', () => {
   it('wraps instructionsFile into a transient --agent-file at spawn', async () => {
     const mdPath = join(dir, 'kimi-instructions.md');

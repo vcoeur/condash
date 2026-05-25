@@ -91,6 +91,10 @@ const opencodeConfigSchema = z.object({
     .refine(isJsonOrBlank, { message: 'extraConfigJson must be valid JSON' }),
 });
 
+const agentsconfConfigSchema = z.object({
+  binary: z.string(),
+});
+
 const agentDefSchema = z.discriminatedUnion('harness', [
   z.object({
     harness: z.literal('claude'),
@@ -118,6 +122,15 @@ const agentDefSchema = z.discriminatedUnion('harness', [
     slug: z.string().min(1),
     secretEnv: z.string().optional(),
     config: opencodeConfigSchema,
+  }),
+  z.object({
+    harness: z.literal('agentsconf'),
+    name: z.string().min(1),
+    // Loose on read so legacy / hand-edited stems still load; `writeAgent`
+    // enforces lowercase-kebab via `isValidSlug`.
+    slug: z.string().min(1),
+    secretEnv: z.string().optional(),
+    config: agentsconfConfigSchema,
   }),
 ]);
 

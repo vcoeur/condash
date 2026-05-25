@@ -23,13 +23,14 @@
  *                                 #   copied verbatim under the same path.
  */
 
-import { type HarnessId, HARNESS_IDS } from '../shared/harnesses';
+import { type CompileHarnessId, COMPILE_HARNESS_IDS } from '../shared/harnesses';
 
-/** A compile target is exactly a harness — sourced from the unified registry
- *  (`src/shared/harnesses.ts`) so the set is defined in one place. */
-export type CompileTarget = HarnessId;
+/** A compile target is a *compile-capable* harness — the subset of the unified
+ *  registry (`src/shared/harnesses.ts`) that produces compiled artefacts. The
+ *  launch-only `agentsconf` harness is deliberately excluded. */
+export type CompileTarget = CompileHarnessId;
 
-export const COMPILE_TARGETS: readonly CompileTarget[] = HARNESS_IDS;
+export const COMPILE_TARGETS: readonly CompileTarget[] = COMPILE_HARNESS_IDS;
 
 /**
  * Parsed source directory. `spec` and `targets[t]` carry frontmatter as parsed
