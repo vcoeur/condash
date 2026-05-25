@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compileAgentConfig } from './compile';
+import { compileAgentConfig, combineAgentSource, splitLegacyCommon } from './compile';
 
 /** Strip the generated-by header and the blank line that follows it. */
 function body(compiled: string): string {
@@ -94,5 +94,46 @@ describe('compileAgentConfig — variable substitution', () => {
       '.opencode/AGENTS.md',
     );
     expect(body(compileAgentConfig('{{ memory_dir }}', '', 'opencode'))).toBe('');
+  });
+});
+
+describe('splitLegacyCommon + combineAgentSource', () => {
+  const common =
+    '# AGENTS.md — conception\n\nTagline.\n\n## General\n\nGeneral body.\n\n## Specifics\n\nSpecific body.\n';
+
+  it('splits a legacy common.md at the first ## Specifics heading', () => {
+    const { head, tail } = splitLegacyCommon(common);
+    expect(head).toContain('# AGENTS.md — conception');
+    expect(head).toContain('## General');
+    expect(head).not.toContain('## Specifics');
+    expect(tail).toMatch(/^## Specifics/);
+    expect(tail).toContain('Specific body.');
+  });
+
+  it('treats a common.md with no ## Specifics as all head, empty tail', () => {
+    const { head, tail } = splitLegacyCommon('# Title\n\n## General\n\nBody.\n');
+    expect(head).toContain('## General');
+    expect(tail).toBe('');
+  });
+
+  it('round-trips: combine(split(common)) reproduces the legacy document', () => {
+    const { head, tail } = splitLegacyCommon(common);
+    expect(combineAgentSource(head, tail)).toBe(common);
+  });
+
+  it('combine yields the head alone when the tail is empty', () => {
+    expect(combineAgentSource('## General\n\nBody.', '')).toBe('## General\n\nBody.\n');
+  });
+
+  it('combine yields the tail alone when the head is empty', () => {
+    expect(combineAgentSource('', '## Specifics\n\nBody.')).toBe('## Specifics\n\nBody.\n');
+  });
+
+  it('compiles identically whether sourced from split files or a legacy common.md', () => {
+    const { head, tail } = splitLegacyCommon(common);
+    const fragment = '### Kimi\n\n- Kimi rule.\n';
+    const fromSplit = compileAgentConfig(combineAgentSource(head, tail), fragment, 'kimi');
+    const fromLegacy = compileAgentConfig(common, fragment, 'kimi');
+    expect(fromSplit).toBe(fromLegacy);
   });
 });

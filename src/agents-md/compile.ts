@@ -1,15 +1,20 @@
 /**
  * Compile per-agent config files from a `.agents/agents/` source tree.
  *
- * Source layout:
- *   - `.agents/agents/common.md`      — shared content (must contain `## Specifics`)
+ * Source layout (since the condash.md/conception.md split):
+ *   - `.agents/agents/condash.md`     — condash-shipped head: H1 + `## General`
+ *   - `.agents/agents/conception.md`  — user-owned tail: `## Specifics` …
  *   - `.agents/agents/claude.md`      — Claude-only fragment
  *   - `.agents/agents/kimi.md`        — Kimi-only fragment
  *   - `.agents/agents/opencode.md`    — OpenCode-only fragment
  *
- * The compile step inserts the agent-specific fragment into `common.md`
- * immediately before the `## Specifics` heading, then applies `{{ var }}`
- * variable substitution from the per-target map.
+ * `condash.md` + `conception.md` concatenated reproduce the legacy single-file
+ * `common.md` (head before `## Specifics`, then the Specifics tail), so the
+ * orchestrator (`compileAgentConfigs` in `files.ts`) joins them via
+ * `combineAgentSource` and feeds the result to the unchanged `compileAgentConfig`:
+ * the agent fragment is spliced in just before the `## Specifics` heading and
+ * `{{ var }}` substitution runs over the merge. A legacy tree that still has
+ * only `common.md` is handled by `splitLegacyCommon` (read + migrate).
  */
 
 import { type HarnessId, HARNESS_IDS, HARNESSES } from '../shared/harnesses';
@@ -142,6 +147,39 @@ function spliceBeforeSpecifics(common: string, fragment: string): string {
   result.push('');
   result.push(...after);
   return result.join('\n') + '\n';
+}
+
+/**
+ * Join the condash-shipped head (`condash.md`) and the user-owned tail
+ * (`conception.md`) into the single document the compiler consumes. The result
+ * reproduces the legacy `common.md`: the head (ending with the `## General`
+ * body) followed by the tail (starting at `## Specifics`). Either side may be
+ * empty — an empty tail yields the head alone, an empty head yields the tail.
+ */
+export function combineAgentSource(condashHead: string, conceptionTail: string): string {
+  const head = condashHead.replace(/\s+$/, '');
+  const tail = conceptionTail.replace(/^\s+/, '').replace(/\s+$/, '');
+  if (!head) return tail ? tail + '\n' : '';
+  if (!tail) return head + '\n';
+  return `${head}\n\n${tail}\n`;
+}
+
+/**
+ * Split a legacy single-file `common.md` at its first `## Specifics` heading
+ * into the condash-shipped head and the user-owned tail. The tail keeps the
+ * `## Specifics` heading. When there is no `## Specifics`, the whole document
+ * is the head and the tail is empty.
+ */
+export function splitLegacyCommon(common: string): { head: string; tail: string } {
+  const lines = common.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+Specifics\s*$/.test(lines[i])) {
+      const head = lines.slice(0, i).join('\n').replace(/\s+$/, '') + '\n';
+      const tailBody = lines.slice(i).join('\n').replace(/\s+$/, '');
+      return { head, tail: tailBody + '\n' };
+    }
+  }
+  return { head: common, tail: '' };
 }
 
 const VARIABLE_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;

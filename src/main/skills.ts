@@ -10,9 +10,18 @@ import { userAgentConfigOutput, userAgentConfigRoot, userSkillsRoot } from './us
 const HIDDEN_PREFIX = /^\./;
 
 /** Agent-config source files surfaced (read-only) on the Generic tab — the
- *  `common.md` + per-model `<model>.md` inputs that `condash skills install`
- *  compiles into each agent's CLAUDE.md / AGENTS.md. */
-const GENERIC_AGENT_SOURCES = ['common.md', 'claude.md', 'kimi.md', 'opencode.md'] as const;
+ *  `condash.md` (shipped) + `conception.md` (user-owned) + per-model
+ *  `<model>.md` inputs that `condash skills install` compiles into each agent's
+ *  CLAUDE.md / AGENTS.md. `common.md` is listed for pre-split trees that
+ *  haven't been migrated yet. */
+const GENERIC_AGENT_SOURCES = [
+  'condash.md',
+  'conception.md',
+  'common.md',
+  'claude.md',
+  'kimi.md',
+  'opencode.md',
+] as const;
 
 /**
  * Read the skills tree for a (scope, tab) pair.

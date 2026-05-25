@@ -27,11 +27,13 @@
  */
 
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   AGENTS_MD_TARGETS,
   AGENTS_MD_OUTPUTS,
   compileAgentConfig,
+  combineAgentSource,
+  splitLegacyCommon,
   type AgentsMdTarget,
 } from '../../agents-md';
 import { CliError, ExitCodes } from '../output';
@@ -312,16 +314,26 @@ export async function installShippedFile(
  */
 const AGENTS_SOURCE_RELPATH = '.agents/agents';
 
+/** Source filenames in `.agents/agents/`. `condash.md` is the shipped head
+ *  (H1 + `## General`); `conception.md` is the user-owned tail (`## Specifics`).
+ *  `common.md` is the pre-split single file, kept only for migration. */
+const CONDASH_SOURCE = 'condash.md';
+const CONCEPTION_SOURCE = 'conception.md';
+const LEGACY_COMMON_SOURCE = 'common.md';
+
 /**
- * `common.md` carries a `## General` region (condash-owned, refreshed on
- * install) and a `## Specifics` region (user-owned, never touched). Treated
- * as a region-aware shipped file, with the same hash/manifest model as
- * `.gitignore`. The per-agent fragments (`claude.md`, `kimi.md`) ship via
- * the same install path as the rest of the agent-config tree — they have
- * no Specifics heading and are condash-owned in full.
+ * `condash.md` is the condash-shipped head — an H1/tagline preamble plus the
+ * `## General` body. It installs region-aware (region `General`, no `Specifics`
+ * sibling present, so the region runs `## General` → EOF), with the same
+ * hash/manifest model as `.gitignore`: the General body is refreshed and a
+ * hand-edit is refused without `--force`; the preamble is preserved.
+ *
+ * `conception.md` (the `## Specifics` tail) is user-owned — scaffolded once,
+ * never overwritten, never manifest-tracked. The per-agent fragments
+ * (`claude.md`, `kimi.md`) overwrite in full on every install.
  */
 export const AGENT_CONFIG_COMMON: ShippedFile = {
-  path: `${AGENTS_SOURCE_RELPATH}/common.md`,
+  path: `${AGENTS_SOURCE_RELPATH}/${CONDASH_SOURCE}`,
   region: 'General',
   mark: '##',
   siblings: ['Specifics'],
@@ -349,28 +361,68 @@ export async function compileAgentConfigs(
   dryRun: boolean,
 ): Promise<{ target: AgentsMdTarget; path: string }[]> {
   const sourceDir = join(dest, AGENTS_SOURCE_RELPATH);
-  let common: string | null = null;
-  try {
-    common = await fs.readFile(join(sourceDir, 'common.md'), 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+
+  // Head = condash.md; tail = conception.md. A pre-split tree that still has
+  // only common.md is handled by splitting it (compile stays correct even if
+  // the on-disk migration in installAgentConfigSources hasn't run yet).
+  let head = await readFileOrNull(join(sourceDir, CONDASH_SOURCE));
+  let tail = (await readFileOrNull(join(sourceDir, CONCEPTION_SOURCE))) ?? '';
+  if (head === null) {
+    const legacy = await readFileOrNull(join(sourceDir, LEGACY_COMMON_SOURCE));
+    if (legacy === null) return [];
+    const split = splitLegacyCommon(legacy);
+    head = split.head;
+    if (!tail) tail = split.tail;
   }
-  if (common === null) return [];
+  const combined = combineAgentSource(head, tail);
+
+  // Per-conception identity variables for the shipped condash.md preamble
+  // (`# AGENTS.md — {{ conception_name }}` / `{{ description }}`). Existing
+  // conceptions whose preamble is literal text simply have nothing to substitute.
+  const variables = {
+    conception_name: basename(dest),
+    description: await readConceptionDescription(dest),
+  };
 
   const written: { target: AgentsMdTarget; path: string }[] = [];
   for (const target of AGENTS_MD_TARGETS) {
-    let fragment = '';
-    try {
-      fragment = await fs.readFile(join(sourceDir, `${target}.md`), 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    }
-    const compiled = compileAgentConfig(common, fragment, target);
+    const fragment = (await readFileOrNull(join(sourceDir, `${target}.md`))) ?? '';
+    const compiled = compileAgentConfig(combined, fragment, target, { variables });
     const outputPath = join(dest, AGENTS_MD_OUTPUTS[target]);
     if (!dryRun) await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
     written.push({ target, path: AGENTS_MD_OUTPUTS[target] });
   }
   return written;
+}
+
+/** Read a file, returning null on ENOENT (rethrows other errors). */
+async function readFileOrNull(path: string): Promise<string | null> {
+  try {
+    return await fs.readFile(path, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/**
+ * Optional one-line conception description for the `{{ description }}` preamble
+ * variable. Read tolerantly from the versioned `condash.json` (`.description`),
+ * falling back to the legacy `configuration.json`. Empty string when unset or
+ * unparseable — the placeholder then resolves to a blank tagline.
+ */
+async function readConceptionDescription(dest: string): Promise<string> {
+  for (const name of ['condash.json', 'configuration.json']) {
+    const raw = await readFileOrNull(join(dest, name));
+    if (raw === null) continue;
+    try {
+      const parsed = JSON.parse(raw) as { description?: unknown };
+      if (typeof parsed.description === 'string') return parsed.description;
+    } catch {
+      // Malformed config — ignore, try the next candidate.
+    }
+  }
+  return '';
 }
 
 /** The `instructions` entry pointing OpenCode at condash's compiled config. */
@@ -620,23 +672,64 @@ export interface AgentConfigInstallResult {
 }
 
 /**
+ * One-time migration of a pre-split conception. An existing tree has
+ * `.agents/agents/common.md` (H1 + `## General` + `## Specifics`). Split it into
+ * `condash.md` (the head, condash-owned) + `conception.md` (the `## Specifics`
+ * tail, user-owned), drop `common.md`, and carry the manifest region entry
+ * forward from `common.md` to `condash.md` (the General body is unchanged, so
+ * the recorded hash stays valid — and without the carry-forward the freshly
+ * written `condash.md` would be refused as "present but not tracked"). No-op
+ * once `condash.md` exists. Returns true when a migration was performed.
+ */
+async function migrateLegacyCommonMd(
+  dest: string,
+  manifest: Manifest,
+  dryRun: boolean,
+): Promise<boolean> {
+  const sourceDir = join(dest, AGENTS_SOURCE_RELPATH);
+  if ((await readFileOrNull(join(sourceDir, CONDASH_SOURCE))) !== null) return false;
+  const common = await readFileOrNull(join(sourceDir, LEGACY_COMMON_SOURCE));
+  if (common === null) return false;
+
+  const { head, tail } = splitLegacyCommon(common);
+  if (!dryRun) {
+    await writeFileMkdir(join(sourceDir, CONDASH_SOURCE), Buffer.from(head, 'utf8'));
+    if (tail) {
+      await writeFileMkdir(join(sourceDir, CONCEPTION_SOURCE), Buffer.from(tail, 'utf8'));
+    }
+    await fs.rm(join(sourceDir, LEGACY_COMMON_SOURCE), { force: true });
+  }
+  if (manifest.files) {
+    const legacyKey = `${AGENTS_SOURCE_RELPATH}/${LEGACY_COMMON_SOURCE}`;
+    const entry = manifest.files[legacyKey];
+    if (entry && !manifest.files[AGENT_CONFIG_COMMON.path]) {
+      manifest.files[AGENT_CONFIG_COMMON.path] = entry;
+    }
+    delete manifest.files[legacyKey];
+  }
+  return true;
+}
+
+/**
  * Install the `.agents/agents/` source tree from the shipped template:
  *
- * - `common.md` ships through `installShippedFile` so the `## General` region
- *   gets refreshed but `## Specifics` (user-owned per-conception content like
- *   the Apps table and durable team rules) is preserved across installs.
- *   Refused without `--force` when General has been hand-edited.
- * - Per-agent fragments (`claude.md`, `kimi.md`) overwrite on every install —
- *   they're small, condash-owned, and have no `## Specifics` heading to
- *   protect.
+ * - Legacy `common.md` is first split into `condash.md` + `conception.md` (see
+ *   `migrateLegacyCommonMd`).
+ * - `condash.md` ships through `installShippedFile` so the `## General` body
+ *   gets refreshed (refused without `--force` when hand-edited) while the
+ *   H1/tagline preamble is preserved.
+ * - `conception.md` (the `## Specifics` tail — Apps table + durable team rules)
+ *   is user-owned: scaffolded from the shipped stub only when absent, never
+ *   overwritten, never manifest-tracked.
+ * - Per-agent fragments (`claude.md`, `kimi.md`) overwrite on every install.
  *
  * Returns the per-agent fragment paths that were (re)written plus the
- * region-aware outcome for `common.md`.
+ * region-aware outcome for `condash.md`.
  */
 export async function installAgentConfigSources(
   params: FileInstallParams,
 ): Promise<AgentConfigInstallResult> {
-  const { dest, dryRun } = params;
+  const { dest, dryRun, manifest } = params;
   const shippedDir = join(locateShippedFilesRoot(), '.agents', 'agents');
   const targetDir = join(dest, '.agents', 'agents');
   const copied: string[] = [];
@@ -652,17 +745,32 @@ export async function installAgentConfigSources(
 
   if (!dryRun) await fs.mkdir(targetDir, { recursive: true });
 
-  // common.md: region-aware install via the same machinery as `.gitignore`.
+  // Split a pre-split common.md before the region-aware install runs.
+  await migrateLegacyCommonMd(dest, manifest, dryRun);
+
+  // condash.md: region-aware install via the same machinery as `.gitignore`.
   const commonOutcome = await installShippedFile(AGENT_CONFIG_COMMON, params);
 
-  // Per-agent fragments + any future nested files: full-overwrite.
+  // conception.md (user-owned): scaffold from the shipped stub only when absent.
+  const conceptionTarget = join(targetDir, CONCEPTION_SOURCE);
+  if ((await readFileOrNull(conceptionTarget)) === null) {
+    const stub = await readFileOrNull(join(shippedDir, CONCEPTION_SOURCE));
+    if (stub !== null) {
+      if (!dryRun) await writeFileMkdir(conceptionTarget, Buffer.from(stub, 'utf8'));
+      copied.push(CONCEPTION_SOURCE);
+    }
+  }
+
+  // Per-agent fragments + any future nested files: full-overwrite. condash.md
+  // (region-aware above) and conception.md (user-owned, scaffolded above) are
+  // both excluded; legacy common.md is gone after migration but guarded too.
+  const ownedAtRoot = new Set([CONDASH_SOURCE, CONCEPTION_SOURCE, LEGACY_COMMON_SOURCE]);
   async function walk(src: string, dst: string, prefix: string): Promise<void> {
     const entries = await fs.readdir(src, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue;
       if (isIgnoredSourceArtifact(entry.name)) continue;
-      // common.md is handled above with refuse-on-edit semantics.
-      if (prefix === '' && entry.name === 'common.md') continue;
+      if (prefix === '' && ownedAtRoot.has(entry.name)) continue;
       const srcPath = join(src, entry.name);
       const dstPath = join(dst, entry.name);
       const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;

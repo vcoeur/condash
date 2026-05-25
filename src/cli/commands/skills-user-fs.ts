@@ -29,7 +29,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CliError, ExitCodes } from '../output';
 import { parseSkillspec, type CompileTarget } from '../../skillspec';
-import type { AgentsMdTarget } from '../../agents-md';
+import { combineAgentSource, splitLegacyCommon, type AgentsMdTarget } from '../../agents-md';
 import { collectFilesRelative, extractDescriptionFromSpec } from './skills-shipped';
 
 export interface UserSkill {
@@ -126,14 +126,30 @@ export function userHostFile(): string {
   return process.env.CONDASH_USER_HOST_FILE ?? join(homedir(), '.claude', '.host');
 }
 
-/** Read `common.md` from the user-scope agent-config source. Returns null if absent. */
-export async function readUserAgentCommon(): Promise<string | null> {
+async function readUserFileOrNull(path: string): Promise<string | null> {
   try {
-    return await fs.readFile(join(userAgentConfigRoot(), 'common.md'), 'utf8');
+    return await fs.readFile(path, 'utf8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
   }
+}
+
+/**
+ * Read the user-scope agent source as a single document — `condash.md` (head) +
+ * `conception.md` (tail) combined, or the legacy single-file `common.md` when
+ * `condash.md` is absent. Returns null when no source exists. User scope is
+ * regenerate-only (no manifest / no on-disk migration), so this just reads.
+ */
+export async function readUserAgentCommon(): Promise<string | null> {
+  const root = userAgentConfigRoot();
+  const head = await readUserFileOrNull(join(root, 'condash.md'));
+  const tail = (await readUserFileOrNull(join(root, 'conception.md'))) ?? '';
+  if (head !== null) return combineAgentSource(head, tail);
+  const legacy = await readUserFileOrNull(join(root, 'common.md'));
+  if (legacy === null) return null;
+  const split = splitLegacyCommon(legacy);
+  return combineAgentSource(split.head, tail || split.tail);
 }
 
 /** Read a per-agent fragment (claude.md or kimi.md). Returns empty string if missing. */
