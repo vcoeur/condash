@@ -163,6 +163,17 @@ export async function readManifest(dest: string): Promise<Manifest | null> {
   }
   if (!parsed.skills) parsed.skills = {};
 
+  // Coerce every per-skill entry to the canonical `{ source: {...} }` shape.
+  // A v3 manifest written before the source/compiled-output split (the pre-v4
+  // schema tracked compiled outputs under a `files` key) carries entries with
+  // no `source` map under the same version number. Install, prune, and the
+  // source-missing walk all index `entry.source`, so a stale entry would crash
+  // with "Cannot set properties of undefined". Discard the stale keys and
+  // re-seed empty — the next install repopulates from the shipped sources.
+  for (const [name, entry] of Object.entries(parsed.skills)) {
+    if (!entry || !entry.source) parsed.skills[name] = { source: {} };
+  }
+
   // One-time transparent migration: legacy path → new path.
   if (path === legacyPath) {
     await fs.mkdir(dirname(newPath), { recursive: true });

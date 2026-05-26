@@ -203,7 +203,7 @@ It also ships one region-delimited top-level file, `.gitignore` (its `# General`
 
 Install flags: `--dest <path>` (retarget the install dir; default the resolved conception or cwd), `--force` (override refuse-on-edit), `--diff` (show a unified diff per refused item), `--dry-run` (report without writing), `--prune` (drop manifest entries whose shipped source has been removed).
 
-Skill sources and `.gitignore` flow through one manifest at `.agents/.condash-skills.json` (v3 schema: `skills.<name>` + `files.<path>`), tracking the shipped version and SHA256 per file so a re-install can detect local edits. `AGENTS.md` is deterministic (the marker is the boundary) and not manifest-tracked.
+Skill sources and `.gitignore` flow through one manifest at `.agents/.condash-skills.json` (v3 schema: `skills.<name>.source` per source file + `files.<path>` per top-level region), tracking the shipped version and SHA256 per file so a re-install can detect local edits. A per-skill entry left by an earlier schema (one with no `source` map) is re-seeded on read, so upgrading condash never crashes the install. `AGENTS.md` is deterministic (the marker is the boundary) and not manifest-tracked.
 
 ### `config`
 
