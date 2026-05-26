@@ -192,18 +192,18 @@ Install (or refresh) what condash ships into a conception. condash does exactly 
 - **Ship skill sources** under `<conception>/.agents/skills/<name>/` — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay, placed verbatim with refuse-on-edit. condash does **not** compile skills to per-harness directories; the harness launcher renders them per agent at run time.
 - **Maintain the `AGENTS.md` marker region** at the conception root — regenerate everything from line 1 through `<!-- end condash agents -->`, preserve the `## Specifics` tail verbatim.
 
-It also ships one region-delimited top-level file, `.gitignore` (its `# General` region).
+condash no longer ships any top-level file — `.gitignore` was dropped after v4.0.1, so the conception's `.gitignore` is entirely user-owned.
 
 | Verb | What it does |
 |---|---|
-| `list` | Print every shipped skill + top-level file, with install status |
-| `install [<skill\|.gitignore\|AGENTS.md>…]` | Copy shipped skill sources into `.agents/skills/`, push the `.gitignore` region, and regenerate the `AGENTS.md` head. With no positionals, installs everything. Refuses on locally-edited sources / `.gitignore` without `--force` |
-| `status` | Per-skill / per-file install state (tracked, edited, missing on source) |
+| `list` | Print every shipped skill, with install status |
+| `install [<skill\|AGENTS.md>…]` | Copy shipped skill sources into `.agents/skills/` and regenerate the `AGENTS.md` head. With no positionals, installs everything. Refuses on locally-edited sources without `--force` |
+| `status` | Per-skill install state (tracked, edited, missing on source) |
 | `validate [<skill>…]` | Lint shipped skills — each must have a `SKILL.md` carrying a `description` |
 
 Install flags: `--dest <path>` (retarget the install dir; default the resolved conception or cwd), `--force` (override refuse-on-edit), `--diff` (show a unified diff per refused item), `--dry-run` (report without writing), `--prune` (drop manifest entries whose shipped source has been removed).
 
-Skill sources and `.gitignore` flow through one manifest at `.agents/.condash-skills.json` (v3 schema: `skills.<name>.source` per source file + `files.<path>` per top-level region), tracking the shipped version and SHA256 per file so a re-install can detect local edits. A per-skill entry left by an earlier schema (one with no `source` map) is re-seeded on read, so upgrading condash never crashes the install. `AGENTS.md` is deterministic (the marker is the boundary) and not manifest-tracked.
+Skill sources flow through one manifest at `.agents/.condash-skills.json` (v3 schema: `skills.<name>.source` per source file; a `files.<path>` namespace is retained only to reconcile legacy top-level entries such as a `.gitignore` shipped by condash ≤ 4.0.1), tracking the shipped version and SHA256 per file so a re-install can detect local edits. A per-skill entry left by an earlier schema (one with no `source` map) is re-seeded on read, so upgrading condash never crashes the install. `AGENTS.md` is deterministic (the marker is the boundary) and not manifest-tracked.
 
 ### `config`
 

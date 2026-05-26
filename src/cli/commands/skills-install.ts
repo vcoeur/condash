@@ -11,8 +11,9 @@
  *   2. **Maintain the `AGENTS.md` marker region** — regenerate the head (line 1
  *      through `<!-- end condash agents -->`), preserve the user-owned tail.
  *
- * Plus the one region-delimited top-level file (`.gitignore`). Skill sources
- * and `.gitignore` flow through one manifest (`.agents/.condash-skills.json`)
+ * No top-level files ship today (condash dropped `.gitignore` after v4.0.1);
+ * the region-delimited files lane (`SHIPPED_FILES`) stays wired but empty.
+ * Skill sources flow through one manifest (`.agents/.condash-skills.json`)
  * with refuse-on-edit; `AGENTS.md` is deterministic (marker boundary) and not
  * manifest-tracked.
  */

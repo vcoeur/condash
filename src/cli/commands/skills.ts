@@ -10,17 +10,15 @@
  *   - **The `AGENTS.md` marker region** — condash regenerates everything from
  *     line 1 through `<!-- end condash agents -->` on install and preserves the
  *     user-owned tail.
- *   - **`.gitignore`** — ships the body of one heading-delimited region; the
- *     surrounding text is user-owned and never touched.
  *
- * Skill sources and `.gitignore` flow through one manifest at
- * `<dest>/.agents/.condash-skills.json` (v3 schema: `skills.<name>` +
- * `files.<path>`) and share the same refuse-on-edit semantics. `AGENTS.md` is
- * deterministic (the marker is the boundary) and not manifest-tracked.
+ * Skill sources flow through one manifest at
+ * `<dest>/.agents/.condash-skills.json` (v3 schema: `skills.<name>.source` +
+ * a `files.<path>` namespace retained for legacy entries). `AGENTS.md` is
+ * deterministic (the marker is the boundary) and not manifest-tracked. condash
+ * no longer ships any top-level file (`.gitignore` was dropped after v4.0.1).
  *
- * Positionals accept a skill name (`pr`, `knowledge`, …), a region-delimited
- * file path (`.gitignore`), or `AGENTS.md`. With no positionals, everything
- * installs. Unknown positionals error.
+ * Positionals accept a skill name (`pr`, `knowledge`, …) or `AGENTS.md`. With
+ * no positionals, everything installs. Unknown positionals error.
  *
  * Flags:
  *
@@ -100,13 +98,12 @@ function printHelp(verb: string | null): void {
           'condash skills install [<skill-or-file>...] [--dest <path>]',
           '                       [--force] [--diff] [--dry-run] [--prune]',
           '',
-          'Install (or refresh) shipped skills + top-level files into the conception:',
+          'Install (or refresh) shipped skills into the conception:',
           '  - skill sources under .agents/skills/<name>/ (SKILL.md + tasks + overlays),',
-          '  - the AGENTS.md marker region (head regenerated, tail preserved),',
-          '  - the .gitignore region.',
-          'Refuses to overwrite user-edited skill sources / .gitignore unless --force.',
+          '  - the AGENTS.md marker region (head regenerated, tail preserved).',
+          'Refuses to overwrite user-edited skill sources unless --force.',
           '',
-          'Positionals: a skill name, `.gitignore`, or `AGENTS.md`. None = everything.',
+          'Positionals: a skill name or `AGENTS.md`. None = everything.',
           '',
           'Optional:',
           '  --dest <path> Override destination.',

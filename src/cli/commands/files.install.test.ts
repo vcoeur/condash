@@ -1,15 +1,15 @@
 /**
- * Install tests for the top-level file branch of `condash skills install`:
- * the `.gitignore` region-merge pass, the `AGENTS.md` marker-region writer,
- * verbatim skill placement (no compile), and the v2 → v3 manifest namespace
- * rename (`templates` → `files`).
+ * Install tests for the top-level branch of `condash skills install`:
+ * the `AGENTS.md` marker-region writer, verbatim skill placement (no compile),
+ * the now-empty top-level files lane (condash no longer ships `.gitignore`),
+ * and the v2 → v3 manifest namespace rename (`templates` → `files`).
  */
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSkills } from './skills';
-import { AGENTS_MD_MARKER, SHIPPED_FILES, statusShippedFile } from './files';
+import { AGENTS_MD_MARKER, SHIPPED_FILES } from './files';
 import { MANIFEST_RELPATH, readManifest } from './install-shared';
 import type { OutputContext } from '../output';
 
@@ -134,31 +134,26 @@ describe('condash skills install — AGENTS.md marker region', () => {
   });
 });
 
-describe('condash skills install — .gitignore', () => {
-  it('writes .gitignore with region replacement', async () => {
-    await install(['.gitignore']);
-    const gitignore = await fs.readFile(join(dest, '.gitignore'), 'utf8');
-    expect(gitignore).toContain('# General');
-    expect(gitignore).toContain('# Specifics');
+describe('condash skills install — no top-level files shipped', () => {
+  it('ships no top-level files (SHIPPED_FILES is empty)', () => {
+    expect(SHIPPED_FILES).toHaveLength(0);
   });
 
-  it('ignores the per-harness rendered artefacts', async () => {
-    await install(['.gitignore']);
-    const gitignore = await fs.readFile(join(dest, '.gitignore'), 'utf8');
-    expect(gitignore).toContain('.claude/skills/');
-    expect(gitignore).toContain('.kimi/skills/');
-    expect(gitignore).toContain('.opencode/skills/');
-    expect(gitignore).toContain('.claude/CLAUDE.md');
-    expect(gitignore).toContain('.kimi/AGENTS.md');
-    expect(gitignore).toContain('.opencode/AGENTS.md');
+  it('does not create or touch .gitignore on a full install', async () => {
+    await install();
+    await expect(fs.access(join(dest, '.gitignore'))).rejects.toThrow();
   });
 
-  it('records .gitignore under the v3 files namespace (not templates)', async () => {
-    await install(['.gitignore']);
-    const manifest = await readManifest(dest);
-    expect(manifest!.version).toBe(3);
-    expect(manifest!.files!['.gitignore']).toBeTruthy();
-    expect((manifest as unknown as { templates?: unknown }).templates).toBeUndefined();
+  it('leaves a user-owned .gitignore untouched', async () => {
+    const path = join(dest, '.gitignore');
+    const original = 'node_modules\n*.log\n';
+    await fs.writeFile(path, original);
+    await install();
+    expect(await fs.readFile(path, 'utf8')).toBe(original);
+  });
+
+  it('rejects `.gitignore` as an unknown positional', async () => {
+    await expect(install(['.gitignore'])).rejects.toThrow(/[Uu]nknown skill or file/);
   });
 
   it('migrates a v2 manifest with `templates` to v3 `files` on first install', async () => {
@@ -178,27 +173,13 @@ describe('condash skills install — .gitignore', () => {
         2,
       ),
     );
-    await install(['.gitignore']);
+    // The legacy `.gitignore` entry is no longer shipped, so it carries forward
+    // into the v3 `files` namespace and surfaces as source-missing (clearable
+    // with --prune) rather than being re-pushed.
+    await install();
     const manifest = await readManifest(dest);
     expect(manifest!.version).toBe(3);
     expect(manifest!.files!['.gitignore']).toBeTruthy();
-  });
-
-  it('ships .gitignore under the alias _gitignore (electron-builder filter workaround)', async () => {
-    const entry = SHIPPED_FILES.find((f) => f.path === '.gitignore');
-    expect(entry?.sourcePath).toBe('_gitignore');
-    await fs.access(join(TEMPLATE_ROOT, '_gitignore'));
-    await install(['.gitignore']);
-    await fs.access(join(dest, '.gitignore'));
-  });
-
-  it('status: no row for a user-owned .gitignore (no manifest, no markers)', async () => {
-    await fs.writeFile(join(dest, '.gitignore'), 'node_modules\n*.log\n');
-    process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
-    const file = SHIPPED_FILES.find((f) => f.path === '.gitignore')!;
-    const manifest = { version: 3 as const, skills: {}, files: {} };
-    const row = await statusShippedFile(file, dest, manifest);
-    expect(row).toBeNull();
   });
 
   it('--prune drops manifest entries whose shipped source no longer exists', async () => {

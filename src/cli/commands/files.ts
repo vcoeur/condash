@@ -5,8 +5,9 @@
  *
  *   - **Region-delimited files** (`SHIPPED_FILES`) — each ships the body of one
  *     heading-delimited region; the surrounding text is user-owned and never
- *     touched. Today only `.gitignore` uses this path. Hash-based safe-update
- *     model matching the agent-skill source files:
+ *     touched. `SHIPPED_FILES` is currently empty (condash no longer ships
+ *     `.gitignore`); the machinery is kept for future files. Hash-based
+ *     safe-update model matching the agent-skill source files:
  *
  *       - region matches manifest → unchanged → safe to push the new shipped region.
  *       - region differs from manifest → user edited → refuse without --force.
@@ -70,22 +71,18 @@ export interface ShippedFile {
 }
 
 /**
- * Hardcoded list of top-level files condash ships partially. Adding more is
- * a one-line append plus a new entry in `conception-template/`.
+ * Hardcoded list of top-level files condash ships partially. Currently empty:
+ * condash ships only the agent-skill sources and the `AGENTS.md` marker
+ * region. Adding one back is a one-line append here plus a new entry in
+ * `conception-template/`. The region-merge machinery below is retained for
+ * that, and to reconcile legacy manifest `files` entries (e.g. a `.gitignore`
+ * shipped by condash ≤ 4.0.1) via the source-missing / `--prune` path.
  *
- * `.gitignore` ships under the alias `_gitignore` because electron-builder
- * drops bare dotfiles like `.gitignore` from the asar by default; the
- * rename round-trips through `sourcePath`.
+ * A file whose on-disk destination name would be filtered out of the packaged
+ * asar (electron-builder drops bare dotfiles like `.gitignore`) ships under an
+ * alias via `sourcePath`.
  */
-export const SHIPPED_FILES: ShippedFile[] = [
-  {
-    path: '.gitignore',
-    sourcePath: '_gitignore',
-    region: 'General',
-    mark: '#',
-    siblings: ['Specifics'],
-  },
-];
+export const SHIPPED_FILES: ShippedFile[] = [];
 
 export function optsFor(t: ShippedFile): HeadingOpts {
   return { mark: t.mark ?? DEFAULT_MARK, siblings: t.siblings };
