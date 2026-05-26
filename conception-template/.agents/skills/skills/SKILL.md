@@ -1,13 +1,20 @@
+---
+name: skills
+description: Install or update condash-shipped artefacts in this conception — agent skills under `.agents/skills/` and top-level files like `AGENTS.md` and `.gitignore`. Wraps `condash skills {status,install}` and walks edited items one-by-one so local customisations don't get clobbered. Use after upgrading condash to pull updated content, or for the first-time install.
+---
+
 # /skills — install and update condash-shipped artefacts
 
 condash ships two kinds of artefacts into a conception tree:
 
-- **Whole-file agent skills** under `.agents/skills/<name>/` — source-of-truth
-  for the skills compiled into `.claude/skills/` and `.kimi/skills/`.
-- **Top-level files** at the conception root. Some are written whole
-  (`AGENTS.md`, `.gitignore`); some carry a heading-delimited region inside
-  a larger user-owned file (e.g. `AGENTS.md`'s `## General` section is
-  shipped, `## Specifics` is user-owned).
+- **Agent skills** under `.agents/skills/<name>/` — placed verbatim
+  (`SKILL.md` + optional task `.md` files + optional `SKILL.<harness>.md`
+  overlay). condash no longer compiles them to per-harness dirs; the harness
+  launcher renders them per agent at run time.
+- **Top-level files** at the conception root. `.gitignore` ships a
+  heading-delimited region; `AGENTS.md` ships a marker-bounded head — every
+  line from the top through `<!-- end condash agents -->` is regenerated on
+  install, and everything after the marker is user-owned and never touched.
 
 Both kinds flow through a single CLI surface — `condash skills {list,status,install}` —
 and a single manifest namespace. This skill is the user-facing wrapper for
@@ -198,7 +205,7 @@ without committing to a walk.
 - **Never auto-prune on `source-missing`** — flag and recommend, but let
   the user invoke `--prune` explicitly.
 - Bootstrap chicken-and-egg: this skill ships **inside** the same install
-  bundle. After `condash skills install`, this `body.md` is on disk in the
+  bundle. After `condash skills install`, this `SKILL.md` is on disk in the
   user's tree; from that point on `/skills update` can update itself like
   any other shipped artefact (the CLI's hash check still gates each write).
 

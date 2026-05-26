@@ -1,1 +1,0 @@
-description: Install or update condash-shipped artefacts in this conception — agent skills under `.agents/skills/` and top-level files like `AGENTS.md` and `.gitignore`. Wraps `condash skills {status,install}` and walks edited items one-by-one so local customisations don't get clobbered. Use after upgrading condash to pull updated content, or for the first-time install.

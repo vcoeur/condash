@@ -1,24 +1,28 @@
 /**
  * Top-level shipped-file install for `condash skills install`.
  *
- * Each entry in `SHIPPED_FILES` lives at the conception root and ships the
- * body of one heading-delimited region. Today only `.gitignore` uses this
- * path; `AGENTS.md` was removed from shipped files in favour of a
- * `.agents/agents/` source tree that compiles to per-agent outputs.
+ * Two kinds of conception-root files are handled here:
  *
- * The surrounding text — anything before the General heading and the
- * user-owned `Specifics` section that follows — is never touched. Hash-based
- * safe-update model matching the agent-skill source files:
+ *   - **Region-delimited files** (`SHIPPED_FILES`) — each ships the body of one
+ *     heading-delimited region; the surrounding text is user-owned and never
+ *     touched. Today only `.gitignore` uses this path. Hash-based safe-update
+ *     model matching the agent-skill source files:
  *
- *   - region matches manifest → unchanged → safe to push the new shipped region.
- *   - region differs from manifest → user edited → refuse without --force.
- *   - region present but file not in manifest → orphan → treat as edited.
- *   - heading absent or ambiguous → no region to write through; refuse without
- *     --force. With --force, write the entire shipped file.
- *   - file absent entirely → fresh install path → write the shipped file.
- *   - shipped bundle no longer ships the file (a previous condash version
- *     installed it; the current one dropped it) → source-missing. Skipped
- *     in install with a warning; `--prune` clears the manifest entry.
+ *       - region matches manifest → unchanged → safe to push the new shipped region.
+ *       - region differs from manifest → user edited → refuse without --force.
+ *       - region present but file not in manifest → orphan → treat as edited.
+ *       - heading absent or ambiguous → no region to write through; refuse without
+ *         --force. With --force, write the entire shipped file.
+ *       - file absent entirely → fresh install path → write the shipped file.
+ *       - shipped bundle no longer ships the file → source-missing. Skipped
+ *         in install with a warning; `--prune` clears the manifest entry.
+ *
+ *   - **The `AGENTS.md` marker region** (`installAgentsMd`) — condash owns
+ *     everything from line 1 through the `<!-- end condash agents -->` marker
+ *     (inclusive) and regenerates it on every install; everything after the
+ *     marker is the conception's own content, preserved verbatim. Not
+ *     manifest-tracked — the marker is the boundary, so there is no hash to
+ *     reconcile.
  *
  * Manifest entries written by older condash versions used the `templates`
  * namespace; the v2 → v3 manifest migration renames it to `files`. Region
@@ -28,16 +32,7 @@
 
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
-import {
-  AGENTS_MD_TARGETS,
-  AGENTS_MD_OUTPUTS,
-  compileAgentConfig,
-  combineAgentSource,
-  splitLegacyCommon,
-  type AgentsMdTarget,
-} from '../../agents-md';
 import { CliError, ExitCodes } from '../output';
-import { isIgnoredSourceArtifact } from '../../shared/source-artifacts';
 import {
   cheapDiff,
   sha256,
@@ -61,8 +56,8 @@ export interface ShippedFile {
   /** Heading text for the shipped region, e.g. "General" — matches `## General`. */
   region: string;
   /**
-   * Heading prefix without trailing whitespace. Default '##' (markdown H2 —
-   * used by AGENTS.md). For gitignore-style files use '#'.
+   * Heading prefix without trailing whitespace. Default '##' (markdown H2).
+   * For gitignore-style files use '#'.
    */
   mark?: string;
   /**
@@ -118,35 +113,6 @@ export function locateShippedFilesRoot(): string {
 export function migrateLegacyRegion(region: string): string {
   if (region === 'condash:general') return 'General';
   return region;
-}
-
-/**
- * Migrate a legacy `<dest>/CLAUDE.md` to `<dest>/AGENTS.md` when the new
- * filename doesn't yet exist. Returns true if a rename happened so the
- * caller can also migrate the manifest entry.
- */
-export async function maybeRenameClaudeMdToAgentsMd(dest: string): Promise<boolean> {
-  const oldPath = join(dest, 'CLAUDE.md');
-  const newPath = join(dest, 'AGENTS.md');
-  let oldExists = false;
-  let newExists = false;
-  try {
-    await fs.access(oldPath);
-    oldExists = true;
-  } catch {
-    /* not present */
-  }
-  try {
-    await fs.access(newPath);
-    newExists = true;
-  } catch {
-    /* not present */
-  }
-  if (oldExists && !newExists) {
-    await fs.rename(oldPath, newPath);
-    return true;
-  }
-  return false;
 }
 
 export type FileInstallState =
@@ -309,108 +275,109 @@ export async function installShippedFile(
   };
 }
 
-/**
- * Path of the agent-config source tree relative to the conception root.
- */
-const AGENTS_SOURCE_RELPATH = '.agents/agents';
+// ---------------------------------------------------------------------------
+// AGENTS.md marker region
+// ---------------------------------------------------------------------------
 
-/** Source filenames in `.agents/agents/`. `condash.md` is the shipped head
- *  (H1 + `## General`); `conception.md` is the user-owned tail (`## Specifics`). */
-const CONDASH_SOURCE = 'condash.md';
-const CONCEPTION_SOURCE = 'conception.md';
-/** The combined agent body — `condash.md` + `conception.md` materialised in the
- *  source dir on every install. Committed (not gitignored), not manifest-tracked.
- *  This is the agent-neutral body launchers read; it mirrors the user-scope
- *  agentspec at `~/.config/agents/agents/common.md`. A conception may instead be
- *  authored as a single `common.md` (no `condash.md` split, like the user scope);
- *  `compileAgentConfigs` then reads it back as the source, so the materialise is
- *  idempotent. The body is never split or deleted on disk. */
-const COMMON_OUTPUT = 'common.md';
-/** Pre-rename name of the materialised body. Removed on install so switching to
- *  `common.md` doesn't leave a stale `body.md` duplicate behind. */
-const STALE_BODY_OUTPUT = 'body.md';
-
+/** Conception-root AGENTS.md, written by `installAgentsMd`. */
+export const AGENTS_MD_PATH = 'AGENTS.md';
+/** Source template under `conception-template/`. */
+const AGENTS_MD_SOURCE = 'AGENTS.md';
 /**
- * `condash.md` is the condash-shipped head — an H1/tagline preamble plus the
- * `## General` body. It installs region-aware (region `General`, no `Specifics`
- * sibling present, so the region runs `## General` → EOF), with the same
- * hash/manifest model as `.gitignore`: the General body is refreshed and a
- * hand-edit is refused without `--force`; the preamble is preserved.
- *
- * `conception.md` (the `## Specifics` tail) is user-owned — scaffolded once,
- * never overwritten, never manifest-tracked. The per-agent fragments
- * (`claude.md`, `kimi.md`) overwrite in full on every install.
+ * The boundary line. condash owns `[line 1 .. marker]` (inclusive) and
+ * regenerates it on install; everything after the marker is user-owned and
+ * preserved verbatim. An HTML comment so it's invisible in rendered markdown.
  */
-export const AGENT_CONFIG_COMMON: ShippedFile = {
-  path: `${AGENTS_SOURCE_RELPATH}/${CONDASH_SOURCE}`,
-  region: 'General',
-  mark: '##',
-  siblings: ['Specifics'],
-};
+export const AGENTS_MD_MARKER = '<!-- end condash agents -->';
 
-/**
- * Union of every file path condash knows how to (re)install — both the
- * user-selectable `SHIPPED_FILES` entries and the always-installed
- * agent-config sources. Used by status / prune helpers so a manifest entry
- * for `AGENT_CONFIG_COMMON.path` isn't mistaken for a stale source.
- */
-function knownShippedFilePaths(): Set<string> {
-  return new Set([...SHIPPED_FILES.map((f) => f.path), AGENT_CONFIG_COMMON.path]);
+export interface AgentsMdOutcome {
+  path: string;
+  /**
+   * `created` — wrote a fresh file (head + shipped Specifics stub).
+   * `updated` — regenerated the head, preserved the existing tail.
+   * `migrated` — a marker-less file: prepended the head and pushed the whole
+   *   existing file below the marker (non-destructive).
+   * `unchanged` — head + tail already byte-identical to what we'd write.
+   */
+  state: 'created' | 'updated' | 'migrated' | 'unchanged';
+}
+
+const VARIABLE_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+
+function substituteVariables(content: string, variables: Record<string, string>): string {
+  return content.replace(VARIABLE_RE, (_, name: string) => variables[name] ?? '');
+}
+
+/** Split a document at the first line equal to `AGENTS_MD_MARKER`. Returns the
+ *  head (lines `[0 .. marker]`, joined, no trailing newline) and the tail
+ *  (everything after the marker, joined, no leading newline added). `markerIdx`
+ *  is -1 when the marker is absent. */
+function splitAtMarker(content: string): { head: string; tail: string; markerIdx: number } {
+  const lines = content.split('\n');
+  const markerIdx = lines.findIndex((l) => l === AGENTS_MD_MARKER);
+  if (markerIdx === -1) return { head: '', tail: content, markerIdx };
+  const head = lines.slice(0, markerIdx + 1).join('\n');
+  const tail = lines.slice(markerIdx + 1).join('\n');
+  return { head, tail, markerIdx };
 }
 
 /**
- * Compile `.agents/agents/` → per-target output files (`.claude/CLAUDE.md` +
- * `.kimi/AGENTS.md`). Compiled outputs are deterministic from the source
- * and aren't tracked by the manifest — they're regenerated on every
- * install. Returns the empty array (and writes nothing) if the source
- * tree doesn't exist on disk.
+ * Maintain the conception-root `AGENTS.md` marker region.
+ *
+ * The shipped `conception-template/AGENTS.md` carries the condash-owned head
+ * (H1 preamble + `## General` body), the `<!-- end condash agents -->` marker,
+ * and a placeholder `## Specifics` stub below it. On install:
+ *
+ *   - **Fresh** (no file): write the substituted head + the shipped stub.
+ *   - **Marker present**: regenerate the head, keep everything after the
+ *     on-disk marker verbatim.
+ *   - **Marker absent** (legacy / hand-made): prepend the head and push the
+ *     entire existing file below the marker — non-destructive.
+ *
+ * `{{ conception_name }}` / `{{ description }}` in the head are substituted
+ * per-conception. Idempotent: an unchanged head + unchanged tail rewrites the
+ * same bytes and reports `unchanged`.
  */
-export async function compileAgentConfigs(
-  dest: string,
-  dryRun: boolean,
-): Promise<{ target: AgentsMdTarget; path: string }[]> {
-  const sourceDir = join(dest, AGENTS_SOURCE_RELPATH);
-
-  // Head = condash.md; tail = conception.md. A conception authored as a single
-  // common.md (no split — the user-scope agentspec shape) is read back and
-  // split so compile stays correct either way.
-  let head = await readFileOrNull(join(sourceDir, CONDASH_SOURCE));
-  let tail = (await readFileOrNull(join(sourceDir, CONCEPTION_SOURCE))) ?? '';
-  if (head === null) {
-    const single = await readFileOrNull(join(sourceDir, COMMON_OUTPUT));
-    if (single === null) return [];
-    const split = splitLegacyCommon(single);
-    head = split.head;
-    if (!tail) tail = split.tail;
+export async function installAgentsMd(dest: string, dryRun: boolean): Promise<AgentsMdOutcome> {
+  const shipped = await fs.readFile(join(locateShippedFilesRoot(), AGENTS_MD_SOURCE), 'utf8');
+  const shippedSplit = splitAtMarker(shipped);
+  if (shippedSplit.markerIdx === -1) {
+    throw new CliError(
+      ExitCodes.RUNTIME,
+      `Shipped ${AGENTS_MD_SOURCE} is missing the "${AGENTS_MD_MARKER}" marker`,
+    );
   }
-  const combined = combineAgentSource(head, tail);
-
-  // Materialise the combined body (condash.md + conception.md) as common.md in
-  // the source dir — the agent-neutral body launchers read, matching the
-  // user-scope `~/.config/agents/agents/common.md`. Committed (not gitignored),
-  // not manifest-tracked. Drop the pre-rename body.md so it doesn't linger.
-  if (!dryRun) {
-    await writeFileMkdir(join(sourceDir, COMMON_OUTPUT), Buffer.from(combined, 'utf8'));
-    await fs.rm(join(sourceDir, STALE_BODY_OUTPUT), { force: true });
-  }
-
-  // Per-conception identity variables for the shipped condash.md preamble
-  // (`# AGENTS.md — {{ conception_name }}` / `{{ description }}`). Existing
-  // conceptions whose preamble is literal text simply have nothing to substitute.
   const variables = {
     conception_name: basename(dest),
     description: await readConceptionDescription(dest),
   };
+  const head = substituteVariables(shippedSplit.head, variables);
+  const shippedStub = shippedSplit.tail.replace(/\s+$/, '');
 
-  const written: { target: AgentsMdTarget; path: string }[] = [];
-  for (const target of AGENTS_MD_TARGETS) {
-    const fragment = (await readFileOrNull(join(sourceDir, `${target}.md`))) ?? '';
-    const compiled = compileAgentConfig(combined, fragment, target, { variables });
-    const outputPath = join(dest, AGENTS_MD_OUTPUTS[target]);
-    if (!dryRun) await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
-    written.push({ target, path: AGENTS_MD_OUTPUTS[target] });
+  const targetPath = join(dest, AGENTS_MD_PATH);
+  const onDisk = await readFileOrNull(targetPath);
+
+  let newContent: string;
+  let state: AgentsMdOutcome['state'];
+  if (onDisk === null) {
+    newContent = `${head}\n${shippedStub}\n`;
+    state = 'created';
+  } else {
+    const onDiskSplit = splitAtMarker(onDisk);
+    if (onDiskSplit.markerIdx === -1) {
+      // Marker-less legacy file: push the whole thing below the marker.
+      newContent = `${head}\n\n${onDisk.replace(/^\s+/, '').replace(/\s+$/, '')}\n`;
+      state = 'migrated';
+    } else {
+      newContent = `${head}\n${onDiskSplit.tail.replace(/\s+$/, '')}\n`;
+      state = onDisk === newContent ? 'unchanged' : 'updated';
+    }
   }
-  return written;
+
+  if (!dryRun && state !== 'unchanged') {
+    await writeFileMkdir(targetPath, Buffer.from(newContent, 'utf8'));
+  }
+  return { path: AGENTS_MD_PATH, state };
 }
 
 /** Read a file, returning null on ENOENT (rethrows other errors). */
@@ -441,92 +408,6 @@ async function readConceptionDescription(dest: string): Promise<string> {
     }
   }
   return '';
-}
-
-/** The `instructions` entry pointing OpenCode at condash's compiled config. */
-const OPENCODE_INSTRUCTIONS_ENTRY = AGENTS_MD_OUTPUTS.opencode;
-/** OpenCode's published config schema URL — set on a freshly-created file. */
-const OPENCODE_CONFIG_SCHEMA = 'https://opencode.ai/config.json';
-
-export interface OpencodeConfigOutcome {
-  /** Always `opencode.json` (conception root). */
-  path: string;
-  /**
-   * `created` — wrote a fresh file. `merged` — added the instructions entry to
-   * an existing file, preserving every other key. `unchanged` — entry already
-   * present. `skipped` — existing file is malformed / unexpectedly shaped and
-   * was left untouched so the user's content isn't clobbered (see `reason`).
-   */
-  state: 'created' | 'merged' | 'unchanged' | 'skipped';
-  /** Human-readable explanation, set only for `skipped`. */
-  reason?: string;
-}
-
-/**
- * Ensure the conception-root `opencode.json` points OpenCode at the compiled
- * `.opencode/AGENTS.md`.
- *
- * OpenCode auto-discovers an `AGENTS.md` only by walking *up* from the working
- * directory — it never looks inside `.opencode/` — so without this entry the
- * project-scope agent config condash compiles is silently ignored. The
- * `instructions` paths resolve relative to the config-file directory, so the
- * file must sit at the conception root (not `.opencode/opencode.json`, which
- * OpenCode does not read).
- *
- * Merge-not-clobber: an existing file keeps every other key (`$schema`,
- * `model`, `theme`, `mcp`, …); only the missing instructions entry is added.
- * Idempotent. A malformed or unexpectedly-shaped existing file is left
- * untouched and reported as `skipped`.
- */
-export async function ensureOpencodeConfig(
-  dest: string,
-  dryRun: boolean,
-): Promise<OpencodeConfigOutcome> {
-  const path = 'opencode.json';
-  const targetPath = join(dest, path);
-
-  let onDisk: string | null = null;
-  try {
-    onDisk = await fs.readFile(targetPath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
-
-  if (onDisk === null) {
-    const content =
-      JSON.stringify(
-        { $schema: OPENCODE_CONFIG_SCHEMA, instructions: [OPENCODE_INSTRUCTIONS_ENTRY] },
-        null,
-        2,
-      ) + '\n';
-    if (!dryRun) await writeFileMkdir(targetPath, Buffer.from(content, 'utf8'));
-    return { path, state: 'created' };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(onDisk);
-  } catch {
-    return { path, state: 'skipped', reason: 'existing opencode.json is not valid JSON' };
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { path, state: 'skipped', reason: 'existing opencode.json is not a JSON object' };
-  }
-
-  const config = parsed as Record<string, unknown>;
-  const existing = config.instructions;
-  if (existing !== undefined && !Array.isArray(existing)) {
-    return { path, state: 'skipped', reason: 'existing "instructions" is not an array' };
-  }
-  const list = (existing as unknown[] | undefined) ?? [];
-  if (list.includes(OPENCODE_INSTRUCTIONS_ENTRY)) {
-    return { path, state: 'unchanged' };
-  }
-
-  config.instructions = [...list, OPENCODE_INSTRUCTIONS_ENTRY];
-  const content = JSON.stringify(config, null, 2) + '\n';
-  if (!dryRun) await writeFileMkdir(targetPath, Buffer.from(content, 'utf8'));
-  return { path, state: 'merged' };
 }
 
 export type FileStatusState =
@@ -579,9 +460,7 @@ export async function statusShippedFile(
   if (onDiskRegion === null) {
     // No condash-owned region on disk. Only surface this when the manifest
     // already tracks the file (so the user previously opted in) — otherwise
-    // the file is entirely user-owned and condash should stay silent. The
-    // phantom row in 3.4.1 was this leaking through with no manifest entry
-    // for any project that happened to have its own `.gitignore`.
+    // the file is entirely user-owned and condash should stay silent.
     if (!entry) return null;
     return {
       path: file.path,
@@ -660,6 +539,14 @@ export function sourceMissingFileRows(manifest: Manifest): FileStatusRow[] {
   return rows;
 }
 
+/**
+ * Every file path condash knows how to (re)install. Used by status / prune
+ * helpers so a tracked entry isn't mistaken for a stale source.
+ */
+function knownShippedFilePaths(): Set<string> {
+  return new Set(SHIPPED_FILES.map((f) => f.path));
+}
+
 export interface FileListRow {
   path: string;
   region: string;
@@ -677,100 +564,6 @@ export function listShippedFiles(manifest: Manifest | null): FileListRow[] {
       shippedVersion: entry?.shippedVersion ?? null,
     };
   });
-}
-
-export interface AgentConfigInstallResult {
-  /** Per-agent fragment paths (relative to `.agents/agents/`) that were written. */
-  copied: string[];
-  /**
-   * Outcome of the region-aware install for `condash.md`. `null` only when the
-   * shipped agent-config tree is missing from the bundle (returns early).
-   */
-  commonOutcome: FileInstallOutcome | null;
-}
-
-/**
- * Install the `.agents/agents/` source tree from the shipped template:
- *
- * - `condash.md` ships through `installShippedFile` so the `## General` body
- *   gets refreshed (refused without `--force` when hand-edited) while the
- *   H1/tagline preamble is preserved.
- * - `conception.md` (the `## Specifics` tail — Apps table + durable team rules)
- *   is user-owned: scaffolded from the shipped stub only when absent, never
- *   overwritten, never manifest-tracked.
- * - Per-agent fragments (`claude.md`, `kimi.md`) overwrite on every install.
- *
- * Returns the per-agent fragment paths that were (re)written plus the
- * region-aware outcome for `condash.md`.
- */
-export async function installAgentConfigSources(
-  params: FileInstallParams,
-): Promise<AgentConfigInstallResult> {
-  const { dest, dryRun } = params;
-  const shippedDir = join(locateShippedFilesRoot(), '.agents', 'agents');
-  const targetDir = join(dest, '.agents', 'agents');
-  const copied: string[] = [];
-
-  try {
-    await fs.access(shippedDir);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { copied: [], commonOutcome: null };
-    }
-    throw err;
-  }
-
-  if (!dryRun) await fs.mkdir(targetDir, { recursive: true });
-
-  // condash.md: region-aware install via the same machinery as `.gitignore`.
-  const commonOutcome = await installShippedFile(AGENT_CONFIG_COMMON, params);
-
-  // conception.md (user-owned): scaffold from the shipped stub only when absent.
-  const conceptionTarget = join(targetDir, CONCEPTION_SOURCE);
-  if ((await readFileOrNull(conceptionTarget)) === null) {
-    const stub = await readFileOrNull(join(shippedDir, CONCEPTION_SOURCE));
-    if (stub !== null) {
-      if (!dryRun) await writeFileMkdir(conceptionTarget, Buffer.from(stub, 'utf8'));
-      copied.push(CONCEPTION_SOURCE);
-    }
-  }
-
-  // Per-agent fragments + any future nested files: full-overwrite. condash.md
-  // (region-aware above) and conception.md (user-owned, scaffolded above) are
-  // excluded, as is common.md — it's materialised by compileAgentConfigs, not
-  // shipped from the template.
-  const ownedAtRoot = new Set([CONDASH_SOURCE, CONCEPTION_SOURCE, COMMON_OUTPUT]);
-  async function walk(src: string, dst: string, prefix: string): Promise<void> {
-    const entries = await fs.readdir(src, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      if (isIgnoredSourceArtifact(entry.name)) continue;
-      if (prefix === '' && ownedAtRoot.has(entry.name)) continue;
-      const srcPath = join(src, entry.name);
-      const dstPath = join(dst, entry.name);
-      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        if (!dryRun) await fs.mkdir(dstPath, { recursive: true });
-        await walk(srcPath, dstPath, relPath);
-      } else if (entry.isFile()) {
-        const content = await fs.readFile(srcPath);
-        let shouldWrite = true;
-        try {
-          const existing = await fs.readFile(dstPath);
-          if (existing.equals(content)) shouldWrite = false;
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-        }
-        if (shouldWrite) {
-          if (!dryRun) await writeFileMkdir(dstPath, content);
-          copied.push(relPath);
-        }
-      }
-    }
-  }
-
-  await walk(shippedDir, targetDir, '');
-  return { copied, commonOutcome };
 }
 
 /**
@@ -796,21 +589,6 @@ export function pruneSourceMissingFileEntries(manifest: Manifest): {
     delete manifest.files[path];
   }
   return dropped;
-}
-
-/**
- * Pick the manifest entries that belong to a file path. Internal helper —
- * not currently used outside this module, but exported because skills.ts
- * may want to migrate legacy CLAUDE.md → AGENTS.md manifest entries when
- * triggered by `maybeRenameClaudeMdToAgentsMd`.
- */
-export function migrateClaudeMdManifestEntry(manifest: Manifest): void {
-  if (!manifest.files) return;
-  const claude = manifest.files['CLAUDE.md'];
-  if (!claude) return;
-  if (manifest.files['AGENTS.md']) return;
-  manifest.files['AGENTS.md'] = claude;
-  delete manifest.files['CLAUDE.md'];
 }
 
 // Re-export the manifest entry type so callers don't have to import from

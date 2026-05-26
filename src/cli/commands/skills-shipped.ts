@@ -1,10 +1,12 @@
 /**
- * Foundation module for `condash skills`: read the shipped skillspec tree
- * (the source-of-truth for repo-scope installs), and resolve the install
- * destination.
+ * Foundation module for `condash skills`: read the shipped skill tree (the
+ * source-of-truth for installs), and resolve the install destination.
  *
- * Used by every repo-scope verb (`list`, `install`, `status`, `validate`).
- * User-scope verbs use `skills-user-fs.ts` instead.
+ * Used by every `condash skills` verb (`list`, `install`, `status`,
+ * `validate`). condash places each skill's source layout verbatim under
+ * `<conception>/.agents/skills/<name>/` — `SKILL.md` (+ optional task `.md`
+ * files and an optional `SKILL.<harness>.md` overlay) — and no longer compiles
+ * to per-harness dirs.
  */
 
 import { promises as fs } from 'node:fs';
@@ -12,22 +14,14 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { CliError, ExitCodes } from '../output';
 import { resolveConception } from '../conception';
 import { isIgnoredSourceArtifact } from '../../shared/source-artifacts';
-import type { CompileTarget } from '../../skillspec';
 
-/** Path of the skillspec source tree relative to the conception root. */
+/** Path of the skill source tree relative to the conception root. */
 export const SOURCE_RELPATH = '.agents/skills';
 
-/** Path of compiled outputs relative to the conception root, per target. */
-export const TARGET_RELPATHS: Record<CompileTarget, string> = {
-  claude: '.claude/skills',
-  kimi: '.kimi/skills',
-  opencode: '.opencode/skills',
-};
-
-export const KNOWN_FLAGS_LIST = ['dest', 'user'] as const;
-export const KNOWN_FLAGS_INSTALL = ['dest', 'user', 'force', 'diff', 'dry-run', 'prune'] as const;
-export const KNOWN_FLAGS_STATUS = ['dest', 'user'] as const;
-export const KNOWN_FLAGS_VALIDATE = ['dest', 'user'] as const;
+export const KNOWN_FLAGS_LIST = ['dest'] as const;
+export const KNOWN_FLAGS_INSTALL = ['dest', 'force', 'diff', 'dry-run', 'prune'] as const;
+export const KNOWN_FLAGS_STATUS = ['dest'] as const;
+export const KNOWN_FLAGS_VALIDATE = ['dest'] as const;
 
 export const NOUN_FLAGS: readonly string[] = [
   ...new Set<string>([
@@ -44,7 +38,7 @@ export interface ShippedSkill {
   sourceDir: string;
   /** Source files relative to sourceDir, recursively (excluding hidden). */
   files: string[];
-  /** Description from spec.yaml, if parseable. */
+  /** Description from SKILL.md frontmatter, if parseable. */
   description: string | null;
 }
 
@@ -69,7 +63,7 @@ export async function readShippedSkills(): Promise<ShippedSkill[]> {
   } catch (err) {
     throw new CliError(
       ExitCodes.RUNTIME,
-      `Could not read shipped skillspecs at ${root}: ${(err as Error).message}`,
+      `Could not read shipped skills at ${root}: ${(err as Error).message}`,
     );
   }
   const out: ShippedSkill[] = [];
@@ -77,7 +71,7 @@ export async function readShippedSkills(): Promise<ShippedSkill[]> {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const sourceDir = join(root, entry.name);
     const files = await collectFilesRelative(sourceDir);
-    const description = await extractDescriptionFromSpec(join(sourceDir, 'spec.yaml')).catch(
+    const description = await extractDescriptionFromSkillMd(join(sourceDir, 'SKILL.md')).catch(
       () => null,
     );
     out.push({ name: entry.name, sourceDir, files, description });
@@ -110,9 +104,10 @@ export async function collectFilesRelative(dir: string): Promise<string[]> {
   return out;
 }
 
-export async function extractDescriptionFromSpec(specPath: string): Promise<string | null> {
+/** Pull the `description:` value out of a SKILL.md YAML frontmatter block. */
+export async function extractDescriptionFromSkillMd(skillMdPath: string): Promise<string | null> {
   try {
-    const raw = await fs.readFile(specPath, 'utf8');
+    const raw = await fs.readFile(skillMdPath, 'utf8');
     const match = raw.match(/^description:\s*(.+?)\s*$/m);
     if (!match) return null;
     let value = match[1].trim();

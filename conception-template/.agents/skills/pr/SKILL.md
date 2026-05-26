@@ -1,3 +1,8 @@
+---
+name: pr
+description: "Open a GitHub PR from the current branch. Project-aware wrapper: handles Branch/Base resolution and the project-README timeline append; defers PR body shape to the user's personal /pr skill in ~/.claude (if installed) or prompts inline. Trigger when the user says 'open pr', 'create pr', 'make pr', or '/pr'."
+---
+
 # /pr — open a pull request (project-aware wrapper)
 
 This skill handles the **project-side mechanics** of opening a PR for any repo listed in `condash.json` under `repositories:`:

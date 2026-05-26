@@ -9,7 +9,7 @@ description: Reference for the five shipped Claude Code skills — /projects, /k
 
 ## At a glance
 
-condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.claude/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.claude/skills) in the repo and land at `<conception>/.claude/skills/` after running `condash skills install` (or `/skills install` from a session).
+condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install` (or `/skills install` from a session). Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
 
 | Skill | Scope | What it does |
 |---|---|---|
@@ -74,27 +74,11 @@ Install or refresh the shipped skills. Use it after upgrading condash to pull up
 | `status` | `/skills status` | `condash skills status` (compare local vs shipped via SHA256) |
 | `install` | `/skills install` | `condash skills install` (per-file diff + confirmation walk) |
 
-`condash skills install` writes three independent manifests so each tree gets its own shipped/diverged tracking:
+`condash skills install` records what it shipped in one manifest at `<conception>/.agents/.condash-skills.json` (v3 schema: a `skills.<name>` namespace for skill sources plus a `files.<path>` namespace for the region-delimited `.gitignore`). Each tracked file carries its shipped version + SHA256, so a re-install can tell an unchanged file from a locally-edited one and refuse to clobber edits without `--force`. `AGENTS.md` is **not** manifest-tracked — its marker line is the boundary, so there's no hash to reconcile.
 
-| Manifest path | Purpose | Schema |
-|---|---|---|
-| `<conception>/.agents/.condash-skills.json` | Source refuse-on-edit (CLI internal) | `skills.<name>.source` |
-| `<conception>/.claude/skills/.condash-skills.json` | Claude compiled tracking | `skills.<name>.files` |
-| `<conception>/.kimi/skills/.condash-skills.json` | Kimi compiled tracking | `skills.<name>.files` |
-| `<conception>/.opencode/skills/.condash-skills.json` | OpenCode compiled tracking | `skills.<name>.files` |
+### The skill source is committed; nothing is compiled
 
-The source manifest moved from `.claude/skills/.condash-skills.json` to `.agents/.condash-skills.json` when the skillspec compiler shipped. `readManifest` migrates the legacy path on first read (one-shot, transparent — the legacy file is moved, not copied).
-
-### Compiled trees are gitignored build output
-
-Only the `.agents/` source tree (`.agents/skills/` skillspecs + `.agents/agents/` agent fragments) is committed. The shipped `conception-template/_gitignore` ignores **every** per-target compiled artefact — both the compiled skills and the compiled instruction files — so they regenerate on each `condash skills install` rather than living in version control:
-
-```
-.claude/skills/      .kimi/skills/      .opencode/skills/
-.claude/CLAUDE.md    .kimi/AGENTS.md    .opencode/AGENTS.md
-```
-
-`.claude/` is file-targeted (not a blanket `.claude/*`) because it also carries hand-maintained config — `settings.json`, `settings.local.json`, `hooks/` — which stays committed. A conception upgrading from condash ≤ v3.23.0 that had any of these compiled paths committed runs `git rm -r --cached` once on them (the exact command is in the General block of its `.gitignore`), then re-installs.
+The `.agents/skills/` source tree is the committed, canonical copy of each skill. condash no longer produces any per-harness compiled output — there are no `.claude/skills/`, `.kimi/skills/`, or `.opencode/skills/` directories to regenerate, and no compiled instruction files (`.claude/CLAUDE.md`, `.kimi/AGENTS.md`, `.opencode/AGENTS.md`). The harness launcher (shipped separately) reads the verbatim source and renders it per agent at run time. condash's only generated top-level artefact is the `AGENTS.md` marker region (head regenerated, `## Specifics` tail preserved).
 
 ## `/pr`
 
@@ -110,7 +94,7 @@ condash skills install
 condash skills install
 ```
 
-The skills land at `<conception>/.claude/skills/`. Reload Claude Code (or start a new session) and `/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr` are available.
+The skill sources land at `<conception>/.agents/skills/`. With a harness launcher set up to render them, `/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr` become available in a session.
 
 `condash skills install` writes one file at a time and asks for confirmation per file when local content differs from the shipped version — your customisations don't get clobbered silently.
 
