@@ -151,4 +151,34 @@ describe('condash skills install (verbatim placement)', () => {
     expect(manifest!.files!['AGENTS.md']).toBeTruthy();
     expect((manifest as unknown as { templates?: unknown }).templates).toBeUndefined();
   });
+
+  it('normalizes a v3 manifest whose per-skill entry predates the source split', async () => {
+    // The pre-v4 v3 schema tracked compiled outputs under a per-skill `files`
+    // key with no `source` map. Reusing version 3 across the schema change,
+    // this used to crash install with "Cannot set properties of undefined
+    // (setting 'SKILL.claude.md')" — the first source file written for a skill.
+    const manifestPath = join(dest, '.agents', MANIFEST_RELPATH);
+    await fs.mkdir(dirname(manifestPath), { recursive: true });
+    await fs.writeFile(
+      manifestPath,
+      JSON.stringify(
+        {
+          version: 3,
+          skills: {
+            knowledge: {
+              files: { 'SKILL.md': { sha256: 'a'.repeat(64), shippedVersion: '3.1.0' } },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await install(); // must not throw
+    const manifest = await readManifest(dest);
+    expect(manifest!.version).toBe(3);
+    // The stale `files` map is discarded; the entry is re-seeded from sources.
+    expect(manifest!.skills.knowledge.source['SKILL.md']).toBeTruthy();
+    expect((manifest!.skills.knowledge as unknown as { files?: unknown }).files).toBeUndefined();
+  });
 });
