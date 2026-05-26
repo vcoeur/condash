@@ -1,3 +1,8 @@
+---
+name: tidy
+description: Audit the conception tree (knowledge index orphans + dangling links, cross-repo refs, branch ↔ worktree drift, LFS coverage, large binaries, stale verification stamps), batch the auto-fixable issues into a single confirm-then-apply round, and surface the rest as a punch-list. Wraps `condash audit --include all --json` and `condash knowledge verify --json`.
+---
+
 # /tidy — audit + batched fix the conception tree
 
 `/tidy` runs every condash audit + the knowledge verification stamp check, groups the results, applies auto-fixable items in one batch after the user confirms once, and reports the rest as manual work to do later.

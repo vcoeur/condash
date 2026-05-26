@@ -150,7 +150,7 @@ How you point a CLI at a non-native provider depends on how that CLI was built. 
 
 ## Inject a global AGENTS.md into Kimi
 
-Claude Code automatically reads `~/.claude/CLAUDE.md`; Kimi has no global instructions file by default. condash bridges this for **kimi-cli agents**: `condash skills install` writes your compiled global rules to a plain **`~/.kimi/AGENTS.md`**, and when you launch a kimi agent condash reads that file and wraps it into a *transient* `--agent-file` at spawn — so the instructions are always current and there's no YAML to hand-maintain.
+Claude Code automatically reads `~/.claude/CLAUDE.md`; Kimi has no global instructions file by default. condash bridges this for **kimi-cli agents**: the kimi agent's **Instructions file** field points at a plain markdown file (default **`~/.kimi/AGENTS.md`**), and when you launch a kimi agent condash reads that file and wraps it into a *transient* `--agent-file` at spawn — so the instructions are always current and there's no YAML to hand-maintain. condash does not write that file itself; supply it yourself (or have your agent-config tooling lay it down).
 
 The agent file condash generates at launch has this shape:
 
@@ -214,4 +214,4 @@ There is no wrapper script and nothing on `PATH` to maintain — condash builds 
 
 - [Use the embedded terminal](terminal.md) — the spawn dropdown and tabs that run these agents.
 - [Config files](../reference/config.md#agents) — agent storage (`<conception>/agents/`) and the `agents/.env` tokens file.
-- [CLI reference](../reference/cli.md#skills) — `condash skills install` and the `--user` scope.
+- [CLI reference](../reference/cli.md#skills) — `condash skills install`.

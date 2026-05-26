@@ -1,8 +1,7 @@
 /**
- * Read-only `condash skills` verbs — `list`, `status`, `validate` — for both
- * repo scope and user scope.
+ * Read-only `condash skills` verbs — `list`, `status`, `validate`.
  *
- * All four functions are pure observation: no writes, no manifest mutation.
+ * All three functions are pure observation: no writes, no manifest mutation.
  * `installRepo` writes the manifest; everything here reads it.
  */
 
@@ -10,14 +9,6 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
-import { AGENTS_MD_TARGETS, compileAgentConfig, type AgentsMdTarget } from '../../agents-md';
-import {
-  COMPILE_TARGETS,
-  compileSkillspec,
-  parseSkillspec,
-  SkillspecError,
-  type CompileTarget,
-} from '../../skillspec';
 import { MANIFEST_VERSION, readManifest, sha256, type Manifest } from './install-shared';
 import {
   SHIPPED_FILES,
@@ -34,25 +25,6 @@ import {
   readShippedSkills,
   resolveDest,
 } from './skills-shipped';
-import {
-  hostAllowed,
-  readHostLabel,
-  readUserAgentCommon,
-  readUserAgentFragment,
-  readUserScripts,
-  readUserSkills,
-  userAgentConfigOutput,
-  userAgentConfigRoot,
-  userScriptSourceRoot,
-  userScriptTargetRoot,
-  userSourceRoot,
-  userTargetRoot,
-  type ScriptCategory,
-} from './skills-user-fs';
-
-// ---------------------------------------------------------------------------
-// Repo-scope: list / status / validate
-// ---------------------------------------------------------------------------
 
 export interface RepoListReport {
   destination: string | null;
@@ -183,8 +155,6 @@ export async function repoStatus(args: ParsedArgs, ctx: OutputContext): Promise<
         }
       }
       if (shippedFile === null) {
-        // Either the skill is no longer shipped or the specific file was
-        // dropped from the spec. Both surface as source-missing.
         skillRows.push({
           skill: skillName,
           file: relPath,
@@ -311,21 +281,10 @@ export async function validateSkills(args: ParsedArgs, ctx: OutputContext): Prom
 
   for (const skill of selected) {
     const errors: string[] = [];
-    try {
-      const parsed = await parseSkillspec(skill.sourceDir);
-      for (const target of COMPILE_TARGETS) {
-        try {
-          compileSkillspec(parsed, target);
-        } catch (err) {
-          errors.push(`compile[${target}]: ${(err as Error).message}`);
-        }
-      }
-    } catch (err) {
-      if (err instanceof SkillspecError) {
-        errors.push(err.message);
-      } else {
-        throw err;
-      }
+    if (!skill.files.includes('SKILL.md')) {
+      errors.push('missing SKILL.md');
+    } else if (skill.description === null) {
+      errors.push('SKILL.md has no `description` in its frontmatter');
     }
     report.skills.push({ name: skill.name, errors });
   }
@@ -345,307 +304,6 @@ export async function validateSkills(args: ParsedArgs, ctx: OutputContext): Prom
     return lines.join('\n') + '\n';
   });
 
-  if (totalErrors > 0) {
-    throw new CliError(
-      ExitCodes.VALIDATION,
-      `${totalErrors} validation error(s) across ${report.skills.filter((s) => s.errors.length > 0).length} skill(s)`,
-      { skills: report.skills.filter((s) => s.errors.length > 0) },
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// User-scope: list / status / validate
-// ---------------------------------------------------------------------------
-
-export async function listUser(args: ParsedArgs, ctx: OutputContext): Promise<void> {
-  delete args.flags.user;
-  assertNoExtraFlags(args, NOUN_FLAGS);
-  const all = await readUserSkills();
-  const hostLabel = await readHostLabel();
-  const skillRows = all.map((s) => ({
-    name: s.name,
-    description: s.description,
-    files: s.files.length,
-    hosts: s.hosts,
-    allowedOnHost: hostAllowed(s, hostLabel),
-  }));
-  const scripts = await readUserScripts();
-  const scriptsByCategory: Record<
-    ScriptCategory,
-    { source: string; target: string; files: string[] }
-  > = {
-    agents: {
-      source: userScriptSourceRoot('agents'),
-      target: userScriptTargetRoot('agents'),
-      files: scripts.filter((s) => s.category === 'agents').map((s) => s.relPath),
-    },
-    claude: {
-      source: userScriptSourceRoot('claude'),
-      target: userScriptTargetRoot('claude'),
-      files: scripts.filter((s) => s.category === 'claude').map((s) => s.relPath),
-    },
-  };
-  const agentCommon = await readUserAgentCommon();
-  const agentConfigsList = {
-    source: userAgentConfigRoot(),
-    present: agentCommon !== null,
-    outputs: {
-      claude: userAgentConfigOutput('claude'),
-      kimi: userAgentConfigOutput('kimi'),
-      opencode: userAgentConfigOutput('opencode'),
-    },
-  };
-  emit(
-    ctx,
-    {
-      source: userSourceRoot(),
-      hostLabel,
-      skills: skillRows,
-      scripts: scriptsByCategory,
-      agentConfigs: agentConfigsList,
-    },
-    (data) => {
-      const d = data as {
-        source: string;
-        hostLabel: string | null;
-        skills: typeof skillRows;
-        scripts: typeof scriptsByCategory;
-        agentConfigs: typeof agentConfigsList;
-      };
-      const lines: string[] = [`Source: ${d.source}`];
-      if (d.hostLabel !== null) lines.push(`Host: ${d.hostLabel}`);
-      for (const r of d.skills) {
-        const hostTag =
-          r.hosts === null
-            ? ''
-            : r.allowedOnHost
-              ? ` [hosts: ${r.hosts.join(', ')}]`
-              : ' [skipped: not for this host]';
-        lines.push(`  ${r.name.padEnd(20)} ${(r.description ?? '').slice(0, 80)}${hostTag}`);
-      }
-      for (const category of ['agents', 'claude'] as const) {
-        const block = d.scripts[category];
-        if (block.files.length === 0) continue;
-        lines.push(`Scripts (${category}): ${block.source} → ${block.target}`);
-        for (const relPath of block.files) lines.push(`  ${relPath}`);
-      }
-      if (d.agentConfigs.present) {
-        lines.push(`Agent configs: ${d.agentConfigs.source}`);
-        lines.push(`  → ${d.agentConfigs.outputs.claude}  (claude)`);
-        lines.push(`  → ${d.agentConfigs.outputs.kimi}  (kimi)`);
-        lines.push(`  → ${d.agentConfigs.outputs.opencode}  (opencode)`);
-      }
-      return lines.join('\n') + '\n';
-    },
-    [],
-    { streamField: 'skills' },
-  );
-}
-
-export type UserStatusEntry =
-  | {
-      kind: 'skill';
-      skill: string;
-      target: CompileTarget;
-      relPath: string;
-      state: 'ok' | 'stale' | 'missing' | 'skipped';
-    }
-  | {
-      kind: 'script';
-      category: ScriptCategory;
-      relPath: string;
-      state: 'ok' | 'stale' | 'missing';
-    }
-  | {
-      kind: 'agent-config';
-      target: AgentsMdTarget;
-      path: string;
-      state: 'ok' | 'stale' | 'missing';
-    };
-
-export async function userSkillsStatus(args: ParsedArgs, ctx: OutputContext): Promise<void> {
-  delete args.flags.user;
-  assertNoExtraFlags(args, NOUN_FLAGS);
-  const all = await readUserSkills();
-  const hostLabel = await readHostLabel();
-  const items: UserStatusEntry[] = [];
-
-  for (const skill of all) {
-    if (!hostAllowed(skill, hostLabel)) {
-      items.push({
-        kind: 'skill',
-        skill: skill.name,
-        target: 'claude',
-        relPath: '-',
-        state: 'skipped',
-      });
-      continue;
-    }
-    const parsed = await parseSkillspec(skill.sourceDir);
-    for (const target of COMPILE_TARGETS) {
-      const compiled = compileSkillspec(parsed, target);
-      const outputRoot = join(userTargetRoot(target), skill.name);
-      for (const [relPath, content] of Object.entries(compiled.files)) {
-        const outPath = join(outputRoot, relPath);
-        let onDisk: Buffer | null = null;
-        try {
-          onDisk = await fs.readFile(outPath);
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-        }
-        let state: 'ok' | 'stale' | 'missing';
-        if (onDisk === null) state = 'missing';
-        else if (Buffer.compare(onDisk, content) === 0) state = 'ok';
-        else state = 'stale';
-        items.push({ kind: 'skill', skill: skill.name, target, relPath, state });
-      }
-    }
-  }
-
-  const scripts = await readUserScripts();
-  for (const script of scripts) {
-    const srcContent = await fs.readFile(join(script.source, script.relPath));
-    let onDisk: Buffer | null = null;
-    try {
-      onDisk = await fs.readFile(join(script.target, script.relPath));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-    }
-    let state: 'ok' | 'stale' | 'missing';
-    if (onDisk === null) state = 'missing';
-    else if (Buffer.compare(onDisk, srcContent) === 0) state = 'ok';
-    else state = 'stale';
-    items.push({ kind: 'script', category: script.category, relPath: script.relPath, state });
-  }
-
-  const agentCommon = await readUserAgentCommon();
-  if (agentCommon !== null) {
-    for (const target of AGENTS_MD_TARGETS) {
-      const fragment = await readUserAgentFragment(target);
-      const expected = compileAgentConfig(agentCommon, fragment, target, {
-        sourceDescription: userAgentConfigRoot(),
-      });
-      const outputPath = userAgentConfigOutput(target);
-      // All three targets are plain markdown on disk (Claude → CLAUDE.md,
-      // OpenCode + Kimi → AGENTS.md).
-      let onDisk: string | null = null;
-      try {
-        onDisk = await fs.readFile(outputPath, 'utf8');
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-      }
-      const state: 'ok' | 'stale' | 'missing' =
-        onDisk === null ? 'missing' : onDisk === expected ? 'ok' : 'stale';
-      items.push({ kind: 'agent-config', target, path: outputPath, state });
-    }
-  }
-
-  emit(
-    ctx,
-    { source: userSourceRoot(), hostLabel, items },
-    (data) => {
-      const d = data as { source: string; hostLabel: string | null; items: UserStatusEntry[] };
-      if (d.items.length === 0) return `(nothing tracked under ${d.source})\n`;
-      const skillRows = d.items.filter(
-        (r): r is Extract<UserStatusEntry, { kind: 'skill' }> => r.kind === 'skill',
-      );
-      const scriptRows = d.items.filter(
-        (r): r is Extract<UserStatusEntry, { kind: 'script' }> => r.kind === 'script',
-      );
-      const lines: string[] = [];
-      if (skillRows.length > 0) {
-        const widths = {
-          skill: Math.max(5, ...skillRows.map((r) => r.skill.length)),
-          target: 6,
-          file: Math.max(4, ...skillRows.map((r) => r.relPath.length)),
-        };
-        for (const r of skillRows) {
-          lines.push(
-            `  ${r.skill.padEnd(widths.skill)}  ${r.target.padEnd(widths.target)}  ${r.relPath.padEnd(widths.file)}  ${r.state}`,
-          );
-        }
-      }
-      if (scriptRows.length > 0) {
-        if (skillRows.length > 0) lines.push('');
-        const widths = {
-          category: Math.max(8, ...scriptRows.map((r) => `script-${r.category}`.length)),
-          file: Math.max(4, ...scriptRows.map((r) => r.relPath.length)),
-        };
-        for (const r of scriptRows) {
-          lines.push(
-            `  ${`script-${r.category}`.padEnd(widths.category)}  ${r.relPath.padEnd(widths.file)}  ${r.state}`,
-          );
-        }
-      }
-      const agentRows = d.items.filter(
-        (r): r is Extract<UserStatusEntry, { kind: 'agent-config' }> => r.kind === 'agent-config',
-      );
-      if (agentRows.length > 0) {
-        if (skillRows.length > 0 || scriptRows.length > 0) lines.push('');
-        const widths = {
-          target: 12,
-          path: Math.max(4, ...agentRows.map((r) => r.path.length)),
-        };
-        for (const r of agentRows) {
-          lines.push(
-            `  ${`agent-${r.target}`.padEnd(widths.target)}  ${r.path.padEnd(widths.path)}  ${r.state}`,
-          );
-        }
-      }
-      return lines.join('\n') + '\n';
-    },
-    [],
-    { streamField: 'items' },
-  );
-}
-
-export async function validateUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<void> {
-  const requestedNames = args.positional.length > 0 ? args.positional : null;
-  delete args.flags.user;
-  assertNoExtraFlags(args, NOUN_FLAGS);
-  const all = await readUserSkills();
-  const selected = requestedNames ? all.filter((s) => requestedNames.includes(s.name)) : all;
-  if (requestedNames) {
-    const known = new Set(all.map((s) => s.name));
-    const missing = requestedNames.filter((n) => !known.has(n));
-    if (missing.length > 0) {
-      throw new CliError(ExitCodes.NOT_FOUND, `Unknown skill(s): ${missing.join(', ')}`, {
-        available: all.map((s) => s.name),
-      });
-    }
-  }
-  const report: ValidateReport = { source: userSourceRoot(), skills: [] };
-  for (const skill of selected) {
-    const errors: string[] = [];
-    try {
-      const parsed = await parseSkillspec(skill.sourceDir);
-      for (const target of COMPILE_TARGETS) {
-        try {
-          compileSkillspec(parsed, target);
-        } catch (err) {
-          errors.push(`compile[${target}]: ${(err as Error).message}`);
-        }
-      }
-    } catch (err) {
-      if (err instanceof SkillspecError) errors.push(err.message);
-      else throw err;
-    }
-    report.skills.push({ name: skill.name, errors });
-  }
-  const totalErrors = report.skills.reduce((acc, s) => acc + s.errors.length, 0);
-  emit(ctx, report, (data) => {
-    const d = data as ValidateReport;
-    const lines: string[] = [`Source: ${d.source}`];
-    for (const s of d.skills) {
-      if (s.errors.length === 0) lines.push(`  ✓ ${s.name}`);
-      else {
-        lines.push(`  ✗ ${s.name}`);
-        for (const e of s.errors) lines.push(`      ${e}`);
-      }
-    }
-    return lines.join('\n') + '\n';
-  });
   if (totalErrors > 0) {
     throw new CliError(
       ExitCodes.VALIDATION,

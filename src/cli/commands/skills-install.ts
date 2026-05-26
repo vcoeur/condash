@@ -1,31 +1,24 @@
 /**
- * `condash skills install` — both scopes.
+ * `condash skills install` (repo scope).
  *
- * Repo scope (`installRepo`): pass 1 copies skillspec sources and top-level
- * file regions with refuse-on-edit semantics; pass 2 compiles everything on
- * disk (via `compileAllSkillspecs`) so a refused source still propagates
- * through to the per-target trees. Pass 1c copies the agent-config sources
- * (region-aware for the `condash.md` head, overwrite for the per-agent
- * fragments); pass 2b compiles them to `CLAUDE.md` / `AGENTS.md` and
- * materialises the combined body as `common.md`.
+ * condash does exactly two things with agent config in a conception:
  *
- * User scope (`installUserSkills`): no shipped tree, no manifest. Compile
- * the user's own skillspecs straight to `~/.claude/skills/` + `~/.kimi/skills/`,
- * apply the host-label filter, rsync script trees, and compile the user-scope
- * agent configs.
+ *   1. **Ship the skill sources** under `<dest>/.agents/skills/<name>/` —
+ *      `SKILL.md` (+ optional task `.md` files and an optional
+ *      `SKILL.<harness>.md` overlay), copied verbatim with refuse-on-edit.
+ *      condash no longer compiles them to per-harness dirs; the harness
+ *      launcher renders them per agent at run time.
+ *   2. **Maintain the `AGENTS.md` marker region** — regenerate the head (line 1
+ *      through `<!-- end condash agents -->`), preserve the user-owned tail.
+ *
+ * Plus the one region-delimited top-level file (`.gitignore`). Skill sources
+ * and `.gitignore` flow through one manifest (`.agents/.condash-skills.json`)
+ * with refuse-on-edit; `AGENTS.md` is deterministic (marker boundary) and not
+ * manifest-tracked.
  */
 
-import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
-import { AGENTS_MD_TARGETS, compileAgentConfig, type AgentsMdTarget } from '../../agents-md';
-import {
-  COMPILE_TARGETS,
-  compileSkillspec,
-  parseSkillspec,
-  type CompileTarget,
-} from '../../skillspec';
 import {
   cheapDiff,
   readManifest,
@@ -36,55 +29,36 @@ import {
   type Manifest,
 } from './install-shared';
 import {
+  AGENTS_MD_PATH,
   SHIPPED_FILES,
-  compileAgentConfigs,
-  ensureOpencodeConfig,
-  installAgentConfigSources,
+  installAgentsMd,
   installShippedFile,
   pruneSourceMissingFileEntries,
   sourceMissingFileRows,
+  type AgentsMdOutcome,
   type FileInstallOutcome,
-  type OpencodeConfigOutcome,
   type ShippedFile,
 } from './files';
 import {
   NOUN_FLAGS,
   SOURCE_RELPATH,
-  TARGET_RELPATHS,
   readShippedSkills,
   resolveDest,
   type ShippedSkill,
 } from './skills-shipped';
-import { compileAllSkillspecs, rmTreeIfPresent } from './skills-compile';
 import { pruneSourceMissingSkillEntries } from './skills-manifest';
-import {
-  hostAllowed,
-  readHostLabel,
-  readUserAgentCommon,
-  readUserAgentFragment,
-  readUserScripts,
-  readUserSkills,
-  userAgentConfigOutput,
-  userAgentConfigRoot,
-  userScriptSourceRoot,
-  userScriptTargetRoot,
-  userSourceRoot,
-  userTargetRoot,
-  type UserAgentConfigsReport,
-  type UserScriptsReport,
-} from './skills-user-fs';
+import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
 
 export interface InstallReport {
   destination: string;
   conceptionRoot: string;
-  outputs: Record<CompileTarget, string>;
   copied: { skill: string; relPath: string }[];
   updated: { skill: string; relPath: string }[];
   unchanged: { skill: string; relPath: string }[];
   refused: { skill: string; relPath: string; reason: string }[];
   forced: { skill: string; relPath: string }[];
   sourceMissing: { skill: string; relPath: string; shippedVersion: string }[];
-  compiled: { skill: string; target: CompileTarget; relPath: string }[];
   files: {
     copied: { path: string; region: string }[];
     updated: { path: string; region: string }[];
@@ -93,9 +67,7 @@ export interface InstallReport {
     forced: { path: string; region: string }[];
     sourceMissing: { path: string; region: string; shippedVersion: string }[];
   };
-  agentsMdCompiled: { target: AgentsMdTarget; path: string }[];
-  opencodeConfig: OpencodeConfigOutcome | null;
-  agentConfigsCopied: string[];
+  agentsMd: AgentsMdOutcome | null;
   pruned?: {
     skills: { skill: string; relPath: string; shippedVersion: string }[];
     files: { path: string; region: string; shippedVersion: string }[];
@@ -103,38 +75,31 @@ export interface InstallReport {
   diffs?: { kind: 'skill' | 'file'; label: string; diff: string }[];
 }
 
-export interface UserInstallReport {
-  source: string;
-  outputs: Record<CompileTarget, string>;
-  hostLabel: string | null;
-  skipped: { skill: string; hosts: string[] }[];
-  compiled: { skill: string; target: CompileTarget; relPath: string }[];
-  scripts: UserScriptsReport;
-  agentConfigs: UserAgentConfigsReport;
-}
-
 export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise<void> {
   const shipped = await readShippedSkills();
   const requested = args.positional.length > 0 ? args.positional : null;
 
-  // Partition positionals: skill names vs file paths vs unknown.
+  // Partition positionals: skill names vs file paths vs AGENTS.md vs unknown.
   const skillNameSet = new Set(shipped.map((s) => s.name));
   const filePathSet = new Set(SHIPPED_FILES.map((f) => f.path));
   let selectedSkills: ShippedSkill[];
   let selectedFiles: ShippedFile[];
+  let installAgents: boolean;
   if (requested) {
     const unknown: string[] = [];
     const skillNames = new Set<string>();
     const filePaths = new Set<string>();
+    installAgents = false;
     for (const pos of requested) {
       if (skillNameSet.has(pos)) skillNames.add(pos);
       else if (filePathSet.has(pos)) filePaths.add(pos);
+      else if (pos === AGENTS_MD_PATH) installAgents = true;
       else unknown.push(pos);
     }
     if (unknown.length > 0) {
       throw new CliError(ExitCodes.NOT_FOUND, `Unknown skill or file: ${unknown.join(', ')}`, {
         availableSkills: shipped.map((s) => s.name),
-        availableFiles: SHIPPED_FILES.map((f) => f.path),
+        availableFiles: [...SHIPPED_FILES.map((f) => f.path), AGENTS_MD_PATH],
       });
     }
     selectedSkills = shipped.filter((s) => skillNames.has(s.name));
@@ -142,6 +107,7 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
   } else {
     selectedSkills = shipped;
     selectedFiles = SHIPPED_FILES;
+    installAgents = true;
   }
 
   const dest = await resolveDest(args);
@@ -164,18 +130,12 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
   const report: InstallReport = {
     destination: sourceRoot,
     conceptionRoot: dest,
-    outputs: {
-      claude: join(dest, TARGET_RELPATHS.claude),
-      kimi: join(dest, TARGET_RELPATHS.kimi),
-      opencode: join(dest, TARGET_RELPATHS.opencode),
-    },
     copied: [],
     updated: [],
     unchanged: [],
     refused: [],
     forced: [],
     sourceMissing: [],
-    compiled: [],
     files: {
       copied: [],
       updated: [],
@@ -184,13 +144,12 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
       forced: [],
       sourceMissing: [],
     },
-    agentsMdCompiled: [],
-    opencodeConfig: null,
-    agentConfigsCopied: [],
+    agentsMd: null,
     diffs: showDiff ? [] : undefined,
   };
 
-  // Pass 1a: install skill sources with refuse-on-edit.
+  // Pass 1: install skill sources with refuse-on-edit, placing the source
+  // layout verbatim (SKILL.md + tasks + SKILL.<harness>.md). No compile.
   for (const skill of selectedSkills) {
     if (!manifest.skills[skill.name]) {
       manifest.skills[skill.name] = { source: {} };
@@ -204,8 +163,6 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
         sourceContent = await fs.readFile(sourcePath);
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-          // Shouldn't happen — readShippedSkills only returns existing files.
-          // Guard anyway: a vanished source surfaces as source-missing per file.
           const tracked = skillManifest.source[relPath];
           if (tracked) {
             report.sourceMissing.push({
@@ -271,7 +228,7 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
     }
   }
 
-  // Pass 1b: install top-level files (region-style).
+  // Pass 2: install the region-delimited top-level files (`.gitignore`).
   for (const file of selectedFiles) {
     const outcome = await installShippedFile(file, {
       dest,
@@ -284,40 +241,9 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
     recordFileOutcome(report, outcome);
   }
 
-  // Pass 2a: compile every skillspec on disk (not just the selected slice;
-  // the user may have skills installed from a previous run, and stale
-  // compiled outputs left behind by a partial run would be confusing).
-  const compileResult = await compileAllSkillspecs({
-    dest,
-    sourceRoot,
-    shipped,
-    shippedVersion,
-    dryRun,
-  });
-  report.compiled = compileResult.compiled;
-
-  // Pass 1c: copy agent-config sources. The `condash.md` head goes through the
-  // region-aware install path (the user-owned `conception.md` `## Specifics` is
-  // scaffold-once); the per-agent fragments (`claude.md`, `kimi.md`) overwrite
-  // in full. Pass 2b then materialises the combined body as `common.md`.
-  const agentInstall = await installAgentConfigSources({
-    dest,
-    shippedVersion,
-    force,
-    showDiff,
-    dryRun,
-    manifest,
-  });
-  report.agentConfigsCopied = agentInstall.copied;
-  if (agentInstall.commonOutcome) recordFileOutcome(report, agentInstall.commonOutcome);
-
-  // Pass 2b: compile .agents/agents/ → per-target outputs (no-op if source tree isn't on disk).
-  report.agentsMdCompiled = await compileAgentConfigs(dest, dryRun);
-
-  // Pass 2c: when an OpenCode config was compiled, ensure the conception-root
-  // opencode.json points OpenCode at it (it does not auto-discover `.opencode/`).
-  if (report.agentsMdCompiled.some((c) => c.target === 'opencode')) {
-    report.opencodeConfig = await ensureOpencodeConfig(dest, dryRun);
+  // Pass 3: maintain the AGENTS.md marker region (head regenerated, tail kept).
+  if (installAgents) {
+    report.agentsMd = await installAgentsMd(dest, dryRun);
   }
 
   // --prune: drop manifest entries whose shipped source is gone.
@@ -326,22 +252,15 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
     const prunedFiles = pruneSourceMissingFileEntries(manifest);
     report.pruned = { skills: prunedSkills, files: prunedFiles };
   } else {
-    // Even without --prune, surface source-missing entries in the report so
-    // the user knows to clean up. Walk the manifest after the install pass
-    // wrote anything new.
+    // Even without --prune, surface source-missing entries so the user knows
+    // to clean up.
     const skillNames = new Set(shipped.map((s) => s.name));
     for (const [name, entry] of Object.entries(manifest.skills)) {
       if (skillNames.has(name)) continue;
-      // Single pass over source: pick the first shippedVersion seen and emit
-      // one row per file. Previously two passes (values → keys).
       let version: string | undefined;
       for (const [relPath, fileEntry] of Object.entries(entry.source)) {
         version ??= fileEntry.shippedVersion;
-        report.sourceMissing.push({
-          skill: name,
-          relPath,
-          shippedVersion: version,
-        });
+        report.sourceMissing.push({ skill: name, relPath, shippedVersion: version });
       }
     }
     for (const row of sourceMissingFileRows(manifest)) {
@@ -395,7 +314,7 @@ function recordFileOutcome(report: InstallReport, outcome: FileInstallOutcome): 
       report.files.refused.push({ ...ref, reason: outcome.reason ?? 'refused' });
       break;
     case 'source-missing':
-      // Skip — surfaced via the manifest walk so the row carries shippedVersion.
+      // Surfaced via the manifest walk so the row carries shippedVersion.
       break;
   }
 }
@@ -403,8 +322,6 @@ function recordFileOutcome(report: InstallReport, outcome: FileInstallOutcome): 
 function formatInstallHuman(report: InstallReport): string {
   const lines: string[] = [];
   lines.push(`Source-of-truth: ${report.destination}`);
-  lines.push(`Compiled → ${report.outputs.claude}`);
-  lines.push(`Compiled → ${report.outputs.kimi}`);
   if (report.copied.length > 0) {
     lines.push(`Sources copied (${report.copied.length}):`);
     for (const f of report.copied) lines.push(`  + ${f.skill}/${f.relPath}`);
@@ -447,6 +364,9 @@ function formatInstallHuman(report: InstallReport): string {
       lines.push(`  × ${f.path}  (${f.reason})`);
     }
   }
+  if (report.agentsMd && report.agentsMd.state !== 'unchanged') {
+    lines.push(`AGENTS.md (${report.agentsMd.state}): ${report.agentsMd.path}`);
+  }
   if (report.sourceMissing.length > 0 || report.files.sourceMissing.length > 0) {
     const total = report.sourceMissing.length + report.files.sourceMissing.length;
     lines.push(`Source-missing (${total}, run with --prune to drop from manifest):`);
@@ -469,183 +389,11 @@ function formatInstallHuman(report: InstallReport): string {
       }
     }
   }
-  if (report.compiled.length > 0) {
-    const byTarget = new Map<CompileTarget, number>();
-    for (const c of report.compiled) {
-      byTarget.set(c.target, (byTarget.get(c.target) ?? 0) + 1);
-    }
-    const parts = COMPILE_TARGETS.filter((t) => byTarget.has(t)).map(
-      (t) => `${t}=${byTarget.get(t)}`,
-    );
-    lines.push(`Compiled outputs: ${parts.join(', ')}`);
-  }
-  if (report.agentConfigsCopied.length > 0) {
-    lines.push(`Agent configs copied (${report.agentConfigsCopied.length}):`);
-    for (const p of report.agentConfigsCopied) lines.push(`  + ${p}`);
-  }
-  if (report.agentsMdCompiled.length > 0) {
-    lines.push(`Compiled agent configs (${report.agentsMdCompiled.length}):`);
-    for (const c of report.agentsMdCompiled) lines.push(`  → ${c.path}  (${c.target})`);
-  }
-  if (report.opencodeConfig && report.opencodeConfig.state !== 'unchanged') {
-    const o = report.opencodeConfig;
-    const suffix = o.reason ? ` — ${o.reason}` : '';
-    lines.push(`OpenCode config (${o.state}): ${o.path}${suffix}`);
-  }
   if (report.diffs && report.diffs.length > 0) {
     for (const d of report.diffs) {
       lines.push('');
       lines.push(`--- diff: ${d.label}`);
       lines.push(d.diff);
-    }
-  }
-  return lines.join('\n') + '\n';
-}
-
-export async function installUserSkills(args: ParsedArgs, ctx: OutputContext): Promise<void> {
-  const all = await readUserSkills();
-  const requestedNames = args.positional.length > 0 ? args.positional : null;
-  if (requestedNames) {
-    const known = new Set(all.map((s) => s.name));
-    const missing = requestedNames.filter((n) => !known.has(n));
-    if (missing.length > 0) {
-      throw new CliError(ExitCodes.NOT_FOUND, `Unknown skill(s): ${missing.join(', ')}`, {
-        available: all.map((s) => s.name),
-      });
-    }
-  }
-  const selected = requestedNames ? all.filter((s) => requestedNames.includes(s.name)) : all;
-
-  const dryRun = args.flags['dry-run'] === true;
-  for (const k of ['user', 'dry-run']) delete args.flags[k];
-  assertNoExtraFlags(args, NOUN_FLAGS);
-
-  const hostLabel = await readHostLabel();
-  const report: UserInstallReport = {
-    source: userSourceRoot(),
-    outputs: {
-      claude: userTargetRoot('claude'),
-      kimi: userTargetRoot('kimi'),
-      opencode: userTargetRoot('opencode'),
-    },
-    hostLabel,
-    skipped: [],
-    compiled: [],
-    scripts: {
-      sources: {
-        agents: userScriptSourceRoot('agents'),
-        claude: userScriptSourceRoot('claude'),
-      },
-      targets: {
-        agents: userScriptTargetRoot('agents'),
-        claude: userScriptTargetRoot('claude'),
-      },
-      installed: [],
-    },
-    agentConfigs: {
-      source: userAgentConfigRoot(),
-      outputs: {
-        claude: userAgentConfigOutput('claude'),
-        kimi: userAgentConfigOutput('kimi'),
-        opencode: userAgentConfigOutput('opencode'),
-      },
-      compiled: [],
-    },
-  };
-
-  for (const skill of selected) {
-    if (!hostAllowed(skill, hostLabel)) {
-      report.skipped.push({ skill: skill.name, hosts: skill.hosts ?? [] });
-      continue;
-    }
-    const parsed = await parseSkillspec(skill.sourceDir);
-    for (const target of COMPILE_TARGETS) {
-      const compiled = compileSkillspec(parsed, target);
-      const outputRoot = join(userTargetRoot(target), skill.name);
-      if (!dryRun) await rmTreeIfPresent(outputRoot);
-      for (const [relPath, content] of Object.entries(compiled.files)) {
-        if (!dryRun) await writeFileMkdir(join(outputRoot, relPath), content);
-        report.compiled.push({ skill: skill.name, target, relPath });
-      }
-    }
-  }
-
-  // Scripts: rsync from staging dirs to final targets with +x. No compile,
-  // no manifest, no refuse-on-edit. Always run regardless of skill positional
-  // filter — scripts have no spec.yaml and no name addressable on the CLI.
-  // Sources silently absent → zero rows, no error.
-  const scripts = await readUserScripts();
-  for (const script of scripts) {
-    const srcPath = join(script.source, script.relPath);
-    const dstPath = join(script.target, script.relPath);
-    const buf = await fs.readFile(srcPath);
-    if (!dryRun) {
-      await writeFileMkdir(dstPath, buf);
-      await fs.chmod(dstPath, 0o755);
-    }
-    report.scripts.installed.push({ category: script.category, relPath: script.relPath });
-  }
-
-  // Agent configs: compile `~/.config/agents/agents/{common,claude,kimi}.md`.
-  // All three targets write plain markdown — Claude → `~/.claude/CLAUDE.md`,
-  // OpenCode → `~/.config/opencode/AGENTS.md`, Kimi → `~/.kimi/AGENTS.md`. Kimi
-  // doesn't read AGENTS.md natively; the kimi agent launcher wraps it into a
-  // transient `--agent-file` (ROLE_ADDITIONAL) at spawn. Sources silently
-  // absent → no compile, no error. Outputs are always regenerated.
-  const agentCommon = await readUserAgentCommon();
-  if (agentCommon !== null) {
-    for (const target of AGENTS_MD_TARGETS) {
-      const fragment = await readUserAgentFragment(target);
-      const compiled = compileAgentConfig(agentCommon, fragment, target, {
-        sourceDescription: userAgentConfigRoot(),
-      });
-      const outputPath = userAgentConfigOutput(target);
-      if (!dryRun) {
-        await writeFileMkdir(outputPath, Buffer.from(compiled, 'utf8'));
-      }
-      report.agentConfigs.compiled.push({ target, path: outputPath });
-    }
-  }
-
-  emit(ctx, report, formatUserInstallHuman);
-}
-
-function formatUserInstallHuman(report: UserInstallReport): string {
-  const lines: string[] = [];
-  lines.push(`Source: ${report.source}`);
-  lines.push(`Compiled → ${report.outputs.claude}`);
-  lines.push(`Compiled → ${report.outputs.kimi}`);
-  if (report.hostLabel !== null) lines.push(`Host: ${report.hostLabel}`);
-  if (report.skipped.length > 0) {
-    lines.push(`Skipped (host-mismatch, ${report.skipped.length}):`);
-    for (const s of report.skipped) {
-      lines.push(`  · ${s.skill}  (hosts: ${s.hosts.join(', ') || '[]'})`);
-    }
-  }
-  if (report.compiled.length > 0) {
-    const byTarget = new Map<CompileTarget, number>();
-    for (const c of report.compiled) byTarget.set(c.target, (byTarget.get(c.target) ?? 0) + 1);
-    const parts = COMPILE_TARGETS.filter((t) => byTarget.has(t)).map(
-      (t) => `${t}=${byTarget.get(t)}`,
-    );
-    lines.push(`Compiled outputs: ${parts.join(', ')}`);
-  }
-  if (report.scripts.installed.length > 0) {
-    const byCategory = new Map<'agents' | 'claude', number>();
-    for (const s of report.scripts.installed) {
-      byCategory.set(s.category, (byCategory.get(s.category) ?? 0) + 1);
-    }
-    const parts = (['agents', 'claude'] as const)
-      .filter((c) => byCategory.has(c))
-      .map((c) => `${c}=${byCategory.get(c)}`);
-    lines.push(
-      `Scripts installed → ${report.scripts.targets.agents}, ${report.scripts.targets.claude} (${parts.join(', ')})`,
-    );
-  }
-  if (report.agentConfigs.compiled.length > 0) {
-    lines.push(`Agent configs compiled (${report.agentConfigs.compiled.length}):`);
-    for (const c of report.agentConfigs.compiled) {
-      lines.push(`  → ${c.path}  (${c.target})`);
     }
   }
   return lines.join('\n') + '\n';

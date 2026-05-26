@@ -1,21 +1,16 @@
 /**
- * Install tests for the top-level file branch of `condash skills install`.
- * Verifies the .gitignore region-merge pass, the `.agents/agents/` → per-target
- * compile pass, and the v2 → v3 manifest namespace rename (`templates` → `files`).
+ * Install tests for the top-level file branch of `condash skills install`:
+ * the `.gitignore` region-merge pass, the `AGENTS.md` marker-region writer,
+ * verbatim skill placement (no compile), and the v2 → v3 manifest namespace
+ * rename (`templates` → `files`).
  */
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runSkills } from './skills';
-import {
-  AGENT_CONFIG_COMMON,
-  SHIPPED_FILES,
-  ensureOpencodeConfig,
-  statusShippedFile,
-} from './files';
+import { AGENTS_MD_MARKER, SHIPPED_FILES, statusShippedFile } from './files';
 import { MANIFEST_RELPATH, readManifest } from './install-shared';
-import { combineAgentSource } from '../../agents-md';
 import type { OutputContext } from '../output';
 
 const TEMPLATE_ROOT = resolve(__dirname, '..', '..', '..', 'conception-template');
@@ -34,103 +29,125 @@ function ctx(): OutputContext {
   return { json: true, ndjson: false, quiet: true, noColor: true };
 }
 
-async function install(positional: string[] = []): Promise<void> {
+async function install(
+  positional: string[] = [],
+  flags: Record<string, unknown> = {},
+): Promise<void> {
   process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
   await runSkills(
     'install',
-    { noun: 'skills', verb: 'install', positional, flags: { dest } },
+    { noun: 'skills', verb: 'install', positional, flags: { dest, ...flags } },
     ctx(),
   );
 }
 
-describe('condash skills install — top-level files', () => {
-  it('compiles condash.md + conception.md to .claude/CLAUDE.md + .kimi/AGENTS.md', async () => {
+describe('condash skills install — skill placement (no compile)', () => {
+  it('places the skill source layout verbatim under .agents/skills/<name>/', async () => {
     await install();
-
-    const claude = await fs.readFile(join(dest, '.claude/CLAUDE.md'), 'utf8');
-    // Variable substitution: skills_dir → .claude/skills/
-    expect(claude).toContain('.claude/skills/projects/SKILL.md');
-    // condash.md head (## General) + conception.md tail (## Specifics) both land.
-    expect(claude).toContain('## General');
-    expect(claude).toContain('## Specifics');
-    // Kimi-only fragment excluded from the Claude output.
-    expect(claude).not.toContain('Kimi Code CLI');
-
-    const kimi = await fs.readFile(join(dest, '.kimi/AGENTS.md'), 'utf8');
-    expect(kimi).toContain('.kimi/skills/projects/SKILL.md');
-    // Kimi fragment spliced in before ## Specifics.
-    expect(kimi).toContain('Kimi Code CLI');
+    const skillMd = await fs.readFile(join(dest, '.agents/skills/projects/SKILL.md'), 'utf8');
+    expect(skillMd).toContain('name: projects');
+    expect(skillMd).toContain('description:');
+    // A task file ships alongside.
+    await fs.access(join(dest, '.agents/skills/projects/close.md'));
+    // The Claude overlay ships as a sibling, not merged.
+    await fs.access(join(dest, '.agents/skills/projects/SKILL.claude.md'));
   });
 
-  it('materialises common.md = condash.md + conception.md in the source dir', async () => {
+  it('does not compile skills to per-harness dirs', async () => {
     await install();
-    const agentsDir = join(dest, '.agents/agents');
-    const condash = await fs.readFile(join(agentsDir, 'condash.md'), 'utf8');
-    const conception = await fs.readFile(join(agentsDir, 'conception.md'), 'utf8');
-    const common = await fs.readFile(join(agentsDir, 'common.md'), 'utf8');
-    // common.md is the agent-neutral combined body: the condash.md head then
-    // the conception.md tail, placeholders intact (not substituted).
-    expect(common).toBe(combineAgentSource(condash, conception));
-    expect(common.indexOf('## General')).toBeLessThan(common.indexOf('## Specifics'));
-    expect(common).toContain('{{ skills_dir }}');
+    await expect(fs.access(join(dest, '.claude/skills'))).rejects.toThrow();
+    await expect(fs.access(join(dest, '.kimi/skills'))).rejects.toThrow();
+    await expect(fs.access(join(dest, '.opencode/skills'))).rejects.toThrow();
   });
 
-  it('removes a stale body.md left by a pre-rename install', async () => {
+  it('does not write any compiled agent-config or opencode.json', async () => {
     await install();
-    const agentsDir = join(dest, '.agents/agents');
-    // An older condash materialised the combined body as body.md; the rename
-    // to common.md must clean it up so the source dir keeps a single body file.
-    await fs.writeFile(join(agentsDir, 'body.md'), 'stale\n');
+    await expect(fs.access(join(dest, '.claude/CLAUDE.md'))).rejects.toThrow();
+    await expect(fs.access(join(dest, '.kimi/AGENTS.md'))).rejects.toThrow();
+    await expect(fs.access(join(dest, 'opencode.json'))).rejects.toThrow();
+  });
+});
+
+describe('condash skills install — AGENTS.md marker region', () => {
+  it('creates AGENTS.md with the head, marker, and Specifics stub on a fresh install', async () => {
     await install();
-    await expect(fs.access(join(agentsDir, 'body.md'))).rejects.toThrow();
-    expect(await fs.readFile(join(agentsDir, 'common.md'), 'utf8')).toContain('## General');
+    const agents = await fs.readFile(join(dest, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain('## General');
+    expect(agents).toContain(AGENTS_MD_MARKER);
+    expect(agents).toContain('## Specifics');
+    // Head sits above the marker; Specifics below it.
+    expect(agents.indexOf('## General')).toBeLessThan(agents.indexOf(AGENTS_MD_MARKER));
+    expect(agents.indexOf(AGENTS_MD_MARKER)).toBeLessThan(agents.indexOf('## Specifics'));
+    // Skill pointers use the agent-neutral source path, not a compiled dir.
+    expect(agents).toContain('.agents/skills/projects/SKILL.md');
+    expect(agents).not.toContain('{{');
   });
 
-  it('writes a conception-root opencode.json pointing at the compiled .opencode/AGENTS.md', async () => {
+  it('substitutes conception_name + description from condash.json', async () => {
+    await fs.writeFile(join(dest, 'condash.json'), JSON.stringify({ description: 'My tree.' }));
     await install();
-    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
-    expect(cfg.$schema).toBe('https://opencode.ai/config.json');
-    expect(cfg.instructions).toContain('.opencode/AGENTS.md');
+    const agents = await fs.readFile(join(dest, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain(`# AGENTS.md — ${require('node:path').basename(dest)}`);
+    expect(agents).toContain('My tree.');
   });
 
-  it('merges into an existing opencode.json without clobbering other keys', async () => {
-    await fs.writeFile(
-      join(dest, 'opencode.json'),
-      JSON.stringify({
-        $schema: 'https://opencode.ai/config.json',
-        model: 'deepseek/deepseek-v4-pro',
-      }),
-    );
+  it('regenerates the head but preserves the user-owned tail; idempotent', async () => {
     await install();
-    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
-    expect(cfg.model).toBe('deepseek/deepseek-v4-pro');
-    expect(cfg.instructions).toEqual(['.opencode/AGENTS.md']);
+    const path = join(dest, 'AGENTS.md');
+    const original = await fs.readFile(path, 'utf8');
+    const idx = original.indexOf(AGENTS_MD_MARKER) + AGENTS_MD_MARKER.length;
+    const customTail = `\n\n## Specifics\n\nDurable team rule: always run make format.\n`;
+    await fs.writeFile(path, original.slice(0, idx) + customTail);
+
+    await install();
+    const after = await fs.readFile(path, 'utf8');
+    expect(after).toContain('Durable team rule: always run make format.');
+    expect(after).toContain('## General'); // head regenerated
+
+    // A second install with no edits is byte-stable.
+    const stable = await fs.readFile(path, 'utf8');
+    await install();
+    expect(await fs.readFile(path, 'utf8')).toBe(stable);
   });
 
-  it('is idempotent — a second install does not duplicate the instructions entry', async () => {
+  it('migrates a marker-less legacy AGENTS.md by pushing it below the marker', async () => {
+    const path = join(dest, 'AGENTS.md');
+    await fs.writeFile(path, '# My hand-written AGENTS.md\n\nSome project rules.\n');
     await install();
-    await install();
-    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
-    expect(cfg.instructions).toEqual(['.opencode/AGENTS.md']);
+    const after = await fs.readFile(path, 'utf8');
+    expect(after).toContain(AGENTS_MD_MARKER);
+    expect(after).toContain('My hand-written AGENTS.md');
+    // The old content is below the marker, not above it.
+    expect(after.indexOf(AGENTS_MD_MARKER)).toBeLessThan(after.indexOf('My hand-written'));
   });
 
+  it('`install AGENTS.md` touches only AGENTS.md', async () => {
+    await install(['AGENTS.md']);
+    await fs.access(join(dest, 'AGENTS.md'));
+    await expect(fs.access(join(dest, '.agents/skills/projects/SKILL.md'))).rejects.toThrow();
+    await expect(fs.access(join(dest, '.gitignore'))).rejects.toThrow();
+  });
+
+  it('a plain skill install does not rewrite AGENTS.md', async () => {
+    await install(['pr']);
+    await expect(fs.access(join(dest, 'AGENTS.md'))).rejects.toThrow();
+  });
+});
+
+describe('condash skills install — .gitignore', () => {
   it('writes .gitignore with region replacement', async () => {
     await install(['.gitignore']);
-
     const gitignore = await fs.readFile(join(dest, '.gitignore'), 'utf8');
     expect(gitignore).toContain('# General');
     expect(gitignore).toContain('# Specifics');
   });
 
-  it('ignores every per-target compiled artefact for all agent targets', async () => {
+  it('ignores the per-harness rendered artefacts', async () => {
     await install(['.gitignore']);
-
     const gitignore = await fs.readFile(join(dest, '.gitignore'), 'utf8');
-    // Compiled skill trees — one per agent target.
     expect(gitignore).toContain('.claude/skills/');
     expect(gitignore).toContain('.kimi/skills/');
     expect(gitignore).toContain('.opencode/skills/');
-    // Compiled agent-config files — equally build output, from `.agents/agents/`.
     expect(gitignore).toContain('.claude/CLAUDE.md');
     expect(gitignore).toContain('.kimi/AGENTS.md');
     expect(gitignore).toContain('.opencode/AGENTS.md');
@@ -145,7 +162,6 @@ describe('condash skills install — top-level files', () => {
   });
 
   it('migrates a v2 manifest with `templates` to v3 `files` on first install', async () => {
-    // Plant a v2 manifest tracking .gitignore.
     const manifestPath = join(dest, '.claude/skills', MANIFEST_RELPATH);
     await fs.mkdir(join(dest, '.claude/skills'), { recursive: true });
     await fs.writeFile(
@@ -162,34 +178,21 @@ describe('condash skills install — top-level files', () => {
         2,
       ),
     );
-
     await install(['.gitignore']);
-
     const manifest = await readManifest(dest);
     expect(manifest!.version).toBe(3);
-    // The stale entry survives the migration (it's still tracked in
-    // `files` — only --prune removes it).
     expect(manifest!.files!['.gitignore']).toBeTruthy();
   });
 
   it('ships .gitignore under the alias _gitignore (electron-builder filter workaround)', async () => {
-    // The destination is .gitignore but the bundled source must be
-    // _gitignore — electron-builder drops a top-level .gitignore from the
-    // asar by default. The install must still write a `.gitignore` at dest.
     const entry = SHIPPED_FILES.find((f) => f.path === '.gitignore');
     expect(entry?.sourcePath).toBe('_gitignore');
-    await fs.access(join(TEMPLATE_ROOT, '_gitignore')); // shipped under alias
+    await fs.access(join(TEMPLATE_ROOT, '_gitignore'));
     await install(['.gitignore']);
-    await fs.access(join(dest, '.gitignore')); // written under real name
+    await fs.access(join(dest, '.gitignore'));
   });
 
   it('status: no row for a user-owned .gitignore (no manifest, no markers)', async () => {
-    // Reproduces issue #167: in 3.4.1, `condash skills status` returned a
-    // phantom `.gitignore` row with state="missing-heading" whenever the
-    // conception had its own `.gitignore` without condash markers — even
-    // when the manifest was empty and `install` was a no-op. After the fix,
-    // statusShippedFile should report nothing for files condash doesn't
-    // manage.
     await fs.writeFile(join(dest, '.gitignore'), 'node_modules\n*.log\n');
     process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
     const file = SHIPPED_FILES.find((f) => f.path === '.gitignore')!;
@@ -198,74 +201,7 @@ describe('condash skills install — top-level files', () => {
     expect(row).toBeNull();
   });
 
-  it('never overwrites a user-customised conception.md across reinstall', async () => {
-    // First install scaffolds condash.md (head) + conception.md (Specifics stub).
-    await install();
-    const condashPath = join(dest, '.agents/agents/condash.md');
-    const conceptionPath = join(dest, '.agents/agents/conception.md');
-    const condash = await fs.readFile(condashPath, 'utf8');
-    expect(condash).toContain('## General');
-    // The head must not carry a `## Specifics` heading — that lives in conception.md.
-    expect(condash).not.toMatch(/^## Specifics\s*$/m);
-    expect(await fs.readFile(conceptionPath, 'utf8')).toContain('## Specifics');
-
-    // User rewrites conception.md (Apps table + a team rule).
-    const customised = [
-      '## Specifics',
-      '',
-      '| App       | Purpose     | Repo                   | Config             | Knowledge |',
-      '|-----------|-------------|------------------------|--------------------|-----------|',
-      '| `@my-app` | example app | `~/src/example/my-app` | `<repo>/CLAUDE.md` | _(none)_  |',
-      '',
-      '### Repo workflow',
-      '',
-      '- Always run `make format` after every code change.',
-      '',
-    ].join('\n');
-    await fs.writeFile(conceptionPath, customised);
-
-    // Second install must NOT touch conception.md (user-owned, never tracked).
-    await install();
-    const after = await fs.readFile(conceptionPath, 'utf8');
-    expect(after).toBe(customised);
-    expect(after).not.toContain('_(populate per-app)_');
-
-    // Compiled outputs must carry the customised Specifics rows.
-    const claude = await fs.readFile(join(dest, '.claude/CLAUDE.md'), 'utf8');
-    expect(claude).toContain('`@my-app`');
-    expect(claude).toContain('Always run `make format`');
-    const kimi = await fs.readFile(join(dest, '.kimi/AGENTS.md'), 'utf8');
-    expect(kimi).toContain('`@my-app`');
-
-    // Manifest tracks condash.md (the shipped head) — never conception.md.
-    const manifest = await readManifest(dest);
-    expect(manifest!.files![AGENT_CONFIG_COMMON.path]).toBeTruthy();
-    expect(manifest!.files![AGENT_CONFIG_COMMON.path].region).toBe('General');
-    expect(manifest!.files!['.agents/agents/conception.md']).toBeUndefined();
-  });
-
-  it('scaffolds conception.md from the stub when absent', async () => {
-    await install();
-    await fs.rm(join(dest, '.agents/agents/conception.md'));
-    await install();
-    const conception = await fs.readFile(join(dest, '.agents/agents/conception.md'), 'utf8');
-    expect(conception).toContain('## Specifics');
-  });
-
-  it('--prune does not drop the .agents/agents/condash.md manifest entry', async () => {
-    await install();
-    process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
-    await runSkills(
-      'install',
-      { noun: 'skills', verb: 'install', positional: [], flags: { dest, prune: true } },
-      ctx(),
-    );
-    const manifest = await readManifest(dest);
-    expect(manifest!.files![AGENT_CONFIG_COMMON.path]).toBeTruthy();
-  });
-
   it('--prune drops manifest entries whose shipped source no longer exists', async () => {
-    // Plant a v2 manifest tracking CLAUDE.md (no longer shipped).
     const manifestPath = join(dest, '.claude/skills', MANIFEST_RELPATH);
     await fs.mkdir(join(dest, '.claude/skills'), { recursive: true });
     await fs.writeFile(
@@ -282,70 +218,8 @@ describe('condash skills install — top-level files', () => {
         2,
       ),
     );
-
-    // Install with --prune.
-    process.env.CONDASH_TEMPLATE_ROOT = TEMPLATE_ROOT;
-    await runSkills(
-      'install',
-      { noun: 'skills', verb: 'install', positional: [], flags: { dest, prune: true } },
-      ctx(),
-    );
-
+    await install([], { prune: true });
     const manifest = await readManifest(dest);
     expect(manifest!.files!['CLAUDE.md']).toBeUndefined();
-  });
-});
-
-describe('ensureOpencodeConfig', () => {
-  it('creates opencode.json with the schema + instructions entry when absent', async () => {
-    const outcome = await ensureOpencodeConfig(dest, false);
-    expect(outcome.state).toBe('created');
-    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
-    expect(cfg).toEqual({
-      $schema: 'https://opencode.ai/config.json',
-      instructions: ['.opencode/AGENTS.md'],
-    });
-  });
-
-  it('merges the entry into an existing config, preserving other keys + entries', async () => {
-    await fs.writeFile(
-      join(dest, 'opencode.json'),
-      JSON.stringify({ model: 'x', instructions: ['docs/extra.md'] }),
-    );
-    const outcome = await ensureOpencodeConfig(dest, false);
-    expect(outcome.state).toBe('merged');
-    const cfg = JSON.parse(await fs.readFile(join(dest, 'opencode.json'), 'utf8'));
-    expect(cfg.model).toBe('x');
-    expect(cfg.instructions).toEqual(['docs/extra.md', '.opencode/AGENTS.md']);
-  });
-
-  it('is a no-op when the entry is already present', async () => {
-    await fs.writeFile(
-      join(dest, 'opencode.json'),
-      JSON.stringify({ instructions: ['.opencode/AGENTS.md'] }),
-    );
-    const before = await fs.readFile(join(dest, 'opencode.json'), 'utf8');
-    const outcome = await ensureOpencodeConfig(dest, false);
-    expect(outcome.state).toBe('unchanged');
-    expect(await fs.readFile(join(dest, 'opencode.json'), 'utf8')).toBe(before);
-  });
-
-  it('skips a malformed existing opencode.json instead of clobbering it', async () => {
-    await fs.writeFile(join(dest, 'opencode.json'), '{ not valid json ');
-    const outcome = await ensureOpencodeConfig(dest, false);
-    expect(outcome.state).toBe('skipped');
-    expect(await fs.readFile(join(dest, 'opencode.json'), 'utf8')).toBe('{ not valid json ');
-  });
-
-  it('skips when "instructions" exists but is not an array', async () => {
-    await fs.writeFile(join(dest, 'opencode.json'), JSON.stringify({ instructions: 'oops' }));
-    const outcome = await ensureOpencodeConfig(dest, false);
-    expect(outcome.state).toBe('skipped');
-  });
-
-  it('writes nothing in dry-run', async () => {
-    const outcome = await ensureOpencodeConfig(dest, true);
-    expect(outcome.state).toBe('created');
-    await expect(fs.access(join(dest, 'opencode.json'))).rejects.toThrow();
   });
 });

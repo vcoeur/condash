@@ -1,6 +1,7 @@
 /**
- * End-to-end install tests against the shipped conception-template
- * skillspec tree (read-only fixture) writing into a tmp dest.
+ * End-to-end install tests against the shipped conception-template skill tree
+ * (read-only fixture) writing into a tmp dest. condash places the skill source
+ * layout verbatim — no compile to per-harness dirs.
  */
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -40,38 +41,30 @@ async function install(extra: { force?: boolean } = {}): Promise<void> {
   );
 }
 
-describe('condash skills install (skillspec mode)', () => {
-  it('writes sources to .agents/skills/ and outputs to both targets', async () => {
+describe('condash skills install (verbatim placement)', () => {
+  it('places skill sources under .agents/skills/ and does not compile', async () => {
     await install();
 
-    // Source files for `pr` (a sibling-free skill) — should exist.
-    const prSpec = await fs.readFile(join(dest, '.agents/skills/pr/spec.yaml'), 'utf8');
-    expect(prSpec).toMatch(/description:/);
-    const prBody = await fs.readFile(join(dest, '.agents/skills/pr/body.md'), 'utf8');
-    expect(prBody).toMatch(/# \/pr/);
+    // `pr` ships SKILL.md (frontmatter + body) + a Claude overlay.
+    const prSkill = await fs.readFile(join(dest, '.agents/skills/pr/SKILL.md'), 'utf8');
+    expect(prSkill).toMatch(/^---\n/);
+    expect(prSkill).toContain('name: pr');
+    expect(prSkill).toContain('description:');
+    expect(prSkill).toMatch(/# \/pr/);
 
-    // Claude output for `pr` — frontmatter + body merged.
-    const claudeOut = await fs.readFile(join(dest, '.claude/skills/pr/SKILL.md'), 'utf8');
-    expect(claudeOut).toMatch(/^---\n/);
-    expect(claudeOut).toContain('description:');
-    expect(claudeOut).toContain('allowed-tools:');
-    expect(claudeOut).toMatch(/# \/pr/);
+    const prOverlay = await fs.readFile(join(dest, '.agents/skills/pr/SKILL.claude.md'), 'utf8');
+    expect(prOverlay).toContain('allowed-tools:');
 
-    // Kimi output for `pr` — frontmatter has no allowed-tools.
-    const kimiOut = await fs.readFile(join(dest, '.kimi/skills/pr/SKILL.md'), 'utf8');
-    expect(kimiOut).toMatch(/^---\n/);
-    expect(kimiOut).toContain('description:');
-    expect(kimiOut).not.toContain('allowed-tools:');
-    expect(kimiOut).toMatch(/# \/pr/);
+    // No compile to per-harness dirs.
+    await expect(fs.access(join(dest, '.claude/skills'))).rejects.toThrow();
+    await expect(fs.access(join(dest, '.kimi/skills'))).rejects.toThrow();
   });
 
-  it('copies sibling assets to both target trees', async () => {
+  it('copies task files alongside SKILL.md', async () => {
     await install();
-    // `projects` ships several siblings (close.md, create.md, …).
-    const claudeClose = await fs.readFile(join(dest, '.claude/skills/projects/close.md'), 'utf8');
-    const kimiClose = await fs.readFile(join(dest, '.kimi/skills/projects/close.md'), 'utf8');
-    expect(claudeClose).toBe(kimiClose);
-    expect(claudeClose.length).toBeGreaterThan(0);
+    // `projects` ships several task files (close.md, create.md, …).
+    const close = await fs.readFile(join(dest, '.agents/skills/projects/close.md'), 'utf8');
+    expect(close.length).toBeGreaterThan(0);
   });
 
   it('records source files in the v3 manifest', async () => {
@@ -81,7 +74,7 @@ describe('condash skills install (skillspec mode)', () => {
     expect(manifest!.version).toBe(3);
     const pr = manifest!.skills.pr;
     expect(pr).toBeTruthy();
-    expect(Object.keys(pr.source).sort()).toEqual(['body.md', 'spec.yaml', 'targets/claude.yaml']);
+    expect(Object.keys(pr.source).sort()).toEqual(['SKILL.claude.md', 'SKILL.md']);
     for (const entry of Object.values(pr.source)) {
       expect(entry.sha256).toMatch(/^[0-9a-f]{64}$/);
     }
@@ -89,38 +82,27 @@ describe('condash skills install (skillspec mode)', () => {
 
   it('refuses to overwrite a user-edited source file without --force', async () => {
     await install();
-    await fs.writeFile(join(dest, '.agents/skills/pr/body.md'), 'tampered\n');
+    await fs.writeFile(join(dest, '.agents/skills/pr/SKILL.md'), 'tampered\n');
     await expect(install()).rejects.toThrow(/refused/);
   });
 
-  it('--force overrides refuse-on-edit and recompiles', async () => {
+  it('--force overrides refuse-on-edit and restores shipped content', async () => {
     await install();
-    await fs.writeFile(join(dest, '.agents/skills/pr/body.md'), '# Tampered\n');
+    await fs.writeFile(join(dest, '.agents/skills/pr/SKILL.md'), '# Tampered\n');
     await install({ force: true });
-    const body = await fs.readFile(join(dest, '.agents/skills/pr/body.md'), 'utf8');
+    const body = await fs.readFile(join(dest, '.agents/skills/pr/SKILL.md'), 'utf8');
     expect(body).toMatch(/# \/pr/); // shipped content restored
   });
 
-  it('regenerates outputs on each install (idempotent)', async () => {
+  it('is idempotent — a second install leaves sources byte-identical', async () => {
     await install();
-    const before = await fs.readFile(join(dest, '.claude/skills/pr/SKILL.md'));
+    const before = await fs.readFile(join(dest, '.agents/skills/pr/SKILL.md'));
     await install();
-    const after = await fs.readFile(join(dest, '.claude/skills/pr/SKILL.md'));
+    const after = await fs.readFile(join(dest, '.agents/skills/pr/SKILL.md'));
     expect(before.equals(after)).toBe(true);
   });
 
-  it('strips stale output files that no longer exist in the source', async () => {
-    await install();
-    // Plant a stale file in the Claude output tree.
-    const stale = join(dest, '.claude/skills/pr/stale.md');
-    await fs.writeFile(stale, 'stale\n');
-    // Re-install: outputs are wiped + regenerated; stale.md should be gone.
-    await install();
-    await expect(fs.access(stale)).rejects.toThrow();
-  });
-
   it('migrates a v1 manifest in-place without error', async () => {
-    // Plant a v1 manifest that would have failed under the old "exact version match" check.
     const manifestPath = join(dest, '.claude/skills', MANIFEST_RELPATH);
     await fs.mkdir(dirname(manifestPath), { recursive: true });
     await fs.writeFile(
@@ -142,7 +124,8 @@ describe('condash skills install (skillspec mode)', () => {
     // forward into the v3 `files` namespace.
     expect(manifest!.files).toBeDefined();
     expect(manifest!.files!['AGENTS.md']).toBeTruthy();
-    expect(manifest!.skills.pr.source['spec.yaml']).toBeTruthy();
+    // pr is re-tracked from its new source layout.
+    expect(manifest!.skills.pr.source['SKILL.md']).toBeTruthy();
   });
 
   it('migrates a v2 manifest with `templates` to v3 `files`', async () => {
@@ -166,7 +149,6 @@ describe('condash skills install (skillspec mode)', () => {
     const manifest = await readManifest(dest);
     expect(manifest!.version).toBe(3);
     expect(manifest!.files!['AGENTS.md']).toBeTruthy();
-    // No top-level `templates` field on v3 reads.
     expect((manifest as unknown as { templates?: unknown }).templates).toBeUndefined();
   });
 });

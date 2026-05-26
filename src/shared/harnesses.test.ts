@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { AGENTS_MD_OUTPUTS } from '../agents-md/compile';
-import { COMPILE_TARGETS } from '../skillspec/types';
 import {
   type AgentDef,
   type ClaudeAgentConfig,
   buildSpawn,
-  COMPILE_HARNESS_IDS,
   defaultAgentsconfConfig,
   defaultClaudeConfig,
   defaultKimiConfig,
@@ -46,20 +43,11 @@ const deepseekConfig: ClaudeAgentConfig = {
   disableClaudeApiSkill: true,
 };
 
-describe('harness registry: launch vs compile decoupled', () => {
-  it('compile targets are the compile-capable subset — no agentsconf', () => {
-    expect([...COMPILE_TARGETS]).toEqual([...COMPILE_HARNESS_IDS]);
-    expect(COMPILE_TARGETS).not.toContain('agentsconf');
-    for (const id of COMPILE_TARGETS) {
-      expect(AGENTS_MD_OUTPUTS[id]).toBe(HARNESSES[id].agentsMdOutput);
-    }
-  });
-
-  it('agentsconf is a launchable harness with no compile output', () => {
+describe('harness registry', () => {
+  it('agentsconf is a launchable harness', () => {
     expect(HARNESS_IDS).toContain('agentsconf');
     expect(isHarnessId('agentsconf')).toBe(true);
-    expect(HARNESSES.agentsconf.agentsMdOutput).toBeUndefined();
-    expect(HARNESSES.agentsconf.skillsOutputDir).toBeUndefined();
+    expect(HARNESSES.agentsconf.binary).toBe('');
   });
 });
 

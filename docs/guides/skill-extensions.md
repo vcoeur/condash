@@ -7,7 +7,7 @@ description: How to fork or wrap the shipped /projects, /knowledge, /tidy, /skil
 
 > **Audience.** Daily user and Developer.
 
-**When to read this.** You ran `condash skills install` to drop the shipped skills into `<conception>/.claude/skills/`, used them for a week, and hit "I wish this also did X". This page shows how to add team-specific behaviour without losing access to upstream updates.
+**When to read this.** You ran `condash skills install` to drop the shipped skills into `<conception>/.agents/skills/`, used them for a week, and hit "I wish this also did X". This page shows how to add team-specific behaviour without losing access to upstream updates.
 
 The shipped skills are intentionally minimal — they cover the conception convention itself, not your team's workflow on top of it. Two extension paths exist; pick whichever matches your update cadence.
 
@@ -17,16 +17,16 @@ For the base reference (every action, every CLI verb each one wraps), see [the m
 
 ```bash
 # After running `condash skills install`
-<conception>/.claude/skills/projects/
-<conception>/.claude/skills/knowledge/
-<conception>/.claude/skills/tidy/
-<conception>/.claude/skills/skills/
-<conception>/.claude/skills/pr/
+<conception>/.agents/skills/projects/
+<conception>/.agents/skills/knowledge/
+<conception>/.agents/skills/tidy/
+<conception>/.agents/skills/skills/
+<conception>/.agents/skills/pr/
 ```
 
-Each directory contains a `SKILL.md` (the entry point) plus per-action detail files (e.g. `create.md`, `close.md` for `/projects`).
+Each directory contains a `SKILL.md` (the entry point) plus per-action detail files (e.g. `create.md`, `close.md` for `/projects`) and, where a harness needs its own frontmatter, an optional `SKILL.<harness>.md` overlay (e.g. `SKILL.claude.md`). The sources are placed verbatim — the harness launcher renders them per agent at run time.
 
-The manifest at `<conception>/.claude/skills/.condash-skills.json` tracks the shipped version + SHA256 per file. `condash skills install` walks the diff one file at a time and asks for confirmation when local content differs — your customisations don't get clobbered silently.
+The manifest at `<conception>/.agents/.condash-skills.json` tracks the shipped version + SHA256 per file. `condash skills install` walks the diff one file at a time and asks for confirmation when local content differs — your customisations don't get clobbered silently.
 
 ## Path 1 — fork the shipped files
 

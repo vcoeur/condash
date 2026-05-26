@@ -1,1 +1,0 @@
-description: Audit the conception tree (knowledge index orphans + dangling links, cross-repo refs, branch ↔ worktree drift, LFS coverage, large binaries, stale verification stamps), batch the auto-fixable issues into a single confirm-then-apply round, and surface the rest as a punch-list. Wraps `condash audit --include all --json` and `condash knowledge verify --json`.

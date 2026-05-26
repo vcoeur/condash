@@ -187,23 +187,23 @@ The skills (`/projects index`, `/knowledge index`) clear these after they regene
 
 ### `skills`
 
-Manage Claude Code, Kimi, and OpenCode skills. Two scopes:
+Install (or refresh) what condash ships into a conception. condash does exactly two things with agent config:
 
-- **Repo scope (default)** — installs the skills condash itself ships into a conception. Sources go to `<conception>/.agents/skills/<name>/`; compiled outputs to `<conception>/.claude/skills/<name>/`, `<conception>/.kimi/skills/<name>/`, and `<conception>/.opencode/skills/<name>/`.
-- **User scope (`--user`)** — compiles skillspecs the user already owns at `~/.config/agents/skills/<name>/` into `~/.claude/skills/<name>/`, `~/.kimi/skills/<name>/`, and `~/.config/opencode/skills/<name>/` (OpenCode uses the XDG config dir, not `~/.opencode/`). Used by the ClaudeConfig sync flow that mirrors versioned user skills out to live.
+- **Ship skill sources** under `<conception>/.agents/skills/<name>/` — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay, placed verbatim with refuse-on-edit. condash does **not** compile skills to per-harness directories; the harness launcher renders them per agent at run time.
+- **Maintain the `AGENTS.md` marker region** at the conception root — regenerate everything from line 1 through `<!-- end condash agents -->`, preserve the `## Specifics` tail verbatim.
 
-| Verb | Default scope | With `--user` |
-|---|---|---|
-| `list` | Print every skill condash ships | List user skillspecs under `~/.config/agents/skills/`, with host-filter status |
-| `install [<name>…]` | Copy shipped sources into the conception's `.agents/skills/`, then compile to `.claude/skills/` + `.kimi/skills/` + `.opencode/skills/`. Refuses on local edits without `--force` | Compile user sources to `~/.claude/skills/` + `~/.kimi/skills/` + `~/.config/opencode/skills/`. No source-copy pass; outputs always regenerated; no manifest |
-| `status` | Compare sources against the recorded SHA256 manifest | Compare each compiled output against a fresh in-memory compile: `ok` / `stale` / `missing` / `skipped` |
-| `validate [<name>…]` | Lint each shipped skillspec | Lint each user skillspec |
+It also ships one region-delimited top-level file, `.gitignore` (its `# General` region).
 
-`--user` is incompatible with `--dest`. The user-source root, target roots, and host-label file are env-overridable for tests (`CONDASH_USER_SKILLS_ROOT`, `CONDASH_USER_CLAUDE_ROOT`, `CONDASH_USER_KIMI_ROOT`, `CONDASH_USER_OPENCODE_ROOT`, `CONDASH_USER_HOST_FILE`).
+| Verb | What it does |
+|---|---|
+| `list` | Print every shipped skill + top-level file, with install status |
+| `install [<skill\|.gitignore\|AGENTS.md>…]` | Copy shipped skill sources into `.agents/skills/`, push the `.gitignore` region, and regenerate the `AGENTS.md` head. With no positionals, installs everything. Refuses on locally-edited sources / `.gitignore` without `--force` |
+| `status` | Per-skill / per-file install state (tracked, edited, missing on source) |
+| `validate [<skill>…]` | Lint shipped skills — each must have a `SKILL.md` carrying a `description` |
 
-A user skillspec's `spec.yaml` may carry a `hosts:` list — e.g. `hosts: [vcoeur]`. When present, condash reads the current host label from `~/.claude/.host` and skips any skill whose `hosts:` does not include that label. Absent `hosts:` means install everywhere. This replaces the multi-host filter previously enforced by ClaudeConfig's `/sync-config`.
+Install flags: `--dest <path>` (retarget the install dir; default the resolved conception or cwd), `--force` (override refuse-on-edit), `--diff` (show a unified diff per refused item), `--dry-run` (report without writing), `--prune` (drop manifest entries whose shipped source has been removed).
 
-The manifest at `.agents/.condash-skills.json` (repo scope only) tracks the shipped version and SHA256 per file, so updates can detect local edits.
+Skill sources and `.gitignore` flow through one manifest at `.agents/.condash-skills.json` (v3 schema: `skills.<name>` + `files.<path>`), tracking the shipped version and SHA256 per file so a re-install can detect local edits. `AGENTS.md` is deterministic (the marker is the boundary) and not manifest-tracked.
 
 ### `config`
 

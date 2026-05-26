@@ -1,7 +1,6 @@
 import { CliError, ExitCodes, reportError, type OutputContext } from './output';
 import { parseArgs, takeUniversalFlags, UsageError } from './parser';
 import { resolveConception } from './conception';
-import { runProject } from './commands/project';
 import { runProjects } from './commands/projects';
 import { runKnowledge } from './commands/knowledge';
 import { runSearch } from './commands/search';
@@ -21,7 +20,6 @@ GUI:
   condash gui [chromium-switch] Launch with Chromium switches (debugging).
 
 Nouns:
-  project      build (compile AGENTS.md → .claude/CLAUDE.md + .kimi/AGENTS.md)
   projects     list, read, resolve, search, validate, status get|set, close,
                reopen, backfill-closed, index, create, scan-promotions
   knowledge    tree, verify, retrieve, stamp, index
@@ -30,7 +28,7 @@ Nouns:
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
   dirty        list, touch <tree>, clear <tree|all>
-  skills       list shipped artefacts; install [<name-or-path>...]; status
+  skills       list shipped artefacts; install [<name-or-path>...]; status; validate
   config       conception-path, path, list [--effective|--global],
                get <key> [--effective|--global], set <key> <value> [--global],
                migrate (legacy condash.json → .condash/settings.json)
@@ -156,9 +154,6 @@ async function dispatch(
   const help = universal.help;
 
   switch (args.noun) {
-    case 'project':
-      await runProject(args.verb, args, ctx, help);
-      return ExitCodes.OK;
     case 'projects':
       await runProjects(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;

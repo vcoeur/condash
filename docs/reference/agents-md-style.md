@@ -7,9 +7,9 @@ description: How to write the per-conception ## Specifics section and durable te
 
 > **Audience.** Conception maintainers — anyone who edits the `AGENTS.md` at the root of a conception tree.
 
-Each conception's agent config is compiled from two source files under `.agents/agents/`: `condash.md` (the `## General` section) is shipped by condash and refreshed on every `condash skills install`; `conception.md` (the `## Specifics` section) is yours — it describes the apps, repositories, and team rules for this workspace, and condash never overwrites it. The two are concatenated, the per-agent fragment (`claude.md` / `kimi.md`) is spliced in, and the result compiles to each agent's `CLAUDE.md` / `AGENTS.md`. Each install also materialises the concatenation as a committed `common.md` — the agent-neutral body, mirroring the user-scope agentspec at `~/.config/agents/agents/common.md`.
+Each conception carries one `AGENTS.md` at its root, split by a marker line (`<!-- end condash agents -->`) into two parts. condash owns everything from line 1 through the marker (the H1 preamble + the `## General` section) and regenerates it on every `condash skills install` — the head carries `{{ conception_name }}` / `{{ description }}` substitution. Everything **after** the marker is yours: the `## Specifics` section, which describes the apps, repositories, and team rules for this workspace. condash never reads or rewrites the tail.
 
-This guide covers the shape of `conception.md` (the `## Specifics` section).
+This guide covers the shape of the `## Specifics` section (below the marker).
 
 ## Apps table
 
