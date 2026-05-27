@@ -1,24 +1,12 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { bootApp } from './fixtures/electron-app';
 
-/** Seed three valid agent definitions so the spawn dropdown lists
- *  `New shell` + 3 agents = 4 items. */
-async function seedThreeAgents(conceptionDir: string): Promise<void> {
-  await mkdir(join(conceptionDir, 'agents'), { recursive: true });
-  for (const variant of ['alpha', 'beta', 'gamma']) {
-    await writeFile(
-      join(conceptionDir, 'agents', `opencode-${variant}.json`),
-      JSON.stringify({
-        harness: 'opencode',
-        modelVariant: variant,
-        config: { model: `deepseek/${variant}`, disableExternalSkills: true },
-      }),
-      'utf8',
-    );
-  }
-}
+/** Three configured agents so the spawn dropdown lists `New shell` + 3 = 4 items. */
+const THREE_AGENTS = ['alpha', 'beta', 'gamma'].map((variant) => ({
+  id: `opencode-${variant}`,
+  label: `opencode-${variant}`,
+  command: `opencode --model deepseek/${variant}`,
+}));
 
 /**
  * Repro + regression test for the "New shell ▼" dropdown clip bug.
@@ -43,7 +31,7 @@ async function seedThreeAgents(conceptionDir: string): Promise<void> {
 test('spawn dropdown menu is visible + unclipped below the trigger', async ({}, testInfo) => {
   testInfo.setTimeout(60_000);
 
-  const booted = await bootApp({ prepare: seedThreeAgents });
+  const booted = await bootApp({ extraConfig: { agents: THREE_AGENTS } });
   try {
     const win = booted.window;
 

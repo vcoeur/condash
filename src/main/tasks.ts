@@ -3,11 +3,11 @@
  *
  * Tasks live as one directory each at `<conception>/tasks/<slug>/`, holding a
  * `task.json` (`name` / `agent` / `submit`) plus a hand-editable `prompt.md`.
- * This mirrors `agents.ts`: ENOENT-tolerant `listTasks`, derived-filename
- * writes, idempotent delete. The slug is the directory name (regex
- * `^[a-z0-9-]+$`, same family as agents/projects). The referenced `agent` may
- * dangle (renamed/removed) — `listTasks` flags that via `agentPresent` so the
- * pane can warn and disable Run.
+ * ENOENT-tolerant `listTasks`, derived-filename writes, idempotent delete. The
+ * slug is the directory name (regex `^[a-z0-9-]+$`, same family as projects).
+ * The referenced `agent` is an agent `id` from the `agents` settings list and
+ * may dangle (renamed/removed) — `listTasks` flags that via `agentPresent` so
+ * the pane can warn and disable Run.
  */
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -60,8 +60,8 @@ async function readTaskDir(conceptionPath: string, slug: string): Promise<TaskDe
 /**
  * List every valid task under `<conception>/tasks/`, sorted by name. Entries
  * that fail to parse are skipped (warned) rather than failing the whole pane.
- * `agentPresent` reflects whether the referenced agent resolves in
- * `<conception>/agents/`.
+ * `agentPresent` reflects whether the referenced agent `id` resolves in the
+ * `agents` settings list.
  */
 export async function listTasks(conceptionPath: string): Promise<TaskListItem[]> {
   let entries: string[];
@@ -71,7 +71,7 @@ export async function listTasks(conceptionPath: string): Promise<TaskListItem[]>
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw err;
   }
-  const agentSlugs = new Set((await listAgents(conceptionPath)).map((a) => a.slug));
+  const agentIds = new Set((await listAgents(conceptionPath)).map((a) => a.id));
   const items: TaskListItem[] = [];
   for (const slug of entries) {
     if (!isValidSlugTail(slug)) continue;
@@ -82,7 +82,7 @@ export async function listTasks(conceptionPath: string): Promise<TaskListItem[]>
         slug,
         name: def.name,
         agent: def.agent,
-        agentPresent: agentSlugs.has(def.agent),
+        agentPresent: agentIds.has(def.agent),
         markers: extractMarkers(def.prompt),
       });
     } catch (err) {
@@ -124,40 +124,6 @@ export async function writeTask(
     await deleteTask(conceptionPath, previousSlug);
   }
   return safe;
-}
-
-/**
- * Repoint every task that references `oldAgentSlug` to `newAgentSlug`, returning
- * the number rewritten. Called after an agent is renamed (cascade) so its tasks
- * keep resolving instead of dangling. Tasks that fail to parse are skipped.
- */
-export async function repointTasksAgent(
-  conceptionPath: string,
-  oldAgentSlug: string,
-  newAgentSlug: string,
-): Promise<number> {
-  if (oldAgentSlug === newAgentSlug) return 0;
-  let entries: string[];
-  try {
-    entries = await fs.readdir(tasksDir(conceptionPath));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
-    throw err;
-  }
-  let repointed = 0;
-  for (const slug of entries) {
-    if (!isValidSlugTail(slug)) continue;
-    let def: TaskDef | null;
-    try {
-      def = await readTaskDir(conceptionPath, slug);
-    } catch {
-      continue; // unparseable task — leave it alone
-    }
-    if (!def || def.agent !== oldAgentSlug) continue;
-    await writeTask(conceptionPath, slug, { ...def, agent: newAgentSlug });
-    repointed += 1;
-  }
-  return repointed;
 }
 
 /** Delete a task directory. No-op when already absent. */

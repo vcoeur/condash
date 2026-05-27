@@ -4,7 +4,7 @@ import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
 
 /** Push the user-configured card grid min-widths onto `:root` as CSS
  *  pixels. The pane stylesheets read
- *  `--card-min-{projects,code,knowledge,resources,skills,agents,logs,tasks,deliverables}`
+ *  `--card-min-{projects,code,knowledge,resources,skills,logs,tasks,deliverables}`
  *  with a literal fallback that matches DEFAULT_CARD_MIN_WIDTH, so a
  *  partial prefs object falls back per-key automatically. */
 function applyCardMinWidth(prefs: Required<CardMinWidthPrefs>): void {
@@ -23,7 +23,6 @@ function applyCardMinWidth(prefs: Required<CardMinWidthPrefs>): void {
   root.style.setProperty('--card-min-knowledge', `${clamp(prefs.knowledge, 520)}px`);
   root.style.setProperty('--card-min-resources', `${clamp(prefs.resources, 280)}px`);
   root.style.setProperty('--card-min-skills', `${clamp(prefs.skills, 280)}px`);
-  root.style.setProperty('--card-min-agents', `${clamp(prefs.agents, 360)}px`);
   root.style.setProperty('--card-min-logs', `${clamp(prefs.logs, 400)}px`);
   root.style.setProperty('--card-min-tasks', `${clamp(prefs.tasks, 340)}px`);
   root.style.setProperty('--card-min-deliverables', `${clamp(prefs.deliverables, 340)}px`);

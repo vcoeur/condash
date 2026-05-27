@@ -1,12 +1,12 @@
 import { ipcMain } from 'electron';
 import type { TaskDef } from '../../shared/tasks';
-import { deleteTask, listTasks, readTask, repointTasksAgent, writeTask } from '../tasks';
+import { deleteTask, listTasks, readTask, writeTask } from '../tasks';
 import { withConception } from './utils';
 
 /**
  * Wire the Tasks-pane IPC. Every verb is conception-scoped (tasks live at
- * `<conception>/tasks/`). Mirrors `ipc/agents.ts`; no secrets cross this
- * boundary (a task references an agent by name — the agent owns the token).
+ * `<conception>/tasks/`). A task references an agent by `id` from the `agents`
+ * settings list.
  */
 export function registerTasksIpc(): void {
   ipcMain.handle('listTasks', () => withConception((c) => listTasks(c), []));
@@ -21,9 +21,5 @@ export function registerTasksIpc(): void {
     withConception(async (c) => {
       await deleteTask(c, slug);
     }, undefined),
-  );
-
-  ipcMain.handle('repointTasksAgent', (_, oldAgentSlug: string, newAgentSlug: string) =>
-    withConception((c) => repointTasksAgent(c, oldAgentSlug, newAgentSlug), 0),
   );
 }

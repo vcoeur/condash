@@ -1,28 +1,16 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { bootApp } from './fixtures/electron-app';
 
 test('terminal pane: New shell spawns an unpinned shell; agents populate the spawn dropdown', async ({}, testInfo) => {
   testInfo.setTimeout(60_000);
   // Seed one agent so the dropdown has an entry beyond "New shell". We don't
-  // *launch* it — its harness binary (opencode) isn't installed on CI, so the
-  // pty would exit immediately and the renderer's auto-close would drop the
-  // tab. The pinned-tab label invariant rides on agents now (real binaries),
-  // which CI can't exercise; the unpinned "New shell" path is checked here.
+  // *launch* it — its command (opencode) isn't installed on CI, so the pty
+  // would exit immediately and the renderer's auto-close would drop the tab.
+  // The pinned-tab label invariant rides on agents now (real commands), which
+  // CI can't exercise; the unpinned "New shell" path is checked here.
   const booted = await bootApp({
-    prepare: async (dir) => {
-      await mkdir(join(dir, 'agents'), { recursive: true });
-      await writeFile(
-        join(dir, 'agents', 'opencode-demo.json'),
-        JSON.stringify({
-          harness: 'opencode',
-          name: 'opencode-demo',
-          slug: 'opencode-demo',
-          config: { model: 'deepseek/demo', disableExternalSkills: true },
-        }),
-        'utf8',
-      );
+    extraConfig: {
+      agents: [{ id: 'opencode-demo', label: 'opencode-demo', command: 'opencode' }],
     },
   });
   try {
@@ -30,7 +18,7 @@ test('terminal pane: New shell spawns an unpinned shell; agents populate the spa
 
     // The renderer must see the seeded agent.
     const agents = await win.evaluate(() => window.condash.listAgents());
-    expect(agents.map((a) => a.name)).toContain('opencode-demo');
+    expect(agents.map((a) => a.label)).toContain('opencode-demo');
 
     const dropdown = win.locator('.terminal-tab-dropdown').first();
     await dropdown.click();

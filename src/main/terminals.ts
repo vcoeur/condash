@@ -5,9 +5,7 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
-import type { SpawnSpec } from '../shared/harnesses';
 import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../shared/types';
-import { resolveAgentSpawn } from './agents';
 import { atomicWrite } from './atomic-write';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
@@ -162,21 +160,6 @@ function wrapForShell(shell: string, command: string): string[] {
   return ['-c', command];
 }
 
-/** Expand a leading `~/` in an agent argument to the user's home directory,
- *  so values like a `~/.kimi/...` path resolve once wrapped for the shell.
- *  Other args pass through untouched. */
-function expandHome(arg: string): string {
-  return arg.startsWith('~/') ? homedir() + arg.slice(1) : arg;
-}
-
-/** POSIX single-quote an agent arg unless it's already a bare safe token, so
- *  spaces/braces/quotes (e.g. kimi-cli's inline `--config` JSON) survive being
- *  joined into the shell command string. */
-function quoteArg(arg: string): string {
-  if (/^[A-Za-z0-9_/.\-:@=+,]+$/.test(arg)) return arg;
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
-
 export async function spawnTerminal(
   conceptionPath: string | null,
   webContents: WebContents,
@@ -192,19 +175,8 @@ export async function spawnTerminal(
   let argv: string[] = [];
   let program = shell;
   let forceStop: string | undefined;
-  // Agent env to apply on top of the inherited login env (set below, after
-  // childEnv is built). Resolved here so a missing token throws before spawn.
-  let agentSpec: SpawnSpec | null = null;
 
-  if (request.agentSlug && conceptionPath) {
-    // Resolve the agent slug to its binary + args + env (token injected from
-    // agents/.env). Run it through the login shell so PATH and `~` expansion
-    // match a hand-typed invocation.
-    agentSpec = await resolveAgentSpawn(conceptionPath, request.agentSlug, request.initialPrompt);
-    const parts = [agentSpec.command, ...agentSpec.args.map((a) => quoteArg(expandHome(a)))];
-    program = shell;
-    argv = wrapForShell(shell, parts.join(' '));
-  } else if (request.repo && conceptionPath) {
+  if (request.repo && conceptionPath) {
     const entry = findRepoEntry(config, request.repo);
     if (!entry) throw new Error(`Repo '${request.repo}' not found in effective config`);
     // Honour an explicit request.cwd (worktree path from the Code-pane Run
@@ -253,14 +225,6 @@ export async function spawnTerminal(
   delete childEnv.npm_config_prefix;
   delete childEnv.npm_config_globalconfig;
   delete childEnv.npm_config_userconfig;
-
-  // Layer the agent's env on top (claude's ANTHROPIC_* etc.), then drop the
-  // vars the harness wants unset (the unused auth var, claude's defensive
-  // cloud-routing unsets). Secrets only ever live in this child env.
-  if (agentSpec) {
-    for (const [key, value] of Object.entries(agentSpec.env)) childEnv[key] = value;
-    for (const key of agentSpec.unsetEnv) delete childEnv[key];
-  }
 
   const ptyProcess = pty.spawn(program, argv, {
     name: 'xterm-256color',

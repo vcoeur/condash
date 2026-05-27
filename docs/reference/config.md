@@ -72,7 +72,7 @@ Paths may use `~` (expanded to `$HOME`) or absolute paths. JSON does not carry c
 
 A `terminal` block at this level is a valid per-conception override. The boot-time migration in older condash builds lifted any pre-existing `terminal` block out of `configuration.json` and into `settings.json`; that migration still runs and is idempotent. With the unified schema, a fresh `.condash/settings.json` may carry its own `terminal` block — and unlike every other top-level key, the per-conception block **merges with** the global one (see the exception called out at the top of this page). A conception declaring `terminal.logging.retentionDays` keeps the global `terminal.screenshot_dir` it inherited.
 
-The legacy `terminal.launchers` array and the scalar `terminal.launcher_command` (condash ≤ 3.25, before the Agents pane) are dropped from the file on the next write — the tab-strip dropdown is now populated from [agents](#agents). A legacy action-template `launcher` binding is renamed to `agent` in place.
+The legacy `terminal.launchers` array and the scalar `terminal.launcher_command` (condash ≤ 3.25) are dropped from the file on the next write — the tab-strip dropdown is now populated from the top-level [agents](#agents) list. A legacy action-template `launcher` binding is renamed to `agent` in place.
 
 ### Terminal logging
 
@@ -189,7 +189,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `shortcut`                  | `` Ctrl+` ``                                            | Toggle the terminal pane. Modifiers: `Ctrl`, `Shift`, `Alt`, `Meta`. Key names follow the HTML `KeyboardEvent.key` convention.                 |
 | `screenshot_dir`            | `~/Pictures/Screenshots` on Linux, `~/Desktop` on macOS | Directory scanned for "most recent screenshot" by the paste shortcut.                                                                          |
 | `screenshot_paste_shortcut` | `Ctrl+Shift+V`                                          | Inserts the absolute path of the newest image in `screenshot_dir` into the active terminal. No `Enter` — you confirm.                          |
-| _(agents)_                  | —                                                       | The tab-strip spawn dropdown lists **agents** defined under `<conception>/agents/` — these are not a `terminal.*` key. See [Agents](#agents) below. |
+| _(agents)_                  | —                                                       | The tab-strip spawn dropdown lists **agents** from the top-level `agents` list — not a `terminal.*` key. See [Agents](#agents) below. |
 | `projectActions[]`          | `[]`                                                    | Configurable per-project actions — see [`terminal.projectActions`](#terminalprojectactions) below. Each entry adds an option to the dropdown next to a project's **Work on** button. |
 | `newProjectActions[]`       | `[]`                                                    | Configurable starter prompts — see [`terminal.newProjectActions`](#terminalnewprojectactions) below. Each entry adds an option to the dropdown next to the **+ New project** button. |
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                                          |
@@ -198,19 +198,31 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 
 ### Agents { #agents }
 
-The terminal tab-strip spawn dropdown lists **agents** (it always offers `New shell` first, then each agent). An agent is **not** a `terminal.*` config key — it is a JSON file under `<conception>/agents/`, managed by the **Agents** pane (right-edge strip → **Agents**, or `Ctrl+Shift+A`). An agent is a *harness* (`claude` / `kimi-cli` / `opencode`) plus a free-form display `name`, a stable `slug` (its identity), a harness-specific config, and an optional API token.
+**Agents** are a flat list of terminal launchers under the top-level `agents` key. The tab-strip spawn dropdown lists them (it always offers `New shell` first, then each agent by `label`). Picking one opens a new terminal tab running its `command` — that's the whole model. An agent is a **top-level** config key (like `repositories`), so it resolves global-default ← per-conception override like every other workspace key: define machine-wide defaults in `settings.json`, override or extend per tree in `.condash/settings.json`.
 
-- **Definition** — `<conception>/agents/<slug>.json`, one file per agent. The file carries `harness`, `name` (the display label), `slug` (the identity, mirrors the filename stem), the harness-specific `config` (e.g. claude's `ANTHROPIC_*` model + endpoint knobs), and `secretEnv` (the *name* of the token variable). It carries **no secret value**, so it is safe to commit.
-- **Tokens** — `<conception>/agents/.env` (`NAME=value` lines, gitignored) holds the API tokens. condash reads it only in the main process at spawn time; values never reach the renderer (the pane shows token *presence* only).
-- **Name vs. slug** — `name` is free-form (spaces and any case allowed; no forced harness prefix) and drives the dropdown label + pinned tab title. `slug` is lowercase-kebab (`^[a-z0-9]+(-[a-z0-9]+)*$`), is the JSON filename stem and the launch identity, and is **stable**: the pane auto-suggests it from the name on create (as `<harness-label>-<slugified-name>`, e.g. `opencode-deepseek-auto`) but freezes it on edit, so renaming the display name never moves the file.
+```json
+{
+  "agents": [
+    { "id": "claude", "label": "Claude", "command": "claude" },
+    { "id": "claude-kimi", "label": "Claude · Kimi", "command": "claude-kimi" },
+    { "id": "opencode-kimi", "label": "OpenCode · Kimi", "command": "opencode-kimi" }
+  ]
+}
+```
 
-Define, edit, launch, and inspect agents from the Agents pane rather than hand-editing these files. **Compatibility:** a legacy file that predates the name/slug split (carrying `modelVariant`, possibly with spaces/uppercase in its filename) still loads and launches — its `name` comes from `modelVariant` and its `slug` from the filename stem; it migrates to the clean shape the next time it's saved. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read (replaced by agents).
+| Key       | Type   | Required | Meaning                                                                                                                                                          |
+| --------- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`      | string | yes      | Stable identity referenced by [tasks](#tasks) and the `agent` field of [project / new-project actions](#terminalprojectactions). Non-empty.                       |
+| `label`   | string | yes      | Display name shown in the spawn dropdown and as the pinned tab title.                                                                                            |
+| `command` | string | yes      | Shell command run on launch, in a fresh tab with the terminal's ambient environment. Point it at a wrapper on `PATH` or inline the invocation. Blank → skipped.  |
+
+condash builds **no** provider environment and stores **no** secrets — model/provider wiring and any API token live entirely in `command` (usually a `~/bin` wrapper script). See the [Agent CLIs and model providers guide](../guides/agent-clis-and-models.md) for wrapper recipes. Edit the list in the Settings modal or the config file directly. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read. (A later per-file `<conception>/agents/<slug>.json` harness store was also replaced by this `agents` list.)
 
 ### Tasks { #tasks }
 
 **Tasks** are reusable, parameterized agent prompts — like agents, they live under the conception (not a `condash.json` key), managed by the **Tasks** pane (left-edge strip → **Tasks**). A task is a referenced agent plus a markdown prompt with fillable `{markers}`.
 
-- **Definition** — `<conception>/tasks/<slug>/`, one directory per task. `task.json` carries `name`, `agent` (the `slug` of an agent from above), and `submit` (optional bool, default `true`); `prompt.md` is the raw markdown prompt with markers. Config in JSON, prose in markdown — both are safe to commit. The slug is the directory name (`^[a-z0-9-]+$`); the `tasks/` tree is created on first save.
+- **Definition** — `<conception>/tasks/<slug>/`, one directory per task. `task.json` carries `name`, `agent` (the `id` of an agent from the `agents` list above), and `submit` (optional bool, default `true`); `prompt.md` is the raw markdown prompt with markers. Config in JSON, prose in markdown — both are safe to commit. The slug is the directory name (`^[a-z0-9-]+$`); the `tasks/` tree is created on first save.
 - **Markers** — `{KEY}` (required field) or `{KEY:default}` (prefilled). Reserved `{APP}` / `{PROJECT}` (and their `{APP_PATH}` / `{PROJECT_BRANCH}` / … sub-tokens) render as searchable pickers; one selection fills the whole family.
 - **Run** — spawns the task's agent in a fresh terminal tab (cwd = conception root), types the substituted prompt, and presses Enter when `submit` is true.
 
@@ -225,7 +237,7 @@ Per-entry actions rendered in the per-card **Work on** dropdown on the Projects 
   "terminal": {
     "projectActions": [
       { "label": "Claude review", "template": "claude \"review project {shortSlug}\"", "submit": true },
-      { "label": "Kimi summary", "template": "summarise {shortSlug}", "submit": true, "agent": "kimi-cli-native" }
+      { "label": "Kimi summary", "template": "summarise {shortSlug}", "submit": true, "agent": "kimi" }
     ]
   }
 }
@@ -236,7 +248,7 @@ Per-entry actions rendered in the per-card **Work on** dropdown on the Projects 
 | `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset (no dropdown option rendered).                                |
 | `template` | string           | yes      | Text pasted into the focused terminal when the entry is selected. May contain `{slug}`, `{shortSlug}`, `{title}`, `{branch}`, `{base}`, `{kind}`, `{status}`, `{date}`, `{apps}`, `{firstApp}`, `{path}`, `{relPath}`, and global placeholders (`{today}`, `{conception}`, `{conceptionPath}`). A `{placeholder:default}` form falls back to `default` when the placeholder is unknown; a default-less unknown placeholder is left verbatim so typos remain visible. Empty or whitespace is treated as the entry being unset. |
 | `submit`   | bool             | no       | When `true`, condash presses Enter after pasting the template. Default `false` — matches the current **Work on** behaviour and lets templates that end with a colon wait for the user to type the variable bit. |
-| `agent`    | string           | no       | When set, the `slug` of an agent under `<conception>/agents/`. The action spawns a fresh tab running that agent before typing the template — useful for binding an action to a specific agent. Empty / missing → type into the focused tab (a plain shell when no tab exists). A slug that no longer matches an agent falls through to the focused-tab flow. |
+| `agent`    | string           | no       | When set, the `id` of an agent from the `agents` list. The action spawns a fresh tab running that agent's command before typing the template — useful for binding an action to a specific agent. Empty / missing → type into the focused tab (a plain shell when no tab exists). An id that no longer matches an agent falls through to the focused-tab flow. |
 
 ### `terminal.newProjectActions` { #terminalnewprojectactions }
 
@@ -247,7 +259,7 @@ Per-entry starter prompts rendered in the **+ New project** dropdown. The contro
   "terminal": {
     "newProjectActions": [
       { "label": "Spec + design starter", "template": "start project for new feature, make spec.md note with functional specification, and design.md note with design plan:", "submit": false },
-      { "label": "Start new project (Claude)", "template": "Start new project ", "agent": "claude-deepseek-v4-pro" }
+      { "label": "Start new project (Claude)", "template": "Start new project ", "agent": "claude-kimi" }
     ]
   }
 }
@@ -258,7 +270,7 @@ Per-entry starter prompts rendered in the **+ New project** dropdown. The contro
 | `label`    | string           | yes      | User-defined name shown in the dropdown. Empty or whitespace is treated as the entry being unset.                                                              |
 | `template` | string           | yes      | Text pasted into the focused terminal. May contain global placeholders only: `{today}`, `{conception}`, `{conceptionPath}`. A `{placeholder:default}` form falls back to `default`; a default-less unknown placeholder is left verbatim. Empty or whitespace is treated as the entry being unset. |
 | `submit`   | bool             | no       | When `true`, condash presses Enter after pasting. Default `false`.                                                                                             |
-| `agent`    | string           | no       | When set, the `slug` of an agent under `<conception>/agents/`. The action spawns a fresh tab running that agent and types the template into the new tab — gives each entry a predictable starting environment (e.g. **Start new project → claude-deepseek-v4-pro** always opens a fresh agent shell). Empty / missing keeps the "type into focused tab" behaviour. |
+| `agent`    | string           | no       | When set, the `id` of an agent from the `agents` list. The action spawns a fresh tab running that agent's command and types the template into the new tab — gives each entry a predictable starting environment (e.g. **Start new project → claude-kimi** always opens a fresh agent shell). Empty / missing keeps the "type into focused tab" behaviour. |
 
 > **Note.** Selecting a new-project action does **not** create a project automatically — it only types a starter prompt into the terminal. The user then prompts their agent to create the project via `condash projects create`.
 
@@ -384,7 +396,7 @@ Workspace-shape keys (`workspace_path`, `worktrees_path`, `resources_path`, `ski
 | --------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `projects`      | bool                                                       | Show or hide the left band.                                                                                                  |
 | `leftView`      | `'projects' \| 'tasks' \| 'deliverables'`                  | Which pane fills the left band — the Projects list, the Tasks list, or the Deliverables aggregation of every project's `## Deliverables`. Selected by the left edge-strip handles. Defaults to `'projects'`. A persisted `'outputs'` (v3.20.0) is migrated to `'deliverables'`. |
-| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| 'agents' \| null` | Seven-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, `'logs'`, or `'agents'` shows that pane in the working slot; `null` hides them all. |
+| `working`       | `'code' \| 'knowledge' \| 'resources' \| 'skills' \| 'logs' \| null` | Six-state. `'code'`, `'knowledge'`, `'resources'`, `'skills'`, or `'logs'` shows that pane in the working slot; `null` hides them all. |
 | `terminal`      | bool                                                       | Show or hide the Terminal pane at the bottom.                                                                                 |
 | `projectsWidth` | non-negative int                                           | Pixel width of the Projects pane after the user drags the splitter.                                                           |
 
@@ -401,14 +413,13 @@ The IPC verbs `getLayout` / `setLayout` read and write this block atomically —
 | `knowledge`    | int 120 – 2400 (px) | 520     | Min width of a knowledge-section card on the Knowledge pane. |
 | `resources`    | int 120 – 2400 (px) | 280     | Min width of a resource card on the Resources pane.          |
 | `skills`       | int 120 – 2400 (px) | 280     | Min width of a skill card on the Skills pane.                |
-| `agents`       | int 120 – 2400 (px) | 360     | Min width of an agent card on the Agents pane.               |
 | `logs`         | int 120 – 2400 (px) | 400     | Min width of a session card on the Logs pane.                |
 | `tasks`        | int 120 – 2400 (px) | 340     | Min width of a task card on the Tasks pane.                  |
 | `deliverables` | int 120 – 2400 (px) | 340     | Min width of a deliverable card on the Deliverables pane.    |
 
 Lower numbers pack more cards per row at the same window size; higher numbers keep cards roomy. Values outside the `120–2400` range are silently dropped back to the default. Keys equal to the default are removed from disk so the bundled defaults can change in a future release without leaving stale literals on every machine.
 
-`getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`, `--card-min-resources`, `--card-min-skills`, `--card-min-agents`, `--card-min-logs`, `--card-min-tasks`, `--card-min-deliverables`) so live edits in the Settings modal reflow the grids without a reload.
+`getCardMinWidth` / `setCardMinWidth` round-trip the block; the renderer also applies the values as CSS variables on `:root` (`--card-min-projects`, `--card-min-code`, `--card-min-knowledge`, `--card-min-resources`, `--card-min-skills`, `--card-min-logs`, `--card-min-tasks`, `--card-min-deliverables`) so live edits in the Settings modal reflow the grids without a reload.
 
 Resolution order for the conception path, checked in sequence:
 

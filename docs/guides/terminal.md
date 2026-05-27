@@ -29,7 +29,7 @@ The pane starts as a single column. The right column materialises only when at l
 
 Each side header carries:
 
-- **Spawn dropdown** — a single button that opens a menu listing your **agents**. The first option is always `New shell` (spawns the configured shell); below it is one entry per agent, shown by its display **name**, defined in the [Agents pane](agent-clis-and-models.md). Selecting an agent spawns a tab running it (with its env / token injected). The menu is rendered through a Solid `<Portal>` to `document.body` (with `position: fixed` coordinates from `createDropdownMenu({ align: 'left' })`) so it escapes `.terminal-pane`'s `contain: layout paint` and the strip's `overflow: auto` — both of which would otherwise clip the menu down to the strip's 32 px height.
+- **Spawn dropdown** — a single button that opens a menu listing your **agents**. The first option is always `New shell` (spawns the configured shell); below it is one entry per agent, shown by its `label`, from the [`agents` settings list](agent-clis-and-models.md). Selecting an agent spawns a tab running its `command`. The menu is rendered through a Solid `<Portal>` to `document.body` (with `position: fixed` coordinates from `createDropdownMenu({ align: 'left' })`) so it escapes `.terminal-pane`'s `contain: layout paint` and the strip's `overflow: auto` — both of which would otherwise clip the menu down to the strip's 32 px height.
 - **Tab strip** — click to focus the tab; middle-click to close. Clicking inside the xterm itself also promotes the tab to active (the click+focus listener was wired so a stray click never silently sends keys to a different tab than the one you're looking at).
 
 Tab titles depend on how the tab was spawned:
@@ -164,11 +164,11 @@ Everything lives under `terminal:` in `${XDG_CONFIG_HOME:-~/.config}/condash/set
 
 See the [config reference](../reference/config.md) for the full key table with defaults.
 
-The spawn dropdown is populated from **agents**, not from a `terminal.*` key — define them in the [Agents pane](agent-clis-and-models.md). (condash ≤ 3.25 used a `terminal.launchers` array / `terminal.launcher_command` scalar; both are dropped on read.)
+The spawn dropdown is populated from the top-level **`agents`** list, not from a `terminal.*` key — see [Agent CLIs and model providers](agent-clis-and-models.md). (condash ≤ 3.25 used a `terminal.launchers` array / `terminal.launcher_command` scalar; both are dropped on read.)
 
 ## Editing shortcuts
 
-The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are managed in the [Agents pane](agent-clis-and-models.md), not the Settings modal.
+The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are the top-level [`agents`](../reference/config.md#agents) list, edited in the Settings modal alongside other workspace keys.
 
 ## Platform notes
 

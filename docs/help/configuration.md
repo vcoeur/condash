@@ -69,7 +69,6 @@ gives a kill button that frees a stuck port (e.g. `fuser -k 8200/tcp`).
     "knowledge": 520,
     "resources": 280,
     "skills": 280,
-    "agents": 360,
     "logs": 400,
     "tasks": 340,
     "deliverables": 340

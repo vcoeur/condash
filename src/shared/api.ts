@@ -1,6 +1,6 @@
-import type { AgentDef, AgentListItem, AgentSpawnPreview } from './harnesses';
 import type { TaskDef, TaskListItem } from './tasks';
 import type {
+  Agent,
   CardMinWidthPrefs,
   ConceptionInitState,
   DirtyDetails,
@@ -233,28 +233,10 @@ export interface CondashApi {
    */
   onRepoEvents(callback: (events: RepoEvent[]) => void): () => void;
 
-  /** List agents defined under `<conception>/agents/*.json`, each with token
-   *  presence (never the value). Empty when no conception / no agents. */
-  listAgents(): Promise<AgentListItem[]>;
-  /** Read one agent definition by slug. Null when absent. Carries no token. */
-  readAgent(slug: string): Promise<AgentDef | null>;
-  /** Create / update an agent JSON file at `agents/<slug>.json` (the def's
-   *  lowercase-kebab `slug`, validated by the main process). When `previousSlug`
-   *  differs from the new slug, the old file is removed (rename). Returns the
-   *  resolved slug. */
-  writeAgent(def: AgentDef, previousSlug?: string): Promise<string>;
-  /** Delete an agent definition file by slug. */
-  deleteAgent(slug: string): Promise<void>;
-  /** Spawn preview for the pane's "view full config" — auth vars show
-   *  `$SECRET_ENV` references, never a token. Null when the agent is absent. */
-  previewAgent(slug: string): Promise<AgentSpawnPreview | null>;
-  /** Raw contents of `<conception>/agents/.env` for the in-app token editor —
-   *  a commented template when the file is absent, or null when no conception
-   *  is active. This is the one verb that returns secret *values* to the
-   *  renderer, by explicit user action. */
-  readAgentsEnv(): Promise<string | null>;
-  /** Write the token editor's contents back to `<conception>/agents/.env`. */
-  writeAgentsEnv(content: string): Promise<void>;
+  /** List the conception's configured agents (`agents` list in
+   *  `condash.json` / `settings.json`), each a `{id,label,command}` launcher.
+   *  Empty when no conception / no agents. */
+  listAgents(): Promise<Agent[]>;
 
   /** List tasks defined under `<conception>/tasks/*`, each with its referenced
    *  agent, agent presence, and parsed markers. Empty when no conception. */
@@ -267,9 +249,6 @@ export interface CondashApi {
   writeTask(slug: string, def: TaskDef, previousSlug?: string): Promise<string>;
   /** Delete a task directory by slug. */
   deleteTask(slug: string): Promise<void>;
-  /** Repoint every task referencing `oldAgentSlug` to `newAgentSlug` (cascade
-   *  after an agent rename). Returns how many tasks were rewritten. */
-  repointTasksAgent(oldAgentSlug: string, newAgentSlug: string): Promise<number>;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;
@@ -398,7 +377,6 @@ export type MenuCommand =
   | 'show-resources'
   | 'show-skills'
   | 'show-logs'
-  | 'show-agents'
   | 'hide-working'
   | 'refresh'
   | 'about'

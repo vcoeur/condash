@@ -187,6 +187,19 @@ const actionTemplateSchema = z
   })
   .strict();
 
+/** One terminal-launcher agent. `id` is the stable identity referenced by
+ *  tasks and action templates; `label` is the spawn-dropdown display name;
+ *  `command` is the shell command run on launch. `label` / `command` accept
+ *  empty strings so a half-filled entry survives a round-trip to disk; the
+ *  spawn dropdown skips entries whose `command` is empty. */
+const agentSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string(),
+    command: z.string(),
+  })
+  .strict();
+
 const terminalSettings = z
   .object({
     shell: z.string().optional(),
@@ -274,6 +287,10 @@ const sharedSchemaFields = {
   /** Directory browsed by the Skills pane (default `.claude/skills`). */
   skills_path: conceptionRelativePath.optional(),
   repositories: z.array(topLevelRepoEntry).optional(),
+  /** Terminal-launcher agents — a flat `{id,label,command}` list surfaced in
+   *  the tab-strip spawn dropdown. Replaces the per-file `<conception>/agents/`
+   *  store. */
+  agents: z.array(agentSchema).optional(),
   open_with: z
     .object({
       main_ide: openWithSlot.optional(),
@@ -352,13 +369,13 @@ export const DEFAULT_SKILLS_PATH = '.claude/skills';
  * the stale keys outright.
  *
  * Current rules:
- * - `terminal.launchers` / `terminal.launcher_command` — dropped when the
- *   tab-strip launcher concept was replaced by Agents (see the Agents pane).
- *   Removed silently so existing `settings.json` / `condash.json` files keep
- *   saving; the next write drops them from disk.
+ * - `terminal.launchers` / `terminal.launcher_command` — legacy tab-strip
+ *   launcher keys. Removed silently so existing `settings.json` / `condash.json`
+ *   files keep saving; the next write drops them from disk. (Their successor is
+ *   the top-level `agents` list.)
  * - `terminal.{projectActions,newProjectActions}[].launcher` (named a launcher
- *   label) → `agent` (names an agent). The old value is unlikely to match an
- *   agent name, so the action degrades to focused-tab behaviour until the user
+ *   label) → `agent` (names an agent `id`). The old value is unlikely to match
+ *   an agent id, so the action degrades to focused-tab behaviour until the user
  *   re-points it — strictly better than failing the strict-mode parse.
  * - `terminal.logging.maxFileMb` and `terminal.logging.ansiPolicy` —
  *   dropped in v2.23.0 when the rotation machinery and ANSI stripping

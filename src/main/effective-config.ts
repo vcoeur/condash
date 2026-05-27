@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import type { ConfigShape } from './config-walk';
 import type {
+  Agent,
   CardMinWidthPrefs,
   LayoutState,
   TerminalPrefs,
@@ -61,6 +62,7 @@ export interface EffectiveConfig extends ConfigShape {
   cardMinWidth?: CardMinWidthPrefs;
   layout?: LayoutState;
   treeExpansion?: TreeExpansionPrefs;
+  agents?: Agent[];
 }
 
 /**

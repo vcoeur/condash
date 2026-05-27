@@ -17,8 +17,13 @@
 // - A draggable handle on the pane's top edge sets the pane height.
 
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import type { AgentListItem } from '@shared/harnesses';
-import type { TermSide, TermSpawnRequest, TerminalPrefs, TerminalXtermPrefs } from '@shared/types';
+import type {
+  Agent,
+  TermSide,
+  TermSpawnRequest,
+  TerminalPrefs,
+  TerminalXtermPrefs,
+} from '@shared/types';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
@@ -47,20 +52,17 @@ export interface SpawnOptions {
   pinned?: boolean;
 }
 
-/** Spawn-time agent selector. Passing an `AgentListItem` pins the tab label to
- *  the agent name and runs that agent (`<harness>-<model_variant>`); passing
- *  `null` is the plain `+` behaviour (no command, unpinned label tracking
- *  OSC 7 cwd). */
-export type AgentChoice = AgentListItem | null;
+/** Spawn-time agent selector. Passing an `Agent` pins the tab label to the
+ *  agent's label and runs its `command`; passing `null` is the plain `+`
+ *  behaviour (default shell, unpinned label tracking OSC 7 cwd). */
+export type AgentChoice = Agent | null;
 
 export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string, opts?: SpawnOptions): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
-  /** Add a fresh user shell tab to "My terms". `agent` may be an
-   *  `AgentListItem` to pin and run that agent, or `null` for a plain shell.
-   *  `initialPrompt` is passed through to `TermSpawnRequest` so harnesses that
-   *  support it (claude, opencode) receive the prompt as a CLI argument. */
-  spawnUserShell(agent?: AgentChoice, side?: TermSide, initialPrompt?: string): Promise<string>;
+  /** Add a fresh user shell tab to "My terms". `agent` may be an `Agent` to pin
+   *  and run that agent's command, or `null` for a plain shell. */
+  spawnUserShell(agent?: AgentChoice, side?: TermSide): Promise<string>;
   /** Move the active tab within its column strip. */
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
@@ -83,9 +85,9 @@ export function TerminalPane(props: {
    *  handle which is visible whether the body is shown or not. */
   onTogglePane: () => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
-  /** Agents defined under `<conception>/agents/`. Each renders as an option
+  /** Configured agents (the `agents` settings list). Each renders as an option
    *  in the tab-strip spawn dropdown (alongside "New shell"). */
-  agents: readonly AgentListItem[];
+  agents: readonly Agent[];
   /** Working directory passed to spawned user shells (typically the
    * conception path). */
   cwd?: string | null;
@@ -427,30 +429,27 @@ export function TerminalPane(props: {
   const spawnUserShell = async (
     agent: AgentChoice = null,
     sd: TermSide = 'my',
-    initialPrompt?: string,
   ): Promise<string> => {
-    const label = uniqueLabel(agent?.name || 'shell');
+    const label = uniqueLabel(agent?.label || 'shell');
     // Pin the label only when the caller picked an agent. The bare "New shell"
     // path leaves the tab unpinned so the shell's OSC 7 cwd basename drives the
     // displayed title.
     return spawn(
       {
         side: sd,
-        agentSlug: agent?.slug,
+        command: agent?.command,
         cwd: props.cwd ?? undefined,
-        initialPrompt,
       },
       label,
       { pinned: agent !== null },
     );
   };
 
-  /** Resolve an agent slug (or null) to its `AgentListItem` from props.agents.
-   *  Returns null for a missing slug — callers treat that as the plain
-   *  `New shell` path. */
-  const resolveAgent = (slug: string | null): AgentChoice => {
-    if (slug === null) return null;
-    return props.agents.find((a) => a.slug === slug) ?? null;
+  /** Resolve an agent id (or null) to its `Agent` from props.agents. Returns
+   *  null for a missing id — callers treat that as the plain `New shell` path. */
+  const resolveAgent = (id: string | null): AgentChoice => {
+    if (id === null) return null;
+    return props.agents.find((a) => a.id === id) ?? null;
   };
 
   // ---- live data + exit notification ----
@@ -642,10 +641,10 @@ export function TerminalPane(props: {
       onCommitRename={commitRename}
       onCancelRename={() => setRenamingId(null)}
       onCloseTab={closeTab}
-      onSpawnShell={(c, agentSlug) => {
+      onSpawnShell={(c, agentId) => {
         nextSpawnColumn = c;
         setActiveColumn(c);
-        void spawnUserShell(resolveAgent(agentSlug), 'my');
+        void spawnUserShell(resolveAgent(agentId), 'my');
       }}
       onSaveBuffer={(c) => {
         setActiveColumn(c);
