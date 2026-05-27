@@ -50,6 +50,34 @@ describe('buildSavePayload — repositories', () => {
   });
 });
 
+describe('buildSavePayload — agents', () => {
+  it('round-trips a fully-specified agent and is schema-valid', () => {
+    const payload = buildSavePayload({
+      agents: [{ id: 'claude-kimi', label: 'Claude · Kimi', command: 'claude-kimi' }],
+    });
+    expect(payload.agents).toEqual([
+      { id: 'claude-kimi', label: 'Claude · Kimi', command: 'claude-kimi' },
+    ]);
+    expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('keeps a freshly-added blank agent row so the schema still accepts it', () => {
+    // pruneEmpty would collapse { id:'', label:'', command:'' } to {} and drop
+    // the row; compactAgents preserves it so the user can fill it in post-reload.
+    const payload = buildSavePayload({
+      agents: [
+        { id: 'claude', label: 'Claude', command: 'claude' },
+        { id: '', label: '', command: '' },
+      ],
+    });
+    expect(payload.agents).toEqual([
+      { id: 'claude', label: 'Claude', command: 'claude' },
+      { id: '', label: '', command: '' },
+    ]);
+    expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
+  });
+});
+
 describe('compactRepos — invariants', () => {
   it('round-trips a blank-name entry without dropping the row', () => {
     expect(compactRepos([{ name: '' }])).toEqual([{ name: '' }]);

@@ -39,6 +39,7 @@ import {
   RepositoriesSection,
 } from './settings-modal-parts/sections-repos-and-open-with';
 import { RecentConceptionsSection } from './settings-modal-parts/section-recent-conceptions';
+import { AgentsSection } from './settings-modal-parts/sections-agents';
 import './settings-modal.css';
 
 /** Persisted last-active settings tab. Stored in localStorage so opening
@@ -998,6 +999,13 @@ export function SettingsModal(props: {
                   updateLogging={(p) => updateLogging('global', p)}
                   platform={platform}
                 />
+
+                <AgentsSection
+                  target="global"
+                  parsed={globalParsed}
+                  bindText={bindText}
+                  patch={patchSettings}
+                />
               </div>
 
               {/* Conception tabpanel ----------------------------------- */}
@@ -1106,6 +1114,24 @@ export function SettingsModal(props: {
                     badge={{
                       stateOf: () => stateOf('terminal'),
                       removeOverride: () => void removeOverride('terminal'),
+                    }}
+                  />
+                </div>
+
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('agents:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <AgentsSection
+                    target="conception"
+                    parsed={parsed}
+                    bindText={bindText}
+                    patch={patchConfig}
+                    badge={{
+                      stateOf: () => stateOf('agents'),
+                      removeOverride: () => void removeOverride('agents'),
                     }}
                   />
                 </div>

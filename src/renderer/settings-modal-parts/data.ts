@@ -1,5 +1,6 @@
 import type {
   ActionTemplate,
+  Agent,
   CardMinWidthPrefs,
   Platform,
   TerminalPrefs,
@@ -21,11 +22,13 @@ export type Section =
   | 'recents:global'
   | 'appearance:global'
   | 'terminal:global'
+  | 'agents:global'
   | 'workspace:conception'
   | 'repositories:conception'
   | 'open-with:conception'
   | 'appearance:conception'
-  | 'terminal:conception';
+  | 'terminal:conception'
+  | 'agents:conception';
 
 export interface SectionMeta {
   id: Section;
@@ -46,12 +49,14 @@ export const SECTIONS: SectionMeta[] = [
   { id: 'recents:global', label: 'Recent conceptions', tab: 'global' },
   { id: 'appearance:global', label: 'Appearance', tab: 'global' },
   { id: 'terminal:global', label: 'Terminal', tab: 'global' },
+  { id: 'agents:global', label: 'Agents', tab: 'global' },
   // Conception tab.
   { id: 'workspace:conception', label: 'Workspace', tab: 'conception' },
   { id: 'repositories:conception', label: 'Repositories', tab: 'conception' },
   { id: 'open-with:conception', label: 'Open with', tab: 'conception' },
   { id: 'appearance:conception', label: 'Appearance', tab: 'conception' },
   { id: 'terminal:conception', label: 'Terminal', tab: 'conception' },
+  { id: 'agents:conception', label: 'Agents', tab: 'conception' },
 ];
 
 /**
@@ -64,11 +69,13 @@ export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   'recents:global': [],
   'appearance:global': ['theme', 'cardMinWidth'],
   'terminal:global': ['terminal'],
+  'agents:global': ['agents'],
   'workspace:conception': ['workspace_path', 'worktrees_path', 'resources_path', 'skills_path'],
   'repositories:conception': ['repositories'],
   'open-with:conception': ['open_with'],
   'appearance:conception': ['theme', 'cardMinWidth'],
   'terminal:conception': ['terminal'],
+  'agents:conception': ['agents'],
 };
 
 export interface TabMeta {
@@ -241,6 +248,7 @@ export interface RawConfig {
   resources_path?: string;
   skills_path?: string;
   repositories?: RawRepo[];
+  agents?: Agent[];
   open_with?: Record<string, { label?: string; command?: string }>;
   pdf_viewer?: string[];
   theme?: Theme;
@@ -330,7 +338,7 @@ export function pruneEmpty(value: unknown): unknown {
  * rejects with `expected string, received undefined`.
  */
 export function buildSavePayload(config: RawConfig): RawConfig {
-  const { repositories, terminal, ...rest } = config;
+  const { repositories, agents, terminal, ...rest } = config;
   const pruned = pruneEmpty(rest) as RawConfig;
   if (terminal !== undefined) {
     const compacted = compactTerminal(terminal as RawTerminal);
@@ -339,7 +347,25 @@ export function buildSavePayload(config: RawConfig): RawConfig {
   if (repositories !== undefined) {
     pruned.repositories = compactRepos(repositories);
   }
+  if (agents !== undefined) {
+    pruned.agents = compactAgents(agents);
+  }
   return pruned;
+}
+
+/**
+ * Normalise agent rows for disk: keep `id` / `label` / `command` verbatim
+ * (all schema-valid as empty strings) so a freshly-added blank row survives
+ * the save round-trip and stays visible for the user to fill in. Routing them
+ * through `pruneEmpty` would strip the empty-string fields and leave `{}` rows
+ * the schema can't round-trip cleanly.
+ */
+export function compactAgents(agents: Agent[]): Agent[] {
+  return agents.map((a) => ({
+    id: a.id ?? '',
+    label: a.label ?? '',
+    command: a.command ?? '',
+  }));
 }
 
 type RawTerminal = {

@@ -216,7 +216,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `label`   | string | yes      | Display name shown in the spawn dropdown and as the pinned tab title.                                                                                            |
 | `command` | string | yes      | Shell command run on launch, in a fresh tab with the terminal's ambient environment. Point it at a wrapper on `PATH` or inline the invocation. Blank → skipped.  |
 
-condash builds **no** provider environment and stores **no** secrets — model/provider wiring and any API token live entirely in `command` (usually a `~/bin` wrapper script). See the [Agent CLIs and model providers guide](../guides/agent-clis-and-models.md) for wrapper recipes. Edit the list in the Settings modal or the config file directly. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read. (A later per-file `<conception>/agents/<slug>.json` harness store was also replaced by this `agents` list.)
+condash builds **no** provider environment and stores **no** secrets — model/provider wiring and any API token live entirely in `command` (usually a `~/bin` wrapper script). See the [Agent CLIs and model providers guide](../guides/agent-clis-and-models.md) for wrapper recipes. Edit the list in the Settings modal's **Agents** section (on both the Global and This-conception tabs — agents inherit global → conception like other keys) or in the config file directly. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read. (A later per-file `<conception>/agents/<slug>.json` harness store was also replaced by this `agents` list.)
 
 ### Tasks { #tasks }
 
