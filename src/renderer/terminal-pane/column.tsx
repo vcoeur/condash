@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import type { AgentListItem } from '@shared/harnesses';
+import type { Agent } from '@shared/types';
 import { createDropdownMenu } from '../dropdown-menu';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
@@ -11,9 +11,9 @@ export interface TerminalColumnProps {
   activeId: string | null;
   isActiveColumn: boolean;
   renamingId: string | null;
-  /** Agents defined under `<conception>/agents/`. One menu item each,
-   *  alphabetical, alongside the "New shell" option. */
-  agents: readonly AgentListItem[];
+  /** Configured agents (the `agents` settings list). One menu item each, in
+   *  config order, alongside the "New shell" option. */
+  agents: readonly Agent[];
   /** True when the surrounding pane is currently visible. Drives the
    *  active state of the in-strip Terminal handle. */
   paneOpen: boolean;
@@ -27,7 +27,7 @@ export interface TerminalColumnProps {
   onCommitRename: (id: string, value: string) => void;
   onCancelRename: () => void;
   onCloseTab: (id: string) => void;
-  onSpawnShell: (col: Column, agentSlug: string | null) => void;
+  onSpawnShell: (col: Column, agentId: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
   /** Toggle the pane open/closed. The Terminal handle in the strip
@@ -45,15 +45,15 @@ export interface TerminalColumnProps {
  *  box and the user sees only fragments of the menu items.
  */
 function SpawnDropdown(props: {
-  agents: readonly AgentListItem[];
-  onSpawn: (agentSlug: string | null) => void;
+  agents: readonly Agent[];
+  onSpawn: (agentId: string | null) => void;
 }) {
   const menu = createDropdownMenu({ align: 'left' });
   const [highlighted, setHighlighted] = createSignal(0);
 
   const items = () => [
     { label: 'New shell', value: null as string | null },
-    ...props.agents.map((a) => ({ label: a.name, value: a.slug as string | null })),
+    ...props.agents.map((a) => ({ label: a.label, value: a.id as string | null })),
   ];
 
   const select = (value: string | null) => {
@@ -249,10 +249,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
             </div>
           )}
         </For>
-        <SpawnDropdown
-          agents={props.agents}
-          onSpawn={(slug) => props.onSpawnShell(props.col, slug)}
-        />
+        <SpawnDropdown agents={props.agents} onSpawn={(id) => props.onSpawnShell(props.col, id)} />
         <span class="terminal-tab-strip-spacer" />
         <button
           class="terminal-tab-add"

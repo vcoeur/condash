@@ -83,10 +83,6 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
       deps.selectWorking(deps.layout().working === 'logs' ? null : 'logs');
       return;
     }
-    if (command === 'show-agents') {
-      deps.selectWorking(deps.layout().working === 'agents' ? null : 'agents');
-      return;
-    }
     if (command === 'hide-working') {
       deps.selectWorking(null);
       return;

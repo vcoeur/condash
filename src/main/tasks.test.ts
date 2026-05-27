@@ -2,30 +2,44 @@ import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { defaultClaudeConfig, type AgentDef } from '../shared/harnesses';
+import type { Agent } from '../shared/types';
 import type { TaskDef } from '../shared/tasks';
-import { writeAgent } from './agents';
-import { deleteTask, listTasks, readTask, repointTasksAgent, writeTask } from './tasks';
+import { deleteTask, listTasks, readTask, writeTask } from './tasks';
 
 let dir: string;
+let xdgDir: string;
+let prevXdg: string | undefined;
 
 beforeEach(async () => {
   dir = await fs.mkdtemp(join(tmpdir(), 'condash-tasks-'));
+  // Point the global settings dir at an empty tmp dir so `listAgents` (which
+  // reads the effective config = global settings.json overlaid by the
+  // conception's condash.json) doesn't pick up the dev machine's real agents.
+  xdgDir = await fs.mkdtemp(join(tmpdir(), 'condash-xdg-'));
+  prevXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = xdgDir;
 });
 afterEach(async () => {
+  if (prevXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+  else process.env.XDG_CONFIG_HOME = prevXdg;
   await fs.rm(dir, { recursive: true, force: true });
+  await fs.rm(xdgDir, { recursive: true, force: true });
 });
 
-const claudeAgent: AgentDef = {
-  harness: 'claude',
-  name: 'deepseek-v4-pro',
-  slug: 'claude-deepseek-v4-pro',
-  secretEnv: 'DEEPSEEK_API_KEY',
-  config: defaultClaudeConfig(),
+/** Seed the conception's `agents` list (the source `listTasks` resolves
+ *  agent presence against). */
+async function seedAgents(agents: Agent[]): Promise<void> {
+  await fs.writeFile(join(dir, 'condash.json'), JSON.stringify({ agents }, null, 2), 'utf8');
+}
+
+const deepseekAgent: Agent = {
+  id: 'claude-deepseek-v4-pro',
+  label: 'DeepSeek v4 Pro',
+  command: 'claude',
 };
 
 const task: TaskDef = {
-  // `agent` references the agent by its stable slug.
+  // `agent` references the agent by its stable id from the `agents` list.
   name: 'Refresh app docs',
   agent: 'claude-deepseek-v4-pro',
   submit: true,
@@ -72,7 +86,7 @@ describe('listTasks', () => {
   });
 
   it('lists tasks with parsed markers and agent presence', async () => {
-    await writeAgent(dir, claudeAgent); // makes the referenced agent resolve
+    await seedAgents([deepseekAgent]); // makes the referenced agent resolve
     await writeTask(dir, 'refresh-app-docs', task);
 
     const items = await listTasks(dir);
@@ -126,32 +140,6 @@ describe('writeTask rename + deleteTask', () => {
     await deleteTask(dir, 'refresh-app-docs');
     await deleteTask(dir, 'refresh-app-docs');
     expect(await listTasks(dir)).toEqual([]);
-  });
-});
-
-describe('repointTasksAgent (agent rename cascade)', () => {
-  it('rewrites only the tasks referencing the old agent and returns the count', async () => {
-    await writeTask(dir, 'a', { ...task, agent: 'claude-old' });
-    await writeTask(dir, 'b', { ...task, agent: 'claude-old' });
-    await writeTask(dir, 'c', { ...task, agent: 'kimi-other' });
-
-    const repointed = await repointTasksAgent(dir, 'claude-old', 'claude-new');
-    expect(repointed).toBe(2);
-
-    expect((await readTask(dir, 'a'))?.agent).toBe('claude-new');
-    expect((await readTask(dir, 'b'))?.agent).toBe('claude-new');
-    expect((await readTask(dir, 'c'))?.agent).toBe('kimi-other');
-  });
-
-  it('preserves each task name/submit/prompt while repointing', async () => {
-    await writeTask(dir, 'a', task);
-    await repointTasksAgent(dir, task.agent, 'claude-renamed');
-    expect(await readTask(dir, 'a')).toEqual({ ...task, agent: 'claude-renamed' });
-  });
-
-  it('is a no-op (0) when old and new slugs match or the tasks dir is absent', async () => {
-    expect(await repointTasksAgent(dir, 'x', 'x')).toBe(0);
-    expect(await repointTasksAgent(dir, 'absent', 'other')).toBe(0);
   });
 });
 

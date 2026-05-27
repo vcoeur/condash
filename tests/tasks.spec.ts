@@ -14,42 +14,11 @@ import { bootApp } from './fixtures/electron-app';
 
 const outDir = resolve(__dirname, 'screenshots-out', 'tasks');
 
-async function seedTask(conceptionDir: string): Promise<void> {
-  // An agent so the task's reference resolves (Run enabled, no "missing" badge).
-  const agentsDir = join(conceptionDir, 'agents');
-  await mkdir(agentsDir, { recursive: true });
-  await writeFile(
-    join(agentsDir, 'claude-deepseek-v4-pro.json'),
-    JSON.stringify(
-      {
-        harness: 'claude',
-        name: 'deepseek-v4-pro',
-        slug: 'claude-deepseek-v4-pro',
-        secretEnv: 'DEEPSEEK_API_KEY',
-        config: {
-          baseUrl: 'https://api.deepseek.com/anthropic',
-          authStyle: 'bearer',
-          model: 'deepseek-chat',
-          smallFastModel: 'deepseek-chat',
-          haikuAlias: 'deepseek-chat',
-          sonnetAlias: 'deepseek-chat',
-          opusAlias: 'deepseek-chat',
-          subagentModel: 'deepseek-chat',
-          maxContextTokens: 131072,
-          disableCaching: false,
-          disable1M: false,
-          disableAdaptiveThinking: false,
-          disableTelemetry: true,
-          disableErrorReporting: true,
-          disableClaudeApiSkill: true,
-        },
-      },
-      null,
-      2,
-    ),
-    'utf8',
-  );
+/** The agent the seeded task references — passed via `extraConfig.agents` so
+ *  the task's reference resolves (Run enabled, no "missing" badge). */
+const TASK_AGENT = { id: 'claude-deepseek-v4-pro', label: 'deepseek-v4-pro', command: 'claude' };
 
+async function seedTask(conceptionDir: string): Promise<void> {
   const taskDir = join(conceptionDir, 'tasks', 'refresh-app-docs');
   await mkdir(taskDir, { recursive: true });
   await writeFile(
@@ -76,6 +45,7 @@ test('tasks pane lists a task and fills its markers', async () => {
   const booted = await bootApp({
     prepare: seedTask,
     extraConfig: {
+      agents: [TASK_AGENT],
       repositories: [{ name: 'condash', path: '/home/alice/src/vcoeur/condash' }],
     },
   });
@@ -127,7 +97,7 @@ test('tasks pane lists a task and fills its markers', async () => {
 });
 
 test('new task editor creates a task end-to-end', async () => {
-  const booted = await bootApp({ prepare: seedTask });
+  const booted = await bootApp({ prepare: seedTask, extraConfig: { agents: [TASK_AGENT] } });
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
@@ -155,7 +125,7 @@ test('new task editor creates a task end-to-end', async () => {
 });
 
 test('clicking a card opens the editor; delete is confirmed and removes the task', async () => {
-  const booted = await bootApp({ prepare: seedTask });
+  const booted = await bootApp({ prepare: seedTask, extraConfig: { agents: [TASK_AGENT] } });
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1400, height: 900 });

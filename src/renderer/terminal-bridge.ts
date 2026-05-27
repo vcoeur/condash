@@ -1,5 +1,11 @@
-import type { AgentListItem } from '@shared/harnesses';
-import type { ActionTemplate, Project, RepoEntry, TerminalPrefs, Worktree } from '@shared/types';
+import type {
+  Agent,
+  ActionTemplate,
+  Project,
+  RepoEntry,
+  TerminalPrefs,
+  Worktree,
+} from '@shared/types';
 import { globalContext, projectContext, substitute } from '@shared/action-template';
 import type { TerminalPaneHandle } from './terminal-pane';
 
@@ -11,9 +17,9 @@ export interface TerminalBridgeDeps {
   ensureTerminalOpen: () => void;
   /** Read terminal preferences (for the screenshot directory). */
   terminalPrefs: () => TerminalPrefs | undefined;
-  /** Read the agents defined under `<conception>/agents/` (for action
-   *  templates that bind to a specific agent via `action.agent`). */
-  agents: () => readonly AgentListItem[];
+  /** Read the configured agents (the `agents` settings list), for action
+   *  templates that bind to a specific agent via `action.agent`. */
+  agents: () => readonly Agent[];
   /** Surface a transient toast in the renderer. */
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
   /** Current conception path for global-context substitution. */
@@ -42,10 +48,10 @@ export interface TerminalBridge {
    *  "Paste path → Term" button — re-uses the same "open pane, spawn
    *  shell if needed" dance as `handleWorkOn`. Does not press Enter. */
   handlePasteToTerm: (text: string) => Promise<void>;
-  /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentSlug`,
+  /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentId`,
    *  type the already-substituted `text`, and press Enter when `submit` is true.
    *  Same spawn-and-type path as an agent-bound project action. */
-  runTask: (agentSlug: string, text: string, submit: boolean) => Promise<void>;
+  runTask: (agentId: string, text: string, submit: boolean) => Promise<void>;
 }
 
 /** Upper bound on animation frames waited for the pane to mount after
@@ -76,14 +82,11 @@ async function waitForTerminalHandle(deps: TerminalBridgeDeps): Promise<Terminal
   return deps.terminalHandle();
 }
 
-/** Look up an agent by slug from the current agent list. Returns null for an
- *  empty/missing slug or when no agent matches. */
-function findAgentBySlug(
-  agents: readonly AgentListItem[],
-  slug: string | undefined,
-): AgentListItem | null {
-  if (!slug) return null;
-  return agents.find((a) => a.slug === slug) ?? null;
+/** Look up an agent by id from the current agent list. Returns null for an
+ *  empty/missing id or when no agent matches. */
+function findAgentById(agents: readonly Agent[], id: string | undefined): Agent | null {
+  if (!id) return null;
+  return agents.find((a) => a.id === id) ?? null;
 }
 
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
@@ -110,22 +113,15 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     return handle;
   };
 
-  /** Spawn a fresh tab running `agent` and settle. Two-step settle:
+  /** Spawn a fresh tab running `agent`'s command and settle. Two-step settle:
    *  (1) reconcile needs at least one tick to receive the onTermSessions
    *  snapshot, attach the xterm, and set the new tab as active;
-   *  (2) the agent process itself (e.g. `claude`, `kimi`) needs time to print
+   *  (2) the launched command (e.g. an interactive REPL) may need time to print
    *  its prompt before it will accept typed input — typing during init drops
    *  characters or lands in a not-yet-ready REPL. AGENT_SPAWN_SETTLE_MS covers
    *  both. setTimeout (not requestAnimationFrame) so this stays callable in
-   *  unit tests (jsdom env has no rAF).
-   *
-   *  When `initialPrompt` is set, it passes the prompt as a CLI argument to the
-   *  agent harness (claude: positional arg; opencode: `--prompt`). The settle
-   *  delay is skipped in that case — the prompt is in argv, not typed via pty. */
-  const spawnAgentTab = async (
-    agent: AgentListItem,
-    initialPrompt?: string,
-  ): Promise<TerminalPaneHandle | null> => {
+   *  unit tests (jsdom env has no rAF). */
+  const spawnAgentTab = async (agent: Agent): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -134,27 +130,25 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (!handle) return null;
     deps.ensureTerminalOpen();
     try {
-      await handle.spawnUserShell(agent, 'my', initialPrompt);
+      await handle.spawnUserShell(agent, 'my');
     } catch (err) {
-      deps.flashToast(`Could not spawn ${agent.name}: ${(err as Error).message}`, 'error');
+      deps.flashToast(`Could not spawn ${agent.label}: ${(err as Error).message}`, 'error');
       return null;
     }
-    if (!initialPrompt) {
-      await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
-    }
+    await new Promise<void>((resolve) => setTimeout(resolve, AGENT_SPAWN_SETTLE_MS));
     return handle;
   };
 
   /** Action-aware preamble: when the action binds an agent (`action.agent`,
-   *  one of the agents under `<conception>/agents/`), spawn a fresh tab
-   *  running that agent on every click — keeps "Start new project →
-   *  claude-deepseek-v4-pro" predictable instead of typing into whatever tab
-   *  happens to be focused. Falls back to `ensureTermAndShell()` (a plain
-   *  shell) when no agent is bound or the bound slug no longer resolves. */
+   *  an id in the `agents` settings list), spawn a fresh tab running that
+   *  agent's command on every click — keeps "Start new project → <agent>"
+   *  predictable instead of typing into whatever tab happens to be focused.
+   *  Falls back to `ensureTermAndShell()` (a plain shell) when no agent is bound
+   *  or the bound id no longer resolves. */
   const ensureTermForAction = async (
     action: ActionTemplate,
   ): Promise<TerminalPaneHandle | null> => {
-    const agent = findAgentBySlug(deps.agents(), action.agent);
+    const agent = findAgentById(deps.agents(), action.agent);
     if (!agent) return ensureTermAndShell();
     return spawnAgentTab(agent);
   };
@@ -264,43 +258,17 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
-  /** Harnesses whose CLI accepts an initial prompt as an argument, removing
-   *  the need to type into the pty after spawn. agentsconf takes it as
-   *  `--run "<PROMPT>"`; claude positional; opencode `--prompt`. */
-  const NATIVE_INITIAL_PROMPT_HARNESSES = new Set(['claude', 'opencode', 'agentsconf']);
-
-  const runTask = async (agentSlug: string, text: string, submit: boolean): Promise<void> => {
-    const agent = findAgentBySlug(deps.agents(), agentSlug);
+  const runTask = async (agentId: string, text: string, submit: boolean): Promise<void> => {
+    const agent = findAgentById(deps.agents(), agentId);
     if (!agent) {
-      deps.flashToast(`Task agent not found: ${agentSlug}`, 'error');
+      deps.flashToast(`Task agent not found: ${agentId}`, 'error');
       return;
     }
-
-    // When the harness supports it and submit is true, pass the prompt as a
-    // CLI argument in argv. The agent executes it on startup — no pty.write,
-    // no settle delay, no race.
-    if (submit && NATIVE_INITIAL_PROMPT_HARNESSES.has(agent.harness)) {
-      const handle = await spawnAgentTab(agent, text);
-      if (!handle) return;
-      return;
-    }
-
+    // Spawn the agent's command in a fresh tab, then type the prompt into the
+    // pty once it settles. An agent is an opaque shell command, so there's no
+    // CLI flag to carry the prompt in argv — typing is the only generic path.
     const handle = await spawnAgentTab(agent);
     if (!handle) return;
-    // Kimi has no CLI flag for an initial prompt in interactive mode, so we
-    // must still type via the pty. Replace the blind 350 ms settle delay
-    // (built into spawnAgentTab) with a prompt-marker watch so we never
-    // send text before kimi is ready to read it.
-    if (agent.harness === 'kimi') {
-      const sessionId = handle.getActiveSessionId();
-      if (sessionId) {
-        try {
-          await handle.waitForReady(sessionId, /▸/);
-        } catch {
-          // Timeout — fall through and type anyway (best-effort).
-        }
-      }
-    }
     handle.typeIntoActive(text);
     if (submit) {
       // Small delay so the terminal has time to ingest the typed text

@@ -176,14 +176,7 @@ export interface LogsOpenRequest {
 /** Right-slot working surface — picks which of Code / Knowledge / Resources /
  * Skills is shown in the top-band right pane, or `null` to leave it hidden.
  * All four are mutually exclusive: showing one swaps the others out. */
-export type WorkingSurface =
-  | 'code'
-  | 'knowledge'
-  | 'resources'
-  | 'skills'
-  | 'logs'
-  | 'agents'
-  | null;
+export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
 
 /** Left-band view — which pane fills the left band when it is visible.
  * Selected by the left edge-strip handles (Projects / Tasks / Deliverables). */
@@ -307,13 +300,12 @@ export interface CardMinWidthPrefs {
   knowledge?: number;
   resources?: number;
   skills?: number;
-  agents?: number;
   logs?: number;
   tasks?: number;
   deliverables?: number;
 }
 
-/** Built-in defaults for the nine card grids. Match the literal pixel
+/** Built-in defaults for the eight card grids. Match the literal pixel
  * values previously baked into the pane stylesheets — changing one of
  * these silently changes the layout on every machine that hasn't set the
  * matching key in settings.json, so do it deliberately. */
@@ -323,7 +315,6 @@ export const DEFAULT_CARD_MIN_WIDTH = {
   knowledge: 520,
   resources: 280,
   skills: 280,
-  agents: 360,
   logs: 400,
   tasks: 340,
   deliverables: 340,
@@ -491,11 +482,25 @@ export interface ActionTemplate {
   template: string;
   /** When true, press Enter after typing. Default false. */
   submit?: boolean;
-  /** When set, the `slug` of an agent under `<conception>/agents/`. The action
-   *  then spawns a fresh tab running that agent before typing the template (e.g.
-   *  bind "Start new project" to a specific agent). Empty / missing → type into
-   *  the focused tab, spawning a plain shell only if no tab exists. */
+  /** When set, the `id` of an agent in the `agents` settings list. The action
+   *  then spawns a fresh tab running that agent's command before typing the
+   *  template (e.g. bind "Start new project" to a specific agent). Empty /
+   *  missing → type into the focused tab, spawning a plain shell only if no tab
+   *  exists. */
   agent?: string;
+}
+
+/** A terminal-launcher agent: a named shell command surfaced in the tab-strip
+ *  spawn dropdown and bindable from Tasks / action templates. Configured under
+ *  `agents` in `condash.json` / `settings.json`; picking one opens a new
+ *  terminal tab running `command`. */
+export interface Agent {
+  /** Stable identity referenced by tasks and action templates. */
+  id: string;
+  /** Display label shown in the spawn dropdown and on the tab. */
+  label: string;
+  /** Shell command run when the agent is launched. */
+  command: string;
 }
 
 export interface TerminalPrefs {
@@ -561,17 +566,9 @@ export interface TermSpawnRequest {
   side: TermSide;
   /** When set, looks up the repo's `run:` and uses its cwd. */
   repo?: string;
-  /** Free-form command to run via `bash -lc`. Mutually exclusive with `repo`. */
+  /** Free-form command to run via `bash -lc`. Mutually exclusive with `repo`.
+   *  An agent launch is just this with the agent's `command`. */
   command?: string;
-  /** When set, the `slug` of an agent defined under `<conception>/agents/`. The
-   *  main process resolves it to the harness binary + args + env (token from
-   *  `agents/.env`) and spawns that. Mutually exclusive with `repo` / `command`. */
-  agentSlug?: string;
-  /** When set, passes the initial prompt as a CLI argument to the agent
-   *  (claude: positional arg; opencode: `--prompt <text>`; kimi: ignored).
-   *  Only meaningful with `agentSlug`; the prompt is added to argv directly,
-   *  removing the race between process-start and pty.write(). */
-  initialPrompt?: string;
   /** Override the cwd; defaults to $HOME (or the resolved repo cwd). */
   cwd?: string;
   cols?: number;

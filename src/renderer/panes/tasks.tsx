@@ -1,7 +1,6 @@
 import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 import type { JSX } from 'solid-js';
-import type { AgentListItem } from '@shared/harnesses';
-import type { Project } from '@shared/types';
+import type { Agent, Project } from '@shared/types';
 import {
   appContext,
   extractMarkers,
@@ -49,12 +48,12 @@ interface FillState {
   fields: Record<string, string>;
 }
 
-function blankDraft(agents: readonly AgentListItem[]): Draft {
+function blankDraft(agents: readonly Agent[]): Draft {
   return {
     slug: '',
     slugDirty: false,
     name: '',
-    agent: agents[0]?.slug ?? '',
+    agent: agents[0]?.id ?? '',
     submit: true,
     prompt: '',
     editingSlug: null,
@@ -78,20 +77,20 @@ export function TasksView(props: {
   /** Conception root — used to compute `{PROJECT_PATH}` (rel path). */
   conceptionPath: () => string | null;
   /** Agents available to reference (editor select + dangling check). */
-  agents: () => readonly AgentListItem[];
+  agents: () => readonly Agent[];
   /** Projects available to the `{PROJECT}` picker. */
   projects: () => readonly Project[];
   /** Apps available to the `{APP}` picker. */
   apps: () => readonly AppOption[];
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
-  /** Run a filled task: spawn the agent (by slug), type the substituted prompt,
+  /** Run a filled task: spawn the agent (by id), type the substituted prompt,
    *  submit. */
-  onRun: (agentSlug: string, text: string, submit: boolean) => void;
+  onRun: (agentId: string, text: string, submit: boolean) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
 
-  const agentExists = (slug: string): boolean => props.agents().some((a) => a.slug === slug);
+  const agentExists = (id: string): boolean => props.agents().some((a) => a.id === id);
 
   const patch = (p: Partial<Draft>): void => {
     setDraft((d) => (d ? { ...d, ...p } : d));
@@ -473,7 +472,7 @@ function TaskFill(props: {
 function TaskEditor(props: {
   draft: () => Draft;
   patch: (p: Partial<Draft>) => void;
-  agents: () => readonly AgentListItem[];
+  agents: () => readonly Agent[];
   onSave: () => void;
   onCancel: () => void;
   onDelete: () => void;
@@ -493,14 +492,14 @@ function TaskEditor(props: {
   onMount(() => document.addEventListener('keydown', handleKey, true));
   onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
-  // Agent options keyed by slug (the stored identity) with the display name as
-  // label. Includes the draft's current slug when it dangles (renamed/removed)
-  // so editing doesn't silently drop the reference.
+  // Agent options keyed by id (the stored identity) with the display label.
+  // Includes the draft's current id when it dangles (renamed/removed) so editing
+  // doesn't silently drop the reference.
   const agentOptions = createMemo(() => {
-    const opts = props.agents().map((a) => ({ slug: a.slug, label: a.name }));
+    const opts = props.agents().map((a) => ({ id: a.id, label: a.label }));
     const current = d().agent;
-    if (current && !opts.some((o) => o.slug === current)) {
-      return [{ slug: current, label: `${current} (missing)` }, ...opts];
+    if (current && !opts.some((o) => o.id === current)) {
+      return [{ id: current, label: `${current} (missing)` }, ...opts];
     }
     return opts;
   });
@@ -555,9 +554,7 @@ function TaskEditor(props: {
                   <option value="">(no agents defined)</option>
                 </Match>
                 <Match when={agentOptions().length > 0}>
-                  <For each={agentOptions()}>
-                    {(o) => <option value={o.slug}>{o.label}</option>}
-                  </For>
+                  <For each={agentOptions()}>{(o) => <option value={o.id}>{o.label}</option>}</For>
                 </Match>
               </Switch>
             </select>

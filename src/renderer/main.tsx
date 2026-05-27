@@ -17,7 +17,6 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
-import { AgentsView } from './panes/agents';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { usableActionTemplates } from './settings-modal-parts/data';
@@ -72,7 +71,6 @@ const WORKING_SURFACE_HANDLES: ReadonlyArray<{
   { key: 'knowledge', label: 'Knowledge', shortcut: 'Ctrl+Shift+K' },
   { key: 'resources', label: 'Resources', shortcut: 'Ctrl+R' },
   { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L' },
-  { key: 'agents', label: 'Agents', shortcut: 'Ctrl+Shift+A' },
   { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
 ];
 
@@ -221,8 +219,8 @@ function App() {
   const { openWithSlots, terminalPrefs, reloadConfig } = useConfigBindings({ conceptionPath });
 
   // --- Agents (tab-strip spawn dropdown + action-template bindings) -----
-  // Re-fetched whenever the conception changes. `reloadAgents` is also handed
-  // to the Agents pane so create/edit/delete refreshes the dropdown live.
+  // The `agents` settings list, re-fetched whenever the conception changes.
+  // `reloadAgents` refreshes the dropdown after a settings edit.
   const [agentsResource, { refetch: reloadAgents }] = createResource(conceptionPath, async () => {
     try {
       return await window.condash.listAgents();
@@ -231,14 +229,6 @@ function App() {
     }
   });
   const agents = () => agentsResource() ?? [];
-
-  /** Open a terminal tab running the agent with this slug (Agents-pane Launch button). */
-  const launchAgent = (slug: string): void => {
-    const item = agents().find((a) => a.slug === slug) ?? null;
-    if (!item) return;
-    ensureTerminalOpen();
-    void terminalHandle?.spawnUserShell(item, 'my');
-  };
 
   // --- Tasks (left-pane reusable agent prompts) -------------------------
   // Re-fetched whenever the conception changes; `reloadTasks` refreshes the
@@ -562,8 +552,8 @@ function App() {
                           projects={() => projects() ?? []}
                           apps={appOptions}
                           flashToast={flashToast}
-                          onRun={(agentSlug, text, submit) =>
-                            void bridge.runTask(agentSlug, text, submit)
+                          onRun={(agentId, text, submit) =>
+                            void bridge.runTask(agentId, text, submit)
                           }
                         />
                       </Match>
@@ -650,19 +640,6 @@ function App() {
                 <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
                     <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
-                  </section>
-                </Show>
-
-                <Show when={layout().working === 'agents'}>
-                  <section class="pane pane-working">
-                    <AgentsView
-                      agents={agents}
-                      reload={() => void reloadAgents()}
-                      reloadTasks={() => void reloadTasks()}
-                      hasConception={() => conceptionPath() !== null}
-                      flashToast={flashToast}
-                      onLaunch={launchAgent}
-                    />
                   </section>
                 </Show>
 
