@@ -189,12 +189,13 @@ const actionTemplateSchema = z
 
 /** One terminal-launcher agent. `id` is the stable identity referenced by
  *  tasks and action templates; `label` is the spawn-dropdown display name;
- *  `command` is the shell command run on launch. `label` / `command` accept
- *  empty strings so a half-filled entry survives a round-trip to disk; the
- *  spawn dropdown skips entries whose `command` is empty. */
+ *  `command` is the shell command run on launch. All three accept empty
+ *  strings so a freshly-added blank row in the Settings editor survives the
+ *  round-trip to disk and stays visible for the user to fill in; `listAgents`
+ *  skips entries whose `id` or `command` is blank. */
 const agentSchema = z
   .object({
-    id: z.string().min(1),
+    id: z.string(),
     label: z.string(),
     command: z.string(),
   })

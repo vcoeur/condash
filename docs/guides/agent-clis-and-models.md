@@ -177,7 +177,7 @@ Put that call in a wrapper (`kimi-kimi` above) or directly in the agent's `comma
 
 ## Register it as a condash agent
 
-Agents are a flat list under the top-level `agents` key of your settings (per-machine `settings.json`, or a conception's `.condash/settings.json` to override). Edit it in the **Settings** modal (or the file directly):
+Agents are a flat list under the top-level `agents` key of your settings (per-machine `settings.json`, or a conception's `.condash/settings.json` to override). Edit it in the **Settings** modal → **Agents** section — present on both the **Global** and **This conception** tabs, with **+ Add agent** rows (label / command / id) and move / remove controls — or in the config file directly:
 
 ```json
 {

@@ -11,11 +11,14 @@ import type { Agent } from '../shared/types';
 import { getEffectiveConceptionConfig } from './effective-config';
 
 /**
- * List the conception's configured agents, skipping entries with a blank
- * command (a half-filled row that can't launch). Returned in config order so
- * the user controls the spawn-dropdown ordering directly.
+ * List the conception's configured agents, skipping half-filled rows — an
+ * entry with a blank `id` (no stable identity) or a blank `command` (nothing to
+ * launch). Returned in config order so the user controls the spawn-dropdown
+ * ordering directly.
  */
 export async function listAgents(conceptionPath: string): Promise<Agent[]> {
   const config = await getEffectiveConceptionConfig(conceptionPath);
-  return (config.agents ?? []).filter((agent) => agent.command.trim() !== '');
+  return (config.agents ?? []).filter(
+    (agent) => agent.id.trim() !== '' && agent.command.trim() !== '',
+  );
 }

@@ -168,7 +168,7 @@ The spawn dropdown is populated from the top-level **`agents`** list, not from a
 
 ## Editing shortcuts
 
-The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are the top-level [`agents`](../reference/config.md#agents) list, edited in the Settings modal alongside other workspace keys.
+The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are the top-level [`agents`](../reference/config.md#agents) list, edited in the Settings modal's **Agents** section (Global + This-conception tabs).
 
 ## Platform notes
 
