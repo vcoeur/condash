@@ -56,7 +56,7 @@ The pane never writes. To change a shipped skill, edit it at its source under `.
 
 The conception's source tree carries a single manifest populated by `condash skills install`:
 
-- `<conception>/.agents/.condash-skills.json` — refuse-on-edit tracking for the shipped skill sources (and the `.gitignore` region), keyed by SHA256 + shipped version.
+- `<conception>/.agents/.condash-skills.json` — refuse-on-edit tracking for the shipped skill sources, keyed by SHA256 + shipped version.
 
 The pane uses it to flag two states on the **Generic** tab:
 

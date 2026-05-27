@@ -74,7 +74,7 @@ Install or refresh the shipped skills. Use it after upgrading condash to pull up
 | `status` | `/skills status` | `condash skills status` (compare local vs shipped via SHA256) |
 | `install` | `/skills install` | `condash skills install` (per-file diff + confirmation walk) |
 
-`condash skills install` records what it shipped in one manifest at `<conception>/.agents/.condash-skills.json` (v3 schema: a `skills.<name>` namespace for skill sources plus a `files.<path>` namespace for the region-delimited `.gitignore`). Each tracked file carries its shipped version + SHA256, so a re-install can tell an unchanged file from a locally-edited one and refuse to clobber edits without `--force`. `AGENTS.md` is **not** manifest-tracked — its marker line is the boundary, so there's no hash to reconcile.
+`condash skills install` records what it shipped in one manifest at `<conception>/.agents/.condash-skills.json` (v3 schema: a `skills.<name>` namespace for skill sources plus a `files.<path>` namespace retained to reconcile top-level files condash ≤ 4.0.1 shipped — e.g. a legacy region-delimited `.gitignore`; condash no longer ships any top-level file). Each tracked file carries its shipped version + SHA256, so a re-install can tell an unchanged file from a locally-edited one and refuse to clobber edits without `--force`. `AGENTS.md` is **not** manifest-tracked — its marker line is the boundary, so there's no hash to reconcile.
 
 ### The skill source is committed; nothing is compiled
 
