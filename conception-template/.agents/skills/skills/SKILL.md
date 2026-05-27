@@ -1,6 +1,6 @@
 ---
 name: skills
-description: Install or update condash-shipped artefacts in this conception — agent skills under `.agents/skills/` and top-level files like `AGENTS.md` and `.gitignore`. Wraps `condash skills {status,install}` and walks edited items one-by-one so local customisations don't get clobbered. Use after upgrading condash to pull updated content, or for the first-time install.
+description: Install or update condash-shipped artefacts in this conception — agent skills under `.agents/skills/` and the `AGENTS.md` marker region. Wraps `condash skills {status,install}` and walks edited items one-by-one so local customisations don't get clobbered. Use after upgrading condash to pull updated content, or for the first-time install.
 ---
 
 # /skills — install and update condash-shipped artefacts
@@ -11,10 +11,9 @@ condash ships two kinds of artefacts into a conception tree:
   (`SKILL.md` + optional task `.md` files + optional `SKILL.<harness>.md`
   overlay). condash no longer compiles them to per-harness dirs; the harness
   launcher renders them per agent at run time.
-- **Top-level files** at the conception root. `.gitignore` ships a
-  heading-delimited region; `AGENTS.md` ships a marker-bounded head — every
-  line from the top through `<!-- end condash agents -->` is regenerated on
-  install, and everything after the marker is user-owned and never touched.
+- **The root `AGENTS.md`** — a marker-bounded head: every line from the top
+  through `<!-- end condash agents -->` is regenerated on install, and
+  everything after the marker is user-owned and never touched.
 
 Both kinds flow through a single CLI surface — `condash skills {list,status,install}` —
 and a single manifest namespace. This skill is the user-facing wrapper for
@@ -45,7 +44,7 @@ there are local edits to triage.
 
 `<name-or-path>` accepts either a shipped skill name (`knowledge`, `pr`,
 `projects`, `skills`, `tidy`, …) or a top-level destination path
-(`AGENTS.md`, `.gitignore`, …). No positionals = everything.
+(`AGENTS.md`). No positionals = everything.
 
 ## Procedure (`/skills update`)
 
