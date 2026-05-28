@@ -29,25 +29,14 @@ export function RepoRow(props: {
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
   onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
 }) {
-  const displayName = (): string => {
-    if (props.repo.parent && props.repo.name.startsWith(`${props.repo.parent}/`)) {
-      return props.repo.name.slice(props.repo.parent.length + 1);
-    }
-    return props.repo.name;
-  };
-
   /** Primary pill — always the canonical `@handle`, so a code card and a
    * project card naming the same app read identically. */
   const handlePill = (): string => appPillText(props.repo.handle);
 
-  /** Secondary subtitle: the friendly `label` when set, otherwise the
-   * directory name when it differs from the handle (e.g. handle `@kasten`,
-   * directory `notes.vcoeur.com`). Null when the two already match. */
-  const secondaryName = (): string | null => {
-    if (props.repo.label) return props.repo.label;
-    const name = displayName();
-    return name === props.repo.handle ? null : name;
-  };
+  /** Secondary subtitle: the on-disk location, with the home directory
+   * collapsed to `~`. The path is the useful per-card fact the handle hides;
+   * the configured `label` still titles the active-run row (`code-runs.tsx`). */
+  const repoPath = (): string => props.repo.path.replace(/^\/home\/[^/]+\//, '~/');
 
   const isPlainDirectory = (): boolean => !props.repo.missing && props.repo.isGit === false;
 
@@ -92,15 +81,13 @@ export function RepoRow(props: {
         <span style={{ display: 'flex', 'align-items': 'center', gap: '8px', 'flex-wrap': 'wrap' }}>
           <span
             class={`repo-name app-pill ${appColorClass(props.repo.handle)}`}
-            title={`Directory: ${displayName()}`}
+            title={props.repo.path}
           >
             {handlePill()}
           </span>
-          <Show when={secondaryName()}>
-            <span class="repo-dirname" title={`Directory: ${displayName()}`}>
-              {secondaryName()}
-            </span>
-          </Show>
+          <span class="repo-dirname" title={props.repo.path}>
+            {repoPath()}
+          </span>
           <Show when={liveBranchLabel()}>
             <span
               class="repo-live-branch"
