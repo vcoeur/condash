@@ -24,16 +24,37 @@
   color: var(--app-pill-fg, var(--text));
 }
 
-/* Code-pane: the whole card adopts the app colour on its border and on
- * the repo-name title, no background fill. Subtler than the pill style
- * used on the Projects pane, and pairs the card to its matching project
- * card without competing with the existing status-stripe on the left. */
+/* Code-pane: the card header (row with the repo name + dirname pill +
+ * chevron) wears the app colour as a full-width tinted band — same
+ * background/foreground pair as `.app-pill`, but rectangular (the
+ * card's outer border-radius clips the band's top corners). The card
+ * body stays the default surface so the branch rows below keep their
+ * normal palette.
+ *
+ * Implementation: the existing `.repo-row` has
+ * `padding: 10px 12px 10px 16px`. To let the band stretch edge-to-edge
+ * we zero those paddings on the row and re-apply them inside the
+ * header and the branches list. `overflow: hidden` clips the band's
+ * top corners to the card's `border-radius`. */
 .repo-row.app-color {
-  border-color: var(--app-pill-fg);
+  padding: 0;
+  overflow: hidden;
+}
+
+.repo-row.app-color .repo-head {
+  margin: 0;
+  padding: 10px 12px 10px 16px;
+  background: var(--app-pill-bg);
+  color: var(--app-pill-fg);
 }
 
 .repo-row.app-color .repo-name {
   color: var(--app-pill-fg);
+}
+
+.repo-row.app-color .branches {
+  margin: 10px 0 0;
+  padding: 0 12px 10px 16px;
 }
 
 /* Light-theme palette (default). */

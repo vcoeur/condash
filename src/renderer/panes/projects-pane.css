@@ -434,6 +434,25 @@ body[data-dragging='project'] .row {
   word-break: break-word;
 }
 
+/* Container for the next-step text + the steps-progress expander button
+ * — they sit on one row, text grows to fill, expander right-aligned.
+ * Only renders when there's at least one still-open step. */
+.row .next-step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.row .next-step-row .summary.next-step {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row .next-step-row .meta-icon.expander {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
 .row .summary.next-step {
   display: flex;
   align-items: flex-start;
