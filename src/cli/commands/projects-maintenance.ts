@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { findProjectReadmes } from '../../main/walk';
 import { parseHeader } from '../../shared/header';
 import { appendTimelineEntry, parseTimelineEntries } from '../../main/mutate';
+import { KNOWLEDGE_CHECK_TEXT } from '../../main/audit/knowledge-check';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { projectsStrategy } from '../../main/index-projects';
 import { exec } from '../../main/exec';
@@ -311,30 +312,10 @@ export async function backfillClosed(
       skipped.push({ slug: basenameOf(readme), reason: 'already has Closed entry' });
       continue;
     }
-    let date: string | null = null;
-    let source: 'git' | 'mtime' = 'mtime';
-    try {
-      const { stdout } = await exec(
-        'git',
-        ['log', '-1', '--format=%ad', '--date=short', '--', readme],
-        { cwd: dirname(readme) },
-      );
-      const trimmed = stdout.trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        date = trimmed;
-        source = 'git';
-      }
-    } catch {
-      // git log failed — fall through to mtime.
-    }
+    const { date, source } = await deriveReadmeDate(readme);
     if (!date) {
-      try {
-        const stat = await fs.stat(readme);
-        date = stat.mtime.toISOString().slice(0, 10);
-      } catch {
-        skipped.push({ slug: basenameOf(readme), reason: 'no date source' });
-        continue;
-      }
+      skipped.push({ slug: basenameOf(readme), reason: 'no date source' });
+      continue;
     }
     candidates.push({
       slug: basenameOf(readme),
@@ -388,4 +369,99 @@ function basenameOf(readmePath: string): string {
   const dir = dirname(readmePath);
   const parts = dir.split(/[\\/]/);
   return parts[parts.length - 1] ?? '';
+}
+
+/**
+ * Derive a `YYYY-MM-DD` date for a README: the last git-commit date of the file
+ * (cheap heuristic for "when was this last touched"), falling back to the file
+ * mtime when git fails. Returns `date: null` only when neither source works.
+ */
+async function deriveReadmeDate(
+  readme: string,
+): Promise<{ date: string | null; source: 'git' | 'mtime' }> {
+  try {
+    const { stdout } = await exec(
+      'git',
+      ['log', '-1', '--format=%ad', '--date=short', '--', readme],
+      { cwd: dirname(readme) },
+    );
+    const trimmed = stdout.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return { date: trimmed, source: 'git' };
+  } catch {
+    // git log failed — fall through to mtime.
+  }
+  try {
+    const stat = await fs.stat(readme);
+    return { date: stat.mtime.toISOString().slice(0, 10), source: 'mtime' };
+  } catch {
+    return { date: null, source: 'mtime' };
+  }
+}
+
+/**
+ * Backfill the knowledge-promotion marker on every `done` project whose last
+ * timeline entry isn't `Checked knowledge promotion`. Mirrors `backfillClosed`:
+ * a git-derived date (mtime fallback) and a trailing `(backfill)` marker, so
+ * these are visibly distinguishable from an organic, reviewed check. This is the
+ * mechanical, consistently-dated way to clear the historical backlog the
+ * `knowledge-check` audit surfaces; the durability review for *future* items
+ * still runs through `/knowledge` + `check-knowledge --record`.
+ */
+export async function backfillKnowledgeCheck(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const dryRun = args.flags['dry-run'] === true;
+  delete args.flags['dry-run'];
+  delete args.flags.backfill;
+  assertNoExtraFlags(args, NOUN_FLAGS);
+  if (args.positional[0]) {
+    throw new CliError(
+      ExitCodes.USAGE,
+      '--backfill operates on every done project; do not pass a slug',
+    );
+  }
+
+  const readmes = await findProjectReadmes(conceptionPath);
+  const candidates: BackfillEntry[] = [];
+  const skipped: { slug: string; reason: string }[] = [];
+  for (const readme of readmes) {
+    const raw = await fs.readFile(readme, 'utf8');
+    const header = parseHeader(raw);
+    if ((header.status ?? '').toLowerCase() !== 'done') continue;
+    const entries = parseTimelineEntries(raw);
+    const last = entries.length > 0 ? entries[entries.length - 1].text : null;
+    if (last && last.includes(KNOWLEDGE_CHECK_TEXT)) continue; // already satisfied
+    const { date, source } = await deriveReadmeDate(readme);
+    if (!date) {
+      skipped.push({ slug: basenameOf(readme), reason: 'no date source' });
+      continue;
+    }
+    candidates.push({ slug: basenameOf(readme), readme, date, source, appended: false });
+  }
+
+  if (!dryRun) {
+    for (const c of candidates) {
+      await appendTimelineEntry(c.readme, `- ${c.date} — ${KNOWLEDGE_CHECK_TEXT} (backfill)`);
+      c.appended = true;
+    }
+    if (candidates.length > 0) await touchDirtyMarker(conceptionPath, 'projects');
+  }
+
+  emit(ctx, { dryRun, candidates, skipped, totalScanned: readmes.length }, (data) => {
+    const d = data as { dryRun: boolean; candidates: BackfillEntry[] };
+    const lines: string[] = [];
+    if (d.candidates.length === 0) {
+      lines.push(
+        d.dryRun ? '(no backfill candidates)' : '(no backfill candidates — nothing written)',
+      );
+    } else {
+      lines.push(
+        d.dryRun ? `Would record (${d.candidates.length}):` : `Recorded (${d.candidates.length}):`,
+      );
+      for (const c of d.candidates) lines.push(`  ${c.slug}: ${c.date} (${c.source})`);
+    }
+    return lines.join('\n') + '\n';
+  });
 }

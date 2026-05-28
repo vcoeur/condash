@@ -112,24 +112,54 @@ export async function closeProject(
 }
 
 /**
- * Report whether a done project still needs a knowledge-promotion check.
+ * Report whether a done project still needs a knowledge-promotion check, or —
+ * with `--record` — append the `Checked knowledge promotion` marker (today's
+ * date) once the editorial review has actually happened.
  *
- * This is a *signal only* — it mutates nothing. The check itself is editorial
- * work the `/knowledge` skill performs (the three-question durability test plus
- * real `/knowledge update` entries). The `Checked knowledge promotion` marker is
- * recorded by `close` (after the close ritual's review) or appended by the skill
- * once it has actually promoted findings — never fabricated by this command.
+ * Without `--record` this is a *signal only* — it mutates nothing. The check
+ * itself is editorial work the `/knowledge` skill performs (the three-question
+ * durability test plus real `/knowledge update` entries). `--record` is the
+ * mechanical, consistently-dated recorder the skill calls *after* that review,
+ * so the marker is never hand-typed; `close` records it the same way at the end
+ * of the close ritual. For the historical backlog, see `check-knowledge --backfill`.
  */
 export async function checkKnowledgeCommand(
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
+  const record = args.flags.record === true;
+  delete args.flags.record;
   assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
-  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects check-knowledge <slug>');
+  if (!slug) {
+    throw new CliError(
+      ExitCodes.USAGE,
+      'Usage: condash projects check-knowledge <slug> [--record]  (or --backfill for all)',
+    );
+  }
 
   const candidate = await resolveSlug(conceptionPath, slug);
+
+  if (record) {
+    const today = new Date().toISOString().slice(0, 10);
+    const line = `- ${today} — ${KNOWLEDGE_CHECK_TEXT}`;
+    await appendTimelineEntry(candidate.readmePath, line);
+    const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
+    emit(
+      ctx,
+      {
+        slug: candidate.slug,
+        path: candidate.readmePath,
+        recorded: true,
+        timelineAppended: line,
+        dirtyMarkerTouched: dirtyMarker,
+      },
+      (d) => `${(d as { slug: string }).slug}: recorded "${KNOWLEDGE_CHECK_TEXT}" (${today}).\n`,
+    );
+    return;
+  }
+
   const raw = await fs.readFile(candidate.readmePath, 'utf8');
   const status = (parseHeader(raw).status ?? '').toLowerCase();
   const isDone = status === 'done';

@@ -247,6 +247,34 @@ describe('checkKnowledgeCommand', () => {
     expect(await fs.readFile(readme, 'utf8')).toBe(before);
   });
 
+  it('--record appends a dated "Checked knowledge promotion" marker', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'done',
+      title: 'Alpha',
+      body: '## Timeline\n\n- 2026-05-02 — Closed.\n',
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      checkKnowledgeCommand(
+        {
+          noun: 'projects',
+          verb: 'check-knowledge',
+          positional: ['alpha'],
+          flags: { record: true },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const data = parseJsonEnvelope<{ recorded: boolean }>(stdout).data!;
+    expect(data.recorded).toBe(true);
+    const updated = await fs.readFile(readme, 'utf8');
+    // Marker is the last timeline entry and carries a complete date.
+    expect(updated).toMatch(/-\s+\d{4}-\d{2}-\d{2}\s+—\s+Checked knowledge promotion\s*$/);
+  });
+
   it('USAGE when slug is missing', async () => {
     const { threw } = await captureStdout(() =>
       checkKnowledgeCommand(

@@ -34,11 +34,12 @@ Manage items in `projects/YYYY-MM/YYYY-MM-DD-slug/`. The skill drives the matchi
 | `create` | `/projects create <kind>` (project / incident / document) | `condash projects create` |
 | `update` | `/projects update <slug>` | direct file edits, drift-checked |
 | `close` | `/projects close <slug>` | `condash projects close` |
+| `check-knowledge` | `/projects check-knowledge <slug>` — signal / `--record` / `--backfill` | `condash projects check-knowledge` |
 | `reopen` | `/projects reopen <slug>` | `condash projects reopen` |
 | `index` | `/projects index` | `condash projects index` |
 | `worktree` | `/projects worktree {setup\|remove\|check\|list\|status} [branch]` | `condash worktrees …` |
 
-The `create` action enforces the canonical kind templates and the `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` slug regex. The `close` action appends the `Closed.` timeline entry; `reopen` appends `Reopened.`.
+The `create` action enforces the canonical kind templates and the `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$` slug regex. The `close` action appends the `Closed.` timeline entry then records the dated `Checked knowledge promotion` marker; `reopen` appends `Reopened.`. `check-knowledge` is the standalone recorder for that marker (`--record` after a review, `--backfill` for the legacy batch) — the date and format are always written by condash, never hand-typed.
 
 ## `/knowledge`
 
@@ -49,7 +50,7 @@ Manage durable reference material in `<conception>/knowledge/`.
 | `retrieve` | `/knowledge retrieve <query>` — triage walk (`triage` / `grep` / `both`) | `condash knowledge retrieve` |
 | `update` | `/knowledge update <path>` — add or edit a body file with citation + verification stamp | direct file edits + `condash knowledge stamp` |
 | `index` | `/knowledge index` — regenerate every `knowledge/**/index.md` | `condash knowledge index` |
-| `verify` | `/knowledge verify` — stamp freshness + every conception-tree audit (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries) | `condash knowledge verify` + `condash audit` |
+| `verify` | `/knowledge verify` — the conception-wide sweep: stamp freshness + every audit (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries, deferred + missing knowledge-promotion checks) | `condash knowledge verify` + `condash audit --include all` |
 
 Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones older than the freshness threshold and surfaces tree-wide audit findings in the same punch-list.
 
