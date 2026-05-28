@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
+import { appColorClass } from '@shared/app-color';
 import { TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import {
@@ -446,7 +447,9 @@ export function Card(props: {
           </Show>
           <Show when={props.item.apps.length > 0}>
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
-              {props.item.apps.join(', ')}
+              <For each={props.item.apps}>
+                {(app) => <span class={`app-pill ${appColorClass(app)}`}>{app}</span>}
+              </For>
             </span>
           </Show>
           <Show when={props.item.branch}>
@@ -460,6 +463,21 @@ export function Card(props: {
               {props.item.status}
             </span>
           </Show>
+          <span class="meta-spacer" />
+          <span
+            class="meta-icon date"
+            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
+          >
+            {dateRangeLabel(props.item)}
+          </span>
+        </div>
+        {/* Row 4: slug (left) + date range (right). Canonical id + when the
+            item ran — surfaces both at the bottom of every card so a cold
+            reader gets context without opening it. */}
+        <div class="meta meta-bottom-slug">
+          <span class="meta-icon slug" title={`slug: ${props.item.slug}`}>
+            {props.item.slug}
+          </span>
           <span class="meta-spacer" />
           <span
             class="meta-icon date"

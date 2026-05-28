@@ -1,0 +1,122 @@
+/* App pills — small coloured chips identifying which app a card belongs to.
+ * One slot per palette index (0..9). Index resolved in `shared/app-color.ts`
+ * via a stable hash of the app name, so the same name lands on the same
+ * slot in both the Projects pane and the Code pane.
+ *
+ * Light theme: pale tinted background, dark text.
+ * Dark theme:  deep tinted background, pale text.
+ * Both keep AAA-ish contrast for the small font size. No border, the
+ * background carries the identity.
+ */
+
+.app-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+  background: var(--app-pill-bg, var(--bg-subtle));
+  color: var(--app-pill-fg, var(--text));
+}
+
+/* Code-pane card title (`repo-name`) wears the pill as its primary
+ * background — keep the larger heading-style font, just gain the
+ * tinted backdrop. Foreground colour comes from the pill palette
+ * (overrides .repo-name's `color: var(--text)`). */
+.repo-name.app-pill {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  padding: 2px 10px;
+  color: var(--app-pill-fg);
+}
+
+/* Light-theme palette (default). */
+.app-pill-0 {
+  --app-pill-bg: #ffd8d6;
+  --app-pill-fg: #6b2b28;
+}
+.app-pill-1 {
+  --app-pill-bg: #ffe2c2;
+  --app-pill-fg: #6e3d10;
+}
+.app-pill-2 {
+  --app-pill-bg: #fff1b8;
+  --app-pill-fg: #6a5612;
+}
+.app-pill-3 {
+  --app-pill-bg: #e5ecbe;
+  --app-pill-fg: #4f5616;
+}
+.app-pill-4 {
+  --app-pill-bg: #c9ecca;
+  --app-pill-fg: #1f5326;
+}
+.app-pill-5 {
+  --app-pill-bg: #c2ece5;
+  --app-pill-fg: #1c5750;
+}
+.app-pill-6 {
+  --app-pill-bg: #c8def7;
+  --app-pill-fg: #1c4a82;
+}
+.app-pill-7 {
+  --app-pill-bg: #d2d2f7;
+  --app-pill-fg: #2d2f80;
+}
+.app-pill-8 {
+  --app-pill-bg: #e6d0f3;
+  --app-pill-fg: #4f2570;
+}
+.app-pill-9 {
+  --app-pill-bg: #f6cee0;
+  --app-pill-fg: #6f2247;
+}
+
+/* Dark-theme palette — mirrors each hue with a saturated dark bg and
+ * a pale-tint fg so contrast survives the inverted base. */
+[data-theme='dark'] .app-pill-0 {
+  --app-pill-bg: #5b2a28;
+  --app-pill-fg: #ffcecb;
+}
+[data-theme='dark'] .app-pill-1 {
+  --app-pill-bg: #5e3713;
+  --app-pill-fg: #ffd9a8;
+}
+[data-theme='dark'] .app-pill-2 {
+  --app-pill-bg: #5a4d10;
+  --app-pill-fg: #fae89a;
+}
+[data-theme='dark'] .app-pill-3 {
+  --app-pill-bg: #434a14;
+  --app-pill-fg: #d6e0a3;
+}
+[data-theme='dark'] .app-pill-4 {
+  --app-pill-bg: #1c4a21;
+  --app-pill-fg: #b9e3bb;
+}
+[data-theme='dark'] .app-pill-5 {
+  --app-pill-bg: #194a47;
+  --app-pill-fg: #aeded5;
+}
+[data-theme='dark'] .app-pill-6 {
+  --app-pill-bg: #1c3f70;
+  --app-pill-fg: #b9d5f0;
+}
+[data-theme='dark'] .app-pill-7 {
+  --app-pill-bg: #2a2c66;
+  --app-pill-fg: #c5c6f0;
+}
+[data-theme='dark'] .app-pill-8 {
+  --app-pill-bg: #46235e;
+  --app-pill-fg: #e0c5ee;
+}
+[data-theme='dark'] .app-pill-9 {
+  --app-pill-bg: #5a1d38;
+  --app-pill-fg: #f1c6dc;
+}

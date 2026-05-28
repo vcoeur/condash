@@ -591,7 +591,24 @@ body[data-dragging='project'] .row {
   stroke-width: 1.6;
 }
 
+/* Apps row now hosts one .app-pill per app — kill the meta-icon's own
+ * padding/spacing so the pills sit flush, and bump the inter-pill gap
+ * a touch so adjacent pills don't merge visually. */
 .row .meta-icon.apps {
+  padding: 0;
+  margin: 0;
+  gap: 6px;
+  font-family: var(--font-ui);
+}
+
+/* Bottom-of-card row: slug (left) + date range (right). Same height
+ * and typography as `meta-bottom` but no progress/buttons inside. */
+.row .meta.meta-bottom-slug {
+  margin-top: 2px;
+}
+
+.row .meta-bottom-slug .meta-icon.slug {
+  font-family: var(--font-mono);
   color: var(--text-muted);
 }
 

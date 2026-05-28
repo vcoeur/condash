@@ -1,5 +1,6 @@
 import { createMemo, For, Show } from 'solid-js';
 import type { OpenWithSlotKey, OpenWithSlots, RepoEntry, Worktree } from '@shared/types';
+import { appColorClass } from '@shared/app-color';
 import { BranchActions } from './branch-actions';
 import { BranchInfoBadges } from './branch-badges';
 import { filterWorktrees, orderedWorktrees, type RepoStatus } from './data';
@@ -89,7 +90,7 @@ export function RepoRow(props: {
     >
       <header class="repo-head">
         <span style={{ display: 'flex', 'align-items': 'center', gap: '8px', 'flex-wrap': 'wrap' }}>
-          <span class="repo-name">{cardTitle()}</span>
+          <span class={`repo-name app-pill ${appColorClass(props.repo.name)}`}>{cardTitle()}</span>
           <Show when={secondaryName()}>
             <span class="repo-dirname" title={`Directory: ${displayName()}`}>
               {secondaryName()}

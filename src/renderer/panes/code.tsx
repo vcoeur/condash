@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import './code-pane.css';
+import './app-pill.css';
 import type {
   OpenWithSlotKey,
   OpenWithSlots,
