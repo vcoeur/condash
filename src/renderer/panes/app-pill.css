@@ -25,14 +25,16 @@
 }
 
 /* Code-pane card title (`repo-name`) wears the pill as its primary
- * background — keep the larger heading-style font, just gain the
- * tinted backdrop. Foreground colour comes from the pill palette
- * (overrides .repo-name's `color: var(--text)`). */
+ * background. A compact rectangular chip — smaller than the old capsule
+ * heading — so the `@handle` reads as a tag, not a banner. Foreground
+ * colour comes from the pill palette (overrides .repo-name's
+ * `color: var(--text)`). */
 .repo-name.app-pill {
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: -0.005em;
-  padding: 2px 10px;
+  padding: 1px 7px;
+  border-radius: 4px;
   color: var(--app-pill-fg);
 }
 

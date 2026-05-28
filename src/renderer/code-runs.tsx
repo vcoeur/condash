@@ -86,10 +86,8 @@ function repoMeta(
       branch = worktrees.find((w) => w.primary)?.branch ?? undefined;
     }
   }
-  // Prefer the configured label (`condash.json`) so the active-run
-  // row matches the title used on the repo card; fall back to the repo
-  // directory name when no label is set.
-  const displayName = repo.label ?? repo.name;
+  // The `@handle` titles the active-run row, matching the repo card.
+  const displayName = `@${repo.handle}`;
   return { repo, branch, displayName };
 }
 
