@@ -40,8 +40,10 @@ writes always target `.condash/settings.json`.
 |---|---|
 | `workspace_path` | Where condash scans for git repos. |
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
-| `resources_path` | Folder backing the Resources pane. Default `resources`. |
 | `skills_path` | Folder backing the Skills pane. Default `.claude/skills`. |
+
+The Resources pane is hard-coded to `<conception>/resources/` — no
+override is available since the reframe.
 | `repositories` | Ordered list of repos to surface on the Code pane. Each entry is a string, a `{name, …}` object (optional `submodules`, `run`, `force_stop`, `label`, `install`, `env`, `pinned_branch`), or a `{"section": "<heading>"}` marker that groups every following repo under a header — see [Reference → Configuration → `repositories`](../reference/config.md#repositories) for the full table. |
 | `open_with` | Three launcher slots (`main_ide`, `secondary_ide`, `terminal`). `{path}` is replaced with the absolute target path. |
 
@@ -102,8 +104,7 @@ its own form control.
 legacy `condash.json` and `configuration.json` are read but never
 written to):
 
-- **Workspace** — `workspace_path`, `worktrees_path`, `resources_path`,
-  `skills_path`.
+- **Workspace** — `workspace_path`, `worktrees_path`, `skills_path`.
 - **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 - **Open with** — slot labels and commands.
 - **Appearance** — theme + card-grid min-widths overridden for this
@@ -157,7 +158,7 @@ condash config set theme dark --global    # write to settings.json
 | Change | Effect |
 |---|---|
 | `open_with`, `terminal`, repo `run` / `force_stop`, `cardMinWidth`, theme | Live, no restart |
-| `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`, repository list | Restart required |
+| `workspace_path`, `worktrees_path`, `skills_path`, repository list | Restart required |
 
 ## More
 

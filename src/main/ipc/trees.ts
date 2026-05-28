@@ -1,19 +1,18 @@
 import { ipcMain } from 'electron';
-import { resolveConceptionPaths } from '../conception-paths';
 import { readKnowledgeTree } from '../knowledge';
 import { readNote } from '../note';
 import { readResourcesTree } from '../resources';
 import { requireReadableSkillPath } from '../path-bounds';
-import { readSkillsTreeForTab } from '../skills';
+import { readSkillsTreeForScope } from '../skills';
 import { search } from '../search';
 import { readSettings } from '../settings';
 import { treeCreateMd, treeImportFile, treeMkdir } from '../tree-mutations';
-import type { SkillScope, SkillTab, TreeRoot } from '../../shared/types';
+import type { SkillScope, TreeRoot } from '../../shared/types';
 import { withConception } from './utils';
 
-/** Coerce renderer-supplied scope to the enum, defaulting to local. */
+/** Coerce renderer-supplied scope to the enum, defaulting to conception. */
 function asScope(raw: unknown): SkillScope {
-  return raw === 'global' ? 'global' : 'local';
+  return raw === 'user' ? 'user' : 'conception';
 }
 
 /**
@@ -28,41 +27,34 @@ export function registerTreesIpc(): void {
   );
 
   ipcMain.handle('readResourcesTree', () =>
-    withConception(async (conceptionPath) => {
-      const { resources } = await resolveConceptionPaths(conceptionPath);
-      return readResourcesTree(conceptionPath, resources);
-    }, null),
+    withConception((conceptionPath) => readResourcesTree(conceptionPath), null),
   );
 
-  ipcMain.handle('readSkillsTree', (_, rawScope: unknown, tab: SkillTab) =>
-    withConception(async (conceptionPath) => {
-      const { skills } = await resolveConceptionPaths(conceptionPath);
-      return readSkillsTreeForTab(asScope(rawScope), conceptionPath, tab, skills);
-    }, null),
+  ipcMain.handle('readSkillsTree', (_, rawScope: unknown) =>
+    withConception(
+      (conceptionPath) => readSkillsTreeForScope(asScope(rawScope), conceptionPath),
+      null,
+    ),
   );
 
   // Read-only content fetch for a Skills-pane file. Unlike `readNote` this
-  // also permits the user-scope skill + agent-config locations (global scope
+  // also permits the user-scope skill + AGENTS.md locations (user scope
   // lives outside the conception) — bounded by `requireReadableSkillPath`.
   ipcMain.handle('readSkillFile', async (_, path: string) => {
     const real = await requireReadableSkillPath(path);
     return readNote(real);
   });
 
-  ipcMain.handle(
-    'treeCreateMd',
-    (_, root: TreeRoot, dirRelPath: string, filename: string, skillTab?: SkillTab) =>
-      treeCreateMd(root, dirRelPath, filename, skillTab),
+  ipcMain.handle('treeCreateMd', (_, root: TreeRoot, dirRelPath: string, filename: string) =>
+    treeCreateMd(root, dirRelPath, filename),
   );
 
-  ipcMain.handle(
-    'treeMkdir',
-    (_, root: TreeRoot, dirRelPath: string, name: string, skillTab?: SkillTab) =>
-      treeMkdir(root, dirRelPath, name, skillTab),
+  ipcMain.handle('treeMkdir', (_, root: TreeRoot, dirRelPath: string, name: string) =>
+    treeMkdir(root, dirRelPath, name),
   );
 
-  ipcMain.handle('treeImportFile', (_, root: TreeRoot, dirRelPath: string, skillTab?: SkillTab) =>
-    treeImportFile(root, dirRelPath, skillTab),
+  ipcMain.handle('treeImportFile', (_, root: TreeRoot, dirRelPath: string) =>
+    treeImportFile(root, dirRelPath),
   );
 
   // The original handler returned `[]` when no conception path was set;

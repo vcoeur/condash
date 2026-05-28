@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { SkillShippedInfo } from '../shared/types';
 
 /**
- * Schema of `<skills_path>/.condash-skills.json`. Written by the condash
+ * Schema of `<conception>/.agents/.condash-skills.json`. Written by the condash
  * `skills install` command and read here so the Skills pane can flag
  * shipped files (and their local divergence from the shipped version).
  *
@@ -16,7 +16,7 @@ interface ShippedManifest {
   skills?: Record<
     string,
     {
-      files?: Record<
+      source?: Record<
         string,
         {
           sha256?: string;
@@ -38,11 +38,14 @@ export interface ShippedLookup {
  * once and the lookup walks the in-memory map; on-disk SHA is computed
  * lazily per file so we only hash files the renderer actually surfaces.
  *
- * When `<skillsRoot>/.condash-skills.json` is missing or malformed, every
- * lookup returns `null` so the feature degrades silently.
+ * The manifest lives one level above `skillsRoot` (at `<skillsRoot>/../
+ * .condash-skills.json` — typically `<conception>/.agents/.condash-skills.json`),
+ * matching the write path in `condash skills install`. When the manifest is
+ * missing or malformed, every lookup returns `null` so the feature degrades
+ * silently.
  */
 export async function buildShippedLookup(skillsRoot: string): Promise<ShippedLookup> {
-  const manifestPath = join(skillsRoot, '.condash-skills.json');
+  const manifestPath = join(dirname(skillsRoot), '.condash-skills.json');
   let manifest: ShippedManifest | null = null;
   try {
     const raw = await fs.readFile(manifestPath, 'utf8');
@@ -68,7 +71,7 @@ export async function buildShippedLookup(skillsRoot: string): Promise<ShippedLoo
       if (slash <= 0) return null;
       const skillName = relPath.slice(0, slash);
       const fileRel = relPath.slice(slash + 1);
-      const fileEntry = skills[skillName]?.files?.[fileRel];
+      const fileEntry = skills[skillName]?.source?.[fileRel];
       if (!fileEntry?.sha256) return null;
 
       const diskSha = await sha256OfFile(absPath);

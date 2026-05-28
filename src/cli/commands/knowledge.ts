@@ -224,7 +224,7 @@ async function verifyCommand(
   }
 
   // Materialise stale stamps as audit-shaped issues so wrapping skills (e.g.
-  // /tidy) consume audit + verify with one shape. autoFix is hardcoded to
+  // /knowledge verify) consume audit + verify with one shape. autoFix is hardcoded to
   // false: a stale stamp means "human reread the source and re-confirmed",
   // never "bump the date for me".
   const issues = stale.map((s) => ({

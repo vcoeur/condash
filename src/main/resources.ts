@@ -2,28 +2,27 @@ import { promises as fs } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { ResourceCategory, ResourceNode } from '../shared/types';
 import { toPosix } from '../shared/path';
+import { DEFAULT_RESOURCES_PATH } from './config-schema';
 import { parseHead } from './knowledge';
 import { readFileHead } from './read-file-head';
 
 const HIDDEN_PREFIX = /^\./;
 
 /**
- * Read the resources tree at `<conceptionPath>/<resourcesRelPath>`. Unlike
+ * Read the resources tree at `<conceptionPath>/resources/`. Unlike
  * `readKnowledgeTree`, every file is surfaced regardless of extension —
  * the renderer decides what to do with it based on `category`. Symlink
- * loops are deduped via realpath, same as Knowledge.
+ * loops are deduped via realpath, same as Knowledge. The directory name
+ * is hard-coded since the reframe (no `resources_path` override).
  */
-export async function readResourcesTree(
-  conceptionPath: string,
-  resourcesRelPath: string,
-): Promise<ResourceNode | null> {
-  const root = join(conceptionPath, resourcesRelPath);
+export async function readResourcesTree(conceptionPath: string): Promise<ResourceNode | null> {
+  const root = join(conceptionPath, DEFAULT_RESOURCES_PATH);
   try {
     await fs.access(root);
   } catch {
     return null;
   }
-  return walk(root, '', basename(resourcesRelPath) || 'resources', new Set<string>());
+  return walk(root, '', DEFAULT_RESOURCES_PATH, new Set<string>());
 }
 
 async function walk(

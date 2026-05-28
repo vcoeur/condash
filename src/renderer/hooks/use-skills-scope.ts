@@ -6,20 +6,20 @@ export interface UseSkillsScopeDeps {
 }
 
 export interface UseSkillsScope {
-  /** Active Skills scope. Defaults to `local` (conception); the
+  /** Active Skills scope. Defaults to `conception`; the
    *  hydrate-from-IPC `then` replaces it with the persisted value. */
   skillsActiveScope: () => SkillScope;
   handleSkillsScopeSelect: (scope: SkillScope) => void;
 }
 
 /**
- * Local/global scope toggle for the Skills pane. Mirrors `useSkillsTab` but
- * for the scope axis. Kept separate (and created before the skills stores)
- * because the stores' fetchers read `skillsActiveScope()` — reading it inside
- * the fetcher is what makes each store reload when the scope flips.
+ * Conception/user scope toggle for the Skills pane. Created before the
+ * skills store because the store's fetcher reads `skillsActiveScope()`
+ * — reading it inside the fetcher is what makes the store reload when
+ * the scope flips.
  */
 export function useSkillsScope(deps: UseSkillsScopeDeps): UseSkillsScope {
-  const [skillsActiveScope, setSkillsActiveScope] = createSignal<SkillScope>('local');
+  const [skillsActiveScope, setSkillsActiveScope] = createSignal<SkillScope>('conception');
   void window.condash
     .getSkillsActiveScope()
     .then((scope) => setSkillsActiveScope(scope))
