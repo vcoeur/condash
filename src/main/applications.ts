@@ -198,6 +198,59 @@ export async function validateApplications(
   return issues;
 }
 
+/** Outcome of a {@link fixAppsReferences} run. */
+export interface FixResult {
+  readmesRewritten: string[];
+  /** References left untouched because they resolve to nothing (no handle,
+   *  alias, or existing path) — the caller must resolve these by hand. */
+  unresolved: AppValidationIssue[];
+}
+
+/**
+ * Canonicalise every project README `apps:` value to its `@handle`. A bare
+ * handle (`condash`) and a legacy alias (`ClaudeConfig`) both become
+ * `@canonical`; absolute paths are left verbatim; references that resolve to
+ * nothing are left in place and reported under `unresolved` for a human. Live
+ * and retired handles both count as resolved.
+ */
+export async function fixAppsReferences(
+  conceptionPath: string,
+  settingsFile?: string,
+): Promise<FixResult> {
+  const records = await listApplications(conceptionPath, settingsFile);
+  const index = aliasIndex(records);
+  const readmes = await findProjectReadmes(conceptionPath);
+  const rewritten: string[] = [];
+  const unresolved: AppValidationIssue[] = [];
+  for (const readme of readmes) {
+    let raw: string;
+    try {
+      raw = await fs.readFile(readme, 'utf8');
+    } catch {
+      continue;
+    }
+    // resolveReference touches the filesystem (path existence), so resolve
+    // every app first, then drive the synchronous line rewriter off the map.
+    const header = parseHeader(raw);
+    const canonical = new Map<string, string>();
+    for (const app of header.apps) {
+      const resolution = await resolveReference(app, records, index);
+      if (resolution.kind === 'handle' || resolution.kind === 'alias') {
+        canonical.set(app.trim(), `@${resolution.canonical}`);
+      } else if (resolution.kind === 'unknown') {
+        unresolved.push({ readme, ref: app, problem: 'unknown-handle' });
+      }
+    }
+    if (canonical.size === 0) continue;
+    const next = rewriteAppsRefs(raw, (ref) => canonical.get(ref.trim()) ?? ref);
+    if (next !== raw) {
+      await fs.writeFile(readme, next, 'utf8');
+      rewritten.push(readme);
+    }
+  }
+  return { readmesRewritten: rewritten, unresolved };
+}
+
 const APPS_TABLE_START = '<!-- condash:apps:start -->';
 const APPS_TABLE_END = '<!-- condash:apps:end -->';
 

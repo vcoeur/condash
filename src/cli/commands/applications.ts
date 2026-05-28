@@ -1,5 +1,6 @@
 import {
   addApplication,
+  fixAppsReferences,
   listApplications,
   renameApplication,
   setApplication,
@@ -10,7 +11,7 @@ import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
 import { UNIVERSAL_FOOTER } from '../help';
 
-const NOUN_FLAGS: readonly string[] = ['label', 'path'];
+const NOUN_FLAGS: readonly string[] = ['label', 'path', 'fix'];
 
 /**
  * `condash applications <verb>` — manage the app registry: the single source
@@ -51,7 +52,27 @@ export async function runApplications(
   }
 
   if (verb === 'validate') {
+    const fix = args.flags.fix === true;
+    delete args.flags.fix;
     assertNoExtraFlags(args, NOUN_FLAGS);
+    if (fix) {
+      const result = await fixAppsReferences(conceptionPath);
+      emit(ctx, result, (d) => {
+        const r = d as typeof result;
+        const head = `canonicalised apps: in ${r.readmesRewritten.length} README(s)\n`;
+        if (r.unresolved.length === 0) return head;
+        return (
+          head + r.unresolved.map((i) => `  unresolved: ${i.ref}  (${i.readme})`).join('\n') + '\n'
+        );
+      });
+      if (result.unresolved.length > 0) {
+        throw new CliError(
+          ExitCodes.VALIDATION,
+          `${result.unresolved.length} unresolved app reference(s) need a manual fix`,
+        );
+      }
+      return;
+    }
     const issues = await validateApplications(conceptionPath);
     const unknown = issues.filter((i) => i.problem === 'unknown-handle');
     emit(ctx, { ok: unknown.length === 0, issues }, (d) => {
@@ -197,10 +218,14 @@ function verbHelp(verb: string): string {
       'from the registry. CLAUDE.md is compiled from AGENTS.md downstream.',
     ],
     validate: [
-      'condash applications validate',
+      'condash applications validate [--fix]',
       '',
       'Every project README apps: value must resolve to a known @handle (live or',
       'retired) or an existing absolute path. Unknown handles exit 3.',
+      '',
+      '  --fix   Rewrite every resolvable apps: value to its canonical @handle',
+      '          (bare names and legacy aliases alike). Unresolved refs are left',
+      '          in place and reported; the run still exits 3 if any remain.',
     ],
   };
   return [...(lines[verb] ?? [`condash applications ${verb}`]), UNIVERSAL_FOOTER].join('\n');

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addApplication,
   aliasIndex,
+  fixAppsReferences,
   listApplications,
   renameApplication,
   renderAppsTable,
@@ -182,6 +183,28 @@ describe('rewriteAppsRefs', () => {
     expect(out).toContain('  - "@kasten"');
     expect(out).toContain('branch: x');
     expect(out).toContain('# body apps: not a block');
+  });
+});
+
+describe('fixAppsReferences', () => {
+  it('canonicalises bare names and aliases, leaving unknowns for a human', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'condash', name: 'condash' },
+        { handle: 'agentsconf', name: 'agentsconf', aliases: ['ClaudeConfig'] },
+      ],
+    });
+    writeReadme('2026-05-01-mix', ['condash', 'ClaudeConfig', 'ghost']);
+    const result = await fixAppsReferences(tmp, emptyGlobal);
+    expect(result.readmesRewritten).toHaveLength(1);
+    expect(result.unresolved.map((u) => u.ref)).toEqual(['ghost']);
+    const readme = readFileSync(
+      join(tmp, 'projects', '2026-05', '2026-05-01-mix', 'README.md'),
+      'utf8',
+    );
+    expect(readme).toContain('- "@condash"');
+    expect(readme).toContain('- "@agentsconf"');
+    expect(readme).toContain('- ghost');
   });
 });
 
