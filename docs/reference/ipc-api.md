@@ -32,7 +32,7 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 | `getProject(path)` | `Project \| null` | Re-parse a single README — used to patch the in-memory list after a watcher event. |
 | `listProjectFiles(path)` | `ProjectFileEntry[]` | List files under a project directory (notes plus any other subdirectories). |
 | `readKnowledgeTree()` | `KnowledgeNode \| null` | Walk `knowledge/`, return the directory + file structure (or `null` if no `knowledge/` exists). |
-| `readResourcesTree()` | `ResourceNode \| null` | Walk the configured `resources_path` (default `resources/`), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
+| `readResourcesTree()` | `ResourceNode \| null` | Walk `<conception>/resources/` (hard-coded, not configurable), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
 | `readSkillsTree(scope, tab)` | `SkillNode \| null` | Walk the `(scope, tab)` skills directory — `local` reads the conception, `global` reads the per-machine user scope (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only, with title / summary parsed from the head and optional `shipped` / `diverged` chips (condash ships only the Generic `.agents/skills/` tree). `null` when the directory is absent. |
 | `readSkillFile(path)` | `string` | Read-only content fetch for a Skills-pane file. Like `readNote` but also permits the user-scope skill locations (the global scope lives outside the conception); rejects anything else. |
 | `search(query)` | `SearchResults` | Full-text search across every project + knowledge file. Re-walks the tree each call (no index — see [Internals](../explanation/internals.md#why-no-search-index)). |
@@ -164,7 +164,7 @@ Per-path tree events for projects + knowledge + resources + skills + logs + conf
 
 - `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — renderer bumps `refreshKey`.
-- `resources` — any file under the configured `resources_path`. Coarse.
+- `resources` — any file under `<conception>/resources/`. Coarse.
 - `skills` — any file under the configured `skills_path` (or the sibling `.agents/skills/` and `.kimi/skills/` roots backing the Generic / Kimi tabs). Coarse.
 - `logs` — any session file under `.condash/logs/`. Drives the Logs pane's live refresh.
 - `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Same coarse handling.

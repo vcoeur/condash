@@ -579,11 +579,11 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
     await modal.locator('[role="tab"]').nth(1).click({ timeout: 5000 }).catch(() => undefined);
     const conceptionPanel = modal.locator('#settings-panel-conception');
 
-    // Workspace block — four path fields.
+    // Workspace block — three path fields (Resources directory was dropped
+    // when `resources_path` became hard-coded to `<root>/resources/`).
     const workspaceFields: { label: string; key: string; value: string }[] = [
       { label: 'Workspace path', key: 'workspace_path', value: '/tmp/audit-workspace' },
       { label: 'Worktrees path', key: 'worktrees_path', value: '/tmp/audit-worktrees' },
-      { label: 'Resources directory', key: 'resources_path', value: 'custom/resources' },
       { label: 'Skills directory', key: 'skills_path', value: '.claude/skills-audit' },
     ];
     for (const wf of workspaceFields) {

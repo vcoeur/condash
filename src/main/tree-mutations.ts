@@ -1,41 +1,33 @@
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import { basename, extname, join, normalize } from 'node:path';
 import { dialog } from 'electron';
-import type { SkillTab, TreeRoot } from '../shared/types';
+import type { TreeRoot } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { readSettings } from './settings';
-import { resolveConceptionPaths } from './conception-paths';
+import { DEFAULT_RESOURCES_PATH } from './config-schema';
 import { requirePathUnder } from './path-bounds';
 
 /**
  * Helpers backing the `tree.*` IPC verbs that mutate the on-disk
- * Knowledge / Resources / Skills trees. Each verb resolves the pane's
- * on-disk root, joins the renderer-supplied `dirRelPath` + child name,
- * normalises, then re-checks the result is still under the pane's root
- * via `requirePathUnder` so a renderer that hands us `..` / an absolute
- * path can never escape the bound. The renderer is trusted today, but we
- * apply the same defence-in-depth as `assertUnderConception` in
- * `src/main/index.ts`.
+ * Knowledge / Resources trees. (The Skills pane is read-only post-reframe
+ * — agedum owns the source-of-truth — so `root === 'skills'` is rejected
+ * here.) Each verb resolves the pane's on-disk root, joins the renderer-
+ * supplied `dirRelPath` + child name, normalises, then re-checks the
+ * result is still under the pane's root via `requirePathUnder` so a
+ * renderer that hands us `..` / an absolute path can never escape the
+ * bound. The renderer is trusted today, but we apply the same defence-
+ * in-depth as `assertUnderConception` in `src/main/index.ts`.
  */
 
 /** Resolve a tree root to its absolute on-disk path. Knowledge is hardcoded
- * to `<conception>/knowledge/`; resources + skills come from
- * `condash.json`. When `root === 'skills'`, `skillTab` selects the
- * per-tab directory (generic / claude / kimi). */
-async function resolveRoot(root: TreeRoot, skillTab?: SkillTab): Promise<string> {
+ * to `<conception>/knowledge/`; resources is hardcoded to
+ * `<conception>/resources/`. Skills are read-only and rejected here. */
+async function resolveRoot(root: TreeRoot): Promise<string> {
   const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) throw new Error('no conception path is set');
   if (root === 'knowledge') return join(conceptionPath, 'knowledge');
-  const { resources, skills } = await resolveConceptionPaths(conceptionPath);
-  if (root === 'resources') return join(conceptionPath, resources);
-  if (root === 'skills') {
-    const tab = skillTab ?? 'claude';
-    if (tab === 'generic') return join(conceptionPath, '.agents', 'skills');
-    if (tab === 'claude') return join(conceptionPath, skills);
-    if (tab === 'kimi') throw new Error('Kimi skills tree is read-only');
-    if (tab === 'opencode') throw new Error('OpenCode skills tree is read-only');
-    throw new Error(`unknown skill tab: ${tab}`);
-  }
+  if (root === 'resources') return join(conceptionPath, DEFAULT_RESOURCES_PATH);
+  if (root === 'skills') throw new Error('Skills tree is read-only');
   throw new Error(`unknown tree root: ${root as string}`);
 }
 
@@ -51,7 +43,7 @@ function sanitiseSegment(name: string, fallback: string): string {
 
 /** Sanitise `filename`, splitting any user-supplied extension off so the
  *  basename is hyphen-cased without touching `.` characters. For
- *  knowledge / skills the extension is always `.md`; for resources we keep
+ *  knowledge the extension is always `.md`; for resources we keep
  *  the user's extension and default to `.md` when none was supplied. */
 function buildFilename(root: TreeRoot, raw: string): string {
   const trimmed = raw.trim();
@@ -62,7 +54,7 @@ function buildFilename(root: TreeRoot, raw: string): string {
   if (root === 'resources') {
     return cleanedStem + (ext || '.md');
   }
-  // Knowledge + skills: `.md` only.
+  // Knowledge: `.md` only.
   return cleanedStem + '.md';
 }
 
@@ -72,9 +64,8 @@ async function resolveChildBounded(
   root: TreeRoot,
   dirRelPath: string,
   childName: string,
-  skillTab?: SkillTab,
 ): Promise<{ rootAbs: string; targetAbs: string }> {
-  const rootAbs = await resolveRoot(root, skillTab);
+  const rootAbs = await resolveRoot(root);
   if (typeof dirRelPath !== 'string') {
     throw new Error('dirRelPath must be a string');
   }
@@ -124,25 +115,19 @@ export async function treeCreateMd(
   root: TreeRoot,
   dirRelPath: string,
   filename: string,
-  skillTab?: SkillTab,
 ): Promise<string> {
   const sanitised = buildFilename(root, filename);
-  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised, skillTab);
+  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised);
   // `wx` flag refuses to overwrite — surfaces a clear error to the
   // renderer when the user picks a name that's already taken.
   await fs.writeFile(targetAbs, '', { encoding: 'utf8', flag: 'wx' });
   return toPosix(targetAbs);
 }
 
-export async function treeMkdir(
-  root: TreeRoot,
-  dirRelPath: string,
-  name: string,
-  skillTab?: SkillTab,
-): Promise<string> {
+export async function treeMkdir(root: TreeRoot, dirRelPath: string, name: string): Promise<string> {
   const sanitised = sanitiseSegment(name, '').replace(/\.+/g, '-');
   if (sanitised.length === 0) throw new Error('directory name is empty after sanitisation');
-  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised, skillTab);
+  const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised);
   // `mkdir({recursive:true})` follows a symlink at `targetAbs` and creates
   // through it — reject if the entry exists as a symlink before we touch it.
   await rejectSymlinkTarget(targetAbs);
@@ -150,14 +135,10 @@ export async function treeMkdir(
   return toPosix(targetAbs);
 }
 
-export async function treeImportFile(
-  root: TreeRoot,
-  dirRelPath: string,
-  skillTab?: SkillTab,
-): Promise<string | null> {
+export async function treeImportFile(root: TreeRoot, dirRelPath: string): Promise<string | null> {
   // Resolve + bounds-check the destination before opening the dialog so
   // we never copy a file just to throw away on a bad target.
-  const rootAbs = await resolveRoot(root, skillTab);
+  const rootAbs = await resolveRoot(root);
   const cleanedDir = normalize(dirRelPath ?? '');
   const dirAbs = cleanedDir === '' || cleanedDir === '.' ? rootAbs : join(rootAbs, cleanedDir);
   await requirePathUnder(dirAbs, rootAbs);
@@ -172,8 +153,8 @@ export async function treeImportFile(
   if (!sourceAbs) return null;
   const sourceName = basename(sourceAbs);
   // Sanitise just the basename — keep the extension verbatim so a `.pdf`
-  // import lands as `.pdf`. For knowledge / skills we still want `.md`-
-  // ish material, but enforcing here would block the legitimate "drop a
+  // import lands as `.pdf`. For knowledge we still want `.md`-ish
+  // material, but enforcing here would block the legitimate "drop a
   // PDF reference into knowledge/external/" workflow; leave the
   // categorisation to the user.
   const ext = extname(sourceName);

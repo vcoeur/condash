@@ -1,11 +1,10 @@
 /**
  * Workspace section of the Settings modal — conception tab only.
  *
- * Four FieldWithBadge inputs over the four conception-side path keys:
- * `workspace_path`, `worktrees_path`, `resources_path`, `skills_path`.
- * Each row carries its own inheritance state + Remove-override button.
- * The four path setters live here too — they're pure `patchConfig`
- * wrappers, no state shared with the modal shell.
+ * Two FieldWithBadge inputs over the two conception-side path keys:
+ * `workspace_path`, `worktrees_path`. The Resources pane (always
+ * `<root>/resources/`) and the Skills pane (always `<root>/.agents/skills/`)
+ * are hard-coded post-reframe — no override rows for either.
  */
 
 import { type JSX } from 'solid-js';
@@ -38,16 +37,6 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
   const setWorktreesPath = (value: string): Promise<void> =>
     props.patchConfig((c) => {
       c.worktrees_path = value || undefined;
-    });
-
-  const setResourcesPath = (value: string): Promise<void> =>
-    props.patchConfig((c) => {
-      c.resources_path = value || undefined;
-    });
-
-  const setSkillsPath = (value: string): Promise<void> =>
-    props.patchConfig((c) => {
-      c.skills_path = value || undefined;
     });
 
   return (
@@ -85,40 +74,6 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
               'conception.worktrees_path',
               () => props.parsed().worktrees_path,
               setWorktreesPath,
-            )}
-          />
-        </FieldWithBadge>
-        <FieldWithBadge
-          label="Resources directory"
-          pathScope="rel"
-          hint="Relative to the conception root. Browsed by the Resources pane."
-          state={props.stateOf('resources_path')}
-          onRemove={() => void props.removeOverride('resources_path')}
-        >
-          <input
-            type="text"
-            placeholder="resources"
-            {...props.bindText(
-              'conception.resources_path',
-              () => props.parsed().resources_path,
-              setResourcesPath,
-            )}
-          />
-        </FieldWithBadge>
-        <FieldWithBadge
-          label="Skills directory"
-          pathScope="rel"
-          hint="Relative to the conception root. Markdown files here are editable from the Skills pane."
-          state={props.stateOf('skills_path')}
-          onRemove={() => void props.removeOverride('skills_path')}
-        >
-          <input
-            type="text"
-            placeholder=".claude/skills"
-            {...props.bindText(
-              'conception.skills_path',
-              () => props.parsed().skills_path,
-              setSkillsPath,
             )}
           />
         </FieldWithBadge>

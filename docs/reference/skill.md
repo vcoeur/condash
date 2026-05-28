@@ -1,6 +1,6 @@
 ---
 title: Management skills · condash reference
-description: Reference for the five shipped Claude Code skills — /projects, /knowledge, /tidy, /skills, /pr — and how they shell out to the condash CLI.
+description: Reference for the three shipped Claude Code skills — /projects, /knowledge, /pr — and how they shell out to the condash CLI.
 ---
 
 # Management skills
@@ -9,17 +9,17 @@ description: Reference for the five shipped Claude Code skills — /projects, /k
 
 ## At a glance
 
-condash ships five [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install` (or `/skills install` from a session). Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
+condash ships three [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
 
 | Skill | Scope | What it does |
 |---|---|---|
 | **`/projects`** | items + worktrees | Create / read / update / close projects, incidents, and documents. Manage worktrees per branch. |
-| **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. |
-| **`/tidy`** | health | Run every audit + verify stamp check, batch the auto-fixable ones into one confirmation, surface the rest as a punch-list. |
-| **`/skills`** | meta | Install or update the shipped skills themselves — wraps `condash skills install`. |
+| **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. Audits (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries, stale stamps) flow through `verify`. |
 | **`/pr`** | git | Open a GitHub PR from the current branch with the project README's timeline-append rule applied. |
 
 The skills are **editorial only**. Every mechanical step shells out to `condash`, so the dashboard, the CLI, and the skills always see the same canonical view of the tree. A skill never re-implements parsing or validation in `bash + grep + sed`.
+
+The pre-reframe `/tidy` and `/skills` skills were dropped: tidy's audits are now reachable from `/knowledge verify` (which wraps `condash audit` + `condash knowledge verify`), and `/skills` was a thin wrapper over `condash skills install` — call the CLI directly.
 
 ## `/projects`
 
@@ -49,36 +49,9 @@ Manage durable reference material in `<conception>/knowledge/`.
 | `retrieve` | `/knowledge retrieve <query>` — triage walk (`triage` / `grep` / `both`) | `condash knowledge retrieve` |
 | `update` | `/knowledge update <path>` — add or edit a body file with citation + verification stamp | direct file edits + `condash knowledge stamp` |
 | `index` | `/knowledge index` — regenerate every `knowledge/**/index.md` | `condash knowledge index` |
-| `verify` | `/knowledge verify` — audit stale `**Verified:** YYYY-MM-DD` stamps + tree audits | `condash knowledge verify` |
+| `verify` | `/knowledge verify` — stamp freshness + every conception-tree audit (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries) | `condash knowledge verify` + `condash audit` |
 
-Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones older than the freshness threshold.
-
-## `/tidy`
-
-Run every audit and verification check the CLI knows about, batch the safely auto-fixable issues into a single confirmation, and surface the rest as a punch-list.
-
-| Action | Trigger | Wraps |
-|---|---|---|
-| (default) | `/tidy [check=<list>] [dry-run]` | `condash audit --include all --json` and `condash knowledge verify --json` |
-
-The skill never auto-bumps `**Verified:**` stamps (a stale stamp means "human re-reads the source") and never auto-deletes cross-repo references — instead it searches for likely-renamed targets and proposes a redirect when there's a single candidate. Every other auto-fix (LFS track, worktree setup, dangling-index-line removal, `knowledge index` regen) goes through one `AskUserQuestion` round before applying.
-
-Each issue carries a `fix.action` symbol and a `fix.autoFix: bool` flag — the skill reads `autoFix` directly rather than deriving fixability from check names.
-
-## `/skills`
-
-Install or refresh the shipped skills. Use it after upgrading condash to pull updated skill content while keeping local edits.
-
-| Action | Trigger | Wraps |
-|---|---|---|
-| `status` | `/skills status` | `condash skills status` (compare local vs shipped via SHA256) |
-| `install` | `/skills install` | `condash skills install` (per-file diff + confirmation walk) |
-
-`condash skills install` records what it shipped in one manifest at `<conception>/.agents/.condash-skills.json` (v3 schema: a `skills.<name>` namespace for skill sources plus a `files.<path>` namespace retained to reconcile top-level files condash ≤ 4.0.1 shipped — e.g. a legacy region-delimited `.gitignore`; condash no longer ships any top-level file). Each tracked file carries its shipped version + SHA256, so a re-install can tell an unchanged file from a locally-edited one and refuse to clobber edits without `--force`. `AGENTS.md` is **not** manifest-tracked — its marker line is the boundary, so there's no hash to reconcile.
-
-### The skill source is committed; nothing is compiled
-
-The `.agents/skills/` source tree is the committed, canonical copy of each skill. condash no longer produces any per-harness compiled output — there are no `.claude/skills/`, `.kimi/skills/`, or `.opencode/skills/` directories to regenerate, and no compiled instruction files (`.claude/CLAUDE.md`, `.kimi/AGENTS.md`, `.opencode/AGENTS.md`). The harness launcher (shipped separately) reads the verbatim source and renders it per agent at run time. condash's only generated top-level artefact is the `AGENTS.md` marker region (head regenerated, `## Specifics` tail preserved).
+Every body file carries a `**Verified:** YYYY-MM-DD` stamp; `verify` flags ones older than the freshness threshold and surfaces tree-wide audit findings in the same punch-list.
 
 ## `/pr`
 
@@ -94,9 +67,13 @@ condash skills install
 condash skills install
 ```
 
-The skill sources land at `<conception>/.agents/skills/`. With a harness launcher set up to render them, `/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr` become available in a session.
+The skill sources land at `<conception>/.agents/skills/`. With a harness launcher set up to render them, `/projects`, `/knowledge`, `/pr` become available in a session.
 
-`condash skills install` writes one file at a time and asks for confirmation per file when local content differs from the shipped version — your customisations don't get clobbered silently.
+`condash skills install` writes one file at a time and asks for confirmation per file when local content differs from the shipped version — your customisations don't get clobbered silently. It records what it shipped in one manifest at `<conception>/.agents/.condash-skills.json` (v3 schema: a `skills.<name>` namespace for skill sources plus a `files.<path>` namespace retained for legacy entries; condash ≤ 4.0.1 shipped a region-delimited `.gitignore` and no longer ships any top-level file). Each tracked file carries its shipped version + SHA256, so a re-install can tell an unchanged file from a locally-edited one and refuse to clobber edits without `--force`. `AGENTS.md` is **not** manifest-tracked — its marker line is the boundary, so there's no hash to reconcile.
+
+### The skill source is committed; nothing is compiled
+
+The `.agents/skills/` source tree is the committed, canonical copy of each skill. condash no longer produces any per-harness compiled output and no compiled instruction files. The harness launcher (shipped separately) reads the verbatim source and renders it per agent at run time. condash's only generated top-level artefact is the `AGENTS.md` marker region (head regenerated, `## Specifics` tail preserved).
 
 ## Conception-path resolution
 

@@ -38,12 +38,4 @@ Clicking the card body itself runs the most-likely action for the file type — 
 
 ## Configuration
 
-Set the directory by editing `.condash/settings.json` at the conception root (per-tree, per-host), or via **Settings → Workspace → Resources directory**. The value lives on the tree side; the global `settings.json` carries only defaults.
-
-```json
-{
-  "resources_path": "resources"
-}
-```
-
-The value is relative to the conception root. Absolute paths and `..` segments are rejected by the schema.
+The Resources pane reads `<conception>/resources/` unconditionally — the directory name is hard-coded and not configurable. To opt out, leave the directory absent; the pane renders an empty state.

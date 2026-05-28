@@ -20,9 +20,10 @@ are still on disk; delete condash and the files don't move.
   on first launch — drop a file in `resources/` and the pane will
   surface it.
 - **Skills** (right pane, alternate, `Ctrl+L`) — markdown skills under
-  `.claude/skills/`, edited in place. Default location for the five
-  shipped skills (`/projects`, `/knowledge`, `/tidy`, `/skills`, `/pr`)
-  — they appear automatically once `condash skills install` has run.
+  `.agents/skills/`, read-only. Hosts the three shipped skills
+  (`/projects`, `/knowledge`, `/pr`) once `condash skills install` has
+  run, and toggles to user-scope agedum sources via the Conception/User
+  segmented control.
 - **Logs** (right pane, alternate, `Ctrl+Shift+L`) — per-session
   terminal capture viewer. Sessions are a collapsible card grid
   grouped by date (last 7 days per-day with today always expanded,
