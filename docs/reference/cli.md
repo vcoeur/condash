@@ -149,7 +149,7 @@ The app registry — one canonical `@handle` per app, with its `label` + `path`.
 | `add <handle> --path <p> [--label <l>]` | Register a new live app |
 | `set <handle> [--label <l>] [--path <p>]` | Update a registered app |
 | `rename <old> <new>` | Rename a handle; records the old as an alias and rewrites every project README `apps:` reference that pointed at it |
-| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry (CLAUDE.md is compiled from AGENTS.md downstream) |
+| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry (agent-specific files like CLAUDE.md are virtual agedum renders of AGENTS.md — never written to disk) |
 | `validate [--fix]` | Every project README `apps:` value must resolve to a known `@handle` (live or retired) or an existing absolute path; unknown handles exit 3, alias hits are reported with a suggested rewrite. `--fix` canonicalises every resolvable value to its `@handle` (bare names and legacy aliases alike) and leaves only the unresolvable ones for a human |
 
 ```bash

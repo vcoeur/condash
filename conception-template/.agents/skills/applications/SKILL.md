@@ -71,7 +71,7 @@ Each issue is `{readme, ref, problem, suggestion?}`. `problem: "unknown-handle"`
 condash applications sync-docs
 ```
 
-Regenerates the Apps table inside **AGENTS.md** between the `<!-- condash:apps:start -->` / `<!-- condash:apps:end -->` sentinels from the registry. **AGENTS.md is the only source** — CLAUDE.md is compiled from it downstream; never hand-edit CLAUDE.md or its copies. If the verb reports `missingSentinels`, add the two sentinel comments around the existing Apps table once, then re-run. Run after any `add` / `set` / `rename`.
+Regenerates the Apps table inside **AGENTS.md** between the `<!-- condash:apps:start -->` / `<!-- condash:apps:end -->` sentinels from the registry. **AGENTS.md is the only source** — agent-specific files like CLAUDE.md are virtual, rendered from AGENTS.md by agedum at launch (never written to disk); never hand-edit them. If the verb reports `missingSentinels`, add the two sentinel comments around the existing Apps table once, then re-run. Run after any `add` / `set` / `rename`.
 
 ### add / set
 
@@ -94,6 +94,6 @@ Cascades: updates the registry entry, records the old handle as an `alias`, and 
 
 - **Handle is the only identity.** Never introduce a second way to reference an app. If a name reads badly as a pill, change its `handle`/`label` — don't reference it a different way.
 - **`@` values are quoted in YAML.** Unquoted `- @foo` fails to parse and silently drops from `apps:`.
-- **Never write CLAUDE.md.** `sync-docs` targets AGENTS.md; the downstream compile owns CLAUDE.md.
+- **Never write CLAUDE.md.** `sync-docs` targets AGENTS.md; agedum renders the harness view virtually at launch.
 - **A handle is live or retired, never both.** Promote a retired handle back by moving it from `retired_apps` to `repositories[]` (or use `add`).
 - **Validate before you ship** a project that touched `apps:` — an unresolved reference exits 3 and blocks the edit-time hook.
