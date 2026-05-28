@@ -612,12 +612,16 @@ body[data-dragging='project'] .row {
 
 /* Apps row now hosts one .app-pill per app — kill the meta-icon's own
  * padding/spacing so the pills sit flush, and bump the inter-pill gap
- * a touch so adjacent pills don't merge visually. */
+ * a touch so adjacent pills don't merge visually. `flex-wrap: wrap`
+ * lets a long apps list spill onto a second row inside the card
+ * instead of clipping pills at the right edge (issue #258). */
 .row .meta-icon.apps {
   padding: 0;
   margin: 0;
-  gap: 6px;
+  gap: 4px 6px;
   font-family: var(--font-ui);
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 /* Bottom-of-card row: slug (left) + date range (right). Same height
