@@ -335,4 +335,128 @@ describe('regenerateIndex (projects strategy)', () => {
       expect(rootIndex).toMatch(/- \[`2026-05\/`\][^\n]+`\[[^\]]*condash[^\]]*\]`/);
     });
   });
+
+  describe('bullet stability when description carries bracket characters', () => {
+    // Regression test for conception incident
+    // 2026-05-23-condash-index-bullet-slug-reappend (vcoeur/condash#NNN).
+    //
+    // The original replaceTagsInBullet regex `/\s*`?\[[^\]]*\]`?\s*$/` allowed
+    // the optional-backtick tag block to start matching from a `[` inside the
+    // description text. When a project's auto-drafted description contained
+    // an unclosed `[` (e.g. a clipped `["@<name>"]` cut mid-token), the
+    // regex's leftmost match swallowed the closing italic `*` and the real
+    // tag block, leaving a malformed bullet with no closing italic. On the
+    // next regen, matchBullet failed on the malformed line and a fresh
+    // duplicate was appended — unbounded, one per run.
+    it("doesn't corrupt or duplicate bullets whose description gets clipped mid-`[`", async () => {
+      // The repro case from the conception incident: a description over
+      // 200 chars whose tail array `["@condash"]` is split by clip(200)
+      // — the clipped desc ends with `[` and no matching `]`, which used
+      // to confuse the tag-block regex into eating the closing italic.
+      // A status change between pass 1 and pass 2 forces a tag-block
+      // rewrite (the only path that exercises replaceTagsInBullet on a
+      // mutated raw), so the bug fires.
+      const filler =
+        'A description engineered so the 200-char clip ends inside a bracketed array, in just the right place ' +
+        'to mirror the original conception case: worktrees setup <branch>, empty created[], notPresent: ';
+      const longDesc = filler + '["@condash"] and the bare repo lookup misses.';
+      const writeReadme = async (status: string): Promise<void> => {
+        await writeFile(
+          'projects/2026-05/2026-05-14-bracket-bug/README.md',
+          [
+            '---',
+            'date: 2026-05-14',
+            'kind: incident',
+            `status: ${status}`,
+            'apps:',
+            '  - condash',
+            '---',
+            '',
+            '# Bracket bug',
+            '',
+            '## Description',
+            '',
+            longDesc,
+            '',
+          ].join('\n'),
+        );
+      };
+
+      // Pass 1 with status=now drafts a well-formed bullet.
+      await writeReadme('now');
+      await regenerateIndex(conceptionDir, projectsStrategy);
+      const after1 = await readFile('projects/2026-05/index.md');
+      const bracketLines1 = after1.match(/^- \[`2026-05-14-bracket-bug.*$/gm) ?? [];
+      expect(bracketLines1).toHaveLength(1);
+      expect(bracketLines1[0]).toMatch(/— \*[^\n]+\*\.?\s*`\[[^\]]+\]`/);
+
+      // Flip status; pass 2 must re-render the bullet without corrupting
+      // the description tail. With the buggy regex this drops the
+      // closing italic and the tag block re-attaches mid-description.
+      await writeReadme('done');
+      await regenerateIndex(conceptionDir, projectsStrategy);
+      const after2 = await readFile('projects/2026-05/index.md');
+      const bracketLines2 = after2.match(/^- \[`2026-05-14-bracket-bug.*$/gm) ?? [];
+      expect(bracketLines2).toHaveLength(1);
+      // Closing italic must still be present, with the new tag block
+      // immediately after it.
+      expect(bracketLines2[0]).toMatch(/— \*[^\n]+\*\.?\s*`\[[^\]]+\]`/);
+      expect(bracketLines2[0]).toContain('`[incident, done, condash]`');
+
+      // Pass 3 must be a no-op.
+      const report3 = await regenerateIndex(conceptionDir, projectsStrategy);
+      const after3 = await readFile('projects/2026-05/index.md');
+      expect(after3).toBe(after2);
+      expect(report3.updated).toEqual([]);
+    });
+
+    it('collapses pre-existing duplicate bullets for the same folder on the next regen', async () => {
+      // Simulates an index that already accumulated duplicates from the
+      // old bug. After the fix, a single regen should keep one bullet per
+      // folder (the engine de-dups by canonical name).
+      await writeFile(
+        'projects/2026-05/2026-05-14-bracket-bug/README.md',
+        [
+          '---',
+          'date: 2026-05-14',
+          'kind: incident',
+          'status: done',
+          'apps:',
+          '  - condash',
+          '---',
+          '',
+          '# Bracket bug',
+          '',
+          '## Description',
+          '',
+          'Worktrees setup <branch> path with notPresent: ["@condash"] tail.',
+          '',
+        ].join('\n'),
+      );
+      // Hand-write a corrupted index with three duplicate bullets (one
+      // well-formed and two malformed — the malformed ones mirror the
+      // shape the buggy replaceTagsInBullet used to produce: no closing
+      // italic).
+      await writeFile(
+        'projects/2026-05/index.md',
+        [
+          '# 2026-05',
+          '',
+          'Items.',
+          '',
+          '## Items',
+          '',
+          '- [`2026-05-14-bracket-bug/`](2026-05-14-bracket-bug/README.md) — *Worktrees setup <branch> path with notPresent: ["@condash"] tail.* `[incident, done, condash]`',
+          '- [`2026-05-14-bracket-bug/`](2026-05-14-bracket-bug/README.md) — *Worktrees setup <branch> path with notPresent: `[incident, done, condash]`',
+          '- [`2026-05-14-bracket-bug/`](2026-05-14-bracket-bug/README.md) — *Worktrees setup <branch> path with notPresent: `[incident, done, condash]`',
+          '',
+        ].join('\n'),
+      );
+
+      await regenerateIndex(conceptionDir, projectsStrategy);
+      const after = await readFile('projects/2026-05/index.md');
+      const matches = after.match(/^- \[`2026-05-14-bracket-bug.*$/gm) ?? [];
+      expect(matches.length).toBe(1);
+    });
+  });
 });
