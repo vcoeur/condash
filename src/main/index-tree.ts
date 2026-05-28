@@ -174,6 +174,11 @@ interface BulletEntry {
   /** True when the bullet carries a trailing `<!-- draft -->` marker — the
    * engine owns it and may rewrite tags on subsequent runs. False = curated. */
   draft: boolean;
+  /** True when the bullet matched only the loose recovery regex — the
+   * description / tag-block portion is malformed (e.g. the historical
+   * bracket-in-description bug). The engine re-renders the line from a
+   * fresh draft on the next pass to repair the shape. */
+  loose: boolean;
 }
 
 interface IndexFileShape {
@@ -183,6 +188,11 @@ interface IndexFileShape {
   sections: SectionRange[];
   /** Existing bullets, keyed by name (canonical link-text form). */
   bullets: Map<string, BulletEntry>;
+  /** True when at least one duplicate bullet line was skipped during parse —
+   * the rest of the engine uses this to force a render so the duplicates
+   * are physically removed from disk (otherwise an unchanged tag set
+   * would let the file slip past the `changed` gate). */
+  hadDuplicates: boolean;
 }
 
 interface SectionRange {
@@ -212,11 +222,21 @@ const BULLET_WITH_TAGS_RE =
   /^-\s+\[(?:`?)(?<name>[^\]`]+?)(?:`?)\]\((?<link>[^)]+)\)\s*[—\-]\s*\*(?<desc>.+)\*\.?\s*`\[(?<tags>[^\]]*)\]`\s*$/;
 const BULLET_NO_TAGS_RE =
   /^-\s+\[(?:`?)(?<name>[^\]`]+?)(?:`?)\]\((?<link>[^)]+)\)\s*[—\-]\s*\*(?<desc>.+)\*\.?\s*$/;
+// Loose recovery: just the `- [name](link)` head, no description or tag block.
+// Used to identify malformed bullets so the engine can de-duplicate them and
+// re-render the line from a fresh draft instead of treating the folder as
+// "missing" and appending yet another copy.
+const BULLET_LOOSE_RE = /^-\s+\[(?:`?)(?<name>[^\]`]+?)(?:`?)\]\((?<link>[^)]+)\)/;
 const HEADING2_RE = /^##\s+(.+?)\s*$/;
 
-function matchBullet(
-  line: string,
-): { name: string; link: string; desc: string; tags: string; draft: boolean } | null {
+function matchBullet(line: string): {
+  name: string;
+  link: string;
+  desc: string;
+  tags: string;
+  draft: boolean;
+  loose: boolean;
+} | null {
   // Detect (and strip) a trailing `<!-- draft -->` marker before running the
   // existing bullet regexes — keeps the regexes blissfully unaware of the
   // marker. Any other trailing HTML comment (e.g. `<!-- TBC -->`) is also
@@ -235,6 +255,7 @@ function matchBullet(
       desc: (a.groups as { desc: string }).desc,
       tags: (a.groups as { tags: string }).tags,
       draft,
+      loose: false,
     };
   const b = stripped.match(BULLET_NO_TAGS_RE);
   if (b)
@@ -244,6 +265,17 @@ function matchBullet(
       desc: (b.groups as { desc: string }).desc,
       tags: '',
       draft,
+      loose: false,
+    };
+  const c = stripped.match(BULLET_LOOSE_RE);
+  if (c)
+    return {
+      name: (c.groups as { name: string }).name,
+      link: (c.groups as { link: string }).link,
+      desc: '',
+      tags: '',
+      draft,
+      loose: true,
     };
   return null;
 }
@@ -449,6 +481,7 @@ async function processDirectory(
       tags: draft.keywords,
       sectionHeading,
       draft: true,
+      loose: false,
     });
     result.added.push(canonical);
   }
@@ -465,7 +498,9 @@ async function processDirectory(
     const canonical = canonicalName(child);
     const bullet = shape.bullets.get(canonical);
     if (!bullet) continue;
-    const isEngineOwned = bullet.draft || rewriteAggregated;
+    // A loose-matched bullet is always engine-rewritten, regardless of the
+    // draft marker — the line is malformed and must be repaired.
+    const isEngineOwned = bullet.draft || rewriteAggregated || bullet.loose;
     if (!isEngineOwned) continue;
 
     const childFreq = aggregatedKeywords.get(child.absPath) ?? new Map();
@@ -486,14 +521,27 @@ async function processDirectory(
     // Promote a curated-but-rewritten bullet to drafted: --rewrite-aggregated
     // is the explicit "I want the engine to own this from now on" signal.
     const becameDraft = !bullet.draft;
-    const willBeDraft = bullet.draft || rewriteAggregated;
-    const newRaw = replaceTagsInBullet(bullet.raw, newTags, willBeDraft);
+    const willBeDraft = bullet.draft || rewriteAggregated || bullet.loose;
+    // Malformed (loose-matched) bullets get rebuilt from scratch — the
+    // original description is unrecoverable because the buggy
+    // replaceTagsInBullet truncated it on a prior run. A full re-render
+    // restores the canonical shape so the engine matches it next time.
+    let newRaw: string;
+    if (bullet.loose) {
+      const link = strategy.formatChildLink(dirAbsPath, child);
+      const linkName = `${child.name}/`;
+      newRaw = formatBullet(linkName, link, draft, willBeDraft);
+    } else {
+      newRaw = replaceTagsInBullet(bullet.raw, newTags, willBeDraft);
+    }
 
     if (newRaw !== bullet.raw) {
       bullet.tags = newTags;
       bullet.raw = newRaw;
       bullet.draft = willBeDraft;
-      if (additions.length > 0 || removals.length > 0 || becameDraft) {
+      const wasLoose = bullet.loose;
+      bullet.loose = false;
+      if (additions.length > 0 || removals.length > 0 || becameDraft || wasLoose) {
         result.tagsAdded.push({ entry: canonical, tags: additions });
       }
     }
@@ -529,9 +577,15 @@ async function processDirectory(
   }
   aggregatedKeywords.set(dirAbsPath, myAggregate);
 
-  // Render the new file content if anything changed.
+  // Render the new file content if anything changed. `hadDuplicates`
+  // forces a render even when tags/folders are unchanged, so legacy
+  // duplicate bullet lines get physically removed from disk.
   const changed =
-    isNew || result.added.length > 0 || result.dropped.length > 0 || result.tagsAdded.length > 0;
+    isNew ||
+    result.added.length > 0 ||
+    result.dropped.length > 0 ||
+    result.tagsAdded.length > 0 ||
+    shape.hadDuplicates;
 
   if (changed) {
     const rendered = renderIndex(shape, newEntries);
@@ -589,6 +643,7 @@ function parseIndex(raw: string): IndexFileShape {
   const lines = raw.split(/\r?\n/);
   const sections: SectionRange[] = [];
   const bullets = new Map<string, BulletEntry>();
+  let hadDuplicates = false;
 
   // Walk the file collecting heading offsets.
   const headingPositions: { line: number; heading: string }[] = [];
@@ -642,12 +697,26 @@ function parseIndex(raw: string): IndexFileShape {
       else fileCount++;
       const tags = parseTagList(m.tags);
       const canonical = canonicalNameFromBullet(rawName, link);
+      // De-duplication: keep the first strict bullet for a given canonical,
+      // and only fall back to a loose-matched line if no strict bullet was
+      // seen for the same folder. Loose entries flag the bullet for full
+      // re-rendering in processDirectory.
+      const existing = bullets.get(canonical);
+      if (existing && !existing.loose) {
+        hadDuplicates = true;
+        continue;
+      }
+      if (existing && existing.loose && m.loose) {
+        hadDuplicates = true;
+        continue;
+      }
       bullets.set(canonical, {
         name: rawName,
         raw: line,
         tags,
         sectionHeading: section.heading,
         draft: m.draft,
+        loose: m.loose,
       });
     }
     if (dirCount === 0 && fileCount === 0) section.kind = 'empty';
@@ -656,7 +725,7 @@ function parseIndex(raw: string): IndexFileShape {
     else section.kind = 'mixed';
   }
 
-  return { lines, sections, bullets };
+  return { lines, sections, bullets, hadDuplicates };
 }
 
 /**
@@ -706,9 +775,12 @@ function renderIndex(shape: IndexFileShape, newEntries: BulletEntry[]): string {
 
     // Filter existing bullet lines: keep only those whose canonical name is
     // still in shape.bullets, and replace the line with the (possibly tag-
-    // augmented) raw form.
+    // augmented) raw form. De-duplicate by canonical so that legacy
+    // duplicate bullets (e.g. the old bracket-in-description corruption)
+    // collapse to a single entry on the next regen.
     if (bulletStart !== -1) {
       const newBulletLines: string[] = [];
+      const seen = new Set<string>();
       for (let i = bulletStart; i < bulletEnd; i++) {
         const m = matchBullet(lines[i]);
         if (!m) {
@@ -719,6 +791,8 @@ function renderIndex(shape: IndexFileShape, newEntries: BulletEntry[]): string {
         const bullet = shape.bullets.get(canonical);
         if (!bullet) continue; // dropped
         if (!keptCanonical.has(canonical)) continue;
+        if (seen.has(canonical)) continue; // duplicate of an earlier bullet
+        seen.add(canonical);
         newBulletLines.push(bullet.raw);
       }
       const additions = newBySection.get(section.heading) ?? [];
@@ -900,6 +974,16 @@ function formatBullet(
   return `- [\`${linkName}\`](${link}) — *${desc}.*${tags}${marker}`;
 }
 
+// Trailing tag block: ` `[t1, t2, …]` `. **Backticks are required**, both
+// to distinguish a real tag block from a bracketed substring living inside
+// the description (e.g. a clipped `["@<name>"]` array — see #NNN) and to
+// keep the format strict. An earlier optional-backtick form would scan
+// left-to-right and match the *first* bracketed segment near end-of-line,
+// which on a description ending with a clipped `[` ate the closing italic
+// and the genuine tag block in one go — leaving the bullet malformed and
+// invisible to the next-run matcher.
+const TAG_BLOCK_RE = /\s*`\[[^\]]*\]`\s*$/;
+
 function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): string {
   // Strip any trailing draft marker plus any other trailing HTML comments
   // (e.g. a curated `<!-- TBC -->`) so the tag-block regex sees clean input.
@@ -914,8 +998,8 @@ function replaceTagsInBullet(raw: string, tags: string[], isDraft: boolean): str
   }
   const tagBlock = ` \`[${tags.join(', ')}]\``;
   let body: string;
-  if (/\s*`?\[[^\]]*\]`?\s*$/.test(stripped)) {
-    body = stripped.replace(/\s*`?\[[^\]]*\]`?\s*$/, '') + tagBlock;
+  if (TAG_BLOCK_RE.test(stripped)) {
+    body = stripped.replace(TAG_BLOCK_RE, '') + tagBlock;
   } else {
     body = stripped + tagBlock;
   }
