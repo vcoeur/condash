@@ -211,10 +211,11 @@ export function isStepCountsComplete(c: StepCounts): boolean {
   return total > 0 && c.todo === 0 && c.doing === 0 && c.blocked === 0;
 }
 
-/** First step whose marker is not 'x' (done). Returns undefined if every step
- * is done — the card body collapses in that case. */
+/** First *actionable* step — skips both `x` (done) and `-` (dropped/abandoned),
+ * matching how `countSteps` treats `-` as settled. Returns undefined if every
+ * step has been decided one way or the other. */
 export function nextOpenStep(item: Project): Step | undefined {
-  return item.steps.find((s) => s.marker !== 'x');
+  return item.steps.find((s) => s.marker !== 'x' && s.marker !== '-');
 }
 
 export function groupByStatus(items: Project[]): Map<string, Project[]> {
