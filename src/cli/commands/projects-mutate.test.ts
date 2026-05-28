@@ -176,7 +176,7 @@ describe('closeProject', () => {
 });
 
 describe('checkKnowledgeCommand', () => {
-  it('appends "Checked knowledge promotion" to timeline', async () => {
+  it('reports NEEDS CHECK for a done project whose last entry is not the marker, without mutating', async () => {
     const readme = await writeProjectReadme(conceptionPath, 'alpha', {
       date: '2026-05-01',
       kind: 'project',
@@ -184,6 +184,7 @@ describe('checkKnowledgeCommand', () => {
       title: 'Alpha',
       body: '## Timeline\n\n- 2026-05-02 — Closed.\n',
     });
+    const before = await fs.readFile(readme, 'utf8');
     const { stdout, threw } = await captureStdout(() =>
       checkKnowledgeCommand(
         { noun: 'projects', verb: 'check-knowledge', positional: ['alpha'], flags: {} },
@@ -192,19 +193,23 @@ describe('checkKnowledgeCommand', () => {
       ),
     );
     expect(threw).toBeUndefined();
-    const data = parseJsonEnvelope<{ status: string }>(stdout).data!;
+    const data = parseJsonEnvelope<{ status: string; satisfied: boolean; needsCheck: boolean }>(
+      stdout,
+    ).data!;
     expect(data.status).toBe('done');
-    const updated = await fs.readFile(readme, 'utf8');
-    expect(updated).toMatch(/—\s+Checked knowledge promotion/);
+    expect(data.satisfied).toBe(false);
+    expect(data.needsCheck).toBe(true);
+    // Signal only — the file must be untouched.
+    expect(await fs.readFile(readme, 'utf8')).toBe(before);
   });
 
-  it('warns when project status is not done', async () => {
-    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+  it('reports satisfied when the marker is the last timeline entry', async () => {
+    await writeProjectReadme(conceptionPath, 'alpha', {
       date: '2026-05-01',
       kind: 'project',
-      status: 'now',
+      status: 'done',
       title: 'Alpha',
-      body: '## Timeline\n\n',
+      body: '## Timeline\n\n- 2026-05-02 — Closed.\n- 2026-05-02 — Checked knowledge promotion\n',
     });
     const { stdout, threw } = await captureStdout(() =>
       checkKnowledgeCommand(
@@ -214,11 +219,32 @@ describe('checkKnowledgeCommand', () => {
       ),
     );
     expect(threw).toBeUndefined();
-    const envelope = parseJsonEnvelope<{ status: string }>(stdout);
-    expect(envelope.data!.status).toBe('now');
-    expect(envelope.warnings!.length).toBeGreaterThan(0);
-    const updated = await fs.readFile(readme, 'utf8');
-    expect(updated).toMatch(/—\s+Checked knowledge promotion/);
+    const data = parseJsonEnvelope<{ satisfied: boolean; needsCheck: boolean }>(stdout).data!;
+    expect(data.satisfied).toBe(true);
+    expect(data.needsCheck).toBe(false);
+  });
+
+  it('reports not-required for a non-done project, without mutating', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'now',
+      title: 'Alpha',
+      body: '## Timeline\n\n',
+    });
+    const before = await fs.readFile(readme, 'utf8');
+    const { stdout, threw } = await captureStdout(() =>
+      checkKnowledgeCommand(
+        { noun: 'projects', verb: 'check-knowledge', positional: ['alpha'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const data = parseJsonEnvelope<{ status: string; needsCheck: boolean }>(stdout).data!;
+    expect(data.status).toBe('now');
+    expect(data.needsCheck).toBe(false);
+    expect(await fs.readFile(readme, 'utf8')).toBe(before);
   });
 
   it('USAGE when slug is missing', async () => {

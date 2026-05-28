@@ -36,7 +36,7 @@ export async function checkKnowledgeCheck(conceptionPath: string): Promise<Audit
         file: relative(conceptionPath, readme),
         line: null,
         message: `Project is done but has no timeline entries (missing "${KNOWLEDGE_CHECK_TEXT}")`,
-        fix: { action: 'run_check_knowledge', autoFix: false },
+        fix: { action: 'promote_and_record_knowledge', autoFix: false },
       });
       continue;
     }
@@ -49,7 +49,7 @@ export async function checkKnowledgeCheck(conceptionPath: string): Promise<Audit
         file: relative(conceptionPath, readme),
         line: null,
         message: `Last timeline entry is "${last.text}" — expected "${KNOWLEDGE_CHECK_TEXT}"`,
-        fix: { action: 'run_check_knowledge', autoFix: false },
+        fix: { action: 'promote_and_record_knowledge', autoFix: false },
       });
     }
   }
