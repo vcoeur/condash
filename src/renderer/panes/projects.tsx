@@ -1,6 +1,7 @@
 import { For, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import './projects-pane.css';
+import './app-pill.css';
 import {
   COLLAPSED_BY_DEFAULT,
   groupDone,

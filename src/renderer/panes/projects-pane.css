@@ -434,6 +434,25 @@ body[data-dragging='project'] .row {
   word-break: break-word;
 }
 
+/* Container for the next-step text + the steps-progress expander button
+ * — they sit on one row, text grows to fill, expander right-aligned.
+ * Only renders when there's at least one still-open step. */
+.row .next-step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.row .next-step-row .summary.next-step {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row .next-step-row .meta-icon.expander {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
 .row .summary.next-step {
   display: flex;
   align-items: flex-start;
@@ -591,7 +610,24 @@ body[data-dragging='project'] .row {
   stroke-width: 1.6;
 }
 
+/* Apps row now hosts one .app-pill per app — kill the meta-icon's own
+ * padding/spacing so the pills sit flush, and bump the inter-pill gap
+ * a touch so adjacent pills don't merge visually. */
 .row .meta-icon.apps {
+  padding: 0;
+  margin: 0;
+  gap: 6px;
+  font-family: var(--font-ui);
+}
+
+/* Bottom-of-card row: slug (left) + date range (right). Same height
+ * and typography as `meta-bottom` but no progress/buttons inside. */
+.row .meta.meta-bottom-slug {
+  margin-top: 2px;
+}
+
+.row .meta-bottom-slug .meta-icon.slug {
+  font-family: var(--font-mono);
   color: var(--text-muted);
 }
 

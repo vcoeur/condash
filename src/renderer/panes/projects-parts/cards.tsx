@@ -1,12 +1,12 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
+import { appColorClass } from '@shared/app-color';
 import { TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import {
   Group,
   MARKER_LABEL,
-  dateRangeLabel,
   firstDate,
   hasSteps,
   isStepCountsComplete,
@@ -413,40 +413,45 @@ export function Card(props: {
           </div>
         </div>
 
-        {/* Row 2: next task — the first open step's text. */}
+        {/* Row 2: next task (text) + expander (progress + arrow). Both
+            keyed by the presence of an open step — once every step is
+            settled (done or dropped), the whole row disappears. */}
         <Show when={nextOpenStep(props.item)} keyed>
           {(step) => (
-            <p class="summary next-step" data-marker={markerClass(step.marker)}>
-              <span class="next-step-marker" aria-hidden="true">
-                <StepIcon marker={step.marker} />
-              </span>
-              {step.text}
-            </p>
+            <div class="next-step-row">
+              <p class="summary next-step" data-marker={markerClass(step.marker)}>
+                <span class="next-step-marker" aria-hidden="true">
+                  <StepIcon marker={step.marker} />
+                </span>
+                {step.text}
+              </p>
+              <Show when={hasSteps(props.item.stepCounts)}>
+                <button
+                  class="meta-icon expander"
+                  data-complete={isStepCountsComplete(props.item.stepCounts) ? 'true' : undefined}
+                  aria-expanded={expanded()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpanded((v) => !v);
+                  }}
+                  title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
+                >
+                  <StepProgress counts={props.item.stepCounts} />
+                  <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
+                </button>
+              </Show>
+            </div>
           )}
         </Show>
 
-        {/* Row 3: step completion + apps + branch + dates. Last row on
-            the card. The dates come from the slug (creation) and the
-            most recent ## Timeline entry. */}
+        {/* Row 3: app pills (leftmost) + branch + warn. The expander used
+            to live here; moved up to row 2 next to the next-step text. */}
         <div class="meta meta-bottom">
-          <Show when={hasSteps(props.item.stepCounts)}>
-            <button
-              class="meta-icon expander"
-              data-complete={isStepCountsComplete(props.item.stepCounts) ? 'true' : undefined}
-              aria-expanded={expanded()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded((v) => !v);
-              }}
-              title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
-            >
-              <StepProgress counts={props.item.stepCounts} />
-              <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
-            </button>
-          </Show>
           <Show when={props.item.apps.length > 0}>
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
-              {props.item.apps.join(', ')}
+              <For each={props.item.apps}>
+                {(app) => <span class={`app-pill ${appColorClass(app)}`}>{app}</span>}
+              </For>
             </span>
           </Show>
           <Show when={props.item.branch}>
@@ -461,11 +466,20 @@ export function Card(props: {
             </span>
           </Show>
           <span class="meta-spacer" />
+        </div>
+        {/* Row 4: slug (left) + last-activity date (right). Start date is
+            already encoded in the slug (`YYYY-MM-DD-…`); only the latest
+            timeline date is worth surfacing here. */}
+        <div class="meta meta-bottom-slug">
+          <span class="meta-icon slug" title={`slug: ${props.item.slug}`}>
+            {props.item.slug}
+          </span>
+          <span class="meta-spacer" />
           <span
             class="meta-icon date"
             title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
           >
-            {dateRangeLabel(props.item)}
+            {lastDate(props.item)}
           </span>
         </div>
       </div>
