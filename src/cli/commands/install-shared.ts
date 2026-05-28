@@ -8,17 +8,15 @@
  *   - **Top-level files** at the conception root (e.g. AGENTS.md, .gitignore)
  *     — heading-delimited regions, hash-tracked per file by region body.
  *
- * The CLI writes three independent manifests on each install:
+ * The CLI writes one manifest on each install:
  *   - `<dest>/.agents/.condash-skills.json` — source refuse-on-edit. Tracks
  *     each shipped source file under `.agents/skills/`. Used by the
  *     skills walker to flag local edits before re-installing.
- *   - `<dest>/.claude/skills/.condash-skills.json` — Claude compiled output.
- *   - `<dest>/.kimi/skills/.condash-skills.json` — Kimi compiled output.
  *
- * The source manifest moved from `.claude/skills/.condash-skills.json` to
- * `.agents/.condash-skills.json` when the skillspec compiler shipped.
- * `readManifest` migrates the legacy file on first read (one-shot, the
- * legacy file is moved rather than copied).
+ * condash no longer compiles SKILL.md into per-harness output dirs; the
+ * harness launcher renders skills per agent at run time. `readManifest`
+ * migrates a legacy `.claude/skills/.condash-skills.json` to the new
+ * `.agents/` location on first read (one-shot, the legacy file is moved).
  */
 
 import { createHash } from 'node:crypto';
@@ -39,16 +37,12 @@ export interface ManifestFileEntry {
 /**
  * Per-skill manifest entry.
  *
- * Tracks **source** files only — files under `<dest>/<skills_source>/<name>/`
- * (default `<dest>/.agents/skills/<name>/`). Source files use refuse-on-edit
- * semantics: if the on-disk SHA matches the manifest, condash overwrites with
- * the newly-shipped content; if it differs, condash refuses without `--force`.
- *
- * Compiled outputs under `<dest>/.claude/skills/<name>/` and
- * `<dest>/.kimi/skills/<name>/` are deterministically regenerated from
- * sources on every install and are **not** tracked by the manifest. Users
- * are not expected to edit compiled outputs (a `<!-- GENERATED -->` banner
- * makes that explicit in each compiled `SKILL.md`).
+ * Tracks **source** files only — files under
+ * `<dest>/.agents/skills/<name>/`. Source files use refuse-on-edit
+ * semantics: if the on-disk SHA matches the manifest, condash overwrites
+ * with the newly-shipped content; if it differs, condash refuses without
+ * `--force`. condash no longer fan-installs into per-harness output dirs,
+ * so the manifest only tracks `.agents/skills/`.
  */
 export interface ManifestSkillEntry {
   source: Record<string, ManifestFileEntry>;

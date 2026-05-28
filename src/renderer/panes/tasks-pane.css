@@ -1,6 +1,6 @@
 /* Tasks pane — reusable, parameterized agent prompts. A card list plus a fill
- * view (pickers + fields + preview → Run) and an editor stacked below. Mirrors
- * agents-pane.css; uses the shared theme variables. */
+ * view (pickers + fields + preview → Run) and an editor stacked below. Uses
+ * the shared theme variables. */
 
 .tasks-pane {
   display: flex;

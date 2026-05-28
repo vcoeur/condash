@@ -182,19 +182,14 @@ export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'lo
  * Selected by the left edge-strip handles (Projects / Tasks / Deliverables). */
 export type LeftView = 'projects' | 'tasks' | 'deliverables';
 
-/** Active tab in the Skills pane. */
-export type SkillTab = 'generic' | 'claude' | 'kimi' | 'opencode';
+/** Scope toggle in the Skills pane. `conception` reads the active
+ *  conception's `AGENTS.md` + `.agents/skills/` tree; `user` reads the
+ *  per-machine agedum sources at `~/.config/agents/AGENTS.md` +
+ *  `~/.agents/skills/`. The pane is read-only in both scopes; condash
+ *  surfaces the agedum source-of-truth and never edits it. */
+export type SkillScope = 'conception' | 'user';
 
-export const SKILL_TABS: readonly SkillTab[] = ['generic', 'claude', 'kimi', 'opencode'] as const;
-
-/** Scope toggle in the Skills pane. `local` reads the active conception's
- *  skills + agent configs; `global` reads the per-machine user scope under
- *  `~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`.
- *  The global scope is read-only — it mirrors what `condash skills install
- *  --user` lays down. */
-export type SkillScope = 'local' | 'global';
-
-export const SKILL_SCOPES: readonly SkillScope[] = ['local', 'global'] as const;
+export const SKILL_SCOPES: readonly SkillScope[] = ['conception', 'user'] as const;
 
 /** Composite-layout state. The unified window has a top band (Projects on
  * the left, working surface on the right) and a bottom band (Terminal).
@@ -247,8 +242,11 @@ export interface Settings {
    * is collapsed — that is the on-purpose first-load state per the issue
    * #89 spec. The empty-string entry stands in for the pane's root
    * directory; everything else matches a `relPath` returned by the tree
-   * reader. Per-machine because the answer is "what was I last looking
-   * at on this laptop", not a team convention. */
+   * reader. The Skills pane uses one `skills` set per scope (the user/
+   * conception toggle is a small dimension, so two sets are stored under
+   * a single key — see `TreeExpansionPrefs`). Per-machine because the
+   * answer is "what was I last looking at on this laptop", not a team
+   * convention. */
   treeExpansion?: TreeExpansionPrefs;
   /** Branch names that the Code pane's top-of-pane filter pins as visible
    * on every app card. The primary worktree row is always rendered; this
@@ -262,12 +260,10 @@ export interface Settings {
    *  is empty/undefined, false otherwise — preserves existing behaviour
    *  for users with an explicit selection. Issue #169. */
   branchFilterStickyAll?: boolean;
-  /** Active tab in the Skills pane. Persisted per-machine so the next
-   *  launch reopens whichever tab the user last looked at. Defaults to
-   *  `claude` (preserves pre-tabs behaviour for existing users). */
-  skillsActiveTab?: SkillTab;
-  /** Active scope toggle in the Skills pane (local conception vs global
-   *  user scope). Persisted per-machine; defaults to `local`. */
+  /** Active scope toggle in the Skills pane (conception vs user). The
+   *  user-scope reads agedum sources at `~/.config/agents/`; the conception
+   *  scope reads `<conception>/.agents/`. Persisted per-machine; defaults
+   *  to `conception`. */
   skillsActiveScope?: SkillScope;
 }
 
@@ -276,14 +272,14 @@ export interface Settings {
 export interface TreeExpansionPrefs {
   knowledge?: string[];
   resources?: string[];
-  /** Legacy key — migrated to `skillsClaude` on first read. Kept for
-   *  backwards compatibility during load; writers always emit the three
-   *  per-tab keys below. */
+  /** Conception-scope skills tree (`<conception>/.agents/skills/`). The
+   *  pre-reframe per-harness keys (`skillsGeneric`, `skillsClaude`,
+   *  `skillsKimi`, `skillsOpencode`) collapsed into this single key when
+   *  the Skills pane switched to agedum sources. The legacy `skills` key
+   *  is read for back-compat but never written. */
   skills?: string[];
-  skillsGeneric?: string[];
-  skillsClaude?: string[];
-  skillsKimi?: string[];
-  skillsOpencode?: string[];
+  /** User-scope skills tree (`~/.agents/skills/`). */
+  skillsUser?: string[];
 }
 
 /** Discriminator for the three tree panes. Used by the `tree.*` IPC verbs
@@ -734,7 +730,7 @@ export type ResourceCategory =
  * plus the coarse `category` used by the renderer's icon picker.
  */
 export interface ResourceNode {
-  /** Path relative to <conception>/<resources_path>. Empty string for the root. */
+  /** Path relative to <conception>/resources/. Empty string for the root. */
   relPath: string;
   /** Absolute path on disk. */
   path: string;
@@ -758,7 +754,7 @@ export interface ResourceNode {
 
 /**
  * Tracked-shipping metadata for a skill file. Populated only when the file
- * appears in `<skills_path>/.condash-skills.json`. Used by the renderer to
+ * appears in `<conception>/.agents/.condash-skills.json`. Used by the renderer to
  * surface a "shipped" chip and a "diverged from shipped" banner when local
  * edits would be flagged on the next `condash skills install`.
  */
@@ -778,7 +774,9 @@ export interface SkillShippedInfo {
  * optional `shipped` stamp on `SKILL.md` and shipped body files.
  */
 export interface SkillNode {
-  /** Path relative to <conception>/<skills_path>. Empty string for the root. */
+  /** Path relative to the scope's skills root (`<conception>/.agents/skills/`
+   *  for conception scope, `~/.agents/skills/` for user scope). Empty string
+   *  for the root. */
   relPath: string;
   /** Absolute path on disk. */
   path: string;
@@ -794,12 +792,10 @@ export interface SkillNode {
   summary?: string;
   /** Shipped-file tracking, when the manifest covers this file. Files only. */
   shipped?: SkillShippedInfo;
-  /** Set on synthetic agent-config entries injected at the skills root
-   *  (CLAUDE.md / AGENTS.md / the Generic `common.md` + `<model>.md`
-   *  sources). Carries the short uppercase badge the renderer shows
-   *  ('CLAUDE', 'AGENTS', 'KIMI', 'COMMON', …); its presence is also how
-   *  the renderer tells these read-only callouts apart from real skill
-   *  files. Absent on every on-disk skill node. */
+  /** Set on the synthetic AGENTS.md entry pinned at the top of the tree.
+   *  Carries the short uppercase badge the renderer shows ('AGENTS'); its
+   *  presence is also how the renderer tells the read-only callout apart
+   *  from real skill files. Absent on every on-disk skill node. */
   badge?: string;
 }
 

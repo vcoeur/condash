@@ -109,9 +109,10 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
 
   const tasks: Promise<unknown>[] = [];
   if (knowledgeDirty) tasks.push(deps.reloadKnowledge());
-  // `condash.json` can remap `resources_path` / `skills_path`; the
-  // watcher already rebuilds its watch set on a `config` event, but
-  // the in-memory trees still point at the old roots until reloaded.
+  // A `condash.json` edit can change settings the trees indirectly depend
+  // on (the resources/skills paths themselves are hard-coded since the
+  // reframe). The watcher rebuilds its watch set on a `config` event, but
+  // the in-memory trees still need an explicit reload.
   if (resourcesDirty || configDirty) tasks.push(deps.reloadResources());
   if (skillsDirty || configDirty) tasks.push(deps.reloadSkills());
   if (configDirty) {

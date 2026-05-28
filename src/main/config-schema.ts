@@ -257,23 +257,6 @@ const treeExpansionSchema = z
   .strict();
 
 /**
- * Constraint shared by `resources_path` and `skills_path`: the value must
- * be a non-empty, normalised relative path interpreted from the conception
- * root. Absolute paths and `..` segments are rejected — both would let the
- * panes browse outside the conception tree, which is not the user-facing
- * promise.
- */
-const conceptionRelativePath = z
-  .string()
-  .min(1, 'must not be empty')
-  .refine((value) => !value.startsWith('/'), {
-    message: 'must be relative to the conception root (no leading "/")',
-  })
-  .refine((value) => !value.split(/[\\/]/).includes('..'), {
-    message: 'must not contain ".." segments',
-  });
-
-/**
  * Workspace + presentational fields shared by global and per-conception
  * settings files. Picked apart from the path-tracking fields so the same
  * shape can be used in both files — the conception override variant just
@@ -283,10 +266,6 @@ const sharedSchemaFields = {
   $schema_doc: z.string().optional(),
   workspace_path: z.string().optional(),
   worktrees_path: z.string().optional(),
-  /** Directory browsed by the Resources pane (default `resources`). */
-  resources_path: conceptionRelativePath.optional(),
-  /** Directory browsed by the Skills pane (default `.claude/skills`). */
-  skills_path: conceptionRelativePath.optional(),
   repositories: z.array(topLevelRepoEntry).optional(),
   /** Terminal-launcher agents — a flat `{id,label,command}` list surfaced in
    *  the tab-strip spawn dropdown. Replaces the per-file `<conception>/agents/`
@@ -351,17 +330,20 @@ export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
 export type Config = ConceptionConfig;
 
 /**
- * Default for `resources_path` when the key is absent. Kept here so the
- * schema and the resolver agree on one constant.
+ * Hard-coded directory name browsed by the Resources pane. The reframe
+ * dropped the `resources_path` config in favour of this constant — a
+ * conception either lays out its resources at `<root>/resources/` or
+ * sees an empty pane.
  */
 export const DEFAULT_RESOURCES_PATH = 'resources';
 
 /**
- * Default for `skills_path` when the key is absent. The conception template
- * already ships skills under `.claude/skills/`, so a freshly-initialised
- * tree resolves to a non-empty Skills pane out of the box.
+ * Hard-coded directory name browsed by the Skills pane (conception scope).
+ * The reframe dropped the `skills_path` config in favour of this constant —
+ * the Skills pane reads agedum sources at `<conception>/.agents/skills/`
+ * and never the per-harness compiled outputs.
  */
-export const DEFAULT_SKILLS_PATH = '.claude/skills';
+export const DEFAULT_SKILLS_PATH = '.agents/skills';
 
 /**
  * In-place migration of legacy settings shapes ahead of strict-mode zod

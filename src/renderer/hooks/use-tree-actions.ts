@@ -1,5 +1,5 @@
 import type { Setter } from 'solid-js';
-import type { SkillNode, SkillTab, TreeRoot } from '@shared/types';
+import type { SkillNode, TreeRoot } from '@shared/types';
 import type { TreeAffordance, TreeViewMutationApi, TreeViewPromptApi } from '../panes/tree-view';
 import type { ResourcesViewActions } from '../panes/resources';
 import type { ModalState } from '../note-modal';
@@ -8,14 +8,11 @@ import type { createTreeStore } from '../tree-store';
 import type { TerminalBridge } from '../terminal-bridge';
 import type { PromptModalState } from '../prompt-modal';
 
-type SkillsStores = Record<SkillTab, ReturnType<typeof createTreeStore<SkillNode>>>;
-
 export interface UseTreeActionsDeps {
   knowledgeStore: { reload: () => Promise<void> };
   resourcesStore: { reload: () => Promise<void> };
-  skillsStores: SkillsStores;
-  skillsActiveTab: () => SkillTab;
-  expandTreeDir: (key: TreeRoot, sourceDirRelPath: string, skillTab?: SkillTab) => void;
+  skillsStore: ReturnType<typeof createTreeStore<SkillNode>>;
+  expandTreeDir: (key: TreeRoot, sourceDirRelPath: string) => void;
   openPrompt: (init: Omit<PromptModalState, 'resolve'>) => Promise<string | null>;
   setModal: Setter<ModalState>;
   setPdfPath: Setter<string | null>;
@@ -27,6 +24,10 @@ export interface UseTreeActionsDeps {
 
 export interface UseTreeActions {
   treeMutations: TreeViewMutationApi;
+  /** Same shape as `treeMutations`, kept as a separate name so the Skills pane
+   *  can be wired with read-only affordances independently from Knowledge /
+   *  Resources. The Skills pane is read-only post-reframe, so these never
+   *  actually run — the affordance list is empty. */
   skillsMutations: TreeViewMutationApi;
   treePrompts: TreeViewPromptApi;
   treeError: (msg: string) => void;
@@ -41,7 +42,6 @@ export interface UseTreeActions {
     newPath: string,
     kind: TreeAffordance,
     sourceDirRelPath: string,
-    skillTab?: SkillTab,
   ) => void;
   /** Pass the .md's h1 (or fallback) so the modal head doesn't fall back
    *  to displaying the absolute filesystem path — long, low-contrast, and
@@ -65,18 +65,11 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     importFile: (root, dirRelPath) => window.condash.treeImportFile(root, dirRelPath),
   };
 
-  // Skills mutations pre-bind the currently-active Skills tab so source
-  // edits land in `.agents/skills/` and Claude edits in `<skills_path>`.
-  // The Kimi tab uses the affordance allowlist to suppress the buttons
-  // entirely; the main-process resolver enforces the rule as a backstop.
-  const skillsMutations: TreeViewMutationApi = {
-    createMd: (root, dirRelPath, filename) =>
-      window.condash.treeCreateMd(root, dirRelPath, filename, deps.skillsActiveTab()),
-    mkdir: (root, dirRelPath, name) =>
-      window.condash.treeMkdir(root, dirRelPath, name, deps.skillsActiveTab()),
-    importFile: (root, dirRelPath) =>
-      window.condash.treeImportFile(root, dirRelPath, deps.skillsActiveTab()),
-  };
+  // The Skills pane is read-only post-reframe — agedum owns writes, condash
+  // surfaces the source-of-truth — so the mutation surface is the same as
+  // any other pane but the affordance list on the view is empty. Kept as a
+  // distinct name so the wiring stays explicit at the call site.
+  const skillsMutations: TreeViewMutationApi = treeMutations;
 
   const treePrompts: TreeViewPromptApi = {
     prompt: deps.openPrompt,
@@ -121,7 +114,6 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     newPath: string,
     kind: TreeAffordance,
     sourceDirRelPath: string,
-    skillTab?: SkillTab,
   ): void => {
     // Reload the affected tree explicitly — the chokidar watcher does fire
     // on the new file, but the open-the-newly-created-file branch below
@@ -129,11 +121,8 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     // entry on the same frame.
     if (treeKey === 'knowledge') void deps.knowledgeStore.reload();
     else if (treeKey === 'resources') void deps.resourcesStore.reload();
-    else {
-      const tab = skillTab ?? deps.skillsActiveTab();
-      void deps.skillsStores[tab].reload();
-    }
-    deps.expandTreeDir(treeKey, sourceDirRelPath, skillTab);
+    else void deps.skillsStore.reload();
+    deps.expandTreeDir(treeKey, sourceDirRelPath);
     if (kind === 'mkdir') return;
     if (treeKey === 'knowledge') {
       handleOpenKnowledgeFile(newPath);

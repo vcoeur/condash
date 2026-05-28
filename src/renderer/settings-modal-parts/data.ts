@@ -70,7 +70,7 @@ export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   'appearance:global': ['theme', 'cardMinWidth'],
   'terminal:global': ['terminal'],
   'agents:global': ['agents'],
-  'workspace:conception': ['workspace_path', 'worktrees_path', 'resources_path', 'skills_path'],
+  'workspace:conception': ['workspace_path', 'worktrees_path'],
   'repositories:conception': ['repositories'],
   'open-with:conception': ['open_with'],
   'appearance:conception': ['theme', 'cardMinWidth'],
@@ -245,8 +245,6 @@ export interface RawConfig {
   $schema_doc?: string;
   workspace_path?: string;
   worktrees_path?: string;
-  resources_path?: string;
-  skills_path?: string;
   repositories?: RawRepo[];
   agents?: Agent[];
   open_with?: Record<string, { label?: string; command?: string }>;
