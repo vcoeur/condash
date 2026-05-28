@@ -33,7 +33,7 @@ One binary, one launcher: the `condash` entry on PATH inspects its argv. With no
 CLI nouns:
 
 ```
-projects   knowledge   search   repos   worktrees   audit   dirty   skills   config   help
+projects   knowledge   search   repos   applications   worktrees   audit   dirty   skills   config   help
 ```
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
@@ -137,6 +137,25 @@ List configured repositories from `.condash/settings.json` (or the legacy `conda
 
 ```bash
 condash repos list                       # configured repos
+```
+
+### `applications`
+
+The app registry — one canonical `@handle` per app, with its `label` + `path`. The handle is the single reference used in card pills, project README `apps:` lists, the generated AGENTS.md Apps table, the colour hash, and search. Live apps are the `repositories[]` entries; defunct handles that closed projects still reference live in `retired_apps`. Either may carry `aliases` (legacy spellings that resolve to the handle).
+
+| Verb | What it does |
+|---|---|
+| `list` | List every registered app (live + retired), with handle, label, path |
+| `add <handle> --path <p> [--label <l>]` | Register a new live app |
+| `set <handle> [--label <l>] [--path <p>]` | Update a registered app |
+| `rename <old> <new>` | Rename a handle; records the old as an alias and rewrites every project README `apps:` reference that pointed at it |
+| `sync-docs` | Regenerate the Apps table in `AGENTS.md` between the `condash:apps` sentinels from the registry (CLAUDE.md is compiled from AGENTS.md downstream) |
+| `validate` | Every project README `apps:` value must resolve to a known `@handle` (live or retired) or an existing absolute path; unknown handles exit 3, alias hits are reported with a suggested rewrite |
+
+```bash
+condash applications list --json
+condash applications validate            # exit 3 on an unresolved reference
+condash applications rename fovea fovea-web
 ```
 
 ### `worktrees`
