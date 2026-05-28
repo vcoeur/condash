@@ -109,5 +109,6 @@ When no `branch` field is set, the main checkouts at `<workspace_path>/<repo>/` 
 - **Transfer stamps** (`**Transferred:** YYYY-MM-DD → <knowledge-path>`) mark passages promoted to `knowledge/`. Historical, never expire.
 - Status markers in checklists: `[ ]`, `[~]`, `[x]`, `[!]`, `[-]`.
 - Each item may have an optional `local/` directory next to `notes/` — gitignored, for raw inputs and intermediate renders that are useful while active but not versioned.
+- **Project folder root**: the only file at the root of an item folder is `README.md` — everything else lives in a subdirectory. `notes/` holds the narrative content (numbered `NN-*.md` notes, plus `.pdf` / images when they support a note). `local/` is gitignored, for raw inputs and intermediate renders. **Sibling directories** alongside `notes/` and `local/` (`scripts/`, `pictures/`, `files/`, `deliverables/`, …) are fine when they organise topic-specific assets that don't fit `notes/` — keep them flat next to `notes/`, don't fold them under it. A loose file at the root (a stray `rapport.md` / `rapport.pdf` pair, a deliverable PDF, …) belongs in `notes/`, or in a sibling like `deliverables/` if that's where it actually lives — not at the root.
 
 $ARGUMENTS
