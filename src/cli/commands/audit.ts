@@ -10,6 +10,7 @@ const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'worktrees',
   'index',
   'knowledge-recheck',
+  'knowledge-check',
 ];
 
 const KNOWN_FLAGS_AUDIT = ['include'] as const;

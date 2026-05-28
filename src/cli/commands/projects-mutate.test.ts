@@ -5,7 +5,12 @@
  */
 import { promises as fs } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { statusCommand, closeProject, reopenProject } from './projects-mutate';
+import {
+  statusCommand,
+  closeProject,
+  reopenProject,
+  checkKnowledgeCommand,
+} from './projects-mutate';
 import {
   captureStdout,
   jsonCtx,
@@ -154,12 +159,72 @@ describe('closeProject', () => {
     const updated = await fs.readFile(readme, 'utf8');
     expect(updated).toMatch(/status: done/);
     expect(updated).toMatch(/—\s+Closed\.\s+Shipped in v3\.10\.4/);
+    expect(updated).toMatch(/—\s+Checked knowledge promotion/);
   });
 
   it('USAGE when slug is missing', async () => {
     const { threw } = await captureStdout(() =>
       closeProject(
         { noun: 'projects', verb: 'close', positional: [], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(2);
+  });
+});
+
+describe('checkKnowledgeCommand', () => {
+  it('appends "Checked knowledge promotion" to timeline', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'done',
+      title: 'Alpha',
+      body: '## Timeline\n\n- 2026-05-02 — Closed.\n',
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      checkKnowledgeCommand(
+        { noun: 'projects', verb: 'check-knowledge', positional: ['alpha'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const data = parseJsonEnvelope<{ status: string }>(stdout).data!;
+    expect(data.status).toBe('done');
+    const updated = await fs.readFile(readme, 'utf8');
+    expect(updated).toMatch(/—\s+Checked knowledge promotion/);
+  });
+
+  it('warns when project status is not done', async () => {
+    const readme = await writeProjectReadme(conceptionPath, 'alpha', {
+      date: '2026-05-01',
+      kind: 'project',
+      status: 'now',
+      title: 'Alpha',
+      body: '## Timeline\n\n',
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      checkKnowledgeCommand(
+        { noun: 'projects', verb: 'check-knowledge', positional: ['alpha'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const envelope = parseJsonEnvelope<{ status: string }>(stdout);
+    expect(envelope.data!.status).toBe('now');
+    expect(envelope.warnings!.length).toBeGreaterThan(0);
+    const updated = await fs.readFile(readme, 'utf8');
+    expect(updated).toMatch(/—\s+Checked knowledge promotion/);
+  });
+
+  it('USAGE when slug is missing', async () => {
+    const { threw } = await captureStdout(() =>
+      checkKnowledgeCommand(
+        { noun: 'projects', verb: 'check-knowledge', positional: [], flags: {} },
         jsonCtx(),
         conceptionPath,
       ),

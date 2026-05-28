@@ -20,6 +20,11 @@ This section is shipped by condash and refreshed by `condash skills install`. co
 - **Project READMEs are the cold-recovery contract**: as you work, flip the `## Steps` markers (`[ ]` `[~]` `[x]` `[!]`), append a dated `## Timeline` entry on each material event, and lift chat answers into `## Notes` — don't batch to the end. Full conventions in the `projects` skill.
 - **Deliverables**: list an item's tangible outputs under `## Deliverables`, one bullet each — `- [label](file-or-URL) — comment` or `- [[slug]] — comment`. They surface on the project card and condash's Deliverables pane. Full spec in the `projects` skill.
 - **Durable rules** go in versioned files — `knowledge/` and the `## Specifics` section below — never agent auto-memory.
+- **Knowledge promotion check**: every `status: done` project's last timeline entry must be `Checked knowledge promotion`. `condash projects close` appends it automatically. If a project reaches `done` without it, run `condash projects check-knowledge <slug>`.
+
+### Editing agent files
+
+condash ships and refreshes a fixed set of skills under `.agents/skills/`. **Edit these in condash**, not in the conception repo — changes made here are overwritten on the next `condash skills install`. Per-conception overrides go in the `## Specifics` section below, or in harness-specific files like `.claude/CLAUDE.md` or `.opencode/CLAUDE.md` (never in the shipped files themselves).
 
 <!-- end condash agents -->
 

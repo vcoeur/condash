@@ -1,4 +1,4 @@
-import { transitionStatus } from '../../main/mutate';
+import { appendTimelineEntry, transitionStatus } from '../../main/mutate';
 import { checkBranchState } from '../../main/worktree-ops';
 import { touchDirtyMarker } from '../../main/dirty';
 import { KNOWN_STATUSES } from '../../shared/types';
@@ -81,6 +81,11 @@ export async function closeProject(
   const header = await readHeader(candidate.readmePath);
   const transition = await transitionStatus(candidate.readmePath, newStatus, { summary });
 
+  // After closing, append the mandatory knowledge-promotion check entry.
+  // This guarantees "Closed." never follows the check — the check is always last.
+  const today = new Date().toISOString().slice(0, 10);
+  await appendTimelineEntry(candidate.readmePath, `- ${today} — Checked knowledge promotion`);
+
   const dirtyMarker = noTouchDirty ? false : await touchDirtyMarker(conceptionPath, 'projects');
 
   const warnings = await leftoverBranchWarnings(conceptionPath, header.branch);
@@ -100,6 +105,48 @@ export async function closeProject(
       return `Closed ${data.slug}: ${data.previousStatus ?? '(none)'} → ${data.newStatus}\n`;
     },
     warnings,
+  );
+}
+
+export async function checkKnowledgeCommand(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  assertNoExtraFlags(args, NOUN_FLAGS);
+  const slug = args.positional[0];
+  if (!slug) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects check-knowledge <slug>');
+
+  const candidate = await resolveSlug(conceptionPath, slug);
+  const header = await readHeader(candidate.readmePath);
+
+  // Only done projects need the check; for other statuses we warn but still allow it
+  // (useful when a user wants to pre-check before closing).
+  const status = (header.status ?? '').toLowerCase();
+  const isDone = status === 'done';
+
+  const today = new Date().toISOString().slice(0, 10);
+  await appendTimelineEntry(candidate.readmePath, `- ${today} — Checked knowledge promotion`);
+  const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
+
+  emit(
+    ctx,
+    {
+      slug: candidate.slug,
+      path: candidate.readmePath,
+      status,
+      timelineAppended: `- ${today} — Checked knowledge promotion`,
+      dirtyMarkerTouched: dirtyMarker,
+    },
+    (d) => {
+      const data = d as { slug: string; status: string };
+      return `Checked knowledge promotion for ${data.slug} (status: ${data.status})\n`;
+    },
+    isDone
+      ? []
+      : [
+          `Project status is '${status}', not 'done'. The check was appended, but the audit invariant (last entry must be "Checked knowledge promotion") only matters for done projects.`,
+        ],
   );
 }
 

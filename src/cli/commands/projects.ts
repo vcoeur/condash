@@ -8,7 +8,12 @@ import {
   searchProjects,
   validateCommand,
 } from './projects-read';
-import { statusCommand, closeProject, reopenProject } from './projects-mutate';
+import {
+  statusCommand,
+  closeProject,
+  reopenProject,
+  checkKnowledgeCommand,
+} from './projects-mutate';
 import {
   indexCommand,
   createCommand,
@@ -37,6 +42,7 @@ export const KNOWN_FLAGS_SEARCH = ['limit', 'status', 'kind'] as const;
 export const KNOWN_FLAGS_VALIDATE = ['all', 'path'] as const;
 export const KNOWN_FLAGS_STATUS = ['summary'] as const;
 export const KNOWN_FLAGS_CLOSE = ['status', 'summary', 'no-touch-dirty'] as const;
+export const KNOWN_FLAGS_CHECK_KNOWLEDGE: readonly string[] = [];
 export const KNOWN_FLAGS_REOPEN = ['status'] as const;
 export const KNOWN_FLAGS_BACKFILL_CLOSED = ['dry-run'] as const;
 export const KNOWN_FLAGS_INDEX = ['dry-run', 'rewrite-aggregated'] as const;
@@ -70,6 +76,7 @@ export const NOUN_FLAGS: readonly string[] = [
     ...KNOWN_FLAGS_INDEX,
     ...KNOWN_FLAGS_CREATE,
     ...KNOWN_FLAGS_SCAN_PROMOTIONS,
+    ...KNOWN_FLAGS_CHECK_KNOWLEDGE,
     ...KNOWN_FLAGS_REWRITE_HEADERS,
   ]),
 ];
@@ -107,6 +114,8 @@ export async function runProjects(
       return await statusCommand(args, ctx, conceptionPath);
     case 'close':
       return await closeProject(args, ctx, conceptionPath);
+    case 'check-knowledge':
+      return await checkKnowledgeCommand(args, ctx, conceptionPath);
     case 'reopen':
       return await reopenProject(args, ctx, conceptionPath);
     case 'backfill-closed':
@@ -300,6 +309,17 @@ function printHelp(verb: string | null): void {
         '  condash projects create --kind project --slug y --title "Y" --apps a,b --status later',
       ]);
       return;
+    case 'check-knowledge':
+      writeBlock([
+        'condash projects check-knowledge <slug>',
+        '',
+        'Append a "Checked knowledge promotion" timeline entry to a project.',
+        'For done projects this satisfies the audit invariant (last entry must be the check).',
+        '',
+        'Examples:',
+        '  condash projects check-knowledge condash-cli-ux-fixes',
+      ]);
+      return;
     case 'scan-promotions':
       writeBlock([
         'condash projects scan-promotions <slug>',
@@ -345,6 +365,7 @@ function printSubHelp(): void {
       '  validate         Validate header(s) against canonical enums.',
       '  status           get|set the **Status** field.',
       '  close            Flip status to done + append closing Timeline entry.',
+      '  check-knowledge  Append "Checked knowledge promotion" timeline entry.',
       '  reopen           Flip status from done back to --status (default: now).',
       '  backfill-closed  One-shot: append `Closed.` to legacy done items.',
       '  index            Regenerate projects/index.md + month indexes.',
