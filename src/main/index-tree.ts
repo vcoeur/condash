@@ -758,7 +758,13 @@ function renderIndex(shape: IndexFileShape, newEntries: BulletEntry[]): string {
   // earlier offsets.
   const sectionsBottomUp = [...shape.sections].reverse();
   for (const section of sectionsBottomUp) {
-    if (section.headingLine === -1) continue; // prologue, no bullets to manage
+    // The prologue (headingLine === -1, everything above the first `##`) is
+    // managed too: some hand-authored indexes list their body-file bullets
+    // directly under the H1 with no `## Current files` heading. `pickBucketHeading`
+    // returns '' for those, so a new bullet's only home is the prologue. The
+    // bullet-block scan below preserves the intro prose and only rewrites the
+    // contiguous bullet lines, so running it on the prologue is safe even when
+    // the prologue is pure prose (no bullets, no additions → no-op).
 
     // Find the contiguous bullet-block within this section.
     let bulletStart = -1;
