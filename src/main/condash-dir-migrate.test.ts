@@ -56,7 +56,7 @@ describe('migrateLegacyConfig', () => {
   });
 
   it('falls back to configuration.json when condash.json is absent', async () => {
-    const legacyContent = '{"resources_path":"resources"}\n';
+    const legacyContent = '{"skills_path":".claude/skills"}\n';
     writeFileSync(join(tmp, 'configuration.json'), legacyContent);
     const result = await migrateLegacyConfig(tmp);
     expect(result.migrated).toBe(true);

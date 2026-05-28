@@ -5,6 +5,7 @@ import { spliceFamilyAt } from './repos-store';
 function entry(name: string, parent?: string): RepoEntry {
   return {
     name: parent ? `${parent}/${name}` : name,
+    handle: name,
     path: `/r/${parent ? `${parent}/${name}` : name}`,
     parent,
     dirty: 0,

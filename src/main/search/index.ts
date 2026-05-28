@@ -70,21 +70,12 @@ export async function search(
   const wants = (source: string): boolean =>
     !scopes || scopes.length === 0 || scopes.includes(source);
 
-  const { resources, skills } = await resolveConceptionPaths(conceptionPath);
+  const { resources, skills } = resolveConceptionPaths();
 
-  // Skills search covers all three trees (Generic / Claude / Kimi). The
-  // source label stays `skills` for every hit; the relPath shown to the
-  // user (e.g. `.agents/skills/...` vs `.claude/skills/...`) is what
-  // distinguishes them in the result list.
-  const [
-    projectFiles,
-    knowledgeFiles,
-    resourceFiles,
-    skillFilesClaude,
-    skillFilesGeneric,
-    skillFilesKimi,
-    logFiles,
-  ] = await Promise.all([
+  // Skills search covers the single agedum source tree at
+  // `<conception>/.agents/skills/`; per-harness compiled outputs are no
+  // longer searched (they're not authored content).
+  const [projectFiles, knowledgeFiles, resourceFiles, skillFiles, logFiles] = await Promise.all([
     wants('projects') ? collectProjectFiles(join(conceptionPath, 'projects')) : Promise.resolve([]),
     wants('knowledge')
       ? collectKnowledgeFiles(join(conceptionPath, 'knowledge'))
@@ -93,17 +84,8 @@ export async function search(
       ? collectResourceFiles(join(conceptionPath, resources))
       : Promise.resolve([]),
     wants('skills') ? collectSkillFiles(join(conceptionPath, skills)) : Promise.resolve([]),
-    wants('skills')
-      ? collectSkillFiles(join(conceptionPath, '.agents', 'skills'))
-      : Promise.resolve([]),
-    wants('skills')
-      ? collectSkillFiles(join(conceptionPath, '.kimi', 'skills'))
-      : Promise.resolve([]),
     wants('logs') ? collectLogFiles(condashLogsRoot(conceptionPath)) : Promise.resolve([]),
   ]);
-  const skillFiles = wants('skills')
-    ? [...skillFilesClaude, ...skillFilesGeneric, ...skillFilesKimi]
-    : [];
 
   const matchFactories: Array<() => Promise<MatchOutput | null>> = [];
 

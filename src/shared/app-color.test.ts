@@ -1,5 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { APP_COLOR_SLOT_COUNT, appColorClass, appColorSlot } from './app-color';
+import {
+  APP_COLOR_SLOT_COUNT,
+  appColorClass,
+  appColorSlot,
+  appHandle,
+  appPillText,
+} from './app-color';
+
+describe('appHandle', () => {
+  it('strips a leading @ and lowercases', () => {
+    expect(appHandle('@Condash')).toBe('condash');
+    expect(appHandle('@@condash')).toBe('condash');
+    expect(appHandle('CONDASH')).toBe('condash');
+  });
+
+  it('keeps dots (no domain stripping; explicit handles own that)', () => {
+    expect(appHandle('notes.vcoeur.com')).toBe('notes.vcoeur.com');
+  });
+
+  it('takes the basename of a path reference', () => {
+    expect(appHandle('~/src/sophie/RechercheAutoAO')).toBe('rechercheautoao');
+    expect(appHandle('/abs/path/to/foo')).toBe('foo');
+    expect(appHandle('vcoeur.com/blog')).toBe('blog');
+    expect(appHandle('/trailing/slash/')).toBe('slash');
+  });
+
+  it('returns empty for empty / @-only input', () => {
+    expect(appHandle('')).toBe('');
+    expect(appHandle('@')).toBe('');
+  });
+});
+
+describe('appPillText', () => {
+  it('prefixes a single @ onto the handle', () => {
+    expect(appPillText('condash')).toBe('@condash');
+    expect(appPillText('@condash')).toBe('@condash');
+    expect(appPillText('Kasten')).toBe('@kasten');
+  });
+});
 
 describe('appColorSlot', () => {
   it('is deterministic for the same input', () => {

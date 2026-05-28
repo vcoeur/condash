@@ -96,37 +96,18 @@ describe('configSchema repoEntry', () => {
   });
 });
 
-describe('configSchema resources_path / skills_path', () => {
-  it('accepts plain relative paths', () => {
-    const result = configSchema.safeParse({
-      resources_path: 'resources',
-      skills_path: '.claude/skills',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts a nested relative path', () => {
-    const result = configSchema.safeParse({ resources_path: 'docs/resources' });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects an absolute path', () => {
-    const result = configSchema.safeParse({ resources_path: '/etc/passwd' });
+describe('configSchema dropped path keys', () => {
+  // Both `resources_path` and `skills_path` were dropped in the reframe —
+  // the Resources pane is hard-coded to `<root>/resources/` and the Skills
+  // pane reads agedum sources at `<root>/.agents/skills/`. The schema is
+  // strict, so either key on disk now fails parsing.
+  it('rejects `resources_path` (no longer configurable)', () => {
+    const result = configSchema.safeParse({ resources_path: 'resources' });
     expect(result.success).toBe(false);
   });
 
-  it('rejects an empty string', () => {
-    const result = configSchema.safeParse({ skills_path: '' });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects a path containing ".."', () => {
-    const result = configSchema.safeParse({ resources_path: '../escape' });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects a deeper path containing a ".." segment', () => {
-    const result = configSchema.safeParse({ skills_path: 'a/../b' });
+  it('rejects `skills_path` (no longer configurable)', () => {
+    const result = configSchema.safeParse({ skills_path: '.claude/skills' });
     expect(result.success).toBe(false);
   });
 });

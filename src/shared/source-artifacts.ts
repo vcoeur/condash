@@ -8,11 +8,10 @@
  * Editor backups and interrupted atomic writes (condash's own `*.tmp` pattern)
  * are the same class of accident. The skill + agent-config walkers must skip
  * every one of these so the junk never propagates into a conception's
- * `.agents/` source tree or its compiled `.claude/` / `.kimi/` / `.opencode/`
- * outputs.
+ * `.agents/` source tree.
  *
- * Pure string predicate — safe to import from main, renderer, the CLI bundle,
- * and the skillspec compiler alike.
+ * Pure string predicate — safe to import from main, renderer, and the CLI
+ * bundle alike.
  */
 
 /** File-name suffixes that mark package-manager / editor / temp litter. */

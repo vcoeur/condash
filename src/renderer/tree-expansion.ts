@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 import type { Accessor } from 'solid-js';
-import type { SkillTab, TreeRoot } from '@shared/types';
+import type { SkillScope, TreeRoot } from '@shared/types';
 
 export interface TreeExpansionDeps {
   /** Surface a transient toast in the renderer (used for persist failures). */
@@ -10,16 +10,14 @@ export interface TreeExpansionDeps {
 export interface TreeExpansion {
   knowledgeExpanded: Accessor<ReadonlySet<string>>;
   resourcesExpanded: Accessor<ReadonlySet<string>>;
-  /** Per-tab expanded set for the Skills pane. Pass `'claude'` to get the
-   *  set previously keyed on `skills`; the legacy key was migrated by the
-   *  main-process IPC handler on first read. */
-  skillsExpandedByTab: (tab: SkillTab) => Accessor<ReadonlySet<string>>;
+  /** Per-scope expanded set for the Skills pane. */
+  skillsExpandedForScope: (scope: SkillScope) => Accessor<ReadonlySet<string>>;
   /** Toggle a directory's expanded state in the given pane and persist.
-   *  When `treeKey === 'skills'`, `skillTab` is required. */
-  toggleTreeExpand: (treeKey: TreeRoot, relPath: string, skillTab?: SkillTab) => void;
+   *  When `treeKey === 'skills'`, `skillScope` is required. */
+  toggleTreeExpand: (treeKey: TreeRoot, relPath: string, skillScope?: SkillScope) => void;
   /** Force a directory into the expanded set without toggling — used after
    *  a successful tree mutation so the user can see the new file. */
-  expandTreeDir: (treeKey: TreeRoot, relPath: string, skillTab?: SkillTab) => void;
+  expandTreeDir: (treeKey: TreeRoot, relPath: string, skillScope?: SkillScope) => void;
 }
 
 /**
@@ -29,70 +27,52 @@ export interface TreeExpansion {
  * (the on-purpose first-load state). The hydrate-from-IPC then-callback
  * overrides the empty defaults when the user has prior state on disk.
  *
- * The Skills pane carries three independent sets — one per agent tab
- * (Generic / Claude / Kimi). The on-disk schema migrates the legacy
- * `skills` key into `skillsClaude` on first read.
+ * The Skills pane carries two independent sets — one per scope (conception /
+ * user). Pre-reframe per-harness keys (`skillsGeneric`, `skillsClaude`,
+ * `skillsKimi`, `skillsOpencode`) collapsed into the conception-scope `skills`
+ * key when the tab dimension was dropped.
  */
 export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
   const [knowledgeExpanded, setKnowledgeExpanded] = createSignal<ReadonlySet<string>>(new Set());
   const [resourcesExpanded, setResourcesExpanded] = createSignal<ReadonlySet<string>>(new Set());
-  const [skillsGenericExpanded, setSkillsGenericExpanded] = createSignal<ReadonlySet<string>>(
+  const [skillsConceptionExpanded, setSkillsConceptionExpanded] = createSignal<ReadonlySet<string>>(
     new Set(),
   );
-  const [skillsClaudeExpanded, setSkillsClaudeExpanded] = createSignal<ReadonlySet<string>>(
-    new Set(),
-  );
-  const [skillsKimiExpanded, setSkillsKimiExpanded] = createSignal<ReadonlySet<string>>(new Set());
-  const [skillsOpencodeExpanded, setSkillsOpencodeExpanded] = createSignal<ReadonlySet<string>>(
-    new Set(),
-  );
+  const [skillsUserExpanded, setSkillsUserExpanded] = createSignal<ReadonlySet<string>>(new Set());
 
   void window.condash.getTreeExpansion().then((prefs) => {
     setKnowledgeExpanded(new Set(prefs.knowledge));
     setResourcesExpanded(new Set(prefs.resources));
-    setSkillsGenericExpanded(new Set(prefs.skillsGeneric));
-    setSkillsClaudeExpanded(new Set(prefs.skillsClaude));
-    setSkillsKimiExpanded(new Set(prefs.skillsKimi));
-    setSkillsOpencodeExpanded(new Set(prefs.skillsOpencode));
+    // Legacy `skills` key was the conception-scope set in earlier versions —
+    // hydrate from it when present so users with prior expanded state don't
+    // lose it on the reframe upgrade.
+    setSkillsConceptionExpanded(new Set(prefs.skills));
+    setSkillsUserExpanded(new Set(prefs.skillsUser));
   });
 
-  const skillsGetter = (tab: SkillTab): Accessor<ReadonlySet<string>> =>
-    tab === 'generic'
-      ? skillsGenericExpanded
-      : tab === 'kimi'
-        ? skillsKimiExpanded
-        : tab === 'opencode'
-          ? skillsOpencodeExpanded
-          : skillsClaudeExpanded;
-  const skillsSetter = (tab: SkillTab) =>
-    tab === 'generic'
-      ? setSkillsGenericExpanded
-      : tab === 'kimi'
-        ? setSkillsKimiExpanded
-        : tab === 'opencode'
-          ? setSkillsOpencodeExpanded
-          : setSkillsClaudeExpanded;
+  const skillsGetter = (scope: SkillScope): Accessor<ReadonlySet<string>> =>
+    scope === 'user' ? skillsUserExpanded : skillsConceptionExpanded;
+  const skillsSetter = (scope: SkillScope) =>
+    scope === 'user' ? setSkillsUserExpanded : setSkillsConceptionExpanded;
 
-  /** Persist the union of every pane / tab set to settings.json.
+  /** Persist the union of every pane / scope set to settings.json.
    *  Fire-and-forget — a write failure surfaces as a toast but the
    *  in-memory state stays authoritative for the session. */
   const persistTreeExpansion = (): void => {
     const prefs = {
       knowledge: Array.from(knowledgeExpanded()),
       resources: Array.from(resourcesExpanded()),
-      skillsGeneric: Array.from(skillsGenericExpanded()),
-      skillsClaude: Array.from(skillsClaudeExpanded()),
-      skillsKimi: Array.from(skillsKimiExpanded()),
-      skillsOpencode: Array.from(skillsOpencodeExpanded()),
+      skills: Array.from(skillsConceptionExpanded()),
+      skillsUser: Array.from(skillsUserExpanded()),
     };
     void window.condash.setTreeExpansion(prefs).catch((err) => {
       deps.flashToast(`Could not persist tree expansion: ${(err as Error).message}`, 'error');
     });
   };
 
-  const resolveSkillsTab = (skillTab: SkillTab | undefined): SkillTab => skillTab ?? 'claude';
+  const resolveSkillsScope = (scope: SkillScope | undefined): SkillScope => scope ?? 'conception';
 
-  const toggleTreeExpand = (treeKey: TreeRoot, relPath: string, skillTab?: SkillTab): void => {
+  const toggleTreeExpand = (treeKey: TreeRoot, relPath: string, skillScope?: SkillScope): void => {
     if (treeKey === 'knowledge') {
       const next = new Set(knowledgeExpanded());
       if (next.has(relPath)) next.delete(relPath);
@@ -104,17 +84,17 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
       else next.add(relPath);
       setResourcesExpanded(next);
     } else {
-      const tab = resolveSkillsTab(skillTab);
-      const cur = skillsGetter(tab)();
+      const scope = resolveSkillsScope(skillScope);
+      const cur = skillsGetter(scope)();
       const next = new Set(cur);
       if (next.has(relPath)) next.delete(relPath);
       else next.add(relPath);
-      skillsSetter(tab)(next);
+      skillsSetter(scope)(next);
     }
     persistTreeExpansion();
   };
 
-  const expandTreeDir = (treeKey: TreeRoot, relPath: string, skillTab?: SkillTab): void => {
+  const expandTreeDir = (treeKey: TreeRoot, relPath: string, skillScope?: SkillScope): void => {
     if (relPath === '') return; // root is always expanded; no need to track
     if (treeKey === 'knowledge') {
       const cur = knowledgeExpanded();
@@ -129,12 +109,12 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
       next.add(relPath);
       setResourcesExpanded(next);
     } else {
-      const tab = resolveSkillsTab(skillTab);
-      const cur = skillsGetter(tab)();
+      const scope = resolveSkillsScope(skillScope);
+      const cur = skillsGetter(scope)();
       if (cur.has(relPath)) return;
       const next = new Set(cur);
       next.add(relPath);
-      skillsSetter(tab)(next);
+      skillsSetter(scope)(next);
     }
     persistTreeExpansion();
   };
@@ -142,7 +122,7 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
   return {
     knowledgeExpanded,
     resourcesExpanded,
-    skillsExpandedByTab: skillsGetter,
+    skillsExpandedForScope: skillsGetter,
     toggleTreeExpand,
     expandTreeDir,
   };

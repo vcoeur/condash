@@ -53,8 +53,6 @@ import { migrateRawSettings } from './config-schema';
 export interface EffectiveConfig extends ConfigShape {
   workspace_path?: string;
   worktrees_path?: string;
-  resources_path?: string;
-  skills_path?: string;
   open_with?: Record<string, { label?: string; command: string }>;
   pdf_viewer?: string[];
   terminal?: TerminalPrefs;

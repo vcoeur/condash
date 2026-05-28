@@ -1,6 +1,6 @@
 import { render } from 'solid-js/web';
 import { createMemo, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
-import type { KnowledgeNode, ResourceNode, SkillNode, SkillTab } from '@shared/types';
+import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
 import { NoteModal } from './note-modal';
 import { ProjectPreview } from './project-preview';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
@@ -47,7 +47,6 @@ import { useTreeActions } from './hooks/use-tree-actions';
 import { useRepoActions } from './hooks/use-repo-actions';
 import { useConception } from './hooks/use-conception';
 import { useWelcome } from './hooks/use-welcome';
-import { useSkillsTab } from './hooks/use-skills-tab';
 import { useSkillsScope } from './hooks/use-skills-scope';
 import { useTreeEvents } from './hooks/use-tree-events';
 import type { Deliverable, Project, WorkingSurface } from '@shared/types';
@@ -146,7 +145,7 @@ function App() {
   const {
     knowledgeExpanded,
     resourcesExpanded,
-    skillsExpandedByTab,
+    skillsExpandedForScope,
     toggleTreeExpand,
     expandTreeDir,
   } = treeExpansion;
@@ -173,43 +172,18 @@ function App() {
   });
   const resources = resourcesStore.root;
 
-  // Local/global scope toggle. Created before the skills stores: each store's
-  // fetcher reads `skillsActiveScope()`, and that reactive read is what makes
-  // the store reload when the scope flips (the store's conception-path effect
-  // also tracks the scope signal through the synchronous fetcher call).
+  // Conception/user scope toggle. Created before the skills store: the
+  // store's fetcher reads `skillsActiveScope()`, and that reactive read is
+  // what makes the store reload when the scope flips.
   const { skillsActiveScope, handleSkillsScopeSelect } = useSkillsScope({ flashToast });
 
-  // One tree store per Skills tab. The trees back independent on-disk roots
-  // (`.agents/skills/`, `<skills_path>`, `.kimi/skills/`, `.opencode/skills/`
-  // locally; the `~/.config/agents` + `~/.claude` + `~/.kimi` + `~/.config/
-  // opencode` mirrors globally), so each gets its own fetcher, store, and
-  // reload trigger. All are eagerly loaded for the active conception + scope
-  // so tab switching within a scope is paint-only.
-  const skillsStores: Record<SkillTab, ReturnType<typeof createTreeStore<SkillNode>>> = {
-    generic: createTreeStore<SkillNode>({
-      conceptionPath,
-      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'generic'),
-      key: 'relPath',
-    }),
-    claude: createTreeStore<SkillNode>({
-      conceptionPath,
-      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'claude'),
-      key: 'relPath',
-    }),
-    kimi: createTreeStore<SkillNode>({
-      conceptionPath,
-      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'kimi'),
-      key: 'relPath',
-    }),
-    opencode: createTreeStore<SkillNode>({
-      conceptionPath,
-      fetcher: () => window.condash.readSkillsTree(skillsActiveScope(), 'opencode'),
-      key: 'relPath',
-    }),
-  };
-  const { skillsActiveTab, handleSkillsTabSelect, activeSkillsRoot } = useSkillsTab({
-    skillsStores,
-    flashToast,
+  // Single skills tree store — the active scope (conception or user) drives
+  // which on-disk root the fetcher walks. Post-reframe the pane has no tab
+  // dimension; agedum sources are the only surface.
+  const skillsStore = createTreeStore<SkillNode>({
+    conceptionPath,
+    fetcher: () => window.condash.readSkillsTree(skillsActiveScope()),
+    key: 'relPath',
   });
 
   const reposStore = createReposStore({ conceptionPath, flashToast });
@@ -306,8 +280,7 @@ function App() {
   } = useTreeActions({
     knowledgeStore,
     resourcesStore,
-    skillsStores,
-    skillsActiveTab,
+    skillsStore,
     expandTreeDir,
     openPrompt,
     setModal,
@@ -324,7 +297,7 @@ function App() {
     reloadProjects,
     knowledgeStore,
     resourcesStore,
-    skillsStores,
+    skillsStore,
     reloadConfig,
     reloadRepos,
   });
@@ -394,7 +367,7 @@ function App() {
     setConceptionPath,
     knowledgeStore,
     resourcesStore,
-    skillsStores,
+    skillsStore,
     reloadProjects,
     reloadConfig,
     reloadRepos,
@@ -619,7 +592,6 @@ function App() {
                     <ResourcesView
                       root={resources() ?? null}
                       actions={resourcesActions}
-                      onOpenSettings={() => setSettingsOpen(true)}
                       onOpenConceptionDir={() => {
                         void window.condash.openConceptionDirectory().catch((err) => {
                           flashToast(`Open failed: ${(err as Error).message}`, 'error');
@@ -648,12 +620,9 @@ function App() {
                     <SkillsView
                       scope={skillsActiveScope()}
                       onSelectScope={handleSkillsScopeSelect}
-                      onRefresh={() => void skillsStores[skillsActiveTab()].reload()}
-                      tab={skillsActiveTab()}
-                      onSelectTab={handleSkillsTabSelect}
-                      root={activeSkillsRoot() ?? null}
+                      onRefresh={() => void skillsStore.reload()}
+                      root={skillsStore.root() ?? null}
                       onOpen={handleOpenSkillFile}
-                      onOpenSettings={() => setSettingsOpen(true)}
                       onCopyInstallCommand={() => {
                         void navigator.clipboard
                           .writeText('condash skills install')
@@ -662,12 +631,12 @@ function App() {
                             flashToast(`Copy failed: ${(err as Error).message}`, 'error'),
                           );
                       }}
-                      expanded={() => skillsExpandedByTab(skillsActiveTab())()}
-                      onToggleExpand={(rel) => toggleTreeExpand('skills', rel, skillsActiveTab())}
+                      expanded={() => skillsExpandedForScope(skillsActiveScope())()}
+                      onToggleExpand={(rel) => toggleTreeExpand('skills', rel, skillsActiveScope())}
                       mutations={skillsMutations}
                       prompts={treePrompts}
                       onAfterMutation={(newPath, kind, source) =>
-                        handleAfterTreeMutation('skills', newPath, kind, source, skillsActiveTab())
+                        handleAfterTreeMutation('skills', newPath, kind, source)
                       }
                       onError={treeError}
                     />

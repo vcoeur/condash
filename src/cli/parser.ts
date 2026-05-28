@@ -41,6 +41,7 @@ const BOOL_FLAGS = new Set([
   'global',
   'user',
   'prune',
+  'fix',
 ]);
 
 /**

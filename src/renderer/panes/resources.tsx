@@ -29,8 +29,6 @@ export interface ResourcesViewActions {
 export function ResourcesView(props: {
   root: ResourceNode | null;
   actions: ResourcesViewActions;
-  /** Open Settings (so the user can adjust `resources_path`). */
-  onOpenSettings?: () => void;
   /** Open the conception folder in the OS file manager. */
   onOpenConceptionDir?: () => void;
   expanded: () => ReadonlySet<string>;
@@ -57,8 +55,7 @@ export function ResourcesView(props: {
           <div class="empty">
             <p>No resources directory yet.</p>
             <p>
-              Drop any file under <code>resources/</code> at the conception root, or change{' '}
-              <code>resources_path</code> in Settings.
+              Drop any file under <code>resources/</code> at the conception root.
             </p>
             <div class="empty-actions">
               <Show when={props.onOpenConceptionDir}>
@@ -68,11 +65,6 @@ export function ResourcesView(props: {
                   onClick={() => props.onOpenConceptionDir?.()}
                 >
                   Open in file manager
-                </button>
-              </Show>
-              <Show when={props.onOpenSettings}>
-                <button type="button" class="empty-cta" onClick={() => props.onOpenSettings?.()}>
-                  Edit settings
                 </button>
               </Show>
             </div>

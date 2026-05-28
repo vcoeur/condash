@@ -1,14 +1,12 @@
-import type { SkillNode, SkillTab } from '@shared/types';
+import type { SkillNode } from '@shared/types';
 import type { createTreeStore } from '../tree-store';
-
-type SkillsStores = Record<SkillTab, ReturnType<typeof createTreeStore<SkillNode>>>;
 
 export interface UseConceptionDeps {
   conceptionPath: () => string | null;
   setConceptionPath: (next: string | null) => void;
   knowledgeStore: { reload: () => Promise<void> };
   resourcesStore: { reload: () => Promise<void> };
-  skillsStores: SkillsStores;
+  skillsStore: ReturnType<typeof createTreeStore<SkillNode>>;
   reloadProjects: () => Promise<void>;
   reloadConfig: () => Promise<void>;
   reloadRepos: () => Promise<void>;
@@ -26,11 +24,11 @@ export interface UseConceptionDeps {
 export interface UseConception {
   /** Full fan-out reload. Used by View → Refresh and as the success tail
    *  of initConception. Covers every working surface: projects, code,
-   *  knowledge, resources, all four skill tabs, agents, tasks, and logs.
-   *  Deliverables are derived from the projects list, so reloadProjects
-   *  refreshes them too. Each store applies `reconcile` on swap-in so
-   *  card / row DOM identity survives — the visible effect is content
-   *  updating in place, not the pane blanking and rebuilding. */
+   *  knowledge, resources, skills, agents, tasks, and logs. Deliverables
+   *  are derived from the projects list, so reloadProjects refreshes them
+   *  too. Each store applies `reconcile` on swap-in so card / row DOM
+   *  identity survives — the visible effect is content updating in place,
+   *  not the pane blanking and rebuilding. */
   reloadAll: () => Promise<void>;
   /** F5 / View → Refresh: drop the per-worktree git-status cache so
    *  dirty/upstream recompute on the next listRepos, then fan out a full
@@ -57,10 +55,7 @@ export function useConception(deps: UseConceptionDeps): UseConception {
       deps.reloadProjects(),
       deps.knowledgeStore.reload(),
       deps.resourcesStore.reload(),
-      deps.skillsStores.generic.reload(),
-      deps.skillsStores.claude.reload(),
-      deps.skillsStores.kimi.reload(),
-      deps.skillsStores.opencode.reload(),
+      deps.skillsStore.reload(),
       deps.reloadConfig(),
       deps.reloadRepos(),
     ]);

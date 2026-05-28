@@ -26,6 +26,7 @@ interface WatchPaths {
   conceptionP: string;
   condashJson: string;
   configJson: string;
+  agentsRoot: string;
   claudeRoot: string;
   claudeDot: string;
   projectsPrefix: string;
@@ -38,6 +39,7 @@ function buildWatchPaths(conception: string): WatchPaths {
     conceptionP,
     condashJson: toPosix(join(conception, 'condash.json')),
     configJson: toPosix(join(conception, 'configuration.json')),
+    agentsRoot: toPosix(join(conception, 'AGENTS.md')),
     claudeRoot: toPosix(join(conception, 'CLAUDE.md')),
     claudeDot: toPosix(join(conception, '.claude', 'CLAUDE.md')),
     projectsPrefix: `${conceptionP}/projects/`,
@@ -86,18 +88,19 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
     process.stderr.write(`condash: migrateLegacyConfig failed: ${err}\n`);
   });
 
-  const { resources, skills } = await resolveConceptionPaths(conceptionPath);
+  const { resources, skills } = resolveConceptionPaths();
   const roots: RootSet = {
     resources: toPosix(join(conceptionPath, resources)),
     skills: toPosix(join(conceptionPath, skills)),
   };
 
   // The dotfile-segment pattern excludes paths like `.git/…` from the watch
-  // set. `skills_path` defaults to `.claude/skills`, which would normally
-  // be filtered out — bypass the rule for paths under the configured
-  // skills/resources roots so a `.claude/skills/foo.md` change still fires.
-  // The same bypass covers `<conception>/.claude/CLAUDE.md`, which is
-  // surfaced in the Skills pane as a synthetic root entry.
+  // set. The skills root lives under `.agents/skills/` (agedum source),
+  // which would normally be filtered out — bypass the rule for paths under
+  // the skills/resources roots so a `.agents/skills/foo.md` change still
+  // fires. The same bypass covers `<conception>/AGENTS.md` and the legacy
+  // `.claude/CLAUDE.md`, surfaced in the Skills pane as the pinned callout.
+  const agentsRoot = toPosix(join(conceptionPath, 'AGENTS.md'));
   const claudeDot = toPosix(join(conceptionPath, '.claude', 'CLAUDE.md'));
   const ignored = (path: string): boolean => {
     if (NODE_MODULES_RE.test(path) || DIST_RE.test(path) || TARGET_RE.test(path)) return true;
@@ -108,6 +111,7 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
     const posix = toPosix(path);
     if (posix === roots.resources || posix.startsWith(`${roots.resources}/`)) return false;
     if (posix === roots.skills || posix.startsWith(`${roots.skills}/`)) return false;
+    if (posix === agentsRoot) return false;
     if (posix === claudeDot) return false;
     return true;
   };
@@ -120,9 +124,11 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
       join(conceptionPath, skills),
       join(conceptionPath, 'condash.json'),
       join(conceptionPath, 'configuration.json'),
-      // Conception-level CLAUDE.md (root and `.claude/`). Surfaced as
-      // synthetic skill entries so the Skills pane can open them — they
-      // need to repaint the pane on edit, hence the explicit watches.
+      // Conception-level AGENTS.md is the pinned Skills-pane callout
+      // post-reframe; legacy CLAUDE.md (root and `.claude/`) still
+      // surfaces for back-compat. Repaint the pane on edit, hence the
+      // explicit watches.
+      join(conceptionPath, 'AGENTS.md'),
       join(conceptionPath, 'CLAUDE.md'),
       join(conceptionPath, '.claude', 'CLAUDE.md'),
     ],
@@ -146,8 +152,7 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
 /**
  * Tear down the current watcher and rebuild it. Called after a
  * `condash.json` (or legacy `configuration.json`) edit might have changed
- * `resources_path` or `skills_path`, so the new roots are observed and
- * the old ones aren't.
+ * `skills_path`, so the new root is observed and the old one isn't.
  */
 export async function refreshWatchedConception(): Promise<void> {
   if (!current) return;
@@ -171,11 +176,11 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
   const event = classify(eventName as ChokidarEvent, path, roots, paths);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);
-  // A condash.json edit may have changed `resources_path` /
-  // `skills_path`. Rebuild the watcher so the new roots are observed
-  // and the old ones aren't. Serialise via refreshChain so concurrent
-  // edits don't race the close+rebuild — the in-flight `tree-events`
-  // batch still flushes through `schedule()` for the renderer.
+  // A condash.json edit may have changed `skills_path`. Rebuild the
+  // watcher so the new root is observed and the old one isn't.
+  // Serialise via refreshChain so concurrent edits don't race the
+  // close+rebuild — the in-flight `tree-events` batch still flushes
+  // through `schedule()` for the renderer.
   if (event.kind === 'config') {
     refreshChain = refreshChain
       .then(() => refreshWatchedConception())
@@ -206,10 +211,10 @@ function classify(
     return { kind: 'config', path };
   }
 
-  // Conception-level CLAUDE.md surfaces in the Skills pane as a
-  // synthetic entry — route changes through the `skills` event so
-  // the pane refetches and the synthetic entry repaints.
-  if (pathP === paths.claudeRoot || pathP === paths.claudeDot) {
+  // Conception-level AGENTS.md (canonical) and legacy CLAUDE.md surface
+  // in the Skills pane as the pinned callout — route changes through the
+  // `skills` event so the pane refetches and the pinned entry repaints.
+  if (pathP === paths.agentsRoot || pathP === paths.claudeRoot || pathP === paths.claudeDot) {
     return { kind: 'skills', op, path };
   }
 
