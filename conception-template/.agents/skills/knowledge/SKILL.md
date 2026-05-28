@@ -55,6 +55,10 @@ These are the contract every `/knowledge` action enforces:
 - **New app** → add a row to `internal/index.md`. Create `internal/<app>.md` only when the first non-pointer fact surfaces.
 - **Single-app detail** → that app's own `CLAUDE.md`, not here.
 
+## Promotion check (signalled by `projects`)
+
+`condash projects check-knowledge <slug>` and `condash audit --include knowledge-check` only **signal** that a done project may still hold un-promoted findings — they are read-only and never write the marker. Resolving the signal is this skill's job: run `condash projects scan-promotions <slug>`, walk each candidate through the three-question durability test, and **create the actual knowledge** with `/knowledge update` (stamping the origin paragraph `**Transferred:** YYYY-MM-DD → <path>`). Only once the real promotion is done — or every candidate is genuinely dropped — does the project record `- YYYY-MM-DD — Checked knowledge promotion` as its last timeline entry. The marker attests that this work happened; never append it as a substitute for doing it.
+
 ## Index tree contract
 
 Every `knowledge/**/index.md` lists every immediate `.md` file (except itself) and every immediate subdirectory. Entry shape: link, italic one-line description, backticked keyword tag list. Hand-written sections (intro, group headings, root rules) are preserved verbatim. Curated descriptions and tag sets survive across `/knowledge index` runs.

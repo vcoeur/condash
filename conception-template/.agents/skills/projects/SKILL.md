@@ -23,9 +23,10 @@ The skill is editorial only. **Every mechanical step shells out to `condash`.** 
 | `validate` | `/projects validate [<slug>]` — header sanity check                         | [retrieve.md](retrieve.md) |
 | `create`   | `/projects create <kind>` — kind ∈ {project, incident, document}            | [create.md](create.md)     |
 | `update`   | `/projects update <slug>`                                                   | [update.md](update.md)     |
-| `close`    | `/projects close <slug>`                                                    | [close.md](close.md)       |
-| `reopen`   | `/projects reopen <slug>` — done → now (or `--status <s>`)                  | [close.md](close.md)       |
-| `index`    | `/projects index`                                                           | [index.md](index.md)       |
+| `close`           | `/projects close <slug>`                                                    | [close.md](close.md)       |
+| `check-knowledge` | `/projects check-knowledge <slug>` — signal whether a done project still needs a knowledge check | [close.md](close.md)       |
+| `reopen`          | `/projects reopen <slug>` — done → now (or `--status <s>`)                  | [close.md](close.md)       |
+| `index`           | `/projects index`                                                           | [index.md](index.md)       |
 | `worktree` | `/projects worktree <setup\|remove\|check\|list\|status> [branch]`          | [worktree.md](worktree.md) |
 
 For a trivial read or appending one note, edit files directly. The skill is mainly worth invoking for `create`, `close`, `reopen`, `index`, `search`, and any `worktree` action.
@@ -57,7 +58,7 @@ Status meanings:
 - `review` — code shipped or proposal drafted; awaiting an external signal (PR merge, deploy, stakeholder ack) before close. Closes on signal, reverts to `now` if negative.
 - `later` — queued; will be picked up.
 - `backlog` — acknowledged but not scheduled.
-- `done` — finished. Folder does not move.
+- `done` — finished. Folder does not move. The last timeline entry must be `Checked knowledge promotion`; anything appended after it invalidates the check and will be surfaced by `condash audit --include knowledge-check`.
 
 Kind-specific additions (incidents only): `environment: <PROD/STAGING/DEV>`, `severity: <low/medium/high — impact>`.
 
@@ -106,6 +107,7 @@ When no `branch` field is set, the main checkouts at `<workspace_path>/<repo>/` 
 - `## Steps` stays high-level (3–8 milestones). Per-file work goes in `notes/`. Each step line is **one short sentence** — the Projects tab card renders the steps verbatim, and verbose lines blow up the card height. Long-form scope, suggested wording, and acceptance criteria belong in a notes file at `notes/NN-<descriptive-slug>.md`, not in the step line itself. A `## Step details` section in the README is acceptable only for short clarifications that fit in a few lines; anything longer goes to notes.
 - **Link steps to their notes.** When a step has a backing note, end the step line with `— see note NN` (the note file's two-digit prefix, e.g. `- [ ] do X — see note 02`). Add a `## Notes` section near the bottom of the README that indexes every `notes/NN-*.md` by short label. The README stays a thin coordinator — Goal, Scope, milestone Steps, Timeline, Notes index — and the cold reader can jump straight from a step to its detail.
 - **No links inside step lines.** No markdown `[label](path)` and no wikilinks (`[[…]]`) — the card renderer surfaces them as raw text and they wrap unhelpfully. The `— see note NN` reference above is plain prose, which is fine; a backticked code/path token in essential cases is fine too. Put the actual link in `## Notes` (or `## Step details` when used) and have the step line refer to it by name.
+- **Knowledge promotion check.** Every `status: done` project's last timeline entry must be `Checked knowledge promotion` — the recorded outcome of actually walking the project's findings through the durability test and promoting the durable ones via `/knowledge`. `condash projects close` records it automatically at the end of the close ritual (whose step 4 is that review). Detection is split from recording: `condash audit --include knowledge-check` lists all done projects missing the marker, and `condash projects check-knowledge <slug>` signals the status of one project — both are **read-only**. When a project reaches `done` without the marker (manual status change, old project), do the real review with `/knowledge` (start from `condash projects scan-promotions <slug>`), promote what passes, then append `- YYYY-MM-DD — Checked knowledge promotion` as the last timeline entry. Never stamp the marker without doing the review.
 - **Transfer stamps** (`**Transferred:** YYYY-MM-DD → <knowledge-path>`) mark passages promoted to `knowledge/`. Historical, never expire.
 - Status markers in checklists: `[ ]`, `[~]`, `[x]`, `[!]`, `[-]`.
 - Each item may have an optional `local/` directory next to `notes/` — gitignored, for raw inputs and intermediate renders that are useful while active but not versioned.
