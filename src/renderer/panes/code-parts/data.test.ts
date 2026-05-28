@@ -14,6 +14,7 @@ function wt(branch: string | null, primary = false): Worktree {
 function repo(name: string, worktrees: Worktree[]): RepoEntry {
   return {
     name,
+    handle: name,
     path: `/r/${name}`,
     dirty: 0,
     missing: false,
@@ -96,6 +97,7 @@ describe('collectFilterableBranches', () => {
     const repos: RepoEntry[] = [
       {
         name: 'alpha',
+        handle: 'alpha',
         path: '/r/alpha',
         dirty: 0,
         missing: false,
@@ -111,6 +113,7 @@ describe('groupRepos', () => {
   function r(name: string, section?: string, parent?: string): RepoEntry {
     return {
       name,
+      handle: name,
       path: `/r/${name}`,
       dirty: 0,
       missing: false,

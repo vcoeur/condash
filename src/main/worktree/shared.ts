@@ -45,7 +45,10 @@ export function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupEx
   for (const raw of config.repositories ?? []) {
     if (typeof raw === 'string') continue;
     if (isSectionMarker(raw)) continue;
-    const lookup = map.get(raw.name);
+    // Mirror config-walk: the directory name is `name`, or `basename(path)`
+    // when only a path is configured.
+    const dirName = raw.name ?? basename(raw.path ?? '');
+    const lookup = map.get(dirName);
     if (!lookup) continue;
     const ext = raw as unknown as RawRepoExtended;
     if (typeof ext.pinned_branch === 'string') lookup.pinnedBranch = ext.pinned_branch;

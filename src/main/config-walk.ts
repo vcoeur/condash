@@ -1,5 +1,6 @@
-import { isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import type { TerminalPrefs } from '../shared/types';
+import { appHandle } from '../shared/app-color';
 
 /**
  * Shared configuration-walk helpers. Both `repos.ts` (for the flat repo list
@@ -12,9 +13,11 @@ import type { TerminalPrefs } from '../shared/types';
 export type RawSubmoduleRepo =
   | string
   | {
-      name: string;
+      handle?: string;
+      name?: string;
       path?: string;
       label?: string;
+      aliases?: string[];
       run?: string;
       force_stop?: string;
     };
@@ -22,9 +25,11 @@ export type RawSubmoduleRepo =
 export type RawRepo =
   | string
   | {
-      name: string;
+      handle?: string;
+      name?: string;
       path?: string;
       label?: string;
+      aliases?: string[];
       run?: string;
       force_stop?: string;
       submodules?: RawSubmoduleRepo[];
@@ -45,8 +50,15 @@ export function isSectionMarker(entry: RawRepo): entry is { section: string } {
 export interface RepoLookup {
   /** Display name (`parent/child` for submodules). */
   display: string;
-  /** Bare entry name (no parent prefix). */
+  /** Bare directory name (no parent prefix) — `entry.name` or, when only a
+   *  `path` is given, its basename. The on-disk identity worktree / run /
+   *  force_stop machinery keys on. */
   name: string;
+  /** Canonical `@handle` (no leading `@`) — the public identity. Explicit
+   *  `entry.handle`, or `appHandle(name)` when unset. */
+  handle: string;
+  /** Legacy spellings that resolve to this handle, from `condash.json`. */
+  aliases?: string[];
   /** Optional human-friendly label. Surfaced as a card subtitle when set. */
   label?: string;
   /** Parent name when this entry is a submodule. */
@@ -119,6 +131,7 @@ function visitOne(
     const lookup: RepoLookup = {
       display: parent ? `${parent}/${entry}` : entry,
       name: entry,
+      handle: appHandle(entry),
       parent,
       cwd: resolveCwd(workspace, parent, entry),
       section,
@@ -128,12 +141,18 @@ function visitOne(
   // Section markers are stripped by the caller. By construction this branch
   // only receives a repo-object variant.
   if ('section' in entry) return false;
+  // The directory name is `name`, or the basename of `path` when only a path
+  // is configured (the clean `{handle, label, path}` form). The handle is
+  // explicit or derived from that directory name.
+  const dirName = entry.name ?? basename(entry.path ?? '');
   const lookup: RepoLookup = {
-    display: parent ? `${parent}/${entry.name}` : entry.name,
-    name: entry.name,
+    display: parent ? `${parent}/${dirName}` : dirName,
+    name: dirName,
+    handle: entry.handle ?? appHandle(dirName),
+    aliases: entry.aliases,
     label: entry.label,
     parent,
-    cwd: resolveCwd(workspace, parent, entry.name, entry.path),
+    cwd: resolveCwd(workspace, parent, dirName, entry.path),
     run: entry.run,
     forceStop: entry.force_stop,
     section,
@@ -175,4 +194,22 @@ export function findRepoEntry(config: ConfigShape, name: string): RepoLookup | n
     }
   });
   return exactByDisplay ?? topLevelByName ?? submoduleByName;
+}
+
+/**
+ * Find a repo by its canonical handle (the `@`-stripped, lowercased token).
+ * Used by the `applications` CLI and `apps:` validation, which resolve a
+ * reference to its registered repo. Returns the first match in declaration
+ * order, or null.
+ */
+export function findRepoByHandle(config: ConfigShape, handle: string): RepoLookup | null {
+  const target = appHandle(handle);
+  let found: RepoLookup | null = null;
+  walkRepos(config, (entry) => {
+    if (entry.handle === target) {
+      found = entry;
+      return false;
+    }
+  });
+  return found;
 }
