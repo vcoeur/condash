@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from 'solid-js';
 import type { OpenWithSlotKey, OpenWithSlots, RepoEntry, Worktree } from '@shared/types';
-import { appColorClass } from '@shared/app-color';
+import { appColorClass, appPillText } from '@shared/app-color';
 import { BranchActions } from './branch-actions';
 import { BranchInfoBadges } from './branch-badges';
 import { filterWorktrees, orderedWorktrees, type RepoStatus } from './data';
@@ -36,17 +36,17 @@ export function RepoRow(props: {
     return props.repo.name;
   };
 
-  /** Card title — prefers `label` from `condash.json` when set, falls
-   * back to the directory name. */
-  const cardTitle = (): string => props.repo.label ?? displayName();
+  /** Primary pill — always the canonical `@handle`, so a code card and a
+   * project card naming the same app read identically. */
+  const handlePill = (): string => appPillText(props.repo.handle);
 
-  /** Secondary directory-name pill: only when a label is set AND it actually
-   * differs from the directory name (otherwise the pill would just repeat the
-   * title). */
+  /** Secondary subtitle: the friendly `label` when set, otherwise the
+   * directory name when it differs from the handle (e.g. handle `@kasten`,
+   * directory `notes.vcoeur.com`). Null when the two already match. */
   const secondaryName = (): string | null => {
-    if (!props.repo.label) return null;
+    if (props.repo.label) return props.repo.label;
     const name = displayName();
-    return props.repo.label === name ? null : name;
+    return name === props.repo.handle ? null : name;
   };
 
   const isPlainDirectory = (): boolean => !props.repo.missing && props.repo.isGit === false;
@@ -90,7 +90,12 @@ export function RepoRow(props: {
     >
       <header class="repo-head">
         <span style={{ display: 'flex', 'align-items': 'center', gap: '8px', 'flex-wrap': 'wrap' }}>
-          <span class={`repo-name app-pill ${appColorClass(props.repo.name)}`}>{cardTitle()}</span>
+          <span
+            class={`repo-name app-pill ${appColorClass(props.repo.handle)}`}
+            title={`Directory: ${displayName()}`}
+          >
+            {handlePill()}
+          </span>
           <Show when={secondaryName()}>
             <span class="repo-dirname" title={`Directory: ${displayName()}`}>
               {secondaryName()}

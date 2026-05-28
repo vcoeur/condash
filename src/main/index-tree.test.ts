@@ -306,9 +306,10 @@ describe('regenerateIndex (projects strategy)', () => {
       await writeProjectsTree();
       await regenerateIndex(conceptionDir, projectsStrategy);
       const monthIndex = await readFile('projects/2026-05/index.md');
-      // Tags must lead with kind, status, then app slugs.
+      // Tags must lead with kind, status, then app handles (the shared
+      // `appHandle` normaliser keeps dots — `vcoeur.com`, not `vcoeur-com`).
       expect(monthIndex).toMatch(
-        /- \[`2026-05-09-feature\/`\][^\n]+\*[^*]+\*\s+`\[project, now, condash, vcoeur-com\]`/,
+        /- \[`2026-05-09-feature\/`\][^\n]+\*[^*]+\*\s+`\[project, now, condash, vcoeur\.com\]`/,
       );
     });
 

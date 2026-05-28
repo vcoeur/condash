@@ -5,6 +5,7 @@ import { runProjects } from './commands/projects';
 import { runKnowledge } from './commands/knowledge';
 import { runSearch } from './commands/search';
 import { runRepos } from './commands/repos';
+import { runApplications } from './commands/applications';
 import { runWorktrees } from './commands/worktrees';
 import { runAuditCommand } from './commands/audit';
 import { runDirty } from './commands/dirty';
@@ -25,6 +26,7 @@ Nouns:
   knowledge    tree, verify, retrieve, stamp, index
   search       cross-tree search (--scope all|projects|knowledge)
   repos        list configured repositories
+  applications list, add, set, rename, sync-docs, validate (the @handle registry)
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
   dirty        list, touch <tree>, clear <tree|all>
@@ -165,6 +167,9 @@ async function dispatch(
       return ExitCodes.OK;
     case 'repos':
       await runRepos(args.verb, args, ctx, conceptionPath, help);
+      return ExitCodes.OK;
+    case 'applications':
+      await runApplications(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'worktrees':
       await runWorktrees(args.verb, args, ctx, conceptionPath, help);

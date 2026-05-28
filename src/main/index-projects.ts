@@ -21,6 +21,7 @@ import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import { findProjectReadmes } from './walk';
 import { parseHeader, validateHeader } from '../shared/header';
+import { appHandle } from '../shared/app-color';
 import type { ChildInfo, DraftResult, IndexStrategy, ValidationWarning } from './index-tree';
 
 const MONTH_DIR_RE = /^\d{4}-\d{2}$/;
@@ -103,7 +104,7 @@ async function draftItemEntry(child: ChildInfo): Promise<DraftResult> {
   if (header.kind) tags.push(header.kind);
   if (header.status) tags.push(header.status);
   for (const app of header.apps) {
-    const slug = appSlug(app);
+    const slug = appHandle(app);
     if (slug && !tags.includes(slug)) tags.push(slug);
   }
   if (tags.length === 0) tags.push('item');
@@ -201,16 +202,6 @@ function extractFirstProse(raw: string): string | undefined {
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function appSlug(app: string): string {
-  // Apps look like `condash`, `vcoeur.com`, `notes.vcoeur.com`, `condash/frontend`.
-  // Extract the last path segment, lowercase, hyphenate dots.
-  const last = app.split('/').pop() ?? app;
-  return last
-    .toLowerCase()
-    .replace(/\./g, '-')
-    .replace(/[^a-z0-9-]/g, '');
 }
 
 function clip(s: string, max: number): string {
