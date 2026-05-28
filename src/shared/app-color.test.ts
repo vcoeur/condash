@@ -38,9 +38,10 @@ describe('appColorSlot', () => {
   });
 
   it('treats different names as different (palette spreads real app set)', () => {
-    // Not a strict requirement — palette has 10 slots so 14 real apps will
-    // collide somewhere — but the *current* vcoeur set should touch at
-    // least 6 distinct slots so the visual diff is meaningful.
+    // 20-slot palette + djb2 hash should put the 15 known vcoeur apps on
+    // at least 10 distinct slots — i.e. at most a handful of collisions.
+    // This is the regression bar: dropping the slot count or going back
+    // to sum-of-codepoints both squash this below 10.
     const realApps = [
       'condash',
       'vcoeur.com',
@@ -56,9 +57,10 @@ describe('appColorSlot', () => {
       'vps.vcoeur.com',
       'condash-python',
       '3d-printing-crash-course',
+      'conception',
     ];
     const slots = new Set(realApps.map(appColorSlot));
-    expect(slots.size).toBeGreaterThanOrEqual(6);
+    expect(slots.size).toBeGreaterThanOrEqual(10);
   });
 });
 

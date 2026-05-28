@@ -1,5 +1,5 @@
 /* App pills — small coloured chips identifying which app a card belongs to.
- * One slot per palette index (0..9). Index resolved in `shared/app-color.ts`
+ * One slot per palette index (0..19). Index resolved in `shared/app-color.ts`
  * via a stable hash of the app name, so the same name lands on the same
  * slot in both the Projects pane and the Code pane.
  *
@@ -36,87 +36,170 @@
   color: var(--app-pill-fg);
 }
 
-/* Light-theme palette (default). */
+/* Light-theme palette (default). 20 slots — hues stepped roughly every
+ * 18° so neighbouring slots remain visually distinct even when a
+ * naming clash drops two apps next to each other. All pairs are
+ * light-bg + dark-fg with WCAG-AA-or-better contrast at 12px body. */
 .app-pill-0 {
   --app-pill-bg: #ffd8d6;
   --app-pill-fg: #6b2b28;
-}
+} /* red       */
 .app-pill-1 {
+  --app-pill-bg: #ffd3c3;
+  --app-pill-fg: #7a3318;
+} /* salmon    */
+.app-pill-2 {
   --app-pill-bg: #ffe2c2;
   --app-pill-fg: #6e3d10;
-}
-.app-pill-2 {
+} /* orange    */
+.app-pill-3 {
+  --app-pill-bg: #ffe8a8;
+  --app-pill-fg: #6e4e0c;
+} /* amber     */
+.app-pill-4 {
   --app-pill-bg: #fff1b8;
   --app-pill-fg: #6a5612;
-}
-.app-pill-3 {
+} /* yellow    */
+.app-pill-5 {
+  --app-pill-bg: #f0eebc;
+  --app-pill-fg: #5a5614;
+} /* lime      */
+.app-pill-6 {
   --app-pill-bg: #e5ecbe;
   --app-pill-fg: #4f5616;
-}
-.app-pill-4 {
+} /* olive     */
+.app-pill-7 {
+  --app-pill-bg: #d5ecb8;
+  --app-pill-fg: #3f5618;
+} /* chartreuse*/
+.app-pill-8 {
   --app-pill-bg: #c9ecca;
   --app-pill-fg: #1f5326;
-}
-.app-pill-5 {
+} /* green     */
+.app-pill-9 {
+  --app-pill-bg: #c2ecd5;
+  --app-pill-fg: #1f5340;
+} /* mint      */
+.app-pill-10 {
   --app-pill-bg: #c2ece5;
   --app-pill-fg: #1c5750;
-}
-.app-pill-6 {
+} /* teal      */
+.app-pill-11 {
+  --app-pill-bg: #c0e8ef;
+  --app-pill-fg: #195a6a;
+} /* cyan      */
+.app-pill-12 {
   --app-pill-bg: #c8def7;
   --app-pill-fg: #1c4a82;
-}
-.app-pill-7 {
+} /* sky       */
+.app-pill-13 {
+  --app-pill-bg: #c8d3f7;
+  --app-pill-fg: #1f3b82;
+} /* blue      */
+.app-pill-14 {
   --app-pill-bg: #d2d2f7;
   --app-pill-fg: #2d2f80;
-}
-.app-pill-8 {
+} /* indigo    */
+.app-pill-15 {
+  --app-pill-bg: #ddd0f5;
+  --app-pill-fg: #3e2580;
+} /* purple    */
+.app-pill-16 {
   --app-pill-bg: #e6d0f3;
   --app-pill-fg: #4f2570;
-}
-.app-pill-9 {
+} /* violet    */
+.app-pill-17 {
+  --app-pill-bg: #f0d0f0;
+  --app-pill-fg: #5b2570;
+} /* magenta   */
+.app-pill-18 {
   --app-pill-bg: #f6cee0;
   --app-pill-fg: #6f2247;
-}
+} /* pink      */
+.app-pill-19 {
+  --app-pill-bg: #ffcfd6;
+  --app-pill-fg: #7a2533;
+} /* rose      */
 
-/* Dark-theme palette — mirrors each hue with a saturated dark bg and
- * a pale-tint fg so contrast survives the inverted base. */
+/* Dark-theme palette — same 20 hues with a saturated dark bg and a
+ * pale-tint fg so contrast survives the inverted base. */
 [data-theme='dark'] .app-pill-0 {
   --app-pill-bg: #5b2a28;
   --app-pill-fg: #ffcecb;
 }
 [data-theme='dark'] .app-pill-1 {
+  --app-pill-bg: #5e3018;
+  --app-pill-fg: #ffd1b8;
+}
+[data-theme='dark'] .app-pill-2 {
   --app-pill-bg: #5e3713;
   --app-pill-fg: #ffd9a8;
 }
-[data-theme='dark'] .app-pill-2 {
+[data-theme='dark'] .app-pill-3 {
+  --app-pill-bg: #5e4612;
+  --app-pill-fg: #fae0a3;
+}
+[data-theme='dark'] .app-pill-4 {
   --app-pill-bg: #5a4d10;
   --app-pill-fg: #fae89a;
 }
-[data-theme='dark'] .app-pill-3 {
+[data-theme='dark'] .app-pill-5 {
+  --app-pill-bg: #4f5012;
+  --app-pill-fg: #ece6a0;
+}
+[data-theme='dark'] .app-pill-6 {
   --app-pill-bg: #434a14;
   --app-pill-fg: #d6e0a3;
 }
-[data-theme='dark'] .app-pill-4 {
+[data-theme='dark'] .app-pill-7 {
+  --app-pill-bg: #344715;
+  --app-pill-fg: #c2db9d;
+}
+[data-theme='dark'] .app-pill-8 {
   --app-pill-bg: #1c4a21;
   --app-pill-fg: #b9e3bb;
 }
-[data-theme='dark'] .app-pill-5 {
+[data-theme='dark'] .app-pill-9 {
+  --app-pill-bg: #1a4837;
+  --app-pill-fg: #b3e3ce;
+}
+[data-theme='dark'] .app-pill-10 {
   --app-pill-bg: #194a47;
   --app-pill-fg: #aeded5;
 }
-[data-theme='dark'] .app-pill-6 {
+[data-theme='dark'] .app-pill-11 {
+  --app-pill-bg: #16515b;
+  --app-pill-fg: #b0dde8;
+}
+[data-theme='dark'] .app-pill-12 {
   --app-pill-bg: #1c3f70;
   --app-pill-fg: #b9d5f0;
 }
-[data-theme='dark'] .app-pill-7 {
+[data-theme='dark'] .app-pill-13 {
+  --app-pill-bg: #20356a;
+  --app-pill-fg: #c0c9ef;
+}
+[data-theme='dark'] .app-pill-14 {
   --app-pill-bg: #2a2c66;
   --app-pill-fg: #c5c6f0;
 }
-[data-theme='dark'] .app-pill-8 {
+[data-theme='dark'] .app-pill-15 {
+  --app-pill-bg: #36256e;
+  --app-pill-fg: #d4c4f0;
+}
+[data-theme='dark'] .app-pill-16 {
   --app-pill-bg: #46235e;
   --app-pill-fg: #e0c5ee;
 }
-[data-theme='dark'] .app-pill-9 {
+[data-theme='dark'] .app-pill-17 {
+  --app-pill-bg: #50205e;
+  --app-pill-fg: #ecc5ee;
+}
+[data-theme='dark'] .app-pill-18 {
   --app-pill-bg: #5a1d38;
   --app-pill-fg: #f1c6dc;
+}
+[data-theme='dark'] .app-pill-19 {
+  --app-pill-bg: #5e1c27;
+  --app-pill-fg: #f8c2ca;
 }
