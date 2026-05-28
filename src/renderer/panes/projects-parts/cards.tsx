@@ -464,16 +464,11 @@ export function Card(props: {
             </span>
           </Show>
           <span class="meta-spacer" />
-          <span
-            class="meta-icon date"
-            title={`first: ${firstDate(props.item)} · last: ${lastDate(props.item)}`}
-          >
-            {dateRangeLabel(props.item)}
-          </span>
         </div>
         {/* Row 4: slug (left) + date range (right). Canonical id + when the
             item ran — surfaces both at the bottom of every card so a cold
-            reader gets context without opening it. */}
+            reader gets context without opening it. The date used to live
+            in row 3 too; pulled in here to avoid a duplicate. */}
         <div class="meta meta-bottom-slug">
           <span class="meta-icon slug" title={`slug: ${props.item.slug}`}>
             {props.item.slug}

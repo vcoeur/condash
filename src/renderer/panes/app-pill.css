@@ -24,15 +24,15 @@
   color: var(--app-pill-fg, var(--text));
 }
 
-/* Code-pane card title (`repo-name`) wears the pill as its primary
- * background — keep the larger heading-style font, just gain the
- * tinted backdrop. Foreground colour comes from the pill palette
- * (overrides .repo-name's `color: var(--text)`). */
-.repo-name.app-pill {
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.005em;
-  padding: 2px 10px;
+/* Code-pane: the whole card adopts the app colour on its border and on
+ * the repo-name title, no background fill. Subtler than the pill style
+ * used on the Projects pane, and pairs the card to its matching project
+ * card without competing with the existing status-stripe on the left. */
+.repo-row.app-color {
+  border-color: var(--app-pill-fg);
+}
+
+.repo-row.app-color .repo-name {
   color: var(--app-pill-fg);
 }
 

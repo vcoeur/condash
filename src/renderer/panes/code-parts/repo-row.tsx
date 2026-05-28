@@ -83,14 +83,14 @@ export function RepoRow(props: {
 
   return (
     <article
-      class="repo-row"
+      class={`repo-row app-color ${appColorClass(props.repo.name)}`}
       classList={{
         missing: props.repo.missing,
       }}
     >
       <header class="repo-head">
         <span style={{ display: 'flex', 'align-items': 'center', gap: '8px', 'flex-wrap': 'wrap' }}>
-          <span class={`repo-name app-pill ${appColorClass(props.repo.name)}`}>{cardTitle()}</span>
+          <span class="repo-name">{cardTitle()}</span>
           <Show when={secondaryName()}>
             <span class="repo-dirname" title={`Directory: ${displayName()}`}>
               {secondaryName()}
