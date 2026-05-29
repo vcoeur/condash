@@ -1,7 +1,7 @@
 /**
  * The application registry — the single source of truth for app identity.
  *
- * Every app has one canonical `@handle`. Live apps are the `repositories[]`
+ * Every app has one canonical `#handle`. Live apps are the `repositories[]`
  * entries in `condash.json`; defunct apps that closed projects still reference
  * live in `retired_apps`. Both may carry `aliases` — legacy spellings that
  * resolve to the handle so the cleanup rewriter and `validate` can map them.
@@ -124,7 +124,7 @@ export interface RefResolution {
 }
 
 /**
- * Resolve one project-README `apps:` value. `@handle` / bare names go through
+ * Resolve one project-README `apps:` value. `#handle` / bare names go through
  * the registry (exact handle, then alias); a `/abs` or `~` path is accepted
  * when it exists on disk; anything else is `unknown`.
  */
@@ -154,7 +154,7 @@ export interface AppValidationIssue {
   readme: string;
   ref: string;
   /** `unknown-handle` — no handle/alias/path matches; `alias` — resolves via a
-   *  legacy spelling and should be rewritten to `@canonical`. */
+   *  legacy spelling and should be rewritten to `#canonical`. */
   problem: 'unknown-handle' | 'alias';
   suggestion?: string;
 }
@@ -162,7 +162,7 @@ export interface AppValidationIssue {
 /**
  * Validate every project README `apps:` value across the tree. An empty issue
  * list means every reference resolves to a live/retired handle or an existing
- * absolute path. Alias hits are reported (with a suggested `@handle`) so the
+ * absolute path. Alias hits are reported (with a suggested `#handle`) so the
  * cleanup can rewrite them, but they are not hard errors on their own.
  */
 export async function validateApplications(
@@ -190,7 +190,7 @@ export async function validateApplications(
           readme,
           ref: app,
           problem: 'alias',
-          suggestion: `@${resolution.canonical}`,
+          suggestion: `#${resolution.canonical}`,
         });
       }
     }
@@ -207,9 +207,9 @@ export interface FixResult {
 }
 
 /**
- * Canonicalise every project README `apps:` value to its `@handle`. A bare
+ * Canonicalise every project README `apps:` value to its `#handle`. A bare
  * handle (`condash`) and a legacy alias (`ClaudeConfig`) both become
- * `@canonical`; absolute paths are left verbatim; references that resolve to
+ * `#canonical`; absolute paths are left verbatim; references that resolve to
  * nothing are left in place and reported under `unresolved` for a human. Live
  * and retired handles both count as resolved.
  */
@@ -236,7 +236,7 @@ export async function fixAppsReferences(
     for (const app of header.apps) {
       const resolution = await resolveReference(app, records, index);
       if (resolution.kind === 'handle' || resolution.kind === 'alias') {
-        canonical.set(app.trim(), `@${resolution.canonical}`);
+        canonical.set(app.trim(), `#${resolution.canonical}`);
       } else if (resolution.kind === 'unknown') {
         unresolved.push({ readme, ref: app, problem: 'unknown-handle' });
       }
@@ -256,7 +256,7 @@ const APPS_TABLE_END = '<!-- condash:apps:end -->';
 
 /**
  * Render the Apps table markdown from the live registry. Columns: the
- * `@handle`, the repo path (as configured), and the conventional knowledge
+ * `#handle`, the repo path (as configured), and the conventional knowledge
  * file `knowledge/internal/<handle>.md`. Retired apps are omitted — the table
  * documents live apps only.
  */
@@ -266,7 +266,7 @@ export function renderAppsTable(records: AppRecord[]): string {
   for (const record of live) {
     const repo = record.path ?? '';
     lines.push(
-      `| \`@${record.handle}\` | \`${repo}\` | \`knowledge/internal/${record.handle}.md\` |`,
+      `| \`#${record.handle}\` | \`${repo}\` | \`knowledge/internal/${record.handle}.md\` |`,
     );
   }
   return lines.join('\n');
@@ -354,7 +354,7 @@ export async function addApplication(
   const handle = appHandle(input.handle);
   const records = await listApplications(conceptionPath);
   if (aliasIndex(records).has(handle)) {
-    throw new Error(`handle @${handle} already exists`);
+    throw new Error(`handle #${handle} already exists`);
   }
   await mutateConfig(conceptionPath, (config) => {
     const repos = (config.repositories ??= []);
@@ -374,7 +374,7 @@ export async function setApplication(
   await mutateConfig(conceptionPath, (config) => {
     const repos = config.repositories ?? [];
     const entry = repos.find((r) => isRepoWithHandle(r, target));
-    if (!entry || typeof entry !== 'object') throw new Error(`no live app @${target}`);
+    if (!entry || typeof entry !== 'object') throw new Error(`no live app #${target}`);
     const obj = entry as Record<string, unknown>;
     if (patch.label !== undefined) obj.label = patch.label || undefined;
     if (patch.path !== undefined) obj.path = patch.path;
@@ -421,7 +421,7 @@ export async function renameApplication(
   await mutateConfig(conceptionPath, (config) => {
     const repos = config.repositories ?? [];
     const entry = repos.find((r) => isRepoWithHandle(r, oldHandle));
-    if (!entry) throw new Error(`no live app @${oldHandle}`);
+    if (!entry) throw new Error(`no live app #${oldHandle}`);
     if (typeof entry === 'string') {
       const idx = repos.indexOf(entry);
       repos[idx] = { handle: newHandle, name: entry, aliases: [entry] };
@@ -444,7 +444,7 @@ export async function renameApplication(
       continue;
     }
     const next = rewriteAppsRefs(raw, (ref) =>
-      appHandle(ref) === oldHandle && !ref.includes('/') ? `@${newHandle}` : ref,
+      appHandle(ref) === oldHandle && !ref.includes('/') ? `#${newHandle}` : ref,
     );
     if (next !== raw) {
       await fs.writeFile(readme, next, 'utf8');
@@ -475,7 +475,9 @@ export function rewriteAppsRefs(raw: string, mapper: (ref: string) => string): s
         const unquoted = rawValue.replace(/^["']|["']$/g, '');
         const mapped = mapper(unquoted);
         if (mapped !== unquoted) {
-          const needsQuote = /[@~/]/.test(mapped) || mapped.includes(' ');
+          // A leading `#` is a YAML comment and `@`/`~` are reserved
+          // indicators — any of these must be quoted or the value is dropped.
+          const needsQuote = /[#@~/]/.test(mapped) || mapped.includes(' ');
           lines[i] = `${item[1]}${needsQuote ? `"${mapped}"` : mapped}`;
         }
         continue;

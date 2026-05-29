@@ -45,7 +45,7 @@ Two key families render as **searchable pickers** instead of text fields, and on
 
 | Marker | Field | Bare value | Sub-tokens |
 |--------|-------|-----------|------------|
-| `{APP}` | app picker | `@<repo>` (e.g. `@condash`) | `{APP_NAME}` (repo name), `{APP_PATH}` (absolute checkout path) |
+| `{APP}` | app picker | `#<repo>` (e.g. `#condash`) | `{APP_NAME}` (repo name), `{APP_PATH}` (absolute checkout path) |
 | `{PROJECT}` | project picker | the slug | `{PROJECT_SLUG}`, `{PROJECT_PATH}` (rel path), `{PROJECT_BRANCH}`, `{PROJECT_BASE}`, `{PROJECT_TITLE}` |
 
 A prompt that uses only a sub-token (say just `{APP_PATH}`) still surfaces the matching picker — picking an app fills every `APP_*` token at once.

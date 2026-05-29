@@ -982,7 +982,7 @@ function formatBullet(
 
 // Trailing tag block: ` `[t1, t2, …]` `. **Backticks are required**, both
 // to distinguish a real tag block from a bracketed substring living inside
-// the description (e.g. a clipped `["@<name>"]` array — see #NNN) and to
+// the description (e.g. a clipped `["#<name>"]` array — see #NNN) and to
 // keep the format strict. An earlier optional-backtick form would scan
 // left-to-right and match the *first* bracketed segment near end-of-line,
 // which on a description ending with a clipped `[` ate the closing italic

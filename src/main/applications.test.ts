@@ -32,7 +32,7 @@ function writeReadme(slug: string, apps: string[]): string {
   const dir = join(tmp, 'projects', '2026-05', slug);
   mkdirSync(dir, { recursive: true });
   const appsBlock = apps.length
-    ? ['apps:', ...apps.map((a) => `  - ${/[@~/]/.test(a) ? `"${a}"` : a}`)].join('\n')
+    ? ['apps:', ...apps.map((a) => `  - ${/[#@~/]/.test(a) ? `"${a}"` : a}`)].join('\n')
     : 'apps: []';
   const readme = join(dir, 'README.md');
   writeFileSync(
@@ -100,7 +100,9 @@ describe('aliasIndex + resolveReference', () => {
     const records = await listApplications(tmp, emptyGlobal);
     const index = aliasIndex(records);
 
-    expect((await resolveReference('@condash', records, index)).kind).toBe('handle');
+    expect((await resolveReference('#condash', records, index)).kind).toBe('handle');
+    // The retired @ sigil no longer normalises away, so it fails to resolve.
+    expect((await resolveReference('@condash', records, index)).kind).toBe('unknown');
     const alias = await resolveReference('condash-electron', records, index);
     expect(alias.kind).toBe('alias');
     expect(alias.canonical).toBe('condash');
@@ -118,27 +120,27 @@ describe('validateApplications', () => {
     writeConfig({
       repositories: [{ handle: 'agentsconf', name: 'agentsconf', aliases: ['ClaudeConfig'] }],
     });
-    writeReadme('2026-05-01-good', ['@agentsconf']);
+    writeReadme('2026-05-01-good', ['#agentsconf']);
     writeReadme('2026-05-02-alias', ['ClaudeConfig']);
-    writeReadme('2026-05-03-bad', ['@ghost']);
+    writeReadme('2026-05-03-bad', ['#ghost']);
     const issues = await validateApplications(tmp, emptyGlobal);
     const unknown = issues.filter((i) => i.problem === 'unknown-handle');
     const alias = issues.filter((i) => i.problem === 'alias');
     expect(unknown).toHaveLength(1);
-    expect(unknown[0].ref).toBe('@ghost');
+    expect(unknown[0].ref).toBe('#ghost');
     expect(alias).toHaveLength(1);
-    expect(alias[0].suggestion).toBe('@agentsconf');
+    expect(alias[0].suggestion).toBe('#agentsconf');
   });
 });
 
 describe('renderAppsTable', () => {
-  it('renders @handle / path / knowledge rows for live apps only', async () => {
+  it('renders #handle / path / knowledge rows for live apps only', async () => {
     writeConfig({
       repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com', label: 'Kasten' }],
       retired_apps: [{ handle: 'kasten-manager' }],
     });
     const table = renderAppsTable(await listApplications(tmp, emptyGlobal));
-    expect(table).toContain('| `@kasten` | `notes.vcoeur.com` | `knowledge/internal/kasten.md` |');
+    expect(table).toContain('| `#kasten` | `notes.vcoeur.com` | `knowledge/internal/kasten.md` |');
     expect(table).not.toContain('kasten-manager');
   });
 });
@@ -158,7 +160,7 @@ describe('syncAppsDocs', () => {
     const result = await syncAppsDocs(tmp);
     expect(result.changed).toBe(true);
     const body = readFileSync(agents, 'utf8');
-    expect(body).toContain('| `@condash` |');
+    expect(body).toContain('| `#condash` |');
     expect(body).toContain('tail');
     // Second run is idempotent.
     expect((await syncAppsDocs(tmp)).changed).toBe(false);
@@ -171,16 +173,16 @@ describe('rewriteAppsRefs', () => {
       '---',
       'apps:',
       '  - condash',
-      '  - "@kasten"',
+      '  - "#kasten"',
       '  - other',
       'branch: x',
       '---',
       '',
       '# body apps: not a block',
     ].join('\n');
-    const out = rewriteAppsRefs(raw, (ref) => (ref === 'condash' ? '@condash' : ref));
-    expect(out).toContain('  - "@condash"');
-    expect(out).toContain('  - "@kasten"');
+    const out = rewriteAppsRefs(raw, (ref) => (ref === 'condash' ? '#condash' : ref));
+    expect(out).toContain('  - "#condash"');
+    expect(out).toContain('  - "#kasten"');
     expect(out).toContain('branch: x');
     expect(out).toContain('# body apps: not a block');
   });
@@ -202,8 +204,8 @@ describe('fixAppsReferences', () => {
       join(tmp, 'projects', '2026-05', '2026-05-01-mix', 'README.md'),
       'utf8',
     );
-    expect(readme).toContain('- "@condash"');
-    expect(readme).toContain('- "@agentsconf"');
+    expect(readme).toContain('- "#condash"');
+    expect(readme).toContain('- "#agentsconf"');
     expect(readme).toContain('- ghost');
   });
 });
@@ -211,7 +213,7 @@ describe('fixAppsReferences', () => {
 describe('add / set / rename round-trips', () => {
   it('registers, updates, and renames with README cascade', async () => {
     writeConfig({ repositories: [{ handle: 'condash', name: 'condash' }] });
-    writeReadme('2026-05-01-uses-fovea', ['@fovea']);
+    writeReadme('2026-05-01-uses-fovea', ['#fovea']);
 
     await addApplication(tmp, { handle: 'fovea', path: 'fovea', label: 'Fovea' });
     let apps = await listApplications(tmp, emptyGlobal);
@@ -230,7 +232,7 @@ describe('add / set / rename round-trips', () => {
       join(tmp, 'projects', '2026-05', '2026-05-01-uses-fovea', 'README.md'),
       'utf8',
     );
-    expect(readme).toContain('@fovea-web');
+    expect(readme).toContain('#fovea-web');
   });
 
   it('rejects a duplicate handle on add', async () => {

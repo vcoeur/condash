@@ -29,7 +29,7 @@ export function RepoRow(props: {
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
   onOpenInTerm: (repo: RepoEntry, worktree: Worktree) => void;
 }) {
-  /** Primary pill — always the canonical `@handle`, so a code card and a
+  /** Primary pill — always the canonical `#handle`, so a code card and a
    * project card naming the same app read identically. */
   const handlePill = (): string => appPillText(props.repo.handle);
 

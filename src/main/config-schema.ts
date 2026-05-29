@@ -78,7 +78,7 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
   z.string(),
   z
     .object({
-      /** Canonical `@handle` for this app — the one reference used in pills,
+      /** Canonical `#handle` for this app — the one reference used in pills,
        *  project `apps:` lists, the generated AGENTS.md table, the colour
        *  hash, and search. When omitted it defaults to `appHandle(name)`
        *  (i.e. the directory name lowercased), so simple repos need not set
@@ -123,7 +123,7 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
 /**
  * A retired app: a handle that closed projects still reference but whose repo
  * no longer exists. It has no `path` and renders no code card; it exists so
- * `applications validate` accepts the historical `@handle` and the cleanup
+ * `applications validate` accepts the historical `#handle` and the cleanup
  * rewriter can map its legacy spellings.
  */
 const retiredAppEntry = z

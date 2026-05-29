@@ -26,7 +26,7 @@
 
 /* Code-pane card title (`repo-name`) wears the pill as its primary
  * background. A compact rectangular chip — smaller than the old capsule
- * heading — so the `@handle` reads as a tag, not a banner. Foreground
+ * heading — so the `#handle` reads as a tag, not a banner. Foreground
  * colour comes from the pill palette (overrides .repo-name's
  * `color: var(--text)`). */
 .repo-name.app-pill {
