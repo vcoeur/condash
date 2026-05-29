@@ -11,6 +11,8 @@ Each guide answers one specific question.
 
 - **[Configure the conception path](configure-conception-path.md)** — change the folder condash renders, with the menu, the CLI, or by editing `settings.json`.
 - **[Repositories and open-with buttons](repositories-and-open-with.md)** — populate the Code pane and wire IDE/terminal launch slots.
+- **[The Settings modal](settings-modal.md)** — the two-tab modal, what each section writes, and how per-conception overrides inherit from your machine defaults.
+- **[Applications and handles](applications-and-handles.md)** — identify each app by one canonical `#handle`, manage the registry, keep `apps:` references resolving.
 
 **Daily**
 
@@ -21,7 +23,7 @@ Each guide answers one specific question.
 - **[The knowledge tree](knowledge-tree.md)** — your reference notes, organised as cards.
 - **[The Resources pane](resources-pane.md)** — every file under `resources/` as a card with copy / open / paste-to-term actions.
 - **[The Deliverables pane](deliverables-pane.md)** — every project's `## Deliverables`, aggregated and grouped by project, in a separate left-band pane next to Projects.
-- **[The Skills pane](skills-pane.md)** — markdown skills under `.claude/skills/`, edited in place, with shipped/diverged chips.
+- **[The Skills pane](skills-pane.md)** — browse the markdown skills condash ships under `.agents/skills/`, with shipped/diverged chips.
 - **[Troubleshooting](troubleshooting.md)** — Wayland blur, dirty caches, app won't launch.
 
 **More**

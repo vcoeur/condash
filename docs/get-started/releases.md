@@ -21,6 +21,29 @@ Tags follow `vMAJOR.MINOR.PATCH`:
 
 Patches are the norm. Most weeks there's at least one; MINOR bumps are rarer, MAJOR is a special event.
 
+## Major versions
+
+condash's history spans three implementations and four major lines. Only the Electron line (`2.x`–`4.x`) is current; `0.x` (Python) and `1.x` (Rust/Tauri) are frozen in separate repos.
+
+| Major | What it was |
+|---|---|
+| `0.x` | Python (NiceGUI + FastAPI). Frozen at [`vcoeur/condash-python`](https://github.com/vcoeur/condash-python). |
+| `1.x` | Rust + Tauri rewrite. Frozen at [`vcoeur/condash-tauri`](https://github.com/vcoeur/condash-tauri). |
+| `2.x`–`4.x` | Electron rewrite — the current canonical build. |
+
+### Migrating from condash 3.x → 4.x
+
+**v4.0.0 narrowed what condash does with agent config.** Earlier 3.x builds compiled per-agent instruction files for you; 4.0.0 removed that pipeline entirely. If you used any of the following, it is gone:
+
+- The `.agents/agents/` source tree (`common.md` / `condash.md` / `conception.md` / `claude.md` / `kimi.md`) — no longer read.
+- The root `opencode.json` pointer condash used to write — no longer written.
+- `condash project build` — removed.
+- `condash skills install --user` — removed (condash no longer writes `~/.claude/skills/` or `~/.kimi/skills/`).
+
+What `condash skills install` does now is just two things: ship your `.agents/skills/<name>/` sources **verbatim**, and maintain condash's marker region inside `AGENTS.md`. Rendering `AGENTS.md` into per-agent views (`.claude/CLAUDE.md`, `.kimi/AGENTS.md`, …) is now the job of your harness launcher, not condash — those files are produced at launch and are never written to disk by condash. If you have leftover `.agents/agents/` or a condash-written `opencode.json`, they are simply inert; delete them at your convenience.
+
+Agent launchers also changed shape in this line: they are now a flat `{ id, label, command }` list under the `agents` config key, edited in the **[Settings modal](../guides/settings-modal.md)** — see **[Agent CLIs and model providers](../guides/agent-clis-and-models.md)**.
+
 ## Finding the latest
 
 Three paths:

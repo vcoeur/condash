@@ -16,13 +16,13 @@ condash reads two JSON files. Both share **the same schema**. The per-machine `s
 | `settings.json`          | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine                     | `lastConceptionPath`, `recentConceptionPaths` (cap 5) |
 | `.condash/settings.json` | `<conception_path>/.condash/settings.json` (legacy fallbacks: `condash.json`, `configuration.json`)                                                                         | Per-conception, **per-host** (gitignored) | (none — every key here also accepts a global default) |
 
-Both files share the **same schema** modulo the two path-tracking keys above. Any other top-level key — `workspace_path`, `worktrees_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches` — may live in either file. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge).
+Both files share the **same schema** modulo the two path-tracking keys above. Every other top-level key (`workspace_path`, `worktrees_path`, `repositories`, `retired_apps`, `agents`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`) may live in either file — see the [full table](#all-config-keys) below. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge — the one exception is `terminal`, below).
 
 **Exception: `terminal` merges one level deep.** Its sub-schema straddles per-machine input / device prefs (`shell`, `shortcut`, `screenshot_dir`, `xterm`, `screenshot_paste_shortcut`, `move_tab_{left,right}_shortcut`) and per-tree retention policy (`logging.{enabled, retentionDays, maxDirMb, scrollback}`). A pure replace meant any conception that customised `terminal.logging` silently lost every per-machine terminal pref — the screenshot-paste shortcut toasted "no screenshot directory". Conception sub-keys win at the first level; sub-keys absent from the conception fall through to the global block. Nested values inside `terminal.xterm` and `terminal.logging` still replace whole — only the immediate sub-keys of `terminal` merge.
 
 ### The `.condash/` workspace directory
 
-`.condash/` is condash's per-conception state directory — the home of `settings.json` plus terminal logs at `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. **The whole directory is gitignored by default** (the auto-migrator appends a `.condash/` line to your `.gitignore` on first run when the conception is a git repo), so settings + logs are per-host state with no commit-leak risk. Teams that want to share a baseline config either commit `condash.json` alongside (legacy path still reads) or manually un-ignore `settings.json` in their `.gitignore`.
+`.condash/` is condash's per-conception state directory — the home of `settings.json` plus terminal logs at `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt`. **The whole directory is gitignored by default** (the auto-migrator appends a `.condash/` line to your `.gitignore` on first run when the conception is a git repo), so settings + logs are per-host state with no commit-leak risk. Teams that want to share a baseline config either commit `condash.json` alongside (legacy path still reads) or manually un-ignore `settings.json` in their `.gitignore`.
 
 ### Reading and writing
 
@@ -30,6 +30,32 @@ Both files share the **same schema** modulo the two path-tracking keys above. An
 - **Write target**: every save through the GUI or `condash config set` writes to `.condash/settings.json`. The auto-migrator copies the legacy content into the new path on first open, tombstones the source file (so accidental edits don't drift), and appends `.condash/` to `.gitignore`. Run `condash config migrate` to invoke it explicitly.
 - **Override scope**: a conception's `settings.json` is forbidden from setting `lastConceptionPath` or `recentConceptionPaths` — a tree cannot describe its own location, by design.
 - **Environment override**: `CONDASH_CONCEPTION_PATH` still wins for the session, matching the legacy behaviour.
+
+## All config keys { #all-config-keys }
+
+Every top-level key, in one place. **Scope** is which file the key is valid in: *both* keys act as a per-machine default in `settings.json` and a per-conception override in `.condash/settings.json`; *global-only* keys are rejected in a conception file (a tree cannot describe its own location).
+
+| Key | Scope | Type | Default | What it does |
+|-----|-------|------|---------|--------------|
+| `workspace_path` | both | string | — | Root condash resolves repo paths against; populates the Code pane. Unset hides the pane. [↓](#workspace-keys) |
+| `worktrees_path` | both | string | — | Extra sandbox root accepted by the "open in IDE" launchers. [↓](#workspace-keys) |
+| `repositories` | both | array | `[]` | Ordered Code-pane repo list; also the app registry (`#handle`, `label`, `aliases`, `run`, `submodules`, `section`). [↓](#repositories) |
+| `retired_apps` | both | array | `[]` | Defunct `#handle`s still referenced by closed projects — resolve, never rendered. [↓](#retired_apps) |
+| `agents` | both | array | `[]` | Flat `{id,label,command}` terminal-launcher list shown in the tab-strip spawn dropdown. [↓](#agents) |
+| `open_with` | both | object | — | The three IDE/terminal launch slots (`main_ide`, `secondary_ide`, `terminal`). [↓](#open_with) |
+| `pdf_viewer` | both | array | — | Ordered fallback chain of external PDF viewers. |
+| `terminal` | both | object | — | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`. **Merges one level deep** (the sole exception to top-level replace). [↓](#terminal) |
+| `theme` | both | enum | `system` | `light` \| `dark` \| `system`. |
+| `layout` | both | object | — | Persisted pane layout, including `leftView` (`projects` \| `tasks` \| `deliverables`). [↓](#layoutstate) |
+| `welcome` | both | object | — | `{ dismissed }` — first-launch welcome-screen state. |
+| `cardMinWidth` | both | object | — | Per-surface minimum card width. [↓](#cardminwidth) |
+| `treeExpansion` | both | object | — | Remembered expand/collapse state of the tree panes. |
+| `selectedBranches` | both | array | `[]` | Code-pane branch-filter selection. |
+| `branchFilterStickyAll` | both | boolean | `true` | Branch filter "All (sticky)" mode — show every branch and auto-pin new ones. |
+| `lastConceptionPath` | global-only | string\|null | `null` | Currently-open conception path. |
+| `recentConceptionPaths` | global-only | array | `[]` | Most-recently-opened paths, newest first (cap 5). |
+
+Tasks are **not** a config key — they live on disk at `<conception>/tasks/<slug>/` (see [Tasks](#tasks)). condash also persists a few small UI-state fields it manages itself (e.g. `skillsActiveScope`, the last-active Settings tab) in `settings.json`; you don't edit those by hand. Strict-mode validation rejects any unknown top-level key on save.
 
 ## `.condash/settings.json` (per-conception, per-host)
 
@@ -41,7 +67,6 @@ Lives at `<conception_path>/.condash/settings.json`. Don't commit it — the aut
 {
   "workspace_path": "/home/you/src",
   "worktrees_path": "/home/you/src/worktrees",
-  "skills_path": ".agents/skills",
   "repositories": [
     "condash",
     {
@@ -103,9 +128,11 @@ Legacy formats — JSONL event streams from condash ≤ 2.22, compressed `.txt.g
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workspace_path` | Directory condash resolves relative repo paths against. Every direct subdirectory containing a `.git/` shows up in the **Code** pane. If unset, the pane is hidden. Repos with an explicit `path` may live outside this root.                                                    |
 | `worktrees_path` | Additional sandbox for the "open in IDE" buttons. Paths outside `workspace_path` and `worktrees_path` are rejected before the shell sees them.                                                                                                                                   |
-| `skills_path`    | Directory backing the **Skills** pane's **Claude** tab. Relative paths are resolved against `<conception_path>`; default `".claude/skills"`. Markdown only. Each skill renders as a section with its `SKILL.md` body. Unset = same as default. The pane's other two tabs (**Generic**, **Kimi**) read from fixed paths — `.agents/skills/` and `.kimi/skills/` respectively — and are not user-configurable. See [Skills pane guide](../guides/skills-pane.md). |
 
-The **Resources** pane is hard-coded to `<conception_path>/resources/` since the reframe — no key controls it.
+Since the reframe, two panes read **hard-coded** directories — no config key controls either:
+
+- The **Skills** pane reads the agedum sources at `<conception_path>/.agents/skills/` (and `~/.agents/skills/` for the User scope). The former `skills_path` key was dropped; condash never reads compiled per-harness outputs (`.claude/`, `.kimi/`, …). See the [Skills pane guide](../guides/skills-pane.md).
+- The **Resources** pane reads `<conception_path>/resources/`.
 
 ### `repositories`
 
@@ -374,13 +401,11 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
   "treeExpansion": {
     "knowledge": ["topics", "topics/security"],
     "resources": [],
-    "skillsGeneric": [],
-    "skillsClaude": ["pr"],
-    "skillsKimi": []
+    "skills": ["pr"]
   },
   "selectedBranches": ["feature-foo", "release-2026-05"],
   "branchFilterStickyAll": false,
-  "skillsActiveTab": "claude"
+  "skillsActiveScope": "conception"
 }
 ```
 
@@ -393,12 +418,12 @@ Lives at `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` on Linux (the mat
 | `layout`                | Composite-layout state. See [LayoutState](#layoutstate) below.                                                                                                                                                                                             |
 | `welcome`               | First-launch state. `welcome.dismissed: true` hides the Welcome screen even when both Projects and Knowledge are empty.                                                                                                                                    |
 | `cardMinWidth`          | Per-pane card grid min-width. See [CardMinWidth](#cardminwidth) below.                                                                                                                                                                                     |
-| `treeExpansion`         | Per-pane set of expanded directory `relPath`s for the Knowledge / Resources / Skills tree panes. Skills carries three independent sets — `skillsGeneric`, `skillsClaude`, `skillsKimi` — one per tab. Empty (or missing) means everything is collapsed — the on-purpose first-load state per #89. The legacy `skills` key is migrated into `skillsClaude` on first read and never written back. |
+| `treeExpansion`         | Per-pane set of expanded directory `relPath`s for the Knowledge / Resources / Skills tree panes (`knowledge`, `resources`, `skills`). Empty (or missing) means everything is collapsed — the on-purpose first-load state per #89. |
 | `selectedBranches`      | Branches pinned by the Code-pane top-of-pane filter. The primary worktree row is always rendered; this set is additive on top of it. Honoured only when `branchFilterStickyAll` is false.                                                                  |
 | `branchFilterStickyAll` | True ⇒ Code-pane filter is in **All (sticky)** mode: every branch is shown and new ones auto-pin. False ⇒ honour `selectedBranches` exactly (empty = main only). Defaults to true on first read when no explicit selection was ever made, false otherwise. |
-| `skillsActiveTab`       | Active tab in the Skills pane — `generic`, `claude`, or `kimi`. Defaults to `claude` (preserves pre-tabs behaviour for users without an explicit selection). Persisted on every tab switch.                                                                |
+| `skillsActiveScope`     | Active scope in the Skills pane — `conception` or `user`. Defaults to `conception`. Persisted on every scope switch.                                                                                                                                       |
 
-Workspace-shape keys (`workspace_path`, `worktrees_path`, `skills_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`) are also valid in `settings.json` — they act as global defaults that any conception's `.condash/settings.json` may override. The reverse direction is forbidden: a conception's `settings.json` cannot set `lastConceptionPath` or `recentConceptionPaths`, since those describe the tree's own location and the user's machine-local recents list.
+Workspace-shape keys (`workspace_path`, `worktrees_path`, `repositories`, `open_with`, `pdf_viewer`, `terminal`) are also valid in `settings.json` — they act as global defaults that any conception's `.condash/settings.json` may override. The reverse direction is forbidden: a conception's `settings.json` cannot set `lastConceptionPath` or `recentConceptionPaths`, since those describe the tree's own location and the user's machine-local recents list.
 
 ### LayoutState
 
@@ -454,7 +479,7 @@ The file is created on demand: the first-launch folder picker writes it; you can
 
 **This conception** tab (writes to `.condash/settings.json`; the legacy `condash.json` and `configuration.json` are read but never written to):
 
-- **Workspace** — `workspace_path`, `worktrees_path`, `skills_path`.
+- **Workspace** — `workspace_path`, `worktrees_path`.
 - **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 - **Open with** — slot labels and commands.
 - **Appearance** — theme + card-grid min-widths overridden for this conception only.
