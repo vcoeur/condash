@@ -76,7 +76,7 @@ A `status: done` project whose **last timeline entry isn't `Checked knowledge pr
 1. Do the real review — `condash projects scan-promotions <slug>` surfaces candidate findings; walk each through the three-question durability test and promote the durable ones via `/knowledge update` (stamping the origin `**Transferred:**`).
 2. Record the result **mechanically, with a complete date**: `condash projects check-knowledge <slug> --record`. Never hand-type the marker — the verb keeps the date and format consistent. (`condash projects close` records it the same way at the end of the close ritual.)
 
-For the **historical backlog** (many legacy `Closed. (backfill)` projects the check lights up at once), these predate the rule and rarely have anything to promote. Clear them in one mechanical, dated pass: `condash projects check-knowledge --backfill` (preview with `--dry-run`). It tags each line `(backfill)` so they stay distinguishable from a real, reviewed check. Reserve this for the legacy sweep — resolve *new* done projects through step 1–2 above.
+The check may light up a **large historical backlog** (legacy done projects that predate the rule). There is deliberately no mass/backfill writer: stamping `Checked knowledge promotion` on a project nobody reviewed would make the marker lie. Work the backlog down the honest way — a real review per project (step 1–2), oldest or most-likely-to-have-promotions first — or leave the rest flagged as the genuine "not yet reviewed" TODO it is.
 
 ### `knowledge-recheck` (editorial)
 
@@ -92,5 +92,5 @@ A deferred promotion (`[knowledge-recheck:pending]`) whose blocking PR may now h
 
 - `/knowledge update` — what the user runs after re-reading an app's current state to refresh a stale claim.
 - `/knowledge index` — regenerates `knowledge/**/index.md` trees. Fixes `index` audit findings.
-- `condash projects check-knowledge <slug> --record` / `--backfill` — record the knowledge-promotion marker mechanically (consistent date), after the review. Resolves `knowledge-check` findings.
+- `condash projects check-knowledge <slug> --record` — record the knowledge-promotion marker mechanically (consistent date), after a real review. Resolves a `knowledge-check` finding for that project.
 - `/projects worktree status` — surfaces the `worktrees` mismatch findings on the projects side.

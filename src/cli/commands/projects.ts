@@ -20,7 +20,6 @@ import {
   scanPromotionsCommand,
   rewriteHeadersCommand,
   backfillClosed,
-  backfillKnowledgeCheck,
   createProjectCore,
   isValidSlugTail,
 } from './projects-maintenance';
@@ -43,7 +42,7 @@ export const KNOWN_FLAGS_SEARCH = ['limit', 'status', 'kind'] as const;
 export const KNOWN_FLAGS_VALIDATE = ['all', 'path'] as const;
 export const KNOWN_FLAGS_STATUS = ['summary'] as const;
 export const KNOWN_FLAGS_CLOSE = ['status', 'summary', 'no-touch-dirty'] as const;
-export const KNOWN_FLAGS_CHECK_KNOWLEDGE = ['record', 'backfill', 'dry-run'] as const;
+export const KNOWN_FLAGS_CHECK_KNOWLEDGE = ['record'] as const;
 export const KNOWN_FLAGS_REOPEN = ['status'] as const;
 export const KNOWN_FLAGS_BACKFILL_CLOSED = ['dry-run'] as const;
 export const KNOWN_FLAGS_INDEX = ['dry-run', 'rewrite-aggregated'] as const;
@@ -116,9 +115,7 @@ export async function runProjects(
     case 'close':
       return await closeProject(args, ctx, conceptionPath);
     case 'check-knowledge':
-      return args.flags.backfill === true
-        ? await backfillKnowledgeCheck(args, ctx, conceptionPath)
-        : await checkKnowledgeCommand(args, ctx, conceptionPath);
+      return await checkKnowledgeCommand(args, ctx, conceptionPath);
     case 'reopen':
       return await reopenProject(args, ctx, conceptionPath);
     case 'backfill-closed':
@@ -315,23 +312,20 @@ function printHelp(verb: string | null): void {
     case 'check-knowledge':
       writeBlock([
         'condash projects check-knowledge <slug> [--record]',
-        'condash projects check-knowledge --backfill [--dry-run]',
         '',
         'Default (no flags): signal only. Reports whether a done project still needs a',
         'knowledge-promotion check (its last timeline entry must be the marker). Mutates',
         'nothing — the actual promotion is the /knowledge skill job.',
         '',
         '  --record    Append a dated "Checked knowledge promotion" entry (today) to',
-        '              <slug>. The mechanical recorder the skill calls after the review,',
+        '              <slug>. The mechanical recorder the skill calls AFTER a real review,',
         '              so the marker is never hand-typed; close records it the same way.',
-        '  --backfill  Append a dated "(backfill)"-tagged marker to every done project',
-        '              missing it (git-derived date, mtime fallback). Clears the historical',
-        '              backlog. --dry-run previews. No slug.',
+        '              There is no mass/backfill writer — a done project gets the marker',
+        '              only once it has actually been reviewed.',
         '',
         'Examples:',
         '  condash projects check-knowledge condash-cli-ux-fixes',
         '  condash projects check-knowledge condash-cli-ux-fixes --record',
-        '  condash projects check-knowledge --backfill --dry-run',
       ]);
       return;
     case 'scan-promotions':
@@ -379,7 +373,7 @@ function printSubHelp(): void {
       '  validate         Validate header(s) against canonical enums.',
       '  status           get|set the **Status** field.',
       '  close            Flip status to done + append closing Timeline entry.',
-      '  check-knowledge  Signal / --record / --backfill the knowledge-promotion check.',
+      '  check-knowledge  Signal whether a done project needs a check; --record after one.',
       '  reopen           Flip status from done back to --status (default: now).',
       '  backfill-closed  One-shot: append `Closed.` to legacy done items.',
       '  index            Regenerate projects/index.md + month indexes.',
