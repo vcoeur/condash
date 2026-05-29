@@ -86,9 +86,9 @@ test('tasks pane lists a task and fills its markers', async () => {
     // {APP} is unfilled → left verbatim until an app is picked.
     await expect(preview).toContainText('{APP}');
 
-    // Pick the seeded app → bare {APP} resolves to its @alias in the preview.
-    await window.locator('.tasks-fill select').first().selectOption('@condash');
-    await expect(preview).toContainText('Review @condash');
+    // Pick the seeded app → bare {APP} resolves to its #alias in the preview.
+    await window.locator('.tasks-fill select').first().selectOption('#condash');
+    await expect(preview).toContainText('Review #condash');
 
     await window.screenshot({ path: join(outDir, 'tasks-fill.png') });
   } finally {
