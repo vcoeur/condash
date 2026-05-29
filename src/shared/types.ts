@@ -399,8 +399,8 @@ export interface Worktree {
 export interface RepoEntry {
   /** Display name (typically the repo directory name; submodules use `parent/child`). */
   name: string;
-  /** Canonical `@handle` (no leading `@`) — the app's one public identity.
-   * The Code-pane pill renders `@{handle}`; the colour hashes it. Explicit
+  /** Canonical `#handle` (no leading `#`) — the app's one public identity.
+   * The Code-pane pill renders `#{handle}`; the colour hashes it. Explicit
    * `handle:` in condash.json, else derived from the directory name. */
   handle: string;
   /** Optional human-friendly label from `condash.json`. Rendered as a

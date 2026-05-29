@@ -2,14 +2,14 @@
  * App identity + per-app colour for card pills (Projects pane + Code pane).
  *
  * One app has exactly one **handle** — the canonical, lowercase reference used
- * everywhere it's named: the `@handle` pill in both panes, a project README's
+ * everywhere it's named: the `#handle` pill in both panes, a project README's
  * `apps:` list, the generated AGENTS.md table, the colour hash, and search
  * keywords. Registered repos carry an explicit `handle:` in `condash.json`;
  * any other reference (a bare legacy name, or an absolute path to an
  * unregistered repo) is reduced to a handle by {@link appHandle}.
  *
  * This module owns the single normalisation rule. It replaced three divergent
- * ones (a colour-only `@`-strip, a search-only dots→hyphens slug, and the raw
+ * ones (a colour-only sigil-strip, a search-only dots→hyphens slug, and the raw
  * directory name on the code card) — they disagreed on inputs like
  * `notes.vcoeur.com`, so "is this the same app?" depended on which call site
  * asked. Now every call site funnels through `appHandle`.
@@ -22,16 +22,19 @@ export const APP_COLOR_SLOT_COUNT = 20;
  * Reduce any app reference to its handle: the canonical lowercase token that
  * identifies one app. Pure and locale-agnostic.
  *
- * Rules, in order: trim; strip leading `@`; if the value is a path (absolute,
+ * Rules, in order: trim; strip leading `#`; if the value is a path (absolute,
  * `~`-rooted, or containing a slash) take its last non-empty segment; lowercase.
  * Dots are preserved — an explicit handle never carries a domain suffix, and an
  * unregistered abs-path app keeps its directory basename verbatim.
  *
- * @param ref a `@handle`, a bare name, or an absolute/relative path
- * @returns the handle (no leading `@`), or `''` for an empty/`@`-only input
+ * Only the `#` sigil is stripped: a leading `@` (the retired sigil) is left
+ * intact so it fails to resolve and `applications validate` flags it.
+ *
+ * @param ref a `#handle`, a bare name, or an absolute/relative path
+ * @returns the handle (no leading `#`), or `''` for an empty/`#`-only input
  */
 export function appHandle(ref: string): string {
-  let value = ref.trim().replace(/^@+/, '');
+  let value = ref.trim().replace(/^#+/, '');
   if (value.includes('/') || value.startsWith('~')) {
     const segments = value.replace(/\/+$/, '').split('/');
     value = segments[segments.length - 1] ?? '';
@@ -41,10 +44,10 @@ export function appHandle(ref: string): string {
 
 /**
  * Render an app reference as its pill text: the handle with a single leading
- * `@`. Both panes call this so the same app reads identically everywhere.
+ * `#`. Both panes call this so the same app reads identically everywhere.
  */
 export function appPillText(ref: string): string {
-  return `@${appHandle(ref)}`;
+  return `#${appHandle(ref)}`;
 }
 
 /**

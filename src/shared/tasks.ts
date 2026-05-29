@@ -97,7 +97,7 @@ export interface AppLike {
 
 /**
  * Build the `{APP_*}` substitution family for a chosen app. The bare `{APP}`
- * resolves to the `@alias` (e.g. `@condash`), matching the conception Apps-table
+ * resolves to the `#alias` (e.g. `#condash`), matching the conception Apps-table
  * convention; `{APP_NAME}` is the bare repo name and `{APP_PATH}` its absolute
  * path. Returns an empty bag when no app is chosen so unfilled tokens stay
  * verbatim.
@@ -105,7 +105,7 @@ export interface AppLike {
 export function appContext(app: AppLike | null): Record<string, string> {
   if (!app) return {};
   return {
-    APP: `@${app.name}`,
+    APP: `#${app.name}`,
     APP_NAME: app.name,
     APP_PATH: app.path,
   };

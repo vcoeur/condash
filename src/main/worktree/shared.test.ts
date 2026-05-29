@@ -14,9 +14,9 @@ describe('rootRepoFromApp', () => {
     expect(rootRepoFromApp('vcoeur.com')).toBe('vcoeur.com');
   });
 
-  it('strips the leading `@` display prefix', () => {
-    expect(rootRepoFromApp('@condash')).toBe('condash');
-    expect(rootRepoFromApp('@vcoeur.com')).toBe('vcoeur.com');
+  it('strips the leading `#` display prefix', () => {
+    expect(rootRepoFromApp('#condash')).toBe('condash');
+    expect(rootRepoFromApp('#vcoeur.com')).toBe('vcoeur.com');
   });
 
   it('strips inner sub-paths', () => {
@@ -24,7 +24,7 @@ describe('rootRepoFromApp', () => {
     expect(rootRepoFromApp('alicepeintures.com/admin')).toBe('alicepeintures.com');
   });
 
-  it('strips both `@` and sub-path together', () => {
-    expect(rootRepoFromApp('@condash/frontend')).toBe('condash');
+  it('strips both `#` and sub-path together', () => {
+    expect(rootRepoFromApp('#condash/frontend')).toBe('condash');
   });
 });

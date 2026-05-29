@@ -51,9 +51,9 @@ describe('reserved token predicates', () => {
 });
 
 describe('appContext', () => {
-  it('builds the {APP_*} family with the @alias as the bare value', () => {
+  it('builds the {APP_*} family with the #alias as the bare value', () => {
     expect(appContext({ name: 'condash', path: '/home/alice/src/vcoeur/condash' })).toEqual({
-      APP: '@condash',
+      APP: '#condash',
       APP_NAME: 'condash',
       APP_PATH: '/home/alice/src/vcoeur/condash',
     });

@@ -54,7 +54,7 @@ export interface RepoLookup {
    *  `path` is given, its basename. The on-disk identity worktree / run /
    *  force_stop machinery keys on. */
   name: string;
-  /** Canonical `@handle` (no leading `@`) — the public identity. Explicit
+  /** Canonical `#handle` (no leading `#`) — the public identity. Explicit
    *  `entry.handle`, or `appHandle(name)` when unset. */
   handle: string;
   /** Legacy spellings that resolve to this handle, from `condash.json`. */
@@ -197,7 +197,7 @@ export function findRepoEntry(config: ConfigShape, name: string): RepoLookup | n
 }
 
 /**
- * Find a repo by its canonical handle (the `@`-stripped, lowercased token).
+ * Find a repo by its canonical handle (the `#`-stripped, lowercased token).
  * Used by the `applications` CLI and `apps:` validation, which resolve a
  * reference to its registered repo. Returns the first match in declaration
  * order, or null.

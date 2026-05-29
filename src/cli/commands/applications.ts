@@ -15,7 +15,7 @@ const NOUN_FLAGS: readonly string[] = ['label', 'path', 'fix'];
 
 /**
  * `condash applications <verb>` — manage the app registry: the single source
- * of truth for `@handle` identity. Thin wrapper over `main/applications.ts`.
+ * of truth for `#handle` identity. Thin wrapper over `main/applications.ts`.
  */
 export async function runApplications(
   verb: string | null,
@@ -43,7 +43,7 @@ export async function runApplications(
         data
           .map((a) => {
             const tag = a.retired ? '(retired)' : (a.path ?? '');
-            return `@${a.handle.padEnd(20)}  ${tag}`;
+            return `#${a.handle.padEnd(20)}  ${tag}`;
           })
           .join('\n') + '\n'
       );
@@ -121,7 +121,7 @@ export async function runApplications(
       );
     }
     await addApplication(conceptionPath, { handle, path, label });
-    emit(ctx, { ok: true, handle }, () => `registered @${handle}\n`);
+    emit(ctx, { ok: true, handle }, () => `registered #${handle}\n`);
     return;
   }
 
@@ -137,7 +137,7 @@ export async function runApplications(
       );
     }
     await setApplication(conceptionPath, handle, { label, path });
-    emit(ctx, { ok: true, handle }, () => `updated @${handle}\n`);
+    emit(ctx, { ok: true, handle }, () => `updated #${handle}\n`);
     return;
   }
 
@@ -153,7 +153,7 @@ export async function runApplications(
       ctx,
       result,
       (d) =>
-        `renamed @${(d as typeof result).oldHandle} → @${(d as typeof result).newHandle}; ` +
+        `renamed #${(d as typeof result).oldHandle} → #${(d as typeof result).newHandle}; ` +
         `rewrote ${(d as typeof result).readmesRewritten.length} README(s)\n`,
     );
     return;
@@ -179,7 +179,7 @@ function printHelp(verb: string | null): void {
     [
       'condash applications <verb> [args]',
       '',
-      'The app registry — one canonical @handle per app, with label + path.',
+      'The app registry — one canonical #handle per app, with label + path.',
       '',
       'Verbs:',
       '  list                       List registered apps (live + retired).',
@@ -220,10 +220,10 @@ function verbHelp(verb: string): string {
     validate: [
       'condash applications validate [--fix]',
       '',
-      'Every project README apps: value must resolve to a known @handle (live or',
+      'Every project README apps: value must resolve to a known #handle (live or',
       'retired) or an existing absolute path. Unknown handles exit 3.',
       '',
-      '  --fix   Rewrite every resolvable apps: value to its canonical @handle',
+      '  --fix   Rewrite every resolvable apps: value to its canonical #handle',
       '          (bare names and legacy aliases alike). Unresolved refs are left',
       '          in place and reported; the run still exits 3 if any remain.',
     ],

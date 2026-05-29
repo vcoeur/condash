@@ -26,7 +26,7 @@ Nouns:
   knowledge    tree, verify, retrieve, stamp, index
   search       cross-tree search (--scope all|projects|knowledge)
   repos        list configured repositories
-  applications list, add, set, rename, sync-docs, validate (the @handle registry)
+  applications list, add, set, rename, sync-docs, validate (the #handle registry)
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
   dirty        list, touch <tree>, clear <tree|all>

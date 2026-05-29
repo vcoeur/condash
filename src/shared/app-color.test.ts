@@ -8,10 +8,14 @@ import {
 } from './app-color';
 
 describe('appHandle', () => {
-  it('strips a leading @ and lowercases', () => {
-    expect(appHandle('@Condash')).toBe('condash');
-    expect(appHandle('@@condash')).toBe('condash');
+  it('strips a leading # and lowercases', () => {
+    expect(appHandle('#Condash')).toBe('condash');
+    expect(appHandle('##condash')).toBe('condash');
     expect(appHandle('CONDASH')).toBe('condash');
+  });
+
+  it('leaves a leading @ (the retired sigil) intact so it fails to resolve', () => {
+    expect(appHandle('@condash')).toBe('@condash');
   });
 
   it('keeps dots (no domain stripping; explicit handles own that)', () => {
@@ -25,17 +29,17 @@ describe('appHandle', () => {
     expect(appHandle('/trailing/slash/')).toBe('slash');
   });
 
-  it('returns empty for empty / @-only input', () => {
+  it('returns empty for empty / #-only input', () => {
     expect(appHandle('')).toBe('');
-    expect(appHandle('@')).toBe('');
+    expect(appHandle('#')).toBe('');
   });
 });
 
 describe('appPillText', () => {
-  it('prefixes a single @ onto the handle', () => {
-    expect(appPillText('condash')).toBe('@condash');
-    expect(appPillText('@condash')).toBe('@condash');
-    expect(appPillText('Kasten')).toBe('@kasten');
+  it('prefixes a single # onto the handle', () => {
+    expect(appPillText('condash')).toBe('#condash');
+    expect(appPillText('#condash')).toBe('#condash');
+    expect(appPillText('Kasten')).toBe('#kasten');
   });
 });
 
@@ -55,7 +59,7 @@ describe('appColorSlot', () => {
       'agentsconf',
       'alicepeintures.com',
       '',
-      '@',
+      '#',
       'X',
     ];
     for (const s of samples) {
@@ -65,9 +69,9 @@ describe('appColorSlot', () => {
     }
   });
 
-  it("normalises leading '@' so `@condash` matches `condash`", () => {
-    expect(appColorSlot('@condash')).toBe(appColorSlot('condash'));
-    expect(appColorSlot('@@condash')).toBe(appColorSlot('condash'));
+  it("normalises leading '#' so `#condash` matches `condash`", () => {
+    expect(appColorSlot('#condash')).toBe(appColorSlot('condash'));
+    expect(appColorSlot('##condash')).toBe(appColorSlot('condash'));
   });
 
   it('is case-insensitive', () => {

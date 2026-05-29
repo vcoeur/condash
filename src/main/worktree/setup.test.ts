@@ -141,11 +141,11 @@ describe('setupBranchWorktrees with a slash-bearing branch', () => {
   });
 });
 
-describe('implicit-mode resolution with `@`-prefixed apps', () => {
-  // The Apps table column in the conception README accepts `@<repo>`; project
+describe('implicit-mode resolution with `#`-prefixed apps', () => {
+  // The Apps table column in the conception README accepts `#<repo>`; project
   // headers mirror that. The canonical repo name in `condash.json` is bare,
-  // so the resolver must strip `@` before lookup. Issue: setup/remove
-  // returned empty `created[]` / `notPresent: ["@<name>"]` until the strip
+  // so the resolver must strip `#` before lookup. Issue: setup/remove
+  // returned empty `created[]` / `notPresent: ["#<name>"]` until the strip
   // was added.
   const branch = 'at-prefix-implicit';
 
@@ -160,7 +160,7 @@ describe('implicit-mode resolution with `@`-prefixed apps', () => {
         'kind: project',
         'status: now',
         'apps:',
-        '  - "@demo"',
+        '  - "#demo"',
         `branch: ${branch}`,
         '---',
         '',
@@ -169,7 +169,7 @@ describe('implicit-mode resolution with `@`-prefixed apps', () => {
     );
   }
 
-  it('setup resolves `@demo` to repo `demo` in implicit mode', async () => {
+  it('setup resolves `#demo` to repo `demo` in implicit mode', async () => {
     writeDeclaringReadme();
     const result = await setupBranchWorktrees(conception, branch);
     expect(result.created).toEqual([{ repo: 'demo', path: join(worktreesRoot, branch, 'demo') }]);
@@ -177,7 +177,7 @@ describe('implicit-mode resolution with `@`-prefixed apps', () => {
     expect(existsSync(join(worktreesRoot, branch, 'demo'))).toBe(true);
   });
 
-  it('check enumerates the `demo` per-repo state when the README says `@demo`', async () => {
+  it('check enumerates the `demo` per-repo state when the README says `#demo`', async () => {
     writeDeclaringReadme();
     await setupBranchWorktrees(conception, branch);
     const state = await checkBranchState(conception, branch);
@@ -187,7 +187,7 @@ describe('implicit-mode resolution with `@`-prefixed apps', () => {
     expect(state.missing).toEqual([]);
   });
 
-  it('remove resolves `@demo` to repo `demo` in implicit mode', async () => {
+  it('remove resolves `#demo` to repo `demo` in implicit mode', async () => {
     writeDeclaringReadme();
     await setupBranchWorktrees(conception, branch);
     const result = await removeBranchWorktrees(conception, branch);

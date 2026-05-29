@@ -16,7 +16,7 @@ import { isValidSlugTail, slugify } from '@shared/slug';
 import { ConfirmModal } from '../confirm-modal';
 import './tasks-pane.css';
 
-/** One app the `{APP}` picker can select. `alias` is the `@<name>` form. */
+/** One app the `{APP}` picker can select. `alias` is the `#<name>` form. */
 export interface AppOption {
   alias: string;
   name: string;

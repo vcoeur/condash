@@ -86,8 +86,8 @@ function repoMeta(
       branch = worktrees.find((w) => w.primary)?.branch ?? undefined;
     }
   }
-  // The `@handle` titles the active-run row, matching the repo card.
-  const displayName = `@${repo.handle}`;
+  // The `#handle` titles the active-run row, matching the repo card.
+  const displayName = `#${repo.handle}`;
   return { repo, branch, displayName };
 }
 
