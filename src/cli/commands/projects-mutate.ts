@@ -121,7 +121,8 @@ export async function closeProject(
  * durability test plus real `/knowledge update` entries). `--record` is the
  * mechanical, consistently-dated recorder the skill calls *after* that review,
  * so the marker is never hand-typed; `close` records it the same way at the end
- * of the close ritual. For the historical backlog, see `check-knowledge --backfill`.
+ * of the close ritual. There is no mass/backfill writer — a done project gets the
+ * marker only once it has actually been reviewed.
  */
 export async function checkKnowledgeCommand(
   args: ParsedArgs,
@@ -135,7 +136,7 @@ export async function checkKnowledgeCommand(
   if (!slug) {
     throw new CliError(
       ExitCodes.USAGE,
-      'Usage: condash projects check-knowledge <slug> [--record]  (or --backfill for all)',
+      'Usage: condash projects check-knowledge <slug> [--record]',
     );
   }
 

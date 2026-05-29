@@ -101,8 +101,7 @@ Item lifecycle and reads.
 | `index [--dry-run] [--rewrite-aggregated]` | Regenerate every `projects/**/index.md` from the on-disk tree; clear `projects/.index-dirty` |
 | `create --kind <k> --slug <s> --title "<t>" --apps "<a>" [--status <s>]` | Create a new project / incident / document folder + README from the canonical template. `--status` accepts `now \| review \| later \| backlog` (default `now`); `done` is rejected — use `condash projects close` to flip status to done. Incidents add `--severity` + `--severity-impact` + `--environment` |
 | `scan-promotions <slug>` | Walk a closed item's notes for "always / never / next time / use X" cues that suggest a knowledge promotion; print suggestions |
-| `check-knowledge <slug> [--record]` | Signal whether a `done` project still needs a knowledge-promotion check (read-only). `--record` appends the dated `Checked knowledge promotion` marker (the mechanical recorder the `/knowledge` skill calls after the review — never hand-typed) |
-| `check-knowledge --backfill [--dry-run]` | Append a git-dated `Checked knowledge promotion (backfill)` marker to every `done` project missing it; clears the historical backlog |
+| `check-knowledge <slug> [--record]` | Signal whether a `done` project still needs a knowledge-promotion check (read-only). `--record` appends the dated `Checked knowledge promotion` marker after a real review (the mechanical recorder the `/knowledge` skill calls — never hand-typed). No mass/backfill writer: the marker is only ever written for a project that was actually reviewed |
 | `rewrite-headers [--dry-run]` | One-shot migration of legacy bold-prose headers to YAML frontmatter; idempotent (already-YAML files are no-ops). Skips any README whose body has unexpected content between the meta block and the first `##` heading |
 
 Slug forms accepted:
@@ -189,7 +188,7 @@ condash audit --include lfs,binaries
 | `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
 | `index` | `index.md` files out of sync with the on-disk tree |
 | `knowledge-recheck` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
-| `knowledge-check` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve with `projects check-knowledge <slug> --record` (after the review) or `--backfill` for the legacy batch |
+| `knowledge-check` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
 
 `--include <list>` restricts to a comma-separated subset (or `all`).
 

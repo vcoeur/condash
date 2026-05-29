@@ -11,7 +11,6 @@ import {
   scanPromotionsCommand,
   rewriteHeadersCommand,
   backfillClosed,
-  backfillKnowledgeCheck,
 } from './projects-maintenance';
 import {
   captureStdout,
@@ -216,74 +215,5 @@ describe('backfillClosed', () => {
     expect(candidateSlugs.some((s) => s.includes('finished'))).toBe(true);
     const skippedSlugs = data.skipped.map((s) => s.slug);
     expect(skippedSlugs.some((s) => s.includes('already-closed'))).toBe(true);
-  });
-});
-
-describe('backfillKnowledgeCheck', () => {
-  it('records a dated (backfill) marker on done projects missing it, skips satisfied ones', async () => {
-    const needs = await writeProjectReadme(conceptionPath, 'needs-check', {
-      date: '2026-05-01',
-      kind: 'project',
-      status: 'done',
-      title: 'Needs check',
-      body: '## Timeline\n\n- 2026-05-02 — Closed. (backfill)\n',
-    });
-    const already = await writeProjectReadme(conceptionPath, 'already-checked', {
-      date: '2026-05-02',
-      kind: 'project',
-      status: 'done',
-      title: 'Already checked',
-      body: '## Timeline\n\n- 2026-05-02 — Closed.\n- 2026-05-02 — Checked knowledge promotion\n',
-    });
-    const active = await writeProjectReadme(conceptionPath, 'still-active', {
-      date: '2026-05-03',
-      kind: 'project',
-      status: 'now',
-      title: 'Still active',
-      body: '## Timeline\n\n',
-    });
-
-    const { stdout, threw } = await captureStdout(() =>
-      backfillKnowledgeCheck(
-        { noun: 'projects', verb: 'check-knowledge', positional: [], flags: { backfill: true } },
-        jsonCtx(),
-        conceptionPath,
-      ),
-    );
-    expect(threw).toBeUndefined();
-    const data = parseJsonEnvelope<{ candidates: Array<{ slug: string; date: string }> }>(
-      stdout,
-    ).data!;
-    const slugs = data.candidates.map((c) => c.slug);
-    expect(slugs.some((s) => s.includes('needs-check'))).toBe(true);
-    expect(slugs.some((s) => s.includes('already-checked'))).toBe(false);
-    expect(slugs.some((s) => s.includes('still-active'))).toBe(false);
-    // every recorded date is complete (YYYY-MM-DD)
-    for (const c of data.candidates) expect(c.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-
-    // The marker is appended (and tagged) to the needing project, last entry.
-    expect(await fs.readFile(needs, 'utf8')).toMatch(
-      /-\s+\d{4}-\d{2}-\d{2}\s+—\s+Checked knowledge promotion \(backfill\)\s*$/,
-    );
-    // Satisfied + non-done projects are untouched.
-    expect(await fs.readFile(already, 'utf8')).not.toMatch(/\(backfill\)/);
-    expect(await fs.readFile(active, 'utf8')).not.toMatch(/Checked knowledge promotion/);
-  });
-
-  it('rejects a slug (operates on all done projects)', async () => {
-    const { threw } = await captureStdout(() =>
-      backfillKnowledgeCheck(
-        {
-          noun: 'projects',
-          verb: 'check-knowledge',
-          positional: ['some-slug'],
-          flags: { backfill: true },
-        },
-        jsonCtx(),
-        conceptionPath,
-      ),
-    );
-    expect(threw).toBeInstanceOf(CliError);
-    expect((threw as CliError).exitCode).toBe(2);
   });
 });
