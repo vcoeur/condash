@@ -9,6 +9,7 @@ import type {
   TerminalXtermPrefs,
   Worktree,
 } from '@shared/types';
+import { appColorClass } from '@shared/app-color';
 import { CodeRunRows } from '../code-runs';
 import { BranchFilter } from './code-parts/branch-filter';
 import { collectFilterableBranches, groupRepos, orderedRepos } from './code-parts/data';
@@ -139,7 +140,7 @@ export function CodeView(props: {
                 <div class="repos-section">
                   <button
                     type="button"
-                    class="repos-section-header"
+                    class={`repos-section-header ${appColorClass(group.section ?? '')}`}
                     aria-expanded={!isCollapsed()}
                     onClick={() => toggleSection(group.key)}
                   >
