@@ -41,33 +41,47 @@
   margin-top: 0;
 }
 
+/* The title sits between two bold, full-width horizontal rules (top + bottom
+ * borders) in the section's own palette colour — `--section-color` comes from
+ * `--app-pill-fg` on the `app-pill-N` class hashed off the section name, so
+ * each section gets a distinct, stable colour. The rules are brightened and
+ * desaturated toward white so they read as a clean bright line; the title
+ * stays near-white with only a faint tint of the section colour. */
 .repos-section-header {
+  --section-color: var(--app-pill-fg, var(--border-strong));
   appearance: none;
+  width: 100%;
+  box-sizing: border-box;
   background: transparent;
   border: none;
-  padding: 4px 0 4px 2px;
+  border-top: 3px solid color-mix(in srgb, var(--section-color) 50%, white);
+  border-bottom: 3px solid color-mix(in srgb, var(--section-color) 50%, white);
+  border-radius: 0;
+  padding: 7px 2px;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--section-color) 25%, var(--text));
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   cursor: pointer;
 }
 
 .repos-section-header:hover {
-  color: var(--text);
+  filter: brightness(1.15);
 }
 
 .repos-section-chevron {
   display: inline-block;
   width: 1ch;
   font-weight: 500;
+  color: var(--text-muted);
 }
 
 .repos-section-count {
+  margin-left: auto;
   font-weight: 400;
   font-size: 11px;
   letter-spacing: 0;
