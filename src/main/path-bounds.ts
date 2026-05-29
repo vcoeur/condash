@@ -91,14 +91,14 @@ export async function requirePathUnderWorkspace(path: string): Promise<string> {
 }
 
 /**
- * Throw unless `path` resolves to a readable Skills-pane location: under the
- * active conception, OR under one of the user-scope skill roots, OR equal to
- * one of the user-scope compiled agent-config files. Returns the realpath.
+ * Throw unless `path` resolves to a readable Skills-pane location: under
+ * the active conception, OR under the user-scope skills root, OR equal to
+ * the user-scope AGENTS.md. Returns the realpath.
  *
- * Read-only — the Skills pane surfaces the global scope but never writes it,
- * so this guards `readSkillFile` and nothing else. Narrow on purpose: the
- * specific skill roots and config files only, never their parents, so
- * `~/.kimi/credentials/` and friends stay unreachable through this path.
+ * Read-only — the Skills pane surfaces both scopes but never writes them,
+ * so this guards `readSkillFile` and nothing else. Narrow on purpose: only
+ * the specific agedum-source paths, never their parents, so other
+ * dotfiles in `~/.config/` stay unreachable through this path.
  */
 export async function requireReadableSkillPath(path: string): Promise<string> {
   if (typeof path !== 'string' || path.length === 0) {
@@ -129,8 +129,8 @@ export async function requireReadableSkillPath(path: string): Promise<string> {
     if (child === parent || child.startsWith(parent)) return real;
   }
 
-  // The compiled agent-config files live directly in dirs we don't expose
-  // wholesale (`~/.claude`, `~/.kimi`, `~/.config/opencode`) — match them
+  // The user-scope AGENTS.md lives directly under `~/.config/agents/`,
+  // a directory condash deliberately doesn't expose wholesale — match it
   // exactly by realpath instead.
   const fileReals = await Promise.all(
     userScopeReadableFiles().map(async (file) => {

@@ -20,7 +20,6 @@ import type {
   SearchResults,
   SkillNode,
   SkillScope,
-  SkillTab,
   StepMarker,
   TermDataMessage,
   TermExitMessage,
@@ -40,23 +39,21 @@ export interface CondashApi {
   listProjects(): Promise<Project[]>;
   getProject(path: string): Promise<Project | null>;
   readKnowledgeTree(): Promise<KnowledgeNode | null>;
-  /** Tree under <conception>/<resources_path> — every file (any extension),
+  /** Tree under <conception>/resources/ — every file (any extension),
    * carrying mime + coarse category for the renderer's icon picker.
    * Resolves to null when the directory is missing. */
   readResourcesTree(): Promise<ResourceNode | null>;
-  /** Tree under the active skills tab's root, for the given scope.
-   *  `local` reads the conception; `global` reads the per-machine user scope
-   *  (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`):
-   *  - generic → `…/skills/` (`.md` and `.yaml`) + `common.md`/`<model>.md` sources
-   *  - claude  → `…/skills/` (`.md` only) + the compiled `CLAUDE.md`
-   *  - kimi    → `…/skills/` (`.md` only) + `AGENTS.md`
-   *  - opencode→ `…/skills/` (`.md` only) + `AGENTS.md`
-   * Shipped-SHA stamps are populated from `.condash-skills.json` when present.
-   * Resolves to null when the directory and all agent-config files are absent. */
-  readSkillsTree(scope: SkillScope, tab: SkillTab): Promise<SkillNode | null>;
+  /** Tree of the scope's skills directory plus the scope's AGENTS.md pinned
+   *  at the top:
+   *  - `conception` → `<conception>/AGENTS.md` + `<conception>/.agents/skills/`
+   *  - `user`       → `~/.config/agents/AGENTS.md` + `~/.agents/skills/`
+   *  Both surfaces are agedum sources, never compiled outputs. Shipped-SHA
+   *  stamps are populated from `.condash-skills.json` when present. Resolves
+   *  to null when neither the skills directory nor the AGENTS.md exists. */
+  readSkillsTree(scope: SkillScope): Promise<SkillNode | null>;
   /** Read-only content of a Skills-pane file. Permits the active conception
-   *  and the user-scope skill / agent-config locations (global scope lives
-   *  outside the conception); rejects anything else. */
+   *  and the user-scope agedum sources (the user scope lives outside the
+   *  conception); rejects anything else. */
   readSkillFile(path: string): Promise<string>;
   search(query: string): Promise<SearchResults>;
   listRepos(): Promise<RepoEntry[]>;
@@ -142,11 +139,8 @@ export interface CondashApi {
   getBranchFilterStickyAll(): Promise<boolean>;
   /** Persist the All-sticky mode flag. */
   setBranchFilterStickyAll(value: boolean): Promise<void>;
-  /** Active tab in the Skills pane. Persisted per-machine in settings.json. */
-  getSkillsActiveTab(): Promise<SkillTab>;
-  setSkillsActiveTab(tab: SkillTab): Promise<void>;
-  /** Active scope (local conception vs global user scope) in the Skills pane.
-   *  Persisted per-machine; defaults to `local`. */
+  /** Active scope (conception vs user) in the Skills pane.
+   *  Persisted per-machine; defaults to `conception`. */
   getSkillsActiveScope(): Promise<SkillScope>;
   setSkillsActiveScope(scope: SkillScope): Promise<void>;
   /** Absolute path to `~/.config/condash/settings.json` (or platform equivalent),
@@ -315,26 +309,18 @@ export interface CondashApi {
    *  an existing file. Returns the new file's absolute path so the caller
    *  can re-fetch the tree and open the file in the editor.
    *  When `root === 'skills'`, `skillTab` selects which tab's directory is
-   *  the target (generic / claude / kimi). Kimi rejects with an error. */
-  treeCreateMd(
-    root: TreeRoot,
-    dirRelPath: string,
-    filename: string,
-    skillTab?: SkillTab,
-  ): Promise<string>;
-  /** Create a new subdirectory under one of the three tree panes'
-   *  directories. Same `dirRelPath` semantics as `treeCreateMd`. `name` is
-   *  sanitised to lowercase-hyphen. Idempotent: a no-op if the directory
-   *  already exists, but always returns its absolute path.
-   *  When `root === 'skills'`, `skillTab` selects which tab's directory is
-   *  the target (generic / claude / kimi). Kimi rejects with an error. */
-  treeMkdir(root: TreeRoot, dirRelPath: string, name: string, skillTab?: SkillTab): Promise<string>;
+   *  `root === 'skills'` is rejected — the Skills pane is read-only. */
+  treeCreateMd(root: TreeRoot, dirRelPath: string, filename: string): Promise<string>;
+  /** Create a new subdirectory under one of the two writable tree panes
+   *  (Knowledge / Resources). `name` is sanitised to lowercase-hyphen.
+   *  Idempotent: a no-op if the directory already exists, but always
+   *  returns its absolute path. `root === 'skills'` is rejected. */
+  treeMkdir(root: TreeRoot, dirRelPath: string, name: string): Promise<string>;
   /** Pop an OS file picker, then copy the chosen file into the target tree
    *  directory. Resolves to the destination's absolute path, or `null` when
    *  the user cancels. Refuses to overwrite an existing file.
-   *  When `root === 'skills'`, `skillTab` selects which tab's directory is
-   *  the target (generic / claude / kimi). Kimi rejects with an error. */
-  treeImportFile(root: TreeRoot, dirRelPath: string, skillTab?: SkillTab): Promise<string | null>;
+   *  `root === 'skills'` is rejected. */
+  treeImportFile(root: TreeRoot, dirRelPath: string): Promise<string | null>;
   /** Trigger app quit. Renderer is responsible for any user confirmation. */
   quitApp(): Promise<void>;
   /** App version + bundled release metadata used by the About modal.

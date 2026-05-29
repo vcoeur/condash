@@ -6,25 +6,18 @@ import type {
   CardMinWidthPrefs,
   LayoutState,
   SkillScope,
-  SkillTab,
   Theme,
   TreeExpansionPrefs,
 } from '../../shared/types';
-import { DEFAULT_CARD_MIN_WIDTH, SKILL_SCOPES, SKILL_TABS } from '../../shared/types';
+import { DEFAULT_CARD_MIN_WIDTH, SKILL_SCOPES } from '../../shared/types';
 
-// Note: the legacy `skills` key is accepted on read (migrated to
-// `skillsClaude`) but never written back. New writers emit the three
-// per-tab keys.
-const TREE_EXPANSION_KEYS = [
-  'knowledge',
-  'resources',
-  'skillsGeneric',
-  'skillsClaude',
-  'skillsKimi',
-] as const;
+// Tree-expansion keys after the reframe: knowledge, resources, plus one
+// skills set per scope (conception / user). The pre-reframe per-harness
+// keys (`skillsGeneric`, `skillsClaude`, `skillsKimi`, `skillsOpencode`)
+// collapsed into the single conception-scope `skills` key — they're
+// accepted on read for back-compat but never written back.
+const TREE_EXPANSION_KEYS = ['knowledge', 'resources', 'skills', 'skillsUser'] as const;
 type TreeExpansionKey = (typeof TREE_EXPANSION_KEYS)[number];
-
-const SKILL_TAB_SET: ReadonlySet<SkillTab> = new Set(SKILL_TABS);
 
 const SKILL_SCOPE_SET: ReadonlySet<SkillScope> = new Set(SKILL_SCOPES);
 
@@ -138,19 +131,41 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     const out: Required<Pick<TreeExpansionPrefs, TreeExpansionKey>> = {
       knowledge: [],
       resources: [],
-      skillsGeneric: [],
-      skillsClaude: [],
-      skillsKimi: [],
+      skills: [],
+      skillsUser: [],
     };
-    // Legacy `skills` key migrates into `skillsClaude` so users keep their
-    // existing expansion state when the tabs ship for the first time.
-    const legacySkills = Array.isArray(treeExpansion?.skills) ? treeExpansion.skills : null;
-    if (legacySkills) {
+    // Pre-reframe per-harness keys (`skillsGeneric`, `skillsClaude`,
+    // `skillsKimi`, `skillsOpencode`) collapse into the single
+    // `skills` (conception-scope) key. Take the union of all four
+    // legacy keys + the canonical `skills` value so users keep their
+    // expansion state on upgrade.
+    const legacyExpansion = treeExpansion as
+      | (TreeExpansionPrefs & {
+          skillsGeneric?: unknown;
+          skillsClaude?: unknown;
+          skillsKimi?: unknown;
+          skillsOpencode?: unknown;
+        })
+      | undefined;
+    const legacyHarnessSources = legacyExpansion
+      ? [
+          legacyExpansion.skillsGeneric,
+          legacyExpansion.skillsClaude,
+          legacyExpansion.skillsKimi,
+          legacyExpansion.skillsOpencode,
+        ]
+      : [];
+    let hadLegacyHarnessKey = false;
+    if (legacyHarnessSources.some((v) => Array.isArray(v))) {
+      hadLegacyHarnessKey = true;
       const seen = new Set<string>();
-      for (const entry of legacySkills) {
-        if (typeof entry === 'string') seen.add(entry);
+      for (const candidate of legacyHarnessSources) {
+        if (!Array.isArray(candidate)) continue;
+        for (const entry of candidate) {
+          if (typeof entry === 'string') seen.add(entry);
+        }
       }
-      out.skillsClaude = Array.from(seen);
+      out.skills = Array.from(seen);
     }
     for (const key of TREE_EXPANSION_KEYS) {
       const v = treeExpansion?.[key];
@@ -161,33 +176,43 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
         for (const entry of v) {
           if (typeof entry === 'string') seen.add(entry);
         }
-        out[key] = Array.from(seen);
+        // If `skills` is explicitly present alongside legacy harness keys,
+        // the explicit value wins (legacy only fills the gap).
+        if (seen.size > 0 || !(key === 'skills' && hadLegacyHarnessKey)) {
+          out[key] = Array.from(seen);
+        }
       }
     }
-    // Opportunistically rewrite settings.json without the legacy `skills`
-    // key so it doesn't linger indefinitely for users who never trigger a
-    // tree-expansion mutation. Fire-and-forget — failure here is non-fatal
-    // and the next read will simply re-migrate.
-    //
-    // The mutator re-reads `cur.treeExpansion` under `withSettingsQueue`
-    // rather than reusing the outer snapshot, so a parallel
-    // `setTreeExpansion` that landed between our read and this mutator
-    // running is preserved instead of being clobbered with stale state.
-    if (legacySkills) {
+    // Opportunistically rewrite settings.json without the legacy
+    // per-harness keys so they don't linger indefinitely for users who
+    // never trigger a tree-expansion mutation. Fire-and-forget — failure
+    // here is non-fatal and the next read will simply re-migrate.
+    if (hadLegacyHarnessKey) {
       void updateSettings((cur) => {
-        const curTreeExpansion = cur.treeExpansion;
-        // Another mutator already dropped the legacy key — nothing to do.
-        if (!curTreeExpansion?.skills) return cur;
-        const { skills: legacyOnDisk, ...rest } = curTreeExpansion;
-        const migrated = new Set<string>();
-        for (const entry of Array.isArray(legacyOnDisk) ? legacyOnDisk : []) {
-          if (typeof entry === 'string') migrated.add(entry);
-        }
-        // Explicit `skillsClaude` (if any) wins; legacy only fills the gap.
-        const skillsClaude =
-          rest.skillsClaude ?? (migrated.size > 0 ? Array.from(migrated) : undefined);
+        const curTreeExpansion = cur.treeExpansion as
+          | (TreeExpansionPrefs & {
+              skillsGeneric?: string[];
+              skillsClaude?: string[];
+              skillsKimi?: string[];
+              skillsOpencode?: string[];
+            })
+          | undefined;
+        if (!curTreeExpansion) return cur;
+        const {
+          skillsGeneric: _gen,
+          skillsClaude: _claude,
+          skillsKimi: _kimi,
+          skillsOpencode: _opencode,
+          ...rest
+        } = curTreeExpansion;
+        void _gen;
+        void _claude;
+        void _kimi;
+        void _opencode;
         const merged: TreeExpansionPrefs = { ...rest };
-        if (skillsClaude !== undefined) merged.skillsClaude = skillsClaude;
+        if (rest.skills === undefined && out.skills.length > 0) {
+          merged.skills = out.skills;
+        }
         return { ...cur, treeExpansion: merged };
       }).catch(() => undefined);
     }
@@ -216,8 +241,6 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
         nonEmpty = true;
       }
     }
-    // Always drop the legacy `skills` key on write — the read path has
-    // already migrated it to `skillsClaude`.
     await updateSettings((cur) => ({
       ...cur,
       treeExpansion: nonEmpty ? sanitised : undefined,
@@ -271,25 +294,9 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     await updateSettings((cur) => ({ ...cur, branchFilterStickyAll: raw }));
   });
 
-  // Skills-pane active tab (per-machine). Default is `claude` — preserves
-  // the pre-tabs behaviour for existing users.
-  ipcMain.handle('getSkillsActiveTab', async (): Promise<SkillTab> => {
-    const { skillsActiveTab } = await readSettings();
-    if (typeof skillsActiveTab === 'string' && SKILL_TAB_SET.has(skillsActiveTab as SkillTab)) {
-      return skillsActiveTab as SkillTab;
-    }
-    return 'claude';
-  });
-
-  ipcMain.handle('setSkillsActiveTab', async (_, raw: unknown) => {
-    if (typeof raw !== 'string' || !SKILL_TAB_SET.has(raw as SkillTab)) {
-      throw new Error('setSkillsActiveTab: expected generic | claude | kimi');
-    }
-    await updateSettings((cur) => ({ ...cur, skillsActiveTab: raw as SkillTab }));
-  });
-
-  // Skills-pane active scope (per-machine). Default is `local` — preserves
-  // the conception-only behaviour for existing users.
+  // Skills-pane active scope (per-machine). Default is `conception` —
+  // the pane opens to whatever this conception ships before flipping
+  // to the user-scope agedum sources.
   ipcMain.handle('getSkillsActiveScope', async (): Promise<SkillScope> => {
     const { skillsActiveScope } = await readSettings();
     if (
@@ -298,12 +305,12 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     ) {
       return skillsActiveScope as SkillScope;
     }
-    return 'local';
+    return 'conception';
   });
 
   ipcMain.handle('setSkillsActiveScope', async (_, raw: unknown) => {
     if (typeof raw !== 'string' || !SKILL_SCOPE_SET.has(raw as SkillScope)) {
-      throw new Error('setSkillsActiveScope: expected local | global');
+      throw new Error('setSkillsActiveScope: expected conception | user');
     }
     await updateSettings((cur) => ({ ...cur, skillsActiveScope: raw as SkillScope }));
   });

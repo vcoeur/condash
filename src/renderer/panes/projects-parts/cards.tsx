@@ -1,7 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
-import { appColorClass } from '@shared/app-color';
+import { appColorClass, appPillText } from '@shared/app-color';
 import { TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import {
@@ -419,7 +419,7 @@ export function Card(props: {
           <div class="meta apps-row">
             <span class="meta-icon apps" title={props.item.apps.join(', ')}>
               <For each={props.item.apps}>
-                {(app) => <span class={`app-pill ${appColorClass(app)}`}>{app}</span>}
+                {(app) => <span class={`app-pill ${appColorClass(app)}`}>{appPillText(app)}</span>}
               </For>
             </span>
           </div>

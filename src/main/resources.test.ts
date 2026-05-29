@@ -31,13 +31,13 @@ function setupTree(): void {
 
 describe('readResourcesTree', () => {
   it('returns null when the directory is missing', async () => {
-    const tree = await readResourcesTree(tmp, 'resources');
+    const tree = await readResourcesTree(tmp);
     expect(tree).toBeNull();
   });
 
   it('walks every file regardless of extension and skips dot-files', async () => {
     setupTree();
-    const tree = (await readResourcesTree(tmp, 'resources'))!;
+    const tree = (await readResourcesTree(tmp))!;
     expect(tree.kind).toBe('directory');
     const childNames = (tree.children ?? []).map((c) => c.name).sort();
     expect(childNames).toEqual(['README.md', 'notes.txt', 'photo.png', 'spec.pdf', 'sub']);
@@ -45,7 +45,7 @@ describe('readResourcesTree', () => {
 
   it('tags categories and mime types', async () => {
     setupTree();
-    const tree = (await readResourcesTree(tmp, 'resources'))!;
+    const tree = (await readResourcesTree(tmp))!;
     const byName = new Map((tree.children ?? []).map((c) => [c.name, c]));
     expect(byName.get('README.md')?.category).toBe('markdown');
     expect(byName.get('README.md')?.mime).toBe('text/markdown');
@@ -56,7 +56,7 @@ describe('readResourcesTree', () => {
 
   it('parses title + summary for markdown only', async () => {
     setupTree();
-    const tree = (await readResourcesTree(tmp, 'resources'))!;
+    const tree = (await readResourcesTree(tmp))!;
     const readme = (tree.children ?? []).find((c) => c.name === 'README.md');
     expect(readme?.title).toBe('Resources');
     expect(readme?.summary).toContain('First paragraph');
@@ -67,7 +67,7 @@ describe('readResourcesTree', () => {
 
   it('recurses into subdirectories', async () => {
     setupTree();
-    const tree = (await readResourcesTree(tmp, 'resources'))!;
+    const tree = (await readResourcesTree(tmp))!;
     const sub = (tree.children ?? []).find((c) => c.name === 'sub');
     expect(sub?.kind).toBe('directory');
     expect(sub?.children?.[0]?.name).toBe('inner.md');
@@ -78,7 +78,7 @@ describe('readResourcesTree', () => {
     mkdirSync(join(tmp, 'resources', 'a'));
     writeFileSync(join(tmp, 'resources', 'a', 'note.md'), '# a');
     symlinkSync(join(tmp, 'resources'), join(tmp, 'resources', 'a', 'loop'));
-    const tree = (await readResourcesTree(tmp, 'resources'))!;
+    const tree = (await readResourcesTree(tmp))!;
     expect(tree.kind).toBe('directory');
     // The symlink's children get cut off when we hit the ancestor again.
     const a = (tree.children ?? []).find((c) => c.name === 'a');

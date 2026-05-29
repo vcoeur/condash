@@ -71,7 +71,7 @@ test('settings modal: tabs swap panels and badges reflect inheritance', async ()
 
 test('settings modal: reset-to-global drops the override key from condash.json', async () => {
   const booted = await bootApp({
-    extraConfig: { skills_path: 'some/custom/skills' },
+    extraConfig: { worktrees_path: '/tmp/some-custom-worktrees' },
   });
   try {
     await booted.app.evaluate(({ BrowserWindow }) => {
@@ -86,11 +86,11 @@ test('settings modal: reset-to-global drops the override key from condash.json',
     const conceptionPanel = modal.locator('#settings-panel-conception');
     await expect(conceptionPanel).toBeVisible();
 
-    // Find the `skills_path` field by label. Settings.json doesn't
-    // declare skills_path, so the conception override (`some/custom/
-    // skills`) shows "Overridden" — distinct from the absent global.
+    // Find the `worktrees_path` field by label. settings.json doesn't declare
+    // worktrees_path in the test's isolated global, so the conception override
+    // shows "Overridden" — distinct from the absent global.
     const skillsField = conceptionPanel
-      .locator('.settings-field-with-badge', { hasText: 'Skills directory' })
+      .locator('.settings-field-with-badge', { hasText: 'Worktrees path' })
       .first();
     await expect(skillsField.locator('.settings-badge--overridden')).toBeVisible();
 
@@ -108,7 +108,7 @@ test('settings modal: reset-to-global drops the override key from condash.json',
       .poll(async () => {
         const text = await readFile(condashPath, 'utf8');
         const parsed = JSON.parse(text) as Record<string, unknown>;
-        return Object.prototype.hasOwnProperty.call(parsed, 'skills_path');
+        return Object.prototype.hasOwnProperty.call(parsed, 'worktrees_path');
       })
       .toBe(false);
   } finally {

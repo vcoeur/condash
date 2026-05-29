@@ -1,10 +1,13 @@
-import { transitionStatus } from '../../main/mutate';
+import { promises as fs } from 'node:fs';
+import { appendTimelineEntry, parseTimelineEntries, transitionStatus } from '../../main/mutate';
 import { checkBranchState } from '../../main/worktree-ops';
 import { touchDirtyMarker } from '../../main/dirty';
 import { KNOWN_STATUSES } from '../../shared/types';
 import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { readHeader } from '../../main/header-io';
+import { parseHeader } from '../../shared/header';
+import { KNOWLEDGE_CHECK_TEXT } from '../../main/audit/knowledge-check';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
 import { NOUN_FLAGS } from './projects';
 
@@ -81,6 +84,11 @@ export async function closeProject(
   const header = await readHeader(candidate.readmePath);
   const transition = await transitionStatus(candidate.readmePath, newStatus, { summary });
 
+  // After closing, append the mandatory knowledge-promotion check entry.
+  // This guarantees "Closed." never follows the check — the check is always last.
+  const today = new Date().toISOString().slice(0, 10);
+  await appendTimelineEntry(candidate.readmePath, `- ${today} — Checked knowledge promotion`);
+
   const dirtyMarker = noTouchDirty ? false : await touchDirtyMarker(conceptionPath, 'projects');
 
   const warnings = await leftoverBranchWarnings(conceptionPath, header.branch);
@@ -100,6 +108,95 @@ export async function closeProject(
       return `Closed ${data.slug}: ${data.previousStatus ?? '(none)'} → ${data.newStatus}\n`;
     },
     warnings,
+  );
+}
+
+/**
+ * Report whether a done project still needs a knowledge-promotion check, or —
+ * with `--record` — append the `Checked knowledge promotion` marker (today's
+ * date) once the editorial review has actually happened.
+ *
+ * Without `--record` this is a *signal only* — it mutates nothing. The check
+ * itself is editorial work the `/knowledge` skill performs (the three-question
+ * durability test plus real `/knowledge update` entries). `--record` is the
+ * mechanical, consistently-dated recorder the skill calls *after* that review,
+ * so the marker is never hand-typed; `close` records it the same way at the end
+ * of the close ritual. There is no mass/backfill writer — a done project gets the
+ * marker only once it has actually been reviewed.
+ */
+export async function checkKnowledgeCommand(
+  args: ParsedArgs,
+  ctx: OutputContext,
+  conceptionPath: string,
+): Promise<void> {
+  const record = args.flags.record === true;
+  delete args.flags.record;
+  assertNoExtraFlags(args, NOUN_FLAGS);
+  const slug = args.positional[0];
+  if (!slug) {
+    throw new CliError(
+      ExitCodes.USAGE,
+      'Usage: condash projects check-knowledge <slug> [--record]',
+    );
+  }
+
+  const candidate = await resolveSlug(conceptionPath, slug);
+
+  if (record) {
+    const today = new Date().toISOString().slice(0, 10);
+    const line = `- ${today} — ${KNOWLEDGE_CHECK_TEXT}`;
+    await appendTimelineEntry(candidate.readmePath, line);
+    const dirtyMarker = await touchDirtyMarker(conceptionPath, 'projects');
+    emit(
+      ctx,
+      {
+        slug: candidate.slug,
+        path: candidate.readmePath,
+        recorded: true,
+        timelineAppended: line,
+        dirtyMarkerTouched: dirtyMarker,
+      },
+      (d) => `${(d as { slug: string }).slug}: recorded "${KNOWLEDGE_CHECK_TEXT}" (${today}).\n`,
+    );
+    return;
+  }
+
+  const raw = await fs.readFile(candidate.readmePath, 'utf8');
+  const status = (parseHeader(raw).status ?? '').toLowerCase();
+  const isDone = status === 'done';
+  const entries = parseTimelineEntries(raw);
+  const lastEntry = entries.length > 0 ? entries[entries.length - 1].text : null;
+  const satisfied = isDone && lastEntry !== null && lastEntry.includes(KNOWLEDGE_CHECK_TEXT);
+  const needsCheck = isDone && !satisfied;
+
+  emit(
+    ctx,
+    {
+      slug: candidate.slug,
+      path: candidate.readmePath,
+      status,
+      satisfied,
+      needsCheck,
+      lastTimelineEntry: lastEntry,
+    },
+    (d) => {
+      const data = d as {
+        slug: string;
+        status: string;
+        satisfied: boolean;
+        lastTimelineEntry: string | null;
+      };
+      if (data.status !== 'done') {
+        return `${data.slug}: status '${data.status}' — knowledge check applies only to done projects.\n`;
+      }
+      if (data.satisfied) {
+        return `${data.slug}: OK — "${KNOWLEDGE_CHECK_TEXT}" is the last timeline entry.\n`;
+      }
+      const tail = data.lastTimelineEntry
+        ? `last entry is "${data.lastTimelineEntry}"`
+        : 'no timeline entries';
+      return `${data.slug}: NEEDS CHECK — ${tail}. Review with /knowledge (condash projects scan-promotions ${data.slug}), promote durable findings, then record "${KNOWLEDGE_CHECK_TEXT}" as the last entry.\n`;
+    },
   );
 }
 

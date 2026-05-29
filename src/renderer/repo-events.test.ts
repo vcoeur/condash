@@ -7,6 +7,7 @@ function primary(name: string, dirty: number, withWorktree = true): RepoEntry {
   const path = `/r/${name}`;
   return {
     name,
+    handle: name,
     path,
     dirty,
     missing: false,

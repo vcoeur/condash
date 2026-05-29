@@ -34,6 +34,7 @@
 import { checkBinaries } from './audit/binaries';
 import { checkCrossRepo } from './audit/cross-repo';
 import { checkIndex } from './audit/index-check';
+import { checkKnowledgeCheck } from './audit/knowledge-check';
 import { checkKnowledgeRecheck } from './audit/knowledge-recheck';
 import { checkLfs } from './audit/lfs';
 import { checkWorktrees } from './audit/worktrees';
@@ -66,6 +67,9 @@ export async function runAudit(
           break;
         case 'knowledge-recheck':
           issues.push(...(await checkKnowledgeRecheck(conceptionPath)));
+          break;
+        case 'knowledge-check':
+          issues.push(...(await checkKnowledgeCheck(conceptionPath)));
           break;
         default:
           issues.push({

@@ -9,6 +9,39 @@ import { z } from 'zod';
  * are `lastConceptionPath` and `recentConceptionPaths`.
  */
 /**
+ * A repo entry needs a locator (`name` or `path`) once it carries any other
+ * content. A wholly-blank `{ name: "" }` stays valid so a freshly-added,
+ * not-yet-filled row in the Settings editor survives the round-trip to disk.
+ */
+function repoEntryHasLocatorWhenPopulated(entry: {
+  handle?: string;
+  name?: string;
+  path?: string;
+  label?: string;
+  aliases?: string[];
+  run?: string;
+  force_stop?: string;
+  install?: string;
+  pinned_branch?: string;
+  env?: string[];
+  submodules?: unknown[];
+}): boolean {
+  if (entry.name || entry.path) return true;
+  const hasOtherContent = !!(
+    entry.handle ||
+    entry.label ||
+    entry.aliases?.length ||
+    entry.run ||
+    entry.force_stop ||
+    entry.install ||
+    entry.pinned_branch ||
+    entry.env?.length ||
+    entry.submodules?.length
+  );
+  return !hasOtherContent;
+}
+
+/**
  * Submodule entries: same shape as a top-level repo, minus the recursive
  * `submodules` (no nested submodules) AND minus the section-marker variant
  * (sections are top-level only — see `topLevelRepoEntry` below).
@@ -17,16 +50,21 @@ const submoduleRepoEntry: z.ZodType<RawSubmoduleRepo> = z.union([
   z.string(),
   z
     .object({
-      name: z.string(),
+      handle: z.string().min(1).optional(),
+      name: z.string().optional(),
       path: z.string().optional(),
       label: z.string().min(1).optional(),
+      aliases: z.array(z.string().min(1)).optional(),
       run: z.string().optional(),
       force_stop: z.string().optional(),
       install: z.string().optional(),
       pinned_branch: z.string().optional(),
       env: z.array(z.string().min(1)).optional(),
     })
-    .strict(),
+    .strict()
+    .refine(repoEntryHasLocatorWhenPopulated, {
+      message: 'a repo entry needs at least one of `name` or `path`',
+    }),
 ]);
 
 /**
@@ -40,9 +78,21 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
   z.string(),
   z
     .object({
-      name: z.string(),
+      /** Canonical `@handle` for this app — the one reference used in pills,
+       *  project `apps:` lists, the generated AGENTS.md table, the colour
+       *  hash, and search. When omitted it defaults to `appHandle(name)`
+       *  (i.e. the directory name lowercased), so simple repos need not set
+       *  it; domain-style or camelCase repos do (e.g. `kasten`). */
+      handle: z.string().min(1).optional(),
+      /** Directory name. Optional when `path` is given (the dir name is then
+       *  `basename(path)`). Still accepted as the sole locator for the legacy
+       *  bare-string and `{name}` forms. */
+      name: z.string().optional(),
       path: z.string().optional(),
       label: z.string().min(1).optional(),
+      /** Legacy spellings that resolve to this handle — drives the cleanup
+       *  rewriter and lets `applications validate` auto-suggest a fix. */
+      aliases: z.array(z.string().min(1)).optional(),
       run: z.string().optional(),
       force_stop: z.string().optional(),
       /** Install command run after `condash worktrees setup` creates the
@@ -57,7 +107,10 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
       env: z.array(z.string().min(1)).optional(),
       submodules: z.array(submoduleRepoEntry).optional(),
     })
-    .strict(),
+    .strict()
+    .refine(repoEntryHasLocatorWhenPopulated, {
+      message: 'a repo entry needs at least one of `name` or `path`',
+    }),
   z
     .object({
       /** Non-empty heading text. Renders as a section header in the Settings
@@ -67,12 +120,28 @@ const topLevelRepoEntry: z.ZodType<RawRepo> = z.union([
     .strict(),
 ]);
 
+/**
+ * A retired app: a handle that closed projects still reference but whose repo
+ * no longer exists. It has no `path` and renders no code card; it exists so
+ * `applications validate` accepts the historical `@handle` and the cleanup
+ * rewriter can map its legacy spellings.
+ */
+const retiredAppEntry = z
+  .object({
+    handle: z.string().min(1),
+    label: z.string().min(1).optional(),
+    aliases: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 export type RawSubmoduleRepo =
   | string
   | {
-      name: string;
+      handle?: string;
+      name?: string;
       path?: string;
       label?: string;
+      aliases?: string[];
       run?: string;
       force_stop?: string;
       install?: string;
@@ -83,9 +152,11 @@ export type RawSubmoduleRepo =
 export type RawRepo =
   | string
   | {
-      name: string;
+      handle?: string;
+      name?: string;
       path?: string;
       label?: string;
+      aliases?: string[];
       run?: string;
       force_stop?: string;
       install?: string;
@@ -94,6 +165,13 @@ export type RawRepo =
       submodules?: RawSubmoduleRepo[];
     }
   | { section: string };
+
+/** A retired (defunct) app handle — see {@link retiredAppEntry}. */
+export interface RetiredApp {
+  handle: string;
+  label?: string;
+  aliases?: string[];
+}
 
 /** True when `entry` is the section-marker variant of `RawRepo`. */
 export function isSectionMarker(entry: RawRepo): entry is { section: string } {
@@ -257,23 +335,6 @@ const treeExpansionSchema = z
   .strict();
 
 /**
- * Constraint shared by `resources_path` and `skills_path`: the value must
- * be a non-empty, normalised relative path interpreted from the conception
- * root. Absolute paths and `..` segments are rejected — both would let the
- * panes browse outside the conception tree, which is not the user-facing
- * promise.
- */
-const conceptionRelativePath = z
-  .string()
-  .min(1, 'must not be empty')
-  .refine((value) => !value.startsWith('/'), {
-    message: 'must be relative to the conception root (no leading "/")',
-  })
-  .refine((value) => !value.split(/[\\/]/).includes('..'), {
-    message: 'must not contain ".." segments',
-  });
-
-/**
  * Workspace + presentational fields shared by global and per-conception
  * settings files. Picked apart from the path-tracking fields so the same
  * shape can be used in both files — the conception override variant just
@@ -283,11 +344,10 @@ const sharedSchemaFields = {
   $schema_doc: z.string().optional(),
   workspace_path: z.string().optional(),
   worktrees_path: z.string().optional(),
-  /** Directory browsed by the Resources pane (default `resources`). */
-  resources_path: conceptionRelativePath.optional(),
-  /** Directory browsed by the Skills pane (default `.claude/skills`). */
-  skills_path: conceptionRelativePath.optional(),
   repositories: z.array(topLevelRepoEntry).optional(),
+  /** Defunct app handles kept for historical project references. Validated
+   *  against, never rendered as code cards. */
+  retired_apps: z.array(retiredAppEntry).optional(),
   /** Terminal-launcher agents — a flat `{id,label,command}` list surfaced in
    *  the tab-strip spawn dropdown. Replaces the per-file `<conception>/agents/`
    *  store. */
@@ -351,17 +411,20 @@ export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
 export type Config = ConceptionConfig;
 
 /**
- * Default for `resources_path` when the key is absent. Kept here so the
- * schema and the resolver agree on one constant.
+ * Hard-coded directory name browsed by the Resources pane. The reframe
+ * dropped the `resources_path` config in favour of this constant — a
+ * conception either lays out its resources at `<root>/resources/` or
+ * sees an empty pane.
  */
 export const DEFAULT_RESOURCES_PATH = 'resources';
 
 /**
- * Default for `skills_path` when the key is absent. The conception template
- * already ships skills under `.claude/skills/`, so a freshly-initialised
- * tree resolves to a non-empty Skills pane out of the box.
+ * Hard-coded directory name browsed by the Skills pane (conception scope).
+ * The reframe dropped the `skills_path` config in favour of this constant —
+ * the Skills pane reads agedum sources at `<conception>/.agents/skills/`
+ * and never the per-harness compiled outputs.
  */
-export const DEFAULT_SKILLS_PATH = '.claude/skills';
+export const DEFAULT_SKILLS_PATH = '.agents/skills';
 
 /**
  * In-place migration of legacy settings shapes ahead of strict-mode zod

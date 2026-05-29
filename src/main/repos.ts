@@ -62,6 +62,7 @@ async function buildEntry(
   if (!exists) {
     return {
       name: entry.display,
+      handle: entry.handle,
       label: entry.label,
       path: toPosix(entry.cwd),
       parent: entry.parent,
@@ -87,6 +88,7 @@ async function buildEntry(
   }
   return {
     name: entry.display,
+    handle: entry.handle,
     label: entry.label,
     path: toPosix(entry.cwd),
     parent: entry.parent,

@@ -60,17 +60,18 @@ export function RepoRow(props: {
 
   const submodules = (): RawSubmoduleRepo[] => obj().submodules ?? [];
 
-  /** True when the row has anything *other than* its name filled in. A blank
-   *  row's name is allowed to be empty (it's effectively a not-yet-saved
-   *  placeholder); a row with a label / run / path but no name is the
-   *  "required" error condition the asterisk + red border flag. */
+  /** True when the row has anything *other than* its locator filled in. A
+   *  blank row may omit name + path (a not-yet-saved placeholder); a row with
+   *  a label / run / etc. but neither name nor path is the "required" error
+   *  condition the asterisk + red border flag — an entry needs at least one
+   *  locator (`name` or `path`). */
   const hasContent = (): boolean => {
     const o = obj();
     return Boolean(
-      o.label || o.path || o.run || o.force_stop || o.install || o.pinned_branch || o.env?.length,
+      o.label || o.run || o.force_stop || o.install || o.pinned_branch || o.env?.length,
     );
   };
-  const nameMissing = (): boolean => hasContent() && !obj().name.trim();
+  const nameMissing = (): boolean => hasContent() && !obj().name?.trim() && !obj().path?.trim();
 
   // Collapse state per row, keyed by the row's idPrefix (which is stable
   // for the lifetime of the conception's repository list — adding/
@@ -186,7 +187,9 @@ export function RepoRow(props: {
         </button>
       </div>
       <Show when={nameMissing()}>
-        <p class="settings-repo-name-error">Name is required when the row has other fields.</p>
+        <p class="settings-repo-name-error">
+          A name or path is required when the row has other fields.
+        </p>
       </Show>
       <Show when={effectiveOpen()}>
         <div class="settings-repo-row-detail">
@@ -199,6 +202,18 @@ export function RepoRow(props: {
                 `${props.idPrefix}.path`,
                 () => obj().path,
                 (v) => patchObj({ path: v || undefined }),
+              )}
+            />
+          </label>
+          <label>
+            <span>Handle</span>
+            <input
+              type="text"
+              placeholder="defaults to name (e.g. kasten)"
+              {...props.bindText(
+                `${props.idPrefix}.handle`,
+                () => obj().handle,
+                (v) => patchObj({ handle: v || undefined }),
               )}
             />
           </label>

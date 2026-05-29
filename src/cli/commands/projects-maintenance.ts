@@ -311,30 +311,10 @@ export async function backfillClosed(
       skipped.push({ slug: basenameOf(readme), reason: 'already has Closed entry' });
       continue;
     }
-    let date: string | null = null;
-    let source: 'git' | 'mtime' = 'mtime';
-    try {
-      const { stdout } = await exec(
-        'git',
-        ['log', '-1', '--format=%ad', '--date=short', '--', readme],
-        { cwd: dirname(readme) },
-      );
-      const trimmed = stdout.trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        date = trimmed;
-        source = 'git';
-      }
-    } catch {
-      // git log failed — fall through to mtime.
-    }
+    const { date, source } = await deriveReadmeDate(readme);
     if (!date) {
-      try {
-        const stat = await fs.stat(readme);
-        date = stat.mtime.toISOString().slice(0, 10);
-      } catch {
-        skipped.push({ slug: basenameOf(readme), reason: 'no date source' });
-        continue;
-      }
+      skipped.push({ slug: basenameOf(readme), reason: 'no date source' });
+      continue;
     }
     candidates.push({
       slug: basenameOf(readme),
@@ -388,4 +368,31 @@ function basenameOf(readmePath: string): string {
   const dir = dirname(readmePath);
   const parts = dir.split(/[\\/]/);
   return parts[parts.length - 1] ?? '';
+}
+
+/**
+ * Derive a `YYYY-MM-DD` date for a README: the last git-commit date of the file
+ * (cheap heuristic for "when was this last touched"), falling back to the file
+ * mtime when git fails. Returns `date: null` only when neither source works.
+ */
+async function deriveReadmeDate(
+  readme: string,
+): Promise<{ date: string | null; source: 'git' | 'mtime' }> {
+  try {
+    const { stdout } = await exec(
+      'git',
+      ['log', '-1', '--format=%ad', '--date=short', '--', readme],
+      { cwd: dirname(readme) },
+    );
+    const trimmed = stdout.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return { date: trimmed, source: 'git' };
+  } catch {
+    // git log failed — fall through to mtime.
+  }
+  try {
+    const stat = await fs.stat(readme);
+    return { date: stat.mtime.toISOString().slice(0, 10), source: 'mtime' };
+  } catch {
+    return { date: null, source: 'mtime' };
+  }
 }

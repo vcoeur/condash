@@ -1,6 +1,5 @@
 import { createMemo, For, Show, type JSX } from 'solid-js';
-import type { SkillNode, SkillScope, SkillTab } from '@shared/types';
-import { SKILL_TABS } from '@shared/types';
+import type { SkillNode, SkillScope } from '@shared/types';
 import { usePaneScrollMemory } from './pane-scroll-memory';
 import {
   TreeView,
@@ -10,24 +9,16 @@ import {
 } from './tree-view';
 import './skills-pane.css';
 
-// The Skills pane is read-only in both scopes (user decision 2026-05-23):
-// it surfaces conception-local and per-machine-global skills + agent configs
-// but never edits them. No tab gets create/mkdir/import affordances.
+// The Skills pane is read-only in both scopes (user decision 2026-05-23,
+// preserved through the reframe): it surfaces agedum source-of-truth and
+// never edits — agedum owns writes.
 const READONLY_AFFORDANCES: ReadonlyArray<TreeAffordance> = [];
 
-const TAB_LABELS: Record<SkillTab, string> = {
-  generic: 'Generic',
-  claude: 'Claude',
-  kimi: 'Kimi',
-  opencode: 'OpenCode',
-};
-
-// Scope toggle order (row 1). `global` first per the request; `local` is the
-// default. Labels are deliberately terse to fit the segmented control.
-const SCOPE_ORDER: ReadonlyArray<SkillScope> = ['global', 'local'];
+// Scope toggle order. `conception` first (the default).
+const SCOPE_ORDER: ReadonlyArray<SkillScope> = ['conception', 'user'];
 const SCOPE_LABELS: Record<SkillScope, string> = {
-  global: 'Global',
-  local: 'Local',
+  conception: 'Conception',
+  user: 'User',
 };
 
 function isSkillIndex(node: SkillNode): boolean {
@@ -36,14 +27,8 @@ function isSkillIndex(node: SkillNode): boolean {
   return node.kind === 'file' && node.name === 'SKILL.md';
 }
 
-function isYamlSpec(node: SkillNode): boolean {
-  if (node.kind !== 'file') return false;
-  const lower = node.name.toLowerCase();
-  return lower.endsWith('.yaml') || lower.endsWith('.yml');
-}
-
-/** Strip the `__sentinel__/` prefix off an injected agent-config relPath for
- *  display (`__claude__/.claude/CLAUDE.md` → `.claude/CLAUDE.md`). */
+/** Strip the `__sentinel__/` prefix off the injected AGENTS.md relPath for
+ *  display (`__agents__/AGENTS.md` → `AGENTS.md`). */
 function configMeta(relPath: string): string {
   return relPath.replace(/^__[^/]+__\//, '');
 }
@@ -51,14 +36,10 @@ function configMeta(relPath: string): string {
 export function SkillsView(props: {
   scope: SkillScope;
   onSelectScope: (scope: SkillScope) => void;
-  /** Reload the active (scope, tab) tree. */
+  /** Reload the active scope's tree. */
   onRefresh: () => void;
-  tab: SkillTab;
-  onSelectTab: (tab: SkillTab) => void;
   root: SkillNode | null;
   onOpen: (path: string, title: string, shipped?: SkillNode['shipped']) => void;
-  /** Open Settings (so the user can adjust `skills_path`). */
-  onOpenSettings?: () => void;
   /** Copy the install command to the clipboard so the user can paste into
    *  the embedded terminal. */
   onCopyInstallCommand?: () => void;
@@ -69,19 +50,12 @@ export function SkillsView(props: {
   onAfterMutation: (newPath: string, kind: TreeAffordance, sourceDirRelPath: string) => void;
   onError: (message: string) => void;
 }) {
-  // Per-tab scroll memory so flipping tabs restores the prior position.
-  const scrollRef = usePaneScrollMemory(() => `skills-${props.scope}-${props.tab}`);
+  // Per-scope scroll memory so flipping scopes restores the prior position.
+  const scrollRef = usePaneScrollMemory(() => `skills-${props.scope}`);
 
-  // Memoise pane-level callbacks so prop identity stays stable across
-  // unrelated parent re-runs (e.g. expanding one directory). Tracks
-  // `props.tab` so the special-file predicate updates when the user
-  // switches tab, but is otherwise a stable reference. See
-  // notes/01-design.md.
-  // The injected agent-config entries (badge != null) are lifted out of the
-  // tree into their own band above it — there can be several (the Generic
-  // common.md + <model>.md sources; two CLAUDE.md candidates), and TreeView
-  // only ever promotes one special file per directory. Everything else
-  // (real skills + their SKILL.md) flows through TreeView unchanged.
+  // The pinned AGENTS.md (badge != null) is lifted out of the tree into its
+  // own band above it — TreeView only ever promotes one special file per
+  // directory, and we want it independent of the skills tree itself.
   const configNodes = createMemo<SkillNode[]>(() =>
     (props.root?.children ?? []).filter((c) => c.badge != null),
   );
@@ -105,13 +79,12 @@ export function SkillsView(props: {
     </button>
   );
 
-  // The only special file TreeView still promotes is a sub-skill dir's
-  // SKILL.md (not on the Generic tab, never at the root).
-  const specialFile = createMemo(() => {
-    const tab = props.tab;
-    return (file: SkillNode, dir: SkillNode): boolean =>
-      tab !== 'generic' && dir.relPath !== '' && isSkillIndex(file);
-  });
+  // SKILL.md is promoted from any sub-skill directory (not at the root).
+  const specialFile = createMemo(
+    () =>
+      (file: SkillNode, dir: SkillNode): boolean =>
+        dir.relPath !== '' && isSkillIndex(file),
+  );
   const renderSpecialFile = createMemo(() => (file: SkillNode, dir: SkillNode) => {
     const shipped = file.shipped;
     return (
@@ -146,130 +119,35 @@ export function SkillsView(props: {
     );
   });
   const renderFile = createMemo(() => (file: SkillNode) => (
-    <SkillCard
-      node={file}
-      isYaml={isYamlSpec(file)}
-      onOpen={() => props.onOpen(file.path, file.title, file.shipped)}
-    />
+    <SkillCard node={file} onOpen={() => props.onOpen(file.path, file.title, file.shipped)} />
   ));
 
-  // Per-tab button refs so the ARIA keyboard handler below can move focus
-  // to the next/previous tab without a global DOM query.
-  const tabRefs: Partial<Record<SkillTab, HTMLButtonElement>> = {};
-
-  // ARIA tab pattern: Left/Right (and Home/End) cycle the tab strip when
-  // a tab button has focus. We focus the next tab so screen readers
-  // re-announce and the visible focus ring follows. Wraps end-to-end.
-  const handleTabKeyDown = (event: KeyboardEvent, tab: SkillTab): void => {
-    const current = SKILL_TABS.indexOf(tab);
-    if (current < 0) return;
-    let nextIndex: number;
-    if (event.key === 'ArrowLeft') {
-      nextIndex = (current - 1 + SKILL_TABS.length) % SKILL_TABS.length;
-    } else if (event.key === 'ArrowRight') {
-      nextIndex = (current + 1) % SKILL_TABS.length;
-    } else if (event.key === 'Home') {
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      nextIndex = SKILL_TABS.length - 1;
-    } else {
-      return;
-    }
-    event.preventDefault();
-    const nextTab = SKILL_TABS[nextIndex];
-    props.onSelectTab(nextTab);
-    tabRefs[nextTab]?.focus();
-  };
-
-  const emptyState = () => {
-    if (props.tab === 'generic') {
-      return (
-        <div class="empty">
-          <p>No source skills.</p>
+  const emptyState = () => (
+    <div class="empty">
+      <p>No skills available.</p>
+      <Show
+        when={props.scope === 'conception'}
+        fallback={
           <p>
-            Run <code>condash skills install</code> to lay down bundled skillspecs under{' '}
-            <code>.agents/skills/</code>.
+            User-scope skills live at <code>~/.agents/skills/</code>. Edit them via your agedum
+            sources.
           </p>
-          <div class="empty-actions">
-            <Show when={props.onCopyInstallCommand}>
-              <button
-                type="button"
-                class="empty-cta"
-                onClick={() => props.onCopyInstallCommand?.()}
-              >
-                Copy install command
-              </button>
-            </Show>
-          </div>
-        </div>
-      );
-    }
-    if (props.tab === 'kimi') {
-      return (
-        <div class="empty">
-          <p>No Kimi skills installed.</p>
-          <p>
-            Run <code>condash skills install</code> to compile bundled skills for Kimi under{' '}
-            <code>.kimi/skills/</code>.
-          </p>
-          <div class="empty-actions">
-            <Show when={props.onCopyInstallCommand}>
-              <button
-                type="button"
-                class="empty-cta"
-                onClick={() => props.onCopyInstallCommand?.()}
-              >
-                Copy install command
-              </button>
-            </Show>
-          </div>
-        </div>
-      );
-    }
-    if (props.tab === 'opencode') {
-      return (
-        <div class="empty">
-          <p>No OpenCode skills installed.</p>
-          <p>
-            Run <code>condash skills install</code> to compile bundled skills for OpenCode under{' '}
-            <code>.opencode/skills/</code>.
-          </p>
-          <div class="empty-actions">
-            <Show when={props.onCopyInstallCommand}>
-              <button
-                type="button"
-                class="empty-cta"
-                onClick={() => props.onCopyInstallCommand?.()}
-              >
-                Copy install command
-              </button>
-            </Show>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div class="empty">
-        <p>No skills installed.</p>
+        }
+      >
         <p>
-          Run <code>condash skills install</code> to lay down the bundled skills, or change{' '}
-          <code>skills_path</code> in Settings.
+          Run <code>condash skills install</code> to lay down the shipped skills under{' '}
+          <code>.agents/skills/</code>.
         </p>
+      </Show>
+      <Show when={props.scope === 'conception' && props.onCopyInstallCommand}>
         <div class="empty-actions">
-          <Show when={props.onCopyInstallCommand}>
-            <button type="button" class="empty-cta" onClick={() => props.onCopyInstallCommand?.()}>
-              Copy install command
-            </button>
-          </Show>
-          <Show when={props.onOpenSettings}>
-            <button type="button" class="empty-cta" onClick={() => props.onOpenSettings?.()}>
-              Edit settings
-            </button>
-          </Show>
+          <button type="button" class="empty-cta" onClick={() => props.onCopyInstallCommand?.()}>
+            Copy install command
+          </button>
         </div>
-      </div>
-    );
-  };
+      </Show>
+    </div>
+  );
 
   return (
     <div class="skills-pane">
@@ -298,27 +176,6 @@ export function SkillsView(props: {
         >
           ↻
         </button>
-      </div>
-      <div class="skills-tabs" role="tablist" aria-label="Skill tree source">
-        <For each={SKILL_TABS}>
-          {(tab) => (
-            <button
-              type="button"
-              role="tab"
-              class="skills-tab"
-              classList={{ active: props.tab === tab }}
-              aria-selected={props.tab === tab}
-              tabIndex={props.tab === tab ? 0 : -1}
-              ref={(el) => {
-                tabRefs[tab] = el;
-              }}
-              onClick={() => props.onSelectTab(tab)}
-              onKeyDown={(e) => handleTabKeyDown(e, tab)}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          )}
-        </For>
       </div>
       <div class="skills-tree" ref={scrollRef}>
         <Show when={props.root} fallback={emptyState()}>
@@ -349,7 +206,7 @@ export function SkillsView(props: {
   );
 }
 
-function SkillCard(props: { node: SkillNode; isYaml: boolean; onOpen: () => void }) {
+function SkillCard(props: { node: SkillNode; onOpen: () => void }) {
   const shippedStatus = (): 'none' | 'clean' | 'diverged' => {
     const s = props.node.shipped;
     if (!s) return 'none';
@@ -360,11 +217,11 @@ function SkillCard(props: { node: SkillNode; isYaml: boolean; onOpen: () => void
     <article
       class="skills-card"
       data-shipped={shippedStatus()}
-      data-kind={props.isYaml ? 'yaml' : 'md'}
+      data-kind="md"
       title={props.node.path}
       tabIndex={0}
       role="button"
-      aria-label={`Open ${props.isYaml ? 'spec' : 'skill'} ${props.node.title}`}
+      aria-label={`Open skill ${props.node.title}`}
       onClick={() => props.onOpen()}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -376,9 +233,6 @@ function SkillCard(props: { node: SkillNode; isYaml: boolean; onOpen: () => void
     >
       <header class="skills-card-head">
         <h3 class="skills-card-title">{props.node.title}</h3>
-        <Show when={props.isYaml}>
-          <span class="skills-card-kind">YAML</span>
-        </Show>
         <Show when={props.node.shipped}>
           {(stamp) => (
             <span

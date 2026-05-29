@@ -18,7 +18,8 @@ export type AuditCheckName =
   | 'cross-repo'
   | 'worktrees'
   | 'index'
-  | 'knowledge-recheck';
+  | 'knowledge-recheck'
+  | 'knowledge-check';
 
 /**
  * Timeline tokens for the deferred-knowledge-promotion state machine

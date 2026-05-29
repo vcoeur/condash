@@ -83,18 +83,22 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
     // CI's xvfb — events for the inner SKILL.md were occasionally
     // dropped when the inotify hook hadn't attached to the new dir yet.
     prepare: async (conceptionDir) => {
-      const skillsRoot = join(conceptionDir, '.claude', 'skills');
+      // Post-reframe the Skills pane reads `.agents/skills/` (the multi-harness
+      // `.claude/skills` fan-out was dropped); the shipped manifest lives there.
+      const skillsRoot = join(conceptionDir, '.agents', 'skills');
       await mkdir(join(skillsRoot, 'projects'), { recursive: true });
       // Manifest first, then the `.md` files. The watcher classifies only
       // `.md` paths (and unlinks) under the skills root as `skills` events,
-      // so the manifest write itself never triggers a refetch.
+      // so the manifest write itself never triggers a refetch. Post-reframe
+      // the manifest lives at `.agents/.condash-skills.json` (one level above
+      // the skills dir) and keys files under `source`, not `files`.
       await writeFile(
-        join(skillsRoot, '.condash-skills.json'),
+        join(conceptionDir, '.agents', '.condash-skills.json'),
         JSON.stringify({
           version: 1,
           skills: {
             projects: {
-              files: {
+              source: {
                 'SKILL.md': { sha256: skillSha, shippedVersion: '2.10.15' },
                 'create.md': { sha256: 'deadbeef', shippedVersion: '2.10.15' },
               },

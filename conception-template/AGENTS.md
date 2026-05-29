@@ -10,7 +10,7 @@ This section is shipped by condash and refreshed by `condash skills install`. co
 
 - Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
 - Workflow skills: [`.agents/skills/projects/SKILL.md`](.agents/skills/projects/SKILL.md) drives every project / incident / document mutation; [`.agents/skills/knowledge/SKILL.md`](.agents/skills/knowledge/SKILL.md) drives durable reference material.
-- Skill provenance: skills under `.agents/skills/` are conception-scoped (not user-scoped). condash ships and refreshes a fixed set on `condash skills install` — `projects`, `knowledge`, `pr`, `skills`, `tidy`, sourced from `.agents/skills/<name>/` — so to change one of those, edit it in condash. Each skill is `SKILL.md` (+ optional task `.md` files and an optional `SKILL.<harness>.md` overlay); the harness launcher renders them per agent at run time. A conception may also carry additional skills here that condash does **not** ship; condash leaves them untouched, and `## Specifics` records where they come from.
+- Skill provenance: skills under `.agents/skills/` are conception-scoped (not user-scoped). condash ships and refreshes a fixed set on `condash skills install` — `projects`, `knowledge`, `pr`, `applications`, sourced from `.agents/skills/<name>/` — so to change one of those, edit it in condash. Each skill is `SKILL.md` (+ optional task `.md` files and an optional `SKILL.<harness>.md` overlay); the harness launcher renders them per agent at run time. A conception may also carry additional skills here that condash does **not** ship; condash leaves them untouched, and `## Specifics` records where they come from.
 - [`condash.json`](condash.json) — per-conception overrides read by condash. Top-level keys here replace the matching keys in `~/.config/condash/settings.json`. Legacy filename `configuration.json` is still read as a fallback.
 - Workspace paths: `condash config get workspace_path` (main app checkouts) and `condash config get worktrees_path` (PR worktrees) — read them rather than hardcoding `~/src/...`.
 
@@ -20,6 +20,16 @@ This section is shipped by condash and refreshed by `condash skills install`. co
 - **Project READMEs are the cold-recovery contract**: as you work, flip the `## Steps` markers (`[ ]` `[~]` `[x]` `[!]`), append a dated `## Timeline` entry on each material event, and lift chat answers into `## Notes` — don't batch to the end. Full conventions in the `projects` skill.
 - **Deliverables**: list an item's tangible outputs under `## Deliverables`, one bullet each — `- [label](file-or-URL) — comment` or `- [[slug]] — comment`. They surface on the project card and condash's Deliverables pane. Full spec in the `projects` skill.
 - **Durable rules** go in versioned files — `knowledge/` and the `## Specifics` section below — never agent auto-memory.
+- **Knowledge promotion check**: every `status: done` project's last timeline entry must be `Checked knowledge promotion` — recorded only after durable findings are actually promoted via `/knowledge`. `condash projects close` records it at the end of the close ritual; `condash projects check-knowledge <slug>` and `condash audit --include knowledge-check` only *signal* whether a done project still needs the check. Record the marker through condash (`check-knowledge <slug> --record`, after a real review) — never hand-type it, so the date and format stay consistent. There is no backfill shortcut: a done project stays flagged until it's actually been reviewed. The conception-wide sweep is `/knowledge verify`. Full flow in the `projects` and `knowledge` skills.
+
+### Editing agent files
+
+Two generated layers sit on top of `AGENTS.md`, and hand-edits to either are lost on the next launch or install:
+
+- **`CLAUDE.md`** (and the other harness views — `.kimi/AGENTS.md`, etc.) is compiled from `AGENTS.md` by the harness launcher on every launch. Edit `AGENTS.md`, never the compiled output.
+- **The skills under `.agents/skills/`** are shipped and refreshed by condash on `condash skills install`. To change one of those, edit it in condash, not in the conception.
+
+Per-conception content goes in the `## Specifics` section below — never in a generated file.
 
 <!-- end condash agents -->
 

@@ -266,6 +266,68 @@ describe('regenerateIndex (knowledge strategy)', () => {
       expect(occurrences.length).toBe(2);
     });
   });
+
+  describe('body bullets under the H1 (no `## heading`)', () => {
+    it('writes a new body-file bullet into the prologue, not just reporting it as added', async () => {
+      // Hand-authored shape: the existing body bullet lives directly under the
+      // H1 intro, with no `## Current files` heading. A regression guard for the
+      // renderIndex prologue-skip bug where the new bullet was counted in
+      // `added[]` but never written (orphan persisted, file rewritten identically).
+      await writeFile(
+        'knowledge/topics/agents/index.md',
+        '# Agents\n\nConventions for agent configuration.\n\n' +
+          '- [`agent-source-layout.md`](agent-source-layout.md) — *Decided source shape.* `[agents-md, scopes]`\n',
+      );
+      await writeFile(
+        'knowledge/topics/agents/agent-source-layout.md',
+        '# Agent source layout\n\nThe decided source shape for agent config.\n',
+      );
+      await writeFile(
+        'knowledge/topics/agents/agedum-virtual-fs-launch.md',
+        '# agedum virtual-FS launch\n\nHow agedum runs an agent CLI in a managed context.\n',
+      );
+
+      const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+
+      const index = await readFile('knowledge/topics/agents/index.md');
+      // The new bullet must actually be on disk...
+      expect(index).toMatch(/- \[`agedum-virtual-fs-launch\.md`\]\(agedum-virtual-fs-launch\.md\)/);
+      // ...the curated prologue bullet must survive verbatim...
+      expect(index).toContain(
+        '- [`agent-source-layout.md`](agent-source-layout.md) — *Decided source shape.* `[agents-md, scopes]`',
+      );
+      // ...the H1 intro is preserved...
+      expect(index).toContain('# Agents');
+      expect(index).toContain('Conventions for agent configuration.');
+      // ...and the report's `added` matches what was written.
+      const row = report.updated.find((u) => u.indexPath.endsWith('topics/agents/index.md'));
+      expect(row?.added).toContain('agedum-virtual-fs-launch.md');
+    });
+
+    it('idempotent: a second run over a prologue-bullet index produces zero diff', async () => {
+      await writeFile(
+        'knowledge/topics/agents/index.md',
+        '# Agents\n\nConventions for agent configuration.\n\n' +
+          '- [`agent-source-layout.md`](agent-source-layout.md) — *Decided source shape.* `[agents-md, scopes]`\n',
+      );
+      await writeFile(
+        'knowledge/topics/agents/agent-source-layout.md',
+        '# Agent source layout\n\nThe decided source shape.\n',
+      );
+      await writeFile(
+        'knowledge/topics/agents/agedum-virtual-fs-launch.md',
+        '# agedum virtual-FS launch\n\nHow agedum runs an agent CLI.\n',
+      );
+
+      await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const first = await readFile('knowledge/topics/agents/index.md');
+      const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+      const second = await readFile('knowledge/topics/agents/index.md');
+      expect(second).toBe(first);
+      const row = report2.updated.find((u) => u.indexPath.endsWith('topics/agents/index.md'));
+      expect(row).toBeUndefined();
+    });
+  });
 });
 
 describe('regenerateIndex (projects strategy)', () => {
@@ -306,9 +368,10 @@ describe('regenerateIndex (projects strategy)', () => {
       await writeProjectsTree();
       await regenerateIndex(conceptionDir, projectsStrategy);
       const monthIndex = await readFile('projects/2026-05/index.md');
-      // Tags must lead with kind, status, then app slugs.
+      // Tags must lead with kind, status, then app handles (the shared
+      // `appHandle` normaliser keeps dots — `vcoeur.com`, not `vcoeur-com`).
       expect(monthIndex).toMatch(
-        /- \[`2026-05-09-feature\/`\][^\n]+\*[^*]+\*\s+`\[project, now, condash, vcoeur-com\]`/,
+        /- \[`2026-05-09-feature\/`\][^\n]+\*[^*]+\*\s+`\[project, now, condash, vcoeur\.com\]`/,
       );
     });
 

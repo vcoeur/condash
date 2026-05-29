@@ -42,22 +42,24 @@ Trigger: `/projects close <slug>`.
 
    Zero candidates from both reading and scan → say so and move on. Don't synthesise a prompt to fish for one.
 
-   d. **Deferred-promotion markers.** Two directions, both riding the `## Timeline`:
+    d. **Deferred promotions.** If a candidate fails *only* #3 (durable and cross-cutting, but truth established by a not-yet-merged PR), don't promote yet. Track it in the README under `## Pending Knowledge Promotions` with a checkbox:
 
-      - **New deferral** (a candidate from (a)/(b) that fails *only* #3): don't promote, don't drop. Append an open marker naming the fact + candidate location:
-        `- YYYY-MM-DD — [knowledge-recheck:pending] <fact>; re-test after PR #NNN merges → candidate knowledge/<path>.md`.
-      - **Resolve existing**: re-walk the timeline for any `[knowledge-recheck:pending]` not matched by a later `[knowledge-recheck:done]`. If that PR has now merged, re-run the three-question test → promote via `/knowledge update` (then stamp `**Transferred:**`) or drop, and append the closing marker:
-        `- YYYY-MM-DD — [knowledge-recheck:done] promoted → knowledge/<path>.md` (or `dropped — <reason>`).
+       ```markdown
+       ## Pending Knowledge Promotions
 
-      Closing the project does **not** clear an unresolved `pending` marker — if its PR is still open, leave it; the `knowledge-recheck` audit (`condash audit`, `/tidy`) keeps surfacing it across closed projects until a `done` marker lands.
+       - [ ] <fact one-liner> → candidate knowledge/<path>.md
+         Blocked: PR #NNN not merged yet. Re-test after merge.
+       ```
+
+       When the PR later merges, return to the project, re-run the three-question test, promote via `/knowledge update` (then stamp `**Transferred:**`), and check the box.
 
 5. **Flip status + append timeline:**
 
-   ```bash
-   condash projects close <slug> --summary "<one-line outcome>" --json
-   ```
+    ```bash
+    condash projects close <slug> --summary "<one-line outcome>" --json
+    ```
 
-   The CLI sets the status to `done` (rewriting `status:` for YAML-frontmatter READMEs or `**Status**:` for the legacy bold-prose form), appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, and touches `projects/.index-dirty`. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
+    The CLI sets the status to `done`, appends `- YYYY-MM-DD — Closed. <summary>.` under `## Timeline`, then **automatically appends** `- YYYY-MM-DD — Checked knowledge promotion`. The check entry is always last — nothing may follow it without re-running the check. Skip `--summary` to land a bare `- YYYY-MM-DD — Closed.`.
 
 6. **Worktree + branch cleanup.** If the item has a `branch` field:
 

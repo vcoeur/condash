@@ -10,6 +10,7 @@ const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'worktrees',
   'index',
   'knowledge-recheck',
+  'knowledge-check',
 ];
 
 const KNOWN_FLAGS_AUDIT = ['include'] as const;
@@ -42,8 +43,8 @@ export async function runAuditCommand(
           .filter(Boolean)
       : ALL_AUDIT_CHECKS;
   // `all` is a documented alias for "every check" — keeps wrapping skills
-  // (`/tidy`) able to write `--include all --json` without conditional flag
-  // construction.
+  // (`/knowledge verify`) able to write `--include all --json` without
+  // conditional flag construction.
   const include = includeRaw.flatMap((c) => (c === 'all' ? ALL_AUDIT_CHECKS : [c]));
   for (const c of include) {
     if (!ALL_AUDIT_CHECKS.includes(c as AuditCheckName)) {
