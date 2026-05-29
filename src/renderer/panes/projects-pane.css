@@ -520,6 +520,13 @@ body[data-dragging='project'] .row {
   margin-top: 2px;
 }
 
+/* App pills row directly under the title — drop the shared `.meta`
+ * top margin so the row-head's own 6px gap sets the spacing and the
+ * pills sit snug beneath the heading. */
+.row .apps-row {
+  margin-top: 0;
+}
+
 .row .meta-icon.branch {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
