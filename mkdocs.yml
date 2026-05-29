@@ -83,6 +83,8 @@ nav:
     - guides/index.md
     - Configure the conception path: guides/configure-conception-path.md
     - Repositories and open-with buttons: guides/repositories-and-open-with.md
+    - The Settings modal: guides/settings-modal.md
+    - Applications and handles: guides/applications-and-handles.md
     - Embedded terminal: guides/terminal.md
     - Agent CLIs and model providers: guides/agent-clis-and-models.md
     - The Tasks pane: guides/tasks-pane.md
@@ -104,6 +106,7 @@ nav:
     - Keyboard shortcuts: reference/shortcuts.md
     - README format: reference/readme-format.md
     - Status, steps, deliverables: reference/conception-convention.md
+    - AGENTS.md style guide: reference/agents-md-style.md
     - Advanced:
       - Mutation model: reference/mutations.md
       - Inline dev-server runner: reference/inline-runner.md

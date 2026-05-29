@@ -165,7 +165,7 @@ Per-path tree events for projects + knowledge + resources + skills + logs + conf
 - `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — renderer bumps `refreshKey`.
 - `resources` — any file under `<conception>/resources/`. Coarse.
-- `skills` — any file under the configured `skills_path` (or the sibling `.agents/skills/` and `.kimi/skills/` roots backing the Generic / Kimi tabs). Coarse.
+- `skills` — any file under `<conception>/.agents/skills/`, the agedum source tree the Skills pane reads. Coarse.
 - `logs` — any session file under `.condash/logs/`. Drives the Logs pane's live refresh.
 - `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Same coarse handling.
 - `unknown` — any classification failure. Forces a full re-render.
