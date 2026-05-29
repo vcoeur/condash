@@ -413,6 +413,18 @@ export function Card(props: {
           </div>
         </div>
 
+        {/* App pills row — pinned directly under the title so a card's
+            app identity reads at a glance, above the next-step text. */}
+        <Show when={props.item.apps.length > 0}>
+          <div class="meta apps-row">
+            <span class="meta-icon apps" title={props.item.apps.join(', ')}>
+              <For each={props.item.apps}>
+                {(app) => <span class={`app-pill ${appColorClass(app)}`}>{appPillText(app)}</span>}
+              </For>
+            </span>
+          </div>
+        </Show>
+
         {/* Row 2: next task (text) + expander (progress + arrow). Both
             keyed by the presence of an open step — once every step is
             settled (done or dropped), the whole row disappears. */}
@@ -444,16 +456,9 @@ export function Card(props: {
           )}
         </Show>
 
-        {/* Row 3: app pills (leftmost) + branch + warn. The expander used
-            to live here; moved up to row 2 next to the next-step text. */}
+        {/* Row 3: branch + warn. App pills moved up to their own row
+            directly under the title; the expander lives in row 2. */}
         <div class="meta meta-bottom">
-          <Show when={props.item.apps.length > 0}>
-            <span class="meta-icon apps" title={props.item.apps.join(', ')}>
-              <For each={props.item.apps}>
-                {(app) => <span class={`app-pill ${appColorClass(app)}`}>{appPillText(app)}</span>}
-              </For>
-            </span>
-          </Show>
           <Show when={props.item.branch}>
             <span class="meta-icon branch" title={`branch: ${props.item.branch}`}>
               {props.item.branch}
