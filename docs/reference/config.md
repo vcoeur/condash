@@ -254,6 +254,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `id`      | string | yes      | Stable identity referenced by [tasks](#tasks) and the `agent` field of [project / new-project actions](#terminalprojectactions). Non-empty.                       |
 | `label`   | string | yes      | Display name shown in the spawn dropdown and as the pinned tab title.                                                                                            |
 | `command` | string | yes      | Shell command run on launch, in a fresh tab with the terminal's ambient environment. Point it at a wrapper on `PATH` or inline the invocation. Blank → skipped.  |
+| `promptFlags` | bool | no | Default `false`. Set `true` when `command` understands [agedum](../guides/agent-clis-and-models.md)'s `--prompt` / `--run` flags. [Tasks](#tasks) and agent-bound [actions](#terminalprojectactions) then pass the prompt in argv — `<command> --run "<prompt>"` when submitting (non-interactive, exits) or `<command> --prompt "<prompt>"` otherwise (interactive, seeded) — instead of spawning the bare command and typing the prompt into the live TUI. Leave off for an opaque command (e.g. a raw `claude`). |
 
 condash builds **no** provider environment and stores **no** secrets — model/provider wiring and any API token live entirely in `command` (usually a `~/bin` wrapper script). See the [Agent CLIs and model providers guide](../guides/agent-clis-and-models.md) for wrapper recipes. Edit the list in the Settings modal's **Agents** section (on both the Global and This-conception tabs — agents inherit global → conception like other keys) or in the config file directly. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read. (A later per-file `<conception>/agents/<slug>.json` harness store was also replaced by this `agents` list.)
 
@@ -263,7 +264,7 @@ condash builds **no** provider environment and stores **no** secrets — model/p
 
 - **Definition** — `<conception>/tasks/<slug>/`, one directory per task. `task.json` carries `name`, `agent` (the `id` of an agent from the `agents` list above), and `submit` (optional bool, default `true`); `prompt.md` is the raw markdown prompt with markers. Config in JSON, prose in markdown — both are safe to commit. The slug is the directory name (`^[a-z0-9-]+$`); the `tasks/` tree is created on first save.
 - **Markers** — `{KEY}` (required field) or `{KEY:default}` (prefilled). Reserved `{APP}` / `{PROJECT}` (and their `{APP_PATH}` / `{PROJECT_BRANCH}` / … sub-tokens) render as searchable pickers; one selection fills the whole family.
-- **Run** — spawns the task's agent in a fresh terminal tab (cwd = conception root), types the substituted prompt, and presses Enter when `submit` is true.
+- **Run** — spawns the task's agent in a fresh terminal tab (cwd = conception root). For an opaque agent it types the substituted prompt and presses Enter when `submit` is true; for an agent with [`promptFlags`](#agents) it instead passes the prompt in argv (`--run` when `submit`, else `--prompt`) and types nothing.
 
 See the [Tasks pane guide](../guides/tasks-pane.md). The same `{KEY:default}` fallback applies to the project / new-project action templates below.
 

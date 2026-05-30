@@ -48,6 +48,12 @@ const kimiAgent: Agent = {
   label: 'Kimi native',
   command: 'kimi --agent-file ~/.kimi/global-agent.yaml',
 };
+const agedumAgent: Agent = {
+  id: 'agedum-claude',
+  label: 'agedum · claude',
+  command: 'agedum claude',
+  promptFlags: true,
+};
 
 const sampleProject: Project = {
   slug: '2026-05-17-foo-bar',
@@ -216,6 +222,27 @@ describe('handleProjectAction with agent binding', () => {
     expect(handle.typeIntoActive).toHaveBeenCalledWith('review foo-bar');
     vi.useRealTimers();
   });
+
+  it('seeds the prompt via flags when the bound agent opts in', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
+    const action: ActionTemplate = {
+      label: 'Review',
+      template: 'review {shortSlug}',
+      agent: 'agedum-claude',
+      submit: true,
+    };
+    const promise = bridge.handleProjectAction(sampleProject, action);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: "agedum claude --run 'review foo-bar'" },
+      'my',
+    );
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
 });
 
 describe('runTask', () => {
@@ -256,5 +283,51 @@ describe('runTask', () => {
     );
     expect(handle.spawnUserShell).not.toHaveBeenCalled();
     expect(handle.typeIntoActive).not.toHaveBeenCalled();
+  });
+});
+
+describe('runTask with promptFlags agent', () => {
+  it('spawns `<command> --run <quoted>` and does not type when submit=true', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
+    const promise = bridge.runTask('agedum-claude', 'review the docs', true);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: "agedum claude --run 'review the docs'" },
+      'my',
+    );
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('spawns `<command> --prompt <quoted>` when submit=false', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
+    const promise = bridge.runTask('agedum-claude', 'seed me', false);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: "agedum claude --prompt 'seed me'" },
+      'my',
+    );
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('single-quotes a prompt containing quotes and special chars', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
+    const promise = bridge.runTask('agedum-claude', "it's a $PATH; rm -rf", true);
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: "agedum claude --run 'it'\\''s a $PATH; rm -rf'" },
+      'my',
+    );
+    vi.useRealTimers();
   });
 });

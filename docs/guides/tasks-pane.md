@@ -59,7 +59,7 @@ A task card carries a single **Run…** button — clicking it opens the **run p
 1. Open the **Tasks** handle and click **Run…** on a task card.
 2. Fill the markers — pick an app / project where prompted, edit the text fields (prefilled from defaults).
 3. The **Prompt to run** box previews the substituted text live.
-4. Click **Run**. condash spawns the task's agent in a fresh terminal tab (working directory = the conception root), types the filled prompt, and presses Enter when the task's **submit** flag is on.
+4. Click **Run**. condash spawns the task's agent in a fresh terminal tab (working directory = the conception root) and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv (`--run` when **submit** is on, else `--prompt`) when the agent has **promptFlags** set.
 
 Run is disabled when the task's referenced agent is no longer defined (the card shows a *missing* badge) — click the card to open the editor and pick a current agent.
 
