@@ -522,6 +522,32 @@ export function TerminalPane(props: {
   onMount(() => window.addEventListener('resize', resize.onWindowResize));
   onCleanup(() => window.removeEventListener('resize', resize.onWindowResize));
 
+  // Publish the pane's rendered height as a CSS variable so modal backdrops can
+  // stop just above the terminal (it stays visible + usable while a popup is
+  // open). A ResizeObserver covers every height change uniformly: open / close,
+  // resize-drag, split, and window resize.
+  let paneSection: HTMLElement | undefined;
+  const publishPaneHeight = (height: number): void => {
+    document.documentElement.style.setProperty('--terminal-pane-height', `${Math.round(height)}px`);
+  };
+  onMount(() => {
+    if (!paneSection) return;
+    publishPaneHeight(paneSection.getBoundingClientRect().height);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const box = entry?.borderBoxSize?.[0];
+      publishPaneHeight(
+        box ? box.blockSize : (entry?.target as HTMLElement).getBoundingClientRect().height,
+      );
+    });
+    observer.observe(paneSection);
+    onCleanup(() => {
+      observer.disconnect();
+      // Drop the gap if the pane ever unmounts so a later layout isn't clipped.
+      document.documentElement.style.setProperty('--terminal-pane-height', '0px');
+    });
+  });
+
   createEffect(() => {
     void activeIds();
     void activeColumn();
@@ -665,6 +691,7 @@ export function TerminalPane(props: {
       class="terminal-pane"
       classList={{ closed: !props.open }}
       style={{ height: `${paneHeight()}px` }}
+      ref={(el) => (paneSection = el)}
     >
       <Show when={props.open}>
         <div

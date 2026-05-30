@@ -1,5 +1,5 @@
 .project-preview {
-  width: min(85vw, 1600px);
+  width: var(--modal-w-lg);
   max-height: min(85vh, 900px);
 }
 

@@ -2,7 +2,7 @@
  * each group rendered as a <dl> so screen readers get the keys/labels
  * paired up. <kbd> is styled to look like a soft chip. */
 .shortcuts-overlay {
-  width: min(640px, 92vw);
+  width: var(--modal-w-md);
 }
 
 .shortcuts-grid {

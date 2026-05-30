@@ -2,7 +2,7 @@
  * language of the quit-confirm but lives in its own component so callers
  * can pass arbitrary body content. */
 .confirm-modal {
-  width: min(460px, 90vw);
+  width: var(--modal-w-sm);
 }
 
 .confirm-body {

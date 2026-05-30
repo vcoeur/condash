@@ -10,7 +10,7 @@
 }
 
 .search-modal {
-  width: min(820px, 92vw);
+  width: var(--modal-w-md);
   max-height: 82vh;
   display: flex;
   flex-direction: column;

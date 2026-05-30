@@ -3,7 +3,7 @@
  * the log viewer (search row, virtualised transcript). */
 
 .logs-modal {
-  width: min(1400px, 96vw);
+  width: var(--modal-w-lg);
   height: 90vh;
   max-height: 90vh;
   display: flex;

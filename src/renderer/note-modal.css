@@ -5,7 +5,7 @@
  */
 
 .note-modal {
-  width: min(85vw, 1600px);
+  width: var(--modal-w-lg);
   height: auto;
   max-height: calc(100% - 48px);
 }

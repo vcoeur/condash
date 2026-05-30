@@ -3,8 +3,7 @@
  * to the upstream repo. Same modal shell vocabulary as the help / search
  * modals; just a leaner body. */
 .about-modal {
-  width: 360px;
-  max-width: calc(100vw - 32px);
+  width: var(--modal-w-sm);
 }
 
 .about-modal-body {
