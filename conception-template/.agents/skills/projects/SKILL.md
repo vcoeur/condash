@@ -92,7 +92,7 @@ Item folder names match `^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`. `<slug>` accepts three
 
 When an item has a `branch` field:
 
-1. Code edits go through the worktree at `<worktrees_path>/<branch>/<repo>/`. Both paths come from `condash.json` at the conception root (`condash config get worktrees_path`, `condash config get workspace_path`).
+1. Code edits go through the worktree at `<worktrees_path>/<branch>/<repo>/`. Both paths come from `.condash/settings.json` at the conception root (`condash config get worktrees_path`, `condash config get workspace_path`).
 2. **Never edit code in `<workspace_path>/<repo>/`** — those are the main checkouts on different branches.
 3. Use `condash worktrees check <branch>` to inspect state, `condash worktrees setup <branch>` to create, `condash worktrees remove <branch>` to clean up. `condash worktrees mismatch` lists every active item declaring a `branch` that has no on-disk worktree — run it when something feels off.
 

@@ -26,7 +26,7 @@ apps:
 
 ## Where identity lives
 
-`condash.json › repositories[]` is the registry. Each entry: `handle` (defaults to the directory name when omitted), `label` (human title), `path` (location). Defunct handles that closed projects still reference live in `retired_apps` — valid for history, never rendered. Either may carry `aliases` (legacy spellings). Full schema: `docs/reference/config.md` in the condash repo.
+`.condash/settings.json › repositories[]` is the registry. Each entry: `handle` (defaults to the directory name when omitted), `label` (human title), `path` (location). Defunct handles that closed projects still reference live in `retired_apps` — valid for history, never rendered. Either may carry `aliases` (legacy spellings). Full schema: `docs/reference/config.md` in the condash repo.
 
 The directory name and the label are **not** identities — only the handle is.
 

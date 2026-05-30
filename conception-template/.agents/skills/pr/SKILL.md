@@ -5,7 +5,7 @@ description: "Open a GitHub PR from the current branch. Project-aware wrapper: h
 
 # /pr — open a pull request (project-aware wrapper)
 
-This skill handles the **project-side mechanics** of opening a PR for any repo listed in `condash.json` under `repositories:`:
+This skill handles the **project-side mechanics** of opening a PR for any repo listed in `.condash/settings.json` under `repositories:`:
 
 - Resolve the driving project from the current git branch.
 - Pick the base branch via the project's `base` field (or `origin/HEAD`).

@@ -57,4 +57,4 @@ When the PR merges, re-run the three-question test. Whatever the outcome — pro
 - YYYY-MM-DD — [knowledge-recheck:done] promoted → knowledge/<path>.md   (or: dropped — <reason>)
 ```
 
-The `knowledge-recheck` audit check (`condash audit`, `/tidy`) flags any `[knowledge-recheck:pending]` not matched by a later `[knowledge-recheck:done]`, **including in `done` projects** — so a deferral closing the project doesn't bury it. Matching is by chronological order (each close resolves the most recent open), so re-deferral and multiple concurrent deferrals both work.
+The `knowledge-recheck` audit check (`condash audit`, `/knowledge verify`) flags any `[knowledge-recheck:pending]` not matched by a later `[knowledge-recheck:done]`, **including in `done` projects** — so a deferral closing the project doesn't bury it. Matching is by chronological order (each close resolves the most recent open), so re-deferral and multiple concurrent deferrals both work.
