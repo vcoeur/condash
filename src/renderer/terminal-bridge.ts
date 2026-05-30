@@ -89,6 +89,13 @@ function findAgentById(agents: readonly Agent[], id: string | undefined): Agent 
   return agents.find((a) => a.id === id) ?? null;
 }
 
+/** POSIX single-quote `text` so it survives `bash -lc "<command>"` as a single
+ *  argument: wrap in single quotes and rewrite each embedded `'` as `'\''`
+ *  (close-quote, escaped quote, reopen-quote). */
+function shellSingleQuote(text: string): string {
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
+
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
  *  screenshot paste) and the terminal pane. Centralises the "spawn a
  *  shell first if there isn't one" dance so callers don't repeat it. */
@@ -139,18 +146,29 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     return handle;
   };
 
-  /** Action-aware preamble: when the action binds an agent (`action.agent`,
-   *  an id in the `agents` settings list), spawn a fresh tab running that
-   *  agent's command on every click — keeps "Start new project → <agent>"
-   *  predictable instead of typing into whatever tab happens to be focused.
-   *  Falls back to `ensureTermAndShell()` (a plain shell) when no agent is bound
-   *  or the bound id no longer resolves. */
-  const ensureTermForAction = async (
-    action: ActionTemplate,
-  ): Promise<TerminalPaneHandle | null> => {
-    const agent = findAgentById(deps.agents(), action.agent);
-    if (!agent) return ensureTermAndShell();
-    return spawnAgentTab(agent);
+  /** Run `text` through `agent` in a fresh tab. When the agent opts into agedum
+   *  prompt flags (`promptFlags`), fold the prompt into argv — `--run` when
+   *  `submit` (non-interactive, exits), `--prompt` otherwise (interactive,
+   *  seeded) — and spawn that; the prompt is delivered at launch, so nothing is
+   *  typed. Otherwise spawn the bare command, let the TUI settle, and
+   *  keystroke-inject `text` (plus Enter when `submit`) — the generic path for an
+   *  opaque agent. */
+  const runAgentTask = async (agent: Agent, text: string, submit: boolean): Promise<void> => {
+    if (agent.promptFlags) {
+      const flag = submit ? '--run' : '--prompt';
+      const command = `${agent.command} ${flag} ${shellSingleQuote(text)}`;
+      await spawnAgentTab({ ...agent, command });
+      return;
+    }
+    const handle = await spawnAgentTab(agent);
+    if (!handle) return;
+    handle.typeIntoActive(text);
+    if (submit) {
+      // Small delay so the terminal has time to ingest the typed text
+      // before the Enter key arrives.
+      await new Promise((r) => setTimeout(r, 50));
+      handle.typeIntoActive('\r');
+    }
   };
 
   const handleWorkOn = async (project: Project): Promise<void> => {
@@ -163,7 +181,15 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   const handleProjectAction = async (project: Project, action: ActionTemplate): Promise<void> => {
     const ctx = projectContext(project, deps.conceptionPath() ?? undefined);
     const text = substitute(action.template, ctx);
-    const handle = await ensureTermForAction(action);
+    // When the action binds an agent, spawn a fresh tab running it (seeding the
+    // prompt via flags when the agent opts in). Otherwise type into the focused
+    // tab, spawning a plain shell only if none exists.
+    const agent = findAgentById(deps.agents(), action.agent);
+    if (agent) {
+      await runAgentTask(agent, text, action.submit === true);
+      return;
+    }
+    const handle = await ensureTermAndShell();
     if (!handle) return;
     handle.typeIntoActive(text);
     if (action.submit) {
@@ -178,7 +204,12 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     const today = new Date().toISOString().slice(0, 10);
     const ctx = globalContext(today, deps.conceptionPath() ?? '');
     const text = substitute(action.template, ctx);
-    const handle = await ensureTermForAction(action);
+    const agent = findAgentById(deps.agents(), action.agent);
+    if (agent) {
+      await runAgentTask(agent, text, action.submit === true);
+      return;
+    }
+    const handle = await ensureTermAndShell();
     if (!handle) return;
     handle.typeIntoActive(text);
     if (action.submit) {
@@ -264,18 +295,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       deps.flashToast(`Task agent not found: ${agentId}`, 'error');
       return;
     }
-    // Spawn the agent's command in a fresh tab, then type the prompt into the
-    // pty once it settles. An agent is an opaque shell command, so there's no
-    // CLI flag to carry the prompt in argv — typing is the only generic path.
-    const handle = await spawnAgentTab(agent);
-    if (!handle) return;
-    handle.typeIntoActive(text);
-    if (submit) {
-      // Small delay so the terminal has time to ingest the typed text
-      // before the Enter key arrives.
-      await new Promise((r) => setTimeout(r, 50));
-      handle.typeIntoActive('\r');
-    }
+    // Spawn a fresh tab for the agent and deliver the prompt: via argv flags
+    // when the agent opts in (`promptFlags`), otherwise by keystroke-injecting
+    // it once the TUI settles — an opaque agent has no flag to carry the prompt.
+    await runAgentTask(agent, text, submit);
   };
 
   return {

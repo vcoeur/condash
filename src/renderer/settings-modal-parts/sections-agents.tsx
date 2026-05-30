@@ -82,7 +82,9 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
         stable identity referenced by tasks and project actions. Point <code>command</code> at a
         wrapper on your <code>PATH</code> (e.g. <code>claude-kimi</code>) or inline it (e.g.{' '}
         <code>claude</code>). The command inherits the terminal's environment — condash injects no
-        provider env or tokens.
+        provider env or tokens. Enable <em>Seed prompt via flags</em> when the command speaks
+        agedum's <code>--run</code> / <code>--prompt</code> so tasks pass the prompt in argv instead
+        of typing it into the live TUI.
       </p>
       <div class="settings-bucket">
         <For each={agents()}>
@@ -160,6 +162,19 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
               <Show when={idMissing(entry)}>
                 <p class="settings-repo-name-error">Id is required to launch this agent.</p>
               </Show>
+              <label class="settings-checkbox">
+                <input
+                  type="checkbox"
+                  checked={entry.promptFlags === true}
+                  onChange={(e) =>
+                    void updateField(index(), { promptFlags: e.currentTarget.checked || undefined })
+                  }
+                />
+                <span>
+                  Seed prompt via <code>--run</code> / <code>--prompt</code> (command must accept
+                  them, e.g. agedum)
+                </span>
+              </label>
             </div>
           )}
         </For>

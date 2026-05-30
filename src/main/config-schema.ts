@@ -270,12 +270,15 @@ const actionTemplateSchema = z
  *  `command` is the shell command run on launch. All three accept empty
  *  strings so a freshly-added blank row in the Settings editor survives the
  *  round-trip to disk and stays visible for the user to fill in; `listAgents`
- *  skips entries whose `id` or `command` is blank. */
+ *  skips entries whose `id` or `command` is blank. Optional `promptFlags` opts
+ *  the agent into argv prompt-seeding (`--run` / `--prompt`) instead of the
+ *  keystroke path — see the `Agent` type. */
 const agentSchema = z
   .object({
     id: z.string(),
     label: z.string(),
     command: z.string(),
+    promptFlags: z.boolean().optional(),
   })
   .strict();
 

@@ -501,6 +501,14 @@ export interface Agent {
   label: string;
   /** Shell command run when the agent is launched. */
   command: string;
+  /** When true, `command` understands agedum's prompt-seeding flags
+   *  (`--prompt` / `--run`), so a task or agent-bound action passes the prompt in
+   *  argv — `<command> --run "<text>"` when submitting (non-interactive, exits),
+   *  `<command> --prompt "<text>"` otherwise (interactive, seeded) — instead of
+   *  spawning the bare command and keystroke-injecting the prompt into the live
+   *  TUI. Omit for an opaque agent: the default keystroke path works for any
+   *  harness but races the TUI's boot. */
+  promptFlags?: boolean;
 }
 
 export interface TerminalPrefs {
