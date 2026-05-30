@@ -134,14 +134,47 @@ describe('validateApplications', () => {
 });
 
 describe('renderAppsTable', () => {
-  it('renders #handle / path / knowledge rows for live apps only', async () => {
+  it('renders #handle / path / AGENTS.md / knowledge rows for live apps only', async () => {
     writeConfig({
       repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com', label: 'Kasten' }],
       retired_apps: [{ handle: 'kasten-manager' }],
     });
-    const table = renderAppsTable(await listApplications(tmp, emptyGlobal));
-    expect(table).toContain('| `#kasten` | `notes.vcoeur.com` | `knowledge/internal/kasten.md` |');
+    // No checkout on disk → the AGENTS.md cell is empty.
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
+    expect(table).toContain('| App | Repo | AGENTS.md | Knowledge |');
+    expect(table).toContain(
+      '| `#kasten` | `notes.vcoeur.com` |  | `knowledge/internal/kasten.md` |',
+    );
     expect(table).not.toContain('kasten-manager');
+  });
+
+  it('points the AGENTS.md cell at the resolved instruction file', async () => {
+    writeConfig({ repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com' }] });
+    const checkout = join(tmp, 'notes.vcoeur.com');
+    mkdirSync(checkout, { recursive: true });
+    writeFileSync(join(checkout, 'AGENTS.md'), '# A\n');
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
+    expect(table).toContain(`\`${join(checkout, 'AGENTS.md')}\``);
+  });
+
+  it('falls back AGENTS.md → CLAUDE.md → .claude/CLAUDE.md', async () => {
+    writeConfig({ repositories: [{ handle: 'kasten', path: 'notes.vcoeur.com' }] });
+    const checkout = join(tmp, 'notes.vcoeur.com');
+    mkdirSync(join(checkout, '.claude'), { recursive: true });
+    writeFileSync(join(checkout, '.claude', 'CLAUDE.md'), '# legacy\n');
+    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal))).toContain(
+      `\`${join(checkout, '.claude', 'CLAUDE.md')}\``,
+    );
+    // A top-level CLAUDE.md outranks the nested one.
+    writeFileSync(join(checkout, 'CLAUDE.md'), '# legacy\n');
+    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal))).toContain(
+      `\`${join(checkout, 'CLAUDE.md')}\``,
+    );
+    // AGENTS.md outranks both.
+    writeFileSync(join(checkout, 'AGENTS.md'), '# canonical\n');
+    expect(await renderAppsTable(await listApplications(tmp, emptyGlobal))).toContain(
+      `\`${join(checkout, 'AGENTS.md')}\``,
+    );
   });
 });
 

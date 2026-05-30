@@ -20,7 +20,7 @@ Open `## Specifics` with the **Apps** table — one row per app the conception c
 | **App** | Logical name prefixed with `#` (e.g. `#alicepeintures.com`). Lower-case, kebab-or-dot, matching the repo basename when possible. The slug used in cross-references everywhere. |
 | **Purpose** | One line in plain English — what the app *is*. Lets a reader skim "what's in this conception" without opening anything. |
 | **Repo** | Absolute path on this host (e.g. `~/src/<workspace>/<repo>`). |
-| **Config** | Path to the app's own agent-config file (typically `<repo>/AGENTS.md`). Spell it out when it lives elsewhere. |
+| **AGENTS.md** | Absolute path to the app's own agent-config file. `sync-docs` resolves it per checkout with the fallback `AGENTS.md` → `CLAUDE.md` → `.claude/CLAUDE.md`, so the cell always points at the file that actually exists; empty when the checkout carries none. (Formerly labelled **Config**.) |
 | **Knowledge** | Path to the per-app knowledge entry-point in this conception (e.g. `knowledge/internal/<slug>.md`). The entry point is where deep details live — Config is the navigation layer. |
 
 Keep the table tight: navigation fields only. Operational config (formatter, port, base branch, …) belongs in `.condash/settings.json`, not here.

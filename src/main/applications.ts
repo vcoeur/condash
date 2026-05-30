@@ -254,19 +254,44 @@ export async function fixAppsReferences(
 const APPS_TABLE_START = '<!-- condash:apps:start -->';
 const APPS_TABLE_END = '<!-- condash:apps:end -->';
 
+/** Instruction-file candidates per app checkout, in fallback order. The first
+ *  that exists wins; AGENTS.md is canonical, the CLAUDE.md forms are legacy. */
+const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'];
+
+/**
+ * Absolute path to an app's instruction file, resolving the
+ * `AGENTS.md` → `CLAUDE.md` → `.claude/CLAUDE.md` fallback against its checkout.
+ * Returns `''` when the checkout is unknown (retired) or carries none of them.
+ */
+async function instructionsFile(cwd: string | undefined): Promise<string> {
+  if (!cwd) return '';
+  for (const candidate of INSTRUCTION_FILES) {
+    const abs = resolve(cwd, candidate);
+    if (await pathExists(abs)) return abs;
+  }
+  return '';
+}
+
 /**
  * Render the Apps table markdown from the live registry. Columns: the
- * `#handle`, the repo path (as configured), and the conventional knowledge
- * file `knowledge/internal/<handle>.md`. Retired apps are omitted — the table
+ * `#handle`, the repo path (as configured), the absolute path to the app's
+ * instruction file (`AGENTS.md`, else the legacy `CLAUDE.md` forms — so an
+ * agent can open it directly), and the conventional knowledge file
+ * `knowledge/internal/<handle>.md`. Retired apps are omitted — the table
  * documents live apps only.
  */
-export function renderAppsTable(records: AppRecord[]): string {
+export async function renderAppsTable(records: AppRecord[]): Promise<string> {
   const live = records.filter((r) => !r.retired);
-  const lines = ['| App | Repo | Knowledge |', '|-----|------|-----------|'];
+  const lines = [
+    '| App | Repo | AGENTS.md | Knowledge |',
+    '|-----|------|-----------|-----------|',
+  ];
   for (const record of live) {
     const repo = record.path ?? '';
+    const agents = await instructionsFile(record.cwd);
+    const agentsCell = agents ? `\`${agents}\`` : '';
     lines.push(
-      `| \`#${record.handle}\` | \`${repo}\` | \`knowledge/internal/${record.handle}.md\` |`,
+      `| \`#${record.handle}\` | \`${repo}\` | ${agentsCell} | \`knowledge/internal/${record.handle}.md\` |`,
     );
   }
   return lines.join('\n');
@@ -301,7 +326,7 @@ export async function syncAppsDocs(conceptionPath: string): Promise<SyncDocsResu
     return { changed: false, missingSentinels: true, file };
   }
   const records = await listApplications(conceptionPath);
-  const table = renderAppsTable(records);
+  const table = await renderAppsTable(records);
   const before = raw.slice(0, startIdx + APPS_TABLE_START.length);
   const after = raw.slice(endIdx);
   const next = `${before}\n\n${table}\n\n${after}`;
