@@ -78,8 +78,9 @@ describe('condash skills install — AGENTS.md marker region', () => {
     // Head sits above the marker; Specifics below it.
     expect(agents.indexOf('## General')).toBeLessThan(agents.indexOf(AGENTS_MD_MARKER));
     expect(agents.indexOf(AGENTS_MD_MARKER)).toBeLessThan(agents.indexOf('## Specifics'));
-    // Skill pointers use the agent-neutral source path, not a compiled dir.
-    expect(agents).toContain('.agents/skills/projects/SKILL.md');
+    // Skill source path is the agent-neutral dir, never a compiled harness dir.
+    expect(agents).toContain('.agents/skills/');
+    expect(agents).not.toContain('.claude/skills/');
     expect(agents).not.toContain('{{');
   });
 
