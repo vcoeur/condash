@@ -15,7 +15,7 @@ import {
   findItemsDeclaringBranch,
   readConfig,
   repoLookupMap,
-  rootRepoFromApp,
+  resolveAppRepo,
 } from './shared';
 
 export interface BranchRepoState {
@@ -60,12 +60,16 @@ export async function checkBranchState(
 
   // Union of Apps from declaring items (active items only — done items don't
   // need worktrees but still surface their previous claims so the user can
-  // see them).
+  // see them). Each token resolves to its canonical repo directory name so a
+  // `#vcoeur`-style handle (≠ the `vcoeur.com` directory) maps correctly.
+  const reposByName = repoLookupMap(config);
   const wantedRepos = new Set<string>();
   for (const item of declaringItems) {
-    for (const app of item.apps) wantedRepos.add(rootRepoFromApp(app));
+    for (const app of item.apps) {
+      const repo = resolveAppRepo(app, reposByName);
+      if (repo) wantedRepos.add(repo.name);
+    }
   }
-  const reposByName = repoLookupMap(config);
 
   const repos: BranchRepoState[] = [];
   for (const name of [...wantedRepos].sort()) {

@@ -38,7 +38,18 @@ export function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupEx
   const map = new Map<string, RepoLookupExtended>();
   walkRepos(config, (entry) => {
     if (entry.parent) return; // ignore submodules — worktrees are per top-level repo
-    map.set(entry.name, { name: entry.name, cwd: entry.cwd });
+    const lookup: RepoLookupExtended = { name: entry.name, cwd: entry.cwd };
+    map.set(entry.name, lookup);
+    // Also index by the canonical `#handle` and any configured aliases, so an
+    // `apps:` token resolves even when the handle differs from the directory
+    // name (e.g. `#vcoeur` → repo `vcoeur.com`). The directory name always
+    // wins on collision (set first, and alias keys are skipped when taken),
+    // so a handle/alias never shadows a real repo directory. Every key points
+    // at the same lookup object, whose `.name` stays the canonical directory
+    // name callers use for the worktree path.
+    for (const key of [entry.handle, ...(entry.aliases ?? [])]) {
+      if (key && !map.has(key)) map.set(key, lookup);
+    }
   });
   // Re-walk the raw config to pick up `pinned_branch`, `install`, and `env`
   // (those aren't currently in the RepoLookup shape).
@@ -66,16 +77,38 @@ export async function resolveTargetRepos(
   override: string[] | undefined,
   reposByName: Map<string, RepoLookupExtended>,
 ): Promise<string[]> {
-  if (override && override.length > 0) return override;
+  // Normalise to canonical directory names so the worktree path is stable
+  // regardless of which spelling (name, `#handle`, or alias) named the repo.
+  if (override && override.length > 0) {
+    // Unknown tokens pass through unchanged so the caller still reports them
+    // as "not configured".
+    return [
+      ...new Set(override.map((token) => resolveAppRepo(token, reposByName)?.name ?? token)),
+    ].sort();
+  }
   const items = await findItemsDeclaringBranch(conceptionPath, branch);
   const set = new Set<string>();
   for (const item of items) {
     for (const app of item.apps) {
-      const root = rootRepoFromApp(app);
-      if (reposByName.has(root)) set.add(root);
+      const repo = resolveAppRepo(app, reposByName);
+      if (repo) set.add(repo.name);
     }
   }
   return [...set].sort();
+}
+
+/**
+ * Resolve an `apps:` token to its canonical top-level repo descriptor,
+ * matching by directory name, `#handle`, or a configured alias. Returns null
+ * when the token names no configured repo. The returned `.name` is the
+ * canonical directory name — callers use it for the worktree path and labels
+ * so `#vcoeur`, `#vcoeur.com`, and `--repo vcoeur.com` all map to one worktree.
+ */
+export function resolveAppRepo(
+  app: string,
+  repos: Map<string, RepoLookupExtended>,
+): RepoLookupExtended | null {
+  return repos.get(rootRepoFromApp(app)) ?? null;
 }
 
 export async function findItemsDeclaringBranch(

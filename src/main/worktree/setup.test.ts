@@ -197,6 +197,87 @@ describe('implicit-mode resolution with `#`-prefixed apps', () => {
   });
 });
 
+describe('apps handle differs from the repo directory name', () => {
+  // `#vcoeur` is the canonical handle of a repo whose directory is `vcoeur.com`.
+  // Before the fix, the apps→repo lookup keyed only on the directory name, so
+  // `#vcoeur` resolved to nothing and worktrees needed an explicit
+  // `--repo vcoeur.com`. All three operations must now resolve `#vcoeur` to the
+  // `vcoeur.com` worktree directory.
+  const branch = 'handle-ne-name';
+  const repoDir = 'vcoeur.com';
+
+  async function setupVcoeurRepo(): Promise<void> {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ handle: 'vcoeur', path: repoDir, aliases: [repoDir] }],
+        },
+        null,
+        2,
+      ),
+    );
+    await git(join(tmp, 'workspace'), 'init', '-q', '-b', 'main', repoDir);
+    const r = join(tmp, 'workspace', repoDir);
+    await git(r, 'config', 'user.email', 'test@example.com');
+    await git(r, 'config', 'user.name', 'Test');
+    await git(r, 'commit', '-q', '--allow-empty', '-m', 'init');
+    const projectDir = join(conception, 'projects/2026-05/2026-05-30-vcoeur');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, 'README.md'),
+      [
+        '---',
+        'date: 2026-05-30',
+        'kind: project',
+        'status: now',
+        'apps:',
+        '  - "#vcoeur"',
+        `branch: ${branch}`,
+        '---',
+        '',
+        '# Test',
+      ].join('\n'),
+    );
+  }
+
+  it('setup resolves `#vcoeur` to the `vcoeur.com` worktree directory', async () => {
+    await setupVcoeurRepo();
+    const result = await setupBranchWorktrees(conception, branch);
+    expect(result.created).toEqual([{ repo: repoDir, path: join(worktreesRoot, branch, repoDir) }]);
+    expect(result.blocked).toEqual([]);
+    expect(existsSync(join(worktreesRoot, branch, repoDir))).toBe(true);
+  });
+
+  it('check enumerates `vcoeur.com` with no false orphan', async () => {
+    await setupVcoeurRepo();
+    await setupBranchWorktrees(conception, branch);
+    const state = await checkBranchState(conception, branch);
+    expect(state.repos).toHaveLength(1);
+    expect(state.repos[0].name).toBe(repoDir);
+    expect(state.repos[0].worktreeExists).toBe(true);
+    expect(state.missing).toEqual([]);
+    expect(state.orphan).toEqual([]);
+  });
+
+  it('remove resolves `#vcoeur` and cleans the worktree', async () => {
+    await setupVcoeurRepo();
+    await setupBranchWorktrees(conception, branch);
+    const result = await removeBranchWorktrees(conception, branch);
+    expect(result.removed).toEqual([{ repo: repoDir, path: join(worktreesRoot, branch, repoDir) }]);
+    expect(result.notPresent).toEqual([]);
+    expect(existsSync(join(worktreesRoot, branch, repoDir))).toBe(false);
+  });
+
+  it('an explicit `--repo vcoeur` handle maps to the same `vcoeur.com` worktree', async () => {
+    await setupVcoeurRepo();
+    const result = await setupBranchWorktrees(conception, branch, { repos: ['vcoeur'] });
+    expect(result.created).toEqual([{ repo: repoDir, path: join(worktreesRoot, branch, repoDir) }]);
+  });
+});
+
 process.on('exit', () => {
   if (prevXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
   else process.env.XDG_CONFIG_HOME = prevXdgConfigHome;

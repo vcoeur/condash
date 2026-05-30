@@ -13,7 +13,7 @@ import {
   findItemsDeclaringBranch,
   readConfig,
   repoLookupMap,
-  rootRepoFromApp,
+  resolveAppRepo,
   validateBranchName,
 } from './shared';
 
@@ -69,13 +69,16 @@ export async function removeBranchWorktrees(
   // Resolve target repos: explicit list, or the union of Apps across items
   // declaring the branch. Then remove the protected set (repos still claimed
   // by *other active* items so we don't yank a worktree out from under them).
+  // Resolve every token to its canonical repo directory name so a `#vcoeur`
+  // handle and a literal `--repo vcoeur.com` both target the same worktree.
   const requested =
     options.repos && options.repos.length > 0
-      ? new Set(options.repos)
+      ? new Set(options.repos.map((token) => resolveAppRepo(token, reposByName)?.name ?? token))
       : new Set(
           (await findItemsDeclaringBranch(conceptionPath, branch))
             .flatMap((i) => i.apps)
-            .map(rootRepoFromApp),
+            .map((app) => resolveAppRepo(app, reposByName)?.name)
+            .filter((name): name is string => Boolean(name)),
         );
   // Compute the protected set from active items declaring this branch *that
   // were not in the explicit override*. The skill is responsible for excluding
@@ -84,8 +87,8 @@ export async function removeBranchWorktrees(
   for (const item of await findItemsDeclaringBranch(conceptionPath, branch)) {
     if (item.status === 'done') continue;
     for (const app of item.apps) {
-      const repo = rootRepoFromApp(app);
-      if (!requested.has(repo)) protectedSet.add(repo);
+      const repo = resolveAppRepo(app, reposByName)?.name;
+      if (repo && !requested.has(repo)) protectedSet.add(repo);
     }
   }
 
