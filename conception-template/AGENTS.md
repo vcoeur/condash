@@ -12,7 +12,7 @@ A conception is a Markdown tree condash manages: durable reference material unde
 
 - Tree roots: [`projects/index.md`](projects/index.md), [`knowledge/index.md`](knowledge/index.md).
 - Skills (`.agents/skills/`): [`projects/`](.agents/skills/projects/SKILL.md) owns project / incident / document mutations, [`knowledge/`](.agents/skills/knowledge/SKILL.md) owns durable reference material, `pr/` opens pull requests, `applications/` owns the app registry. Read the skill before doing its kind of work.
-- [`condash.json`](condash.json) — per-conception config overrides (legacy name: `configuration.json`). Read paths with `condash config get workspace_path` / `worktrees_path`; never hardcode `~/src/...`.
+- [`.condash/settings.json`](.condash/settings.json) — per-conception config overrides (legacy names `condash.json` / `configuration.json` are still read). Read paths with `condash config get workspace_path` / `worktrees_path`; never hardcode `~/src/...`.
 
 ### Workflow
 
