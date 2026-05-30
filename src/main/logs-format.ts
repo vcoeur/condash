@@ -19,6 +19,12 @@
 
 export const META_LINE_PREFIX = '# condash: ';
 
+/** Which kind of body the `.txt` carries. `transcript` = the in-band OSC agent
+ * transcript (append-only message log — a byte cursor is reliable); `grid` = a
+ * rendered xterm-buffer snapshot (repainted each flush). Absent on logs written
+ * before the field existed; readers fall back to a first-line heuristic. */
+export type LogKind = 'transcript' | 'grid';
+
 export interface HeaderJson {
   sid?: string;
   side?: string;
@@ -27,6 +33,7 @@ export interface HeaderJson {
   cmd?: string;
   argv?: string[];
   started?: string;
+  kind?: LogKind;
 }
 
 export interface FooterJson {
@@ -38,6 +45,23 @@ export interface FooterJson {
   /** True when this footer was written by the boot-time orphan-seal pass
    * rather than the live logger's exit() handler. UI-only signal. */
   sealedByRecovery?: boolean;
+}
+
+/** A transcript body's first non-empty line is a role block; the writer joins
+ * `[user] …` / `[assistant] …` / `[reasoning] …` messages. */
+const TRANSCRIPT_LINE_RE = /^\[(?:user|assistant|reasoning)\] /;
+
+/** Decide whether a session body is the OSC transcript or the grid snapshot.
+ * Prefers the writer-stamped header `kind`; for legacy logs written before that
+ * field, falls back to the role-block heuristic on the first non-empty line.
+ * `body` may be only the file's leading chunk — the first line is all we read. */
+export function detectKind(header: HeaderJson | null, body: string): LogKind {
+  if (header?.kind === 'transcript' || header?.kind === 'grid') return header.kind;
+  for (const line of body.split('\n')) {
+    if (line === '') continue;
+    return TRANSCRIPT_LINE_RE.test(line) ? 'transcript' : 'grid';
+  }
+  return 'grid';
 }
 
 /** Parse one line as a `# condash: {...}` meta line. Returns the parsed JSON

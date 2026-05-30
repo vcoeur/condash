@@ -45,6 +45,7 @@ const BOOL_FLAGS = new Set([
   'active',
   'meta',
   'with-meta',
+  'redact',
 ]);
 
 /**

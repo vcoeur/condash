@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { Terminal } from '@xterm/headless';
 import type { TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
-import { META_LINE_PREFIX } from './logs-format';
+import { META_LINE_PREFIX, type LogKind } from './logs-format';
 import { OscTranscriptExtractor } from './osc-transcript';
 
 /**
@@ -69,6 +69,7 @@ interface HeaderMeta {
   cmd: string;
   argv: string[];
   started: string;
+  kind: LogKind;
 }
 
 /** Footer-line JSON shape, appended on `exit()`. */
@@ -281,10 +282,9 @@ export class SessionLogger {
     if (this.closed) return;
     // A session that emitted an in-band transcript gets the clean transcript
     // as its body; everything else falls back to the rendered grid.
-    const body = this.oscTranscript.hasTranscript()
-      ? this.oscTranscript.render()
-      : renderBufferAsPlainText(this.term);
-    const text = this.composeFileContent(body);
+    const isTranscript = this.oscTranscript.hasTranscript();
+    const body = isTranscript ? this.oscTranscript.render() : renderBufferAsPlainText(this.term);
+    const text = this.composeFileContent(body, isTranscript ? 'transcript' : 'grid');
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
       const tmp = `${this.txtPath}.tmp`;
@@ -296,8 +296,9 @@ export class SessionLogger {
   }
 
   /** Assemble the on-disk text: header line, blank, body, then (if the
-   * session has exited) blank + footer line. */
-  private composeFileContent(body: string): string {
+   * session has exited) blank + footer line. `kind` records whether `body` is
+   * the OSC transcript or the grid snapshot, so readers needn't guess. */
+  private composeFileContent(body: string, kind: LogKind): string {
     const header: HeaderMeta = {
       sid: this.ctx.sid,
       side: this.ctx.side,
@@ -306,6 +307,7 @@ export class SessionLogger {
       cmd: this.ctx.spawn.cmd,
       argv: this.ctx.spawn.argv,
       started: this.startedTs,
+      kind,
     };
     const lines: string[] = [`${META_LINE_PREFIX}${JSON.stringify(header)}`, ''];
     if (body.length > 0) lines.push(body);

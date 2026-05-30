@@ -23,6 +23,8 @@ interface SessionOpts {
   /** Add a footer with this exit code (omit → active session, no footer). */
   exitCode?: number;
   finished?: string;
+  /** Stamp the header `kind` (omit → legacy log, readers fall back to heuristic). */
+  kind?: 'transcript' | 'grid';
 }
 
 async function writeSession(
@@ -44,6 +46,7 @@ async function writeSession(
     cmd: opts.cmd,
     argv: opts.argv,
     started: opts.started ?? `${day}T${hms.slice(0, 2)}:${hms.slice(2, 4)}:${hms.slice(4, 6)}Z`,
+    ...(opts.kind ? { kind: opts.kind } : {}),
   };
   let raw = `# condash: ${JSON.stringify(header)}\n\n${body.join('\n')}\n`;
   if (opts.exitCode !== undefined) {
@@ -151,6 +154,18 @@ describe('logs list', () => {
     const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
     const rows = parseJsonEnvelope<{ sessions: { sid: string }[] }>(stdout).data!.sessions;
     expect(rows.map((r) => r.sid).sort()).toEqual(['t-aaaa1111', 't-cccc3333']);
+  });
+
+  it('reports a kind on every row', async () => {
+    await writeSession(conception, '2026-05-30', '130000', 't-dddd4444', ['[user] hi'], {
+      repo: 'condash',
+    });
+    const { parsed, verb } = args('list', [], {});
+    const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
+    const rows = parseJsonEnvelope<{ sessions: { sid: string; kind: string }[] }>(stdout).data!
+      .sessions;
+    expect(rows.find((r) => r.sid === 't-dddd4444')!.kind).toBe('transcript');
+    expect(rows.find((r) => r.sid === 't-aaaa1111')!.kind).toBe('grid');
   });
 
   it('filters to active sessions', async () => {
@@ -302,6 +317,55 @@ describe('logs read', () => {
     const { parsed, verb } = args('read', ['t-read1234'], { 'from-byte': '999999' });
     const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
     expect(parseJsonEnvelope<{ rotated: boolean }>(stdout).data!.rotated).toBe(true);
+  });
+
+  it('reports kind=grid for a plain body (heuristic fallback)', async () => {
+    const { parsed, verb } = args('read', ['t-read1234'], {});
+    const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
+    expect(parseJsonEnvelope<{ kind: string }>(stdout).data!.kind).toBe('grid');
+  });
+
+  it('reports kind=transcript for a role-block body (heuristic fallback)', async () => {
+    await writeSession(conception, '2026-05-30', '121000', 't-tx111111', [
+      '[user] hello',
+      '',
+      '[assistant] hi there',
+    ]);
+    const { parsed, verb } = args('read', ['t-tx111111'], {});
+    const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
+    expect(parseJsonEnvelope<{ kind: string }>(stdout).data!.kind).toBe('transcript');
+  });
+
+  it('prefers the header-stamped kind over the heuristic', async () => {
+    // Plain body, but header says transcript → header wins.
+    await writeSession(conception, '2026-05-30', '122000', 't-kd111111', ['plain output'], {
+      kind: 'transcript',
+    });
+    const { parsed, verb } = args('read', ['t-kd111111'], {});
+    const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
+    expect(parseJsonEnvelope<{ kind: string }>(stdout).data!.kind).toBe('transcript');
+  });
+
+  it('--redact masks secrets in the emitted body', async () => {
+    await writeSession(conception, '2026-05-30', '123000', 't-sec11111', [
+      'export API_KEY=supersecretvalue123',
+      'plain line',
+    ]);
+    const { parsed, verb } = args('read', ['t-sec11111'], { redact: true });
+    const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
+    const text = parseJsonEnvelope<{ text: string }>(stdout).data!.text;
+    expect(text).toContain('API_KEY=«redacted:secret»');
+    expect(text).not.toContain('supersecretvalue123');
+    expect(text).toContain('plain line');
+  });
+
+  it('without --redact the body is emitted verbatim', async () => {
+    await writeSession(conception, '2026-05-30', '123500', 't-sec22222', [
+      'export API_KEY=supersecretvalue123',
+    ]);
+    const { parsed, verb } = args('read', ['t-sec22222'], {});
+    const { stdout } = await captureStdout(() => runLogs(verb, parsed, jsonCtx(), conception));
+    expect(parseJsonEnvelope<{ text: string }>(stdout).data!.text).toContain('supersecretvalue123');
   });
 
   it('rejects two selectors as USAGE', async () => {

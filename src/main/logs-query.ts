@@ -14,7 +14,15 @@
  */
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { parseMetaLine, splitContent, type FooterJson, type HeaderJson } from './logs-format';
+import {
+  detectKind,
+  parseMetaLine,
+  splitContent,
+  type FooterJson,
+  type HeaderJson,
+  type LogKind,
+} from './logs-format';
+import { redactSecrets } from './logs-redact';
 import { condashLogsRoot } from './condash-dir';
 
 /** One enumerated session file, before any metadata is read off disk. */
@@ -47,6 +55,9 @@ export interface SessionRow extends SessionRef {
   exitSealed?: boolean;
   /** A session with no footer on disk — still running or never sealed. */
   active: boolean;
+  /** `transcript` (append-only OSC log) vs `grid` (repainted snapshot). Tells a
+   *  consumer when a byte cursor is reliable. Derived for legacy logs. */
+  kind: LogKind;
 }
 
 /** One day directory that holds at least one session. */
@@ -93,6 +104,8 @@ export interface ReadOptions {
   metaOnly?: boolean;
   /** Keep the `# condash:` meta lines in the body (default strips them). */
   withMeta?: boolean;
+  /** Mask obvious secret shapes in the emitted text before returning. */
+  redact?: boolean;
 }
 
 export interface ReadResult {
@@ -110,6 +123,8 @@ export interface ReadResult {
   nextByte: number;
   /** True when `fromByte > bytes` — the janitor rotated/trimmed the file. */
   rotated: boolean;
+  /** `transcript` vs `grid` — see `SessionRow.kind`. */
+  kind: LogKind;
   /** Resolved session ref (path, day, time, sid). */
   ref: SessionRef;
 }
@@ -204,11 +219,12 @@ export async function listDays(conception: string, monthPrefix?: string): Promis
 async function readHeadTailMeta(
   filePath: string,
   size: number,
-): Promise<{ header: HeaderJson | null; footer: FooterJson | null }> {
+): Promise<{ header: HeaderJson | null; footer: FooterJson | null; kind: LogKind }> {
   const HEAD = 4096;
   const TAIL = 1024;
   let header: HeaderJson | null = null;
   let footer: FooterJson | null = null;
+  let kind: LogKind = 'grid';
   let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
   try {
     handle = await fs.open(filePath, 'r');
@@ -217,6 +233,9 @@ async function readHeadTailMeta(
     const headText = headBuf.toString('utf8');
     const nl = headText.indexOf('\n');
     header = parseMetaLine(nl >= 0 ? headText.slice(0, nl) : headText);
+    // The legacy-fallback heuristic only needs the first body line, which sits
+    // within the head chunk; `splitContent` strips the header + blank for us.
+    kind = detectKind(header, splitContent(headText).text);
     if (size > HEAD) {
       const tailBuf = Buffer.alloc(TAIL);
       await handle.read(tailBuf, 0, TAIL, Math.max(0, size - TAIL));
@@ -229,7 +248,7 @@ async function readHeadTailMeta(
   } finally {
     if (handle) await handle.close().catch(() => undefined);
   }
-  return { header, footer };
+  return { header, footer, kind };
 }
 
 function findLastFooter(text: string): FooterJson | null {
@@ -264,7 +283,7 @@ async function buildRow(ref: SessionRef): Promise<SessionRow | null> {
     return null;
   }
   if (!stat.isFile()) return null;
-  const { header, footer } = await readHeadTailMeta(ref.path, stat.size);
+  const { header, footer, kind } = await readHeadTailMeta(ref.path, stat.size);
   const exitCode = extractExitCode(footer);
   const started = typeof header?.started === 'string' ? header.started : `${ref.day}T${ref.time}`;
   return {
@@ -280,6 +299,7 @@ async function buildRow(ref: SessionRef): Promise<SessionRow | null> {
     exitSealed: footer?.sealedByRecovery === true || undefined,
     // No footer on disk → still running (or never sealed).
     active: footer === null,
+    kind,
   };
 }
 
@@ -384,6 +404,8 @@ export async function readSession(ref: SessionRef, opts: ReadOptions = {}): Prom
   const bytes = Buffer.byteLength(raw, 'utf8');
   const { text: body, header, footer } = splitContent(raw);
   const totalLines = body.length === 0 ? 0 : body.split('\n').length;
+  const kind = detectKind(header, body);
+  const finishText = (text: string): string => (opts.redact ? redactSecrets(text) : text);
 
   if (opts.metaOnly) {
     return {
@@ -395,6 +417,7 @@ export async function readSession(ref: SessionRef, opts: ReadOptions = {}): Prom
       fromByte: null,
       nextByte: bytes,
       rotated: false,
+      kind,
       ref,
     };
   }
@@ -412,6 +435,7 @@ export async function readSession(ref: SessionRef, opts: ReadOptions = {}): Prom
         fromByte: from,
         nextByte: bytes,
         rotated: true,
+        kind,
         ref,
       };
     }
@@ -423,12 +447,13 @@ export async function readSession(ref: SessionRef, opts: ReadOptions = {}): Prom
     return {
       header,
       footer,
-      text: sliceText,
+      text: finishText(sliceText),
       totalLines,
       bytes,
       fromByte: from,
       nextByte: bytes,
       rotated: false,
+      kind,
       ref,
     };
   }
@@ -439,12 +464,13 @@ export async function readSession(ref: SessionRef, opts: ReadOptions = {}): Prom
   return {
     header,
     footer,
-    text: selected.join('\n'),
+    text: finishText(selected.join('\n')),
     totalLines,
     bytes,
     fromByte: null,
     nextByte: bytes,
     rotated: false,
+    kind,
     ref,
   };
 }
