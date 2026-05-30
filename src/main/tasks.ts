@@ -2,7 +2,7 @@
  * Task storage (main process only).
  *
  * Tasks live as one directory each at `<conception>/tasks/<slug>/`, holding a
- * `task.json` (`name` / `agent` / `submit`) plus a hand-editable `prompt.md`.
+ * `task.json` (`name` / `agent`) plus a hand-editable `prompt.md`.
  * ENOENT-tolerant `listTasks`, derived-filename writes, idempotent delete. The
  * slug is the directory name (regex `^[a-z0-9-]+$`, same family as projects).
  * The referenced `agent` is an agent `id` from the `agents` settings list and
@@ -23,7 +23,6 @@ const PROMPT_FILENAME = 'prompt.md';
 const taskConfigSchema = z.object({
   name: z.string().min(1),
   agent: z.string(),
-  submit: z.boolean().optional(),
 });
 
 function tasksDir(conceptionPath: string): string {
@@ -54,7 +53,7 @@ async function readTaskDir(conceptionPath: string, slug: string): Promise<TaskDe
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
-  return { name: config.name, agent: config.agent, submit: config.submit ?? true, prompt };
+  return { name: config.name, agent: config.agent, prompt };
 }
 
 /**
@@ -115,7 +114,7 @@ export async function writeTask(
   if (previousSlug && previousSlug !== safe && (await readTaskDir(conceptionPath, safe)) !== null) {
     throw new Error(`a task "${safe}" already exists — rename it or pick another slug`);
   }
-  const config = taskConfigSchema.parse({ name: def.name, agent: def.agent, submit: def.submit });
+  const config = taskConfigSchema.parse({ name: def.name, agent: def.agent });
   const dir = join(tasksDir(conceptionPath), safe);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(join(dir, CONFIG_FILENAME), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
