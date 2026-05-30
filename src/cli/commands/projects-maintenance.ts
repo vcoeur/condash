@@ -155,7 +155,7 @@ export async function createCommand(
 
   // `--status done` rejected with a pointer: closing an item requires the
   // close-side Timeline entry + leftover-branch probe, neither of which
-  // create runs. (See lifecycle rule in conception/.claude/CLAUDE.md.)
+  // create runs. (See lifecycle rule in conception/AGENTS.md.)
   if (rawStatus === 'done') {
     validation(
       `--status done is not allowed at create time; create with status=now, then \`condash projects close ${input.slug || '<slug>'}\`.`,

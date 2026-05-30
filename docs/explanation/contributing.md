@@ -38,7 +38,7 @@ make dev          # watch mode: tsc + vite + electron with --no-sandbox
 - `vite` serves the renderer at `localhost:5600`. Hot module reload works for the renderer.
 - `electron` opens a single `BrowserWindow` against the dev URL. Main / preload changes restart on the next launch (`Ctrl+R` on the dev window).
 
-If port 5600 is in use, `make kill` frees it. Add or change ports? See the dev-port checklist in [`CLAUDE.md`](https://github.com/vcoeur/condash/blob/main/CLAUDE.md).
+If port 5600 is in use, `make kill` frees it. Add or change ports? See the dev-port checklist in [`AGENTS.md`](https://github.com/vcoeur/condash/blob/main/AGENTS.md).
 
 ## Project layout
 
@@ -95,7 +95,7 @@ Driving the real Electron app means the suite opens an on-screen window unless i
 ## Style and conventions
 
 - **`make format`** runs Prettier across `src/`. Run it before every commit. CI fails on unformatted code.
-- **No comments unless the *why* is non-obvious.** Names already say *what*. See [`CLAUDE.md`](https://github.com/vcoeur/condash/blob/main/CLAUDE.md) for the longer version.
+- **No comments unless the *why* is non-obvious.** Names already say *what*. See [`AGENTS.md`](https://github.com/vcoeur/condash/blob/main/AGENTS.md) for the longer version.
 - **Don't add features beyond what the task requires.** Bug fixes don't need surrounding cleanup. Three similar lines beats a premature abstraction.
 - **Small commits, descriptive subjects.** Imperative mood, ≤72 characters.
 - **One PR per logical change.** A 30-line PR with one review cycle ships faster than a 300-line PR that needs three.
@@ -157,4 +157,4 @@ Before starting on anything large, open an issue with the proposed approach and 
 - [Values](values.md) — the principles a contribution should serve.
 - [Non-goals](non-goals.md) — things contributions should not try to be.
 - [Internals](internals.md) — load-bearing invariants worth understanding before touching the main process.
-- [`CLAUDE.md`](https://github.com/vcoeur/condash/blob/main/CLAUDE.md) — the developer-instructions file checked into the repo.
+- [`AGENTS.md`](https://github.com/vcoeur/condash/blob/main/AGENTS.md) — the developer-instructions file checked into the repo (CLAUDE.md is the agedum-rendered view, gitignored).

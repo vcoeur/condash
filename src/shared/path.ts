@@ -3,7 +3,7 @@
  *  POSIX (no `\` ever appears in paths there); converts `\` → `/` on
  *  Windows. Drive letters (`C:`) pass through unchanged.
  *
- *  Per CLAUDE.md, every path that crosses the IPC boundary is shaped
+ *  Per AGENTS.md, every path that crosses the IPC boundary is shaped
  *  this way so the renderer never has to think about per-OS separators. */
 export function toPosix(path: string): string {
   return path.includes('\\') ? path.replace(/\\/g, '/') : path;

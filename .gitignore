@@ -15,4 +15,6 @@ site/
 .claude/*
 !.claude/skills/
 !.claude/scripts/
+# Agedum-rendered harness view of AGENTS.md — never versioned
+/CLAUDE.md
 .idea

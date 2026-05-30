@@ -42,16 +42,7 @@ Trigger: `/projects close <slug>`.
 
    Zero candidates from both reading and scan → say so and move on. Don't synthesise a prompt to fish for one.
 
-    d. **Deferred promotions.** If a candidate fails *only* #3 (durable and cross-cutting, but truth established by a not-yet-merged PR), don't promote yet. Track it in the README under `## Pending Knowledge Promotions` with a checkbox:
-
-       ```markdown
-       ## Pending Knowledge Promotions
-
-       - [ ] <fact one-liner> → candidate knowledge/<path>.md
-         Blocked: PR #NNN not merged yet. Re-test after merge.
-       ```
-
-       When the PR later merges, return to the project, re-run the three-question test, promote via `/knowledge update` (then stamp `**Transferred:**`), and check the box.
+    d. **Deferred promotions.** A candidate that fails *only* #3 (durable and cross-cutting, but its truth is established by this not-yet-merged PR) is not a drop — record it exactly as `/projects update` does: append a `[knowledge-recheck:pending]` `## Timeline` marker naming the fact, the blocking PR, and the candidate `knowledge/` path. The `knowledge-recheck` audit (`/knowledge verify`) re-surfaces it after the PR merges — **including in `done` projects**, so deferring at close never buries it. Marker format and the closing `[knowledge-recheck:done]` step live in [update.md](update.md) — use that form, not a prose checklist, or the audit can't see it.
 
 5. **Flip status + append timeline:**
 
