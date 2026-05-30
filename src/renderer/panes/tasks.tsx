@@ -49,11 +49,15 @@ interface FillState {
 }
 
 function blankDraft(agents: readonly Agent[]): Draft {
+  // Default a new task to the first prompt-seedable agent — tasks hand the
+  // filled prompt to the agent via `--prompt`/`--run` (see the agent picker's
+  // disabled rows), so an agent without `promptFlags` can't carry one.
+  const seedable = agents.find((a) => a.promptFlags === true) ?? agents[0];
   return {
     slug: '',
     slugDirty: false,
     name: '',
-    agent: agents[0]?.id ?? '',
+    agent: seedable?.id ?? '',
     submit: true,
     prompt: '',
     editingSlug: null,
@@ -492,14 +496,16 @@ function TaskEditor(props: {
   onMount(() => document.addEventListener('keydown', handleKey, true));
   onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
-  // Agent options keyed by id (the stored identity) with the display label.
-  // Includes the draft's current id when it dangles (renamed/removed) so editing
-  // doesn't silently drop the reference.
+  // Agent options keyed by id (the stored identity) with the display label and
+  // whether the agent is prompt-seedable. Includes the draft's current id when
+  // it dangles (renamed/removed) so editing doesn't silently drop the reference.
   const agentOptions = createMemo(() => {
-    const opts = props.agents().map((a) => ({ id: a.id, label: a.label }));
+    const opts = props
+      .agents()
+      .map((a) => ({ id: a.id, label: a.label, promptFlags: a.promptFlags === true }));
     const current = d().agent;
     if (current && !opts.some((o) => o.id === current)) {
-      return [{ id: current, label: `${current} (missing)` }, ...opts];
+      return [{ id: current, label: `${current} (missing)`, promptFlags: false }, ...opts];
     }
     return opts;
   });
@@ -554,7 +560,17 @@ function TaskEditor(props: {
                   <option value="">(no agents defined)</option>
                 </Match>
                 <Match when={agentOptions().length > 0}>
-                  <For each={agentOptions()}>{(o) => <option value={o.id}>{o.label}</option>}</For>
+                  <For each={agentOptions()}>
+                    {(o) => (
+                      // Only prompt-seedable agents can carry a task prompt. Show
+                      // the rest disabled (kept visible for context), except the
+                      // current selection, which must stay selectable so the bound
+                      // value never lands on a disabled option.
+                      <option value={o.id} disabled={!o.promptFlags && o.id !== d().agent}>
+                        {o.promptFlags ? o.label : `${o.label} — no prompt seeding`}
+                      </option>
+                    )}
+                  </For>
                 </Match>
               </Switch>
             </select>
