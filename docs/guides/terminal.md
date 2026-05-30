@@ -229,7 +229,7 @@ A full-screen, alternate-screen TUI (e.g. an agent CLI) only ever paints the cur
 ESC ] 7373 ; agent-transcript ; <frameId> ; <i> ; <n> ; <base64piece> BEL
 ```
 
-`src/main/osc-transcript.ts` (`OscTranscriptExtractor`) taps the pty stream in `SessionLogger.output`, strips these sequences (so the grid render stays clean), reassembles the base64 pieces per `frameId`, and decodes JSON frames (`{v,t:"msg",sid,mid,role,text}` / `{v,t:"end"}`). When a session emits the protocol, the `.txt` body becomes the decoded transcript instead of the grid snapshot. This is **harness-blind** — condash implements only the generic OSC protocol and never special-cases a program; any tool that speaks it is captured cleanly.
+`src/main/osc-transcript.ts` (`OscTranscriptExtractor`) taps the pty stream in `SessionLogger.output`, strips these sequences (so the grid render stays clean), reassembles the base64 pieces per `frameId`, and decodes JSON frames (`{v,t:"msg",sid,mid,role,text}` / `{v,t:"end"}`; `role` ∈ `user` / `assistant` / `reasoning`, rendered as `[user]` / `[assistant]` / `[reasoning]`). When a session emits the protocol, the `.txt` body becomes the decoded transcript instead of the grid snapshot. This is **harness-blind** — condash implements only the generic OSC protocol and never special-cases a program; any tool that speaks it is captured cleanly.
 
 ### Tuning capture
 

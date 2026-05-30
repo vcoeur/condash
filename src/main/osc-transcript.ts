@@ -125,7 +125,8 @@ export class OscTranscriptExtractor {
   private applyFrame(frame: TranscriptFrame): void {
     if (frame.t === 'msg' && typeof frame.text === 'string') {
       this.captured = true;
-      const who = frame.role === 'user' ? 'user' : 'assistant';
+      const who =
+        frame.role === 'user' ? 'user' : frame.role === 'reasoning' ? 'reasoning' : 'assistant';
       this.lines.push(`[${who}] ${frame.text}`);
     } else if (frame.t === 'end') {
       this.captured = true;
