@@ -6,7 +6,7 @@
  * top-level repo, so both layers are stripped.
  */
 import { describe, expect, it } from 'vitest';
-import { rootRepoFromApp } from './shared';
+import { repoLookupMap, resolveAppRepo, rootRepoFromApp, type ConfigWithPaths } from './shared';
 
 describe('rootRepoFromApp', () => {
   it('returns the bare name when already canonical', () => {
@@ -26,5 +26,49 @@ describe('rootRepoFromApp', () => {
 
   it('strips both `#` and sub-path together', () => {
     expect(rootRepoFromApp('#condash/frontend')).toBe('condash');
+  });
+});
+
+describe('repoLookupMap + resolveAppRepo (handle/alias resolution)', () => {
+  // A repo whose `#handle` (`vcoeur`) differs from its directory name
+  // (`vcoeur.com`) — the only shape that breaks a name-only lookup.
+  const config: ConfigWithPaths = {
+    workspace_path: '/ws',
+    repositories: [
+      { handle: 'vcoeur', path: 'vcoeur.com', aliases: ['vcoeur.com'] },
+      { name: 'condash' },
+      // Collision: this repo's handle equals the *name* of the next repo.
+      { handle: 'foo', name: 'bar' },
+      { name: 'foo' },
+    ],
+  };
+
+  it('indexes a repo by directory name, handle, and alias', () => {
+    const map = repoLookupMap(config);
+    expect(map.get('vcoeur.com')?.name).toBe('vcoeur.com'); // directory name
+    expect(map.get('vcoeur')?.name).toBe('vcoeur.com'); // #handle
+  });
+
+  it('resolves a `#handle` token to the canonical directory name', () => {
+    const map = repoLookupMap(config);
+    expect(resolveAppRepo('#vcoeur', map)?.name).toBe('vcoeur.com');
+    expect(resolveAppRepo('vcoeur', map)?.name).toBe('vcoeur.com');
+  });
+
+  it('resolves a directory-name or alias token too', () => {
+    const map = repoLookupMap(config);
+    expect(resolveAppRepo('#vcoeur.com', map)?.name).toBe('vcoeur.com');
+    expect(resolveAppRepo('vcoeur.com', map)?.name).toBe('vcoeur.com');
+    expect(resolveAppRepo('#condash', map)?.name).toBe('condash');
+  });
+
+  it('lets a real directory name win over another repo’s handle on collision', () => {
+    const map = repoLookupMap(config);
+    expect(resolveAppRepo('foo', map)?.name).toBe('foo');
+  });
+
+  it('returns null for a token that names no configured repo', () => {
+    const map = repoLookupMap(config);
+    expect(resolveAppRepo('#nope', map)).toBeNull();
   });
 });
