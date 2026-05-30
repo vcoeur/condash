@@ -1,7 +1,7 @@
 /* "+ New project" modal — minimal-info form. Title + Kind + Status,
  * with live-derived slug preview and incident-only extras. */
 .new-project-modal {
-  width: min(560px, 100%);
+  width: var(--modal-w-md);
 }
 
 .new-project-body {

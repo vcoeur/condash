@@ -192,17 +192,39 @@
  * one the .tasks-editor block is flush — no margin/border/own background. */
 .tasks-editor-modal,
 .tasks-fill-modal {
-  width: min(720px, 100%);
+  width: var(--modal-w-md);
   max-height: 100%;
-  overflow: auto;
 }
 
+/* Header / scrolling-body / pinned-footer column. The middle (fields + a
+ * possibly long prompt preview) scrolls inside the popup so the modal never
+ * grows past the visible area and the Run / Save action row stays on screen. */
 .tasks-editor-modal .tasks-editor,
 .tasks-fill-modal .tasks-editor {
   margin: 0;
   border: none;
   border-radius: 0;
   background: transparent;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.tasks-editor > header,
+.tasks-editor-actions {
+  flex-shrink: 0;
+}
+
+.tasks-fill-scroll,
+.tasks-editor-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Nudge the scroll edges off the pinned header/footer without clipping
+   * focus rings on the fields inside. */
+  padding: 0.1rem;
+  margin: 0 -0.1rem;
 }
 
 /* Push Delete to the right edge of the editor's action row. */

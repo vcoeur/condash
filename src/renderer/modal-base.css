@@ -5,9 +5,29 @@
  * may override individual rules (e.g. `.note-modal { width: … }`).
  */
 
+/* Shared modal width scale. Every modal maps its width onto one of these three
+ * tiers instead of carrying a bespoke pixel value, so popups take generous,
+ * harmonized horizontal space:
+ *   sm — compact dialogs (confirm / about / quit / prompt)
+ *   md — forms + tools    (tasks / search / shortcuts / help / new-project)
+ *   lg — content viewers  (note / project card / html / pdf / logs)
+ * Settings keeps its own full-bleed width. */
+:root {
+  --modal-w-sm: min(520px, 92vw);
+  --modal-w-md: min(1040px, 92vw);
+  --modal-w-lg: min(88vw, 1680px);
+}
+
 .modal-backdrop {
   position: fixed;
-  inset: 0;
+  /* Stop the backdrop at the top of the terminal pane (its measured height is
+   * published as --terminal-pane-height by TerminalPane) so a popup never
+   * overlays the terminal — it stays visible and usable while a modal is open.
+   * Falls back to a full-height overlay when the variable is unset. */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--terminal-pane-height, 0px);
   background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
@@ -23,6 +43,14 @@
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
   display: flex;
   flex-direction: column;
+}
+
+/* Size defaults at zero specificity (`:where`) so each modal's own
+ * `.<name> { width / max-height }` always wins. The per-modal stylesheets are
+ * bundled *before* modal-base.css, so a plain `.modal { width }` at equal
+ * specificity would otherwise clobber every per-modal width — which is exactly
+ * what pinned every popup to 1100px regardless of its intended size. */
+:where(.modal) {
   width: min(1100px, 100%);
   max-height: 100%;
 }
@@ -274,5 +302,5 @@
 }
 
 .help-modal {
-  width: min(800px, 92vw);
+  width: var(--modal-w-md);
 }

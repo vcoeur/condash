@@ -126,6 +126,13 @@ The terminal pane loads `@xterm/addon-image` (`src/renderer/xterm-mount.ts`) to 
 
 The renderer CSP (`src/renderer/index.html`) therefore carries `'wasm-unsafe-eval'` in `script-src`. That CSP3 keyword permits WebAssembly compilation **only** — it does not re-enable JS `eval` / `new Function`, so it is strictly narrower than `'unsafe-eval'`. Keep it; a CSP audit that strips it re-breaks every inline-image-emitting CLI.
 
+### 10. Modal sizing tiers + the terminal-aware backdrop
+
+Every modal shares the `.modal` / `.modal-backdrop` chrome in `src/renderer/modal-base.css` and maps its width onto one of three tokens — `--modal-w-sm` (dialogs), `--modal-w-md` (forms/tools), `--modal-w-lg` (content viewers) — declared once in that file. Two cascade rules make this work:
+
+- The base size **defaults** live in `:where(.modal) { width; max-height }`, **not** `.modal { … }`. Each per-modal stylesheet (`note-modal.css`, `tasks-pane.css`, …) is imported by its own component, so it is bundled *before* `modal-base.css`; a plain `.modal { width }` at equal specificity would win by source order and pin every popup to one width. `:where()` has zero specificity, so each `.<name>-modal { width: var(--modal-w-*) }` (one class) always wins regardless of bundle order. Set per-modal sizes with a single-class selector and never add `width` back to bare `.modal`.
+- The backdrop stops at the top of the terminal pane instead of covering the whole window: `.modal-backdrop` uses `bottom: var(--terminal-pane-height, 0px)`, and `TerminalPane` (`src/renderer/terminal-pane.tsx`) publishes its own rendered height to that custom property from a `ResizeObserver` (covering open/close, resize-drag, split, window-resize uniformly). The terminal stays visible and usable while any popup — Settings included — is open.
+
 ## Environment hygiene { #environment-hygiene }
 
 condash spawns subprocesses (terminals, runners, `force_stop` commands, open-with launchers). The main process scrubs the environment before each spawn to avoid leaking interpreter-specific vars into unrelated child programs:

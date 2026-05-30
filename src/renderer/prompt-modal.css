@@ -1,7 +1,7 @@
 /* ---- Prompt modal ------------------------------------------------------ */
 
 .prompt-modal {
-  width: min(480px, 100%);
+  width: var(--modal-w-sm);
 }
 
 .prompt-body {

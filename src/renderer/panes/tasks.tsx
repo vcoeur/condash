@@ -384,63 +384,65 @@ function TaskFill(props: {
               Close
             </button>
           </header>
-          <p class="tasks-editor-note">
-            Agent: <code>{props.fill().def.agent}</code>
-            {' · runs interactively'}
-          </p>
+          <div class="tasks-fill-scroll">
+            <p class="tasks-editor-note">
+              Agent: <code>{props.fill().def.agent}</code>
+              {' · runs interactively'}
+            </p>
 
-          <Show when={needsApp()}>
-            <label>
-              <span>App {'{APP}'}</span>
-              <select
-                value={props.fill().app?.alias ?? ''}
-                onChange={(e) => {
-                  const alias = e.currentTarget.value;
-                  const app = props.apps().find((a) => a.alias === alias) ?? null;
-                  props.setFill({ ...props.fill(), app });
-                }}
-              >
-                <option value="">(pick an app)</option>
-                <For each={props.apps()}>{(a) => <option value={a.alias}>{a.alias}</option>}</For>
-              </select>
-            </label>
-          </Show>
-
-          <Show when={needsProject()}>
-            <label>
-              <span>Project {'{PROJECT}'}</span>
-              <select
-                value={props.fill().project?.slug ?? ''}
-                onChange={(e) => {
-                  const slug = e.currentTarget.value;
-                  const project = props.projects().find((p) => p.slug === slug) ?? null;
-                  props.setFill({ ...props.fill(), project });
-                }}
-              >
-                <option value="">(pick a project)</option>
-                <For each={props.projects()}>
-                  {(p) => <option value={p.slug}>{p.title || p.slug}</option>}
-                </For>
-              </select>
-            </label>
-          </Show>
-
-          <For each={textMarkers()}>
-            {(marker) => (
+            <Show when={needsApp()}>
               <label>
-                <span>{`{${marker.key}}`}</span>
-                <input
-                  type="text"
-                  value={props.fill().fields[marker.key] ?? ''}
-                  onInput={(e) => setField(marker.key, e.currentTarget.value)}
-                />
+                <span>App {'{APP}'}</span>
+                <select
+                  value={props.fill().app?.alias ?? ''}
+                  onChange={(e) => {
+                    const alias = e.currentTarget.value;
+                    const app = props.apps().find((a) => a.alias === alias) ?? null;
+                    props.setFill({ ...props.fill(), app });
+                  }}
+                >
+                  <option value="">(pick an app)</option>
+                  <For each={props.apps()}>{(a) => <option value={a.alias}>{a.alias}</option>}</For>
+                </select>
               </label>
-            )}
-          </For>
+            </Show>
 
-          <div class="tasks-config-view tasks-preview">
-            <span class="tasks-preview-label">Prompt to run:</span>
-            <pre>{preview()}</pre>
+            <Show when={needsProject()}>
+              <label>
+                <span>Project {'{PROJECT}'}</span>
+                <select
+                  value={props.fill().project?.slug ?? ''}
+                  onChange={(e) => {
+                    const slug = e.currentTarget.value;
+                    const project = props.projects().find((p) => p.slug === slug) ?? null;
+                    props.setFill({ ...props.fill(), project });
+                  }}
+                >
+                  <option value="">(pick a project)</option>
+                  <For each={props.projects()}>
+                    {(p) => <option value={p.slug}>{p.title || p.slug}</option>}
+                  </For>
+                </select>
+              </label>
+            </Show>
+
+            <For each={textMarkers()}>
+              {(marker) => (
+                <label>
+                  <span>{`{${marker.key}}`}</span>
+                  <input
+                    type="text"
+                    value={props.fill().fields[marker.key] ?? ''}
+                    onInput={(e) => setField(marker.key, e.currentTarget.value)}
+                  />
+                </label>
+              )}
+            </For>
+
+            <div class="tasks-config-view tasks-preview">
+              <span class="tasks-preview-label">Prompt to run:</span>
+              <pre>{preview()}</pre>
+            </div>
           </div>
 
           <div class="tasks-editor-actions">
@@ -530,65 +532,67 @@ function TaskEditor(props: {
             <h3>{d().editingSlug ? `Edit ${d().editingSlug}` : 'New task'}</h3>
           </header>
 
-          <label>
-            <span>Name</span>
-            <input type="text" value={d().name} onInput={(e) => onName(e.currentTarget.value)} />
-          </label>
+          <div class="tasks-editor-scroll">
+            <label>
+              <span>Name</span>
+              <input type="text" value={d().name} onInput={(e) => onName(e.currentTarget.value)} />
+            </label>
 
-          <label>
-            <span>Slug (directory under tasks/)</span>
-            <input
-              type="text"
-              value={d().slug}
-              placeholder="refresh-app-docs"
-              onInput={(e) => props.patch({ slug: e.currentTarget.value, slugDirty: true })}
-            />
-          </label>
+            <label>
+              <span>Slug (directory under tasks/)</span>
+              <input
+                type="text"
+                value={d().slug}
+                placeholder="refresh-app-docs"
+                onInput={(e) => props.patch({ slug: e.currentTarget.value, slugDirty: true })}
+              />
+            </label>
 
-          <label>
-            <span>Agent</span>
-            <select
-              value={d().agent}
-              onChange={(e) => props.patch({ agent: e.currentTarget.value })}
-            >
-              <Switch>
-                <Match when={agentOptions().length === 0}>
-                  <option value="">(no agents defined)</option>
-                </Match>
-                <Match when={agentOptions().length > 0}>
-                  <For each={agentOptions()}>
-                    {(o) => (
-                      // Only prompt-seedable agents can carry a task prompt. Show
-                      // the rest disabled (kept visible for context), except the
-                      // current selection, which must stay selectable so the bound
-                      // value never lands on a disabled option.
-                      <option value={o.id} disabled={!o.promptFlags && o.id !== d().agent}>
-                        {o.promptFlags ? o.label : `${o.label} — no prompt seeding`}
-                      </option>
-                    )}
-                  </For>
-                </Match>
-              </Switch>
-            </select>
-          </label>
+            <label>
+              <span>Agent</span>
+              <select
+                value={d().agent}
+                onChange={(e) => props.patch({ agent: e.currentTarget.value })}
+              >
+                <Switch>
+                  <Match when={agentOptions().length === 0}>
+                    <option value="">(no agents defined)</option>
+                  </Match>
+                  <Match when={agentOptions().length > 0}>
+                    <For each={agentOptions()}>
+                      {(o) => (
+                        // Only prompt-seedable agents can carry a task prompt. Show
+                        // the rest disabled (kept visible for context), except the
+                        // current selection, which must stay selectable so the bound
+                        // value never lands on a disabled option.
+                        <option value={o.id} disabled={!o.promptFlags && o.id !== d().agent}>
+                          {o.promptFlags ? o.label : `${o.label} — no prompt seeding`}
+                        </option>
+                      )}
+                    </For>
+                  </Match>
+                </Switch>
+              </select>
+            </label>
 
-          <label>
-            <span>Prompt (markdown with {'{MARKERS}'})</span>
-            <textarea
-              class="tasks-prompt-textarea"
-              spellcheck={false}
-              value={d().prompt}
-              placeholder={'Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}'}
-              onInput={(e) => props.patch({ prompt: e.currentTarget.value })}
-            />
-          </label>
+            <label>
+              <span>Prompt (markdown with {'{MARKERS}'})</span>
+              <textarea
+                class="tasks-prompt-textarea"
+                spellcheck={false}
+                value={d().prompt}
+                placeholder={'Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}'}
+                onInput={(e) => props.patch({ prompt: e.currentTarget.value })}
+              />
+            </label>
 
-          <Show when={markers().length > 0}>
-            <div class="tasks-markers tasks-editor-markers">
-              <span class="tasks-preview-label">Markers:</span>
-              <For each={markers()}>{(marker) => <MarkerChip marker={marker} />}</For>
-            </div>
-          </Show>
+            <Show when={markers().length > 0}>
+              <div class="tasks-markers tasks-editor-markers">
+                <span class="tasks-preview-label">Markers:</span>
+                <For each={markers()}>{(marker) => <MarkerChip marker={marker} />}</For>
+              </div>
+            </Show>
+          </div>
 
           <div class="tasks-editor-actions">
             <button type="button" onClick={props.onSave}>

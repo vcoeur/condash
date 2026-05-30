@@ -1,7 +1,7 @@
 /* ---- Quit-confirm modal ------------------------------------------------ */
 
 .quit-confirm-modal {
-  width: min(420px, 90vw);
+  width: var(--modal-w-sm);
 }
 
 .quit-confirm-body {

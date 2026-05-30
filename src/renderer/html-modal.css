@@ -1,7 +1,7 @@
 /* ---- HTML preview modal ------------------------------------------------ */
 
 .html-modal {
-  width: min(1100px, 100%);
+  width: var(--modal-w-lg);
   height: 100%;
 }
 
