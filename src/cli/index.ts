@@ -11,6 +11,7 @@ import { runAuditCommand } from './commands/audit';
 import { runDirty } from './commands/dirty';
 import { runConfig } from './commands/config';
 import { runSkills } from './commands/skills';
+import { runLogs } from './commands/logs';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
@@ -30,6 +31,7 @@ Nouns:
   worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
   audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
   dirty        list, touch <tree>, clear <tree|all>
+  logs         days, list [<day>], read <sid|path>, tail (navigate session logs)
   skills       list shipped artefacts; install [<name-or-path>...]; status; validate
   config       conception-path, path, list [--effective|--global],
                get <key> [--effective|--global], set <key> <value> [--global],
@@ -179,6 +181,9 @@ async function dispatch(
       return ExitCodes.OK;
     case 'dirty':
       await runDirty(args.verb, args, ctx, conceptionPath, help);
+      return ExitCodes.OK;
+    case 'logs':
+      await runLogs(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     case 'skills':
       await runSkills(args.verb, args, ctx, help);
