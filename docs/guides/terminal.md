@@ -221,6 +221,16 @@ The writer treats the pty `output` stream as the source of truth. Typed keystrok
 
 Long-running streams (`tail -f`, full-screen TUIs like `vim` / `htop` / Claude Code) are bounded by the xterm scrollback: bytes that scroll past the scrollback window are dropped, exactly as they would be in the live terminal pane. The on-disk `.txt` therefore self-bounds to roughly *scrollback × line width* and never grows beyond that.
 
+##### In-band transcript capture (alternate-screen TUIs) { #in-band-transcript }
+
+A full-screen, alternate-screen TUI (e.g. an agent CLI) only ever paints the current viewport — its scrolled-off conversation is repainted on demand, never retained — so the rendered-buffer snapshot above captures just the last frame. To recover a clean transcript without parsing escape-sequence redraws, a cooperating program may emit its transcript **in-band** as an OSC escape the terminal ignores for display:
+
+```
+ESC ] 7373 ; agent-transcript ; <frameId> ; <i> ; <n> ; <base64piece> BEL
+```
+
+`src/main/osc-transcript.ts` (`OscTranscriptExtractor`) taps the pty stream in `SessionLogger.output`, strips these sequences (so the grid render stays clean), reassembles the base64 pieces per `frameId`, and decodes JSON frames (`{v,t:"msg",sid,mid,role,text}` / `{v,t:"end"}`). When a session emits the protocol, the `.txt` body becomes the decoded transcript instead of the grid snapshot. This is **harness-blind** — condash implements only the generic OSC protocol and never special-cases a program; any tool that speaks it is captured cleanly.
+
 ### Tuning capture
 
 The `terminal.logging` block in `.condash/settings.json` (or in the global `settings.json` for cross-conception defaults) carries the knobs:

@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/headless';
 import type { TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { META_LINE_PREFIX } from './logs-format';
+import { OscTranscriptExtractor } from './osc-transcript';
 
 /**
  * Single-session writer. One instance per pty spawn; lives from `open()`
@@ -149,6 +150,11 @@ export class SessionLogger {
   private paused = false;
   private dirty = false;
   private readonly flushMs: number;
+  /** Pulls any in-band "agent transcript over OSC" frames out of the pty
+   * stream. Harness-blind: it knows the generic protocol, not the program.
+   * When a session speaks it, the log body becomes the clean transcript
+   * instead of the grid snapshot. */
+  private readonly oscTranscript = new OscTranscriptExtractor();
 
   constructor(
     conceptionPath: string,
@@ -201,7 +207,10 @@ export class SessionLogger {
 
   output(data: string): void {
     if (!this.isEnabled() || data.length === 0) return;
-    this.term.write(data);
+    // Strip any in-band transcript OSC out of the stream first, so the grid
+    // render never carries it; feed only the remainder to xterm.
+    const clean = this.oscTranscript.feed(data);
+    if (clean.length > 0) this.term.write(clean);
     this.dirty = true;
     this.scheduleFlush();
   }
@@ -270,7 +279,11 @@ export class SessionLogger {
     // otherwise the buffer may not reflect the most recent `output` call.
     await new Promise<void>((resolve) => this.term.write('', () => resolve()));
     if (this.closed) return;
-    const body = renderBufferAsPlainText(this.term);
+    // A session that emitted an in-band transcript gets the clean transcript
+    // as its body; everything else falls back to the rendered grid.
+    const body = this.oscTranscript.hasTranscript()
+      ? this.oscTranscript.render()
+      : renderBufferAsPlainText(this.term);
     const text = this.composeFileContent(body);
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
