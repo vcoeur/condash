@@ -52,6 +52,17 @@ export class OscTranscriptExtractor {
   private pieces = new Map<string, { n: number; got: Map<number, string> }>();
   private lines: string[] = [];
   private captured = false;
+  /** `YYYY-MM-DD:HH:MM` of the last minute a message landed in. A timestamp
+   * marker line is pushed only when a later message falls in a different
+   * minute, so the body is time-anchored without one marker per write. The
+   * first message just seeds this without emitting a marker. */
+  private lastMinute: string | null = null;
+
+  /**
+   * @param now Clock used to stamp timestamp markers between messages.
+   *   Injectable so tests can drive minute rollover deterministically.
+   */
+  constructor(private readonly now: () => Date = () => new Date()) {}
 
   /** Feed a raw pty chunk. Returns the chunk with our OSC sequences stripped,
    * for the caller to forward to the grid renderer. Incomplete sequences are
@@ -125,12 +136,27 @@ export class OscTranscriptExtractor {
   private applyFrame(frame: TranscriptFrame): void {
     if (frame.t === 'msg' && typeof frame.text === 'string') {
       this.captured = true;
+      this.maybePushTimestampMarker();
       const who =
         frame.role === 'user' ? 'user' : frame.role === 'reasoning' ? 'reasoning' : 'assistant';
       this.lines.push(`[${who}] ${frame.text}`);
     } else if (frame.t === 'end') {
       this.captured = true;
     }
+  }
+
+  /** Push a `<!-- YYYY-MM-DD:HH:MM -->` marker line before the next message when
+   * the wall-clock minute has rolled over since the previous one. The first
+   * message only seeds the minute (no marker — the log header already records
+   * the session start time). The HTML-comment form stays invisible when the
+   * `.txt` is viewed as rendered markdown and is trivially skippable by a
+   * parser; local time matches the log filename's `HHMMSS`. */
+  private maybePushTimestampMarker(): void {
+    const minute = formatMinute(this.now());
+    if (this.lastMinute !== null && minute !== this.lastMinute) {
+      this.lines.push(`<!-- ${minute} -->`);
+    }
+    this.lastMinute = minute;
   }
 
   /** True once any protocol frame has been decoded — the caller should then
@@ -143,6 +169,16 @@ export class OscTranscriptExtractor {
   render(): string {
     return this.lines.join('\n\n');
   }
+}
+
+/** Format a local-time `Date` as `YYYY-MM-DD:HH:MM` for a timestamp marker. */
+function formatMinute(when: Date): string {
+  const yyyy = String(when.getFullYear());
+  const mm = String(when.getMonth() + 1).padStart(2, '0');
+  const dd = String(when.getDate()).padStart(2, '0');
+  const hh = String(when.getHours()).padStart(2, '0');
+  const mi = String(when.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}:${hh}:${mi}`;
 }
 
 /** Length of the longest suffix of `buf` that is a proper prefix of the marker
