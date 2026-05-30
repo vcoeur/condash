@@ -68,6 +68,14 @@ describe('OscTranscriptExtractor', () => {
     expect(ex.render()).toBe('[user] q\n\n[assistant] a');
   });
 
+  it('labels reasoning frames distinctly from the assistant response', () => {
+    const ex = new OscTranscriptExtractor();
+    ex.feed(packets('0', { v: 1, t: 'msg', role: 'user', text: 'why?' }));
+    ex.feed(packets('1', { v: 1, t: 'msg', role: 'reasoning', text: 'thinking…' }));
+    ex.feed(packets('2', { v: 1, t: 'msg', role: 'assistant', text: 'because' }));
+    expect(ex.render()).toBe('[user] why?\n\n[reasoning] thinking…\n\n[assistant] because');
+  });
+
   it('ignores malformed packets without breaking', () => {
     const ex = new OscTranscriptExtractor();
     const clean = ex.feed(`${PREFIX}bad;packet${BEL}tail`);
