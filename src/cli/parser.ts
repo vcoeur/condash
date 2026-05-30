@@ -42,6 +42,9 @@ const BOOL_FLAGS = new Set([
   'user',
   'prune',
   'fix',
+  'active',
+  'meta',
+  'with-meta',
 ]);
 
 /**

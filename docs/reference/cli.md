@@ -33,7 +33,7 @@ One binary, one launcher: the `condash` entry on PATH inspects its argv. With no
 CLI nouns:
 
 ```
-projects   knowledge   search   repos   applications   worktrees   audit   dirty   skills   config   help
+projects   knowledge   search   repos   applications   worktrees   audit   dirty   logs   skills   config   help
 ```
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
@@ -207,6 +207,30 @@ Read or touch the dirty-index sentinels (`projects/.index-dirty`, `knowledge/.in
 | `clear <tree\|all>` | Clear one tree's marker, or all of them |
 
 The skills (`/projects index`, `/knowledge index`) clear these after they regenerate.
+
+### `logs`
+
+Navigate the per-conception terminal-session logs that the GUI writes under `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt` (a `# condash:` JSON header line, the rendered xterm buffer, and — once the pty exits — a `# condash:` footer line). The noun is **read-only**: it never deletes a log (deletion stays a Logs-pane affordance). Logging is opt-in (`terminal.logging.enabled`), so the tree is empty until you turn it on.
+
+| Verb | What it does |
+|---|---|
+| `days [--month YYYY-MM] [--year YYYY]` | List days that hold sessions (newest first) with session count + size |
+| `list [<day>] [filters]` | List sessions, newest spawn-time first |
+| `read <sid\|day/sid\|path> [selector]` | Output a session transcript |
+| `tail [--sid s,s] [--repo n] [--lines n] [--all]` | Last lines (default 20) of the active tabs |
+
+`list` filters: `--since <when>` / `--until <when>` (by spawn time), `--modified-since <when>` (by file mtime — catches a long-running session that spawned earlier but is still being written), `--repo <name>`, `--active` (only sessions with no footer — still running), `--sid <prefix>`, `--limit <n>`. A `<when>` is an ISO date (`2026-05-30`) or datetime (`2026-05-30T14:00`), a relative span (`30m`, `2h`, `3d`, `1w` — ago from now), or `today` / `yesterday`.
+
+`read` selectors are mutually exclusive: `--head <n>`, `--tail <n>`, `--lines <a-b>` (inclusive 1-based; also `a-` to end, or `a` for one line), `--from-byte <n>` (raw bytes from offset `n` to EOF — the stateless "what changed since I last looked" cursor; the JSON `nextByte` is the offset to store for next time, and `rotated: true` flags a janitor-trimmed file), `--meta` (only the parsed header/footer). `--with-meta` keeps the `# condash:` lines in the body. A bare `<sid>` is prefix-matched across days, newest first — an ambiguous prefix exits 6.
+
+`tail` is the "what's live right now" glance: it prints the last lines of every **active** session (no footer). `--all` includes ended sessions; `--sid` / `--repo` narrow the set.
+
+```
+condash logs list --since today --active
+condash logs read t-a1b2c3d4 --tail 40
+condash logs read t-a1b2 --from-byte 31044 --json    # delta since the stored cursor
+condash logs tail --repo condash
+```
 
 ### `skills`
 
