@@ -20,6 +20,7 @@ condash exists to make every piece of work a tracked project. This loop is the d
 
 - **Open a project first.** Use `/projects` (or `condash projects create`) before starting — the README is the unit of tracking and the cold-recovery record.
 - **Keep it current as you go.** Update status, steps, and a dated timeline entry on each event through `condash` / the `projects` skill — never by hand-editing tree paths.
+- **Code edits go in the project's worktree**, never the main repo checkout — set one up with `/projects worktree setup <branch>`, and edit a main checkout only when explicitly asked.
 - **`now → review → done`.** A project is `now` while active, `review` once work ships and awaits an external signal (for example a PR merge), `done` when that signal lands.
 
 ### Generated layers — never hand-edit
