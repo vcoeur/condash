@@ -48,10 +48,12 @@ export interface TerminalBridge {
    *  "Paste path → Term" button — re-uses the same "open pane, spawn
    *  shell if needed" dance as `handleWorkOn`. Does not press Enter. */
   handlePasteToTerm: (text: string) => Promise<void>;
-  /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentId`,
-   *  type the already-substituted `text`, and press Enter when `submit` is true.
-   *  Same spawn-and-type path as an agent-bound project action. */
-  runTask: (agentId: string, text: string, submit: boolean) => Promise<void>;
+  /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentId`
+   *  and deliver the already-substituted `text`. Tasks always launch
+   *  interactively — a `promptFlags` agent is seeded with `--prompt` (the
+   *  session stays open after the prompt runs); an opaque agent is spawned bare,
+   *  then the prompt is keystroke-injected and submitted once the TUI settles. */
+  runTask: (agentId: string, text: string) => Promise<void>;
 }
 
 /** Upper bound on animation frames waited for the pane to mount after
@@ -146,17 +148,17 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     return handle;
   };
 
-  /** Run `text` through `agent` in a fresh tab. When the agent opts into agedum
-   *  prompt flags (`promptFlags`), fold the prompt into argv — `--run` when
-   *  `submit` (non-interactive, exits), `--prompt` otherwise (interactive,
-   *  seeded) — and spawn that; the prompt is delivered at launch, so nothing is
-   *  typed. Otherwise spawn the bare command, let the TUI settle, and
-   *  keystroke-inject `text` (plus Enter when `submit`) — the generic path for an
-   *  opaque agent. */
+  /** Run `text` through `agent` in a fresh tab, always interactively so the
+   *  session stays open after the prompt runs (a one-shot `--run` would exit and
+   *  tear the tab down). When the agent opts into agedum prompt flags
+   *  (`promptFlags`), seed the prompt via `--prompt` in argv and spawn that; the
+   *  prompt is delivered at launch, so nothing is typed. Otherwise spawn the bare
+   *  command, let the TUI settle, and keystroke-inject `text` (plus Enter when
+   *  `submit`) — the generic path for an opaque agent. `submit` only governs that
+   *  keystroke Enter; a `promptFlags` agent is always seeded interactively. */
   const runAgentTask = async (agent: Agent, text: string, submit: boolean): Promise<void> => {
     if (agent.promptFlags) {
-      const flag = submit ? '--run' : '--prompt';
-      const command = `${agent.command} ${flag} ${shellSingleQuote(text)}`;
+      const command = `${agent.command} --prompt ${shellSingleQuote(text)}`;
       await spawnAgentTab({ ...agent, command });
       return;
     }
@@ -289,16 +291,16 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
-  const runTask = async (agentId: string, text: string, submit: boolean): Promise<void> => {
+  const runTask = async (agentId: string, text: string): Promise<void> => {
     const agent = findAgentById(deps.agents(), agentId);
     if (!agent) {
       deps.flashToast(`Task agent not found: ${agentId}`, 'error');
       return;
     }
-    // Spawn a fresh tab for the agent and deliver the prompt: via argv flags
-    // when the agent opts in (`promptFlags`), otherwise by keystroke-injecting
-    // it once the TUI settles — an opaque agent has no flag to carry the prompt.
-    await runAgentTask(agent, text, submit);
+    // Same interactive spawn-and-deliver path as an agent-bound project action.
+    // `submit: true` presses Enter on the opaque keystroke path; a promptFlags
+    // agent is seeded with `--prompt` (interactive) regardless.
+    await runAgentTask(agent, text, true);
   };
 
   return {

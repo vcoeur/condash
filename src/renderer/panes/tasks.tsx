@@ -32,7 +32,6 @@ interface Draft {
   slugDirty: boolean;
   name: string;
   agent: string;
-  submit: boolean;
   prompt: string;
   editingSlug: string | null;
 }
@@ -50,15 +49,14 @@ interface FillState {
 
 function blankDraft(agents: readonly Agent[]): Draft {
   // Default a new task to the first prompt-seedable agent — tasks hand the
-  // filled prompt to the agent via `--prompt`/`--run` (see the agent picker's
-  // disabled rows), so an agent without `promptFlags` can't carry one.
+  // filled prompt to the agent via `--prompt` (see the agent picker's disabled
+  // rows), so an agent without `promptFlags` can't carry one.
   const seedable = agents.find((a) => a.promptFlags === true) ?? agents[0];
   return {
     slug: '',
     slugDirty: false,
     name: '',
     agent: seedable?.id ?? '',
-    submit: true,
     prompt: '',
     editingSlug: null,
   };
@@ -87,9 +85,9 @@ export function TasksView(props: {
   /** Apps available to the `{APP}` picker. */
   apps: () => readonly AppOption[];
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
-  /** Run a filled task: spawn the agent (by id), type the substituted prompt,
-   *  submit. */
-  onRun: (agentId: string, text: string, submit: boolean) => void;
+  /** Run a filled task: spawn the agent (by id) and deliver the substituted
+   *  prompt. Always launches interactively. */
+  onRun: (agentId: string, text: string) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
@@ -117,7 +115,6 @@ export function TasksView(props: {
       slugDirty: true,
       name: def.name,
       agent: def.agent,
-      submit: def.submit,
       prompt: def.prompt,
       editingSlug: slug,
     });
@@ -156,7 +153,6 @@ export function TasksView(props: {
     const def: TaskDef = {
       name: d.name.trim(),
       agent: d.agent,
-      submit: d.submit,
       prompt: d.prompt,
     };
     try {
@@ -330,7 +326,7 @@ function TaskFill(props: {
   projects: () => readonly Project[];
   conceptionPath: () => string | null;
   agentExists: (name: string) => boolean;
-  onRun: (agentName: string, text: string, submit: boolean) => void;
+  onRun: (agentName: string, text: string) => void;
 }): JSX.Element {
   const markers = createMemo(() => extractMarkers(props.fill().def.prompt));
   const textMarkers = createMemo(() =>
@@ -368,7 +364,7 @@ function TaskFill(props: {
 
   const run = (): void => {
     const f = props.fill();
-    props.onRun(f.def.agent, substitute(f.def.prompt, ctx()), f.def.submit);
+    props.onRun(f.def.agent, substitute(f.def.prompt, ctx()));
     close();
   };
 
@@ -390,7 +386,7 @@ function TaskFill(props: {
           </header>
           <p class="tasks-editor-note">
             Agent: <code>{props.fill().def.agent}</code>
-            {props.fill().def.submit ? ' · submits on run' : ' · types without submitting'}
+            {' · runs interactively'}
           </p>
 
           <Show when={needsApp()}>
@@ -574,15 +570,6 @@ function TaskEditor(props: {
                 </Match>
               </Switch>
             </select>
-          </label>
-
-          <label class="tasks-checkbox">
-            <input
-              type="checkbox"
-              checked={d().submit}
-              onChange={(e) => props.patch({ submit: e.currentTarget.checked })}
-            />
-            <span>Press Enter after typing (submit)</span>
           </label>
 
           <label>

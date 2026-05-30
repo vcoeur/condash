@@ -12,16 +12,14 @@
  */
 import { MARKER_RE, projectContext, type ProjectLike } from './action-template';
 
-/** On-disk task definition: `task.json` config (`name` / `agent` / `submit`)
- *  plus the raw `prompt.md` body. The slug is the directory name, carried
- *  separately by the IPC verbs (it is not stored inside `task.json`). */
+/** On-disk task definition: `task.json` config (`name` / `agent`) plus the raw
+ *  `prompt.md` body. The slug is the directory name, carried separately by the
+ *  IPC verbs (it is not stored inside `task.json`). */
 export interface TaskDef {
   name: string;
   /** Referenced agent — its stable `slug` (the agent's filename/IPC key). May
    *  dangle if the agent was renamed/removed. */
   agent: string;
-  /** Press Enter after typing the filled prompt. Default true. */
-  submit: boolean;
   /** Raw markdown prompt with `{markers}`. */
   prompt: string;
 }

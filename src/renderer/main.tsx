@@ -525,9 +525,7 @@ function App() {
                           projects={() => projects() ?? []}
                           apps={appOptions}
                           flashToast={flashToast}
-                          onRun={(agentId, text, submit) =>
-                            void bridge.runTask(agentId, text, submit)
-                          }
+                          onRun={(agentId, text) => void bridge.runTask(agentId, text)}
                         />
                       </Match>
                       <Match when={layout().leftView === 'projects'}>

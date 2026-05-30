@@ -237,7 +237,7 @@ describe('handleProjectAction with agent binding', () => {
     await vi.advanceTimersByTimeAsync(400);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(
-      { ...agedumAgent, command: "agedum claude --run 'review foo-bar'" },
+      { ...agedumAgent, command: "agedum claude --prompt 'review foo-bar'" },
       'my',
     );
     expect(handle.typeIntoActive).not.toHaveBeenCalled();
@@ -246,11 +246,11 @@ describe('handleProjectAction with agent binding', () => {
 });
 
 describe('runTask', () => {
-  it('spawns the agent, settles, types via pty, and submits when submit=true', async () => {
+  it('spawns an opaque agent, settles, types via pty, and submits', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle, [kimiAgent]));
-    const promise = bridge.runTask('kimi-cli-native', 'review the docs', true);
+    const promise = bridge.runTask('kimi-cli-native', 'review the docs');
     await vi.advanceTimersByTimeAsync(600);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(kimiAgent, 'my');
@@ -259,24 +259,11 @@ describe('runTask', () => {
     vi.useRealTimers();
   });
 
-  it('types without Enter when submit is false', async () => {
-    vi.useFakeTimers();
-    const handle = makeFakeHandle();
-    const bridge = createTerminalBridge(makeDeps(handle, [claudeAgent]));
-    const promise = bridge.runTask('claude-deepseek-v4-pro', 'just type this', false);
-    await vi.advanceTimersByTimeAsync(400);
-    await promise;
-    expect(handle.spawnUserShell).toHaveBeenCalledWith(claudeAgent, 'my');
-    expect(handle.typeIntoActive).toHaveBeenCalledWith('just type this');
-    expect(handle.typeIntoActive).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
-  });
-
   it('toasts and does nothing when the agent is unknown', async () => {
     const handle = makeFakeHandle();
     const deps = makeDeps(handle, [claudeAgent]);
     const bridge = createTerminalBridge(deps);
-    await bridge.runTask('does-not-exist', 'text', true);
+    await bridge.runTask('does-not-exist', 'text');
     expect(deps.flashToast).toHaveBeenCalledWith(
       expect.stringContaining('Task agent not found'),
       'error',
@@ -287,30 +274,15 @@ describe('runTask', () => {
 });
 
 describe('runTask with promptFlags agent', () => {
-  it('spawns `<command> --run <quoted>` and does not type when submit=true', async () => {
+  it('seeds `<command> --prompt <quoted>` interactively and does not type', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
-    const promise = bridge.runTask('agedum-claude', 'review the docs', true);
+    const promise = bridge.runTask('agedum-claude', 'review the docs');
     await vi.advanceTimersByTimeAsync(400);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(
-      { ...agedumAgent, command: "agedum claude --run 'review the docs'" },
-      'my',
-    );
-    expect(handle.typeIntoActive).not.toHaveBeenCalled();
-    vi.useRealTimers();
-  });
-
-  it('spawns `<command> --prompt <quoted>` when submit=false', async () => {
-    vi.useFakeTimers();
-    const handle = makeFakeHandle();
-    const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
-    const promise = bridge.runTask('agedum-claude', 'seed me', false);
-    await vi.advanceTimersByTimeAsync(400);
-    await promise;
-    expect(handle.spawnUserShell).toHaveBeenCalledWith(
-      { ...agedumAgent, command: "agedum claude --prompt 'seed me'" },
+      { ...agedumAgent, command: "agedum claude --prompt 'review the docs'" },
       'my',
     );
     expect(handle.typeIntoActive).not.toHaveBeenCalled();
@@ -321,11 +293,11 @@ describe('runTask with promptFlags agent', () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();
     const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
-    const promise = bridge.runTask('agedum-claude', "it's a $PATH; rm -rf", true);
+    const promise = bridge.runTask('agedum-claude', "it's a $PATH; rm -rf");
     await vi.advanceTimersByTimeAsync(400);
     await promise;
     expect(handle.spawnUserShell).toHaveBeenCalledWith(
-      { ...agedumAgent, command: "agedum claude --run 'it'\\''s a $PATH; rm -rf'" },
+      { ...agedumAgent, command: "agedum claude --prompt 'it'\\''s a $PATH; rm -rf'" },
       'my',
     );
     vi.useRealTimers();

@@ -42,7 +42,6 @@ const task: TaskDef = {
   // `agent` references the agent by its stable id from the `agents` list.
   name: 'Refresh app docs',
   agent: 'claude-deepseek-v4-pro',
-  submit: true,
   prompt: 'Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}',
 };
 
@@ -57,7 +56,7 @@ describe('task storage round-trip', () => {
     expect(back).toEqual(task);
   });
 
-  it('stores only name/agent/submit in task.json (prose stays in prompt.md)', async () => {
+  it('stores only name/agent in task.json (prose stays in prompt.md)', async () => {
     await writeTask(dir, 'refresh-app-docs', task);
     const config = JSON.parse(
       await fs.readFile(join(dir, 'tasks', 'refresh-app-docs', 'task.json'), 'utf8'),
@@ -65,18 +64,20 @@ describe('task storage round-trip', () => {
     expect(config).toEqual({
       name: 'Refresh app docs',
       agent: 'claude-deepseek-v4-pro',
-      submit: true,
     });
     expect(config).not.toHaveProperty('prompt');
   });
 
-  it('defaults submit to true when task.json omits it', async () => {
-    const tasksDir = join(dir, 'tasks', 'no-submit');
+  it('ignores a legacy submit key in task.json', async () => {
+    const tasksDir = join(dir, 'tasks', 'legacy-submit');
     await fs.mkdir(tasksDir, { recursive: true });
-    await fs.writeFile(join(tasksDir, 'task.json'), JSON.stringify({ name: 'X', agent: 'a' }));
+    await fs.writeFile(
+      join(tasksDir, 'task.json'),
+      JSON.stringify({ name: 'X', agent: 'a', submit: true }),
+    );
     await fs.writeFile(join(tasksDir, 'prompt.md'), 'hello');
-    const back = await readTask(dir, 'no-submit');
-    expect(back).toEqual({ name: 'X', agent: 'a', submit: true, prompt: 'hello' });
+    const back = await readTask(dir, 'legacy-submit');
+    expect(back).toEqual({ name: 'X', agent: 'a', prompt: 'hello' });
   });
 });
 
