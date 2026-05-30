@@ -99,3 +99,67 @@ describe('OscTranscriptExtractor', () => {
     term.dispose();
   });
 });
+
+describe('OscTranscriptExtractor timestamp markers', () => {
+  /** Feed one complete `msg` frame with a unique frameId. */
+  function feedMsg(ex: OscTranscriptExtractor, role: string, text: string, id: string): void {
+    ex.feed(packets(id, { v: 1, t: 'msg', role, text }));
+  }
+
+  it('emits no marker for messages within the same minute', () => {
+    const clock = new Date(2026, 4, 30, 20, 15, 0);
+    const ex = new OscTranscriptExtractor(() => clock);
+    feedMsg(ex, 'user', 'hi', 'a');
+    feedMsg(ex, 'assistant', 'hey', 'b');
+    expect(ex.render()).toBe('[user] hi\n\n[assistant] hey');
+  });
+
+  it('never emits a marker before the first message', () => {
+    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 9, 5, 0));
+    feedMsg(ex, 'user', 'only', 'a');
+    expect(ex.render()).toBe('[user] only');
+  });
+
+  it('inserts a marker when the minute rolls over', () => {
+    let clock = new Date(2026, 4, 30, 20, 15, 30);
+    const ex = new OscTranscriptExtractor(() => clock);
+    feedMsg(ex, 'user', 'first', 'a');
+    clock = new Date(2026, 4, 30, 20, 16, 5);
+    feedMsg(ex, 'assistant', 'second', 'b');
+    expect(ex.render()).toBe('[user] first\n\n<!-- 2026-05-30:20:16 -->\n\n[assistant] second');
+  });
+
+  it('emits exactly one marker per minute even with several messages', () => {
+    let clock = new Date(2026, 4, 30, 20, 15, 0);
+    const ex = new OscTranscriptExtractor(() => clock);
+    feedMsg(ex, 'user', 'm1', 'a');
+    clock = new Date(2026, 4, 30, 20, 16, 0);
+    feedMsg(ex, 'assistant', 'm2', 'b');
+    feedMsg(ex, 'user', 'm3', 'c');
+    expect(ex.render()).toBe(
+      '[user] m1\n\n<!-- 2026-05-30:20:16 -->\n\n[assistant] m2\n\n[user] m3',
+    );
+  });
+
+  it('emits a marker for each successive minute rollover', () => {
+    let clock = new Date(2026, 11, 1, 0, 0, 0);
+    const ex = new OscTranscriptExtractor(() => clock);
+    feedMsg(ex, 'user', 'a', '1');
+    clock = new Date(2026, 11, 1, 0, 1, 0);
+    feedMsg(ex, 'assistant', 'b', '2');
+    clock = new Date(2026, 11, 1, 0, 2, 0);
+    feedMsg(ex, 'assistant', 'c', '3');
+    expect(ex.render()).toBe(
+      '[user] a\n\n<!-- 2026-12-01:00:01 -->\n\n[assistant] b\n\n<!-- 2026-12-01:00:02 -->\n\n[assistant] c',
+    );
+  });
+
+  it('zero-pads month, day, hour, and minute', () => {
+    let clock = new Date(2026, 0, 3, 4, 5, 0);
+    const ex = new OscTranscriptExtractor(() => clock);
+    feedMsg(ex, 'user', 'x', 'a');
+    clock = new Date(2026, 0, 3, 4, 6, 0);
+    feedMsg(ex, 'assistant', 'y', 'b');
+    expect(ex.render()).toContain('<!-- 2026-01-03:04:06 -->');
+  });
+});
