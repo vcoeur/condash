@@ -221,14 +221,17 @@ Navigate the per-conception terminal-session logs that the GUI writes under `.co
 
 `list` filters: `--since <when>` / `--until <when>` (by spawn time), `--modified-since <when>` (by file mtime — catches a long-running session that spawned earlier but is still being written), `--repo <name>`, `--active` (only sessions with no footer — still running), `--sid <prefix>`, `--limit <n>`. A `<when>` is an ISO date (`2026-05-30`) or datetime (`2026-05-30T14:00`), a relative span (`30m`, `2h`, `3d`, `1w` — ago from now), or `today` / `yesterday`.
 
-`read` selectors are mutually exclusive: `--head <n>`, `--tail <n>`, `--lines <a-b>` (inclusive 1-based; also `a-` to end, or `a` for one line), `--from-byte <n>` (raw bytes from offset `n` to EOF — the stateless "what changed since I last looked" cursor; the JSON `nextByte` is the offset to store for next time, and `rotated: true` flags a janitor-trimmed file), `--meta` (only the parsed header/footer). `--with-meta` keeps the `# condash:` lines in the body. A bare `<sid>` is prefix-matched across days, newest first — an ambiguous prefix exits 6.
+Every `list` row and `read` result carries a **`kind`**: `transcript` (the in-band OSC agent transcript — append-only, so a `--from-byte` cursor advanced to `nextByte` is reliable and lands on a message boundary) or `grid` (a rendered xterm-buffer snapshot — a plain shell's scrollback or an alternate-screen TUI's repainted frame, where an arbitrary byte-offset diff can be noisy). The writer stamps `kind` in the header; logs written before the field fall back to a first-line heuristic.
 
-`tail` is the "what's live right now" glance: it prints the last lines of every **active** session (no footer). `--all` includes ended sessions; `--sid` / `--repo` narrow the set.
+`read` selectors are mutually exclusive: `--head <n>`, `--tail <n>`, `--lines <a-b>` (inclusive 1-based; also `a-` to end, or `a` for one line), `--from-byte <n>` (raw bytes from offset `n` to EOF — the stateless "what changed since I last looked" cursor; the JSON `nextByte` is the offset to store for next time, and `rotated: true` flags a janitor-trimmed file), `--meta` (only the parsed header/footer). `--with-meta` keeps the `# condash:` lines in the body. `--redact` masks obvious secret shapes (provider API keys, bearer tokens, JWTs, secret-named assignments, PEM private keys) in the emitted body — do the masking once here rather than in every consumer that ships a slice off-machine. A bare `<sid>` is prefix-matched across days, newest first — an ambiguous prefix exits 6.
+
+`tail` is the "what's live right now" glance: it prints the last lines of every **active** session (no footer). `--all` includes ended sessions; `--sid` / `--repo` narrow the set; `--redact` masks secrets as on `read`.
 
 ```
 condash logs list --since today --active
 condash logs read t-a1b2c3d4 --tail 40
 condash logs read t-a1b2 --from-byte 31044 --json    # delta since the stored cursor
+condash logs read t-a1b2 --from-byte 31044 --redact  # … with secrets masked
 condash logs tail --repo condash
 ```
 

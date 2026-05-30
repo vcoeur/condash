@@ -26,8 +26,8 @@ import { UNIVERSAL_FOOTER } from '../help';
 
 const DAYS_FLAGS = ['month', 'year'] as const;
 const LIST_FLAGS = ['since', 'until', 'modified-since', 'repo', 'sid', 'limit', 'active'] as const;
-const READ_FLAGS = ['head', 'tail', 'lines', 'from-byte', 'meta', 'with-meta'] as const;
-const TAIL_FLAGS = ['sid', 'repo', 'lines', 'all'] as const;
+const READ_FLAGS = ['head', 'tail', 'lines', 'from-byte', 'meta', 'with-meta', 'redact'] as const;
+const TAIL_FLAGS = ['sid', 'repo', 'lines', 'all', 'redact'] as const;
 const NOUN_FLAGS: readonly string[] = [
   ...new Set([...DAYS_FLAGS, ...LIST_FLAGS, ...READ_FLAGS, ...TAIL_FLAGS]),
 ];
@@ -143,6 +143,8 @@ async function runRead(args: ParsedArgs, ctx: OutputContext, conception: string)
   delete args.flags.meta;
   const withMeta = args.flags['with-meta'] === true;
   delete args.flags['with-meta'];
+  const redact = args.flags.redact === true;
+  delete args.flags.redact;
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   if (!selector) {
@@ -184,6 +186,7 @@ async function runRead(args: ParsedArgs, ctx: OutputContext, conception: string)
     fromByte: fromByte ?? undefined,
     metaOnly,
     withMeta,
+    redact,
   };
   const result = await readSession(ref, opts);
   emit(ctx, toReadData(result), (d) => formatRead(d as ReadData, metaOnly));
@@ -195,6 +198,8 @@ async function runTail(args: ParsedArgs, ctx: OutputContext, conception: string)
   const n = takeInt(args, 'lines') ?? 20;
   const all = args.flags.all === true;
   delete args.flags.all;
+  const redact = args.flags.redact === true;
+  delete args.flags.redact;
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   let rows = await listSessions(conception, {
@@ -210,19 +215,21 @@ async function runTail(args: ParsedArgs, ctx: OutputContext, conception: string)
     repo?: string;
     cwd?: string;
     active: boolean;
+    kind: SessionRow['kind'];
     totalLines: number;
     bytes: number;
     lines: string[];
   }
   const sessions: TailSession[] = [];
   for (const row of rows) {
-    const read = await readSession(row, { tail: n });
+    const read = await readSession(row, { tail: n, redact });
     sessions.push({
       sid: row.sid,
       day: row.day,
       repo: row.repo,
       cwd: row.cwd,
       active: row.active,
+      kind: row.kind,
       totalLines: read.totalLines,
       bytes: read.bytes,
       lines: read.text.length === 0 ? [] : read.text.split('\n'),
@@ -265,6 +272,7 @@ interface ReadData {
   fromByte: number | null;
   nextByte: number;
   rotated: boolean;
+  kind: ReadResult['kind'];
 }
 
 function toReadData(r: ReadResult): ReadData {
@@ -283,6 +291,7 @@ function toReadData(r: ReadResult): ReadData {
     fromByte: r.fromByte,
     nextByte: r.nextByte,
     rotated: r.rotated,
+    kind: r.kind,
   };
 }
 
@@ -294,6 +303,7 @@ function formatRead(d: ReadData, metaOnly: boolean): string {
     if (d.header?.started) lines.push(`started:  ${d.header.started}`);
     if (d.repo) lines.push(`repo:     ${d.repo}`);
     if (d.cwd) lines.push(`cwd:      ${d.cwd}`);
+    lines.push(`kind:     ${d.kind}`);
     if (d.header?.cmd) {
       const argv = d.header.argv && d.header.argv.length > 0 ? ' ' + d.header.argv.join(' ') : '';
       lines.push(`cmd:      ${d.header.cmd}${argv}`);
@@ -317,8 +327,9 @@ function formatRead(d: ReadData, metaOnly: boolean): string {
 function formatListRow(r: SessionRow): string {
   const state = r.active ? 'running' : r.exitCode === null ? 'ended(?)' : `exit ${r.exitCode}`;
   const repo = (r.repo ?? '-').padEnd(12);
+  const kind = r.kind.padEnd(10);
   const cmd = r.cmd ? `  ${r.cmd}` : '';
-  return `${r.day} ${r.time}  ${r.sid.padEnd(12)} ${repo} ${state.padEnd(9)} ${fmtBytes(r.bytes).padStart(9)}${cmd}`;
+  return `${r.day} ${r.time}  ${r.sid.padEnd(12)} ${repo} ${state.padEnd(9)} ${kind} ${fmtBytes(r.bytes).padStart(9)}${cmd}`;
 }
 
 function fmtBytes(n: number): string {
@@ -437,10 +448,17 @@ function printHelp(verb: string | null): void {
         '  --meta            only the parsed header/footer, no body',
         '  --with-meta       keep the # condash: meta lines in the body',
         '',
+        'Modifier:',
+        '  --redact          mask obvious secret shapes (keys, tokens, JWTs) in the body',
+        '',
+        'The JSON payload carries `kind`: transcript (append-only — byte cursor reliable)',
+        'or grid (repainted snapshot).',
+        '',
         'Examples:',
         '  condash logs read t-a1b2c3d4',
         '  condash logs read t-a1b2 --tail 40',
         '  condash logs read t-a1b2 --from-byte 31044 --json   # what changed since',
+        '  condash logs read t-a1b2 --from-byte 31044 --redact  # … with secrets masked',
       ]);
       return;
     case 'tail':
@@ -449,6 +467,9 @@ function printHelp(verb: string | null): void {
         '',
         'Last n lines (default 20) of the active terminal tabs — a live glance.',
         'Default set is active sessions (no footer); --all includes ended ones.',
+        '',
+        'Modifier:',
+        '  --redact          mask obvious secret shapes in the emitted lines',
         '',
         'Examples:',
         '  condash logs tail',
