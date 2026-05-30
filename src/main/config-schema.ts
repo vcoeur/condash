@@ -396,6 +396,11 @@ export const globalSettingsSchema = z
   .object({
     ...sharedSchemaFields,
     ...pathTrackingFields,
+    /** Active scope toggle in the Skills pane (`conception` vs `user`).
+     *  Per-machine UI state written by `setSkillsActiveScope`; global-only, so
+     *  it is absent from `conceptionConfigSchema`. Mirrors `SkillScope` in
+     *  shared/types.ts. */
+    skillsActiveScope: z.enum(['conception', 'user']).optional(),
   })
   .strict();
 
@@ -436,6 +441,10 @@ export const DEFAULT_SKILLS_PATH = '.agents/skills';
  * the stale keys outright.
  *
  * Current rules:
+ * - `resources_path` / `skills_path` (top-level) — dropped by the reframe in
+ *   favour of the DEFAULT_RESOURCES_PATH / DEFAULT_SKILLS_PATH constants; and
+ *   `skillsActiveTab` — a defunct UI-state key. Stripped so older files keep
+ *   saving (otherwise every write fails with `Unrecognized key`).
  * - `terminal.launchers` / `terminal.launcher_command` — legacy tab-strip
  *   launcher keys. Removed silently so existing `settings.json` / `condash.json`
  *   files keep saving; the next write drops them from disk. (Their successor is
@@ -453,6 +462,15 @@ export const DEFAULT_SKILLS_PATH = '.agents/skills';
 export function migrateRawSettings(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== 'object') return parsed;
   const root = parsed as Record<string, unknown>;
+  // The reframe dropped `resources_path` / `skills_path` in favour of the
+  // DEFAULT_RESOURCES_PATH / DEFAULT_SKILLS_PATH constants; `skillsActiveTab` is
+  // a defunct UI-state key with no remaining reader. Strip all three at the top
+  // level (before the terminal early-return below) so the strict schema accepts
+  // older files — otherwise every Settings save throws `Unrecognized key` and
+  // the user can't persist any change. The next write drops them from disk.
+  for (const defunctKey of ['resources_path', 'skills_path', 'skillsActiveTab']) {
+    if (defunctKey in root) delete root[defunctKey];
+  }
   // v3.20.0 → v3.21.0: the left-band pane was renamed Outputs → Deliverables.
   if (root.layout && typeof root.layout === 'object') {
     const layout = root.layout as Record<string, unknown>;

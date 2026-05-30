@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   configSchema,
+  globalSettingsSchema,
   migrateRawSettings,
   validateAndCanonicaliseConceptionConfig,
+  validateAndCanonicaliseGlobalSettings,
 } from './config-schema';
 
 describe('configSchema repoEntry', () => {
@@ -109,6 +111,62 @@ describe('configSchema dropped path keys', () => {
   it('rejects `skills_path` (no longer configurable)', () => {
     const result = configSchema.safeParse({ skills_path: '.claude/skills' });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('migrateRawSettings — defunct top-level keys', () => {
+  // `resources_path` / `skills_path` were dropped by the reframe; `skillsActiveTab`
+  // is a defunct UI-state key. A real settings.json upgraded across those versions
+  // still carries them, and the strict schema rejects them — so without stripping,
+  // every Settings save throws `Unrecognized key`. (This was the reported bug.)
+  it('strips `resources_path`, `skills_path` and `skillsActiveTab`, keeping live keys', () => {
+    const migrated = migrateRawSettings({
+      resources_path: 'resources',
+      skills_path: '.claude/skills',
+      skillsActiveTab: 'generic',
+      workspace_path: '/home/alice/src/vcoeur',
+    }) as Record<string, unknown>;
+    expect('resources_path' in migrated).toBe(false);
+    expect('skills_path' in migrated).toBe(false);
+    expect('skillsActiveTab' in migrated).toBe(false);
+    expect(migrated.workspace_path).toBe('/home/alice/src/vcoeur');
+  });
+
+  it('lets a conception save round-trip a legacy resources_path / skills_path body', () => {
+    // Reproduces the reported failure: editing agents on the conception tab
+    // canonicalises `.condash/settings.json`, which carried these two keys.
+    const json = JSON.stringify({
+      workspace_path: '/home/alice/src/vcoeur',
+      resources_path: 'resources',
+      skills_path: '.claude/skills',
+      agents: [{ id: 'claude', label: 'Claude', command: 'agedum claude', promptFlags: true }],
+    });
+    const canon = validateAndCanonicaliseConceptionConfig(json);
+    const parsed = JSON.parse(canon);
+    expect('resources_path' in parsed).toBe(false);
+    expect('skills_path' in parsed).toBe(false);
+    expect(parsed.agents[0].promptFlags).toBe(true);
+  });
+
+  it('lets a global save keep `skillsActiveScope` while stripping defunct keys', () => {
+    // The global tab carries `skillsActiveScope` (live UI state) plus the
+    // orphaned `skillsActiveTab` and legacy `terminal.launcher_command`.
+    const json = JSON.stringify({
+      skillsActiveScope: 'user',
+      skillsActiveTab: 'generic',
+      terminal: { launcher_command: 'claude', shell: '/bin/bash' },
+    });
+    const canon = validateAndCanonicaliseGlobalSettings(json);
+    const parsed = JSON.parse(canon);
+    expect(parsed.skillsActiveScope).toBe('user');
+    expect('skillsActiveTab' in parsed).toBe(false);
+    expect('launcher_command' in parsed.terminal).toBe(false);
+    expect(parsed.terminal.shell).toBe('/bin/bash');
+  });
+
+  it('accepts a valid `skillsActiveScope` and rejects an invalid one', () => {
+    expect(globalSettingsSchema.safeParse({ skillsActiveScope: 'conception' }).success).toBe(true);
+    expect(globalSettingsSchema.safeParse({ skillsActiveScope: 'bogus' }).success).toBe(false);
   });
 });
 

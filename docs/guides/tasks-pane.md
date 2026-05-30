@@ -68,7 +68,7 @@ Run is disabled when the task's referenced agent is no longer defined (the card 
 Click **+ New task**, or **click a task card** to open the **editor popup** for an existing task:
 
 - **Name** — the card title. For a new task the **slug** auto-derives from the name until you hand-edit it.
-- **Agent** — pick an agent from the [`agents` settings list](agent-clis-and-models.md#register-it-as-a-condash-agent); the select shows the agent's `label` and stores its stable `id`.
+- **Agent** — pick an agent from the [`agents` settings list](agent-clis-and-models.md#register-it-as-a-condash-agent); the select shows the agent's `label` and stores its stable `id`. Only agents with [`promptFlags`](../reference/config.md#agents) are selectable — a task hands its filled prompt to the agent via `--prompt`/`--run`, which an opaque command can't accept. Agents without the flag are shown disabled (a new task defaults to the first prompt-seedable agent). A task already pointing at an opaque agent keeps that selection and still runs via the type-into-tab fallback.
 - **Submit** — press Enter after typing (on by default).
 - **Prompt** — markdown with `{MARKERS}`. The **Markers** chips below update live as you type so you can see the fields you're creating.
 
