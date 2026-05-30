@@ -1,4 +1,4 @@
-# CLAUDE.md — condash (Electron)
+# AGENTS.md — condash (Electron)
 
 Electron build of condash. As of 2026-04-27 this **is** the canonical condash — it lives at `vcoeur/condash` after the swap that moved the Tauri lineage to `vcoeur/condash-tauri`. The Tauri build remains buildable at that repo for as long as bug fixes are warranted.
 

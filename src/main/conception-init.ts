@@ -53,7 +53,7 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
 /**
  * Copy the bundled conception-template/ into `targetPath`, expanding the
  * `*.example` files (`condash.json.example` → `condash.json`,
- * `.claude/settings.example.json` → `.claude/settings.json`). `CLAUDE.md`
+ * `.claude/settings.example.json` → `.claude/settings.json`). `AGENTS.md`
  * is shipped under its real name with a `## General` heading wrapping the
  * shipped region, so `condash templates install` can push updates into
  * it without touching the user-owned `## Specifics` section.
