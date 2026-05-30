@@ -263,7 +263,7 @@ condash builds **no** provider environment and stores **no** secrets — model/p
 
 - **Definition** — `<conception>/tasks/<slug>/`, one directory per task. `task.json` carries `name`, `agent` (the `id` of an agent from the `agents` list above), and `submit` (optional bool, default `true`); `prompt.md` is the raw markdown prompt with markers. Config in JSON, prose in markdown — both are safe to commit. The slug is the directory name (`^[a-z0-9-]+$`); the `tasks/` tree is created on first save.
 - **Markers** — `{KEY}` (required field) or `{KEY:default}` (prefilled). Reserved `{APP}` / `{PROJECT}` (and their `{APP_PATH}` / `{PROJECT_BRANCH}` / … sub-tokens) render as searchable pickers; one selection fills the whole family.
-- **Run** — spawns the task's agent in a fresh terminal tab (cwd = conception root), types the substituted prompt, and presses Enter when `submit` is true.
+- **Run** — spawns the task's agent in a fresh terminal tab (cwd = conception root). For an opaque agent it types the substituted prompt and presses Enter when `submit` is true; for an agent with `promptFlags` it instead passes the prompt in argv (`--run` when `submit`, else `--prompt`) and types nothing.
 
 See the [Tasks pane guide](../guides/tasks-pane.md). The same `{KEY:default}` fallback applies to the project / new-project action templates below.
 
