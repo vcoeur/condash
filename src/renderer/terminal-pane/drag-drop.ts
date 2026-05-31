@@ -82,7 +82,13 @@ export function createDragDropController(deps: DragDropDeps): DragDropController
       deps.moveMount(srcId, target.column);
       const tab = deps.tabs().find((t) => t.id === srcId);
       if (tab) {
-        setMeta(srcId, { label: tab.label, customName: tab.customName, column: target.column });
+        setMeta(srcId, {
+          label: tab.label,
+          customName: tab.customName,
+          column: target.column,
+          colorSlot: tab.colorSlot,
+          pinned: tab.pinned,
+        });
       }
       deps.setActiveIn(target.column, srcId);
       deps.setActiveColumn(target.column);

@@ -146,6 +146,11 @@ function SpawnDropdown(props: {
  *  imperatively by the parent (so they can be re-parented across columns
  *  on drag-drop without losing their buffer). */
 export function TerminalColumn(props: TerminalColumnProps) {
+  // Right-click context menu (Close / Rename), anchored at the cursor. Tracks
+  // which tab it was opened on so the action targets the right session.
+  const ctxMenu = createDropdownMenu({ align: 'left' });
+  const [ctxTabId, setCtxTabId] = createSignal<string | null>(null);
+
   return (
     <div class="terminal-column" classList={{ active: props.isActiveColumn }}>
       <div
@@ -181,7 +186,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
         <For each={props.tabs}>
           {(tab) => (
             <div
-              class="terminal-tab"
+              class={`terminal-tab app-pill-${tab.colorSlot ?? 0}`}
               classList={{
                 active: tab.id === props.activeId,
                 exited: tab.exited !== undefined,
@@ -201,10 +206,13 @@ export function TerminalColumn(props: TerminalColumnProps) {
                 e.stopPropagation();
                 props.onActivateTab(props.col, tab.id);
               }}
-              onDblClick={(e) => {
-                if ((e.target as HTMLElement).closest('.terminal-tab-close')) return;
-                props.onRequestRename(tab.id);
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCtxTabId(tab.id);
+                ctxMenu.openAt(e.clientX, e.clientY);
               }}
+              onDblClick={() => props.onRequestRename(tab.id)}
               title={
                 tab.cwd
                   ? `${displayName(tab)} — ${tab.cwd}`
@@ -236,16 +244,6 @@ export function TerminalColumn(props: TerminalColumnProps) {
                   }}
                 />
               </Show>
-              <button
-                class="terminal-tab-close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onCloseTab(tab.id);
-                }}
-                title="Close tab"
-              >
-                ×
-              </button>
             </div>
           )}
         </For>
@@ -277,6 +275,44 @@ export function TerminalColumn(props: TerminalColumnProps) {
         </button>
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />
+      {/* Right-click tab menu. Portal'd to the body so it escapes the strip's
+       *  `overflow: auto` (same reason as the spawn dropdown). */}
+      <Show when={ctxMenu.isOpen() && ctxMenu.anchor()}>
+        <Portal>
+          <div
+            ref={ctxMenu.setMenu}
+            class="terminal-tab-context-menu portal"
+            role="menu"
+            style={{
+              top: `${ctxMenu.anchor()!.top}px`,
+              left: `${ctxMenu.anchor()!.left}px`,
+            }}
+          >
+            <button
+              class="terminal-tab-context-menu-item"
+              role="menuitem"
+              onClick={() => {
+                const id = ctxTabId();
+                ctxMenu.close();
+                if (id) props.onRequestRename(id);
+              }}
+            >
+              Rename
+            </button>
+            <button
+              class="terminal-tab-context-menu-item danger"
+              role="menuitem"
+              onClick={() => {
+                const id = ctxTabId();
+                ctxMenu.close();
+                if (id) props.onCloseTab(id);
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </Portal>
+      </Show>
     </div>
   );
 }

@@ -27,6 +27,10 @@ export interface Tab {
    *  until the user manually renames. Set at spawn time for sources that
    *  carry a deliberate title (lambda launcher, code-card "open in term"). */
   pinned?: boolean;
+  /** Palette slot (0..19) assigned at creation and frozen for the tab's
+   *  lifetime — the button colour, drawn from the shared app-pill wheel.
+   *  Stable across closes / reorders / restarts. */
+  colorSlot?: number;
   /** Process exit code; the tab can still be cleared via close. */
   exited?: number;
 }

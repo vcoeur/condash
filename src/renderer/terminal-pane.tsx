@@ -32,6 +32,7 @@ import { mountXterm, type MountedTerm } from './xterm-mount';
 import { TerminalColumn } from './terminal-pane/column';
 import { createDragDropController, DRAG_MIME } from './terminal-pane/drag-drop';
 import {
+  allocateColorSlot,
   DEFAULT_PANE_HEIGHT,
   DEFAULT_SPLIT_RATIO,
   deleteMeta,
@@ -42,6 +43,7 @@ import {
 import { createResizeHandlers } from './terminal-pane/resize';
 import { createSearchController } from './terminal-pane/search';
 import { type Column, displayName, type Tab } from './terminal-pane/types';
+import './panes/app-pill.css';
 import './terminal-pane.css';
 
 export type { Column, Tab } from './terminal-pane/types';
@@ -120,7 +122,8 @@ export function TerminalPane(props: {
   const pendingSpawnIntent = new Map<string, { label: string; pinned?: boolean }>();
 
   // Tracks tabs that are already in the process of closing so that
-  // user-initiated close (× button) and process-exit close don't race.
+  // user-initiated close (right-click → Close) and process-exit close
+  // don't race.
   const closingTabs = new Set<string>();
 
   // Accumulated raw pty output per session (ANSI codes included). Used by
@@ -337,17 +340,21 @@ export function TerminalPane(props: {
       const column: Column = meta?.column ?? nextSpawnColumn;
       nextSpawnColumn = 'left';
       const pinned = intent?.pinned ?? meta?.pinned;
+      // Reuse the persisted slot on restore; allocate the next zebra slot for
+      // a genuinely new tab. Frozen here for the tab's lifetime.
+      const colorSlot = meta?.colorSlot ?? allocateColorSlot();
       const tab: Tab = {
         id: s.id,
         side: 'my',
         column,
         label,
         customName: meta?.customName,
+        colorSlot,
         pinned,
         exited: s.exited,
       };
       setTabs((prev) => [...prev, tab]);
-      setMeta(s.id, { label, customName: meta?.customName, column, pinned });
+      setMeta(s.id, { label, customName: meta?.customName, column, colorSlot, pinned });
       mountForSession(s.id, column, attach?.output);
       setActiveIn(column, s.id);
       setActiveColumn(column);
@@ -508,6 +515,7 @@ export function TerminalPane(props: {
         label: tab.label,
         customName: trimmed || undefined,
         column: tab.column,
+        colorSlot: tab.colorSlot,
         pinned: tab.pinned,
       });
     }
