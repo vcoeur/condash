@@ -442,7 +442,7 @@ The IPC verbs `getLayout` / `setLayout` read and write this block atomically —
 
 ### CardMinWidth
 
-`cardMinWidth` controls the n→n+1 reflow threshold for the nine card grids (Projects, Code, Knowledge, Resources, Skills, Agents, Logs, Tasks, Deliverables). Each grid uses `minmax(min(<min>, 100%), 1fr)`, so a row of _n_ cards reflows to _n+1_ once the pane is wide enough to fit _n+1_ cards each at this width.
+`cardMinWidth` controls the n→n+1 reflow threshold for the eight card grids (Projects, Code, Knowledge, Resources, Skills, Logs, Tasks, Deliverables). Each grid uses `minmax(min(<min>, 100%), 1fr)`, so a row of _n_ cards reflows to _n+1_ once the pane is wide enough to fit _n+1_ cards each at this width.
 
 | Field          | Type                | Default | Meaning                                                      |
 | -------------- | ------------------- | ------- | ------------------------------------------------------------ |

@@ -316,6 +316,15 @@ export const DEFAULT_CARD_MIN_WIDTH = {
   deliverables: 340,
 } as const satisfies Required<CardMinWidthPrefs>;
 
+/** Canonical list of card-grid keys, derived from the one place the panes are
+ * enumerated (`DEFAULT_CARD_MIN_WIDTH`). The config schema and the settings IPC
+ * import this rather than hand-maintaining their own copies — a stale copy is
+ * exactly how `logs` / `tasks` / `deliverables` shipped unsavable. Adding a pane
+ * to `DEFAULT_CARD_MIN_WIDTH` extends every consumer automatically. */
+export const CARD_MIN_WIDTH_KEYS = Object.keys(
+  DEFAULT_CARD_MIN_WIDTH,
+) as (keyof CardMinWidthPrefs)[];
+
 /** One row of `git status --porcelain=v1` output, joined with the
  *  matching `git diff --numstat HEAD` row when present. */
 export interface DirtyFile {
