@@ -326,6 +326,10 @@ export interface CondashApi {
    *  the Settings modal's "Open externally" buttons for condash.json
    *  and settings.json. Caller must pass an absolute path. */
   openPath(target: string): Promise<void>;
+  /** Reveal a file or directory in the OS file manager (selects it in its
+   *  parent folder). Used by the "reveal in file manager" affordance on the
+   *  Resources / Logs / Deliverables / Code card panes. Absolute path. */
+  showInFolder(target: string): Promise<void>;
   /** Create a new note file under <projectPath>/notes/. The slug is sanitised
    *  and prefixed with the next zero-padded NN- counter. Returns the absolute
    *  path of the new file (always created — caller can then open it). */

@@ -193,6 +193,17 @@ export function registerSystemIpc(opts: {
     if (error) throw new Error(error);
   });
 
+  // Reveal a file/dir in the OS file manager, selected in its parent folder.
+  // Same trust boundary as openInEditor / openPath: the renderer hands it a
+  // path it already displays, and this only delegates to Electron's shell
+  // (no shell expansion, no command-injection vector).
+  ipcMain.handle('showInFolder', (_, target: string) => {
+    if (typeof target !== 'string' || target.length === 0) {
+      throw new Error('showInFolder: target must be a non-empty string');
+    }
+    shell.showItemInFolder(target);
+  });
+
   ipcMain.handle('quitApp', () => {
     app.quit();
   });

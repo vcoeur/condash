@@ -808,6 +808,7 @@ export interface KnowledgeNode {
 export type ResourceCategory =
   | 'markdown'
   | 'pdf'
+  | 'html'
   | 'text'
   | 'image'
   | 'audio'

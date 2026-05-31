@@ -6,6 +6,7 @@ import { ProjectPreview } from './project-preview';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { PdfModal } from './pdf-modal';
 import { HtmlModal } from './html-modal';
+import { ImageModal } from './image-modal';
 import { HelpModal } from './help-modal';
 import { WelcomeScreen } from './welcome-screen';
 import { PromptModal } from './prompt-modal';
@@ -101,6 +102,8 @@ function App() {
     setPdfPath,
     htmlPath,
     setHtmlPath,
+    imagePath,
+    setImagePath,
     helpDoc,
     setHelpDoc,
     searchModalOpen,
@@ -286,6 +289,7 @@ function App() {
     setModal,
     setPdfPath,
     setHtmlPath,
+    setImagePath,
     setSettingsOpen,
     bridge,
     flashToast,
@@ -312,6 +316,7 @@ function App() {
     setPreviewPath,
     setPdfPath,
     setHtmlPath,
+    setImagePath,
     openPrompt,
     flashToast,
   });
@@ -513,6 +518,7 @@ function App() {
                         <DeliverablesView
                           projects={projects() ?? []}
                           onOpenDeliverable={openDeliverable}
+                          onReveal={(p) => void window.condash.showInFolder(p)}
                         />
                       </Match>
                       <Match when={layout().leftView === 'tasks'}>
@@ -791,6 +797,7 @@ function App() {
           path={pdfPath()!}
           onClose={() => router.closeChildModal(() => setPdfPath(null))}
           onOpenInOs={handleOpenInEditor}
+          onReveal={(p) => void window.condash.showInFolder(p)}
         />
       </Show>
 
@@ -798,7 +805,17 @@ function App() {
         <HtmlModal
           path={htmlPath()!}
           onClose={() => router.closeChildModal(() => setHtmlPath(null))}
-          onOpenExternally={(p) => void window.condash.openExternal(p)}
+          onOpenInOs={handleOpenInEditor}
+          onReveal={(p) => void window.condash.showInFolder(p)}
+        />
+      </Show>
+
+      <Show when={imagePath()}>
+        <ImageModal
+          path={imagePath()!}
+          onClose={() => router.closeChildModal(() => setImagePath(null))}
+          onOpenInOs={handleOpenInEditor}
+          onReveal={(p) => void window.condash.showInFolder(p)}
         />
       </Show>
 

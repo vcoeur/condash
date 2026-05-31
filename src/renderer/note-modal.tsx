@@ -9,7 +9,7 @@ import {
   onMount,
   Show,
 } from 'solid-js';
-import { renderMarkdown, runMermaidIn } from './markdown';
+import { highlightCode, renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
 import type { Deliverable } from '@shared/types';
@@ -209,6 +209,13 @@ export function NoteModal(props: {
     const path = props.state?.path ?? null;
     const baseDir = path ? path.replace(/\/[^/]*$/, '') : undefined;
     return renderMarkdown(text, { baseDir });
+  });
+
+  // Read view for a non-markdown file: syntax-highlight the source by extension.
+  const codeHtml = createMemo(() => {
+    const text = content();
+    if (text == null) return '';
+    return highlightCode(text, props.state?.path ?? '');
   });
 
   let bodyRef: HTMLDivElement | undefined;
@@ -708,7 +715,7 @@ export function NoteModal(props: {
               !isMarkdown(props.state.path)
             }
           >
-            <pre class="md-rendered raw-text">{content() ?? ''}</pre>
+            <div class="md-rendered raw-code" innerHTML={codeHtml()} />
           </Show>
           <Show when={!content.loading && !content.error && mode() === 'edit'}>
             <div class="cm-host" ref={(el) => (editorParent = el)} />

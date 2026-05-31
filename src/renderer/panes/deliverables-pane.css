@@ -112,6 +112,38 @@
   gap: 4px;
 }
 
+/* Each grid cell is a flex row: the open button flexes to fill, the reveal
+ * button sits beside it. Scoped to the pane (`.deliverables-rows`) so the
+ * project-preview's deliverable rows keep their own layout. */
+.deliverables-rows .deliverable-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.deliverables-rows .deliverable-button {
+  flex: 1;
+  min-width: 0;
+}
+
+.deliverable-reveal {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 10px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.deliverable-reveal:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 /* Coarse type tag in front of each deliverable label. */
 .deliverables-kind {
   flex: none;

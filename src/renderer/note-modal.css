@@ -309,15 +309,12 @@
   font-size: 12px;
 }
 
-.md-rendered.raw-text {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  white-space: pre-wrap;
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
-  max-width: none;
+/* Read view of a non-markdown file: one full-width highlighted code block.
+ * The inner `<pre class="hljs">` inherits `.md-rendered pre` chrome (border,
+ * background, horizontal scroll); drop its block margin so it fills the body
+ * flush instead of floating like an inline fenced block. */
+.md-rendered.raw-code pre {
+  margin: 0;
 }
 
 .config-summary-panel {

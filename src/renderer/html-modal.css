@@ -18,3 +18,19 @@
   border: none;
   background: #fff;
 }
+
+/* Source tab — scrollable highlighted markup filling the body. */
+.html-source {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  background: var(--bg-elevated);
+}
+
+/* Rendered / Source segmented toggle in the modal head. Tightens the gap so
+ * the two buttons read as one control rather than two stray head buttons. */
+.modal-seg {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}

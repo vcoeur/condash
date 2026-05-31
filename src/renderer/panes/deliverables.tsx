@@ -26,6 +26,8 @@ function deliverableKind(deliverable: Deliverable): string {
 export function DeliverablesView(props: {
   projects: Project[];
   onOpenDeliverable: (deliverable: Deliverable) => void;
+  /** Reveal a local-file deliverable in the OS file manager. */
+  onReveal: (path: string) => void;
 }) {
   const scrollRef = usePaneScrollMemory('deliverables');
 
@@ -90,6 +92,17 @@ export function DeliverablesView(props: {
                             : deliverable.path}
                         </span>
                       </button>
+                      <Show when={deliverable.kind === 'file'}>
+                        <button
+                          type="button"
+                          class="deliverable-reveal"
+                          title="Reveal in file manager"
+                          aria-label="Reveal in file manager"
+                          onClick={() => props.onReveal(deliverable.path)}
+                        >
+                          ⤷
+                        </button>
+                      </Show>
                     </li>
                   )}
                 </For>

@@ -105,6 +105,11 @@
   color: var(--col-soon, var(--accent));
 }
 
+.resources-card[data-category='html'] .resources-card-glyph {
+  background: color-mix(in srgb, var(--col-later, var(--accent)) 16%, transparent);
+  color: var(--col-later, var(--accent));
+}
+
 .resources-card[data-category='binary'] .resources-card-glyph,
 .resources-card[data-category='archive'] .resources-card-glyph,
 .resources-card[data-category='other'] .resources-card-glyph {

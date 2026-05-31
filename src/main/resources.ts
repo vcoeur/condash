@@ -1,10 +1,16 @@
 import { promises as fs } from 'node:fs';
-import { basename, extname, join } from 'node:path';
-import type { ResourceCategory, ResourceNode } from '../shared/types';
+import { basename, join } from 'node:path';
+import type { ResourceNode } from '../shared/types';
 import { toPosix } from '../shared/path';
+import { categorise, mimeFor } from '../shared/file-category';
 import { DEFAULT_RESOURCES_PATH } from './config-schema';
 import { parseHead } from './knowledge';
 import { readFileHead } from './read-file-head';
+
+// Re-exported so existing importers (and `resources.test.ts`) keep reaching
+// the classifier through this module; the implementation now lives in the
+// node-free shared module shared with the renderer's file-open router.
+export { categorise, mimeFor };
 
 const HIDDEN_PREFIX = /^\./;
 
@@ -110,137 +116,3 @@ async function readMarkdownMeta(
   const meta = parseHead(head, fallback);
   return { title: meta.title, summary: meta.summary };
 }
-
-/**
- * Coarse category from the filename extension. Drives the icon picker and
- * which "View" action shows on the card. Every entry maps to one bucket;
- * unknown extensions fall through to `other`.
- */
-export function categorise(name: string): ResourceCategory {
-  const ext = extname(name).toLowerCase();
-  if (ext === '.md' || ext === '.markdown') return 'markdown';
-  if (ext === '.pdf') return 'pdf';
-  if (TEXT_EXTS.has(ext)) return 'text';
-  if (IMAGE_EXTS.has(ext)) return 'image';
-  if (AUDIO_EXTS.has(ext)) return 'audio';
-  if (VIDEO_EXTS.has(ext)) return 'video';
-  if (ARCHIVE_EXTS.has(ext)) return 'archive';
-  if (BINARY_EXTS.has(ext)) return 'binary';
-  return 'other';
-}
-
-/**
- * Best-effort mime hint. Kept compact rather than pulling in `mime-types`;
- * the renderer only uses this for tooltips, the category drives behaviour.
- */
-export function mimeFor(name: string): string | undefined {
-  const ext = extname(name).toLowerCase();
-  return MIME_TABLE[ext];
-}
-
-const TEXT_EXTS = new Set([
-  '.txt',
-  '.log',
-  '.csv',
-  '.tsv',
-  '.json',
-  '.yaml',
-  '.yml',
-  '.toml',
-  '.ini',
-  '.env',
-  '.xml',
-  '.html',
-  '.htm',
-  '.css',
-  '.scss',
-  '.sass',
-  '.less',
-  '.js',
-  '.cjs',
-  '.mjs',
-  '.ts',
-  '.tsx',
-  '.jsx',
-  '.py',
-  '.rb',
-  '.go',
-  '.rs',
-  '.java',
-  '.kt',
-  '.kts',
-  '.c',
-  '.h',
-  '.cpp',
-  '.hpp',
-  '.cc',
-  '.hh',
-  '.sh',
-  '.bash',
-  '.zsh',
-  '.fish',
-  '.lua',
-  '.sql',
-  '.r',
-  '.swift',
-  '.scala',
-  '.tex',
-]);
-
-const IMAGE_EXTS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.svg',
-  '.bmp',
-  '.tiff',
-  '.ico',
-  '.avif',
-  '.heic',
-]);
-
-const AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus']);
-
-const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v']);
-
-const ARCHIVE_EXTS = new Set(['.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.rar']);
-
-const BINARY_EXTS = new Set(['.exe', '.dll', '.so', '.dylib', '.bin', '.dat', '.iso', '.dmg']);
-
-const MIME_TABLE: Record<string, string> = {
-  '.md': 'text/markdown',
-  '.markdown': 'text/markdown',
-  '.pdf': 'application/pdf',
-  '.txt': 'text/plain',
-  '.log': 'text/plain',
-  '.csv': 'text/csv',
-  '.tsv': 'text/tab-separated-values',
-  '.json': 'application/json',
-  '.yaml': 'application/yaml',
-  '.yml': 'application/yaml',
-  '.toml': 'application/toml',
-  '.html': 'text/html',
-  '.htm': 'text/html',
-  '.css': 'text/css',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.cjs': 'text/javascript',
-  '.ts': 'text/typescript',
-  '.tsx': 'text/typescript',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.ogg': 'audio/ogg',
-  '.mp4': 'video/mp4',
-  '.mov': 'video/quicktime',
-  '.zip': 'application/zip',
-  '.tar': 'application/x-tar',
-  '.gz': 'application/gzip',
-};

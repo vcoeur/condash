@@ -140,6 +140,8 @@ export function LogsView(props: {
 
   const sessionsFor = (day: string): TermLogSessionMeta[] => sessionsByDay()?.get(day) ?? [];
 
+  const reveal = (path: string): void => void window.condash.showInFolder(path);
+
   return (
     <div class="logs-pane">
       <div class="logs-toolbar">
@@ -219,7 +221,9 @@ export function LogsView(props: {
               }
             >
               <For each={taskRuns()}>
-                {(group) => <TaskRunGroupView group={group} onOpen={setActivePath} />}
+                {(group) => (
+                  <TaskRunGroupView group={group} onOpen={setActivePath} onReveal={reveal} />
+                )}
               </For>
             </Show>
           </Show>
@@ -249,7 +253,11 @@ export function LogsView(props: {
                           <span class="logs-day-label">Today · {dayLabel(d.day)}</span>
                           <span class="logs-group-count">{sessionsFor(d.day).length}</span>
                         </div>
-                        <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                        <DaySessionGrid
+                          sessions={sessionsFor(d.day)}
+                          onOpen={setActivePath}
+                          onReveal={reveal}
+                        />
                       </div>
                     }
                   >
@@ -259,7 +267,11 @@ export function LogsView(props: {
                         <span class="logs-day-label">{dayLabel(d.day)}</span>
                         <span class="logs-group-count">{sessionsFor(d.day).length}</span>
                       </summary>
-                      <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                      <DaySessionGrid
+                        sessions={sessionsFor(d.day)}
+                        onOpen={setActivePath}
+                        onReveal={reveal}
+                      />
                     </details>
                   </Show>
                 )}
@@ -281,7 +293,11 @@ export function LogsView(props: {
                       {(d) => (
                         <div class="logs-day-subgroup">
                           <div class="logs-day-subheader">{dayLabel(d.day)}</div>
-                          <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                          <DaySessionGrid
+                            sessions={sessionsFor(d.day)}
+                            onOpen={setActivePath}
+                            onReveal={reveal}
+                          />
                         </div>
                       )}
                     </For>
@@ -301,6 +317,7 @@ export function LogsView(props: {
 function TaskRunGroupView(props: {
   group: TaskRunGroup;
   onOpen: (path: string) => void;
+  onReveal: (path: string) => void;
 }): JSX.Element {
   return (
     <details class="logs-day-group" open>
@@ -315,7 +332,7 @@ function TaskRunGroupView(props: {
       <ul class="logs-day-sessions">
         <For each={props.group.runs}>
           {(run) => (
-            <li>
+            <li class="logs-session-li">
               <button
                 type="button"
                 class="logs-session-card"
@@ -326,6 +343,15 @@ function TaskRunGroupView(props: {
                 </span>
                 <span class="logs-session-cmd">{run.sid}</span>
                 <span class="logs-session-size">{formatBytes(run.bytes)}</span>
+              </button>
+              <button
+                type="button"
+                class="logs-session-reveal"
+                title="Reveal in file manager"
+                aria-label="Reveal in file manager"
+                onClick={() => props.onReveal(run.path)}
+              >
+                ⤷
               </button>
             </li>
           )}
@@ -373,6 +399,7 @@ function monthLabel(key: string): string {
 function DaySessionGrid(props: {
   sessions: TermLogSessionMeta[];
   onOpen: (path: string) => void;
+  onReveal: (path: string) => void;
 }): JSX.Element {
   return (
     <Show
@@ -381,14 +408,24 @@ function DaySessionGrid(props: {
     >
       <ul class="logs-day-sessions">
         <For each={props.sessions}>
-          {(sess) => <SessionCard sess={sess} onOpen={() => props.onOpen(sess.path)} />}
+          {(sess) => (
+            <SessionCard
+              sess={sess}
+              onOpen={() => props.onOpen(sess.path)}
+              onReveal={props.onReveal}
+            />
+          )}
         </For>
       </ul>
     </Show>
   );
 }
 
-function SessionCard(props: { sess: TermLogSessionMeta; onOpen: () => void }): JSX.Element {
+function SessionCard(props: {
+  sess: TermLogSessionMeta;
+  onOpen: () => void;
+  onReveal: (path: string) => void;
+}): JSX.Element {
   const isFailure = (): boolean =>
     typeof props.sess.exitCode === 'number' && props.sess.exitCode !== 0;
   // `exitCode === undefined` → no footer on disk → session genuinely alive.
@@ -407,7 +444,7 @@ function SessionCard(props: { sess: TermLogSessionMeta; onOpen: () => void }): J
     return 'Session ended without a recorded exit code (condash exited or crashed before the footer could flush).';
   };
   return (
-    <li>
+    <li class="logs-session-li">
       <button
         type="button"
         class="logs-session-card"
@@ -423,6 +460,15 @@ function SessionCard(props: { sess: TermLogSessionMeta; onOpen: () => void }): J
         <span class="logs-session-exit" title={statusTitle()}>
           {statusLabel()}
         </span>
+      </button>
+      <button
+        type="button"
+        class="logs-session-reveal"
+        title="Reveal in file manager"
+        aria-label="Reveal in file manager"
+        onClick={() => props.onReveal(props.sess.path)}
+      >
+        ⤷
       </button>
     </li>
   );

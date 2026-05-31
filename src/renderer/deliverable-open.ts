@@ -1,42 +1,54 @@
 import type { Setter } from 'solid-js';
 import type { ModalState } from './note-modal';
+import { categorise } from '@shared/file-category';
 
 export interface DeliverableOpenSetters {
   setPdfPath: Setter<string | null>;
   setHtmlPath: Setter<string | null>;
+  setImagePath: Setter<string | null>;
   setModal: Setter<ModalState>;
 }
 
 /**
- * Open a deliverable target by type. `target` is either a resolved local path
- * or a verbatim http(s) URL (`Deliverable.path`):
+ * Open a file/URL target in the right surface. `target` is either a resolved
+ * local path or a verbatim http(s) URL (`Deliverable.path`). Local files are
+ * classified by `categorise` (the same classifier the Resources pane uses), so
+ * every pane opens a given file type the same way:
  *
  *   - http(s) URL → external browser
- *   - .pdf        → in-app PDF modal
- *   - .html/.htm  → in-app HTML preview
- *   - .md         → in-app read-only markdown viewer
+ *   - pdf         → in-app PDF modal
+ *   - html        → in-app HTML preview (rendered, with a source toggle)
+ *   - image       → in-app image viewer
+ *   - markdown    → in-app read-only markdown viewer
+ *   - text/code   → in-app read-only, syntax-highlighted viewer
  *   - everything else → OS default application
  *
- * Shared by the project-preview deliverables list and the Outputs pane so both
- * route every artifact the same way.
+ * Shared by the project-preview deliverables list, the knowledge/resources
+ * tree, and the Deliverables pane so every artifact routes identically.
  */
 export function openDeliverableTarget(target: string, setters: DeliverableOpenSetters): void {
-  const lower = target.toLowerCase();
   if (/^https?:\/\//i.test(target)) {
     void window.condash.openExternal(target);
     return;
   }
-  if (lower.endsWith('.pdf')) {
-    setters.setPdfPath(target);
-    return;
+  // Classify on the basename so a dotted parent directory can't be mistaken
+  // for an extension.
+  const base = target.split(/[/\\]/).pop() ?? target;
+  switch (categorise(base)) {
+    case 'pdf':
+      setters.setPdfPath(target);
+      return;
+    case 'html':
+      setters.setHtmlPath(target);
+      return;
+    case 'image':
+      setters.setImagePath(target);
+      return;
+    case 'markdown':
+    case 'text':
+      setters.setModal({ path: target, readOnly: true });
+      return;
+    default:
+      void window.condash.openPath(target);
   }
-  if (lower.endsWith('.html') || lower.endsWith('.htm')) {
-    setters.setHtmlPath(target);
-    return;
-  }
-  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
-    setters.setModal({ path: target, readOnly: true });
-    return;
-  }
-  void window.condash.openPath(target);
 }
