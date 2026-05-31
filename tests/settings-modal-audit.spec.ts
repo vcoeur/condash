@@ -362,15 +362,20 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
       }
     }
 
-    // Card density (5 panes)
-    const densityKeys: ('projects' | 'code' | 'knowledge' | 'resources' | 'skills')[] = [
+    // Card density (8 panes — must stay in lock-step with CARD_DENSITY_FIELDS /
+    // DEFAULT_CARD_MIN_WIDTH; logs/tasks/deliverables were the panes that shipped
+    // unsavable because this list lagged the UI at five).
+    const densityKeys: DensityKey[] = [
       'projects',
       'code',
       'knowledge',
       'resources',
       'skills',
+      'logs',
+      'tasks',
+      'deliverables',
     ];
-    const densityValues = [222, 333, 444, 555, 666];
+    const densityValues = [222, 333, 444, 555, 666, 777, 888, 999];
     for (let i = 0; i < densityKeys.length; i++) {
       const label = densityKeys[i];
       const value = densityValues[i];
@@ -694,22 +699,39 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
       }
     }
 
-    // Conception · Card density override (one pane is enough).
+    // Conception · Card density override. Cover both an original pane
+    // (projects) and a late-added one (logs): the conception tab → writeNote →
+    // condash.json path is exactly where the reported failure surfaced
+    // (`condash.json: cardMinWidth — Unrecognized key: "logs"`).
     {
-      const labelRow = conceptionPanel
+      const projectsRow = conceptionPanel
         .locator('section#settings-section-appearance\\:conception label', {
           hasText: 'Project cards',
         })
         .first();
-      const input = labelRow.locator('input[type="number"]').first();
       await auditNumber({
         scope: 'conception',
         section: 'Appearance',
         field: 'Card density override · projects',
         expectedKey: 'cardMinWidth.projects',
         filePath: conceptionPath,
-        input,
+        input: projectsRow.locator('input[type="number"]').first(),
         value: 999,
+      });
+
+      const logsRow = conceptionPanel
+        .locator('section#settings-section-appearance\\:conception label', {
+          hasText: 'Log cards',
+        })
+        .first();
+      await auditNumber({
+        scope: 'conception',
+        section: 'Appearance',
+        field: 'Card density override · logs',
+        expectedKey: 'cardMinWidth.logs',
+        filePath: conceptionPath,
+        input: logsRow.locator('input[type="number"]').first(),
+        value: 480,
       });
     }
 
@@ -911,7 +933,20 @@ test('settings modal: audit every field round-trips edit → on-disk', async () 
   }
 });
 
-function labelText(key: 'projects' | 'code' | 'knowledge' | 'resources' | 'skills'): string {
+/** Card-density pane keys. Mirror `CardMinWidthPrefs` / `DEFAULT_CARD_MIN_WIDTH`
+ *  in src/shared/types.ts — extend both this union and `labelText` when a pane
+ *  is added, or the audit silently stops covering it. */
+type DensityKey =
+  | 'projects'
+  | 'code'
+  | 'knowledge'
+  | 'resources'
+  | 'skills'
+  | 'logs'
+  | 'tasks'
+  | 'deliverables';
+
+function labelText(key: DensityKey): string {
   switch (key) {
     case 'projects':
       return 'Project cards';
@@ -923,5 +958,11 @@ function labelText(key: 'projects' | 'code' | 'knowledge' | 'resources' | 'skill
       return 'Resource cards';
     case 'skills':
       return 'Skill cards';
+    case 'logs':
+      return 'Log cards';
+    case 'tasks':
+      return 'Task cards';
+    case 'deliverables':
+      return 'Deliverable cards';
   }
 }

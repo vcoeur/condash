@@ -6,6 +6,7 @@ import {
   validateAndCanonicaliseConceptionConfig,
   validateAndCanonicaliseGlobalSettings,
 } from './config-schema';
+import { CARD_MIN_WIDTH_KEYS, DEFAULT_CARD_MIN_WIDTH } from '../shared/types';
 
 describe('configSchema repoEntry', () => {
   it('accepts the new env / install / pinned_branch fields', () => {
@@ -245,5 +246,51 @@ describe('migrateRawSettings — launchers replaced by agents', () => {
     const parsed = JSON.parse(canon);
     expect(parsed.terminal.launchers).toBeUndefined();
     expect(parsed.terminal.shell).toBe('/bin/zsh');
+  });
+});
+
+describe('configSchema cardMinWidth — every card grid is accepted', () => {
+  // The reported bug: the Card-density UI grew from five panes to eight
+  // (logs / tasks / deliverables added), but the schema's key list stayed at
+  // five. Saving a Log/Task/Deliverable width on the conception tab threw
+  // `condash.json: cardMinWidth — Unrecognized key: "logs"`. Drive every
+  // canonical key through the schema so a future pane can't drift again.
+  it('accepts every key in DEFAULT_CARD_MIN_WIDTH', () => {
+    for (const key of CARD_MIN_WIDTH_KEYS) {
+      const result = configSchema.safeParse({ cardMinWidth: { [key]: 500 } });
+      expect(result.success, `cardMinWidth.${key} should be accepted`).toBe(true);
+    }
+  });
+
+  it('accepts a full eight-key cardMinWidth object', () => {
+    const result = configSchema.safeParse({ cardMinWidth: { ...DEFAULT_CARD_MIN_WIDTH } });
+    expect(result.success).toBe(true);
+  });
+
+  it('still rejects an unknown cardMinWidth key (typo guard intact)', () => {
+    const result = configSchema.safeParse({ cardMinWidth: { logz: 500 } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-positive cardMinWidth value', () => {
+    expect(configSchema.safeParse({ cardMinWidth: { logs: 0 } }).success).toBe(false);
+    expect(configSchema.safeParse({ cardMinWidth: { logs: -10 } }).success).toBe(false);
+  });
+
+  it('lets a conception save round-trip a `logs` card width (the reported failure)', () => {
+    // Reproduces the screenshot: editing the Log-cards min-width on the
+    // conception tab canonicalises condash.json. Before the fix this threw
+    // `condash.json: cardMinWidth — Unrecognized key: "logs"`.
+    const json = JSON.stringify({ cardMinWidth: { logs: 500, tasks: 360, deliverables: 380 } });
+    const canon = validateAndCanonicaliseConceptionConfig(json);
+    const parsed = JSON.parse(canon);
+    expect(parsed.cardMinWidth).toEqual({ logs: 500, tasks: 360, deliverables: 380 });
+  });
+
+  it('lets a global save round-trip the new card widths too', () => {
+    const json = JSON.stringify({ cardMinWidth: { logs: 500, tasks: 360, deliverables: 380 } });
+    const canon = validateAndCanonicaliseGlobalSettings(json);
+    const parsed = JSON.parse(canon);
+    expect(parsed.cardMinWidth).toEqual({ logs: 500, tasks: 360, deliverables: 380 });
   });
 });

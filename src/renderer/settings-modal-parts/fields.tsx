@@ -211,6 +211,18 @@ const CARD_DENSITY_FIELDS = [
   { key: 'deliverables', label: 'Deliverable cards (Deliverables pane)', short: 'Deliverable' },
 ] as const;
 
+// Compile-time guard: every CardMinWidthPrefs key must have a density field
+// here. Add a pane to the type without a field and `_MissingDensityField`
+// becomes that key (not `never`), so this assignment fails tsc — the Settings
+// UI can no longer silently fall behind the schema (the logs/tasks/deliverables
+// regression).
+type _MissingDensityField = Exclude<
+  keyof CardMinWidthPrefs,
+  (typeof CARD_DENSITY_FIELDS)[number]['key']
+>;
+const _assertAllDensityFieldsPresent: _MissingDensityField extends never ? true : false = true;
+void _assertAllDensityFieldsPresent;
+
 export function CardDensityFields(props: {
   resolve: (key: keyof CardMinWidthPrefs) => number;
   onChange: (patch: CardMinWidthPrefs) => void;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CardMinWidthPrefs } from '../shared/types';
 
 /**
  * Schemas for the two condash settings files. The unified shape lives here
@@ -319,6 +320,10 @@ const layoutSchema = z
   })
   .strict();
 
+// One entry per card grid. The `satisfies Record<keyof CardMinWidthPrefs, …>`
+// makes this list exhaustive at compile time: adding a pane to CardMinWidthPrefs
+// without adding it here is a tsc error, not a silent `Unrecognized key` at save
+// time. This is the guard that was missing when logs/tasks/deliverables shipped.
 const cardMinWidthSchema = z
   .object({
     projects: z.number().int().positive().optional(),
@@ -326,7 +331,10 @@ const cardMinWidthSchema = z
     knowledge: z.number().int().positive().optional(),
     resources: z.number().int().positive().optional(),
     skills: z.number().int().positive().optional(),
-  })
+    logs: z.number().int().positive().optional(),
+    tasks: z.number().int().positive().optional(),
+    deliverables: z.number().int().positive().optional(),
+  } satisfies Record<keyof CardMinWidthPrefs, z.ZodTypeAny>)
   .strict();
 
 const treeExpansionSchema = z
