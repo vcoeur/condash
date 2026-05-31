@@ -83,12 +83,13 @@ Click **+ New task**, or **click a task card** to open the **editor popup** for 
 - **Agent** — pick an agent from the [`agents` settings list](agent-clis-and-models.md#register-it-as-a-condash-agent); the select shows the agent's `label` and stores its stable `id`. Only agents with [`promptFlags`](../reference/config.md#agents) are selectable — a task hands its filled prompt to the agent via `--prompt`/`--run`, which an opaque command can't accept. Agents without the flag are shown disabled (a new task defaults to the first prompt-seedable agent). A task already pointing at an opaque agent keeps that selection and still runs via the type-into-tab fallback.
 - **Submit** — press Enter after typing (on by default).
 - **Prompt** — markdown with `{MARKERS}`. The **Markers** chips below update live as you type so you can see the fields you're creating.
-- **Schedule** — an opt-in cadence (`30s` / `2m` / `1h`; blank = off). See *Schedule a task* below.
+- **Schedule** — an opt-in cadence picked from a fixed list (*Off*, 1m, 5m, 30m, 1h, 2h, 6h, 12h, 1d, 7d). See *Schedule a task* below.
+- **Run timeout** — shown only once a schedule is set: how long a single headless run may live before it is killed and discarded (1m / 5m / 10m / 30m / 1h; default 10m). See *Schedule a task*.
 - **Keep manual runs out of the normal logs** — the per-task default for the run-popup toggle.
 
 The editor carries **Save** / **Cancel** and, for an existing task, a **Delete** button that asks for confirmation first. Renaming the slug moves the task directory.
 
-The **Schedule** and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing both removes the entry.
+The **Schedule**, **Run timeout**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing them all removes the entry.
 
 ## Schedule a task
 
@@ -97,6 +98,12 @@ A task with a **Schedule** cadence runs itself on that interval — **headless**
 A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (last ~5 runs kept), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes (e.g. `.condash/term-titles.json`); condash does not capture it.
 
 The scheduler is cheap on idle workspaces: it **single-flights** (never overlaps a still-running run of the same task) and **growth-gates** (skips a tick when no open tab produced new output since the last run).
+
+**Run timeout.** A scheduled run is killed and discarded once its **Run timeout** elapses (default 10m). The timeout doubles as the *discard* mechanism: an agent invoked with `--prompt` finishes its work but does not exit the process, so without a cap it would hold the single-flight slot — stretching the *effective* cadence out to the timeout regardless of the schedule. Keep the timeout **≤ the schedule interval** so each cycle frees the slot before the next is due. (Once an agent can run as a clean one-shot that exits on completion — `--run` — the timeout becomes a pure safety cap.)
+
+### Running runs
+
+While a scheduled run is in flight it appears in a **Running** section at the bottom of the Tasks pane. Each row shows the task and how long the run has been alive; expand it to tail the run's live log, or hit **Kill** to terminate and discard it immediately.
 
 ## Keep runs out of the logs
 

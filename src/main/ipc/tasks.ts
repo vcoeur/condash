@@ -4,6 +4,7 @@ import type { TaskConfigEntry } from '../../shared/types';
 import { deleteTask, listTasks, readTask, writeTask } from '../tasks';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { updateSettings } from '../settings';
+import { killTaskRun, listRunningTaskRuns } from '../task-scheduler';
 import { withConception } from './utils';
 
 /**
@@ -26,6 +27,12 @@ export function registerTasksIpc(): void {
     }, undefined),
   );
 
+  // Live headless scheduled runs (capability 1) — the Tasks pane's "Running"
+  // section lists them and can kill one. Process-global, not conception-scoped:
+  // the scheduler only ever runs the active conception's tasks.
+  ipcMain.handle('listRunningTaskRuns', () => listRunningTaskRuns());
+  ipcMain.handle('killTaskRun', (_, sid: string) => killTaskRun(sid));
+
   // Per-task schedule / excludeFromLogs config (capability 1). Read merges
   // through the effective config (condash.json over settings.json); writes
   // always target the per-machine settings.json `taskConfig` map.
@@ -44,14 +51,19 @@ export function registerTasksIpc(): void {
       typeof entry?.schedule === 'string' && entry.schedule.trim().length > 0
         ? entry.schedule.trim()
         : undefined;
+    const timeout =
+      typeof entry?.timeout === 'string' && entry.timeout.trim().length > 0
+        ? entry.timeout.trim()
+        : undefined;
     const excludeFromLogs = entry?.excludeFromLogs === true ? true : undefined;
     await updateSettings((cur) => {
       const map = { ...((cur.taskConfig ?? {}) as Record<string, TaskConfigEntry>) };
-      if (schedule === undefined && excludeFromLogs === undefined) {
+      if (schedule === undefined && timeout === undefined && excludeFromLogs === undefined) {
         delete map[slug];
       } else {
         map[slug] = {
           ...(schedule ? { schedule } : {}),
+          ...(timeout ? { timeout } : {}),
           ...(excludeFromLogs ? { excludeFromLogs } : {}),
         };
       }

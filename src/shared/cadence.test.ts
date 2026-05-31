@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { parseCadence } from './cadence';
 
 describe('parseCadence', () => {
-  it('parses seconds / minutes / hours to ms', () => {
+  it('parses seconds / minutes / hours / days to ms', () => {
     expect(parseCadence('30s')).toBe(30_000);
     expect(parseCadence('2m')).toBe(120_000);
     expect(parseCadence('1h')).toBe(3_600_000);
+    expect(parseCadence('1d')).toBe(86_400_000);
+    expect(parseCadence('7d')).toBe(604_800_000);
   });
 
   it('tolerates surrounding + inner whitespace', () => {
@@ -15,7 +17,7 @@ describe('parseCadence', () => {
   it('returns null for absent / empty / malformed input', () => {
     expect(parseCadence(undefined)).toBeNull();
     expect(parseCadence('')).toBeNull();
-    expect(parseCadence('2d')).toBeNull();
+    expect(parseCadence('2w')).toBeNull();
     expect(parseCadence('m')).toBeNull();
     expect(parseCadence('0s')).toBeNull();
     expect(parseCadence('-3m')).toBeNull();

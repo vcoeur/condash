@@ -100,10 +100,10 @@ describe('configSchema repoEntry', () => {
 });
 
 describe('configSchema taskConfig (capability 1)', () => {
-  it('accepts a per-task schedule + excludeFromLogs map', () => {
+  it('accepts a per-task schedule + timeout + excludeFromLogs map', () => {
     const result = configSchema.safeParse({
       taskConfig: {
-        'term-titles': { schedule: '2m', excludeFromLogs: true },
+        'term-titles': { schedule: '2m', timeout: '1m', excludeFromLogs: true },
         'daily-journal': { schedule: '1h' },
         adopted: { excludeFromLogs: true },
       },
@@ -120,6 +120,10 @@ describe('configSchema taskConfig (capability 1)', () => {
       taskConfig: { x: { schedule: '2m', bogus: 1 } },
     });
     expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-string timeout', () => {
+    expect(configSchema.safeParse({ taskConfig: { x: { timeout: 120 } } }).success).toBe(false);
   });
 
   it('rejects a non-string schedule / non-boolean excludeFromLogs', () => {

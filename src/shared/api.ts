@@ -17,6 +17,7 @@ import type {
   RepoEntry,
   RepoEvent,
   ResourceNode,
+  RunningTaskRun,
   SearchResults,
   SkillNode,
   SkillScope,
@@ -247,6 +248,11 @@ export interface CondashApi {
   writeTask(slug: string, def: TaskDef, previousSlug?: string): Promise<string>;
   /** Delete a task directory by slug. */
   deleteTask(slug: string): Promise<void>;
+  /** Snapshot of the headless scheduled runs currently in flight — the Tasks
+   *  pane's "Running" section. */
+  listRunningTaskRuns(): Promise<RunningTaskRun[]>;
+  /** Kill (and discard) the live run with this sid. False when none is live. */
+  killTaskRun(sid: string): Promise<boolean>;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;
