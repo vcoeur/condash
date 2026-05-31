@@ -705,7 +705,7 @@ function TaskFill(props: {
           {/* Top control row: pick the agent and run, above the variable
               settings. The prompt preview stays at the bottom. */}
           <div class="tasks-fill-top">
-            <label>
+            <label class="tasks-fill-agent">
               <span>Agent</span>
               <select
                 value={props.fill().agent}

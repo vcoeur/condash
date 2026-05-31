@@ -81,8 +81,9 @@ test('tasks pane lists a task and fills its markers', async () => {
     await expect(window.locator('.tasks-fill')).toBeVisible();
 
     // The run-time Agent picker sits in the top control row and defaults to the
-    // task's stored agent id (overridable per run).
-    await expect(window.locator('.tasks-fill-top select')).toHaveValue('claude-deepseek-v4-pro');
+    // task's stored agent id (overridable per run). Scoped to the agent label so
+    // the sibling Run-mode select in the same row is not matched.
+    await expect(window.locator('.tasks-fill-agent select')).toHaveValue('claude-deepseek-v4-pro');
 
     // The {AREA} field is prefilled from its default; the preview echoes it.
     const preview = window.locator('.tasks-preview pre');
