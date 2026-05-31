@@ -212,8 +212,28 @@
 }
 
 .tasks-editor > header,
+.tasks-fill-top,
 .tasks-editor-actions {
   flex-shrink: 0;
+}
+
+/* Run popup top control row: agent picker (grows) + Run button (pinned right),
+ * sitting above the variable settings and the prompt preview. */
+.tasks-fill-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.tasks-fill-top label {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+
+.tasks-fill-top .tasks-fill-run {
+  flex: 0 0 auto;
+  padding: 0.3rem 1.1rem;
 }
 
 .tasks-fill-scroll,
@@ -286,7 +306,9 @@
 .tasks-prompt-textarea {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  min-height: 7rem;
+  /* Taller default so a multi-paragraph prompt is comfortable to edit; the
+   * modal caps at the viewport and the body scrolls, so it still fits. */
+  min-height: 12rem;
   resize: vertical;
   width: 100%;
   box-sizing: border-box;

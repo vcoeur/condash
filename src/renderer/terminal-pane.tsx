@@ -61,8 +61,10 @@ export interface TerminalPaneHandle {
   spawn(request: TermSpawnRequest, label: string, opts?: SpawnOptions): Promise<string>;
   switchTo(side: TermSide, id?: string): void;
   /** Add a fresh user shell tab to "My terms". `agent` may be an `Agent` to pin
-   *  and run that agent's command, or `null` for a plain shell. */
-  spawnUserShell(agent?: AgentChoice, side?: TermSide): Promise<string>;
+   *  and run that agent's command, or `null` for a plain shell. `titleOverride`
+   *  pins a custom tab label (e.g. a task's `<agent>•<title>`) instead of the
+   *  agent's own label. */
+  spawnUserShell(agent?: AgentChoice, side?: TermSide, titleOverride?: string): Promise<string>;
   /** Move the active tab within its column strip. */
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
@@ -429,11 +431,12 @@ export function TerminalPane(props: {
   const spawnUserShell = async (
     agent: AgentChoice = null,
     sd: TermSide = 'my',
+    titleOverride?: string,
   ): Promise<string> => {
-    const label = uniqueLabel(agent?.label || 'shell');
-    // Pin the label only when the caller picked an agent. The bare "New shell"
-    // path leaves the tab unpinned so the shell's OSC 7 cwd basename drives the
-    // displayed title.
+    const label = uniqueLabel(titleOverride ?? agent?.label ?? 'shell');
+    // Pin the label when the caller picked an agent or supplied an explicit
+    // title. The bare "New shell" path leaves the tab unpinned so the shell's
+    // OSC 7 cwd basename drives the displayed title.
     return spawn(
       {
         side: sd,
@@ -441,7 +444,7 @@ export function TerminalPane(props: {
         cwd: props.cwd ?? undefined,
       },
       label,
-      { pinned: agent !== null },
+      { pinned: agent !== null || titleOverride !== undefined },
     );
   };
 

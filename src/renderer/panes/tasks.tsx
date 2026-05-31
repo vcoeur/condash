@@ -14,6 +14,7 @@ import {
 import { substitute } from '@shared/action-template';
 import { isValidSlugTail, slugify } from '@shared/slug';
 import { ConfirmModal } from '../confirm-modal';
+import { createBackdropClose } from '../modal-helpers';
 import './tasks-pane.css';
 
 /** One app the `{APP}` picker can select. `alias` is the `#<name>` form. */
@@ -38,10 +39,13 @@ interface Draft {
 
 /** Fill state: the read task plus the picker selections and per-marker field
  *  values that feed substitution. `fields` holds only the plain (non-reserved)
- *  markers — the `{APP_*}` / `{PROJECT_*}` families come from the pickers. */
+ *  markers — the `{APP_*}` / `{PROJECT_*}` families come from the pickers.
+ *  `agent` is the run-time agent id, seeded from the task's stored `def.agent`
+ *  but overridable in the run popup. */
 interface FillState {
   slug: string;
   def: TaskDef;
+  agent: string;
   app: AppOption | null;
   project: Project | null;
   fields: Record<string, string>;
@@ -86,13 +90,11 @@ export function TasksView(props: {
   apps: () => readonly AppOption[];
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
   /** Run a filled task: spawn the agent (by id) and deliver the substituted
-   *  prompt. Always launches interactively. */
-  onRun: (agentId: string, text: string) => void;
+   *  prompt. `taskName` titles the spawned tab. Always launches interactively. */
+  onRun: (agentId: string, text: string, taskName: string) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
-
-  const agentExists = (id: string): boolean => props.agents().some((a) => a.id === id);
 
   const patch = (p: Partial<Draft>): void => {
     setDraft((d) => (d ? { ...d, ...p } : d));
@@ -132,7 +134,7 @@ export function TasksView(props: {
       if (isAppToken(marker.key) || isProjectToken(marker.key)) continue;
       fields[marker.key] = marker.default;
     }
-    setFill({ slug, def, app: null, project: null, fields });
+    setFill({ slug, def, agent: def.agent, app: null, project: null, fields });
   };
 
   const save = async (): Promise<void> => {
@@ -264,10 +266,10 @@ export function TasksView(props: {
           <TaskFill
             fill={f}
             setFill={setFill}
+            agents={props.agents}
             apps={props.apps}
             projects={props.projects}
             conceptionPath={props.conceptionPath}
-            agentExists={agentExists}
             onRun={props.onRun}
           />
         )}
@@ -317,16 +319,18 @@ function MarkerChip(props: { marker: Marker }): JSX.Element {
   );
 }
 
-/** Fill view — one input per plain marker plus app / project pickers for the
- *  reserved families, a live preview of the substituted prompt, and Run. */
+/** Fill view — a top control row (agent picker + Run) above the variable
+ *  settings (app / project pickers + one input per plain marker), with a live
+ *  preview of the substituted prompt at the bottom. The agent defaults to the
+ *  task's stored agent but can be overridden here at run time. */
 function TaskFill(props: {
   fill: () => FillState;
   setFill: (next: FillState | null) => void;
+  agents: () => readonly Agent[];
   apps: () => readonly AppOption[];
   projects: () => readonly Project[];
   conceptionPath: () => string | null;
-  agentExists: (name: string) => boolean;
-  onRun: (agentName: string, text: string) => void;
+  onRun: (agentId: string, text: string, taskName: string) => void;
 }): JSX.Element {
   const markers = createMemo(() => extractMarkers(props.fill().def.prompt));
   const textMarkers = createMemo(() =>
@@ -336,6 +340,7 @@ function TaskFill(props: {
   const needsProject = createMemo(() => markers().some((m) => isProjectToken(m.key)));
 
   const close = (): void => props.setFill(null);
+  const backdrop = createBackdropClose(close);
 
   // Esc closes the run popup.
   const handleKey = (event: KeyboardEvent): void => {
@@ -346,6 +351,20 @@ function TaskFill(props: {
   };
   onMount(() => document.addEventListener('keydown', handleKey, true));
   onCleanup(() => document.removeEventListener('keydown', handleKey, true));
+
+  // Run-time agent choices, keyed by id like the editor: only prompt-seedable
+  // agents are selectable (a task hands its prompt via `--prompt`), with the
+  // current selection kept selectable even if it dangles.
+  const agentOptions = createMemo(() => {
+    const opts = props
+      .agents()
+      .map((a) => ({ id: a.id, label: a.label, promptFlags: a.promptFlags === true }));
+    const current = props.fill().agent;
+    if (current && !opts.some((o) => o.id === current)) {
+      return [{ id: current, label: `${current} (missing)`, promptFlags: false }, ...opts];
+    }
+    return opts;
+  });
 
   const setField = (key: string, value: string): void => {
     const f = props.fill();
@@ -360,16 +379,16 @@ function TaskFill(props: {
 
   const preview = createMemo(() => substitute(props.fill().def.prompt, ctx()));
 
-  const agentOk = createMemo(() => props.agentExists(props.fill().def.agent));
+  const agentOk = createMemo(() => props.agents().some((a) => a.id === props.fill().agent));
 
   const run = (): void => {
     const f = props.fill();
-    props.onRun(f.def.agent, substitute(f.def.prompt, ctx()));
+    props.onRun(f.agent, substitute(f.def.prompt, ctx()), f.def.name);
     close();
   };
 
   return (
-    <div class="modal-backdrop" onClick={close}>
+    <div class="modal-backdrop" onMouseDown={backdrop.onMouseDown} onClick={backdrop.onClick}>
       <div
         class="modal tasks-fill-modal"
         role="dialog"
@@ -384,12 +403,51 @@ function TaskFill(props: {
               Close
             </button>
           </header>
-          <div class="tasks-fill-scroll">
-            <p class="tasks-editor-note">
-              Agent: <code>{props.fill().def.agent}</code>
-              {' · runs interactively'}
-            </p>
 
+          {/* Top control row: pick the agent and run, above the variable
+              settings. The prompt preview stays at the bottom. */}
+          <div class="tasks-fill-top">
+            <label>
+              <span>Agent</span>
+              <select
+                value={props.fill().agent}
+                onChange={(e) => props.setFill({ ...props.fill(), agent: e.currentTarget.value })}
+              >
+                <Switch>
+                  <Match when={agentOptions().length === 0}>
+                    <option value="">(no agents defined)</option>
+                  </Match>
+                  <Match when={agentOptions().length > 0}>
+                    <For each={agentOptions()}>
+                      {(o) => (
+                        <option
+                          value={o.id}
+                          disabled={!o.promptFlags && o.id !== props.fill().agent}
+                        >
+                          {o.promptFlags ? o.label : `${o.label} — no prompt seeding`}
+                        </option>
+                      )}
+                    </For>
+                  </Match>
+                </Switch>
+              </select>
+            </label>
+            <button
+              type="button"
+              class="tasks-run tasks-fill-run"
+              disabled={!agentOk()}
+              title={
+                agentOk()
+                  ? 'Spawn the agent and run interactively'
+                  : `Agent ${props.fill().agent} is not defined`
+              }
+              onClick={run}
+            >
+              Run
+            </button>
+          </div>
+
+          <div class="tasks-fill-scroll">
             <Show when={needsApp()}>
               <label>
                 <span>App {'{APP}'}</span>
@@ -444,25 +502,6 @@ function TaskFill(props: {
               <pre>{preview()}</pre>
             </div>
           </div>
-
-          <div class="tasks-editor-actions">
-            <button
-              type="button"
-              class="tasks-run"
-              disabled={!agentOk()}
-              title={
-                agentOk()
-                  ? 'Spawn the agent and run'
-                  : `Agent ${props.fill().def.agent} is not defined`
-              }
-              onClick={run}
-            >
-              Run
-            </button>
-            <button type="button" onClick={close}>
-              Cancel
-            </button>
-          </div>
         </section>
       </div>
     </div>
@@ -482,6 +521,7 @@ function TaskEditor(props: {
   const d = props.draft;
   const markers = createMemo(() => extractMarkers(d().prompt));
   const [confirmDelete, setConfirmDelete] = createSignal(false);
+  const backdrop = createBackdropClose(props.onCancel);
 
   // Esc closes the editor — but defer to the delete-confirm dialog when it is
   // open (its own handler closes it first).
@@ -519,7 +559,7 @@ function TaskEditor(props: {
   };
 
   return (
-    <div class="modal-backdrop" onClick={props.onCancel}>
+    <div class="modal-backdrop" onMouseDown={backdrop.onMouseDown} onClick={backdrop.onClick}>
       <div
         class="modal tasks-editor-modal"
         role="dialog"

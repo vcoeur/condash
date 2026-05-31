@@ -80,6 +80,10 @@ test('tasks pane lists a task and fills its markers', async () => {
     await expect(window.locator('.modal-backdrop .tasks-fill-modal')).toBeVisible();
     await expect(window.locator('.tasks-fill')).toBeVisible();
 
+    // The run-time Agent picker sits in the top control row and defaults to the
+    // task's stored agent id (overridable per run).
+    await expect(window.locator('.tasks-fill-top select')).toHaveValue('claude-deepseek-v4-pro');
+
     // The {AREA} field is prefilled from its default; the preview echoes it.
     const preview = window.locator('.tasks-preview pre');
     await expect(preview).toContainText('Focus: CLAUDE.md and docs/');
@@ -87,7 +91,9 @@ test('tasks pane lists a task and fills its markers', async () => {
     await expect(preview).toContainText('{APP}');
 
     // Pick the seeded app → bare {APP} resolves to its #alias in the preview.
-    await window.locator('.tasks-fill select').first().selectOption('#condash');
+    // The app picker is the first select in the scroll body (the agent picker
+    // lives in the top control row, not here).
+    await window.locator('.tasks-fill-scroll select').first().selectOption('#condash');
     await expect(preview).toContainText('Review #condash');
 
     await window.screenshot({ path: join(outDir, 'tasks-fill.png') });
@@ -113,6 +119,9 @@ test('new task editor creates a task end-to-end', async () => {
     await editor.locator('input[type="text"]').first().fill('Triage incident');
     await editor.locator('textarea').fill('Triage {PROJECT} on {SEVERITY:high}');
     await expect(editor.locator('.tasks-marker[data-kind="project"]')).toHaveText('{PROJECT}');
+
+    await mkdir(outDir, { recursive: true });
+    await window.screenshot({ path: join(outDir, 'tasks-editor.png') });
 
     await editor.locator('button', { hasText: 'Save' }).click();
 

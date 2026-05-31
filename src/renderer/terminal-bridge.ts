@@ -49,11 +49,12 @@ export interface TerminalBridge {
    *  shell if needed" dance as `handleWorkOn`. Does not press Enter. */
   handlePasteToTerm: (text: string) => Promise<void>;
   /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentId`
-   *  and deliver the already-substituted `text`. Tasks always launch
-   *  interactively — a `promptFlags` agent is seeded with `--prompt` (the
-   *  session stays open after the prompt runs); an opaque agent is spawned bare,
-   *  then the prompt is keystroke-injected and submitted once the TUI settles. */
-  runTask: (agentId: string, text: string) => Promise<void>;
+   *  and deliver the already-substituted `text`. The tab title is pinned to
+   *  `<agent label>•<taskName>`. Tasks always launch interactively — a
+   *  `promptFlags` agent is seeded with `--prompt` (the session stays open after
+   *  the prompt runs); an opaque agent is spawned bare, then the prompt is
+   *  keystroke-injected and submitted once the TUI settles. */
+  runTask: (agentId: string, text: string, taskName: string) => Promise<void>;
 }
 
 /** Upper bound on animation frames waited for the pane to mount after
@@ -130,7 +131,10 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  characters or lands in a not-yet-ready REPL. AGENT_SPAWN_SETTLE_MS covers
    *  both. setTimeout (not requestAnimationFrame) so this stays callable in
    *  unit tests (jsdom env has no rAF). */
-  const spawnAgentTab = async (agent: Agent): Promise<TerminalPaneHandle | null> => {
+  const spawnAgentTab = async (
+    agent: Agent,
+    title?: string,
+  ): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
       await waitForTerminalHandle(deps);
@@ -139,7 +143,13 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (!handle) return null;
     deps.ensureTerminalOpen();
     try {
-      await handle.spawnUserShell(agent, 'my');
+      // Pass the title only when set so the non-task spawn keeps the agent's
+      // own label (and the 2-arg call shape its callers assert on).
+      if (title === undefined) {
+        await handle.spawnUserShell(agent, 'my');
+      } else {
+        await handle.spawnUserShell(agent, 'my', title);
+      }
     } catch (err) {
       deps.flashToast(`Could not spawn ${agent.label}: ${(err as Error).message}`, 'error');
       return null;
@@ -156,13 +166,18 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
    *  command, let the TUI settle, and keystroke-inject `text` (plus Enter when
    *  `submit`) — the generic path for an opaque agent. `submit` only governs that
    *  keystroke Enter; a `promptFlags` agent is always seeded interactively. */
-  const runAgentTask = async (agent: Agent, text: string, submit: boolean): Promise<void> => {
+  const runAgentTask = async (
+    agent: Agent,
+    text: string,
+    submit: boolean,
+    title?: string,
+  ): Promise<void> => {
     if (agent.promptFlags) {
       const command = `${agent.command} --prompt ${shellSingleQuote(text)}`;
-      await spawnAgentTab({ ...agent, command });
+      await spawnAgentTab({ ...agent, command }, title);
       return;
     }
-    const handle = await spawnAgentTab(agent);
+    const handle = await spawnAgentTab(agent, title);
     if (!handle) return;
     handle.typeIntoActive(text);
     if (submit) {
@@ -291,7 +306,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
-  const runTask = async (agentId: string, text: string): Promise<void> => {
+  const runTask = async (agentId: string, text: string, taskName: string): Promise<void> => {
     const agent = findAgentById(deps.agents(), agentId);
     if (!agent) {
       deps.flashToast(`Task agent not found: ${agentId}`, 'error');
@@ -299,8 +314,9 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     }
     // Same interactive spawn-and-deliver path as an agent-bound project action.
     // `submit: true` presses Enter on the opaque keystroke path; a promptFlags
-    // agent is seeded with `--prompt` (interactive) regardless.
-    await runAgentTask(agent, text, true);
+    // agent is seeded with `--prompt` (interactive) regardless. The tab is named
+    // `<agent label>•<task title>` so a running task is identifiable at a glance.
+    await runAgentTask(agent, text, true, `${agent.label}•${taskName}`);
   };
 
   return {
