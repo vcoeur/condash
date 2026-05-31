@@ -109,6 +109,8 @@ Per-session terminal capture (when `terminal.logging.enabled` is true) lands at 
 | `logsDeleteDay(day)` | Delete an entire day directory. Returns the number of session files removed. |
 | `logsDeleteSession(filePath)` | Delete one session file. Refuses paths outside `.condash/logs/`. |
 | `logsListTaskRuns()` | Enumerate the segregated task-run store under `.condash/{scheduled,manual}/<slug>/` (capabilities 1 + 4). One `TaskRunGroup` per `<trigger>/<slug>`, runs newest-first. Never reads `.condash/logs/`; the Logs pane's **Task runs** view renders it. |
+| `listRunningTaskRuns()` | Snapshot of the headless scheduled runs currently in flight (capability 1) — `RunningTaskRun[]` of `{ slug, sid, startedAt, logPath }`. Feeds the Tasks pane's **Running** section. |
+| `killTaskRun(sid)` | Kill (SIGKILL) and discard the live run with this `sid`. Returns `false` when none is live. |
 
 ## Tree mutations (Knowledge / Resources / Skills panes)
 

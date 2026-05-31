@@ -30,14 +30,24 @@ import { substitute } from '../shared/action-template';
 import { parseCadence } from '../shared/cadence';
 import { SessionLogger } from './terminal-logger';
 import { tabsContext, totalBytesSeen } from './terminals';
-import type { Agent, TaskConfigEntry } from '../shared/types';
+import type { Agent, RunningTaskRun, TaskConfigEntry } from '../shared/types';
 
 /** How often the scheduler wakes to check for due tasks. */
 const TICK_MS = 20_000;
 
-/** Hard cap on a single headless run before it is killed — a runaway or hung
- *  agent must not accumulate background ptys. */
-const RUN_TIMEOUT_MS = 10 * 60_000;
+/** Default cap on a single headless run before it is killed — a runaway or
+ *  hung agent must not accumulate background ptys. Overridable per task via
+ *  `taskConfig[slug].timeout`. The cap doubles as the discard mechanism for
+ *  agents that finish their work but never exit (e.g. `agedum … --prompt`):
+ *  until that's fixed (`--run`), keep the timeout ≤ the schedule interval, or
+ *  single-flight stretches the effective cadence out to the timeout. */
+const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000;
+
+/** Resolve a task's run timeout (ms): its `timeout` cadence override, else the
+ *  default. Exported for unit testing. */
+export function resolveRunTimeout(entry: TaskConfigEntry | undefined): number {
+  return parseCadence(entry?.timeout) ?? DEFAULT_RUN_TIMEOUT_MS;
+}
 
 interface TaskState {
   /** Epoch ms of the last time we launched (or deliberately skipped) this task. */
@@ -48,8 +58,35 @@ interface TaskState {
   bytesAtLastRun: number;
 }
 
+/** A live headless run, with the handle the UI needs to discard it. */
+interface RunHandle extends RunningTaskRun {
+  /** SIGKILL the pty group and settle the run (idempotent). */
+  kill: () => void;
+}
+
 let current: { path: string; interval: ReturnType<typeof setInterval> } | null = null;
 const states = new Map<string, TaskState>();
+/** In-flight headless runs keyed by sid — surfaced + killable from the UI. */
+const running = new Map<string, RunHandle>();
+
+/** Snapshot of the currently-running headless task runs (capability 1). */
+export function listRunningTaskRuns(): RunningTaskRun[] {
+  return [...running.values()].map(({ slug, sid, startedAt, logPath }) => ({
+    slug,
+    sid,
+    startedAt,
+    logPath,
+  }));
+}
+
+/** Kill (and discard) the in-flight run with this sid. Returns false when no
+ *  such run is live — e.g. it already exited between list and kill. */
+export function killTaskRun(sid: string): boolean {
+  const run = running.get(sid);
+  if (!run) return false;
+  run.kill();
+  return true;
+}
 
 /** POSIX single-quote so the substituted prompt survives `-c "<cmd>"`. */
 function shellSingleQuote(text: string): string {
@@ -76,10 +113,12 @@ function wrap(command: string): string[] {
  * Run one task headlessly. Resolves the bound task + agent, substitutes the
  * prompt (including the `{TABS}` provided var), spawns a background pty seeded
  * with the agent's `--prompt`, and tees output to `.condash/scheduled/<slug>/`
- * via a forced-on `SessionLogger`. Resolves when the pty exits (or is killed
- * on timeout). Throws on any setup error so the caller can clear in-flight.
+ * via a forced-on `SessionLogger`. Registers the live run so the UI can peek at
+ * or kill it, and de-registers it on settle. Resolves when the pty exits, is
+ * killed via the UI, or hits `timeoutMs`. Throws on any setup error so the
+ * caller can clear in-flight.
  */
-async function runHeadless(conceptionPath: string, slug: string): Promise<void> {
+async function runHeadless(conceptionPath: string, slug: string, timeoutMs: number): Promise<void> {
   const task = await readTask(conceptionPath, slug);
   if (!task) throw new Error(`task ${slug} not found`);
   const agents = await listAgents(conceptionPath);
@@ -121,6 +160,7 @@ async function runHeadless(conceptionPath: string, slug: string): Promise<void> 
     { ...(config.terminal?.logging ?? {}), enabled: true },
   );
   logger.spawn();
+  const logPath = logger.filePath() ?? '';
 
   const child = pty.spawn(shell, argv, {
     name: 'xterm-256color',
@@ -132,21 +172,42 @@ async function runHeadless(conceptionPath: string, slug: string): Promise<void> 
 
   await new Promise<void>((resolve) => {
     let settled = false;
-    const finish = (): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      void logger.close().finally(resolve);
-    };
-    const timer = setTimeout(() => {
+    const killProcess = (): void => {
       try {
         if (process.platform === 'win32') child.kill();
         else process.kill(-child.pid, 'SIGKILL');
       } catch {
         /* already gone */
       }
+    };
+    // Settle exactly once, then drop every handle to the run so a finished
+    // agent is not retained in memory: clear the timer, de-register from the
+    // running map, and close the logger. The pty itself is unreferenced once
+    // this closure and the map entry are gone.
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      running.delete(sid);
+      void logger.close().finally(resolve);
+    };
+    const timer = setTimeout(() => {
+      killProcess();
       finish();
-    }, RUN_TIMEOUT_MS);
+    }, timeoutMs);
+    // Register the live run so the Tasks pane can list it and kill it. The kill
+    // mirrors the timeout path (SIGKILL then settle); node-pty's onExit still
+    // fires afterwards but finish() is idempotent.
+    running.set(sid, {
+      slug,
+      sid,
+      startedAt: Date.now(),
+      logPath,
+      kill: () => {
+        killProcess();
+        finish();
+      },
+    });
     child.onData((data) => logger.output(data));
     child.onExit(({ exitCode }) => {
       logger.exit(exitCode);
@@ -186,7 +247,7 @@ async function tick(conceptionPath: string): Promise<void> {
     state.inFlight = true;
     state.lastCheckedAt = now;
     state.bytesAtLastRun = bytes;
-    void runHeadless(conceptionPath, slug)
+    void runHeadless(conceptionPath, slug, resolveRunTimeout(entry))
       .catch((err) => {
         process.stderr.write(`condash task-scheduler: ${slug}: ${(err as Error).message}\n`);
       })
@@ -208,6 +269,10 @@ export async function setScheduledConception(conceptionPath: string | null): Pro
     clearInterval(current.interval);
     current = null;
   }
+  // Discard any run still in flight from the previous tree — a conception
+  // switch or teardown must not leave orphaned background ptys alive.
+  for (const run of [...running.values()]) run.kill();
+  running.clear();
   states.clear();
   if (!conceptionPath) return;
   const interval = setInterval(() => void tick(conceptionPath), TICK_MS);

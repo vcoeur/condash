@@ -636,9 +636,30 @@ export interface TabInfo {
 export interface TaskConfigEntry {
   /** Cadence string (e.g. `2m`, `30s`, `1h`). Absent = not scheduled. */
   schedule?: string;
+  /** Hard cap on a scheduled headless run (cadence string, e.g. `5m`); the run
+   *  is killed and discarded once it elapses. Absent = the scheduler default
+   *  (10m). The cap is the discard mechanism for agents that finish their work
+   *  but don't exit (e.g. `--prompt`), so keep it ≤ the schedule interval or
+   *  single-flight will stretch the effective cadence to the timeout. */
+  timeout?: string;
   /** Per-task default for routing manual runs out of `.condash/logs/`;
    *  overridable per run in the run popup. */
   excludeFromLogs?: boolean;
+}
+
+/** A headless scheduled run that is currently in flight (capability 1).
+ *  Surfaced in the Tasks pane's "Running" section so the user can peek at its
+ *  output or kill it. */
+export interface RunningTaskRun {
+  /** Task slug whose schedule launched this run. */
+  slug: string;
+  /** Session id of the background pty (the run-file's `<sid>` suffix). */
+  sid: string;
+  /** Epoch ms the run was launched — the renderer renders elapsed time. */
+  startedAt: number;
+  /** Absolute path to the segregated run log being written live, readable via
+   *  `logsReadSession`. */
+  logPath: string;
 }
 
 /** One segregated task-run file under `.condash/<trigger>/<slug>/`,

@@ -364,16 +364,19 @@ const sharedSchemaFields = {
    *  store. */
   agents: z.array(agentSchema).optional(),
   /** Per-task config keyed by task slug (capability 1). `schedule` is an
-   *  opt-in cadence (`30s`/`2m`/`1h`) that arms the headless scheduler; absent
-   *  = not scheduled. `excludeFromLogs` is the per-task default for routing a
-   *  manual run out of `.condash/logs/` into `.condash/manual/<slug>/`,
-   *  overridable per run. No default entries — a task is inert until added. */
+   *  opt-in cadence (`30s`/`2m`/`1h`/`7d`) that arms the headless scheduler;
+   *  absent = not scheduled. `timeout` is the per-task run-timeout override
+   *  (same cadence syntax; absent = the scheduler's 10m default).
+   *  `excludeFromLogs` is the per-task default for routing a manual run out of
+   *  `.condash/logs/` into `.condash/manual/<slug>/`, overridable per run. No
+   *  default entries — a task is inert until added. */
   taskConfig: z
     .record(
       z.string(),
       z
         .object({
           schedule: z.string().optional(),
+          timeout: z.string().optional(),
           excludeFromLogs: z.boolean().optional(),
         })
         .strict(),
