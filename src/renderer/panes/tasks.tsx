@@ -1,6 +1,16 @@
-import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+} from 'solid-js';
 import type { JSX } from 'solid-js';
-import type { Agent, Project } from '@shared/types';
+import type { Agent, Project, RunMode, RunningTaskRun } from '@shared/types';
 import {
   appContext,
   extractMarkers,
@@ -36,13 +46,59 @@ interface Draft {
   agent: string;
   prompt: string;
   editingSlug: string | null;
-  /** Schedule cadence (`30s`/`2m`/`1h`); empty = not scheduled (capability 1).
-   *  Persisted to `taskConfig[slug]` in settings.json, not task.json. */
+  /** Schedule cadence picked from a fixed list (`1m`…`7d`); empty = not
+   *  scheduled (capability 1). Persisted to `taskConfig[slug]` in settings.json,
+   *  not task.json. */
   schedule: string;
+  /** Run-timeout cadence for scheduled runs (`1m`…`1h`); the headless run is
+   *  killed + discarded once it elapses. Only persisted when scheduled. */
+  timeout: string;
   /** Per-task default for routing manual runs out of `.condash/logs/`
    *  (capability 4). Persisted alongside `schedule`. */
   excludeFromLogs: boolean;
+  /** Per-task default run mode (a `promptFlags` agent only): `interactive` →
+   *  `--prompt` (session stays open), `oneshot` → `--run` (runs and exits).
+   *  Overridable per run in the run popup. Persisted alongside `schedule`. */
+  runMode: RunMode;
 }
+
+/** Run-mode choices offered in the editor + run popup. `interactive` keeps the
+ *  session open (agedum `--prompt`); `oneshot` runs once and exits (`--run`) —
+ *  the mode a scheduled task wants so its headless run exits cleanly. */
+const RUN_MODE_CHOICES: ReadonlyArray<{ value: RunMode; label: string }> = [
+  { value: 'interactive', label: 'Interactive (--prompt)' },
+  { value: 'oneshot', label: 'One-shot, then exit (--run)' },
+];
+
+/** Fixed schedule cadences offered in the editor. Replaces the old free-text
+ *  input — every value parses via `parseCadence`. */
+const SCHEDULE_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '', label: 'Off' },
+  { value: '1m', label: 'Every 1 minute' },
+  { value: '5m', label: 'Every 5 minutes' },
+  { value: '30m', label: 'Every 30 minutes' },
+  { value: '1h', label: 'Every 1 hour' },
+  { value: '2h', label: 'Every 2 hours' },
+  { value: '6h', label: 'Every 6 hours' },
+  { value: '12h', label: 'Every 12 hours' },
+  { value: '1d', label: 'Every 1 day' },
+  { value: '7d', label: 'Every 7 days' },
+];
+
+/** Fixed run-timeout choices for scheduled runs. Keep these ≤ the schedule
+ *  interval: a non-exiting agent holds the single-flight slot until the timeout
+ *  kills it. */
+const TIMEOUT_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '1m', label: '1 minute' },
+  { value: '5m', label: '5 minutes' },
+  { value: '10m', label: '10 minutes' },
+  { value: '30m', label: '30 minutes' },
+  { value: '1h', label: '1 hour' },
+];
+
+/** Default run timeout when a task is scheduled but none is chosen — matches
+ *  the scheduler's built-in default. */
+const DEFAULT_TIMEOUT = '10m';
 
 /** Fill state: the read task plus the picker selections and per-marker field
  *  values that feed substitution. `fields` holds only the plain (non-reserved)
@@ -62,12 +118,16 @@ interface FillState {
   /** Effective per-run "route this run out of the logs" flag (capability 4),
    *  seeded from the task's `excludeFromLogs` default and toggleable here. */
   excludeFromLogs: boolean;
+  /** Effective per-run mode, seeded from the task's `runMode` default and
+   *  switchable here (interactive `--prompt` vs one-shot `--run`). */
+  runMode: RunMode;
 }
 
 /** Options carried alongside a task run launch. */
 export interface RunOptions {
   taskSlug: string;
   excludeFromLogs: boolean;
+  runMode: RunMode;
 }
 
 function blankDraft(agents: readonly Agent[]): Draft {
@@ -83,7 +143,9 @@ function blankDraft(agents: readonly Agent[]): Draft {
     prompt: '',
     editingSlug: null,
     schedule: '',
+    timeout: DEFAULT_TIMEOUT,
     excludeFromLogs: false,
+    runMode: 'interactive',
   };
 }
 
@@ -111,13 +173,35 @@ export function TasksView(props: {
   apps: () => readonly AppOption[];
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
   /** Run a filled task: spawn the agent (by id) and deliver the substituted
-   *  prompt. `taskName` titles the spawned tab. `opts` carries the task slug +
-   *  effective excludeFromLogs so a flagged manual run routes its log to
-   *  `.condash/manual/<slug>/`. Always launches interactively. */
+   *  prompt. `taskName` titles the spawned tab. `opts` carries the task slug,
+   *  effective excludeFromLogs (routes a flagged run's log to
+   *  `.condash/manual/<slug>/`), and the effective runMode (`--prompt`
+   *  interactive vs `--run` one-shot). */
   onRun: (agentId: string, text: string, taskName: string, opts: RunOptions) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
+
+  // Live headless scheduled runs, polled from the main-side scheduler. The poll
+  // is cheap (an in-memory map snapshot) and 2s is responsive enough for runs
+  // that live for minutes.
+  const [running, setRunning] = createSignal<readonly RunningTaskRun[]>([]);
+  const refreshRunning = async (): Promise<void> => {
+    try {
+      setRunning(await window.condash.listRunningTaskRuns());
+    } catch {
+      /* scheduler not ready / no conception — leave the list as-is */
+    }
+  };
+  onMount(() => {
+    void refreshRunning();
+    const poll = setInterval(() => void refreshRunning(), 2000);
+    onCleanup(() => clearInterval(poll));
+  });
+  const killRun = async (sid: string): Promise<void> => {
+    await window.condash.killTaskRun(sid).catch(() => undefined);
+    void refreshRunning();
+  };
 
   const patch = (p: Partial<Draft>): void => {
     setDraft((d) => (d ? { ...d, ...p } : d));
@@ -144,7 +228,9 @@ export function TasksView(props: {
       prompt: def.prompt,
       editingSlug: slug,
       schedule: cfg.schedule ?? '',
+      timeout: cfg.timeout ?? DEFAULT_TIMEOUT,
       excludeFromLogs: cfg.excludeFromLogs === true,
+      runMode: cfg.runMode === 'oneshot' ? 'oneshot' : 'interactive',
     });
   };
 
@@ -175,6 +261,7 @@ export function TasksView(props: {
     const tabsJson = JSON.stringify(tabs);
     const provided: Record<string, string> = { TABS: tabsJson, UPDATED_TABS: tabsJson };
     const excludeFromLogs = cfgMap[slug]?.excludeFromLogs === true;
+    const runMode: RunMode = cfgMap[slug]?.runMode === 'oneshot' ? 'oneshot' : 'interactive';
     setFill({
       slug,
       def,
@@ -184,6 +271,7 @@ export function TasksView(props: {
       fields,
       provided,
       excludeFromLogs,
+      runMode,
     });
   };
 
@@ -215,9 +303,15 @@ export function TasksView(props: {
       if (d.editingSlug && d.editingSlug !== slug) {
         await window.condash.setTaskConfig(d.editingSlug, {});
       }
+      const scheduled = d.schedule.trim();
       await window.condash.setTaskConfig(slug, {
-        schedule: d.schedule.trim() || undefined,
+        schedule: scheduled || undefined,
+        // Timeout only matters for scheduled headless runs — don't persist it
+        // for an unscheduled task.
+        timeout: scheduled ? d.timeout.trim() || undefined : undefined,
         excludeFromLogs: d.excludeFromLogs || undefined,
+        // Only the non-default mode is persisted (interactive is the default).
+        runMode: d.runMode === 'oneshot' ? 'oneshot' : undefined,
       });
       props.flashToast(`Saved ${slug}`, 'success');
       setDraft(null);
@@ -323,6 +417,8 @@ export function TasksView(props: {
         </Show>
       </Show>
 
+      <TaskRunning runs={running} tasks={props.tasks} onKill={(sid) => void killRun(sid)} />
+
       <Show when={fill()}>
         {(f) => (
           <TaskFill
@@ -378,6 +474,130 @@ function MarkerChip(props: { marker: Marker }): JSX.Element {
     <span class="tasks-marker" data-kind={kind()} title={`${kind()} marker`}>
       {`{${props.marker.key}}`}
     </span>
+  );
+}
+
+/** `123456` ms → `2m 03s` / `1h 04m`. Coarse — the row only needs a sense of
+ *  how long a run has been alive. */
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+/** Last `max` chars of `text`, prefixed with `…` when truncated. */
+function tailText(text: string, max = 4000): string {
+  if (text.length <= max) return text;
+  return `…${text.slice(text.length - max)}`;
+}
+
+/** "Running" section — the live headless scheduled runs, mirroring the Code
+ *  pane's active-runs dock. Each row shows the task, how long it has been
+ *  running, an expandable tail of its segregated log, and a Kill button. */
+function TaskRunning(props: {
+  runs: () => readonly RunningTaskRun[];
+  tasks: () => readonly TaskListItem[];
+  onKill: (sid: string) => void;
+}): JSX.Element {
+  // A 1s clock so the elapsed time ticks (and an expanded row re-tails its log).
+  const [now, setNow] = createSignal(Date.now());
+  onMount(() => {
+    const clock = setInterval(() => setNow(Date.now()), 1000);
+    onCleanup(() => clearInterval(clock));
+  });
+  const nameFor = (slug: string): string =>
+    props.tasks().find((t) => t.slug === slug)?.name ?? slug;
+
+  return (
+    <Show when={props.runs().length > 0}>
+      <section class="tasks-running">
+        <h2 class="tasks-running-header">
+          <span class="name">RUNNING</span>
+          <span class="count">{props.runs().length}</span>
+        </h2>
+        <div class="tasks-running-list">
+          <For each={props.runs()}>
+            {(run) => (
+              <RunningRunRow
+                run={run}
+                name={nameFor(run.slug)}
+                now={now}
+                onKill={() => props.onKill(run.sid)}
+              />
+            )}
+          </For>
+        </div>
+      </section>
+    </Show>
+  );
+}
+
+/** One live-run row: collapsed by default; expanding tails its log file. */
+function RunningRunRow(props: {
+  run: RunningTaskRun;
+  name: string;
+  now: () => number;
+  onKill: () => void;
+}): JSX.Element {
+  const [expanded, setExpanded] = createSignal(false);
+  const [log, setLog] = createSignal('');
+  const elapsed = createMemo(() => formatElapsed(props.now() - props.run.startedAt));
+
+  // While expanded, re-read the segregated run log on each clock tick so the
+  // tail follows the live output. `logsReadSession` already strips the
+  // `# condash:` header and returns the rendered body.
+  createEffect(() => {
+    if (!expanded() || !props.run.logPath) return;
+    props.now();
+    void window.condash
+      .logsReadSession(props.run.logPath)
+      .then((r) => setLog(tailText(r.text)))
+      .catch(() => undefined);
+  });
+
+  return (
+    <article class="tasks-run-row" classList={{ expanded: expanded() }}>
+      <header
+        class="tasks-run-head"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded()}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('button')) return;
+          e.preventDefault();
+          setExpanded((v) => !v);
+        }}
+      >
+        <span class="caret" aria-hidden="true">
+          {expanded() ? '▾' : '▸'}
+        </span>
+        <span class="dot" aria-hidden="true" />
+        <span class="slug">{props.name}</span>
+        <span class="status status-live">running</span>
+        <span class="elapsed">{elapsed()}</span>
+        <span class="spacer" />
+        <button
+          type="button"
+          class="tasks-danger tasks-run-kill"
+          title="Kill and discard this run"
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onKill();
+          }}
+        >
+          Kill
+        </button>
+      </header>
+      <Show when={expanded()}>
+        <pre class="tasks-run-log">{log() || '(no output yet)'}</pre>
+      </Show>
+    </article>
   );
 }
 
@@ -453,12 +673,18 @@ function TaskFill(props: {
   const preview = createMemo(() => substitute(props.fill().def.prompt, ctx()));
 
   const agentOk = createMemo(() => props.agents().some((a) => a.id === props.fill().agent));
+  // Run mode (--prompt vs --run) only applies to a prompt-seeding agent; an opaque
+  // agent uses the keystroke path, which is interactive-only.
+  const fillAgentSeedable = createMemo(() =>
+    props.agents().some((a) => a.id === props.fill().agent && a.promptFlags === true),
+  );
 
   const run = (): void => {
     const f = props.fill();
     props.onRun(f.agent, substitute(f.def.prompt, ctx()), f.def.name, {
       taskSlug: f.slug,
       excludeFromLogs: f.excludeFromLogs,
+      runMode: f.runMode,
     });
     close();
   };
@@ -483,7 +709,7 @@ function TaskFill(props: {
           {/* Top control row: pick the agent and run, above the variable
               settings. The prompt preview stays at the bottom. */}
           <div class="tasks-fill-top">
-            <label>
+            <label class="tasks-fill-agent">
               <span>Agent</span>
               <select
                 value={props.fill().agent}
@@ -509,6 +735,26 @@ function TaskFill(props: {
               </select>
             </label>
             <label
+              class="tasks-fill-mode"
+              title={
+                fillAgentSeedable()
+                  ? 'Interactive keeps the tab open (--prompt); one-shot runs once and exits (--run)'
+                  : 'Run mode needs a prompt-seeding agent (promptFlags); opaque agents are interactive only'
+              }
+            >
+              <select
+                value={props.fill().runMode}
+                disabled={!fillAgentSeedable()}
+                onChange={(e) =>
+                  props.setFill({ ...props.fill(), runMode: e.currentTarget.value as RunMode })
+                }
+              >
+                <For each={RUN_MODE_CHOICES}>
+                  {(o) => <option value={o.value}>{o.label}</option>}
+                </For>
+              </select>
+            </label>
+            <label
               class="tasks-fill-exclude"
               title="Route this run's log to .condash/manual/<slug>/ instead of the normal logs"
             >
@@ -526,9 +772,11 @@ function TaskFill(props: {
               class="tasks-run tasks-fill-run"
               disabled={!agentOk()}
               title={
-                agentOk()
-                  ? 'Spawn the agent and run interactively'
-                  : `Agent ${props.fill().agent} is not defined`
+                !agentOk()
+                  ? `Agent ${props.fill().agent} is not defined`
+                  : props.fill().runMode === 'oneshot'
+                    ? 'Spawn the agent, run once, and exit (--run)'
+                    : 'Spawn the agent and run interactively (--prompt)'
               }
               onClick={run}
             >
@@ -637,6 +885,17 @@ function TaskEditor(props: {
     return opts;
   });
 
+  // Schedule choices, with the stored value kept selectable when it predates
+  // the fixed list (a legacy free-text cadence like `30s`) so editing a task
+  // never silently drops its schedule.
+  const scheduleOptions = createMemo(() => {
+    const current = d().schedule.trim();
+    if (current && !SCHEDULE_CHOICES.some((c) => c.value === current)) {
+      return [...SCHEDULE_CHOICES, { value: current, label: `${current} (custom)` }];
+    }
+    return SCHEDULE_CHOICES;
+  });
+
   const onName = (value: string): void => {
     // Auto-derive the slug from the name until the user hand-edits it (new
     // tasks only — an existing slug stays put).
@@ -716,14 +975,42 @@ function TaskEditor(props: {
             </label>
 
             <label>
-              <span>Schedule (e.g. 2m / 30s / 1h — blank = off)</span>
-              <input
-                type="text"
+              <span>Schedule</span>
+              <select
                 value={d().schedule}
-                placeholder="off"
-                onInput={(e) => props.patch({ schedule: e.currentTarget.value })}
-              />
+                onChange={(e) => props.patch({ schedule: e.currentTarget.value })}
+              >
+                <For each={scheduleOptions()}>
+                  {(o) => <option value={o.value}>{o.label}</option>}
+                </For>
+              </select>
             </label>
+
+            <label title="Default for this task's runs (a prompt-seeding agent only); overridable per run. Interactive keeps the tab open (--prompt); one-shot runs once and exits (--run) — prefer one-shot for a scheduled task so its headless run exits cleanly.">
+              <span>Run mode</span>
+              <select
+                value={d().runMode}
+                onChange={(e) => props.patch({ runMode: e.currentTarget.value as RunMode })}
+              >
+                <For each={RUN_MODE_CHOICES}>
+                  {(o) => <option value={o.value}>{o.label}</option>}
+                </For>
+              </select>
+            </label>
+
+            <Show when={d().schedule.trim()}>
+              <label title="A scheduled run is killed and discarded once this elapses — keep it ≤ the schedule interval">
+                <span>Run timeout</span>
+                <select
+                  value={d().timeout}
+                  onChange={(e) => props.patch({ timeout: e.currentTarget.value })}
+                >
+                  <For each={TIMEOUT_CHOICES}>
+                    {(o) => <option value={o.value}>{o.label}</option>}
+                  </For>
+                </select>
+              </label>
+            </Show>
 
             <label class="tasks-editor-checkbox">
               <input

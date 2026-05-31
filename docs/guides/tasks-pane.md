@@ -71,9 +71,9 @@ A task card carries a single **Run…** button — clicking it opens the **run p
 1. Open the **Tasks** handle and click **Run…** on a task card.
 2. At the top, the **Agent** select defaults to the task's stored agent — leave it, or switch it to run this one time with a different agent (only prompt-seedable agents are selectable). The **Run** button sits beside it.
 3. Fill the markers below — pick an app / project where prompted, edit the text fields (prefilled from defaults).
-4. A **Keep out of logs** checkbox sits beside the agent picker, prefilled from the task's default (below). When ticked, this run's console log is routed to `.condash/manual/<slug>/` instead of the normal session logs — the tab is still visible and interactive.
+4. A **Run mode** select and a **Keep out of logs** checkbox sit beside the agent picker, each prefilled from the task's default (below). Run mode switches this one run between **Interactive (`--prompt`)** and **One-shot (`--run`)** (disabled for an opaque agent). When *Keep out of logs* is ticked, this run's console log is routed to `.condash/manual/<slug>/` instead of the normal session logs — the tab is still visible.
 5. The **Prompt to run** box previews the substituted text live.
-6. Click **Run**. condash spawns the chosen agent in a fresh terminal tab (working directory = the conception root), names the tab **`<agent>•<task name>`** so a running task is identifiable at a glance, and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv (`--prompt`) when the agent has **promptFlags** set.
+6. Click **Run**. condash spawns the chosen agent in a fresh terminal tab (working directory = the conception root), names the tab **`<agent>•<task name>`** so a running task is identifiable at a glance, and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv for a **promptFlags** agent — `--prompt` (interactive) or `--run` (one-shot) per the chosen run mode.
 
 Run is disabled when the selected agent is not defined — pick a current one from the top select (a task whose stored agent went missing opens with that dangling id shown as *(missing)*). The card's **Run…** button itself stays disabled while the task's stored agent is missing (the card shows a *missing* badge).
 
@@ -85,12 +85,14 @@ Click **+ New task**, or **click a task card** to open the **editor popup** for 
 - **Agent** — pick an agent from the [`agents` settings list](agent-clis-and-models.md#register-it-as-a-condash-agent); the select shows the agent's `label` and stores its stable `id`. Only agents with [`promptFlags`](../reference/config.md#agents) are selectable — a task hands its filled prompt to the agent via `--prompt`/`--run`, which an opaque command can't accept. Agents without the flag are shown disabled (a new task defaults to the first prompt-seedable agent). A task already pointing at an opaque agent keeps that selection and still runs via the type-into-tab fallback.
 - **Submit** — press Enter after typing (on by default).
 - **Prompt** — markdown with `{MARKERS}`. The **Markers** chips below update live as you type so you can see the fields you're creating.
-- **Schedule** — an opt-in cadence (`30s` / `2m` / `1h`; blank = off). See *Schedule a task* below.
+- **Schedule** — an opt-in cadence picked from a fixed list (*Off*, 1m, 5m, 30m, 1h, 2h, 6h, 12h, 1d, 7d). See *Schedule a task* below.
+- **Run mode** — how a prompt-seedable agent is driven, and the default for this task's runs (overridable per run): **Interactive (`--prompt`)** keeps the tab open after the prompt runs; **One-shot (`--run`)** runs the prompt once and exits. Prefer one-shot for a scheduled task so its headless run exits cleanly instead of waiting for the timeout. Moot for an opaque agent (the keystroke path is interactive only).
+- **Run timeout** — shown only once a schedule is set: how long a single headless run may live before it is killed and discarded (1m / 5m / 10m / 30m / 1h; default 10m). See *Schedule a task*.
 - **Keep manual runs out of the normal logs** — the per-task default for the run-popup toggle.
 
 The editor carries **Save** / **Cancel** and, for an existing task, a **Delete** button that asks for confirmation first. Renaming the slug moves the task directory.
 
-The **Schedule** and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing both removes the entry.
+The **Schedule**, **Run mode**, **Run timeout**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing them all removes the entry.
 
 ## Schedule a task
 
@@ -99,6 +101,12 @@ A task with a **Schedule** cadence runs itself on that interval — **headless**
 A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (last ~5 runs kept), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes (e.g. `.condash/term-titles.json`); condash does not capture it.
 
 The scheduler is cheap on idle workspaces: it **single-flights** (never overlaps a still-running run of the same task) and **per-tab growth-gates** — it skips a tick when no open tab produced new output since the last run, and when some did, it hands the run just those changed tabs via [`{UPDATED_TABS}`](#provided-variables-tabs-and-updated_tabs). So a quiet workspace spends nothing, and a busy one only pays for the tabs that actually moved.
+
+**Run mode + run timeout.** Set the task's **Run mode** to **One-shot (`--run`)** so a scheduled run exits cleanly the moment the agent finishes — then the **Run timeout** (default 10m) is just a safety cap on a hung run. With the default **Interactive (`--prompt`)** the agent finishes its work but does *not* exit the process, so the timeout doubles as the *discard* mechanism: without it the run would hold the single-flight slot, stretching the *effective* cadence out to the timeout regardless of the schedule. If you keep a scheduled task interactive, keep the timeout **≤ the schedule interval** so each cycle frees the slot before the next is due.
+
+### Running runs
+
+While a scheduled run is in flight it appears in a **Running** section at the bottom of the Tasks pane. Each row shows the task and how long the run has been alive; expand it to tail the run's live log, or hit **Kill** to terminate and discard it immediately.
 
 ## Keep runs out of the logs
 

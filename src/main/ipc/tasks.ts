@@ -4,6 +4,7 @@ import type { TaskConfigEntry } from '../../shared/types';
 import { deleteTask, listTasks, readTask, writeTask } from '../tasks';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { updateSettings } from '../settings';
+import { killTaskRun, listRunningTaskRuns } from '../task-scheduler';
 import { withConception } from './utils';
 
 /**
@@ -26,9 +27,16 @@ export function registerTasksIpc(): void {
     }, undefined),
   );
 
-  // Per-task schedule / excludeFromLogs config (capability 1). Read merges
-  // through the effective config (condash.json over settings.json); writes
-  // always target the per-machine settings.json `taskConfig` map.
+  // Live headless scheduled runs (capability 1) — the Tasks pane's "Running"
+  // section lists them and can kill one. Process-global, not conception-scoped:
+  // the scheduler only ever runs the active conception's tasks.
+  ipcMain.handle('listRunningTaskRuns', () => listRunningTaskRuns());
+  ipcMain.handle('killTaskRun', (_, sid: string) => killTaskRun(sid));
+
+  // Per-task schedule / timeout / excludeFromLogs / runMode config
+  // (capability 1). Read merges through the effective config (condash.json over
+  // settings.json); writes always target the per-machine settings.json
+  // `taskConfig` map.
   ipcMain.handle('getTaskConfig', () =>
     withConception(async (c) => {
       const config = await getEffectiveConceptionConfig(c);
@@ -44,15 +52,29 @@ export function registerTasksIpc(): void {
       typeof entry?.schedule === 'string' && entry.schedule.trim().length > 0
         ? entry.schedule.trim()
         : undefined;
+    const timeout =
+      typeof entry?.timeout === 'string' && entry.timeout.trim().length > 0
+        ? entry.timeout.trim()
+        : undefined;
     const excludeFromLogs = entry?.excludeFromLogs === true ? true : undefined;
+    // Only the non-default `oneshot` mode is persisted; `interactive` is the
+    // implied default and stays absent (matches the renderer's contract).
+    const runMode = entry?.runMode === 'oneshot' ? 'oneshot' : undefined;
     await updateSettings((cur) => {
       const map = { ...((cur.taskConfig ?? {}) as Record<string, TaskConfigEntry>) };
-      if (schedule === undefined && excludeFromLogs === undefined) {
+      if (
+        schedule === undefined &&
+        timeout === undefined &&
+        excludeFromLogs === undefined &&
+        runMode === undefined
+      ) {
         delete map[slug];
       } else {
         map[slug] = {
           ...(schedule ? { schedule } : {}),
+          ...(timeout ? { timeout } : {}),
           ...(excludeFromLogs ? { excludeFromLogs } : {}),
+          ...(runMode ? { runMode } : {}),
         };
       }
       return { ...cur, taskConfig: Object.keys(map).length > 0 ? map : undefined };
