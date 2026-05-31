@@ -368,8 +368,10 @@ const sharedSchemaFields = {
    *  absent = not scheduled. `timeout` is the per-task run-timeout override
    *  (same cadence syntax; absent = the scheduler's 10m default).
    *  `excludeFromLogs` is the per-task default for routing a manual run out of
-   *  `.condash/logs/` into `.condash/manual/<slug>/`, overridable per run. No
-   *  default entries — a task is inert until added. */
+   *  `.condash/logs/` into `.condash/manual/<slug>/`, overridable per run.
+   *  `runMode` is the per-task default for how a `promptFlags` agent is driven
+   *  (`interactive` → agedum `--prompt`, `oneshot` → `--run`), overridable per
+   *  run. No default entries — a task is inert until added. */
   taskConfig: z
     .record(
       z.string(),
@@ -378,6 +380,7 @@ const sharedSchemaFields = {
           schedule: z.string().optional(),
           timeout: z.string().optional(),
           excludeFromLogs: z.boolean().optional(),
+          runMode: z.enum(['interactive', 'oneshot']).optional(),
         })
         .strict(),
     )

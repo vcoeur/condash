@@ -126,6 +126,18 @@ describe('configSchema taskConfig (capability 1)', () => {
     expect(configSchema.safeParse({ taskConfig: { x: { timeout: 120 } } }).success).toBe(false);
   });
 
+  it('accepts a runMode of interactive or oneshot, rejects anything else', () => {
+    expect(configSchema.safeParse({ taskConfig: { x: { runMode: 'interactive' } } }).success).toBe(
+      true,
+    );
+    expect(configSchema.safeParse({ taskConfig: { x: { runMode: 'oneshot' } } }).success).toBe(
+      true,
+    );
+    expect(configSchema.safeParse({ taskConfig: { x: { runMode: 'headless' } } }).success).toBe(
+      false,
+    );
+  });
+
   it('rejects a non-string schedule / non-boolean excludeFromLogs', () => {
     expect(configSchema.safeParse({ taskConfig: { x: { schedule: 120 } } }).success).toBe(false);
     expect(configSchema.safeParse({ taskConfig: { x: { excludeFromLogs: 'yes' } } }).success).toBe(

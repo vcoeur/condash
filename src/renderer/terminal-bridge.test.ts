@@ -304,4 +304,43 @@ describe('runTask with promptFlags agent', () => {
     );
     vi.useRealTimers();
   });
+
+  it('seeds `--run` (one-shot) when the run opts request oneshot mode', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
+    const promise = bridge.runTask('agedum-claude', 'review the docs', 'Review docs', {
+      taskSlug: 'review-docs',
+      excludeFromLogs: false,
+      runMode: 'oneshot',
+    });
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: "agedum claude --run 'review the docs'" },
+      'my',
+      'agedum · claude•Review docs',
+    );
+    expect(handle.typeIntoActive).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('seeds `--prompt` when the run opts request interactive mode', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const bridge = createTerminalBridge(makeDeps(handle, [agedumAgent]));
+    const promise = bridge.runTask('agedum-claude', 'review the docs', 'Review docs', {
+      taskSlug: 'review-docs',
+      excludeFromLogs: false,
+      runMode: 'interactive',
+    });
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: "agedum claude --prompt 'review the docs'" },
+      'my',
+      'agedum · claude•Review docs',
+    );
+    vi.useRealTimers();
+  });
 });

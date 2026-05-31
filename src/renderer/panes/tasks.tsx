@@ -10,7 +10,7 @@ import {
   Switch,
 } from 'solid-js';
 import type { JSX } from 'solid-js';
-import type { Agent, Project, RunningTaskRun } from '@shared/types';
+import type { Agent, Project, RunMode, RunningTaskRun } from '@shared/types';
 import {
   appContext,
   extractMarkers,
@@ -56,7 +56,19 @@ interface Draft {
   /** Per-task default for routing manual runs out of `.condash/logs/`
    *  (capability 4). Persisted alongside `schedule`. */
   excludeFromLogs: boolean;
+  /** Per-task default run mode (a `promptFlags` agent only): `interactive` →
+   *  `--prompt` (session stays open), `oneshot` → `--run` (runs and exits).
+   *  Overridable per run in the run popup. Persisted alongside `schedule`. */
+  runMode: RunMode;
 }
+
+/** Run-mode choices offered in the editor + run popup. `interactive` keeps the
+ *  session open (agedum `--prompt`); `oneshot` runs once and exits (`--run`) —
+ *  the mode a scheduled task wants so its headless run exits cleanly. */
+const RUN_MODE_CHOICES: ReadonlyArray<{ value: RunMode; label: string }> = [
+  { value: 'interactive', label: 'Interactive (--prompt)' },
+  { value: 'oneshot', label: 'One-shot, then exit (--run)' },
+];
 
 /** Fixed schedule cadences offered in the editor. Replaces the old free-text
  *  input — every value parses via `parseCadence`. */
@@ -106,12 +118,16 @@ interface FillState {
   /** Effective per-run "route this run out of the logs" flag (capability 4),
    *  seeded from the task's `excludeFromLogs` default and toggleable here. */
   excludeFromLogs: boolean;
+  /** Effective per-run mode, seeded from the task's `runMode` default and
+   *  switchable here (interactive `--prompt` vs one-shot `--run`). */
+  runMode: RunMode;
 }
 
 /** Options carried alongside a task run launch. */
 export interface RunOptions {
   taskSlug: string;
   excludeFromLogs: boolean;
+  runMode: RunMode;
 }
 
 function blankDraft(agents: readonly Agent[]): Draft {
@@ -129,6 +145,7 @@ function blankDraft(agents: readonly Agent[]): Draft {
     schedule: '',
     timeout: DEFAULT_TIMEOUT,
     excludeFromLogs: false,
+    runMode: 'interactive',
   };
 }
 
@@ -156,9 +173,10 @@ export function TasksView(props: {
   apps: () => readonly AppOption[];
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
   /** Run a filled task: spawn the agent (by id) and deliver the substituted
-   *  prompt. `taskName` titles the spawned tab. `opts` carries the task slug +
-   *  effective excludeFromLogs so a flagged manual run routes its log to
-   *  `.condash/manual/<slug>/`. Always launches interactively. */
+   *  prompt. `taskName` titles the spawned tab. `opts` carries the task slug,
+   *  effective excludeFromLogs (routes a flagged run's log to
+   *  `.condash/manual/<slug>/`), and the effective runMode (`--prompt`
+   *  interactive vs `--run` one-shot). */
   onRun: (agentId: string, text: string, taskName: string, opts: RunOptions) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
@@ -212,6 +230,7 @@ export function TasksView(props: {
       schedule: cfg.schedule ?? '',
       timeout: cfg.timeout ?? DEFAULT_TIMEOUT,
       excludeFromLogs: cfg.excludeFromLogs === true,
+      runMode: cfg.runMode === 'oneshot' ? 'oneshot' : 'interactive',
     });
   };
 
@@ -238,6 +257,7 @@ export function TasksView(props: {
     ]);
     const provided: Record<string, string> = { TABS: JSON.stringify(tabs) };
     const excludeFromLogs = cfgMap[slug]?.excludeFromLogs === true;
+    const runMode: RunMode = cfgMap[slug]?.runMode === 'oneshot' ? 'oneshot' : 'interactive';
     setFill({
       slug,
       def,
@@ -247,6 +267,7 @@ export function TasksView(props: {
       fields,
       provided,
       excludeFromLogs,
+      runMode,
     });
   };
 
@@ -285,6 +306,8 @@ export function TasksView(props: {
         // for an unscheduled task.
         timeout: scheduled ? d.timeout.trim() || undefined : undefined,
         excludeFromLogs: d.excludeFromLogs || undefined,
+        // Only the non-default mode is persisted (interactive is the default).
+        runMode: d.runMode === 'oneshot' ? 'oneshot' : undefined,
       });
       props.flashToast(`Saved ${slug}`, 'success');
       setDraft(null);
@@ -646,12 +669,18 @@ function TaskFill(props: {
   const preview = createMemo(() => substitute(props.fill().def.prompt, ctx()));
 
   const agentOk = createMemo(() => props.agents().some((a) => a.id === props.fill().agent));
+  // Run mode (--prompt vs --run) only applies to a prompt-seeding agent; an opaque
+  // agent uses the keystroke path, which is interactive-only.
+  const fillAgentSeedable = createMemo(() =>
+    props.agents().some((a) => a.id === props.fill().agent && a.promptFlags === true),
+  );
 
   const run = (): void => {
     const f = props.fill();
     props.onRun(f.agent, substitute(f.def.prompt, ctx()), f.def.name, {
       taskSlug: f.slug,
       excludeFromLogs: f.excludeFromLogs,
+      runMode: f.runMode,
     });
     close();
   };
@@ -702,6 +731,26 @@ function TaskFill(props: {
               </select>
             </label>
             <label
+              class="tasks-fill-mode"
+              title={
+                fillAgentSeedable()
+                  ? 'Interactive keeps the tab open (--prompt); one-shot runs once and exits (--run)'
+                  : 'Run mode needs a prompt-seeding agent (promptFlags); opaque agents are interactive only'
+              }
+            >
+              <select
+                value={props.fill().runMode}
+                disabled={!fillAgentSeedable()}
+                onChange={(e) =>
+                  props.setFill({ ...props.fill(), runMode: e.currentTarget.value as RunMode })
+                }
+              >
+                <For each={RUN_MODE_CHOICES}>
+                  {(o) => <option value={o.value}>{o.label}</option>}
+                </For>
+              </select>
+            </label>
+            <label
               class="tasks-fill-exclude"
               title="Route this run's log to .condash/manual/<slug>/ instead of the normal logs"
             >
@@ -719,9 +768,11 @@ function TaskFill(props: {
               class="tasks-run tasks-fill-run"
               disabled={!agentOk()}
               title={
-                agentOk()
-                  ? 'Spawn the agent and run interactively'
-                  : `Agent ${props.fill().agent} is not defined`
+                !agentOk()
+                  ? `Agent ${props.fill().agent} is not defined`
+                  : props.fill().runMode === 'oneshot'
+                    ? 'Spawn the agent, run once, and exit (--run)'
+                    : 'Spawn the agent and run interactively (--prompt)'
               }
               onClick={run}
             >
@@ -926,6 +977,18 @@ function TaskEditor(props: {
                 onChange={(e) => props.patch({ schedule: e.currentTarget.value })}
               >
                 <For each={scheduleOptions()}>
+                  {(o) => <option value={o.value}>{o.label}</option>}
+                </For>
+              </select>
+            </label>
+
+            <label title="Default for this task's runs (a prompt-seeding agent only); overridable per run. Interactive keeps the tab open (--prompt); one-shot runs once and exits (--run) — prefer one-shot for a scheduled task so its headless run exits cleanly.">
+              <span>Run mode</span>
+              <select
+                value={d().runMode}
+                onChange={(e) => props.patch({ runMode: e.currentTarget.value as RunMode })}
+              >
+                <For each={RUN_MODE_CHOICES}>
                   {(o) => <option value={o.value}>{o.label}</option>}
                 </For>
               </select>

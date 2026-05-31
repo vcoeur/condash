@@ -257,6 +257,15 @@
   margin: 0;
 }
 
+/* Run-mode select in the run popup: compact, doesn't grow like the agent picker. */
+.tasks-fill-mode {
+  flex: 0 0 auto;
+}
+
+.tasks-fill-mode select {
+  width: auto;
+}
+
 .tasks-fill-scroll,
 .tasks-editor-scroll {
   flex: 1 1 auto;
