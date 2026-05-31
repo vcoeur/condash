@@ -31,9 +31,11 @@ export function termTitlesPath(conception: string): string {
  *  detail; the tab strip only has room for a few words. */
 export const TITLE_MAX_LEN = 48;
 
-/** The on-disk shape. `summary` / `lineCount` are the *task's* memory — read
- *  back by the task on its next cycle — and are accepted here (so the file
- *  validates) but ignored by condash's apply path, which only needs `title`. */
+/** The on-disk shape. `summary` is the *task's* memory — read back by the task
+ *  on its next cycle — and `lineCount` is a tolerated legacy field (the task
+ *  tracked its own staleness before condash gained the per-tab `{UPDATED_TABS}`
+ *  gate). Both are accepted here so the file validates, but ignored by condash's
+ *  apply path, which only needs `title`. */
 const titleEntrySchema = z
   .object({
     sid: z.string().min(1),

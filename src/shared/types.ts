@@ -621,9 +621,9 @@ export interface TermAutoTitle {
   title: string;
 }
 
-/** One open terminal tab, as injected into a task's `{TABS}` provided var
- *  (capability 2). Built from the main session map. No prior titles — the
- *  task owns its own memory via its `.condash/term-titles.json`. */
+/** One open terminal tab, as injected into a task's `{TABS}` / `{UPDATED_TABS}`
+ *  provided vars (capability 2). Built from the main session map. No prior
+ *  titles — the task owns its own memory via its `.condash/term-titles.json`. */
 export interface TabInfo {
   sid: string;
   cwd: string;

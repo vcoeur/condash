@@ -104,15 +104,18 @@ export function tabsContext(): TabInfo[] {
     }));
 }
 
-/** Sum of cumulative bytes emitted across all live sessions. The scheduler
- *  growth-gates on this: an unchanged total since the last run means no tab
- *  produced new output, so there is nothing to re-title. */
-export function totalBytesSeen(): number {
-  let total = 0;
+/** Per-sid cumulative bytes emitted, for every live session. The scheduler
+ *  diffs this against the snapshot it captured at a task's last run to find the
+ *  tabs that produced new output: a sid whose count is unchanged is stale, and
+ *  a task whose every tab is stale is skipped (the per-tab growth gate). Drives
+ *  the `{UPDATED_TABS}` provided var. Exited sessions are excluded, matching
+ *  `tabsContext()`. */
+export function tabsBytes(): Map<string, number> {
+  const out = new Map<string, number>();
   for (const s of sessions.values()) {
-    if (s.exited === undefined) total += s.bytesSeen;
+    if (s.exited === undefined) out.set(s.id, s.bytesSeen);
   }
-  return total;
+  return out;
 }
 
 export function attachTerminal(

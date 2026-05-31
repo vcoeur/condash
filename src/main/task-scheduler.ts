@@ -5,8 +5,9 @@
  * janitor, `index.ts`) ticks over the per-task `taskConfig` map in the
  * effective config. For each task carrying a `schedule` cadence it:
  *   - single-flights (skips while a prior run of the same task is in flight),
- *   - growth-gates (skips when no open tab produced new output since the last
- *     run — an idle workspace costs nothing),
+ *   - per-tab growth-gates (skips when no open tab produced new output since the
+ *     last run — an idle workspace costs nothing — and hands a task that does
+ *     run just the changed tabs via the `{UPDATED_TABS}` provided var),
  *   - and, when due, runs the bound task in a **background pty** with no tab,
  *     no `TermSession` broadcast, and output teed to
  *     `.condash/scheduled/<slug>/` (always — independent of the user's global
@@ -29,8 +30,8 @@ import { spawnEnv } from './shell-env';
 import { substitute } from '../shared/action-template';
 import { parseCadence } from '../shared/cadence';
 import { SessionLogger } from './terminal-logger';
-import { tabsContext, totalBytesSeen } from './terminals';
-import type { Agent, TaskConfigEntry } from '../shared/types';
+import { tabsContext, tabsBytes } from './terminals';
+import type { Agent, TabInfo, TaskConfigEntry } from '../shared/types';
 
 /** How often the scheduler wakes to check for due tasks. */
 const TICK_MS = 20_000;
@@ -44,8 +45,12 @@ interface TaskState {
   lastCheckedAt: number;
   /** True while a headless run of this task is still alive (single-flight). */
   inFlight: boolean;
-  /** `totalBytesSeen()` captured at the last actual launch — the growth gate. */
-  bytesAtLastRun: number;
+  /** Per-sid `bytesSeen` captured at the last actual launch — the per-tab
+   *  growth gate. The next due tick diffs the live counts against this to find
+   *  tabs with new output; an empty diff means nothing changed, so the run is
+   *  skipped. Empty until the first launch, so the first due tick always runs
+   *  (every open tab reads as new against an empty snapshot). */
+  bytesPerSid: Map<string, number>;
 }
 
 let current: { path: string; interval: ReturnType<typeof setInterval> } | null = null;
@@ -74,12 +79,18 @@ function wrap(command: string): string[] {
 
 /**
  * Run one task headlessly. Resolves the bound task + agent, substitutes the
- * prompt (including the `{TABS}` provided var), spawns a background pty seeded
- * with the agent's `--prompt`, and tees output to `.condash/scheduled/<slug>/`
- * via a forced-on `SessionLogger`. Resolves when the pty exits (or is killed
- * on timeout). Throws on any setup error so the caller can clear in-flight.
+ * prompt (the `{TABS}` provided var carries every open tab; `{UPDATED_TABS}`
+ * the changed subset the caller's growth gate found), spawns a background pty
+ * seeded with the agent's `--prompt`, and tees output to
+ * `.condash/scheduled/<slug>/` via a forced-on `SessionLogger`. Resolves when
+ * the pty exits (or is killed on timeout). Throws on any setup error so the
+ * caller can clear in-flight.
  */
-async function runHeadless(conceptionPath: string, slug: string): Promise<void> {
+async function runHeadless(
+  conceptionPath: string,
+  slug: string,
+  updatedTabs: TabInfo[],
+): Promise<void> {
   const task = await readTask(conceptionPath, slug);
   if (!task) throw new Error(`task ${slug} not found`);
   const agents = await listAgents(conceptionPath);
@@ -97,7 +108,10 @@ async function runHeadless(conceptionPath: string, slug: string): Promise<void> 
   const config = await getEffectiveConceptionConfig(conceptionPath);
   const shell = resolveShell(config.terminal?.shell ?? settings.terminal?.shell);
 
-  const prompt = substitute(task.prompt, { TABS: JSON.stringify(tabsContext()) });
+  const prompt = substitute(task.prompt, {
+    TABS: JSON.stringify(tabsContext()),
+    UPDATED_TABS: JSON.stringify(updatedTabs),
+  });
   const command = `${agent.command} --prompt ${shellSingleQuote(prompt)}`;
   const argv = wrap(command);
 
@@ -170,23 +184,28 @@ async function tick(conceptionPath: string): Promise<void> {
     if (cadence === null) continue;
     let state = states.get(slug);
     if (!state) {
-      state = { lastCheckedAt: 0, inFlight: false, bytesAtLastRun: -1 };
+      state = { lastCheckedAt: 0, inFlight: false, bytesPerSid: new Map() };
       states.set(slug, state);
     }
     if (state.inFlight) continue;
     if (now - state.lastCheckedAt < cadence) continue;
 
-    // Growth gate: after the first run, skip when no tab produced new output.
-    const bytes = totalBytesSeen();
-    if (state.bytesAtLastRun >= 0 && bytes === state.bytesAtLastRun) {
+    // Per-tab growth gate: the open tabs whose byte count moved since the last
+    // run. On the first run every tab reads as updated (no prior snapshot); an
+    // empty set means nothing changed (or nothing is open), so skip without
+    // spending the agent. The run is handed exactly this subset.
+    const bytes = tabsBytes();
+    const prevBytes = state.bytesPerSid;
+    const updated = tabsContext().filter((tab) => bytes.get(tab.sid) !== prevBytes.get(tab.sid));
+    if (updated.length === 0) {
       state.lastCheckedAt = now;
       continue;
     }
 
     state.inFlight = true;
     state.lastCheckedAt = now;
-    state.bytesAtLastRun = bytes;
-    void runHeadless(conceptionPath, slug)
+    state.bytesPerSid = bytes;
+    void runHeadless(conceptionPath, slug, updated)
       .catch((err) => {
         process.stderr.write(`condash task-scheduler: ${slug}: ${(err as Error).message}\n`);
       })

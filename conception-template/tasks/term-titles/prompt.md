@@ -9,47 +9,50 @@ title state.
 
 ## Inputs
 
-- `{TABS}` — the tabs that exist right now, as JSON:
-  `[{ "sid": "t-…", "cwd": "/abs/path", "repo": "name", "cmd": "agedum claude" }]`
-  Only these sids exist. Do not invent sids.
+- `{UPDATED_TABS}` — the tabs that produced **new output since your last run**,
+  as JSON: `[{ "sid": "t-…", "cwd": "/abs/path", "repo": "name", "cmd": "agedum claude" }]`.
+  condash has already dropped the tabs with nothing new, so these are the only
+  ones worth re-titling this cycle — that is the whole point, you don't re-scan
+  idle tabs. Only these sids matter; do not invent sids. If this list is empty,
+  there is nothing to do — stop. If it still shows the literal `{UPDATED_TABS}`
+  (an older condash that doesn't provide it), fall back to `{TABS}`.
+- `{TABS}` — every open tab right now, same shape. Reference / fallback set;
+  prefer `{UPDATED_TABS}`.
 - Your own previous output, at `./.condash/term-titles.json` (relative to the
   current directory, which is the conception root). It may be absent on the
   first run. Its shape is the same one you write below; read back per-sid
-  `title` → `prevTitle`, `summary` → `prevSummary`, `lineCount` → `prevLineCount`.
+  `title` → `prevTitle`, `summary` → `prevSummary`.
 
 ## Procedure
 
-For each tab in `{TABS}`:
+For each tab in `{UPDATED_TABS}`:
 
-1. **Staleness check.** Get the current total line count:
-   `condash logs read <sid> --meta --json` → read `lines`. If the tab has no
-   log yet, treat the total as 0. Let `delta = total - prevLineCount` (treat a
-   missing `prevLineCount` as 0). If `delta <= 0`, the tab produced nothing new
-   — **keep** `prevTitle`/`prevSummary` (re-emit them unchanged, or omit the
-   tab entirely) and move on. Never blank a title.
+1. **Read the recent output.** `condash logs read <sid> --tail 120 --redact --json`
+   and use the `text`. `--redact` masks obvious secrets — always keep it. A tab
+   with no log yet has nothing to read — skip it.
 
-2. **Adaptive read.** Read only the new region with a little overlap for
-   context: `N = min(delta + 20, 200)`, then
-   `condash logs read <sid> --tail N --redact --json` and use the `text`.
-   `--redact` masks obvious secrets — always keep it.
-
-3. **Refine.** From `prevTitle` + `prevSummary` + the new lines, produce:
-   - `title`: ≤ 4 words, lowercase-ish, what the tab is doing *now*
-     (e.g. `fixing logs CLI`, `running tests`, `writing PR body`). When the
-     content is thin, fall back to a cheap heuristic: the `cwd` basename plus a
-     hint from `cmd`.
+2. **Refine.** From `prevTitle` + `prevSummary` + the new lines, produce:
+   - `title`: ≤ 4 words, lowercase-ish, naming the *subject* the tab is working
+     on — the feature, subsystem, bug, or file — not the transient step
+     happening right now. A good title names a topic that stays recognisable
+     across cycles (`logs CLI byte-cursor`, `scheduler UI`, `condash
+     knowledge`); avoid generic step labels that would fit almost any tab
+     (`preparing screenshots`, `running tests`, `writing PR body`). An action
+     verb is fine when it stays bound to the subject (`fixing logs CLI`), but
+     when you must choose, keep the subject and drop the verb. When the content
+     is thin, fall back to a cheap heuristic: the `cwd` basename plus a hint
+     from `cmd`.
    - `summary`: one sentence carrying enough state to refine again next cycle
      (this is your memory, not just a label).
-   - `lineCount`: the `total` from step 1 (your next-cycle `prevLineCount`).
 
 ## Output
 
-Write a **sparse** object — only the tabs you changed (omit unchanged/stale
-tabs) — to `.condash/term-titles.json`, **atomically** (write a temp file, then
-rename over the target so condash never reads a half-file):
+Write a **sparse** object — only the tabs you changed this cycle — to
+`.condash/term-titles.json`, **atomically** (write a temp file, then rename over
+the target so condash never reads a half-file):
 
 ```json
-{ "titles": [ { "sid": "t-a1b2c3d4", "title": "fixing logs CLI", "summary": "Debugging the logs CLI byte-cursor and adding the kind field.", "lineCount": 482 } ] }
+{ "titles": [ { "sid": "t-a1b2c3d4", "title": "fixing logs CLI", "summary": "Debugging the logs CLI byte-cursor and adding the kind field." } ] }
 ```
 
 Concretely, from your shell:
@@ -62,8 +65,9 @@ mv -f .condash/term-titles.json.tmp .condash/term-titles.json
 ```
 
 Rules:
-- Only emit sids that appear in `{TABS}`. condash ignores unknown sids and
-  leaves omitted sids untouched, but a tight file is cheaper to validate.
+- Only emit sids that appear in `{UPDATED_TABS}` (or `{TABS}` on the fallback).
+  condash ignores unknown sids and leaves omitted sids untouched, but a tight
+  file is cheaper to validate.
 - Keep titles short — condash clamps to ~48 chars on apply; the detail lives in
   `summary`.
 - Do not print the titles to the terminal as your "answer" — the **file** is

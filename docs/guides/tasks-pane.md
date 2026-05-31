@@ -52,15 +52,17 @@ A prompt that uses only a sub-token (say just `{APP_PATH}`) still surfaces the m
 
 The app picker lists your configured [repositories](repositories-and-open-with.md); the project picker lists the projects condash already loaded.
 
-### Provided variable: `{TABS}`
+### Provided variables: `{TABS}` and `{UPDATED_TABS}`
 
-`{TABS}` is a **condash-provided** marker — it is never a fillable field; condash injects it from runtime state. It expands to the JSON list of the open terminal tabs that exist right now:
+`{TABS}` and `{UPDATED_TABS}` are **condash-provided** markers — never fillable fields; condash injects them from runtime state. `{TABS}` expands to the JSON list of the open terminal tabs that exist right now:
 
 ```json
 [ { "sid": "t-a1b2c3d4", "cwd": "/home/you/src/...", "repo": "condash", "cmd": "agedum claude" } ]
 ```
 
-Only the tabs that actually exist are injected — no prior titles, no closed tabs. A task that wants to reason about "what is running where" reads `{TABS}` and looks each session up via [`condash logs read`](../reference/cli.md). The shipped **Term titles** task (below) is built on it.
+Only the tabs that actually exist are injected — no prior titles, no closed tabs. A task that wants to reason about "what is running where" reads `{TABS}` and looks each session up via [`condash logs read`](../reference/cli.md).
+
+`{UPDATED_TABS}` is the **same shape, narrowed to the tabs that produced new output since this task's last scheduled run** — condash drops the ones with nothing new. A recurring task should prefer it: it does the "what changed?" filtering in condash (cheap, no model call) so the agent only acts on the tabs worth re-reading, and when *nothing* changed the scheduler skips the run entirely (see *Schedule a task*). On a manual run there is no "last run" to diff against, so `{UPDATED_TABS}` is seeded to the full open set. The shipped **Term titles** task (below) is built on it.
 
 ## Run a task
 
@@ -96,7 +98,7 @@ A task with a **Schedule** cadence runs itself on that interval — **headless**
 
 A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (last ~5 runs kept), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes (e.g. `.condash/term-titles.json`); condash does not capture it.
 
-The scheduler is cheap on idle workspaces: it **single-flights** (never overlaps a still-running run of the same task) and **growth-gates** (skips a tick when no open tab produced new output since the last run).
+The scheduler is cheap on idle workspaces: it **single-flights** (never overlaps a still-running run of the same task) and **per-tab growth-gates** — it skips a tick when no open tab produced new output since the last run, and when some did, it hands the run just those changed tabs via [`{UPDATED_TABS}`](#provided-variables-tabs-and-updated_tabs). So a quiet workspace spends nothing, and a busy one only pays for the tabs that actually moved.
 
 ## Keep runs out of the logs
 
@@ -106,7 +108,7 @@ Both stores — `.condash/scheduled/<slug>/` and `.condash/manual/<slug>/` — a
 
 ## The shipped `term-titles` task
 
-A fresh conception ships an adoptable `tasks/term-titles/` task (it is **not** auto-scheduled). It reads `{TABS}`, sizes an adaptive [`condash logs read --tail`](../reference/cli.md) per tab, refines a short title + one-sentence summary, and writes the sparse `.condash/term-titles.json` that condash watches to auto-name the tabs (see [the embedded terminal](terminal.md#auto-titled-tabs)). Give it a cheap, prompt-seedable agent and a `Schedule` of a minute or two to keep your tab titles current.
+A fresh conception ships an adoptable `tasks/term-titles/` task (it is **not** auto-scheduled). It reads `{UPDATED_TABS}` (only the tabs that changed since its last run), skims each one's recent [`condash logs read --tail`](../reference/cli.md), refines a short title + one-sentence summary, and writes the sparse `.condash/term-titles.json` that condash watches to auto-name the tabs (see [the embedded terminal](terminal.md#auto-titled-tabs)). Because the per-tab growth gate already drops the idle tabs, the task only spends model tokens on tabs that actually moved. Give it a cheap, prompt-seedable agent and a `Schedule` of a minute or two to keep your tab titles current.
 
 ## See also
 
