@@ -21,6 +21,10 @@ interface DropdownMenu {
   /** Open the menu programmatically (e.g. from a keyboard handler that
    *  already swallowed the event). */
   open: () => void;
+  /** Open the menu anchored at a viewport coordinate (a right-click cursor
+   *  point) instead of a trigger element. Reuses the same viewport-flip and
+   *  outside-click / Escape dismissal as the trigger-anchored path. */
+  openAt: (x: number, y: number) => void;
   /** Close programmatically (e.g. after picking a menu item). */
   close: () => void;
 }
@@ -56,14 +60,22 @@ export function createDropdownMenu(options: CreateDropdownMenuOptions = {}): Dro
   const [anchor, setAnchor] = createSignal<MenuAnchor | null>(null);
   let triggerEl: HTMLElement | undefined;
   let menuEl: HTMLElement | undefined;
+  // Set by openAt() for cursor-anchored (right-click) menus; cleared by the
+  // trigger-anchored open paths so the two modes can't bleed into each other.
+  let cursorPoint: { x: number; y: number } | null = null;
 
   const positionMenu = (): void => {
-    if (!triggerEl) return;
-    const rect = triggerEl.getBoundingClientRect();
+    // A cursor menu anchors to a zero-size rect at the click point; otherwise
+    // anchor to the trigger element's box.
+    const rect = cursorPoint
+      ? { top: cursorPoint.y, bottom: cursorPoint.y, left: cursorPoint.x, right: cursorPoint.x }
+      : triggerEl?.getBoundingClientRect();
+    if (!rect) return;
     const margin = 8;
     // 8 px gap (was 4 px) so the menu doesn't visually merge with the
     // trigger button; matches the "+ New project" button's visual rhythm.
-    const gap = 8;
+    // Cursor menus open flush at the pointer (no gap).
+    const gap = cursorPoint ? 0 : 8;
     let top = rect.bottom + gap;
     const menuH = menuEl?.getBoundingClientRect().height ?? 0;
     if (menuH > 0 && top + menuH > window.innerHeight - margin) {
@@ -140,11 +152,18 @@ export function createDropdownMenu(options: CreateDropdownMenuOptions = {}): Dro
         setOpen(false);
         return;
       }
+      cursorPoint = null;
       positionMenu();
       setOpen(true);
     },
     open: () => {
       if (openSig()) return;
+      cursorPoint = null;
+      positionMenu();
+      setOpen(true);
+    },
+    openAt: (x: number, y: number): void => {
+      cursorPoint = { x, y };
       positionMenu();
       setOpen(true);
     },
