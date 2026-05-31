@@ -255,7 +255,11 @@ export function TasksView(props: {
       window.condash.termTabsContext(),
       window.condash.getTaskConfig(),
     ]);
-    const provided: Record<string, string> = { TABS: JSON.stringify(tabs) };
+    // A manual run has no per-task "since last run" watermark (that lives in the
+    // scheduler), so `{UPDATED_TABS}` seeds to the full open set — the user
+    // asked to run now, so treat every tab as worth acting on.
+    const tabsJson = JSON.stringify(tabs);
+    const provided: Record<string, string> = { TABS: tabsJson, UPDATED_TABS: tabsJson };
     const excludeFromLogs = cfgMap[slug]?.excludeFromLogs === true;
     const runMode: RunMode = cfgMap[slug]?.runMode === 'oneshot' ? 'oneshot' : 'interactive';
     setFill({

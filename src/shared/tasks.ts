@@ -56,10 +56,12 @@ export const PROJECT_TOKENS = [
 ] as const;
 
 /** Reserved provided tokens — injected by condash from runtime state, never
- *  prompted in the fill form. `{TABS}` carries the open-tab list (capability
- *  2). Unlike `{APP}` / `{PROJECT}`, there is no picker: the value is supplied
- *  wholesale. */
-export const PROVIDED_TOKENS = ['TABS'] as const;
+ *  prompted in the fill form. `{TABS}` carries every open tab; `{UPDATED_TABS}`
+ *  carries only the tabs that produced new output since this task's last
+ *  scheduled run (the same shape, a subset) so a recurring task can act on just
+ *  what changed. Unlike `{APP}` / `{PROJECT}`, there is no picker: the value is
+ *  supplied wholesale. */
+export const PROVIDED_TOKENS = ['TABS', 'UPDATED_TABS'] as const;
 
 const APP_TOKEN_SET: ReadonlySet<string> = new Set(APP_TOKENS);
 const PROJECT_TOKEN_SET: ReadonlySet<string> = new Set(PROJECT_TOKENS);
@@ -75,8 +77,9 @@ export function isProjectToken(key: string): boolean {
   return PROJECT_TOKEN_SET.has(key);
 }
 
-/** True when `key` is a condash-provided token (e.g. `{TABS}`) — injected
- *  from runtime state, never rendered as a fillable field. */
+/** True when `key` is a condash-provided token (e.g. `{TABS}` /
+ *  `{UPDATED_TABS}`) — injected from runtime state, never rendered as a
+ *  fillable field. */
 export function isProvidedToken(key: string): boolean {
   return PROVIDED_TOKEN_SET.has(key);
 }

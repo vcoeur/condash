@@ -46,7 +46,7 @@ The full title precedence is **manual rename → auto-title → cwd basename (un
 
 condash watches `<conception>/.condash/term-titles.json` and, on change, applies a short title to each tab named in it (matched by session id). A user rename still wins; an auto-title otherwise sits just above the cwd basename. condash never invents these titles itself and holds no title state — it only watches the file and applies what it finds. Sids it doesn't recognise are ignored; tabs not named in the file are left untouched (never blanked).
 
-The file is meant to be produced by a [task](tasks-pane.md): the shipped **Term titles** task reads the open tabs (`{TABS}`), skims each tab's recent log, and writes the sparse file. Schedule it (Tasks → editor → Schedule) to keep titles current, or run it by hand. Any process that writes a valid `term-titles.json` works — condash does not care who wrote it.
+The file is meant to be produced by a [task](tasks-pane.md): the shipped **Term titles** task reads the tabs that changed since its last run (`{UPDATED_TABS}`), skims each one's recent log, and writes the sparse file. Schedule it (Tasks → editor → Schedule) to keep titles current, or run it by hand. Any process that writes a valid `term-titles.json` works — condash does not care who wrote it.
 
 `TERM=xterm-256color`, and the shell is launched with `-l` so your login rc-files run.
 

@@ -50,17 +50,26 @@ describe('reserved token predicates', () => {
     expect(isProjectToken('PROMPT')).toBe(false);
   });
 
-  it('recognises the provided {TABS} token (capability 2)', () => {
+  it('recognises the provided {TABS} / {UPDATED_TABS} tokens (capability 2)', () => {
     expect(isProvidedToken('TABS')).toBe(true);
+    expect(isProvidedToken('UPDATED_TABS')).toBe(true);
     expect(isProvidedToken('APP')).toBe(false);
     expect(isProvidedToken('AREA')).toBe(false);
   });
 });
 
-describe('substitute with a provided {TABS} var', () => {
+describe('substitute with the provided tab vars', () => {
   it('injects the open-tab JSON for a {TABS} marker', () => {
     const tabs = JSON.stringify([{ sid: 't-a', cwd: '/x', repo: 'condash', cmd: 'agedum claude' }]);
     expect(substitute('Tabs: {TABS}', { TABS: tabs })).toBe(`Tabs: ${tabs}`);
+  });
+
+  it('injects the changed-tab subset for an {UPDATED_TABS} marker', () => {
+    const all = JSON.stringify([{ sid: 't-a' }, { sid: 't-b' }]);
+    const updated = JSON.stringify([{ sid: 't-b' }]);
+    expect(
+      substitute('All {TABS} / new {UPDATED_TABS}', { TABS: all, UPDATED_TABS: updated }),
+    ).toBe(`All ${all} / new ${updated}`);
   });
 });
 
