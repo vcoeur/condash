@@ -58,6 +58,52 @@
   background: var(--bg-hover);
 }
 
+/* Sessions | Task runs view switcher. */
+.logs-view-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.logs-view-switch button {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.logs-view-switch button.active {
+  background: var(--bg-hover);
+  color: inherit;
+  font-weight: 600;
+}
+
+/* scheduled / manual trigger badge in the Task runs view. */
+.logs-taskrun-trigger {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.logs-taskrun-trigger[data-trigger='scheduled'] {
+  background: #e6f0ff;
+  color: #00357a;
+  border-color: #b9d2ff;
+}
+
+.logs-taskrun-trigger[data-trigger='manual'] {
+  background: #fdecd9;
+  color: #6b3b00;
+  border-color: #f0cba0;
+}
+
 .logs-list {
   flex: 1 1 auto;
   min-height: 0;

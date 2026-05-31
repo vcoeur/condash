@@ -8,6 +8,9 @@ import { pathToFileURL } from 'node:url';
 import { decideDispatch } from './dispatch';
 import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { setWatchedConception } from './watcher';
+import { setWatchedTermTitles } from './term-titles-watcher';
+import { setScheduledConception } from './task-scheduler';
+import { registerTermTitlesIpc } from './ipc/term-titles';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll, migrateTerminalFromConfigIfNeeded } from './terminals';
 import { loginPath } from './shell-env';
@@ -313,6 +316,7 @@ function registerIpc(): void {
   registerReposIpc();
   registerTerminalIpc();
   registerLogsIpc();
+  registerTermTitlesIpc();
   registerSettingsIpc({ onLayoutChange: rebuildMenu });
   registerSystemIpc({
     onConceptionPicked: (picked) => {
@@ -320,6 +324,10 @@ function registerIpc(): void {
       updateWindowTitle(picked);
       void rebuildMenuFromSettings();
       startJanitor(picked);
+      // Re-point the term-titles watcher + the task scheduler at the newly
+      // picked conception (capabilities 1 + 3).
+      void setWatchedTermTitles(picked);
+      void setScheduledConception(picked);
       // Heal any orphan "running" logs in the newly-picked conception so
       // the Logs pane reflects reality on first render.
       void sealOrphanLogs(picked).catch((err) => {
@@ -386,6 +394,10 @@ app.whenReady().then(async () => {
   const conceptionPath = settings.lastConceptionPath;
   cachedConceptionPath = conceptionPath;
   await setWatchedConception(conceptionPath);
+  // Watch `.condash/term-titles.json` (capability 3) and arm the per-task
+  // scheduler (capability 1) for the active conception.
+  await setWatchedTermTitles(conceptionPath);
+  await setScheduledConception(conceptionPath);
   // Sweep `.condash/logs/` for expired day-directories. Runs once at
   // startup and on a 24 h interval. Bounded by the effective
   // `terminal.logging.retentionDays` / `maxDirMb` settings; defaults are

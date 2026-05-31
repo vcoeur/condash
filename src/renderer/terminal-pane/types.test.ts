@@ -28,6 +28,32 @@ describe('displayName', () => {
     );
   });
 
+  describe('autoTitle (capability 3)', () => {
+    it('uses autoTitle over the cwd basename and label', () => {
+      expect(
+        displayName(
+          tab({
+            label: 'shell',
+            cwd: '/home/alice/src/vcoeur/condash',
+            autoTitle: 'fixing logs CLI',
+          }),
+        ),
+      ).toBe('fixing logs CLI');
+    });
+
+    it('customName still wins over autoTitle', () => {
+      expect(
+        displayName(tab({ label: 'shell', customName: 'my-term', autoTitle: 'fixing logs CLI' })),
+      ).toBe('my-term');
+    });
+
+    it('autoTitle wins even when the tab is pinned (it is a deliberate title)', () => {
+      expect(displayName(tab({ label: 'lambda', pinned: true, autoTitle: 'running tests' }))).toBe(
+        'running tests',
+      );
+    });
+  });
+
   describe('pinned', () => {
     it('keeps the spawn-time label when the shell emits OSC 7', () => {
       expect(

@@ -21,6 +21,10 @@ import type {
   SkillNode,
   SkillScope,
   StepMarker,
+  TabInfo,
+  TaskConfigEntry,
+  TaskRunGroup,
+  TermAutoTitle,
   TermDataMessage,
   TermExitMessage,
   TermLogSessionMeta,
@@ -269,6 +273,19 @@ export interface CondashApi {
   onTermExit(callback: (msg: TermExitMessage) => void): () => void;
   /** Sessions changed (spawn / exit / close). Receives the full snapshot. */
   onTermSessions(callback: (sessions: TermSession[]) => void): () => void;
+  /** Auto-titles changed — the watcher on `.condash/term-titles.json`
+   *  validated a new sparse `{sid,title}` list (capability 3). The renderer
+   *  sparse-merges them onto its tabs: sets the sids present, ignores unknown
+   *  sids, leaves omitted sids untouched. Returns an unsubscribe function. */
+  onTermAutoTitles(callback: (titles: TermAutoTitle[]) => void): () => void;
+  /** Pull the current validated auto-titles from `.condash/term-titles.json`.
+   *  Called on renderer mount so a fresh / reloaded window paints existing
+   *  titles without waiting for the next file write. */
+  termAutoTitlesList(): Promise<TermAutoTitle[]>;
+  /** The open, still-live tabs as `[{sid,cwd,repo,cmd}]` — the `{TABS}`
+   *  provided-var payload (capability 2). Used to seed `{TABS}` for a manual
+   *  task run from the Tasks pane. */
+  termTabsContext(): Promise<TabInfo[]>;
 
   /** List the day-directories present under
    * `<conception>/.condash/logs/` — newest first. Empty when no
@@ -286,6 +303,18 @@ export interface CondashApi {
    *  `<conception>/.condash/logs/`; rejects paths outside the logs root
    *  or files that don't end in `.txt`. */
   logsDeleteSession(filePath: string): Promise<{ deleted: boolean }>;
+  /** Enumerate the segregated task-run store under
+   *  `.condash/{scheduled,manual}/<slug>/` (capabilities 1 + 4). One group per
+   *  `<trigger>/<slug>`, runs newest-first. Powers the Logs pane's "Task runs"
+   *  view; never reads `.condash/logs/`. */
+  logsListTaskRuns(): Promise<TaskRunGroup[]>;
+
+  /** Per-task config map keyed by slug (`{schedule?, excludeFromLogs?}`), from
+   *  the effective config (capability 1). Empty when no conception. */
+  getTaskConfig(): Promise<Record<string, TaskConfigEntry>>;
+  /** Persist one task's config entry into `settings.json`'s `taskConfig`. An
+   *  entry with neither a schedule nor `excludeFromLogs` is removed. */
+  setTaskConfig(slug: string, entry: TaskConfigEntry): Promise<void>;
 
   /** Open the configured conception directory in the OS file manager. */
   openConceptionDirectory(): Promise<void>;

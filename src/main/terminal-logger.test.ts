@@ -84,6 +84,25 @@ describe('sessionLogPath', () => {
     expect(path.startsWith(condashLogsRoot('/x/conception'))).toBe(true);
     expect(path).toMatch(/[/]\d{4}[/]\d{2}[/]\d{2}[/]\d{6}-t-abc\.txt$/);
   });
+
+  it('routes a manual task run out of logs/ into .condash/manual/<slug>/', () => {
+    const path = sessionLogPath('/x/conception', 't-abc', new Date('2026-05-13T14:22:07Z'), {
+      taskSlug: 'term-titles',
+      trigger: 'manual',
+    });
+    expect(path.startsWith(condashLogsRoot('/x/conception'))).toBe(false);
+    expect(path).toContain('/.condash/manual/term-titles/');
+    expect(path).toMatch(/[/]\d{8}-\d{6}-t-abc\.txt$/);
+  });
+
+  it('routes a scheduled task run into .condash/scheduled/<slug>/ — never logs/', () => {
+    const path = sessionLogPath('/x/conception', 't-xyz', new Date('2026-05-13T14:22:07Z'), {
+      taskSlug: 'term-titles',
+      trigger: 'scheduled',
+    });
+    expect(path.startsWith(condashLogsRoot('/x/conception'))).toBe(false);
+    expect(path).toContain('/.condash/scheduled/term-titles/');
+  });
 });
 
 describe('resolveLoggingPrefs', () => {

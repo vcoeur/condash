@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi, MenuCommand } from '../shared/api';
 import type {
   RepoEvent,
+  TermAutoTitle,
   TermDataMessage,
   TermExitMessage,
   TermSession,
@@ -110,11 +111,21 @@ const api: CondashApi = {
     ipcRenderer.on('termSessions', handler);
     return () => ipcRenderer.removeListener('termSessions', handler);
   },
+  onTermAutoTitles: (callback) => {
+    const handler = (_: unknown, titles: TermAutoTitle[]): void => callback(titles);
+    ipcRenderer.on('termAutoTitles', handler);
+    return () => ipcRenderer.removeListener('termAutoTitles', handler);
+  },
+  termAutoTitlesList: () => ipcRenderer.invoke('termAutoTitlesList'),
+  termTabsContext: () => ipcRenderer.invoke('termTabsContext'),
   logsListDays: () => ipcRenderer.invoke('logsListDays'),
   logsListSessions: (day) => ipcRenderer.invoke('logsListSessions', day),
   logsReadSession: (filePath) => ipcRenderer.invoke('logsReadSession', filePath),
   logsDeleteDay: (day) => ipcRenderer.invoke('logsDeleteDay', day),
   logsDeleteSession: (filePath) => ipcRenderer.invoke('logsDeleteSession', filePath),
+  logsListTaskRuns: () => ipcRenderer.invoke('logsListTaskRuns'),
+  getTaskConfig: () => ipcRenderer.invoke('getTaskConfig'),
+  setTaskConfig: (slug, entry) => ipcRenderer.invoke('setTaskConfig', slug, entry),
   openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
   openExternal: (target: string) => ipcRenderer.invoke('openExternal', target),
   openPath: (target: string) => ipcRenderer.invoke('openPath', target),
