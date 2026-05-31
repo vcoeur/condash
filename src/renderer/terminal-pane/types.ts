@@ -33,6 +33,10 @@ export interface Tab {
    *  so a user rename always wins. condash holds no title state; this is
    *  ephemeral renderer state re-applied on each file change. */
   autoTitle?: string;
+  /** Palette slot (0..19) assigned at creation and frozen for the tab's
+   *  lifetime — the button colour, drawn from the shared app-pill wheel.
+   *  Stable across closes / reorders / restarts. */
+  colorSlot?: number;
   /** Process exit code; the tab can still be cleared via close. */
   exited?: number;
 }

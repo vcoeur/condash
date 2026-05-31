@@ -9,6 +9,10 @@ export interface PersistedTabMeta {
   label: string;
   customName?: string;
   column: Column;
+  /** Palette slot (0..TAB_COLOR_SLOT_COUNT-1) frozen onto the tab at
+   *  creation. Persisted so the colour survives restarts and never shifts
+   *  when other tabs are closed or reordered. */
+  colorSlot?: number;
   /** When true, `displayName` ignores OSC 7 cwd updates and keeps `label`
    *  (unless `customName` is set). Pinned at spawn time by launchers that
    *  supply a deliberate title — lambda button, code-card "open in term".
@@ -27,6 +31,16 @@ export interface PersistedLayout {
 // is the migration trigger — old keys are left in place to be GC'd.
 export const META_KEY = 'condash:term:meta:v1';
 export const LAYOUT_KEY = 'condash:term:layout:v1';
+// Monotonic colour-sequence counter. Each new tab consumes one tick; the
+// slot is derived from it, then frozen onto the tab. Persisted so the zebra
+// keeps advancing across restarts instead of resetting to red every launch.
+export const COLORSEQ_KEY = 'condash:term:colorseq:v1';
+// Mirrors the app-pill palette length in `panes/app-pill.css` (slots 0..19).
+export const TAB_COLOR_SLOT_COUNT = 20;
+// Stride between consecutive tabs' slots. Coprime with the slot count, so the
+// sequence visits every hue once before repeating and adjacent tabs land far
+// apart on the wheel (red → chartreuse → indigo → …) for clear alternation.
+const COLOR_SLOT_STRIDE = 7;
 export const DEFAULT_PANE_HEIGHT = 280;
 export const DEFAULT_SPLIT_RATIO = 0.5;
 export const MIN_PANE_HEIGHT = 120;
@@ -104,6 +118,27 @@ export function deleteMeta(id: string): void {
   const map = readMeta();
   delete map[id];
   writeMeta(map);
+}
+
+/** Allocate the next creation-time colour slot. Reads + bumps the persisted
+ *  monotonic counter (written synchronously so back-to-back spawns don't all
+ *  collide on the same slot) and maps it onto the palette via the coprime
+ *  stride. Falls back to slot 0 if storage is unavailable. */
+export function allocateColorSlot(): number {
+  let seq = 0;
+  try {
+    const raw = localStorage.getItem(COLORSEQ_KEY);
+    seq = raw ? Number.parseInt(raw, 10) || 0 : 0;
+  } catch {
+    /* sandboxed env — start the sequence from 0 */
+  }
+  const slot = (seq * COLOR_SLOT_STRIDE) % TAB_COLOR_SLOT_COUNT;
+  try {
+    localStorage.setItem(COLORSEQ_KEY, String(seq + 1));
+  } catch {
+    /* ignore quota / sandboxed env */
+  }
+  return slot;
 }
 
 export function readLayout(): PersistedLayout {
