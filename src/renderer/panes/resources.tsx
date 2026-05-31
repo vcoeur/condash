@@ -20,6 +20,12 @@ export interface ResourcesViewActions {
   viewText: (path: string, title: string) => void;
   /** View a PDF in the existing pdf-modal. */
   viewPdf: (path: string) => void;
+  /** View an HTML file in the html-modal (rendered, with a source toggle). */
+  viewHtml: (path: string) => void;
+  /** View an image (raster or SVG) in the image-modal. */
+  viewImage: (path: string) => void;
+  /** Reveal the file in the OS file manager. */
+  reveal: (path: string) => void;
   /** Copy a path to the system clipboard. */
   copyPath: (path: string) => void;
   /** Paste a path into the active terminal session. */
@@ -106,12 +112,17 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
     }
   };
 
-  const canViewInline = (): boolean => cat() === 'markdown' || cat() === 'pdf' || cat() === 'text';
+  const canViewInline = (): boolean => {
+    const c = cat();
+    return c === 'markdown' || c === 'pdf' || c === 'text' || c === 'html' || c === 'image';
+  };
 
   const handleView = (): void => {
     const c = cat();
     if (c === 'markdown') props.actions.viewMarkdown(props.node.path, props.node.title);
     else if (c === 'pdf') props.actions.viewPdf(props.node.path);
+    else if (c === 'html') props.actions.viewHtml(props.node.path);
+    else if (c === 'image') props.actions.viewImage(props.node.path);
     else if (c === 'text') props.actions.viewText(props.node.path, props.node.title);
   };
 
@@ -173,6 +184,18 @@ function ResourceCard(props: { node: ResourceNode; actions: ResourcesViewActions
           class="resources-card-action"
           onClick={(e) => {
             e.stopPropagation();
+            props.actions.reveal(props.node.path);
+          }}
+          title="Reveal in file manager"
+          aria-label="Reveal in file manager"
+        >
+          reveal
+        </button>
+        <button
+          type="button"
+          class="resources-card-action"
+          onClick={(e) => {
+            e.stopPropagation();
             props.actions.copyPath(props.node.path);
           }}
           title="Copy absolute path"
@@ -205,6 +228,8 @@ function CategoryGlyph(props: { category: ResourceCategory }) {
         return 'MD';
       case 'pdf':
         return 'PDF';
+      case 'html':
+        return 'WEB';
       case 'text':
         return 'TXT';
       case 'image':

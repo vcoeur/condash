@@ -6,6 +6,7 @@ export function PdfModal(props: {
   path: string;
   onClose: () => void;
   onOpenInOs: (path: string) => void;
+  onReveal: (path: string) => void;
 }) {
   useModalEscHandler(props.onClose);
 
@@ -33,12 +34,19 @@ export function PdfModal(props: {
           <span class="modal-path">{props.path}</span>
           <button
             class="modal-button"
+            onClick={() => props.onReveal(props.path)}
+            title="Reveal in file manager"
+          >
+            ⤷
+          </button>
+          <button
+            class="modal-button"
             onClick={() => props.onOpenInOs(props.path)}
             title="Open in OS default viewer"
           >
             ↗
           </button>
-          <button class="modal-button" onClick={props.onClose} title="Close (Esc)">
+          <button class="modal-button modal-close" onClick={props.onClose} title="Close (Esc)">
             ×
           </button>
         </header>

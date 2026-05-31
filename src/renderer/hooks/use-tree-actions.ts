@@ -17,6 +17,7 @@ export interface UseTreeActionsDeps {
   setModal: Setter<ModalState>;
   setPdfPath: Setter<string | null>;
   setHtmlPath: Setter<string | null>;
+  setImagePath: Setter<string | null>;
   setSettingsOpen: Setter<boolean>;
   bridge: TerminalBridge;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -81,13 +82,15 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     void window.condash.openInEditor(path);
   };
 
-  const handleOpenDeliverable = (path: string): void => {
+  const openTarget = (path: string): void =>
     openDeliverableTarget(path, {
       setPdfPath: deps.setPdfPath,
       setHtmlPath: deps.setHtmlPath,
+      setImagePath: deps.setImagePath,
       setModal: deps.setModal,
     });
-  };
+
+  const handleOpenDeliverable = (path: string): void => openTarget(path);
 
   const handleOpenKnowledgeFile = (path: string, title?: string): void => {
     deps.setModal({ path, title });
@@ -135,16 +138,10 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
       handleOpenSkillFile(newPath, title, null);
       return;
     }
-    // Resources: open via the user's main editor for non-viewable kinds,
-    // or the inline viewer for markdown / pdf / text.
-    const lower = newPath.toLowerCase();
-    if (lower.endsWith('.md')) {
-      handleViewResource(newPath, newPath.split('/').pop() ?? newPath);
-    } else if (lower.endsWith('.pdf')) {
-      deps.setPdfPath(newPath);
-    } else {
-      void window.condash.openInEditor(newPath);
-    }
+    // Resources: open the new file the same way a click would — the shared
+    // router picks the in-app viewer for markdown / pdf / html / image /
+    // text-code and falls back to the OS app for everything else.
+    openTarget(newPath);
   };
 
   const resourcesActions: ResourcesViewActions = {
@@ -152,6 +149,9 @@ export function useTreeActions(deps: UseTreeActionsDeps): UseTreeActions {
     viewMarkdown: handleViewResource,
     viewText: handleViewResource,
     viewPdf: (path) => deps.setPdfPath(path),
+    viewHtml: (path) => deps.setHtmlPath(path),
+    viewImage: (path) => deps.setImagePath(path),
+    reveal: (path) => void window.condash.showInFolder(path),
     copyPath: (path) => {
       void navigator.clipboard
         .writeText(path)

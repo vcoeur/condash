@@ -24,7 +24,9 @@ A trailing comment (after ` — `) is shown next to the label for any item type.
 
 ## Opening a deliverable
 
-Click a row to open it. The viewer is chosen by type — wikilinks navigate to the linked item within condash; PDF and HTML preview in-app; URLs open in your browser; Markdown opens read-only; everything else hands off to your OS default app. See **[Deliverables](deliverables.md#how-each-item-opens)** for the full table and the HTML-preview relative-asset notes.
+Click a row to open it. The viewer is chosen by type — wikilinks navigate to the linked item within condash; PDF, HTML, images, and text/source files preview in-app; URLs open in your browser; Markdown opens read-only; everything else hands off to your OS default app. See **[Deliverables](deliverables.md#how-each-item-opens)** for the full table and the HTML-preview relative-asset notes.
+
+Local-file rows (anything that isn't a wikilink or URL) also carry a **reveal** button (`⤷`) that opens the file in your OS file manager, selected in its parent folder.
 
 ## Empty state
 

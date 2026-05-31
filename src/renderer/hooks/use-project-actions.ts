@@ -2,6 +2,7 @@ import { createMemo, type Setter } from 'solid-js';
 import type { Deliverable, KnowledgeNode, Project, Step } from '@shared/types';
 import { applyStatus, applyStepMarker, groupByStatus, nextMarker } from '../panes/projects';
 import { buildSlugIndex } from '../wikilinks';
+import { categorise } from '@shared/file-category';
 import { openDeliverableTarget } from '../deliverable-open';
 import type { ModalState } from '../note-modal';
 import type { ModalRouter } from '../modal-router';
@@ -16,6 +17,7 @@ export interface UseProjectActionsDeps {
   setPreviewPath: Setter<string | null>;
   setPdfPath: Setter<string | null>;
   setHtmlPath: Setter<string | null>;
+  setImagePath: Setter<string | null>;
   openPrompt: (init: Omit<PromptModalState, 'resolve'>) => Promise<string | null>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }
@@ -94,31 +96,41 @@ export function useProjectActions(deps: UseProjectActionsDeps): UseProjectAction
     });
   };
 
+  const openTarget = (path: string): void =>
+    openDeliverableTarget(path, {
+      setPdfPath: deps.setPdfPath,
+      setHtmlPath: deps.setHtmlPath,
+      setImagePath: deps.setImagePath,
+      setModal: deps.setModal,
+    });
+
   const handleOpenDeliverableFromPreview = (deliverable: Deliverable): void => {
     if (deliverable.kind === 'wikilink') {
       handleWikilink(deliverable.path);
       return;
     }
-    openDeliverableTarget(deliverable.path, {
-      setPdfPath: deps.setPdfPath,
-      setHtmlPath: deps.setHtmlPath,
-      setModal: deps.setModal,
-    });
+    openTarget(deliverable.path);
   };
 
   const handleOpenFileFromPreview = (path: string, previewPath: () => string | null): void => {
     const back = previewProject(previewPath)?.title;
-    if (path.toLowerCase().endsWith('.md')) {
+    // Markdown opens editable in the note modal (it's usually a project note),
+    // closing the preview and remembering it for the back button.
+    if (path.toLowerCase().endsWith('.md') || path.toLowerCase().endsWith('.markdown')) {
       deps.router.setPreviewBackPath(previewPath());
       deps.setPreviewPath(null);
       deps.setModal({ path, backLabel: back });
-    } else if (path.toLowerCase().endsWith('.pdf')) {
-      deps.router.setPreviewBackPath(previewPath());
-      deps.setPdfPath(path);
-    } else {
-      // Non-md, non-pdf — opens externally, preview stays in place.
-      void window.condash.openInEditor(path);
+      return;
     }
+    // Other in-app viewers (pdf / html / image / text-code) overlay the preview
+    // and restore it on close via the back-path; non-viewable kinds open in the
+    // OS app and leave the preview in place.
+    const base = path.split(/[/\\]/).pop() ?? path;
+    const cat = categorise(base);
+    if (cat === 'pdf' || cat === 'html' || cat === 'image' || cat === 'text') {
+      deps.router.setPreviewBackPath(previewPath());
+    }
+    openTarget(path);
   };
 
   const handleDropOnColumn = async (path: string, newStatus: string): Promise<void> => {

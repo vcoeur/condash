@@ -106,6 +106,85 @@ export function renderMarkdown(input: string, options: RenderMarkdownOptions = {
   return md.render(input, { baseDir: options.baseDir });
 }
 
+// Above this size highlighting a single file is dropped to escaped plain text:
+// hljs runs synchronously, and tokenising a multi-hundred-KB file blows the
+// 16 ms interaction-to-paint budget. The text stays readable, just uncoloured.
+const MAX_HIGHLIGHT_BYTES = 200_000;
+
+/** Map a file path's extension to a highlight.js language id. Anything not
+ *  listed (or not bundled in `highlight.js/lib/common`) falls back to escaped
+ *  plain text in `highlightCode`. */
+function hljsLangForPath(path: string): string | undefined {
+  const lower = path.toLowerCase();
+  const dot = lower.lastIndexOf('.');
+  if (dot < 0) return undefined;
+  return HLJS_LANG_BY_EXT[lower.slice(dot)];
+}
+
+/**
+ * Render a non-markdown text/code file as a syntax-highlighted `<pre><code>`
+ * block. Language is inferred from the extension; unknown or unbundled
+ * languages (and over-large files) degrade to escaped plain text. The `.hljs`
+ * classes are themed by `code-theme.css`, the same palette the markdown fenced
+ * code blocks use. Used by the note modal's read-only view and the HTML modal's
+ * "Source" tab.
+ */
+export function highlightCode(text: string, path: string): string {
+  if (text.length > MAX_HIGHLIGHT_BYTES) {
+    return `<pre class="hljs"><code>${md.utils.escapeHtml(text)}</code></pre>`;
+  }
+  const lang = hljsLangForPath(path);
+  if (lang && hljs.getLanguage(lang)) {
+    try {
+      const { value } = hljs.highlight(text, { language: lang, ignoreIllegals: true });
+      return `<pre class="hljs"><code>${value}</code></pre>`;
+    } catch {
+      /* fall through to plain text */
+    }
+  }
+  return `<pre class="hljs"><code>${md.utils.escapeHtml(text)}</code></pre>`;
+}
+
+const HLJS_LANG_BY_EXT: Record<string, string> = {
+  '.js': 'javascript',
+  '.cjs': 'javascript',
+  '.mjs': 'javascript',
+  '.jsx': 'javascript',
+  '.ts': 'typescript',
+  '.tsx': 'typescript',
+  '.json': 'json',
+  '.css': 'css',
+  '.scss': 'scss',
+  '.sass': 'scss',
+  '.less': 'less',
+  '.html': 'xml',
+  '.htm': 'xml',
+  '.xml': 'xml',
+  '.svg': 'xml',
+  '.yaml': 'yaml',
+  '.yml': 'yaml',
+  '.toml': 'ini',
+  '.ini': 'ini',
+  '.env': 'ini',
+  '.py': 'python',
+  '.rb': 'ruby',
+  '.go': 'go',
+  '.rs': 'rust',
+  '.java': 'java',
+  '.c': 'c',
+  '.h': 'c',
+  '.cpp': 'cpp',
+  '.hpp': 'cpp',
+  '.cc': 'cpp',
+  '.hh': 'cpp',
+  '.sh': 'bash',
+  '.bash': 'bash',
+  '.zsh': 'bash',
+  '.sql': 'sql',
+  '.md': 'markdown',
+  '.markdown': 'markdown',
+};
+
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
 
 function activeMermaidTheme(): 'default' | 'dark' {

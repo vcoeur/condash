@@ -131,6 +131,7 @@ const api: CondashApi = {
   openConceptionDirectory: () => ipcRenderer.invoke('openConceptionDirectory'),
   openExternal: (target: string) => ipcRenderer.invoke('openExternal', target),
   openPath: (target: string) => ipcRenderer.invoke('openPath', target),
+  showInFolder: (target: string) => ipcRenderer.invoke('showInFolder', target),
   createProjectNote: (projectPath: string, slug: string) =>
     ipcRenderer.invoke('createProjectNote', projectPath, slug),
   treeCreateMd: (root, dirRelPath, filename) =>

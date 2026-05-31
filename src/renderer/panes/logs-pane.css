@@ -215,11 +215,40 @@
   gap: 0.4rem;
 }
 
+/* Each grid cell is a flex row: the clickable card plus a reveal button. The
+ * reveal can't nest inside the card button (button-in-button is invalid), so
+ * it sits as a sibling and the card flexes to fill the rest of the cell. */
+.logs-session-li {
+  display: flex;
+  align-items: stretch;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.logs-session-reveal {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 0.6rem;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.logs-session-reveal:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .logs-session-card {
   display: grid;
   grid-template-columns: auto auto 1fr auto auto;
   gap: 0.7rem;
   align-items: center;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;

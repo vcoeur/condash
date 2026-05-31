@@ -48,9 +48,13 @@ The viewer is chosen by the item's type:
 | `[[slug]]` wikilink | the linked conception item, navigated to within condash |
 | `http(s)://…` | your external browser (`shell.openExternal`) |
 | `.pdf` | the in-app PDF viewer modal |
-| `.html` / `.htm` | the in-app HTML preview (sandboxed `condash-file://` webview, with an **↗ Open externally** button) |
+| `.html` / `.htm` | the in-app HTML preview (sandboxed `condash-file://` webview), with a **Rendered / Source** header toggle |
 | `.md` / `.markdown` | the in-app note modal, read-only |
-| anything else | your OS default application (`shell.openPath`) |
+| images (`.png` / `.jpg` / `.svg` / …) | the in-app image viewer, fit-to-window |
+| text / source code (`.txt` / `.json` / `.css` / `.js` / …) | the in-app note modal, read-only, syntax-highlighted |
+| anything else (audio, video, archives, binaries) | your OS default application (`shell.openPath`) |
+
+Every in-app viewer's header carries a **⤷ Reveal in file manager** button alongside the **↗ Open in OS default** escape hatch.
 
 The HTML preview loads the file over the `condash-file://` scheme, so **relative** references inside it (`<img src="sibling.png">`, relative CSS/JS) resolve against the deliverable's own directory. Root-absolute paths (`/assets/…`) and remote assets may not load under the renderer's CSP — use **↗ Open externally** for those.
 
