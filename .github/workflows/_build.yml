@@ -27,11 +27,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # No `cache: 'npm'` here. Its cache *save* runs as a post-step, and a
+      # transient GHA cache-service timeout there exits the build job non-zero —
+      # which on a release tag skips `publish` and ships nothing (hit v4.19.0 on
+      # the windows-latest leg). This matrix runs only on tags, so a cold
+      # `npm ci` download costs little; a reliable publish matters far more.
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci

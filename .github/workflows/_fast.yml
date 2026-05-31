@@ -16,11 +16,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # No `cache: 'npm'`: the node_modules cache below already restores the full
+      # install on a hit (npm ci is then skipped), so setup-node's npm cache only
+      # helped rare lockfile-change runs — while its save post-step's transient
+      # cache-service timeouts can fail a release-tag run and skip publish.
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
           node-version: '20'
-          cache: 'npm'
 
       # Cache node_modules + the electron/electron-builder caches. On a
       # hit we skip npm ci entirely — the `electron-rebuild` postinstall
