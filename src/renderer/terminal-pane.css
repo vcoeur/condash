@@ -168,12 +168,19 @@
 
 .terminal-tabs {
   display: flex;
-  gap: 4px;
+  /* Tabs now carry richer auto-titles, so the strip wraps to several
+   * compact rows instead of scrolling sideways — every tab stays visible.
+   * Tight row-gap + thin vertical padding keep the extra rows from eating
+   * the terminal body; past a few rows it scrolls rather than grows. */
+  flex-wrap: wrap;
+  gap: 3px 4px;
   align-items: center;
-  padding: 4px 8px;
+  align-content: flex-start;
+  padding: 3px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
-  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 96px;
   scrollbar-width: thin;
   flex-shrink: 0;
   min-height: 32px;
@@ -190,7 +197,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: 2px 8px;
   border: 1px solid transparent;
   border-radius: 6px;
   font-size: var(--text-xs);
@@ -201,24 +208,34 @@
    * cards). Falls back to the neutral surface if no slot resolved. */
   background: var(--app-pill-bg, var(--bg-elevated));
   color: var(--app-pill-fg, var(--text));
-  max-width: 220px;
-  min-width: 80px;
+  max-width: 300px;
+  min-width: 72px;
   flex-shrink: 0;
-  /* Inactive tabs sit muted; the active one is full-strength + ringed. */
-  opacity: 0.62;
+  /* Inactive tabs stay nearly full-strength so their titles read clearly;
+   * the active tab is set apart by decoration (ring + glow + bold), not by
+   * dimming everything else. */
+  opacity: 0.9;
   transition:
     opacity 0.1s ease,
     box-shadow 0.1s ease;
 }
 
 .terminal-tab:hover {
-  opacity: 0.82;
+  opacity: 1;
 }
 
 .terminal-tab.active {
   opacity: 1;
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  /* Crisp 2px accent ring + soft accent glow so the focused tab is
+   * unmistakable even when the inactive tabs are barely dimmed. */
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 1px 7px -1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.terminal-tab.active .terminal-tab-label {
+  font-weight: 700;
 }
 
 .terminal-tab.exited {
@@ -226,7 +243,7 @@
 }
 
 .terminal-tab.exited:not(.active) {
-  opacity: 0.42;
+  opacity: 0.55;
 }
 
 .terminal-tab.renaming {
