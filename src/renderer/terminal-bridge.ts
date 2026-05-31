@@ -3,6 +3,7 @@ import type {
   ActionTemplate,
   Project,
   RepoEntry,
+  RunMode,
   TaskRunContext,
   TerminalPrefs,
   Worktree,
@@ -51,17 +52,17 @@ export interface TerminalBridge {
   handlePasteToTerm: (text: string) => Promise<void>;
   /** Run a Tasks-pane task: spawn a fresh tab running the agent with `agentId`
    *  and deliver the already-substituted `text`. The tab title is pinned to
-   *  `<agent label>•<taskName>`. Tasks always launch interactively — a
-   *  `promptFlags` agent is seeded with `--prompt` (the session stays open after
-   *  the prompt runs); an opaque agent is spawned bare, then the prompt is
-   *  keystroke-injected and submitted once the TUI settles. When `opts`
-   *  requests it, the run's log is routed to `.condash/manual/<slug>/` instead
-   *  of the normal logs (capability 4). */
+   *  `<agent label>•<taskName>`. A `promptFlags` agent is seeded via the run's
+   *  `runMode` — `--prompt` (interactive, session stays open) or `--run`
+   *  (one-shot, exits when done); an opaque agent is spawned bare, then the
+   *  prompt is keystroke-injected and submitted once the TUI settles. When
+   *  `opts` requests it, the run's log is routed to `.condash/manual/<slug>/`
+   *  instead of the normal logs (capability 4). */
   runTask: (
     agentId: string,
     text: string,
     taskName: string,
-    opts?: { taskSlug: string; excludeFromLogs: boolean },
+    opts?: { taskSlug: string; excludeFromLogs: boolean; runMode: RunMode },
   ) => Promise<void>;
 }
 
@@ -171,23 +172,26 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     return handle;
   };
 
-  /** Run `text` through `agent` in a fresh tab, always interactively so the
-   *  session stays open after the prompt runs (a one-shot `--run` would exit and
-   *  tear the tab down). When the agent opts into agedum prompt flags
-   *  (`promptFlags`), seed the prompt via `--prompt` in argv and spawn that; the
-   *  prompt is delivered at launch, so nothing is typed. Otherwise spawn the bare
-   *  command, let the TUI settle, and keystroke-inject `text` (plus Enter when
-   *  `submit`) — the generic path for an opaque agent. `submit` only governs that
-   *  keystroke Enter; a `promptFlags` agent is always seeded interactively. */
+  /** Run `text` through `agent` in a fresh tab. For a `promptFlags` agent, `mode`
+   *  picks how the prompt is delivered in argv: `interactive` seeds it via
+   *  `--prompt` and the session stays open for follow-ups; `oneshot` uses `--run`,
+   *  which runs the prompt once and exits (the tab closes when the agent is done).
+   *  Either way the prompt is delivered at launch, so nothing is typed. For an
+   *  opaque agent (no `promptFlags`) the prompt is keystroke-injected into the
+   *  live TUI (always interactive — `mode` is moot there); `submit` adds the Enter
+   *  keystroke. Project / new-project actions default to `interactive`; a task run
+   *  passes the task's chosen mode. */
   const runAgentTask = async (
     agent: Agent,
     text: string,
     submit: boolean,
     title?: string,
     taskContext?: TaskRunContext,
+    mode: RunMode = 'interactive',
   ): Promise<void> => {
     if (agent.promptFlags) {
-      const command = `${agent.command} --prompt ${shellSingleQuote(text)}`;
+      const flag = mode === 'oneshot' ? '--run' : '--prompt';
+      const command = `${agent.command} ${flag} ${shellSingleQuote(text)}`;
       await spawnAgentTab({ ...agent, command }, title, taskContext);
       return;
     }
@@ -324,7 +328,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     agentId: string,
     text: string,
     taskName: string,
-    opts?: { taskSlug: string; excludeFromLogs: boolean },
+    opts?: { taskSlug: string; excludeFromLogs: boolean; runMode: RunMode },
   ): Promise<void> => {
     const agent = findAgentById(deps.agents(), agentId);
     if (!agent) {
@@ -339,11 +343,18 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
       opts?.excludeFromLogs && opts.taskSlug
         ? { taskSlug: opts.taskSlug, trigger: 'manual' }
         : undefined;
-    // Same interactive spawn-and-deliver path as an agent-bound project action.
-    // `submit: true` presses Enter on the opaque keystroke path; a promptFlags
-    // agent is seeded with `--prompt` (interactive) regardless. The tab is named
-    // `<agent label>•<task title>` so a running task is identifiable at a glance.
-    await runAgentTask(agent, text, true, `${agent.label}•${taskName}`, taskContext);
+    // Same spawn-and-deliver path as an agent-bound project action. `submit: true`
+    // presses Enter on the opaque keystroke path; a promptFlags agent is seeded via
+    // the task's chosen mode (`--run` one-shot or `--prompt` interactive). The tab
+    // is named `<agent label>•<task title>` so a running task is spotted at a glance.
+    await runAgentTask(
+      agent,
+      text,
+      true,
+      `${agent.label}•${taskName}`,
+      taskContext,
+      opts?.runMode ?? 'interactive',
+    );
   };
 
   return {

@@ -645,7 +645,20 @@ export interface TaskConfigEntry {
   /** Per-task default for routing manual runs out of `.condash/logs/`;
    *  overridable per run in the run popup. */
   excludeFromLogs?: boolean;
+  /** Per-task default for how the agent is driven (a `promptFlags` agent only):
+   *  `interactive` seeds the prompt with agedum's `--prompt` and keeps the
+   *  session open; `oneshot` uses `--run`, which runs the prompt and exits.
+   *  Absent = `interactive` (back-compat). Overridable per run in the run popup.
+   *  A scheduled task should prefer `oneshot` so the headless run exits cleanly
+   *  instead of being killed at its `timeout`. */
+  runMode?: RunMode;
 }
+
+/** How a task drives its agent: `interactive` → agedum `--prompt` (session stays
+ *  open); `oneshot` → agedum `--run` (runs the prompt once, then exits). Only
+ *  meaningful for a `promptFlags` agent — an opaque agent always uses the
+ *  interactive keystroke path. */
+export type RunMode = 'interactive' | 'oneshot';
 
 /** A headless scheduled run that is currently in flight (capability 1).
  *  Surfaced in the Tasks pane's "Running" section so the user can peek at its

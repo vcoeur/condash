@@ -69,9 +69,9 @@ A task card carries a single **Run…** button — clicking it opens the **run p
 1. Open the **Tasks** handle and click **Run…** on a task card.
 2. At the top, the **Agent** select defaults to the task's stored agent — leave it, or switch it to run this one time with a different agent (only prompt-seedable agents are selectable). The **Run** button sits beside it.
 3. Fill the markers below — pick an app / project where prompted, edit the text fields (prefilled from defaults).
-4. A **Keep out of logs** checkbox sits beside the agent picker, prefilled from the task's default (below). When ticked, this run's console log is routed to `.condash/manual/<slug>/` instead of the normal session logs — the tab is still visible and interactive.
+4. A **Run mode** select and a **Keep out of logs** checkbox sit beside the agent picker, each prefilled from the task's default (below). Run mode switches this one run between **Interactive (`--prompt`)** and **One-shot (`--run`)** (disabled for an opaque agent). When *Keep out of logs* is ticked, this run's console log is routed to `.condash/manual/<slug>/` instead of the normal session logs — the tab is still visible.
 5. The **Prompt to run** box previews the substituted text live.
-6. Click **Run**. condash spawns the chosen agent in a fresh terminal tab (working directory = the conception root), names the tab **`<agent>•<task name>`** so a running task is identifiable at a glance, and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv (`--prompt`) when the agent has **promptFlags** set.
+6. Click **Run**. condash spawns the chosen agent in a fresh terminal tab (working directory = the conception root), names the tab **`<agent>•<task name>`** so a running task is identifiable at a glance, and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv for a **promptFlags** agent — `--prompt` (interactive) or `--run` (one-shot) per the chosen run mode.
 
 Run is disabled when the selected agent is not defined — pick a current one from the top select (a task whose stored agent went missing opens with that dangling id shown as *(missing)*). The card's **Run…** button itself stays disabled while the task's stored agent is missing (the card shows a *missing* badge).
 
@@ -84,12 +84,13 @@ Click **+ New task**, or **click a task card** to open the **editor popup** for 
 - **Submit** — press Enter after typing (on by default).
 - **Prompt** — markdown with `{MARKERS}`. The **Markers** chips below update live as you type so you can see the fields you're creating.
 - **Schedule** — an opt-in cadence picked from a fixed list (*Off*, 1m, 5m, 30m, 1h, 2h, 6h, 12h, 1d, 7d). See *Schedule a task* below.
+- **Run mode** — how a prompt-seedable agent is driven, and the default for this task's runs (overridable per run): **Interactive (`--prompt`)** keeps the tab open after the prompt runs; **One-shot (`--run`)** runs the prompt once and exits. Prefer one-shot for a scheduled task so its headless run exits cleanly instead of waiting for the timeout. Moot for an opaque agent (the keystroke path is interactive only).
 - **Run timeout** — shown only once a schedule is set: how long a single headless run may live before it is killed and discarded (1m / 5m / 10m / 30m / 1h; default 10m). See *Schedule a task*.
 - **Keep manual runs out of the normal logs** — the per-task default for the run-popup toggle.
 
 The editor carries **Save** / **Cancel** and, for an existing task, a **Delete** button that asks for confirmation first. Renaming the slug moves the task directory.
 
-The **Schedule**, **Run timeout**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing them all removes the entry.
+The **Schedule**, **Run mode**, **Run timeout**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing them all removes the entry.
 
 ## Schedule a task
 
@@ -99,7 +100,7 @@ A scheduled run is **never** written to the normal session logs. Its console out
 
 The scheduler is cheap on idle workspaces: it **single-flights** (never overlaps a still-running run of the same task) and **growth-gates** (skips a tick when no open tab produced new output since the last run).
 
-**Run timeout.** A scheduled run is killed and discarded once its **Run timeout** elapses (default 10m). The timeout doubles as the *discard* mechanism: an agent invoked with `--prompt` finishes its work but does not exit the process, so without a cap it would hold the single-flight slot — stretching the *effective* cadence out to the timeout regardless of the schedule. Keep the timeout **≤ the schedule interval** so each cycle frees the slot before the next is due. (Once an agent can run as a clean one-shot that exits on completion — `--run` — the timeout becomes a pure safety cap.)
+**Run mode + run timeout.** Set the task's **Run mode** to **One-shot (`--run`)** so a scheduled run exits cleanly the moment the agent finishes — then the **Run timeout** (default 10m) is just a safety cap on a hung run. With the default **Interactive (`--prompt`)** the agent finishes its work but does *not* exit the process, so the timeout doubles as the *discard* mechanism: without it the run would hold the single-flight slot, stretching the *effective* cadence out to the timeout regardless of the schedule. If you keep a scheduled task interactive, keep the timeout **≤ the schedule interval** so each cycle frees the slot before the next is due.
 
 ### Running runs
 

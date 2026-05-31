@@ -30,23 +30,36 @@ import { substitute } from '../shared/action-template';
 import { parseCadence } from '../shared/cadence';
 import { SessionLogger } from './terminal-logger';
 import { tabsContext, totalBytesSeen } from './terminals';
-import type { Agent, RunningTaskRun, TaskConfigEntry } from '../shared/types';
+import type { Agent, RunMode, RunningTaskRun, TaskConfigEntry } from '../shared/types';
 
 /** How often the scheduler wakes to check for due tasks. */
 const TICK_MS = 20_000;
 
 /** Default cap on a single headless run before it is killed — a runaway or
  *  hung agent must not accumulate background ptys. Overridable per task via
- *  `taskConfig[slug].timeout`. The cap doubles as the discard mechanism for
- *  agents that finish their work but never exit (e.g. `agedum … --prompt`):
- *  until that's fixed (`--run`), keep the timeout ≤ the schedule interval, or
- *  single-flight stretches the effective cadence out to the timeout. */
+ *  `taskConfig[slug].timeout`. With `runMode: 'oneshot'` (agedum `--run`) the
+ *  agent exits on its own and this is a pure backstop; with the default
+ *  `interactive` (`--prompt`) the agent finishes its work but never exits, so
+ *  the cap doubles as the discard mechanism — keep it ≤ the schedule interval,
+ *  or single-flight stretches the effective cadence out to the timeout. */
 const DEFAULT_RUN_TIMEOUT_MS = 10 * 60_000;
 
 /** Resolve a task's run timeout (ms): its `timeout` cadence override, else the
  *  default. Exported for unit testing. */
 export function resolveRunTimeout(entry: TaskConfigEntry | undefined): number {
   return parseCadence(entry?.timeout) ?? DEFAULT_RUN_TIMEOUT_MS;
+}
+
+/** Resolve a task's run mode: its `runMode` override, else `interactive`
+ *  (back-compat). Exported for unit testing. */
+export function resolveRunMode(entry: TaskConfigEntry | undefined): RunMode {
+  return entry?.runMode === 'oneshot' ? 'oneshot' : 'interactive';
+}
+
+/** The agedum prompt-seeding flag for a run mode: `--run` runs the prompt once
+ *  and exits; `--prompt` seeds it and stays interactive. */
+function promptFlag(mode: RunMode): string {
+  return mode === 'oneshot' ? '--run' : '--prompt';
 }
 
 interface TaskState {
@@ -112,13 +125,18 @@ function wrap(command: string): string[] {
 /**
  * Run one task headlessly. Resolves the bound task + agent, substitutes the
  * prompt (including the `{TABS}` provided var), spawns a background pty seeded
- * with the agent's `--prompt`, and tees output to `.condash/scheduled/<slug>/`
- * via a forced-on `SessionLogger`. Registers the live run so the UI can peek at
- * or kill it, and de-registers it on settle. Resolves when the pty exits, is
- * killed via the UI, or hits `timeoutMs`. Throws on any setup error so the
- * caller can clear in-flight.
+ * via the agent's prompt flag (`--run` for `oneshot`, else `--prompt`), and tees
+ * output to `.condash/scheduled/<slug>/` via a forced-on `SessionLogger`.
+ * Registers the live run so the UI can peek at or kill it, and de-registers it
+ * on settle. Resolves when the pty exits, is killed via the UI, or hits
+ * `timeoutMs`. Throws on any setup error so the caller can clear in-flight.
  */
-async function runHeadless(conceptionPath: string, slug: string, timeoutMs: number): Promise<void> {
+async function runHeadless(
+  conceptionPath: string,
+  slug: string,
+  timeoutMs: number,
+  mode: RunMode,
+): Promise<void> {
   const task = await readTask(conceptionPath, slug);
   if (!task) throw new Error(`task ${slug} not found`);
   const agents = await listAgents(conceptionPath);
@@ -137,7 +155,7 @@ async function runHeadless(conceptionPath: string, slug: string, timeoutMs: numb
   const shell = resolveShell(config.terminal?.shell ?? settings.terminal?.shell);
 
   const prompt = substitute(task.prompt, { TABS: JSON.stringify(tabsContext()) });
-  const command = `${agent.command} --prompt ${shellSingleQuote(prompt)}`;
+  const command = `${agent.command} ${promptFlag(mode)} ${shellSingleQuote(prompt)}`;
   const argv = wrap(command);
 
   const childEnv: NodeJS.ProcessEnv = { ...(await spawnEnv()), TERM: 'xterm-256color' };
@@ -247,7 +265,7 @@ async function tick(conceptionPath: string): Promise<void> {
     state.inFlight = true;
     state.lastCheckedAt = now;
     state.bytesAtLastRun = bytes;
-    void runHeadless(conceptionPath, slug, resolveRunTimeout(entry))
+    void runHeadless(conceptionPath, slug, resolveRunTimeout(entry), resolveRunMode(entry))
       .catch((err) => {
         process.stderr.write(`condash task-scheduler: ${slug}: ${(err as Error).message}\n`);
       })

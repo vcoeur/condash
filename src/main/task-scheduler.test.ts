@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveRunTimeout } from './task-scheduler';
+import { resolveRunMode, resolveRunTimeout } from './task-scheduler';
 
 const DEFAULT_MS = 10 * 60_000;
 
@@ -15,5 +15,17 @@ describe('resolveRunTimeout', () => {
     expect(resolveRunTimeout({})).toBe(DEFAULT_MS);
     expect(resolveRunTimeout({ timeout: '' })).toBe(DEFAULT_MS);
     expect(resolveRunTimeout({ timeout: 'soon' })).toBe(DEFAULT_MS);
+  });
+});
+
+describe('resolveRunMode', () => {
+  it('uses oneshot only when explicitly set', () => {
+    expect(resolveRunMode({ runMode: 'oneshot' })).toBe('oneshot');
+  });
+
+  it('defaults to interactive when absent or any other value', () => {
+    expect(resolveRunMode(undefined)).toBe('interactive');
+    expect(resolveRunMode({})).toBe('interactive');
+    expect(resolveRunMode({ runMode: 'interactive' })).toBe('interactive');
   });
 });
