@@ -213,13 +213,10 @@ export function TerminalColumn(props: TerminalColumnProps) {
                 ctxMenu.openAt(e.clientX, e.clientY);
               }}
               onDblClick={() => props.onRequestRename(tab.id)}
-              title={
-                tab.cwd
-                  ? `${displayName(tab)} — ${tab.cwd}`
-                  : displayName(tab) === tab.label
-                    ? tab.label
-                    : `${tab.label} (renamed)`
-              }
+              // Always lead with the complete current title so a hover reveals
+              // the full text when the label is truncated; append the cwd as
+              // context when the shell reported one.
+              title={tab.cwd ? `${displayName(tab)} — ${tab.cwd}` : displayName(tab)}
             >
               <Show
                 when={tab.id === props.renamingId}
