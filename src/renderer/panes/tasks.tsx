@@ -332,7 +332,15 @@ function TaskFill(props: {
   conceptionPath: () => string | null;
   onRun: (agentId: string, text: string, taskName: string) => void;
 }): JSX.Element {
-  const markers = createMemo(() => extractMarkers(props.fill().def.prompt));
+  // Derive markers from the prompt alone, not the whole fill signal. The prompt
+  // is immutable during a fill session, so this `prompt` memo's `===` output is
+  // stable across field edits — `extractMarkers` (which allocates fresh Marker
+  // objects) therefore stops re-running on every keystroke. That keeps the
+  // marker arrays referentially stable so the `<For>` over `textMarkers` does
+  // not recreate the param `<input>`s, which would otherwise drop focus after a
+  // single character.
+  const prompt = createMemo(() => props.fill().def.prompt);
+  const markers = createMemo(() => extractMarkers(prompt()));
   const textMarkers = createMemo(() =>
     markers().filter((m) => !isAppToken(m.key) && !isProjectToken(m.key)),
   );

@@ -102,6 +102,47 @@ test('tasks pane lists a task and fills its markers', async () => {
   }
 });
 
+test('typing a multi-char value into a param field keeps focus', async () => {
+  // Regression: the fill view derived its marker list from the whole fill
+  // signal, so every keystroke re-ran extractMarkers (fresh Marker objects) and
+  // the <For> over the param inputs recreated each <input> — dropping focus
+  // after one character. Type char-by-char (pressSequentially dispatches real
+  // keystrokes; fill() sets the value atomically and would not catch this) and
+  // assert the field stays focused and accumulates the full value.
+  const booted = await bootApp({
+    prepare: seedTask,
+    extraConfig: {
+      agents: [TASK_AGENT],
+      repositories: [{ name: 'condash', path: '/home/alice/src/vcoeur/condash' }],
+    },
+  });
+  const { window, cleanup } = booted;
+  try {
+    await window.setViewportSize({ width: 1400, height: 900 });
+    await window.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await window.locator('.edge-strip-left .edge-handle', { hasText: 'Tasks' }).click();
+
+    await window.locator('.tasks-row-actions button', { hasText: 'Run…' }).click();
+    await expect(window.locator('.modal-backdrop .tasks-fill-modal')).toBeVisible();
+
+    // The {AREA} text field (the app picker is a <select>, not this input).
+    const areaField = window
+      .locator('.tasks-fill-scroll label', { hasText: '{AREA}' })
+      .locator('input[type="text"]');
+    await areaField.fill('');
+    await areaField.focus();
+    await areaField.pressSequentially('src and tests', { delay: 20 });
+
+    // Focus survives every keystroke and the full value lands (with the bug,
+    // only the first character would register before the input was recreated).
+    await expect(areaField).toBeFocused();
+    await expect(areaField).toHaveValue('src and tests');
+    await expect(window.locator('.tasks-preview pre')).toContainText('Focus: src and tests');
+  } finally {
+    await cleanup();
+  }
+});
+
 test('new task editor creates a task end-to-end', async () => {
   const booted = await bootApp({ prepare: seedTask, extraConfig: { agents: [TASK_AGENT] } });
   const { window, cleanup } = booted;
