@@ -57,11 +57,12 @@ The app picker lists your configured [repositories](repositories-and-open-with.m
 A task card carries a single **Run…** button — clicking it opens the **run popup**:
 
 1. Open the **Tasks** handle and click **Run…** on a task card.
-2. Fill the markers — pick an app / project where prompted, edit the text fields (prefilled from defaults).
-3. The **Prompt to run** box previews the substituted text live.
-4. Click **Run**. condash spawns the task's agent in a fresh terminal tab (working directory = the conception root) and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv (`--run` when **submit** is on, else `--prompt`) when the agent has **promptFlags** set.
+2. At the top, the **Agent** select defaults to the task's stored agent — leave it, or switch it to run this one time with a different agent (only prompt-seedable agents are selectable). The **Run** button sits beside it.
+3. Fill the markers below — pick an app / project where prompted, edit the text fields (prefilled from defaults).
+4. The **Prompt to run** box previews the substituted text live.
+5. Click **Run**. condash spawns the chosen agent in a fresh terminal tab (working directory = the conception root), names the tab **`<agent>•<task name>`** so a running task is identifiable at a glance, and delivers the filled prompt: typed into the tab (then Enter when **submit** is on) for an opaque agent, or passed in argv (`--prompt`) when the agent has **promptFlags** set.
 
-Run is disabled when the task's referenced agent is no longer defined (the card shows a *missing* badge) — click the card to open the editor and pick a current agent.
+Run is disabled when the selected agent is not defined — pick a current one from the top select (a task whose stored agent went missing opens with that dangling id shown as *(missing)*). The card's **Run…** button itself stays disabled while the task's stored agent is missing (the card shows a *missing* badge).
 
 ## Create or edit a task
 
