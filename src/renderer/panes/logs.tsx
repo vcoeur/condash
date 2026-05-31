@@ -9,10 +9,14 @@ import {
   type Accessor,
   type JSX,
 } from 'solid-js';
-import type { LogsOpenRequest, TermLogSessionMeta } from '@shared/types';
+import type { LogsOpenRequest, TaskRunGroup, TermLogSessionMeta } from '@shared/types';
 import { ConfirmModal } from '../confirm-modal';
 import { LogsViewerModal } from '../logs-modal';
 import './logs-pane.css';
+
+/** Which list the Logs pane shows: the normal day-grouped sessions, or the
+ *  segregated task-run store under `.condash/{scheduled,manual}/` (caps 1+4). */
+type LogsViewMode = 'sessions' | 'taskruns';
 
 /**
  * Logs pane — browse `<conception>/.condash/logs/`.
@@ -58,6 +62,12 @@ export function LogsView(props: {
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [pendingDelete, setPendingDelete] = createSignal<TermLogSessionMeta | null>(null);
 
+  // "Task runs" view — the segregated `.condash/{scheduled,manual}/` store.
+  const [view, setView] = createSignal<LogsViewMode>('sessions');
+  const [taskRuns, { refetch: refetchTaskRuns }] = createResource(() =>
+    window.condash.logsListTaskRuns(),
+  );
+
   // External "open this log" requests from the global-search modal.
   createEffect(() => {
     const req = props.openRequest?.();
@@ -68,6 +78,7 @@ export function LogsView(props: {
   const refreshAll = (): void => {
     void refetchDays();
     void refetchSessions();
+    void refetchTaskRuns();
   };
 
   // External refresh from View → Refresh. `defer: true` skips the run on mount
@@ -95,6 +106,10 @@ export function LogsView(props: {
     for (const arr of map.values()) n += arr.length;
     return n;
   });
+
+  const taskRunCount = createMemo<number>(() =>
+    (taskRuns() ?? []).reduce((n, g) => n + g.runs.length, 0),
+  );
 
   // Today + the start of the 7-day "recent" window (today and the 6 prior
   // days). Day strings sort lexicographically === chronologically, so a plain
@@ -130,8 +145,33 @@ export function LogsView(props: {
       <div class="logs-toolbar">
         <div class="logs-toolbar-row">
           <span class="logs-toolbar-title">Logs</span>
+          <div class="logs-view-switch" role="tablist" aria-label="Logs view">
+            <button
+              type="button"
+              role="tab"
+              classList={{ active: view() === 'sessions' }}
+              aria-selected={view() === 'sessions'}
+              onClick={() => setView('sessions')}
+            >
+              Sessions
+            </button>
+            <button
+              type="button"
+              role="tab"
+              classList={{ active: view() === 'taskruns' }}
+              aria-selected={view() === 'taskruns'}
+              onClick={() => setView('taskruns')}
+            >
+              Task runs
+            </button>
+          </div>
           <span class="logs-toolbar-count">
-            {totalSessionCount()} session{totalSessionCount() === 1 ? '' : 's'}
+            <Show
+              when={view() === 'sessions'}
+              fallback={`${taskRunCount()} run${taskRunCount() === 1 ? '' : 's'}`}
+            >
+              {totalSessionCount()} session{totalSessionCount() === 1 ? '' : 's'}
+            </Show>
           </span>
           <span class="logs-toolbar-spacer" />
           <button type="button" class="logs-refresh" onClick={refreshAll}>
@@ -166,71 +206,132 @@ export function LogsView(props: {
         )}
       </Show>
 
-      <section class="logs-list">
-        <Show
-          when={!days.loading && !sessionsByDay.loading}
-          fallback={<div class="empty">Loading…</div>}
-        >
+      <Show when={view() === 'taskruns'}>
+        <section class="logs-list logs-taskruns">
+          <Show when={!taskRuns.loading} fallback={<div class="empty">Loading…</div>}>
+            <Show
+              when={(taskRuns() ?? []).length > 0}
+              fallback={
+                <div class="empty">
+                  No task runs yet. Scheduled runs and manual runs flagged “Keep out of logs” land
+                  here, kept separate from the normal session logs.
+                </div>
+              }
+            >
+              <For each={taskRuns()}>
+                {(group) => <TaskRunGroupView group={group} onOpen={setActivePath} />}
+              </For>
+            </Show>
+          </Show>
+        </section>
+      </Show>
+
+      <Show when={view() === 'sessions'}>
+        <section class="logs-list">
           <Show
-            when={(days() ?? []).length > 0}
-            fallback={<div class="empty">No sessions captured yet.</div>}
+            when={!days.loading && !sessionsByDay.loading}
+            fallback={<div class="empty">Loading…</div>}
           >
-            {/* Recent band: one group per day for the last 7 days. Today is
+            <Show
+              when={(days() ?? []).length > 0}
+              fallback={<div class="empty">No sessions captured yet.</div>}
+            >
+              {/* Recent band: one group per day for the last 7 days. Today is
                 always expanded and non-collapsible; the other days are
                 collapsible and default to collapsed. */}
-            <For each={recentDays()}>
-              {(d) => (
-                <Show
-                  when={d.day !== today}
-                  fallback={
-                    <div class="logs-day-group logs-day-today">
-                      <div class="logs-day-header logs-day-header-static">
-                        <span class="logs-day-label">Today · {dayLabel(d.day)}</span>
-                        <span class="logs-group-count">{sessionsFor(d.day).length}</span>
-                      </div>
-                      <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
-                    </div>
-                  }
-                >
-                  <details class="logs-day-group">
-                    <summary class="logs-day-header">
-                      <span class="logs-caret" aria-hidden="true" />
-                      <span class="logs-day-label">{dayLabel(d.day)}</span>
-                      <span class="logs-group-count">{sessionsFor(d.day).length}</span>
-                    </summary>
-                    <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
-                  </details>
-                </Show>
-              )}
-            </For>
-
-            {/* Older band: collapsible per-month groups, default collapsed,
-                with a light day sub-header inside each month. */}
-            <For each={monthGroups()}>
-              {(month) => (
-                <details class="logs-month-group">
-                  <summary class="logs-month-header">
-                    <span class="logs-caret" aria-hidden="true" />
-                    <span class="logs-month-label">{monthLabel(month.key)}</span>
-                    <span class="logs-group-count">
-                      {month.days.reduce((n, d) => n + sessionsFor(d.day).length, 0)}
-                    </span>
-                  </summary>
-                  <For each={month.days}>
-                    {(d) => (
-                      <div class="logs-day-subgroup">
-                        <div class="logs-day-subheader">{dayLabel(d.day)}</div>
+              <For each={recentDays()}>
+                {(d) => (
+                  <Show
+                    when={d.day !== today}
+                    fallback={
+                      <div class="logs-day-group logs-day-today">
+                        <div class="logs-day-header logs-day-header-static">
+                          <span class="logs-day-label">Today · {dayLabel(d.day)}</span>
+                          <span class="logs-group-count">{sessionsFor(d.day).length}</span>
+                        </div>
                         <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
                       </div>
-                    )}
-                  </For>
-                </details>
-              )}
-            </For>
+                    }
+                  >
+                    <details class="logs-day-group">
+                      <summary class="logs-day-header">
+                        <span class="logs-caret" aria-hidden="true" />
+                        <span class="logs-day-label">{dayLabel(d.day)}</span>
+                        <span class="logs-group-count">{sessionsFor(d.day).length}</span>
+                      </summary>
+                      <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                    </details>
+                  </Show>
+                )}
+              </For>
+
+              {/* Older band: collapsible per-month groups, default collapsed,
+                with a light day sub-header inside each month. */}
+              <For each={monthGroups()}>
+                {(month) => (
+                  <details class="logs-month-group">
+                    <summary class="logs-month-header">
+                      <span class="logs-caret" aria-hidden="true" />
+                      <span class="logs-month-label">{monthLabel(month.key)}</span>
+                      <span class="logs-group-count">
+                        {month.days.reduce((n, d) => n + sessionsFor(d.day).length, 0)}
+                      </span>
+                    </summary>
+                    <For each={month.days}>
+                      {(d) => (
+                        <div class="logs-day-subgroup">
+                          <div class="logs-day-subheader">{dayLabel(d.day)}</div>
+                          <DaySessionGrid sessions={sessionsFor(d.day)} onOpen={setActivePath} />
+                        </div>
+                      )}
+                    </For>
+                  </details>
+                )}
+              </For>
+            </Show>
           </Show>
-        </Show>
-      </section>
+        </section>
+      </Show>
     </div>
+  );
+}
+
+/** One task's run group in the "Task runs" view — a collapsible header with a
+ *  trigger badge and a row per run, opening the same viewer as a session. */
+function TaskRunGroupView(props: {
+  group: TaskRunGroup;
+  onOpen: (path: string) => void;
+}): JSX.Element {
+  return (
+    <details class="logs-day-group" open>
+      <summary class="logs-day-header">
+        <span class="logs-caret" aria-hidden="true" />
+        <span class="logs-day-label">{props.group.taskSlug}</span>
+        <span class="logs-taskrun-trigger" data-trigger={props.group.trigger}>
+          {props.group.trigger}
+        </span>
+        <span class="logs-group-count">{props.group.runs.length}</span>
+      </summary>
+      <ul class="logs-day-sessions">
+        <For each={props.group.runs}>
+          {(run) => (
+            <li>
+              <button
+                type="button"
+                class="logs-session-card"
+                onClick={() => props.onOpen(run.path)}
+              >
+                <span class="logs-session-time">
+                  {run.day} {run.time}
+                </span>
+                <span class="logs-session-cmd">{run.sid}</span>
+                <span class="logs-session-size">{formatBytes(run.bytes)}</span>
+              </button>
+            </li>
+          )}
+        </For>
+      </ul>
+    </details>
   );
 }
 

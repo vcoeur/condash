@@ -1,10 +1,11 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Terminal } from '@xterm/headless';
-import type { TermSide, TerminalLoggingPrefs } from '../shared/types';
+import type { TaskRunContext, TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { META_LINE_PREFIX, type LogKind } from './logs-format';
 import { OscTranscriptExtractor } from './osc-transcript';
+import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
 
 /**
  * Single-session writer. One instance per pty spawn; lives from `open()`
@@ -58,6 +59,10 @@ export interface SessionContext {
   repo?: string;
   cwd: string;
   spawn: { cmd: string; argv: string[] };
+  /** When set, the session is a task run whose output is segregated out of
+   *  `.condash/logs/` into `.condash/<trigger>/<taskSlug>/` — see
+   *  `sessionLogPath`. Used for `excludeFromLogs` manual runs. */
+  taskContext?: TaskRunContext;
 }
 
 /** Header-line JSON shape, written on every flush. */
@@ -109,12 +114,19 @@ const ROWS = 50;
 export { META_LINE_PREFIX };
 
 /** Resolve the per-session log file path inside `conceptionPath`. Returns
- * the canonical `.txt` path, no side effects. */
+ * the canonical `.txt` path, no side effects. When `taskContext` is supplied
+ * the path is routed to the segregated `.condash/<trigger>/<taskSlug>/` store
+ * (capability 4) instead of the normal `.condash/logs/YYYY/MM/DD/` tree, so a
+ * flagged run never lands among the regular session logs. */
 export function sessionLogPath(
   conceptionPath: string,
   sid: string,
   when: Date = new Date(),
+  taskContext?: TaskRunContext,
 ): string {
+  if (taskContext) {
+    return taskRunLogPath(conceptionPath, taskContext.trigger, taskContext.taskSlug, sid, when);
+  }
   const yyyy = String(when.getFullYear());
   const mm = String(when.getMonth() + 1).padStart(2, '0');
   const dd = String(when.getDate()).padStart(2, '0');
@@ -147,6 +159,9 @@ export class SessionLogger {
   private exitCode: number | undefined;
   private finishedTs: string | undefined;
   private readonly txtPath: string;
+  /** When the session is a segregated task run, the `<trigger>/<slug>` dir to
+   * prune to the last ~5 runs once this run's file exists. Null otherwise. */
+  private readonly rotateDir: string | null;
   private closed = false;
   private paused = false;
   private dirty = false;
@@ -167,7 +182,10 @@ export class SessionLogger {
     this.prefs = resolveLoggingPrefs(prefs);
     this.flushMs = flushMs;
     this.startedTs = new Date().toISOString();
-    this.txtPath = sessionLogPath(conceptionPath, ctx.sid, new Date());
+    this.txtPath = sessionLogPath(conceptionPath, ctx.sid, new Date(), ctx.taskContext);
+    this.rotateDir = ctx.taskContext
+      ? taskRunDir(conceptionPath, ctx.taskContext.trigger, ctx.taskContext.taskSlug)
+      : null;
     this.term = new Terminal({
       cols: COLS,
       rows: ROWS,
@@ -199,6 +217,9 @@ export class SessionLogger {
     // header line, even if no output ever follows.
     this.dirty = true;
     this.flushNowFireAndForget();
+    // For a segregated task run, prune the dir to the last ~5 runs once this
+    // run's file lands. Best-effort + fire-and-forget — never blocks the pty.
+    if (this.rotateDir) void rotateTaskRuns(this.rotateDir);
   }
 
   /** No-op. Pty echoes typed bytes back through stdout. */

@@ -4,6 +4,7 @@ import type {
   Agent,
   CardMinWidthPrefs,
   LayoutState,
+  TaskConfigEntry,
   TerminalPrefs,
   Theme,
   TreeExpansionPrefs,
@@ -61,6 +62,7 @@ export interface EffectiveConfig extends ConfigShape {
   layout?: LayoutState;
   treeExpansion?: TreeExpansionPrefs;
   agents?: Agent[];
+  taskConfig?: Record<string, TaskConfigEntry>;
 }
 
 /**

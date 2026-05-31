@@ -5,7 +5,13 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
-import type { TermSession, TermSide, TermSpawnRequest, TerminalPrefs } from '../shared/types';
+import type {
+  TabInfo,
+  TermSession,
+  TermSide,
+  TermSpawnRequest,
+  TerminalPrefs,
+} from '../shared/types';
 import { atomicWrite } from './atomic-write';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
@@ -23,6 +29,14 @@ interface Session {
   webContents: WebContents;
   /** Optional repo this session was spawned for (Run button). */
   repo?: string;
+  /** Human command label for this session (repo `run:`, the free-form
+   * command, or the shell). Surfaced in the `{TABS}` provided var so a task
+   * can see what each tab is running. */
+  cmd?: string;
+  /** Cumulative bytes the pty has emitted. Monotonic (unlike `buffer`, which
+   * is a capped rolling tail) so the scheduler can growth-gate: skip a run
+   * when no tab has produced new output since the last run. */
+  bytesSeen: number;
   /** Resolved cwd of the spawned pty. Surfaced in the broadcast snapshot
    * so the Code pane can match a session to the worktree it was started in. */
   cwd: string;
@@ -71,6 +85,34 @@ function broadcastSessions(): void {
 
 export function listTerminalSessions(): TermSession[] {
   return snapshot();
+}
+
+/**
+ * Build the `{TABS}` provided-var payload (capability 2): the open, still-live
+ * tabs as `[{sid, cwd, repo, cmd}]`. Exited sessions are excluded — a task
+ * titles only tabs that actually exist. No prior titles (the task owns that
+ * memory via its own `.condash/term-titles.json`).
+ */
+export function tabsContext(): TabInfo[] {
+  return [...sessions.values()]
+    .filter((s) => s.exited === undefined)
+    .map((s) => ({
+      sid: s.id,
+      cwd: s.cwd,
+      ...(s.repo ? { repo: s.repo } : {}),
+      ...(s.cmd ? { cmd: s.cmd } : {}),
+    }));
+}
+
+/** Sum of cumulative bytes emitted across all live sessions. The scheduler
+ *  growth-gates on this: an unchanged total since the last run means no tab
+ *  produced new output, so there is nothing to re-title. */
+export function totalBytesSeen(): number {
+  let total = 0;
+  for (const s of sessions.values()) {
+    if (s.exited === undefined) total += s.bytesSeen;
+  }
+  return total;
 }
 
 export function attachTerminal(
@@ -175,6 +217,7 @@ export async function spawnTerminal(
   let argv: string[] = [];
   let program = shell;
   let forceStop: string | undefined;
+  let commandLabel: string | undefined;
 
   if (request.repo && conceptionPath) {
     const entry = findRepoEntry(config, request.repo);
@@ -190,11 +233,13 @@ export async function spawnTerminal(
     if (entry.run) {
       program = shell;
       argv = wrapForShell(shell, entry.run);
+      commandLabel = entry.run;
     }
     forceStop = entry.forceStop;
   } else if (request.command) {
     program = shell;
     argv = wrapForShell(shell, request.command);
+    commandLabel = request.command;
   }
 
   // One run per repo: kill any prior code-side session for the same repo
@@ -244,6 +289,7 @@ export async function spawnTerminal(
           repo: request.repo,
           cwd,
           spawn: { cmd: program, argv },
+          taskContext: request.taskContext,
         },
         config.terminal?.logging,
       )
@@ -254,6 +300,8 @@ export async function spawnTerminal(
     pty: ptyProcess,
     webContents,
     repo: request.repo,
+    cmd: commandLabel,
+    bytesSeen: 0,
     cwd,
     forceStop,
     buffer: '',
@@ -263,6 +311,7 @@ export async function spawnTerminal(
   logger?.spawn();
 
   ptyProcess.onData((data) => {
+    session.bytesSeen += data.length;
     appendBuffer(session, data);
     session.logger?.output(data);
     if (webContents.isDestroyed()) return;

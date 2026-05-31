@@ -525,8 +525,8 @@ function App() {
                           projects={() => projects() ?? []}
                           apps={appOptions}
                           flashToast={flashToast}
-                          onRun={(agentId, text, taskName) =>
-                            void bridge.runTask(agentId, text, taskName)
+                          onRun={(agentId, text, taskName, opts) =>
+                            void bridge.runTask(agentId, text, taskName, opts)
                           }
                         />
                       </Match>

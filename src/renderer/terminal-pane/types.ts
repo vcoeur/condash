@@ -27,6 +27,12 @@ export interface Tab {
    *  until the user manually renames. Set at spawn time for sources that
    *  carry a deliberate title (lambda launcher, code-card "open in term"). */
   pinned?: boolean;
+  /** Auto-derived title applied from `.condash/term-titles.json` by a
+   *  scheduled/adopted task (capability 3). Sparse-merged in by the
+   *  `termAutoTitles` event — sits just below `customName` in `displayName`
+   *  so a user rename always wins. condash holds no title state; this is
+   *  ephemeral renderer state re-applied on each file change. */
+  autoTitle?: string;
   /** Palette slot (0..19) assigned at creation and frozen for the tab's
    *  lifetime — the button colour, drawn from the shared app-pill wheel.
    *  Stable across closes / reorders / restarts. */
@@ -35,11 +41,12 @@ export interface Tab {
   exited?: number;
 }
 
-/** Display name for a tab. Custom rename wins; otherwise the cwd basename if
- *  the shell emitted OSC 7 (and the tab isn't pinned); otherwise the
- *  spawn-time label. */
+/** Display name for a tab. Custom rename wins; then an auto-title applied from
+ *  `.condash/term-titles.json`; then the cwd basename if the shell emitted
+ *  OSC 7 (and the tab isn't pinned); otherwise the spawn-time label. */
 export function displayName(tab: Tab): string {
   if (tab.customName) return tab.customName;
+  if (tab.autoTitle) return tab.autoTitle;
   if (!tab.pinned && tab.cwd) {
     const basename = tab.cwd.split('/').filter(Boolean).pop();
     if (basename) return basename;

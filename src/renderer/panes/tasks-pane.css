@@ -236,6 +236,27 @@
   padding: 0.3rem 1.1rem;
 }
 
+/* "Keep out of logs" toggle in the run popup + the editor's per-task default.
+ * Inline checkbox + label that does not grow like the marker text fields. */
+.tasks-fill-exclude,
+.tasks-editor-checkbox {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.tasks-fill-exclude input,
+.tasks-editor-checkbox input {
+  width: auto;
+  margin: 0;
+}
+
 .tasks-fill-scroll,
 .tasks-editor-scroll {
   flex: 1 1 auto;

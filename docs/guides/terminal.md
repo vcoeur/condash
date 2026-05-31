@@ -40,6 +40,14 @@ Tab titles depend on how the tab was spawned:
 
 A manual double-click rename always wins. The full path shows in the title attribute. Tabs **auto-close on process exit** — the previous "[process exited N]" stale-tab behaviour is gone. If you want the buffer before close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
 
+The full title precedence is **manual rename → auto-title → cwd basename (unpinned) → spawn-time label**.
+
+### Auto-titled tabs { #auto-titled-tabs }
+
+condash watches `<conception>/.condash/term-titles.json` and, on change, applies a short title to each tab named in it (matched by session id). A user rename still wins; an auto-title otherwise sits just above the cwd basename. condash never invents these titles itself and holds no title state — it only watches the file and applies what it finds. Sids it doesn't recognise are ignored; tabs not named in the file are left untouched (never blanked).
+
+The file is meant to be produced by a [task](tasks-pane.md): the shipped **Term titles** task reads the open tabs (`{TABS}`), skims each tab's recent log, and writes the sparse file. Schedule it (Tasks → editor → Schedule) to keep titles current, or run it by hand. Any process that writes a valid `term-titles.json` works — condash does not care who wrote it.
+
 `TERM=xterm-256color`, and the shell is launched with `-l` so your login rc-files run.
 
 ## Power-user shortcuts
@@ -208,6 +216,8 @@ The whole `.condash/` directory is gitignored by default — the auto-migrator a
 `View → Show Logs` (`Cmd+Shift+L`) opens the Logs working surface — sessions as a **collapsible card grid grouped by date**, newest first. The last 7 days each get their own collapsible group; **today is always expanded** while the other recent days start collapsed. Anything older is folded into collapsible **per-month** groups (with a day sub-header inside each). Each session card shows the spawn time, repo (when launched via Run), short command, size on disk, and exit code (or "running" while alive; the left edge tints red for non-zero exits).
 
 Clicking a card opens the **session viewer modal**: a wide overlay with the full plain-text transcript and a case-insensitive search box. The transcript is virtualised — only the visible window of lines is mounted, so even a 100 MB log scrolls smoothly. Long lines horizontal-scroll rather than wrap (every row stays exactly one line-height tall, which the virtualizer needs). Search precomputes per-line hit indices once per query; the n/N counter plus the ↑/↓ buttons cycle hits, `Enter` jumps forward, `Shift+Enter` backward, `Cmd/Ctrl+F` focuses the search box, `Esc` closes the modal.
+
+A **Sessions | Task runs** switch at the top of the pane flips to the segregated [task-run](tasks-pane.md#keep-runs-out-of-the-logs) store — scheduled runs and manual runs flagged *Keep out of logs*, grouped by task with a `scheduled` / `manual` badge. These never appear in the normal Sessions list, search, or reports; the same viewer modal opens them.
 
 The `⌫` button in the modal head deletes the open session (one `.txt`, no sidecar to clean up).
 

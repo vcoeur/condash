@@ -3,9 +3,10 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { TermLogSessionMeta, TermLogSessionRead } from '../../shared/types';
 import { parseMetaLine, splitContent, type FooterJson, type HeaderJson } from '../logs-format';
-import { condashLogsRoot } from '../condash-dir';
+import { condashDir, condashLogsRoot } from '../condash-dir';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings } from '../settings';
+import { isTaskRunPath, listTaskRuns } from '../task-runs';
 
 // Re-exported so callers that historically imported `splitContent` from this
 // file keep working. New code should import directly from `../logs-format`.
@@ -29,6 +30,13 @@ export function registerLogsIpc(): void {
   ipcMain.handle('logsReadSession', async (_e, filePath: string) => readSession(filePath));
   ipcMain.handle('logsDeleteDay', async (_e, day: string) => deleteDay(day));
   ipcMain.handle('logsDeleteSession', async (_e, filePath: string) => deleteSession(filePath));
+  ipcMain.handle('logsListTaskRuns', async () => listTaskRunsForActiveConception());
+}
+
+async function listTaskRunsForActiveConception(): ReturnType<typeof listTaskRuns> {
+  const conception = await activeConceptionPath();
+  if (!conception) return [];
+  return listTaskRuns(conception);
 }
 
 interface DayEntry {
@@ -212,7 +220,15 @@ function findLastFooterLine(text: string): FooterJson | null {
 async function readSession(filePath: string): Promise<TermLogSessionRead> {
   const conception = await activeConceptionPath();
   if (!conception) return { text: '', meta: null };
-  await requirePathUnder(filePath, condashLogsRoot(conception));
+  // Task-run files (capabilities 1 + 4) live under `.condash/{scheduled,
+  // manual}/<slug>/`, outside the normal logs root — bound those reads to the
+  // `.condash/` dir (realpath-checked, so `..` traversal is still rejected);
+  // everything else stays bounded to the logs root.
+  if (isTaskRunPath(conception, filePath)) {
+    await requirePathUnder(filePath, condashDir(conception));
+  } else {
+    await requirePathUnder(filePath, condashLogsRoot(conception));
+  }
   if (!filePath.endsWith('.txt')) {
     throw new Error('logsReadSession: only .txt files');
   }

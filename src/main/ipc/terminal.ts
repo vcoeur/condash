@@ -8,6 +8,7 @@ import {
   setSessionSide,
   setTerminalPrefs,
   spawnTerminal,
+  tabsContext,
   writeTerminal,
 } from '../terminals';
 import { latestScreenshot } from '../screenshot';
@@ -41,6 +42,8 @@ export function registerTerminalIpc(): void {
   });
 
   ipcMain.handle('termList', () => listTerminalSessions());
+
+  ipcMain.handle('termTabsContext', () => tabsContext());
 
   ipcMain.handle('termAttach', (event, id: string) => attachTerminal(id, event.sender));
 

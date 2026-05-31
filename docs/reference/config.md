@@ -16,7 +16,7 @@ condash reads two JSON files. Both share **the same schema**. The per-machine `s
 | `settings.json`          | `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` (Linux) · `~/Library/Application Support/condash/settings.json` (macOS) · `%APPDATA%\condash\settings.json` (Windows) | Per-user, per-machine                     | `lastConceptionPath`, `recentConceptionPaths` (cap 5) |
 | `.condash/settings.json` | `<conception_path>/.condash/settings.json` (legacy fallbacks: `condash.json`, `configuration.json`)                                                                         | Per-conception, **per-host** (gitignored) | (none — every key here also accepts a global default) |
 
-Both files share the **same schema** modulo the two path-tracking keys above. Every other top-level key (`workspace_path`, `worktrees_path`, `repositories`, `retired_apps`, `agents`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`) may live in either file — see the [full table](#all-config-keys) below. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge — the one exception is `terminal`, below).
+Both files share the **same schema** modulo the two path-tracking keys above. Every other top-level key (`workspace_path`, `worktrees_path`, `repositories`, `retired_apps`, `agents`, `taskConfig`, `open_with`, `pdf_viewer`, `terminal`, `theme`, `layout`, `welcome`, `cardMinWidth`, `treeExpansion`, `selectedBranches`, `branchFilterStickyAll`) may live in either file — see the [full table](#all-config-keys) below. When the same key appears in both, the conception's value **replaces** the global one entirely (top-level replace; arrays replace, objects replace whole, no deep merge — the one exception is `terminal`, below).
 
 **Exception: `terminal` merges one level deep.** Its sub-schema straddles per-machine input / device prefs (`shell`, `shortcut`, `screenshot_dir`, `xterm`, `screenshot_paste_shortcut`, `move_tab_{left,right}_shortcut`) and per-tree retention policy (`logging.{enabled, retentionDays, maxDirMb, scrollback}`). A pure replace meant any conception that customised `terminal.logging` silently lost every per-machine terminal pref — the screenshot-paste shortcut toasted "no screenshot directory". Conception sub-keys win at the first level; sub-keys absent from the conception fall through to the global block. Nested values inside `terminal.xterm` and `terminal.logging` still replace whole — only the immediate sub-keys of `terminal` merge.
 
@@ -42,6 +42,7 @@ Every top-level key, in one place. **Scope** is which file the key is valid in: 
 | `repositories` | both | array | `[]` | Ordered Code-pane repo list; also the app registry (`#handle`, `label`, `aliases`, `run`, `submodules`, `section`). [↓](#repositories) |
 | `retired_apps` | both | array | `[]` | Defunct `#handle`s still referenced by closed projects — resolve, never rendered. [↓](#retired_apps) |
 | `agents` | both | array | `[]` | Flat `{id,label,command}` terminal-launcher list shown in the tab-strip spawn dropdown. [↓](#agents) |
+| `taskConfig` | both | object | — | Per-task `{schedule?, excludeFromLogs?}` keyed by slug — opt-in headless scheduling + run-log routing. [↓](#tasks) |
 | `open_with` | both | object | — | The three IDE/terminal launch slots (`main_ide`, `secondary_ide`, `terminal`). [↓](#open_with) |
 | `pdf_viewer` | both | array | — | Ordered fallback chain of external PDF viewers. |
 | `terminal` | both | object | — | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`. **Merges one level deep** (the sole exception to top-level replace). [↓](#terminal) |
@@ -55,7 +56,7 @@ Every top-level key, in one place. **Scope** is which file the key is valid in: 
 | `lastConceptionPath` | global-only | string\|null | `null` | Currently-open conception path. |
 | `recentConceptionPaths` | global-only | array | `[]` | Most-recently-opened paths, newest first (cap 5). |
 
-Tasks are **not** a config key — they live on disk at `<conception>/tasks/<slug>/` (see [Tasks](#tasks)). condash also persists a few small UI-state fields it manages itself (e.g. `skillsActiveScope`, the last-active Settings tab) in `settings.json`; you don't edit those by hand. Strict-mode validation rejects any unknown top-level key on save.
+Task *definitions* are **not** a config key — they live on disk at `<conception>/tasks/<slug>/` (see [Tasks](#tasks)). Their per-task **scheduling / log-routing** lives in the `taskConfig` key above, keyed by slug. condash also persists a few small UI-state fields it manages itself (e.g. `skillsActiveScope`, the last-active Settings tab) in `settings.json`; you don't edit those by hand. Strict-mode validation rejects any unknown top-level key on save.
 
 ## `.condash/settings.json` (per-conception, per-host)
 
@@ -263,8 +264,13 @@ condash builds **no** provider environment and stores **no** secrets — model/p
 **Tasks** are reusable, parameterized agent prompts — like agents, they live under the conception (not a `condash.json` key), managed by the **Tasks** pane (left-edge strip → **Tasks**). A task is a referenced agent plus a markdown prompt with fillable `{markers}`.
 
 - **Definition** — `<conception>/tasks/<slug>/`, one directory per task. `task.json` carries `name`, `agent` (the `id` of an agent from the `agents` list above), and `submit` (optional bool, default `true`); `prompt.md` is the raw markdown prompt with markers. Config in JSON, prose in markdown — both are safe to commit. The slug is the directory name (`^[a-z0-9-]+$`); the `tasks/` tree is created on first save.
-- **Markers** — `{KEY}` (required field) or `{KEY:default}` (prefilled). Reserved `{APP}` / `{PROJECT}` (and their `{APP_PATH}` / `{PROJECT_BRANCH}` / … sub-tokens) render as searchable pickers; one selection fills the whole family.
+- **Markers** — `{KEY}` (required field) or `{KEY:default}` (prefilled). Reserved `{APP}` / `{PROJECT}` (and their `{APP_PATH}` / `{PROJECT_BRANCH}` / … sub-tokens) render as searchable pickers; one selection fills the whole family. `{TABS}` is **condash-provided** (never a field) — it expands to the open-tab list `[{sid,cwd,repo,cmd}]`.
 - **Run** — spawns the task's agent in a fresh terminal tab (cwd = conception root). For an opaque agent it types the substituted prompt and presses Enter when `submit` is true; for an agent with [`promptFlags`](#agents) it instead passes the prompt in argv (`--run` when `submit`, else `--prompt`) and types nothing.
+- **`taskConfig`** — per-task scheduling + log routing, keyed by slug, in **`.condash/settings.json`** (or overridden in `condash.json`) — *not* in `task.json`. Each entry is `{ schedule?, excludeFromLogs? }`:
+    - `schedule` — opt-in cadence (`30s` / `2m` / `1h`). A scheduled task runs **headless** (no tab) on that interval, single-flighted + growth-gated; its console output is teed to `.condash/scheduled/<slug>/` (last ~5), **never** the normal logs. No default schedule; the task must carry a prompt-seedable agent.
+    - `excludeFromLogs` — per-task default for routing a *manual* run's `.txt` to `.condash/manual/<slug>/` instead of `.condash/logs/` (overridable per run in the run popup). The tab stays visible.
+  
+  Both segregated stores are browsable from the Logs pane's **Task runs** view and stay invisible to the normal Logs list, search, and reports.
 
 See the [Tasks pane guide](../guides/tasks-pane.md). The same `{KEY:default}` fallback applies to the project / new-project action templates below.
 

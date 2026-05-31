@@ -3,6 +3,7 @@ import type {
   ActionTemplate,
   Project,
   RepoEntry,
+  TaskRunContext,
   TerminalPrefs,
   Worktree,
 } from '@shared/types';
@@ -53,8 +54,15 @@ export interface TerminalBridge {
    *  `<agent label>•<taskName>`. Tasks always launch interactively — a
    *  `promptFlags` agent is seeded with `--prompt` (the session stays open after
    *  the prompt runs); an opaque agent is spawned bare, then the prompt is
-   *  keystroke-injected and submitted once the TUI settles. */
-  runTask: (agentId: string, text: string, taskName: string) => Promise<void>;
+   *  keystroke-injected and submitted once the TUI settles. When `opts`
+   *  requests it, the run's log is routed to `.condash/manual/<slug>/` instead
+   *  of the normal logs (capability 4). */
+  runTask: (
+    agentId: string,
+    text: string,
+    taskName: string,
+    opts?: { taskSlug: string; excludeFromLogs: boolean },
+  ) => Promise<void>;
 }
 
 /** Upper bound on animation frames waited for the pane to mount after
@@ -134,6 +142,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   const spawnAgentTab = async (
     agent: Agent,
     title?: string,
+    taskContext?: TaskRunContext,
   ): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
       deps.ensureTerminalOpen();
@@ -143,9 +152,13 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     if (!handle) return null;
     deps.ensureTerminalOpen();
     try {
-      // Pass the title only when set so the non-task spawn keeps the agent's
-      // own label (and the 2-arg call shape its callers assert on).
-      if (title === undefined) {
+      // Keep the call shape minimal: bare 2-arg for an untitled spawn, 3-arg
+      // when a title is set, and only widen to 4-arg when a task context must
+      // ride along (capability 4). Preserves the shapes existing callers
+      // assert on.
+      if (taskContext !== undefined) {
+        await handle.spawnUserShell(agent, 'my', title, taskContext);
+      } else if (title === undefined) {
         await handle.spawnUserShell(agent, 'my');
       } else {
         await handle.spawnUserShell(agent, 'my', title);
@@ -171,13 +184,14 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     text: string,
     submit: boolean,
     title?: string,
+    taskContext?: TaskRunContext,
   ): Promise<void> => {
     if (agent.promptFlags) {
       const command = `${agent.command} --prompt ${shellSingleQuote(text)}`;
-      await spawnAgentTab({ ...agent, command }, title);
+      await spawnAgentTab({ ...agent, command }, title, taskContext);
       return;
     }
-    const handle = await spawnAgentTab(agent, title);
+    const handle = await spawnAgentTab(agent, title, taskContext);
     if (!handle) return;
     handle.typeIntoActive(text);
     if (submit) {
@@ -306,17 +320,30 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
     handle.typeIntoActive(text);
   };
 
-  const runTask = async (agentId: string, text: string, taskName: string): Promise<void> => {
+  const runTask = async (
+    agentId: string,
+    text: string,
+    taskName: string,
+    opts?: { taskSlug: string; excludeFromLogs: boolean },
+  ): Promise<void> => {
     const agent = findAgentById(deps.agents(), agentId);
     if (!agent) {
       deps.flashToast(`Task agent not found: ${agentId}`, 'error');
       return;
     }
+    // A manual task run that opts out of the normal logs carries a task
+    // context so the SessionLogger routes its `.txt` to
+    // `.condash/manual/<slug>/` (capability 4). Without the flag the run logs
+    // normally, as today.
+    const taskContext: TaskRunContext | undefined =
+      opts?.excludeFromLogs && opts.taskSlug
+        ? { taskSlug: opts.taskSlug, trigger: 'manual' }
+        : undefined;
     // Same interactive spawn-and-deliver path as an agent-bound project action.
     // `submit: true` presses Enter on the opaque keystroke path; a promptFlags
     // agent is seeded with `--prompt` (interactive) regardless. The tab is named
     // `<agent label>•<task title>` so a running task is identifiable at a glance.
-    await runAgentTask(agent, text, true, `${agent.label}•${taskName}`);
+    await runAgentTask(agent, text, true, `${agent.label}•${taskName}`, taskContext);
   };
 
   return {

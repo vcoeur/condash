@@ -19,6 +19,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import type {
   Agent,
+  TaskRunContext,
   TermSide,
   TermSpawnRequest,
   TerminalPrefs,
@@ -65,8 +66,14 @@ export interface TerminalPaneHandle {
   /** Add a fresh user shell tab to "My terms". `agent` may be an `Agent` to pin
    *  and run that agent's command, or `null` for a plain shell. `titleOverride`
    *  pins a custom tab label (e.g. a task's `<agent>•<title>`) instead of the
-   *  agent's own label. */
-  spawnUserShell(agent?: AgentChoice, side?: TermSide, titleOverride?: string): Promise<string>;
+   *  agent's own label. `taskContext` routes the session's log to the
+   *  segregated `.condash/<trigger>/<slug>/` store (capability 4). */
+  spawnUserShell(
+    agent?: AgentChoice,
+    side?: TermSide,
+    titleOverride?: string,
+    taskContext?: TaskRunContext,
+  ): Promise<string>;
   /** Move the active tab within its column strip. */
   moveActiveTab(direction: -1 | 1): void;
   /** Type a literal string into the active terminal (no shell parsing). */
@@ -120,6 +127,22 @@ export function TerminalPane(props: {
   // sole writer of the tabs signal; `spawn` records intent here so the
   // following onTermSessions broadcast inserts the tab with the right label.
   const pendingSpawnIntent = new Map<string, { label: string; pinned?: boolean }>();
+
+  // Latest auto-titles by sid (capability 3 — `.condash/term-titles.json`).
+  // The `termAutoTitles` event sparse-merges into this map; `reconcile` reads
+  // it so a tab that (re)appears after a title arrived still picks it up.
+  const autoTitleBySid = new Map<string, string>();
+  const applyAutoTitles = (titles: readonly { sid: string; title: string }[]): void => {
+    for (const t of titles) autoTitleBySid.set(t.sid, t.title);
+    // Sparse merge: only touch tabs named in this batch (unknown sids have no
+    // matching tab; omitted sids are left untouched — never wiped).
+    const present = new Set(titles.map((t) => t.sid));
+    setTabs((prev) =>
+      prev.map((tab) =>
+        present.has(tab.id) ? { ...tab, autoTitle: autoTitleBySid.get(tab.id) } : tab,
+      ),
+    );
+  };
 
   // Tracks tabs that are already in the process of closing so that
   // user-initiated close (right-click → Close) and process-exit close
@@ -349,6 +372,7 @@ export function TerminalPane(props: {
         column,
         label,
         customName: meta?.customName,
+        autoTitle: autoTitleBySid.get(s.id),
         colorSlot,
         pinned,
         exited: s.exited,
@@ -405,8 +429,15 @@ export function TerminalPane(props: {
   const offTermSessions = window.condash.onTermSessions((snap) => void reconcile(snap));
   onCleanup(offTermSessions);
 
+  // Auto-titles applied from `.condash/term-titles.json` (capability 3).
+  const offAutoTitles = window.condash.onTermAutoTitles((titles) => applyAutoTitles(titles));
+  onCleanup(offAutoTitles);
+
   onMount(() => {
     void window.condash.termList().then((snap) => void reconcile(snap));
+    // Pull current titles so a fresh / reloaded window paints them without
+    // waiting for the next file write.
+    void window.condash.termAutoTitlesList().then((titles) => applyAutoTitles(titles));
   });
 
   // ---- spawn helpers ----
@@ -439,6 +470,7 @@ export function TerminalPane(props: {
     agent: AgentChoice = null,
     sd: TermSide = 'my',
     titleOverride?: string,
+    taskContext?: TermSpawnRequest['taskContext'],
   ): Promise<string> => {
     const label = uniqueLabel(titleOverride ?? agent?.label ?? 'shell');
     // Pin the label when the caller picked an agent or supplied an explicit
@@ -449,6 +481,7 @@ export function TerminalPane(props: {
         side: sd,
         command: agent?.command,
         cwd: props.cwd ?? undefined,
+        taskContext,
       },
       label,
       { pinned: agent !== null || titleOverride !== undefined },

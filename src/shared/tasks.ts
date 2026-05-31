@@ -55,8 +55,15 @@ export const PROJECT_TOKENS = [
   'PROJECT_TITLE',
 ] as const;
 
+/** Reserved provided tokens — injected by condash from runtime state, never
+ *  prompted in the fill form. `{TABS}` carries the open-tab list (capability
+ *  2). Unlike `{APP}` / `{PROJECT}`, there is no picker: the value is supplied
+ *  wholesale. */
+export const PROVIDED_TOKENS = ['TABS'] as const;
+
 const APP_TOKEN_SET: ReadonlySet<string> = new Set(APP_TOKENS);
 const PROJECT_TOKEN_SET: ReadonlySet<string> = new Set(PROJECT_TOKENS);
+const PROVIDED_TOKEN_SET: ReadonlySet<string> = new Set(PROVIDED_TOKENS);
 
 /** True when `key` is one of the reserved `{APP_*}` tokens. */
 export function isAppToken(key: string): boolean {
@@ -66,6 +73,12 @@ export function isAppToken(key: string): boolean {
 /** True when `key` is one of the reserved `{PROJECT_*}` tokens. */
 export function isProjectToken(key: string): boolean {
   return PROJECT_TOKEN_SET.has(key);
+}
+
+/** True when `key` is a condash-provided token (e.g. `{TABS}`) — injected
+ *  from runtime state, never rendered as a fillable field. */
+export function isProvidedToken(key: string): boolean {
+  return PROVIDED_TOKEN_SET.has(key);
 }
 
 /**

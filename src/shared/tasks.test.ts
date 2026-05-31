@@ -6,6 +6,7 @@ import {
   extractMarkers,
   isAppToken,
   isProjectToken,
+  isProvidedToken,
   projectTokenContext,
 } from './tasks';
 
@@ -47,6 +48,19 @@ describe('reserved token predicates', () => {
     expect(isProjectToken('PROJECT_BRANCH')).toBe(true);
     expect(isProjectToken('PROJECT_TITLE')).toBe(true);
     expect(isProjectToken('PROMPT')).toBe(false);
+  });
+
+  it('recognises the provided {TABS} token (capability 2)', () => {
+    expect(isProvidedToken('TABS')).toBe(true);
+    expect(isProvidedToken('APP')).toBe(false);
+    expect(isProvidedToken('AREA')).toBe(false);
+  });
+});
+
+describe('substitute with a provided {TABS} var', () => {
+  it('injects the open-tab JSON for a {TABS} marker', () => {
+    const tabs = JSON.stringify([{ sid: 't-a', cwd: '/x', repo: 'condash', cmd: 'agedum claude' }]);
+    expect(substitute('Tabs: {TABS}', { TABS: tabs })).toBe(`Tabs: ${tabs}`);
   });
 });
 

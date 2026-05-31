@@ -265,6 +265,11 @@ export interface Settings {
    *  scope reads `<conception>/.agents/`. Persisted per-machine; defaults
    *  to `conception`. */
   skillsActiveScope?: SkillScope;
+  /** Per-task schedule / log-routing config keyed by task slug (capability
+   *  1). Shared with `condash.json` via the config schema's
+   *  `sharedSchemaFields`; the effective-config merge lets a conception
+   *  override the per-machine value. */
+  taskConfig?: Record<string, TaskConfigEntry>;
 }
 
 /** Sets of expanded directory `relPath`s for the three tree panes. The
@@ -578,6 +583,20 @@ export interface TermSession {
   exited?: number;
 }
 
+/** Which trigger produced a task run. Routes its console log out of the
+ *  normal `.condash/logs/` tree and into `.condash/<trigger>/<task-slug>/`. */
+export type TaskTrigger = 'scheduled' | 'manual';
+
+/** Task-run context carried on a spawn so the SessionLogger can route the
+ *  run's console output to the segregated `.condash/<trigger>/<slug>/` store
+ *  instead of `.condash/logs/`. Present only for task runs that opt out of the
+ *  normal logs (a `manual` run of an `excludeFromLogs` task, or any
+ *  `scheduled` run — those are always segregated). Absent → normal logging. */
+export interface TaskRunContext {
+  taskSlug: string;
+  trigger: TaskTrigger;
+}
+
 export interface TermSpawnRequest {
   side: TermSide;
   /** When set, looks up the repo's `run:` and uses its cwd. */
@@ -589,6 +608,59 @@ export interface TermSpawnRequest {
   cwd?: string;
   cols?: number;
   rows?: number;
+  /** When set, the session is a task run whose console output is routed to
+   *  `.condash/<trigger>/<taskSlug>/` instead of `.condash/logs/`. */
+  taskContext?: TaskRunContext;
+}
+
+/** One auto-title applied to a tab from `.condash/term-titles.json`
+ *  (capability 3). Broadcast on the `termAutoTitles` channel. `title` is
+ *  already length-clamped by the main-side validator. */
+export interface TermAutoTitle {
+  sid: string;
+  title: string;
+}
+
+/** One open terminal tab, as injected into a task's `{TABS}` provided var
+ *  (capability 2). Built from the main session map. No prior titles — the
+ *  task owns its own memory via its `.condash/term-titles.json`. */
+export interface TabInfo {
+  sid: string;
+  cwd: string;
+  repo?: string;
+  cmd?: string;
+}
+
+/** Per-task config persisted under `taskConfig` in `.condash/settings.json`
+ *  (capability 1). Absent entry → not scheduled, normal logging. */
+export interface TaskConfigEntry {
+  /** Cadence string (e.g. `2m`, `30s`, `1h`). Absent = not scheduled. */
+  schedule?: string;
+  /** Per-task default for routing manual runs out of `.condash/logs/`;
+   *  overridable per run in the run popup. */
+  excludeFromLogs?: boolean;
+}
+
+/** One segregated task-run file under `.condash/<trigger>/<slug>/`,
+ *  surfaced by the Logs pane's "Task runs" view. */
+export interface TaskRunEntry {
+  /** Absolute path to the `.txt`. */
+  path: string;
+  /** Spawn-time `HH:MM:SS` parsed from the filename prefix. */
+  time: string;
+  /** `YYYY-MM-DD` parsed from the filename prefix. */
+  day: string;
+  /** Session id (the `<sid>` suffix). */
+  sid: string;
+  /** File size in bytes. */
+  bytes: number;
+}
+
+/** All runs of one task under one trigger, newest-first. */
+export interface TaskRunGroup {
+  taskSlug: string;
+  trigger: TaskTrigger;
+  runs: TaskRunEntry[];
 }
 
 export interface TermDataMessage {

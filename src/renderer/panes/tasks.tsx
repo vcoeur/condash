@@ -6,6 +6,7 @@ import {
   extractMarkers,
   isAppToken,
   isProjectToken,
+  isProvidedToken,
   projectTokenContext,
   type Marker,
   type TaskDef,
@@ -35,6 +36,12 @@ interface Draft {
   agent: string;
   prompt: string;
   editingSlug: string | null;
+  /** Schedule cadence (`30s`/`2m`/`1h`); empty = not scheduled (capability 1).
+   *  Persisted to `taskConfig[slug]` in settings.json, not task.json. */
+  schedule: string;
+  /** Per-task default for routing manual runs out of `.condash/logs/`
+   *  (capability 4). Persisted alongside `schedule`. */
+  excludeFromLogs: boolean;
 }
 
 /** Fill state: the read task plus the picker selections and per-marker field
@@ -49,6 +56,18 @@ interface FillState {
   app: AppOption | null;
   project: Project | null;
   fields: Record<string, string>;
+  /** condash-provided substitutions (e.g. `{TABS}`), fetched once when the
+   *  fill opens — never user-editable. */
+  provided: Record<string, string>;
+  /** Effective per-run "route this run out of the logs" flag (capability 4),
+   *  seeded from the task's `excludeFromLogs` default and toggleable here. */
+  excludeFromLogs: boolean;
+}
+
+/** Options carried alongside a task run launch. */
+export interface RunOptions {
+  taskSlug: string;
+  excludeFromLogs: boolean;
 }
 
 function blankDraft(agents: readonly Agent[]): Draft {
@@ -63,6 +82,8 @@ function blankDraft(agents: readonly Agent[]): Draft {
     agent: seedable?.id ?? '',
     prompt: '',
     editingSlug: null,
+    schedule: '',
+    excludeFromLogs: false,
   };
 }
 
@@ -90,8 +111,10 @@ export function TasksView(props: {
   apps: () => readonly AppOption[];
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
   /** Run a filled task: spawn the agent (by id) and deliver the substituted
-   *  prompt. `taskName` titles the spawned tab. Always launches interactively. */
-  onRun: (agentId: string, text: string, taskName: string) => void;
+   *  prompt. `taskName` titles the spawned tab. `opts` carries the task slug +
+   *  effective excludeFromLogs so a flagged manual run routes its log to
+   *  `.condash/manual/<slug>/`. Always launches interactively. */
+  onRun: (agentId: string, text: string, taskName: string, opts: RunOptions) => void;
 }): JSX.Element {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
@@ -112,6 +135,7 @@ export function TasksView(props: {
       props.flashToast(`Task ${slug} not found`, 'error');
       return;
     }
+    const cfg = (await window.condash.getTaskConfig())[slug] ?? {};
     setDraft({
       slug,
       slugDirty: true,
@@ -119,6 +143,8 @@ export function TasksView(props: {
       agent: def.agent,
       prompt: def.prompt,
       editingSlug: slug,
+      schedule: cfg.schedule ?? '',
+      excludeFromLogs: cfg.excludeFromLogs === true,
     });
   };
 
@@ -131,10 +157,30 @@ export function TasksView(props: {
     }
     const fields: Record<string, string> = {};
     for (const marker of extractMarkers(def.prompt)) {
-      if (isAppToken(marker.key) || isProjectToken(marker.key)) continue;
+      if (isAppToken(marker.key) || isProjectToken(marker.key) || isProvidedToken(marker.key)) {
+        continue;
+      }
       fields[marker.key] = marker.default;
     }
-    setFill({ slug, def, agent: def.agent, app: null, project: null, fields });
+    // Seed `{TABS}` and the excludeFromLogs default. Both come from runtime
+    // state, fetched once when the popup opens (the open-tab set is stable
+    // enough for the duration of a fill).
+    const [tabs, cfgMap] = await Promise.all([
+      window.condash.termTabsContext(),
+      window.condash.getTaskConfig(),
+    ]);
+    const provided: Record<string, string> = { TABS: JSON.stringify(tabs) };
+    const excludeFromLogs = cfgMap[slug]?.excludeFromLogs === true;
+    setFill({
+      slug,
+      def,
+      agent: def.agent,
+      app: null,
+      project: null,
+      fields,
+      provided,
+      excludeFromLogs,
+    });
   };
 
   const save = async (): Promise<void> => {
@@ -159,6 +205,16 @@ export function TasksView(props: {
     };
     try {
       const slug = await window.condash.writeTask(d.slug, def, d.editingSlug ?? undefined);
+      // Persist schedule / excludeFromLogs to settings.json's taskConfig under
+      // the *resolved* slug (a rename moves the config with the task). When the
+      // slug changed, clear the old entry.
+      if (d.editingSlug && d.editingSlug !== slug) {
+        await window.condash.setTaskConfig(d.editingSlug, {});
+      }
+      await window.condash.setTaskConfig(slug, {
+        schedule: d.schedule.trim() || undefined,
+        excludeFromLogs: d.excludeFromLogs || undefined,
+      });
       props.flashToast(`Saved ${slug}`, 'success');
       setDraft(null);
       props.reload();
@@ -174,6 +230,8 @@ export function TasksView(props: {
     if (!d?.editingSlug) return;
     try {
       await window.condash.deleteTask(d.editingSlug);
+      // Drop any schedule / excludeFromLogs config for the deleted task.
+      await window.condash.setTaskConfig(d.editingSlug, {});
       props.flashToast(`Deleted ${d.name || d.editingSlug}`, 'success');
       if (fill()?.slug === d.editingSlug) setFill(null);
       setDraft(null);
@@ -330,7 +388,7 @@ function TaskFill(props: {
   apps: () => readonly AppOption[];
   projects: () => readonly Project[];
   conceptionPath: () => string | null;
-  onRun: (agentId: string, text: string, taskName: string) => void;
+  onRun: (agentId: string, text: string, taskName: string, opts: RunOptions) => void;
 }): JSX.Element {
   // Derive markers from the prompt alone, not the whole fill signal. The prompt
   // is immutable during a fill session, so this `prompt` memo's `===` output is
@@ -342,7 +400,9 @@ function TaskFill(props: {
   const prompt = createMemo(() => props.fill().def.prompt);
   const markers = createMemo(() => extractMarkers(prompt()));
   const textMarkers = createMemo(() =>
-    markers().filter((m) => !isAppToken(m.key) && !isProjectToken(m.key)),
+    markers().filter(
+      (m) => !isAppToken(m.key) && !isProjectToken(m.key) && !isProvidedToken(m.key),
+    ),
   );
   const needsApp = createMemo(() => markers().some((m) => isAppToken(m.key)));
   const needsProject = createMemo(() => markers().some((m) => isProjectToken(m.key)));
@@ -380,6 +440,7 @@ function TaskFill(props: {
   };
 
   const ctx = createMemo<Record<string, string>>(() => ({
+    ...props.fill().provided,
     ...appContext(props.fill().app),
     ...projectTokenContext(props.fill().project, props.conceptionPath() ?? undefined),
     ...props.fill().fields,
@@ -391,7 +452,10 @@ function TaskFill(props: {
 
   const run = (): void => {
     const f = props.fill();
-    props.onRun(f.agent, substitute(f.def.prompt, ctx()), f.def.name);
+    props.onRun(f.agent, substitute(f.def.prompt, ctx()), f.def.name, {
+      taskSlug: f.slug,
+      excludeFromLogs: f.excludeFromLogs,
+    });
     close();
   };
 
@@ -439,6 +503,19 @@ function TaskFill(props: {
                   </Match>
                 </Switch>
               </select>
+            </label>
+            <label
+              class="tasks-fill-exclude"
+              title="Route this run's log to .condash/manual/<slug>/ instead of the normal logs"
+            >
+              <input
+                type="checkbox"
+                checked={props.fill().excludeFromLogs}
+                onChange={(e) =>
+                  props.setFill({ ...props.fill(), excludeFromLogs: e.currentTarget.checked })
+                }
+              />
+              <span>Keep out of logs</span>
             </label>
             <button
               type="button"
@@ -632,6 +709,25 @@ function TaskEditor(props: {
                 placeholder={'Review {APP} and update its docs. Focus: {AREA:CLAUDE.md and docs/}'}
                 onInput={(e) => props.patch({ prompt: e.currentTarget.value })}
               />
+            </label>
+
+            <label>
+              <span>Schedule (e.g. 2m / 30s / 1h — blank = off)</span>
+              <input
+                type="text"
+                value={d().schedule}
+                placeholder="off"
+                onInput={(e) => props.patch({ schedule: e.currentTarget.value })}
+              />
+            </label>
+
+            <label class="tasks-editor-checkbox">
+              <input
+                type="checkbox"
+                checked={d().excludeFromLogs}
+                onChange={(e) => props.patch({ excludeFromLogs: e.currentTarget.checked })}
+              />
+              <span>Keep manual runs out of the normal logs (default — overridable per run)</span>
             </label>
 
             <Show when={markers().length > 0}>

@@ -93,6 +93,9 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `onTermData(cb)` | Subscribe to stdout/stderr bytes — single channel, multiplexed by session id. |
 | `onTermExit(cb)` | Subscribe to session-exit events. |
 | `onTermSessions(cb)` | Sessions changed (spawn / exit / close). Receives the full snapshot. |
+| `onTermAutoTitles(cb)` | Auto-titles changed — the watcher on `.condash/term-titles.json` validated a new sparse `{sid,title}[]` list (capability 3). The renderer sparse-merges them onto its tabs. |
+| `termAutoTitlesList()` | Pull the current validated auto-titles from `.condash/term-titles.json`. Called on renderer mount to paint titles without waiting for the next file write. |
+| `termTabsContext()` | The open, live tabs as `[{sid,cwd,repo,cmd}]` — the `{TABS}` provided-var payload (capability 2), used to seed a manual task run. |
 
 ## Terminal log surfaces
 
@@ -105,6 +108,7 @@ Per-session terminal capture (when `terminal.logging.enabled` is true) lands at 
 | `logsReadSession(filePath)` | Read one session file. Returns `TermLogSessionRead` — `{ text, meta }` with metadata header / footer stripped from the body. |
 | `logsDeleteDay(day)` | Delete an entire day directory. Returns the number of session files removed. |
 | `logsDeleteSession(filePath)` | Delete one session file. Refuses paths outside `.condash/logs/`. |
+| `logsListTaskRuns()` | Enumerate the segregated task-run store under `.condash/{scheduled,manual}/<slug>/` (capabilities 1 + 4). One `TaskRunGroup` per `<trigger>/<slug>`, runs newest-first. Never reads `.condash/logs/`; the Logs pane's **Task runs** view renders it. |
 
 ## Tree mutations (Knowledge / Resources / Skills panes)
 

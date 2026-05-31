@@ -99,6 +99,43 @@ describe('configSchema repoEntry', () => {
   });
 });
 
+describe('configSchema taskConfig (capability 1)', () => {
+  it('accepts a per-task schedule + excludeFromLogs map', () => {
+    const result = configSchema.safeParse({
+      taskConfig: {
+        'term-titles': { schedule: '2m', excludeFromLogs: true },
+        'daily-journal': { schedule: '1h' },
+        adopted: { excludeFromLogs: true },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an empty entry (task present but inert)', () => {
+    expect(configSchema.safeParse({ taskConfig: { x: {} } }).success).toBe(true);
+  });
+
+  it('rejects unknown keys inside an entry', () => {
+    const result = configSchema.safeParse({
+      taskConfig: { x: { schedule: '2m', bogus: 1 } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-string schedule / non-boolean excludeFromLogs', () => {
+    expect(configSchema.safeParse({ taskConfig: { x: { schedule: 120 } } }).success).toBe(false);
+    expect(configSchema.safeParse({ taskConfig: { x: { excludeFromLogs: 'yes' } } }).success).toBe(
+      false,
+    );
+  });
+
+  it('is accepted by the global settings schema too (shared field)', () => {
+    expect(globalSettingsSchema.safeParse({ taskConfig: { x: { schedule: '30s' } } }).success).toBe(
+      true,
+    );
+  });
+});
+
 describe('configSchema dropped path keys', () => {
   // Both `resources_path` and `skills_path` were dropped in the reframe —
   // the Resources pane is hard-coded to `<root>/resources/` and the Skills
