@@ -92,6 +92,8 @@ For a feature that touches the dashboard's behaviour, prefer Playwright. The e2e
 
 Driving the real Electron app means the suite opens an on-screen window unless it runs against a virtual display. On Linux, `make test` wraps the suite in `xvfb-run` when it's installed, so the window never appears or steals focus — the same thing CI does. `make test-headless` forces that wrap (and errors if `xvfb-run` is missing); `make test-visible` runs with the window visible when you want to watch a run. On macOS/Windows (no `xvfb`), `make test` runs visibly.
 
+On a Wayland session there's a catch: the shell exports `ELECTRON_OZONE_PLATFORM_HINT=wayland` and `WAYLAND_DISPLAY`, and Electron honours those over the virtual X `DISPLAY` that `xvfb-run` provides — so the window would still open on the real compositor and steal focus despite the wrap. The wrapped targets therefore drop `WAYLAND_DISPLAY` and pin `ELECTRON_OZONE_PLATFORM_HINT=x11` for the run, forcing Electron to render into Xvfb. `make test-visible` keeps Wayland on purpose.
+
 ## Style and conventions
 
 - **`make format`** runs Prettier across `src/`. Run it before every commit. CI fails on unformatted code.

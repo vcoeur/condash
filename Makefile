@@ -9,8 +9,15 @@ PREVIEW_PORT ?= 5601
 # a visible run where xvfb-run is absent (macOS/Windows). `make test-visible`
 # always shows the window; `make test-headless` always wraps and errors out if
 # xvfb-run is missing.
+#
+# On a Wayland session the dev shell exports ELECTRON_OZONE_PLATFORM_HINT=wayland
+# and WAYLAND_DISPLAY; Electron honours those over xvfb's virtual X DISPLAY and
+# opens the window on the real compositor — stealing focus despite the wrap. For
+# the wrapped run, drop the Wayland socket and pin the X11 Ozone backend so
+# Electron renders into Xvfb only. (test-visible deliberately keeps Wayland.)
 XVFB_RUN  := $(shell command -v xvfb-run 2>/dev/null)
-TEST_WRAP := $(if $(XVFB_RUN),xvfb-run -a,)
+XVFB_X11  := env -u WAYLAND_DISPLAY ELECTRON_OZONE_PLATFORM_HINT=x11
+TEST_WRAP := $(if $(XVFB_RUN),xvfb-run -a $(XVFB_X11),)
 
 help:
 	@echo "Targets:"
@@ -59,7 +66,7 @@ test:
 
 test-headless:
 	npm run build
-	xvfb-run -a npm run test
+	xvfb-run -a $(XVFB_X11) npm run test
 
 test-visible:
 	npm run build
