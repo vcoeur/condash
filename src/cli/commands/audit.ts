@@ -9,6 +9,7 @@ const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'cross-repo',
   'worktrees',
   'index',
+  'stale-index',
   'knowledge-recheck',
   'knowledge-check',
 ];

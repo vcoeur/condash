@@ -188,7 +188,8 @@ condash audit --include lfs,binaries
 | `binaries` | Binary files (PDF, .docx, images > size threshold) that may need migrating |
 | `cross-repo` | Cross-repo wikilinks or relative paths that escape the conception |
 | `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
-| `index` | `index.md` files out of sync with the on-disk tree |
+| `index` | Structural `index.md` problems under `knowledge/` — missing index, dangling links, orphan body files |
+| `stale-index` | `index.md` files under `projects/` or `knowledge/` whose content has drifted from the tree (a regen would rewrite them); autofix re-runs `condash <tree> index` |
 | `knowledge-recheck` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
 | `knowledge-check` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
 

@@ -14,6 +14,10 @@
  *                   whose Status is not `done` are checked.)
  *  - `index`      — every directory under `knowledge/` carries an `index.md`
  *                   listing its children; flag dangling and orphan entries.
+ *  - `stale-index`— `index.md` files under `projects/` or `knowledge/` whose
+ *                   content has drifted from the tree (regen dry-run would
+ *                   rewrite them). Covers freshness where `index` covers
+ *                   structure, and covers `projects/` too.
  *  - `knowledge-recheck` — projects with a deferred knowledge promotion
  *                   (a `[knowledge-recheck:pending]` timeline marker) that
  *                   was never resolved by a later `[knowledge-recheck:done]`.
@@ -37,6 +41,7 @@ import { checkIndex } from './audit/index-check';
 import { checkKnowledgeCheck } from './audit/knowledge-check';
 import { checkKnowledgeRecheck } from './audit/knowledge-recheck';
 import { checkLfs } from './audit/lfs';
+import { checkStaleIndex } from './audit/stale-index';
 import { checkWorktrees } from './audit/worktrees';
 import type { AuditCheckName, AuditIssue, AuditReport } from './audit/shared';
 
@@ -64,6 +69,9 @@ export async function runAudit(
           break;
         case 'index':
           issues.push(...(await checkIndex(conceptionPath)));
+          break;
+        case 'stale-index':
+          issues.push(...(await checkStaleIndex(conceptionPath)));
           break;
         case 'knowledge-recheck':
           issues.push(...(await checkKnowledgeRecheck(conceptionPath)));
