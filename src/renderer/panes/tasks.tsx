@@ -23,6 +23,7 @@ import {
   type TaskListItem,
 } from '@shared/tasks';
 import { substitute } from '@shared/action-template';
+import { parseCadence } from '@shared/cadence';
 import { isValidSlugTail, slugify } from '@shared/slug';
 import { ConfirmModal } from '../confirm-modal';
 import { createBackdropClose } from '../modal-helpers';
@@ -46,9 +47,10 @@ interface Draft {
   agent: string;
   prompt: string;
   editingSlug: string | null;
-  /** Schedule cadence picked from a fixed list (`1m`…`7d`); empty = not
-   *  scheduled (capability 1). Persisted to `taskConfig[slug]` in settings.json,
-   *  not task.json. */
+  /** Free-text schedule cadence (`<n>` + `s`/`m`/`h`/`d`, e.g. `5m`/`2h`/`1d`);
+   *  empty = not scheduled (capability 1). Parsed via `parseCadence`; the editor
+   *  shows the computed interval beside the field. Persisted to
+   *  `taskConfig[slug]` in settings.json, not task.json. */
   schedule: string;
   /** Run-timeout cadence for scheduled runs (`1m`…`1h`); the headless run is
    *  killed + discarded once it elapses. Only persisted when scheduled. */
@@ -70,20 +72,29 @@ const RUN_MODE_CHOICES: ReadonlyArray<{ value: RunMode; label: string }> = [
   { value: 'oneshot', label: 'One-shot, then exit (--run)' },
 ];
 
-/** Fixed schedule cadences offered in the editor. Replaces the old free-text
- *  input — every value parses via `parseCadence`. */
-const SCHEDULE_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
-  { value: '', label: 'Off' },
-  { value: '1m', label: 'Every 1 minute' },
-  { value: '5m', label: 'Every 5 minutes' },
-  { value: '30m', label: 'Every 30 minutes' },
-  { value: '1h', label: 'Every 1 hour' },
-  { value: '2h', label: 'Every 2 hours' },
-  { value: '6h', label: 'Every 6 hours' },
-  { value: '12h', label: 'Every 12 hours' },
-  { value: '1d', label: 'Every 1 day' },
-  { value: '7d', label: 'Every 7 days' },
-];
+/** Render a parsed cadence (ms) as a compact, normalised interval for the live
+ *  readout beside the free-text schedule field: `300000` → `5m`, `5400000` →
+ *  `1h 30m`, `604800000` → `7d`. Confirms the typed cadence parsed and folds an
+ *  odd input like `90m` into `1h 30m`; an unparseable value never reaches here
+ *  (the field flags it instead). */
+function formatCadence(ms: number): string {
+  const units: ReadonlyArray<readonly [number, string]> = [
+    [86_400_000, 'd'],
+    [3_600_000, 'h'],
+    [60_000, 'm'],
+    [1_000, 's'],
+  ];
+  let rest = ms;
+  const parts: string[] = [];
+  for (const [size, label] of units) {
+    const n = Math.floor(rest / size);
+    if (n > 0) {
+      parts.push(`${n}${label}`);
+      rest -= n * size;
+    }
+  }
+  return parts.join(' ');
+}
 
 /** Fixed run-timeout choices for scheduled runs. Keep these ≤ the schedule
  *  interval: a non-exiting agent holds the single-flight slot until the timeout
@@ -885,16 +896,10 @@ function TaskEditor(props: {
     return opts;
   });
 
-  // Schedule choices, with the stored value kept selectable when it predates
-  // the fixed list (a legacy free-text cadence like `30s`) so editing a task
-  // never silently drops its schedule.
-  const scheduleOptions = createMemo(() => {
-    const current = d().schedule.trim();
-    if (current && !SCHEDULE_CHOICES.some((c) => c.value === current)) {
-      return [...SCHEDULE_CHOICES, { value: current, label: `${current} (custom)` }];
-    }
-    return SCHEDULE_CHOICES;
-  });
+  // Parsed schedule cadence (ms) driving the live computed-value readout beside
+  // the field; null when the text isn't a valid `<n><s|m|h|d>` cadence (or is
+  // blank), which the readout surfaces as an "unrecognised" hint.
+  const scheduleMs = createMemo(() => parseCadence(d().schedule));
 
   const onName = (value: string): void => {
     // Auto-derive the slug from the name until the user hand-edits it (new
@@ -975,15 +980,27 @@ function TaskEditor(props: {
             </label>
 
             <label>
-              <span>Schedule</span>
-              <select
+              <span>Schedule (e.g. 5m / 2h / 1d — blank = off)</span>
+              <input
+                type="text"
                 value={d().schedule}
-                onChange={(e) => props.patch({ schedule: e.currentTarget.value })}
-              >
-                <For each={scheduleOptions()}>
-                  {(o) => <option value={o.value}>{o.label}</option>}
-                </For>
-              </select>
+                placeholder="off"
+                onInput={(e) => props.patch({ schedule: e.currentTarget.value })}
+              />
+              <Show when={d().schedule.trim()}>
+                <Show
+                  when={scheduleMs() !== null}
+                  fallback={
+                    <small class="tasks-schedule-hint invalid">
+                      unrecognised cadence — use a number + s / m / h / d (e.g. 5m, 2h, 1d)
+                    </small>
+                  }
+                >
+                  <small class="tasks-schedule-hint">
+                    runs every {formatCadence(scheduleMs() ?? 0)}
+                  </small>
+                </Show>
+              </Show>
             </label>
 
             <label title="Default for this task's runs (a prompt-seeding agent only); overridable per run. Interactive keeps the tab open (--prompt); one-shot runs once and exits (--run) — prefer one-shot for a scheduled task so its headless run exits cleanly.">
