@@ -138,6 +138,16 @@ describe('configSchema taskConfig (capability 1)', () => {
     );
   });
 
+  it('accepts a boolean gateOnUpdatedTabs, rejects a non-boolean', () => {
+    expect(
+      configSchema.safeParse({ taskConfig: { x: { schedule: '2m', gateOnUpdatedTabs: true } } })
+        .success,
+    ).toBe(true);
+    expect(
+      configSchema.safeParse({ taskConfig: { x: { gateOnUpdatedTabs: 'yes' } } }).success,
+    ).toBe(false);
+  });
+
   it('rejects a non-string schedule / non-boolean excludeFromLogs', () => {
     expect(configSchema.safeParse({ taskConfig: { x: { schedule: 120 } } }).success).toBe(false);
     expect(configSchema.safeParse({ taskConfig: { x: { excludeFromLogs: 'yes' } } }).success).toBe(

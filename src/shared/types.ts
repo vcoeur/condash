@@ -652,6 +652,13 @@ export interface TaskConfigEntry {
    *  A scheduled task should prefer `oneshot` so the headless run exits cleanly
    *  instead of being killed at its `timeout`. */
   runMode?: RunMode;
+  /** Per-task opt-in for the scheduler's per-tab growth gate. When `true`, a
+   *  due tick is **skipped** unless some open tab produced new output since the
+   *  task's last run — the changed subset is then handed to the run as
+   *  `{UPDATED_TABS}`. Absent/`false` = no gate: the task runs on every interval
+   *  regardless of tab activity. Only meaningful for a task that acts on
+   *  `{UPDATED_TABS}` (e.g. `term-titles`). */
+  gateOnUpdatedTabs?: boolean;
 }
 
 /** How a task drives its agent: `interactive` → agedum `--prompt` (session stays

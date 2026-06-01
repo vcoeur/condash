@@ -62,6 +62,10 @@ interface Draft {
    *  `--prompt` (session stays open), `oneshot` → `--run` (runs and exits).
    *  Overridable per run in the run popup. Persisted alongside `schedule`. */
   runMode: RunMode;
+  /** Opt-in to the scheduler's per-tab growth gate: when set, a scheduled tick
+   *  is skipped unless a tab produced new output since the last run. Only
+   *  persisted (and only meaningful) when scheduled. */
+  gateOnUpdatedTabs: boolean;
 }
 
 /** Run-mode choices offered in the editor + run popup. `interactive` keeps the
@@ -157,6 +161,7 @@ function blankDraft(agents: readonly Agent[]): Draft {
     timeout: DEFAULT_TIMEOUT,
     excludeFromLogs: false,
     runMode: 'interactive',
+    gateOnUpdatedTabs: false,
   };
 }
 
@@ -242,6 +247,7 @@ export function TasksView(props: {
       timeout: cfg.timeout ?? DEFAULT_TIMEOUT,
       excludeFromLogs: cfg.excludeFromLogs === true,
       runMode: cfg.runMode === 'oneshot' ? 'oneshot' : 'interactive',
+      gateOnUpdatedTabs: cfg.gateOnUpdatedTabs === true,
     });
   };
 
@@ -323,6 +329,8 @@ export function TasksView(props: {
         excludeFromLogs: d.excludeFromLogs || undefined,
         // Only the non-default mode is persisted (interactive is the default).
         runMode: d.runMode === 'oneshot' ? 'oneshot' : undefined,
+        // The gate only matters for a scheduled task; don't persist it otherwise.
+        gateOnUpdatedTabs: scheduled ? d.gateOnUpdatedTabs || undefined : undefined,
       });
       props.flashToast(`Saved ${slug}`, 'success');
       setDraft(null);
@@ -674,14 +682,18 @@ function TaskFill(props: {
     props.setFill({ ...f, fields: { ...f.fields, [key]: value } });
   };
 
-  const ctx = createMemo<Record<string, string>>(() => ({
-    ...props.fill().provided,
+  // Substitution context for the *preview* — the user-resolved markers (app /
+  // project pickers + plain fields) but **not** the condash-provided tokens
+  // (`{TABS}` / `{UPDATED_TABS}`). Those stay literal in the shown prompt; a
+  // multi-KB JSON dump would drown the preview and they aren't known until the
+  // run fires anyway. They are filled in `runCtx` below, at run time only.
+  const previewCtx = createMemo<Record<string, string>>(() => ({
     ...appContext(props.fill().app),
     ...projectTokenContext(props.fill().project, props.conceptionPath() ?? undefined),
     ...props.fill().fields,
   }));
 
-  const preview = createMemo(() => substitute(props.fill().def.prompt, ctx()));
+  const preview = createMemo(() => substitute(props.fill().def.prompt, previewCtx()));
 
   const agentOk = createMemo(() => props.agents().some((a) => a.id === props.fill().agent));
   // Run mode (--prompt vs --run) only applies to a prompt-seeding agent; an opaque
@@ -692,7 +704,11 @@ function TaskFill(props: {
 
   const run = (): void => {
     const f = props.fill();
-    props.onRun(f.agent, substitute(f.def.prompt, ctx()), f.def.name, {
+    // Run-time context: the preview markers plus the condash-provided tokens
+    // (`{TABS}` / `{UPDATED_TABS}`), which are substituted only now — never in
+    // the preview. Provided first so a plain field can't shadow them.
+    const runCtx = { ...f.provided, ...previewCtx() };
+    props.onRun(f.agent, substitute(f.def.prompt, runCtx), f.def.name, {
       taskSlug: f.slug,
       excludeFromLogs: f.excludeFromLogs,
       runMode: f.runMode,
@@ -1026,6 +1042,18 @@ function TaskEditor(props: {
                     {(o) => <option value={o.value}>{o.label}</option>}
                   </For>
                 </select>
+              </label>
+
+              <label
+                class="tasks-editor-checkbox"
+                title="Skip a scheduled tick when no open tab produced new output since the last run — the changed tabs are handed to the run as {UPDATED_TABS}. Leave off to run on every interval. Enable only for a task that acts on {UPDATED_TABS}."
+              >
+                <input
+                  type="checkbox"
+                  checked={d().gateOnUpdatedTabs}
+                  onChange={(e) => props.patch({ gateOnUpdatedTabs: e.currentTarget.checked })}
+                />
+                <span>Only run when a tab changed (skip idle ticks)</span>
               </label>
             </Show>
 

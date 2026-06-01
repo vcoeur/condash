@@ -60,13 +60,16 @@ export function registerTasksIpc(): void {
     // Only the non-default `oneshot` mode is persisted; `interactive` is the
     // implied default and stays absent (matches the renderer's contract).
     const runMode = entry?.runMode === 'oneshot' ? 'oneshot' : undefined;
+    // Opt-in growth gate — only `true` is persisted (absent = no gate).
+    const gateOnUpdatedTabs = entry?.gateOnUpdatedTabs === true ? true : undefined;
     await updateSettings((cur) => {
       const map = { ...((cur.taskConfig ?? {}) as Record<string, TaskConfigEntry>) };
       if (
         schedule === undefined &&
         timeout === undefined &&
         excludeFromLogs === undefined &&
-        runMode === undefined
+        runMode === undefined &&
+        gateOnUpdatedTabs === undefined
       ) {
         delete map[slug];
       } else {
@@ -75,6 +78,7 @@ export function registerTasksIpc(): void {
           ...(timeout ? { timeout } : {}),
           ...(excludeFromLogs ? { excludeFromLogs } : {}),
           ...(runMode ? { runMode } : {}),
+          ...(gateOnUpdatedTabs ? { gateOnUpdatedTabs } : {}),
         };
       }
       return { ...cur, taskConfig: Object.keys(map).length > 0 ? map : undefined };
