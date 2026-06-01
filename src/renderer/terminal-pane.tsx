@@ -128,22 +128,6 @@ export function TerminalPane(props: {
   // following onTermSessions broadcast inserts the tab with the right label.
   const pendingSpawnIntent = new Map<string, { label: string; pinned?: boolean }>();
 
-  // Latest auto-titles by sid (capability 3 — `.condash/term-titles.json`).
-  // The `termAutoTitles` event sparse-merges into this map; `reconcile` reads
-  // it so a tab that (re)appears after a title arrived still picks it up.
-  const autoTitleBySid = new Map<string, string>();
-  const applyAutoTitles = (titles: readonly { sid: string; title: string }[]): void => {
-    for (const t of titles) autoTitleBySid.set(t.sid, t.title);
-    // Sparse merge: only touch tabs named in this batch (unknown sids have no
-    // matching tab; omitted sids are left untouched — never wiped).
-    const present = new Set(titles.map((t) => t.sid));
-    setTabs((prev) =>
-      prev.map((tab) =>
-        present.has(tab.id) ? { ...tab, autoTitle: autoTitleBySid.get(tab.id) } : tab,
-      ),
-    );
-  };
-
   // Tracks tabs that are already in the process of closing so that
   // user-initiated close (right-click → Close) and process-exit close
   // don't race.
@@ -276,6 +260,15 @@ export function TerminalPane(props: {
     mounted.onCwdChange((cwd) => {
       setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, cwd } : t)));
     });
+    // Track the window title the program announces via OSC 0/2 (e.g. a harness
+    // summary) → reflect in the tab label. Coalesced + glyph-stripped upstream.
+    mounted.onTitleChange((termTitle) => {
+      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, termTitle } : t)));
+    });
+    // Track OSC 9;4 progress → drive the tab's busy/idle indicator.
+    mounted.onProgressChange((busy) => {
+      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, busy } : t)));
+    });
   };
 
   /** Move an existing xterm element to a new column's host (used when the
@@ -372,7 +365,6 @@ export function TerminalPane(props: {
         column,
         label,
         customName: meta?.customName,
-        autoTitle: autoTitleBySid.get(s.id),
         colorSlot,
         pinned,
         exited: s.exited,
@@ -429,15 +421,8 @@ export function TerminalPane(props: {
   const offTermSessions = window.condash.onTermSessions((snap) => void reconcile(snap));
   onCleanup(offTermSessions);
 
-  // Auto-titles applied from `.condash/term-titles.json` (capability 3).
-  const offAutoTitles = window.condash.onTermAutoTitles((titles) => applyAutoTitles(titles));
-  onCleanup(offAutoTitles);
-
   onMount(() => {
     void window.condash.termList().then((snap) => void reconcile(snap));
-    // Pull current titles so a fresh / reloaded window paints them without
-    // waiting for the next file write.
-    void window.condash.termAutoTitlesList().then((titles) => applyAutoTitles(titles));
   });
 
   // ---- spawn helpers ----

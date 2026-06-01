@@ -25,7 +25,6 @@ import type {
   TabInfo,
   TaskConfigEntry,
   TaskRunGroup,
-  TermAutoTitle,
   TermDataMessage,
   TermExitMessage,
   TermLogSessionMeta,
@@ -279,15 +278,6 @@ export interface CondashApi {
   onTermExit(callback: (msg: TermExitMessage) => void): () => void;
   /** Sessions changed (spawn / exit / close). Receives the full snapshot. */
   onTermSessions(callback: (sessions: TermSession[]) => void): () => void;
-  /** Auto-titles changed — the watcher on `.condash/term-titles.json`
-   *  validated a new sparse `{sid,title}` list (capability 3). The renderer
-   *  sparse-merges them onto its tabs: sets the sids present, ignores unknown
-   *  sids, leaves omitted sids untouched. Returns an unsubscribe function. */
-  onTermAutoTitles(callback: (titles: TermAutoTitle[]) => void): () => void;
-  /** Pull the current validated auto-titles from `.condash/term-titles.json`.
-   *  Called on renderer mount so a fresh / reloaded window paints existing
-   *  titles without waiting for the next file write. */
-  termAutoTitlesList(): Promise<TermAutoTitle[]>;
   /** The open, still-live tabs as `[{sid,cwd,repo,cmd}]` — the `{TABS}`
    *  provided-var payload (capability 2). Used to seed `{TABS}` for a manual
    *  task run from the Tasks pane. */

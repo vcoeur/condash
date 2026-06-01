@@ -72,24 +72,24 @@ afterEach(async () => {
 
 describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
   it('persists a one-shot runMode and reads it back', async () => {
-    await handlers.setTaskConfig(null, 'term-titles', { schedule: '1m', runMode: 'oneshot' });
+    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', runMode: 'oneshot' });
 
     const onDisk = await readSettingsFile();
-    expect(onDisk.taskConfig).toEqual({ 'term-titles': { schedule: '1m', runMode: 'oneshot' } });
+    expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m', runMode: 'oneshot' } });
 
     const effective = await getTaskConfig();
-    expect(effective['term-titles'].runMode).toBe('oneshot');
+    expect(effective['sample-task'].runMode).toBe('oneshot');
   });
 
   it('does not persist the interactive default (stays absent)', async () => {
-    await handlers.setTaskConfig(null, 'term-titles', { schedule: '1m', runMode: 'interactive' });
+    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', runMode: 'interactive' });
 
     const onDisk = await readSettingsFile();
     // interactive is the implied default — only schedule survives.
-    expect(onDisk.taskConfig).toEqual({ 'term-titles': { schedule: '1m' } });
+    expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m' } });
 
     const effective = await getTaskConfig();
-    expect(effective['term-titles'].runMode).toBeUndefined();
+    expect(effective['sample-task'].runMode).toBeUndefined();
   });
 
   it('keeps a task whose only setting is a one-shot runMode', async () => {
@@ -102,7 +102,7 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
   });
 
   it('persists runMode alongside the other per-task settings', async () => {
-    await handlers.setTaskConfig(null, 'term-titles', {
+    await handlers.setTaskConfig(null, 'sample-task', {
       schedule: '1m',
       timeout: '10m',
       excludeFromLogs: true,
@@ -111,32 +111,32 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
 
     const onDisk = await readSettingsFile();
     expect(onDisk.taskConfig).toEqual({
-      'term-titles': { schedule: '1m', timeout: '10m', excludeFromLogs: true, runMode: 'oneshot' },
+      'sample-task': { schedule: '1m', timeout: '10m', excludeFromLogs: true, runMode: 'oneshot' },
     });
   });
 });
 
 describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
   it('persists an opted-in growth gate and reads it back', async () => {
-    await handlers.setTaskConfig(null, 'term-titles', { schedule: '1m', gateOnUpdatedTabs: true });
+    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', gateOnUpdatedTabs: true });
 
     const onDisk = await readSettingsFile();
     expect(onDisk.taskConfig).toEqual({
-      'term-titles': { schedule: '1m', gateOnUpdatedTabs: true },
+      'sample-task': { schedule: '1m', gateOnUpdatedTabs: true },
     });
 
     const effective = await getTaskConfig();
-    expect(effective['term-titles'].gateOnUpdatedTabs).toBe(true);
+    expect(effective['sample-task'].gateOnUpdatedTabs).toBe(true);
   });
 
   it('does not persist the default (no gate) — stays absent', async () => {
-    await handlers.setTaskConfig(null, 'term-titles', { schedule: '1m', gateOnUpdatedTabs: false });
+    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', gateOnUpdatedTabs: false });
 
     const onDisk = await readSettingsFile();
-    expect(onDisk.taskConfig).toEqual({ 'term-titles': { schedule: '1m' } });
+    expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m' } });
 
     const effective = await getTaskConfig();
-    expect(effective['term-titles'].gateOnUpdatedTabs).toBeUndefined();
+    expect(effective['sample-task'].gateOnUpdatedTabs).toBeUndefined();
   });
 
   it('keeps a task whose only setting is the growth gate', async () => {

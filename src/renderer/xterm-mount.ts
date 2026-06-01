@@ -28,6 +28,18 @@ export interface MountedTerm {
   cwd: () => string | null;
   /** Subscribe to cwd changes (OSC 7). Returns an unsubscribe fn. */
   onCwdChange(handler: (cwd: string) => void): () => void;
+  /** Most recent window title from OSC 0 / OSC 2, with the harness status
+   * glyph (spinner / idle marker) stripped. null until a title is emitted. */
+  termTitle: () => string | null;
+  /** Subscribe to window-title changes (OSC 0 / 2). Fires only when the
+   * cleaned title text changes — spinner-frame churn is coalesced. Returns an
+   * unsubscribe fn. */
+  onTitleChange(handler: (title: string) => void): () => void;
+  /** Whether the running program reports itself busy via OSC 9;4 progress
+   * (state ≠ 0). false until a progress report says otherwise. */
+  progressBusy: () => boolean;
+  /** Subscribe to OSC 9;4 busy/idle transitions. Returns an unsubscribe fn. */
+  onProgressChange(handler: (busy: boolean) => void): () => void;
   /** Most recent prompt's exit code, if OSC 133 D was emitted. */
   lastExitCode: () => number | null;
   /** Lines (0-based, absolute buffer rows) where prompts begin (OSC 133 A). */
@@ -280,6 +292,46 @@ export function mountXterm(
     return true;
   });
 
+  // ---- OSC 0 / OSC 2 window-title tracking ----
+  // Harnesses announce a human summary of what the session is doing via the
+  // window title — Claude Code emits OSC 0 like "✳ Ask about the weather".
+  // xterm.js routes both OSC 0 and OSC 2 to `onTitleChange`. We strip the
+  // leading status glyph (the idle ✳ and the ⠂/⠐ spinner frames that cycle
+  // every animation tick) and coalesce: downstream handlers fire only when the
+  // cleaned text actually changes, so spinner churn never reaches the tab —
+  // this dedupe is the debounce, so no timer is needed.
+  let title: string | null = null;
+  const titleHandlers = new Set<(title: string) => void>();
+  // Strip leading whitespace + symbol/"other" glyphs (spinner ⠂⠐, idle ✳),
+  // but keep ASCII punctuation so path-like titles survive intact.
+  const cleanTitle = (raw: string): string =>
+    raw.replace(/^[\p{White_Space}\p{S}\p{C}]+/u, '').trim();
+  term.onTitleChange((raw) => {
+    const next = cleanTitle(raw);
+    if (!next || next === title) return;
+    title = next;
+    for (const handler of titleHandlers) handler(next);
+  });
+
+  // ---- OSC 9;4 progress → tab busy/idle ----
+  // ConEmu's progress protocol (`ESC ] 9 ; 4 ; <state> ; <pct> BEL`): state 0
+  // clears (idle); 1/2/4 are determinate/error/paused; 3 is indeterminate.
+  // Harnesses use it as a coarse busy signal — Claude emits 9;4;3 while working
+  // and 9;4;0 when idle — so we collapse it to one busy flag and drop the
+  // percentage. Non-progress OSC 9 (e.g. iTerm2 notifications) falls through.
+  let busy = false;
+  const busyHandlers = new Set<(busy: boolean) => void>();
+  term.parser.registerOscHandler(9, (data) => {
+    const parts = data.split(';');
+    if (parts[0] !== '4') return false;
+    const state = Number(parts[1]);
+    const next = Number.isFinite(state) && state !== 0;
+    if (next === busy) return true;
+    busy = next;
+    for (const handler of busyHandlers) handler(next);
+    return true;
+  });
+
   // ---- OSC 133 prompt boundary tracking ----
   // A = prompt-start, B = prompt-end (input begins), C = command-start (output
   // begins), D = command-end + optional exit code: "133;D;<exit>".
@@ -381,6 +433,16 @@ export function mountXterm(
     onCwdChange: (handler) => {
       cwdHandlers.add(handler);
       return () => cwdHandlers.delete(handler);
+    },
+    termTitle: () => title,
+    onTitleChange: (handler) => {
+      titleHandlers.add(handler);
+      return () => titleHandlers.delete(handler);
+    },
+    progressBusy: () => busy,
+    onProgressChange: (handler) => {
+      busyHandlers.add(handler);
+      return () => busyHandlers.delete(handler);
     },
     lastExitCode: () => lastExitCode,
     promptLines: () => promptLines,

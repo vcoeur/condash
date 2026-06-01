@@ -613,17 +613,9 @@ export interface TermSpawnRequest {
   taskContext?: TaskRunContext;
 }
 
-/** One auto-title applied to a tab from `.condash/term-titles.json`
- *  (capability 3). Broadcast on the `termAutoTitles` channel. `title` is
- *  already length-clamped by the main-side validator. */
-export interface TermAutoTitle {
-  sid: string;
-  title: string;
-}
-
 /** One open terminal tab, as injected into a task's `{TABS}` / `{UPDATED_TABS}`
- *  provided vars (capability 2). Built from the main session map. No prior
- *  titles — the task owns its own memory via its `.condash/term-titles.json`. */
+ *  provided vars (capability 2). Built from the main session map — a task acts
+ *  on the tabs that currently exist; condash keeps no per-tab state for it. */
 export interface TabInfo {
   sid: string;
   cwd: string;
@@ -657,7 +649,7 @@ export interface TaskConfigEntry {
    *  task's last run — the changed subset is then handed to the run as
    *  `{UPDATED_TABS}`. Absent/`false` = no gate: the task runs on every interval
    *  regardless of tab activity. Only meaningful for a task that acts on
-   *  `{UPDATED_TABS}` (e.g. `term-titles`). */
+   *  `{UPDATED_TABS}`. */
   gateOnUpdatedTabs?: boolean;
 }
 

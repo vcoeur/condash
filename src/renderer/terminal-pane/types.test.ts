@@ -28,29 +28,35 @@ describe('displayName', () => {
     );
   });
 
-  describe('autoTitle (capability 3)', () => {
-    it('uses autoTitle over the cwd basename and label', () => {
+  describe('termTitle (OSC 0/2 harness title)', () => {
+    it('shows the harness title on a pinned tab — cwd is suppressed — over the label', () => {
+      expect(
+        displayName(tab({ label: 'claude', pinned: true, termTitle: 'Ask about the weather' })),
+      ).toBe('Ask about the weather');
+    });
+
+    it('cwd basename wins over termTitle on an unpinned tab', () => {
       expect(
         displayName(
           tab({
             label: 'shell',
             cwd: '/home/alice/src/vcoeur/condash',
-            autoTitle: 'fixing logs CLI',
+            termTitle: 'alice@vostro: ~',
           }),
         ),
-      ).toBe('fixing logs CLI');
+      ).toBe('condash');
     });
 
-    it('customName still wins over autoTitle', () => {
-      expect(
-        displayName(tab({ label: 'shell', customName: 'my-term', autoTitle: 'fixing logs CLI' })),
-      ).toBe('my-term');
-    });
-
-    it('autoTitle wins even when the tab is pinned (it is a deliberate title)', () => {
-      expect(displayName(tab({ label: 'lambda', pinned: true, autoTitle: 'running tests' }))).toBe(
-        'running tests',
+    it('termTitle wins over the spawn label when there is no cwd', () => {
+      expect(displayName(tab({ label: 'shell', termTitle: 'building docs' }))).toBe(
+        'building docs',
       );
+    });
+
+    it('customName still wins over termTitle', () => {
+      expect(
+        displayName(tab({ label: 'claude', pinned: true, customName: 'my-term', termTitle: 'x' })),
+      ).toBe('my-term');
     });
   });
 

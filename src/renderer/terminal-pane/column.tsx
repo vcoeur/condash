@@ -218,6 +218,9 @@ export function TerminalColumn(props: TerminalColumnProps) {
               // context when the shell reported one.
               title={tab.cwd ? `${displayName(tab)} — ${tab.cwd}` : displayName(tab)}
             >
+              <Show when={tab.busy && tab.exited === undefined && tab.id !== props.renamingId}>
+                <span class="terminal-tab-busy" aria-hidden="true" />
+              </Show>
               <Show
                 when={tab.id === props.renamingId}
                 fallback={<span class="terminal-tab-label">{displayName(tab)}</span>}
