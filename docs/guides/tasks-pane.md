@@ -62,7 +62,7 @@ The app picker lists your configured [repositories](repositories-and-open-with.m
 
 Only the tabs that actually exist are injected — no prior titles, no closed tabs. A task that wants to reason about "what is running where" reads `{TABS}` and looks each session up via [`condash logs read`](../reference/cli.md).
 
-`{UPDATED_TABS}` is the **same shape, narrowed to the tabs that produced new output since this task's last scheduled run** — condash drops the ones with nothing new. A recurring task should prefer it: it does the "what changed?" filtering in condash (cheap, no model call) so the agent only acts on the tabs worth re-reading, and when *nothing* changed the scheduler skips the run entirely (see *Schedule a task*). On a manual run there is no "last run" to diff against, so `{UPDATED_TABS}` is seeded to the full open set. The shipped **Term titles** task (below) is built on it.
+`{UPDATED_TABS}` is the **same shape, narrowed to the tabs that produced new output since this task's last scheduled run** — condash drops the ones with nothing new. A recurring task should prefer it: it does the "what changed?" filtering in condash (cheap, no model call) so the agent only acts on the tabs worth re-reading, and — if the task opts in to the growth gate — when *nothing* changed the scheduler skips the run entirely (see *Schedule a task*). On a manual run there is no "last run" to diff against, so `{UPDATED_TABS}` is seeded to the full open set. The shipped **Term titles** task (below) is built on it.
 
 ## Run a task
 
@@ -88,11 +88,12 @@ Click **+ New task**, or **click a task card** to open the **editor popup** for 
 - **Schedule** — an opt-in cadence typed as a number plus a unit — `s` / `m` / `h` / `d` (e.g. `5m`, `2h`, `1d`); blank = off. The editor shows the parsed interval beside the field as you type (and flags an unrecognised one). See *Schedule a task* below.
 - **Run mode** — how a prompt-seedable agent is driven, and the default for this task's runs (overridable per run): **Interactive (`--prompt`)** keeps the tab open after the prompt runs; **One-shot (`--run`)** runs the prompt once and exits. Prefer one-shot for a scheduled task so its headless run exits cleanly instead of waiting for the timeout. Moot for an opaque agent (the keystroke path is interactive only).
 - **Run timeout** — shown only once a schedule is set: how long a single headless run may live before it is killed and discarded (1m / 5m / 10m / 30m / 1h; default 10m). See *Schedule a task*.
+- **Only run when a tab changed (skip idle ticks)** — shown only once a schedule is set: opt the scheduled task in to the per-tab growth gate. Off by default (the task fires every interval); tick it for a task that acts on `{UPDATED_TABS}` so a tick with no changed tab is skipped. See *Schedule a task*.
 - **Keep manual runs out of the normal logs** — the per-task default for the run-popup toggle.
 
 The editor carries **Save** / **Cancel** and, for an existing task, a **Delete** button that asks for confirmation first. Renaming the slug moves the task directory.
 
-The **Schedule**, **Run mode**, **Run timeout**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing them all removes the entry.
+The **Schedule**, **Run mode**, **Run timeout**, **Only run when a tab changed**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing them all removes the entry.
 
 ## Schedule a task
 
@@ -100,7 +101,7 @@ A task with a **Schedule** cadence runs itself on that interval — **headless**
 
 A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (last ~5 runs kept), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes (e.g. `.condash/term-titles.json`); condash does not capture it.
 
-The scheduler is cheap on idle workspaces: it **single-flights** (never overlaps a still-running run of the same task) and **per-tab growth-gates** — it skips a tick when no open tab produced new output since the last run, and when some did, it hands the run just those changed tabs via [`{UPDATED_TABS}`](#provided-variables-tabs-and-updated_tabs). So a quiet workspace spends nothing, and a busy one only pays for the tabs that actually moved.
+The scheduler **single-flights** every task (never overlaps a still-running run of the same task), and always hands the run the tabs that changed since its last run via [`{UPDATED_TABS}`](#provided-variables-tabs-and-updated_tabs). For a task that only acts on what changed, tick **Only run when a tab changed (skip idle ticks)** to add the **per-tab growth gate**: a tick with no changed tab is then skipped entirely, so a quiet workspace spends nothing and a busy one only pays for the tabs that moved. The gate is **off by default** — without it the task fires on every interval regardless of tab activity, which is what a task that ignores `{UPDATED_TABS}` wants.
 
 **Run mode + run timeout.** Set the task's **Run mode** to **One-shot (`--run`)** so a scheduled run exits cleanly the moment the agent finishes — then the **Run timeout** (default 10m) is just a safety cap on a hung run. With the default **Interactive (`--prompt`)** the agent finishes its work but does *not* exit the process, so the timeout doubles as the *discard* mechanism: without it the run would hold the single-flight slot, stretching the *effective* cadence out to the timeout regardless of the schedule. If you keep a scheduled task interactive, keep the timeout **≤ the schedule interval** so each cycle frees the slot before the next is due.
 
@@ -116,7 +117,7 @@ Both stores — `.condash/scheduled/<slug>/` and `.condash/manual/<slug>/` — a
 
 ## The shipped `term-titles` task
 
-A fresh conception ships an adoptable `tasks/term-titles/` task (it is **not** auto-scheduled). It reads `{UPDATED_TABS}` (only the tabs that changed since its last run), skims each one's recent [`condash logs read --tail`](../reference/cli.md), refines a short title + one-sentence summary, and writes the sparse `.condash/term-titles.json` that condash watches to auto-name the tabs (see [the embedded terminal](terminal.md#auto-titled-tabs)). Because the per-tab growth gate already drops the idle tabs, the task only spends model tokens on tabs that actually moved. Give it a cheap, prompt-seedable agent and a `Schedule` of a minute or two to keep your tab titles current.
+A fresh conception ships an adoptable `tasks/term-titles/` task (it is **not** auto-scheduled). It reads `{UPDATED_TABS}` (only the tabs that changed since its last run), skims each one's recent [`condash logs read --tail`](../reference/cli.md), refines a short title + one-sentence summary, and writes the sparse `.condash/term-titles.json` that condash watches to auto-name the tabs (see [the embedded terminal](terminal.md#auto-titled-tabs)). Give it a cheap, prompt-seedable agent, a `Schedule` of a minute or two, and tick **Only run when a tab changed (skip idle ticks)** — with the growth gate on it only spends model tokens on tabs that actually moved, and a quiet workspace costs nothing.
 
 ## See also
 

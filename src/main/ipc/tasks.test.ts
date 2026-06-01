@@ -115,3 +115,35 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
     });
   });
 });
+
+describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
+  it('persists an opted-in growth gate and reads it back', async () => {
+    await handlers.setTaskConfig(null, 'term-titles', { schedule: '1m', gateOnUpdatedTabs: true });
+
+    const onDisk = await readSettingsFile();
+    expect(onDisk.taskConfig).toEqual({
+      'term-titles': { schedule: '1m', gateOnUpdatedTabs: true },
+    });
+
+    const effective = await getTaskConfig();
+    expect(effective['term-titles'].gateOnUpdatedTabs).toBe(true);
+  });
+
+  it('does not persist the default (no gate) — stays absent', async () => {
+    await handlers.setTaskConfig(null, 'term-titles', { schedule: '1m', gateOnUpdatedTabs: false });
+
+    const onDisk = await readSettingsFile();
+    expect(onDisk.taskConfig).toEqual({ 'term-titles': { schedule: '1m' } });
+
+    const effective = await getTaskConfig();
+    expect(effective['term-titles'].gateOnUpdatedTabs).toBeUndefined();
+  });
+
+  it('keeps a task whose only setting is the growth gate', async () => {
+    // The delete-guard must treat gateOnUpdatedTabs as a real setting.
+    await handlers.setTaskConfig(null, 'solo', { gateOnUpdatedTabs: true });
+
+    const onDisk = await readSettingsFile();
+    expect(onDisk.taskConfig).toEqual({ solo: { gateOnUpdatedTabs: true } });
+  });
+});

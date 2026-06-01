@@ -14,10 +14,7 @@ title state.
   condash has already dropped the tabs with nothing new, so these are the only
   ones worth re-titling this cycle — that is the whole point, you don't re-scan
   idle tabs. Only these sids matter; do not invent sids. If this list is empty,
-  there is nothing to do — stop. If it still shows the literal `{UPDATED_TABS}`
-  (an older condash that doesn't provide it), fall back to `{TABS}`.
-- `{TABS}` — every open tab right now, same shape. Reference / fallback set;
-  prefer `{UPDATED_TABS}`.
+  there is nothing to do — stop.
 - Your own previous output, at `./.condash/term-titles.json` (relative to the
   current directory, which is the conception root). It may be absent on the
   first run. Its shape is the same one you write below; read back per-sid
@@ -65,7 +62,7 @@ mv -f .condash/term-titles.json.tmp .condash/term-titles.json
 ```
 
 Rules:
-- Only emit sids that appear in `{UPDATED_TABS}` (or `{TABS}` on the fallback).
+- Only emit sids that appear in `{UPDATED_TABS}`.
   condash ignores unknown sids and leaves omitted sids untouched, but a tight
   file is cheaper to validate.
 - Keep titles short — condash clamps to ~48 chars on apply; the detail lives in

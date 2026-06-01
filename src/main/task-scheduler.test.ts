@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveRunMode, resolveRunTimeout } from './task-scheduler';
+import { resolveGate, resolveRunMode, resolveRunTimeout } from './task-scheduler';
 
 const DEFAULT_MS = 10 * 60_000;
 
@@ -27,5 +27,17 @@ describe('resolveRunMode', () => {
     expect(resolveRunMode(undefined)).toBe('interactive');
     expect(resolveRunMode({})).toBe('interactive');
     expect(resolveRunMode({ runMode: 'interactive' })).toBe('interactive');
+  });
+});
+
+describe('resolveGate', () => {
+  it('gates only when explicitly opted in', () => {
+    expect(resolveGate({ gateOnUpdatedTabs: true })).toBe(true);
+  });
+
+  it('defaults to no gate when absent or false (runs every interval)', () => {
+    expect(resolveGate(undefined)).toBe(false);
+    expect(resolveGate({})).toBe(false);
+    expect(resolveGate({ gateOnUpdatedTabs: false })).toBe(false);
   });
 });

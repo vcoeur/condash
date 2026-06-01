@@ -381,6 +381,7 @@ const sharedSchemaFields = {
           timeout: z.string().optional(),
           excludeFromLogs: z.boolean().optional(),
           runMode: z.enum(['interactive', 'oneshot']).optional(),
+          gateOnUpdatedTabs: z.boolean().optional(),
         })
         .strict(),
     )

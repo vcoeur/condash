@@ -57,6 +57,13 @@ export function resolveRunMode(entry: TaskConfigEntry | undefined): RunMode {
   return entry?.runMode === 'oneshot' ? 'oneshot' : 'interactive';
 }
 
+/** Whether a task opts in to the per-tab growth gate (skip a due tick when no
+ *  open tab produced new output since its last run). Opt-in per task — absent =
+ *  no gate, so the task runs on every interval. Exported for unit testing. */
+export function resolveGate(entry: TaskConfigEntry | undefined): boolean {
+  return entry?.gateOnUpdatedTabs === true;
+}
+
 /** The agedum prompt-seeding flag for a run mode: `--run` runs the prompt once
  *  and exits; `--prompt` seeds it and stays interactive. */
 function promptFlag(mode: RunMode): string {
@@ -266,14 +273,16 @@ async function tick(conceptionPath: string): Promise<void> {
     if (state.inFlight) continue;
     if (now - state.lastCheckedAt < cadence) continue;
 
-    // Per-tab growth gate: the open tabs whose byte count moved since the last
-    // run. On the first run every tab reads as updated (no prior snapshot); an
-    // empty set means nothing changed (or nothing is open), so skip without
-    // spending the agent. The run is handed exactly this subset.
+    // Per-tab growth: the open tabs whose byte count moved since the last run.
+    // On the first run every tab reads as updated (no prior snapshot). The run
+    // is always handed exactly this subset via `{UPDATED_TABS}`.
     const bytes = tabsBytes();
     const prevBytes = state.bytesPerSid;
     const updated = tabsContext().filter((tab) => bytes.get(tab.sid) !== prevBytes.get(tab.sid));
-    if (updated.length === 0) {
+    // Growth gate, opt-in per task: a gated task skips a tick when nothing
+    // changed (or nothing is open) rather than spend the agent. An ungated task
+    // runs on every interval regardless — it may not act on `{UPDATED_TABS}`.
+    if (resolveGate(entry) && updated.length === 0) {
       state.lastCheckedAt = now;
       continue;
     }
