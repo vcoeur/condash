@@ -40,13 +40,11 @@ Tab titles depend on how the tab was spawned:
 
 A manual double-click rename always wins. The full path shows in the title attribute. Tabs **auto-close on process exit** — the previous "[process exited N]" stale-tab behaviour is gone. If you want the buffer before close lands, use the toolbar's **Save buffer** button (powered by xterm's serialize addon).
 
-The full title precedence is **manual rename → auto-title → cwd basename (unpinned) → spawn-time label**.
+The full title precedence is **manual rename → cwd basename (unpinned) → window title (OSC 0/2) → spawn-time label**.
 
-### Auto-titled tabs { #auto-titled-tabs }
+### Window-title tabs { #window-title-tabs }
 
-condash watches `<conception>/.condash/term-titles.json` and, on change, applies a short title to each tab named in it (matched by session id). A user rename still wins; an auto-title otherwise sits just above the cwd basename. condash never invents these titles itself and holds no title state — it only watches the file and applies what it finds. Sids it doesn't recognise are ignored; tabs not named in the file are left untouched (never blanked).
-
-The file is meant to be produced by a [task](tasks-pane.md): the shipped **Term titles** task reads the tabs that changed since its last run (`{UPDATED_TABS}`), skims each one's recent log, and writes the sparse file. Schedule it (Tasks → editor → Schedule) to keep titles current, or run it by hand. Any process that writes a valid `term-titles.json` works — condash does not care who wrote it.
+When the program running in a tab announces a window title via OSC 0 / OSC 2 — as most coding harnesses do (Claude Code emits `✳ Ask about the weather`, refreshed as the work changes) — condash adopts it as the tab name. It strips the leading status glyph (the idle marker and the spinner frames that cycle each animation tick) and coalesces, so only a real title change repaints the tab. A manual rename still wins, and on an **unpinned** tab the cwd basename takes precedence; but on a **pinned** tab (every launcher / "open in term" tab, where cwd is suppressed) the announced title surfaces over the spawn label — so an agent tab shows what the agent is doing.
 
 `TERM=xterm-256color`, and the shell is launched with `-l` so your login rc-files run.
 

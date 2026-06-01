@@ -13,9 +13,8 @@
  *     `.condash/scheduled/<slug>/` (always — independent of the user's global
  *     logging toggle), keeping the last ~5 runs.
  *
- * condash never captures the run's *product*: the task writes
- * `.condash/term-titles.json` itself and the watcher applies it. There is no
- * capture-on-exit handshake here.
+ * condash never captures the run's *product*: a task writes whatever output it
+ * produces itself. There is no capture-on-exit handshake here.
  *
  * No default schedule and no default agent: a task runs only when its
  * `taskConfig` entry sets a cadence, and it carries its own agent.

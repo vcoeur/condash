@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi, MenuCommand } from '../shared/api';
 import type {
   RepoEvent,
-  TermAutoTitle,
   TermDataMessage,
   TermExitMessage,
   TermSession,
@@ -113,12 +112,6 @@ const api: CondashApi = {
     ipcRenderer.on('termSessions', handler);
     return () => ipcRenderer.removeListener('termSessions', handler);
   },
-  onTermAutoTitles: (callback) => {
-    const handler = (_: unknown, titles: TermAutoTitle[]): void => callback(titles);
-    ipcRenderer.on('termAutoTitles', handler);
-    return () => ipcRenderer.removeListener('termAutoTitles', handler);
-  },
-  termAutoTitlesList: () => ipcRenderer.invoke('termAutoTitlesList'),
   termTabsContext: () => ipcRenderer.invoke('termTabsContext'),
   logsListDays: () => ipcRenderer.invoke('logsListDays'),
   logsListSessions: (day) => ipcRenderer.invoke('logsListSessions', day),

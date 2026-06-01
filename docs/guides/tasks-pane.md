@@ -99,7 +99,7 @@ The **Schedule**, **Run mode**, **Run timeout**, **Only run when a tab changed**
 
 A task with a **Schedule** cadence runs itself on that interval — **headless**, with no visible tab and no `termSessions` broadcast. There is no default schedule and no default agent: a task is inert until you give it a cadence, and it always carries its own (prompt-seedable) agent.
 
-A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (last ~5 runs kept), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes (e.g. `.condash/term-titles.json`); condash does not capture it.
+A scheduled run is **never** written to the normal session logs. Its console output is teed to `.condash/scheduled/<slug>/` (last ~5 runs kept), independent of your global terminal-logging toggle — purely for debugging the agent's chatter. The run's actual *product* is whatever the task itself writes to disk; condash does not capture it.
 
 The scheduler **single-flights** every task (never overlaps a still-running run of the same task), and always hands the run the tabs that changed since its last run via [`{UPDATED_TABS}`](#provided-variables-tabs-and-updated_tabs). For a task that only acts on what changed, tick **Only run when a tab changed (skip idle ticks)** to add the **per-tab growth gate**: a tick with no changed tab is then skipped entirely, so a quiet workspace spends nothing and a busy one only pays for the tabs that moved. The gate is **off by default** — without it the task fires on every interval regardless of tab activity, which is what a task that ignores `{UPDATED_TABS}` wants.
 
@@ -114,10 +114,6 @@ While a scheduled run is in flight it appears in a **Running** section at the bo
 The **Keep out of logs** toggle (per-task default in the editor, overridable per run in the popup) routes a *manual* run's `.txt` to `.condash/manual/<slug>/` instead of `.condash/logs/`. The tab stays visible and interactive; only its on-disk log location changes. With the flag off, the run logs normally.
 
 Both stores — `.condash/scheduled/<slug>/` and `.condash/manual/<slug>/` — are browsable from the Logs pane's **Task runs** view, and stay invisible to the normal Logs list, search, and reports.
-
-## The shipped `term-titles` task
-
-A fresh conception ships an adoptable `tasks/term-titles/` task (it is **not** auto-scheduled). It reads `{UPDATED_TABS}` (only the tabs that changed since its last run), skims each one's recent [`condash logs read --tail`](../reference/cli.md), refines a short title + one-sentence summary, and writes the sparse `.condash/term-titles.json` that condash watches to auto-name the tabs (see [the embedded terminal](terminal.md#auto-titled-tabs)). Give it a cheap, prompt-seedable agent, a `Schedule` of a minute or two, and tick **Only run when a tab changed (skip idle ticks)** — with the growth gate on it only spends model tokens on tabs that actually moved, and a quiet workspace costs nothing.
 
 ## See also
 

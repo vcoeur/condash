@@ -31,18 +31,18 @@ describe('taskRunLogPath', () => {
     const p = taskRunLogPath(
       root,
       'scheduled',
-      'term-titles',
+      'sample-task',
       't-abc',
       new Date('2026-05-31T09:08:07'),
     );
-    expect(p).toContain(join('.condash', 'scheduled', 'term-titles'));
+    expect(p).toContain(join('.condash', 'scheduled', 'sample-task'));
     expect(p.endsWith('20260531-090807-t-abc.txt')).toBe(true);
   });
 });
 
 describe('rotateTaskRuns', () => {
   it('keeps the newest N run files, prunes the rest', async () => {
-    const slug = 'term-titles';
+    const slug = 'sample-task';
     for (let i = 1; i <= 8; i++) {
       seedRun('scheduled', slug, `2026053${i}-090807-t-${i}.txt`);
     }
@@ -61,12 +61,12 @@ describe('rotateTaskRuns', () => {
 
 describe('listTaskRuns', () => {
   it('groups by trigger+slug, runs newest-first', async () => {
-    seedRun('scheduled', 'term-titles', '20260531-090801-t-a.txt');
-    seedRun('scheduled', 'term-titles', '20260531-090802-t-b.txt');
-    seedRun('manual', 'term-titles', '20260531-090803-t-c.txt');
+    seedRun('scheduled', 'sample-task', '20260531-090801-t-a.txt');
+    seedRun('scheduled', 'sample-task', '20260531-090802-t-b.txt');
+    seedRun('manual', 'sample-task', '20260531-090803-t-c.txt');
     const groups = await listTaskRuns(root);
     const scheduled = groups.find((g) => g.trigger === 'scheduled')!;
-    expect(scheduled.taskSlug).toBe('term-titles');
+    expect(scheduled.taskSlug).toBe('sample-task');
     expect(scheduled.runs.map((r) => r.sid)).toEqual(['t-b', 't-a']); // newest first
     expect(scheduled.runs[0].day).toBe('2026-05-31');
     expect(scheduled.runs[0].time).toBe('09:08:02');
@@ -78,7 +78,7 @@ describe('listTaskRuns', () => {
   });
 
   it('ignores files that are not run-shaped', async () => {
-    seedRun('scheduled', 'term-titles', 'not-a-run.txt');
+    seedRun('scheduled', 'sample-task', 'not-a-run.txt');
     expect(await listTaskRuns(root)).toEqual([]);
   });
 });

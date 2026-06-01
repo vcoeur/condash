@@ -93,8 +93,6 @@ The terminal pane spawns and drives node-pty sessions. Lifecycle: `termSpawn` �
 | `onTermData(cb)` | Subscribe to stdout/stderr bytes — single channel, multiplexed by session id. |
 | `onTermExit(cb)` | Subscribe to session-exit events. |
 | `onTermSessions(cb)` | Sessions changed (spawn / exit / close). Receives the full snapshot. |
-| `onTermAutoTitles(cb)` | Auto-titles changed — the watcher on `.condash/term-titles.json` validated a new sparse `{sid,title}[]` list (capability 3). The renderer sparse-merges them onto its tabs. |
-| `termAutoTitlesList()` | Pull the current validated auto-titles from `.condash/term-titles.json`. Called on renderer mount to paint titles without waiting for the next file write. |
 | `termTabsContext()` | The open, live tabs as `[{sid,cwd,repo,cmd}]` — the `{TABS}` provided-var payload (capability 2), used to seed a manual task run. A manual run seeds `{UPDATED_TABS}` from the same list (no per-run watermark to diff against). |
 
 ## Terminal log surfaces

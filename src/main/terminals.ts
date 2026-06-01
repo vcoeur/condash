@@ -89,9 +89,8 @@ export function listTerminalSessions(): TermSession[] {
 
 /**
  * Build the `{TABS}` provided-var payload (capability 2): the open, still-live
- * tabs as `[{sid, cwd, repo, cmd}]`. Exited sessions are excluded — a task
- * titles only tabs that actually exist. No prior titles (the task owns that
- * memory via its own `.condash/term-titles.json`).
+ * tabs as `[{sid, cwd, repo, cmd}]`. Exited sessions are excluded — a task acts
+ * only on tabs that actually exist; condash keeps no per-tab state for it.
  */
 export function tabsContext(): TabInfo[] {
   return [...sessions.values()]

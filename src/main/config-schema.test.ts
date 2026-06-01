@@ -103,7 +103,7 @@ describe('configSchema taskConfig (capability 1)', () => {
   it('accepts a per-task schedule + timeout + excludeFromLogs map', () => {
     const result = configSchema.safeParse({
       taskConfig: {
-        'term-titles': { schedule: '2m', timeout: '1m', excludeFromLogs: true },
+        'sample-task': { schedule: '2m', timeout: '1m', excludeFromLogs: true },
         'daily-journal': { schedule: '1h' },
         adopted: { excludeFromLogs: true },
       },

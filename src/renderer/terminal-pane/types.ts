@@ -27,12 +27,17 @@ export interface Tab {
    *  until the user manually renames. Set at spawn time for sources that
    *  carry a deliberate title (lambda launcher, code-card "open in term"). */
   pinned?: boolean;
-  /** Auto-derived title applied from `.condash/term-titles.json` by a
-   *  scheduled/adopted task (capability 3). Sparse-merged in by the
-   *  `termAutoTitles` event — sits just below `customName` in `displayName`
-   *  so a user rename always wins. condash holds no title state; this is
-   *  ephemeral renderer state re-applied on each file change. */
-  autoTitle?: string;
+  /** Window title the running program announced via OSC 0 / OSC 2 — e.g. a
+   *  harness summary like Claude Code's "Ask about the weather", status glyph
+   *  stripped (see `xterm-mount`). Renderer-only ephemeral state pushed by the
+   *  live `onTitleChange` subscription; never persisted. Sits below the cwd
+   *  basename but above the spawn `label`, so a pinned agent tab — where cwd is
+   *  suppressed — shows what the harness is doing. */
+  termTitle?: string;
+  /** Whether the running program is reporting itself busy via OSC 9;4 progress
+   *  (e.g. a harness mid-task). Renderer-only ephemeral state from the live
+   *  `onProgressChange` subscription; drives the tab's busy dot. */
+  busy?: boolean;
   /** Palette slot (0..19) assigned at creation and frozen for the tab's
    *  lifetime — the button colour, drawn from the shared app-pill wheel.
    *  Stable across closes / reorders / restarts. */
@@ -41,15 +46,16 @@ export interface Tab {
   exited?: number;
 }
 
-/** Display name for a tab. Custom rename wins; then an auto-title applied from
- *  `.condash/term-titles.json`; then the cwd basename if the shell emitted
- *  OSC 7 (and the tab isn't pinned); otherwise the spawn-time label. */
+/** Display name for a tab. A user rename always wins; then the cwd basename if
+ *  the shell emitted OSC 7 and the tab isn't pinned; then the window title the
+ *  running program announced via OSC 0/2 (e.g. a harness summary) — which also
+ *  surfaces on pinned tabs, where cwd is suppressed; otherwise the spawn label. */
 export function displayName(tab: Tab): string {
   if (tab.customName) return tab.customName;
-  if (tab.autoTitle) return tab.autoTitle;
   if (!tab.pinned && tab.cwd) {
     const basename = tab.cwd.split('/').filter(Boolean).pop();
     if (basename) return basename;
   }
+  if (tab.termTitle) return tab.termTitle;
   return tab.label;
 }
