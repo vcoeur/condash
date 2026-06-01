@@ -237,9 +237,12 @@
 }
 
 /* "Keep out of logs" toggle in the run popup + the editor's per-task default.
- * Inline checkbox + label that does not grow like the marker text fields. */
-.tasks-fill-exclude,
-.tasks-editor-checkbox {
+ * Inline checkbox + label that does not grow like the marker text fields.
+ * Scoped under `.tasks-editor label` so the row layout outranks the generic
+ * `.tasks-editor label` column rule below (which is more specific than a bare
+ * class and would otherwise stack the checkbox above its text). */
+.tasks-editor label.tasks-fill-exclude,
+.tasks-editor label.tasks-editor-checkbox {
   display: flex;
   flex: 0 0 auto;
   flex-direction: row;
@@ -251,8 +254,8 @@
   white-space: nowrap;
 }
 
-.tasks-fill-exclude input,
-.tasks-editor-checkbox input {
+.tasks-editor label.tasks-fill-exclude input,
+.tasks-editor label.tasks-editor-checkbox input {
   width: auto;
   margin: 0;
 }
@@ -314,12 +317,6 @@
   margin-bottom: 0.5rem;
   font-size: 0.8rem;
   color: var(--text-muted);
-}
-
-.tasks-editor label.tasks-checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.4rem;
 }
 
 .tasks-editor input[type='text'],
