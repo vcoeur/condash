@@ -658,6 +658,10 @@
 .preview-timeline {
   border-top: 1px solid var(--border);
   background: var(--bg-subtle);
+  /* Pinned band: never shrink, so the toggle stays anchored at the popup's
+   * bottom edge while the body above it scrolls. Paired with the capped list
+   * below, this keeps the whole popup bounded to its max-height (#301). */
+  flex-shrink: 0;
 }
 
 .preview-timeline-toggle {
@@ -704,6 +708,13 @@
   margin: 0;
   padding: 4px 14px 12px 36px;
   border-top: 1px solid var(--border);
+  /* Cap the expanded list and scroll it internally so a long timeline can't
+   * grow the popup past the window's bottom edge — without this the list has
+   * no min-height floor, can't be shrunk by the flex column, and overflows
+   * the modal's max-height (the modal itself does not clip). Every entry
+   * stays reachable via this scroll (#301). */
+  max-height: clamp(140px, 30vh, 360px);
+  overflow-y: auto;
 }
 
 .preview-timeline-entry {
