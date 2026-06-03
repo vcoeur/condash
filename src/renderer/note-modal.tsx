@@ -12,8 +12,10 @@ import { highlightCode, renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
 import type { MountedEditor } from './editor';
 import type { Deliverable } from '@shared/types';
+import type { ModalState } from './modal-types';
 import { ConfirmModal } from './confirm-modal';
-import { IconClose, IconEdit, IconExternal, IconSave, IconView } from './note-modal-parts/icons';
+import { IconClose, IconExternal } from './icons';
+import { IconEdit, IconSave, IconView } from './note-modal-parts/icons';
 import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './note-modal-parts/find';
 import { ConfigSummaryPanel } from './note-modal-parts/config-summary';
 import './note-modal.css';
@@ -24,30 +26,6 @@ function loadEditor(): Promise<typeof import('./editor')> {
   if (!editorModulePromise) editorModulePromise = import('./editor');
   return editorModulePromise;
 }
-
-export type ModalState = {
-  path: string;
-  title?: string;
-  /** Force edit mode on open (used by the preferences modal). */
-  initialMode?: 'view' | 'edit';
-  /** Deliverables to surface as a section above the rendered body, when known. */
-  deliverables?: Deliverable[];
-  /** When set, render a leading "← Back to <label>" button in the modal head.
-   * Clicking it calls onClose, which the parent routes back to the originating
-   * preview via the previewBackPath plumbing. */
-  backLabel?: string;
-  /** Open the modal in read-only mode — no save / edit toggle. Used by the
-   * Resources pane for `.md` and `.txt` viewing. */
-  readOnly?: boolean;
-  /** Render an informational banner above the body. `'shipped'` flags a file
-   * tracked by `.condash-skills.json` whose disk SHA matches the manifest;
-   * `'shipped-diverged'` flags a local edit. */
-  bannerKind?: 'shipped' | 'shipped-diverged';
-  /** Which IPC reads the body. `'skill'` uses `readSkillFile` (permits the
-   * user-scope skill / agent-config locations the global Skills scope lives
-   * in); the default reads `readNote` (conception-bounded). */
-  readWith?: 'note' | 'skill';
-} | null;
 
 type Mode = 'view' | 'edit';
 

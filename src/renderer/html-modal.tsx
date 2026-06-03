@@ -1,5 +1,5 @@
 import { createResource, createSignal, Show } from 'solid-js';
-import { useModalEscHandler } from './modal-helpers';
+import { Modal } from './modal';
 import { highlightCode, pathToCondashFileUrl } from './markdown';
 import './html-modal.css';
 
@@ -24,8 +24,6 @@ export function HtmlModal(props: {
   onOpenInOs: (path: string) => void;
   onReveal: (path: string) => void;
 }) {
-  useModalEscHandler(props.onClose);
-
   const [mode, setMode] = createSignal<HtmlMode>('rendered');
 
   const filename = (): string => props.path.split('/').pop() ?? props.path;
@@ -42,17 +40,14 @@ export function HtmlModal(props: {
   );
 
   return (
-    <div class="modal-backdrop" onClick={props.onClose}>
-      <div
-        class="modal html-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`HTML: ${filename()}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head">
-          <span class="modal-title">{filename()}</span>
-          <span class="modal-path">{props.path}</span>
+    <Modal
+      class="html-modal"
+      ariaLabel={`HTML: ${filename()}`}
+      title={filename()}
+      path={props.path}
+      onClose={props.onClose}
+      headExtra={
+        <>
           <div class="modal-seg" role="tablist" aria-label="HTML view mode">
             <button
               type="button"
@@ -89,18 +84,15 @@ export function HtmlModal(props: {
           >
             ↗
           </button>
-          <button class="modal-button modal-close" onClick={props.onClose} title="Close (Esc)">
-            ×
-          </button>
-        </header>
-        <div class="html-body">
-          <Show
-            when={mode() === 'rendered'}
-            fallback={
-              <div class="html-source md-rendered raw-code" innerHTML={sourceHtml() ?? ''} />
-            }
-          >
-            {/* Hardened webview: Node off, context isolated, OS-sandboxed. The
+        </>
+      }
+    >
+      <div class="html-body">
+        <Show
+          when={mode() === 'rendered'}
+          fallback={<div class="html-source md-rendered raw-code" innerHTML={sourceHtml() ?? ''} />}
+        >
+          {/* Hardened webview: Node off, context isolated, OS-sandboxed. The
                 defence-in-depth `web-contents-created` handler in main/index.ts
                 re-applies these if the attribute is ever dropped.
 
@@ -110,14 +102,13 @@ export function HtmlModal(props: {
                 on the *default* session, so a partitioned webview can't resolve
                 the document or its relative assets at all (blank). The webview
                 only loads a local, conception-sandboxed file. */}
-            <webview
-              src={url()}
-              class="html-webview"
-              webpreferences="contextIsolation=true,nodeIntegration=false,sandbox=true"
-            />
-          </Show>
-        </div>
+          <webview
+            src={url()}
+            class="html-webview"
+            webpreferences="contextIsolation=true,nodeIntegration=false,sandbox=true"
+          />
+        </Show>
       </div>
-    </div>
+    </Modal>
   );
 }

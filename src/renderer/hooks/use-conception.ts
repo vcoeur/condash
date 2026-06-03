@@ -37,9 +37,9 @@ export interface UseConception {
   handleRefresh: () => void;
   handlePick: () => Promise<void>;
   runInit: (path: string) => Promise<void>;
-  /** The QuitConfirmModal already surfaces the noteDirty warning inline
-   *  (see noteDirty prop) so by the time the user clicks Quit they've
-   *  accepted both stakes. No second confirm. */
+  /** The quit confirmation (a ConfirmModal) already surfaces the noteDirty
+   *  warning inline, so by the time the user clicks Quit they've accepted
+   *  both stakes. No second confirm. */
   handleConfirmQuit: () => void;
 }
 

@@ -1,6 +1,6 @@
-/* Generic confirm modal (init template prompt, etc.) — shares the visual
- * language of the quit-confirm but lives in its own component so callers
- * can pass arbitrary body content. */
+/* Generic confirm modal — the single confirmation dialog for the renderer
+ * (quit prompt, init-template prompt, force-stop, etc.). Callers pass
+ * arbitrary body content via the `body` prop. */
 .confirm-modal {
   width: var(--modal-w-sm);
 }
@@ -19,6 +19,13 @@
   color: var(--text-muted);
   line-height: 1.45;
   white-space: pre-wrap;
+}
+
+/* Inline discard warning (e.g. the quit prompt's "unsaved note edits will be
+ * lost" line) — coloured red so it reads as a loss-of-work caution. */
+.confirm-warn {
+  margin: 0;
+  color: var(--danger);
 }
 
 .confirm-actions {
