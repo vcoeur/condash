@@ -388,31 +388,39 @@ app.whenReady().then(async () => {
   const settings = await readSettings();
   const conceptionPath = settings.lastConceptionPath;
   cachedConceptionPath = conceptionPath;
-  await setWatchedConception(conceptionPath);
-  // Arm the per-task scheduler (capability 1) for the active conception.
-  await setScheduledConception(conceptionPath);
-  // Sweep `.condash/logs/` for expired day-directories. Runs once at
-  // startup and on a 24 h interval. Bounded by the effective
-  // `terminal.logging.retentionDays` / `maxDirMb` settings; defaults are
-  // 14 days / 500 MB.
-  if (conceptionPath) {
-    startJanitor(conceptionPath);
-    // One-shot orphan-footer seal. When condash exits abruptly
-    // (SIGKILL, OS shutdown, dev hot reload), SessionLogger.exit()
-    // queues the footer write but the process dies before flushChain
-    // drains, leaving the file looking "running" forever. Seal pass
-    // appends a synthetic footer to every such orphan so the Logs UI
-    // shows "ended ?" instead of a phantom "running" forever.
-    void sealOrphanLogs(conceptionPath).catch((err) => {
-      process.stderr.write(`condash seal-orphan-logs: ${(err as Error).message}\n`);
-    });
-  }
+  // The menu only needs the just-read settings — build it up front.
   buildMenu(settings.layout ?? DEFAULT_LAYOUT, {
     paths: settings.recentConceptionPaths ?? [],
     current: conceptionPath,
   });
-  mainWindow = await createWindow(conceptionPath);
+  // Create the window concurrently with arming the watcher + task scheduler.
+  // None of the three depend on each other: createWindow only loads the
+  // renderer, and the renderer's first IPC calls (listProjects / listRepos)
+  // read the FS / git directly — they need neither the chokidar watcher (push
+  // events only; `ignoreInitial: true`, so none fire at setup) nor the
+  // scheduler to be ready. Running them in parallel lets the window paint while
+  // the watcher builds the in-memory search index and the scheduler arms,
+  // rather than serialising both awaits ahead of first paint.
+  const [createdWindow] = await Promise.all([
+    createWindow(conceptionPath),
+    setWatchedConception(conceptionPath),
+    // Arm the per-task scheduler (capability 1) for the active conception.
+    setScheduledConception(conceptionPath),
+  ]);
+  mainWindow = createdWindow;
   setMenuWindow(mainWindow);
+  // Background maintenance — independent of first paint, so kick it after the
+  // window is up rather than ahead of it. Sweep `.condash/logs/` for expired
+  // day-directories (once now + every 24 h; bounded by the effective
+  // `terminal.logging.retentionDays` / `maxDirMb`, defaults 14 days / 500 MB),
+  // and seal any orphan logs left looking "running forever" by an abrupt exit
+  // (SIGKILL / OS shutdown / dev hot reload) so the Logs UI shows "ended ?".
+  if (conceptionPath) {
+    startJanitor(conceptionPath);
+    void sealOrphanLogs(conceptionPath).catch((err) => {
+      process.stderr.write(`condash seal-orphan-logs: ${(err as Error).message}\n`);
+    });
+  }
   mainWindow.on('closed', () => {
     mainWindow = null;
     setMenuWindow(null);

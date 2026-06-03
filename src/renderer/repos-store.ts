@@ -30,6 +30,25 @@ export interface ReposStore {
 }
 
 /**
+ * Run `fn` once the renderer is idle — after the first paint — falling back to
+ * a macrotask where `requestIdleCallback` is unavailable (non-browser test
+ * envs). Returns a canceller. Used to keep the initial `listRepos()` git
+ * fan-out off the critical path of the first projects paint.
+ */
+function scheduleWhenIdle(fn: () => void): () => void {
+  const w = globalThis as typeof globalThis & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof w.requestIdleCallback === 'function') {
+    const handle = w.requestIdleCallback(fn, { timeout: 500 });
+    return () => w.cancelIdleCallback?.(handle);
+  }
+  const handle = setTimeout(fn, 0);
+  return () => clearTimeout(handle);
+}
+
+/**
  * Code-pane repos store + reloaders + structural-event wiring.
  *
  * Scalar repo events (`repo-dirty`, `repo-upstream`) flow through
@@ -103,25 +122,34 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
     primaryReloadTimers.clear();
   });
 
-  // Load repos as soon as the conception path is known — not gated on
-  // the Code pane being open. Two reasons:
-  //   1. The first paint of the Code pane is instant instead of showing
-  //      a "Loading…" flash while `listRepos()` fans out one `git
-  //      status` per repo + worktree.
-  //   2. Subsequent pane switches don't re-pay the cost — the cached
-  //      store stays populated, and `onRepoEvents` keeps it fresh.
-  // Clearing only happens when the conception path itself goes away
-  // (e.g. the user picks a different conception), not on every pane
-  // switch — that flash to the empty state was the bug fixed here.
+  // Load repos once the conception path is known, but **deferred off the first
+  // paint**. The heavy `listRepos()` git fan-out — one `git status` per repo +
+  // worktree, ~1 s on a multi-worktree conception — used to fire synchronously
+  // here and contend with the `listProjects` fetch that paints the *default*
+  // (Projects) pane, stretching time-to-first-row. The Code pane isn't the
+  // first surface shown, so its load now yields to `scheduleWhenIdle`: it still
+  // resolves within a frame or two of paint — well before the user switches to
+  // Code — so the "no Loading… flash on first Code open" benefit holds for the
+  // common path, while the projects pane paints ~1 s sooner. `onRepoEvents`
+  // keeps the store fresh after the first load; clearing happens only when the
+  // conception path itself goes away (a conception switch), not on pane
+  // switches — that flash to the empty state was a bug fixed earlier.
+  let cancelDeferredLoad: (() => void) | undefined;
   createEffect(() => {
     const path = deps.conceptionPath();
+    cancelDeferredLoad?.();
+    cancelDeferredLoad = undefined;
     if (!path) {
       setRepos(reconcile([] as RepoEntry[], { key: 'path' }));
       setReposLoaded(false);
       return;
     }
-    void reloadRepos();
+    cancelDeferredLoad = scheduleWhenIdle(() => {
+      cancelDeferredLoad = undefined;
+      void reloadRepos();
+    });
   });
+  onCleanup(() => cancelDeferredLoad?.());
 
   const offRepoEvents = window.condash.onRepoEvents((events) => {
     // Drop events that arrive after the user has cleared the conception

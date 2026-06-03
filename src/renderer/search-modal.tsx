@@ -20,6 +20,16 @@ const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, t
  * nearly everything and produces the worst-case scan for no useful result. */
 const MIN_QUERY_LEN = 2;
 
+/** Sources the default "All" filter searches — the four markdown buckets held
+ * in the in-memory index. Logs are deliberately excluded: they're ~9/10 of the
+ * corpus bytes and aren't indexed, so scanning them is the ~1 s per-query cost
+ * the index was built to avoid. Forwarding these scopes (rather than the old
+ * `undefined` = "everything") keeps the default search on the ~45 ms index path;
+ * logs stay one click away behind the Logs pill, which forwards `['logs']` and
+ * triggers the on-demand disk scan. Names match the backend's `wants(source)`
+ * (`src/main/search/index.ts`). */
+const ALL_SCOPES = ['projects', 'knowledge', 'resources', 'skills'];
+
 /**
  * Modal-shell around the search backend. Top-anchored (command-palette
  * feel) — expands downward as results arrive.
@@ -54,15 +64,17 @@ export function SearchModal(props: {
   let inputEl: HTMLInputElement | undefined;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Re-runs whenever the query OR the active source filter changes. A specific
-  // filter is forwarded to the backend as a `scopes` narrow so it stops
-  // scanning the unselected buckets (notably the heavy logs tree); 'all' keeps
-  // the full-tree search. Sub-MIN_QUERY_LEN queries never reach the backend.
+  // Re-runs whenever the query OR the active source filter changes. The scope
+  // is always forwarded to the backend so it scans only what's needed: a
+  // specific filter narrows to that one bucket, and the default 'all' narrows to
+  // the four indexed markdown sources (ALL_SCOPES) — never the heavy, unindexed
+  // logs tree. Logs are searched only when the Logs pill is active. Sub-
+  // MIN_QUERY_LEN queries never reach the backend.
   const [results] = createResource(
     () => ({ q: query(), filter: sourceFilter() }),
     async ({ q, filter }) => {
       if (q.trim().length < MIN_QUERY_LEN) return EMPTY_RESULTS;
-      const scopes = filter === 'all' ? undefined : [filter];
+      const scopes = filter === 'all' ? ALL_SCOPES : [filter];
       return window.condash.search(q, scopes);
     },
   );
@@ -283,7 +295,13 @@ export function SearchModal(props: {
               aria-checked={sourceFilter() === 'logs'}
               onClick={() => changeFilter('logs')}
             >
-              Logs <span class="search-source-count">{pillCount('logs', logsCount())}</span>
+              {/* Logs aren't scanned in the 'all' view (ALL_SCOPES excludes
+                  them), so unlike the other pills their count is only known —
+                  and shown — when the Logs filter is the active one. */}
+              Logs{' '}
+              <span class="search-source-count">
+                {sourceFilter() === 'logs' ? String(logsCount()) : ''}
+              </span>
             </button>
           </div>
         </Show>
@@ -526,6 +544,10 @@ function SearchTips() {
           too — try a date prefix.
         </li>
         <li>Click a project header to open its popup; click a file to open it directly.</li>
+        <li>
+          Terminal logs aren't in the default results — pick the <strong>Logs</strong> filter to
+          search transcripts.
+        </li>
         <li>
           Hits are ranked: title &gt; meta &gt; headings &gt; body, with a bonus when terms appear
           close together.
