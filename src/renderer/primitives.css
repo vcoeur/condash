@@ -1,0 +1,67 @@
+/* Shared UI primitives — the small, repeated chrome shapes that several
+ * panes and modals had each re-expressed inline. Modelled on the modal
+ * width-tier token set (modal-base.css): a named base in one shared file,
+ * with per-component opt-outs only where deliberate.
+ *
+ * Two primitives live here for now:
+ *   .section-header  — the uppercase "label · count · rule" bar that groups
+ *                      a list of cards. The generic TreeView already owns
+ *                      the live pane variant (.tree-dir-header in
+ *                      tree-view.css); this base captures the shared text
+ *                      treatment so future headers (and the Code / Logs
+ *                      variants) can compose from one place instead of
+ *                      re-typing the uppercase/letter-spacing/weight trio.
+ *   .pill            — the rounded chip shape shared by every badge/pill in
+ *                      the app (app-pill, repo-status-badge, tree-special-
+ *                      badge, search-source-pill, settings-badge, …). Only
+ *                      the geometry is shared; colour, padding and font-size
+ *                      stay on the per-badge class so each keeps its
+ *                      identity. Components opt in by adding `pill` next to
+ *                      their specific class, OR the specific class is listed
+ *                      in the grouped base below so no markup change is
+ *                      needed for the existing badges.
+ */
+
+/* Section-header base. Apply `.section-header` to a header row; the
+ * `.name` / `.count` / `.rule` children get their shared treatment for
+ * free. Variants (Code repos header, Logs month/day headers) layer their
+ * own rules on top. */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.section-header .name {
+  white-space: nowrap;
+}
+
+.section-header .count {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.section-header .rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle, var(--border));
+}
+
+/* Pill base. The geometry every badge shares — an inline rounded chip.
+ * Listed as a grouped selector so the existing badges pick up the shared
+ * shape without a markup change; new badges should add the `pill` class. */
+.pill,
+.app-pill,
+.repo-status-badge,
+.tree-special-badge,
+.search-source-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+}

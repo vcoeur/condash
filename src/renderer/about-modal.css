@@ -16,7 +16,7 @@
 .about-app-name {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -24,7 +24,7 @@
 .about-tagline {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   line-height: 1.5;
 }
 
@@ -33,14 +33,14 @@
   grid-template-columns: max-content 1fr;
   gap: 2px 10px;
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-family: var(--font-mono);
 }
 
 .about-versions dt {
   color: var(--text-faint);
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--text-3xs);
   letter-spacing: 0.1em;
   align-self: center;
 }
@@ -53,7 +53,7 @@
 
 .about-links {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .about-links a {

@@ -138,37 +138,6 @@
   margin-bottom: 14px;
 }
 
-.skills-group {
-  margin-bottom: 22px;
-}
-
-.skills-section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0 8px;
-  font-size: var(--text-sm);
-  letter-spacing: 0.06em;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.skills-section-header .name {
-  white-space: nowrap;
-}
-
-.skills-section-header .count {
-  font-size: var(--text-2xs);
-  opacity: 0.8;
-}
-
-.skills-section-header .rule {
-  flex: 1;
-  height: 1px;
-  background: var(--border-subtle);
-}
-
 .skills-card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

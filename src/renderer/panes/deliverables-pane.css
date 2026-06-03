@@ -12,7 +12,7 @@
 }
 
 .deliverables-head {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   padding: 0 2px 8px;
   border-bottom: 1px solid var(--border-subtle, var(--border));
@@ -62,7 +62,7 @@
 .deliverables-group-date {
   flex: none;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -70,7 +70,7 @@
  * Projects pane uses. */
 .deliverables-status {
   flex: none;
-  font-size: 10px;
+  font-size: var(--text-3xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 1px 6px;
@@ -135,7 +135,7 @@
   color: var(--text-muted);
   cursor: pointer;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1;
 }
 
@@ -148,7 +148,7 @@
 .deliverables-kind {
   flex: none;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-3xs);
   text-transform: uppercase;
   color: var(--text-muted);
   border: 1px solid var(--border);
@@ -165,11 +165,11 @@
 .deliverables-empty {
   padding: 20px 16px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
   text-align: center;
   line-height: 1.5;
 }
 .deliverables-empty code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }

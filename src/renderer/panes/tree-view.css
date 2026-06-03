@@ -40,7 +40,7 @@
   align-items: center;
   gap: 8px;
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -99,7 +99,8 @@
 
 .tree-dir-twisty-glyph {
   display: inline-block;
-  /* Larger chevron to match the bumped twisty hit area. */
+  /* Larger chevron to match the bumped twisty hit area. Icon glyph, not
+   * text — exempt from the --text-* scale (see styles.css). */
   font-size: 14px;
   line-height: 1;
   transition: transform 120ms ease;
@@ -152,7 +153,7 @@
 .tree-dir-action {
   font: inherit;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-3xs);
   letter-spacing: 0.04em;
   text-transform: lowercase;
   color: var(--text-muted);
@@ -199,7 +200,7 @@
   background: var(--bg-elevated);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   text-align: left;
   cursor: pointer;
   transition: border-color 100ms ease;
@@ -214,13 +215,13 @@
   outline-offset: 1px;
 }
 
+/* Geometry from the shared `.pill` base (primitives.css). */
 .tree-special-badge {
   font-family: var(--font-ui);
-  font-size: 9.5px;
+  font-size: var(--text-3xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   padding: 2px 7px;
-  border-radius: 999px;
   border: 1px solid currentColor;
   background: color-mix(in srgb, currentColor 12%, transparent);
   text-transform: uppercase;
@@ -230,7 +231,7 @@
 .tree-special-title {
   flex: 1;
   font-weight: 600;
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -239,7 +240,7 @@
 
 .tree-special-meta {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-3xs);
   color: var(--text-muted);
   font-weight: 500;
   flex-shrink: 0;

@@ -8,35 +8,6 @@
   background: var(--bg);
 }
 
-/* Section header — same capsule + count + rule treatment used by the
- * Code-pane `.code-runs-header` so the three panes share one chrome
- * vocabulary. Defined locally here (rather than promoted to a shared
- * class) to keep pane-CSS changes scoped. The optional [INDEX] button
- * sits between the count and the rule. */
-.knowledge-section-header {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--font-ui);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.knowledge-section-header .name {
-  color: var(--text);
-}
-
-.knowledge-section-header .count {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
-}
-
 /* INDEX special-file row — the dir's `index.md` rendered as the first
  * card inside the dir's expanded body, with a colour-coded badge that
  * mirrors the per-bucket stripe used on regular knowledge cards. */

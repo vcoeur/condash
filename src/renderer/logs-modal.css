@@ -21,7 +21,7 @@
 
 .logs-modal-title {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -42,7 +42,7 @@
 .logs-modal-search .logs-search {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: 0.25rem 0.6rem;
   border: 1px solid var(--border);
   background: var(--bg-subtle);
@@ -55,7 +55,7 @@
 }
 
 .logs-modal-search .logs-hit-count {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
@@ -63,7 +63,7 @@
 
 .logs-modal-search .logs-hit-step {
   padding: 0.15rem 0.4rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   background: transparent;
   color: inherit;
   border: 1px solid var(--border);
@@ -92,7 +92,7 @@
   margin: 0;
   padding: 0;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   line-height: 1.4;
   background: var(--bg);
   color: var(--text);
@@ -132,5 +132,5 @@
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
