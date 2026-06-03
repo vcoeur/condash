@@ -1,5 +1,6 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, Show } from 'solid-js';
 import { slugify } from '@shared/slug';
+import { Modal } from './modal';
 import './prompt-modal.css';
 
 export interface PromptModalState {
@@ -22,17 +23,6 @@ export interface PromptModalState {
 export function PromptModal(props: { state: PromptModalState | null; onClose: () => void }) {
   const [value, setValue] = createSignal('');
   let inputRef: HTMLInputElement | undefined;
-
-  const handleKey = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape') return;
-    const target = event.target as HTMLElement | null;
-    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
-    event.preventDefault();
-    cancel();
-  };
-
-  onMount(() => document.addEventListener('keydown', handleKey, true));
-  onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
   // Reset value + focus the input each time a new prompt opens.
   createEffect(() => {
@@ -67,63 +57,45 @@ export function PromptModal(props: { state: PromptModalState | null; onClose: ()
   return (
     <Show when={props.state}>
       {(state) => (
-        <div class="modal-backdrop" onClick={cancel}>
-          <div
-            class="modal prompt-modal"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <header class="modal-head">
-              <span class="modal-title">{state().title}</span>
-              <span class="modal-head-spacer" />
-              <button class="modal-button" onClick={cancel} title="Close (Esc)" aria-label="Close">
-                ×
+        <Modal class="prompt-modal" title={state().title} onClose={cancel}>
+          <div class="prompt-body">
+            <Show when={state().message}>
+              <p class="prompt-message">{state().message}</p>
+            </Show>
+            <input
+              ref={(el) => (inputRef = el)}
+              class="prompt-input"
+              type="text"
+              placeholder={state().placeholder ?? ''}
+              value={value()}
+              onInput={(e) => setValue(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  confirm();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  cancel();
+                }
+              }}
+            />
+            <Show when={state().slugPreview && slugPreviewValue().length > 0}>
+              <p class="prompt-slug-preview">
+                Slug: <code>{slugPreviewValue()}</code>
+              </p>
+            </Show>
+            <div class="prompt-actions">
+              <button class="modal-button" onClick={cancel}>
+                Cancel
               </button>
-            </header>
-            <div class="prompt-body">
-              <Show when={state().message}>
-                <p class="prompt-message">{state().message}</p>
-              </Show>
-              <input
-                ref={(el) => (inputRef = el)}
-                class="prompt-input"
-                type="text"
-                placeholder={state().placeholder ?? ''}
-                value={value()}
-                onInput={(e) => setValue(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    confirm();
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    cancel();
-                  }
-                }}
-              />
-              <Show when={state().slugPreview && slugPreviewValue().length > 0}>
-                <p class="prompt-slug-preview">
-                  Slug: <code>{slugPreviewValue()}</code>
-                </p>
-              </Show>
-              <div class="prompt-actions">
-                <button class="modal-button" onClick={cancel}>
-                  Cancel
-                </button>
-                <button
-                  class="modal-button"
-                  onClick={confirm}
-                  disabled={value().trim().length === 0}
-                >
-                  {state().confirmLabel ?? 'OK'}
-                </button>
-              </div>
+              <button class="modal-button" onClick={confirm} disabled={value().trim().length === 0}>
+                {state().confirmLabel ?? 'OK'}
+              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </Show>
   );

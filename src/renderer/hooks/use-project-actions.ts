@@ -4,7 +4,7 @@ import { applyStatus, applyStepMarker, groupByStatus, nextMarker } from '../pane
 import { buildSlugIndex } from '../wikilinks';
 import { categorise } from '@shared/file-category';
 import { openDeliverableTarget } from '../deliverable-open';
-import type { ModalState } from '../note-modal';
+import type { ModalState } from '../modal-types';
 import type { ModalRouter } from '../modal-router';
 import type { PromptModalState } from '../prompt-modal';
 

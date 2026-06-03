@@ -1,4 +1,5 @@
 import { For, onCleanup, onMount } from 'solid-js';
+import { Modal } from './modal';
 import './shortcuts-overlay.css';
 
 interface ShortcutEntry {
@@ -71,63 +72,52 @@ const GROUPS: ShortcutGroup[] = [
  * shortcuts.
  */
 export function ShortcutsOverlay(props: { onClose: () => void }) {
+  // Esc → close and backdrop dismissal are owned by the shared <Modal>
+  // shell. The overlay additionally closes on `?` and, being the topmost
+  // surface, swallows every other shortcut so Ctrl+K / Ctrl+` etc. don't
+  // fire underneath it.
   const handleKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape' || e.key === '?') {
+    if (e.key === '?') {
       e.preventDefault();
       e.stopPropagation();
       props.onClose();
       return;
     }
-    // Overlay is the topmost modal — swallow every other shortcut so
-    // Ctrl+K, Ctrl+`, etc. don't fire underneath it.
+    if (e.key === 'Escape') return; // handled by the shell
     e.stopPropagation();
   };
   onMount(() => document.addEventListener('keydown', handleKey, true));
   onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
   return (
-    <div class="modal-backdrop" onClick={props.onClose}>
-      <div
-        class="modal shortcuts-overlay"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Keyboard shortcuts"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head">
-          <span class="modal-title">Keyboard shortcuts</span>
-          <span class="modal-head-spacer" />
-          <button
-            class="modal-button"
-            onClick={props.onClose}
-            title="Close (Esc / ?)"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </header>
-        <div class="shortcuts-grid">
-          <For each={GROUPS}>
-            {(group) => (
-              <section class="shortcuts-group">
-                <h3>{group.title}</h3>
-                <dl>
-                  <For each={group.entries}>
-                    {(entry) => (
-                      <>
-                        <dt>
-                          <kbd>{entry.keys}</kbd>
-                        </dt>
-                        <dd>{entry.description}</dd>
-                      </>
-                    )}
-                  </For>
-                </dl>
-              </section>
-            )}
-          </For>
-        </div>
+    <Modal
+      class="shortcuts-overlay"
+      ariaLabel="Keyboard shortcuts"
+      title="Keyboard shortcuts"
+      onClose={props.onClose}
+      closeTitle="Close (Esc / ?)"
+    >
+      <div class="shortcuts-grid">
+        <For each={GROUPS}>
+          {(group) => (
+            <section class="shortcuts-group">
+              <h3>{group.title}</h3>
+              <dl>
+                <For each={group.entries}>
+                  {(entry) => (
+                    <>
+                      <dt>
+                        <kbd>{entry.keys}</kbd>
+                      </dt>
+                      <dd>{entry.description}</dd>
+                    </>
+                  )}
+                </For>
+              </dl>
+            </section>
+          )}
+        </For>
       </div>
-    </div>
+    </Modal>
   );
 }

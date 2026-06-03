@@ -10,6 +10,7 @@ import {
   type JSX,
 } from 'solid-js';
 import type { TermLogSessionMeta, TermLogSessionRead } from '@shared/types';
+import { Modal } from './modal';
 import './logs-modal.css';
 
 /**
@@ -156,14 +157,11 @@ export function LogsViewerModal(props: {
     setActiveHit((cur) => (((cur + direction) % n) + n) % n);
   };
 
-  // Esc closes; Cmd/Ctrl+F focuses the search box.
+  // Esc → close and backdrop dismissal are owned by the shared <Modal> shell.
+  // Cmd/Ctrl+F focuses the search box — kept here as a logs-specific binding.
   let searchInput: HTMLInputElement | undefined;
   const handleKey = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      props.onClose();
-    } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
       event.preventDefault();
       event.stopPropagation();
       searchInput?.focus();
@@ -174,108 +172,99 @@ export function LogsViewerModal(props: {
   onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
   return (
-    <div class="modal-backdrop" onClick={props.onClose}>
-      <div
-        class="modal logs-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Session log"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head logs-modal-head">
+    <Modal
+      class="logs-modal"
+      ariaLabel="Session log"
+      headClass="logs-modal-head"
+      onClose={props.onClose}
+      headLeading={
+        <>
           <span class="logs-modal-title">{titleFor(sessionRead())}</span>
           <span class="modal-path">{props.path}</span>
           <span class="modal-head-spacer" />
+        </>
+      }
+      headExtra={
+        <button
+          type="button"
+          class="modal-button"
+          title="Delete this session"
+          aria-label="Delete this session"
+          disabled={!sessionRead()?.meta}
+          onClick={() => {
+            const meta = sessionRead()?.meta;
+            if (meta) props.onDelete(meta);
+          }}
+        >
+          ⌫
+        </button>
+      }
+    >
+      <div class="logs-modal-search">
+        <input
+          ref={searchInput}
+          type="search"
+          class="logs-search"
+          placeholder="Search this session… (Cmd/Ctrl+F)"
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              stepHit(e.shiftKey ? -1 : 1);
+            }
+          }}
+        />
+        <Show when={query().trim().length > 0}>
+          <span class="logs-hit-count">
+            {hits().length === 0 ? '0' : `${activeHit() + 1} / ${hits().length}`}
+          </span>
           <button
             type="button"
-            class="modal-button"
-            title="Delete this session"
-            aria-label="Delete this session"
-            disabled={!sessionRead()?.meta}
-            onClick={() => {
-              const meta = sessionRead()?.meta;
-              if (meta) props.onDelete(meta);
-            }}
+            class="logs-hit-step"
+            onClick={() => stepHit(-1)}
+            disabled={hits().length === 0}
+            title="Previous match (Shift+Enter)"
+            aria-label="Previous match"
           >
-            ⌫
+            ↑
           </button>
           <button
             type="button"
-            class="modal-button modal-close"
-            onClick={props.onClose}
-            title="Close (Esc)"
-            aria-label="Close"
+            class="logs-hit-step"
+            onClick={() => stepHit(1)}
+            disabled={hits().length === 0}
+            title="Next match (Enter)"
+            aria-label="Next match"
           >
-            ×
+            ↓
           </button>
-        </header>
-
-        <div class="logs-modal-search">
-          <input
-            ref={searchInput}
-            type="search"
-            class="logs-search"
-            placeholder="Search this session… (Cmd/Ctrl+F)"
-            value={query()}
-            onInput={(e) => setQuery(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                stepHit(e.shiftKey ? -1 : 1);
-              }
-            }}
-          />
-          <Show when={query().trim().length > 0}>
-            <span class="logs-hit-count">
-              {hits().length === 0 ? '0' : `${activeHit() + 1} / ${hits().length}`}
-            </span>
-            <button
-              type="button"
-              class="logs-hit-step"
-              onClick={() => stepHit(-1)}
-              disabled={hits().length === 0}
-              title="Previous match (Shift+Enter)"
-              aria-label="Previous match"
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              class="logs-hit-step"
-              onClick={() => stepHit(1)}
-              disabled={hits().length === 0}
-              title="Next match (Enter)"
-              aria-label="Next match"
-            >
-              ↓
-            </button>
-          </Show>
-        </div>
-
-        <Show when={!sessionRead.loading} fallback={<div class="empty">Loading…</div>}>
-          <Show
-            when={(sessionRead()?.text.length ?? 0) > 0}
-            fallback={<div class="empty">Empty session.</div>}
-          >
-            <div class="logs-transcript" ref={attachTranscript} onScroll={onScroll}>
-              <div class="logs-transcript-spacer" style={{ height: `${totalHeight()}px` }}>
-                <For each={visible()}>
-                  {(row) => (
-                    <div class="logs-line" style={{ top: `${row.idx * rowHeight()}px` }}>
-                      <LineContents
-                        text={row.text}
-                        hits={hitsByLine().get(row.idx) ?? []}
-                        activeHit={hits()[activeHit()]}
-                      />
-                    </div>
-                  )}
-                </For>
-              </div>
-            </div>
-          </Show>
         </Show>
       </div>
-    </div>
+
+      <Show when={!sessionRead.loading} fallback={<div class="empty">Loading…</div>}>
+        <Show
+          when={(sessionRead()?.text.length ?? 0) > 0}
+          fallback={<div class="empty">Empty session.</div>}
+        >
+          <div class="logs-transcript" ref={attachTranscript} onScroll={onScroll}>
+            <div class="logs-transcript-spacer" style={{ height: `${totalHeight()}px` }}>
+              <For each={visible()}>
+                {(row) => (
+                  <div class="logs-line" style={{ top: `${row.idx * rowHeight()}px` }}>
+                    <LineContents
+                      text={row.text}
+                      hits={hitsByLine().get(row.idx) ?? []}
+                      activeHit={hits()[activeHit()]}
+                    />
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+      </Show>
+    </Modal>
   );
 }
 

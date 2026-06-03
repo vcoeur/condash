@@ -12,6 +12,7 @@ import {
 import type { SearchHighlight, SearchHit, SearchResults, SearchSnippet } from '@shared/types';
 import { HighlightedText } from './search/highlight';
 import { groupHits, type ProjectGroup } from './search/grouping';
+import { Modal } from './modal';
 import './search-modal.css';
 
 const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
@@ -162,12 +163,8 @@ export function SearchModal(props: {
   };
 
   const handleKeydown = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      props.onClose();
-      return;
-    }
+    // Esc → close and backdrop dismissal are owned by the shared <Modal>
+    // shell. This handler covers the search-specific arrow/Enter navigation.
     const rows = document.querySelectorAll('.search-row');
     const totalVisibleResults = rows.length;
     if (totalVisibleResults === 0) return;
@@ -212,172 +209,162 @@ export function SearchModal(props: {
   };
 
   return (
-    <div class="modal-backdrop search-modal-backdrop" onClick={props.onClose}>
-      <div
-        class="modal search-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Search"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head search-modal-head">
-          <input
-            ref={(el) => (inputEl = el)}
-            class="search-input search-modal-input"
-            type="search"
-            placeholder='Search projects, knowledge, logs — "phrases" stay together'
-            value={input()}
-            onInput={(e) => onInput(e.currentTarget.value)}
-          />
+    <Modal
+      class="search-modal"
+      ariaLabel="Search"
+      backdropClass="search-modal-backdrop"
+      headClass="search-modal-head"
+      onClose={props.onClose}
+      headLeading={
+        <input
+          ref={(el) => (inputEl = el)}
+          class="search-input search-modal-input"
+          type="search"
+          placeholder='Search projects, knowledge, logs — "phrases" stay together'
+          value={input()}
+          onInput={(e) => onInput(e.currentTarget.value)}
+        />
+      }
+    >
+      <Show when={queryLongEnough()}>
+        <div class="search-source-filter" role="radiogroup" aria-label="Filter by source">
           <button
-            class="modal-button"
-            onClick={props.onClose}
-            title="Close (Esc)"
-            aria-label="Close"
+            class="search-source-pill"
+            classList={{ active: sourceFilter() === 'all' }}
+            role="radio"
+            aria-checked={sourceFilter() === 'all'}
+            onClick={() => changeFilter('all')}
           >
-            ×
+            All <span class="search-source-count">{pillCount('all', totalCount())}</span>
           </button>
-        </header>
-        <Show when={queryLongEnough()}>
-          <div class="search-source-filter" role="radiogroup" aria-label="Filter by source">
-            <button
-              class="search-source-pill"
-              classList={{ active: sourceFilter() === 'all' }}
-              role="radio"
-              aria-checked={sourceFilter() === 'all'}
-              onClick={() => changeFilter('all')}
-            >
-              All <span class="search-source-count">{pillCount('all', totalCount())}</span>
-            </button>
-            <button
-              class="search-source-pill"
-              classList={{ active: sourceFilter() === 'projects' }}
-              role="radio"
-              aria-checked={sourceFilter() === 'projects'}
-              onClick={() => changeFilter('projects')}
-            >
-              Projects{' '}
-              <span class="search-source-count">{pillCount('projects', projectCount())}</span>
-            </button>
-            <button
-              class="search-source-pill"
-              classList={{ active: sourceFilter() === 'knowledge' }}
-              role="radio"
-              aria-checked={sourceFilter() === 'knowledge'}
-              onClick={() => changeFilter('knowledge')}
-            >
-              Knowledge{' '}
-              <span class="search-source-count">{pillCount('knowledge', knowledgeCount())}</span>
-            </button>
-            <button
-              class="search-source-pill"
-              classList={{ active: sourceFilter() === 'resources' }}
-              role="radio"
-              aria-checked={sourceFilter() === 'resources'}
-              onClick={() => changeFilter('resources')}
-            >
-              Resources{' '}
-              <span class="search-source-count">{pillCount('resources', resourcesCount())}</span>
-            </button>
-            <button
-              class="search-source-pill"
-              classList={{ active: sourceFilter() === 'skills' }}
-              role="radio"
-              aria-checked={sourceFilter() === 'skills'}
-              onClick={() => changeFilter('skills')}
-            >
-              Skills <span class="search-source-count">{pillCount('skills', skillsCount())}</span>
-            </button>
-            <button
-              class="search-source-pill"
-              classList={{ active: sourceFilter() === 'logs' }}
-              role="radio"
-              aria-checked={sourceFilter() === 'logs'}
-              onClick={() => changeFilter('logs')}
-            >
-              {/* Logs aren't scanned in the 'all' view (ALL_SCOPES excludes
+          <button
+            class="search-source-pill"
+            classList={{ active: sourceFilter() === 'projects' }}
+            role="radio"
+            aria-checked={sourceFilter() === 'projects'}
+            onClick={() => changeFilter('projects')}
+          >
+            Projects{' '}
+            <span class="search-source-count">{pillCount('projects', projectCount())}</span>
+          </button>
+          <button
+            class="search-source-pill"
+            classList={{ active: sourceFilter() === 'knowledge' }}
+            role="radio"
+            aria-checked={sourceFilter() === 'knowledge'}
+            onClick={() => changeFilter('knowledge')}
+          >
+            Knowledge{' '}
+            <span class="search-source-count">{pillCount('knowledge', knowledgeCount())}</span>
+          </button>
+          <button
+            class="search-source-pill"
+            classList={{ active: sourceFilter() === 'resources' }}
+            role="radio"
+            aria-checked={sourceFilter() === 'resources'}
+            onClick={() => changeFilter('resources')}
+          >
+            Resources{' '}
+            <span class="search-source-count">{pillCount('resources', resourcesCount())}</span>
+          </button>
+          <button
+            class="search-source-pill"
+            classList={{ active: sourceFilter() === 'skills' }}
+            role="radio"
+            aria-checked={sourceFilter() === 'skills'}
+            onClick={() => changeFilter('skills')}
+          >
+            Skills <span class="search-source-count">{pillCount('skills', skillsCount())}</span>
+          </button>
+          <button
+            class="search-source-pill"
+            classList={{ active: sourceFilter() === 'logs' }}
+            role="radio"
+            aria-checked={sourceFilter() === 'logs'}
+            onClick={() => changeFilter('logs')}
+          >
+            {/* Logs aren't scanned in the 'all' view (ALL_SCOPES excludes
                   them), so unlike the other pills their count is only known —
                   and shown — when the Logs filter is the active one. */}
-              Logs{' '}
-              <span class="search-source-count">
-                {sourceFilter() === 'logs' ? String(logsCount()) : ''}
-              </span>
-            </button>
-          </div>
-        </Show>
-        <div class="search-modal-body">
-          <Show when={queryLongEnough()} fallback={<SearchTips />}>
-            <Suspense fallback={<div class="empty">Searching…</div>}>
-              <Show
-                when={visibleCount() > 0}
-                fallback={
-                  <div class="empty">
-                    {grouped().total === 0 ? 'No matches.' : `No matches in ${sourceFilter()}.`}
-                    <Show when={grouped().total > 0 && sourceFilter() !== 'all'}>
-                      <div class="search-source-hints">
-                        Also found in{' '}
-                        <For each={filterHints()}>
-                          {(hint, i) => (
-                            <span class="search-source-hint-item">
-                              <Show when={i() > 0}>, </Show>
-                              <button
-                                class="search-source-hint-link"
-                                onClick={() => changeFilter(hint.filter)}
-                              >
-                                {hint.label} ({hint.count})
-                              </button>
-                            </span>
-                          )}
-                        </For>
-                      </div>
-                    </Show>
-                  </div>
-                }
-              >
-                <ul class="search-results search-results-grouped">
-                  <Show when={showProjects()}>
-                    <For each={grouped().projects}>
-                      {(g) => (
-                        <ProjectGroupRow
-                          group={g}
-                          onOpenProject={openProjectAndClose}
-                          onOpenFile={openFileAndClose}
-                        />
-                      )}
-                    </For>
-                  </Show>
-                  <Show when={showKnowledge()}>
-                    <For each={grouped().knowledge}>
-                      {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
-                    </For>
-                  </Show>
-                  <Show when={showResources()}>
-                    <For each={grouped().resources}>
-                      {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
-                    </For>
-                  </Show>
-                  <Show when={showSkills()}>
-                    <For each={grouped().skills}>
-                      {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
-                    </For>
-                  </Show>
-                  <Show when={showLogs()}>
-                    <For each={grouped().logs}>
-                      {(hit) => <LogResultRow hit={hit} onOpen={openLogAndClose} />}
-                    </For>
-                  </Show>
-                </ul>
-                <Show when={truncated()}>
-                  <div class="search-truncated-hint">
-                    Showing top 100 of {totalBeforeCap()} matches — refine the query for more.
-                  </div>
-                </Show>
-              </Show>
-            </Suspense>
-          </Show>
+            Logs{' '}
+            <span class="search-source-count">
+              {sourceFilter() === 'logs' ? String(logsCount()) : ''}
+            </span>
+          </button>
         </div>
+      </Show>
+      <div class="search-modal-body">
+        <Show when={queryLongEnough()} fallback={<SearchTips />}>
+          <Suspense fallback={<div class="empty">Searching…</div>}>
+            <Show
+              when={visibleCount() > 0}
+              fallback={
+                <div class="empty">
+                  {grouped().total === 0 ? 'No matches.' : `No matches in ${sourceFilter()}.`}
+                  <Show when={grouped().total > 0 && sourceFilter() !== 'all'}>
+                    <div class="search-source-hints">
+                      Also found in{' '}
+                      <For each={filterHints()}>
+                        {(hint, i) => (
+                          <span class="search-source-hint-item">
+                            <Show when={i() > 0}>, </Show>
+                            <button
+                              class="search-source-hint-link"
+                              onClick={() => changeFilter(hint.filter)}
+                            >
+                              {hint.label} ({hint.count})
+                            </button>
+                          </span>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+              }
+            >
+              <ul class="search-results search-results-grouped">
+                <Show when={showProjects()}>
+                  <For each={grouped().projects}>
+                    {(g) => (
+                      <ProjectGroupRow
+                        group={g}
+                        onOpenProject={openProjectAndClose}
+                        onOpenFile={openFileAndClose}
+                      />
+                    )}
+                  </For>
+                </Show>
+                <Show when={showKnowledge()}>
+                  <For each={grouped().knowledge}>
+                    {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                  </For>
+                </Show>
+                <Show when={showResources()}>
+                  <For each={grouped().resources}>
+                    {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                  </For>
+                </Show>
+                <Show when={showSkills()}>
+                  <For each={grouped().skills}>
+                    {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
+                  </For>
+                </Show>
+                <Show when={showLogs()}>
+                  <For each={grouped().logs}>
+                    {(hit) => <LogResultRow hit={hit} onOpen={openLogAndClose} />}
+                  </For>
+                </Show>
+              </ul>
+              <Show when={truncated()}>
+                <div class="search-truncated-hint">
+                  Showing top 100 of {totalBeforeCap()} matches — refine the query for more.
+                </div>
+              </Show>
+            </Show>
+          </Suspense>
+        </Show>
       </div>
-    </div>
+    </Modal>
   );
 }
 

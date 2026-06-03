@@ -2,7 +2,7 @@ import type { Setter } from 'solid-js';
 import type { SkillNode, TreeRoot } from '@shared/types';
 import type { TreeAffordance, TreeViewMutationApi, TreeViewPromptApi } from '../panes/tree-view';
 import type { ResourcesViewActions } from '../panes/resources';
-import type { ModalState } from '../note-modal';
+import type { ModalState } from '../modal-types';
 import { openDeliverableTarget } from '../deliverable-open';
 import type { createTreeStore } from '../tree-store';
 import type { TerminalBridge } from '../terminal-bridge';
@@ -18,7 +18,7 @@ export interface UseTreeActionsDeps {
   setPdfPath: Setter<string | null>;
   setHtmlPath: Setter<string | null>;
   setImagePath: Setter<string | null>;
-  setSettingsOpen: Setter<boolean>;
+  setSettingsOpen: (open: boolean) => void;
   bridge: TerminalBridge;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
 }

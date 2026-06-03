@@ -32,7 +32,6 @@ import { createProjectsStore } from './projects-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
 import { createMenuRouter } from './menu-commands';
-import { QuitConfirmModal } from './quit-confirm-modal';
 import { AboutModal } from './about-modal';
 import { ConfirmModal } from './confirm-modal';
 import { ShortcutsOverlay } from './shortcuts-overlay';
@@ -872,13 +871,24 @@ function App() {
       </Show>
 
       <Show when={quitConfirmOpen()}>
-        <QuitConfirmModal
+        <ConfirmModal
+          title="Quit Condash?"
+          body={() => (
+            <>
+              <p class="confirm-message">Any running terminal sessions will be terminated.</p>
+              <Show when={noteDirty()}>
+                <p class="confirm-warn">Unsaved note edits will also be lost.</p>
+              </Show>
+            </>
+          )}
+          confirmLabel="Quit"
+          cancelLabel="Cancel"
+          destructive
           onCancel={() => setQuitConfirmOpen(false)}
           onConfirm={() => {
             setQuitConfirmOpen(false);
             handleConfirmQuit();
           }}
-          noteDirty={noteDirty()}
         />
       </Show>
 

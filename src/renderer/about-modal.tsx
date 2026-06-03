@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, Show } from 'solid-js';
-import { useModalEscHandler } from './modal-helpers';
+import { Modal } from './modal';
 import './about-modal.css';
 
 interface AppInfo {
@@ -17,8 +17,6 @@ export function AboutModal(props: { onClose: () => void }) {
   const [info, setInfo] = createSignal<AppInfo | null>(null);
   let cancelled = false;
 
-  useModalEscHandler(props.onClose);
-
   onMount(() => {
     // Cancellation guard so the .then() doesn't setInfo into a disposed
     // root if the modal closes before the IPC resolves.
@@ -31,56 +29,36 @@ export function AboutModal(props: { onClose: () => void }) {
   });
 
   return (
-    <div class="modal-backdrop" onClick={props.onClose}>
-      <div
-        class="modal about-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="About Condash"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head">
-          <span class="modal-title">About</span>
-          <span class="modal-head-spacer" />
-          <button
-            class="modal-button"
-            onClick={props.onClose}
-            title="Close (Esc)"
-            aria-label="Close"
+    <Modal class="about-modal" ariaLabel="About Condash" title="About" onClose={props.onClose}>
+      <div class="about-modal-body">
+        <h2 class="about-app-name">{info()?.name ?? 'Condash'}</h2>
+        <p class="about-tagline">Markdown project dashboard for the conception tree.</p>
+        <Show when={info()}>
+          {(i) => (
+            <dl class="about-versions">
+              <dt>Version</dt>
+              <dd>{i().version}</dd>
+              <dt>Electron</dt>
+              <dd>{i().electron}</dd>
+              <dt>Chrome</dt>
+              <dd>{i().chrome}</dd>
+              <dt>Node</dt>
+              <dd>{i().node}</dd>
+            </dl>
+          )}
+        </Show>
+        <p class="about-links">
+          <a
+            href="https://github.com/vcoeur/condash"
+            onClick={(e) => {
+              e.preventDefault();
+              void window.condash.openExternal('https://github.com/vcoeur/condash');
+            }}
           >
-            ×
-          </button>
-        </header>
-        <div class="about-modal-body">
-          <h2 class="about-app-name">{info()?.name ?? 'Condash'}</h2>
-          <p class="about-tagline">Markdown project dashboard for the conception tree.</p>
-          <Show when={info()}>
-            {(i) => (
-              <dl class="about-versions">
-                <dt>Version</dt>
-                <dd>{i().version}</dd>
-                <dt>Electron</dt>
-                <dd>{i().electron}</dd>
-                <dt>Chrome</dt>
-                <dd>{i().chrome}</dd>
-                <dt>Node</dt>
-                <dd>{i().node}</dd>
-              </dl>
-            )}
-          </Show>
-          <p class="about-links">
-            <a
-              href="https://github.com/vcoeur/condash"
-              onClick={(e) => {
-                e.preventDefault();
-                void window.condash.openExternal('https://github.com/vcoeur/condash');
-              }}
-            >
-              github.com/vcoeur/condash
-            </a>
-          </p>
-        </div>
+            github.com/vcoeur/condash
+          </a>
+        </p>
       </div>
-    </div>
+    </Modal>
   );
 }

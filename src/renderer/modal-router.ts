@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { ModalState } from './note-modal';
+import type { ModalState } from './modal-types';
 
 /** Display label for a modal state — used to render "← Back to <X>" on
  *  the next note's back button when the user navigates deeper. */

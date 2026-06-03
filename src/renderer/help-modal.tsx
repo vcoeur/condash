@@ -2,7 +2,7 @@ import { createEffect, createResource, Show } from 'solid-js';
 import type { HelpDocName as HelpDoc } from '@shared/types';
 import { renderMarkdown, runMermaidIn } from './markdown';
 import { routeMarkdownClick, scrollToAnchor } from './md-link-router';
-import { useModalEscHandler } from './modal-helpers';
+import { Modal } from './modal';
 import './code-theme.css';
 
 export type { HelpDoc };
@@ -27,8 +27,6 @@ const TITLE: Record<HelpDoc, string> = {
  */
 export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
   let bodyRef: HTMLDivElement | undefined;
-
-  useModalEscHandler(props.onClose);
 
   const [content] = createResource(
     () => props.doc,
@@ -64,29 +62,15 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
   };
 
   return (
-    <div class="modal-backdrop" onClick={props.onClose}>
-      <div
-        class="modal help-modal"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head">
-          <span class="modal-title">{TITLE[props.doc]}</span>
-          <span class="modal-path">condash docs/</span>
-          <button class="modal-button" onClick={props.onClose} title="Close (Esc)">
-            ×
-          </button>
-        </header>
-        <Show when={content()} fallback={<div class="modal-body modal-empty">Loading…</div>}>
-          <div
-            class="modal-body markdown-body"
-            ref={(el) => (bodyRef = el)}
-            innerHTML={html() ?? ''}
-            onClick={handleBodyClick}
-          />
-        </Show>
-      </div>
-    </div>
+    <Modal class="help-modal" title={TITLE[props.doc]} path="condash docs/" onClose={props.onClose}>
+      <Show when={content()} fallback={<div class="modal-body modal-empty">Loading…</div>}>
+        <div
+          class="modal-body markdown-body"
+          ref={(el) => (bodyRef = el)}
+          innerHTML={html() ?? ''}
+          onClick={handleBodyClick}
+        />
+      </Show>
+    </Modal>
   );
 }

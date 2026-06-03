@@ -1,6 +1,7 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import type { ProjectCreateInput, ProjectCreateResult } from '@shared/types';
 import { slugify, isValidSlugTail } from '@shared/slug';
+import { Modal } from './modal';
 import './new-project-modal.css';
 
 type Kind = ProjectCreateInput['kind'];
@@ -38,24 +39,16 @@ export function NewProjectModal(props: {
   let titleRef: HTMLInputElement | undefined;
   let slugRef: HTMLInputElement | undefined;
 
-  const handleKey = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape') return;
-    // The modal opens with the title field focused, so an INPUT/TEXTAREA
-    // early-return swallowed Esc until the user clicked away. Esc closes
-    // the modal regardless of the focused field — but stays guarded by
-    // `busy()` so a mid-create submit isn't cancelled by a stray keypress.
+  // Esc → close, backdrop dismissal, and the close button are owned by the
+  // shared <Modal> shell via this guarded handler — `busy()` blocks dismissal
+  // mid-create so a stray Esc / click can't cancel an in-flight submit.
+  const requestClose = (): void => {
     if (busy()) return;
-    event.preventDefault();
-    event.stopPropagation();
     props.onClose();
   };
 
   onMount(() => {
-    document.addEventListener('keydown', handleKey, true);
     queueMicrotask(() => titleRef?.focus());
-  });
-  onCleanup(() => {
-    document.removeEventListener('keydown', handleKey, true);
   });
 
   const derivedSlug = createMemo(() => slugify(title()));
@@ -114,101 +107,132 @@ export function NewProjectModal(props: {
   };
 
   return (
-    <div class="modal-backdrop" onClick={() => !busy() && props.onClose()}>
-      <div
-        class="modal new-project-modal"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head">
-          <span class="modal-title">New project</span>
-          <span class="modal-head-spacer" />
-          <button
-            class="modal-button modal-close"
-            onClick={() => !busy() && props.onClose()}
-            title="Cancel (Esc)"
-            aria-label="Cancel"
-          >
-            ✕
-          </button>
-        </header>
-        <div class="new-project-body">
-          <label class="new-project-field">
-            <span class="new-project-label">Title</span>
-            <input
-              ref={(el) => (titleRef = el)}
-              class="new-project-input"
-              type="text"
-              value={title()}
-              onInput={(e) => setTitle(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !busy()) {
-                  e.preventDefault();
-                  void submit();
-                }
-              }}
-              placeholder="What this project will achieve"
-              disabled={busy()}
-            />
-          </label>
-
-          <div class="new-project-field">
-            <span class="new-project-label">Slug</span>
-            <Show
-              when={editingSlug()}
-              fallback={
-                <div class="new-project-slug-preview">
-                  <code class="new-project-slug-code">
-                    {derivedSlug() || <span class="new-project-slug-empty">(empty)</span>}
-                  </code>
-                  <button
-                    type="button"
-                    class="new-project-slug-edit"
-                    onClick={beginEditSlug}
-                    disabled={busy() || !derivedSlug()}
-                  >
-                    edit
-                  </button>
-                </div>
+    <Modal
+      class="new-project-modal"
+      title="New project"
+      onClose={requestClose}
+      closeTitle="Cancel (Esc)"
+      closeLabel="Cancel"
+    >
+      <div class="new-project-body">
+        <label class="new-project-field">
+          <span class="new-project-label">Title</span>
+          <input
+            ref={(el) => (titleRef = el)}
+            class="new-project-input"
+            type="text"
+            value={title()}
+            onInput={(e) => setTitle(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !busy()) {
+                e.preventDefault();
+                void submit();
               }
-            >
-              <div class="new-project-slug-edit-row">
-                <input
-                  ref={(el) => (slugRef = el)}
-                  class="new-project-input new-project-slug-input"
-                  type="text"
-                  value={slugOverride() ?? ''}
-                  onInput={(e) => setSlugOverride(e.currentTarget.value)}
-                  disabled={busy()}
-                />
+            }}
+            placeholder="What this project will achieve"
+            disabled={busy()}
+          />
+        </label>
+
+        <div class="new-project-field">
+          <span class="new-project-label">Slug</span>
+          <Show
+            when={editingSlug()}
+            fallback={
+              <div class="new-project-slug-preview">
+                <code class="new-project-slug-code">
+                  {derivedSlug() || <span class="new-project-slug-empty">(empty)</span>}
+                </code>
                 <button
                   type="button"
                   class="new-project-slug-edit"
-                  onClick={resetSlugToAuto}
-                  disabled={busy()}
+                  onClick={beginEditSlug}
+                  disabled={busy() || !derivedSlug()}
                 >
-                  reset
+                  edit
                 </button>
               </div>
-            </Show>
-          </div>
+            }
+          >
+            <div class="new-project-slug-edit-row">
+              <input
+                ref={(el) => (slugRef = el)}
+                class="new-project-input new-project-slug-input"
+                type="text"
+                value={slugOverride() ?? ''}
+                onInput={(e) => setSlugOverride(e.currentTarget.value)}
+                disabled={busy()}
+              />
+              <button
+                type="button"
+                class="new-project-slug-edit"
+                onClick={resetSlugToAuto}
+                disabled={busy()}
+              >
+                reset
+              </button>
+            </div>
+          </Show>
+        </div>
 
+        <div class="new-project-field">
+          <span class="new-project-label">Kind</span>
+          <div class="new-project-radio-group">
+            <For each={KINDS}>
+              {(k) => (
+                <label class="new-project-radio">
+                  <input
+                    type="radio"
+                    name="new-project-kind"
+                    value={k}
+                    checked={kind() === k}
+                    onChange={() => setKind(k)}
+                    disabled={busy()}
+                  />
+                  <span>{k}</span>
+                </label>
+              )}
+            </For>
+          </div>
+        </div>
+
+        <div class="new-project-field">
+          <span class="new-project-label">Status</span>
+          <div class="new-project-radio-group">
+            <For each={STATUSES}>
+              {(s) => (
+                <label class="new-project-radio">
+                  <input
+                    type="radio"
+                    name="new-project-status"
+                    value={s}
+                    checked={status() === s}
+                    onChange={() => setStatus(s)}
+                    disabled={busy()}
+                  />
+                  <span>{s}</span>
+                </label>
+              )}
+            </For>
+          </div>
+        </div>
+
+        <Show when={kind() === 'incident'}>
           <div class="new-project-field">
-            <span class="new-project-label">Kind</span>
+            <span class="new-project-label">Environment</span>
             <div class="new-project-radio-group">
-              <For each={KINDS}>
-                {(k) => (
+              <For each={ENVIRONMENTS}>
+                {(e) => (
                   <label class="new-project-radio">
                     <input
                       type="radio"
-                      name="new-project-kind"
-                      value={k}
-                      checked={kind() === k}
-                      onChange={() => setKind(k)}
+                      name="new-project-env"
+                      value={e}
+                      checked={environment() === e}
+                      onChange={() => setEnvironment(e)}
                       disabled={busy()}
                     />
-                    <span>{k}</span>
+                    <span>{e}</span>
                   </label>
                 )}
               </For>
@@ -216,17 +240,17 @@ export function NewProjectModal(props: {
           </div>
 
           <div class="new-project-field">
-            <span class="new-project-label">Status</span>
+            <span class="new-project-label">Severity</span>
             <div class="new-project-radio-group">
-              <For each={STATUSES}>
+              <For each={SEVERITIES}>
                 {(s) => (
                   <label class="new-project-radio">
                     <input
                       type="radio"
-                      name="new-project-status"
+                      name="new-project-severity"
                       value={s}
-                      checked={status() === s}
-                      onChange={() => setStatus(s)}
+                      checked={severity() === s}
+                      onChange={() => setSeverity(s)}
                       disabled={busy()}
                     />
                     <span>{s}</span>
@@ -236,80 +260,36 @@ export function NewProjectModal(props: {
             </div>
           </div>
 
-          <Show when={kind() === 'incident'}>
-            <div class="new-project-field">
-              <span class="new-project-label">Environment</span>
-              <div class="new-project-radio-group">
-                <For each={ENVIRONMENTS}>
-                  {(e) => (
-                    <label class="new-project-radio">
-                      <input
-                        type="radio"
-                        name="new-project-env"
-                        value={e}
-                        checked={environment() === e}
-                        onChange={() => setEnvironment(e)}
-                        disabled={busy()}
-                      />
-                      <span>{e}</span>
-                    </label>
-                  )}
-                </For>
-              </div>
-            </div>
+          <label class="new-project-field">
+            <span class="new-project-label">Severity impact</span>
+            <input
+              class="new-project-input"
+              type="text"
+              value={severityImpact()}
+              onInput={(e) => setSeverityImpact(e.currentTarget.value)}
+              placeholder="One-line user-facing impact"
+              disabled={busy()}
+            />
+          </label>
+        </Show>
 
-            <div class="new-project-field">
-              <span class="new-project-label">Severity</span>
-              <div class="new-project-radio-group">
-                <For each={SEVERITIES}>
-                  {(s) => (
-                    <label class="new-project-radio">
-                      <input
-                        type="radio"
-                        name="new-project-severity"
-                        value={s}
-                        checked={severity() === s}
-                        onChange={() => setSeverity(s)}
-                        disabled={busy()}
-                      />
-                      <span>{s}</span>
-                    </label>
-                  )}
-                </For>
-              </div>
-            </div>
+        <Show when={error()}>
+          <p class="new-project-error">{error()}</p>
+        </Show>
 
-            <label class="new-project-field">
-              <span class="new-project-label">Severity impact</span>
-              <input
-                class="new-project-input"
-                type="text"
-                value={severityImpact()}
-                onInput={(e) => setSeverityImpact(e.currentTarget.value)}
-                placeholder="One-line user-facing impact"
-                disabled={busy()}
-              />
-            </label>
-          </Show>
-
-          <Show when={error()}>
-            <p class="new-project-error">{error()}</p>
-          </Show>
-
-          <div class="new-project-actions">
-            <button class="modal-button" onClick={props.onClose} disabled={busy()}>
-              Cancel
-            </button>
-            <button
-              class="modal-button new-project-submit"
-              onClick={() => void submit()}
-              disabled={busy() || !title().trim() || !effectiveSlug()}
-            >
-              {busy() ? 'Creating…' : 'Create'}
-            </button>
-          </div>
+        <div class="new-project-actions">
+          <button class="modal-button" onClick={props.onClose} disabled={busy()}>
+            Cancel
+          </button>
+          <button
+            class="modal-button new-project-submit"
+            onClick={() => void submit()}
+            disabled={busy() || !title().trim() || !effectiveSlug()}
+          >
+            {busy() ? 'Creating…' : 'Create'}
+          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

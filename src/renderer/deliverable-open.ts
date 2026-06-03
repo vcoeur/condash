@@ -1,5 +1,5 @@
 import type { Setter } from 'solid-js';
-import type { ModalState } from './note-modal';
+import type { ModalState } from './modal-types';
 import { categorise } from '@shared/file-category';
 
 export interface DeliverableOpenSetters {

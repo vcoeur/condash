@@ -1,4 +1,5 @@
 import { type JSX, onCleanup, onMount, Show } from 'solid-js';
+import { Modal } from './modal';
 import './confirm-modal.css';
 
 export interface ConfirmModalProps {
@@ -18,18 +19,17 @@ export interface ConfirmModalProps {
 }
 
 /**
- * Reusable confirmation dialog — replaces ad-hoc copies of QuitConfirmModal
- * and the native `window.confirm()` calls scattered through the renderer.
- * The Init "lay down the template?" prompt and the per-card force-stop /
- * unsaved-edits prompts all funnel through this one shape.
+ * Reusable confirmation dialog — the single confirm surface for the renderer,
+ * replacing the native `window.confirm()` calls. The quit prompt, the Init
+ * "lay down the template?" prompt, and the per-card force-stop / unsaved-edits
+ * prompts all funnel through this one shape.
  */
 export function ConfirmModal(props: ConfirmModalProps) {
+  // Esc → cancel and backdrop dismissal are owned by the shared <Modal>
+  // shell. Confirm adds Enter-to-confirm on top, so it keeps a keydown
+  // listener for that one key.
   const handleKey = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      props.onCancel();
-    } else if (event.key === 'Enter') {
+    if (event.key === 'Enter') {
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'BUTTON') return;
       event.preventDefault();
@@ -42,49 +42,35 @@ export function ConfirmModal(props: ConfirmModalProps) {
   onCleanup(() => document.removeEventListener('keydown', handleKey, true));
 
   return (
-    <div class="modal-backdrop" onClick={props.onCancel}>
-      <div
-        class="modal confirm-modal"
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={props.title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header class="modal-head">
-          <span class="modal-title">{props.title}</span>
-          <span class="modal-head-spacer" />
+    <Modal
+      class="confirm-modal"
+      role="alertdialog"
+      ariaLabel={props.title}
+      title={props.title}
+      onClose={props.onCancel}
+    >
+      <div class="confirm-body">
+        <Show when={props.body !== undefined}>
+          {typeof props.body === 'string' ? (
+            <p class="confirm-message">{props.body}</p>
+          ) : (
+            (props.body as () => JSX.Element)()
+          )}
+        </Show>
+        <div class="confirm-actions">
+          <button class="modal-button" onClick={props.onCancel}>
+            {props.cancelLabel ?? 'Cancel'}
+          </button>
           <button
             class="modal-button"
-            onClick={props.onCancel}
-            title="Close (Esc)"
-            aria-label="Close"
+            classList={{ warn: props.destructive === true }}
+            onClick={props.onConfirm}
+            autofocus
           >
-            ×
+            {props.confirmLabel ?? 'Confirm'}
           </button>
-        </header>
-        <div class="confirm-body">
-          <Show when={props.body !== undefined}>
-            {typeof props.body === 'string' ? (
-              <p class="confirm-message">{props.body}</p>
-            ) : (
-              (props.body as () => JSX.Element)()
-            )}
-          </Show>
-          <div class="confirm-actions">
-            <button class="modal-button" onClick={props.onCancel}>
-              {props.cancelLabel ?? 'Cancel'}
-            </button>
-            <button
-              class="modal-button"
-              classList={{ warn: props.destructive === true }}
-              onClick={props.onConfirm}
-              autofocus
-            >
-              {props.confirmLabel ?? 'Confirm'}
-            </button>
-          </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

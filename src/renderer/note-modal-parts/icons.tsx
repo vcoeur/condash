@@ -1,6 +1,8 @@
 /**
- * Modal-head icons for the note modal. Stroke-width 1.5/1.6 across the
- * set; copied verbatim from the pre-split `note-modal.tsx`.
+ * Note-specific modal-head icons (edit / view / save). The shared
+ * `IconClose` / `IconExternal` glyphs live in the global `../icons` shelf —
+ * the note modal imports them from there so the close-X and external-link
+ * affordances read identically everywhere, rather than from divergent copies.
  */
 
 export function IconEdit() {
@@ -51,40 +53,6 @@ export function IconSave() {
       <path d="M2.5 2.5h8.5L13.5 5v8.5h-11z" />
       <path d="M5 2.5v3h5v-3" />
       <rect x="4.5" y="9" width="7" height="4.5" />
-    </svg>
-  );
-}
-
-export function IconExternal() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5.5 3h-3v10h10v-3" />
-      <path d="M9 2.5h4.5V7" />
-      <path d="M7 9l6.5-6.5" />
-    </svg>
-  );
-}
-
-export function IconClose() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 4l8 8M12 4l-8 8" />
     </svg>
   );
 }
