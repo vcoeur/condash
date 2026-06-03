@@ -7,7 +7,7 @@
  */
 
 import { createSignal, For, Show, type JSX } from 'solid-js';
-import { isSectionMarker, type RawRepo } from '../../main/config-schema';
+import { isSectionMarker, type RawRepo } from '@shared/config-types';
 import { type BindTextFn, OPEN_WITH_SLOTS, type RawConfig } from './data';
 import { FieldBadgeRow, type InheritanceState } from './badges';
 import { RepoRow } from './repo-row';

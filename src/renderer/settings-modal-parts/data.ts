@@ -7,7 +7,7 @@ import type {
   TerminalXtermPrefs,
   Theme,
 } from '@shared/types';
-import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../../main/config-schema';
+import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '@shared/config-types';
 
 export type SettingsTab = 'global' | 'conception';
 
