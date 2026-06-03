@@ -133,9 +133,20 @@ export function TerminalPane(props: {
   // don't race.
   const closingTabs = new Set<string>();
 
-  // Accumulated raw pty output per session (ANSI codes included). Used by
-  // waitForReady to detect agent prompt markers without re-parsing xterm buffers.
+  // Accumulated raw pty output per session (ANSI codes included), kept as a
+  // rolling tail. Used only by waitForReady to detect agent prompt markers
+  // without re-parsing xterm buffers — a freshly emitted prompt sits at the
+  // tail, so retaining the last MAX_SESSION_DATA bytes is sufficient while
+  // bounding renderer memory for a long-lived tab (the full scrollback already
+  // lives in the xterm itself).
+  const MAX_SESSION_DATA = 64 * 1024;
   const sessionData = new Map<string, string>();
+
+  /** Append a chunk to a session's rolling buffer, trimming to the tail cap. */
+  const appendSessionData = (id: string, chunk: string): void => {
+    const next = (sessionData.get(id) ?? '') + chunk;
+    sessionData.set(id, next.length > MAX_SESSION_DATA ? next.slice(-MAX_SESSION_DATA) : next);
+  };
 
   // Pending readiness waiters keyed by session id.
   const readyWaiters = new Map<
@@ -209,8 +220,7 @@ export function TerminalPane(props: {
     const host = hostFor(column);
     if (host) host.appendChild(element);
     if (replay) {
-      const prev = sessionData.get(id) || '';
-      sessionData.set(id, prev + replay);
+      appendSessionData(id, replay);
     }
     const mounted = mountXterm(element, id, {
       replay,
@@ -482,8 +492,7 @@ export function TerminalPane(props: {
 
   // ---- live data + exit notification ----
   const offTermData = window.condash.onTermData(({ id, data }) => {
-    const prev = sessionData.get(id) || '';
-    sessionData.set(id, prev + data);
+    appendSessionData(id, data);
     checkReadyWaiters(id);
     const handle = xterms.get(id);
     handle?.term.write(data);

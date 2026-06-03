@@ -114,6 +114,16 @@ describe('logsListDays', () => {
     const result = (await handlers.logsListDays()) as { day: string }[];
     expect(result.map((r) => r.day)).toEqual(['2026-05-13']);
   });
+
+  it('reports the per-day .txt session count', async () => {
+    writeSession('2026-05-13', '142207', 't-aaa', 'x', {});
+    writeSession('2026-05-13', '093001', 't-bbb', 'x', {});
+    writeSession('2026-05-10', '180000', 't-ccc', 'x', {});
+    const result = (await handlers.logsListDays()) as { day: string; sessions: number }[];
+    const byDay = Object.fromEntries(result.map((r) => [r.day, r.sessions]));
+    expect(byDay['2026-05-13']).toBe(2);
+    expect(byDay['2026-05-10']).toBe(1);
+  });
 });
 
 describe('logsListSessions', () => {

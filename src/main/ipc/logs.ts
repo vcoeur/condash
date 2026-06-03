@@ -44,6 +44,11 @@ interface DayEntry {
   day: string;
   /** Path to the day directory. */
   path: string;
+  /** Number of `.txt` session files in the day. Counted from the directory
+   *  listing the walk already reads, so it costs no extra I/O — it lets the
+   *  Logs pane render day/month counts + the headline total without fetching
+   *  every day's full session metadata up front. */
+  sessions: number;
 }
 
 async function activeConceptionPath(): Promise<string | null> {
@@ -75,8 +80,9 @@ async function listDaysForActiveConception(): Promise<DayEntry[]> {
         // remnants don't count).
         const dayPath = join(monthPath, d);
         const dayFiles = await readDirSafe(dayPath);
-        if (!dayFiles.some(isSessionFile)) continue;
-        out.push({ day: `${y}-${m}-${d}`, path: dayPath });
+        const sessions = dayFiles.filter(isSessionFile).length;
+        if (sessions === 0) continue;
+        out.push({ day: `${y}-${m}-${d}`, path: dayPath, sessions });
       }
     }
   }

@@ -16,6 +16,10 @@ import './search-modal.css';
 
 const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
 
+/** Minimum query length before hitting the backend. A 1-char query matches
+ * nearly everything and produces the worst-case scan for no useful result. */
+const MIN_QUERY_LEN = 2;
+
 /**
  * Modal-shell around the search backend. Top-anchored (command-palette
  * feel) — expands downward as results arrive.
@@ -50,10 +54,18 @@ export function SearchModal(props: {
   let inputEl: HTMLInputElement | undefined;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const [results] = createResource<SearchResults, string>(query, async (q) => {
-    if (q.trim().length === 0) return EMPTY_RESULTS;
-    return window.condash.search(q);
-  });
+  // Re-runs whenever the query OR the active source filter changes. A specific
+  // filter is forwarded to the backend as a `scopes` narrow so it stops
+  // scanning the unselected buckets (notably the heavy logs tree); 'all' keeps
+  // the full-tree search. Sub-MIN_QUERY_LEN queries never reach the backend.
+  const [results] = createResource(
+    () => ({ q: query(), filter: sourceFilter() }),
+    async ({ q, filter }) => {
+      if (q.trim().length < MIN_QUERY_LEN) return EMPTY_RESULTS;
+      const scopes = filter === 'all' ? undefined : [filter];
+      return window.condash.search(q, scopes);
+    },
+  );
 
   const grouped = createMemo(() => groupHits(results()?.hits ?? []));
   const truncated = createMemo(() => !!results()?.truncated);
@@ -78,6 +90,16 @@ export function SearchModal(props: {
   const showResources = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'resources';
   const showSkills = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'skills';
   const showLogs = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'logs';
+
+  // Once a specific filter narrows the backend, the other buckets aren't
+  // searched, so their counts would read a misleading 0. Show a pill's count
+  // only in the 'all' view or on the active pill itself.
+  const pillCount = (filter: SourceFilter, count: number): string =>
+    sourceFilter() === 'all' || sourceFilter() === filter ? String(count) : '';
+
+  // Long enough to search — below this we keep showing the tips rather than
+  // flashing a premature "no matches" while the user is still typing.
+  const queryLongEnough = (): boolean => input().trim().length >= MIN_QUERY_LEN;
 
   // Visible-results count under the active filter — drives the
   // "no matches in this source" empty state.
@@ -204,7 +226,7 @@ export function SearchModal(props: {
             ×
           </button>
         </header>
-        <Show when={input().trim().length > 0}>
+        <Show when={queryLongEnough()}>
           <div class="search-source-filter" role="radiogroup" aria-label="Filter by source">
             <button
               class="search-source-pill"
@@ -213,7 +235,7 @@ export function SearchModal(props: {
               aria-checked={sourceFilter() === 'all'}
               onClick={() => changeFilter('all')}
             >
-              All <span class="search-source-count">{totalCount()}</span>
+              All <span class="search-source-count">{pillCount('all', totalCount())}</span>
             </button>
             <button
               class="search-source-pill"
@@ -222,7 +244,8 @@ export function SearchModal(props: {
               aria-checked={sourceFilter() === 'projects'}
               onClick={() => changeFilter('projects')}
             >
-              Projects <span class="search-source-count">{projectCount()}</span>
+              Projects{' '}
+              <span class="search-source-count">{pillCount('projects', projectCount())}</span>
             </button>
             <button
               class="search-source-pill"
@@ -231,7 +254,8 @@ export function SearchModal(props: {
               aria-checked={sourceFilter() === 'knowledge'}
               onClick={() => changeFilter('knowledge')}
             >
-              Knowledge <span class="search-source-count">{knowledgeCount()}</span>
+              Knowledge{' '}
+              <span class="search-source-count">{pillCount('knowledge', knowledgeCount())}</span>
             </button>
             <button
               class="search-source-pill"
@@ -240,7 +264,8 @@ export function SearchModal(props: {
               aria-checked={sourceFilter() === 'resources'}
               onClick={() => changeFilter('resources')}
             >
-              Resources <span class="search-source-count">{resourcesCount()}</span>
+              Resources{' '}
+              <span class="search-source-count">{pillCount('resources', resourcesCount())}</span>
             </button>
             <button
               class="search-source-pill"
@@ -249,7 +274,7 @@ export function SearchModal(props: {
               aria-checked={sourceFilter() === 'skills'}
               onClick={() => changeFilter('skills')}
             >
-              Skills <span class="search-source-count">{skillsCount()}</span>
+              Skills <span class="search-source-count">{pillCount('skills', skillsCount())}</span>
             </button>
             <button
               class="search-source-pill"
@@ -258,12 +283,12 @@ export function SearchModal(props: {
               aria-checked={sourceFilter() === 'logs'}
               onClick={() => changeFilter('logs')}
             >
-              Logs <span class="search-source-count">{logsCount()}</span>
+              Logs <span class="search-source-count">{pillCount('logs', logsCount())}</span>
             </button>
           </div>
         </Show>
         <div class="search-modal-body">
-          <Show when={input().trim().length > 0} fallback={<SearchTips />}>
+          <Show when={queryLongEnough()} fallback={<SearchTips />}>
             <Suspense fallback={<div class="empty">Searching…</div>}>
               <Show
                 when={visibleCount() > 0}

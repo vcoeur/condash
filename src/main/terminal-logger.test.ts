@@ -109,7 +109,7 @@ describe('resolveLoggingPrefs', () => {
   it('returns defaults when patch is empty — enabled defaults to false (opt-in)', () => {
     const p = resolveLoggingPrefs({});
     expect(p.enabled).toBe(false);
-    expect(p.scrollback).toBe(10000);
+    expect(p.scrollback).toBe(5000);
     expect(p.maxDirMb).toBe(500);
     expect(p.retentionDays).toBe(14);
   });

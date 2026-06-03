@@ -45,8 +45,8 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  * text viewer; if you want full ANSI fidelity, use the live terminal's
  * Save-buffer button instead.
  *
- * Buffer is bounded by xterm scrollback (default 10000 lines × 200 cols
- * ≈ 2 MB max plain text). No rotation — the file size is self-capped by
+ * Buffer is bounded by xterm scrollback (default 5000 lines × 200 cols
+ * ≈ 1 MB max plain text). No rotation — the file size is self-capped by
  * the same mechanism that bounds the live terminal pane.
  *
  * All filesystem errors are swallowed locally and logged to stderr — the
@@ -92,7 +92,7 @@ const DEFAULT_PREFS: Required<TerminalLoggingPrefs> = {
   enabled: false,
   retentionDays: 14,
   maxDirMb: 500,
-  scrollback: 10000,
+  scrollback: 5000,
 };
 
 /** Default 5-second debounce. Pty `output` calls schedule the flush; the
