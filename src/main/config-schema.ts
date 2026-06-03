@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import type { CardMinWidthPrefs } from '../shared/types';
+import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
+
+// The raw repo-entry contract is process-agnostic and lives in shared/ so the
+// renderer can reference it without importing this zod-based module. Re-export
+// it here so existing main-process and CLI imports keep resolving.
+export { isSectionMarker, type RawRepo, type RawSubmoduleRepo };
 
 /**
  * Schemas for the two condash settings files. The unified shape lives here
@@ -135,48 +141,11 @@ const retiredAppEntry = z
   })
   .strict();
 
-export type RawSubmoduleRepo =
-  | string
-  | {
-      handle?: string;
-      name?: string;
-      path?: string;
-      label?: string;
-      aliases?: string[];
-      run?: string;
-      force_stop?: string;
-      install?: string;
-      pinned_branch?: string;
-      env?: string[];
-    };
-
-export type RawRepo =
-  | string
-  | {
-      handle?: string;
-      name?: string;
-      path?: string;
-      label?: string;
-      aliases?: string[];
-      run?: string;
-      force_stop?: string;
-      install?: string;
-      pinned_branch?: string;
-      env?: string[];
-      submodules?: RawSubmoduleRepo[];
-    }
-  | { section: string };
-
 /** A retired (defunct) app handle — see {@link retiredAppEntry}. */
 export interface RetiredApp {
   handle: string;
   label?: string;
   aliases?: string[];
-}
-
-/** True when `entry` is the section-marker variant of `RawRepo`. */
-export function isSectionMarker(entry: RawRepo): entry is { section: string } {
-  return typeof entry === 'object' && entry !== null && 'section' in entry;
 }
 
 const openWithSlot = z

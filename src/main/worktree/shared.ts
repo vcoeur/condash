@@ -16,16 +16,6 @@ export interface ConfigWithPaths extends ConfigShape {
   worktrees_path?: string;
 }
 
-export interface RawRepoExtended {
-  name: string;
-  pinned_branch?: string;
-  install?: string;
-  /** Files to copy from the primary into a new worktree on setup. Applied
-   *  unconditionally when present (no CLI flag needed). */
-  env?: string[];
-  submodules?: { name: string }[];
-}
-
 export interface RepoLookupExtended {
   name: string;
   cwd: string;
@@ -61,11 +51,10 @@ export function repoLookupMap(config: ConfigWithPaths): Map<string, RepoLookupEx
     const dirName = raw.name ?? basename(raw.path ?? '');
     const lookup = map.get(dirName);
     if (!lookup) continue;
-    const ext = raw as unknown as RawRepoExtended;
-    if (typeof ext.pinned_branch === 'string') lookup.pinnedBranch = ext.pinned_branch;
-    if (typeof ext.install === 'string') lookup.install = ext.install;
-    if (Array.isArray(ext.env) && ext.env.length > 0) {
-      lookup.env = ext.env.filter((s) => typeof s === 'string' && s.length > 0);
+    if (typeof raw.pinned_branch === 'string') lookup.pinnedBranch = raw.pinned_branch;
+    if (typeof raw.install === 'string') lookup.install = raw.install;
+    if (Array.isArray(raw.env) && raw.env.length > 0) {
+      lookup.env = raw.env.filter((s) => typeof s === 'string' && s.length > 0);
     }
   }
   return map;

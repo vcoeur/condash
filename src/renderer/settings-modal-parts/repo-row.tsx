@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from 'solid-js';
-import type { RawRepo, RawSubmoduleRepo } from '../../main/config-schema';
+import type { RawRepo, RawSubmoduleRepo } from '@shared/config-types';
 import { type BindTextFn, type DndHandlers, moveItem } from './data';
 
 const REPO_ROW_OPEN_KEY = 'condash:settings-modal:repo-row-open';

@@ -1,6 +1,7 @@
 import { basename, isAbsolute, join } from 'node:path';
 import type { TerminalPrefs } from '../shared/types';
 import { appHandle } from '../shared/app-color';
+import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 
 /**
  * Shared configuration-walk helpers. Both `repos.ts` (for the flat repo list
@@ -8,43 +9,17 @@ import { appHandle } from '../shared/app-color';
  * lookup the Run / force_stop pipelines need) walk the same `repositories`
  * tree. This module owns the recursion + cwd-resolution rules so the rest of
  * the main process doesn't re-implement them.
+ *
+ * The raw entry types and the section-marker discriminator are re-exported
+ * from `shared/config-types` so existing `config-walk` importers keep working.
  */
 
-export type RawSubmoduleRepo =
-  | string
-  | {
-      handle?: string;
-      name?: string;
-      path?: string;
-      label?: string;
-      aliases?: string[];
-      run?: string;
-      force_stop?: string;
-    };
-
-export type RawRepo =
-  | string
-  | {
-      handle?: string;
-      name?: string;
-      path?: string;
-      label?: string;
-      aliases?: string[];
-      run?: string;
-      force_stop?: string;
-      submodules?: RawSubmoduleRepo[];
-    }
-  | { section: string };
+export { isSectionMarker, type RawRepo, type RawSubmoduleRepo };
 
 export interface ConfigShape {
   workspace_path?: string;
   repositories?: RawRepo[];
   terminal?: TerminalPrefs;
-}
-
-/** True when `entry` is a section-marker variant of `RawRepo`. */
-export function isSectionMarker(entry: RawRepo): entry is { section: string } {
-  return typeof entry === 'object' && entry !== null && 'section' in entry;
 }
 
 export interface RepoLookup {

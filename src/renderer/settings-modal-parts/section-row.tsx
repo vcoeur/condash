@@ -1,5 +1,5 @@
 import { Show, type JSX } from 'solid-js';
-import type { RawRepo } from '../../main/config-schema';
+import type { RawRepo } from '@shared/config-types';
 import type { BindTextFn, DndHandlers } from './data';
 
 /**
