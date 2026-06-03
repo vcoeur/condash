@@ -18,7 +18,7 @@
 }
 
 .new-project-label {
-  font-size: 11px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: 0.04em;
@@ -27,7 +27,7 @@
 
 .new-project-input {
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-md);
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -50,7 +50,7 @@
 .new-project-slug-code {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   padding: 6px 8px;
   border: 1px dashed var(--border);
   border-radius: 6px;
@@ -66,7 +66,7 @@
 
 .new-project-slug-edit {
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-2xs);
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -106,7 +106,7 @@
   border-radius: 999px;
   background: var(--bg-subtle);
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   user-select: none;
   transition:
     background 100ms ease,
@@ -145,7 +145,7 @@
   border-radius: 6px;
   background: rgba(255, 80, 80, 0.08);
   color: var(--col-warn, #c66);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .new-project-actions {

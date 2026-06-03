@@ -5,38 +5,6 @@
   background: var(--bg-base);
 }
 
-.resources-group {
-  margin-bottom: 22px;
-}
-
-.resources-section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0 8px;
-  font-size: var(--text-sm);
-  letter-spacing: 0.06em;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.resources-section-header .name {
-  white-space: nowrap;
-}
-
-.resources-section-header .count {
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-  opacity: 0.8;
-}
-
-.resources-section-header .rule {
-  flex: 1;
-  height: 1px;
-  background: var(--border-subtle);
-}
-
 .resources-grid {
   display: grid;
   grid-template-columns: repeat(

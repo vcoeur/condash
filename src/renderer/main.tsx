@@ -52,6 +52,7 @@ import { useSkillsScope } from './hooks/use-skills-scope';
 import { useTreeEvents } from './hooks/use-tree-events';
 import type { Deliverable, Project, WorkingSurface } from '@shared/types';
 import './styles.css';
+import './primitives.css';
 import './modal-base.css';
 import './project-preview.css';
 import './action-dropdown-button.css';

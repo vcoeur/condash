@@ -10,12 +10,12 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px 24px;
   padding: 16px 18px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .shortcuts-group h3 {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
@@ -45,6 +45,6 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }

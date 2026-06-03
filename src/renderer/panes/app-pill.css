@@ -9,11 +9,11 @@
  * background carries the identity.
  */
 
+/* Geometry (inline-flex, centred, pill radius) comes from the shared
+ * `.pill` base in primitives.css; this rule keeps only the chip's own
+ * padding / type / palette. */
 .app-pill {
-  display: inline-flex;
-  align-items: center;
   padding: 1px 8px;
-  border-radius: 999px;
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   font-weight: 500;
@@ -30,7 +30,7 @@
  * colour comes from the pill palette (overrides .repo-name's
  * `color: var(--text)`). */
 .repo-name.app-pill {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: -0.005em;
   padding: 1px 7px;

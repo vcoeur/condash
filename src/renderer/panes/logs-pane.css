@@ -32,11 +32,11 @@
 
 .logs-toolbar-title {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
 }
 
 .logs-toolbar-count {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -45,7 +45,7 @@
 }
 
 .logs-refresh {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: 0.25rem 0.6rem;
   border: 1px solid var(--border);
   background: transparent;
@@ -67,7 +67,7 @@
 }
 
 .logs-view-switch button {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   padding: 0.2rem 0.6rem;
   border: none;
   background: transparent;
@@ -83,7 +83,7 @@
 
 /* scheduled / manual trigger badge in the Task runs view. */
 .logs-taskrun-trigger {
-  font-size: 0.68rem;
+  font-size: var(--text-3xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 0.05rem 0.4rem;
@@ -123,7 +123,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -189,7 +189,7 @@
 }
 
 .logs-day-subheader {
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   letter-spacing: 0.03em;
@@ -199,7 +199,7 @@
 
 .logs-day-empty {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   padding: 0.4rem 0;
 }
 
@@ -233,7 +233,7 @@
   color: var(--text-muted);
   cursor: pointer;
   padding: 0 0.6rem;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   line-height: 1;
 }
 
@@ -251,7 +251,7 @@
   min-width: 0;
   width: 100%;
   padding: 0.5rem 0.75rem;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: inherit;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
@@ -289,7 +289,7 @@
 
 .logs-session-repo {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   padding: 0.05rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -307,12 +307,12 @@
 .logs-session-size {
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 .logs-session-exit {
   font-variant-numeric: tabular-nums;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -332,5 +332,5 @@
 .logs-pane .empty {
   color: var(--text-muted);
   padding: 1rem;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }

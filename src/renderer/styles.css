@@ -81,17 +81,40 @@
   --kind-incident: #a8501f;
   --kind-document: #87761d;
 
-  /* Spacing scale: stick to these eight steps in new CSS. The bare --pad
-   * alias is kept so old call-sites keep building, but new code should
-   * reach for the named ones. */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --pad: var(--space-2);
+  /* Semantic aliases onto the palette above, so call-sites can name intent
+   * ("danger", "dim") and still get the one real colour. settings-modal.css
+   * used to reference these as undefined tokens with hardcoded fallbacks
+   * (--danger -> #d44, --text-dim -> #888) that diverged from the palette;
+   * defining them here routes those call-sites onto the real --warn /
+   * --text-faint, and because both base tokens are remapped in dark mode the
+   * aliases follow automatically. */
+  --danger: var(--warn);
+  --text-dim: var(--text-faint);
+
+  /* Terminal-preview sample palette (Tokyo Night). These are intentionally
+   * NOT the app palette: the Settings colour-grid preview shows a fixed
+   * sample terminal theme so the user can judge contrast independently of
+   * the dashboard's own colours. Defined once here (previously inlined as
+   * var() fallbacks in settings-modal.css) so the sample is tunable in one
+   * place; theme-independent by design, so no dark-mode remap. */
+  --preview-bg: #1a1b26;
+  --preview-fg: #c0caf5;
+  --preview-muted: #565f89;
+  --preview-green: #9ece6a;
+  --preview-red: #f7768e;
+  --preview-yellow: #e0af68;
+  --preview-blue: #7aa2f7;
+  --preview-magenta: #bb9af7;
+  --preview-cyan: #7dcfff;
+  --preview-cursor: #f7768e;
+
+  /* No spacing-scale tokens. An earlier --space-1..8 / --pad ladder was
+   * removed because it had zero consuming call-sites — every padding / gap /
+   * margin in the app is raw px, and the dominant literal (6px) had no step
+   * anyway. Spacing stays intentionally raw px; the tokenised scales are
+   * type (--text-*), radius (--radius-*) and the modal width tiers. If a
+   * spacing scale is reintroduced later, migrate the existing literals onto
+   * it in the same change so it never drifts back to documentation-only. */
 
   /* Radius scale. --radius and --radius-lg stay aliased to the new tokens
    * so the existing ~80 references keep resolving. */
@@ -115,124 +138,164 @@
   --font-mono:
     ui-monospace, 'SF Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace;
 
-  /* Type scale — single source of truth for every font-size in the four
-   * card surfaces (Projects / Knowledge / Skills / Resources). Five
-   * tokens, no half-pixel sizes. Roles are documented in
-   * conception/projects/2026-05/2026-05-08-condash-text-sizes/notes/02-scale.md
-   * (mapping: --text-2xs counts/chips, --text-xs meta/links,
-   * --text-sm section headers, --text-md body/summaries, --text-lg
-   * card titles). Glyph-sized rules (expander arrow 9px, twisty 14px,
-   * + button 16px) keep raw px because they're icons, not text. */
+  /* Type scale — the single source of truth for every font-size across the
+   * whole renderer, not just the four card surfaces. One unit (px) and one
+   * nine-step ladder; no rem ladders, no half-pixel sizes. Every text
+   * font-size must reach for one of these tokens; reviewers reject raw px /
+   * rem on text. Role guide:
+   *   --text-3xs  10px  tiny tags / chips / dense meta
+   *   --text-2xs  11px  counts, badges, secondary meta
+   *   --text-xs   12px  meta rows, links, dense controls
+   *   --text-sm   13px  section headers, list rows, form inputs
+   *   --text-md   14px  body / summaries (also the document base size)
+   *   --text-base 15px  emphasised body, pane toolbar titles
+   *   --text-lg   16px  card titles
+   *   --text-xl   18px  modal titles, settings section titles
+   *   --text-2xl  20px  large display headings (About app name)
+   *   --text-3xl  24px  welcome-splash heading (largest display)
+   * The ONLY exemption is genuine icon glyphs sized in px (e.g. the SVG
+   * caret/arrow markers, the +-button), which are not text — those keep raw
+   * px and say so in a comment. */
+  --text-3xs: 10px;
   --text-2xs: 11px;
   --text-xs: 12px;
   --text-sm: 13px;
   --text-md: 14px;
+  --text-base: 15px;
   --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
 
   color-scheme: light;
 }
 
 /* Dark theme — applied either by OS preference (when no [data-theme] override)
    or explicitly via [data-theme="dark"]. */
+/* Dark palette — defined ONCE here as a private `--dark-*` set on :root, so
+ * a colour edit happens in exactly one place. The two activation paths below
+ * (OS preference, explicit toggle) only *remap* the public tokens onto these
+ * private values; they carry no hex literals, so there is nothing to keep in
+ * lock-step. The values themselves are unchanged from the previous
+ * hand-mirrored blocks.
+ *
+ * Two-layer dark surface: page (--bg) sits below an inner panel (--bg-panel)
+ * used by Projects and other content stacks, with cards (--bg-elevated) on
+ * top. Warmth retune (D.9): the surface family is shifted from cool
+ * blue-black toward warm brown-black so dark mode mirrors the warm-paper
+ * light theme. The status gradient keeps the same red→amber→blue→gray arc as
+ * light mode, lifted in value to hold contrast against --bg-elevated; --warn
+ * pops a purple-pink hue so an unknown status doesn't merge with the
+ * now/review reds. */
+:root {
+  --dark-bg: #14120e;
+  --dark-bg-panel: #1a1814;
+  --dark-bg-elevated: #24221c;
+  --dark-bg-subtle: #2a2722;
+  --dark-bg-hover: #322f29;
+  --dark-text: #f1efe8;
+  --dark-text-body: #d6d3c8;
+  --dark-text-muted: #a3a098;
+  --dark-text-faint: #837f76;
+  --dark-border: #322d24;
+  --dark-border-strong: #443e34;
+  --dark-accent: #a48cf0;
+  --dark-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --dark-shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --dark-col-now: #f06b5d;
+  --dark-col-review: #f0a05a;
+  --dark-col-soon: #e8c25a;
+  --dark-col-later: #6aa6e8;
+  --dark-col-backlog: #7d92ad;
+  --dark-col-done: #7d8290;
+  --dark-warn: #d6748f;
+  --dark-col-unknown: #d6748f;
+  --dark-col-running: #5fc97f;
+  --dark-col-dirty: #e8a878;
+  --dark-kind-project: #5fa982;
+  --dark-kind-incident: #d68a4a;
+  --dark-kind-document: #c9b35a;
+}
+
+/* The single remap, applied to BOTH activation paths via one grouped
+ * selector. `system` theme removes [data-theme] (see use-theme.ts), so the
+ * OS-preference arm is needed for that cohort; the explicit toggle sets
+ * [data-theme='dark']. Both now read from the one --dark-* source above. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    /* Two-layer dark surface: page (--bg) sits below an inner panel
-     * (--bg-panel) used by Projects and other content stacks, with cards
-     * (--bg-elevated) on top. The page used to be near-pure-black (#08080a)
-     * which made cards read as cut-outs in the void; small ΔL between the
-     * three layers gives a calmer "panel with cards" feel.
-     *
-     * Warmth retune (D.9): the surface family is shifted from cool
-     * blue-black (#0f1014 / #15171c / #1f2128) toward warm brown-black so
-     * the dark mode mirrors the warm-paper light theme rather than fighting
-     * it. Text was already warm cream (#f1efe8 → #d6d3c8 → #a3a098); the
-     * old cool surface made the warm text float disconnectedly. The new
-     * surface temperatures sit closer to dark sepia, keeping the same
-     * three-layer ΔL but with a yellow-leaning hue. */
-    --bg: #14120e;
-    --bg-panel: #1a1814;
-    --bg-elevated: #24221c;
-    --bg-subtle: #2a2722;
-    --bg-hover: #322f29;
-    --text: #f1efe8;
-    --text-body: #d6d3c8;
-    --text-muted: #a3a098;
-    --text-faint: #837f76;
-    --border: #322d24;
-    --border-strong: #443e34;
-    --accent: #a48cf0;
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
-    --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
-
-    /* Dark-mode status gradient: same red→amber→blue→gray temperature
-     * arc as light mode, lifted in value/desaturated slightly to keep
-     * contrast against --bg-elevated without going neon. */
-    --col-now: #f06b5d;
-    --col-review: #f0a05a;
-    --col-soon: #e8c25a;
-    --col-later: #6aa6e8;
-    --col-backlog: #7d92ad;
-    --col-done: #7d8290;
-    /* Warn pops a different hue (purple-pink) so an unknown status
-     * doesn't visually merge with the now/review reds. */
-    --warn: #d6748f;
-    --col-unknown: #d6748f;
-    /* Code-pane semantic accents (see light-mode block for rationale). */
-    --col-running: #5fc97f;
-    --col-dirty: #e8a878;
-    /* Dark-mode kind colours — green / orange / yellow. */
-    --kind-project: #5fa982;
-    --kind-incident: #d68a4a;
-    --kind-document: #c9b35a;
+    --bg: var(--dark-bg);
+    --bg-panel: var(--dark-bg-panel);
+    --bg-elevated: var(--dark-bg-elevated);
+    --bg-subtle: var(--dark-bg-subtle);
+    --bg-hover: var(--dark-bg-hover);
+    --text: var(--dark-text);
+    --text-body: var(--dark-text-body);
+    --text-muted: var(--dark-text-muted);
+    --text-faint: var(--dark-text-faint);
+    --border: var(--dark-border);
+    --border-strong: var(--dark-border-strong);
+    --accent: var(--dark-accent);
+    --shadow-card: var(--dark-shadow-card);
+    --shadow-lift: var(--dark-shadow-lift);
+    --col-now: var(--dark-col-now);
+    --col-review: var(--dark-col-review);
+    --col-soon: var(--dark-col-soon);
+    --col-later: var(--dark-col-later);
+    --col-backlog: var(--dark-col-backlog);
+    --col-done: var(--dark-col-done);
+    --warn: var(--dark-warn);
+    --col-unknown: var(--dark-col-unknown);
+    --col-running: var(--dark-col-running);
+    --col-dirty: var(--dark-col-dirty);
+    --kind-project: var(--dark-kind-project);
+    --kind-incident: var(--dark-kind-incident);
+    --kind-document: var(--dark-kind-document);
     color-scheme: dark;
-
-    ::selection {
-      background: var(--accent);
-      color: #14120e;
-    }
   }
 }
 
 [data-theme='dark'] {
-  /* Same warm dark surface as the prefers-color-scheme block above —
-   * keep the two in lock-step. See the rationale comment there for the
-   * D.9 warmth retune. */
-  --bg: #14120e;
-  --bg-panel: #1a1814;
-  --bg-elevated: #24221c;
-  --bg-subtle: #2a2722;
-  --bg-hover: #322f29;
-  --text: #f1efe8;
-  --text-body: #d6d3c8;
-  --text-muted: #a3a098;
-  --text-faint: #837f76;
-  --border: #322d24;
-  --border-strong: #443e34;
-  --accent: #a48cf0;
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
-  --shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
-
-  /* Same red→amber→blue→gray temperature arc the @media block applies. */
-  --col-now: #f06b5d;
-  --col-review: #f0a05a;
-  --col-soon: #e8c25a;
-  --col-later: #6aa6e8;
-  --col-backlog: #7d92ad;
-  --col-done: #7d8290;
-  --warn: #d6748f;
-  --col-unknown: #d6748f;
-  --col-running: #5fc97f;
-  --col-dirty: #e8a878;
-
-  --kind-project: #5fa982;
-  --kind-incident: #d68a4a;
-  --kind-document: #c9b35a;
+  --bg: var(--dark-bg);
+  --bg-panel: var(--dark-bg-panel);
+  --bg-elevated: var(--dark-bg-elevated);
+  --bg-subtle: var(--dark-bg-subtle);
+  --bg-hover: var(--dark-bg-hover);
+  --text: var(--dark-text);
+  --text-body: var(--dark-text-body);
+  --text-muted: var(--dark-text-muted);
+  --text-faint: var(--dark-text-faint);
+  --border: var(--dark-border);
+  --border-strong: var(--dark-border-strong);
+  --accent: var(--dark-accent);
+  --shadow-card: var(--dark-shadow-card);
+  --shadow-lift: var(--dark-shadow-lift);
+  --col-now: var(--dark-col-now);
+  --col-review: var(--dark-col-review);
+  --col-soon: var(--dark-col-soon);
+  --col-later: var(--dark-col-later);
+  --col-backlog: var(--dark-col-backlog);
+  --col-done: var(--dark-col-done);
+  --warn: var(--dark-warn);
+  --col-unknown: var(--dark-col-unknown);
+  --col-running: var(--dark-col-running);
+  --col-dirty: var(--dark-col-dirty);
+  --kind-project: var(--dark-kind-project);
+  --kind-incident: var(--dark-kind-incident);
+  --kind-document: var(--dark-kind-document);
   color-scheme: dark;
+}
+
+/* Dark-mode ::selection (the OS-preference block previously nested this). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) ::selection {
+    background: var(--accent);
+    color: var(--dark-bg);
+  }
 }
 
 [data-theme='dark'] ::selection {
   background: var(--accent);
-  color: #14120e;
+  color: var(--dark-bg);
 }
 
 [data-theme='light'] {
@@ -547,7 +610,7 @@ button:hover {
 
 .all-panes-hidden-helper h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--text-xl);
   color: var(--text);
 }
 

@@ -815,6 +815,7 @@ body[data-dragging='project'] .row {
  * or per-child overrides are needed here — just the plus glyph sizing. */
 .new-project-button-plus {
   font-weight: 700;
+  /* Icon glyph (the +), not text — exempt from the --text-* scale. */
   font-size: 16px;
   line-height: 1;
 }

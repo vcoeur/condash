@@ -18,7 +18,7 @@
 }
 
 .welcome-heading {
-  font-size: 1.6rem;
+  font-size: var(--text-3xl);
   font-weight: 600;
   margin: 0;
   text-align: center;
@@ -33,7 +33,7 @@
 .welcome-path {
   text-align: center;
   margin: 0 0 1.5rem 0;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -58,7 +58,7 @@
 .welcome-intro {
   margin: 0 0 0.5rem 0;
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   line-height: 1.5;
 }
 
@@ -116,12 +116,12 @@
 
 .welcome-card-title {
   font-weight: 600;
-  font-size: 1rem;
+  font-size: var(--text-lg);
 }
 
 .welcome-card-body {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -142,7 +142,7 @@
   color: var(--text-muted);
   background: transparent;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .welcome-dismiss-link:hover {

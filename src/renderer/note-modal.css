@@ -16,7 +16,7 @@
 }
 
 .md-rendered {
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1.6;
   max-width: none;
   margin: 0;
@@ -143,7 +143,7 @@
 }
 
 .modal-readonly-tag {
-  font-size: 10px;
+  font-size: var(--text-3xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 2px 6px;
@@ -156,7 +156,7 @@
 
 .modal-banner {
   padding: 8px 14px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-elevated);
   color: var(--text-muted);
@@ -188,7 +188,7 @@
   color: var(--warn);
   padding: 8px 14px;
   border-bottom: 1px solid var(--warn);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .modal-confirm-message {
@@ -216,7 +216,7 @@
 
 .find-count {
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -229,7 +229,7 @@
 .cm-host .cm-editor {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-sm);
   height: 100%;
 }
 
@@ -275,7 +275,7 @@
 
 .deliverables-strip h3 {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
@@ -306,7 +306,7 @@
 
 .deliverable-desc {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* Read view of a non-markdown file: one full-width highlighted code block.
@@ -323,7 +323,7 @@
   border-radius: var(--radius);
   background: var(--bg-subtle);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 .config-summary-panel summary {
   cursor: pointer;
@@ -340,7 +340,7 @@
 .config-summary-link {
   margin-left: auto;
   font-weight: 500;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .config-summary-list {
   list-style: none;
@@ -355,7 +355,7 @@
 .config-summary-list li code {
   color: var(--fg);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-xs);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   padding: 0 4px;
