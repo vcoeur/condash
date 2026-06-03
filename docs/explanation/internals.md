@@ -145,6 +145,18 @@ The renderer is plain CSS files + CSS custom properties (no preprocessor; Vite t
 - **Semantic + preview tokens are defined, never faked via fallbacks.** `--danger` (→ `--warn`) and `--text-dim` (→ `--text-faint`) are real aliases onto the palette, and the Settings terminal-preview sample palette is a defined `--preview-*` set (a fixed Tokyo-Night sample, deliberately theme-independent). Reference tokens directly; do **not** write `var(--made-up-token, #literal)` — an undefined token with a hardcoded fallback silently diverges from the palette.
 - **Shared shape primitives.** `primitives.css` holds `.section-header` (the uppercase label · count · rule bar) and `.pill` (the rounded-chip geometry shared by `app-pill`, `repo-status-badge`, `tree-special-badge`, `search-source-pill`, …). The pill base is applied via a grouped selector so existing badges inherit the geometry with no markup change; a new badge should add the `pill` class and keep only its colour/padding/font on its own class. Restyle "all pills" or "all section headers" from the one base, not per-pane.
 
+### 12. Component split threshold + the `*-parts/` layout { #component-parts }
+
+A renderer pane or modal `.tsx` that grows past **~400 LOC**, or that holds more than one sub-component, is split into a sibling `<name>-parts/` directory rather than left as a monolith. The keep-file (`<name>.tsx`) keeps the public component and the orchestration — the signals, the IPC calls, the create/edit/save/delete flow — and imports the rest from `<name>-parts/`. The threshold is a smell, not a hard gate: a single-responsibility file that is long because the problem is inherently detailed (the index-tree parser is the canonical case) stays whole; the trigger is *multiple concerns in one file*, which length usually signals.
+
+The sub-file vocabulary is fixed so a reader can predict the layout:
+
+- **`data.ts`** — pure logic + types + constants, dependency-free (no Solid, no `window.condash`), so it unit-tests directly. It carries a sibling **`data.test.ts`** (vitest, picked up by `src/**/*.test.ts`). Extracting the pure helpers into `data.ts` is what makes the decomposition testable — the monolith's logic was reachable only by driving the whole component in Playwright.
+- **`icons.tsx`** — pane-specific SVG glyphs (only genuinely local ones; shared glyphs live in `src/renderer/icons.tsx`).
+- **One presentational `.tsx` per sub-component**, named for what it renders (`task-editor.tsx`, `task-fill.tsx`, `task-running.tsx`, `badges.tsx`).
+
+Existing `-parts/` dirs: `panes/projects-parts/`, `panes/code-parts/`, `panes/tasks-parts/`, `settings-modal-parts/`, `note-modal-parts/`, `project-preview-parts/`. A sub-component that *is* a modal renders through the shared `<Modal>` shell (invariant 10) — it does not hand-roll a backdrop/header. `settings-modal.tsx` is the one pane still over the threshold with a richer split owed (its Esc/save contract keeps it off the shared shell); decompose it further when next substantially touched.
+
 ## Environment hygiene { #environment-hygiene }
 
 condash spawns subprocesses (terminals, runners, `force_stop` commands, open-with launchers). The main process scrubs the environment before each spawn to avoid leaking interpreter-specific vars into unrelated child programs:
