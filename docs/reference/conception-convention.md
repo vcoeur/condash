@@ -89,7 +89,7 @@ Markdown checklists inside any `##`-level section. The dashboard's default "add 
 
 The dashboard's checkbox-click cycle is `open → progress → done → abandoned → open`, implemented in [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) (writer) and [`src/renderer/panes/projects.tsx`](https://github.com/vcoeur/condash/blob/main/src/renderer/panes/projects.tsx) (UI cycle order). The `[!]` (blocked) marker is **not** part of the cycle — set it by editing the README directly when work on a step is paused waiting for an external decision; the parser, counter, writer, and renderer all round-trip it without loss.
 
-The canonical list of markers (and the parsing regex bracket class) lives in [`src/shared/types.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/types.ts) as `STEP_MARKERS`.
+The canonical list of markers (and the parsing regex bracket class) lives in [`src/shared/types/project.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/types/project.ts) as `STEP_MARKERS`.
 
 ### Where to put steps
 

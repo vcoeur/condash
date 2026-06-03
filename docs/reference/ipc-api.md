@@ -102,7 +102,7 @@ Per-session terminal capture (when `terminal.logging.enabled` is true) lands at 
 | Verb | What it does |
 |---|---|
 | `logsListDays()` | List day directories under `.condash/logs/` newest first. Returns `Array<{ day: 'YYYY-MM-DD', sessionCount: number, totalBytes: number }>`. |
-| `logsListSessions(day)` | List session files within a given day. Returns `TermLogSessionMeta[]` — see [`src/shared/types.ts:TermLogSessionMeta`](https://github.com/vcoeur/condash/blob/main/src/shared/types.ts). Parses the `# condash: {...}` header (+ footer when present) on each file. |
+| `logsListSessions(day)` | List session files within a given day. Returns `TermLogSessionMeta[]` — see [`src/shared/types/logs.ts:TermLogSessionMeta`](https://github.com/vcoeur/condash/blob/main/src/shared/types/logs.ts). Parses the `# condash: {...}` header (+ footer when present) on each file. |
 | `logsReadSession(filePath)` | Read one session file. Returns `TermLogSessionRead` — `{ text, meta }` with metadata header / footer stripped from the body. |
 | `logsDeleteDay(day)` | Delete an entire day directory. Returns the number of session files removed. |
 | `logsDeleteSession(filePath)` | Delete one session file. Refuses paths outside `.condash/logs/`. |

@@ -8,7 +8,7 @@ import type { HelpDocName } from '../shared/types';
  * string for `readHelpDoc(name)`, but only entries in this allowlist resolve
  * to a file. Help docs live under `docs/help/` and are intentionally short
  * and self-contained (no relative wikilinks). The `HelpDocName` union lives
- * in `shared/types.ts` so the IPC contract stays in lock-step with this map.
+ * in `shared/types/common.ts` so the IPC contract stays in lock-step with this map.
  */
 const PATHS: Record<HelpDocName, string> = {
   welcome: 'help/welcome.md',

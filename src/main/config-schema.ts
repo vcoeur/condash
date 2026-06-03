@@ -399,7 +399,7 @@ export const globalSettingsSchema = z
     /** Active scope toggle in the Skills pane (`conception` vs `user`).
      *  Per-machine UI state written by `setSkillsActiveScope`; global-only, so
      *  it is absent from `conceptionConfigSchema`. Mirrors `SkillScope` in
-     *  shared/types.ts. */
+     *  shared/types/settings.ts. */
     skillsActiveScope: z.enum(['conception', 'user']).optional(),
   })
   .strict();
