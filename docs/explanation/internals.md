@@ -149,7 +149,7 @@ The inverse problem — a GUI launch *missing* entries the user put in their log
 
 The four Markdown sources (projects incl. notes, knowledge, resources, skills) are held in an **in-memory index** in the main process (`src/main/search/index-cache.ts`): each file's content, lowercased content, region map, and title are precomputed once at conception-open, so a query runs only the per-term `indexOf` + scoring over RAM strings — no per-keystroke re-walk / re-read / re-lowercase. The index is built fire-and-forget (never blocks boot; queries fall back to an on-disk scan until it resolves) and kept incrementally fresh by the chokidar watcher (`src/main/watcher.ts` → `applyIndexFsEvent`): an add/change re-prepares one file, an unlink drops it. ~16 MB resident at conception scale.
 
-**Logs are deliberately *not* indexed.** They're ~9/10 of the corpus bytes (tens of MB) and rarely searched, so caching them would cost ~100 MB+ for little gain. They stay on-disk-scanned, and only when `logs` is in scope — so a scoped (Projects/Knowledge/…) query is served entirely from RAM in single-digit-to-tens of milliseconds, while an all-sources query still pays the log disk-scan. (History: search re-walked the *whole* tree on every query through v4.31.0; at a few hundred Markdown files that was a handful of ms, but a conception with thousands of files + large logs pushed per-query cost past 1 s — the index landed in response.)
+**Logs are deliberately *not* indexed.** They're ~9/10 of the corpus bytes (tens of MB) and rarely searched, so caching them would cost ~100 MB+ for little gain. They stay on-disk-scanned, and only when `logs` is in scope. The renderer's default **All** filter forwards the four indexed Markdown scopes (`ALL_SCOPES` in `src/renderer/search-modal.tsx`), **not** "everything" — so a default query, like any scoped Markdown query, is served entirely from RAM in single-digit-to-tens of milliseconds; the log disk-scan runs only when the user picks the **Logs** filter. (History: search re-walked the *whole* tree on every query through v4.31.0; at a few hundred Markdown files that was a handful of ms, but a conception with thousands of files + large logs pushed per-query cost past 1 s — the index landed in v4.32.0. Through v4.32.0 the default All query still paid the ~1 s log disk-scan because it forwarded *no* scope; narrowing the default to the indexed sources closed that gap.)
 
 ## Why Electron, not Tauri
 
@@ -184,7 +184,7 @@ The renderer bundle ships in the asar at `dist/`. The dev server (`vite`) listen
 
 ## What's deliberately *not* an invariant
 
-- **Log search index.** The Markdown sources are indexed in RAM ([above](#search-index)), but logs stay scanned on disk per query — they're the bulk of the bytes and rarely searched.
+- **Log search index.** The Markdown sources are indexed in RAM ([above](#search-index)), but logs stay scanned on disk — and only when the **Logs** filter is selected (the default All query is index-only) — because they're the bulk of the bytes and rarely searched.
 - **Worker isolation.** Mutations and parses run on the main-process event loop. The largest file is a project README (kilobytes); the parse is microseconds.
 - **Authentication / authorisation.** condash is single-user, local-only. There is no user model.
 - **Cross-process logging.** Main and renderer write to their own console streams. There is no aggregator and no log file.

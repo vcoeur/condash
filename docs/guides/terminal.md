@@ -221,7 +221,7 @@ The `⌫` button in the modal head deletes the open session (one `.txt`, no side
 
 ### Searching logs across sessions
 
-Logs are a source of the global search modal (`Cmd+K`), alongside projects, knowledge, resources, and skills. A log hit's title shows the session's start time (`YYYY-MM-DD HH:MM:SS`); activating it opens the viewer modal directly on that session. The `# condash:` header / footer lines are stripped from the body before substring matching so search snippets carry actual transcript text, not the metadata JSON.
+Logs are a source of the global search modal (`Cmd+K`) — but, being large and rarely searched, they're searched only when you pick the **Logs** filter pill, not in the default **All** view (see [Search · Source filters](search.md#source-filters)). A log hit's title shows the session's start time (`YYYY-MM-DD HH:MM:SS`); activating it opens the viewer modal directly on that session. The `# condash:` header / footer lines are stripped from the body before substring matching so search snippets carry actual transcript text, not the metadata JSON.
 
 #### What's captured
 

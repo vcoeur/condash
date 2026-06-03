@@ -35,6 +35,12 @@ For every file under `knowledge/`:
 
 Content indexing covers `.md`, `.txt`, `.json`. Files larger than 512 KiB are skipped for content — filename and title still index. This keeps a stray large log or exported PDF text from dominating search cost.
 
+## Source filters
+
+Once your query is long enough, a row of filter pills appears: **All · Projects · Knowledge · Resources · Skills · Logs**. The default is **All**, which searches the four Markdown sources held in the in-memory index — so results land in milliseconds even on a large conception.
+
+**Terminal logs are not in the default results.** They're the bulk of the searchable bytes and rarely searched, so the default **All** view skips them to stay fast. To search transcripts, pick the **Logs** pill — that scans the log tree on demand and lists matching sessions (click one to open it in the log viewer). Because logs aren't scanned under **All**, the Logs pill shows a hit count only while it's the active filter.
+
 ## Ranking
 
 Matches are weighted by where they're found:
