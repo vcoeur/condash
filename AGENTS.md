@@ -8,9 +8,10 @@ Electron build of condash. As of 2026-04-27 this **is** the canonical condash �
 - **Preload**: same bundler, output at `dist-electron/preload/index.js`. Stays CJS because `webPreferences.sandbox: true` + ESM preload don't mix on Electron.
 - **Typecheck**: `tsc -p tsconfig.main.json --noEmit` (and the renderer twin). `tsc` no longer emits — esbuild owns emission, tsc owns type-checking.
 - **Renderer**: Solid + Solid signals, Vite (with `vite-plugin-solid`), plain CSS files + CSS variables, `src/renderer/main.tsx`.
+- **Renderer boot chunk is on a diet** — heavy deps are **lazy-split** out of the eager entry chunk and loaded on first use, not at first paint: **xterm + its 9 addons** (`src/renderer/xterm-mount.ts`, dynamic-imported on first terminal open; the `liveTerms` registry + `refreshAllXtermThemes` live in the leaf `xterm-registry.ts` so `use-theme` can repaint terminals without pulling xterm); **markdown-it + highlight.js** (`src/renderer/markdown.ts` builds the engine lazily — `renderMarkdown`/`highlightCode` are async; the note/help/html modals `await` them via `createResource`); mermaid + CodeMirror were already split. Keep new heavy deps off the eager path the same way. (Eager chunk: 1.5 MB → ~0.4 MB at v4.32.0.)
 - **Shared types**: `src/shared/types.ts` — plain serialisable objects, ISO strings, no methods.
 - **Packaging**: electron-builder, single `BrowserWindow`, all modals/panes are in-renderer overlays.
-- **Watcher**: single global chokidar rooted at `<conception>/`, debounced 250 ms.
+- **Watcher**: single global chokidar rooted at `<conception>/`, debounced 250 ms. Also keeps the in-memory **search index** fresh (`src/main/search/index-cache.ts`): the four Markdown sources (projects incl. notes, knowledge, resources, skills) are precomputed in RAM at conception-open and queried without re-reading the tree; `applyIndexFsEvent` updates one file per FS event. **Logs are not indexed** — too large, rarely searched — so they're disk-scanned, and only when in scope. `search()` falls back to the on-disk scan only while the index is still building. See `docs/explanation/internals.md#search-index`.
 
 ### Adding a new main-process dep
 

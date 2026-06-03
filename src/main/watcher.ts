@@ -5,6 +5,7 @@ import { toPosix } from '../shared/path';
 import type { TreeEvent } from '../shared/types';
 import { migrateLegacyConfig } from './condash-dir-migrate';
 import { resolveConceptionPaths } from './conception-paths';
+import { applyIndexFsEvent, clearSearchIndex, rebuildSearchIndex } from './search/index-cache';
 
 const DEBOUNCE_MS = 250;
 
@@ -59,6 +60,10 @@ let pendingUnknown = false;
 
 export async function setWatchedConception(conceptionPath: string | null): Promise<void> {
   if (current?.path === conceptionPath) return;
+
+  // Conception is changing — drop the in-memory search index; it's rebuilt
+  // below for the new conception (or left empty when clearing).
+  clearSearchIndex();
 
   if (current) {
     await current.watcher.close().catch(() => undefined);
@@ -147,6 +152,13 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   });
 
   current = { path: conceptionPath, watcher, roots, paths };
+
+  // Build the in-memory search index for the markdown sources. Fire-and-forget
+  // so it never blocks boot; queries fall back to the on-disk scan until it
+  // resolves, and the watcher keeps it fresh thereafter.
+  void rebuildSearchIndex(conceptionPath).catch((err) => {
+    console.error('[watcher] rebuildSearchIndex failed', err);
+  });
 }
 
 /**
@@ -173,6 +185,15 @@ type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
 let refreshChain: Promise<void> = Promise.resolve();
 
 function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: WatchPaths): void {
+  // Keep the in-memory search index incrementally fresh. Independent of the
+  // renderer `classify` below: it covers project notes too (which classify maps
+  // to `unknown`), and only touches indexed markdown files.
+  if (current) {
+    void applyIndexFsEvent(current.path, eventName, path).catch((err) => {
+      console.error('[watcher] applyIndexFsEvent failed', err);
+    });
+  }
+
   const event = classify(eventName as ChokidarEvent, path, roots, paths);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);

@@ -1,57 +1,90 @@
-import MarkdownIt from 'markdown-it';
-import anchor from 'markdown-it-anchor';
-import taskLists from 'markdown-it-task-lists';
-import hljs from 'highlight.js/lib/common';
+import type MarkdownIt from 'markdown-it';
 import { wikilinks } from './wikilinks';
 
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: false,
-  highlight: (str, lang) => {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
-      } catch {
-        /* fall through */
-      }
-    }
-    return '';
-  },
-})
-  .use(anchor, { permalink: false })
-  .use(taskLists, { enabled: false })
-  .use(wikilinks);
-
-const defaultFence = md.renderer.rules.fence!;
-md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
-  const token = tokens[idx];
-  if (token.info.trim().toLowerCase() === 'mermaid') {
-    const content = md.utils.escapeHtml(token.content);
-    return `<pre class="mermaid">${content}</pre>\n`;
-  }
-  return defaultFence(tokens, idx, options, env, slf);
+// markdown-it + highlight.js are the single biggest non-terminal weight in the
+// eager renderer bundle (~237 KB / 16 % of the boot chunk). They're only needed
+// once the user opens a note / help / html modal, so the engine — the configured
+// MarkdownIt instance plus highlight.js/lib/common — is built lazily on first
+// render and cached. `renderMarkdown` / `highlightCode` are therefore async; the
+// modals already read their content asynchronously, so they await the engine the
+// same way. mermaid is loaded lazily too (see `getMermaid`).
+type MarkdownEngine = {
+  md: MarkdownIt;
+  highlight: typeof import('highlight.js/lib/common').default;
 };
 
-// Rewrite relative `<img src>` to a `condash-file:///abs-path` URL so the
-// custom protocol handler in main/index.ts can serve it. Without this, the
-// renderer's CSP + Chromium's cross-origin file:// policy silently drops the
-// image and falls back to alt text — see issue #85.
-const defaultImage = md.renderer.rules.image!;
-md.renderer.rules.image = (tokens, idx, options, env, slf) => {
-  const token = tokens[idx];
-  const baseDir = (env as { baseDir?: string }).baseDir;
-  if (baseDir) {
-    const srcIdx = token.attrIndex('src');
-    if (srcIdx >= 0 && token.attrs) {
-      const src = token.attrs[srcIdx][1];
-      if (isRelativeAssetPath(src)) {
-        token.attrs[srcIdx][1] = relativeToCondashFile(baseDir, src);
+let enginePromise: Promise<MarkdownEngine> | null = null;
+
+async function getEngine(): Promise<MarkdownEngine> {
+  if (!enginePromise) {
+    enginePromise = buildEngine();
+  }
+  return enginePromise;
+}
+
+async function buildEngine(): Promise<MarkdownEngine> {
+  const [{ default: MarkdownItCtor }, { default: anchor }, taskListsMod, hljsMod] =
+    await Promise.all([
+      import('markdown-it'),
+      import('markdown-it-anchor'),
+      import('markdown-it-task-lists'),
+      import('highlight.js/lib/common'),
+    ]);
+  // markdown-it-task-lists is shimmed as an untyped module (any).
+  const taskLists = taskListsMod.default;
+  const highlight = hljsMod.default;
+
+  const md = new MarkdownItCtor({
+    html: false,
+    linkify: true,
+    breaks: false,
+    highlight: (str, lang) => {
+      if (lang && highlight.getLanguage(lang)) {
+        try {
+          return highlight.highlight(str, { language: lang, ignoreIllegals: true }).value;
+        } catch {
+          /* fall through */
+        }
+      }
+      return '';
+    },
+  })
+    .use(anchor, { permalink: false })
+    .use(taskLists, { enabled: false })
+    .use(wikilinks);
+
+  const defaultFence = md.renderer.rules.fence!;
+  md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
+    const token = tokens[idx];
+    if (token.info.trim().toLowerCase() === 'mermaid') {
+      const content = md.utils.escapeHtml(token.content);
+      return `<pre class="mermaid">${content}</pre>\n`;
+    }
+    return defaultFence(tokens, idx, options, env, slf);
+  };
+
+  // Rewrite relative `<img src>` to a `condash-file:///abs-path` URL so the
+  // custom protocol handler in main/index.ts can serve it. Without this, the
+  // renderer's CSP + Chromium's cross-origin file:// policy silently drops the
+  // image and falls back to alt text — see issue #85.
+  const defaultImage = md.renderer.rules.image!;
+  md.renderer.rules.image = (tokens, idx, options, env, slf) => {
+    const token = tokens[idx];
+    const baseDir = (env as { baseDir?: string }).baseDir;
+    if (baseDir) {
+      const srcIdx = token.attrIndex('src');
+      if (srcIdx >= 0 && token.attrs) {
+        const src = token.attrs[srcIdx][1];
+        if (isRelativeAssetPath(src)) {
+          token.attrs[srcIdx][1] = relativeToCondashFile(baseDir, src);
+        }
       }
     }
-  }
-  return defaultImage(tokens, idx, options, env, slf);
-};
+    return defaultImage(tokens, idx, options, env, slf);
+  };
+
+  return { md, highlight };
+}
 
 function isRelativeAssetPath(src: string): boolean {
   if (!src) return false;
@@ -84,7 +117,9 @@ function relativeToCondashFile(baseDir: string, src: string): string {
  *  Each path segment is URI-encoded; the triple slash means "no host" so the
  *  pathname carries the full absolute path. The custom protocol handler in
  *  main/index.ts serves it from inside the conception tree. Shared by the
- *  relative-image rewriter above and the HTML preview modal. */
+ *  relative-image rewriter above and the HTML preview modal. Pure — kept out of
+ *  the lazy engine so the image/html modals can import it without pulling
+ *  markdown-it. */
 export function pathToCondashFileUrl(absPath: string): string {
   const encoded = absPath
     .replace(/\\/g, '/')
@@ -102,7 +137,13 @@ export interface RenderMarkdownOptions {
   baseDir?: string;
 }
 
-export function renderMarkdown(input: string, options: RenderMarkdownOptions = {}): string {
+/** Render markdown to HTML. Async: the markdown-it + highlight.js engine is
+ *  lazy-loaded and cached on first call (kept out of the boot chunk). */
+export async function renderMarkdown(
+  input: string,
+  options: RenderMarkdownOptions = {},
+): Promise<string> {
+  const { md } = await getEngine();
   return md.render(input, { baseDir: options.baseDir });
 }
 
@@ -127,16 +168,17 @@ function hljsLangForPath(path: string): string | undefined {
  * languages (and over-large files) degrade to escaped plain text. The `.hljs`
  * classes are themed by `code-theme.css`, the same palette the markdown fenced
  * code blocks use. Used by the note modal's read-only view and the HTML modal's
- * "Source" tab.
+ * "Source" tab. Async for the same lazy-engine reason as `renderMarkdown`.
  */
-export function highlightCode(text: string, path: string): string {
+export async function highlightCode(text: string, path: string): Promise<string> {
+  const { md, highlight } = await getEngine();
   if (text.length > MAX_HIGHLIGHT_BYTES) {
     return `<pre class="hljs"><code>${md.utils.escapeHtml(text)}</code></pre>`;
   }
   const lang = hljsLangForPath(path);
-  if (lang && hljs.getLanguage(lang)) {
+  if (lang && highlight.getLanguage(lang)) {
     try {
-      const { value } = hljs.highlight(text, { language: lang, ignoreIllegals: true });
+      const { value } = highlight.highlight(text, { language: lang, ignoreIllegals: true });
       return `<pre class="hljs"><code>${value}</code></pre>`;
     } catch {
       /* fall through to plain text */
@@ -211,7 +253,8 @@ async function getMermaid(): Promise<typeof import('mermaid').default> {
 /**
  * Drop the cached Mermaid instance so the next runMermaidIn re-initialises with
  * the current theme. Newly rendered diagrams pick up the theme; existing rendered
- * SVGs keep their colours until the next render.
+ * SVGs keep their colours until the next render. Pure (no markdown-it / hljs
+ * dependency) so `use-theme` can import it without pulling the markdown engine.
  */
 export function resetMermaidTheme(): void {
   mermaidPromise = null;

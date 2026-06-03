@@ -1,6 +1,5 @@
 import {
   createEffect,
-  createMemo,
   createResource,
   createSignal,
   For,
@@ -203,8 +202,9 @@ export function NoteModal(props: {
     },
   );
 
-  const html = createMemo(() => {
-    const text = content();
+  // markdown-it + highlight.js are lazy-loaded (out of the boot chunk), so the
+  // rendered HTML is a resource keyed on the loaded text rather than a memo.
+  const [html] = createResource(content, async (text) => {
     if (text == null) return '';
     const path = props.state?.path ?? null;
     const baseDir = path ? path.replace(/\/[^/]*$/, '') : undefined;
@@ -212,11 +212,9 @@ export function NoteModal(props: {
   });
 
   // Read view for a non-markdown file: syntax-highlight the source by extension.
-  const codeHtml = createMemo(() => {
-    const text = content();
-    if (text == null) return '';
-    return highlightCode(text, props.state?.path ?? '');
-  });
+  const [codeHtml] = createResource(content, async (text) =>
+    text == null ? '' : highlightCode(text, props.state?.path ?? ''),
+  );
 
   let bodyRef: HTMLDivElement | undefined;
   let editorParent: HTMLDivElement | undefined;
@@ -704,7 +702,7 @@ export function NoteModal(props: {
                 </ul>
               </section>
             </Show>
-            <article class="md-rendered" innerHTML={html()} />
+            <article class="md-rendered" innerHTML={html() ?? ''} />
           </Show>
           <Show
             when={
@@ -715,7 +713,7 @@ export function NoteModal(props: {
               !isMarkdown(props.state.path)
             }
           >
-            <div class="md-rendered raw-code" innerHTML={codeHtml()} />
+            <div class="md-rendered raw-code" innerHTML={codeHtml() ?? ''} />
           </Show>
           <Show when={!content.loading && !content.error && mode() === 'edit'}>
             <div class="cm-host" ref={(el) => (editorParent = el)} />

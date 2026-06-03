@@ -121,7 +121,7 @@ Same root cause as above. The renderer flips the marker optimistically, the IPC 
 
 ### Refresh button takes longer than a second
 
-The conception tree is too big or sits on a slow filesystem (network mount). condash re-walks the tree on each refresh — there is no index on purpose (see [Why no search index](../explanation/internals.md#why-no-search-index)). At a few hundred items this should be well under 50 ms; if you hit a noticeably slower wall, file an issue with the tree size and FS type.
+The conception tree is too big or sits on a slow filesystem (network mount). condash re-walks the tree on each refresh to re-read project READMEs and repo git state (the project list isn't indexed; [search](../explanation/internals.md#search-index) is). At a few hundred items this should be well under 50 ms; if you hit a noticeably slower wall, file an issue with the tree size and FS type.
 
 ### Embedded terminal is laggy under load
 

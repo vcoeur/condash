@@ -45,11 +45,11 @@ No language server integration, no go-to-definition, no diagnostics. Even for Ma
 
 **Why**: same reason as "no code editing." The IDE owns this surface.
 
-## No notes search index
+## No log search index
 
-Search re-walks the conception tree on every query (`src/main/search.ts`). At conception scale (a few hundred Markdown files of a few KB each) this is comfortably under 50 ms; an index would be a maintenance burden for no observable user gain. See [Internals — Why no search index](internals.md#why-no-search-index).
+The Markdown sources *are* indexed in RAM (`src/main/search/index-cache.ts`), so a Markdown query is served without touching disk. **Logs**, though, are still scanned on disk every query — they're the bulk of the corpus bytes and rarely searched, so caching them would cost a lot of resident memory for little gain. See [Internals — The search index](internals.md#search-index).
 
-**Why**: simplicity wins until it bites. If a future user has a 10 000-file conception tree, this becomes a real problem and a real index can be added. Today it isn't.
+**Why**: index where it pays. Markdown is small and frequently searched; logs are large and rarely. If log search ever feels slow, a deferred / lazy log index (built on first Logs-scope use) is the next step.
 
 ## No multi-window UI
 

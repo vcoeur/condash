@@ -29,7 +29,7 @@ import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
 import type { SerializeAddon } from '@xterm/addon-serialize';
-import { mountXterm, type MountedTerm } from './xterm-mount';
+import type { MountedTerm } from './xterm-mount';
 import { TerminalColumn } from './terminal-pane/column';
 import { createDragDropController, DRAG_MIME } from './terminal-pane/drag-drop';
 import {
@@ -211,9 +211,18 @@ export function TerminalPane(props: {
   const hostFor = (col: Column): HTMLDivElement | undefined =>
     col === 'left' ? leftHost : rightHost;
 
-  /** Mount an xterm element into the host of its column. */
-  const mountForSession = (id: string, column: Column, replay?: string): void => {
-    if (xterms.has(id)) return;
+  // Guards re-entrancy while the xterm chunk loads on the very first mount:
+  // without it, a second reconcile pass for the same id could slip past the
+  // `xterms.has(id)` check (which only becomes true once the async mount
+  // completes) and double-mount.
+  const pendingMounts = new Set<string>();
+
+  /** Mount an xterm element into the host of its column. xterm + its addons are
+   * dynamic-imported on first call so they stay out of the boot chunk; the
+   * module is cached after the first load. */
+  const mountForSession = async (id: string, column: Column, replay?: string): Promise<void> => {
+    if (xterms.has(id) || pendingMounts.has(id)) return;
+    pendingMounts.add(id);
     const element = document.createElement('div');
     element.className = 'xterm-host';
     element.style.display = 'none';
@@ -221,6 +230,13 @@ export function TerminalPane(props: {
     if (host) host.appendChild(element);
     if (replay) {
       appendSessionData(id, replay);
+    }
+    const { mountXterm } = await import('./xterm-mount');
+    // Bail if a dispose/race removed the need while the chunk was loading.
+    if (xterms.has(id)) {
+      pendingMounts.delete(id);
+      element.remove();
+      return;
     }
     const mounted = mountXterm(element, id, {
       replay,
@@ -279,6 +295,7 @@ export function TerminalPane(props: {
     mounted.onProgressChange((busy) => {
       setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, busy } : t)));
     });
+    pendingMounts.delete(id);
   };
 
   /** Move an existing xterm element to a new column's host (used when the
@@ -381,7 +398,7 @@ export function TerminalPane(props: {
       };
       setTabs((prev) => [...prev, tab]);
       setMeta(s.id, { label, customName: meta?.customName, column, colorSlot, pinned });
-      mountForSession(s.id, column, attach?.output);
+      await mountForSession(s.id, column, attach?.output);
       setActiveIn(column, s.id);
       setActiveColumn(column);
       queueMicrotask(focusActive);

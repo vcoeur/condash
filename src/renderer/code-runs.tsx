@@ -5,7 +5,7 @@
 
 import { createEffect, createSignal, createMemo, For, onCleanup, Show } from 'solid-js';
 import type { TermSession, RepoEntry, TerminalXtermPrefs, Worktree } from '@shared/types';
-import { mountXterm } from './xterm-mount';
+import type { MountedTerm } from './xterm-mount';
 import { StopIcon } from './icons';
 
 interface CodeRunRowsProps {
@@ -112,14 +112,19 @@ function CodeRunRow(props: {
   const xtermElement = document.createElement('div');
   xtermElement.className = 'xterm-host';
   let host: HTMLDivElement | undefined;
-  let mounted: ReturnType<typeof mountXterm> | null = null;
+  let mounted: MountedTerm | null = null;
   let mountPromise: Promise<void> | null = null;
 
   const ensureMounted = (): Promise<void> => {
     if (mounted) return Promise.resolve();
     if (mountPromise) return mountPromise;
     mountPromise = (async () => {
-      const attach = await window.condash.termAttach(props.session.id);
+      // xterm + its addons are dynamic-imported on first terminal open so they
+      // stay out of the boot chunk (the module is cached after the first load).
+      const [{ mountXterm }, attach] = await Promise.all([
+        import('./xterm-mount'),
+        window.condash.termAttach(props.session.id),
+      ]);
       mounted = mountXterm(xtermElement, props.session.id, {
         replay: attach?.output,
         prefs: props.xtermPrefs,

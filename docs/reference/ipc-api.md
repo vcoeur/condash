@@ -35,7 +35,7 @@ Verb names are **camelCase** (e.g. `toggleStep`, `termSpawn`) on both sides of t
 | `readResourcesTree()` | `ResourceNode \| null` | Walk `<conception>/resources/` (hard-coded, not configurable), return the file tree with per-file MIME / category metadata. `null` if the directory doesn't exist. |
 | `readSkillsTree(scope, tab)` | `SkillNode \| null` | Walk the `(scope, tab)` skills directory — `local` reads the conception, `global` reads the per-machine user scope (`~/.config/agents/`, `~/.claude/`, `~/.kimi/`, `~/.config/opencode/`). Markdown only, with title / summary parsed from the head and optional `shipped` / `diverged` chips (condash ships only the Generic `.agents/skills/` tree). `null` when the directory is absent. |
 | `readSkillFile(path)` | `string` | Read-only content fetch for a Skills-pane file. Like `readNote` but also permits the user-scope skill locations (the global scope lives outside the conception); rejects anything else. |
-| `search(query)` | `SearchResults` | Full-text search across every project + knowledge file. Re-walks the tree each call (no index — see [Internals](../explanation/internals.md#why-no-search-index)). |
+| `search(query, scopes?)` | `SearchResults` | Full-text search across projects, knowledge, resources, skills, and logs. Markdown sources are served from an in-memory index; logs are scanned on disk, and only when in scope (see [Internals — The search index](../explanation/internals.md#search-index)). |
 
 ## Mutations
 
