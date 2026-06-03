@@ -23,7 +23,7 @@ const SKILL_SCOPE_SET: ReadonlySet<SkillScope> = new Set(SKILL_SCOPES);
 
 const THEMES: ReadonlySet<Theme> = new Set(['light', 'dark', 'system']);
 
-// Canonical card-grid key list (shared/types.ts), not a local copy — so the
+// Canonical card-grid key list (shared/types/settings.ts), not a local copy — so the
 // read/write/prune paths below always cover every pane the type knows about.
 const CARD_MIN_KEYS = CARD_MIN_WIDTH_KEYS;
 type CardKey = (typeof CARD_MIN_KEYS)[number];

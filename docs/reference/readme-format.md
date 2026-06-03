@@ -219,7 +219,7 @@ the markdown editor):
 - `- [-]` — **dropped.** Resolved by removing the work; counts as resolved
   for the progress bar.
 
-The canonical list lives in `src/shared/types.ts` (`STEP_MARKERS`). Any
+The canonical list lives in `src/shared/types/project.ts` (`STEP_MARKERS`). Any
 marker outside this set is treated as plain prose by the parser.
 
 ## Body conventions

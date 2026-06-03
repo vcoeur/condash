@@ -67,7 +67,7 @@ Each project card in the Projects pane is keyboard-focusable. Tab into a card (o
 | `Ctrl+4` / `Cmd+4` | Set the focused card's status to `backlog`. |
 | `Ctrl+5` / `Cmd+5` | Set the focused card's status to `done`. |
 
-The digit-to-status mapping follows `KNOWN_STATUSES` in `src/shared/types.ts` — `1..N` maps to position `0..N-1`. Pressing a digit equal to the card's current status is a no-op.
+The digit-to-status mapping follows `KNOWN_STATUSES` in `src/shared/types/project.ts` — `1..N` maps to position `0..N-1`. Pressing a digit equal to the card's current status is a no-op.
 
 The shortcut yields to text inputs, textareas, contenteditable surfaces, the embedded xterm, and the CodeMirror editor — typing `Ctrl+1` in the search modal or in a note's edit pane never steals it from the focused element.
 
