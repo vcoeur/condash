@@ -547,7 +547,7 @@ export interface TerminalPrefs {
 
 /** Configuration for the per-session terminal log writer. Defaults are
  * applied by the writer when fields are absent (`enabled: false`,
- * `scrollback: 10000`, `retentionDays: 14`, `maxDirMb: 500`) — the
+ * `scrollback: 5000`, `retentionDays: 14`, `maxDirMb: 500`) — the
  * schema's defaults track the same values. */
 export interface TerminalLoggingPrefs {
   /** Toggle capture entirely. Default: false (opt-in for privacy). The
@@ -562,7 +562,7 @@ export interface TerminalLoggingPrefs {
   maxDirMb?: number;
   /** Scrollback lines retained by the headless xterm that produces the
    * rendered `.txt`. Larger value → more history kept, larger per-session
-   * file. Default: 10000. */
+   * file. Default: 5000. */
   scrollback?: number;
 }
 

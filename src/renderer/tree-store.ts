@@ -49,6 +49,13 @@ export interface TreeStoreDeps<T> {
    *  a property name shared by every node type in the tree (`relPath`
    *  for KnowledgeNode / ResourceNode / SkillNode). */
   key: keyof T & string;
+  /** Optional activation gate: defer the first fetch until this returns
+   *  true (typically "this pane is the visible working surface"). Once it
+   *  has fired true the store behaves exactly as before — it keeps
+   *  reloading on conception change and on explicit `reload()`. Omit to
+   *  fetch eagerly. Used to keep the hidden Knowledge / Resources / Skills
+   *  panes off the startup IPC burst until first opened. */
+  active?: Accessor<boolean>;
 }
 
 export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeStore<T> {
@@ -58,6 +65,17 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
   // way to make the value itself nullable.
   const [box, setBox] = createStore<{ value: T | null }>({ value: null });
   const [loaded, setLoaded] = createSignal(false);
+
+  // Latch that flips true the first time the pane is activated — or
+  // immediately when no `active` gate is supplied (eager, prior behaviour).
+  // Until it flips, the conception-path effect below holds off the first
+  // fetch, so a never-opened tree pane costs no startup IPC.
+  const [activated, setActivated] = createSignal(deps.active === undefined);
+  if (deps.active) {
+    createEffect(() => {
+      if (deps.active!()) setActivated(true);
+    });
+  }
 
   const applySnapshot = (next: T | null): void => {
     if (next === null) {
@@ -86,10 +104,11 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
     setLoaded(true);
   };
 
-  // Clear on conception-path drop; reload on every non-null path. The
-  // store is therefore eagerly populated for the active conception even
-  // while the matching pane is hidden — pane switches are paint-only
-  // and don't pay an extra IPC round-trip.
+  // Clear on conception-path drop; reload on every non-null path once the
+  // pane has been activated. With an `active` gate the first fetch waits
+  // for first open, so the first switch to a tree pane pays one IPC and
+  // every subsequent switch is paint-only (the store stays populated for
+  // the active conception). Without a gate this is eager, as before.
   createEffect(() => {
     const path = deps.conceptionPath();
     if (!path) {
@@ -97,6 +116,7 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
       setLoaded(false);
       return;
     }
+    if (!activated()) return;
     void reload();
   });
 

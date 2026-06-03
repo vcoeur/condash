@@ -250,7 +250,7 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
       "enabled": false,
       "retentionDays": 14,
       "maxDirMb": 500,
-      "scrollback": 10000
+      "scrollback": 5000
     }
   }
 }

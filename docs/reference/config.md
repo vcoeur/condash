@@ -115,7 +115,7 @@ Typed keystrokes are _not_ captured separately — the pty echoes them back thro
 | `enabled`       | boolean       | `false` | Toggle capture entirely. Default flipped to opt-in for privacy (2.25.0). Disabling stops new writes on the next session spawn; existing files stay on disk for the janitor. The Logs pane stays usable for browsing past transcripts even when disabled. |
 | `retentionDays` | integer ≥ 0   | `14`    | Day-directories older than this are removed on next janitor run. `0` disables age-based eviction (the size cap still applies).                                                                                                                           |
 | `maxDirMb`      | integer ≥ 0   | `500`   | Total cap on `<conception>/.condash/logs/`. The janitor evicts oldest day-directories first while over cap, regardless of age.                                                                                                                           |
-| `scrollback`    | integer ≥ 100 | `10000` | Scrollback lines retained by the per-session headless xterm. Larger → more history captured, larger `.txt` files; smaller → older output rolls off the top of the buffer (same semantics as the live pane).                                              |
+| `scrollback`    | integer ≥ 100 | `5000`  | Scrollback lines retained by the per-session headless xterm. Larger → more history captured, larger `.txt` files; smaller → older output rolls off the top of the buffer (same semantics as the live pane).                                              |
 
 The janitor runs at app startup and every 24 hours: it (1) deletes day-dirs older than `retentionDays`, then (2) evicts the oldest surviving day-dir while total size is over `maxDirMb`. No compression pass since v2.27.0 — plain `.txt` files are small enough at the scrollback cap that gzip is not worth the round-trip cost. Errors are logged to stderr and never propagate into the IPC layer.
 
@@ -339,7 +339,7 @@ Visual + behavioural knobs for the xterm.js renderer. All keys are optional; mis
       "font_weight_bold": "600",
       "cursor_style": "block",
       "cursor_blink": true,
-      "scrollback": 10000,
+      "scrollback": 5000,
       "ligatures": false,
       "colors": {
         "background": "#1e1e2e",

@@ -60,9 +60,9 @@ export function registerTreesIpc(): void {
   // The original handler returned `[]` when no conception path was set;
   // typed as `SearchResults` by the api but the renderer guards against
   // either shape. Preserve verbatim — behaviour-preserving extract.
-  ipcMain.handle('search', async (_, query: string) => {
+  ipcMain.handle('search', async (_, query: string, scopes?: string[]) => {
     const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return [];
-    return search(conceptionPath, query);
+    return search(conceptionPath, query, scopes);
   });
 }

@@ -867,7 +867,7 @@ export function TerminalFields(props: {
               min="0"
               max="100000"
               value={props.xterm().scrollback ?? ''}
-              placeholder="10000"
+              placeholder="5000"
               onChange={(e) =>
                 void props.updateXterm({
                   scrollback: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
@@ -975,7 +975,7 @@ export function TerminalFields(props: {
               type="number"
               min="100"
               value={logging().scrollback ?? ''}
-              placeholder="10000"
+              placeholder="5000"
               onChange={(e) =>
                 void props.updateLogging({
                   scrollback: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,

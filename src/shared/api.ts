@@ -59,7 +59,11 @@ export interface CondashApi {
    *  and the user-scope agedum sources (the user scope lives outside the
    *  conception); rejects anything else. */
   readSkillFile(path: string): Promise<string>;
-  search(query: string): Promise<SearchResults>;
+  /** Search the conception tree. `scopes` narrows the backend to those
+   *  source buckets (`projects` | `knowledge` | `resources` | `skills` |
+   *  `logs`); omitted/empty searches every bucket. Narrowing skips the walk +
+   *  read of the unselected buckets — notably the heavy logs tree. */
+  search(query: string, scopes?: string[]): Promise<SearchResults>;
   listRepos(): Promise<RepoEntry[]>;
   /** Per-primary partial reload — returns the primary's `RepoEntry` plus
    * its submodule children freshly re-read. Driven by the structural
@@ -286,7 +290,7 @@ export interface CondashApi {
   /** List the day-directories present under
    * `<conception>/.condash/logs/` — newest first. Empty when no
    * conception is active or no logs have been captured. */
-  logsListDays(): Promise<{ day: string; path: string }[]>;
+  logsListDays(): Promise<{ day: string; path: string; sessions: number }[]>;
   /** List session-file metadata (path, time, size, repo, cmd) for one
    * day. `day` is `YYYY-MM-DD`. */
   logsListSessions(day: string): Promise<TermLogSessionMeta[]>;

@@ -152,7 +152,7 @@ export function mountXterm(
     theme: buildTheme(prefs, fallbackTheme),
     cursorBlink: prefs.cursor_blink ?? true,
     cursorStyle: prefs.cursor_style ?? 'block',
-    scrollback: prefs.scrollback ?? 10000,
+    scrollback: prefs.scrollback ?? 5000,
     drawBoldTextInBrightColors: false,
     allowProposedApi: true,
   });

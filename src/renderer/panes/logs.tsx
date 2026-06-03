@@ -9,6 +9,7 @@ import {
   type Accessor,
   type JSX,
 } from 'solid-js';
+import { createStore } from 'solid-js/store';
 import type { LogsOpenRequest, TaskRunGroup, TermLogSessionMeta } from '@shared/types';
 import { ConfirmModal } from '../confirm-modal';
 import { LogsViewerModal } from '../logs-modal';
@@ -46,18 +47,22 @@ export function LogsView(props: {
 }): JSX.Element {
   const [days, { refetch: refetchDays }] = createResource(() => window.condash.logsListDays());
 
-  // For each known day, fetch its session list. Indexed by `day` string.
-  const [sessionsByDay, { refetch: refetchSessions }] = createResource(
-    () => days(),
-    async (dayList): Promise<Map<string, TermLogSessionMeta[]>> => {
-      const out = new Map<string, TermLogSessionMeta[]>();
-      if (!dayList) return out;
-      for (const d of dayList) {
-        out.set(d.day, await window.condash.logsListSessions(d.day));
-      }
-      return out;
-    },
-  );
+  // Per-day session metadata, populated lazily. The recent band loads on mount;
+  // older months load only when their group is first expanded — so opening the
+  // Logs pane no longer head/tail-reads every archived session. Day/month counts
+  // and the headline total come from `days()` (cheap, always present), so a
+  // collapsed group still shows its true count without its list being loaded.
+  const [sessionsByDay, setSessionsByDay] = createStore<Record<string, TermLogSessionMeta[]>>({});
+  const requestedDays = new Set<string>();
+
+  const loadDay = async (day: string): Promise<void> => {
+    if (requestedDays.has(day)) return;
+    requestedDays.add(day);
+    setSessionsByDay(day, await window.condash.logsListSessions(day));
+  };
+  const loadDays = (dayList: string[]): void => {
+    for (const day of dayList) void loadDay(day);
+  };
 
   const [activePath, setActivePath] = createSignal<string | null>(null);
   const [pendingDelete, setPendingDelete] = createSignal<TermLogSessionMeta | null>(null);
@@ -76,8 +81,14 @@ export function LogsView(props: {
   });
 
   const refreshAll = (): void => {
+    // Re-fetch exactly the days already loaded (recent band + any expanded
+    // months); clearing the guard first forces loadDay to re-run and overwrite
+    // in place. Kicked off before refetchDays so the recent-band effect below
+    // sees them already requested and doesn't double-fetch.
+    const previously = [...requestedDays];
+    requestedDays.clear();
+    loadDays(previously);
     void refetchDays();
-    void refetchSessions();
     void refetchTaskRuns();
   };
 
@@ -99,13 +110,11 @@ export function LogsView(props: {
     });
   };
 
-  const totalSessionCount = createMemo<number>(() => {
-    const map = sessionsByDay();
-    if (!map) return 0;
-    let n = 0;
-    for (const arr of map.values()) n += arr.length;
-    return n;
-  });
+  // From the day metadata (always present), not the lazily-loaded lists — so
+  // the headline total is correct even before older months are expanded.
+  const totalSessionCount = createMemo<number>(() =>
+    (days() ?? []).reduce((n, d) => n + d.sessions, 0),
+  );
 
   const taskRunCount = createMemo<number>(() =>
     (taskRuns() ?? []).reduce((n, g) => n + g.runs.length, 0),
@@ -123,6 +132,11 @@ export function LogsView(props: {
     (days() ?? []).filter((d) => d.day >= recentCutoff),
   );
 
+  // Eager-load only the recent band (≤7 days) so it renders instantly; older
+  // months stay lazy until their group is expanded (see the month onToggle).
+  // The requestedDays guard makes this idempotent across days() refetches.
+  createEffect(() => loadDays(recentDays().map((d) => d.day)));
+
   /** Older days, grouped by `YYYY-MM`, months newest-first; days within a
    *  month keep the newest-first order from `logsListDays`. */
   const monthGroups = createMemo<{ key: string; days: KnownDay[] }[]>(() => {
@@ -138,7 +152,7 @@ export function LogsView(props: {
       .map((key) => ({ key, days: map.get(key)! }));
   });
 
-  const sessionsFor = (day: string): TermLogSessionMeta[] => sessionsByDay()?.get(day) ?? [];
+  const sessionsFor = (day: string): TermLogSessionMeta[] => sessionsByDay[day] ?? [];
 
   const reveal = (path: string): void => void window.condash.showInFolder(path);
 
@@ -232,10 +246,7 @@ export function LogsView(props: {
 
       <Show when={view() === 'sessions'}>
         <section class="logs-list">
-          <Show
-            when={!days.loading && !sessionsByDay.loading}
-            fallback={<div class="empty">Loading…</div>}
-          >
+          <Show when={!days.loading} fallback={<div class="empty">Loading…</div>}>
             <Show
               when={(days() ?? []).length > 0}
               fallback={<div class="empty">No sessions captured yet.</div>}
@@ -251,7 +262,7 @@ export function LogsView(props: {
                       <div class="logs-day-group logs-day-today">
                         <div class="logs-day-header logs-day-header-static">
                           <span class="logs-day-label">Today · {dayLabel(d.day)}</span>
-                          <span class="logs-group-count">{sessionsFor(d.day).length}</span>
+                          <span class="logs-group-count">{d.sessions}</span>
                         </div>
                         <DaySessionGrid
                           sessions={sessionsFor(d.day)}
@@ -265,7 +276,7 @@ export function LogsView(props: {
                       <summary class="logs-day-header">
                         <span class="logs-caret" aria-hidden="true" />
                         <span class="logs-day-label">{dayLabel(d.day)}</span>
-                        <span class="logs-group-count">{sessionsFor(d.day).length}</span>
+                        <span class="logs-group-count">{d.sessions}</span>
                       </summary>
                       <DaySessionGrid
                         sessions={sessionsFor(d.day)}
@@ -281,12 +292,17 @@ export function LogsView(props: {
                 with a light day sub-header inside each month. */}
               <For each={monthGroups()}>
                 {(month) => (
-                  <details class="logs-month-group">
+                  <details
+                    class="logs-month-group"
+                    onToggle={(e) => {
+                      if (e.currentTarget.open) loadDays(month.days.map((d) => d.day));
+                    }}
+                  >
                     <summary class="logs-month-header">
                       <span class="logs-caret" aria-hidden="true" />
                       <span class="logs-month-label">{monthLabel(month.key)}</span>
                       <span class="logs-group-count">
-                        {month.days.reduce((n, d) => n + sessionsFor(d.day).length, 0)}
+                        {month.days.reduce((n, d) => n + d.sessions, 0)}
                       </span>
                     </summary>
                     <For each={month.days}>
@@ -362,7 +378,7 @@ function TaskRunGroupView(props: {
 }
 
 /** One known log day as returned by `logsListDays` (newest-first). */
-type KnownDay = { day: string; path: string };
+type KnownDay = { day: string; path: string; sessions: number };
 
 /** Local-date `YYYY-MM-DD` for a `Date` (defaults to now). Local, not UTC, so
  *  "today" matches the day strings the writer stamps from local time. */

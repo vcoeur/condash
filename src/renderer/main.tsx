@@ -165,6 +165,7 @@ function App() {
     conceptionPath,
     fetcher: () => window.condash.readKnowledgeTree(),
     key: 'relPath',
+    active: () => layout().working === 'knowledge',
   });
   const knowledge = knowledgeStore.root;
 
@@ -172,6 +173,7 @@ function App() {
     conceptionPath,
     fetcher: () => window.condash.readResourcesTree(),
     key: 'relPath',
+    active: () => layout().working === 'resources',
   });
   const resources = resourcesStore.root;
 
@@ -187,6 +189,7 @@ function App() {
     conceptionPath,
     fetcher: () => window.condash.readSkillsTree(skillsActiveScope()),
     key: 'relPath',
+    active: () => layout().working === 'skills',
   });
 
   const reposStore = createReposStore({ conceptionPath, flashToast });
