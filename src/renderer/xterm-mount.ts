@@ -16,6 +16,7 @@ import { LigaturesAddon } from '@xterm/addon-ligatures';
 import '@xterm/xterm/css/xterm.css';
 
 import type { TerminalXtermPrefs } from '@shared/types';
+import { liveTerms } from './xterm-registry';
 
 export type XtermPrefs = TerminalXtermPrefs;
 
@@ -73,24 +74,10 @@ interface MountOptions {
   onCustomKey?: (ev: KeyboardEvent) => boolean;
 }
 
-// Renderer-global registry of every live MountedTerm. Populated by mountXterm
-// and pruned on dispose so a light/dark flip from main.tsx can repaint every
-// open terminal — both bottom-pane sessions and inline Code-pane runner rows
-// — without each call site wiring its own subscription.
-const liveTerms = new Set<MountedTerm>();
-
-/** Re-apply the current theme tokens to every live xterm. Called by main.tsx
- * when the user toggles light/dark; without this, terminals mounted before
- * the flip stay on the old palette until next attach. */
-export function refreshAllXtermThemes(): void {
-  for (const t of liveTerms) {
-    try {
-      t.refreshTheme();
-    } catch {
-      /* per-term failure shouldn't take down the rest */
-    }
-  }
-}
+// The live-terminal registry + refreshAllXtermThemes live in the leaf module
+// `xterm-registry.ts` (no `@xterm/*` import) so use-theme can repaint terminals
+// without pulling xterm into the boot chunk. mountXterm registers each term in
+// `liveTerms` (added on mount, pruned on dispose).
 
 export function themeFromCss(): { background: string; foreground: string } {
   const css = getComputedStyle(document.documentElement);

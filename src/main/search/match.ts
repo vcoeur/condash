@@ -20,11 +20,17 @@ import { buildRegions } from './regions';
 import { scoreOccurrences, type ScorerOccurrence } from './scorer';
 import { buildSnippets } from './snippets';
 
-export interface MatchInput {
+/** Static identity of a searchable file — everything the matcher needs that
+ *  isn't the parsed query. Shared by the disk path (`matchFile`) and the
+ *  in-memory index (`prepareFile` → `matchPrepared`). */
+export interface FileRef {
   path: string;
   relPath: string;
   source: 'project' | 'knowledge' | 'resources' | 'skills' | 'logs';
   projectPath?: string;
+}
+
+export interface MatchInput extends FileRef {
   terms: readonly SearchTerm[];
 }
 
@@ -34,40 +40,72 @@ export interface MatchOutput {
   mtimeMs: number;
 }
 
+/** A file read + precomputed for matching: the content the matcher scans plus
+ *  the derivations that don't depend on the query (lowercased content/path, the
+ *  region map, the title, mtime). The in-memory index (`search/index-cache.ts`)
+ *  stores these so a query never re-reads or re-lowercases the markdown tree. */
+export interface PreparedFile extends FileRef {
+  mtimeMs: number;
+  /** Post-log-strip content — what snippets quote and titles derive from. */
+  raw: string;
+  lowerContent: string;
+  lowerPath: string;
+  regions: ReturnType<typeof buildRegions>;
+  title: string;
+}
+
 /**
- * Match a single file against the parsed query. Returns `null` when the file
- * fails the AND filter (some term has no occurrence in either content or
- * path), or on read failure.
- *
- * AND semantics: every term must match somewhere — the body, the path, or
- * any combination. Path-matches alone are enough to surface a file (slug-
- * only hits, e.g. `2026-04-29` matching by date prefix).
+ * Read a file and precompute everything the matcher needs that doesn't depend
+ * on the query. Returns `null` on read failure. The query-independent work
+ * (read + `toLowerCase` + region map + title) is exactly what the in-memory
+ * index caches, so an indexed query skips straight to `matchPrepared`.
  */
-export async function matchFile(input: MatchInput): Promise<MatchOutput | null> {
+export async function prepareFile(ref: FileRef): Promise<PreparedFile | null> {
   let raw: string;
   let mtimeMs: number;
   try {
-    const stat = await fs.stat(input.path);
+    const stat = await fs.stat(ref.path);
     mtimeMs = stat.mtimeMs;
-    raw = await fs.readFile(input.path, 'utf8');
+    raw = await fs.readFile(ref.path, 'utf8');
     // Logs carry a `# condash: {...}` header / footer line for the
     // session's spawn / exit metadata. Strip those before matching so a
     // search for "exit" doesn't snippet-quote the JSON.
-    if (input.source === 'logs') {
+    if (ref.source === 'logs') {
       raw = splitContent(raw).text;
     }
   } catch {
     return null;
   }
 
-  const lowerContent = raw.toLowerCase();
-  const lowerPath = input.relPath.toLowerCase();
-  const regions = buildRegions(raw, input.source);
+  return {
+    ...ref,
+    mtimeMs,
+    raw,
+    lowerContent: raw.toLowerCase(),
+    lowerPath: ref.relPath.toLowerCase(),
+    regions: buildRegions(raw, ref.source),
+    title: extractFirstHeadingOrLine(raw) ?? ref.relPath,
+  };
+}
 
+/**
+ * Match a prepared file against the parsed query — pure, no I/O. Returns `null`
+ * when the file fails the AND filter (some term has no occurrence in either
+ * content or path).
+ *
+ * AND semantics: every term must match somewhere — the body, the path, or
+ * any combination. Path-matches alone are enough to surface a file (slug-
+ * only hits, e.g. `2026-04-29` matching by date prefix).
+ */
+export function matchPrepared(
+  file: PreparedFile,
+  terms: readonly SearchTerm[],
+): MatchOutput | null {
+  const { lowerContent, lowerPath, regions, raw } = file;
   const occurrences: ScorerOccurrence[] = [];
   const pathMatches: SearchHighlight[] = [];
 
-  for (const term of input.terms) {
+  for (const term of terms) {
     let cursor = 0;
     while (cursor < lowerContent.length) {
       const idx = lowerContent.indexOf(term.value, cursor);
@@ -99,29 +137,40 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
   }
 
   const matchedTokens = new Set(occurrences.map((o) => o.tokenIndex));
-  for (const term of input.terms) {
+  for (const term of terms) {
     if (!matchedTokens.has(term.index)) return null;
   }
 
-  const score = scoreOccurrences(occurrences, input.terms);
+  const score = scoreOccurrences(occurrences, terms);
   const matchCount = occurrences.length;
-  const title = extractFirstHeadingOrLine(raw) ?? input.relPath;
-  const snippets = buildSnippets(raw, input.terms, regions);
+  const snippets = buildSnippets(raw, terms, regions);
 
   return {
     hit: {
-      path: input.path,
-      relPath: input.relPath,
-      title,
-      source: input.source,
+      path: file.path,
+      relPath: file.relPath,
+      title: file.title,
+      source: file.source,
       score,
       matchCount,
       snippets,
       pathMatches: pathMatches.length > 0 ? pathMatches : undefined,
-      projectPath: input.projectPath,
+      projectPath: file.projectPath,
     },
-    mtimeMs,
+    mtimeMs: file.mtimeMs,
   };
+}
+
+/**
+ * Match a single file against the parsed query, reading it from disk. Returns
+ * `null` on read failure or when the file fails the AND filter. Equivalent to
+ * `prepareFile` + `matchPrepared`; used for the on-disk path (logs, and the
+ * pre-index fallback).
+ */
+export async function matchFile(input: MatchInput): Promise<MatchOutput | null> {
+  const prepared = await prepareFile(input);
+  if (!prepared) return null;
+  return matchPrepared(prepared, input.terms);
 }
 
 /** Best-effort title: returns the first non-empty line with leading

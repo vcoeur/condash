@@ -41,11 +41,9 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
     },
   );
 
-  const html = (): string => {
-    const raw = content();
-    if (raw === undefined) return '';
-    return renderMarkdown(raw);
-  };
+  // markdown-it is lazy-loaded (out of the boot chunk), so the rendered HTML is
+  // a resource keyed on the loaded doc rather than a synchronous derivation.
+  const [html] = createResource(content, (raw) => renderMarkdown(raw));
 
   createEffect(() => {
     if (content() && bodyRef) {
@@ -84,7 +82,7 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
           <div
             class="modal-body markdown-body"
             ref={(el) => (bodyRef = el)}
-            innerHTML={html()}
+            innerHTML={html() ?? ''}
             onClick={handleBodyClick}
           />
         </Show>

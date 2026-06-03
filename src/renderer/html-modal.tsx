@@ -1,4 +1,4 @@
-import { createMemo, createResource, createSignal, Show } from 'solid-js';
+import { createResource, createSignal, Show } from 'solid-js';
 import { useModalEscHandler } from './modal-helpers';
 import { highlightCode, pathToCondashFileUrl } from './markdown';
 import './html-modal.css';
@@ -36,10 +36,10 @@ export function HtmlModal(props: {
     () => (mode() === 'source' ? props.path : null),
     (path) => window.condash.readNote(path),
   );
-  const sourceHtml = createMemo(() => {
-    const text = source();
-    return text == null ? '' : highlightCode(text, props.path);
-  });
+  // highlight.js is lazy-loaded (out of the boot chunk); resource, not memo.
+  const [sourceHtml] = createResource(source, async (text) =>
+    text == null ? '' : highlightCode(text, props.path),
+  );
 
   return (
     <div class="modal-backdrop" onClick={props.onClose}>
@@ -96,7 +96,9 @@ export function HtmlModal(props: {
         <div class="html-body">
           <Show
             when={mode() === 'rendered'}
-            fallback={<div class="html-source md-rendered raw-code" innerHTML={sourceHtml()} />}
+            fallback={
+              <div class="html-source md-rendered raw-code" innerHTML={sourceHtml() ?? ''} />
+            }
           >
             {/* Hardened webview: Node off, context isolated, OS-sandboxed. The
                 defence-in-depth `web-contents-created` handler in main/index.ts

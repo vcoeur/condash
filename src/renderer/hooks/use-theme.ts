@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import type { Theme } from '@shared/types';
 import { resetMermaidTheme } from '../markdown';
-import { refreshAllXtermThemes } from '../xterm-mount';
+import { refreshAllXtermThemes } from '../xterm-registry';
 
 function applyTheme(theme: Theme): void {
   const root = document.documentElement;
