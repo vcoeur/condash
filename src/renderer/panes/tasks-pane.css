@@ -196,9 +196,11 @@
   max-height: 100%;
 }
 
-/* Header / scrolling-body / pinned-footer column. The middle (fields + a
- * possibly long prompt preview) scrolls inside the popup so the modal never
- * grows past the visible area and the Run / Save action row stays on screen. */
+/* Scrolling-body / pinned-footer column under the shared `<Modal>` head. The
+ * `.modal-head` (title + close button) is owned by the shell; the section below
+ * it flexes to fill the panel so the middle (fields + a possibly long prompt
+ * preview) scrolls inside the popup, the modal never grows past the visible
+ * area, and the Run / Save action row stays on screen. */
 .tasks-editor-modal .tasks-editor,
 .tasks-fill-modal .tasks-editor {
   margin: 0;
@@ -207,11 +209,10 @@
   background: transparent;
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: 100%;
 }
 
-.tasks-editor > header,
 .tasks-fill-top,
 .tasks-editor-actions {
   flex-shrink: 0;
@@ -283,18 +284,6 @@
 /* Push Delete to the right edge of the editor's action row. */
 .tasks-editor-delete {
   margin-left: auto;
-}
-
-.tasks-editor header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
-.tasks-editor h3 {
-  font-size: var(--text-sm);
-  margin: 0;
 }
 
 .tasks-editor-note {
