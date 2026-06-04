@@ -1,4 +1,4 @@
-.PHONY: help install dev build start package typecheck format format-check test test-headless test-visible test-unit clean kill
+.PHONY: help install dev build start package typecheck format format-check test test-headless test-visible test-unit deadcode kill clean
 
 DEV_PORT     ?= 5600
 PREVIEW_PORT ?= 5601
@@ -33,6 +33,7 @@ help:
 	@echo "  test-headless build then run the suite under xvfb-run (no window; errors if xvfb-run absent)"
 	@echo "  test-visible  build then run the suite with the window visible (watch the run)"
 	@echo "  test-unit    run vitest unit suite"
+	@echo "  deadcode     run knip — fail on dead files / deps / duplicate exports"
 	@echo "  kill         free dev port $(DEV_PORT)"
 	@echo "  clean        remove build outputs"
 
@@ -74,6 +75,15 @@ test-visible:
 
 test-unit:
 	npx vitest run
+
+# Dead-code / over-export guard. knip.json grades issue types: dead files,
+# dead/unlisted/unresolved deps, and duplicate exports are `error` (fail CI —
+# this is the gate that keeps re-added back-compat aliases and orphaned files
+# out); the pre-existing unused-export/type backlog is `warn` (reported, does
+# not fail) pending a dedicated follow-up sweep. `electron-updater` is an
+# intentionally-tracked-but-unimported dependency, allowlisted in knip.json.
+deadcode:
+	npx knip
 
 kill:
 	@lsof -ti:$(DEV_PORT) | xargs -r kill -9 || true

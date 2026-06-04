@@ -75,6 +75,8 @@ A typical feature touches three layers in sequence:
 
 Because `CondashApi` is a single typed interface, the compiler will refuse to build until all four layers agree. There is no string-mux'd action layer where a typo silently no-ops.
 
+The `invoke`/`handle` channel name equals the `CondashApi` method name, so the typed interface anchors it on both sides. The **main → renderer push-event** channels (`tree-events`, `termData`, `menu-command`, …) have no such anchor — they are bare strings repeated between `webContents.send(...)` in main and `ipcRenderer.on(...)` in preload — so they live as named constants in `src/shared/ipc-channels.ts` (`EVENT_CHANNELS`). Reference that map from both ends rather than re-typing the literal.
+
 For renderer-only features (UI states, animations, derived signals), only the renderer changes.
 
 ## Testing
@@ -83,9 +85,11 @@ For renderer-only features (UI states, animations, derived signals), only the re
 make typecheck     # tsc --noEmit on both projects
 make test          # build, then the Playwright E2E suite
 make test-unit     # vitest unit tests
+make deadcode      # knip — dead files / deps / duplicate exports
 ```
 
 - **Vitest** (`make test-unit`) — `src/**/*.test.ts`. Fast. Pure-function tests (parsers, path helpers, regexes). `environment: 'node'`.
+- **knip** (`make deadcode`) — the dead-code / over-export guard, configured in `knip.json`. It fails the build on dead source files, dead / unlisted / unresolved dependencies, and duplicate exports (the grade that keeps re-added back-compat aliases and orphaned modules out). The pre-existing unused-export / unused-type backlog is graded `warn`: reported for a future sweep, but non-failing. The intentionally-tracked-but-unimported `electron-updater` dependency is allowlisted in `knip.json`. This check is part of the light gate, so it runs on every PR.
 - **Playwright** (`make test`) — `tests/*.spec.ts`. Drives the real Electron app. Slower, more authoritative. The Playwright fixture launches Electron with `CONDASH_FORCE_PROD=1` so the renderer loads the real `dist/` build, not the Vite dev server.
 
 For a feature that touches the dashboard's behaviour, prefer Playwright. The e2e suite seeds a temporary conception tree, exercises the feature, and asserts on real DOM + real file writes.
@@ -101,6 +105,7 @@ On a Wayland session there's a catch: the shell exports `ELECTRON_OZONE_PLATFORM
 - **Don't add features beyond what the task requires.** Bug fixes don't need surrounding cleanup. Three similar lines beats a premature abstraction.
 - **Small commits, descriptive subjects.** Imperative mood, ≤72 characters.
 - **One PR per logical change.** A 30-line PR with one review cycle ships faster than a 300-line PR that needs three.
+- **Config key casing is frozen.** The settings surface (`settings.json` / `condash.json`) mixes two casings for historical reasons and existing keys are never renamed (a rename is a breaking settings migration). A *new* key takes **snake_case** in the repo-entry / terminal-shell vocabulary (anything under `repositories[]`, the `terminal.xterm` block, the open-with slots) and **camelCase** for app/UI preference keys (everything else). A new key in an existing group follows that group's casing; when genuinely unsure for a new group, prefer camelCase. Never introduce kebab-case, PascalCase, or SCREAMING_SNAKE. A unit guard in `config-schema.test.ts` enforces snake-or-camel on every top-level key; the rule itself is documented in `config-schema.ts`'s header.
 
 ## What the build pipeline produces
 
@@ -113,7 +118,7 @@ Native modules (`electron`, `node-pty`) stay external — esbuild leaves them as
 
 CI follows a two-gate model: a **light gate** on every PR and every push to `main`, and a **real gate** that runs the full suite on the exact commit being published. Three reusable workflows — `_fast.yml`, `_playwright.yml`, `_build.yml` — carry the actual work, so the build matrix (and its AppImage AppRun patch) lives in exactly one place.
 
-- **`.github/workflows/ci.yml`** is the light gate, and the only CI that runs on a PR. It runs on every `pull_request` to `main` (including drafts) and on every `push` to `main`. One Ubuntu job via `_fast.yml`: `prettier --check` + `npm run typecheck` + `npm run build` + `npx vitest run`. Target ≤ 90 s, so iterating on a PR stays cheap. No Playwright, no installer build. Its `ci-light-gate` aggregator is the **only** required check.
+- **`.github/workflows/ci.yml`** is the light gate, and the only CI that runs on a PR. It runs on every `pull_request` to `main` (including drafts) and on every `push` to `main`. One Ubuntu job via `_fast.yml`: `prettier --check` + `npm run typecheck` + `npm run build` + `npx vitest run` + `npx knip` (the dead-code guard). Target ≤ 90 s, so iterating on a PR stays cheap. No Playwright, no installer build. Its `ci-light-gate` aggregator is the **only** required check.
 - **`.github/workflows/release.yml`** runs only on `v*` tag push, and is where the Playwright suite and the 3-OS installer matrix actually run. `validate-tag` checks tag shape + tag SHA reachable from `origin/main` — the version is **tag-derived**, so `_build.yml` injects `${TAG#v}` into `package.json` before electron-builder and there is no committed version to match; then the suite runs **inline on the tagged commit** in sequence — `_fast.yml` → `_playwright.yml` → `_build.yml` — and only if all three pass does `publish` create the Release and upload the installers. The suite is run for real against whatever is tagged; there is no commit-status stamp to read and no requirement to tag any particular commit. Sequencing the lanes means a cheap format/type error aborts before the expensive Playwright and 3-OS matrix start.
 
 Because the heavy suite runs only at tag time, Playwright and 3-OS build regressions surface there rather than on the PR — run `make test` and `make package` locally before tagging if you want earlier signal. A tag whose commit is broken is caught before any Release is created: the failing lane stops the pipeline and `publish` never runs, so the tag stays in git but nothing public ships. The Windows installer leg is the load-bearing build check: `build/installer.nsh`'s NSIS hooks only assemble into the full installer template when `electron-builder` runs, so NSIS warning 6010 (treated as an error) only surfaces in the matrix.

@@ -54,3 +54,9 @@ jobs:
 
       - name: Vitest unit suite
         run: npx vitest run
+
+      # Dead-code / over-export guard (knip). Fails on dead files, dead /
+      # unlisted / unresolved deps, and duplicate exports; the pre-existing
+      # unused-export backlog is graded `warn` in knip.json and does not fail.
+      - name: Dead-code check
+        run: npx knip

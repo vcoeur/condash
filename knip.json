@@ -1,0 +1,36 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main/index.ts",
+    "src/preload/index.ts",
+    "src/cli/index.ts",
+    "src/**/*.test.ts",
+    "tests/**/*.spec.ts",
+    "scripts/*.mjs",
+    "build/*.cjs"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignore": ["src/renderer/*.d.ts"],
+  "ignoreDependencies": ["electron-updater"],
+  "vite": {
+    "config": ["vite.config.ts"]
+  },
+  "vitest": {
+    "config": ["vitest.config.ts"]
+  },
+  "rules": {
+    "files": "error",
+    "dependencies": "error",
+    "devDependencies": "error",
+    "unlisted": "error",
+    "unresolved": "error",
+    "binaries": "error",
+    "duplicates": "error",
+    "exports": "warn",
+    "nsExports": "warn",
+    "types": "warn",
+    "nsTypes": "warn",
+    "enumMembers": "warn",
+    "classMembers": "warn"
+  }
+}
