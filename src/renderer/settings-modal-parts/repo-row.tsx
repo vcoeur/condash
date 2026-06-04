@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { RawRepo, RawSubmoduleRepo } from '@shared/config-types';
 import { type BindTextFn, type DndHandlers, moveItem } from './data';
+import { Caret } from '../icons';
 
 const REPO_ROW_OPEN_KEY = 'condash:settings-modal:repo-row-open';
 
@@ -144,9 +145,7 @@ export function RepoRow(props: {
           aria-label={effectiveOpen() ? 'Collapse repository' : 'Expand repository'}
           onClick={toggleOpen}
         >
-          <span class="settings-repo-toggle-chevron" aria-hidden="true">
-            ▸
-          </span>
+          <Caret expanded={effectiveOpen()} />
         </button>
         <input
           type="text"

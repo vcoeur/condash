@@ -65,3 +65,23 @@
   align-items: center;
   border-radius: var(--radius-pill);
 }
+
+/* Disclosure caret. The single rotatable chevron (via the `Caret` component
+ * in icons.tsx) behind every collapsible header / row / tree folder / group.
+ * Right when collapsed, rotated down when expanded — one rule, not a literal
+ * `▸`/`▾` per surface. Colour comes from the host (`currentColor`). */
+.caret-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.caret-icon svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 120ms ease;
+}
+.caret-icon[data-expanded='true'] svg {
+  transform: rotate(90deg);
+}

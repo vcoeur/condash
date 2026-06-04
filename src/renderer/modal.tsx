@@ -1,5 +1,6 @@
 import { type JSX, Show } from 'solid-js';
 import { createBackdropClose, useModalEscHandler } from './modal-helpers';
+import { IconClose } from './icons';
 
 export interface ModalProps {
   /** Per-modal class appended to `.modal` — carries the width tier and any
@@ -80,7 +81,7 @@ export function Modal(props: ModalProps): JSX.Element {
             title={props.closeTitle ?? 'Close (Esc)'}
             aria-label={props.closeLabel ?? 'Close'}
           >
-            ×
+            <IconClose />
           </button>
         </header>
         {props.children}

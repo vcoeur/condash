@@ -97,18 +97,6 @@
   visibility: hidden;
 }
 
-.tree-dir-twisty-glyph {
-  display: inline-block;
-  /* Larger chevron to match the bumped twisty hit area. Icon glyph, not
-   * text — exempt from the --text-* scale (see styles.css). */
-  font-size: 14px;
-  line-height: 1;
-  transition: transform 120ms ease;
-}
-
-.tree-dir-twisty-glyph[data-open='true'] {
-  transform: rotate(90deg);
-}
 
 .tree-dir-name {
   color: var(--text);

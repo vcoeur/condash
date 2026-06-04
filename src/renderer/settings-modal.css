@@ -935,17 +935,6 @@
   background: var(--bg-hover);
 }
 
-.settings-subgroup-chevron {
-  display: inline-block;
-  transition: transform 0.15s ease;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: 1;
-}
-
-.settings-subgroup[open] > .settings-subgroup-summary .settings-subgroup-chevron {
-  transform: rotate(90deg);
-}
 
 .settings-subgroup > .settings-subgroup-summary h3 {
   margin: 0;
@@ -1266,15 +1255,6 @@
 .settings-repo-toggle:hover {
   background: var(--bg-hover);
   color: var(--text);
-}
-
-.settings-repo-toggle-chevron {
-  display: inline-block;
-  transition: transform 0.15s ease;
-}
-
-.settings-repo-row:not(.settings-repo-row--collapsed) .settings-repo-toggle-chevron {
-  transform: rotate(90deg);
 }
 
 .settings-repo-summary {

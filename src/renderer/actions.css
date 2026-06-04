@@ -164,20 +164,29 @@
 /* open (navigate / reveal) and add (create / new) share the brand accent —
  * both are the positive "go forward" verb; previously add actions drifted
  * across amber / green / accent pane-by-pane. */
+/* `.modal-button` (the 32 px modal-head icon button, modal-base.css) carries
+ * tones too, so a verb in a modal head — "open in OS", "work on" — reads the
+ * same accent/green/warn cue as the same verb in a pane row. */
 .btn[data-tone='open']:hover:not(:disabled),
-.btn[data-tone='add']:hover:not(:disabled) {
+.btn[data-tone='add']:hover:not(:disabled),
+.modal-button[data-tone='open']:hover:not(:disabled),
+.modal-button[data-tone='add']:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--accent);
 }
 /* work / run — start a terminal or run a command: the "go live" green. */
 .btn[data-tone='work']:hover:not(:disabled),
-.btn[data-tone='run']:hover:not(:disabled) {
+.btn[data-tone='run']:hover:not(:disabled),
+.modal-button[data-tone='work']:hover:not(:disabled),
+.modal-button[data-tone='run']:hover:not(:disabled) {
   color: var(--col-running);
   border-color: var(--col-running);
 }
 /* stop / danger — halt, kill, delete, discard. */
 .btn[data-tone='stop']:hover:not(:disabled),
-.btn[data-tone='danger']:hover:not(:disabled) {
+.btn[data-tone='danger']:hover:not(:disabled),
+.modal-button[data-tone='stop']:hover:not(:disabled),
+.modal-button[data-tone='danger']:hover:not(:disabled) {
   color: var(--warn);
   border-color: var(--warn);
 }

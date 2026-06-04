@@ -1,5 +1,6 @@
 import { createContext, createMemo, createSignal, For, Show, useContext } from 'solid-js';
 import type { JSX } from 'solid-js';
+import { Caret } from '../icons';
 import type {
   ActionTemplate,
   CardMinWidthPrefs,
@@ -121,9 +122,7 @@ export function Subgroup(props: {
         }}
       >
         <summary class="settings-subgroup-summary">
-          <span class="settings-subgroup-chevron" aria-hidden="true">
-            ▸
-          </span>
+          <Caret expanded={open()} />
           <h3>{props.title}</h3>
         </summary>
         <div class="settings-subgroup-body">{props.children}</div>

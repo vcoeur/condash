@@ -1,5 +1,6 @@
 import { createMemo, For, Show, type JSX } from 'solid-js';
 import type { TreeRoot } from '@shared/types';
+import { Caret } from '../icons';
 import { formatSectionLabel } from './pane-utils';
 import './tree-view.css';
 
@@ -299,11 +300,7 @@ function DirectoryHeader<TFile extends TreeViewBaseNode>(
           if (!props.isRoot) props.onToggleExpand(props.node.relPath);
         }}
       >
-        <span class="tree-dir-twisty-glyph" data-open={open() ? 'true' : 'false'}>
-          {/* Visible chevron — rotated via CSS rather than swapped out so the
-           * collapse/expand transition can animate.*/}
-          ▸
-        </span>
+        <Caret expanded={open()} />
       </button>
       <span class="tree-dir-name">{label()}</span>
       <Show when={props.directFileCount > 0}>

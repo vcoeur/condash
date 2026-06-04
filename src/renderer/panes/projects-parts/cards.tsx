@@ -2,7 +2,7 @@ import { createSignal, For, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
-import { TerminalIcon } from '../../icons';
+import { Caret, TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
 import {
   Group,
@@ -88,9 +88,7 @@ export function GroupBlock(props: {
         onClick={isEmpty() ? undefined : toggle}
         title={isEmpty() ? undefined : isOpen() ? 'Collapse section' : 'Expand section'}
       >
-        <span class="caret" aria-hidden="true">
-          {isOpen() ? '▾' : '▸'}
-        </span>
+        <Caret expanded={isOpen()} />
         <span class="dot" aria-hidden="true" />
         <span class="name">{props.group.status}</span>
         <span class="count">{props.group.items.length}</span>
@@ -172,9 +170,7 @@ export function SubGroup(props: {
         onClick={toggle}
         title={props.hint ?? (isOpen() ? 'Collapse' : 'Expand')}
       >
-        <span class="caret" aria-hidden="true">
-          {isOpen() ? '▾' : '▸'}
-        </span>
+        <Caret expanded={isOpen()} />
         <span class="name">{props.label}</span>
         <span class="count">{props.items.length}</span>
       </header>
@@ -449,7 +445,7 @@ export function Card(props: {
                   title={`${props.item.steps.length} steps · click to ${expanded() ? 'collapse' : 'expand'}`}
                 >
                   <StepProgress counts={props.item.stepCounts} />
-                  <span class="expander-arrow">{expanded() ? '▾' : '▸'}</span>
+                  <Caret expanded={expanded()} />
                 </button>
               </Show>
             </div>

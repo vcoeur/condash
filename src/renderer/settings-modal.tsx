@@ -41,6 +41,7 @@ import {
 import { RecentConceptionsSection } from './settings-modal-parts/section-recent-conceptions';
 import { AgentsSection } from './settings-modal-parts/sections-agents';
 import { ActionBar, Button } from './actions';
+import { IconClose } from './icons';
 import './settings-modal.css';
 
 /** Persisted last-active settings tab. Stored in localStorage so opening
@@ -833,7 +834,7 @@ export function SettingsModal(props: {
             title="Close (Esc)"
             aria-label="Close settings"
           >
-            ×
+            <IconClose />
           </button>
         </header>
 

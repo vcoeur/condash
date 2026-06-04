@@ -6,6 +6,7 @@
 import { createEffect, createSignal, createMemo, For, onCleanup, Show } from 'solid-js';
 import type { TermSession, RepoEntry, TerminalXtermPrefs, Worktree } from '@shared/types';
 import type { MountedTerm } from './xterm-mount';
+import { Caret } from './icons';
 import { StopIcon } from './icons';
 
 interface CodeRunRowsProps {
@@ -196,9 +197,7 @@ function CodeRunRow(props: {
           setExpanded((v) => !v);
         }}
       >
-        <span class="caret" aria-hidden="true">
-          {expanded() ? '▾' : '▸'}
-        </span>
+        <Caret expanded={expanded()} />
         <span class="dot" aria-hidden="true" />
         <span class="repo">{meta().displayName ?? props.session.repo ?? '(detached)'}</span>
         <Show when={meta().branch}>

@@ -102,6 +102,45 @@ export function ChevronDownIcon() {
   );
 }
 
+// Chevron right — the canonical disclosure chevron. Points right when
+// collapsed; the `Caret` wrapper rotates it 90° (→ down) when expanded.
+// Replaces the literal `▸` / `▾` text triangles that disclosure headers,
+// run rows, tree folders and settings groups each rendered by hand.
+export function ChevronIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+/**
+ * Disclosure caret — one rotatable chevron for every collapsible surface
+ * (status group, run row, tree folder, settings group, timeline). Points
+ * right when collapsed and rotates down when `expanded`, via the shared
+ * `.caret-icon` rule in primitives.css. Pass `expanded` from the surface's
+ * own open state.
+ */
+export function Caret(props: { expanded?: boolean; class?: string }) {
+  return (
+    <span
+      class={props.class ? `caret-icon ${props.class}` : 'caret-icon'}
+      data-expanded={props.expanded ? 'true' : 'false'}
+      aria-hidden="true"
+    >
+      <ChevronIcon />
+    </span>
+  );
+}
+
 // Book — open codex with a centred binding line and a soft duotone wash
 // across both pages. The Knowledge-pane card glyph: literary, archival,
 // distinct from the Document kind glyph (single-page) and the Folder
