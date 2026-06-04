@@ -532,6 +532,7 @@ export function NoteModal(props: {
           </Show>
           <button
             class="modal-button"
+            data-tone="open"
             onClick={() => props.state && props.onOpenInEditor(props.state.path)}
             title="Open in $EDITOR"
             aria-label="Open in external editor"

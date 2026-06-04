@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
+import { Caret } from '../icons';
 import './code-pane.css';
 import './app-pill.css';
 import type {
@@ -144,7 +145,7 @@ export function CodeView(props: {
                     aria-expanded={!isCollapsed()}
                     onClick={() => toggleSection(group.key)}
                   >
-                    <span class="repos-section-chevron">{isCollapsed() ? '▸' : '▾'}</span>
+                    <Caret expanded={!isCollapsed()} />
                     <span class="repos-section-title">{group.section}</span>
                     <span class="repos-section-count">{group.repos.length}</span>
                   </button>

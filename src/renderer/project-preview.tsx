@@ -2,15 +2,10 @@ import { For, Show, createResource, createSignal, onCleanup, onMount } from 'sol
 import type { ActionTemplate, Deliverable, Project, Step, StepMarker } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { KindGlyph, StepIcon } from './panes/projects';
-import { ChevronDownIcon, IconClose, IconExternal } from './icons';
+import { ChevronDownIcon, ChevronIcon, IconClose, IconExternal } from './icons';
 import { ActionDropdownButton } from './action-dropdown-button';
 import { Button } from './actions';
-import {
-  buildFileTree,
-  FileTreeRows,
-  IconChevronRight,
-  IconFile,
-} from './project-preview-parts/file-tree';
+import { buildFileTree, FileTreeRows, IconFile } from './project-preview-parts/file-tree';
 import { TimelinePane } from './project-preview-parts/timeline';
 
 const MARKER_LABEL: Record<StepMarker, string> = {
@@ -283,6 +278,7 @@ export function ProjectPreview(props: {
               />
               <button
                 class="modal-button"
+                data-tone="open"
                 onClick={() => props.onOpenInEditor(projectDir(project().path))}
                 title="Open folder in OS"
                 aria-label="Open folder in OS"
@@ -328,7 +324,7 @@ export function ProjectPreview(props: {
                     </span>
                     <span class="preview-readme-link-label">README.md</span>
                     <span class="preview-readme-link-arrow" aria-hidden="true">
-                      <IconChevronRight />
+                      <ChevronIcon />
                     </span>
                   </Button>
                 </Show>

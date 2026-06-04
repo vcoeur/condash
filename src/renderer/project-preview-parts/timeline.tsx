@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from 'solid-js';
 import type { Project } from '@shared/types';
 import { dateRangeLabel } from '../panes/projects';
+import { Caret } from '../icons';
 
 /** Full-width band pinned to the bottom of the popup. Collapsed by default
  * — the pane is meta information, the popup's primary job is the editable
@@ -22,9 +23,7 @@ export function TimelinePane(props: { project: Project }) {
         title={open() ? 'Collapse timeline' : 'Expand timeline'}
         aria-expanded={open()}
       >
-        <span class="preview-timeline-caret" aria-hidden="true">
-          {open() ? '▾' : '▸'}
-        </span>
+        <Caret expanded={open()} />
         <span class="preview-timeline-label">{headerLabel()}</span>
         <Show when={entries().length > 0}>
           <span class="preview-timeline-count">{entries().length}</span>

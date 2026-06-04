@@ -3,6 +3,7 @@ import type { JSX } from 'solid-js';
 import type { RunningTaskRun } from '@shared/types';
 import type { TaskListItem } from '@shared/tasks';
 import { formatElapsed, tailText } from './data';
+import { Caret } from '../../icons';
 
 /** "Running" section — the live headless scheduled runs, mirroring the Code
  *  pane's active-runs dock. Each row shows the task, how long it has been
@@ -84,9 +85,7 @@ function RunningRunRow(props: {
           setExpanded((v) => !v);
         }}
       >
-        <span class="caret" aria-hidden="true">
-          {expanded() ? '▾' : '▸'}
-        </span>
+        <Caret expanded={expanded()} />
         <span class="dot" aria-hidden="true" />
         <span class="slug">{props.name}</span>
         <span class="status status-live">running</span>

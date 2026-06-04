@@ -73,13 +73,6 @@
   filter: brightness(1.15);
 }
 
-.repos-section-chevron {
-  display: inline-block;
-  width: 1ch;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
 .repos-section-count {
   margin-left: auto;
   font-weight: 400;

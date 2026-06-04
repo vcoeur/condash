@@ -400,26 +400,6 @@
   min-width: 0;
 }
 
-.file-group-chevron {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-  color: var(--text-faint);
-  transition: transform 120ms ease;
-  flex-shrink: 0;
-}
-
-.file-group-chevron.open {
-  transform: rotate(90deg);
-}
-
-.file-group-chevron svg {
-  width: 12px;
-  height: 12px;
-}
-
 .file-group-label {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -597,13 +577,6 @@
 .preview-timeline-toggle:hover {
   background: var(--bg-hover);
   color: var(--text);
-}
-
-.preview-timeline-caret {
-  display: inline-flex;
-  width: 14px;
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
 }
 
 .preview-timeline-label {

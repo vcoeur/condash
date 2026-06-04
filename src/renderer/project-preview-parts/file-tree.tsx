@@ -1,6 +1,6 @@
 import { For, Show, createSignal } from 'solid-js';
 import type { ProjectFileEntry } from '@shared/types';
-import { IconPlus } from '../icons';
+import { Caret, IconPlus } from '../icons';
 import { Button, IconButton } from '../actions';
 
 /* File tree — recursive directory structure built from the flat
@@ -106,22 +106,6 @@ export function IconFolder() {
   );
 }
 
-export function IconChevronRight() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M6.25 4l4 4-4 4" />
-    </svg>
-  );
-}
-
 /* Recursive file-tree renderer. Reads a FileTree, outputs a flat
  * sequence of <li> rows (file rows + collapsible folder rows) into the
  * surrounding <ul class="files-list">. depth controls indent; notes/
@@ -182,9 +166,7 @@ function FileTreeDirRow(props: {
           class="file-group-toggle"
           onClick={() => setOpen((v) => !v)}
         >
-          <span class="file-group-chevron" classList={{ open: open() }}>
-            <IconChevronRight />
-          </span>
+          <Caret expanded={open()} />
           <span class="file-row-icon">
             <IconFolder />
           </span>
