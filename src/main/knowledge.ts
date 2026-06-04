@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import type { KnowledgeNode } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { readFileHead } from './read-file-head';
+import { matchVerifiedLine } from './knowledge-stamps';
 
 const HIDDEN_PREFIX = /^\./;
 
@@ -107,8 +108,6 @@ async function readFileMeta(path: string, fallback: string): Promise<FileMeta> {
   return parseHead(head, fallback);
 }
 
-const VERIFIED_RE = /^\*\*Verified:\*\*\s+(\d{4}-\d{2}-\d{2})/;
-
 export function parseHead(head: string, fallback: string): FileMeta {
   const lines = head.split(/\r?\n/);
   let title: string | null = null;
@@ -125,9 +124,9 @@ export function parseHead(head: string, fallback: string): FileMeta {
     }
     if (inFence) continue;
 
-    const verifiedMatch = VERIFIED_RE.exec(line);
-    if (verifiedMatch) {
-      verifiedAt = verifiedMatch[1];
+    const verifiedDate = matchVerifiedLine(line);
+    if (verifiedDate) {
+      verifiedAt = verifiedDate;
       if (summaryParts.length > 0) summaryDone = true;
       continue;
     }

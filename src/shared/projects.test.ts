@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countSteps, statusOrder } from './projects';
+import { compareByStatusThenSlug, countSteps, statusOrder } from './projects';
 import { KNOWN_STATUSES, type Step } from './types';
 
 describe('statusOrder', () => {
@@ -15,6 +15,24 @@ describe('statusOrder', () => {
     mixed.sort((a, b) => statusOrder(a) - statusOrder(b));
     // `now` first (canonical), `done` next, unknown `doing` last.
     expect(mixed).toEqual(['now', 'done', 'doing']);
+  });
+});
+
+describe('compareByStatusThenSlug', () => {
+  it('orders by status rank, then slug as the tie-break', () => {
+    const rows = [
+      { status: 'done', slug: 'zeta' },
+      { status: 'now', slug: 'beta' },
+      { status: 'now', slug: 'alpha' },
+      { status: 'review', slug: 'gamma' },
+    ];
+    rows.sort(compareByStatusThenSlug);
+    expect(rows.map((r) => `${r.status}:${r.slug}`)).toEqual([
+      'now:alpha',
+      'now:beta',
+      'review:gamma',
+      'done:zeta',
+    ]);
   });
 });
 

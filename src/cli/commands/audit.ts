@@ -1,7 +1,7 @@
 import { runAudit, type AuditCheckName, type AuditReport } from '../../main/audit';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import { renderHelp } from '../help';
 
 const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'lfs',
@@ -10,6 +10,7 @@ const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'worktrees',
   'index',
   'stale-index',
+  'stale-verification',
   'knowledge-recheck',
   'knowledge-check',
 ];
@@ -61,7 +62,7 @@ export async function runAuditCommand(
 
 function printHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash audit [--include <checks>]',
       '',
       'Run umbrella audits across the conception tree.',
@@ -73,10 +74,7 @@ function printHelp(): void {
       '  condash audit',
       '  condash audit --include lfs,binaries --json',
       '  condash audit --include all',
-      '',
-      UNIVERSAL_FOOTER,
-      '',
-    ].join('\n'),
+    ]),
   );
 }
 

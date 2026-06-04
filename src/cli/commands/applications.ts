@@ -8,7 +8,11 @@ import {
   validateApplications,
 } from '../../main/applications';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
-import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import {
+  assertNoExtraFlags,
+  takeStringFlag as takeStringFlagOrNull,
+  type ParsedArgs,
+} from '../parser';
 import { UNIVERSAL_FOOTER } from '../help';
 
 const NOUN_FLAGS: readonly string[] = ['label', 'path', 'fix'];
@@ -162,12 +166,11 @@ export async function runApplications(
   throw new CliError(ExitCodes.USAGE, `Unknown applications verb: ${verb}`);
 }
 
-/** Consume a `--flag <value>` string flag, returning undefined when absent. */
+/** Consume a `--flag <value>` string flag, returning undefined when absent.
+ * Thin adapter over the shared `parser.takeStringFlag` that returns `null`;
+ * the add/set verbs branch on `=== undefined`, so normalise the absent case. */
 function takeStringFlag(args: ParsedArgs, name: string): string | undefined {
-  const value = args.flags[name];
-  delete args.flags[name];
-  if (value === undefined || value === true) return undefined;
-  return String(value);
+  return takeStringFlagOrNull(args, name) ?? undefined;
 }
 
 function printHelp(verb: string | null): void {

@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 
 const KNOWLEDGE_IGNORED = /(^|\/)\.[^/]+/;
 
@@ -42,6 +42,34 @@ export async function collectKnowledgeFiles(knowledgeRoot: string): Promise<stri
   await walkMarkdown(knowledgeRoot, (file) => {
     if (KNOWLEDGE_IGNORED.test(file)) return;
     out.push(file);
+  });
+  return out;
+}
+
+/**
+ * Walk every knowledge **body** file — `.md` excluding the auto-generated
+ * `index.md` at any level. The `knowledge verify` and `stale-verification`
+ * scans use this so they never flag a generated index as an unstamped body
+ * file; search uses `collectKnowledgeFiles` (which keeps index content
+ * searchable). Shares the same recursor / skip rules as the other walkers.
+ */
+export async function collectKnowledgeBodyFiles(knowledgeRoot: string): Promise<string[]> {
+  const out: string[] = [];
+  await walkMarkdown(knowledgeRoot, (file) => {
+    if (KNOWLEDGE_IGNORED.test(file)) return;
+    if (file.endsWith(`${sep}index.md`) || file.endsWith('/index.md')) return;
+    out.push(file);
+  });
+  return out;
+}
+
+/** Walk every `index.md` under `<conception>/knowledge/` — the triage-bullet
+ * source the `knowledge retrieve` command parses. */
+export async function collectKnowledgeIndexFiles(knowledgeRoot: string): Promise<string[]> {
+  const out: string[] = [];
+  await walkMarkdown(knowledgeRoot, (file) => {
+    if (KNOWLEDGE_IGNORED.test(file)) return;
+    if (file.endsWith(`${sep}index.md`) || file.endsWith('/index.md')) out.push(file);
   });
   return out;
 }

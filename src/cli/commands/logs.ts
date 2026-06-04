@@ -21,8 +21,14 @@ import {
   type SessionRow,
 } from '../../main/logs-query';
 import { ambiguous, CliError, emit, ExitCodes, notFound, type OutputContext } from '../output';
-import { assertNoExtraFlags, parseCsvFlag, type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import {
+  assertNoExtraFlags,
+  parseCsvFlag,
+  takeIntFlag,
+  takeStringFlag,
+  type ParsedArgs,
+} from '../parser';
+import { renderHelp } from '../help';
 
 const DAYS_FLAGS = ['month', 'year'] as const;
 const LIST_FLAGS = ['since', 'until', 'modified-since', 'repo', 'sid', 'limit', 'active'] as const;
@@ -64,8 +70,8 @@ export async function runLogs(
 }
 
 async function runDays(args: ParsedArgs, ctx: OutputContext, conception: string): Promise<void> {
-  const month = takeString(args, 'month');
-  const year = takeString(args, 'year');
+  const month = takeStringFlag(args, 'month');
+  const year = takeStringFlag(args, 'year');
   assertNoExtraFlags(args, NOUN_FLAGS);
   if (month && !/^\d{4}-\d{2}$/.test(month)) {
     throw new CliError(ExitCodes.USAGE, `--month must be YYYY-MM (got '${month}')`);
@@ -103,9 +109,9 @@ async function runList(args: ParsedArgs, ctx: OutputContext, conception: string)
   const sinceMs = takeWhen(args, 'since', now);
   const untilMs = takeWhen(args, 'until', now);
   const modifiedSinceMs = takeWhen(args, 'modified-since', now);
-  const repo = takeString(args, 'repo');
-  const sid = takeString(args, 'sid');
-  const limit = takeInt(args, 'limit');
+  const repo = takeStringFlag(args, 'repo');
+  const sid = takeStringFlag(args, 'sid');
+  const limit = takeIntFlag(args, 'limit');
   const active = args.flags.active === true;
   delete args.flags.active;
   assertNoExtraFlags(args, NOUN_FLAGS);
@@ -135,10 +141,10 @@ async function runList(args: ParsedArgs, ctx: OutputContext, conception: string)
 
 async function runRead(args: ParsedArgs, ctx: OutputContext, conception: string): Promise<void> {
   const selector = args.positional[0];
-  const head = takeInt(args, 'head');
-  const tail = takeInt(args, 'tail');
-  const fromByte = takeInt(args, 'from-byte', true);
-  const linesSpec = takeString(args, 'lines');
+  const head = takeIntFlag(args, 'head');
+  const tail = takeIntFlag(args, 'tail');
+  const fromByte = takeIntFlag(args, 'from-byte', true);
+  const linesSpec = takeStringFlag(args, 'lines');
   const metaOnly = args.flags.meta === true;
   delete args.flags.meta;
   const withMeta = args.flags['with-meta'] === true;
@@ -193,9 +199,9 @@ async function runRead(args: ParsedArgs, ctx: OutputContext, conception: string)
 }
 
 async function runTail(args: ParsedArgs, ctx: OutputContext, conception: string): Promise<void> {
-  const sidList = parseCsvFlag(takeString(args, 'sid') ?? undefined);
-  const repo = takeString(args, 'repo');
-  const n = takeInt(args, 'lines') ?? 20;
+  const sidList = parseCsvFlag(takeStringFlag(args, 'sid') ?? undefined);
+  const repo = takeStringFlag(args, 'repo');
+  const n = takeIntFlag(args, 'lines') ?? 20;
   const all = args.flags.all === true;
   delete args.flags.all;
   const redact = args.flags.redact === true;
@@ -354,39 +360,11 @@ function parseLineRange(spec: string): { from: number; to: number | null } {
   return { from, to };
 }
 
-/** Pull a string-valued flag and delete it from the bag. */
-function takeString(args: ParsedArgs, name: string): string | null {
-  const v = args.flags[name];
-  if (v === undefined) return null;
-  if (typeof v !== 'string') {
-    throw new CliError(ExitCodes.USAGE, `--${name} expects a value`);
-  }
-  delete args.flags[name];
-  return v;
-}
-
-/** Pull an integer-valued flag and delete it. `allowZero` permits 0 (used by
- *  --from-byte, where offset 0 is a legitimate "from the start" cursor). */
-function takeInt(args: ParsedArgs, name: string, allowZero = false): number | null {
-  const v = args.flags[name];
-  if (v === undefined) return null;
-  if (typeof v !== 'string') {
-    throw new CliError(ExitCodes.USAGE, `--${name} expects a number`);
-  }
-  const n = Number.parseInt(v, 10);
-  if (!Number.isFinite(n) || n < 0 || (!allowZero && n === 0)) {
-    throw new CliError(
-      ExitCodes.USAGE,
-      `--${name} must be a ${allowZero ? 'non-negative' : 'positive'} integer (got '${v}')`,
-    );
-  }
-  delete args.flags[name];
-  return n;
-}
-
-/** Pull a `<when>` flag, parse it, and delete it. Returns undefined when absent. */
+/** Pull a `<when>` flag, parse it, and delete it. Returns undefined when absent.
+ *  The string consume + delete is shared (`parser.takeStringFlag`); only the
+ *  `<when>` grammar (date / span / today|yesterday) is logs-specific. */
 function takeWhen(args: ParsedArgs, name: string, nowMs: number): number | undefined {
-  const v = takeString(args, name);
+  const v = takeStringFlag(args, name);
   if (v === null) return undefined;
   const ms = parseWhen(v, nowMs);
   if (ms === null) {
@@ -493,5 +471,5 @@ function printHelp(verb: string | null): void {
 }
 
 function out(body: string[]): void {
-  process.stdout.write([...body, '', UNIVERSAL_FOOTER, ''].join('\n'));
+  process.stdout.write(renderHelp(body));
 }

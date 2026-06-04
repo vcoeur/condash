@@ -1,5 +1,5 @@
 import { join, relative } from 'node:path';
-import type { SearchResults, SearchTerm } from '../../shared/types';
+import { emptySearchResults, type SearchResults, type SearchTerm } from '../../shared/types';
 import { toPosix } from '../../shared/path';
 import {
   collectKnowledgeFiles,
@@ -44,7 +44,7 @@ export async function search(
 ): Promise<SearchResults> {
   const terms = parseQuery(query);
   if (terms.length === 0) {
-    return { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
+    return emptySearchResults();
   }
 
   const wants = (source: string): boolean =>

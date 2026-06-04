@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { touchDirtyMarker } from '../../main/dirty';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import { renderHelp } from '../help';
 
 // `dirty` verbs take only positional args today — the suggestion pool is
 // empty but `assertNoExtraFlags(args, NOUN_FLAGS)` still rejects any flag
@@ -118,7 +118,7 @@ function printHelp(verb: string | null): void {
     case 'list':
     case null:
       process.stdout.write(
-        [
+        renderHelp([
           'condash dirty list',
           '',
           'Show the per-tree dirty marker state (which trees need re-indexing).',
@@ -126,30 +126,24 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash dirty list',
           '  condash dirty list --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'touch':
       process.stdout.write(
-        [
+        renderHelp([
           'condash dirty touch <projects|knowledge>',
           '',
           "Force the named tree's dirty marker on so the next index regeneration runs.",
           '',
           'Examples:',
           '  condash dirty touch projects',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'clear':
       process.stdout.write(
-        [
+        renderHelp([
           'condash dirty clear <projects|knowledge|all>',
           '',
           "Remove the named tree's dirty marker (or both with `all`).",
@@ -157,10 +151,7 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash dirty clear knowledge',
           '  condash dirty clear all',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     default:
@@ -170,16 +161,13 @@ function printHelp(verb: string | null): void {
 
 function printSubHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash dirty <verb> [args]',
       '',
       'Verbs:',
       '  list    Show per-tree dirty marker state.',
       "  touch   Force a tree's dirty marker on.",
       "  clear   Remove a tree's dirty marker (or both with `all`).",
-      '',
-      UNIVERSAL_FOOTER,
-      '',
-    ].join('\n'),
+    ]),
   );
 }
