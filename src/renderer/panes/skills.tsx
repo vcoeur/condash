@@ -152,13 +152,13 @@ export function SkillsView(props: {
   return (
     <div class="skills-pane">
       <div class="skills-scope-row">
-        <div class="skills-scope" role="group" aria-label="Skill scope">
+        <div class="seg" role="group" aria-label="Skill scope">
           <For each={SCOPE_ORDER}>
             {(scope) => (
               <button
                 type="button"
-                class="skills-scope-btn"
-                classList={{ active: props.scope === scope }}
+                class="seg-item"
+                classList={{ 'seg-item--active': props.scope === scope }}
                 aria-pressed={props.scope === scope}
                 onClick={() => props.onSelectScope(scope)}
               >

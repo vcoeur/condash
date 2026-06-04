@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, Show } from 'solid-js';
 import { slugify } from '@shared/slug';
 import { Modal } from './modal';
+import { ActionBar, Button } from './actions';
 import './prompt-modal.css';
 
 export interface PromptModalState {
@@ -86,14 +87,14 @@ export function PromptModal(props: { state: PromptModalState | null; onClose: ()
                 Slug: <code>{slugPreviewValue()}</code>
               </p>
             </Show>
-            <div class="prompt-actions">
-              <button class="modal-button" onClick={cancel}>
+            <ActionBar>
+              <Button variant="default" onClick={cancel}>
                 Cancel
-              </button>
-              <button class="modal-button" onClick={confirm} disabled={value().trim().length === 0}>
+              </Button>
+              <Button variant="primary" onClick={confirm} disabled={value().trim().length === 0}>
                 {state().confirmLabel ?? 'OK'}
-              </button>
-            </div>
+              </Button>
+            </ActionBar>
           </div>
         </Modal>
       )}

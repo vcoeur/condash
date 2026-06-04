@@ -281,9 +281,10 @@
   margin: 0 -0.1rem;
 }
 
-/* Push Delete to the right edge of the editor's action row. */
+/* Push the destructive Delete to the far left of the action row, away from
+ * the Cancel/Save commit cluster (the shared .action-bar convention). */
 .tasks-editor-delete {
-  margin-left: auto;
+  margin-right: auto;
 }
 
 .tasks-editor-note {
@@ -366,9 +367,8 @@
   margin-bottom: 0.5rem;
 }
 
+/* Layout via the shared .action-bar (actions.css); keep only the top gap. */
 .tasks-editor-actions {
-  display: flex;
-  gap: 0.4rem;
   margin-top: 0.5rem;
 }
 

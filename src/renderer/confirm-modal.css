@@ -28,16 +28,4 @@
   color: var(--danger);
 }
 
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.confirm-actions .modal-button {
-  width: auto;
-  height: auto;
-  padding: 5px 14px;
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
+/* Footer commit/cancel row now uses the shared .action-bar (actions.css). */

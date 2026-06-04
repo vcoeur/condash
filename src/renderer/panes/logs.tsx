@@ -161,11 +161,12 @@ export function LogsView(props: {
       <div class="logs-toolbar">
         <div class="logs-toolbar-row">
           <span class="logs-toolbar-title">Logs</span>
-          <div class="logs-view-switch" role="tablist" aria-label="Logs view">
+          <div class="seg seg--sm" role="tablist" aria-label="Logs view">
             <button
               type="button"
               role="tab"
-              classList={{ active: view() === 'sessions' }}
+              class="seg-item"
+              classList={{ 'seg-item--active': view() === 'sessions' }}
               aria-selected={view() === 'sessions'}
               onClick={() => setView('sessions')}
             >
@@ -174,7 +175,8 @@ export function LogsView(props: {
             <button
               type="button"
               role="tab"
-              classList={{ active: view() === 'taskruns' }}
+              class="seg-item"
+              classList={{ 'seg-item--active': view() === 'taskruns' }}
               aria-selected={view() === 'taskruns'}
               onClick={() => setView('taskruns')}
             >

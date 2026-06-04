@@ -654,7 +654,6 @@
 .settings-modal--full .settings-rail-actions .modal-button,
 .settings-modal--full .settings-recents-row .modal-button,
 .settings-modal--full .settings-recents-actions .modal-button,
-.settings-modal--full .settings-confirm-actions .modal-button,
 .settings-modal--full .settings-conception-path .modal-button,
 .settings-modal--full .settings-field-badges .modal-button {
   width: auto;
@@ -718,11 +717,7 @@
   font-size: var(--text-sm);
 }
 
-.settings-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
+/* Close-confirm footer uses the shared .action-bar (actions.css). */
 
 /* Recents list on the Global tab in Settings. */
 .settings-section-hint {
@@ -909,21 +904,8 @@
   color: var(--text);
 }
 
-/* ---- Header Save button -- emphasises the primary action when dirty.  */
-
-.settings-save {
-  font-weight: 500;
-}
-
-.settings-save--dirty {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
-}
-
-.settings-save--dirty:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
+/* Header Save/Discard are framework buttons now: Save is .btn--primary when
+ * dirty (filled accent), .btn--default otherwise; see settings-modal.tsx. */
 
 /* ---- Collapsible subgroup -- promoted from <h3> into a <details> tag. */
 
@@ -1340,15 +1322,8 @@
 
 /* ---- Diff view toggle (G1) ----------------------------------------- */
 
-.settings-diff-toggle {
-  font-size: var(--text-xs);
-}
-
-.settings-diff-toggle--on {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
-}
+/* Overrides-only toggle is a framework .btn (size sm) with .btn--active for
+ * its pressed state; see settings-modal.tsx. */
 
 .settings-modal[data-diff-only='true'] .settings-section-frame[data-section-state='inherits'] {
   display: none;

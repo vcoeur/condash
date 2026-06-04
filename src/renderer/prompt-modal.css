@@ -33,18 +33,7 @@
   border-color: var(--accent);
 }
 
-.prompt-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.prompt-actions .modal-button {
-  width: auto;
-  padding: 0 14px;
-  font: inherit;
-  font-size: var(--text-sm);
-}
+/* Footer commit/cancel row now uses the shared .action-bar (actions.css). */
 
 .prompt-slug-preview {
   margin: 0;

@@ -64,20 +64,10 @@
   font-style: italic;
 }
 
+/* .btn--ghost (actions.css), compact: the inline slug edit/reset toggle. */
 .new-project-slug-edit {
-  font: inherit;
   font-size: var(--text-2xs);
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: transparent;
   color: var(--text-muted);
-  cursor: pointer;
-}
-
-.new-project-slug-edit:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--accent);
 }
 
 .new-project-slug-edit-row {
@@ -148,22 +138,8 @@
   font-size: var(--text-xs);
 }
 
+/* Layout is the shared .action-bar (actions.css); just the top spacing here.
+ * The Create button is a framework .btn--primary — no bespoke accent override. */
 .new-project-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
   margin-top: 4px;
-}
-
-.new-project-submit {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg-elevated);
-  font-weight: 600;
-}
-
-.new-project-submit:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }

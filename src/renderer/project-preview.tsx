@@ -4,6 +4,7 @@ import { KNOWN_STATUSES } from '@shared/types';
 import { KindGlyph, StepIcon } from './panes/projects';
 import { ChevronDownIcon, IconClose, IconExternal } from './icons';
 import { ActionDropdownButton } from './action-dropdown-button';
+import { Button } from './actions';
 import {
   buildFileTree,
   FileTreeRows,
@@ -313,8 +314,11 @@ export function ProjectPreview(props: {
                 </Show>
 
                 <Show when={(files() ?? []).some((f) => f.relPath === 'README.md')}>
-                  <button
+                  <Button
                     type="button"
+                    variant="default"
+                    size="sm"
+                    tone="open"
                     class="preview-readme-link"
                     onClick={() => props.onOpenReadme(project())}
                     title="Open README"
@@ -326,7 +330,7 @@ export function ProjectPreview(props: {
                     <span class="preview-readme-link-arrow" aria-hidden="true">
                       <IconChevronRight />
                     </span>
-                  </button>
+                  </Button>
                 </Show>
 
                 <Show
@@ -424,14 +428,17 @@ export function ProjectPreview(props: {
                   <Show
                     when={showAddForm()}
                     fallback={
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        tone="add"
                         class="add-step-button"
                         onClick={beginAdd}
                         disabled={busy()}
                         title="Append a new step to ## Steps"
                       >
                         + Add step
-                      </button>
+                      </Button>
                     }
                   >
                     <div class="add-step-form">
@@ -456,17 +463,18 @@ export function ProjectPreview(props: {
                         }}
                         disabled={busy()}
                       />
-                      <button
-                        class="modal-button"
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={() => void commitAdd(project())}
                         disabled={busy() || addText().trim().length === 0}
                       >
                         Add
-                      </button>
+                      </Button>
                       <Show when={project().steps.length > 0}>
-                        <button class="modal-button" onClick={cancelAdd} disabled={busy()}>
+                        <Button variant="default" size="sm" onClick={cancelAdd} disabled={busy()}>
                           Cancel
-                        </button>
+                        </Button>
                       </Show>
                     </div>
                   </Show>
@@ -479,7 +487,8 @@ export function ProjectPreview(props: {
                       <For each={project().deliverables}>
                         {(d) => (
                           <li class="deliverable-row">
-                            <button
+                            <Button
+                              variant="ghost"
                               class="deliverable-button"
                               onClick={() => props.onOpenDeliverable(d)}
                               title={d.path}
@@ -489,7 +498,7 @@ export function ProjectPreview(props: {
                                 <span class="deliverable-desc">— {d.description}</span>
                               </Show>
                               <span class="deliverable-path">{d.path}</span>
-                            </button>
+                            </Button>
                           </li>
                         )}
                       </For>

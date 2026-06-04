@@ -1,5 +1,6 @@
 import { type JSX, onCleanup, onMount, Show } from 'solid-js';
 import { Modal } from './modal';
+import { ActionBar, Button } from './actions';
 import './confirm-modal.css';
 
 export interface ConfirmModalProps {
@@ -57,19 +58,19 @@ export function ConfirmModal(props: ConfirmModalProps) {
             (props.body as () => JSX.Element)()
           )}
         </Show>
-        <div class="confirm-actions">
-          <button class="modal-button" onClick={props.onCancel}>
+        <ActionBar>
+          <Button variant="default" onClick={props.onCancel}>
             {props.cancelLabel ?? 'Cancel'}
-          </button>
-          <button
-            class="modal-button"
-            classList={{ warn: props.destructive === true }}
+          </Button>
+          <Button
+            variant="primary"
+            tone={props.destructive === true ? 'danger' : undefined}
             onClick={props.onConfirm}
             autofocus
           >
             {props.confirmLabel ?? 'Confirm'}
-          </button>
-        </div>
+          </Button>
+        </ActionBar>
       </div>
     </Modal>
   );

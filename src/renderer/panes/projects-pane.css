@@ -577,9 +577,11 @@ body[data-dragging='project'] .row {
   transform: scale(0.96);
 }
 
+/* Verb→colour matches the actions.css tone palette: work = green (go live),
+ * open = accent, add = accent. */
 .row .row-action.work-on:hover {
-  color: var(--col-now);
-  border-color: var(--col-now);
+  color: var(--col-running);
+  border-color: var(--col-running);
 }
 
 .row .row-action.open:hover {
@@ -588,8 +590,8 @@ body[data-dragging='project'] .row {
 }
 
 .row .row-action.new-note:hover {
-  color: var(--col-soon);
-  border-color: var(--col-soon);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .row .meta-icon {

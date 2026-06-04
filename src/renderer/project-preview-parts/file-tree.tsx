@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from 'solid-js';
 import type { ProjectFileEntry } from '@shared/types';
 import { IconPlus } from '../icons';
+import { Button, IconButton } from '../actions';
 
 /* File tree — recursive directory structure built from the flat
  * ProjectFileEntry list. README.md sits at the root with the rest of
@@ -137,12 +138,17 @@ export function FileTreeRows(props: {
       <For each={props.tree.rootFiles}>
         {(file) => (
           <li class="file-row" style={{ '--tree-depth': props.depth }}>
-            <button class="file-button" onClick={() => props.onOpenFile(file)} title={file.name}>
+            <Button
+              variant="ghost"
+              class="file-button"
+              onClick={() => props.onOpenFile(file)}
+              title={file.name}
+            >
               <span class="file-row-icon">
                 <IconFile />
               </span>
               <span class="file-name">{file.name}</span>
-            </button>
+            </Button>
           </li>
         )}
       </For>
@@ -170,7 +176,12 @@ function FileTreeDirRow(props: {
   return (
     <>
       <li class="file-group-head" style={{ '--tree-depth': props.depth }}>
-        <button type="button" class="file-group-toggle" onClick={() => setOpen((v) => !v)}>
+        <Button
+          type="button"
+          variant="ghost"
+          class="file-group-toggle"
+          onClick={() => setOpen((v) => !v)}
+        >
           <span class="file-group-chevron" classList={{ open: open() }}>
             <IconChevronRight />
           </span>
@@ -178,16 +189,18 @@ function FileTreeDirRow(props: {
             <IconFolder />
           </span>
           <span class="file-group-label">{props.dir.name}/</span>
-        </button>
+        </Button>
         <Show when={props.dir.name === 'notes' && props.onCreateNote && props.depth === 0}>
-          <button
+          <IconButton
+            variant="ghost"
+            tone="add"
             class="file-group-add"
             onClick={props.onCreateNote}
             title="Add a new note to this project"
-            aria-label="Add note"
+            label="Add note"
           >
             <IconPlus />
-          </button>
+          </IconButton>
         </Show>
       </li>
       <Show when={open()}>
