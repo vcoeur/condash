@@ -46,6 +46,7 @@ import { BrowserWindow } from 'electron';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RepoEntry, RepoEvent } from '../shared/types';
+import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { getDirtyCount, getUpstreamStatus, invalidateForPath } from './git-status-cache';
 
 const SCALAR_DEBOUNCE_MS = 500;
@@ -85,7 +86,7 @@ function broadcast(events: RepoEvent[]): void {
   if (events.length === 0) return;
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    win.webContents.send('repo-events', events);
+    win.webContents.send(EVENT_CHANNELS.repoEvents, events);
   }
 }
 

@@ -79,7 +79,7 @@ interface MountOptions {
 // without pulling xterm into the boot chunk. mountXterm registers each term in
 // `liveTerms` (added on mount, pruned on dispose).
 
-export function themeFromCss(): { background: string; foreground: string } {
+function themeFromCss(): { background: string; foreground: string } {
   const css = getComputedStyle(document.documentElement);
   return {
     background: css.getPropertyValue('--bg-elevated').trim() || '#1f1f23',

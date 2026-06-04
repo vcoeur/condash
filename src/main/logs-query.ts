@@ -156,10 +156,7 @@ function localInstant(day: string, time: string): number {
 
 /** Walk the `YYYY/MM/DD/HHMMSS-<sid>.txt` tree and yield one ref per session.
  *  `monthPrefix` ('YYYY' or 'YYYY-MM') narrows the scan cheaply. */
-export async function enumerateSessions(
-  conception: string,
-  monthPrefix?: string,
-): Promise<SessionRef[]> {
+async function enumerateSessions(conception: string, monthPrefix?: string): Promise<SessionRef[]> {
   const root = condashLogsRoot(conception);
   const out: SessionRef[] = [];
   const wantYear = monthPrefix?.slice(0, 4);

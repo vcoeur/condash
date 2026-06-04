@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi, MenuCommand } from '../shared/api';
+import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import type {
   RepoEvent,
   TermDataMessage,
@@ -74,16 +75,16 @@ const api: CondashApi = {
   readHelpDoc: (name) => ipcRenderer.invoke('readHelpDoc', name),
   onTreeEvents: (callback) => {
     const handler = (_: unknown, events: TreeEvent[]): void => callback(events);
-    ipcRenderer.on('tree-events', handler);
+    ipcRenderer.on(EVENT_CHANNELS.treeEvents, handler);
     return () => {
-      ipcRenderer.removeListener('tree-events', handler);
+      ipcRenderer.removeListener(EVENT_CHANNELS.treeEvents, handler);
     };
   },
   onRepoEvents: (callback) => {
     const handler = (_: unknown, events: RepoEvent[]): void => callback(events);
-    ipcRenderer.on('repo-events', handler);
+    ipcRenderer.on(EVENT_CHANNELS.repoEvents, handler);
     return () => {
-      ipcRenderer.removeListener('repo-events', handler);
+      ipcRenderer.removeListener(EVENT_CHANNELS.repoEvents, handler);
     };
   },
   termSpawn: (request) => ipcRenderer.invoke('termSpawn', request),
@@ -99,18 +100,18 @@ const api: CondashApi = {
   termSetSide: (id, side) => ipcRenderer.invoke('termSetSide', id, side),
   onTermData: (callback) => {
     const handler = (_: unknown, msg: TermDataMessage): void => callback(msg);
-    ipcRenderer.on('termData', handler);
-    return () => ipcRenderer.removeListener('termData', handler);
+    ipcRenderer.on(EVENT_CHANNELS.termData, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.termData, handler);
   },
   onTermExit: (callback) => {
     const handler = (_: unknown, msg: TermExitMessage): void => callback(msg);
-    ipcRenderer.on('termExit', handler);
-    return () => ipcRenderer.removeListener('termExit', handler);
+    ipcRenderer.on(EVENT_CHANNELS.termExit, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.termExit, handler);
   },
   onTermSessions: (callback) => {
     const handler = (_: unknown, sessions: TermSession[]): void => callback(sessions);
-    ipcRenderer.on('termSessions', handler);
-    return () => ipcRenderer.removeListener('termSessions', handler);
+    ipcRenderer.on(EVENT_CHANNELS.termSessions, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.termSessions, handler);
   },
   termTabsContext: () => ipcRenderer.invoke('termTabsContext'),
   logsListDays: () => ipcRenderer.invoke('logsListDays'),
@@ -136,18 +137,18 @@ const api: CondashApi = {
   pdfToFileUrl: (path: string) => ipcRenderer.invoke('pdfToFileUrl', path),
   onMenuCommand: (callback) => {
     const handler = (_: unknown, command: MenuCommand): void => callback(command);
-    ipcRenderer.on('menu-command', handler);
-    return () => ipcRenderer.removeListener('menu-command', handler);
+    ipcRenderer.on(EVENT_CHANNELS.menuCommand, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.menuCommand, handler);
   },
   onMenuOpenRecent: (callback) => {
     const handler = (_: unknown, path: string): void => callback(path);
-    ipcRenderer.on('menu-open-recent', handler);
-    return () => ipcRenderer.removeListener('menu-open-recent', handler);
+    ipcRenderer.on(EVENT_CHANNELS.menuOpenRecent, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.menuOpenRecent, handler);
   },
   onMenuClearRecents: (callback) => {
     const handler = (): void => callback();
-    ipcRenderer.on('menu-clear-recents', handler);
-    return () => ipcRenderer.removeListener('menu-clear-recents', handler);
+    ipcRenderer.on(EVENT_CHANNELS.menuClearRecents, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.menuClearRecents, handler);
   },
 };
 

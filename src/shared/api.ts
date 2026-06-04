@@ -160,6 +160,14 @@ export interface CondashApi {
    * the file on first save. Used to drive the Global tab's editor and to
    * compute inheritance badges by comparing against the conception's
    * `condash.json`.
+   *
+   * Verb-prefix note: this `get` paired with `writeGlobalSettings` breaks the
+   * `read*`/`write*` file-backed pairing used elsewhere (`readNote`/`writeNote`,
+   * `readTask`/`writeTask`). It is a known, contained inconsistency on one
+   * resource — left as-is rather than renamed, since the channel string is the
+   * IPC wire name and the contract is sound in practice. New file-backed
+   * channels should use the `read*`/`write*` pair; `get*`/`set*` is for small
+   * scalar prefs (theme, layout, …).
    */
   getGlobalSettingsRaw(): Promise<string>;
   /**

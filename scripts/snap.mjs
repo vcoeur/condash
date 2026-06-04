@@ -46,7 +46,10 @@ async function main() {
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
   await win.setViewportSize({ width: 1400, height: 900 });
-  await win.locator('.row .title').first().waitFor({ timeout: 15_000 });
+  // Generous wait: a cold Electron launch (first run, no warm caches) routinely
+  // takes longer than the old 15 s budget to paint the first project row, and a
+  // miss fails the whole snap run. 60 s leaves slack without masking a real hang.
+  await win.locator('.row .title').first().waitFor({ timeout: 60_000 });
   await new Promise((r) => setTimeout(r, 2000)); // settle
 
   for (const tab of tabs) {

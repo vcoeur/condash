@@ -84,7 +84,7 @@ export interface ShippedFile {
  */
 export const SHIPPED_FILES: ShippedFile[] = [];
 
-export function optsFor(t: ShippedFile): HeadingOpts {
+function optsFor(t: ShippedFile): HeadingOpts {
   return { mark: t.mark ?? DEFAULT_MARK, siblings: t.siblings };
 }
 
@@ -93,7 +93,7 @@ function sourceFor(file: ShippedFile): string {
   return join(locateShippedFilesRoot(), file.sourcePath ?? file.path);
 }
 
-export function locateShippedFilesRoot(): string {
+function locateShippedFilesRoot(): string {
   // Same resolution as skills: override hatch primarily for tests, then walk
   // up from the bundled CLI to find conception-template/.
   const override = process.env.CONDASH_TEMPLATE_ROOT;
@@ -107,7 +107,7 @@ export function locateShippedFilesRoot(): string {
  * maps the legacy value to the new heading text so an existing install
  * reconciles without a forced overwrite.
  */
-export function migrateLegacyRegion(region: string): string {
+function migrateLegacyRegion(region: string): string {
   if (region === 'condash:general') return 'General';
   return region;
 }
