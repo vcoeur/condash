@@ -1,0 +1,256 @@
+/* Action framework — one button vocabulary for the whole renderer.
+ *
+ * The renderer had grown ~30 ad-hoc button classes (.row-action,
+ * .repo-action, .work-on-button, .deliverable-button, .add-step-button,
+ * .file-button, .skills-scope-btn, .new-project-submit, …), so the *same*
+ * logical action looked different from pane to pane — the clearest example
+ * being the primary commit: "Create" was filled-accent but "Confirm" was an
+ * indistinct grey. This file makes the role the source of truth instead.
+ *
+ * The contract:
+ *   .btn               base shape (inline-flex, token padding/radius/focus)
+ *   .btn--primary      the single committing action — filled accent, pops
+ *   .btn--default      neutral / secondary / cancel — subtle fill
+ *   .btn--ghost        chromeless text action (inline add / file / link)
+ *   .btn--danger       quiet destructive verb — warn hue, fills on hover
+ *   .btn--sm           dense variant (toolbars, card rows)
+ *   .btn--icon         square icon-only footprint (sized via --btn-size)
+ *   [data-tone=…]      semantic VERB colour: an icon's hover cue, or the
+ *                      fill of a destructive primary — keyed off what the
+ *                      button does, so "open" is accent-blue and "stop" is
+ *                      warn in every pane, not pane-by-pane.
+ *   .action-bar        footer commit/cancel row (cancel left, primary right)
+ *   .seg / .seg-item   segmented toggle group (scope / view switches)
+ *
+ * The <Button>/<IconButton>/<ActionBar> wrappers in actions.tsx render these
+ * classes so call-sites name intent, not chrome. Built entirely on the
+ * styles.css token set (colour / type / radius) — no literals, no new tokens.
+ *
+ * Out of scope by design: the 32 px modal-head icon button (`.modal-button`
+ * in modal-base.css) stays its own idiom — it is already internally
+ * consistent and is the deliberate output of the phase-4 modal shell. It is
+ * the head-bar sibling of .btn--icon; the two share shape and tokens. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-body);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease,
+    filter 100ms ease;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Role variants ----------------------------------------------------- */
+
+/* Default / secondary / cancel — the everyday neutral button. */
+.btn--default {
+  background: var(--bg-subtle);
+  color: var(--text-body);
+}
+.btn--default:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* Primary — the one committing action in a context. Filled accent with
+ * adaptive text (--bg-elevated is near-white in light, near-black in dark,
+ * so it stays high-contrast over the accent in both themes). */
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-elevated);
+  font-weight: 600;
+}
+.btn--primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+/* Ghost — chromeless text action. No resting background or border; a subtle
+ * fill appears on hover. The inline "+ add step", file-tree rows and
+ * "open README" link share this. */
+.btn--ghost {
+  background: transparent;
+  color: var(--text-body);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Danger — a quiet destructive verb (delete, discard, force-stop) used as a
+ * secondary action. Warn hue text on the neutral fill, warn border on hover.
+ * For a destructive *primary* commit, use .btn--primary[data-tone='danger']
+ * (filled warn) — see the tone block below. */
+.btn--danger {
+  background: var(--bg-subtle);
+  color: var(--warn);
+}
+.btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 12%, var(--bg-subtle));
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* Pressed / active state for a toggle button (e.g. an "overrides only"
+ * filter toggle). Accent-tint fill matching .seg-item--active, so a pressed
+ * standalone toggle and a pressed segment read the same. */
+.btn--active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text);
+}
+
+/* ---- Size + shape modifiers -------------------------------------------- */
+
+/* Compact — dense toolbars and card action rows. */
+.btn--sm {
+  padding: 3px 9px;
+  font-size: var(--text-xs);
+}
+
+/* Icon-only — square footprint, content is a single glyph/SVG. The box and
+ * SVG sizes are vars so a caller picks the 28 px row / 24 px tree / 20 px
+ * inline footprint without minting a new class. */
+.btn--icon {
+  --btn-size: 28px;
+  --btn-icon: 16px;
+  width: var(--btn-size);
+  height: var(--btn-size);
+  padding: 0;
+  gap: 0;
+  flex-shrink: 0;
+  /* Quiet at rest; the variant + tone colour the hover. */
+  color: var(--text-muted);
+}
+.btn--icon svg {
+  width: var(--btn-icon);
+  height: var(--btn-icon);
+  stroke-width: 1.7;
+}
+
+/* ---- Semantic tone (the verb's colour) --------------------------------- */
+/* On an icon button: colours the hover text + border by the action's verb,
+ * so the same verb reads the same in every pane (resting state stays
+ * neutral). On a filled primary: recolours the fill (destructive commit).
+ * These follow the variant rules so they win the colour at equal
+ * specificity. */
+/* open (navigate / reveal) and add (create / new) share the brand accent —
+ * both are the positive "go forward" verb; previously add actions drifted
+ * across amber / green / accent pane-by-pane. */
+.btn[data-tone='open']:hover:not(:disabled),
+.btn[data-tone='add']:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* work / run — start a terminal or run a command: the "go live" green. */
+.btn[data-tone='work']:hover:not(:disabled),
+.btn[data-tone='run']:hover:not(:disabled) {
+  color: var(--col-running);
+  border-color: var(--col-running);
+}
+/* stop / danger — halt, kill, delete, discard. */
+.btn[data-tone='stop']:hover:not(:disabled),
+.btn[data-tone='danger']:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* Filled destructive commit — same prominence as --primary in the warn hue
+ * (the Confirm button of a destructive dialog). */
+.btn--primary[data-tone='danger'] {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: var(--bg-elevated);
+}
+.btn--primary[data-tone='danger']:hover:not(:disabled) {
+  color: var(--bg-elevated);
+}
+
+/* ---- Action bar -------------------------------------------------------- */
+/* The footer commit/cancel row shared by every modal and form. Secondary /
+ * cancel sits on the left, the single primary on the right (flex-end), so
+ * the primary action is always in the same place. --split pushes a lone
+ * destructive action (e.g. Delete) to the far left, away from the commit. */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.action-bar--split {
+  justify-content: space-between;
+}
+
+/* ---- Segmented toggle -------------------------------------------------- */
+/* A row of mutually-exclusive toggles sharing one outlined track (skills
+ * scope, the logs/skills view switches). One `.seg` wraps N `.seg-item`s;
+ * the active item gets the accent-tint fill — the same active treatment the
+ * scope buttons already used, now shared. */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-subtle);
+}
+.seg-item {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+.seg-item + .seg-item {
+  border-left: 1px solid var(--border);
+}
+.seg-item:hover:not(.seg-item--active) {
+  color: var(--text);
+}
+.seg-item--active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+}
+.seg-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* Compact segmented control for dense toolbars (e.g. the Logs view switch). */
+.seg--sm .seg-item {
+  padding: 3px 10px;
+  font-size: var(--text-xs);
+}

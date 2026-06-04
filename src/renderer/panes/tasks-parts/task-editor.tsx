@@ -6,6 +6,7 @@ import { parseCadence } from '@shared/cadence';
 import { slugify } from '@shared/slug';
 import { ConfirmModal } from '../../confirm-modal';
 import { Modal } from '../../modal';
+import { ActionBar, Button } from '../../actions';
 import { MarkerChip } from './badges';
 import { formatCadence, RUN_MODE_CHOICES, TIMEOUT_CHOICES } from './data';
 import type { Draft } from './data';
@@ -202,23 +203,24 @@ export function TaskEditor(props: {
           </Show>
         </div>
 
-        <div class="tasks-editor-actions">
-          <button type="button" onClick={props.onSave}>
-            Save
-          </button>
-          <button type="button" onClick={props.onCancel}>
-            Cancel
-          </button>
+        <ActionBar class="tasks-editor-actions">
           <Show when={d().editingSlug}>
-            <button
+            <Button
               type="button"
-              class="tasks-danger tasks-editor-delete"
+              variant="danger"
+              class="tasks-editor-delete"
               onClick={() => setConfirmDelete(true)}
             >
               Delete
-            </button>
+            </Button>
           </Show>
-        </div>
+          <Button type="button" variant="default" onClick={props.onCancel}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" onClick={props.onSave}>
+            Save
+          </Button>
+        </ActionBar>
 
         <Show when={confirmDelete()}>
           <ConfirmModal

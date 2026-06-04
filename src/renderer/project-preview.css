@@ -338,26 +338,13 @@
   border-color: var(--accent);
 }
 
+/* .btn--ghost (actions.css) with a dashed border as the "add here" cue;
+ * tone="add" colours the border + text accent on hover. */
 .add-step-button {
   margin-top: 6px;
   align-self: flex-start;
-  background: transparent;
-  border: 1px dashed var(--border);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  padding: 4px 10px;
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.add-step-button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.add-step-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  border-style: dashed;
+  border-color: var(--border);
 }
 
 .add-step-form {
@@ -401,26 +388,16 @@
   gap: 4px;
 }
 
+/* Layout over .btn--ghost (actions.css): full-width left-aligned dir toggle. */
 .file-group-toggle {
   flex: 1;
-  display: inline-flex;
-  align-items: center;
+  justify-content: flex-start;
   gap: 6px;
-  background: transparent;
-  border: none;
   padding: 4px 6px;
-  border-radius: 5px;
-  cursor: pointer;
-  font: inherit;
   font-size: var(--text-xs);
   font-weight: 500;
-  color: var(--text-body);
   text-align: left;
   min-width: 0;
-}
-
-.file-group-toggle:hover {
-  background: var(--bg-hover);
 }
 
 .file-group-chevron {
@@ -457,56 +434,22 @@
 /* Inline "+" sitting next to the notes/ folder head — adds a new note
  * to the project. Small enough to be quiet but coloured on hover so
  * it's obviously interactive. */
+/* Small (20 px) ghost icon-button over .btn--icon (actions.css); quiet at
+ * rest, accent on hover via tone="add". */
 .file-group-add {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  cursor: pointer;
+  --btn-size: 20px;
+  --btn-icon: 13px;
   color: var(--text-faint);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition:
-    background 100ms ease,
-    color 100ms ease,
-    border-color 100ms ease;
 }
 
-.file-group-add svg {
-  width: 13px;
-  height: 13px;
-  stroke-width: 1.7;
-}
-
-.file-group-add:hover {
-  color: var(--kind-project);
-  border-color: color-mix(in srgb, var(--kind-project) 50%, transparent);
-  background: color-mix(in srgb, var(--kind-project) 14%, transparent);
-}
-
+/* Layout over .btn--ghost (actions.css): full-width left-aligned file row. */
 .file-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
   width: 100%;
-  text-align: left;
-  background: transparent;
-  border: none;
-  border-radius: 5px;
+  justify-content: flex-start;
+  gap: 7px;
   padding: 4px 6px;
-  cursor: pointer;
-  font: inherit;
   font-size: var(--text-xs);
-  color: var(--text-body);
   min-width: 0;
-}
-
-.file-button:hover {
-  background: var(--bg-hover);
 }
 
 .file-row-icon {
@@ -538,31 +481,11 @@
  * A real button (not a tree row) so it reads as a primary action; gets
  * a faint border + hover state. The README is the canonical entry
  * point for a project's narrative, so it earns prominence. */
+/* .btn--default (actions.css) with tone="open" — README is the canonical
+ * entry point, so it reads as a real secondary action with an accent hover. */
 .preview-readme-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   align-self: flex-start;
-  padding: 4px 10px 4px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-subtle);
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  line-height: 1.2;
-  transition:
-    background 100ms ease,
-    border-color 100ms ease,
-    color 100ms ease;
-}
-
-.preview-readme-link:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
+  gap: 8px;
 }
 
 .preview-readme-link-icon {
@@ -612,24 +535,15 @@
   gap: 4px;
 }
 
+/* .btn--ghost (actions.css) shaped as a full-width bordered deliverable card. */
 .deliverable-button {
-  display: flex;
   flex-wrap: wrap;
   align-items: baseline;
+  justify-content: flex-start;
   gap: 6px;
   width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-color: var(--border);
   padding: 6px 10px;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-}
-
-.deliverable-button:hover {
-  background: var(--bg-hover);
 }
 
 .deliverable-label {

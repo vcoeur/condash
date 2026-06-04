@@ -163,7 +163,9 @@
 
 .action-dropdown-button.row-action.work-on:hover {
   background: var(--bg-hover);
-  color: var(--accent);
+  /* "Work on" opens a terminal to start working — the green "go live" tone,
+   * matching the Code pane's run/shell actions (see actions.css tone palette). */
+  color: var(--col-running);
   border-color: transparent;
 }
 
@@ -180,6 +182,6 @@
 
 .action-dropdown-button.modal-button.work-on-button:hover {
   background: var(--bg-hover);
-  color: var(--accent);
+  color: var(--col-running);
   border-color: transparent;
 }

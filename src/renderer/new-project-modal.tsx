@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import type { ProjectCreateInput, ProjectCreateResult } from '@shared/types';
 import { slugify, isValidSlugTail } from '@shared/slug';
 import { Modal } from './modal';
+import { ActionBar, Button } from './actions';
 import './new-project-modal.css';
 
 type Kind = ProjectCreateInput['kind'];
@@ -143,14 +144,16 @@ export function NewProjectModal(props: {
                 <code class="new-project-slug-code">
                   {derivedSlug() || <span class="new-project-slug-empty">(empty)</span>}
                 </code>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   class="new-project-slug-edit"
                   onClick={beginEditSlug}
                   disabled={busy() || !derivedSlug()}
                 >
                   edit
-                </button>
+                </Button>
               </div>
             }
           >
@@ -163,14 +166,16 @@ export function NewProjectModal(props: {
                 onInput={(e) => setSlugOverride(e.currentTarget.value)}
                 disabled={busy()}
               />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 class="new-project-slug-edit"
                 onClick={resetSlugToAuto}
                 disabled={busy()}
               >
                 reset
-              </button>
+              </Button>
             </div>
           </Show>
         </div>
@@ -277,18 +282,18 @@ export function NewProjectModal(props: {
           <p class="new-project-error">{error()}</p>
         </Show>
 
-        <div class="new-project-actions">
-          <button class="modal-button" onClick={props.onClose} disabled={busy()}>
+        <ActionBar class="new-project-actions">
+          <Button variant="default" onClick={props.onClose} disabled={busy()}>
             Cancel
-          </button>
-          <button
-            class="modal-button new-project-submit"
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => void submit()}
             disabled={busy() || !title().trim() || !effectiveSlug()}
           >
             {busy() ? 'Creating…' : 'Create'}
-          </button>
-        </div>
+          </Button>
+        </ActionBar>
       </div>
     </Modal>
   );

@@ -58,28 +58,8 @@
   background: var(--bg-hover);
 }
 
-/* Sessions | Task runs view switcher. */
-.logs-view-switch {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.logs-view-switch button {
-  font-size: var(--text-xs);
-  padding: 0.2rem 0.6rem;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.logs-view-switch button.active {
-  background: var(--bg-hover);
-  color: inherit;
-  font-weight: 600;
-}
+/* Sessions | Task runs view switcher is the shared compact segmented control
+ * .seg.seg--sm / .seg-item (actions.css). */
 
 /* scheduled / manual trigger badge in the Task runs view. */
 .logs-taskrun-trigger {

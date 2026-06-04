@@ -40,6 +40,7 @@ import {
 } from './settings-modal-parts/sections-repos-and-open-with';
 import { RecentConceptionsSection } from './settings-modal-parts/section-recent-conceptions';
 import { AgentsSection } from './settings-modal-parts/sections-agents';
+import { ActionBar, Button } from './actions';
 import './settings-modal.css';
 
 /** Persisted last-active settings tab. Stored in localStorage so opening
@@ -794,10 +795,11 @@ export function SettingsModal(props: {
           </Show>
           <span class="settings-head-spacer" />
           <Show when={tab() === 'conception'}>
-            <button
+            <Button
               type="button"
-              class="modal-button settings-diff-toggle"
-              classList={{ 'settings-diff-toggle--on': diffOnly() }}
+              variant="default"
+              size="sm"
+              classList={{ 'btn--active': diffOnly() }}
               onClick={toggleDiff}
               title={
                 diffOnly()
@@ -807,25 +809,24 @@ export function SettingsModal(props: {
               aria-pressed={diffOnly()}
             >
               {diffOnly() ? 'Overrides only ✓' : 'Overrides only'}
-            </button>
+            </Button>
           </Show>
-          <button
-            class="modal-button settings-save"
-            classList={{ 'settings-save--dirty': isDirty() }}
+          <Button
+            variant={isDirty() ? 'primary' : 'default'}
             onClick={() => void flushDrafts()}
             disabled={!isDirty() || pending()}
             title="Save staged changes to disk"
           >
             Save
-          </button>
-          <button
-            class="modal-button"
+          </Button>
+          <Button
+            variant="default"
             onClick={discardDrafts}
             disabled={!isDirty() || pending()}
             title="Drop every staged change and revert to the file on disk"
           >
             Discard
-          </button>
+          </Button>
           <button
             class="modal-button"
             onClick={attemptClose}
@@ -1151,17 +1152,17 @@ export function SettingsModal(props: {
             >
               <h3>Save before closing?</h3>
               <p>You have staged changes that haven't been written to disk yet.</p>
-              <div class="settings-confirm-actions">
-                <button class="modal-button" onClick={() => setCloseConfirm(false)}>
+              <ActionBar>
+                <Button variant="default" onClick={() => setCloseConfirm(false)}>
                   Keep editing
-                </button>
-                <button class="modal-button" onClick={handleDiscardAndClose}>
+                </Button>
+                <Button variant="danger" onClick={handleDiscardAndClose}>
                   Discard and close
-                </button>
-                <button class="modal-button" onClick={() => void handleSaveAndClose()}>
+                </Button>
+                <Button variant="primary" onClick={() => void handleSaveAndClose()}>
                   Save and close
-                </button>
-              </div>
+                </Button>
+              </ActionBar>
             </div>
           </div>
         </Show>
