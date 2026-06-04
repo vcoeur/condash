@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  configSchema,
+  conceptionConfigSchema as configSchema,
   globalSettingsSchema,
   migrateRawSettings,
   validateAndCanonicaliseConceptionConfig,
@@ -355,5 +355,44 @@ describe('configSchema cardMinWidth — every card grid is accepted', () => {
     const canon = validateAndCanonicaliseGlobalSettings(json);
     const parsed = JSON.parse(canon);
     expect(parsed.cardMinWidth).toEqual({ logs: 500, tasks: 360, deliverables: 380 });
+  });
+});
+
+describe('config field-naming convention (D6-2 — frozen)', () => {
+  // The config surface mixes snake_case (repo / terminal-shell vocabulary) and
+  // camelCase (app/UI prefs) for historical reasons; existing keys are NOT
+  // renamed (a rename is a breaking settings migration). This guard freezes
+  // the rule for NEW keys: every top-level key must be pure snake_case or pure
+  // camelCase — never kebab-case, PascalCase, or SCREAMING_SNAKE. The
+  // convention itself is documented in config-schema.ts's header docblock.
+  const SNAKE_OR_CAMEL = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$|^[a-z][a-zA-Z0-9]*$/;
+
+  // `$`-prefixed keys are a reserved meta-key namespace (e.g. the
+  // self-documenting `$schema_doc` hint), not user config fields, so they sit
+  // outside the snake/camel rule.
+  function topLevelKeys(schema: { shape: Record<string, unknown> }): string[] {
+    return Object.keys(schema.shape).filter((key) => !key.startsWith('$'));
+  }
+
+  it('every top-level conceptionConfig key is snake_case or camelCase', () => {
+    for (const key of topLevelKeys(configSchema)) {
+      expect(SNAKE_OR_CAMEL.test(key), `key "${key}" must be snake_case or camelCase`).toBe(true);
+    }
+  });
+
+  it('every top-level globalSettings key is snake_case or camelCase', () => {
+    for (const key of topLevelKeys(globalSettingsSchema)) {
+      expect(SNAKE_OR_CAMEL.test(key), `key "${key}" must be snake_case or camelCase`).toBe(true);
+    }
+  });
+
+  it('the guard regex rejects the styles the convention forbids', () => {
+    // Sanity-check the matcher so a permissive regex can't silently pass.
+    expect(SNAKE_OR_CAMEL.test('pinned_branch')).toBe(true);
+    expect(SNAKE_OR_CAMEL.test('cardMinWidth')).toBe(true);
+    expect(SNAKE_OR_CAMEL.test('kebab-case')).toBe(false);
+    expect(SNAKE_OR_CAMEL.test('PascalCase')).toBe(false);
+    expect(SNAKE_OR_CAMEL.test('SCREAMING_SNAKE')).toBe(false);
+    expect(SNAKE_OR_CAMEL.test('mixed_Snake')).toBe(false);
   });
 });

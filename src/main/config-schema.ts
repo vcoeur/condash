@@ -14,6 +14,27 @@ export { isSectionMarker, type RawRepo, type RawSubmoduleRepo };
  * lock-step. Top-level keys in `condash.json` replace the matching keys in
  * `settings.json` at read time; the only fields a conception cannot set
  * are `lastConceptionPath` and `recentConceptionPaths`.
+ *
+ * Field-naming convention (FROZEN — see `config-schema.test.ts`):
+ * the user-facing config surface mixes two casings for historical reasons,
+ * and existing keys are NOT renamed (a rename is a breaking settings
+ * migration). The rule for which casing a *new* key takes:
+ *
+ *   - **snake_case** for the repo-entry / terminal-shell vocabulary —
+ *     anything under `repositories[]` (`pinned_branch`, `force_stop`, …) and
+ *     the `terminal.xterm` shell-style block (`font_family`, `cursor_blink`,
+ *     `cursor_style`, `letter_spacing`, `line_height`), plus the open-with
+ *     slots (`open_with`, `main_ide`, `pdf_viewer`). These read like
+ *     shell/dotfile config and stay snake.
+ *   - **camelCase** for app/UI preference keys — everything else
+ *     (`cardMinWidth`, `leftView`, `treeExpansion`, `retentionDays`,
+ *     `runMode`, `newProjectActions`, …).
+ *
+ * A new key must match one of the two casings (the test guard rejects any
+ * top-level key that is neither pure snake_case nor pure camelCase), and a
+ * new key in an existing group must follow that group's casing. When in
+ * doubt for a genuinely new group, prefer camelCase. Do not introduce a third
+ * style (kebab-case, PascalCase, SCREAMING_SNAKE).
  */
 /**
  * A repo entry needs a locator (`name` or `path`) once it carries any other
@@ -407,16 +428,7 @@ export const globalSettingsSchema = z
 /** Schema for `<conception>/condash.json` — same shape minus path-self. */
 export const conceptionConfigSchema = z.object(sharedSchemaFields).strict();
 
-/**
- * Backwards-compatibility export. Older code referenced `configSchema`;
- * the new name is `conceptionConfigSchema`.
- */
-export const configSchema = conceptionConfigSchema;
-
 export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
-
-/** Backwards-compat alias. */
-export type Config = ConceptionConfig;
 
 /**
  * Hard-coded directory name browsed by the Resources pane. The reframe
@@ -529,9 +541,6 @@ export function validateAndCanonicaliseConceptionConfig(json: string): string {
   }
   return JSON.stringify(result.data, null, 2) + '\n';
 }
-
-/** Backwards-compat alias for the renamed canonicaliser. */
-export const validateAndCanonicaliseConfig = validateAndCanonicaliseConceptionConfig;
 
 /**
  * Parse → validate → re-serialise the per-machine `settings.json` body. Used

@@ -75,7 +75,7 @@ function scheduleWrite(key: string, payload: string): void {
 
 // Force any pending writes to flush synchronously. Wired to `pagehide` so a
 // quit/close doesn't lose the last 250 ms of layout edits.
-export function flushPersistence(): void {
+function flushPersistence(): void {
   for (const [key, t] of pendingWrites) {
     clearTimeout(t);
     const value = pendingValues.get(key);
@@ -104,7 +104,7 @@ export function readMeta(): Record<string, PersistedTabMeta> {
   }
 }
 
-export function writeMeta(meta: Record<string, PersistedTabMeta>): void {
+function writeMeta(meta: Record<string, PersistedTabMeta>): void {
   scheduleWrite(META_KEY, JSON.stringify(meta));
 }
 

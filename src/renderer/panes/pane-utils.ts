@@ -13,13 +13,3 @@ export function formatSectionLabel(relPath: string): string {
   if (relPath === '') return 'ROOT';
   return relPath.split('/').join(' · ').toUpperCase();
 }
-
-/**
- * Tiny convenience: a search input is "active" when its trimmed value is
- * non-empty. Each pane was repeating `query.trim().length > 0` (or
- * `> 0` / `=== 0` flips of the same check); this puts the boolean
- * intent in one place.
- */
-export function isSearching(query: string): boolean {
-  return query.trim().length > 0;
-}

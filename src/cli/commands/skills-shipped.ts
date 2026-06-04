@@ -86,7 +86,7 @@ export function locateShippedSkillsRoot(): string {
   return join(__dirname, '..', 'conception-template', SOURCE_RELPATH);
 }
 
-export async function collectFilesRelative(dir: string): Promise<string[]> {
+async function collectFilesRelative(dir: string): Promise<string[]> {
   const out: string[] = [];
   async function walk(current: string, prefix: string): Promise<void> {
     const entries = await fs.readdir(current, { withFileTypes: true });
@@ -105,7 +105,7 @@ export async function collectFilesRelative(dir: string): Promise<string[]> {
 }
 
 /** Pull the `description:` value out of a SKILL.md YAML frontmatter block. */
-export async function extractDescriptionFromSkillMd(skillMdPath: string): Promise<string | null> {
+async function extractDescriptionFromSkillMd(skillMdPath: string): Promise<string | null> {
   try {
     const raw = await fs.readFile(skillMdPath, 'utf8');
     const match = raw.match(/^description:\s*(.+?)\s*$/m);

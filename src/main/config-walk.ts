@@ -170,21 +170,3 @@ export function findRepoEntry(config: ConfigShape, name: string): RepoLookup | n
   });
   return exactByDisplay ?? topLevelByName ?? submoduleByName;
 }
-
-/**
- * Find a repo by its canonical handle (the `#`-stripped, lowercased token).
- * Used by the `applications` CLI and `apps:` validation, which resolve a
- * reference to its registered repo. Returns the first match in declaration
- * order, or null.
- */
-export function findRepoByHandle(config: ConfigShape, handle: string): RepoLookup | null {
-  const target = appHandle(handle);
-  let found: RepoLookup | null = null;
-  walkRepos(config, (entry) => {
-    if (entry.handle === target) {
-      found = entry;
-      return false;
-    }
-  });
-  return found;
-}

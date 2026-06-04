@@ -2,6 +2,7 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { toPosix } from '../shared/path';
+import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import type { TreeEvent } from '../shared/types';
 import { migrateLegacyConfig } from './condash-dir-migrate';
 import { resolveConceptionPaths } from './conception-paths';
@@ -166,7 +167,7 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
  * `condash.json` (or legacy `configuration.json`) edit might have changed
  * `skills_path`, so the new root is observed and the old one isn't.
  */
-export async function refreshWatchedConception(): Promise<void> {
+async function refreshWatchedConception(): Promise<void> {
   if (!current) return;
   const path = current.path;
   await current.watcher.close().catch(() => undefined);
@@ -286,7 +287,7 @@ function schedule(): void {
     if (events.length === 0) return;
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.isDestroyed()) continue;
-      win.webContents.send('tree-events', events);
+      win.webContents.send(EVENT_CHANNELS.treeEvents, events);
     }
   }, DEBOUNCE_MS);
 }

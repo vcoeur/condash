@@ -397,7 +397,7 @@ function compactTerminal(terminal: RawTerminal): RawTerminal | undefined {
  * `template` verbatim, attach `submit: true` only when explicitly set, and
  * attach `agent` only when set to a non-empty string.
  */
-export function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
+function compactActionTemplates(arr: ActionTemplate[]): ActionTemplate[] {
   return arr.map((a) => {
     const out: ActionTemplate = {
       label: a.label ?? '',
