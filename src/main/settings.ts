@@ -204,3 +204,45 @@ export async function updateSettings(
     return next;
   });
 }
+
+/**
+ * Raw atomic read-modify-write of settings.json as an untyped JSON object,
+ * run under the same `settingsQueue` as `updateSettings` so the GUI's typed
+ * mutations and a CLI `config set --global` can't race and drop one another.
+ *
+ * Unlike `updateSettings` this neither migrates the legacy `conceptionPath`
+ * field nor normalises through the `Settings` shape — it persists exactly the
+ * object the mutator leaves, which is what the dotted-path `config set` needs
+ * (arbitrary keys, no schema coercion). A missing file reads as `{}`; the
+ * parent directory is created on write.
+ *
+ * @param mutator mutates the parsed JSON object in place
+ */
+export async function mutateSettingsJson(
+  mutator: (current: Record<string, unknown>) => void | Promise<void>,
+): Promise<void> {
+  return withSettingsQueue(async () => {
+    const path = settingsPath();
+    let current: Record<string, unknown> = {};
+    try {
+      const raw = await fs.readFile(path, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        current = parsed as Record<string, unknown>;
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    await mutator(current);
+    await fs.mkdir(dirname(path), { recursive: true });
+    const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
+    const fh = await fs.open(tmp, 'w');
+    try {
+      await fh.writeFile(JSON.stringify(current, null, 2) + '\n', 'utf8');
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+    await fs.rename(tmp, path);
+  });
+}

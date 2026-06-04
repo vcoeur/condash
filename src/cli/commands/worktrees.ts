@@ -9,7 +9,7 @@ import {
 } from '../../main/worktree-ops';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, parseCsvFlag, type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import { renderHelp, runNoun } from '../help';
 import { runRepos } from './repos';
 
 const KNOWN_FLAGS_LIST = ['include-worktrees'] as const;
@@ -35,35 +35,25 @@ export async function runWorktrees(
   conceptionPath: string,
   universalHelp = false,
 ): Promise<void> {
-  if (verb === 'help') {
-    printHelp(args.positional[0] ?? null);
-    return;
-  }
-  if (universalHelp) {
-    printHelp(verb);
-    return;
-  }
-  switch (verb) {
-    case null:
-      printHelp(null);
-      return;
-    case 'list':
-      // Full repo list with worktrees included — same payload `repos list
-      // --include-worktrees` returns, kept here for the documented alias.
-      args.flags['include-worktrees'] = true;
-      await runRepos('list', args, ctx, conceptionPath);
-      return;
-    case 'check':
-      return await worktreeCheck(args, ctx, conceptionPath);
-    case 'mismatch':
-      return await worktreeMismatch(args, ctx, conceptionPath);
-    case 'setup':
-      return await worktreeSetup(args, ctx, conceptionPath);
-    case 'remove':
-      return await worktreeRemove(args, ctx, conceptionPath);
-    default:
-      throw new CliError(ExitCodes.USAGE, `Unknown worktrees verb: ${verb}`);
-  }
+  await runNoun(
+    'worktrees',
+    verb,
+    args,
+    {
+      list: () => {
+        // Full repo list with worktrees included — same payload `repos list
+        // --include-worktrees` returns, kept here for the documented alias.
+        args.flags['include-worktrees'] = true;
+        return runRepos('list', args, ctx, conceptionPath);
+      },
+      check: () => worktreeCheck(args, ctx, conceptionPath),
+      mismatch: () => worktreeMismatch(args, ctx, conceptionPath),
+      setup: () => worktreeSetup(args, ctx, conceptionPath),
+      remove: () => worktreeRemove(args, ctx, conceptionPath),
+    },
+    printHelp,
+    universalHelp,
+  );
 }
 
 async function worktreeCheck(
@@ -253,7 +243,7 @@ function printHelp(verb: string | null): void {
   switch (verb) {
     case 'list':
       process.stdout.write(
-        [
+        renderHelp([
           'condash worktrees list',
           '',
           'List configured repos with their worktrees (alias of `repos list --include-worktrees`).',
@@ -261,30 +251,24 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash worktrees list',
           '  condash worktrees list --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'check':
       process.stdout.write(
-        [
+        renderHelp([
           'condash worktrees check <branch>',
           '',
           'Per-repo state for one branch: declaring items, on-disk worktrees, local branches.',
           '',
           'Examples:',
           '  condash worktrees check condash-cli-ux-fixes',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'mismatch':
       process.stdout.write(
-        [
+        renderHelp([
           'condash worktrees mismatch',
           '',
           'List items declaring **Branch** but missing on-disk worktrees.',
@@ -292,15 +276,12 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash worktrees mismatch',
           '  condash worktrees mismatch --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'setup':
       process.stdout.write(
-        [
+        renderHelp([
           'condash worktrees setup <branch> [--repo <r>...] [--no-env] [--no-install] [--copy-env] [--base <ref>]',
           '',
           'Create worktrees for every repo in the union of **Apps** declaring this branch.',
@@ -315,15 +296,12 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash worktrees setup condash-cli-ux-fixes',
           '  condash worktrees setup feature-x --repo condash --no-install',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'remove':
       process.stdout.write(
-        [
+        renderHelp([
           'condash worktrees remove <branch> [--repo <r>...] [--force] [--force-rm]',
           '',
           'Remove worktrees for this branch, protected-set aware.',
@@ -336,10 +314,7 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash worktrees remove condash-cli-ux-fixes',
           '  condash worktrees remove feature-x --force-rm',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     default:
@@ -349,7 +324,7 @@ function printHelp(verb: string | null): void {
 
 function printSubHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash worktrees <verb> [args]',
       '',
       'Verbs:',
@@ -358,9 +333,6 @@ function printSubHelp(): void {
       '  mismatch         Items declaring **Branch** but missing on-disk worktrees.',
       '  setup <branch>   Create worktrees for every repo declaring this branch.',
       '  remove <branch>  Remove worktrees for this branch, protected-set aware.',
-      '',
-      UNIVERSAL_FOOTER,
-      '',
-    ].join('\n'),
+    ]),
   );
 }

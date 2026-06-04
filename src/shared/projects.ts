@@ -16,6 +16,24 @@ export function statusOrder(status: string): number {
   return idx === -1 ? KNOWN_STATUSES.length : idx;
 }
 
+/**
+ * Default project ordering: by status rank (`statusOrder`), then slug
+ * alphabetically as the tie-break. The Projects-pane IPC list and the CLI
+ * `projects list` both default to this exact ordering — sharing it here keeps
+ * the two from drifting.
+ *
+ * @param a project-like row carrying a `status` and `slug`
+ * @param b the other row
+ */
+export function compareByStatusThenSlug(
+  a: { status: string; slug: string },
+  b: { status: string; slug: string },
+): number {
+  const order = statusOrder(a.status) - statusOrder(b.status);
+  if (order !== 0) return order;
+  return a.slug.localeCompare(b.slug);
+}
+
 /** Tally `[ ] / [~] / [x] / [!] / [-]` markers in the README's `## Steps`
  * section only — milestone count. Entries living under `## Step details`,
  * `## Notes`, or any other section are tracked by the parser for editing

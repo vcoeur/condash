@@ -9,6 +9,7 @@ import { detectConceptionState, initConception } from '../conception-init';
 import { setWatchedConception } from '../watcher';
 import { disposeRepoWatchers } from '../repo-watchers';
 import { readHelpDoc } from '../help';
+import { requireNonEmptyString } from './utils';
 
 /**
  * Wire OS-level / shell-out / app-info handlers — anything whose body just
@@ -56,9 +57,7 @@ export function registerSystemIpc(opts: {
   });
 
   ipcMain.handle('pdfToFileUrl', async (_, path: string) => {
-    if (typeof path !== 'string' || path.length === 0) {
-      throw new Error('pdfToFileUrl: path must be a non-empty string');
-    }
+    requireNonEmptyString('pdfToFileUrl', path);
     // Bound the file:// URL to the conception subtree — without this, a
     // compromised renderer can synthesise a webview src for any file on disk
     // (e.g. ~/.ssh/id_rsa) by passing an absolute path. Resolve via realpath
@@ -131,9 +130,7 @@ export function registerSystemIpc(opts: {
    * against the new conception without a second `getConceptionPath` round-trip.
    */
   ipcMain.handle('openConception', async (_, path: string) => {
-    if (typeof path !== 'string' || path.length === 0) {
-      throw new Error('openConception: path must be a non-empty string');
-    }
+    requireNonEmptyString('openConception', path);
     const picked = toPosix(path);
     await switchConception(picked);
     return picked;
@@ -150,9 +147,7 @@ export function registerSystemIpc(opts: {
   });
 
   ipcMain.handle('removeRecentConceptionPath', async (_, path: string) => {
-    if (typeof path !== 'string' || path.length === 0) {
-      throw new Error('removeRecentConceptionPath: path must be a non-empty string');
-    }
+    requireNonEmptyString('removeRecentConceptionPath', path);
     await updateSettings((cur) => ({
       ...cur,
       recentConceptionPaths: removeRecent(cur.recentConceptionPaths, path),
@@ -168,9 +163,7 @@ export function registerSystemIpc(opts: {
   });
 
   ipcMain.handle('openExternal', async (_, target: string) => {
-    if (typeof target !== 'string' || target.length === 0) {
-      throw new Error('openExternal: target must be a non-empty string');
-    }
+    requireNonEmptyString('openExternal', target);
     // shell.openExternal already filters non-http/https on most platforms but
     // we additionally clamp to safe schemes here so a hostile pty can't pop a
     // file:// or jar: handler. Local paths must go through `openPath`.
@@ -181,9 +174,7 @@ export function registerSystemIpc(opts: {
   });
 
   ipcMain.handle('openPath', async (_, target: string) => {
-    if (typeof target !== 'string' || target.length === 0) {
-      throw new Error('openPath: target must be a non-empty string');
-    }
+    requireNonEmptyString('openPath', target);
     // Reject anything that looks like a URL — the renderer should call
     // openExternal for those.
     if (/^[a-z][a-z0-9+\-.]*:/i.test(target)) {
@@ -198,9 +189,7 @@ export function registerSystemIpc(opts: {
   // path it already displays, and this only delegates to Electron's shell
   // (no shell expansion, no command-injection vector).
   ipcMain.handle('showInFolder', (_, target: string) => {
-    if (typeof target !== 'string' || target.length === 0) {
-      throw new Error('showInFolder: target must be a non-empty string');
-    }
+    requireNonEmptyString('showInFolder', target);
     shell.showItemInFolder(target);
   });
 

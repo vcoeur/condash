@@ -14,6 +14,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import { filterTags } from './index-tag-filter';
+import { matchVerifiedLine } from './knowledge-stamps';
 import type { DraftResult, IndexStrategy } from './index-tree';
 
 export const knowledgeStrategy: IndexStrategy = {
@@ -72,8 +73,6 @@ interface HeadMeta {
   verifiedAt?: string;
 }
 
-const VERIFIED_RE = /^\*\*Verified:\*\*\s+(\d{4}-\d{2}-\d{2})/;
-
 function parseHead(head: string, fallback: string): HeadMeta {
   const lines = head.split(/\r?\n/);
   let title: string | null = null;
@@ -89,9 +88,9 @@ function parseHead(head: string, fallback: string): HeadMeta {
       continue;
     }
     if (inFence) continue;
-    const verified = VERIFIED_RE.exec(line);
-    if (verified) {
-      verifiedAt = verified[1];
+    const verifiedDate = matchVerifiedLine(line);
+    if (verifiedDate) {
+      verifiedAt = verifiedDate;
       if (summaryParts.length > 0) summaryDone = true;
       continue;
     }

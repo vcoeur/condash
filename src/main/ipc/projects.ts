@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { promises as fsp } from 'node:fs';
 import { parseHeader } from '../../shared/header';
-import { statusOrder } from '../../shared/projects';
+import { compareByStatusThenSlug } from '../../shared/projects';
 import type {
   Project,
   ProjectCreateInput,
@@ -40,11 +40,7 @@ async function listProjects(): Promise<Project[]> {
   const readmes = await findProjectReadmes(conceptionPath);
   const projects = await Promise.all(readmes.map(parseReadme));
 
-  return projects.sort((a, b) => {
-    const o = statusOrder(a.status) - statusOrder(b.status);
-    if (o !== 0) return o;
-    return a.slug.localeCompare(b.slug);
-  });
+  return projects.sort(compareByStatusThenSlug);
 }
 
 async function getProject(path: string): Promise<Project | null> {
@@ -131,6 +127,9 @@ export function registerProjectsIpc(): void {
   ipcMain.handle(
     'setStatus',
     async (_, path: string, newStatus: string, opts?: { summary?: string }) => {
+      // Bound at the IPC layer like every sibling path-accepting handler —
+      // setStatus previously skipped this, the lone gap D1-4 flagged.
+      await assertUnderConception(path);
       const result = await transitionStatus(path, newStatus, opts);
       // Touch the dirty marker so a follow-up `condash projects index` is
       // surfaced. Best-effort: if the conception path isn't set we just

@@ -4,7 +4,8 @@ import { findProjectReadmes } from '../../main/walk';
 import { parseReadmeWithHeader } from '../../main/parse';
 import { search as searchAll } from '../../main/search';
 import { type SearchHit } from '../../shared/types';
-import { statusOrder } from '../../shared/projects';
+import { compareByStatusThenSlug } from '../../shared/projects';
+import { formatSearchHitsHuman } from '../format-hits';
 import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { parseHeader, validateHeader, validateBody, type HeaderFields } from '../../shared/header';
@@ -48,24 +49,26 @@ export async function listProjects(
     const { project, header: headerFields } = await parseReadmeWithHeader(readme);
     const headerWarnings = validateHeader(headerFields, readme).warnings;
 
-    const apps = headerFields.apps;
-    const branch = headerFields.branch;
-
     if (statusFilter && !statusFilter.includes(project.status)) continue;
     if (kindFilter && !kindFilter.includes(project.kind)) continue;
-    if (appsFilter && !appsFilter.some((app) => apps.includes(app))) continue;
-    if (branchFilter && branch !== branchFilter) continue;
+    if (appsFilter && !appsFilter.some((app) => project.apps.includes(app))) continue;
+    if (branchFilter && project.branch !== branchFilter) continue;
 
+    // Build the CLI row from the shared `Project` shape (the GUI uses the same
+    // one), decorated with the three fields the parser exposes only via the
+    // header — `absPath`/`date`/`headerWarnings` — which the JSON-envelope
+    // contract has long carried.
+    const itemDir = readme.replace(/\/README\.md$/, '');
     rows.push({
       slug: project.slug,
-      path: relative(conceptionPath, readme.replace(/\/README\.md$/, '')),
-      absPath: readme.replace(/\/README\.md$/, ''),
+      path: relative(conceptionPath, itemDir),
+      absPath: itemDir,
       title: project.title,
       kind: project.kind,
       status: project.status,
-      apps,
-      branch,
-      base: headerFields.base,
+      apps: project.apps,
+      branch: project.branch,
+      base: project.base,
       date: headerFields.date,
       closedAt: project.closedAt,
       stepCounts: project.stepCounts,
@@ -81,12 +84,8 @@ export async function listProjects(
 function makeSorter(sort: string): (a: ProjectListRow, b: ProjectListRow) => number {
   if (sort === 'slug') return (a, b) => a.slug.localeCompare(b.slug);
   if (sort === 'date') return (a, b) => (b.date ?? '').localeCompare(a.date ?? '');
-  return (a, b) => {
-    const orderA = statusOrder(a.status);
-    const orderB = statusOrder(b.status);
-    if (orderA !== orderB) return orderA - orderB;
-    return a.slug.localeCompare(b.slug);
-  };
+  // Default ('status'): same comparator the GUI Projects-pane list uses.
+  return compareByStatusThenSlug;
 }
 
 function formatListHuman(rows: ProjectListRow[]): string {
@@ -289,13 +288,7 @@ function formatSearchHuman(
   data: { hits: SearchHit[]; query: string },
   _conceptionPath: string,
 ): string {
-  if (data.hits.length === 0) return `(no project matches for "${data.query}")\n`;
-  const lines: string[] = [];
-  for (const hit of data.hits) {
-    const snippet = hit.snippets[0]?.text.replace(/\s+/g, ' ').slice(0, 120) ?? '';
-    lines.push(`${hit.relPath}: ${snippet}`);
-  }
-  return lines.join('\n') + '\n';
+  return formatSearchHitsHuman(data.hits, `(no project matches for "${data.query}")\n`);
 }
 
 export async function validateCommand(

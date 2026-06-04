@@ -18,13 +18,16 @@
  *                   content has drifted from the tree (regen dry-run would
  *                   rewrite them). Covers freshness where `index` covers
  *                   structure, and covers `projects/` too.
+ *  - `stale-verification` — knowledge body files whose `**Verified:**` stamp
+ *                   is older than the freshness threshold (default 30 days).
+ *                   The engine (`audit/stale-verification.ts`) is shared with
+ *                   `condash knowledge verify`, so the GUI audit pane surfaces
+ *                   stale stamps too. Never auto-fixed — a stale stamp means a
+ *                   human must reread the source, not bump the date.
  *  - `knowledge-recheck` — projects with a deferred knowledge promotion
  *                   (a `[knowledge-recheck:pending]` timeline marker) that
  *                   was never resolved by a later `[knowledge-recheck:done]`.
  *                   Checked across all statuses, `done` included.
- *
- * Stamps live in `condash knowledge verify` — not duplicated here. The audit
- * verb composes that one too via the same envelope.
  *
  * Pure read-only. Returns `{summary, issues[]}` so the CLI can either pretty-
  * print it or hand it to the skill verbatim.
@@ -42,6 +45,7 @@ import { checkKnowledgeCheck } from './audit/knowledge-check';
 import { checkKnowledgeRecheck } from './audit/knowledge-recheck';
 import { checkLfs } from './audit/lfs';
 import { checkStaleIndex } from './audit/stale-index';
+import { checkStaleVerification } from './audit/stale-verification';
 import { checkWorktrees } from './audit/worktrees';
 import type { AuditCheckName, AuditIssue, AuditReport } from './audit/shared';
 
@@ -72,6 +76,9 @@ export async function runAudit(
           break;
         case 'stale-index':
           issues.push(...(await checkStaleIndex(conceptionPath)));
+          break;
+        case 'stale-verification':
+          issues.push(...(await checkStaleVerification(conceptionPath)));
           break;
         case 'knowledge-recheck':
           issues.push(...(await checkKnowledgeRecheck(conceptionPath)));

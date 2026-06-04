@@ -190,6 +190,7 @@ condash audit --include lfs,binaries
 | `worktrees` | Same shape as `worktrees mismatch` — items declaring a `branch` with no on-disk worktree, or vice versa |
 | `index` | Structural `index.md` problems under `knowledge/` — missing index, dangling links, orphan body files |
 | `stale-index` | `index.md` files under `projects/` or `knowledge/` whose content has drifted from the tree (a regen would rewrite them); autofix re-runs `condash <tree> index` |
+| `stale-verification` | Knowledge body files whose `**Verified:**` stamp is older than the freshness threshold (default 30 days). Shares its engine with `condash knowledge verify`, so the GUI audit pane surfaces stale stamps too. Never auto-fixed — a stale stamp means a human must reread the source, not bump the date |
 | `knowledge-recheck` | Projects with a deferred knowledge promotion (a `[knowledge-recheck:pending]` timeline marker) never resolved by a later `[knowledge-recheck:done]`. Checked across all statuses, `done` included |
 | `knowledge-check` | `done` projects whose last timeline entry isn't `Checked knowledge promotion` — the promotion review is missing or stale. Resolve by doing the real `/knowledge` review, then `projects check-knowledge <slug> --record`. Legacy done projects stay flagged until actually reviewed (no backfill shortcut) |
 

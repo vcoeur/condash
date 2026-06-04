@@ -4,13 +4,19 @@ import { readKnowledgeTree } from '../../main/knowledge';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { knowledgeStrategy } from '../../main/index-knowledge';
 import { atomicWrite } from '../../main/atomic-write';
+import { collectKnowledgeBodyFiles, collectKnowledgeIndexFiles } from '../../main/search/walk';
+import { VERIFIED_PREFIX_RE } from '../../main/knowledge-stamps';
+import {
+  DEFAULT_STALE_MAX_AGE_DAYS,
+  scanStaleStamps,
+  staleStampsToIssues,
+  type StampScanEntry,
+} from '../../main/audit/stale-verification';
 import { isoToday } from '../../shared/iso-today';
 import type { KnowledgeNode } from '../../shared/types';
 import { CliError, ExitCodes, emit, validation, type OutputContext } from '../output';
 import { assertNoExtraFlags, parseIntFlag, type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
-
-const DEFAULT_MAX_AGE_DAYS = 30;
+import { renderHelp, runNoun } from '../help';
 
 const KNOWN_FLAGS_TREE = ['depth'] as const;
 const KNOWN_FLAGS_VERIFY = ['max-age'] as const;
@@ -35,31 +41,20 @@ export async function runKnowledge(
   conceptionPath: string,
   universalHelp = false,
 ): Promise<void> {
-  if (verb === 'help') {
-    printHelp(args.positional[0] ?? null);
-    return;
-  }
-  if (universalHelp) {
-    printHelp(verb);
-    return;
-  }
-  switch (verb) {
-    case null:
-      printHelp(null);
-      return;
-    case 'tree':
-      return await treeCommand(args, ctx, conceptionPath);
-    case 'verify':
-      return await verifyCommand(args, ctx, conceptionPath);
-    case 'retrieve':
-      return await retrieveCommand(args, ctx, conceptionPath);
-    case 'stamp':
-      return await stampCommand(args, ctx, conceptionPath);
-    case 'index':
-      return await indexCommand(args, ctx, conceptionPath);
-    default:
-      throw new CliError(ExitCodes.USAGE, `Unknown knowledge verb: ${verb}`);
-  }
+  await runNoun(
+    'knowledge',
+    verb,
+    args,
+    {
+      tree: () => treeCommand(args, ctx, conceptionPath),
+      verify: () => verifyCommand(args, ctx, conceptionPath),
+      retrieve: () => retrieveCommand(args, ctx, conceptionPath),
+      stamp: () => stampCommand(args, ctx, conceptionPath),
+      index: () => indexCommand(args, ctx, conceptionPath),
+    },
+    printHelp,
+    universalHelp,
+  );
 }
 
 async function indexCommand(
@@ -166,87 +161,30 @@ function walkForHuman(
   });
 }
 
-interface StampReport {
-  path: string;
-  relPath: string;
-  line: number;
-  verifiedAt: string;
-  where: string;
-  ageDays: number;
-}
-
 async function verifyCommand(
   args: ParsedArgs,
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const maxAge = parseIntFlag(args.flags['max-age'], DEFAULT_MAX_AGE_DAYS);
+  const maxAge = parseIntFlag(args.flags['max-age'], DEFAULT_STALE_MAX_AGE_DAYS);
   delete args.flags['max-age'];
   assertNoExtraFlags(args, NOUN_FLAGS);
-  const knowledgeRoot = join(conceptionPath, 'knowledge');
-  const files = await collectKnowledgeFiles(knowledgeRoot);
 
-  const stale: StampReport[] = [];
-  const fresh: StampReport[] = [];
-  const unstamped: string[] = [];
-  const today = new Date();
-
-  for (const path of files) {
-    const raw = await fs.readFile(path, 'utf8');
-    const lines = raw.split(/\r?\n/);
-    let stampLine = -1;
-    let verifiedAt: string | null = null;
-    let where = '';
-    for (let i = 0; i < lines.length; i++) {
-      const m = lines[i].match(/^\*\*Verified:\*\*\s+(\d{4}-\d{2}-\d{2})\b\s*(.*)$/);
-      if (m) {
-        stampLine = i + 1;
-        verifiedAt = m[1];
-        where = m[2].trim();
-        break;
-      }
-    }
-    if (!verifiedAt) {
-      unstamped.push(relative(conceptionPath, path));
-      continue;
-    }
-    const ageDays = daysBetween(verifiedAt, today);
-    const report: StampReport = {
-      path,
-      relPath: relative(conceptionPath, path),
-      line: stampLine,
-      verifiedAt,
-      where,
-      ageDays,
-    };
-    if (ageDays > maxAge) stale.push(report);
-    else fresh.push(report);
-  }
-
-  // Materialise stale stamps as audit-shaped issues so wrapping skills (e.g.
-  // /knowledge verify) consume audit + verify with one shape. autoFix is hardcoded to
-  // false: a stale stamp means "human reread the source and re-confirmed",
-  // never "bump the date for me".
-  const issues = stale.map((s) => ({
-    check: 'stale_verification',
-    severity: 'warn' as const,
-    file: s.relPath,
-    line: s.line,
-    message: `Verification stamp from ${s.verifiedAt} (${s.ageDays}d ago) is older than ${maxAge}-day threshold`,
-    fix: {
-      action: 'flag_for_user_review',
-      autoFix: false,
-      verifiedAt: s.verifiedAt,
-      ageDays: s.ageDays,
-      where: s.where,
-    },
-  }));
+  // Engine shared with the `stale-verification` audit check (so the GUI audit
+  // pane and `condash audit` surface the same stale stamps). This command adds
+  // the fresh/unstamped tallies the standalone-verify envelope reports, and
+  // honours `--max-age` (the audit check uses the default threshold).
+  const scan = await scanStaleStamps(conceptionPath, maxAge);
+  // Keep the historical `stale_verification` (underscore) check label on the
+  // verify envelope; the audit-registered check uses the hyphenated name.
+  const issues = staleStampsToIssues(scan, 'stale_verification');
+  const { stale, fresh, unstamped } = scan;
 
   emit(
     ctx,
     { stale, fresh: fresh.length, unstamped, maxAge, issues },
     (data) => {
-      const d = data as { stale: StampReport[]; fresh: number; unstamped: string[] };
+      const d = data as { stale: StampScanEntry[]; fresh: number; unstamped: string[] };
       const lines: string[] = [];
       if (d.stale.length === 0) {
         lines.push(
@@ -322,7 +260,7 @@ async function retrieveCommand(
   }
 
   if (mode === 'grep' || (mode === 'both' && triage.length === 0)) {
-    const files = await collectKnowledgeFiles(knowledgeRoot);
+    const files = await collectKnowledgeBodyFiles(knowledgeRoot);
     const re = new RegExp(escapeRegex(query), 'i');
     for (const path of files) {
       const content = await fs.readFile(path, 'utf8');
@@ -379,7 +317,7 @@ async function collectIndexEntries(
   knowledgeRoot: string,
   conceptionPath: string,
 ): Promise<IndexEntry[]> {
-  const indexFiles = await collectIndexMdFiles(knowledgeRoot);
+  const indexFiles = await collectKnowledgeIndexFiles(knowledgeRoot);
   const entries: IndexEntry[] = [];
   // Bullet line: - [`name`](link) — *italic description.* `[k1, k2, …]`
   const BULLET = /^-\s+\[[^\]]+\]\(([^)]+)\)\s+[—\-]\s+\*([^*]+)\*\s*`?\[?([^\]`]*)\]?`?/;
@@ -405,47 +343,6 @@ async function collectIndexEntries(
     }
   }
   return entries;
-}
-
-async function collectIndexMdFiles(root: string): Promise<string[]> {
-  const out: string[] = [];
-  await walkDir(root, async (path, isDir) => {
-    if (!isDir && path.endsWith('/index.md')) out.push(path);
-  });
-  return out;
-}
-
-async function collectKnowledgeFiles(root: string): Promise<string[]> {
-  const out: string[] = [];
-  await walkDir(root, async (path, isDir) => {
-    if (!isDir && path.toLowerCase().endsWith('.md') && !path.endsWith('/index.md')) {
-      out.push(path);
-    }
-  });
-  return out;
-}
-
-async function walkDir(
-  dir: string,
-  visit: (path: string, isDir: boolean) => Promise<void>,
-): Promise<void> {
-  let entries: import('node:fs').Dirent[];
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
-    throw err;
-  }
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue;
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      await visit(full, true);
-      await walkDir(full, visit);
-    } else if (entry.isFile()) {
-      await visit(full, false);
-    }
-  }
 }
 
 async function stampCommand(
@@ -511,7 +408,7 @@ async function stampCommand(
   const lines = raw.split(/\r?\n/);
   let replaced = false;
   for (let i = 0; i < lines.length; i++) {
-    if (/^\*\*Verified:\*\*/.test(lines[i])) {
+    if (VERIFIED_PREFIX_RE.test(lines[i])) {
       lines[i] = stampLine;
       replaced = true;
       break;
@@ -552,13 +449,6 @@ async function stampCommand(
   );
 }
 
-function daysBetween(iso: string, today: Date): number {
-  const [y, m, d] = iso.split('-').map(Number);
-  const stamp = new Date(Date.UTC(y, m - 1, d));
-  const now = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  return Math.max(0, Math.floor((now - stamp.getTime()) / (1000 * 60 * 60 * 24)));
-}
-
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -571,7 +461,7 @@ function printHelp(verb: string | null): void {
   switch (verb) {
     case 'tree':
       process.stdout.write(
-        [
+        renderHelp([
           'condash knowledge tree [--depth N]',
           '',
           'Hierarchical view of knowledge/.',
@@ -582,34 +472,28 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash knowledge tree',
           '  condash knowledge tree --depth 2 --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'verify':
       process.stdout.write(
-        [
+        renderHelp([
           'condash knowledge verify [--max-age N]',
           '',
           'Audit **Verified:** stamps; report any older than --max-age days.',
           '',
           'Optional:',
-          `  --max-age   Threshold in days (default: ${DEFAULT_MAX_AGE_DAYS}).`,
+          `  --max-age   Threshold in days (default: ${DEFAULT_STALE_MAX_AGE_DAYS}).`,
           '',
           'Examples:',
           '  condash knowledge verify',
           '  condash knowledge verify --max-age 60 --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'retrieve':
       process.stdout.write(
-        [
+        renderHelp([
           'condash knowledge retrieve <query> [--mode <mode>]',
           '',
           'Match a query against index.md keywords; falls back to grep.',
@@ -620,15 +504,12 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash knowledge retrieve "session cookie"',
           '  condash knowledge retrieve gdpr --mode triage --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'stamp':
       process.stdout.write(
-        [
+        renderHelp([
           'condash knowledge stamp <path> --where <where> [--date YYYY-MM-DD] [--insert-after <heading>]',
           '',
           'Idempotently write a **Verified:** line into a file.',
@@ -642,15 +523,12 @@ function printHelp(verb: string | null): void {
           '',
           'Examples:',
           '  condash knowledge stamp knowledge/internal/condash.md --where "condash@abc1234 on main"',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'index':
       process.stdout.write(
-        [
+        renderHelp([
           'condash knowledge index [--dry-run] [--rewrite-aggregated]',
           '',
           'Regenerate every knowledge/**/index.md.',
@@ -663,10 +541,7 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash knowledge index',
           '  condash knowledge index --dry-run --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     default:
@@ -676,7 +551,7 @@ function printHelp(verb: string | null): void {
 
 function printSubHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash knowledge <verb> [args]',
       '',
       'Verbs:',
@@ -685,9 +560,6 @@ function printSubHelp(): void {
       '  retrieve    Match a query against index.md keywords; falls back to grep.',
       '  stamp       Idempotently write a **Verified:** line into a file.',
       '  index       Regenerate every knowledge/**/index.md.',
-      '',
-      UNIVERSAL_FOOTER,
-      '',
-    ].join('\n'),
+    ]),
   );
 }

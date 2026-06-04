@@ -38,7 +38,7 @@
 
 import { CliError, ExitCodes, type OutputContext } from '../output';
 import { type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import { renderHelp } from '../help';
 import { installRepo } from './skills-install';
 import { listRepo, repoStatus, validateSkills } from './skills-status';
 
@@ -76,7 +76,7 @@ function printHelp(verb: string | null): void {
     case 'list':
     case null:
       process.stdout.write(
-        [
+        renderHelp([
           'condash skills list [--dest <path>]',
           '',
           'List shipped skills + top-level files (and their install status).',
@@ -86,15 +86,12 @@ function printHelp(verb: string | null): void {
           '',
           'Examples:',
           '  condash skills list',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'install':
       process.stdout.write(
-        [
+        renderHelp([
           'condash skills install [<skill-or-file>...] [--dest <path>]',
           '                       [--force] [--diff] [--dry-run] [--prune]',
           '',
@@ -116,15 +113,12 @@ function printHelp(verb: string | null): void {
           '  condash skills install',
           '  condash skills install pr knowledge --diff',
           '  condash skills install AGENTS.md',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'status':
       process.stdout.write(
-        [
+        renderHelp([
           'condash skills status [--dest <path>]',
           '',
           'Per-skill / per-file install state (tracked, edited, missing on source).',
@@ -132,25 +126,19 @@ function printHelp(verb: string | null): void {
           'Examples:',
           '  condash skills status',
           '  condash skills status --json',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     case 'validate':
       process.stdout.write(
-        [
+        renderHelp([
           'condash skills validate [--dest <path>]',
           '',
           'Lint shipped skills (each must have a SKILL.md with a description).',
           '',
           'Examples:',
           '  condash skills validate',
-          '',
-          UNIVERSAL_FOOTER,
-          '',
-        ].join('\n'),
+        ]),
       );
       return;
     default:
@@ -160,7 +148,7 @@ function printHelp(verb: string | null): void {
 
 function printSubHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash skills <verb> [args]',
       '',
       'Verbs:',
@@ -168,9 +156,6 @@ function printSubHelp(): void {
       '  install    Install (or refresh) shipped artefacts.',
       '  status     Per-skill / per-file install state.',
       '  validate   Lint shipped skills.',
-      '',
-      UNIVERSAL_FOOTER,
-      '',
-    ].join('\n'),
+    ]),
   );
 }

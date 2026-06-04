@@ -70,3 +70,12 @@ export interface SearchResults {
   /** True when results were truncated to the cap. */
   truncated: boolean;
 }
+
+/** A well-formed empty `SearchResults`. The `search` IPC handler and the
+ * backend search both return this for no-op cases (no conception set, empty
+ * query) so the contract is honest — consumers can destructure `{ hits }`
+ * without defensive optional-chaining. A fresh object each access so callers
+ * can't mutate a shared instance. */
+export function emptySearchResults(): SearchResults {
+  return { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
+}

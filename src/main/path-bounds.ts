@@ -6,6 +6,60 @@ import { walkRepos, type ConfigShape } from './config-walk';
 import { userScopeReadableDirs, userScopeReadableFiles } from './user-scope-paths';
 
 /**
+ * The one boundary primitive every path-bounding helper shares: is the
+ * canonical `childReal` equal to, or nested under, the canonical `rootReal`?
+ * Both arguments must already be realpath'd. A trailing separator is appended
+ * before the prefix test so `/a/bc` is not treated as under `/a/b`.
+ */
+function isRealpathUnder(childReal: string, rootReal: string): boolean {
+  const child = childReal.endsWith(sep) ? childReal : childReal + sep;
+  const parent = rootReal.endsWith(sep) ? rootReal : rootReal + sep;
+  return child === parent || child.startsWith(parent);
+}
+
+/** Realpath `path`, throwing a uniform error when it doesn't resolve. */
+async function realpathOrThrow(path: string): Promise<string> {
+  try {
+    return await fs.realpath(path);
+  } catch {
+    throw new Error(`path does not resolve: ${path}`);
+  }
+}
+
+/** Realpath a candidate root, returning `null` (rather than throwing) when it
+ * doesn't resolve — a configured root that doesn't exist is simply skipped. */
+async function realpathOrNull(root: string): Promise<string | null> {
+  try {
+    return await fs.realpath(root);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve `path` and require it under at least one of `roots`. Returns the
+ * realpath of the request so callers can stat/open the canonical path without
+ * a second round-trip. Throws `outsideMessage` when it's under none. Roots
+ * that don't resolve are skipped. Both the request and each root are
+ * realpath'd, so a symlink under a root pointing outside it is rejected.
+ */
+async function resolveUnderAnyRoot(
+  path: string,
+  roots: readonly string[],
+  outsideMessage: string,
+): Promise<string> {
+  if (typeof path !== 'string' || path.length === 0) {
+    throw new Error('path must be a non-empty string');
+  }
+  const real = await realpathOrThrow(path);
+  const rootReals = await Promise.all(roots.map(realpathOrNull));
+  for (const rootReal of rootReals) {
+    if (rootReal !== null && isRealpathUnder(real, rootReal)) return real;
+  }
+  throw new Error(outsideMessage);
+}
+
+/**
  * Throw unless `path` resolves to a location under `root`.
  *
  * Both paths are realpathed (in parallel, to narrow the TOCTOU window
@@ -23,22 +77,7 @@ import { userScopeReadableDirs, userScopeReadableFiles } from './user-scope-path
  * addStep, etc. Pass-4..6 deferred; pass-7 lands.
  */
 export async function requirePathUnder(path: string, root: string): Promise<string> {
-  if (typeof path !== 'string' || path.length === 0) {
-    throw new Error('path must be a non-empty string');
-  }
-  let real: string;
-  let rootReal: string;
-  try {
-    [real, rootReal] = await Promise.all([fs.realpath(path), fs.realpath(root)]);
-  } catch {
-    throw new Error(`path does not resolve: ${path}`);
-  }
-  const child = real.endsWith(sep) ? real : real + sep;
-  const parent = rootReal.endsWith(sep) ? rootReal : rootReal + sep;
-  if (!(child === parent || child.startsWith(parent))) {
-    throw new Error('path is outside the conception tree');
-  }
-  return real;
+  return resolveUnderAnyRoot(path, [root], 'path is outside the conception tree');
 }
 
 /**
@@ -56,38 +95,13 @@ export async function requirePathUnder(path: string, root: string): Promise<stri
  * call site.
  */
 export async function requirePathUnderWorkspace(path: string): Promise<string> {
-  if (typeof path !== 'string' || path.length === 0) {
-    throw new Error('path must be a non-empty string');
-  }
   const settings = await readSettings();
   const conceptionPath = settings.lastConceptionPath;
   if (!conceptionPath) {
     throw new Error('no conception path is set');
   }
-  const config = await readWorkspaceRoots(conceptionPath);
-  const candidates = [conceptionPath, ...config];
-  let real: string;
-  try {
-    real = await fs.realpath(path);
-  } catch {
-    throw new Error(`path does not resolve: ${path}`);
-  }
-  const child = real.endsWith(sep) ? real : real + sep;
-  const reals = await Promise.all(
-    candidates.map(async (root) => {
-      try {
-        const rootReal = await fs.realpath(root);
-        return rootReal.endsWith(sep) ? rootReal : rootReal + sep;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  for (const parent of reals) {
-    if (parent === null) continue;
-    if (child === parent || child.startsWith(parent)) return real;
-  }
-  throw new Error('path is outside the workspace');
+  const candidates = [conceptionPath, ...(await readWorkspaceRoots(conceptionPath))];
+  return resolveUnderAnyRoot(path, candidates, 'path is outside the workspace');
 }
 
 /**
@@ -104,43 +118,20 @@ export async function requireReadableSkillPath(path: string): Promise<string> {
   if (typeof path !== 'string' || path.length === 0) {
     throw new Error('path must be a non-empty string');
   }
-  let real: string;
-  try {
-    real = await fs.realpath(path);
-  } catch {
-    throw new Error(`path does not resolve: ${path}`);
-  }
-  const child = real.endsWith(sep) ? real : real + sep;
+  const real = await realpathOrThrow(path);
 
+  // First: under any readable skills directory (active conception + user-scope).
   const { lastConceptionPath } = await readSettings();
   const dirs = [...(lastConceptionPath ? [lastConceptionPath] : []), ...userScopeReadableDirs()];
-  const dirReals = await Promise.all(
-    dirs.map(async (root) => {
-      try {
-        const rootReal = await fs.realpath(root);
-        return rootReal.endsWith(sep) ? rootReal : rootReal + sep;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  for (const parent of dirReals) {
-    if (parent === null) continue;
-    if (child === parent || child.startsWith(parent)) return real;
+  const dirReals = await Promise.all(dirs.map(realpathOrNull));
+  for (const rootReal of dirReals) {
+    if (rootReal !== null && isRealpathUnder(real, rootReal)) return real;
   }
 
-  // The user-scope AGENTS.md lives directly under `~/.config/agents/`,
-  // a directory condash deliberately doesn't expose wholesale — match it
-  // exactly by realpath instead.
-  const fileReals = await Promise.all(
-    userScopeReadableFiles().map(async (file) => {
-      try {
-        return await fs.realpath(file);
-      } catch {
-        return null;
-      }
-    }),
-  );
+  // Otherwise: an exact match of an allowlisted file. The user-scope AGENTS.md
+  // lives directly under `~/.config/agents/`, a directory condash deliberately
+  // doesn't expose wholesale — match it exactly by realpath instead.
+  const fileReals = await Promise.all(userScopeReadableFiles().map(realpathOrNull));
   if (fileReals.includes(real)) return real;
 
   throw new Error('path is not a readable skills location');

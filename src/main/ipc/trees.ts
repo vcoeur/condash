@@ -7,7 +7,7 @@ import { readSkillsTreeForScope } from '../skills';
 import { search } from '../search';
 import { readSettings } from '../settings';
 import { treeCreateMd, treeImportFile, treeMkdir } from '../tree-mutations';
-import type { SkillScope, TreeRoot } from '../../shared/types';
+import { emptySearchResults, type SkillScope, type TreeRoot } from '../../shared/types';
 import { withConception } from './utils';
 
 /** Coerce renderer-supplied scope to the enum, defaulting to conception. */
@@ -57,12 +57,13 @@ export function registerTreesIpc(): void {
     treeImportFile(root, dirRelPath),
   );
 
-  // The original handler returned `[]` when no conception path was set;
-  // typed as `SearchResults` by the api but the renderer guards against
-  // either shape. Preserve verbatim — behaviour-preserving extract.
+  // Returns a well-formed empty `SearchResults` (not a bare `[]`) when no
+  // conception path is set, so the declared `Promise<SearchResults>` contract
+  // is honest — the renderer can destructure `{ hits }` without defensive
+  // optional-chaining.
   ipcMain.handle('search', async (_, query: string, scopes?: string[]) => {
     const { lastConceptionPath: conceptionPath } = await readSettings();
-    if (!conceptionPath) return [];
+    if (!conceptionPath) return emptySearchResults();
     return search(conceptionPath, query, scopes);
   });
 }

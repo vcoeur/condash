@@ -19,6 +19,7 @@ export type AuditCheckName =
   | 'worktrees'
   | 'index'
   | 'stale-index'
+  | 'stale-verification'
   | 'knowledge-recheck'
   | 'knowledge-check';
 

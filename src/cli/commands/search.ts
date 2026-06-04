@@ -1,7 +1,8 @@
 import { search as searchAll } from '../../main/search';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, parseIntFlag, type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import { formatSearchHitsHuman } from '../format-hits';
+import { renderHelp } from '../help';
 
 const KNOWN_FLAGS_SEARCH = ['scope', 'limit'] as const;
 
@@ -49,12 +50,7 @@ export async function runSearch(
     },
     (d) => {
       const data = d as { hits: typeof filtered };
-      if (data.hits.length === 0) return `(no matches for "${query}")\n`;
-      return (
-        data.hits
-          .map((h) => `${h.relPath}: ${h.snippets[0]?.text.slice(0, 120) ?? ''}`)
-          .join('\n') + '\n'
-      );
+      return formatSearchHitsHuman(data.hits, `(no matches for "${query}")\n`);
     },
     [],
     { streamField: 'hits' },
@@ -63,7 +59,7 @@ export async function runSearch(
 
 function printHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash search <query> [--scope <scope>] [--limit <n>]',
       '',
       'Cross-tree search across project READMEs/notes and knowledge files.',
@@ -75,9 +71,6 @@ function printHelp(): void {
       'Examples:',
       '  condash search "dirty marker"',
       '  condash search retention --scope knowledge --limit 10',
-      '',
-      UNIVERSAL_FOOTER,
-      '',
-    ].join('\n'),
+    ]),
   );
 }

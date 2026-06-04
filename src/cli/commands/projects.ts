@@ -1,6 +1,6 @@
-import { CliError, ExitCodes, type OutputContext } from '../output';
+import { type OutputContext } from '../output';
 import { type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import { renderHelp, runNoun } from '../help';
 import {
   listProjects,
   readProject,
@@ -88,49 +88,29 @@ export async function runProjects(
   conceptionPath: string,
   universalHelp = false,
 ): Promise<void> {
-  if (verb === 'help') {
-    printHelp(args.positional[0] ?? null);
-    return;
-  }
-  if (universalHelp) {
-    printHelp(verb);
-    return;
-  }
-  switch (verb) {
-    case null:
-      printHelp(null);
-      return;
-    case 'list':
-      return await listProjects(args, ctx, conceptionPath);
-    case 'read':
-      return await readProject(args, ctx, conceptionPath);
-    case 'resolve':
-      return await resolveCommand(args, ctx, conceptionPath);
-    case 'search':
-      return await searchProjects(args, ctx, conceptionPath);
-    case 'validate':
-      return await validateCommand(args, ctx, conceptionPath);
-    case 'status':
-      return await statusCommand(args, ctx, conceptionPath);
-    case 'close':
-      return await closeProject(args, ctx, conceptionPath);
-    case 'check-knowledge':
-      return await checkKnowledgeCommand(args, ctx, conceptionPath);
-    case 'reopen':
-      return await reopenProject(args, ctx, conceptionPath);
-    case 'backfill-closed':
-      return await backfillClosed(args, ctx, conceptionPath);
-    case 'index':
-      return await indexCommand(args, ctx, conceptionPath);
-    case 'create':
-      return await createCommand(args, ctx, conceptionPath);
-    case 'scan-promotions':
-      return await scanPromotionsCommand(args, ctx, conceptionPath);
-    case 'rewrite-headers':
-      return await rewriteHeadersCommand(args, ctx, conceptionPath);
-    default:
-      throw new CliError(ExitCodes.USAGE, `Unknown projects verb: ${verb}`);
-  }
+  await runNoun(
+    'projects',
+    verb,
+    args,
+    {
+      list: () => listProjects(args, ctx, conceptionPath),
+      read: () => readProject(args, ctx, conceptionPath),
+      resolve: () => resolveCommand(args, ctx, conceptionPath),
+      search: () => searchProjects(args, ctx, conceptionPath),
+      validate: () => validateCommand(args, ctx, conceptionPath),
+      status: () => statusCommand(args, ctx, conceptionPath),
+      close: () => closeProject(args, ctx, conceptionPath),
+      'check-knowledge': () => checkKnowledgeCommand(args, ctx, conceptionPath),
+      reopen: () => reopenProject(args, ctx, conceptionPath),
+      'backfill-closed': () => backfillClosed(args, ctx, conceptionPath),
+      index: () => indexCommand(args, ctx, conceptionPath),
+      create: () => createCommand(args, ctx, conceptionPath),
+      'scan-promotions': () => scanPromotionsCommand(args, ctx, conceptionPath),
+      'rewrite-headers': () => rewriteHeadersCommand(args, ctx, conceptionPath),
+    },
+    printHelp,
+    universalHelp,
+  );
 }
 
 function printHelp(verb: string | null): void {
@@ -357,12 +337,12 @@ function printHelp(verb: string | null): void {
 }
 
 function writeBlock(lines: string[]): void {
-  process.stdout.write([...lines, '', UNIVERSAL_FOOTER, ''].join('\n'));
+  process.stdout.write(renderHelp(lines));
 }
 
 function printSubHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash projects <verb> [args]',
       '',
       'Verbs:',
@@ -380,9 +360,6 @@ function printSubHelp(): void {
       '  create           Create a new item.',
       '  scan-promotions  Surface durable-finding candidates inside notes/.',
       '  rewrite-headers  One-shot: convert legacy bold-prose headers to YAML.',
-      '',
-      UNIVERSAL_FOOTER,
-      '',
-    ].join('\n'),
+    ]),
   );
 }

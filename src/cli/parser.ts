@@ -306,6 +306,61 @@ export function parseCsvFlag(value: string | boolean | undefined): string[] | nu
   return parts.length === 0 ? null : parts;
 }
 
+/**
+ * Pull a string-valued flag off the bag and delete it. Returns `null` when the
+ * flag is absent. Throws a `UsageError` when the flag is present as a bare
+ * boolean (`--name` with no value) — every consuming command expects a value.
+ *
+ * This is the consume-and-delete counterpart to the read-only `parseIntFlag`/
+ * `parseCsvFlag`: it mutates `args.flags` so `assertNoExtraFlags` stays the
+ * single source of "what's left is unknown". Retires the per-command
+ * `takeString`/`takeStringFlag`/`consumeFlag` copies.
+ */
+export function takeStringFlag(args: ParsedArgs, name: string): string | null {
+  const value = args.flags[name];
+  if (value === undefined) return null;
+  if (typeof value !== 'string') {
+    throw new UsageError(`--${name} expects a value`);
+  }
+  delete args.flags[name];
+  return value;
+}
+
+/**
+ * Pull a boolean flag off the bag and delete it, returning whether it was
+ * present-and-true. A flag carrying a string value (`--name=x`) still counts
+ * as present here — callers use this for switches the parser already typed as
+ * booleans, so that case is a misuse the command's `assertNoExtraFlags` would
+ * otherwise miss; treat any presence as "set".
+ */
+export function takeBoolFlag(args: ParsedArgs, name: string): boolean {
+  const present = args.flags[name] !== undefined;
+  if (present) delete args.flags[name];
+  return present;
+}
+
+/**
+ * Pull an integer-valued flag off the bag and delete it. Returns `null` when
+ * absent. Throws `UsageError` when the value is non-numeric or out of range.
+ * `allowZero` permits 0 (e.g. a `--from-byte 0` "from the start" cursor);
+ * otherwise the value must be a positive integer.
+ */
+export function takeIntFlag(args: ParsedArgs, name: string, allowZero = false): number | null {
+  const value = args.flags[name];
+  if (value === undefined) return null;
+  if (typeof value !== 'string') {
+    throw new UsageError(`--${name} expects a number`);
+  }
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0 || (!allowZero && n === 0)) {
+    throw new UsageError(
+      `--${name} must be a ${allowZero ? 'non-negative' : 'positive'} integer (got '${value}')`,
+    );
+  }
+  delete args.flags[name];
+  return n;
+}
+
 export interface UniversalFlags {
   json: boolean;
   ndjson: boolean;

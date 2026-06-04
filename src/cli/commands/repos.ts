@@ -1,7 +1,7 @@
 import { listRepos } from '../../main/repos';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { assertNoExtraFlags, type ParsedArgs } from '../parser';
-import { UNIVERSAL_FOOTER } from '../help';
+import { renderHelp } from '../help';
 
 const KNOWN_FLAGS_LIST = ['include-worktrees'] as const;
 
@@ -48,7 +48,7 @@ export async function runRepos(
 function printHelp(verb: string | null): void {
   if (verb === 'list' || verb === null) {
     process.stdout.write(
-      [
+      renderHelp([
         'condash repos list [--include-worktrees]',
         '',
         'List configured repositories from condash.json.',
@@ -59,8 +59,7 @@ function printHelp(verb: string | null): void {
         'Examples:',
         '  condash repos list',
         '  condash repos list --include-worktrees --json',
-        UNIVERSAL_FOOTER,
-      ].join('\n'),
+      ]),
     );
     return;
   }
@@ -69,12 +68,11 @@ function printHelp(verb: string | null): void {
 
 function printSubHelp(): void {
   process.stdout.write(
-    [
+    renderHelp([
       'condash repos <verb> [args]',
       '',
       'Verbs:',
       '  list   List configured repositories.',
-      UNIVERSAL_FOOTER,
-    ].join('\n'),
+    ]),
   );
 }

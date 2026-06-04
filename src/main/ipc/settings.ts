@@ -10,6 +10,7 @@ import type {
   TreeExpansionPrefs,
 } from '../../shared/types';
 import { CARD_MIN_WIDTH_KEYS, DEFAULT_CARD_MIN_WIDTH, SKILL_SCOPES } from '../../shared/types';
+import { requireBoolean, requireEnum, requireStringArray } from './utils';
 
 // Tree-expansion keys after the reframe: knowledge, resources, plus one
 // skills set per scope (conception / user). The pre-reframe per-harness
@@ -80,8 +81,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   ipcMain.handle('getSettingsPath', () => toPosix(settingsPath()));
 
   ipcMain.handle('setTheme', async (_, theme: Theme) => {
-    if (!THEMES.has(theme)) throw new Error(`Unknown theme: ${theme}`);
-    await updateSettings((cur) => ({ ...cur, theme }));
+    const value = requireEnum('setTheme', theme, THEMES);
+    await updateSettings((cur) => ({ ...cur, theme: value }));
   });
 
   ipcMain.handle('getLayout', async () => {
@@ -261,11 +262,9 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   });
 
   ipcMain.handle('setSelectedBranches', async (_, raw: unknown) => {
-    if (!Array.isArray(raw)) {
-      throw new Error('setSelectedBranches: expected array of strings');
-    }
+    const arr = requireStringArray('setSelectedBranches', raw);
     const seen = new Set<string>();
-    for (const entry of raw) {
+    for (const entry of arr) {
       if (typeof entry === 'string' && entry.length > 0) seen.add(entry);
     }
     const next = Array.from(seen);
@@ -290,10 +289,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   });
 
   ipcMain.handle('setBranchFilterStickyAll', async (_, raw: unknown) => {
-    if (typeof raw !== 'boolean') {
-      throw new Error('setBranchFilterStickyAll: expected boolean');
-    }
-    await updateSettings((cur) => ({ ...cur, branchFilterStickyAll: raw }));
+    const value = requireBoolean('setBranchFilterStickyAll', raw);
+    await updateSettings((cur) => ({ ...cur, branchFilterStickyAll: value }));
   });
 
   // Skills-pane active scope (per-machine). Default is `conception` —
@@ -311,10 +308,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   });
 
   ipcMain.handle('setSkillsActiveScope', async (_, raw: unknown) => {
-    if (typeof raw !== 'string' || !SKILL_SCOPE_SET.has(raw as SkillScope)) {
-      throw new Error('setSkillsActiveScope: expected conception | user');
-    }
-    await updateSettings((cur) => ({ ...cur, skillsActiveScope: raw as SkillScope }));
+    const scope = requireEnum('setSkillsActiveScope', raw, SKILL_SCOPE_SET);
+    await updateSettings((cur) => ({ ...cur, skillsActiveScope: scope }));
   });
 
   ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {
