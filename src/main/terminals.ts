@@ -1,8 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type {
@@ -12,7 +11,7 @@ import type {
   TermSpawnRequest,
   TerminalPrefs,
 } from '../shared/types';
-import { atomicWrite } from './atomic-write';
+import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
@@ -79,7 +78,7 @@ function broadcastSessions(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
     if (win.webContents.isDestroyed()) continue;
-    win.webContents.send('termSessions', snap);
+    win.webContents.send(EVENT_CHANNELS.termSessions, snap);
   }
 }
 
@@ -317,14 +316,14 @@ export async function spawnTerminal(
     appendBuffer(session, data);
     session.logger?.output(data);
     if (webContents.isDestroyed()) return;
-    webContents.send('termData', { id, data });
+    webContents.send(EVENT_CHANNELS.termData, { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {
     session.exited = exitCode;
     session.pty = null;
     session.logger?.exit(exitCode);
     if (!webContents.isDestroyed()) {
-      webContents.send('termExit', { id, code: exitCode });
+      webContents.send(EVENT_CHANNELS.termExit, { id, code: exitCode });
     }
     // Keep the entry around (with `exited` set) so renderers that reload
     // can still see it via termList — closeSession removes it on demand.
@@ -520,51 +519,6 @@ export async function getTerminalPrefs(): Promise<TerminalPrefs> {
  * via the Settings modal's `patchConfig` flow. */
 export async function setTerminalPrefs(patch: TerminalPrefs): Promise<void> {
   await updateSettings((cur) => ({ ...cur, terminal: patch }));
-}
-
-/** One-shot migration: if settings.json has no terminal block but the
- * pre-existing configuration.json carries one, copy it over and strip
- * configuration.json. Idempotent — does nothing once settings.json owns
- * the data. */
-export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
-  // Initial read is just a fast-path bail; the authoritative check repeats
-  // inside updateSettings's mutator so concurrent setTheme/setLayout IPC
-  // can't race with this migration.
-  const initial = await readSettings();
-  if (initial.terminal && Object.keys(initial.terminal).length > 0) return;
-  if (!initial.lastConceptionPath) return;
-  // Legacy migration: only the original `configuration.json` is checked.
-  // A fresh `condash.json` carrying a terminal block is a deliberate
-  // per-conception override and stays put.
-  const configFile = join(initial.lastConceptionPath, 'configuration.json');
-  let raw: string;
-  try {
-    raw = await fs.readFile(configFile, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
-    throw err;
-  }
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return;
-  }
-  const legacy = parsed.terminal as TerminalPrefs | undefined;
-  if (!legacy || Object.keys(legacy).length === 0) return;
-  // Atomic read-modify-write: skip the merge if cur.terminal is already
-  // populated (a concurrent IPC may have written it between the initial
-  // read and the queue head).
-  let migrated = false;
-  await updateSettings((cur) => {
-    if (cur.terminal && Object.keys(cur.terminal).length > 0) return cur;
-    migrated = true;
-    return { ...cur, terminal: legacy };
-  });
-  if (!migrated) return;
-  delete parsed.terminal;
-  const next = JSON.stringify(parsed, null, 2) + '\n';
-  await atomicWrite(configFile, next);
 }
 
 /** Kill every session (or every session attached to `forWebContents`) via the
