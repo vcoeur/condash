@@ -57,9 +57,10 @@ test('Skills pane: conception/user scope toggle + refresh', async () => {
     await window.locator('.edge-strip-right .edge-handle').filter({ hasText: 'Skills' }).click();
     await expect(window.locator('.skills-pane')).toBeVisible();
 
-    // Both scope buttons render; Conception is the default + active.
-    const conceptionBtn = window.locator('.skills-scope-btn', { hasText: 'Conception' });
-    const userBtn = window.locator('.skills-scope-btn', { hasText: 'User' });
+    // Both scope buttons render; Conception is the default + active. The scope
+    // toggle is the shared segmented control (.seg / .seg-item) since v4.34.2.
+    const conceptionBtn = window.locator('.skills-pane .seg-item', { hasText: 'Conception' });
+    const userBtn = window.locator('.skills-pane .seg-item', { hasText: 'User' });
     await expect(conceptionBtn).toBeVisible();
     await expect(userBtn).toBeVisible();
     await expect(conceptionBtn).toHaveAttribute('aria-pressed', 'true');

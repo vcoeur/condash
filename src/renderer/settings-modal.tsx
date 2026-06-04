@@ -814,6 +814,7 @@ export function SettingsModal(props: {
           </Show>
           <Button
             variant={isDirty() ? 'primary' : 'default'}
+            class="settings-save"
             onClick={() => void flushDrafts()}
             disabled={!isDirty() || pending()}
             title="Save staged changes to disk"
