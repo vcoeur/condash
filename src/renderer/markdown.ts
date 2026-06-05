@@ -229,6 +229,9 @@ const HLJS_LANG_BY_EXT: Record<string, string> = {
 
 let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
 
+// Monotonic, DOM-safe id for each mermaid.render target (see runMermaidIn).
+let mermaidRenderSeq = 0;
+
 function activeMermaidTheme(): 'default' | 'dark' {
   const explicit = document.documentElement.dataset.theme;
   if (explicit === 'dark') return 'dark';
@@ -265,13 +268,27 @@ export async function runMermaidIn(container: HTMLElement): Promise<void> {
   if (blocks.length === 0) return;
 
   const mermaid = await getMermaid();
-  // mermaid.run rewrites blocks in place; mark them so it doesn't double-run.
   for (const block of blocks) {
-    if (!block.dataset.processed) {
-      block.dataset.processed = '';
+    // This effect re-runs on every html()/theme change; once a block has been
+    // turned into an SVG, skip it so we don't re-parse rendered output as source.
+    if (block.dataset.processed) continue;
+    const source = block.textContent ?? '';
+    if (!source.trim()) continue;
+    try {
+      // Render via mermaid.render, not mermaid.run. run() measures each node
+      // label inside `block` with getBoundingClientRect (screen space); the note
+      // and help modals mount mermaid while their `modal-in` scale() animation is
+      // live, so every node box is sized to the transformed (shrunken) text and
+      // then clips once the animation settles to scale(1). render() measures in a
+      // throwaway element on the untransformed <body>, so box widths are correct
+      // regardless of any ancestor transform. See issue #319.
+      const id = `condash-mermaid-${(mermaidRenderSeq += 1)}`;
+      const { svg, bindFunctions } = await mermaid.render(id, source);
+      block.innerHTML = svg;
+      block.dataset.processed = 'true';
+      bindFunctions?.(block);
+    } catch (err) {
+      console.error('[mermaid]', err);
     }
   }
-  await mermaid.run({ nodes: Array.from(blocks) }).catch((err) => {
-    console.error('[mermaid]', err);
-  });
 }
