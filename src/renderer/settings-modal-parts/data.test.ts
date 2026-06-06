@@ -76,6 +76,39 @@ describe('buildSavePayload — agents', () => {
     ]);
     expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
   });
+
+  it('preserves favorite + promptFlags through Save (regression: the toggles were stripped)', () => {
+    const payload = buildSavePayload({
+      agents: [
+        {
+          id: 'claude',
+          label: 'Claude',
+          command: 'agedum claude',
+          favorite: true,
+          promptFlags: true,
+        },
+      ],
+    });
+    expect(payload.agents).toEqual([
+      {
+        id: 'claude',
+        label: 'Claude',
+        command: 'agedum claude',
+        favorite: true,
+        promptFlags: true,
+      },
+    ]);
+    expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('omits favorite + promptFlags when not set rather than writing false', () => {
+    const payload = buildSavePayload({
+      agents: [
+        { id: 'kimi', label: 'Kimi', command: 'agedum kimi', favorite: false, promptFlags: false },
+      ],
+    });
+    expect(payload.agents).toEqual([{ id: 'kimi', label: 'Kimi', command: 'agedum kimi' }]);
+  });
 });
 
 describe('compactRepos — invariants', () => {

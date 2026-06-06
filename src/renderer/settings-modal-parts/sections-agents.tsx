@@ -91,9 +91,14 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
       <div class="settings-bucket">
         <For each={agents()}>
           {(entry, index) => (
-            <div class="settings-open-with" data-invalid={idMissing(entry) ? 'true' : undefined}>
-              <div class="settings-open-with-head">
-                <span class="settings-field-label">
+            <div class="settings-agent-card" data-invalid={idMissing(entry) ? 'true' : undefined}>
+              <div class="settings-agent-card-head">
+                <span class="settings-agent-card-title">
+                  <Show when={entry.favorite === true}>
+                    <span class="settings-agent-card-star" title="Favourite" aria-hidden="true">
+                      ★
+                    </span>
+                  </Show>
                   {entry.label.trim() || `Agent ${index() + 1}`}
                 </span>
                 <span class="settings-agent-row-actions">
@@ -123,73 +128,79 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
                   </button>
                 </span>
               </div>
-              <label>
-                <span>Label</span>
-                <input
-                  type="text"
-                  placeholder="Claude · Kimi"
-                  {...props.bindText(
-                    `${props.target}.agents[${index()}].label`,
-                    () => entry.label,
-                    (v) => updateField(index(), { label: v }),
-                  )}
-                />
-              </label>
-              <label>
-                <span>Command</span>
-                <input
-                  type="text"
-                  placeholder="claude-kimi"
-                  {...props.bindText(
-                    `${props.target}.agents[${index()}].command`,
-                    () => entry.command,
-                    (v) => updateField(index(), { command: v }),
-                  )}
-                />
-              </label>
-              <label>
-                <span>Id</span>
-                <input
-                  type="text"
-                  placeholder="claude-kimi"
-                  classList={{ 'settings-input--invalid': idMissing(entry) }}
-                  aria-invalid={idMissing(entry)}
-                  {...props.bindText(
-                    `${props.target}.agents[${index()}].id`,
-                    () => entry.id,
-                    (v) => updateField(index(), { id: v }),
-                  )}
-                />
-              </label>
-              <Show when={idMissing(entry)}>
-                <p class="settings-repo-name-error">Id is required to launch this agent.</p>
-              </Show>
-              <label class="settings-checkbox">
-                <input
-                  type="checkbox"
-                  checked={entry.favorite === true}
-                  onChange={(e) =>
-                    void updateField(index(), { favorite: e.currentTarget.checked || undefined })
-                  }
-                />
-                <span>
-                  Favourite — show directly in the new-tab menu (non-favourites move under{' '}
-                  <code>More ▸</code>)
-                </span>
-              </label>
-              <label class="settings-checkbox">
-                <input
-                  type="checkbox"
-                  checked={entry.promptFlags === true}
-                  onChange={(e) =>
-                    void updateField(index(), { promptFlags: e.currentTarget.checked || undefined })
-                  }
-                />
-                <span>
-                  Seed prompt via <code>--run</code> / <code>--prompt</code> (command must accept
-                  them, e.g. agedum)
-                </span>
-              </label>
+              <div class="settings-agent-card-fields">
+                <label>
+                  <span>Label</span>
+                  <input
+                    type="text"
+                    placeholder="Claude · Kimi"
+                    {...props.bindText(
+                      `${props.target}.agents[${index()}].label`,
+                      () => entry.label,
+                      (v) => updateField(index(), { label: v }),
+                    )}
+                  />
+                </label>
+                <label>
+                  <span>Command</span>
+                  <input
+                    type="text"
+                    placeholder="claude-kimi"
+                    {...props.bindText(
+                      `${props.target}.agents[${index()}].command`,
+                      () => entry.command,
+                      (v) => updateField(index(), { command: v }),
+                    )}
+                  />
+                </label>
+                <label>
+                  <span>Id</span>
+                  <input
+                    type="text"
+                    placeholder="claude-kimi"
+                    classList={{ 'settings-input--invalid': idMissing(entry) }}
+                    aria-invalid={idMissing(entry)}
+                    {...props.bindText(
+                      `${props.target}.agents[${index()}].id`,
+                      () => entry.id,
+                      (v) => updateField(index(), { id: v }),
+                    )}
+                  />
+                </label>
+                <Show when={idMissing(entry)}>
+                  <p class="settings-repo-name-error">Id is required to launch this agent.</p>
+                </Show>
+              </div>
+              <div class="settings-agent-card-flags">
+                <label class="settings-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={entry.favorite === true}
+                    onChange={(e) =>
+                      void updateField(index(), { favorite: e.currentTarget.checked || undefined })
+                    }
+                  />
+                  <span>
+                    Favourite — show directly in the new-tab menu (non-favourites move under{' '}
+                    <code>More ▸</code>)
+                  </span>
+                </label>
+                <label class="settings-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={entry.promptFlags === true}
+                    onChange={(e) =>
+                      void updateField(index(), {
+                        promptFlags: e.currentTarget.checked || undefined,
+                      })
+                    }
+                  />
+                  <span>
+                    Seed prompt via <code>--run</code> / <code>--prompt</code> (command must accept
+                    them, e.g. agedum)
+                  </span>
+                </label>
+              </div>
             </div>
           )}
         </For>

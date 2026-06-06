@@ -480,6 +480,7 @@
 .settings-color input,
 .settings-open-with input,
 .settings-list-row input,
+.settings-agent-card-fields input,
 .settings-repo-row input {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -496,6 +497,7 @@
 .settings-color input:focus,
 .settings-open-with input:focus,
 .settings-list-row input:focus,
+.settings-agent-card-fields input:focus,
 .settings-repo-row input:focus {
   outline: none;
   border-color: var(--accent);
@@ -1200,6 +1202,86 @@
   background: var(--bg-hover);
   color: var(--text);
   border-color: var(--border);
+}
+
+/* ---- Agents (per-agent cards) --------------------------------------- */
+
+.settings-agent-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  padding: 10px 12px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* A card missing its id reads as invalid — tint the whole border like the
+   inline-invalid inputs so the broken card is scannable at the card level. */
+.settings-agent-card[data-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.settings-agent-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-agent-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-agent-card-star {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.settings-agent-row-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.settings-agent-card-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 12px;
+}
+
+.settings-agent-card-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Validation message spans the full grid width rather than sitting in a column. */
+.settings-agent-card-fields .settings-repo-name-error {
+  grid-column: 1 / -1;
+}
+
+.settings-agent-card-flags {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 /* ---- Inline validation (D3) + required (D2) -------------------------- */
