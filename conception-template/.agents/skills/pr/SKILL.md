@@ -1,6 +1,6 @@
 ---
 name: pr
-description: "Open a GitHub PR from the current branch. Project-aware wrapper: handles Branch/Base resolution and the project-README timeline append; defers PR body shape to the user's personal /pr skill in ~/.claude (if installed) or prompts inline. Trigger when the user says 'open pr', 'create pr', 'make pr', or '/pr'."
+description: "Open a GitHub PR from the current branch. Project-aware wrapper: handles Branch/Base resolution and the project-README timeline append; defers PR body shape to the user's /git pr rules (git/pr.md) or prompts inline. Trigger when the user says 'open pr', 'create pr', 'make pr', or '/pr'."
 ---
 
 # /pr — open a pull request (project-aware wrapper)
@@ -12,7 +12,7 @@ This skill handles the **project-side mechanics** of opening a PR for any repo l
 - Push if needed and run `gh pr create`.
 - Append a timeline entry to the driving project's README on success.
 
-**PR body shape (title format, required sections, prohibited content) is not this skill's job.** That belongs in the user's personal `/pr` skill at `~/.claude/skills/pr/`. If installed, follow its rules. If not, prompt the user inline for title + body.
+**PR body shape (title format, required sections, prohibited content) is not this skill's job.** That belongs in the user's `/git` skill — read `~/.claude/skills/git/pr.md` for the body shape rules, or invoke `/git pr`. If the git skill isn't installed, prompt the user inline for title + body.
 
 ## Hard rules (workspace-side, not house-style)
 
@@ -21,7 +21,7 @@ This skill handles the **project-side mechanics** of opening a PR for any repo l
 - **No force-push.** Never `--force` / `--force-with-lease` unless the user explicitly asks.
 - **No `--no-verify` / hook skipping.**
 
-Anything else about the body — title style, mandatory sections, prohibited trailers, language conventions — is house style and belongs in the user's global `/pr` skill or in `knowledge/conventions.md`.
+Anything else about the body — title style, mandatory sections, prohibited trailers, language conventions — is house style and belongs in the user's `/git` skill (`git/pr.md`) or in `knowledge/conventions.md`.
 
 ## Process
 
@@ -48,7 +48,7 @@ Anything else about the body — title style, mandatory sections, prohibited tra
 
 3. **Compose the body.**
 
-   - **If the user has a global `/pr` skill** at `~/.claude/skills/pr/SKILL.md`, follow its rules. Read that file before drafting.
+   - **If the user has a `/git` skill**, read `~/.claude/skills/git/pr.md` for the body shape rules, and `~/.claude/skills/git/github.md` for the gh mechanics. Follow those rules before drafting.
    - **Otherwise**, ask the user for a title (one line, imperative mood) and a short body. Don't impose a template.
 
 4. **Scrub internal links.** Grep the draft body for `<conception-root>/`, `projects/`, `knowledge/`, `~/src/`, `<workspace_path>/`, `<worktrees_path>/`, `file://`. Any hit → rewrite as prose.
