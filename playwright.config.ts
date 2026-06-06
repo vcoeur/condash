@@ -3,6 +3,10 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   testMatch: /.*\.spec\.ts$/,
+  // Aborts a direct `npx playwright test` on a Wayland desktop before any window
+  // can open — the headless wrap lives in scripts/run-playwright.mjs (npm run
+  // test), and this catches invocations that skip it. See the guard for detail.
+  globalSetup: './tests/fixtures/headless-guard.ts',
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],
