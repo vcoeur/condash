@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createEffect, createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { Agent } from '@shared/types';
 import { createDropdownMenu } from '../dropdown-menu';
@@ -36,13 +36,33 @@ export interface TerminalColumnProps {
   onTogglePane: () => void;
 }
 
+/** One row of the primary spawn menu: the plain shell, a launchable agent, or
+ *  the `More ▸` toggle that owns the overflow submenu. */
+interface SpawnRow {
+  label: string;
+  /** Agent id to launch, or null for the plain shell. Unused for the More row. */
+  value: string | null;
+  /** Marks the `More ▸` toggle row (opens the overflow submenu, never spawns). */
+  isMore?: boolean;
+  /** Render a leading ★ — only when the favourites split is active. */
+  isFavorite?: boolean;
+}
+
 /** Dropdown button + menu for spawning tabs. Replaces the fixed `+` / μ / λ
- *  button row with a single control that lists all configured launchers.
+ *  button row with a single control that lists configured launchers.
+ *
+ *  When at least one agent is marked `favorite`, the menu lists `New shell` +
+ *  the favourites (starred) directly and tucks the rest behind a `More ▸`
+ *  fly-out submenu. With no favourites it lists every agent inline (the
+ *  pre-favourites behaviour).
  *
  *  The menu is rendered with `position: fixed` (the `.portal` class via
  *  `createDropdownMenu`) so it escapes the strip's `overflow: auto` —
  *  otherwise the menu's full height gets clipped down to the strip's 32px
- *  box and the user sees only fragments of the menu items.
+ *  box and the user sees only fragments of the menu items. The submenu is a
+ *  nested `<ul>` *inside* that portal'd menu (not a second portal) so a click
+ *  on it counts as inside `menuEl` and createDropdownMenu's outside-click
+ *  dismissal leaves it open.
  */
 function SpawnDropdown(props: {
   agents: readonly Agent[];
@@ -50,16 +70,44 @@ function SpawnDropdown(props: {
 }) {
   const menu = createDropdownMenu({ align: 'left' });
   const [highlighted, setHighlighted] = createSignal(0);
+  const [submenuOpen, setSubmenuOpen] = createSignal(false);
+  const [subHighlighted, setSubHighlighted] = createSignal(0);
 
-  const items = () => [
-    { label: 'New shell', value: null as string | null },
-    ...props.agents.map((a) => ({ label: a.label, value: a.id as string | null })),
-  ];
+  const favorites = () => props.agents.filter((a) => a.favorite);
+  const others = () => props.agents.filter((a) => !a.favorite);
+  // No favourite designated → list every agent inline, no split (back-compat).
+  const usesFavorites = () => favorites().length > 0;
+  const primaryAgents = () => (usesFavorites() ? favorites() : props.agents);
+  const hasMore = () => usesFavorites() && others().length > 0;
+
+  const rows = (): SpawnRow[] => {
+    const list: SpawnRow[] = [{ label: 'New shell', value: null }];
+    for (const agent of primaryAgents()) {
+      list.push({ label: agent.label, value: agent.id, isFavorite: usesFavorites() });
+    }
+    if (hasMore()) list.push({ label: 'More', value: null, isMore: true });
+    return list;
+  };
+
+  // Reset transient menu state whenever the menu closes (select, outside click,
+  // or the global Escape handler in createDropdownMenu) so a re-open starts at
+  // the top with the submenu collapsed.
+  createEffect(() => {
+    if (!menu.isOpen()) {
+      setSubmenuOpen(false);
+      setHighlighted(0);
+      setSubHighlighted(0);
+    }
+  });
+
+  const openSubmenu = () => {
+    setSubHighlighted(0);
+    setSubmenuOpen(true);
+  };
 
   const select = (value: string | null) => {
     props.onSpawn(value);
     menu.close();
-    setHighlighted(0);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -71,18 +119,45 @@ function SpawnDropdown(props: {
       }
       return;
     }
-    const count = items().length;
+    // Submenu has keyboard focus: cycle the overflow agents; ArrowLeft returns
+    // to the primary menu. (Escape closes everything via createDropdownMenu.)
+    if (submenuOpen()) {
+      const subCount = others().length;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSubHighlighted((h) => (h + 1) % subCount);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSubHighlighted((h) => (h - 1 + subCount) % subCount);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        select(others()[subHighlighted()].id);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // Right is a no-op here; Left collapses back to the primary menu.
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setSubmenuOpen(false);
+        }
+      }
+      return;
+    }
+    const list = rows();
+    const count = list.length;
+    const current = list[highlighted()];
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlighted((h) => (h + 1) % count);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setHighlighted((h) => (h - 1 + count) % count);
+    } else if (e.key === 'ArrowRight' && current?.isMore) {
+      e.preventDefault();
+      openSubmenu();
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      select(items()[highlighted()].value);
+      if (current?.isMore) openSubmenu();
+      else select(current?.value ?? null);
     }
-    // Escape is handled by createDropdownMenu globally.
   };
 
   return (
@@ -118,19 +193,73 @@ function SpawnDropdown(props: {
               left: `${menu.anchor()!.left}px`,
             }}
           >
-            <For each={items()}>
-              {(item, idx) => (
+            <For each={rows()}>
+              {(row, idx) => (
                 <li
                   role="option"
+                  class={row.isMore ? 'terminal-tab-dropdown-more' : undefined}
+                  aria-haspopup={row.isMore ? 'true' : undefined}
+                  aria-expanded={row.isMore ? submenuOpen() : undefined}
                   aria-selected={highlighted() === idx()}
                   classList={{ highlighted: highlighted() === idx() }}
-                  onMouseEnter={() => setHighlighted(idx())}
+                  onMouseEnter={() => {
+                    setHighlighted(idx());
+                    if (row.isMore) openSubmenu();
+                    else setSubmenuOpen(false);
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    select(item.value);
+                    if (row.isMore) {
+                      // Idempotent open — hover already opens it, so a click
+                      // (hover + press) must not toggle it back shut. Collapse
+                      // via leaving the row, Escape, or ArrowLeft.
+                      setHighlighted(idx());
+                      openSubmenu();
+                    } else {
+                      select(row.value);
+                    }
                   }}
                 >
-                  {item.label}
+                  <Show
+                    when={row.isMore}
+                    fallback={
+                      <>
+                        <Show when={row.isFavorite}>
+                          <span class="terminal-tab-dropdown-star" aria-hidden="true">
+                            ★
+                          </span>
+                        </Show>
+                        {row.label}
+                      </>
+                    }
+                  >
+                    <span>{row.label}</span>
+                    <span aria-hidden="true">▸</span>
+                    <Show when={submenuOpen()}>
+                      <ul
+                        class="terminal-tab-dropdown-submenu"
+                        role="listbox"
+                        aria-label="More agents"
+                      >
+                        <For each={others()}>
+                          {(agent, subIdx) => (
+                            <li
+                              role="option"
+                              aria-selected={subHighlighted() === subIdx()}
+                              classList={{ highlighted: subHighlighted() === subIdx() }}
+                              onMouseEnter={() => setSubHighlighted(subIdx())}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                select(agent.id);
+                              }}
+                            >
+                              {agent.label}
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </Show>
+                  </Show>
                 </li>
               )}
             </For>

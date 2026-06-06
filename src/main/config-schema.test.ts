@@ -99,6 +99,39 @@ describe('configSchema repoEntry', () => {
   });
 });
 
+describe('configSchema agents', () => {
+  it('accepts the optional favorite + promptFlags flags', () => {
+    const result = configSchema.safeParse({
+      agents: [
+        { id: 'claude', label: 'Claude', command: 'claude', favorite: true },
+        { id: 'kimi', label: 'Kimi', command: 'claude-kimi', promptFlags: true },
+        { id: 'plain', label: 'Plain', command: 'opencode' },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agents?.[0].favorite).toBe(true);
+      expect(result.data.agents?.[1].favorite).toBeUndefined();
+    }
+  });
+
+  it('rejects an unknown agent field (strict)', () => {
+    const result = configSchema.safeParse({
+      agents: [{ id: 'claude', label: 'Claude', command: 'claude', favourite: true }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('round-trips favorite through the conception canonicaliser', () => {
+    const canon = validateAndCanonicaliseConceptionConfig(
+      JSON.stringify({
+        agents: [{ id: 'claude', label: 'Claude', command: 'claude', favorite: true }],
+      }),
+    );
+    expect(JSON.parse(canon).agents[0].favorite).toBe(true);
+  });
+});
+
 describe('configSchema taskConfig (capability 1)', () => {
   it('accepts a per-task schedule + timeout + excludeFromLogs map', () => {
     const result = configSchema.safeParse({

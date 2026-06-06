@@ -412,6 +412,41 @@
   background: var(--bg-hover);
 }
 
+/* Leading ★ on a favourite agent, shown only when the favourites split is
+ * active (i.e. at least one agent opted in). */
+.terminal-tab-dropdown-star {
+  margin-right: 6px;
+  color: var(--col-review);
+}
+
+/* The `More ▸` row: chevron pushed to the right, `position: relative` so the
+ * fly-out submenu can anchor to it. */
+.terminal-tab-dropdown-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: relative;
+}
+
+/* Overflow submenu — nested inside the portal'd menu, so it inherits the
+ * `.terminal-tab-dropdown-menu li` row styling via the descendant combinator
+ * and only needs its own box + placement here. Opens to the right of the
+ * `More ▸` row. */
+.terminal-tab-dropdown-submenu {
+  position: absolute;
+  top: -5px;
+  left: 100%;
+  margin-left: 2px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  min-width: 140px;
+  list-style: none;
+  padding: 4px 0;
+  box-shadow: var(--shadow-lift);
+}
+
 /* ── Tab right-click context menu ─────────────────────────────────── */
 
 /* Same `position: fixed` portal treatment as the spawn dropdown so it

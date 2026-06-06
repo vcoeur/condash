@@ -79,6 +79,11 @@ export interface Agent {
    *  TUI. Omit for an opaque agent: the default keystroke path works for any
    *  harness but races the TUI's boot. */
   promptFlags?: boolean;
+  /** When true, the agent is surfaced directly in the tab-strip spawn dropdown;
+   *  non-favourite agents are tucked behind a `More ▸` fly-out. When NO agent is
+   *  marked favourite, the dropdown lists every agent inline (the pre-favourites
+   *  behaviour) — so this only takes effect once at least one agent opts in. */
+  favorite?: boolean;
 }
 
 export interface TerminalPrefs {
