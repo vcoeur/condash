@@ -357,13 +357,23 @@ export function buildSavePayload(config: RawConfig): RawConfig {
  * the save round-trip and stays visible for the user to fill in. Routing them
  * through `pruneEmpty` would strip the empty-string fields and leave `{}` rows
  * the schema can't round-trip cleanly.
+ *
+ * The boolean flags (`favorite`, `promptFlags`) are carried through only when
+ * explicitly `true`, mirroring how the checkboxes write them (`true | undefined`).
+ * Omitting this is what dropped a user's Favourite / Seed-prompt toggles on every
+ * Save — they round-trip now.
  */
 export function compactAgents(agents: Agent[]): Agent[] {
-  return agents.map((a) => ({
-    id: a.id ?? '',
-    label: a.label ?? '',
-    command: a.command ?? '',
-  }));
+  return agents.map((a) => {
+    const compacted: Agent = {
+      id: a.id ?? '',
+      label: a.label ?? '',
+      command: a.command ?? '',
+    };
+    if (a.favorite === true) compacted.favorite = true;
+    if (a.promptFlags === true) compacted.promptFlags = true;
+    return compacted;
+  });
 }
 
 type RawTerminal = {
