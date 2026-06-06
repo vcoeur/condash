@@ -18,7 +18,7 @@ Trigger: `/projects close <slug>`.
 
 4. **Knowledge promotion review.** Editorial step — Claude reads, the CLI is a backstop.
 
-   a. **Read the README and every `notes/*.md` body** returned by step 2's `read --with-notes`, and apply the three-question durability test from `knowledge/conventions.md` to each candidate paragraph:
+   a. **Read the README and every `notes/*.md` body** returned by step 2's `read --with-notes`, and apply the three-question durability test (canonical definition in the `/knowledge` skill) to each candidate paragraph:
 
       1. Holds beyond this task? (Not specific to the in-flight work.)
       2. Applies to more than one app, or to the ecosystem?
