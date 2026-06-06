@@ -34,7 +34,7 @@
     "package": "npm run build && electron-builder",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,html,json}\"",
-    "test": "playwright test",
+    "test": "node scripts/run-playwright.mjs",
     "test:unit": "vitest run",
     "deadcode": "knip",
     "postinstall": "electron-rebuild"

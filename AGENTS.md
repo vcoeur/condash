@@ -57,15 +57,22 @@ When changing the dev port, update **every** file:
 | `make dev` / `npm run dev` | watch mode: tsc + vite + electron |
 | `make build` / `npm run build` | compile main + renderer |
 | `make package` / `npm run package` | electron-builder installers (Linux/macOS/Windows) |
-| `make test` | build, then the Playwright suite (headless via `xvfb-run` when present) |
-| `make test-headless` | build, then Playwright under `xvfb-run` (no window; errors if `xvfb-run` absent) |
-| `make test-visible` | build, then Playwright with the window visible (watch the run) |
+| `make test` / `npm run test` | build, then the Playwright suite **headless by default** (see below) |
+| `make test-headless` | alias of `make test` (headless; errors if `xvfb-run` absent) |
+| `make test-visible` | build, then Playwright with the window visible (`CONDASH_TEST_HEADED=1`) |
 | `make test-unit` / `npm run test:unit` | vitest unit suite |
 | `make deadcode` / `npm run deadcode` | knip — dead files / deps / duplicate exports |
 | `make typecheck` | tsc on both projects, no emit |
 | `make format` | prettier on `src/` |
 | `make kill` | free port 5600 |
 | `make clean` | remove `dist/`, `dist-electron/`, `release/` |
+
+### Tests are headless by default — never open windows on the dev's screen
+
+A Playwright run launches the **real Electron app**, which on a Wayland desktop renders to the live compositor (or XWayland) and **steals focus mid-run**. The headless guarantee lives in `npm run test` → `scripts/run-playwright.mjs`, which wraps the whole run in a throwaway **Xvfb** display with `WAYLAND_DISPLAY` dropped and the **X11 Ozone backend pinned** (`--ozone-platform=headless` is not usable — Electron can't attach Playwright to it). A *direct* `npx playwright test` that skips the wrapper is **aborted by the globalSetup guard** (`tests/fixtures/headless-guard.ts`) before any window opens.
+
+- **Always run the suite via `npm run test` / `make test`** (or `npm run test -- <spec>` for one file). Never `npx playwright test` / `xvfb-run npx playwright test` directly — the first aborts, the second double-wraps.
+- A visible run (to watch it) is the explicit opt-in `CONDASH_TEST_HEADED=1` (`make test-visible`).
 
 ## Configuration
 

@@ -263,13 +263,15 @@ const actionTemplateSchema = z
  *  round-trip to disk and stays visible for the user to fill in; `listAgents`
  *  skips entries whose `id` or `command` is blank. Optional `promptFlags` opts
  *  the agent into argv prompt-seeding (`--prompt`) instead of the keystroke
- *  path — see the `Agent` type. */
+ *  path; optional `favorite` surfaces it directly in the spawn dropdown (the
+ *  rest move under `More ▸`) — see the `Agent` type. */
 const agentSchema = z
   .object({
     id: z.string(),
     label: z.string(),
     command: z.string(),
     promptFlags: z.boolean().optional(),
+    favorite: z.boolean().optional(),
   })
   .strict();
 

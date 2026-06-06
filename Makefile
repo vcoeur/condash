@@ -3,21 +3,17 @@
 DEV_PORT     ?= 5600
 PREVIEW_PORT ?= 5601
 
-# Electron opens an on-screen window unless it runs against a virtual display.
-# Prefer xvfb-run for the Playwright suite when it's installed (the Linux dev
-# norm — mirrors CI) so the window never appears or steals focus; fall back to
-# a visible run where xvfb-run is absent (macOS/Windows). `make test-visible`
-# always shows the window; `make test-headless` always wraps and errors out if
-# xvfb-run is missing.
-#
-# On a Wayland session the dev shell exports ELECTRON_OZONE_PLATFORM_HINT=wayland
-# and WAYLAND_DISPLAY; Electron honours those over xvfb's virtual X DISPLAY and
-# opens the window on the real compositor — stealing focus despite the wrap. For
-# the wrapped run, drop the Wayland socket and pin the X11 Ozone backend so
-# Electron renders into Xvfb only. (test-visible deliberately keeps Wayland.)
-XVFB_RUN  := $(shell command -v xvfb-run 2>/dev/null)
-XVFB_X11  := env -u WAYLAND_DISPLAY ELECTRON_OZONE_PLATFORM_HINT=x11
-TEST_WRAP := $(if $(XVFB_RUN),xvfb-run -a $(XVFB_X11),)
+# Tests are HEADLESS BY DEFAULT — a run must never pop an Electron window onto
+# the developer's screen and steal focus. The guarantee lives in `npm run test`
+# (scripts/run-playwright.mjs), which wraps the whole suite in a throwaway Xvfb
+# display with the Wayland socket dropped and the X11 Ozone backend pinned, so
+# Electron renders into the virtual display, never the live compositor — no
+# matter how the suite is launched. A direct `npx playwright test` that skips
+# that wrapper is aborted by the globalSetup guard (tests/fixtures/headless-
+# guard.ts) before any window opens. Opt into a visible run with
+# CONDASH_TEST_HEADED=1 (`make test-visible`). This is the durable fix for the
+# recurring "a window popped up mid-run" problem — wrapping only the Makefile in
+# xvfb left every direct/ad-hoc invocation exposed.
 
 help:
 	@echo "Targets:"
@@ -29,9 +25,9 @@ help:
 	@echo "  typecheck    run tsc on both main and renderer"
 	@echo "  format       run prettier on src/"
 	@echo "  format-check check prettier formatting without writing"
-	@echo "  test          build then run the Playwright suite (headless when xvfb-run is present)"
-	@echo "  test-headless build then run the suite under xvfb-run (no window; errors if xvfb-run absent)"
-	@echo "  test-visible  build then run the suite with the window visible (watch the run)"
+	@echo "  test          build then run the Playwright suite (headless by default — no window)"
+	@echo "  test-headless build then run the suite (headless; xvfb wrap as defence in depth)"
+	@echo "  test-visible  build then run the suite with the window visible (CONDASH_TEST_HEADED=1)"
 	@echo "  test-unit    run vitest unit suite"
 	@echo "  deadcode     run knip — fail on dead files / deps / duplicate exports"
 	@echo "  kill         free dev port $(DEV_PORT)"
@@ -63,15 +59,15 @@ format-check:
 
 test:
 	npm run build
-	$(TEST_WRAP) npm run test
+	npm run test
 
 test-headless:
 	npm run build
-	xvfb-run -a $(XVFB_X11) npm run test
+	npm run test
 
 test-visible:
 	npm run build
-	npm run test
+	CONDASH_TEST_HEADED=1 npm run test
 
 test-unit:
 	npx vitest run

@@ -240,11 +240,13 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 
 **Agents** are a flat list of terminal launchers under the top-level `agents` key. The tab-strip spawn dropdown lists them (it always offers `New shell` first, then each agent by `label`). Picking one opens a new terminal tab running its `command` — that's the whole model. An agent is a **top-level** config key (like `repositories`), so it resolves global-default ← per-conception override like every other workspace key: define machine-wide defaults in `settings.json`, override or extend per tree in `.condash/settings.json`.
 
+**Favourites.** Mark agents with `"favorite": true` to keep the dropdown short: it then shows `New shell` + the favourites (each prefixed with a ★) directly, and tucks every non-favourite under a `More ▸` fly-out submenu. With **no** agent marked favourite, the dropdown lists every agent inline — so the split only takes effect once at least one agent opts in. Order within each group follows config order.
+
 ```json
 {
   "agents": [
-    { "id": "claude", "label": "Claude", "command": "claude" },
-    { "id": "claude-kimi", "label": "Claude · Kimi", "command": "claude-kimi" },
+    { "id": "claude", "label": "Claude", "command": "claude", "favorite": true },
+    { "id": "claude-kimi", "label": "Claude · Kimi", "command": "claude-kimi", "favorite": true },
     { "id": "opencode-kimi", "label": "OpenCode · Kimi", "command": "opencode-kimi" }
   ]
 }
@@ -256,6 +258,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `label`   | string | yes      | Display name shown in the spawn dropdown and as the pinned tab title.                                                                                            |
 | `command` | string | yes      | Shell command run on launch, in a fresh tab with the terminal's ambient environment. Point it at a wrapper on `PATH` or inline the invocation. Blank → skipped.  |
 | `promptFlags` | bool | no | Default `false`. Set `true` when `command` understands [agedum](../guides/agent-clis-and-models.md)'s `--prompt` / `--run` flags. [Tasks](#tasks) and agent-bound [actions](#terminalprojectactions) then pass the prompt in argv — `<command> --run "<prompt>"` when submitting (non-interactive, exits) or `<command> --prompt "<prompt>"` otherwise (interactive, seeded) — instead of spawning the bare command and typing the prompt into the live TUI. Leave off for an opaque command (e.g. a raw `claude`). |
+| `favorite` | bool | no | Default `false`. Surface this agent directly in the spawn dropdown (prefixed with a ★); non-favourites move under a `More ▸` fly-out. When no agent is marked, every agent is listed inline. |
 
 condash builds **no** provider environment and stores **no** secrets — model/provider wiring and any API token live entirely in `command` (usually a `~/bin` wrapper script). See the [Agent CLIs and model providers guide](../guides/agent-clis-and-models.md) for wrapper recipes. Edit the list in the Settings modal's **Agents** section (on both the Global and This-conception tabs — agents inherit global → conception like other keys) or in the config file directly. **Migration:** condash ≤ 3.25 had `terminal.launchers` + the scalar `terminal.launcher_command`; both are dropped on read. (A later per-file `<conception>/agents/<slug>.json` harness store was also replaced by this `agents` list.)
 

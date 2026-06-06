@@ -68,7 +68,11 @@ export async function bootApp(
   await writeFile(
     join(userDataDir, 'condash', 'settings.json'),
     JSON.stringify(
-      { lastConceptionPath: conceptionDir, recentConceptionPaths: [conceptionDir], theme: 'system' },
+      {
+        lastConceptionPath: conceptionDir,
+        recentConceptionPaths: [conceptionDir],
+        theme: 'system',
+      },
       null,
       2,
     ) + '\n',
@@ -81,6 +85,14 @@ export async function bootApp(
     await options.prepare(conceptionDir);
   }
 
+  // The suite runs headless by default — but the guarantee lives OUTSIDE this
+  // fixture, because Electron can't attach Playwright under a true offscreen
+  // (`--ozone-platform=headless`) backend. Instead `npm run test`
+  // (scripts/run-playwright.mjs) wraps the whole run in Xvfb with the Wayland
+  // socket dropped and the X11 Ozone backend pinned, so Electron renders into a
+  // throwaway virtual display and never the live compositor; the globalSetup
+  // guard (tests/fixtures/headless-guard.ts) aborts any un-wrapped Wayland run
+  // before a window can open. We just inherit that prepared environment here.
   const app = await electron.launch({
     args: ['.', '--no-sandbox'],
     cwd: repoRoot,

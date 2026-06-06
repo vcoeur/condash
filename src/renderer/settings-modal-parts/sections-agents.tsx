@@ -82,9 +82,11 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
         stable identity referenced by tasks and project actions. Point <code>command</code> at a
         wrapper on your <code>PATH</code> (e.g. <code>claude-kimi</code>) or inline it (e.g.{' '}
         <code>claude</code>). The command inherits the terminal's environment — condash injects no
-        provider env or tokens. Enable <em>Seed prompt via flags</em> when the command speaks
-        agedum's <code>--run</code> / <code>--prompt</code> so tasks pass the prompt in argv instead
-        of typing it into the live TUI.
+        provider env or tokens. Mark agents <em>Favourite</em> to show them directly in the new-tab
+        menu; the rest move under a <code>More ▸</code> fly-out (with none marked, every agent is
+        listed inline). Enable <em>Seed prompt via flags</em> when the command speaks agedum's{' '}
+        <code>--run</code> / <code>--prompt</code> so tasks pass the prompt in argv instead of
+        typing it into the live TUI.
       </p>
       <div class="settings-bucket">
         <For each={agents()}>
@@ -162,6 +164,19 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
               <Show when={idMissing(entry)}>
                 <p class="settings-repo-name-error">Id is required to launch this agent.</p>
               </Show>
+              <label class="settings-checkbox">
+                <input
+                  type="checkbox"
+                  checked={entry.favorite === true}
+                  onChange={(e) =>
+                    void updateField(index(), { favorite: e.currentTarget.checked || undefined })
+                  }
+                />
+                <span>
+                  Favourite — show directly in the new-tab menu (non-favourites move under{' '}
+                  <code>More ▸</code>)
+                </span>
+              </label>
               <label class="settings-checkbox">
                 <input
                   type="checkbox"
