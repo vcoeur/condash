@@ -8,6 +8,7 @@ import {
   searchProjects,
   validateCommand,
 } from './projects-read';
+import { activityCommand } from './projects-activity';
 import {
   statusCommand,
   closeProject,
@@ -37,6 +38,7 @@ export type { CreateProjectInput, CreateProjectResult };
 // of a sibling-verb flag still gets a `(did you mean --X?)` hint.
 export const KNOWN_FLAGS_LIST = ['status', 'kind', 'apps', 'branch', 'sort'] as const;
 export const KNOWN_FLAGS_READ = ['with-notes'] as const;
+export const KNOWN_FLAGS_ACTIVITY = ['begin', 'end', 'format'] as const;
 export const KNOWN_FLAGS_RESOLVE: readonly string[] = [];
 export const KNOWN_FLAGS_SEARCH = ['limit', 'status', 'kind'] as const;
 export const KNOWN_FLAGS_VALIDATE = ['all', 'path'] as const;
@@ -66,6 +68,7 @@ export const NOUN_FLAGS: readonly string[] = [
   ...new Set<string>([
     ...KNOWN_FLAGS_LIST,
     ...KNOWN_FLAGS_READ,
+    ...KNOWN_FLAGS_ACTIVITY,
     ...KNOWN_FLAGS_RESOLVE,
     ...KNOWN_FLAGS_SEARCH,
     ...KNOWN_FLAGS_VALIDATE,
@@ -95,6 +98,7 @@ export async function runProjects(
     {
       list: () => listProjects(args, ctx, conceptionPath),
       read: () => readProject(args, ctx, conceptionPath),
+      activity: () => activityCommand(args, ctx, conceptionPath),
       resolve: () => resolveCommand(args, ctx, conceptionPath),
       search: () => searchProjects(args, ctx, conceptionPath),
       validate: () => validateCommand(args, ctx, conceptionPath),
@@ -145,6 +149,24 @@ function printHelp(verb: string | null): void {
         'Examples:',
         '  condash projects read condash-cli-ux-fixes',
         '  condash projects read condash-cli-ux-fixes --with-notes --json',
+      ]);
+      return;
+    case 'activity':
+      writeBlock([
+        'condash projects activity [--begin <YYYY-MM-DD>] [--end <YYYY-MM-DD>] [--format md]',
+        '',
+        'Generic project-tree activity over a date range: every `## Timeline` beat parsed',
+        'into items + dated events + day/week/month/app indices. `--json` is the reusable',
+        'data layer (digest tooling, dashboards); plain output is a summary.',
+        '',
+        'Optional:',
+        '  --begin    Inclusive start date (default: 6 days before --end).',
+        '  --end      Inclusive end date (default: today).',
+        '  --format   md → a no-frills markdown digest instead of the summary line.',
+        '',
+        'Examples:',
+        '  condash projects activity --begin 2026-06-01 --end 2026-06-07 --json',
+        '  condash projects activity --format md',
       ]);
       return;
     case 'resolve':
@@ -348,6 +370,7 @@ function printSubHelp(): void {
       'Verbs:',
       '  list             List projects (filters: --status --kind --apps --branch).',
       '  read             Read a project README + metadata.',
+      '  activity         Range activity (timeline events + rollups); --json data layer.',
       '  resolve          Resolve a slug to its absolute path.',
       '  search           Search project READMEs and notes.',
       '  validate         Validate header(s) against canonical enums.',

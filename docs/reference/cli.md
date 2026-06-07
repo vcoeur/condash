@@ -91,6 +91,7 @@ Item lifecycle and reads.
 |---|---|
 | `list` | List items, optionally filtered by `--status`, `--kind`, `--apps`, `--branch`, `--sort` |
 | `read <slug>` | Read one item by slug or path |
+| `activity [--begin <YYYY-MM-DD>] [--end <YYYY-MM-DD>] [--format md]` | Generic project-tree activity over a date range (default: last 7 days): every `## Timeline` beat parsed into items + dated events + day/week/month/app indices. `--json` is the reusable data layer for digest tooling and dashboards; plain output is a one-look summary; `--format md` emits a no-frills markdown digest |
 | `resolve <slug>` | Resolve a slug to its absolute path |
 | `search <query>` | Full-text search across items, optional `--status` / `--kind` / `--limit` |
 | `validate [<slug>]` | Validate header fields against the schema; pass `--all` for the whole tree, or `--path <readme>` to check one file outside the resolved conception |
