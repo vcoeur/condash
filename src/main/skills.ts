@@ -17,7 +17,7 @@ const HIDDEN_PREFIX = /^\./;
  *     of the tree as a read-only callout, then `<conception>/.agents/skills/`
  *     as the tree itself.
  *   - **User scope** — `~/.config/agents/AGENTS.md` pinned at the top,
- *     then `~/.agents/skills/` as the tree.
+ *     then `~/.config/agents/skills/` as the tree.
  *
  * Both are agedum sources; condash never reads the compiled outputs
  * (`~/.claude/`, `<conception>/.claude/`, …). The pane is read-only in

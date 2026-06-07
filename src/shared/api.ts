@@ -50,7 +50,7 @@ export interface CondashApi {
   /** Tree of the scope's skills directory plus the scope's AGENTS.md pinned
    *  at the top:
    *  - `conception` → `<conception>/AGENTS.md` + `<conception>/.agents/skills/`
-   *  - `user`       → `~/.config/agents/AGENTS.md` + `~/.agents/skills/`
+   *  - `user`       → `~/.config/agents/AGENTS.md` + `~/.config/agents/skills/`
    *  Both surfaces are agedum sources, never compiled outputs. Shipped-SHA
    *  stamps are populated from `.condash-skills.json` when present. Resolves
    *  to null when neither the skills directory nor the AGENTS.md exists. */

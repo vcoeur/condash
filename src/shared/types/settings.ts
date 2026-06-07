@@ -10,7 +10,7 @@ import type { TaskConfigEntry } from './task-runs';
 /** Scope toggle in the Skills pane. `conception` reads the active
  *  conception's `AGENTS.md` + `.agents/skills/` tree; `user` reads the
  *  per-machine agedum sources at `~/.config/agents/AGENTS.md` +
- *  `~/.agents/skills/`. The pane is read-only in both scopes; condash
+ *  `~/.config/agents/skills/`. The pane is read-only in both scopes; condash
  *  surfaces the agedum source-of-truth and never edits it. */
 export type SkillScope = 'conception' | 'user';
 
@@ -89,7 +89,7 @@ export interface TreeExpansionPrefs {
    *  the Skills pane switched to agedum sources. The legacy `skills` key
    *  is read for back-compat but never written. */
   skills?: string[];
-  /** User-scope skills tree (`~/.agents/skills/`). */
+  /** User-scope skills tree (`~/.config/agents/skills/`). */
   skillsUser?: string[];
 }
 

@@ -123,7 +123,7 @@ describe('readSkillsTree (conception scope, default)', () => {
 
 describe('readSkillsTreeForScope (user scope)', () => {
   it('reads agedum sources from CONDASH_USER_SKILLS_ROOT + CONDASH_USER_AGENTS_MD', async () => {
-    const userSkills = join(userHome, '.agents', 'skills');
+    const userSkills = join(userHome, '.config', 'agents', 'skills');
     mkdirSync(join(userSkills, 'mything'), { recursive: true });
     writeFileSync(join(userSkills, 'mything', 'SKILL.md'), '# My thing\n\nUser skill.\n');
     const userAgents = join(userHome, '.config', 'agents', 'AGENTS.md');
