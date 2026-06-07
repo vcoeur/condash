@@ -144,6 +144,63 @@ test('typing a multi-char value into a param field keeps focus', async () => {
   }
 });
 
+test('typing a param value does not change the selected agent', async () => {
+  // Regression (sibling of the focus-drop bug above): the run-time agent
+  // <select> read the selected id straight off the whole fill signal — for its
+  // <For> options, its value, and each option's `disabled`. setField replaces
+  // that signal on every keystroke, so typing into a param field re-ran
+  // agentOptions (fresh option objects), the <For> rebuilt every <option>, and
+  // the controlled value was lost mid-reconciliation: the select snapped to
+  // another agent. Two seedable agents with the task's agent listed *second*
+  // makes the snap observable — with the bug it jumps to the first option.
+  // pressSequentially dispatches real keystrokes (fill() sets the value
+  // atomically and would not trigger the per-keystroke rebuild).
+  const fillAgents = [
+    { id: 'aider', label: 'aider', command: 'aider', promptFlags: true },
+    {
+      id: 'claude-deepseek-v4-pro',
+      label: 'deepseek-v4-pro',
+      command: 'claude',
+      promptFlags: true,
+    },
+  ];
+  const booted = await bootApp({
+    prepare: seedTask,
+    extraConfig: {
+      agents: fillAgents,
+      repositories: [{ name: 'condash', path: '/home/alice/src/vcoeur/condash' }],
+    },
+  });
+  const { window, cleanup } = booted;
+  try {
+    await window.setViewportSize({ width: 1400, height: 900 });
+    await window.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await window.locator('.edge-strip-left .edge-handle', { hasText: 'Tasks' }).click();
+
+    await window.locator('.tasks-row-actions button', { hasText: 'Run…' }).click();
+    await expect(window.locator('.modal-backdrop .tasks-fill-modal')).toBeVisible();
+
+    // The agent picker defaults to the task's stored agent (listed second).
+    const agentSelect = window.locator('.tasks-fill-agent select');
+    await expect(agentSelect).toHaveValue('claude-deepseek-v4-pro');
+
+    // Type a multi-char value into the {AREA} param field.
+    const areaField = window
+      .locator('.tasks-fill-scroll label', { hasText: '{AREA}' })
+      .locator('input[type="text"]');
+    await areaField.fill('');
+    await areaField.focus();
+    await areaField.pressSequentially('src and tests', { delay: 20 });
+
+    // The agent must stay put (with the bug it snapped to 'aider'), and the typed
+    // value still lands in full.
+    await expect(agentSelect).toHaveValue('claude-deepseek-v4-pro');
+    await expect(areaField).toHaveValue('src and tests');
+  } finally {
+    await cleanup();
+  }
+});
+
 test('new task editor creates a task end-to-end', async () => {
   const booted = await bootApp({ prepare: seedTask, extraConfig: { agents: [TASK_AGENT] } });
   const { window, cleanup } = booted;

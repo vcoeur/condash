@@ -47,6 +47,16 @@ export function TaskFill(props: {
 
   const close = (): void => props.setFill(null);
 
+  // The selected agent id, isolated from the rest of the fill signal. `setField`
+  // replaces the whole `fill` object on every keystroke, so reading
+  // `props.fill().agent` directly in the agent `<select>` (its options, value,
+  // and per-option `disabled`) would re-run those bindings on each character.
+  // That rebuilds the `<For>`'s freshly-allocated option objects, dropping the
+  // controlled value mid-reconciliation so the select snaps to another agent.
+  // Memoising the id stops the propagation when the agent itself is unchanged —
+  // the same discipline the `prompt` memo above applies to the param inputs.
+  const currentAgent = createMemo(() => props.fill().agent);
+
   // Run-time agent choices, keyed by id like the editor: only prompt-seedable
   // agents are selectable (a task hands its prompt via `--prompt`), with the
   // current selection kept selectable even if it dangles.
@@ -54,7 +64,7 @@ export function TaskFill(props: {
     const opts = props
       .agents()
       .map((a) => ({ id: a.id, label: a.label, promptFlags: a.promptFlags === true }));
-    const current = props.fill().agent;
+    const current = currentAgent();
     if (current && !opts.some((o) => o.id === current)) {
       return [{ id: current, label: `${current} (missing)`, promptFlags: false }, ...opts];
     }
@@ -114,7 +124,7 @@ export function TaskFill(props: {
           <label class="tasks-fill-agent">
             <span>Agent</span>
             <select
-              value={props.fill().agent}
+              value={currentAgent()}
               onChange={(e) => props.setFill({ ...props.fill(), agent: e.currentTarget.value })}
             >
               <Switch>
@@ -124,7 +134,7 @@ export function TaskFill(props: {
                 <Match when={agentOptions().length > 0}>
                   <For each={agentOptions()}>
                     {(o) => (
-                      <option value={o.id} disabled={!o.promptFlags && o.id !== props.fill().agent}>
+                      <option value={o.id} disabled={!o.promptFlags && o.id !== currentAgent()}>
                         {o.promptFlags ? o.label : `${o.label} — no prompt seeding`}
                       </option>
                     )}
