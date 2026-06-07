@@ -5,7 +5,10 @@
 #
 # Trigger table is intentionally short — extend it when a new correctness-
 # critical surface emerges in this workspace. Keep matches specific to
-# avoid false positives.
+# avoid false positives: globs match the ABSOLUTE path, so anchor to a
+# filename suffix (e.g. `*auth.ts`) or a path segment (`*/auth/*`). A bare
+# `*auth*` also matches any path containing "author"/"authorize" — including
+# a worktree or branch named e.g. `isbn-author-backfill`.
 #
 # This template ships with an empty trigger table. Add `case` arms below
 # for any path / file pattern whose edits should be gated by reading a
@@ -17,7 +20,7 @@
 #     match="knowledge/topics/security/legal-privacy.md (access log rules)" ;;
 #   *docker-compose*.yml|*ports.md|*ports.ts)
 #     match="knowledge/topics/ops/dev-ports.md (port allocation rules)" ;;
-#   *auth*|*token*|*session*.ts|*session*.py)
+#   */auth/*|*auth.ts|*auth.py|*/tokens/*|*token.ts|*session*.ts|*session*.py)
 #     match="knowledge/topics/security/auth.md (token storage rules)" ;;
 #   */conception/condash.json)
 #     match="the file's own header + .claude/skills/projects/worktree.md (configuration schema)" ;;
