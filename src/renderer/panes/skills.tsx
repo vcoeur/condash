@@ -129,8 +129,8 @@ export function SkillsView(props: {
         when={props.scope === 'conception'}
         fallback={
           <p>
-            User-scope skills live at <code>~/.config/agents/skills/</code>. Edit them via your agedum
-            sources.
+            User-scope skills live at <code>~/.config/agents/skills/</code>. Edit them via your
+            agedum sources.
           </p>
         }
       >
