@@ -21,7 +21,7 @@ The header carries a segmented control with two scopes (and a **refresh** button
 | Scope | `AGENTS.md` pinned at top | Skills tree |
 |-------|---------------------------|-------------|
 | **Conception** (default) | `<conception>/AGENTS.md` | `<conception>/.agents/skills/` |
-| **User** | `~/.config/agents/AGENTS.md` | `~/.agents/skills/` |
+| **User** | `~/.config/agents/AGENTS.md` | `~/.config/agents/skills/` |
 
 Both are **agedum sources**. condash never reads the compiled per-harness outputs (`.claude/`, `.kimi/`, `.opencode/`, …) — only the agent-neutral source tree. Each scope pins its `AGENTS.md` as a read-only callout at the top of the tree, then lists the skills below.
 
@@ -39,7 +39,7 @@ These sources are placed verbatim by `condash skills install`; condash does not 
 If a scope has no skills yet, the pane shows an empty state:
 
 - **Conception** — *"Run `condash skills install` to lay down the shipped skills under `.agents/skills/`,"* with a **Copy install command** button.
-- **User** — *"User-scope skills live at `~/.agents/skills/`. Edit them via your agedum sources."*
+- **User** — *"User-scope skills live at `~/.config/agents/skills/`. Edit them via your agedum sources."*
 
 ## Viewing files
 

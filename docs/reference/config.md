@@ -132,7 +132,7 @@ Legacy formats — JSONL event streams from condash ≤ 2.22, compressed `.txt.g
 
 Since the reframe, two panes read **hard-coded** directories — no config key controls either:
 
-- The **Skills** pane reads the agedum sources at `<conception_path>/.agents/skills/` (and `~/.agents/skills/` for the User scope). The former `skills_path` key was dropped; condash never reads compiled per-harness outputs (`.claude/`, `.kimi/`, …). See the [Skills pane guide](../guides/skills-pane.md).
+- The **Skills** pane reads the agedum sources at `<conception_path>/.agents/skills/` (and `~/.config/agents/skills/` for the User scope). The former `skills_path` key was dropped; condash never reads compiled per-harness outputs (`.claude/`, `.kimi/`, …). See the [Skills pane guide](../guides/skills-pane.md).
 - The **Resources** pane reads `<conception_path>/resources/`.
 
 ### `repositories`

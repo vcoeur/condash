@@ -104,7 +104,7 @@ export interface SkillShippedInfo {
  */
 export interface SkillNode {
   /** Path relative to the scope's skills root (`<conception>/.agents/skills/`
-   *  for conception scope, `~/.agents/skills/` for user scope). Empty string
+   *  for conception scope, `~/.config/agents/skills/` for user scope). Empty string
    *  for the root. */
   relPath: string;
   /** Absolute path on disk. */

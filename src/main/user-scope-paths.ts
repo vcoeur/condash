@@ -8,13 +8,13 @@ import { join } from 'node:path';
  * harness compiled outputs (`~/.claude/`, `~/.kimi/`, …).
  *
  * Env overrides (used by tests):
- *   CONDASH_USER_SKILLS_ROOT       ~/.agents/skills
+ *   CONDASH_USER_SKILLS_ROOT       ~/.config/agents/skills
  *   CONDASH_USER_AGENTS_MD         ~/.config/agents/AGENTS.md
  */
 
 /** Root of the user-scope skills tree (agedum source). */
 export function userSkillsRoot(): string {
-  return process.env.CONDASH_USER_SKILLS_ROOT ?? join(homedir(), '.agents', 'skills');
+  return process.env.CONDASH_USER_SKILLS_ROOT ?? join(homedir(), '.config', 'agents', 'skills');
 }
 
 /** Path of the user-scope AGENTS.md file (agedum source). */
