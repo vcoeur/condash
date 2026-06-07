@@ -181,9 +181,11 @@ export async function appendTimelineEntry(readmePath: string, line: string): Pro
  * is whatever follows the em-dash separator (or the rest of the line, when
  * the entry doesn't follow the standard shape).
  *
- * Lines that don't match the expected `- <date> — <text>` shape are skipped
- * — this keeps the parser robust against hand-edited prose between bullet
- * lines.
+ * Indented, non-empty lines following an entry are its wrapped remainder (the
+ * conception hard-wraps long entries) and are folded back into that entry's
+ * text, so multi-line entries aren't truncated. Flush-left lines that aren't a
+ * dated bullet are skipped — this keeps the parser robust against hand-edited
+ * prose between bullet lines.
  */
 export function parseTimelineEntries(raw: string): { date: string; text: string }[] {
   const lines = raw.split(/\r?\n/);
@@ -202,8 +204,15 @@ export function parseTimelineEntries(raw: string): { date: string; text: string 
     // `CLOSED_LINE` in shared/header.ts — that regex anchors only on the
     // em-dash because the `close` writer never emits a hyphen.
     const m = line.match(/^\s*-\s+(\d{4}-\d{2}-\d{2})\s+(?:—|--?)\s+(.+?)\s*$/);
-    if (!m) continue;
-    out.push({ date: m[1], text: m[2] });
+    if (m) {
+      out.push({ date: m[1], text: m[2] });
+      continue;
+    }
+    // An indented, non-empty line is the wrapped continuation of the entry
+    // above — fold it back in. Flush-left prose is left skipped.
+    if (out.length > 0 && /^\s+\S/.test(line)) {
+      out[out.length - 1].text += ' ' + line.trim();
+    }
   }
   return out;
 }

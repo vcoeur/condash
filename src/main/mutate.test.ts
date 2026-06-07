@@ -185,6 +185,28 @@ describe('transitionStatus', () => {
   });
 });
 
+describe('parseTimelineEntries continuation folding', () => {
+  it('folds indented wrapped lines into the entry and stops at the next heading', () => {
+    const raw = [
+      '# T',
+      '',
+      '## Timeline',
+      '',
+      '- 2026-06-01 — First line wraps',
+      '  onto a second line; mentions #42 and v1.2.3.',
+      '- 2026-06-02 — Standalone.',
+      '',
+      '## Notes',
+      '- not a timeline entry',
+    ].join('\n');
+    const entries = parseTimelineEntries(raw);
+    expect(entries).toEqual([
+      { date: '2026-06-01', text: 'First line wraps onto a second line; mentions #42 and v1.2.3.' },
+      { date: '2026-06-02', text: 'Standalone.' },
+    ]);
+  });
+});
+
 describe('parseTimelineEntries ↔ CLOSED_LINE agreement', () => {
   it('the close lines parseTimelineEntries yields all match CLOSED_LINE', () => {
     // Every close that `condash projects close --summary` writes should be
