@@ -102,7 +102,7 @@ When no `branch` field is set, the main checkouts at `<workspace_path>/<repo>/` 
 
 - Read before writing.
 - Notes go in `notes/` as `NN-<descriptive-slug>.md` files.
-- Section headings always in English; body content in any language.
+- **README structural fields** (`Date`, `Status`, `Steps`, `Timeline`, …) are always English — condash parses them by name. **Note and other-doc headings follow the body language**: a non-English note has non-English headings too.
 - Do not commit or push.
 - `## Steps` stays high-level (3–8 milestones). Per-file work goes in `notes/`. Each step line is **one short sentence** — the Projects tab card renders the steps verbatim, and verbose lines blow up the card height. Long-form scope, suggested wording, and acceptance criteria belong in a notes file at `notes/NN-<descriptive-slug>.md`, not in the step line itself. A `## Step details` section in the README is acceptable only for short clarifications that fit in a few lines; anything longer goes to notes.
 - **Link steps to their notes.** When a step has a backing note, end the step line with `— see note NN` (the note file's two-digit prefix, e.g. `- [ ] do X — see note 02`). Add a `## Notes` section near the bottom of the README that indexes every `notes/NN-*.md` by short label. The README stays a thin coordinator — Goal, Scope, milestone Steps, Timeline, Notes index — and the cold reader can jump straight from a step to its detail.
