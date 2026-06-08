@@ -27,7 +27,7 @@ Trigger: `/projects update <slug>` or implicit ("add a note to <slug>", "change 
 - Read before writing.
 - One topic per note file.
 - Don't commit.
-- Section headings always in English; body content in the language the item is written in.
+- **README structural fields** (`Date`, `Status`, `Steps`, `Timeline`, …) are always English — condash parses them by name. **Note and other-doc headings follow the body language**: a non-English note has non-English headings too.
 
 ## Promoting durable knowledge
 
