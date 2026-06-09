@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Terminal } from '@xterm/headless';
-import { OscTranscriptExtractor } from './osc-transcript';
+import {
+  MAX_OSC_BUFFER_CHARS,
+  MAX_PENDING_FRAMES,
+  MAX_TRANSCRIPT_LINES,
+  OscTranscriptExtractor,
+} from './osc-transcript';
 
 const BEL = '\x07';
 const PREFIX = '\x1b]7373;agent-transcript;';
@@ -81,6 +86,58 @@ describe('OscTranscriptExtractor', () => {
     const clean = ex.feed(`${PREFIX}bad;packet${BEL}tail`);
     expect(clean).toBe('tail');
     expect(ex.hasTranscript()).toBe(false);
+  });
+
+  it('bails out of an unterminated OSC past the byte cap and re-emits the buffer', () => {
+    const ex = new OscTranscriptExtractor();
+    // A prefix with no terminator: held back at first…
+    expect(ex.feed(`${PREFIX}0;0;1;`)).toBe('');
+    // …but once the accumulated sequence exceeds the cap, the buffered bytes
+    // come back out so the grid render isn't silenced for the session.
+    const flood = 'A'.repeat(MAX_OSC_BUFFER_CHARS + 1024);
+    const reEmitted = ex.feed(flood);
+    expect(reEmitted.startsWith(PREFIX)).toBe(true);
+    expect(reEmitted.length).toBe(PREFIX.length + '0;0;1;'.length + flood.length);
+    expect(ex.hasTranscript()).toBe(false);
+    // The extractor has fully recovered: ordinary output passes through and
+    // a well-formed packet still captures.
+    expect(ex.feed('normal output')).toBe('normal output');
+    ex.feed(packets('1', { v: 1, t: 'msg', role: 'user', text: 'after bailout' }));
+    expect(ex.render()).toBe('[user] after bailout');
+  });
+
+  it('holds an unterminated OSC below the cap (no premature re-emit)', () => {
+    const ex = new OscTranscriptExtractor();
+    expect(ex.feed(`${PREFIX}0;0;1;${'B'.repeat(1024)}`)).toBe('');
+    // Terminator arrives later — the packet is consumed, nothing leaks out.
+    expect(ex.feed(BEL)).toBe('');
+  });
+
+  it('caps pending incomplete frames, evicting the oldest', () => {
+    const ex = new OscTranscriptExtractor();
+    const frame = { v: 1, t: 'msg', role: 'user', text: 'late frame' };
+    const b64 = Buffer.from(JSON.stringify(frame), 'utf8').toString('base64');
+    const half = Math.ceil(b64.length / 2);
+    // First piece of frame 'late', then a flood of other pending frames.
+    ex.feed(`${PREFIX}late;0;2;${b64.slice(0, half)}${BEL}`);
+    for (let k = 0; k < MAX_PENDING_FRAMES + 8; k++) {
+      ex.feed(`${PREFIX}flood-${k};0;2;AAAA${BEL}`);
+    }
+    // The evicted frame can no longer be assembled by its second piece.
+    ex.feed(`${PREFIX}late;1;2;${b64.slice(half)}${BEL}`);
+    expect(ex.hasTranscript()).toBe(false);
+  });
+
+  it('caps the transcript line count, dropping the oldest lines', () => {
+    const ex = new OscTranscriptExtractor();
+    const overshoot = 50;
+    for (let k = 0; k < MAX_TRANSCRIPT_LINES + overshoot; k++) {
+      ex.feed(packets(`m${k}`, { v: 1, t: 'msg', role: 'assistant', text: `msg ${k}` }));
+    }
+    const lines = ex.render().split('\n\n');
+    expect(lines.length).toBe(MAX_TRANSCRIPT_LINES);
+    expect(lines[0]).toBe(`[assistant] msg ${overshoot}`);
+    expect(lines[lines.length - 1]).toBe(`[assistant] msg ${MAX_TRANSCRIPT_LINES + overshoot - 1}`);
   });
 
   it('display-safety: the OSC is not rendered by xterm', async () => {

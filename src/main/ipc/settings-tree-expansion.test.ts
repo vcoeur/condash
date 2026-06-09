@@ -22,6 +22,12 @@ let tmp: string;
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 let settingsPathValue: string;
 
+/** Minimal event shape accepted by `requireMainWindowSender`. */
+const trustedEvent = {
+  sender: { getType: () => 'window' },
+  senderFrame: { url: 'file:///app/dist/index.html', parent: null },
+};
+
 async function writeSettings(content: object): Promise<void> {
   await fs.writeFile(settingsPathValue, JSON.stringify(content));
 }
@@ -93,7 +99,7 @@ describe('getTreeExpansion legacy-harness migration', () => {
         skillsOpencode: ['extra'],
       },
     });
-    const result = (await handlers.getTreeExpansion()) as Record<string, string[]>;
+    const result = (await handlers.getTreeExpansion(trustedEvent)) as Record<string, string[]>;
     expect(result.skills.sort()).toEqual(['extra', 'knowledge', 'pr', 'projects', 'tidy']);
     expect(result.skillsUser).toEqual([]);
   });
@@ -109,7 +115,7 @@ describe('getTreeExpansion legacy-harness migration', () => {
         skills: ['explicit'],
       },
     });
-    const result = (await handlers.getTreeExpansion()) as Record<string, string[]>;
+    const result = (await handlers.getTreeExpansion(trustedEvent)) as Record<string, string[]>;
     expect(result.skills).toEqual(['explicit']);
   });
 
@@ -121,7 +127,7 @@ describe('getTreeExpansion legacy-harness migration', () => {
       terminal: {},
       treeExpansion: { skillsClaude: ['pr'] },
     });
-    await handlers.getTreeExpansion();
+    await handlers.getTreeExpansion(trustedEvent);
     const onDisk = await waitForFile((s) => {
       const te = s.treeExpansion as Record<string, unknown> | undefined;
       return te !== undefined && te.skillsClaude === undefined && Array.isArray(te.skills);
@@ -143,8 +149,8 @@ describe('getTreeExpansion legacy-harness migration', () => {
       treeExpansion: { skillsClaude: ['old-claude'] },
     });
     await Promise.all([
-      handlers.getTreeExpansion(),
-      handlers.setTreeExpansion(null, {
+      handlers.getTreeExpansion(trustedEvent),
+      handlers.setTreeExpansion(trustedEvent, {
         skills: ['fresh-explicit'],
         skillsUser: ['user-set'],
       }),
@@ -168,7 +174,7 @@ describe('getTreeExpansion legacy-harness migration', () => {
       treeExpansion: { skills: ['pr'] },
     });
     const mtimeBefore = (await fs.stat(settingsPathValue)).mtimeMs;
-    await handlers.getTreeExpansion();
+    await handlers.getTreeExpansion(trustedEvent);
     await new Promise((r) => setImmediate(r));
     const mtimeAfter = (await fs.stat(settingsPathValue)).mtimeMs;
     expect(mtimeAfter).toBe(mtimeBefore);

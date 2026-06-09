@@ -5,6 +5,7 @@
 
 import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
+import { toPosix } from '../../shared/path';
 import { pathExists } from '../fs-helpers';
 import {
   type AuditIssue,
@@ -23,7 +24,9 @@ export async function checkBinaries(conceptionPath: string): Promise<AuditIssue[
   const inScope = await listInScopeFiles(conceptionPath);
   const matches = await collectFilesByExt(projectsDir, BIN_EXTS);
   for (const abs of matches) {
-    const rel = relative(conceptionPath, abs);
+    // POSIX-normalise to match the forward-slash `git ls-files` output —
+    // `relative()` yields backslashes on Windows. Same rule as `lfs.ts`.
+    const rel = toPosix(relative(conceptionPath, abs));
     if (!inScope.has(rel)) continue;
     if (tracked.has(rel)) continue;
     let sizeKb = 0;

@@ -15,13 +15,16 @@
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { simpleGit } from 'simple-git';
+import { simpleGit, type SimpleGit } from 'simple-git';
 import type { UpstreamStatus } from '../shared/types';
 
-interface CacheEntry {
-  dirty: number | null;
-  capturedAt: number;
-}
+/** A resolved cache slot, or the in-flight promise for a miss being
+ *  computed. Storing the promise lets concurrent misses coalesce onto one
+ *  `git status`, and lets `invalidateForPath` during flight drop the pending
+ *  slot so the completing computation can't resurrect a stale value. */
+type CacheSlot =
+  | { kind: 'done'; dirty: number | null; capturedAt: number }
+  | { kind: 'pending'; promise: Promise<number | null> };
 
 /** Twin of `cache` for upstream lookups. Same TTL, separate map so the two
  *  refresh paths (worktree edits vs. push/fetch) don't invalidate each
@@ -41,10 +44,34 @@ interface DirtyCountOptions {
 }
 
 const TTL_MS = 3_000;
-const cache = new Map<string, CacheEntry>();
+const cache = new Map<string, CacheSlot>();
 
 function cacheKey(path: string, opts: DirtyCountOptions): string {
   return opts.scopeToSubtree ? `${path}::scope=subtree` : path;
+}
+
+/**
+ * The subtree's path prefix relative to the repo top-level (e.g. `sub/dir/`,
+ * empty at the root), via `git rev-parse --show-prefix`. `git status
+ * --porcelain` reports paths relative to the REPO ROOT even when run from a
+ * subtree cwd, so any consumer that wants cwd-relative paths must strip this
+ * prefix first. Only worth a git call when the lookup is subtree-scoped —
+ * a worktree-root cwd has an empty prefix by definition.
+ */
+export async function statusPathPrefix(git: SimpleGit, scopeToSubtree: boolean): Promise<string> {
+  if (!scopeToSubtree) return '';
+  try {
+    return (await git.raw(['rev-parse', '--show-prefix'])).trim();
+  } catch {
+    return '';
+  }
+}
+
+/** Strip the repo-root → cwd `prefix` from a root-relative porcelain path. */
+export function stripStatusPrefix(rootRelative: string, prefix: string): string {
+  return prefix && rootRelative.startsWith(prefix)
+    ? rootRelative.slice(prefix.length)
+    : rootRelative;
 }
 
 /**
@@ -52,11 +79,17 @@ function cacheKey(path: string, opts: DirtyCountOptions): string {
  * filename (with a `-> newname` rename suffix when applicable). Untracked
  * files use `?? ` as the status prefix; renames use `R `, modifications
  * `M `, etc. We only need to filter zero-byte untracked files (sandbox
- * runtime artifacts), so just look for the `??` prefix.
+ * runtime artifacts), so just look for the `??` prefix. The reported path is
+ * relative to the repo root; `prefix` (see {@link statusPathPrefix}) maps it
+ * back under `cwd` when the status ran subtree-scoped.
  */
-async function isZeroByteUntracked(line: string, cwd: string): Promise<boolean> {
+export async function isZeroByteUntracked(
+  line: string,
+  cwd: string,
+  prefix = '',
+): Promise<boolean> {
   if (!line.startsWith('?? ')) return false;
-  const rel = line.slice(3).trim();
+  const rel = stripStatusPrefix(line.slice(3).trim(), prefix);
   if (!rel) return false;
   try {
     const stat = await fs.stat(join(cwd, rel));
@@ -70,6 +103,12 @@ async function isZeroByteUntracked(line: string, cwd: string): Promise<boolean> 
  * otherwise runs `git status` and stores the result. Returns null when git
  * couldn't run (path missing, not a repo, etc).
  *
+ * Concurrent misses on the same key coalesce onto a single in-flight
+ * `git status` (the pending promise lives in the map). The TTL clock starts
+ * when the result lands, preserving the 3 s freshness window documented in
+ * internals §3; an `invalidateForPath` during flight drops the pending slot,
+ * so the completing computation is discarded rather than written back.
+ *
  * Filters out zero-byte untracked files — those are typically sandbox
  * runtime artifacts (scratch logs, empty placeholder files) that the user
  * doesn't want surfacing as "dirty" on the Code pane. */
@@ -77,10 +116,30 @@ export async function getDirtyCount(
   path: string,
   opts: DirtyCountOptions = {},
 ): Promise<number | null> {
-  const now = Date.now();
   const key = cacheKey(path, opts);
-  const cached = cache.get(key);
-  if (cached && now - cached.capturedAt < TTL_MS) return cached.dirty;
+  const slot = cache.get(key);
+  if (slot) {
+    if (slot.kind === 'pending') return slot.promise;
+    if (Date.now() - slot.capturedAt < TTL_MS) return slot.dirty;
+  }
+  const pending: CacheSlot = {
+    kind: 'pending',
+    promise: computeDirtyCount(path, opts).then((dirty) => {
+      // Publish only if our pending slot is still current — an invalidate
+      // (or invalidateAll) during flight means this result may already be
+      // stale, so the next caller should recompute.
+      if (cache.get(key) === pending) {
+        cache.set(key, { kind: 'done', dirty, capturedAt: Date.now() });
+      }
+      return dirty;
+    }),
+  };
+  cache.set(key, pending);
+  return pending.promise;
+}
+
+/** The uncached `git status` computation behind {@link getDirtyCount}. */
+async function computeDirtyCount(path: string, opts: DirtyCountOptions): Promise<number | null> {
   try {
     const git = simpleGit({ baseDir: path });
     // Use the raw porcelain output so we can filter on the status prefix
@@ -89,17 +148,15 @@ export async function getDirtyCount(
     // critical for subrepo entries that share a .git with their parent.
     const args = ['status', '--porcelain=v1'];
     if (opts.scopeToSubtree) args.push('--', '.');
+    const prefix = await statusPathPrefix(git, opts.scopeToSubtree === true);
     const out = await git.raw(args);
     const lines = out.split('\n').filter((l) => l.length > 0);
 
     const untrackedChecks = await Promise.all(
-      lines.map(async (line) => ({ line, skip: await isZeroByteUntracked(line, path) })),
+      lines.map(async (line) => ({ line, skip: await isZeroByteUntracked(line, path, prefix) })),
     );
-    const count = untrackedChecks.filter((c) => !c.skip).length;
-    cache.set(key, { dirty: count, capturedAt: now });
-    return count;
+    return untrackedChecks.filter((c) => !c.skip).length;
   } catch {
-    cache.set(key, { dirty: null, capturedAt: now });
     return null;
   }
 }

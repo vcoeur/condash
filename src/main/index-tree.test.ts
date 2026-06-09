@@ -330,6 +330,109 @@ describe('regenerateIndex (knowledge strategy)', () => {
   });
 });
 
+describe('hand-written non-child bullets pass through verbatim', () => {
+  it('preserves URL / cross-tree bullets byte-identically across a rewriting regen', async () => {
+    const urlBullet = '- [Condash docs](https://condash.vcoeur.com) — public site.';
+    const deepBullet = '- [Deep ref](../other/dir/file.md) — *cross-tree pointer.*';
+    await writeFile(
+      'knowledge/topics/index.md',
+      [
+        '# Topics',
+        '',
+        'Intro.',
+        '',
+        '## Current files',
+        '',
+        '- [`a-file.md`](a-file.md) — *Curated.* `[x]`',
+        '',
+        '## External links',
+        '',
+        urlBullet,
+        deepBullet,
+        '',
+      ].join('\n'),
+    );
+    await writeFile('knowledge/topics/a-file.md', '# A\n\nBody A.\n');
+    // A new on-disk child forces a real rewrite of the index.
+    await writeFile('knowledge/topics/b-file.md', '# B\n\nBody B.\n');
+
+    const report = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/topics/index.md');
+
+    // The hand-written bullets survive byte-identically...
+    expect(index).toContain(urlBullet);
+    expect(index).toContain(deepBullet);
+    // ...are never reported dropped...
+    const row = report.updated.find((u) => u.indexPath.endsWith('topics/index.md'));
+    expect(row?.dropped ?? []).toEqual([]);
+    // ...and the new child still got drafted.
+    expect(index).toMatch(/- \[`b-file\.md`\]\(b-file\.md\)/);
+    // The new bullet must not land in the hand-written links section.
+    expect(index.indexOf('- [`b-file.md`]')).toBeLessThan(index.indexOf('## External links'));
+
+    // Second run: full idempotence, byte-identical.
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index2 = await readFile('knowledge/topics/index.md');
+    expect(index2).toBe(index);
+    expect(report2.updated).toEqual([]);
+  });
+});
+
+describe('stale dir-like bullet convergence', () => {
+  it('drops a stale subdir bullet whose name lacks the trailing slash, and converges on run 2', async () => {
+    // The bullet spells the dir `gone-dir` while the map keys the canonical
+    // `gone-dir/` — the old delete-by-raw-name missed it, so the line was
+    // never removed and every regen re-reported the same drop.
+    await writeFile(
+      'knowledge/index.md',
+      [
+        '# Knowledge',
+        '',
+        'Root.',
+        '',
+        '## Structure',
+        '',
+        '- [`topics/`](topics/index.md) — *Curated.* `[a]`',
+        '- [`gone-dir`](gone-dir/index.md) — *Stale: the folder is gone.* `[b]`',
+        '',
+      ].join('\n'),
+    );
+    await writeFile('knowledge/topics/index.md', '# Topics\n\nIntro.\n\n## Current files\n');
+
+    const report1 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const after1 = await readFile('knowledge/index.md');
+    const row1 = report1.updated.find((u) => u.indexPath === 'knowledge/index.md');
+    expect(row1?.dropped).toEqual(['gone-dir']);
+    expect(after1).not.toContain('gone-dir');
+    expect(after1).toContain('- [`topics/`](topics/index.md) — *Curated.* `[a]`');
+
+    // Run 2 must be a no-op: nothing dropped, nothing rewritten.
+    const report2 = await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const after2 = await readFile('knowledge/index.md');
+    expect(after2).toBe(after1);
+    expect(report2.updated).toEqual([]);
+    expect(report2.unchanged).toContain('knowledge/index.md');
+  });
+});
+
+describe('line-ending preservation', () => {
+  it('keeps CRLF line endings when rewriting a CRLF-authored index', async () => {
+    await writeFile(
+      'knowledge/topics/index.md',
+      ['# Topics', '', 'Intro.', '', '## Current files', ''].join('\r\n'),
+    );
+    await writeFile('knowledge/topics/a-file.md', '# A\n\nBody A.\n');
+
+    await regenerateIndex(conceptionDir, knowledgeStrategy);
+    const index = await readFile('knowledge/topics/index.md');
+
+    expect(index).toMatch(/- \[`a-file\.md`\]\(a-file\.md\)/);
+    expect(index).toContain('\r\n');
+    // Every newline is CRLF — no lone LF introduced by the rewrite.
+    expect(/[^\r]\n/.test(index)).toBe(false);
+  });
+});
+
 describe('regenerateIndex (projects strategy)', () => {
   describe('YAML-frontmatter item tags', () => {
     // Regression test for the bug filed in conception incident

@@ -101,6 +101,35 @@ describe('sealOrphanLogs', () => {
     expect(r).toEqual({ scanned: 0, sealed: [] });
     await rm(c, { recursive: true, force: true });
   });
+
+  it('seals orphan task-run logs under .condash/scheduled/ and .condash/manual/', async () => {
+    const c = await makeConception();
+    const scheduled = join(c, '.condash/scheduled/my-task');
+    const manual = join(c, '.condash/manual/other-task');
+    await mkdir(scheduled, { recursive: true });
+    await mkdir(manual, { recursive: true });
+    const p1 = join(scheduled, '20260519-120000-t-abc.txt');
+    const p2 = join(manual, '20260519-120100-t-def.txt');
+    await writeFile(p1, HEADER + '\n\nkilled mid-run\n', 'utf8');
+    await writeFile(p2, HEADER + '\n\nbody\n\n' + FOOTER_OK + '\n', 'utf8');
+    await backdate(p1, 60);
+    await backdate(p2, 60);
+    const r = await sealOrphanLogs(c);
+    expect(r.sealed).toContain(p1);
+    expect(r.sealed).not.toContain(p2);
+    const { footer } = splitContent(await readFile(p1, 'utf8'));
+    expect(footer?.exitCode).toBeNull();
+    expect(footer?.sealedByRecovery).toBe(true);
+    await rm(c, { recursive: true, force: true });
+  });
+
+  it('tolerates a stray file where a task-run slug directory is expected', async () => {
+    const c = await makeConception();
+    await mkdir(join(c, '.condash/scheduled'), { recursive: true });
+    await writeFile(join(c, '.condash/scheduled/not-a-dir.txt'), 'stray', 'utf8');
+    await expect(sealOrphanLogs(c)).resolves.toBeTruthy();
+    await rm(c, { recursive: true, force: true });
+  });
 });
 
 // Silence unused-import lint when stat isn't used (defensive — keep import).

@@ -72,9 +72,20 @@ export function globalContext(today: string, conceptionPath: string): GlobalActi
 
 /** Marker grammar shared by `substitute` and `extractMarkers`. A token is a
  *  `{KEY}` or `{KEY:default value}`: `KEY` is `[A-Za-z_][A-Za-z0-9_]*`; the
- *  optional `:default` runs to the next `}` (spaces allowed, no nested braces).
+ *  optional `:default` runs to the next `}` (no nested braces; spaces are
+ *  allowed except as the first character). Two code-like shapes a prompt may
+ *  legitimately carry are deliberately NOT markers, so they survive
+ *  substitution verbatim:
+ *
+ *    - a default starting with whitespace — `{key: .sid, value: .}` is jq /
+ *      JSON-object syntax, not a marker;
+ *    - a `${KEY:-default}` shell parameter expansion — a `-`-leading default
+ *      whose opening brace is directly preceded by `$` (a plain `{KEY:-x}`
+ *      without the `$` still parses as a marker with default `-x`).
+ *
  *  The capture groups are `(key, default?)`. */
-export const MARKER_RE = /\{([A-Za-z_][A-Za-z0-9_]*)(?::([^}]*))?\}/g;
+export const MARKER_RE =
+  /\{([A-Za-z_][A-Za-z0-9_]*)(?::(?!\s)(?!(?<=\$\{[A-Za-z_][A-Za-z0-9_]*:)-)([^}]*))?\}/g;
 
 /** Single-pass template substitution. A `{KEY}` token resolves to `ctx[KEY]`
  *  when present; otherwise a `{KEY:default}` token falls back to its default,

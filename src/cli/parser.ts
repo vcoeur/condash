@@ -16,7 +16,15 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
 }
 
-const BOOL_FLAGS = new Set([
+/**
+ * Every long flag the parser treats as boolean (no value token consumed).
+ * A flag missing from this set is parsed as `--name <value>` — so a command
+ * that reads it as a switch fails at argv time with "expects a value"
+ * (`--record` shipped broken that way for ~10 days). Exported so the
+ * bool-flags guard test can statically cross-check every boolean-flag usage
+ * in src/cli/commands/ against this registry.
+ */
+export const BOOL_FLAGS: ReadonlySet<string> = new Set([
   'json',
   'ndjson',
   'quiet',

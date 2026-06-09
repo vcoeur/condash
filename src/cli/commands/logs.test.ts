@@ -461,6 +461,27 @@ describe('logs dispatch', () => {
     );
     expect(stdout).toContain('condash logs list');
   });
+
+  it('runs days as the default verb on bare `condash logs`', async () => {
+    await writeSession(conception, '2026-05-30', '101500', 't-default1', ['hello'], {
+      exitCode: 0,
+    });
+    const { stdout, threw } = await captureStdout(() =>
+      runLogs(null, { noun: 'logs', verb: null, positional: [], flags: {} }, jsonCtx(), conception),
+    );
+    expect(threw).toBeUndefined();
+    const env = parseJsonEnvelope<{ days: { day: string }[] }>(stdout);
+    expect(env.ok).toBe(true);
+    expect(env.data?.days.map((d) => d.day)).toEqual(['2026-05-30']);
+  });
+
+  it('`condash logs --help` (null verb) prints the noun overview, not days output', async () => {
+    const { stdout } = await captureStdout(() =>
+      runLogs(null, { noun: 'logs', verb: null, positional: [], flags: {} }, humanCtx(), '', true),
+    );
+    expect(stdout).toContain('Verbs:');
+    expect(stdout).toContain('default');
+  });
 });
 
 // Keep the JsonEnvelope import meaningful for type-checkers that prune unused.

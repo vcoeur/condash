@@ -5,6 +5,7 @@ import {
   CONDASH_DIR,
   condashDir,
   condashSettingsPath,
+  isTombstone,
   legacyCondashJsonPath,
   legacyConfigurationJsonPath,
 } from './condash-dir';
@@ -167,12 +168,4 @@ function safeParse(raw: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-function isTombstone(obj: Record<string, unknown>): boolean {
-  if (Object.keys(obj).length === 0) return false;
-  for (const key of Object.keys(obj)) {
-    if (!key.startsWith('_')) return false;
-  }
-  return true;
 }

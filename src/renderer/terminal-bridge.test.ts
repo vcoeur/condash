@@ -305,6 +305,44 @@ describe('runTask with promptFlags agent', () => {
     vi.useRealTimers();
   });
 
+  it('quotes for the configured shell family — pwsh gets PowerShell quoting', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const deps = {
+      ...makeDeps(handle, [agedumAgent]),
+      terminalPrefs: (): TerminalPrefs => ({ shell: 'pwsh' }),
+    };
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.runTask('agedum-claude', "it's a & b | %PATH%", 'Win run');
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: "agedum claude --prompt 'it''s a & b | %PATH%'" },
+      'my',
+      'agedum · claude•Win run',
+    );
+    vi.useRealTimers();
+  });
+
+  it('quotes for cmd.exe — &, |, and %VAR% are caret-escaped, not executable', async () => {
+    vi.useFakeTimers();
+    const handle = makeFakeHandle();
+    const deps = {
+      ...makeDeps(handle, [agedumAgent]),
+      terminalPrefs: (): TerminalPrefs => ({ shell: 'cmd.exe' }),
+    };
+    const bridge = createTerminalBridge(deps);
+    const promise = bridge.runTask('agedum-claude', 'a & b | %PATH%', 'Cmd run');
+    await vi.advanceTimersByTimeAsync(400);
+    await promise;
+    expect(handle.spawnUserShell).toHaveBeenCalledWith(
+      { ...agedumAgent, command: 'agedum claude --prompt ^"a ^& b ^| ^%PATH^%^"' },
+      'my',
+      'agedum · claude•Cmd run',
+    );
+    vi.useRealTimers();
+  });
+
   it('seeds `--run` (one-shot) when the run opts request oneshot mode', async () => {
     vi.useFakeTimers();
     const handle = makeFakeHandle();

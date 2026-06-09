@@ -153,6 +153,63 @@ describe('worktrees setup / remove — surface', () => {
     expect(threw).toBeInstanceOf(CliError);
     expect((threw as CliError).exitCode).toBe(2);
   });
+
+  it('setup exits RUNTIME (1) when an install command fails, after emitting the result', async () => {
+    // Real repo so `git worktree add` succeeds; the install command fails.
+    const { exec } = await import('../../main/exec');
+    const { promises: fs } = await import('node:fs');
+    const { join } = await import('node:path');
+    const workspace = join(conceptionPath, 'workspace');
+    const worktreesRoot = join(conceptionPath, 'wt');
+    await fs.mkdir(workspace, { recursive: true });
+    await fs.mkdir(worktreesRoot, { recursive: true });
+    const gitEnv = {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_SYSTEM: '/dev/null',
+    };
+    await exec('git', ['init', '-q', '-b', 'main', 'demo'], { cwd: workspace, env: gitEnv });
+    const repo = join(workspace, 'demo');
+    await exec('git', ['config', 'user.email', 't@example.com'], { cwd: repo, env: gitEnv });
+    await exec('git', ['config', 'user.name', 'T'], { cwd: repo, env: gitEnv });
+    await exec('git', ['commit', '-q', '--allow-empty', '-m', 'init'], {
+      cwd: repo,
+      env: gitEnv,
+    });
+    await fs.writeFile(
+      join(conceptionPath, 'condash.json'),
+      JSON.stringify({
+        workspace_path: workspace,
+        worktrees_path: worktreesRoot,
+        repositories: [{ name: 'demo', install: 'echo broken >&2; exit 9' }],
+      }),
+      'utf8',
+    );
+
+    const { stdout, threw } = await captureStdout(() =>
+      runWorktrees(
+        'setup',
+        {
+          noun: 'worktrees',
+          verb: 'setup',
+          positional: ['cli-exit-test'],
+          flags: { repo: 'demo' },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    // The result was still emitted (data on stdout)…
+    const data = parseJsonEnvelope<{
+      installRan: Array<{ ok: boolean; stderrTail?: string }>;
+    }>(stdout).data!;
+    expect(data.installRan).toHaveLength(1);
+    expect(data.installRan[0].ok).toBe(false);
+    expect(data.installRan[0].stderrTail).toContain('broken');
+    // …and the command signals RUNTIME so scripts can react.
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(1);
+  });
 });
 
 describe('worktrees mismatch', () => {

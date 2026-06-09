@@ -10,11 +10,14 @@
 // popover can render a separate section for commits queued for push, in
 // the same round-trip as the dirty-file list.
 
-import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
 import type { UnpushedCommit, UpstreamStatus } from '../shared/types';
-import { getUpstreamStatus } from './git-status-cache';
+import {
+  getUpstreamStatus,
+  isZeroByteUntracked,
+  statusPathPrefix,
+  stripStatusPrefix,
+} from './git-status-cache';
 
 const FILE_LIMIT = 20;
 const UNPUSHED_LIMIT = 20;
@@ -23,8 +26,10 @@ export interface DirtyFile {
   /** Two-character porcelain status (e.g. ` M`, `??`, `D `). Whitespace
    * preserved so the renderer can pad / colour by index/worktree column. */
   code: string;
-  /** Path relative to the worktree root. Rename arrows (`old -> new`) are
-   * collapsed to the new path. */
+  /** Path relative to the queried directory — the worktree root normally,
+   * the subtree when `scopeToSubtree` is set (git reports root-relative
+   * paths even from a subtree cwd; the subtree prefix is stripped here).
+   * Rename arrows (`old -> new`) are collapsed to the new path. */
   path: string;
   /** Lines added (per `git diff --numstat HEAD`). Null when the file is
    *  untracked, binary, or numstat has no row for it (fresh repo, etc.). */
@@ -61,27 +66,14 @@ interface DirtyDetailsOptions {
   scopeToSubtree?: boolean;
 }
 
-/** Same zero-byte filter as the count path — sandbox runtime artifacts
- *  (empty placeholder files in untracked state) don't surface as dirty
- *  on the badge, so they shouldn't surface in the popover either. */
-async function isZeroByteUntracked(line: string, cwd: string): Promise<boolean> {
-  if (!line.startsWith('?? ')) return false;
-  const rel = line.slice(3).trim();
-  if (!rel) return false;
-  try {
-    const stat = await fs.stat(join(cwd, rel));
-    return stat.isFile() && stat.size === 0;
-  } catch {
-    return false;
-  }
-}
-
 interface ParsedPorcelain {
   code: string;
   path: string;
 }
 
-function parsePorcelain(line: string): ParsedPorcelain {
+/** Parse one porcelain-v1 line into status code + root-relative path
+ *  (renames collapsed to the new path). Pure; exported for unit tests. */
+export function parsePorcelain(line: string): ParsedPorcelain {
   const code = line.slice(0, 2);
   let rest = line.slice(3);
   // Renames look like `R  old -> new`; collapse to the new path.
@@ -96,7 +88,9 @@ interface NumstatRow {
   binary: boolean;
 }
 
-function parseNumstat(out: string): Map<string, NumstatRow> {
+/** Parse `git diff --numstat` output into a path-keyed map. Binary files
+ *  (`-\t-\t<path>`) carry null counts. Pure; exported for unit tests. */
+export function parseNumstat(out: string): Map<string, NumstatRow> {
   const map = new Map<string, NumstatRow>();
   for (const line of out.split('\n')) {
     if (!line) continue;
@@ -134,21 +128,30 @@ export async function getDirtyDetails(
       numstatArgs.push('--', '.');
     }
 
+    // git reports paths relative to the repo root even from a subtree cwd;
+    // strip the subtree prefix so `DirtyFile.path` is relative to the
+    // queried directory and the porcelain ↔ numstat join keys agree.
+    const prefix = await statusPathPrefix(git, opts.scopeToSubtree === true);
+
     const statusOut = await git.raw(statusArgs);
     const porcelain: ParsedPorcelain[] = [];
     for (const line of statusOut.split('\n')) {
       if (line.length === 0) continue;
-      if (await isZeroByteUntracked(line, path)) continue;
-      porcelain.push(parsePorcelain(line));
+      if (await isZeroByteUntracked(line, path, prefix)) continue;
+      const parsed = parsePorcelain(line);
+      porcelain.push({ code: parsed.code, path: stripStatusPrefix(parsed.path, prefix) });
     }
 
     // `git diff --numstat HEAD` is empty / errors when HEAD is missing
     // (fresh repo) or no tracked file changed; fall through with an empty
-    // map so untracked-only states still show.
+    // map so untracked-only states still show. Numstat paths are
+    // root-relative too — re-key through the same prefix strip.
     let numstat = new Map<string, NumstatRow>();
     try {
       const numstatOut = await git.raw(numstatArgs);
-      numstat = parseNumstat(numstatOut);
+      for (const [rootRel, row] of parseNumstat(numstatOut)) {
+        numstat.set(stripStatusPrefix(rootRel, prefix), row);
+      }
     } catch {
       numstat = new Map();
     }

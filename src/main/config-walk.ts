@@ -101,6 +101,11 @@ function visitOne(
   workspace: string | undefined,
   section: string | undefined,
   visit: (entry: RepoLookup) => boolean | void,
+  // Resolved cwd of the parent entry, set only on submodule recursion. A
+  // submodule resolves under its parent's *resolved* directory — not under
+  // `<workspace>/<parent name>` — so a path-configured parent's submodules
+  // land in the right place.
+  parentCwd?: string,
 ): boolean {
   if (typeof entry === 'string') {
     const lookup: RepoLookup = {
@@ -108,7 +113,7 @@ function visitOne(
       name: entry,
       handle: appHandle(entry),
       parent,
-      cwd: resolveCwd(workspace, parent, entry),
+      cwd: resolveCwd(parentCwd ?? workspace, undefined, entry),
       section,
     };
     return visit(lookup) === false;
@@ -127,7 +132,7 @@ function visitOne(
     aliases: entry.aliases,
     label: entry.label,
     parent,
-    cwd: resolveCwd(workspace, parent, dirName, entry.path),
+    cwd: resolveCwd(parentCwd ?? workspace, undefined, dirName, entry.path),
     run: entry.run,
     forceStop: entry.force_stop,
     section,
@@ -135,7 +140,9 @@ function visitOne(
   if (visit(lookup) === false) return true;
   if ('submodules' in entry && entry.submodules?.length) {
     for (const sub of entry.submodules) {
-      if (visitOne(sub, entry.name, workspace, section, visit)) return true;
+      // `dirName` (not `entry.name`) so a path-only parent still prefixes its
+      // submodules' display names; `lookup.cwd` anchors their resolution.
+      if (visitOne(sub, dirName, workspace, section, visit, lookup.cwd)) return true;
     }
   }
   return false;

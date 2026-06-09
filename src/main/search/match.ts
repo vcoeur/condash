@@ -16,6 +16,7 @@
 import { promises as fs } from 'node:fs';
 import type { SearchHighlight, SearchHit, SearchTerm } from '../../shared/types';
 import { splitContent } from '../logs-format';
+import { toLowerCaseSameLength } from './lowercase';
 import { buildRegions } from './regions';
 import { scoreOccurrences, type ScorerOccurrence } from './scorer';
 import { buildSnippets } from './snippets';
@@ -81,8 +82,12 @@ export async function prepareFile(ref: FileRef): Promise<PreparedFile | null> {
     ...ref,
     mtimeMs,
     raw,
-    lowerContent: raw.toLowerCase(),
-    lowerPath: ref.relPath.toLowerCase(),
+    // Length-preserving lowering: occurrence offsets are computed on the
+    // lowered strings but index into `raw` / `relPath` (regions, snippet
+    // windows, path highlights), so the lowered form must never drift in
+    // length (e.g. U+0130 grows under a plain `toLowerCase()`).
+    lowerContent: toLowerCaseSameLength(raw),
+    lowerPath: toLowerCaseSameLength(ref.relPath),
     regions: buildRegions(raw, ref.source),
     title: extractFirstHeadingOrLine(raw) ?? ref.relPath,
   };

@@ -35,16 +35,22 @@ const RULES: RedactRule[] = [
     re: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g,
     kind: 'private-key',
   },
-  // Provider API-key prefixes (Anthropic/OpenAI sk-, GitHub gh*_/pat, Slack xox).
+  // Provider API-key prefixes (Anthropic/OpenAI sk-, Stripe sk_live/sk_test,
+  // GitHub gh*_/pat, Slack xox, npm).
   { re: /\bsk-ant-[A-Za-z0-9_-]{20,}/g, kind: 'api-key' },
   { re: /\bsk-[A-Za-z0-9_-]{20,}/g, kind: 'api-key' },
+  { re: /\bsk_(?:live|test)_[A-Za-z0-9]{10,}/g, kind: 'stripe-key' },
   { re: /\bgithub_pat_[A-Za-z0-9_]{20,}/g, kind: 'github-token' },
   { re: /\bgh[opusr]_[A-Za-z0-9]{20,}/g, kind: 'github-token' },
   { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, kind: 'slack-token' },
+  { re: /\bnpm_[A-Za-z0-9]{36}\b/g, kind: 'npm-token' },
+  // Google API keys — fixed-shape AIza prefix + 35 chars.
+  { re: /\bAIza[0-9A-Za-z_-]{35}/g, kind: 'google-key' },
   // AWS access-key ids.
   { re: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, kind: 'aws-key' },
-  // Authorization: Bearer <token> (mask the token, keep the scheme).
-  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/-]{12,}=*/g, kind: 'bearer', group: 1 },
+  // Authorization: Bearer <token> (mask the token, keep the scheme; the
+  // scheme is matched case-insensitively — `bearer` is common in curl output).
+  { re: /\b(bearer\s+)[A-Za-z0-9._~+/-]{12,}=*/gi, kind: 'bearer', group: 1 },
   // JWTs — three base64url segments.
   { re: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, kind: 'jwt' },
   // NAME=VALUE / NAME: VALUE where NAME looks secret — mask the value only.

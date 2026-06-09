@@ -343,7 +343,12 @@ export function mountXterm(
       const dec = term.registerDecoration({ marker, x: 0, width: 1, layer: 'top' });
       if (!dec) return;
       dec.onRender((el) => {
-        const colour = exit === null ? 'var(--accent)' : exit === 0 ? '#3fb950' : '#f85149';
+        // CSS tokens, not hex literals, so the marker colours flip with the
+        // theme (the decoration element lives in the document, so `var()`
+        // resolves live — no getComputedStyle snapshot needed). Success /
+        // failure reuse the palette's running-green and warn-red.
+        const colour =
+          exit === null ? 'var(--accent)' : exit === 0 ? 'var(--col-running)' : 'var(--warn)';
         el.style.background = colour;
         el.style.opacity = '0.85';
         el.style.borderRadius = '1px';

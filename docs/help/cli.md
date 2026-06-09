@@ -22,15 +22,17 @@ condash <noun> <verb> [args] [--flags]
 
 | Noun | Common verbs |
 |---|---|
-| `projects` | `list`, `read`, `search`, `validate`, `status get/set`, `close` |
-| `knowledge` | `tree`, `verify`, `retrieve`, `stamp` |
-| `search` | `condash search "<query>" [--scope all\|projects\|knowledge]` |
+| `projects` | `list`, `read`, `activity`, `search`, `validate`, `status get/set`, `close`, `check-knowledge` |
+| `knowledge` | `tree`, `verify`, `retrieve`, `stamp`, `index` |
+| `search` | `condash search "<query>" [--scope all\|projects\|knowledge\|resources\|skills\|logs]` |
 | `repos` | `list [--include-worktrees]` |
-| `worktrees` | `list`, `setup <branch>`, `remove <branch>`, `check <branch>` |
-| `audit` | `--include lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification` |
+| `applications` | `list`, `add`, `set`, `rename`, `sync-docs`, `validate` (the `#handle` registry) |
+| `worktrees` | `list`, `setup <branch>`, `remove <branch>`, `check <branch>`, `mismatch` |
+| `audit` | `--include all\|lfs,binaries,cross-repo,worktrees,index,stale-index,stale-verification,knowledge-recheck,knowledge-check` |
 | `dirty` | `list`, `touch <tree>`, `clear <tree\|all>` |
-| `skills` | `list`, `install`, `status` |
-| `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>` (`--global` / `--effective` on read verbs) |
+| `logs` | `days` (default), `list [<day>]`, `read <sid\|path>`, `tail` |
+| `skills` | `list`, `install`, `status`, `validate` |
+| `config` | `conception-path [<path>]`, `path`, `list`, `get <key>`, `set <key> <value>`, `migrate` (`--global` / `--effective` on read verbs) |
 | `help` | `condash help <noun>` |
 
 ## Universal flags

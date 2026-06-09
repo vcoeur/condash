@@ -1,4 +1,4 @@
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, open, rename } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Terminal } from '@xterm/headless';
 import type { TaskRunContext, TermSide, TerminalLoggingPrefs } from '../shared/types';
@@ -163,6 +163,8 @@ export class SessionLogger {
    * prune to the last ~5 runs once this run's file exists. Null otherwise. */
   private readonly rotateDir: string | null;
   private closed = false;
+  /** Single close pass shared by every close() caller. */
+  private closePromise: Promise<void> | null = null;
   private paused = false;
   private dirty = false;
   private readonly flushMs: number;
@@ -245,14 +247,26 @@ export class SessionLogger {
     this.flushNowFireAndForget();
   }
 
-  /** Idempotent. After close(), all further calls are no-ops. */
-  async close(): Promise<void> {
-    if (this.closed) return;
+  /** Idempotent — concurrent and repeated calls share one close pass.
+   * Resolves once every pending flush (including output that raced the
+   * close) is on disk and the xterm is disposed. */
+  close(): Promise<void> {
+    if (!this.closePromise) this.closePromise = this.doClose();
+    return this.closePromise;
+  }
+
+  private async doClose(): Promise<void> {
     this.cancelFlush();
-    // Drain any pending flushes — they're serialised through
-    // `flushChain`, so awaiting the tail waits for all of them.
-    if (this.dirty) this.flushNowFireAndForget();
+    // Drain in a loop: an output() arriving while a flush is awaited
+    // re-dirties the buffer, and a single-pass await would then flip
+    // `closed` with those tail bytes unwritten. Pass-bounded so a
+    // pathological writer can't hold close() open forever.
+    for (let pass = 0; this.dirty && pass < 20; pass++) {
+      this.flushNowFireAndForget();
+      await this.flushChain;
+    }
     await this.flushChain;
+    this.cancelFlush();
     this.closed = true;
     this.term.dispose();
   }
@@ -308,8 +322,17 @@ export class SessionLogger {
     const text = this.composeFileContent(body, isTranscript ? 'transcript' : 'grid');
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
+      // tmp → fsync → rename, matching the atomic-write invariant
+      // (atomic-write.ts): an unsynced rename can surface a zero-length
+      // file after power loss.
       const tmp = `${this.txtPath}.tmp`;
-      await writeFile(tmp, text, 'utf8');
+      const fh = await open(tmp, 'w');
+      try {
+        await fh.writeFile(text, 'utf8');
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
       await rename(tmp, this.txtPath);
     } catch (err) {
       process.stderr.write(`condash terminal-logger: write failed: ${(err as Error).message}\n`);

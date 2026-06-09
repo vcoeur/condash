@@ -36,15 +36,27 @@ export async function listOpenWith(conceptionPath: string): Promise<OpenWithSlot
 /**
  * Tokenise a command template into argv, substituting `{path}` at the arg
  * level (no shell parsing). Quotes are honoured for tokens that contain
- * literal whitespace (e.g. `idea "{path}"`). A leading `~/` in any token
- * is expanded to the user's home directory — without this, configs that
- * reference `~/bin/foo` silently fail to spawn (the literal `~` doesn't
- * resolve outside a shell).
+ * literal whitespace (e.g. `idea "{path}"`); a quoted empty string (`""` /
+ * `''`) yields an empty argv entry. Backslashes have no escaping power —
+ * they pass through literally (this is argv splitting, not a shell).
+ * A leading `~/` in any token is expanded to the user's home directory —
+ * without this, configs that reference `~/bin/foo` silently fail to spawn
+ * (the literal `~` doesn't resolve outside a shell).
  */
 export function tokenise(command: string, path: string): string[] {
   const tokens: string[] = [];
   let buf = '';
   let quote: '"' | "'" | null = null;
+  // True when the current token saw at least one quote pair — keeps an
+  // explicitly quoted empty string (`""`) as a real (empty) argv entry
+  // instead of silently dropping it.
+  let quoted = false;
+
+  const flush = () => {
+    if (buf.length > 0 || quoted) tokens.push(buf);
+    buf = '';
+    quoted = false;
+  };
 
   for (const ch of command) {
     if (quote) {
@@ -54,18 +66,16 @@ export function tokenise(command: string, path: string): string[] {
     }
     if (ch === '"' || ch === "'") {
       quote = ch;
+      quoted = true;
       continue;
     }
     if (ch === ' ' || ch === '\t') {
-      if (buf.length > 0) {
-        tokens.push(buf);
-        buf = '';
-      }
+      flush();
       continue;
     }
     buf += ch;
   }
-  if (buf.length > 0) tokens.push(buf);
+  flush();
 
   return tokens.map((tok) => expandTilde(tok.split('{path}').join(path)));
 }

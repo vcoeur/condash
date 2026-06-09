@@ -24,13 +24,11 @@ import {
   collectProjectFiles,
   collectResourceFiles,
   collectSkillFiles,
+  RESOURCE_EXTS,
+  SKIP_DIR_NAMES,
 } from './walk';
 
 const PREPARE_CONCURRENCY = 32;
-const RESOURCE_EXTS = new Set(['.md', '.markdown', '.txt']);
-// Directory names the markdown walkers skip (walk.ts SKIP_DIR_NAMES, minus the
-// dotfile rule which `segmentsClean` covers separately).
-const SKIP_SEGMENTS = new Set(['node_modules', 'local']);
 
 export type IndexedSource = 'project' | 'knowledge' | 'resources' | 'skills';
 
@@ -53,10 +51,41 @@ let current: ConceptionIndex | null = null;
 // conception switch discards its result instead of clobbering the new index.
 let buildToken = 0;
 
+// FS events that arrive while a build for the same conception is in flight.
+// `current` is null for the whole build window, so without this buffer every
+// event fired mid-build would be dropped — the entry would stay stale until
+// the file's *next* event. Buffered events are replayed in arrival order once
+// the build assigns `current`; a newer build/clear (token bump) drops the
+// buffer along with the superseded build.
+let buildBuffer: {
+  token: number;
+  conceptionPath: string;
+  events: { eventName: string; absPath: string }[];
+} | null = null;
+
+// Per-path FIFO for in-flight `applyIndexFsEvent` work. Two concurrent events
+// for the same path otherwise race on their `prepareFile` reads — an older,
+// slower read could complete last and overwrite the newer content. Chaining
+// per key makes completions apply in arrival order.
+const applyChains = new Map<string, Promise<void>>();
+
+function enqueuePerPath(key: string, work: () => Promise<void>): Promise<void> {
+  const prev = applyChains.get(key) ?? Promise.resolve();
+  // Run `work` whether or not the predecessor rejected — one failed apply must
+  // not wedge the chain for the path's lifetime.
+  const next = prev.then(work, work);
+  const cleanup = (): void => {
+    if (applyChains.get(key) === next) applyChains.delete(key);
+  };
+  next.then(cleanup, cleanup);
+  return next;
+}
+
 /** Drop the index (conception teardown / switch). */
 export function clearSearchIndex(): void {
   current = null;
   buildToken++;
+  buildBuffer = null;
 }
 
 function getIndex(conceptionPath: string): ConceptionIndex | null {
@@ -93,6 +122,7 @@ export async function rebuildSearchIndex(conceptionPath: string | null): Promise
   clearSearchIndex();
   if (!conceptionPath) return;
   const token = buildToken;
+  buildBuffer = { token, conceptionPath, events: [] };
   const { resources, skills } = resolveConceptionPaths();
 
   const [projectFiles, knowledgeFiles, resourceFiles, skillFiles] = await Promise.all([
@@ -118,9 +148,19 @@ export async function rebuildSearchIndex(conceptionPath: string | null): Promise
     PREPARE_CONCURRENCY,
   );
 
-  // A newer rebuild/clear (conception switch) superseded us — drop the result.
+  // A newer rebuild/clear (conception switch) superseded us — drop the result
+  // (and the event buffer, which the newer build/clear already replaced).
   if (token !== buildToken) return;
   current = { conceptionPath, byPath };
+
+  // Replay events that fired during the build window, in arrival order. Each
+  // replay re-reads the file, so the index converges on the on-disk state even
+  // when the walk above captured a pre-event version.
+  const buffered = buildBuffer?.events ?? [];
+  buildBuffer = null;
+  for (const event of buffered) {
+    await applyIndexFsEvent(conceptionPath, event.eventName, event.absPath);
+  }
 }
 
 /**
@@ -135,12 +175,26 @@ export async function applyIndexFsEvent(
   eventName: string,
   absPath: string,
 ): Promise<void> {
-  if (!getIndex(conceptionPath)) return;
+  if (!getIndex(conceptionPath)) {
+    // A build for this conception is in flight: buffer the event for replay
+    // once `current` is assigned, instead of silently dropping it.
+    if (
+      buildBuffer &&
+      buildBuffer.conceptionPath === conceptionPath &&
+      buildBuffer.token === buildToken
+    ) {
+      buildBuffer.events.push({ eventName, absPath });
+    }
+    return;
+  }
   const key = toPosix(absPath);
 
   if (eventName === 'unlink') {
-    getIndex(conceptionPath)?.byPath.delete(key);
-    return;
+    // Joins the per-path chain so a delete never lands before an in-flight
+    // earlier add/change read for the same path.
+    return enqueuePerPath(key, async () => {
+      getIndex(conceptionPath)?.byPath.delete(key);
+    });
   }
   if (eventName === 'unlinkDir') {
     const index = getIndex(conceptionPath);
@@ -155,17 +209,19 @@ export async function applyIndexFsEvent(
 
   const classified = classifyIndexedPath(conceptionPath, key);
   if (!classified) return;
-  const prepared = await prepareFile({
-    path: key,
-    relPath: toPosix(relative(conceptionPath, absPath)),
-    source: classified.source,
-    projectPath: classified.projectPath,
+  return enqueuePerPath(key, async () => {
+    const prepared = await prepareFile({
+      path: key,
+      relPath: toPosix(relative(conceptionPath, absPath)),
+      source: classified.source,
+      projectPath: classified.projectPath,
+    });
+    // Re-fetch: a conception switch could have landed while we read the file.
+    const live = getIndex(conceptionPath);
+    if (!live) return;
+    if (prepared) live.byPath.set(key, prepared);
+    else live.byPath.delete(key); // vanished between the event and the read
   });
-  // Re-fetch: a conception switch could have landed while we read the file.
-  const live = getIndex(conceptionPath);
-  if (!live) return;
-  if (prepared) live.byPath.set(key, prepared);
-  else live.byPath.delete(key); // vanished between the event and the read
 }
 
 function toRef(
@@ -200,7 +256,12 @@ function classifyIndexedPath(
   const projRoot = `${cp}/projects`;
   if (posixPath.startsWith(`${projRoot}/`) && ext === '.md') {
     const rel = posixPath.slice(projRoot.length + 1).split('/');
-    if (rel.length < 2 || !segmentsClean(rel)) return null;
+    // The build walker only collects files *inside* an item dir
+    // (`projects/<month>/<item>/…`), so a month-level loose file
+    // (`projects/<month>/x.md`, rel.length === 2) must be rejected here too —
+    // accepting it would make the incremental index diverge from a rebuild
+    // and point `projectPath` at the file itself.
+    if (rel.length < 3 || !segmentsClean(rel)) return null;
     return { source: 'project', projectPath: `${projRoot}/${rel[0]}/${rel[1]}` };
   }
 
@@ -226,5 +287,7 @@ function classifyIndexedPath(
 }
 
 function segmentsClean(segments: string[]): boolean {
-  return segments.every((s) => s.length > 0 && !s.startsWith('.') && !SKIP_SEGMENTS.has(s));
+  // SKIP_DIR_NAMES is shared with the walkers (walk.ts) so membership can't
+  // drift; its `.git` entry is redundantly covered by the dot-prefix rule.
+  return segments.every((s) => s.length > 0 && !s.startsWith('.') && !SKIP_DIR_NAMES.has(s));
 }

@@ -36,6 +36,68 @@ export function requireStringArray(channel: string, value: unknown): string[] {
 }
 
 /**
+ * Like `requireStringArray` but tolerates an absent argument (`undefined` /
+ * `null` → `undefined`) and additionally requires every element to be a
+ * string. For optional list arguments such as `search`'s `scopes`.
+ */
+export function requireOptionalStringArray(channel: string, value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  const arr = requireStringArray(channel, value);
+  if (arr.some((item) => typeof item !== 'string')) {
+    throw new Error(`${channel}: expected an array of strings`);
+  }
+  return arr;
+}
+
+/**
+ * Minimal structural slice of Electron's `IpcMainInvokeEvent` used by the
+ * sender guard. Kept structural (no `electron` import) so unit tests can pass
+ * a plain object without an Electron runtime.
+ */
+interface SenderLikeEvent {
+  sender: { getType(): string } | null;
+  senderFrame: { url: string; parent: unknown } | null;
+}
+
+/**
+ * Throw unless the invoke event originates from the app's own renderer: the
+ * sender must be a `BrowserWindow` webContents (never a `<webview>` guest or
+ * devtools contents) and the calling frame must be the top frame loaded from
+ * an app origin (the packaged `file://` bundle or the Vite dev server).
+ *
+ * Defence-in-depth on the IPC trust boundary — a compromised frame inside
+ * the PDF `<webview>` (or any future embedded contents) must not be able to
+ * drive the privileged handlers even if it somehow reaches `ipcRenderer`.
+ * Call it first in every `ipcMain.handle` body.
+ */
+export function requireMainWindowSender(event: SenderLikeEvent): void {
+  const sender = event.sender;
+  if (!sender || sender.getType() !== 'window') {
+    throw new Error('ipc: sender is not an app window');
+  }
+  const frame = event.senderFrame;
+  if (!frame || frame.parent !== null) {
+    throw new Error('ipc: sender frame is not the top frame');
+  }
+  if (!isAppOrigin(frame.url)) {
+    throw new Error('ipc: sender frame is not an app origin');
+  }
+}
+
+/** App origins: the packaged file:// bundle, or the Vite dev/preview server
+ * (ports 5600/5601 — see AGENTS.md § Dev ports). The host:port prefix is
+ * terminated by `/` so `localhost:56001` can't pass as `localhost:5600`. */
+function isAppOrigin(url: string): boolean {
+  return (
+    url.startsWith('file://') ||
+    url === 'http://localhost:5600' ||
+    url.startsWith('http://localhost:5600/') ||
+    url === 'http://localhost:5601' ||
+    url.startsWith('http://localhost:5601/')
+  );
+}
+
+/**
  * Require the value be one of `allowed`. Returns it narrowed to that union.
  * Used for the small string-enum arguments (theme, skill scope, …).
  */

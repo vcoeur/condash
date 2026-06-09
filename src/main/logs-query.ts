@@ -211,34 +211,66 @@ export async function listDays(conception: string, monthPrefix?: string): Promis
     .sort((a, b) => (a.day < b.day ? 1 : -1));
 }
 
-/** Read the first 4 KB + (if larger) last 1 KB of a session and pluck the
- *  `# condash:` header / footer lines without loading the full transcript. */
-async function readHeadTailMeta(
+/** Chunk size for the incremental header read. */
+const HEAD_CHUNK = 4096;
+/** Upper bound on how far the header read will scan for the first newline —
+ *  past this the header line is treated as unparseable rather than loading
+ *  an arbitrarily large file. */
+const HEAD_MAX = 256 * 1024;
+/** Footer scan window at the end of the file. */
+const TAIL = 1024;
+
+/** Read from offset 0 in HEAD_CHUNK steps until the first newline (or
+ *  HEAD_MAX / EOF). Returns the decoded text and how many bytes it covers.
+ *  Chunks are concatenated as Buffers before decoding so a multi-byte UTF-8
+ *  character split across a chunk boundary survives. */
+async function readHeadText(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  size: number,
+): Promise<{ text: string; bytesRead: number }> {
+  const limit = Math.min(size, HEAD_MAX);
+  const chunks: Buffer[] = [];
+  let offset = 0;
+  while (offset < limit) {
+    const len = Math.min(HEAD_CHUNK, limit - offset);
+    const buf = Buffer.alloc(len);
+    const { bytesRead } = await handle.read(buf, 0, len, offset);
+    if (bytesRead <= 0) break;
+    const chunk = buf.subarray(0, bytesRead);
+    chunks.push(chunk);
+    offset += bytesRead;
+    if (chunk.includes(0x0a)) break;
+  }
+  return { text: Buffer.concat(chunks).toString('utf8'), bytesRead: offset };
+}
+
+/** Read the file head up to the first newline (a promptFlags run carries its
+ *  full argv in the header line, which can exceed any fixed chunk size) plus,
+ *  when the file is larger, the last 1 KB — and pluck the `# condash:` header
+ *  / footer lines without loading the full transcript. Exported for the GUI's
+ *  `ipc/logs.ts` listing path, so both ends parse long headers identically. */
+export async function readHeadTailMeta(
   filePath: string,
   size: number,
 ): Promise<{ header: HeaderJson | null; footer: FooterJson | null; kind: LogKind }> {
-  const HEAD = 4096;
-  const TAIL = 1024;
   let header: HeaderJson | null = null;
   let footer: FooterJson | null = null;
   let kind: LogKind = 'grid';
   let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
   try {
     handle = await fs.open(filePath, 'r');
-    const headBuf = Buffer.alloc(Math.min(HEAD, size));
-    await handle.read(headBuf, 0, headBuf.length, 0);
-    const headText = headBuf.toString('utf8');
-    const nl = headText.indexOf('\n');
-    header = parseMetaLine(nl >= 0 ? headText.slice(0, nl) : headText);
+    const head = await readHeadText(handle, size);
+    const nl = head.text.indexOf('\n');
+    header = parseMetaLine(nl >= 0 ? head.text.slice(0, nl) : head.text);
     // The legacy-fallback heuristic only needs the first body line, which sits
     // within the head chunk; `splitContent` strips the header + blank for us.
-    kind = detectKind(header, splitContent(headText).text);
-    if (size > HEAD) {
+    kind = detectKind(header, splitContent(head.text).text);
+    if (size > head.bytesRead) {
       const tailBuf = Buffer.alloc(TAIL);
       await handle.read(tailBuf, 0, TAIL, Math.max(0, size - TAIL));
       footer = findLastFooter(tailBuf.toString('utf8'));
     } else {
-      footer = findLastFooter(headText);
+      footer = findLastFooter(head.text);
     }
   } catch {
     /* missing / unreadable — leave null */

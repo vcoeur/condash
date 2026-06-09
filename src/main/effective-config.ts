@@ -12,9 +12,8 @@ import type {
 import {
   CONDASH_DIR,
   CONDASH_SETTINGS_FILENAME,
-  LEGACY_CONDASH_JSON,
-  LEGACY_CONFIGURATION_JSON,
   condashSettingsPath,
+  isTombstone,
   legacyCondashJsonPath,
   legacyConfigurationJsonPath,
 } from './condash-dir';
@@ -66,22 +65,11 @@ export interface EffectiveConfig extends ConfigShape {
 }
 
 /**
- * @deprecated Use `CONDASH_SETTINGS_FILENAME` and `condashSettingsPath()`
- * from `./condash-dir` instead. Kept exported for callers that still
- * reference the basename literal in error messages or comments.
- */
-export const CONCEPTION_CONFIG_FILENAME = LEGACY_CONDASH_JSON;
-
-/**
- * @deprecated The legacy² filename. Use the helpers in `./condash-dir`.
- */
-export const LEGACY_CONCEPTION_CONFIG_FILENAME = LEGACY_CONFIGURATION_JSON;
-
-/**
  * Resolve the conception config file path that should be **read**. Probes
  * in priority order: `.condash/settings.json` → `condash.json` →
- * `configuration.json`. Returns the canonical path (new primary) for empty
- * trees so the GUI can create it on first save.
+ * `configuration.json`, skipping migrator tombstones the same way
+ * `readConceptionConfigRaw` does. Returns the canonical path (new primary)
+ * for empty trees so the GUI can create it on first save.
  */
 export async function resolveConceptionConfigPath(conceptionPath: string): Promise<string> {
   const candidates = [
@@ -90,7 +78,24 @@ export async function resolveConceptionConfigPath(conceptionPath: string): Promi
     legacyConfigurationJsonPath(conceptionPath),
   ];
   for (const candidate of candidates) {
-    if (await fileExists(candidate)) return candidate;
+    let raw: string;
+    try {
+      raw = await fs.readFile(candidate, 'utf8');
+    } catch {
+      continue;
+    }
+    // A tombstoned legacy file must not shadow the next candidate — match
+    // readConceptionConfigRaw's probing. Malformed JSON still resolves to
+    // this candidate (same surface as the previous exists-only check).
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && isTombstone(parsed as Record<string, unknown>)) {
+        continue;
+      }
+    } catch {
+      // Fall through — the file exists, even if unparseable.
+    }
+    return candidate;
   }
   // Empty tree → return the new canonical so the GUI's first save lands
   // in the right place.
@@ -194,25 +199,6 @@ export async function getEffectiveConceptionConfig(
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await fs.stat(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** True when the parsed JSON looks like a migrator-written tombstone (no
- * config keys, only `_moved_*` markers). */
-function isTombstone(obj: Record<string, unknown>): boolean {
-  if (Object.keys(obj).length === 0) return false;
-  for (const key of Object.keys(obj)) {
-    if (!key.startsWith('_')) return false;
-  }
-  return true;
 }
 
 // Re-export the new constants from `./condash-dir` for callers that still

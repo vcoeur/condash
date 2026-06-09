@@ -115,6 +115,10 @@ function CodeRunRow(props: {
   let host: HTMLDivElement | undefined;
   let mounted: MountedTerm | null = null;
   let mountPromise: Promise<void> | null = null;
+  // Set by onCleanup. A mount completing after the row unmounted would
+  // otherwise leak a live Terminal on a detached element, pinned in
+  // `liveTerms` forever — dispose it immediately instead.
+  let disposed = false;
 
   const ensureMounted = (): Promise<void> => {
     if (mounted) return Promise.resolve();
@@ -126,6 +130,9 @@ function CodeRunRow(props: {
         import('./xterm-mount'),
         window.condash.termAttach(props.session.id),
       ]);
+      // The row may have unmounted while the chunk / attach were in flight —
+      // bail before creating the Terminal (mountXterm itself is synchronous).
+      if (disposed) return;
       mounted = mountXterm(xtermElement, props.session.id, {
         replay: attach?.output,
         prefs: props.xtermPrefs,
@@ -165,6 +172,7 @@ function CodeRunRow(props: {
   });
 
   onCleanup(() => {
+    disposed = true;
     props.dataHandlers.delete(props.session.id);
     props.exitHandlers.delete(props.session.id);
     mounted?.dispose();

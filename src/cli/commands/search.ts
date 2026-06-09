@@ -1,12 +1,17 @@
 import { search as searchAll } from '../../main/search';
+import { ALL_SCOPES } from '../../shared/types';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
-import { assertNoExtraFlags, parseIntFlag, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, takeIntFlag, takeStringFlag, type ParsedArgs } from '../parser';
 import { formatSearchHitsHuman } from '../format-hits';
 import { renderHelp } from '../help';
 
 const KNOWN_FLAGS_SEARCH = ['scope', 'limit'] as const;
 
 const NOUN_FLAGS: readonly string[] = [...new Set<string>([...KNOWN_FLAGS_SEARCH])];
+
+/** Every accepted `--scope` value: the four indexed markdown scopes, the
+ * on-demand logs disk-scan, and `all` (= ALL_SCOPES, logs excluded). */
+const VALID_SCOPES: readonly string[] = [...ALL_SCOPES, 'logs', 'all'];
 
 export async function runSearch(
   args: ParsedArgs,
@@ -21,20 +26,23 @@ export async function runSearch(
     printHelp();
     return;
   }
-  const scopeFlag = args.flags.scope;
-  const limitFlag = args.flags.limit;
-  for (const k of ['scope', 'limit']) delete args.flags[k];
+  const scope = takeStringFlag(args, 'scope') ?? 'all';
+  const limit = takeIntFlag(args, 'limit') ?? 50;
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   const query = args.positional.join(' ').trim();
   if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash search <query>');
-  const scope = (scopeFlag as string | undefined) ?? 'all';
-  if (!['all', 'projects', 'knowledge'].includes(scope)) {
-    throw new CliError(ExitCodes.USAGE, '--scope must be all|projects|knowledge');
+  if (!VALID_SCOPES.includes(scope)) {
+    throw new CliError(
+      ExitCodes.USAGE,
+      '--scope must be all|projects|knowledge|resources|skills|logs',
+    );
   }
-  const limit = parseIntFlag(limitFlag, 50);
 
-  const scopes = scope === 'all' ? undefined : [scope];
+  // `all` forwards exactly the four indexed markdown scopes — never
+  // `undefined`, which the backend treats as "everything" and would pay the
+  // logs disk-scan on every default query.
+  const scopes = scope === 'all' ? [...ALL_SCOPES] : [scope];
   const results = await searchAll(conceptionPath, query, scopes);
   const filtered = results.hits;
 
@@ -62,15 +70,19 @@ function printHelp(): void {
     renderHelp([
       'condash search <query> [--scope <scope>] [--limit <n>]',
       '',
-      'Cross-tree search across project READMEs/notes and knowledge files.',
+      'Cross-tree search across project READMEs/notes, knowledge, resources,',
+      'skill files, and saved session logs.',
       '',
       'Optional:',
-      '  --scope    all | projects | knowledge   (default: all)',
-      '  --limit    Maximum hits to return       (default: 50)',
+      '  --scope    all | projects | knowledge | resources | skills | logs',
+      '             (default: all = the four markdown scopes; logs are',
+      '             disk-scanned and searched only with --scope logs)',
+      '  --limit    Maximum hits to return  (default: 50)',
       '',
       'Examples:',
       '  condash search "dirty marker"',
       '  condash search retention --scope knowledge --limit 10',
+      '  condash search "exit code" --scope logs',
     ]),
   );
 }

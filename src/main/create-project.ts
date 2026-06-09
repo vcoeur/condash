@@ -133,7 +133,9 @@ export async function createProjectCore(
   // `wx` flag (write-exclusive) closes the check-then-act race on the
   // pre-flight `pathExists` above: if two concurrent creates pass that
   // check, the second writeFile fails with EEXIST instead of clobbering
-  // the first one's content. On EEXIST we also drop the empty `notes/`
+  // the first one's content. tmp→rename can't express that exclusivity —
+  // this is the create-path exemption to the atomic-write invariant
+  // (internals.md §2). On EEXIST we also drop the empty `notes/`
   // (and the parent `<date>-<slug>/` when we created it) so a failed
   // concurrent attempt doesn't leave an orphan directory tree behind.
   try {

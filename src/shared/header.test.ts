@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseHeader, validateHeader } from './header';
+import { iterUnfencedLines, parseHeader, validateHeader } from './header';
 
 describe('parseHeader — bold-prose (legacy)', () => {
   it('extracts every standard field', () => {
@@ -123,6 +123,35 @@ describe('parseHeader — YAML frontmatter', () => {
   it('falls through to bold-prose path when there is no frontmatter', () => {
     const raw = ['# Title', '', '**Status**: now', '', '## Goal'].join('\n');
     expect(parseHeader(raw).status).toBe('now');
+  });
+
+  it('tolerates trailing spaces on the --- delimiter lines', () => {
+    // Shared rule with mutate-status / rewrite-headers: a `--- ` line is
+    // still a frontmatter fence, so all three dispatchers agree.
+    const raw = ['--- ', 'date: 2026-05-08', 'status: now', '---  ', '', '# T'].join('\n');
+    const h = parseHeader(raw);
+    expect(h.date).toBe('2026-05-08');
+    expect(h.status).toBe('now');
+    expect(h.title).toBe('T');
+  });
+});
+
+describe('iterUnfencedLines — fence-marker matching', () => {
+  const yielded = (lines: string[]): string[] => [...iterUnfencedLines(lines)].map((x) => x.line);
+
+  it('treats a ``` line inside a ~~~ fence as content, not a toggle', () => {
+    const lines = ['before', '~~~markdown', '```bash', 'echo hi', '```', '~~~', 'after'];
+    expect(yielded(lines)).toEqual(['before', 'after']);
+  });
+
+  it('only closes a backtick fence on a run at least as long as the opener', () => {
+    const lines = ['````', '```', 'still fenced', '````', 'after'];
+    expect(yielded(lines)).toEqual(['after']);
+  });
+
+  it('still handles plain matched fences', () => {
+    const lines = ['a', '```', 'fenced', '```', 'b'];
+    expect(yielded(lines)).toEqual(['a', 'b']);
   });
 });
 

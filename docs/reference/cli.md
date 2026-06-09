@@ -131,7 +131,7 @@ Cross-tree full-text search.
 condash search "session cookie" --scope all
 ```
 
-`--scope` accepts `all`, `projects`, `knowledge`. Defaults to `all`.
+`--scope` accepts `all`, `projects`, `knowledge`, `resources`, `skills`, `logs`. Defaults to `all`, which forwards the four indexed markdown scopes (projects, knowledge, resources, skills) — terminal-session logs are disk-scanned and only searched under the explicit `--scope logs`. `--limit <n>` caps the hit count.
 
 ### `repos`
 
@@ -169,7 +169,7 @@ Worktree-centric operations on top of the conception's configured repositories (
 | `list` | Print every worktree, grouped by primary, with branch + dirty status |
 | `check <branch>` | Per-branch state: which items declare it, per-repo `worktree✓`/`branch✓`/`primary-on-branch`/`pinned` flags, missing or orphan dirs |
 | `mismatch` | Report worktrees referenced by an item's `branch` field that don't exist on disk (or vice versa) |
-| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` copies `.env*` from the main checkout; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook; `--base <ref>` branches off `<ref>` instead of the repo's default branch |
+| `setup <branch> [--repo <r>...] [--copy-env] [--no-env] [--no-install] [--base <ref>]` | Create the worktree for `<branch>` in every primary (or the listed `--repo` subset). `--copy-env` copies `.env*` from the main checkout; `--no-env` skips env wiring; `--no-install` skips the per-repo `install:` hook; `--base <ref>` branches off `<ref>` instead of the repo's default branch. Exit code: 1 (runtime) when any per-repo `install:` command fails; blocked repos (pinned, primary-on-branch) are expected outcomes reported under `blocked` and do **not** affect the exit code |
 | `remove <branch> [--repo <r>...] [--force] [--force-rm]` | Tear down `<branch>` worktrees and (if safe) the local branch. `--force` passes through to `git worktree remove --force` (deletes even if dirty); `--force-rm` implies `--force` and `rm -rf`'s the leftover dir if git deregistered the worktree but left files behind (typical with `node_modules`). Without `--force-rm`, half-removed entries are reported under `partiallyRemoved[]` so the caller can distinguish them from genuinely protected repos |
 
 A declaring item's `apps:` tokens and explicit `--repo` values resolve to a repo by its `#handle`, its directory name, or a configured alias — so a repo whose handle differs from its directory (e.g. `#vcoeur` → `vcoeur.com`) is matched either way. The worktree directory is always named after the canonical directory name, so every spelling lands on the same `<worktrees_path>/<branch>/<dir>/`.
@@ -217,7 +217,7 @@ Navigate the per-conception terminal-session logs that the GUI writes under `.co
 
 | Verb | What it does |
 |---|---|
-| `days [--month YYYY-MM] [--year YYYY]` | List days that hold sessions (newest first) with session count + size |
+| `days [--month YYYY-MM] [--year YYYY]` | List days that hold sessions (newest first) with session count + size. The default verb — bare `condash logs` runs it |
 | `list [<day>] [filters]` | List sessions, newest spawn-time first |
 | `read <sid\|day/sid\|path> [selector]` | Output a session transcript |
 | `tail [--sid s,s] [--repo n] [--lines n] [--all]` | Last lines (default 20) of the active tabs |
@@ -269,6 +269,7 @@ Read or change condash configuration.
 | `list [--global\|--effective]` | Print every key. Default reads `.condash/settings.json` (with legacy `condash.json` / `configuration.json` as read fallbacks); `--global` reads `settings.json`; `--effective` shows the merged view (conception ⊕ global) |
 | `get <key> [--global\|--effective]` | Print one key's value, dot-separated path (`terminal.shell`). Same flag axis as `list` |
 | `set <key> <value> [--global]` | Write a key. Default writes `.condash/settings.json`; `--global` writes the global `settings.json` |
+| `migrate` | Copy legacy `condash.json` / `configuration.json` content into `.condash/settings.json`, tombstone the source, and gitignore `.condash/` (the same auto-migration the GUI runs on first open) |
 
 `config conception-path` is the only verb that does not need an existing conception path — it prints the resolved one.
 

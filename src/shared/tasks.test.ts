@@ -33,6 +33,17 @@ describe('extractMarkers', () => {
       { key: 'BRANCH_HINT', default: 'main' },
     ]);
   });
+
+  it('skips jq-object fragments (default starting with whitespace)', () => {
+    expect(extractMarkers(`jq '{key: .sid, value: .}' then {AREA:docs/}`)).toEqual([
+      { key: 'AREA', default: 'docs/' },
+    ]);
+  });
+
+  it('skips ${FOO:-bar} shell parameter expansions but keeps plain {FOO:-bar}', () => {
+    expect(extractMarkers('echo ${FOO:-bar}')).toEqual([]);
+    expect(extractMarkers('{FOO:-bar}')).toEqual([{ key: 'FOO', default: '-bar' }]);
+  });
 });
 
 describe('reserved token predicates', () => {

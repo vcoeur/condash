@@ -14,7 +14,7 @@ import { basename, dirname, join } from 'node:path';
  *       settings.json          ← new canonical config (was condash.json)
  *       logs/
  *         YYYY/MM/DD/
- *           HHMMSS-<sid>.jsonl ← one file per pty spawn
+ *           HHMMSS-<sid>.txt   ← one plain-text file per pty spawn (since v2.27.0)
  *     condash.json             ← legacy primary (kept as fallback)
  *     configuration.json       ← legacy² (kept as fallback)
  *
@@ -67,4 +67,16 @@ export function legacyConfigurationJsonPath(conception: string): string {
  */
 export function isConceptionSettingsPath(path: string): boolean {
   return basename(path) === CONDASH_SETTINGS_FILENAME && basename(dirname(path)) === CONDASH_DIR;
+}
+
+/**
+ * True when a parsed config object looks like a migrator-written tombstone:
+ * non-empty and made up exclusively of `_`-prefixed marker keys (`_moved_to`,
+ * `_moved_at`, …). The migrator leaves these in place of a lifted legacy file;
+ * readers treat them as absent so a tombstone never shadows the primary.
+ */
+export function isTombstone(obj: Record<string, unknown>): boolean {
+  const keys = Object.keys(obj);
+  if (keys.length === 0) return false;
+  return keys.every((key) => key.startsWith('_'));
 }

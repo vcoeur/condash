@@ -160,7 +160,7 @@
   flex: none;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
-  color: var(--text-faint, var(--text-muted));
+  color: var(--text-faint);
 }
 
 /* Day sub-section nested inside a collapsed-by-default month group. */
@@ -247,11 +247,11 @@
 }
 
 .logs-session-card.failed {
-  border-left-color: var(--warn, #c44);
+  border-left-color: var(--warn);
 }
 
 .logs-session-card.running {
-  border-left-color: var(--accent, #609fff);
+  border-left-color: var(--accent);
 }
 
 /* Sealed by the boot-time orphan-footer recovery — session is definitely
@@ -259,7 +259,7 @@
  * Muted left-rail + italic status pill so it visually reads as "wrapped
  * up, but partial". */
 .logs-session-card.sealed {
-  border-left-color: var(--text-faint, #777);
+  border-left-color: var(--text-faint);
 }
 
 .logs-session-time {
@@ -297,15 +297,15 @@
 }
 
 .logs-session-card.failed .logs-session-exit {
-  color: var(--warn, #c44);
+  color: var(--warn);
 }
 
 .logs-session-card.running .logs-session-exit {
-  color: var(--accent, #609fff);
+  color: var(--accent);
 }
 
 .logs-session-card.sealed .logs-session-exit {
-  color: var(--text-faint, #777);
+  color: var(--text-faint);
   font-style: italic;
 }
 

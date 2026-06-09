@@ -19,7 +19,7 @@
  */
 
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
-import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, takeBoolFlag, type ParsedArgs } from '../parser';
 import {
   cheapDiff,
   readManifest,
@@ -115,11 +115,12 @@ export async function installRepo(args: ParsedArgs, ctx: OutputContext): Promise
   const sourceRoot = join(dest, SOURCE_RELPATH);
   await fs.mkdir(sourceRoot, { recursive: true });
 
-  const force = args.flags.force === true;
-  const showDiff = args.flags.diff === true;
-  const dryRun = args.flags['dry-run'] === true;
-  const prune = args.flags.prune === true;
-  for (const k of ['dest', 'force', 'diff', 'dry-run', 'prune']) delete args.flags[k];
+  const force = takeBoolFlag(args, 'force');
+  const showDiff = takeBoolFlag(args, 'diff');
+  const dryRun = takeBoolFlag(args, 'dry-run');
+  const prune = takeBoolFlag(args, 'prune');
+  // `dest` was already consumed by resolveDest above.
+  delete args.flags.dest;
   assertNoExtraFlags(args, NOUN_FLAGS);
   const shippedVersion = process.env.CONDASH_CLI_VERSION ?? 'dev';
 

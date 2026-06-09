@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { extractMarkers, type TaskDef, type TaskListItem } from '../shared/tasks';
 import { isValidSlugTail } from '../shared/slug';
 import { listAgents } from './agents';
+import { atomicWrite } from './atomic-write';
 
 const TASKS_DIRNAME = 'tasks';
 const CONFIG_FILENAME = 'task.json';
@@ -117,8 +118,11 @@ export async function writeTask(
   const config = taskConfigSchema.parse({ name: def.name, agent: def.agent });
   const dir = join(tasksDir(conceptionPath), safe);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(join(dir, CONFIG_FILENAME), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
-  await fs.writeFile(join(dir, PROMPT_FILENAME), def.prompt, 'utf8');
+  // Atomic writes: tasks/ sits inside the watched conception tree, where the
+  // invariant is tmp → fsync → rename (atomic-write.ts) — a bare writeFile can
+  // surface half-written JSON to the watcher or a concurrent listTasks.
+  await atomicWrite(join(dir, CONFIG_FILENAME), `${JSON.stringify(config, null, 2)}\n`);
+  await atomicWrite(join(dir, PROMPT_FILENAME), def.prompt);
   if (previousSlug && previousSlug !== safe) {
     await deleteTask(conceptionPath, previousSlug);
   }

@@ -1,7 +1,7 @@
 /**
  * Unit tests for `rootRepoFromApp` — the implicit-mode resolver that maps
  * an `apps:` entry from a project README to the canonical repo name in
- * `condash.json`. Apps may carry the conception's `@` display prefix and/or
+ * `condash.json`. Apps may carry the conception's `#` display prefix and/or
  * an inner sub-path (`condash/frontend`); the worktree is always at the
  * top-level repo, so both layers are stripped.
  */

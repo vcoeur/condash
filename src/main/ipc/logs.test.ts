@@ -35,6 +35,12 @@ vi.mock('electron', () => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 
+/** Minimal event shape accepted by `requireMainWindowSender`. */
+const trustedEvent = {
+  sender: { getType: () => 'window' },
+  senderFrame: { url: 'file:///app/dist/index.html', parent: null },
+};
+
 beforeEach(async () => {
   handlers = {};
   const { ipcMain } = await import('electron');
@@ -94,7 +100,7 @@ function writeSession(
 
 describe('logsListDays', () => {
   it('returns empty when no logs exist', async () => {
-    const result = await handlers.logsListDays();
+    const result = await handlers.logsListDays(trustedEvent);
     expect(result).toEqual([]);
   });
 
@@ -102,7 +108,7 @@ describe('logsListDays', () => {
     writeSession('2026-05-13', '142207', 't-aaa', 'x', {});
     writeSession('2026-05-10', '093001', 't-bbb', 'x', {});
     writeSession('2026-04-30', '180000', 't-ccc', 'x', {});
-    const result = (await handlers.logsListDays()) as { day: string }[];
+    const result = (await handlers.logsListDays(trustedEvent)) as { day: string }[];
     expect(result.map((r) => r.day)).toEqual(['2026-05-13', '2026-05-10', '2026-04-30']);
   });
 
@@ -111,7 +117,7 @@ describe('logsListDays', () => {
     mkdirSync(join(root, '2026', '04', '01'), { recursive: true });
     writeFileSync(join(root, '2026', '04', '01', '142207-t-x.jsonl'), '{}\n');
     writeSession('2026-05-13', '142207', 't-y', 'x', {});
-    const result = (await handlers.logsListDays()) as { day: string }[];
+    const result = (await handlers.logsListDays(trustedEvent)) as { day: string }[];
     expect(result.map((r) => r.day)).toEqual(['2026-05-13']);
   });
 
@@ -119,7 +125,10 @@ describe('logsListDays', () => {
     writeSession('2026-05-13', '142207', 't-aaa', 'x', {});
     writeSession('2026-05-13', '093001', 't-bbb', 'x', {});
     writeSession('2026-05-10', '180000', 't-ccc', 'x', {});
-    const result = (await handlers.logsListDays()) as { day: string; sessions: number }[];
+    const result = (await handlers.logsListDays(trustedEvent)) as {
+      day: string;
+      sessions: number;
+    }[];
     const byDay = Object.fromEntries(result.map((r) => [r.day, r.sessions]));
     expect(byDay['2026-05-13']).toBe(2);
     expect(byDay['2026-05-10']).toBe(1);
@@ -128,7 +137,9 @@ describe('logsListDays', () => {
 
 describe('logsListSessions', () => {
   it('rejects malformed day strings', async () => {
-    await expect(handlers.logsListSessions({}, 'not-a-day')).rejects.toThrow(/invalid day/);
+    await expect(handlers.logsListSessions(trustedEvent, 'not-a-day')).rejects.toThrow(
+      /invalid day/,
+    );
   });
 
   it('returns per-session metadata parsed from header + footer, most recent first', async () => {
@@ -148,7 +159,7 @@ describe('logsListSessions', () => {
       { side: 'code', cmd: 'make', argv: ['dev'], repo: 'condash', cwd: '/home/alice/condash' },
       { finished: '2026-05-13T09:30:42Z', exitCode: 0 },
     );
-    const result = (await handlers.logsListSessions({}, '2026-05-13')) as Array<{
+    const result = (await handlers.logsListSessions(trustedEvent, '2026-05-13')) as Array<{
       sid: string;
       time: string;
       repo?: string;
@@ -163,7 +174,7 @@ describe('logsListSessions', () => {
   });
 
   it('returns an empty list for an empty day', async () => {
-    const result = await handlers.logsListSessions({}, '2026-05-13');
+    const result = await handlers.logsListSessions(trustedEvent, '2026-05-13');
     expect(result).toEqual([]);
   });
 
@@ -172,7 +183,9 @@ describe('logsListSessions', () => {
     mkdirSync(join(root, '2026', '05', '13'), { recursive: true });
     writeFileSync(join(root, '2026', '05', '13', '142207-t-legacy.jsonl'), '{}\n');
     writeSession('2026-05-13', '142208', 't-modern', 'x', {});
-    const result = (await handlers.logsListSessions({}, '2026-05-13')) as Array<{ sid: string }>;
+    const result = (await handlers.logsListSessions(trustedEvent, '2026-05-13')) as Array<{
+      sid: string;
+    }>;
     expect(result.map((r) => r.sid)).toEqual(['t-modern']);
   });
 
@@ -183,7 +196,7 @@ describe('logsListSessions', () => {
     const dir = join(root, '2026', '05', '13');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, '142207-t-bare.txt'), 'just text, no header\n');
-    const result = (await handlers.logsListSessions({}, '2026-05-13')) as Array<{
+    const result = (await handlers.logsListSessions(trustedEvent, '2026-05-13')) as Array<{
       sid: string;
       cmd?: string;
     }>;
@@ -202,7 +215,7 @@ describe('logsReadSession', () => {
       { side: 'my', cmd: '/bin/bash', argv: [], cwd: '/x' },
       { finished: '2026-05-13T14:22:42Z', exitCode: 0 },
     );
-    const res = (await handlers.logsReadSession({}, file)) as {
+    const res = (await handlers.logsReadSession(trustedEvent, file)) as {
       text: string;
       meta: { sid: string; exitCode: number; cmd?: string } | null;
     };
@@ -219,7 +232,7 @@ describe('logsReadSession', () => {
       argv: [],
       cwd: '/x',
     });
-    const res = (await handlers.logsReadSession({}, file)) as {
+    const res = (await handlers.logsReadSession(trustedEvent, file)) as {
       text: string;
       meta: { sid: string; exitCode?: number } | null;
     };
@@ -228,7 +241,7 @@ describe('logsReadSession', () => {
   });
 
   it('rejects files outside the logs root', async () => {
-    await expect(handlers.logsReadSession({}, '/etc/passwd')).rejects.toThrow();
+    await expect(handlers.logsReadSession(trustedEvent, '/etc/passwd')).rejects.toThrow();
   });
 
   it('rejects non-.txt files', async () => {
@@ -236,7 +249,7 @@ describe('logsReadSession', () => {
     mkdirSync(join(root, '2026', '05', '13'), { recursive: true });
     const jsonl = join(root, '2026', '05', '13', '142207-t-x.jsonl');
     writeFileSync(jsonl, '{}\n');
-    await expect(handlers.logsReadSession({}, jsonl)).rejects.toThrow();
+    await expect(handlers.logsReadSession(trustedEvent, jsonl)).rejects.toThrow();
   });
 });
 
@@ -244,9 +257,11 @@ describe('logsDeleteDay', () => {
   it('removes the whole day-directory', async () => {
     writeSession('2026-05-13', '142207', 't-a', 'x', {});
     writeSession('2026-05-13', '152200', 't-b', 'x', {});
-    const result = (await handlers.logsDeleteDay({}, '2026-05-13')) as { deleted: boolean };
+    const result = (await handlers.logsDeleteDay(trustedEvent, '2026-05-13')) as {
+      deleted: boolean;
+    };
     expect(result.deleted).toBe(true);
-    const days = (await handlers.logsListDays()) as unknown[];
+    const days = (await handlers.logsListDays(trustedEvent)) as unknown[];
     expect(days).toEqual([]);
   });
 });
@@ -255,14 +270,16 @@ describe('logsDeleteSession', () => {
   it('removes the .txt', async () => {
     const file = writeSession('2026-05-13', '142207', 't-a', 'x', {});
     writeSession('2026-05-13', '152200', 't-b', 'x', {});
-    const result = (await handlers.logsDeleteSession({}, file)) as { deleted: boolean };
+    const result = (await handlers.logsDeleteSession(trustedEvent, file)) as { deleted: boolean };
     expect(result.deleted).toBe(true);
-    const sessions = (await handlers.logsListSessions({}, '2026-05-13')) as { sid: string }[];
+    const sessions = (await handlers.logsListSessions(trustedEvent, '2026-05-13')) as {
+      sid: string;
+    }[];
     expect(sessions.map((s) => s.sid)).toEqual(['t-b']);
   });
 
   it('rejects paths outside the logs root', async () => {
-    await expect(handlers.logsDeleteSession({}, '/etc/passwd')).rejects.toThrow();
+    await expect(handlers.logsDeleteSession(trustedEvent, '/etc/passwd')).rejects.toThrow();
   });
 
   it('rejects non-.txt files even inside the logs root', async () => {
@@ -270,6 +287,6 @@ describe('logsDeleteSession', () => {
     mkdirSync(join(root, '2026', '05', '13'), { recursive: true });
     const jsonl = join(root, '2026', '05', '13', '142207-t-x.jsonl');
     writeFileSync(jsonl, '{}\n');
-    await expect(handlers.logsDeleteSession({}, jsonl)).rejects.toThrow();
+    await expect(handlers.logsDeleteSession(trustedEvent, jsonl)).rejects.toThrow();
   });
 });

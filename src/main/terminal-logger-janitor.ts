@@ -15,7 +15,8 @@ export interface JanitorResult {
  *
  *   1. delete day-directories older than `retentionDays`,
  *   2. total the remaining bytes and, while over `maxDirMb`, delete the
- *      oldest day-directory still standing.
+ *      oldest day-directory still standing — never the current day, which
+ *      live writers are still flushing into.
  *
  * Whole-day eviction (not per-file) — simpler than per-file LRU and
  * matches how users actually think about logs. Returns the list of dirs
@@ -59,13 +60,17 @@ export async function runLogJanitor(
     survivors.push(day);
   }
 
-  // 2. Size-based eviction (oldest day-dir first).
-  // Sort ascending by date; pop from the front while over cap.
+  // 2. Size-based eviction (oldest day-dir first). The current day is never
+  // a victim: live SessionLoggers are flushing into it, and deleting it under
+  // them silently loses every active session's log — the cap is enforced
+  // against yesterday-and-older only.
   survivors.sort((a, b) => (a.date < b.date ? -1 : 1));
   let total = await sumBytes(survivors);
   const cap = prefs.maxDirMb * 1024 * 1024;
-  while (total > cap && survivors.length > 0) {
-    const victim = survivors.shift()!;
+  const todayMs = daysAgo(now, 0).getTime();
+  const evictable = survivors.filter((d) => d.date.getTime() < todayMs);
+  while (total > cap && evictable.length > 0) {
+    const victim = evictable.shift()!;
     const size = await sizeOfDir(victim.path);
     await removeDirSafe(victim.path);
     result.deletedByCap.push(victim.path);

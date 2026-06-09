@@ -24,11 +24,12 @@ import { ambiguous, CliError, emit, ExitCodes, notFound, type OutputContext } fr
 import {
   assertNoExtraFlags,
   parseCsvFlag,
+  takeBoolFlag,
   takeIntFlag,
   takeStringFlag,
   type ParsedArgs,
 } from '../parser';
-import { renderHelp } from '../help';
+import { renderHelp, runNoun } from '../help';
 
 const DAYS_FLAGS = ['month', 'year'] as const;
 const LIST_FLAGS = ['since', 'until', 'modified-since', 'repo', 'sid', 'limit', 'active'] as const;
@@ -45,28 +46,23 @@ export async function runLogs(
   conceptionPath: string,
   universalHelp = false,
 ): Promise<void> {
-  if (verb === 'help') {
-    printHelp(args.positional[0] ?? null);
-    return;
-  }
-  if (universalHelp) {
-    printHelp(verb);
-    return;
-  }
-
-  switch (verb) {
-    case null:
-    case 'days':
-      return runDays(args, ctx, conceptionPath);
-    case 'list':
-      return runList(args, ctx, conceptionPath);
-    case 'read':
-      return runRead(args, ctx, conceptionPath);
-    case 'tail':
-      return runTail(args, ctx, conceptionPath);
-    default:
-      throw new CliError(ExitCodes.USAGE, `Unknown logs verb: ${verb}`);
-  }
+  // Backwards compat: bare `condash logs` runs `days`. The default applies
+  // only on the dispatch path — `condash logs --help` (null verb + the
+  // universal flag) still prints the noun overview via runNoun.
+  const effectiveVerb = verb === null && !universalHelp ? 'days' : verb;
+  await runNoun(
+    'logs',
+    effectiveVerb,
+    args,
+    {
+      days: () => runDays(args, ctx, conceptionPath),
+      list: () => runList(args, ctx, conceptionPath),
+      read: () => runRead(args, ctx, conceptionPath),
+      tail: () => runTail(args, ctx, conceptionPath),
+    },
+    printHelp,
+    universalHelp,
+  );
 }
 
 async function runDays(args: ParsedArgs, ctx: OutputContext, conception: string): Promise<void> {
@@ -112,8 +108,7 @@ async function runList(args: ParsedArgs, ctx: OutputContext, conception: string)
   const repo = takeStringFlag(args, 'repo');
   const sid = takeStringFlag(args, 'sid');
   const limit = takeIntFlag(args, 'limit');
-  const active = args.flags.active === true;
-  delete args.flags.active;
+  const active = takeBoolFlag(args, 'active');
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   const sessions = await listSessions(conception, {
@@ -145,12 +140,9 @@ async function runRead(args: ParsedArgs, ctx: OutputContext, conception: string)
   const tail = takeIntFlag(args, 'tail');
   const fromByte = takeIntFlag(args, 'from-byte', true);
   const linesSpec = takeStringFlag(args, 'lines');
-  const metaOnly = args.flags.meta === true;
-  delete args.flags.meta;
-  const withMeta = args.flags['with-meta'] === true;
-  delete args.flags['with-meta'];
-  const redact = args.flags.redact === true;
-  delete args.flags.redact;
+  const metaOnly = takeBoolFlag(args, 'meta');
+  const withMeta = takeBoolFlag(args, 'with-meta');
+  const redact = takeBoolFlag(args, 'redact');
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   if (!selector) {
@@ -202,10 +194,8 @@ async function runTail(args: ParsedArgs, ctx: OutputContext, conception: string)
   const sidList = parseCsvFlag(takeStringFlag(args, 'sid') ?? undefined);
   const repo = takeStringFlag(args, 'repo');
   const n = takeIntFlag(args, 'lines') ?? 20;
-  const all = args.flags.all === true;
-  delete args.flags.all;
-  const redact = args.flags.redact === true;
-  delete args.flags.redact;
+  const all = takeBoolFlag(args, 'all');
+  const redact = takeBoolFlag(args, 'redact');
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   let rows = await listSessions(conception, {
@@ -460,7 +450,7 @@ function printHelp(verb: string | null): void {
         'condash logs <verb> [args]',
         '',
         'Verbs:',
-        '  days    List days that hold session logs.',
+        '  days    List days that hold session logs (default — bare `condash logs` runs it).',
         '  list    List sessions, filtered by date / mtime / repo / state.',
         '  read    Output a session transcript (whole, head/tail, range, cursor).',
         '  tail    Last lines of the active terminal tabs.',

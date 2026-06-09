@@ -976,10 +976,10 @@
 }
 
 .branch-dirty-popover-added {
-  color: var(--col-added, #4ade80);
+  color: var(--col-added);
 }
 .branch-dirty-popover-deleted {
-  color: var(--col-removed, #f87171);
+  color: var(--col-removed);
 }
 
 /* Unpushed-commits section in the branch popover. Sits below the dirty

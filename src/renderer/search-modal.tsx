@@ -9,7 +9,13 @@ import {
   Show,
   Suspense,
 } from 'solid-js';
-import type { SearchHighlight, SearchHit, SearchResults, SearchSnippet } from '@shared/types';
+import {
+  ALL_SCOPES,
+  type SearchHighlight,
+  type SearchHit,
+  type SearchResults,
+  type SearchSnippet,
+} from '@shared/types';
 import { HighlightedText } from './search/highlight';
 import { groupHits, type ProjectGroup } from './search/grouping';
 import { Modal } from './modal';
@@ -21,15 +27,12 @@ const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, t
  * nearly everything and produces the worst-case scan for no useful result. */
 const MIN_QUERY_LEN = 2;
 
-/** Sources the default "All" filter searches — the four markdown buckets held
- * in the in-memory index. Logs are deliberately excluded: they're ~9/10 of the
- * corpus bytes and aren't indexed, so scanning them is the ~1 s per-query cost
- * the index was built to avoid. Forwarding these scopes (rather than the old
- * `undefined` = "everything") keeps the default search on the ~45 ms index path;
- * logs stay one click away behind the Logs pill, which forwards `['logs']` and
- * triggers the on-demand disk scan. Names match the backend's `wants(source)`
- * (`src/main/search/index.ts`). */
-const ALL_SCOPES = ['projects', 'knowledge', 'resources', 'skills'];
+// The default "All" filter forwards ALL_SCOPES (shared constant in
+// `src/shared/types/search.ts`) — the four indexed markdown buckets, never the
+// heavy, unindexed logs. Forwarding these scopes (rather than `undefined` =
+// "everything") keeps the default search on the ~45 ms index path; logs stay
+// one click away behind the Logs pill, which forwards `['logs']` and triggers
+// the on-demand disk scan.
 
 /**
  * Modal-shell around the search backend. Top-anchored (command-palette
@@ -75,7 +78,7 @@ export function SearchModal(props: {
     () => ({ q: query(), filter: sourceFilter() }),
     async ({ q, filter }) => {
       if (q.trim().length < MIN_QUERY_LEN) return EMPTY_RESULTS;
-      const scopes = filter === 'all' ? ALL_SCOPES : [filter];
+      const scopes = filter === 'all' ? [...ALL_SCOPES] : [filter];
       return window.condash.search(q, scopes);
     },
   );

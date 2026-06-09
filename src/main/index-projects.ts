@@ -20,7 +20,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import { findProjectReadmes } from './walk';
-import { parseHeader, validateHeader } from '../shared/header';
+import { iterUnfencedLines, parseHeader, validateHeader } from '../shared/header';
 import { appHandle } from '../shared/app-color';
 import type { ChildInfo, DraftResult, IndexStrategy, ValidationWarning } from './index-tree';
 
@@ -158,17 +158,13 @@ async function validateAllReadmes(
 
 function extractFirstProse(raw: string): string | undefined {
   const lines = raw.split(/\r?\n/);
-  let inFence = false;
   let pastTitle = false;
   let pastMeta = false;
   const buffer: string[] = [];
-  for (const r of lines) {
+  // `iterUnfencedLines` owns the fence tracking (``` and ~~~, with the
+  // CommonMark matching-marker close rule).
+  for (const { line: r } of iterUnfencedLines(lines)) {
     const line = r.trim();
-    if (line.startsWith('```')) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
     if (!pastTitle) {
       if (line.startsWith('#')) {
         pastTitle = true;

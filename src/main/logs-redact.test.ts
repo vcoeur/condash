@@ -23,6 +23,36 @@ describe('redactSecrets', () => {
     expect(redactSecrets('AKIAIOSFODNN7EXAMPLE')).toBe('«redacted:aws-key»');
   });
 
+  it('masks Stripe sk_live_/sk_test_ secret keys', () => {
+    // Assembled at runtime so the fixture never exists as a contiguous
+    // secret-shaped literal (GitHub push protection scans the blob).
+    const live = ['sk', 'live', 'AbCd1234EfGh5678IjKl9012'].join('_');
+    const test = ['sk', 'test', 'AbCd1234EfGh5678IjKl9012'].join('_');
+    expect(redactSecrets(`key=${live}`)).toBe('key=«redacted:stripe-key»');
+    expect(redactSecrets(test)).toBe('«redacted:stripe-key»');
+  });
+
+  it('masks Google AIza API keys', () => {
+    const key = 'AIza' + 'SyA-bC_dEfGhIjKlMnOpQrStUvWxYz01234'; // 4 + 35 chars
+    expect(redactSecrets(`curl "?key=${key}"`)).toBe('curl "?key=«redacted:google-key»"');
+  });
+
+  it('masks npm tokens', () => {
+    const token = 'npm_' + 'a1B2c3D4'.repeat(4) + 'e5F6'; // npm_ + 36 chars
+    expect(redactSecrets(`npm notice using ${token} for publish`)).toBe(
+      'npm notice using «redacted:npm-token» for publish',
+    );
+  });
+
+  it('masks bearer tokens case-insensitively, keeping the scheme as typed', () => {
+    expect(redactSecrets('authorization: bearer abcDEF123.ghiJKL456-mnoPQR')).toBe(
+      'authorization: bearer «redacted:bearer»',
+    );
+    expect(redactSecrets('AUTHORIZATION: BEARER abcDEF123.ghiJKL456-mnoPQR')).toBe(
+      'AUTHORIZATION: BEARER «redacted:bearer»',
+    );
+  });
+
   it('keeps the scheme but masks a bearer token', () => {
     const out = redactSecrets('Authorization: Bearer abcDEF123.ghiJKL456-mnoPQR');
     expect(out).toBe('Authorization: Bearer «redacted:bearer»');

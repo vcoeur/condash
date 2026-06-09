@@ -219,6 +219,47 @@ describe('rewriteAppsRefs', () => {
     expect(out).toContain('branch: x');
     expect(out).toContain('# body apps: not a block');
   });
+
+  it('never rewrites an `apps:` example in the README body (fenced or not)', () => {
+    const header = ['---', 'apps:', '  - condash', '---'].join('\n');
+    const body = [
+      '',
+      '# Title',
+      '',
+      'Example of a header:',
+      '',
+      '```yaml',
+      'apps:',
+      '  - condash',
+      '  - vcoeur',
+      '```',
+      '',
+      'apps:',
+      '  - condash (a bullet that merely looks like a list item)',
+      '',
+    ].join('\n');
+    const out = rewriteAppsRefs(header + body, (ref) =>
+      ref.startsWith('condash') ? '#renamed' : ref,
+    );
+    // Front-matter rewritten, body byte-identical.
+    const expectedHeader = ['---', 'apps:', '  - "#renamed"', '---'].join('\n');
+    expect(out).toBe(expectedHeader + body);
+  });
+
+  it('returns the input untouched when there is no closed front-matter', () => {
+    const noFm = ['# Title', '', 'apps:', '  - condash'].join('\n');
+    expect(rewriteAppsRefs(noFm, () => '#x')).toBe(noFm);
+    const unclosed = ['---', 'apps:', '  - condash'].join('\n');
+    expect(rewriteAppsRefs(unclosed, () => '#x')).toBe(unclosed);
+  });
+
+  it('a blank line inside the front-matter terminates the apps block', () => {
+    const raw = ['---', 'apps:', '  - condash', '', '  - stray', '---'].join('\n');
+    const out = rewriteAppsRefs(raw, (ref) => (ref === 'condash' ? '#c' : `#mapped-${ref}`));
+    expect(out).toContain('  - "#c"');
+    expect(out).toContain('  - stray');
+    expect(out).not.toContain('mapped');
+  });
 });
 
 describe('fixAppsReferences', () => {
@@ -271,5 +312,57 @@ describe('add / set / rename round-trips', () => {
   it('rejects a duplicate handle on add', async () => {
     writeConfig({ repositories: [{ handle: 'condash', name: 'condash' }] });
     await expect(addApplication(tmp, { handle: 'condash', path: 'x' })).rejects.toThrow(/exists/);
+  });
+
+  it('rejects renaming onto another app’s handle or alias', async () => {
+    writeConfig({
+      repositories: [
+        { handle: 'condash', name: 'condash' },
+        { handle: 'fovea', name: 'fovea', aliases: ['fovea-legacy'] },
+      ],
+      retired_apps: [{ handle: 'kasten-manager' }],
+    });
+    await expect(renameApplication(tmp, 'condash', 'fovea')).rejects.toThrow(
+      /already exists.*#fovea/,
+    );
+    await expect(renameApplication(tmp, 'condash', 'fovea-legacy')).rejects.toThrow(
+      /already exists.*#fovea/,
+    );
+    await expect(renameApplication(tmp, 'condash', 'kasten-manager')).rejects.toThrow(
+      /already exists/,
+    );
+    // Nothing was mutated by the refused renames.
+    const apps = await listApplications(tmp, emptyGlobal);
+    expect(apps.map((a) => a.handle)).toEqual(['condash', 'fovea', 'kasten-manager']);
+  });
+
+  it('allows renaming an app back onto one of its OWN aliases', async () => {
+    writeConfig({
+      repositories: [{ handle: 'fovea-web', name: 'fovea', aliases: ['fovea'] }],
+    });
+    await renameApplication(tmp, 'fovea-web', 'fovea');
+    const apps = await listApplications(tmp, emptyGlobal);
+    const renamed = apps.find((a) => a.handle === 'fovea')!;
+    expect(renamed).toBeDefined();
+    // The old handle became an alias; the app does not alias itself.
+    expect(renamed.aliases).toContain('fovea-web');
+    expect(renamed.aliases).not.toContain('fovea');
+  });
+});
+
+describe('resolveReference tilde handling', () => {
+  it('resolves bare `~` and `~/...`, and treats `~user` as unknown', async () => {
+    writeConfig({ repositories: [] });
+    const records = await listApplications(tmp, emptyGlobal);
+    const index = aliasIndex(records);
+    // Bare `~` — the home directory itself exists.
+    expect((await resolveReference('~', records, index)).kind).toBe('path');
+    // `~/…` that cannot exist.
+    expect(
+      (await resolveReference('~/condash-test-definitely-missing-xyz', records, index)).kind,
+    ).toBe('unknown');
+    // `~user` would need a passwd lookup — must not be mangled into
+    // `<home>/ser/...`; reported unknown instead.
+    expect((await resolveReference('~root/whatever', records, index)).kind).toBe('unknown');
   });
 });

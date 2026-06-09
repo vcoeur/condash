@@ -26,6 +26,7 @@ interface RootSet {
  * compares. */
 interface WatchPaths {
   conceptionP: string;
+  condashSettings: string;
   condashJson: string;
   configJson: string;
   agentsRoot: string;
@@ -39,6 +40,7 @@ function buildWatchPaths(conception: string): WatchPaths {
   const conceptionP = toPosix(conception);
   return {
     conceptionP,
+    condashSettings: toPosix(join(conception, '.condash', 'settings.json')),
     condashJson: toPosix(join(conception, 'condash.json')),
     configJson: toPosix(join(conception, 'configuration.json')),
     agentsRoot: toPosix(join(conception, 'AGENTS.md')),
@@ -104,10 +106,14 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   // set. The skills root lives under `.agents/skills/` (agedum source),
   // which would normally be filtered out — bypass the rule for paths under
   // the skills/resources roots so a `.agents/skills/foo.md` change still
-  // fires. The same bypass covers `<conception>/AGENTS.md` and the legacy
-  // `.claude/CLAUDE.md`, surfaced in the Skills pane as the pinned callout.
+  // fires. The same bypass covers `<conception>/AGENTS.md`, the legacy
+  // `.claude/CLAUDE.md` (both surfaced in the Skills pane as the pinned
+  // callout), and the canonical per-conception config at
+  // `.condash/settings.json` — that single file only, never the rest of
+  // `.condash/` (its `logs/` would flood events).
   const agentsRoot = toPosix(join(conceptionPath, 'AGENTS.md'));
   const claudeDot = toPosix(join(conceptionPath, '.claude', 'CLAUDE.md'));
+  const condashSettings = toPosix(join(conceptionPath, '.condash', 'settings.json'));
   const ignored = (path: string): boolean => {
     if (NODE_MODULES_RE.test(path) || DIST_RE.test(path) || TARGET_RE.test(path)) return true;
     if (!DOTFILE_SEGMENT_RE.test(path)) return false;
@@ -119,6 +125,7 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
     if (posix === roots.skills || posix.startsWith(`${roots.skills}/`)) return false;
     if (posix === agentsRoot) return false;
     if (posix === claudeDot) return false;
+    if (posix === condashSettings) return false;
     return true;
   };
 
@@ -128,6 +135,9 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
       join(conceptionPath, 'knowledge'),
       join(conceptionPath, resources),
       join(conceptionPath, skills),
+      // Canonical per-conception config plus the two legacy names. The
+      // canonical file only — never the whole `.condash/` dir (logs flood).
+      join(conceptionPath, '.condash', 'settings.json'),
       join(conceptionPath, 'condash.json'),
       join(conceptionPath, 'configuration.json'),
       // Conception-level AGENTS.md is the pinned Skills-pane callout
@@ -164,8 +174,9 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
 
 /**
  * Tear down the current watcher and rebuild it. Called after a
- * `condash.json` (or legacy `configuration.json`) edit might have changed
- * `skills_path`, so the new root is observed and the old one isn't.
+ * `.condash/settings.json` (or legacy `condash.json` / `configuration.json`)
+ * edit might have changed `skills_path`, so the new root is observed and the
+ * old one isn't.
  */
 async function refreshWatchedConception(): Promise<void> {
   if (!current) return;
@@ -198,7 +209,7 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
   const event = classify(eventName as ChokidarEvent, path, roots, paths);
   if (event.kind === 'unknown') pendingUnknown = true;
   else pending.push(event);
-  // A condash.json edit may have changed `skills_path`. Rebuild the
+  // A config edit may have changed `skills_path`. Rebuild the
   // watcher so the new root is observed and the old one isn't.
   // Serialise via refreshChain so concurrent edits don't race the
   // close+rebuild — the in-flight `tree-events` batch still flushes
@@ -227,9 +238,14 @@ function classify(
   // checks work the same on macOS, Linux, and Windows.
   const pathP = toPosix(path);
 
-  // Config files at the conception root. Both filenames participate so
-  // an in-flight rename / hand-edit of either is reflected.
-  if (pathP === paths.condashJson || pathP === paths.configJson) {
+  // Config files: the canonical `.condash/settings.json` plus the two
+  // legacy names at the conception root. All three participate so an
+  // in-flight rename / hand-edit of any is reflected.
+  if (
+    pathP === paths.condashSettings ||
+    pathP === paths.condashJson ||
+    pathP === paths.configJson
+  ) {
     return { kind: 'config', path };
   }
 

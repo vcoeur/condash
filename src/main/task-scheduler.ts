@@ -28,8 +28,9 @@ import { readTask } from './tasks';
 import { spawnEnv } from './shell-env';
 import { substitute } from '../shared/action-template';
 import { parseCadence } from '../shared/cadence';
+import { quoteForShell, shellCommandArgv, shellFamily } from '../shared/shell-quote';
 import { SessionLogger } from './terminal-logger';
-import { tabsContext, tabsBytes } from './terminals';
+import { defaultShell, tabsContext, tabsBytes } from './terminals';
 import type { Agent, RunMode, RunningTaskRun, TabInfo, TaskConfigEntry } from '../shared/types';
 
 /** How often the scheduler wakes to check for due tasks. */
@@ -112,26 +113,15 @@ export function killTaskRun(sid: string): boolean {
   return true;
 }
 
-/** POSIX single-quote so the substituted prompt survives `-c "<cmd>"`. */
-function shellSingleQuote(text: string): string {
-  return `'${text.replace(/'/g, "'\\''")}'`;
-}
-
 function makeSid(): string {
   return `t-${randomBytes(4).toString('hex')}`;
 }
 
-function resolveShell(configured?: string): string {
-  if (configured && configured.trim()) return configured;
-  if (process.platform !== 'win32' && process.env.SHELL) return process.env.SHELL;
-  if (process.platform === 'win32') return process.env.ComSpec || 'cmd.exe';
-  return '/bin/bash';
-}
-
-function wrap(command: string): string[] {
-  if (process.platform === 'win32') return ['/d', '/s', '/c', command];
-  return ['-c', command];
-}
+/** Footer exit code stamped when a run is killed (timeout or UI discard)
+ *  rather than exiting on its own: 128 + SIGKILL, the conventional shell
+ *  encoding. Without it the run's log carries no footer and looks "running"
+ *  forever. */
+const KILLED_EXIT_CODE = 137;
 
 /**
  * Run one task headlessly. Resolves the bound task + agent, substitutes the
@@ -166,14 +156,19 @@ async function runHeadless(
 
   const settings = await readSettings();
   const config = await getEffectiveConceptionConfig(conceptionPath);
-  const shell = resolveShell(config.terminal?.shell ?? settings.terminal?.shell);
+  const shell = defaultShell(config.terminal?.shell ?? settings.terminal?.shell);
+  // Quote + wrap for the shell that will actually run the command — the same
+  // family detection as interactive spawns (terminals.ts wrapForShell), so a
+  // pwsh-configured `terminal.shell` gets PowerShell quoting, cmd.exe gets
+  // cmd-safe quoting, and `&` / `|` / `%VAR%` in a prompt never execute.
+  const family = shellFamily(shell, process.platform === 'win32');
 
   const prompt = substitute(task.prompt, {
     TABS: JSON.stringify(tabsContext()),
     UPDATED_TABS: JSON.stringify(updatedTabs),
   });
-  const command = `${agent.command} ${promptFlag(mode)} ${shellSingleQuote(prompt)}`;
-  const argv = wrap(command);
+  const command = `${agent.command} ${promptFlag(mode)} ${quoteForShell(prompt, family)}`;
+  const argv = shellCommandArgv(family, command);
 
   const childEnv: NodeJS.ProcessEnv = { ...(await spawnEnv()), TERM: 'xterm-256color' };
   delete childEnv.npm_config_prefix;
@@ -226,22 +221,25 @@ async function runHeadless(
       running.delete(sid);
       void logger.close().finally(resolve);
     };
-    const timer = setTimeout(() => {
+    // Kill path (timeout or UI discard): stamp a sealed footer before the
+    // close — a killed run never reaches onExit's logger.exit(), and without
+    // a footer the log looks "running" forever in the Logs / Task-runs views.
+    const killAndSettle = (): void => {
+      if (settled) return;
+      logger.exit(KILLED_EXIT_CODE);
       killProcess();
       finish();
-    }, timeoutMs);
+    };
+    const timer = setTimeout(killAndSettle, timeoutMs);
     // Register the live run so the Tasks pane can list it and kill it. The kill
-    // mirrors the timeout path (SIGKILL then settle); node-pty's onExit still
-    // fires afterwards but finish() is idempotent.
+    // mirrors the timeout path (footer, SIGKILL, settle); node-pty's onExit
+    // still fires afterwards but finish() is idempotent.
     running.set(sid, {
       slug,
       sid,
       startedAt: Date.now(),
       logPath,
-      kill: () => {
-        killProcess();
-        finish();
-      },
+      kill: killAndSettle,
     });
     child.onData((data) => logger.output(data));
     child.onExit(({ exitCode }) => {

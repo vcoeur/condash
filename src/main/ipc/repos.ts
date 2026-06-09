@@ -7,7 +7,7 @@ import { forceStopRepo, launchOpenWith, listOpenWith } from '../launchers';
 import { requirePathUnderWorkspace } from '../path-bounds';
 import { readSettings } from '../settings';
 import type { OpenWithSlotKey } from '../../shared/types';
-import { requireConception, withConception } from './utils';
+import { requireConception, requireMainWindowSender, withConception } from './utils';
 
 /**
  * Wire repo / git-status / launcher IPC handlers. The two listRepos verbs
@@ -16,24 +16,26 @@ import { requireConception, withConception } from './utils';
  * that add or remove a repo are reflected without a full reload.
  */
 export function registerReposIpc(): void {
-  ipcMain.handle('listRepos', () =>
-    withConception(async (conceptionPath) => {
+  ipcMain.handle('listRepos', (event) => {
+    requireMainWindowSender(event);
+    return withConception(async (conceptionPath) => {
       const repos = await listRepos(conceptionPath);
       // Sync the per-repo FS watchers to the live repo set: a config edit
       // that adds or removes a repo is reflected here, since this handler
       // re-runs on every renderer-driven repos refresh.
       await setRepoWatchers(watchTargetsFromRepos(repos));
       return repos;
-    }, []),
-  );
+    }, []);
+  });
 
   // Per-primary partial reload — driven by the structural FS watcher when
   // `.git/HEAD` or `.git/worktrees/` changes. Returns the primary's
   // RepoEntry plus its submodule children, freshly re-read. Watchers are
   // re-synced for the affected paths so a freshly-added worktree gets a
   // scalar watcher pair right away (and a freshly-removed one is dropped).
-  ipcMain.handle('listReposForPrimary', (_, primaryName: string) =>
-    withConception(async (conceptionPath) => {
+  ipcMain.handle('listReposForPrimary', (event, primaryName: string) => {
+    requireMainWindowSender(event);
+    return withConception(async (conceptionPath) => {
       const entries = await listReposForPrimary(conceptionPath, primaryName);
       // Re-list the *full* watcher set: the simplest correct way to make sure
       // an added or removed worktree under this primary is reflected in the
@@ -44,15 +46,16 @@ export function registerReposIpc(): void {
       const repos = await listRepos(conceptionPath);
       await setRepoWatchers(watchTargetsFromRepos(repos));
       return entries;
-    }, []),
-  );
+    }, []);
+  });
 
   // Drop the per-worktree git status cache + force-recompute every watched
   // repo and broadcast `repo-events`. Wired to the renderer's F5 / Refresh
   // path so the user sees fresh counts without waiting for an FS event,
   // and without the renderer needing to refetch the whole repo list (which
   // would tear down dropdowns/popovers).
-  ipcMain.handle('invalidateGitStatus', async () => {
+  ipcMain.handle('invalidateGitStatus', async (event) => {
+    requireMainWindowSender(event);
     invalidateAll();
     await recomputeAllWatchedRepos();
   });
@@ -64,29 +67,33 @@ export function registerReposIpc(): void {
   // shell-out `git status` against an arbitrary directory on disk.
   ipcMain.handle(
     'getDirtyDetails',
-    async (_, path: string, opts?: { scopeToSubtree?: boolean }) => {
+    async (event, path: string, opts?: { scopeToSubtree?: boolean }) => {
+      requireMainWindowSender(event);
       const realPath = await requirePathUnderWorkspace(path);
       return getDirtyDetails(realPath, opts ?? {});
     },
   );
 
-  ipcMain.handle('listOpenWith', async () => {
+  ipcMain.handle('listOpenWith', async (event) => {
+    requireMainWindowSender(event);
     const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return {};
     return listOpenWith(conceptionPath);
   });
 
-  ipcMain.handle('launchOpenWith', (_, slot: OpenWithSlotKey, path: string) =>
-    requireConception(async (conceptionPath) => {
+  ipcMain.handle('launchOpenWith', (event, slot: OpenWithSlotKey, path: string) => {
+    requireMainWindowSender(event);
+    return requireConception(async (conceptionPath) => {
       // Bound to workspace + worktrees + conception so the renderer can
       // launch the user's IDE on a project README, a workspace repo, or a
       // worktree — but not on `/etc/passwd` or `~/.ssh/`.
       const realPath = await requirePathUnderWorkspace(path);
       return launchOpenWith(conceptionPath, slot, realPath);
-    }),
-  );
+    });
+  });
 
-  ipcMain.handle('forceStopRepo', (_, repoName: string) =>
-    requireConception((conceptionPath) => forceStopRepo(conceptionPath, repoName)),
-  );
+  ipcMain.handle('forceStopRepo', (event, repoName: string) => {
+    requireMainWindowSender(event);
+    return requireConception((conceptionPath) => forceStopRepo(conceptionPath, repoName));
+  });
 }

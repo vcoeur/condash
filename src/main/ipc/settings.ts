@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { toPosix } from '../../shared/path';
+import { layoutSchema } from '../config-schema';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../settings';
 import type {
@@ -10,7 +11,7 @@ import type {
   TreeExpansionPrefs,
 } from '../../shared/types';
 import { CARD_MIN_WIDTH_KEYS, DEFAULT_CARD_MIN_WIDTH, SKILL_SCOPES } from '../../shared/types';
-import { requireBoolean, requireEnum, requireStringArray } from './utils';
+import { requireBoolean, requireEnum, requireMainWindowSender, requireStringArray } from './utils';
 
 // Tree-expansion keys after the reframe: knowledge, resources, plus one
 // skills set per scope (conception / user). The pre-reframe per-harness
@@ -65,7 +66,8 @@ function pruneDefaults(prefs: CardMinWidthPrefs): CardMinWidthPrefs | undefined 
  * marks line up with the new state.
  */
 export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState) => void }): void {
-  ipcMain.handle('getTheme', async () => {
+  ipcMain.handle('getTheme', async (event) => {
+    requireMainWindowSender(event);
     // Effective theme: condash.json's override beats settings.json's
     // global value. Falls back to 'system' when neither side has set a
     // theme. Re-routed through the effective resolver in v2.15.1 so
@@ -78,36 +80,55 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     return settings.theme;
   });
 
-  ipcMain.handle('getSettingsPath', () => toPosix(settingsPath()));
+  ipcMain.handle('getSettingsPath', (event) => {
+    requireMainWindowSender(event);
+    return toPosix(settingsPath());
+  });
 
-  ipcMain.handle('setTheme', async (_, theme: Theme) => {
+  ipcMain.handle('setTheme', async (event, theme: Theme) => {
+    requireMainWindowSender(event);
     const value = requireEnum('setTheme', theme, THEMES);
     await updateSettings((cur) => ({ ...cur, theme: value }));
   });
 
-  ipcMain.handle('getLayout', async () => {
+  ipcMain.handle('getLayout', async (event) => {
+    requireMainWindowSender(event);
     const { layout } = await readSettings();
     return layout ?? DEFAULT_LAYOUT;
   });
 
-  ipcMain.handle('setLayout', async (_, layout: LayoutState) => {
+  ipcMain.handle('setLayout', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
+    // Same shape check the settings save path enforces — keeps the IPC trust
+    // boundary uniform with the shared decoders used by the other setters.
+    const result = layoutSchema.safeParse(raw);
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+      throw new Error(`setLayout: expected a LayoutState (${where} — ${issue.message})`);
+    }
+    const layout = result.data as LayoutState;
     await updateSettings((cur) => ({ ...cur, layout }));
     opts.onLayoutChange(layout);
   });
 
-  ipcMain.handle('getWelcomeDismissed', async () => {
+  ipcMain.handle('getWelcomeDismissed', async (event) => {
+    requireMainWindowSender(event);
     const { welcome } = await readSettings();
     return welcome?.dismissed === true;
   });
 
-  ipcMain.handle('setWelcomeDismissed', async (_, value: boolean) => {
+  ipcMain.handle('setWelcomeDismissed', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
+    const value = requireBoolean('setWelcomeDismissed', raw);
     await updateSettings((cur) => ({
       ...cur,
       welcome: { ...(cur.welcome ?? {}), dismissed: value },
     }));
   });
 
-  ipcMain.handle('getCardMinWidth', async () => {
+  ipcMain.handle('getCardMinWidth', async (event) => {
+    requireMainWindowSender(event);
     // Effective per-pane min-width: condash.json's override (whole
     // object replaces global) beats settings.json. Re-routed through
     // the effective resolver in v2.15.1 so per-conception overrides
@@ -129,7 +150,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     return out;
   });
 
-  ipcMain.handle('getTreeExpansion', async () => {
+  ipcMain.handle('getTreeExpansion', async (event) => {
+    requireMainWindowSender(event);
     const { treeExpansion } = await readSettings();
     const out: Required<Pick<TreeExpansionPrefs, TreeExpansionKey>> = {
       knowledge: [],
@@ -222,7 +244,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     return out;
   });
 
-  ipcMain.handle('setTreeExpansion', async (_, raw: unknown) => {
+  ipcMain.handle('setTreeExpansion', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
     const input = (raw ?? {}) as Record<string, unknown>;
     const allowed = new Set<string>(TREE_EXPANSION_KEYS);
     for (const key of Object.keys(input)) {
@@ -250,7 +273,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     }));
   });
 
-  ipcMain.handle('getSelectedBranches', async () => {
+  ipcMain.handle('getSelectedBranches', async (event) => {
+    requireMainWindowSender(event);
     const { selectedBranches } = await readSettings();
     if (!Array.isArray(selectedBranches)) return [] as string[];
     // Coerce + dedupe defensively in case a hand-edit corrupted the file.
@@ -261,7 +285,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     return Array.from(seen);
   });
 
-  ipcMain.handle('setSelectedBranches', async (_, raw: unknown) => {
+  ipcMain.handle('setSelectedBranches', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
     const arr = requireStringArray('setSelectedBranches', raw);
     const seen = new Set<string>();
     for (const entry of arr) {
@@ -281,14 +306,16 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   // `true` if `selectedBranches` is empty/undefined (the user was relying
   // on the old "empty = show all" semantics) and `false` otherwise (they
   // had an explicit selection that should keep working).
-  ipcMain.handle('getBranchFilterStickyAll', async () => {
+  ipcMain.handle('getBranchFilterStickyAll', async (event) => {
+    requireMainWindowSender(event);
     const { branchFilterStickyAll, selectedBranches } = await readSettings();
     if (typeof branchFilterStickyAll === 'boolean') return branchFilterStickyAll;
     const hasSelection = Array.isArray(selectedBranches) && selectedBranches.length > 0;
     return !hasSelection;
   });
 
-  ipcMain.handle('setBranchFilterStickyAll', async (_, raw: unknown) => {
+  ipcMain.handle('setBranchFilterStickyAll', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
     const value = requireBoolean('setBranchFilterStickyAll', raw);
     await updateSettings((cur) => ({ ...cur, branchFilterStickyAll: value }));
   });
@@ -296,7 +323,8 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   // Skills-pane active scope (per-machine). Default is `conception` —
   // the pane opens to whatever this conception ships before flipping
   // to the user-scope agedum sources.
-  ipcMain.handle('getSkillsActiveScope', async (): Promise<SkillScope> => {
+  ipcMain.handle('getSkillsActiveScope', async (event): Promise<SkillScope> => {
+    requireMainWindowSender(event);
     const { skillsActiveScope } = await readSettings();
     if (
       typeof skillsActiveScope === 'string' &&
@@ -307,12 +335,14 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     return 'conception';
   });
 
-  ipcMain.handle('setSkillsActiveScope', async (_, raw: unknown) => {
+  ipcMain.handle('setSkillsActiveScope', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
     const scope = requireEnum('setSkillsActiveScope', raw, SKILL_SCOPE_SET);
     await updateSettings((cur) => ({ ...cur, skillsActiveScope: scope }));
   });
 
-  ipcMain.handle('setCardMinWidth', async (_, raw: unknown) => {
+  ipcMain.handle('setCardMinWidth', async (event, raw: unknown) => {
+    requireMainWindowSender(event);
     const input = (raw ?? {}) as Record<string, unknown>;
     // Reject unknown keys outright — silently dropping them used to mask
     // typos like `{ projets: 200 }` in renderer code.

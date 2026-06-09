@@ -65,9 +65,11 @@ The reason: the user is *also* editing these files in their IDE. condash never a
 
 ### 2. Per-file write queue + atomic rename
 
-`mutate.ts` serialises writes per path through `withFileQueue`. Concurrent toggles on the same file never interleave; failures don't poison the queue.
+The mutation modules (`mutate-steps.ts`, `mutate-status.ts`, `write-config.ts`) serialise writes per path through `withFileQueue` (`mutate-shared.ts`); the index regenerator and the header migration join the same per-path queue for their writes. Concurrent toggles on the same file never interleave; failures don't poison the queue.
 
-Every write is `tmp` → `fsync` → `rename`. A crash mid-write never produces a half-written file.
+Every rewrite of an existing file is `tmp` → `fsync` → `rename` (`atomic-write.ts`). A crash mid-write never produces a half-written file.
+
+**Create-path exemption**: brand-new files — a project README (`create-project.ts`), a project note (`note.ts`), an empty tree file (`tree-mutations.ts`) — are written with the `wx` (write-exclusive) flag instead. Exclusivity is the point: `wx` fails with `EEXIST` rather than clobbering a concurrent winner, which `tmp` → `rename` cannot express. The trade-off is acceptable because the target didn't exist before the write — a crash can leave a partial *new* file, never corrupt an existing one.
 
 ### 3. TTL git-status cache
 
@@ -84,7 +86,9 @@ The 3 s window is short enough that staleness is invisible to a human; the cache
 3. Wait 500 ms.
 4. If the leader is still alive, SIGKILL the process group.
 
-`killAll` bounds aggregate runtime to ~1 s so the window can actually close even if a `force_stop` hangs.
+`killAll` bounds aggregate runtime to ~1 s for the kill sweep, then awaits each session logger's final flush + close (bounded ~1.5 s) so quit can't drop the transcript tail or the exit footer; the quit handler `preventDefault`s and awaits it before letting Electron exit.
+
+The headless task scheduler (`task-scheduler.ts`) has its own kill path for timed-out or user-killed scheduled runs: straight SIGKILL, with a `137` exit footer stamped on the run log before the logger closes. The boot-time orphan-seal sweep covers `.condash/logs/` and the task-run trees (`.condash/scheduled/`, `.condash/manual/`) alike.
 
 ### 5. One run per repo (code side)
 
@@ -96,7 +100,7 @@ A single watcher rooted at `<conception>/`, debounced 250 ms. Events are classif
 
 - `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — the renderer just bumps `refreshKey`.
-- `config` — `.condash/settings.json` (canonical), `condash.json` (legacy), or `configuration.json` (legacy²) at the conception root. Same coarse handling.
+- `config` — the canonical `.condash/settings.json` (that single file — the rest of `.condash/` is never watched), or a legacy `condash.json` / `configuration.json` at the conception root. Same coarse handling; a `config` event also triggers a watcher rebuild in case `skills_path` changed.
 - `unknown` — any classification failure. Forces a full re-render.
 
 A burst of `unknown` events collapses to a single `unknown` event before the renderer is notified.
@@ -172,7 +176,7 @@ The inverse problem — a GUI launch *missing* entries the user put in their log
 
 ## The search index { #search-index }
 
-The four Markdown sources (projects incl. notes, knowledge, resources, skills) are held in an **in-memory index** in the main process (`src/main/search/index-cache.ts`): each file's content, lowercased content, region map, and title are precomputed once at conception-open, so a query runs only the per-term `indexOf` + scoring over RAM strings — no per-keystroke re-walk / re-read / re-lowercase. The index is built fire-and-forget (never blocks boot; queries fall back to an on-disk scan until it resolves) and kept incrementally fresh by the chokidar watcher (`src/main/watcher.ts` → `applyIndexFsEvent`): an add/change re-prepares one file, an unlink drops it. ~16 MB resident at conception scale.
+The four Markdown sources (projects incl. notes, knowledge, resources, skills) are held in an **in-memory index** in the main process (`src/main/search/index-cache.ts`): each file's content, lowercased content, region map, and title are precomputed once at conception-open, so a query runs only the per-term `indexOf` + scoring over RAM strings — no per-keystroke re-walk / re-read / re-lowercase. The index is built fire-and-forget (never blocks boot; queries fall back to an on-disk scan until it resolves) and kept incrementally fresh by the chokidar watcher (`src/main/watcher.ts` → `applyIndexFsEvent`): an add/change re-prepares one file, an unlink drops it, and an `unlinkDir` drops every indexed entry under the removed directory by prefix. Events that arrive while a build is still in flight are buffered and replayed in arrival order once the build completes (dropped if a newer build supersedes), and concurrent events for the same file apply in arrival order via a per-path chain — so neither the boot/rebuild window nor a rapid edit burst can leave the index stale. ~16 MB resident at conception scale (each prepared file retains raw + lowercased content, so the figure scales with corpus bytes).
 
 **Logs are deliberately *not* indexed.** They're ~9/10 of the corpus bytes (tens of MB) and rarely searched, so caching them would cost ~100 MB+ for little gain. They stay on-disk-scanned, and only when `logs` is in scope. The renderer's default **All** filter forwards the four indexed Markdown scopes (`ALL_SCOPES` in `src/renderer/search-modal.tsx`), **not** "everything" — so a default query, like any scoped Markdown query, is served entirely from RAM in single-digit-to-tens of milliseconds; the log disk-scan runs only when the user picks the **Logs** filter. (History: search re-walked the *whole* tree on every query through v4.31.0; at a few hundred Markdown files that was a handful of ms, but a conception with thousands of files + large logs pushed per-query cost past 1 s — the index landed in v4.32.0. Through v4.32.0 the default All query still paid the ~1 s log disk-scan because it forwarded *no* scope; narrowing the default to the indexed sources closed that gap.)
 
@@ -217,7 +221,7 @@ The renderer bundle ships in the asar at `dist/`. The dev server (`vite`) listen
 ## See also
 
 - [`src/shared/api.ts`](https://github.com/vcoeur/condash/blob/main/src/shared/api.ts) — the IPC contract, source of truth.
-- [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — drift checks + atomic write + per-file queue, all in one file.
+- [`src/main/mutate.ts`](https://github.com/vcoeur/condash/blob/main/src/main/mutate.ts) — re-export barrel over the split mutation modules: `mutate-steps.ts` (checklist edits), `mutate-status.ts` (status + timeline), `write-config.ts` (note/config writes), `mutate-shared.ts` (EOL detection + per-file queue).
 - [`src/main/terminals.ts`](https://github.com/vcoeur/condash/blob/main/src/main/terminals.ts) — pty lifecycle + the kill pipeline.
 - [`src/main/git-status-cache.ts`](https://github.com/vcoeur/condash/blob/main/src/main/git-status-cache.ts) — the TTL cache.
 - [`src/main/watcher.ts`](https://github.com/vcoeur/condash/blob/main/src/main/watcher.ts) — chokidar wiring + event classification.

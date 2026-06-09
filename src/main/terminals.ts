@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
-import { basename } from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
 import type {
@@ -12,6 +11,7 @@ import type {
   TerminalPrefs,
 } from '../shared/types';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
+import { shellCommandArgv, shellFamily } from '../shared/shell-quote';
 import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
@@ -50,9 +50,11 @@ interface Session {
    * session so `stopSession` can remove it (otherwise long-lived renderers
    * accumulate one stale closure per spawned-and-closed session). */
   onWebContentsDestroyed?: () => void;
-  /** Per-session disk logger — captures stdin / stdout / spawn / exit to
-   * `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. Null when the spawn
-   * happened without an active conception (no place to write). */
+  /** Per-session disk logger — renders pty output to a plain-text
+   * `.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt` (since v2.27.0; stdin is
+   * deliberately not captured — the pty echoes it back through stdout).
+   * Null when the spawn happened without an active conception (no place
+   * to write). */
   logger: SessionLogger | null;
 }
 
@@ -163,44 +165,27 @@ function makeId(): string {
   return `t-${randomBytes(4).toString('hex')}`;
 }
 
-function defaultShell(configured?: string): string {
+/** Resolve the shell to spawn: the configured value when non-blank, else the
+ *  platform default. SHELL is reliably set on POSIX; on Windows it is usually
+ *  unset, so fall through to ComSpec, then cmd.exe. Exported so the headless
+ *  task scheduler resolves the same shell as interactive spawns. */
+export function defaultShell(configured?: string): string {
   if (configured && configured.trim()) return configured;
-  // SHELL is reliably set on POSIX. On Windows it is usually unset; fall
-  // through to ComSpec, then cmd.exe.
   if (process.platform !== 'win32' && process.env.SHELL) return process.env.SHELL;
   if (process.platform === 'win32') return process.env.ComSpec || 'cmd.exe';
   return '/bin/bash';
 }
 
-/** Build the argv for running `command` through `shell`. POSIX shells take
- *  `-l -c <cmd>`; cmd.exe needs `/d /s /c <cmd>`; PowerShell needs
- *  `-NoLogo -NonInteractive -Command <cmd>`. We detect by the basename of
- *  the shell binary so a user-configured `pwsh.exe` or `git-bash.exe` is
- *  routed correctly. */
+/** Build the argv for running `command` through `shell`. Family detection +
+ *  per-family argv shape (POSIX `-c` / cmd.exe `/d /s /c` / PowerShell
+ *  `-NoLogo -NonInteractive -Command`) live in the shared
+ *  `src/shared/shell-quote.ts` so the task scheduler and the renderer's prompt
+ *  quoting agree with the spawn path. Detection is by shell-binary basename,
+ *  so a user-configured `pwsh.exe` or `git-bash.exe` is routed correctly; the
+ *  POSIX branch deliberately stays a non-login shell (rationale in the shared
+ *  module — the login-shell PATH is injected via spawnEnv() instead). */
 function wrapForShell(shell: string, command: string): string[] {
-  const name = basename(shell).toLowerCase();
-  if (process.platform === 'win32') {
-    if (name === 'cmd.exe' || name === 'cmd') {
-      return ['/d', '/s', '/c', command];
-    }
-    if (
-      name === 'powershell.exe' ||
-      name === 'powershell' ||
-      name === 'pwsh.exe' ||
-      name === 'pwsh'
-    ) {
-      return ['-NoLogo', '-NonInteractive', '-Command', command];
-    }
-    // Fall through for bash on Git-for-Windows et al.
-    return ['-c', command];
-  }
-  // Non-login shell on POSIX: a login shell would re-source ~/.profile and
-  // re-set PYTHONHOME/PYTHONPATH/PERLLIB/etc., undoing the env-scrub the
-  // pty spawn already applied. The login-shell PATH the run command needs is
-  // injected via spawnEnv() instead (see the childEnv base in spawnTerminal),
-  // so user CLIs resolve without paying the login-shell cost. Users who still
-  // want full login behaviour can prefix their `run:` field with `bash -lc`.
-  return ['-c', command];
+  return shellCommandArgv(shellFamily(shell, process.platform === 'win32'), command);
 }
 
 export async function spawnTerminal(
@@ -311,19 +296,23 @@ export async function spawnTerminal(
   sessions.set(id, session);
   logger?.spawn();
 
+  // Read `session.webContents` (not the spawn-time parameter) inside the
+  // handlers: attachTerminal reassigns it when a reloaded renderer
+  // re-attaches, and a closure over the original WebContents would keep
+  // sending live data to the destroyed one.
   ptyProcess.onData((data) => {
     session.bytesSeen += data.length;
     appendBuffer(session, data);
     session.logger?.output(data);
-    if (webContents.isDestroyed()) return;
-    webContents.send(EVENT_CHANNELS.termData, { id, data });
+    if (session.webContents.isDestroyed()) return;
+    session.webContents.send(EVENT_CHANNELS.termData, { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {
     session.exited = exitCode;
     session.pty = null;
     session.logger?.exit(exitCode);
-    if (!webContents.isDestroyed()) {
-      webContents.send(EVENT_CHANNELS.termExit, { id, code: exitCode });
+    if (!session.webContents.isDestroyed()) {
+      session.webContents.send(EVENT_CHANNELS.termExit, { id, code: exitCode });
     }
     // Keep the entry around (with `exited` set) so renderers that reload
     // can still see it via termList — closeSession removes it on demand.
@@ -483,9 +472,8 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
         /* webContents already torn down */
       }
     }
-    // Flush + close the log file. close() is idempotent so the killAll
-    // path's two-stage tear-down (delete after Promise.allSettled) doesn't
-    // double-close.
+    // Flush + close the log file. close() is idempotent, so a logger that
+    // killAll already closed in its own sweep doesn't double-close here.
     if (session.logger) {
       void session.logger.close();
     }
@@ -521,10 +509,23 @@ export async function setTerminalPrefs(patch: TerminalPrefs): Promise<void> {
   await updateSettings((cur) => ({ ...cur, terminal: patch }));
 }
 
+/** Await `work`, but give up after `ms` so the quit path stays bounded. */
+async function bounded(work: Promise<unknown>, ms: number): Promise<void> {
+  let safetyTimer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    safetyTimer = setTimeout(resolve, ms);
+  });
+  await Promise.race([work, timeout]).finally(() => clearTimeout(safetyTimer));
+}
+
 /** Kill every session (or every session attached to `forWebContents`) via the
  * full Stop pipeline — process-group SIGTERM, force_stop if configured,
- * SIGKILL fallback. Bounded to ~1 s aggregate so the window can actually
- * close even if one repo's force_stop hangs. */
+ * SIGKILL fallback — then close every session's logger. The returned promise
+ * resolves once the loggers have flushed and closed, so a quit handler that
+ * awaits killAll gets the final debounce window's output (and the exit
+ * footer, when onExit landed during the stop pipeline) on disk. Each phase is
+ * time-bounded so the window can still close if a force_stop or a filesystem
+ * write hangs. */
 export async function killAll(forWebContents?: WebContents): Promise<void> {
   const targets = [...sessions.entries()].filter(
     ([, s]) => !forWebContents || s.webContents === forWebContents,
@@ -532,13 +533,13 @@ export async function killAll(forWebContents?: WebContents): Promise<void> {
   if (targets.length === 0) return;
 
   const stops = targets.map(([id]) => stopSession(id, { removeEntry: false }));
-  let safetyTimer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<void>((resolve) => {
-    safetyTimer = setTimeout(resolve, 1000);
-  });
-  await Promise.race([Promise.allSettled(stops), timeout]).finally(() => {
-    clearTimeout(safetyTimer);
-  });
+  await bounded(Promise.allSettled(stops), 1000);
+
+  // stopSession({ removeEntry: false }) deliberately skips the logger, so the
+  // sweep here is the only close on this path. close() is idempotent — a
+  // session that separately goes through closeSession doesn't double-close.
+  const closes = targets.map(([, s]) => s.logger?.close() ?? Promise.resolve());
+  await bounded(Promise.allSettled(closes), 1500);
 
   for (const [id] of targets) sessions.delete(id);
   broadcastSessions();

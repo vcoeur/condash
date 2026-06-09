@@ -43,8 +43,13 @@ export function HelpModal(props: { doc: HelpDoc; onClose: () => void }) {
   // a resource keyed on the loaded doc rather than a synchronous derivation.
   const [html] = createResource(content, (raw) => renderMarkdown(raw));
 
+  // Track `html()` (the async-rendered HTML actually filling the DOM), not
+  // `content()` — the raw markdown resolves before the HTML lands, so a
+  // content-keyed effect would run against an empty body and never re-run.
+  // Same pattern as the note modal's mermaid effect.
   createEffect(() => {
-    if (content() && bodyRef) {
+    void html();
+    if (bodyRef) {
       void runMermaidIn(bodyRef);
     }
   });

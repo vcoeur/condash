@@ -376,6 +376,10 @@ export function TerminalPane(props: {
       // resolved by the time we build the tab — `pendingSpawnIntent` is set
       // synchronously after `termSpawn` returns, and we want to read it here.
       const attach = await window.condash.termAttach(s.id);
+      // Re-check membership after the await: `known` was snapshotted at
+      // entry, so without this a session inserted by another path while the
+      // attach was in flight would be inserted twice (duplicate tab rows).
+      if (tabs().some((t) => t.id === s.id)) continue;
       const intent = pendingSpawnIntent.get(s.id);
       pendingSpawnIntent.delete(s.id);
       const meta = readMeta()[s.id];
@@ -421,6 +425,9 @@ export function TerminalPane(props: {
       handle?.element.remove();
       xterms.delete(id);
       sessionData.delete(id);
+      // The tab is gone from the snapshot — its close has landed, so the
+      // closing guard can be released (otherwise the set grows forever).
+      closingTabs.delete(id);
       const waiters = readyWaiters.get(id);
       if (waiters) {
         for (const w of waiters) {
@@ -445,11 +452,23 @@ export function TerminalPane(props: {
     }
   };
 
-  const offTermSessions = window.condash.onTermSessions((snap) => void reconcile(snap));
+  // Serialise reconcile passes through a promise queue: the onTermSessions
+  // broadcast and the onMount termList() seed can overlap, and each pass
+  // snapshots `known` at entry — two interleaved passes could otherwise both
+  // insert the same session (the per-insert re-check above is the second
+  // belt for anything that still slips through).
+  let reconcileChain: Promise<void> = Promise.resolve();
+  const queueReconcile = (
+    snap: readonly { id: string; side: TermSide; exited?: number; repo?: string }[],
+  ): void => {
+    reconcileChain = reconcileChain.then(() => reconcile(snap)).catch(() => undefined);
+  };
+
+  const offTermSessions = window.condash.onTermSessions((snap) => queueReconcile(snap));
   onCleanup(offTermSessions);
 
   onMount(() => {
-    void window.condash.termList().then((snap) => void reconcile(snap));
+    void window.condash.termList().then((snap) => queueReconcile(snap));
   });
 
   // ---- spawn helpers ----

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import type { TransitionResult } from '../shared/types';
 import { KNOWN_STATUSES } from '../shared/types';
-import { CLOSED_LINE } from '../shared/header';
+import { CLOSED_LINE, FRONTMATTER_DELIMITER_LINE, iterUnfencedLines } from '../shared/header';
 import { isoToday } from '../shared/iso-today';
 import { atomicWrite } from './atomic-write';
 import { detectEol, withFileQueue } from './mutate-shared';
@@ -20,7 +20,6 @@ const STATUS_LINE_RE = /^(\*\*Status\*\*\s*:\s*)(\S+)\s*$/i;
 // round-trip without quote drift. Group 1 is the leading `status: ` so we
 // can rebuild the line; group 2 carries the matched quote (empty when none).
 const YAML_STATUS_LINE_RE = /^(status:\s*)(["']?)([A-Za-z]+)\2\s*$/i;
-const FRONTMATTER_OPEN_RE = /^---\s*$/;
 
 export type { TransitionResult } from '../shared/types';
 
@@ -60,18 +59,23 @@ export async function transitionStatus(
     );
   }
   return withFileQueue(readmePath, async () => {
-    const raw = await fs.readFile(readmePath, 'utf8');
+    let raw = await fs.readFile(readmePath, 'utf8');
+    // Strip a leading UTF-8 BOM permanently — `parseHeader` tolerates it, so
+    // the item displays fine, but the line-based shape dispatch below would
+    // see `﻿---` and miss the frontmatter. The rewrite normalises the
+    // file (the BOM is not preserved on write).
+    if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
     const eol = detectEol(raw);
     let lines = raw.split(/\r?\n/);
 
     let previous: string | null = null;
     let updated = false;
-    if (lines.length > 0 && FRONTMATTER_OPEN_RE.test(lines[0])) {
+    if (lines.length > 0 && FRONTMATTER_DELIMITER_LINE.test(lines[0])) {
       // YAML frontmatter shape: walk only inside the `---` fence so a
       // body-level "status:" line (e.g. inside a code block in ## Notes)
       // can't be mistaken for the metadata field.
       for (let i = 1; i < lines.length; i++) {
-        if (FRONTMATTER_OPEN_RE.test(lines[i])) break;
+        if (FRONTMATTER_DELIMITER_LINE.test(lines[i])) break;
         const match = lines[i].match(YAML_STATUS_LINE_RE);
         if (match) {
           previous = match[3].trim().toLowerCase();
@@ -128,13 +132,20 @@ export async function transitionStatus(
  */
 function appendTimelineLines(lines: readonly string[], line: string): string[] {
   const out = [...lines];
+  // Scan only unfenced lines: a fenced `## Timeline` example earlier in the
+  // file must not receive the append inside its code block, and a fenced
+  // `## ` line inside the real section must not end it early.
   let timelineHeading = -1;
-  for (let i = 0; i < out.length; i++) {
-    const m = out[i].match(/^##\s+(.+)$/);
-    if (m && m[1].trim().toLowerCase() === 'timeline') {
-      timelineHeading = i;
-      break;
+  let end = out.length;
+  for (const { index, line: candidate } of iterUnfencedLines(out)) {
+    const m = candidate.match(/^##\s+(.+)$/);
+    if (!m) continue;
+    if (timelineHeading === -1) {
+      if (m[1].trim().toLowerCase() === 'timeline') timelineHeading = index;
+      continue;
     }
+    end = index;
+    break;
   }
   if (timelineHeading === -1) {
     if (out[out.length - 1] !== '') out.push('');
@@ -143,13 +154,6 @@ function appendTimelineLines(lines: readonly string[], line: string): string[] {
     out.push(line);
     if (out[out.length - 1] !== '') out.push('');
     return out;
-  }
-  let end = out.length;
-  for (let i = timelineHeading + 1; i < out.length; i++) {
-    if (/^##\s+/.test(out[i])) {
-      end = i;
-      break;
-    }
   }
   let insertAt = end;
   while (insertAt - 1 > timelineHeading && out[insertAt - 1].trim() === '') {
@@ -191,7 +195,9 @@ export function parseTimelineEntries(raw: string): { date: string; text: string 
   const lines = raw.split(/\r?\n/);
   const out: { date: string; text: string }[] = [];
   let inTimeline = false;
-  for (const line of lines) {
+  // Fence-aware: a dated bullet inside a fenced example must not count as a
+  // timeline entry, and a fenced `## ` line must not toggle the section.
+  for (const { line } of iterUnfencedLines(lines)) {
     const heading = line.match(/^##\s+(.+)$/);
     if (heading) {
       inTimeline = heading[1].trim().toLowerCase() === 'timeline';

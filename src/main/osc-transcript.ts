@@ -34,6 +34,29 @@ const PREFIX = '\x1b]7373;agent-transcript;';
 const BEL = '\x07';
 const ST = '\x1b\\';
 
+/** Cap on accumulated transcript lines. The grid body is bounded by xterm
+ * scrollback, but the transcript is not — without a cap a long-lived agent
+ * session grows `lines` for the life of the pty. Oldest lines are dropped;
+ * generous enough that a real conversation never hits it. Exported for
+ * tests. */
+export const MAX_TRANSCRIPT_LINES = 20_000;
+
+/** Bail-out threshold for an unterminated OSC sequence. A cooperating writer
+ * terminates each packet promptly; past this size we stop waiting, re-emit
+ * the buffered bytes to the passthrough (so the grid keeps rendering instead
+ * of being silenced forever), and resume normal scanning. Exported for
+ * tests. */
+export const MAX_OSC_BUFFER_CHARS = 512 * 1024;
+
+/** Cap on concurrently-pending (incomplete) frame reassemblies. Oldest is
+ * evicted on overflow — a writer that never completes its frames must not
+ * accumulate state without bound. Exported for tests. */
+export const MAX_PENDING_FRAMES = 32;
+
+/** Cap on the accumulated base64 payload of one pending frame; a frame past
+ * it is discarded outright. */
+const MAX_FRAME_B64_CHARS = 4 * 1024 * 1024;
+
 /** One decoded transcript frame. */
 export interface TranscriptFrame {
   v: number;
@@ -48,8 +71,9 @@ export class OscTranscriptExtractor {
   /** Unconsumed tail — holds an incomplete sequence (or a partial PREFIX) that
    * spans feed boundaries. */
   private buf = '';
-  /** Reassembly state per frameId: how many pieces and which we've seen. */
-  private pieces = new Map<string, { n: number; got: Map<number, string> }>();
+  /** Reassembly state per frameId: how many pieces and which we've seen, plus
+   * the accumulated payload size for the per-frame cap. */
+  private pieces = new Map<string, { n: number; got: Map<number, string>; chars: number }>();
   private lines: string[] = [];
   private captured = false;
   /** `YYYY-MM-DD:HH:MM` of the last minute a message landed in. A timestamp
@@ -95,7 +119,14 @@ export class OscTranscriptExtractor {
         termLen = ST.length;
       }
       if (end === -1) {
-        // Incomplete sequence; keep it (starts with PREFIX) for the next feed.
+        // Incomplete sequence; keep it (starts with PREFIX) for the next
+        // feed — unless it has grown past any plausible packet size, in
+        // which case the terminator is never coming: re-emit the buffered
+        // bytes so the grid log isn't silenced for the rest of the session.
+        if (this.buf.length > MAX_OSC_BUFFER_CHARS) {
+          clean += this.buf;
+          this.buf = '';
+        }
         break;
       }
       this.ingest(this.buf.slice(afterPrefix, end));
@@ -117,8 +148,19 @@ export class OscTranscriptExtractor {
     if (!Number.isInteger(i) || !Number.isInteger(n) || n <= 0 || i < 0 || i >= n) return;
     let entry = this.pieces.get(id);
     if (!entry) {
-      entry = { n, got: new Map() };
+      // Cap pending reassemblies; Map iteration order = insertion order, so
+      // the first key is the oldest never-completed frame.
+      if (this.pieces.size >= MAX_PENDING_FRAMES) {
+        const oldest = this.pieces.keys().next().value;
+        if (oldest !== undefined) this.pieces.delete(oldest);
+      }
+      entry = { n, got: new Map(), chars: 0 };
       this.pieces.set(id, entry);
+    }
+    entry.chars += piece.length;
+    if (entry.chars > MAX_FRAME_B64_CHARS) {
+      this.pieces.delete(id);
+      return;
     }
     entry.got.set(i, piece);
     if (entry.got.size !== entry.n) return;
@@ -140,6 +182,10 @@ export class OscTranscriptExtractor {
       const who =
         frame.role === 'user' ? 'user' : frame.role === 'reasoning' ? 'reasoning' : 'assistant';
       this.lines.push(`[${who}] ${frame.text}`);
+      // Keep only the newest MAX_TRANSCRIPT_LINES entries.
+      if (this.lines.length > MAX_TRANSCRIPT_LINES) {
+        this.lines.splice(0, this.lines.length - MAX_TRANSCRIPT_LINES);
+      }
     } else if (frame.t === 'end') {
       this.captured = true;
     }

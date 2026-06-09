@@ -74,6 +74,9 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
       return;
     }
     const list = await window.condash.listRepos();
+    // Discard a stale result if the conception changed while the fetch was
+    // in flight — applying it would paint the previous conception's repos.
+    if (deps.conceptionPath() !== path) return;
     setRepos(reconcile(list, { key: 'path' }));
     setReposLoaded(true);
   };
@@ -84,13 +87,17 @@ export function createReposStore(deps: ReposStoreDeps): ReposStore {
    *  `reloadRepos()` if the primary isn't in the store (defensive — a
    *  structural event for an unknown primary is unexpected). */
   const reloadPrimaryByPath = async (repoPath: string): Promise<void> => {
-    if (!deps.conceptionPath()) return;
+    const conception = deps.conceptionPath();
+    if (!conception) return;
     const primary = repos.find((r) => !r.parent && r.path === repoPath);
     if (!primary) {
       void reloadRepos();
       return;
     }
     const updated = await window.condash.listReposForPrimary(primary.name);
+    // Same staleness guard as reloadRepos — the conception may have
+    // switched while the per-primary fetch was in flight.
+    if (deps.conceptionPath() !== conception) return;
     if (updated.length === 0) {
       // Primary disappeared from condash.json between the watcher
       // event and this fetch — reload everything to reconcile.

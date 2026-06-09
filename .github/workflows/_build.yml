@@ -12,6 +12,12 @@ name: _build
 on:
   workflow_call:
 
+# Least privilege: the matrix builds installers and uploads them as workflow
+# artifacts (runtime token — no contents writes). The GH Release upload that
+# needs contents:write lives in release.yml's publish job, not here.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build (${{ matrix.os }})
@@ -26,6 +32,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       # No `cache: 'npm'` here. Its cache *save* runs as a post-step, and a
       # transient GHA cache-service timeout there exits the build job non-zero —
@@ -82,8 +90,11 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         env:
           # Pinned appimagetool release — moving off `continuous` so a
-          # silent upstream change doesn't break release day.
+          # silent upstream change doesn't break release day. The sha256 is
+          # the checksum of that exact 1.9.0 asset, verified before the tool
+          # is executed; bump both together when changing the pin.
           APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
+          APPIMAGETOOL_SHA256: 46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -125,8 +136,11 @@ jobs:
 
           # Repack with a pinned appimagetool release. Run it via
           # --appimage-extract-and-run so the runner doesn't need
-          # fuse / libfuse2.
+          # fuse / libfuse2. Verify the download against the pinned
+          # checksum BEFORE executing it — a compromised or swapped
+          # release asset must fail the build, not run at release time.
           curl -sSL -o "$WORK/appimagetool" "$APPIMAGETOOL_URL"
+          echo "$APPIMAGETOOL_SHA256  $WORK/appimagetool" | sha256sum -c
           chmod +x "$WORK/appimagetool"
           ARCH=x86_64 "$WORK/appimagetool" --appimage-extract-and-run \
               "$WORK/squashfs-root" "$APPIMAGE"

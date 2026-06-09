@@ -10,7 +10,7 @@ import { resolveSlug } from '../slug-resolver';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { parseHeader, validateHeader, validateBody, type HeaderFields } from '../../shared/header';
 import { readHeader } from '../../main/header-io';
-import { assertNoExtraFlags, parseCsvFlag, parseIntFlag, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, parseCsvFlag, takeIntFlag, type ParsedArgs } from '../parser';
 import { NOUN_FLAGS } from './projects';
 
 interface ProjectListRow {
@@ -216,10 +216,12 @@ export async function searchProjects(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const limit = parseIntFlag(args.flags.limit, 50);
+  // takeIntFlag (not the old parseIntFlag) so `--limit abc` is a usage
+  // error instead of silently falling back to 50.
+  const limit = takeIntFlag(args, 'limit') ?? 50;
   const statusFilter = parseCsvFlag(args.flags.status);
   const kindFilter = parseCsvFlag(args.flags.kind);
-  for (const k of ['limit', 'status', 'kind']) delete args.flags[k];
+  for (const k of ['status', 'kind']) delete args.flags[k];
   assertNoExtraFlags(args, NOUN_FLAGS);
   const query = args.positional.join(' ');
   if (!query) throw new CliError(ExitCodes.USAGE, 'Usage: condash projects search <query>');

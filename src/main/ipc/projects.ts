@@ -18,6 +18,7 @@ import { requirePathUnder } from '../path-bounds';
 import { readSettings, settingsPath } from '../settings';
 import { findProjectReadmes } from '../walk';
 import { checkBranchState } from '../worktree-ops';
+import { requireMainWindowSender } from './utils';
 
 /**
  * Defence-in-depth: every IPC handler that accepts a `path` from the
@@ -85,9 +86,13 @@ function buildBranchWarning(
  * note path so they live with the rest of the note plumbing).
  */
 export function registerProjectsIpc(): void {
-  ipcMain.handle('listProjects', () => listProjects());
+  ipcMain.handle('listProjects', (event) => {
+    requireMainWindowSender(event);
+    return listProjects();
+  });
 
-  ipcMain.handle('getProject', async (_, path: string) => {
+  ipcMain.handle('getProject', async (event, path: string) => {
+    requireMainWindowSender(event);
     await assertUnderConception(path);
     return getProject(path);
   });
@@ -95,12 +100,13 @@ export function registerProjectsIpc(): void {
   ipcMain.handle(
     'toggleStep',
     async (
-      _,
+      event,
       path: string,
       lineIndex: number,
       expectedMarker: StepMarker,
       newMarker: StepMarker,
     ) => {
+      requireMainWindowSender(event);
       await assertUnderConception(path);
       return toggleStep(path, lineIndex, expectedMarker, newMarker);
     },
@@ -108,25 +114,29 @@ export function registerProjectsIpc(): void {
 
   ipcMain.handle(
     'editStepText',
-    async (_, path: string, lineIndex: number, expectedText: string, newText: string) => {
+    async (event, path: string, lineIndex: number, expectedText: string, newText: string) => {
+      requireMainWindowSender(event);
       await assertUnderConception(path);
       return editStepText(path, lineIndex, expectedText, newText);
     },
   );
 
-  ipcMain.handle('addStep', async (_, path: string, text: string) => {
+  ipcMain.handle('addStep', async (event, path: string, text: string) => {
+    requireMainWindowSender(event);
     await assertUnderConception(path);
     return addStep(path, text);
   });
 
-  ipcMain.handle('listProjectFiles', async (_, path: string) => {
+  ipcMain.handle('listProjectFiles', async (event, path: string) => {
+    requireMainWindowSender(event);
     await assertUnderConception(path);
     return listProjectFiles(path);
   });
 
   ipcMain.handle(
     'setStatus',
-    async (_, path: string, newStatus: string, opts?: { summary?: string }) => {
+    async (event, path: string, newStatus: string, opts?: { summary?: string }) => {
+      requireMainWindowSender(event);
       // Bound at the IPC layer like every sibling path-accepting handler —
       // setStatus previously skipped this, the lone gap D1-4 flagged.
       await assertUnderConception(path);
@@ -170,7 +180,8 @@ export function registerProjectsIpc(): void {
 
   ipcMain.handle(
     'createProject',
-    async (_, input: ProjectCreateInput): Promise<ProjectCreateResult> => {
+    async (event, input: ProjectCreateInput): Promise<ProjectCreateResult> => {
+      requireMainWindowSender(event);
       const { lastConceptionPath: conceptionPath } = await readSettings();
       if (!conceptionPath) throw new Error('No conception path set');
       const result = await createProjectCore(conceptionPath, {
@@ -200,14 +211,16 @@ export function registerProjectsIpc(): void {
     },
   );
 
-  ipcMain.handle('readNote', async (_, path: string) => {
+  ipcMain.handle('readNote', async (event, path: string) => {
+    requireMainWindowSender(event);
     await assertUnderConception(path);
     return readNote(path);
   });
 
   ipcMain.handle(
     'writeNote',
-    async (_, path: string, expectedContent: string, newContent: string) => {
+    async (event, path: string, expectedContent: string, newContent: string) => {
+      requireMainWindowSender(event);
       await assertUnderConception(path);
       return writeNote(path, expectedContent, newContent);
     },
@@ -219,17 +232,25 @@ export function registerProjectsIpc(): void {
   // uses for condash.json. Returns `''` when the file doesn't exist yet —
   // the modal treats that as "fresh defaults" and creates the file on first
   // save.
-  ipcMain.handle('getGlobalSettingsRaw', async () => readNote(settingsPath()));
+  ipcMain.handle('getGlobalSettingsRaw', async (event) => {
+    requireMainWindowSender(event);
+    return readNote(settingsPath());
+  });
 
   // Atomic CAS write to settings.json. Canonicalises through
   // `globalSettingsSchema` (handled by `writeNote`'s basename dispatch).
   // Returns the bytes actually written so the caller can keep its CAS
   // baseline aligned with disk after Zod re-orders keys.
-  ipcMain.handle('writeGlobalSettings', async (_, expectedContent: string, newContent: string) =>
-    writeNote(settingsPath(), expectedContent, newContent),
+  ipcMain.handle(
+    'writeGlobalSettings',
+    async (event, expectedContent: string, newContent: string) => {
+      requireMainWindowSender(event);
+      return writeNote(settingsPath(), expectedContent, newContent);
+    },
   );
 
-  ipcMain.handle('createProjectNote', async (_, projectPath: string, slug: string) => {
+  ipcMain.handle('createProjectNote', async (event, projectPath: string, slug: string) => {
+    requireMainWindowSender(event);
     await assertUnderConception(projectPath);
     return createProjectNote(projectPath, slug);
   });

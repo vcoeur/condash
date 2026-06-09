@@ -355,6 +355,12 @@ app.on('web-contents-created', (_event, contents) => {
     webPreferences.contextIsolation = true;
     webPreferences.nodeIntegration = false;
     webPreferences.sandbox = true;
+    // No webview gets a preload script — ours don't use one, and a sneaked-in
+    // preload would run with elevated access inside the guest. Pin
+    // webSecurity on so a webview can't be created with same-origin checks
+    // disabled.
+    delete webPreferences.preload;
+    webPreferences.webSecurity = true;
   });
   contents.on('will-navigate', (event, url) => {
     event.preventDefault();
@@ -446,16 +452,38 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  void killAll();
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform === 'darwin') {
+    // macOS: the app stays alive without windows, but the pty sessions were
+    // attached to the closed window — stop them now. No quit is in flight,
+    // so the flush completes naturally; idempotent with the before-quit path.
+    void killAll();
+  } else {
+    // Other platforms: quit. The before-quit handler below intercepts the
+    // first signal and awaits killAll before letting the app exit.
+    app.quit();
+  }
 });
 
 // Cmd-Q on macOS bypasses window-all-closed; before-quit covers it. Linux/
-// Windows hit before-quit too, so killAll runs idempotent-cheap on the
-// already-empty session map there.
-app.on('before-quit', () => {
-  void killAll();
+// Windows funnel through here from window-all-closed's app.quit() too.
+//
+// Electron exits as soon as before-quit returns unless we preventDefault —
+// a fire-and-forget killAll would be cut off mid-flush (terminal loggers
+// lose their final write). So: on the first quit signal, hold the quit,
+// await killAll (internally bounded ~1 s), then re-issue app.quit(), which
+// passes straight through the guard.
+let quitFlushStarted = false;
+let quitFlushDone = false;
+app.on('before-quit', (event) => {
+  if (quitFlushDone) return;
+  event.preventDefault();
+  if (quitFlushStarted) return; // re-entrant Cmd-Q while the flush runs
+  quitFlushStarted = true;
   void disposeRepoWatchers();
+  void killAll().finally(() => {
+    quitFlushDone = true;
+    app.quit();
+  });
 });
 
 /** Run the terminal-logs janitor for `conceptionPath`. Pulls the

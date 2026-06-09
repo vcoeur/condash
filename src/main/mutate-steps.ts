@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import type { StepMarker } from '../shared/types';
 import { STEP_MARKERS } from '../shared/types';
+import { iterUnfencedLines } from '../shared/header';
 import { atomicWrite } from './atomic-write';
 import { detectEol, withFileQueue } from './mutate-shared';
 
@@ -119,19 +120,13 @@ export async function addStep(path: string, text: string): Promise<void> {
     const eol = detectEol(raw);
     const lines = raw.split(/\r?\n/);
 
+    // Fenced code blocks can contain `##` lines that aren't headings (a
+    // Markdown example, a shell prompt). `iterUnfencedLines` skips them so
+    // we don't pick those up as section anchors.
     let stepsStart = -1;
     let stepsEnd = lines.length;
-    let inFence = false;
-    for (let i = 0; i < lines.length; i++) {
-      // Triple-backtick or triple-tilde fenced code blocks can contain `##`
-      // lines that aren't headings (a Markdown example, a shell prompt).
-      // Track fence state so we don't pick those up as section anchors.
-      if (/^\s*(```|~~~)/.test(lines[i])) {
-        inFence = !inFence;
-        continue;
-      }
-      if (inFence) continue;
-      const heading = lines[i].match(HEADING2_RE);
+    for (const { index: i, line } of iterUnfencedLines(lines)) {
+      const heading = line.match(HEADING2_RE);
       if (!heading) continue;
       if (stepsStart === -1 && heading[1].trim().toLowerCase() === 'steps') {
         stepsStart = i;

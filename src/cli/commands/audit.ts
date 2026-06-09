@@ -1,9 +1,10 @@
 import { runAudit, type AuditCheckName, type AuditReport } from '../../main/audit';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
-import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, takeStringFlag, type ParsedArgs } from '../parser';
 import { renderHelp } from '../help';
 
-const ALL_AUDIT_CHECKS: AuditCheckName[] = [
+/** Every audit check `--include` accepts. Exported for the TOP_HELP drift test. */
+export const ALL_AUDIT_CHECKS: AuditCheckName[] = [
   'lfs',
   'binaries',
   'cross-repo',
@@ -33,12 +34,11 @@ export async function runAuditCommand(
     printHelp();
     return;
   }
-  const includeFlag = args.flags.include;
-  delete args.flags.include;
+  const includeFlag = takeStringFlag(args, 'include');
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   const includeRaw =
-    typeof includeFlag === 'string'
+    includeFlag !== null
       ? includeFlag
           .split(',')
           .map((s) => s.trim())

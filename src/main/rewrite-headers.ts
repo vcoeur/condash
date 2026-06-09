@@ -1,7 +1,13 @@
 import { promises as fs } from 'node:fs';
 import { atomicWrite } from './atomic-write';
+import { withFileQueue } from './mutate-shared';
 import { findProjectReadmes } from './walk';
-import { parseHeader, type HeaderFields, HEADING2 } from '../shared/header';
+import {
+  parseHeader,
+  type HeaderFields,
+  FRONTMATTER_DELIMITER_LINE,
+  HEADING2,
+} from '../shared/header';
 
 /**
  * One-shot migration of an item README from the legacy bold-prose header
@@ -19,7 +25,6 @@ import { parseHeader, type HeaderFields, HEADING2 } from '../shared/header';
  */
 
 const META_LINE_RE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
-const FRONTMATTER_OPEN_RE = /^---\r?\n/;
 
 export type RewriteReason =
   | 'already-yaml'
@@ -35,7 +40,9 @@ export interface RewriteHeaderResult {
 }
 
 export function rewriteHeaderToYaml(raw: string): RewriteHeaderResult {
-  if (FRONTMATTER_OPEN_RE.test(raw)) {
+  // Shared frontmatter-open rule (see `FRONTMATTER_DELIMITER_LINE`) so this
+  // dispatcher and the status writer agree on what counts as YAML shape.
+  if (FRONTMATTER_DELIMITER_LINE.test(raw.split(/\r?\n/, 1)[0] ?? '')) {
     return { changed: false, reason: 'already-yaml' };
   }
 
@@ -147,7 +154,11 @@ export async function rewriteHeadersInTree(
       continue;
     }
     if (!options.dryRun && result.newContent) {
-      await atomicWrite(readme, result.newContent);
+      // Serialise against the GUI's mutation writers — they queue per path
+      // through `withFileQueue`, and a migration racing a step toggle on the
+      // same README must not interleave (internals invariant 2).
+      const newContent = result.newContent;
+      await withFileQueue(readme, () => atomicWrite(readme, newContent));
     }
     report.rewritten.push(readme);
   }

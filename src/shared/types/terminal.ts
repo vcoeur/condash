@@ -94,9 +94,10 @@ export interface TerminalPrefs {
   move_tab_left_shortcut?: string;
   move_tab_right_shortcut?: string;
   xterm?: TerminalXtermPrefs;
-  /** Per-session capture of stdin / stdout / spawn / exit to
-   * `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.jsonl`. The folder
-   * is fully gitignored by default. */
+  /** Per-session capture of rendered pty output to a plain-text
+   * `<conception>/.condash/logs/YYYY/MM/DD/HHMMSS-<sid>.txt` (since
+   * v2.27.0; stdin is deliberately not captured — the pty echoes it back
+   * through stdout). The folder is fully gitignored by default. */
   logging?: TerminalLoggingPrefs;
   /** Custom per-project actions exposed in the card / preview dropdown.
    *  Empty or missing → only the built-in "Work on <slug>" default. */

@@ -8,7 +8,7 @@ import { CliError, ExitCodes, emit, validation, type OutputContext } from '../ou
 import { readHeader } from '../../main/header-io';
 import { parseHeader } from '../../shared/header';
 import { KNOWLEDGE_CHECK_TEXT } from '../../main/audit/knowledge-check';
-import { assertNoExtraFlags, type ParsedArgs } from '../parser';
+import { assertNoExtraFlags, takeBoolFlag, type ParsedArgs } from '../parser';
 import { NOUN_FLAGS } from './projects';
 
 export async function statusCommand(
@@ -129,8 +129,7 @@ export async function checkKnowledgeCommand(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const record = args.flags.record === true;
-  delete args.flags.record;
+  const record = takeBoolFlag(args, 'record');
   assertNoExtraFlags(args, NOUN_FLAGS);
   const slug = args.positional[0];
   if (!slug) {
