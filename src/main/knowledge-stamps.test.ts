@@ -57,18 +57,34 @@ describe('parseVerifiedDate', () => {
 });
 
 describe('stampAgeDays', () => {
-  it('counts whole days from the stamp to today (UTC)', () => {
-    const today = new Date('2026-02-01T00:00:00Z');
+  // "Today" is constructed with local date parts (the same calendar the
+  // stamp writer `isoToday` uses), so these hold in any machine timezone.
+  it('counts whole local calendar days from the stamp to today', () => {
+    const today = new Date(2026, 1, 1);
     expect(stampAgeDays('2026-01-01', today)).toBe(31);
   });
 
   it('is 0 for a future-dated stamp', () => {
-    const today = new Date('2026-01-01T00:00:00Z');
+    const today = new Date(2026, 0, 1);
     expect(stampAgeDays('2026-06-01', today)).toBe(0);
   });
 
   it('is 0 for a same-day stamp', () => {
-    const today = new Date('2026-01-01T12:00:00Z');
+    const today = new Date(2026, 0, 1, 12);
     expect(stampAgeDays('2026-01-01', today)).toBe(0);
+  });
+
+  // Midnight edges: stamps are written with the local-time `isoToday`, so
+  // "now" must read local date parts too. A `getUTC*` reading was off by
+  // one in the window where local date != UTC date (east of UTC just after
+  // local midnight, west of UTC late in the local evening).
+  it("counts yesterday's stamp as 1 day old just after local midnight", () => {
+    const today = new Date(2026, 5, 9, 0, 30);
+    expect(stampAgeDays('2026-06-08', today)).toBe(1);
+  });
+
+  it("counts today's stamp as 0 days old late in the local evening", () => {
+    const today = new Date(2026, 5, 9, 23, 30);
+    expect(stampAgeDays('2026-06-09', today)).toBe(0);
   });
 });

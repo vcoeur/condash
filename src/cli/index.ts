@@ -1,4 +1,5 @@
 import { CliError, ExitCodes, reportError, type OutputContext } from './output';
+import { TOP_HELP } from './help';
 import { parseArgs, takeUniversalFlags, UsageError } from './parser';
 import { resolveConception } from './conception';
 import { runProjects } from './commands/projects';
@@ -14,43 +15,6 @@ import { runSkills } from './commands/skills';
 import { runLogs } from './commands/logs';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
-
-const TOP_HELP = `condash <noun> <verb> [args] [--flags]
-
-GUI:
-  condash                       Launch the dashboard.
-  condash gui [chromium-switch] Launch with Chromium switches (debugging).
-
-Nouns:
-  projects     list, read, resolve, search, validate, status get|set, close,
-               reopen, backfill-closed, index, create, scan-promotions
-  knowledge    tree, verify, retrieve, stamp, index
-  search       cross-tree search (--scope all|projects|knowledge)
-  repos        list configured repositories
-  applications list, add, set, rename, sync-docs, validate (the #handle registry)
-  worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
-  audit        umbrella audit (--include lfs,binaries,cross-repo,worktrees,index)
-  dirty        list, touch <tree>, clear <tree|all>
-  logs         days, list [<day>], read <sid|path>, tail (navigate session logs)
-  skills       list shipped artefacts; install [<name-or-path>...]; status; validate
-  config       conception-path, path, list [--effective|--global],
-               get <key> [--effective|--global], set <key> <value> [--global],
-               migrate (legacy condash.json → .condash/settings.json)
-  help         this message; or 'condash help <noun>' for verbs
-
-Universal flags:
-  --conception <path>   Override conception root.
-  --json                Emit a single JSON envelope on stdout.
-  --ndjson              Emit one JSON object per line.
-  --quiet, -q           Suppress diagnostics on stderr.
-  --no-color            Disable ANSI styling.
-  -h, --help            Show help.
-  -v, --version         Show version.
-
-Exit codes:
-  0 ok    1 runtime    2 usage    3 validation
-  4 not-found    5 no-conception    6 ambiguous
-`;
 
 async function main(): Promise<number> {
   let parsed: ReturnType<typeof parseArgs>;

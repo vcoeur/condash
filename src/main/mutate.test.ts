@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { addStep, CLOSED_LINE, parseTimelineEntries, transitionStatus } from './mutate';
+import {
+  addStep,
+  CLOSED_LINE,
+  editStepText,
+  parseTimelineEntries,
+  toggleStep,
+  transitionStatus,
+} from './mutate';
 
 describe('addStep', () => {
   let dir: string;
@@ -54,6 +61,116 @@ describe('addStep', () => {
     await addStep(path, 'first');
     const out = await fs.readFile(path, 'utf8');
     expect(out).toContain('## Steps\n\n- [ ] first\n\n## Timeline');
+  });
+});
+
+describe('toggleStep', () => {
+  let dir: string;
+  let path: string;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(join(tmpdir(), 'togglestep-'));
+    path = join(dir, 'README.md');
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('flips the marker on the target line only', async () => {
+    await fs.writeFile(
+      path,
+      ['# T', '', '## Steps', '', '- [ ] one', '- [ ] two', ''].join('\n'),
+      'utf8',
+    );
+    await toggleStep(path, 4, ' ', 'x');
+    const out = await fs.readFile(path, 'utf8');
+    expect(out).toContain('- [x] one');
+    expect(out).toContain('- [ ] two');
+  });
+
+  // Note on the `follower` calls below: `withFileQueue` (mutate-shared.ts)
+  // keeps an internal promise per path that only receives a rejection
+  // handler when a *subsequent* mutation queues on the same path. Queueing
+  // a benign follower synchronously keeps an expected rejection from
+  // surfacing as a vitest unhandled-rejection error.
+  it('refuses on marker drift', async () => {
+    await fs.writeFile(path, ['# T', '', '## Steps', '', '- [x] one', ''].join('\n'), 'utf8');
+    const failing = toggleStep(path, 4, ' ', 'x');
+    const follower = toggleStep(path, 4, 'x', 'x');
+    await expect(failing).rejects.toThrow(/Drift/);
+    await follower;
+  });
+
+  it('refuses when the line is not a step', async () => {
+    await fs.writeFile(path, ['# T', '', '## Steps', '', '- [ ] one', ''].join('\n'), 'utf8');
+    const failing = toggleStep(path, 2, ' ', 'x');
+    const follower = toggleStep(path, 4, ' ', ' ');
+    await expect(failing).rejects.toThrow(/not a step/);
+    await follower;
+  });
+
+  it('CRLF round-trip: EOLs preserved, only the target line changed', async () => {
+    const before = ['# T', '', '## Steps', '', '- [ ] one', '- [ ] two', ''].join('\r\n');
+    await fs.writeFile(path, before, 'utf8');
+    await toggleStep(path, 4, ' ', 'x');
+    const out = await fs.readFile(path, 'utf8');
+    expect(out).toBe(['# T', '', '## Steps', '', '- [x] one', '- [ ] two', ''].join('\r\n'));
+    // No lone-LF leaked in.
+    expect(/[^\r]\n/.test(out)).toBe(false);
+  });
+});
+
+describe('editStepText', () => {
+  let dir: string;
+  let path: string;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(join(tmpdir(), 'editstep-'));
+    path = join(dir, 'README.md');
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('replaces the step text, keeping the marker', async () => {
+    await fs.writeFile(
+      path,
+      ['# T', '', '## Steps', '', '- [x] old text', '- [ ] two', ''].join('\n'),
+      'utf8',
+    );
+    await editStepText(path, 4, 'old text', 'new text');
+    const out = await fs.readFile(path, 'utf8');
+    expect(out).toContain('- [x] new text');
+    expect(out).toContain('- [ ] two');
+    expect(out).not.toContain('old text');
+  });
+
+  it('refuses on text drift', async () => {
+    await fs.writeFile(path, ['# T', '', '## Steps', '', '- [ ] actual', ''].join('\n'), 'utf8');
+    const failing = editStepText(path, 4, 'expected', 'new');
+    // Benign follower — see the note in the toggleStep suite.
+    const follower = editStepText(path, 4, 'actual', 'actual');
+    await expect(failing).rejects.toThrow(/Drift/);
+    await follower;
+  });
+
+  it('rejects empty and multi-line replacements', async () => {
+    await fs.writeFile(path, ['# T', '', '## Steps', '', '- [ ] one', ''].join('\n'), 'utf8');
+    await expect(editStepText(path, 4, 'one', '  ')).rejects.toThrow(/empty/);
+    await expect(editStepText(path, 4, 'one', 'a\nb')).rejects.toThrow(/line breaks/);
+  });
+
+  it('CRLF round-trip: EOLs preserved, only the target line changed', async () => {
+    const before = ['# T', '', '## Steps', '', '- [ ] one', '- [ ] two', ''].join('\r\n');
+    await fs.writeFile(path, before, 'utf8');
+    await editStepText(path, 5, 'two', 'two — edited');
+    const out = await fs.readFile(path, 'utf8');
+    expect(out).toBe(
+      ['# T', '', '## Steps', '', '- [ ] one', '- [ ] two — edited', ''].join('\r\n'),
+    );
+    expect(/[^\r]\n/.test(out)).toBe(false);
   });
 });
 
@@ -159,6 +276,59 @@ describe('transitionStatus', () => {
     expect(out).toContain('- 2026-05-09 — Closed.');
   });
 
+  it('handles a BOM-prefixed frontmatter file and drops the BOM on write', async () => {
+    await fs.writeFile(
+      path,
+      '﻿' +
+        ['---', 'date: 2026-05-08', 'kind: project', 'status: now', '---', '', '# T', ''].join(
+          '\n',
+        ),
+      'utf8',
+    );
+    const result = await transitionStatus(path, 'review');
+    const out = await fs.readFile(path, 'utf8');
+    expect(result.previousStatus).toBe('now');
+    expect(out).toMatch(/^status: review$/m);
+    // The BOM is dropped permanently — the write normalises the file.
+    expect(out.charCodeAt(0)).not.toBe(0xfeff);
+  });
+
+  it('appends the Closed line to the real ## Timeline, not a fenced example', async () => {
+    await fs.writeFile(
+      path,
+      [
+        '---',
+        'status: now',
+        'kind: project',
+        '---',
+        '',
+        '# T',
+        '',
+        '## Notes',
+        '',
+        'Example of a timeline section:',
+        '',
+        '```markdown',
+        '## Timeline',
+        '',
+        '- 2020-01-01 — Example entry.',
+        '```',
+        '',
+        '## Timeline',
+        '',
+        '- 2026-05-08 — Created.',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await transitionStatus(path, 'done', { today: '2026-05-09' });
+    const out = await fs.readFile(path, 'utf8');
+    // The fenced example is untouched...
+    expect(out).toContain('```markdown\n## Timeline\n\n- 2020-01-01 — Example entry.\n```');
+    // ...and the Closed line landed under the real heading, after Created.
+    expect(out).toContain('- 2026-05-08 — Created.\n- 2026-05-09 — Closed.');
+  });
+
   it("doesn't pick up a status: line outside the frontmatter fence", async () => {
     await fs.writeFile(
       path,
@@ -203,6 +373,30 @@ describe('parseTimelineEntries continuation folding', () => {
     expect(entries).toEqual([
       { date: '2026-06-01', text: 'First line wraps onto a second line; mentions #42 and v1.2.3.' },
       { date: '2026-06-02', text: 'Standalone.' },
+    ]);
+  });
+});
+
+describe('parseTimelineEntries fence handling', () => {
+  it('ignores dated bullets inside fenced code blocks', () => {
+    const raw = [
+      '# T',
+      '',
+      '## Timeline',
+      '',
+      '- 2026-06-01 — Real entry.',
+      '',
+      '```',
+      '- 2026-06-02 — Fenced, not a timeline entry.',
+      '```',
+      '',
+      '- 2026-06-03 — Another real entry.',
+      '',
+    ].join('\n');
+    const entries = parseTimelineEntries(raw);
+    expect(entries).toEqual([
+      { date: '2026-06-01', text: 'Real entry.' },
+      { date: '2026-06-03', text: 'Another real entry.' },
     ]);
   });
 });

@@ -42,4 +42,19 @@ describe('setByDottedPath', () => {
     setByDottedPath(obj, 'nest.y', 2);
     expect(obj).toEqual({ keep: 1, nest: { x: 1, y: 2 } });
   });
+
+  it('rejects an array-index segment instead of materialising a literal key', () => {
+    // Pre-guard, `repositories[0].path` wrote a literal `"repositories[0]"`
+    // key — corrupting the config and bricking the next strict-schema save.
+    const obj: Record<string, unknown> = { repositories: [{ path: '/a' }] };
+    expect(() => setByDottedPath(obj, 'repositories[0].path', '/b')).toThrow(/array-index/);
+    // Nothing was written, not even intermediates.
+    expect(obj).toEqual({ repositories: [{ path: '/a' }] });
+  });
+
+  it('rejects an array-index segment at the leaf too', () => {
+    const obj: Record<string, unknown> = {};
+    expect(() => setByDottedPath(obj, 'pdf_viewer[2]', 'zathura')).toThrow(/array-index/);
+    expect(obj).toEqual({});
+  });
 });

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CardMinWidthPrefs } from '../shared/types';
+import type { CardMinWidthPrefs, TreeExpansionPrefs } from '../shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 
 // The raw repo-entry contract is process-agnostic and lives in shared/ so the
@@ -290,7 +290,9 @@ const terminalSettings = z
   })
   .strict();
 
-const layoutSchema = z
+/** LayoutState validator. Exported so the `setLayout` IPC handler can apply
+ *  the same shape check the settings save path enforces. */
+export const layoutSchema = z
   .object({
     projects: z.boolean(),
     // Optional: layouts persisted before `leftView` existed omit it; the read
@@ -329,12 +331,16 @@ const cardMinWidthSchema = z
   } satisfies Record<keyof CardMinWidthPrefs, z.ZodTypeAny>)
   .strict();
 
+// Same exhaustiveness guard as cardMinWidthSchema above: adding a key to
+// TreeExpansionPrefs without listing it here is a tsc error, not a silent
+// `Unrecognized key` at save time (which is how `skillsUser` shipped unsavable).
 const treeExpansionSchema = z
   .object({
     knowledge: z.array(z.string()).optional(),
     resources: z.array(z.string()).optional(),
     skills: z.array(z.string()).optional(),
-  })
+    skillsUser: z.array(z.string()).optional(),
+  } satisfies Record<keyof TreeExpansionPrefs, z.ZodTypeAny>)
   .strict();
 
 /**

@@ -1,15 +1,46 @@
 import { app, dialog, ipcMain, shell } from 'electron';
 import { promises as fs } from 'node:fs';
-import { basename, sep } from 'node:path';
+import { basename, parse } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { toPosix } from '../../shared/path';
-import { prependRecent, readSettings, removeRecent, updateSettings } from '../settings';
+import {
+  prependRecent,
+  readSettings,
+  removeRecent,
+  settingsPath,
+  updateSettings,
+} from '../settings';
 import { resolveConceptionConfigPath } from '../effective-config';
 import { detectConceptionState, initConception } from '../conception-init';
+import { requirePathUnder, requirePathUnderWorkspace } from '../path-bounds';
 import { setWatchedConception } from '../watcher';
 import { disposeRepoWatchers } from '../repo-watchers';
 import { readHelpDoc } from '../help';
-import { requireNonEmptyString } from './utils';
+import { requireMainWindowSender, requireNonEmptyString } from './utils';
+
+/**
+ * Bound a renderer-supplied path for `openPath` / `showInFolder`: it must
+ * resolve under one of the workspace roots (active conception +
+ * `workspace_path` + `worktrees_path` + configured repo paths), with one
+ * exact-file exemption — the per-machine `settings.json`, which the Settings
+ * modal's "open externally" affordance targets and which lives under
+ * Electron's userData dir, outside every workspace root. Returns the
+ * realpath.
+ */
+async function requireOpenablePath(target: string): Promise<string> {
+  try {
+    const [real, settingsReal] = await Promise.all([
+      fs.realpath(target),
+      fs.realpath(settingsPath()),
+    ]);
+    if (real === settingsReal) return real;
+  } catch {
+    // settings.json may not exist yet, or the target may not resolve —
+    // either way fall through to the workspace bound, which throws the
+    // uniform error for unresolvable paths.
+  }
+  return requirePathUnderWorkspace(target);
+}
 
 /**
  * Wire OS-level / shell-out / app-info handlers — anything whose body just
@@ -34,12 +65,15 @@ export function registerSystemIpc(opts: {
   // anything the renderer-side store holds, and this handler only delegates
   // to `shell.openPath` (no shell expansion, no command injection vector).
   // Trust boundary documented here so a future audit doesn't re-flag it.
-  ipcMain.handle('openInEditor', async (_, path: string) => {
+  ipcMain.handle('openInEditor', async (event, path: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('openInEditor', path);
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
   });
 
-  ipcMain.handle('getConceptionPath', async () => {
+  ipcMain.handle('getConceptionPath', async (event) => {
+    requireMainWindowSender(event);
     const { lastConceptionPath: conceptionPath } = await readSettings();
     return conceptionPath ? toPosix(conceptionPath) : null;
   });
@@ -50,47 +84,42 @@ export function registerSystemIpc(opts: {
    * Returns the canonical path even when neither file exists, so a first
    * save creates `condash.json`.
    */
-  ipcMain.handle('getConceptionConfigPath', async () => {
+  ipcMain.handle('getConceptionConfigPath', async (event) => {
+    requireMainWindowSender(event);
     const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return null;
     return toPosix(await resolveConceptionConfigPath(conceptionPath));
   });
 
-  ipcMain.handle('pdfToFileUrl', async (_, path: string) => {
+  ipcMain.handle('pdfToFileUrl', async (event, path: string) => {
+    requireMainWindowSender(event);
     requireNonEmptyString('pdfToFileUrl', path);
     // Bound the file:// URL to the conception subtree — without this, a
     // compromised renderer can synthesise a webview src for any file on disk
-    // (e.g. ~/.ssh/id_rsa) by passing an absolute path. Resolve via realpath
-    // to defeat symlink traversal. Both paths are realpathed together (in
-    // parallel) so the window between resolving the request and resolving
-    // the conception is as narrow as Promise.all allows — a symlink flip
-    // mid-call is still possible in theory but the realpath result we
-    // compare against is captured atomically per call.
+    // (e.g. ~/.ssh/id_rsa) by passing an absolute path. `requirePathUnder`
+    // is the one realpath-bound primitive (path-bounds.ts): both sides are
+    // realpathed so symlink traversal is defeated, and the returned canonical
+    // path is what the URL is built from.
     const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) {
       throw new Error('pdfToFileUrl: no conception path is set');
     }
-    let real: string;
-    let conceptionReal: string;
-    try {
-      [real, conceptionReal] = await Promise.all([fs.realpath(path), fs.realpath(conceptionPath)]);
-    } catch {
-      throw new Error('pdfToFileUrl: path does not resolve');
-    }
-    const child = real.endsWith(sep) ? real : real + sep;
-    const parent = conceptionReal.endsWith(sep) ? conceptionReal : conceptionReal + sep;
-    if (!(child === parent || child.startsWith(parent))) {
-      throw new Error('pdfToFileUrl: path is outside the conception tree');
-    }
+    const real = await requirePathUnder(path, conceptionPath);
     return {
       url: pathToFileURL(real).href,
       filename: basename(real),
     };
   });
 
-  ipcMain.handle('detectConceptionState', (_, path: string) => detectConceptionState(path));
+  ipcMain.handle('detectConceptionState', (event, path: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('detectConceptionState', path);
+    return detectConceptionState(path);
+  });
 
-  ipcMain.handle('initConception', async (_, path: string) => {
+  ipcMain.handle('initConception', async (event, path: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('initConception', path);
     const created = await initConception(path);
     return { created };
   });
@@ -110,7 +139,8 @@ export function registerSystemIpc(opts: {
     fireRecentsChange();
   }
 
-  ipcMain.handle('pickConceptionPath', async () => {
+  ipcMain.handle('pickConceptionPath', async (event) => {
+    requireMainWindowSender(event);
     const result = await dialog.showOpenDialog({
       title: 'Choose conception directory',
       properties: ['openDirectory'],
@@ -129,24 +159,49 @@ export function registerSystemIpc(opts: {
    * watchers, broadcasts. Returns the path so the renderer can re-render
    * against the new conception without a second `getConceptionPath` round-trip.
    */
-  ipcMain.handle('openConception', async (_, path: string) => {
+  ipcMain.handle('openConception', async (event, path: string) => {
+    requireMainWindowSender(event);
     requireNonEmptyString('openConception', path);
-    const picked = toPosix(path);
+    // `lastConceptionPath` is the trust root every bounded handler measures
+    // against, so this handler must not accept an arbitrary directory from
+    // the renderer (a compromised renderer pointing it at `/` would unbound
+    // every "bounded" read/write). Realpath the candidate, refuse filesystem
+    // roots outright, and require the same conception markers the detector
+    // uses everywhere else: a `projects/` tree or one of the three recognised
+    // config files. Recents and the picker flow both pass — they reference
+    // directories that carry the markers.
+    let real: string;
+    try {
+      real = await fs.realpath(path);
+    } catch {
+      throw new Error('openConception: path does not resolve');
+    }
+    if (parse(real).root === real) {
+      throw new Error('openConception: refusing a filesystem root');
+    }
+    const state = await detectConceptionState(real);
+    if (!state.pathExists || (!state.hasProjects && !state.hasConfiguration)) {
+      throw new Error('openConception: path does not look like a conception');
+    }
+    const picked = toPosix(real);
     await switchConception(picked);
     return picked;
   });
 
-  ipcMain.handle('getRecentConceptionPaths', async () => {
+  ipcMain.handle('getRecentConceptionPaths', async (event) => {
+    requireMainWindowSender(event);
     const { recentConceptionPaths } = await readSettings();
     return recentConceptionPaths;
   });
 
-  ipcMain.handle('clearRecentConceptionPaths', async () => {
+  ipcMain.handle('clearRecentConceptionPaths', async (event) => {
+    requireMainWindowSender(event);
     await updateSettings((cur) => ({ ...cur, recentConceptionPaths: [] }));
     fireRecentsChange();
   });
 
-  ipcMain.handle('removeRecentConceptionPath', async (_, path: string) => {
+  ipcMain.handle('removeRecentConceptionPath', async (event, path: string) => {
+    requireMainWindowSender(event);
     requireNonEmptyString('removeRecentConceptionPath', path);
     await updateSettings((cur) => ({
       ...cur,
@@ -155,14 +210,16 @@ export function registerSystemIpc(opts: {
     fireRecentsChange();
   });
 
-  ipcMain.handle('openConceptionDirectory', async () => {
+  ipcMain.handle('openConceptionDirectory', async (event) => {
+    requireMainWindowSender(event);
     const { lastConceptionPath: conceptionPath } = await readSettings();
     if (!conceptionPath) return;
     const error = await shell.openPath(conceptionPath);
     if (error) throw new Error(error);
   });
 
-  ipcMain.handle('openExternal', async (_, target: string) => {
+  ipcMain.handle('openExternal', async (event, target: string) => {
+    requireMainWindowSender(event);
     requireNonEmptyString('openExternal', target);
     // shell.openExternal already filters non-http/https on most platforms but
     // we additionally clamp to safe schemes here so a hostile pty can't pop a
@@ -173,38 +230,54 @@ export function registerSystemIpc(opts: {
     await shell.openExternal(target);
   });
 
-  ipcMain.handle('openPath', async (_, target: string) => {
+  ipcMain.handle('openPath', async (event, target: string) => {
+    requireMainWindowSender(event);
     requireNonEmptyString('openPath', target);
     // Reject anything that looks like a URL — the renderer should call
     // openExternal for those.
     if (/^[a-z][a-z0-9+\-.]*:/i.test(target)) {
       throw new Error('openPath: target must be a path, not a URL');
     }
-    const error = await shell.openPath(target);
+    // Bound to the workspace roots (+ the settings.json exemption) — the
+    // legit callers pass the conception config, the global settings.json,
+    // and deliverable files (project tree or a configured worktree). Only
+    // openInEditor stays an unbounded shell-out, documented in path-bounds.
+    const real = await requireOpenablePath(target);
+    const error = await shell.openPath(real);
     if (error) throw new Error(error);
   });
 
   // Reveal a file/dir in the OS file manager, selected in its parent folder.
-  // Same trust boundary as openInEditor / openPath: the renderer hands it a
-  // path it already displays, and this only delegates to Electron's shell
-  // (no shell expansion, no command-injection vector).
-  ipcMain.handle('showInFolder', (_, target: string) => {
+  // Delegates to Electron's shell (no shell expansion, no command-injection
+  // vector) but is still bounded to the workspace roots: the legit callers
+  // (tree panes, Logs cards, viewer headers) all pass paths inside the
+  // conception or a configured worktree.
+  ipcMain.handle('showInFolder', async (event, target: string) => {
+    requireMainWindowSender(event);
     requireNonEmptyString('showInFolder', target);
-    shell.showItemInFolder(target);
+    const real = await requireOpenablePath(target);
+    shell.showItemInFolder(real);
   });
 
-  ipcMain.handle('quitApp', () => {
+  ipcMain.handle('quitApp', (event) => {
+    requireMainWindowSender(event);
     app.quit();
   });
 
-  ipcMain.handle('getAppInfo', () => ({
-    name: app.getName(),
-    version: app.getVersion(),
-    electron: process.versions.electron,
-    chrome: process.versions.chrome,
-    node: process.versions.node,
-    platform: process.platform,
-  }));
+  ipcMain.handle('getAppInfo', (event) => {
+    requireMainWindowSender(event);
+    return {
+      name: app.getName(),
+      version: app.getVersion(),
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+      platform: process.platform,
+    };
+  });
 
-  ipcMain.handle('readHelpDoc', (_, name: string) => readHelpDoc(name));
+  ipcMain.handle('readHelpDoc', (event, name: string) => {
+    requireMainWindowSender(event);
+    return readHelpDoc(name);
+  });
 }

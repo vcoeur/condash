@@ -131,10 +131,10 @@
 .new-project-error {
   margin: 0;
   padding: 8px 10px;
-  border: 1px solid var(--col-warn, #c66);
+  border: 1px solid var(--warn);
   border-radius: 6px;
   background: rgba(255, 80, 80, 0.08);
-  color: var(--col-warn, #c66);
+  color: var(--warn);
   font-size: var(--text-xs);
 }
 

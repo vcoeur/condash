@@ -1,6 +1,13 @@
 // Global search: parsed query tokens, match highlights and snippets, the
 // per-file hit, and the capped result envelope returned by the `search` IPC.
 
+/** The four indexed markdown scopes — what an "all" search forwards to the
+ * backend. Logs are deliberately excluded: they're unindexed and disk-scanned,
+ * so keeping "all" on the in-memory index path is what makes the default query
+ * fast; the logs scan runs only when `logs` is explicitly in scope. Shared by
+ * the renderer's All pill (`search-modal.tsx`) and the CLI's `--scope all`. */
+export const ALL_SCOPES: readonly string[] = ['projects', 'knowledge', 'resources', 'skills'];
+
 /** One token in the parsed search query. The `index` is the position in the
  * user-typed query, used downstream as the per-token highlight-colour key. */
 export interface SearchTerm {

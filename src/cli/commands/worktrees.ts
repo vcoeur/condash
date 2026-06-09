@@ -8,7 +8,13 @@ import {
   type SetupResult,
 } from '../../main/worktree-ops';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
-import { assertNoExtraFlags, parseCsvFlag, type ParsedArgs } from '../parser';
+import {
+  assertNoExtraFlags,
+  parseCsvFlag,
+  takeBoolFlag,
+  takeStringFlag,
+  type ParsedArgs,
+} from '../parser';
 import { renderHelp, runNoun } from '../help';
 import { runRepos } from './repos';
 
@@ -130,16 +136,13 @@ async function worktreeSetup(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
-  const copyEnv = args.flags['copy-env'] === true;
-  const skipEnv = args.flags['no-env'] === true;
-  const skipInstall = args.flags['no-install'] === true;
-  const installDeprecated = args.flags.install === true;
-  const baseFlag = args.flags.base;
-  const base = typeof baseFlag === 'string' && baseFlag.length > 0 ? baseFlag : undefined;
-  for (const k of ['repo', 'copy-env', 'no-env', 'no-install', 'install', 'base']) {
-    delete args.flags[k];
-  }
+  const repos = parseCsvFlag(takeStringFlag(args, 'repo') ?? undefined) ?? undefined;
+  const copyEnv = takeBoolFlag(args, 'copy-env');
+  const skipEnv = takeBoolFlag(args, 'no-env');
+  const skipInstall = takeBoolFlag(args, 'no-install');
+  const installDeprecated = takeBoolFlag(args, 'install');
+  const baseFlag = takeStringFlag(args, 'base');
+  const base = baseFlag !== null && baseFlag.length > 0 ? baseFlag : undefined;
   assertNoExtraFlags(args, NOUN_FLAGS);
   if (installDeprecated && !ctx.quiet) {
     process.stderr.write(
@@ -161,12 +164,30 @@ async function worktreeSetup(
     base,
   });
   emit(ctx, result, formatSetupResult);
+  // Exit-code contract: a failed install command is a runtime failure (the
+  // worktree exists but isn't usable as promised). Blocked repos do NOT
+  // change the exit code — a pinned repo or a primary-on-branch refusal is
+  // an expected outcome; consumers inspect `blocked` in the output.
+  const failedInstalls = result.installRan.filter((r) => !r.ok);
+  if (failedInstalls.length > 0) {
+    throw new CliError(
+      ExitCodes.RUNTIME,
+      `install failed for ${failedInstalls.map((r) => r.repo).join(', ')} (worktrees were created — see output above)`,
+    );
+  }
 }
 
 function formatSetupResult(result: SetupResult): string {
   const lines: string[] = [];
   lines.push(`Setup branch: ${result.branch}`);
   if (result.base) lines.push(`Base ref: ${result.base}`);
+  if (result.baseBehind.length > 0) {
+    for (const b of result.baseBehind) {
+      lines.push(
+        `Warning: ${b.repo}: base '${b.ref}' is ${b.behind} commit${b.behind === 1 ? '' : 's'} behind ${b.upstream} — fetch + fast-forward before relying on this worktree.`,
+      );
+    }
+  }
   if (result.created.length > 0) {
     lines.push(`Created (${result.created.length}):`);
     for (const c of result.created) lines.push(`  + ${c.repo}  →  ${c.path}`);
@@ -183,6 +204,9 @@ function formatSetupResult(result: SetupResult): string {
     lines.push(`Install ran:`);
     for (const r of result.installRan) {
       lines.push(`  ${r.repo}: ${r.command}  ${r.ok ? 'ok' : 'FAILED'}`);
+      if (!r.ok && r.stderrTail) {
+        for (const tailLine of r.stderrTail.split('\n')) lines.push(`      ${tailLine}`);
+      }
     }
   }
   if (result.blocked.length > 0) {
@@ -197,10 +221,9 @@ async function worktreeRemove(
   ctx: OutputContext,
   conceptionPath: string,
 ): Promise<void> {
-  const repos = parseCsvFlag(args.flags.repo) ?? undefined;
-  const force = args.flags.force === true;
-  const forceRm = args.flags['force-rm'] === true;
-  for (const k of ['repo', 'force', 'force-rm']) delete args.flags[k];
+  const repos = parseCsvFlag(takeStringFlag(args, 'repo') ?? undefined) ?? undefined;
+  const force = takeBoolFlag(args, 'force');
+  const forceRm = takeBoolFlag(args, 'force-rm');
   assertNoExtraFlags(args, NOUN_FLAGS);
   const branch = args.positional[0];
   if (!branch) {
@@ -231,6 +254,13 @@ function formatRemoveResult(result: RemoveResult): string {
       lines.push(`      ${p.reason}`);
     }
     lines.push(`  Re-run with --force-rm to delete the leftover directories.`);
+  }
+  if (result.orphaned.length > 0) {
+    lines.push(`Orphaned (not registered worktrees, ${result.orphaned.length}):`);
+    for (const o of result.orphaned) {
+      lines.push(`  ? ${o.repo}  →  ${o.path}`);
+      lines.push(`      ${o.reason}`);
+    }
   }
   if (result.notPresent.length > 0) {
     lines.push(`Not present: ${result.notPresent.join(', ')}`);
@@ -291,7 +321,15 @@ function printHelp(verb: string | null): void {
           '  --no-env       Skip the per-repo env-file copy declared in .condash/settings.json.',
           '  --no-install   Skip the per-repo install command declared in .condash/settings.json.',
           '  --copy-env     Legacy: opportunistic .env / .env.local copy for repos without `env:`.',
-          '  --base         Base ref. Defaults to **Base** from declaring item READMEs (must agree).',
+          '  --base         Base ref. Defaults to **Base** from declaring item READMEs (must agree);',
+          '                 with no base at all, each repo branches from its default-branch tip',
+          '                 (origin/HEAD, else local main/master, else the primary checkout HEAD).',
+          '',
+          'A warning is printed when the base ref trails its upstream (no fetch is run).',
+          '',
+          'Exit codes: 1 (RUNTIME) when any per-repo install command failed.',
+          'Blocked repos (pinned_branch, primary on branch, missing base ref) are expected',
+          'outcomes and do NOT affect the exit code — inspect `blocked` in the output.',
           '',
           'Examples:',
           '  condash worktrees setup condash-cli-ux-fixes',
@@ -304,7 +342,14 @@ function printHelp(verb: string | null): void {
         renderHelp([
           'condash worktrees remove <branch> [--repo <r>...] [--force] [--force-rm]',
           '',
-          'Remove worktrees for this branch, protected-set aware.',
+          'Remove worktrees for this branch.',
+          '',
+          'Protection rules: with --repo, repos claimed by other active items on this',
+          'branch but NOT in the given list are kept. Without --repo, a repo claimed by',
+          'more than one active (now/review) item is kept — removing it would yank the',
+          'worktree out from under the other item. A worktree on a different branch',
+          '(flattened-path collision, e.g. foo/bar vs foo-bar) or a directory that is',
+          'not a registered worktree is never removed, even under --force-rm.',
           '',
           'Optional:',
           '  --repo       Restrict to specific repos (comma-separated).',
@@ -332,7 +377,7 @@ function printSubHelp(): void {
       '  check <branch>   Per-repo state for one branch.',
       '  mismatch         Items declaring **Branch** but missing on-disk worktrees.',
       '  setup <branch>   Create worktrees for every repo declaring this branch.',
-      '  remove <branch>  Remove worktrees for this branch, protected-set aware.',
+      '  remove <branch>  Remove worktrees for this branch (claims of other active items protected).',
     ]),
   );
 }

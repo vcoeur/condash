@@ -353,6 +353,57 @@ describe('SessionLogger', () => {
     expect(body).not.toMatch(/\x1b\[/);
   });
 
+  it('close() drains output that races the close — no tail bytes dropped', async () => {
+    const logger = makeLogger(
+      tmp,
+      {
+        sid: 't-race',
+        side: 'my',
+        cwd: '/x',
+        spawn: { cmd: 'bash', argv: [] },
+      },
+      {},
+      5,
+    );
+    logger.spawn();
+    logger.output('first line\r\n');
+    // Start closing, then emit more output while the close is draining — the
+    // single-pass close used to mark `closed` and silently drop these bytes.
+    const closing = logger.close();
+    logger.output('tail bytes\r\n');
+    await closing;
+
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body } = parseFile(txt);
+    expect(body).toContain('first line');
+    expect(body).toContain('tail bytes');
+  });
+
+  it('close() is idempotent under concurrent callers', async () => {
+    const logger = makeLogger(
+      tmp,
+      {
+        sid: 't-dupclose',
+        side: 'my',
+        cwd: '/x',
+        spawn: { cmd: 'bash', argv: [] },
+      },
+      {},
+      5,
+    );
+    logger.spawn();
+    logger.output('once\r\n');
+    logger.exit(0);
+    await Promise.all([logger.close(), logger.close(), logger.close()]);
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body, footer } = parseFile(txt);
+    expect(body).toContain('once');
+    expect(footer?.exitCode).toBe(0);
+  });
+
   it('rendered file size is bounded by scrollback × line width', async () => {
     const logger = makeLogger(
       tmp,

@@ -168,6 +168,16 @@ export function NoteModal(props: {
     setFindQuery('');
     setFindMatch(null);
     setPendingViewSwitch(false);
+    // Tear down any live CodeMirror instance so the mount effect re-seeds it
+    // from the new file's content. Without this, navigating to another file
+    // while staying in edit mode keeps the previous editor (and its text)
+    // alive under the new path — one keystroke + Save then writes the old
+    // file's content into the new one. Any unsaved edits were already
+    // resolved by the dirty guard on the navigation that changed the path.
+    if (editor) {
+      editor.destroy();
+      editor = null;
+    }
   });
 
   const [content, { mutate: mutateContent, refetch: refetchContent }] = createResource(
@@ -206,15 +216,20 @@ export function NoteModal(props: {
   createEffect(() => {
     const m = mode();
     const text = content();
-    if (m === 'edit' && editorParent && text != null && !editor && !mounting) {
+    // `content()` keeps the previous file's value while a new path's read is
+    // in flight, so gate on `content.loading` — otherwise a path change in
+    // edit mode would seed the fresh editor with the *old* file's text.
+    if (m === 'edit' && editorParent && text != null && !content.loading && !editor && !mounting) {
       mounting = true;
       const parent = editorParent;
       const initial = text;
+      const pathAtMount = props.state?.path;
       const language = props.state ? inferLanguage(props.state.path) : 'markdown';
       void loadEditor()
         .then(({ mountEditor }) => {
-          // Bail if the user left edit mode while the chunk was loading.
-          if (mode() !== 'edit') {
+          // Bail if the user left edit mode or navigated to another file
+          // while the chunk was loading.
+          if (mode() !== 'edit' || props.state?.path !== pathAtMount) {
             mounting = false;
             return;
           }

@@ -11,10 +11,10 @@
  *    use the aggregated descendant keyword set passed in by the engine.
  */
 
-import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import { filterTags } from './index-tag-filter';
 import { matchVerifiedLine } from './knowledge-stamps';
+import { readFileHead } from './read-file-head';
 import type { DraftResult, IndexStrategy } from './index-tree';
 
 export const knowledgeStrategy: IndexStrategy = {
@@ -23,7 +23,11 @@ export const knowledgeStrategy: IndexStrategy = {
   formatChildLink: (_parent, child) =>
     child.kind === 'directory' ? `${child.name}/index.md` : child.name,
   draftFileEntry: async (_parent, child): Promise<DraftResult> => {
-    const head = await readHead(child.absPath, 8192);
+    // `readFileHead` is best-effort (returns null on any error): a file
+    // deleted between readdir and read falls back to a describe-placeholder
+    // instead of aborting the whole regen — same tolerance as the subdir
+    // branch below.
+    const head = (await readFileHead(child.absPath, 8192)) ?? '';
     const meta = parseHead(head, child.name);
     return {
       description: meta.summary ?? `(describe ${child.name})`,
@@ -31,14 +35,10 @@ export const knowledgeStrategy: IndexStrategy = {
     };
   },
   draftSubdirEntry: async (_parent, child, aggregated): Promise<DraftResult> => {
+    // Subdir may have no index yet — engine processes leaves first, so this
+    // should be rare. Fall back to the directory name.
     const subIndex = join(child.absPath, 'index.md');
-    let head = '';
-    try {
-      head = await readHead(subIndex, 8192);
-    } catch {
-      // Subdir has no index yet — engine processes leaves first, so this
-      // should be rare. Fall back to the directory name.
-    }
+    const head = (await readFileHead(subIndex, 8192)) ?? '';
     const meta = parseHead(head, child.name);
     return {
       description: meta.summary ?? `(describe ${child.name}/)`,
@@ -55,17 +55,6 @@ export const knowledgeStrategy: IndexStrategy = {
     ].join('\n');
   },
 };
-
-async function readHead(path: string, bytes: number): Promise<string> {
-  const handle = await fs.open(path);
-  try {
-    const buffer = Buffer.alloc(bytes);
-    const { bytesRead } = await handle.read({ buffer, position: 0 });
-    return buffer.subarray(0, bytesRead).toString('utf8');
-  } finally {
-    await handle.close();
-  }
-}
 
 interface HeadMeta {
   title: string;

@@ -34,11 +34,13 @@ export function pickByDottedPath(obj: unknown, dotted: string): unknown {
 /**
  * Set the value at a dotted path, mutating `obj` in place. Intermediate
  * segments that are missing or not plain objects are replaced with fresh
- * objects so the path materialises. Array-index segments are not synthesised
- * (the get path tolerates them, but `set` only writes plain-object keys).
+ * objects so the path materialises. Array-index segments (`repositories[0]`)
+ * are rejected with an error — only `pickByDottedPath` understands the `[n]`
+ * grammar; silently writing a literal `"repositories[0]"` key used to corrupt
+ * the config and brick the next strict-schema save.
  *
  * @param obj the root object to mutate
- * @param dotted the path, e.g. `audit.thresholds.binary`
+ * @param dotted the path, e.g. `terminal.logging.enabled`
  * @param value the value to assign at the leaf
  */
 export function setByDottedPath(
@@ -47,6 +49,14 @@ export function setByDottedPath(
   value: unknown,
 ): void {
   const parts = dotted.split('.');
+  for (const part of parts) {
+    if (/\[\d+\]$/.test(part)) {
+      throw new Error(
+        `setByDottedPath: array-index segment '${part}' is not supported — ` +
+          `set the whole array as a JSON value instead`,
+      );
+    }
+  }
   let cursor: Record<string, unknown> = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];

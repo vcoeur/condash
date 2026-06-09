@@ -1,14 +1,30 @@
 import { promises as fs } from 'node:fs';
-import { join, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
+// Dot-prefixed segments *below* the knowledge root are excluded. Tested
+// against the path relative to the knowledge root — never the absolute path,
+// which would zero out every knowledge file when the conception itself lives
+// under a dotted ancestor directory (e.g. `~/.conceptions/x`).
 const KNOWLEDGE_IGNORED = /(^|\/)\.[^/]+/;
 
 // Heavy/non-content dirs: skip them in the markdown walker to avoid pulling
-// thousands of irrelevant `.md` files (npm package READMEs, vendored docs)
-// when a stray `node_modules/` or `.git/` somehow sits under the conception
-// tree. `notes/` is *not* skipped here — project notes are searchable body
-// content. `local/` carries gitignored deliverables and is also excluded.
-const SKIP_DIR_NAMES = new Set(['.git', 'node_modules', 'local']);
+// thousands of irrelevant `.md` files (npm package READMEs, vendored docs,
+// build output) when a stray `node_modules/`, `.git/`, `dist/`, or `target/`
+// somehow sits under the conception tree. `notes/` is *not* skipped here —
+// project notes are searchable body content. `local/` carries gitignored
+// deliverables and is also excluded.
+//
+// Shared with the index classifier (`index-cache.ts classifyIndexedPath`) so
+// walker and incremental-event membership never drift, and kept in sync with
+// the watcher's ignore rules (`src/main/watcher.ts`) — a dir the watcher
+// never reports events for must not be indexed, or its entries would ghost.
+export const SKIP_DIR_NAMES: ReadonlySet<string> = new Set([
+  '.git',
+  'node_modules',
+  'local',
+  'dist',
+  'target',
+]);
 
 export interface ProjectFile {
   path: string;
@@ -40,7 +56,7 @@ export async function collectProjectFiles(projectsRoot: string): Promise<Project
 export async function collectKnowledgeFiles(knowledgeRoot: string): Promise<string[]> {
   const out: string[] = [];
   await walkMarkdown(knowledgeRoot, (file) => {
-    if (KNOWLEDGE_IGNORED.test(file)) return;
+    if (knowledgeIgnored(knowledgeRoot, file)) return;
     out.push(file);
   });
   return out;
@@ -56,7 +72,7 @@ export async function collectKnowledgeFiles(knowledgeRoot: string): Promise<stri
 export async function collectKnowledgeBodyFiles(knowledgeRoot: string): Promise<string[]> {
   const out: string[] = [];
   await walkMarkdown(knowledgeRoot, (file) => {
-    if (KNOWLEDGE_IGNORED.test(file)) return;
+    if (knowledgeIgnored(knowledgeRoot, file)) return;
     if (file.endsWith(`${sep}index.md`) || file.endsWith('/index.md')) return;
     out.push(file);
   });
@@ -68,7 +84,7 @@ export async function collectKnowledgeBodyFiles(knowledgeRoot: string): Promise<
 export async function collectKnowledgeIndexFiles(knowledgeRoot: string): Promise<string[]> {
   const out: string[] = [];
   await walkMarkdown(knowledgeRoot, (file) => {
-    if (KNOWLEDGE_IGNORED.test(file)) return;
+    if (knowledgeIgnored(knowledgeRoot, file)) return;
     if (file.endsWith(`${sep}index.md`) || file.endsWith('/index.md')) out.push(file);
   });
   return out;
@@ -113,8 +129,16 @@ export async function collectLogFiles(logsRoot: string): Promise<string[]> {
   return out;
 }
 
-const RESOURCE_EXTS = new Set(['.md', '.markdown', '.txt']);
+// Shared with the index classifier (`index-cache.ts`) — single source of
+// truth for "what counts as a resource file" on both the walk and the
+// incremental-event path.
+export const RESOURCE_EXTS: ReadonlySet<string> = new Set(['.md', '.markdown', '.txt']);
 const SKILL_EXTS = new Set(['.md']);
+
+/** True when `file` carries a dot-prefixed segment below `knowledgeRoot`. */
+function knowledgeIgnored(knowledgeRoot: string, file: string): boolean {
+  return KNOWLEDGE_IGNORED.test(relative(knowledgeRoot, file).split(sep).join('/'));
+}
 
 async function readSubdirs(dir: string): Promise<string[]> {
   try {

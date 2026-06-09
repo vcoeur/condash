@@ -109,6 +109,39 @@ describe('walkRepos with explicit path', () => {
       ['rel', '/ws/custom/loc'],
     ]);
   });
+
+  it('resolves submodules under a path-configured parent, not the workspace root', () => {
+    // Regression: the recursion used to pass `entry.name` as the parent —
+    // undefined for the `{handle, path}` form — so submodules of a
+    // path-configured parent resolved straight under workspace_path.
+    const config: ConfigShape = {
+      workspace_path: '/ws',
+      repositories: [
+        { handle: 'mono', path: '/mnt/elsewhere/mono', submodules: ['apps/web'] },
+        { handle: 'rel', path: 'custom/loc', submodules: [{ name: 'sub', run: 'make dev' }] },
+      ],
+    };
+    const flat = collect(config);
+    expect(flat.map((e) => [e.display, e.cwd])).toEqual([
+      ['mono', '/mnt/elsewhere/mono'],
+      ['mono/apps/web', '/mnt/elsewhere/mono/apps/web'],
+      ['loc', '/ws/custom/loc'],
+      ['loc/sub', '/ws/custom/loc/sub'],
+    ]);
+  });
+
+  it('keeps name-configured parents resolving submodules as before', () => {
+    const config: ConfigShape = {
+      workspace_path: '/ws',
+      repositories: [{ name: 'mono', submodules: ['apps/web', { name: 'apps/api' }] }],
+    };
+    const flat = collect(config);
+    expect(flat.map((e) => [e.display, e.cwd])).toEqual([
+      ['mono', '/ws/mono'],
+      ['mono/apps/web', '/ws/mono/apps/web'],
+      ['mono/apps/api', '/ws/mono/apps/api'],
+    ]);
+  });
 });
 
 describe('isSectionMarker', () => {

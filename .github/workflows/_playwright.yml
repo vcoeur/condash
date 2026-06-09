@@ -7,6 +7,11 @@ name: _playwright
 on:
   workflow_call:
 
+# Least privilege: test-only — checkout, caches, and artifact upload need no
+# contents writes (artifact upload uses the runtime token, not GITHUB_TOKEN).
+permissions:
+  contents: read
+
 jobs:
   playwright:
     name: Playwright suite
@@ -20,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       # No `cache: 'npm'`: the node_modules cache below already restores the full
       # install on a hit (npm ci is then skipped), so setup-node's npm cache only
@@ -47,9 +54,10 @@ jobs:
           key: playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Install xvfb
-        # Electron Playwright needs a display server on Linux. xvfb-run -a
-        # wraps the suite so each invocation gets an isolated virtual
-        # display.
+        # Electron Playwright needs a display server on Linux. `npm test`
+        # (scripts/run-playwright.mjs) wraps the suite in its own
+        # `xvfb-run -a` so each invocation gets an isolated virtual display
+        # — xvfb only needs to be installed here, not invoked.
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Install dependencies
@@ -62,8 +70,11 @@ jobs:
       - name: Build renderer + main
         run: npm run build
 
+      # No outer xvfb-run: run-playwright.mjs (behind `npm test`) already
+      # wraps the run in xvfb-run; double-wrapping nests two Xvfb servers
+      # for no benefit.
       - name: Run Playwright suite
-        run: xvfb-run -a npm test -- --reporter=list
+        run: npm test -- --reporter=list
 
       - name: Upload Playwright artefacts on failure
         if: failure()

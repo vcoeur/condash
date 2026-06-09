@@ -84,15 +84,18 @@ export async function requirePathUnder(path: string, root: string): Promise<stri
  * Throw unless `path` resolves under any of: conceptionPath,
  * `workspace_path`, or `worktrees_path`. The latter two come from
  * `<conception>/condash.json` (workspace-scoped repos and their
- * worktrees). Used by IPC handlers that operate on git worktrees outside
- * the conception tree itself — `getDirtyDetails`, `launchOpenWith` — so a
- * compromised renderer can't drive `git status` against `~/.ssh/` or open
- * `/etc/passwd` in the user's IDE.
+ * worktrees). Used by IPC handlers that operate on paths outside the
+ * conception tree itself — `getDirtyDetails`, `launchOpenWith`, plus the
+ * shell-out verbs `openPath` / `showInFolder` (the latter two via
+ * `requireOpenablePath` in ipc/system.ts, which adds one exact-file
+ * exemption for the per-machine settings.json) — so a compromised renderer
+ * can't drive `git status` against `~/.ssh/`, open `/etc/passwd` in the
+ * user's IDE, or reveal arbitrary files in the OS file manager.
  *
- * `openInEditor` is deliberately NOT bounded by this helper — that handler
- * is the user's "open this file in `$EDITOR`" path and the renderer hands
- * it any path the user picked. Pass-9 documents the trust boundary at the
- * call site.
+ * `openInEditor` is the single handler deliberately NOT bounded by this
+ * helper — it's the user's "open this file in `$EDITOR`" path and the
+ * renderer hands it any path the user picked. The trust boundary is
+ * documented at the call site.
  */
 export async function requirePathUnderWorkspace(path: string): Promise<string> {
   const settings = await readSettings();

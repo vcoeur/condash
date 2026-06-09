@@ -76,9 +76,12 @@ export function parseVerifiedDate(head: string): string | undefined {
 }
 
 /**
- * Whole-day age of an ISO `YYYY-MM-DD` stamp relative to `today`, in UTC.
- * Floors to whole days and never returns a negative number (a future-dated
- * stamp reads as 0 days old).
+ * Whole-day age of an ISO `YYYY-MM-DD` stamp relative to `today`, in local
+ * calendar days. Stamps are written with the local-time `isoToday`, so "now"
+ * must use the *local* date parts of `today` — a `getUTC*` reading was off
+ * by one around midnight on any machine not on UTC. Floors to whole days
+ * and never returns a negative number (a future-dated stamp reads as 0
+ * days old).
  *
  * @param iso the stamp date as `YYYY-MM-DD`
  * @param today the reference date (defaults to now)
@@ -86,6 +89,6 @@ export function parseVerifiedDate(head: string): string | undefined {
 export function stampAgeDays(iso: string, today: Date = new Date()): number {
   const [year, month, day] = iso.split('-').map(Number);
   const stamp = Date.UTC(year, month - 1, day);
-  const now = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
   return Math.max(0, Math.floor((now - stamp) / (1000 * 60 * 60 * 24)));
 }

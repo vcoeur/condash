@@ -24,6 +24,12 @@ let tmp: string;
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 let settingsPathValue: string;
 
+/** Minimal event shape accepted by `requireMainWindowSender`. */
+const trustedEvent = {
+  sender: { getType: () => 'window' },
+  senderFrame: { url: 'file:///app/dist/index.html', parent: null },
+};
+
 async function writeSettings(content: object): Promise<void> {
   await fs.writeFile(settingsPathValue, JSON.stringify(content));
 }
@@ -67,7 +73,7 @@ afterEach(async () => {
 
 describe('setCardMinWidth / getCardMinWidth round-trip', () => {
   it('persists and reads back the new logs / tasks / deliverables keys', async () => {
-    await handlers.setCardMinWidth(null, {
+    await handlers.setCardMinWidth(trustedEvent, {
       projects: 700,
       logs: 500,
       tasks: 360,
@@ -75,7 +81,7 @@ describe('setCardMinWidth / getCardMinWidth round-trip', () => {
     });
 
     // Read path returns the set values, with built-in defaults for the rest.
-    const effective = (await handlers.getCardMinWidth()) as Record<string, number>;
+    const effective = (await handlers.getCardMinWidth(trustedEvent)) as Record<string, number>;
     expect(effective.projects).toBe(700);
     expect(effective.logs).toBe(500);
     expect(effective.tasks).toBe(360);
@@ -94,29 +100,31 @@ describe('setCardMinWidth / getCardMinWidth round-trip', () => {
 
   it('round-trips every canonical card key', async () => {
     const widths = Object.fromEntries(Object.keys(DEFAULT_CARD_MIN_WIDTH).map((key) => [key, 700]));
-    await handlers.setCardMinWidth(null, widths);
-    const effective = (await handlers.getCardMinWidth()) as Record<string, number>;
+    await handlers.setCardMinWidth(trustedEvent, widths);
+    const effective = (await handlers.getCardMinWidth(trustedEvent)) as Record<string, number>;
     for (const key of Object.keys(DEFAULT_CARD_MIN_WIDTH)) {
       expect(effective[key], `getCardMinWidth should return ${key}`).toBe(700);
     }
   });
 
   it('rejects an unknown key (typo guard intact)', async () => {
-    await expect(handlers.setCardMinWidth(null, { logz: 500 })).rejects.toThrow(/unknown key/);
+    await expect(handlers.setCardMinWidth(trustedEvent, { logz: 500 })).rejects.toThrow(
+      /unknown key/,
+    );
   });
 
   it('drops a key whose value equals the built-in default', async () => {
-    await handlers.setCardMinWidth(null, { logs: DEFAULT_CARD_MIN_WIDTH.logs, tasks: 360 });
+    await handlers.setCardMinWidth(trustedEvent, { logs: DEFAULT_CARD_MIN_WIDTH.logs, tasks: 360 });
     const onDisk = await readSettingsFile();
     // logs == default → pruned; tasks != default → kept.
     expect(onDisk.cardMinWidth).toEqual({ tasks: 360 });
-    const effective = (await handlers.getCardMinWidth()) as Record<string, number>;
+    const effective = (await handlers.getCardMinWidth(trustedEvent)) as Record<string, number>;
     expect(effective.logs).toBe(DEFAULT_CARD_MIN_WIDTH.logs);
   });
 
   it('clamps an out-of-range value to the inherited default', async () => {
-    await handlers.setCardMinWidth(null, { logs: 5 });
-    const effective = (await handlers.getCardMinWidth()) as Record<string, number>;
+    await handlers.setCardMinWidth(trustedEvent, { logs: 5 });
+    const effective = (await handlers.getCardMinWidth(trustedEvent)) as Record<string, number>;
     // 5 < 120 floor → rejected by clampMinWidth → inherits the default.
     expect(effective.logs).toBe(DEFAULT_CARD_MIN_WIDTH.logs);
   });

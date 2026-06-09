@@ -7,6 +7,11 @@ import {
   resolveConceptionConfigPath,
 } from '../../main/effective-config';
 import { migrateLegacyConfig } from '../../main/condash-dir-migrate';
+import {
+  conceptionConfigSchema,
+  globalSettingsSchema,
+  migrateRawSettings,
+} from '../../main/config-schema';
 import { mutateSettingsJson, settingsPath } from '../../main/settings';
 import { atomicWrite } from '../../main/atomic-write';
 import { pickByDottedPath, setByDottedPath } from '../../shared/dotted-path';
@@ -149,14 +154,24 @@ export async function runConfig(
         parsedValue = value;
       }
     }
+    let written: Record<string, unknown> = {};
     if (writeGlobal) {
-      // Route through the main settings writer so this shares the settings
-      // queue + atomic tmp→fsync→rename with the GUI's updateSettings —
-      // otherwise the two writers to ~/.config/condash/settings.json can race.
+      // Route through the main settings writer for its atomic
+      // tmp→fsync→rename and its in-process write queue. Note the queue only
+      // serialises writes from *this* process — a concurrently running GUI
+      // keeps its own queue, so there is no cross-process exclusion; both
+      // sides writing atomically just guarantees the loser of a race leaves
+      // a consistent file.
       await mutateSettingsJson((current) => {
         setByDottedPath(current, key, parsedValue);
+        written = structuredClone(current);
       });
-      emit(ctx, { ok: true, target: 'settings.json', key }, () => `set ${key} in settings.json\n`);
+      emit(
+        ctx,
+        { ok: true, target: 'settings.json', key },
+        () => `set ${key} in settings.json\n`,
+        schemaWarnings(written, 'settings.json'),
+      );
     } else {
       const writePath = conceptionConfigWritePath(conceptionPath);
       // If the canonical primary doesn't exist yet but a legacy file does,
@@ -168,11 +183,13 @@ export async function runConfig(
           for (const [k, v] of Object.entries(existing)) current[k] = v;
         }
         setByDottedPath(current, key, parsedValue);
+        written = structuredClone(current);
       });
       emit(
         ctx,
         { ok: true, target: '.condash/settings.json', key },
         () => `set ${key} in .condash/settings.json\n`,
+        schemaWarnings(written, '.condash/settings.json'),
       );
     }
     return;
@@ -193,6 +210,26 @@ export async function runConfig(
     return;
   }
   throw new CliError(ExitCodes.USAGE, `Unknown config verb: ${verb}`);
+}
+
+/**
+ * Non-fatal write-time validation for `config set`: parse the just-written
+ * config through the matching strict schema and turn each issue into a
+ * warning naming the offending key. `config set` writes arbitrary dotted
+ * paths by design, but the GUI's save path refuses a file the schema
+ * rejects — warning here catches the typo at write time instead of bricking
+ * the next Settings save.
+ */
+function schemaWarnings(config: Record<string, unknown>, target: string): string[] {
+  const schema = target === 'settings.json' ? globalSettingsSchema : conceptionConfigSchema;
+  // Validate a clone: migrateRawSettings mutates in place, and the legacy-key
+  // stripping it does must not silently alter what was just written.
+  const result = schema.safeParse(migrateRawSettings(structuredClone(config)));
+  if (result.success) return [];
+  return result.error.issues.map((issue) => {
+    const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+    return `${target}: ${where} — ${issue.message}; the GUI Settings save will reject this file until it is fixed`;
+  });
 }
 
 /** Read-modify-write a JSON file atomically; creates the file (and its
@@ -274,8 +311,8 @@ function printHelp(verb: string | null): void {
           'Read one config key (dotted path).',
           '',
           'Examples:',
-          '  condash config get repos[0].path',
-          '  condash config get audit.thresholds.binary --effective',
+          '  condash config get repositories[0].path',
+          '  condash config get terminal.logging.enabled --effective',
         ]),
       );
       return;
@@ -290,9 +327,12 @@ function printHelp(verb: string | null): void {
           'Optional:',
           '  --global   Write to ~/.config/condash/settings.json instead.',
           '',
+          'Note: array-index segments (repositories[0].path) are read-only —',
+          'set the whole array as a JSON value instead.',
+          '',
           'Examples:',
-          '  condash config set repos[0].path /home/me/src/foo',
-          '  condash config set audit.thresholds.binary 5242880 --global',
+          '  condash config set workspace_path /home/me/src',
+          '  condash config set terminal.logging.retentionDays 30 --global',
         ]),
       );
       return;

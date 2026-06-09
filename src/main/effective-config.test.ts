@@ -48,6 +48,20 @@ describe('resolveConceptionConfigPath', () => {
     writeFileSync(join(tmp, 'configuration.json'), '{}\n');
     expect(await resolveConceptionConfigPath(tmp)).toBe(condashSettingsPath(tmp));
   });
+
+  it('skips a tombstoned legacy file the way readConceptionConfigRaw does', async () => {
+    writeFileSync(
+      join(tmp, 'condash.json'),
+      JSON.stringify({ _moved_to: `${CONDASH_DIR}/settings.json` }),
+    );
+    writeFileSync(join(tmp, 'configuration.json'), '{"src":"cf"}\n');
+    expect(await resolveConceptionConfigPath(tmp)).toBe(join(tmp, 'configuration.json'));
+  });
+
+  it('returns the canonical path when every candidate is a tombstone', async () => {
+    writeFileSync(join(tmp, 'condash.json'), JSON.stringify({ _moved_at: 'x' }));
+    expect(await resolveConceptionConfigPath(tmp)).toBe(condashSettingsPath(tmp));
+  });
 });
 
 describe('conceptionConfigWritePath', () => {

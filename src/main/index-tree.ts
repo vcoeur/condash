@@ -37,8 +37,10 @@
 
 import { promises as fs } from 'node:fs';
 import { basename, join, relative } from 'node:path';
+import { toPosix } from '../shared/path';
 import { atomicWrite } from './atomic-write';
 import { isLowQualityTag } from './index-tag-filter';
+import { detectEol, withFileQueue } from './mutate-shared';
 
 /** Per-bullet aggregated-tag cap. Surplus is dropped and surfaced in overTagDropped. */
 const TARGET_MAX = 8;
@@ -184,6 +186,9 @@ interface BulletEntry {
 interface IndexFileShape {
   /** Lines of the file split by \n, no trailing newline tracking. */
   lines: string[];
+  /** Dominant line ending of the source file — re-used by `renderIndex` so a
+   * CRLF-authored index isn't flipped to LF wholesale on regen. */
+  eol: '\n' | '\r\n';
   /** Sections in order: name + the line-range they own (start = heading line, end = exclusive). */
   sections: SectionRange[];
   /** Existing bullets, keyed by name (canonical link-text form). */
@@ -228,6 +233,28 @@ const BULLET_NO_TAGS_RE =
 // "missing" and appending yet another copy.
 const BULLET_LOOSE_RE = /^-\s+\[(?:`?)(?<name>[^\]`]+?)(?:`?)\]\((?<link>[^)]+)\)/;
 const HEADING2_RE = /^##\s+(.+?)\s*$/;
+
+/**
+ * A bullet is engine-owned only when its link points at an immediate child
+ * of the directory: a bare name (`foo.md`, `subdir/`), `subdir/index.md`, or
+ * `item/README.md`. URLs, anchors, absolute paths, `../` escapes, and deeper
+ * relative paths are hand-written cross-references — the engine passes them
+ * through verbatim like prose (the "hand-written sections preserved
+ * verbatim" contract in the module header). A bullet carrying the
+ * `<!-- draft -->` marker stays engine-owned regardless, since only the
+ * engine writes the marker.
+ */
+function isImmediateChildLink(link: string): boolean {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(link)) return false; // scheme — http:, mailto:, …
+  if (link.startsWith('/') || link.startsWith('#')) return false;
+  const segments = link
+    .replace(/[?#].*$/, '')
+    .split('/')
+    .filter((s) => s.length > 0 && s !== '.');
+  if (segments.length === 0 || segments.includes('..')) return false;
+  if (segments.length === 1) return true;
+  return segments.length === 2 && (segments[1] === 'index.md' || segments[1] === 'README.md');
+}
 
 function matchBullet(line: string): {
   name: string;
@@ -429,22 +456,25 @@ async function processDirectory(
   const newCanonicalNames = children
     .map((c) => canonicalName(c))
     .filter((n) => !shape.bullets.has(n));
-  const droppedBullets: BulletEntry[] = [];
-  for (const [name, bullet] of shape.bullets) {
-    if (!onDiskNames.has(name)) droppedBullets.push(bullet);
+  const droppedBullets: { canonical: string; bullet: BulletEntry }[] = [];
+  for (const [canonical, bullet] of shape.bullets) {
+    if (!onDiskNames.has(canonical)) droppedBullets.push({ canonical, bullet });
   }
-  for (const dropped of droppedBullets) {
-    const candidate = newCanonicalNames.find((n) => similarityOk(dropped.name, n));
+  for (const { canonical, bullet } of droppedBullets) {
+    const candidate = newCanonicalNames.find((n) => similarityOk(bullet.name, n));
     if (candidate) {
       result.renames.push({
         indexPath: indexRel,
-        oldName: dropped.name,
+        oldName: bullet.name,
         newName: candidate,
       });
     } else {
-      result.dropped.push(dropped.name);
+      result.dropped.push(bullet.name);
     }
-    shape.bullets.delete(dropped.name);
+    // Delete by the map's own key (canonical `subdir/` form) — the raw bullet
+    // name may lack the trailing slash, and a miss here meant the stale
+    // bullet survived the render and got re-reported on every run.
+    shape.bullets.delete(canonical);
   }
 
   // Draft new entries for on-disk children that have no bullet yet. New
@@ -570,8 +600,11 @@ async function processDirectory(
     for (const t of bullet.tags) bumpTag(t);
   }
   // Also fold descendants (already populated since we go deepest-first).
+  // Compare on POSIX-normalised views — the map keys carry the native
+  // separator, and a `\`-separated key never matches a `+ '/'` prefix.
+  const dirPrefix = toPosix(dirAbsPath) + '/';
   for (const [path, freq] of aggregatedKeywords) {
-    if (path.startsWith(dirAbsPath + '/')) {
+    if (toPosix(path).startsWith(dirPrefix)) {
       for (const [t, n] of freq) bumpTag(t, n);
     }
   }
@@ -590,7 +623,10 @@ async function processDirectory(
   if (changed) {
     const rendered = renderIndex(shape, newEntries);
     if (!dryRun) {
-      await atomicWrite(indexPath, rendered);
+      // The GUI's mutation writers queue per path through `withFileQueue`;
+      // the regen must join the same queue so a concurrent in-app edit of
+      // the index never interleaves (internals invariant 2).
+      await withFileQueue(indexPath, () => atomicWrite(indexPath, rendered));
     }
   }
 
@@ -641,6 +677,7 @@ function pickBucketHeading(shape: IndexFileShape, child: ChildInfo): string {
 
 function parseIndex(raw: string): IndexFileShape {
   const lines = raw.split(/\r?\n/);
+  const eol = detectEol(raw);
   const sections: SectionRange[] = [];
   const bullets = new Map<string, BulletEntry>();
   let hadDuplicates = false;
@@ -692,6 +729,10 @@ function parseIndex(raw: string): IndexFileShape {
       if (!m) continue;
       const rawName = m.name.trim();
       const link = m.link.trim();
+      // Hand-written cross-reference bullet (external URL, deeper path, …):
+      // not engine-owned — leave it out of the bullets map so the renderer
+      // passes the line through verbatim and never drops it as "stale".
+      if (!m.draft && !isImmediateChildLink(link)) continue;
       const isDir = rawName.endsWith('/') || link.endsWith('/index.md');
       if (isDir) dirCount++;
       else fileCount++;
@@ -725,7 +766,7 @@ function parseIndex(raw: string): IndexFileShape {
     else section.kind = 'mixed';
   }
 
-  return { lines, sections, bullets, hadDuplicates };
+  return { lines, eol, sections, bullets, hadDuplicates };
 }
 
 /**
@@ -793,6 +834,12 @@ function renderIndex(shape: IndexFileShape, newEntries: BulletEntry[]): string {
           newBulletLines.push(lines[i]);
           continue;
         }
+        // Hand-written cross-reference bullet — not engine-owned, preserved
+        // verbatim like prose (mirrors the parseIndex ownership gate).
+        if (!m.draft && !isImmediateChildLink(m.link.trim())) {
+          newBulletLines.push(lines[i]);
+          continue;
+        }
         const canonical = canonicalNameFromBullet(m.name.trim(), m.link.trim());
         const bullet = shape.bullets.get(canonical);
         if (!bullet) continue; // dropped
@@ -832,9 +879,10 @@ function renderIndex(shape: IndexFileShape, newEntries: BulletEntry[]): string {
     lines.push('', `## ${heading}`, '', ...entries.map((e) => e.raw));
   }
 
-  // Ensure exactly one trailing newline.
+  // Ensure exactly one trailing newline, in the source file's own EOL so a
+  // CRLF-authored index doesn't get a whole-file line-ending flip.
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  return lines.join('\n') + '\n';
+  return lines.join(shape.eol) + shape.eol;
 }
 
 // ---------------------------------------------------------------------------

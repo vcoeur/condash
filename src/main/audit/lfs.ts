@@ -7,6 +7,7 @@
 
 import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
+import { toPosix } from '../../shared/path';
 import { pathExists } from '../fs-helpers';
 import {
   type AuditIssue,
@@ -36,7 +37,10 @@ export async function checkLfs(conceptionPath: string): Promise<AuditIssue[]> {
   const inScope = await listInScopeFiles(conceptionPath);
   const matches = await collectFilesByExt(projectsDir, BIN_EXTS);
   for (const abs of matches) {
-    const rel = relative(conceptionPath, abs);
+    // POSIX-normalise: `git ls-files` / `git lfs ls-files` emit forward
+    // slashes, while `relative()` yields backslashes on Windows — without
+    // this the set lookups silently never match there.
+    const rel = toPosix(relative(conceptionPath, abs));
     if (!inScope.has(rel)) continue;
     if (tracked.has(rel)) continue;
     let sizeKb = 0;

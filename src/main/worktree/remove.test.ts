@@ -139,6 +139,116 @@ describe('removeBranchWorktrees', () => {
   });
 });
 
+describe('non-worktree directory at the expected path (orphan guard)', () => {
+  it('survives --force-rm and is reported under orphaned[]', async () => {
+    // A plain directory (manual clone, leftover) that was NEVER a registered
+    // worktree. Before the pre-removal registry snapshot, `git worktree
+    // remove` failed, `isStillRegistered` said no (it never was), and
+    // --force-rm erased it — unpushed commits included.
+    const orphanBranch = 'orphan-test';
+    const target = join(worktreesRoot, orphanBranch, 'demo');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'precious.txt'), 'unpushed work');
+
+    const result = await removeBranchWorktrees(conception, orphanBranch, {
+      repos: ['demo'],
+      forceRm: true,
+    });
+    expect(result.removed).toEqual([]);
+    expect(result.partiallyRemoved).toEqual([]);
+    expect(result.orphaned).toHaveLength(1);
+    expect(result.orphaned[0]).toMatchObject({ repo: 'demo', path: target });
+    expect(result.orphaned[0].reason).toContain('not a registered worktree');
+    // The directory and its contents are intact.
+    expect(existsSync(join(target, 'precious.txt'))).toBe(true);
+  });
+});
+
+describe('flattened-path collision (foo/bar vs foo-bar)', () => {
+  it("refuses to remove the OTHER branch's worktree sharing the directory key", async () => {
+    // `branchToDir` maps both `coll/ision` and `coll-ision` to `coll-ision`.
+    // The worktree on disk belongs to `coll/ision`; removing `coll-ision`
+    // must not delete it.
+    const target = join(worktreesRoot, 'coll-ision', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', 'coll/ision');
+
+    const result = await removeBranchWorktrees(conception, 'coll-ision', {
+      repos: ['demo'],
+      forceRm: true,
+    });
+    expect(result.removed).toEqual([]);
+    expect(result.orphaned).toEqual([]);
+    expect(result.protected).toHaveLength(1);
+    expect(result.protected[0].reason).toContain("on branch 'coll/ision'");
+    expect(result.protected[0].reason).toContain('flattened-path collision');
+    // Worktree intact: still registered and on disk.
+    const wts = await git(repo, 'worktree', 'list', '--porcelain');
+    expect(wts).toContain(target);
+    expect(existsSync(target)).toBe(true);
+  });
+});
+
+describe('implicit-mode protection (two items, one branch)', () => {
+  const sharedBranch = 'shared-branch';
+
+  function writeItem(slug: string, status: string): void {
+    const dir = join(conception, 'projects', '2026-06', `2026-06-01-${slug}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'README.md'),
+      [
+        '---',
+        'date: 2026-06-01',
+        'kind: project',
+        `status: ${status}`,
+        'apps:',
+        '  - demo',
+        `branch: ${sharedBranch}`,
+        '---',
+        '',
+        '# T',
+      ].join('\n'),
+    );
+  }
+
+  it('protects a repo claimed by two active items in implicit mode', async () => {
+    writeItem('item-a', 'now');
+    writeItem('item-b', 'review');
+    const target = join(worktreesRoot, sharedBranch, 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', sharedBranch);
+
+    const result = await removeBranchWorktrees(conception, sharedBranch);
+    expect(result.removed).toEqual([]);
+    expect(result.protected).toHaveLength(1);
+    expect(result.protected[0].repo).toBe('demo');
+    expect(result.protected[0].reason).toContain('2 active items');
+    expect(existsSync(target)).toBe(true);
+  });
+
+  it('removes when only one of the two items is still active', async () => {
+    writeItem('item-a', 'now');
+    writeItem('item-b', 'done');
+    const target = join(worktreesRoot, sharedBranch, 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', sharedBranch);
+
+    const result = await removeBranchWorktrees(conception, sharedBranch);
+    expect(result.protected).toEqual([]);
+    expect(result.removed).toEqual([{ repo: 'demo', path: target }]);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  it('an explicit --repo list overrides the implicit shared-claim protection', async () => {
+    writeItem('item-a', 'now');
+    writeItem('item-b', 'now');
+    const target = join(worktreesRoot, sharedBranch, 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', sharedBranch);
+
+    const result = await removeBranchWorktrees(conception, sharedBranch, { repos: ['demo'] });
+    expect(result.protected).toEqual([]);
+    expect(result.removed).toEqual([{ repo: 'demo', path: target }]);
+  });
+});
+
 // Restore env at module unload so the test process leaves no trace.
 process.on('exit', () => {
   if (prevXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;

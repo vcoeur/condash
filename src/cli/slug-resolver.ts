@@ -1,9 +1,6 @@
 import { promises as fs } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { itemFolderRegex } from '../shared/header';
+import { join, relative } from 'node:path';
 import { ambiguous, notFound } from './output';
-
-const FOLDER_NAME_RE = itemFolderRegex();
 
 export interface SlugCandidate {
   slug: string;
@@ -74,9 +71,9 @@ async function findCandidates(conceptionPath: string, slug: string): Promise<Slu
 }
 
 function matchesSlug(folderName: string, query: string): boolean {
+  // Exact match covers both the short form and the full dated form
+  // (`YYYY-MM-DD-slug` passed without a month qualifier).
   if (folderName === query) return true;
-  // Full dated form passed without a month: glob-equivalent of `*/<query>`.
-  if (FOLDER_NAME_RE.test(query) && folderName === query) return true;
   // Short form: word-boundary match on any segment of the slug after the
   // date prefix. The previous `.includes(query)` returned true on
   // arbitrary substring matches — `oo` matched `food`, `condash-review`
@@ -111,6 +108,3 @@ async function isFile(path: string): Promise<boolean> {
     return false;
   }
 }
-
-export { isItemFolderName, itemFolderRegex } from '../shared/header';
-export { dirname };

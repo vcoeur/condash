@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { LayoutState, Settings } from '../shared/types';
+import { migrateRawSettings } from './config-schema';
 import { userDataDir } from './user-data-dir';
 
 const FILE_NAME = 'settings.json';
@@ -14,7 +15,11 @@ export const RECENT_CONCEPTION_PATHS_CAP = 5;
 // concurrent calls don't drop one another's update. One queue is enough —
 // settings.json is per-machine and small.
 let settingsQueue: Promise<unknown> = Promise.resolve();
-function withSettingsQueue<T>(work: () => Promise<T>): Promise<T> {
+/** Run `work` serialised against every other settings.json write. Exported so
+ * the Settings modal's raw save (`write-config.ts`) shares this queue with
+ * `updateSettings` — two disjoint queues would let a narrow IPC mutation land
+ * inside the raw save's read→write window and get silently overwritten. */
+export function withSettingsQueue<T>(work: () => Promise<T>): Promise<T> {
   const next: Promise<T> = settingsQueue.catch(() => undefined).then(work);
   settingsQueue = next.catch(() => undefined);
   return next;
@@ -95,11 +100,19 @@ function migrateLegacyShape(parsed: Record<string, unknown>): {
   };
 }
 
-async function readSettingsRaw(): Promise<Settings> {
-  let onDisk: Settings;
+async function readSettingsFromDisk(): Promise<Settings> {
   try {
     const raw = await fs.readFile(settingsPath(), 'utf8');
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const rawParsed: unknown = JSON.parse(raw);
+    // A degenerate root (`null`, a string, an array) must not crash boot —
+    // fall back to defaults, same guard as effective-config's reader.
+    if (!rawParsed || typeof rawParsed !== 'object' || Array.isArray(rawParsed)) {
+      return { ...empty };
+    }
+    // Normalise legacy shapes (leftView 'outputs', dropped terminal keys, …)
+    // before the typed view is built, so e.g. getLayout never surfaces an
+    // unmigrated value to the renderer.
+    const parsed = migrateRawSettings(rawParsed) as Record<string, unknown>;
     const { lastConceptionPath, recentConceptionPaths } = migrateLegacyShape(parsed);
     // Strip the legacy key from the parsed view so the spread below doesn't
     // re-add it to the in-memory Settings shape.
@@ -109,7 +122,7 @@ async function readSettingsRaw(): Promise<Settings> {
     void _drop;
     const layoutCandidate =
       rest.layout && typeof rest.layout === 'object' ? (rest.layout as LayoutState) : undefined;
-    onDisk = {
+    return {
       ...empty,
       ...(rest as Partial<Settings>),
       lastConceptionPath,
@@ -117,11 +130,17 @@ async function readSettingsRaw(): Promise<Settings> {
       layout: { ...DEFAULT_LAYOUT, ...(layoutCandidate ?? {}) },
     };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') onDisk = { ...empty };
-    else throw err;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ...empty };
+    throw err;
   }
+}
+
+async function readSettingsRaw(): Promise<Settings> {
+  const onDisk = await readSettingsFromDisk();
   // CONDASH_CONCEPTION_PATH wins for the session — one-shot override
-  // matching the Tauri build's behaviour.
+  // matching the Tauri build's behaviour. Read-side only: the write path
+  // (`updateSettings`) starts from the on-disk state so a mutation under the
+  // env var never persists the scratch path into `lastConceptionPath`.
   const envOverride = process.env.CONDASH_CONCEPTION_PATH;
   if (envOverride) return { ...onDisk, lastConceptionPath: envOverride };
   return onDisk;
@@ -170,21 +189,33 @@ export function removeRecent(recents: string[], path: string): string[] {
 async function writeSettingsRaw(next: Settings): Promise<void> {
   const path = settingsPath();
   await fs.mkdir(dirname(path), { recursive: true });
+  // Always cap recents on write so any in-memory mutation that grew the
+  // list past the cap is normalised before it hits disk.
+  const persisted: Settings = {
+    ...next,
+    recentConceptionPaths: pruneRecents(next.recentConceptionPaths ?? []),
+  };
+  await writeJsonAtomic(path, JSON.stringify(persisted, null, 2) + '\n');
+}
+
+/** `tmp → fsync → rename` with best-effort tmp cleanup on failure, so a
+ * throwing write/sync/rename doesn't leak `.<ts>.<pid>.tmp` files into the
+ * config directory. */
+async function writeJsonAtomic(path: string, content: string): Promise<void> {
   const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
-  const fh = await fs.open(tmp, 'w');
   try {
-    // Always cap recents on write so any in-memory mutation that grew the
-    // list past the cap is normalised before it hits disk.
-    const persisted: Settings = {
-      ...next,
-      recentConceptionPaths: pruneRecents(next.recentConceptionPaths ?? []),
-    };
-    await fh.writeFile(JSON.stringify(persisted, null, 2) + '\n', 'utf8');
-    await fh.sync();
-  } finally {
-    await fh.close();
+    const fh = await fs.open(tmp, 'w');
+    try {
+      await fh.writeFile(content, 'utf8');
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+    await fs.rename(tmp, path);
+  } catch (err) {
+    await fs.unlink(tmp).catch(() => undefined);
+    throw err;
   }
-  await fs.rename(tmp, path);
 }
 
 /**
@@ -192,13 +223,15 @@ async function writeSettingsRaw(next: Settings): Promise<void> {
  * narrow field (setLayout, setTheme, setWelcomeDismissed, termSetPrefs,
  * pickConceptionPath) so two concurrent calls don't drop one another's
  * update. The mutator runs against fresh on-disk state under the
- * settings queue.
+ * settings queue — deliberately *without* the `CONDASH_CONCEPTION_PATH`
+ * overlay, so a mutation made while the env override is set doesn't
+ * persist the session-only scratch path into `lastConceptionPath`.
  */
 export async function updateSettings(
   mutator: (current: Settings) => Settings | Promise<Settings>,
 ): Promise<Settings> {
   return withSettingsQueue(async () => {
-    const current = await readSettingsRaw();
+    const current = await readSettingsFromDisk();
     const next = await mutator(current);
     await writeSettingsRaw(next);
     return next;
@@ -235,14 +268,6 @@ export async function mutateSettingsJson(
     }
     await mutator(current);
     await fs.mkdir(dirname(path), { recursive: true });
-    const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
-    const fh = await fs.open(tmp, 'w');
-    try {
-      await fh.writeFile(JSON.stringify(current, null, 2) + '\n', 'utf8');
-      await fh.sync();
-    } finally {
-      await fh.close();
-    }
-    await fs.rename(tmp, path);
+    await writeJsonAtomic(path, JSON.stringify(current, null, 2) + '\n');
   });
 }

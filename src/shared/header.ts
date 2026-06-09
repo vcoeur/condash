@@ -27,6 +27,9 @@ export const HEADING2 = /^##\s+(.+)$/;
  * fenced code blocks when scanning README bodies for step / timeline /
  * link patterns. */
 export const FENCE_LINE = /^\s*(?:```|~~~)/;
+/** Fence marker with the run captured, so `iterUnfencedLines` can record the
+ * opening fence's character + length and only close on a matching marker. */
+const FENCE_MARKER_RE = /^\s*(`{3,}|~{3,})/;
 /** Matches a Timeline list item recording a close, e.g.
  *    - 2026-05-02 — Closed.
  *    - 2026-05-02 — Closed. Shipped in v2.9.4.
@@ -35,7 +38,13 @@ export const FENCE_LINE = /^\s*(?:```|~~~)/;
  * writes). Single source of truth — `parse.ts:extractClosedAt` and
  * `mutate.ts:parseTimelineEntries` both anchor to this literal. */
 export const CLOSED_LINE = /^\s*-\s+(\d{4}-\d{2}-\d{2})\s+—\s+Closed(\.|$|\s)/;
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+/** A frontmatter delimiter line: `---` with optional trailing blanks, the
+ * whole line. The single rule for "is this line a frontmatter fence" —
+ * `mutate-status.ts` and `rewrite-headers.ts` share it so the shape
+ * dispatchers never disagree with `FRONTMATTER_RE` below on edge cases
+ * like trailing spaces. */
+export const FRONTMATTER_DELIMITER_LINE = /^---[ \t]*$/;
+const FRONTMATTER_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 /** UTF-8 byte-order mark (U+FEFF). Strip from the front of a README on
  * parse — Windows / some editors emit it and unstripped it shifts the
  * first character past column 0, breaking H1 + frontmatter detection. */
@@ -56,13 +65,24 @@ const BOM = '﻿';
 export function* iterUnfencedLines(
   lines: readonly string[],
 ): IterableIterator<{ index: number; line: string }> {
-  let inFence = false;
+  // Track the opening fence's marker character and length: per CommonMark a
+  // fence only closes on a run of the *same* character at least as long as
+  // the opener, so a ``` line inside a ~~~ fence is content, not a toggle.
+  let fence: { char: string; length: number } | null = null;
   for (let i = 0; i < lines.length; i++) {
-    if (FENCE_LINE.test(lines[i])) {
-      inFence = !inFence;
-      continue;
+    const marker = lines[i].match(FENCE_MARKER_RE)?.[1];
+    if (marker) {
+      if (fence === null) {
+        fence = { char: marker[0], length: marker.length };
+        continue;
+      }
+      if (marker[0] === fence.char && marker.length >= fence.length) {
+        fence = null;
+        continue;
+      }
+      // Mismatched marker inside an open fence: plain fenced content.
     }
-    if (inFence) continue;
+    if (fence) continue;
     yield { index: i, line: lines[i] };
   }
 }

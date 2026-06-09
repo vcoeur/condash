@@ -119,7 +119,9 @@ export async function treeCreateMd(
   const sanitised = buildFilename(root, filename);
   const { targetAbs } = await resolveChildBounded(root, dirRelPath, sanitised);
   // `wx` flag refuses to overwrite — surfaces a clear error to the
-  // renderer when the user picks a name that's already taken.
+  // renderer when the user picks a name that's already taken. Covered by
+  // the create-path exemption to the tmp→rename invariant (internals.md
+  // §2): the file is brand-new (and empty), so there's nothing to corrupt.
   await fs.writeFile(targetAbs, '', { encoding: 'utf8', flag: 'wx' });
   return toPosix(targetAbs);
 }

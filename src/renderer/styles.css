@@ -72,6 +72,12 @@
   --col-running: #2d8a4e;
   --col-dirty: #b87035;
 
+  /* Diff-stat accents — added / removed line counts in the branch-dirty
+   * popover. Conventional diff green / red, darkened for contrast on the
+   * light theme; dark-mode mirrors below lift them back up. */
+  --col-added: #1a7f37;
+  --col-removed: #cf222e;
+
   /* Kind colours — completely outside the status palette so a kind
    * glyph never reads as a status indicator. Warm ink-stamp tones:
    * project = green (focused work, "go"), incident = orange (alert
@@ -212,6 +218,8 @@
   --dark-col-unknown: #d6748f;
   --dark-col-running: #5fc97f;
   --dark-col-dirty: #e8a878;
+  --dark-col-added: #4ade80;
+  --dark-col-removed: #f87171;
   --dark-kind-project: #5fa982;
   --dark-kind-incident: #d68a4a;
   --dark-kind-document: #c9b35a;
@@ -247,6 +255,8 @@
     --col-unknown: var(--dark-col-unknown);
     --col-running: var(--dark-col-running);
     --col-dirty: var(--dark-col-dirty);
+    --col-added: var(--dark-col-added);
+    --col-removed: var(--dark-col-removed);
     --kind-project: var(--dark-kind-project);
     --kind-incident: var(--dark-kind-incident);
     --kind-document: var(--dark-kind-document);
@@ -279,6 +289,8 @@
   --col-unknown: var(--dark-col-unknown);
   --col-running: var(--dark-col-running);
   --col-dirty: var(--dark-col-dirty);
+  --col-added: var(--dark-col-added);
+  --col-removed: var(--dark-col-removed);
   --kind-project: var(--dark-kind-project);
   --kind-incident: var(--dark-kind-incident);
   --kind-document: var(--dark-kind-document);

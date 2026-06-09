@@ -16,6 +16,7 @@ import {
   readConfig,
   repoLookupMap,
   resolveAppRepo,
+  validateBranchName,
 } from './shared';
 
 export interface BranchRepoState {
@@ -41,11 +42,13 @@ export interface BranchCheckResult {
   worktreesRoot: string;
   /** Items declaring this branch (status, slug, apps). */
   declaringItems: { slug: string; readme: string; status: string; apps: string[] }[];
-  /** Per-repo state across the union of `**Apps**` from declaring items. */
+  /** Per-repo state across the union of `**Apps**` from ACTIVE (non-done)
+   *  declaring items. */
   repos: BranchRepoState[];
-  /** Repos that should have a worktree but don't. */
+  /** Repos that should have a worktree but don't (active items only). */
   missing: string[];
-  /** Repos that have a worktree but no item references the branch. */
+  /** Worktree dirs present on disk that no ACTIVE item's apps account for
+   *  (done items' leftovers included). */
   orphan: string[];
 }
 
@@ -53,18 +56,25 @@ export async function checkBranchState(
   conceptionPath: string,
   branch: string,
 ): Promise<BranchCheckResult> {
+  // Same guard as setup/remove: `branchToDir('..')` would make the orphan
+  // scan below readdir the worktrees root's PARENT.
+  validateBranchName(branch);
   const config = await readConfig(conceptionPath);
   const worktreesRoot = config.worktrees_path ?? defaultWorktreesPath();
   const branchDir = branchToDir(branch);
   const declaringItems = await findItemsDeclaringBranch(conceptionPath, branch);
 
-  // Union of Apps from declaring items (active items only — done items don't
-  // need worktrees but still surface their previous claims so the user can
-  // see them). Each token resolves to its canonical repo directory name so a
-  // `#vcoeur`-style handle (≠ the `vcoeur.com` directory) maps correctly.
+  // Union of Apps from ACTIVE (non-done) declaring items — done items don't
+  // need worktrees, so their repos must not show up under `missing` (and a
+  // leftover dir of a done item is honestly an orphan). `declaringItems`
+  // itself keeps every item, done included, so the user still sees previous
+  // claims in the report. Each token resolves to its canonical repo directory
+  // name so a `#vcoeur`-style handle (≠ the `vcoeur.com` directory) maps
+  // correctly.
   const reposByName = repoLookupMap(config);
   const wantedRepos = new Set<string>();
   for (const item of declaringItems) {
+    if (item.status === 'done') continue;
     for (const app of item.apps) {
       const repo = resolveAppRepo(app, reposByName);
       if (repo) wantedRepos.add(repo.name);

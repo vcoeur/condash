@@ -2,11 +2,13 @@ import { ipcMain } from 'electron';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { TermLogSessionMeta, TermLogSessionRead } from '../../shared/types';
-import { parseMetaLine, splitContent, type FooterJson, type HeaderJson } from '../logs-format';
+import { splitContent, type FooterJson, type HeaderJson } from '../logs-format';
+import { readHeadTailMeta } from '../logs-query';
 import { condashDir, condashLogsRoot } from '../condash-dir';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings } from '../settings';
 import { isTaskRunPath, listTaskRuns } from '../task-runs';
+import { requireMainWindowSender } from './utils';
 
 // Re-exported so callers that historically imported `splitContent` from this
 // file keep working. New code should import directly from `../logs-format`.
@@ -25,12 +27,30 @@ export { splitContent };
  * passing `/etc/passwd` or `../../foo`.
  */
 export function registerLogsIpc(): void {
-  ipcMain.handle('logsListDays', async () => listDaysForActiveConception());
-  ipcMain.handle('logsListSessions', async (_e, day: string) => listSessionsForDay(day));
-  ipcMain.handle('logsReadSession', async (_e, filePath: string) => readSession(filePath));
-  ipcMain.handle('logsDeleteDay', async (_e, day: string) => deleteDay(day));
-  ipcMain.handle('logsDeleteSession', async (_e, filePath: string) => deleteSession(filePath));
-  ipcMain.handle('logsListTaskRuns', async () => listTaskRunsForActiveConception());
+  ipcMain.handle('logsListDays', async (event) => {
+    requireMainWindowSender(event);
+    return listDaysForActiveConception();
+  });
+  ipcMain.handle('logsListSessions', async (event, day: string) => {
+    requireMainWindowSender(event);
+    return listSessionsForDay(day);
+  });
+  ipcMain.handle('logsReadSession', async (event, filePath: string) => {
+    requireMainWindowSender(event);
+    return readSession(filePath);
+  });
+  ipcMain.handle('logsDeleteDay', async (event, day: string) => {
+    requireMainWindowSender(event);
+    return deleteDay(day);
+  });
+  ipcMain.handle('logsDeleteSession', async (event, filePath: string) => {
+    requireMainWindowSender(event);
+    return deleteSession(filePath);
+  });
+  ipcMain.handle('logsListTaskRuns', async (event) => {
+    requireMainWindowSender(event);
+    return listTaskRunsForActiveConception();
+  });
 }
 
 async function listTaskRunsForActiveConception(): ReturnType<typeof listTaskRuns> {
@@ -135,7 +155,7 @@ async function readSessionMetaSummary(
   const [, hms, fileSid] = m;
   const time = `${hms.slice(0, 2)}:${hms.slice(2, 4)}:${hms.slice(4, 6)}`;
 
-  const { header, footer } = await readHeadAndTailMeta(txtPath, stat.size);
+  const { header, footer } = await readHeadTailMeta(txtPath, stat.size);
 
   return {
     path: txtPath,
@@ -168,59 +188,6 @@ function composeCmdLabel(header: HeaderJson | null): string | undefined {
     return [header.cmd, ...header.argv].join(' ');
   }
   return header.cmd;
-}
-
-/** Read the first 4 KB and (if larger) the last 1 KB of a session file
- * and pluck the `# condash:` header / footer lines. The header is line
- * 1, by construction. The footer is the last `# condash:` line in the
- * tail — only present after `exit()`. */
-async function readHeadAndTailMeta(
-  filePath: string,
-  size: number,
-): Promise<{ header: HeaderJson | null; footer: FooterJson | null }> {
-  const HEAD = 4096;
-  const TAIL = 1024;
-  let header: HeaderJson | null = null;
-  let footer: FooterJson | null = null;
-  let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
-  try {
-    handle = await fs.open(filePath, 'r');
-    const headBuf = Buffer.alloc(Math.min(HEAD, size));
-    await handle.read(headBuf, 0, headBuf.length, 0);
-    const headText = headBuf.toString('utf8');
-    const firstNewline = headText.indexOf('\n');
-    const firstLine = firstNewline >= 0 ? headText.slice(0, firstNewline) : headText;
-    header = parseMetaLine(firstLine);
-
-    if (size > HEAD) {
-      const tailBuf = Buffer.alloc(TAIL);
-      await handle.read(tailBuf, 0, TAIL, Math.max(0, size - TAIL));
-      const tailText = tailBuf.toString('utf8');
-      footer = findLastFooterLine(tailText);
-    } else {
-      // Whole file fits in HEAD — scan it for a footer line too.
-      footer = findLastFooterLine(headText);
-    }
-  } catch {
-    /* missing or unreadable — leave header/footer null */
-  } finally {
-    if (handle) await handle.close().catch(() => undefined);
-  }
-  return { header, footer };
-}
-
-function findLastFooterLine(text: string): FooterJson | null {
-  // Find the last line that begins with the meta prefix. The header line
-  // is also a match — the caller separately parses it, so a corrupted
-  // file with no footer falls back to the header here harmlessly (we
-  // only consume `finished` / `exitCode`).
-  const lines = text.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const m = parseMetaLine(lines[i]);
-    if (!m) continue;
-    if ('exitCode' in m || 'finished' in m) return m as FooterJson;
-  }
-  return null;
 }
 
 async function readSession(filePath: string): Promise<TermLogSessionRead> {

@@ -391,6 +391,92 @@ describe('configSchema cardMinWidth — every card grid is accepted', () => {
   });
 });
 
+describe('configSchema treeExpansion — every IPC-written key is accepted', () => {
+  // The reported bug: `setTreeExpansion` writes `skillsUser` (user-scope
+  // Skills pane) but the strict schema only listed knowledge/resources/skills,
+  // so once a user expanded a user-scope skill directory every Global
+  // Settings save threw `Unrecognized key: "skillsUser"`.
+  it('accepts skillsUser alongside the other tree keys', () => {
+    const result = globalSettingsSchema.safeParse({
+      treeExpansion: { knowledge: ['topics'], resources: [], skills: ['pr'], skillsUser: ['git'] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('lets a global save round-trip a skillsUser expansion (the reported failure)', () => {
+    const json = JSON.stringify({ treeExpansion: { skillsUser: ['git', ''] } });
+    const canon = validateAndCanonicaliseGlobalSettings(json);
+    expect(JSON.parse(canon).treeExpansion.skillsUser).toEqual(['git', '']);
+  });
+
+  it('still rejects an unknown treeExpansion key (typo guard intact)', () => {
+    expect(globalSettingsSchema.safeParse({ treeExpansion: { skillsUsers: [] } }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('every settings key the IPC layer can write survives the canonicaliser', () => {
+  // Class fix for the skillsUser bug: build a settings object exercising every
+  // setter-reachable key and assert the global canonicaliser accepts it. A new
+  // IPC setter whose key (or sub-key) is missing from the schema fails here
+  // instead of bricking every subsequent Global Settings save in production.
+  it('round-trips a settings object covering every IPC setter', () => {
+    const everySetterKey = {
+      // pickConceptionPath / openConception / removeRecentConceptionPath
+      lastConceptionPath: '/home/me/src/conception',
+      recentConceptionPaths: ['/home/me/src/conception', '/home/me/src/other'],
+      // setTheme
+      theme: 'dark',
+      // setLayout
+      layout: {
+        projects: true,
+        leftView: 'deliverables',
+        working: 'logs',
+        terminal: true,
+        projectsWidth: 320,
+      },
+      // setWelcomeDismissed
+      welcome: { dismissed: true },
+      // setCardMinWidth — every pane key
+      cardMinWidth: Object.fromEntries(CARD_MIN_WIDTH_KEYS.map((key) => [key, 500])),
+      // setTreeExpansion — every tree key
+      treeExpansion: {
+        knowledge: ['topics'],
+        resources: ['renders'],
+        skills: ['pr'],
+        skillsUser: ['git'],
+      },
+      // setSelectedBranches / setBranchFilterStickyAll
+      selectedBranches: ['main', 'feature-x'],
+      branchFilterStickyAll: false,
+      // setSkillsActiveScope
+      skillsActiveScope: 'user',
+      // termSetPrefs
+      terminal: {
+        shell: '/bin/zsh',
+        shortcut: 'Ctrl+T',
+        screenshot_dir: '/home/me/Pictures',
+        xterm: { font_size: 13, cursor_blink: true },
+        logging: { enabled: true, retentionDays: 14, maxDirMb: 500, scrollback: 10000 },
+      },
+      // writeTaskConfig (Tasks editor) — every TaskConfigEntry field
+      taskConfig: {
+        'sample-task': {
+          schedule: '5m',
+          timeout: '1m',
+          excludeFromLogs: true,
+          runMode: 'oneshot',
+          gateOnUpdatedTabs: true,
+        },
+      },
+    };
+    expect(() =>
+      validateAndCanonicaliseGlobalSettings(JSON.stringify(everySetterKey)),
+    ).not.toThrow();
+  });
+});
+
 describe('config field-naming convention (D6-2 — frozen)', () => {
   // The config surface mixes snake_case (repo / terminal-shell vocabulary) and
   // camelCase (app/UI prefs) for historical reasons; existing keys are NOT

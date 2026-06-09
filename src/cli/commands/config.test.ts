@@ -253,6 +253,83 @@ describe('config set', () => {
     expect(threw).toBeInstanceOf(CliError);
     expect((threw as CliError).exitCode).toBe(2);
   });
+
+  it('warns when the written key is unknown to the schema (non-fatal)', async () => {
+    const { stdout, threw } = await captureStdout(() =>
+      runConfig(
+        'set',
+        {
+          noun: 'config',
+          verb: 'set',
+          positional: ['audit.thresholds.binary', '5242880'],
+          flags: {},
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const envelope = parseJsonEnvelope(stdout);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.warnings?.some((w) => w.includes('audit'))).toBe(true);
+    // The write itself still lands — the warning is advisory.
+    const written = JSON.parse(
+      await fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
+    );
+    expect(written.audit.thresholds.binary).toBe(5242880);
+  });
+
+  it('emits no warning for a schema-valid write', async () => {
+    const { stdout } = await captureStdout(() =>
+      runConfig(
+        'set',
+        { noun: 'config', verb: 'set', positional: ['theme', 'dark'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(parseJsonEnvelope(stdout).warnings).toEqual([]);
+  });
+
+  it('warns on an unknown key written with --global too', async () => {
+    const { stdout } = await captureStdout(() =>
+      runConfig(
+        'set',
+        {
+          noun: 'config',
+          verb: 'set',
+          positional: ['no_such_key', 'x'],
+          flags: { global: true },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const envelope = parseJsonEnvelope(stdout);
+    expect(envelope.warnings?.some((w) => w.includes('no_such_key'))).toBe(true);
+  });
+
+  it('rejects array-index keys loudly instead of writing a literal key', async () => {
+    const { threw } = await captureStdout(() =>
+      runConfig(
+        'set',
+        {
+          noun: 'config',
+          verb: 'set',
+          positional: ['repositories[0].path', '/home/me/src/foo'],
+          flags: {},
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(Error);
+    expect((threw as Error).message).toMatch(/array-index/);
+    // Nothing was written — the conception primary was never created.
+    await expect(
+      fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
 });
 
 describe('config migrate', () => {

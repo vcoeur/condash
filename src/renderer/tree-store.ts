@@ -94,12 +94,16 @@ export function createTreeStore<T extends object>(deps: TreeStoreDeps<T>): TreeS
   };
 
   const reload = async (): Promise<void> => {
-    if (!deps.conceptionPath()) {
+    const path = deps.conceptionPath();
+    if (!path) {
       applySnapshot(null);
       setLoaded(false);
       return;
     }
     const next = await deps.fetcher();
+    // Discard a stale result if the conception changed while the fetch was
+    // in flight — applying it would paint the previous conception's tree.
+    if (deps.conceptionPath() !== path) return;
     applySnapshot(next);
     setLoaded(true);
   };

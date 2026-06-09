@@ -55,12 +55,12 @@
 }
 
 .tasks-pane button.tasks-danger:hover:not(:disabled) {
-  background: var(--warn, #c44);
+  background: var(--warn);
   color: #fff;
 }
 
 .tasks-pane button.tasks-run {
-  border-color: var(--accent, #2f7);
+  border-color: var(--accent);
 }
 
 .tasks-pane-empty {
@@ -103,7 +103,7 @@
 .tasks-row-clickable:hover,
 .tasks-row-clickable:focus-visible {
   background: var(--bg-hover);
-  border-color: var(--accent, var(--text-muted));
+  border-color: var(--accent);
   outline: none;
 }
 
@@ -146,7 +146,7 @@
 }
 
 .tasks-agent-missing {
-  color: var(--warn, #c44);
+  color: var(--warn);
   border-color: #c4444433;
   background: #c4444414;
 }
@@ -328,7 +328,7 @@
 }
 
 .tasks-schedule-hint.invalid {
-  color: var(--warn, #c44);
+  color: var(--warn);
 }
 
 .tasks-prompt-textarea {
@@ -400,7 +400,7 @@
 .tasks-running-header .count {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint, var(--text-muted));
+  color: var(--text-faint);
 }
 
 .tasks-running-list {
@@ -410,10 +410,10 @@
 }
 
 .tasks-run-row {
-  background: color-mix(in srgb, var(--col-running, #e06c9f) 7%, var(--bg-subtle));
-  border: 1px solid color-mix(in srgb, var(--col-running, #e06c9f) 32%, var(--border));
+  background: color-mix(in srgb, var(--col-running) 7%, var(--bg-subtle));
+  border: 1px solid color-mix(in srgb, var(--col-running) 32%, var(--border));
   border-radius: 6px;
-  box-shadow: inset 4px 0 0 0 var(--col-running, #e06c9f);
+  box-shadow: inset 4px 0 0 0 var(--col-running);
   overflow: hidden;
 }
 
@@ -439,8 +439,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--col-running, #e06c9f);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running, #e06c9f) 22%, transparent);
+  background: var(--col-running);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--col-running) 22%, transparent);
 }
 
 .tasks-run-head .slug {
@@ -458,9 +458,9 @@
   text-transform: uppercase;
   padding: 1px 7px;
   border-radius: 999px;
-  color: var(--col-running, #e06c9f);
-  background: color-mix(in srgb, var(--col-running, #e06c9f) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--col-running, #e06c9f) 30%, transparent);
+  color: var(--col-running);
+  background: color-mix(in srgb, var(--col-running) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--col-running) 30%, transparent);
 }
 
 .tasks-run-head .elapsed {

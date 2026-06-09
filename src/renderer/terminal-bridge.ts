@@ -9,6 +9,7 @@ import type {
   Worktree,
 } from '@shared/types';
 import { globalContext, projectContext, substitute } from '@shared/action-template';
+import { quoteForShell, shellFamily, type ShellFamily } from '@shared/shell-quote';
 import type { TerminalPaneHandle } from './terminal-pane';
 
 export interface TerminalBridgeDeps {
@@ -101,17 +102,24 @@ function findAgentById(agents: readonly Agent[], id: string | undefined): Agent 
   return agents.find((a) => a.id === id) ?? null;
 }
 
-/** POSIX single-quote `text` so it survives `bash -lc "<command>"` as a single
- *  argument: wrap in single quotes and rewrite each embedded `'` as `'\''`
- *  (close-quote, escaped quote, reopen-quote). */
-function shellSingleQuote(text: string): string {
-  return `'${text.replace(/'/g, "'\\''")}'`;
+/** Renderer-side Windows detection (no `process` in a sandboxed renderer).
+ *  Only consulted when no `terminal.shell` is configured — a configured shell
+ *  names its own family by basename. */
+function isWindowsRenderer(): boolean {
+  return typeof navigator !== 'undefined' && /^win/i.test(navigator.platform ?? '');
 }
 
 /** Bridges between dashboard actions (per-card work-on, open-in-term,
  *  screenshot paste) and the terminal pane. Centralises the "spawn a
  *  shell first if there isn't one" dance so callers don't repeat it. */
 export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
+  /** Family of the shell the main process will wrap a spawned command with
+   *  (`terminals.ts` resolves the same `terminal.shell` pref through the same
+   *  shared detection) — prompt quoting must match it, or `&` / `|` / `%VAR%`
+   *  in a prompt execute under cmd.exe / pwsh. */
+  const promptShellFamily = (): ShellFamily =>
+    shellFamily(deps.terminalPrefs()?.shell, isWindowsRenderer());
+
   /** Shared preamble: ensure pane is open, spawn a shell if none active. */
   const ensureTermAndShell = async (): Promise<TerminalPaneHandle | null> => {
     if (!deps.terminalHandle()) {
@@ -191,7 +199,7 @@ export function createTerminalBridge(deps: TerminalBridgeDeps): TerminalBridge {
   ): Promise<void> => {
     if (agent.promptFlags) {
       const flag = mode === 'oneshot' ? '--run' : '--prompt';
-      const command = `${agent.command} ${flag} ${shellSingleQuote(text)}`;
+      const command = `${agent.command} ${flag} ${quoteForShell(text, promptShellFamily())}`;
       await spawnAgentTab({ ...agent, command }, title, taskContext);
       return;
     }

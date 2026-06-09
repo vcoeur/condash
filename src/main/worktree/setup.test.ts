@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { exec as execFile } from '../exec';
-import { setupBranchWorktrees } from './setup';
+import { isSafeRelativePath, resolveBase, setupBranchWorktrees } from './setup';
 import { removeBranchWorktrees } from './remove';
 import { checkBranchState } from './inspect';
 import { branchToDir, validateBranchName } from './shared';
@@ -275,6 +275,263 @@ describe('apps handle differs from the repo directory name', () => {
     await setupVcoeurRepo();
     const result = await setupBranchWorktrees(conception, branch, { repos: ['vcoeur'] });
     expect(result.created).toEqual([{ repo: repoDir, path: join(worktreesRoot, branch, repoDir) }]);
+  });
+});
+
+describe('resolveBase', () => {
+  it('lets an explicit --base win over README values', () => {
+    expect(resolveBase('b', 'override', [{ slug: 'a', base: 'main' }])).toBe('override');
+  });
+
+  it('uses the unanimous **Base** across declaring items', () => {
+    expect(
+      resolveBase('b', undefined, [
+        { slug: 'a', base: 'release/1' },
+        { slug: 'c', base: 'release/1' },
+        { slug: 'd', base: null },
+      ]),
+    ).toBe('release/1');
+  });
+
+  it('returns undefined when no item declares a base', () => {
+    expect(resolveBase('b', undefined, [{ slug: 'a', base: null }])).toBeUndefined();
+    expect(resolveBase('b', undefined, [])).toBeUndefined();
+  });
+
+  it('throws on disagreement, naming the disagreeing items', () => {
+    expect(() =>
+      resolveBase('b', undefined, [
+        { slug: 'a', base: 'main' },
+        { slug: 'c', base: 'release/1' },
+      ]),
+    ).toThrow(/disagree.*main \(a\).*release\/1 \(c\)/s);
+  });
+});
+
+describe('isSafeRelativePath', () => {
+  it('accepts plain relative paths', () => {
+    expect(isSafeRelativePath('.env')).toBe(true);
+    expect(isSafeRelativePath('config/.env.local')).toBe(true);
+    expect(isSafeRelativePath('deep/nested/file.json')).toBe(true);
+  });
+
+  it('rejects traversal, absolute, drive-prefixed, NUL, and empty paths', () => {
+    expect(isSafeRelativePath('../outside')).toBe(false);
+    expect(isSafeRelativePath('a/../b')).toBe(false);
+    expect(isSafeRelativePath('a\\..\\b')).toBe(false);
+    expect(isSafeRelativePath('/abs/path')).toBe(false);
+    expect(isSafeRelativePath('\\\\share')).toBe(false);
+    expect(isSafeRelativePath('C:\\windows')).toBe(false);
+    expect(isSafeRelativePath('C:/windows')).toBe(false);
+    expect(isSafeRelativePath('a\0b')).toBe(false);
+    expect(isSafeRelativePath('')).toBe(false);
+    expect(isSafeRelativePath('./x')).toBe(false);
+  });
+});
+
+describe('pinned_branch blocking', () => {
+  it('blocks setup for a repo pinned to a fixed branch', async () => {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo', pinned_branch: 'main' }],
+        },
+        null,
+        2,
+      ),
+    );
+    const result = await setupBranchWorktrees(conception, 'pinned-block', { repos: ['demo'] });
+    expect(result.created).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].reason).toContain("pinned to 'main'");
+    expect(existsSync(join(worktreesRoot, 'pinned-block', 'demo'))).toBe(false);
+  });
+});
+
+describe('install failure diagnostics', () => {
+  it('captures a stderr tail when the install command fails', async () => {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo', install: 'echo first >&2; echo boom >&2; exit 3' }],
+        },
+        null,
+        2,
+      ),
+    );
+    const result = await setupBranchWorktrees(conception, 'install-fail', { repos: ['demo'] });
+    expect(result.created).toHaveLength(1);
+    expect(result.installRan).toHaveLength(1);
+    expect(result.installRan[0].ok).toBe(false);
+    expect(result.installRan[0].stderrTail).toContain('boom');
+  });
+
+  it('reports ok with no stderrTail when the install succeeds', async () => {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo', install: 'true' }],
+        },
+        null,
+        2,
+      ),
+    );
+    const result = await setupBranchWorktrees(conception, 'install-ok', { repos: ['demo'] });
+    expect(result.installRan).toEqual([{ repo: 'demo', command: 'true', ok: true }]);
+  });
+});
+
+describe('no-base fallback branches from the default tip, not HEAD', () => {
+  it('uses local main when the primary checkout sits on another branch', async () => {
+    // Primary checkout moves to a feature branch with an extra commit; a new
+    // branch with no base must still start from main's tip, not the feature
+    // branch's HEAD (the stale-base trap).
+    const mainSha = (await git(repo, 'rev-parse', 'main')).trim();
+    await git(repo, 'checkout', '-q', '-b', 'stale-feature');
+    await git(repo, 'commit', '-q', '--allow-empty', '-m', 'feature work');
+    const featureSha = (await git(repo, 'rev-parse', 'HEAD')).trim();
+    expect(featureSha).not.toBe(mainSha);
+
+    const result = await setupBranchWorktrees(conception, 'fresh-branch', { repos: ['demo'] });
+    expect(result.created).toHaveLength(1);
+    expect(result.base).toBeNull();
+    const target = join(worktreesRoot, 'fresh-branch', 'demo');
+    const headSha = (await git(target, 'rev-parse', 'HEAD')).trim();
+    expect(headSha).toBe(mainSha);
+  });
+});
+
+describe('stale-base warning (baseBehind)', () => {
+  it('reports how far the base trails its already-fetched upstream', async () => {
+    // origin: a separate repo that gains a commit AFTER the clone, then the
+    // clone fetches — local main is now 1 behind origin/main.
+    const originRoot = join(tmp, 'origin');
+    mkdirSync(originRoot, { recursive: true });
+    await git(originRoot, 'init', '-q', '-b', 'main', 'demo2');
+    const origin = join(originRoot, 'demo2');
+    await git(origin, 'config', 'user.email', 'test@example.com');
+    await git(origin, 'config', 'user.name', 'Test');
+    await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init');
+    await git(join(tmp, 'workspace'), 'clone', '-q', origin, 'demo2');
+    const clone = join(tmp, 'workspace', 'demo2');
+    await git(clone, 'config', 'user.email', 'test@example.com');
+    await git(clone, 'config', 'user.name', 'Test');
+    await git(origin, 'commit', '-q', '--allow-empty', '-m', 'newer upstream work');
+    await git(clone, 'fetch', '-q', 'origin');
+
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo2' }],
+        },
+        null,
+        2,
+      ),
+    );
+    const result = await setupBranchWorktrees(conception, 'behind-check', {
+      repos: ['demo2'],
+      base: 'main',
+    });
+    expect(result.created).toHaveLength(1);
+    expect(result.baseBehind).toEqual([
+      { repo: 'demo2', ref: 'main', upstream: 'origin/main', behind: 1 },
+    ]);
+  });
+
+  it('stays empty when the base has no upstream', async () => {
+    const result = await setupBranchWorktrees(conception, 'no-upstream', {
+      repos: ['demo'],
+      base: 'main',
+    });
+    expect(result.created).toHaveLength(1);
+    expect(result.baseBehind).toEqual([]);
+  });
+});
+
+describe('setup-side flattened-path collision / stale-dir classification', () => {
+  it('reports present-but-different-branch as blocked, not alreadyPresent', async () => {
+    // `coll/ision` and `coll-ision` share the directory key `coll-ision`.
+    await setupBranchWorktrees(conception, 'coll/ision', { repos: ['demo'] });
+    const result = await setupBranchWorktrees(conception, 'coll-ision', { repos: ['demo'] });
+    expect(result.created).toEqual([]);
+    expect(result.alreadyPresent).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].reason).toContain("on branch 'coll/ision'");
+    expect(result.blocked[0].reason).toContain('flattened-path collision');
+  });
+
+  it('reports a non-worktree directory at the target as blocked', async () => {
+    const target = join(worktreesRoot, 'stale-dir', 'demo');
+    mkdirSync(target, { recursive: true });
+    const result = await setupBranchWorktrees(conception, 'stale-dir', { repos: ['demo'] });
+    expect(result.created).toEqual([]);
+    expect(result.alreadyPresent).toEqual([]);
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].reason).toContain('not a registered worktree');
+  });
+
+  it('still reports a genuine same-branch worktree as alreadyPresent', async () => {
+    await setupBranchWorktrees(conception, 'idempotent', { repos: ['demo'] });
+    const result = await setupBranchWorktrees(conception, 'idempotent', { repos: ['demo'] });
+    expect(result.created).toEqual([]);
+    expect(result.blocked).toEqual([]);
+    expect(result.alreadyPresent).toEqual([
+      { repo: 'demo', path: join(worktreesRoot, 'idempotent', 'demo') },
+    ]);
+  });
+});
+
+describe('checkBranchState input validation + active-only union', () => {
+  it('rejects branch names that sanitise to path components', async () => {
+    await expect(checkBranchState(conception, '..')).rejects.toThrow(/path component/);
+  });
+
+  it('excludes done items from the wanted-repo union (their leftovers are orphans)', async () => {
+    const projectDir = join(conception, 'projects/2026-06/2026-06-02-done-item');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, 'README.md'),
+      [
+        '---',
+        'date: 2026-06-02',
+        'kind: project',
+        'status: done',
+        'apps:',
+        '  - demo',
+        'branch: done-branch',
+        '---',
+        '',
+        '# T',
+      ].join('\n'),
+    );
+    await git(
+      repo,
+      'worktree',
+      'add',
+      '-q',
+      join(worktreesRoot, 'done-branch', 'demo'),
+      '-b',
+      'done-branch',
+    );
+    const state = await checkBranchState(conception, 'done-branch');
+    // The done item still shows under declaringItems…
+    expect(state.declaringItems).toHaveLength(1);
+    // …but claims no repos: nothing missing, and the leftover dir is an orphan.
+    expect(state.repos).toEqual([]);
+    expect(state.missing).toEqual([]);
+    expect(state.orphan).toEqual(['demo']);
   });
 });
 

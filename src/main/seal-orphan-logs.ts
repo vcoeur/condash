@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { condashLogsRoot } from './condash-dir';
+import { condashDir, condashLogsRoot } from './condash-dir';
 import { META_LINE_PREFIX, parseMetaLine } from './logs-format';
+import { TASK_TRIGGERS } from './task-runs';
 
 /**
  * Seal log files that look "running" but belong to dead sessions.
@@ -14,11 +15,12 @@ import { META_LINE_PREFIX, parseMetaLine } from './logs-format';
  * gone.
  *
  * This runs once at boot per active conception. It walks every day
- * directory under `<conception>/.condash/logs/`, finds `.txt` files that
- * have a header line but no footer, and — if the file's mtime is older
- * than `STALE_GRACE_MS` — appends a synthetic footer marking it as
- * `exitCode: null` (unknown). The grace window avoids racing the
- * 5-second debounce of any logger that's actively writing.
+ * directory under `<conception>/.condash/logs/` plus the segregated
+ * task-run trees (`.condash/scheduled/<slug>/`, `.condash/manual/<slug>/`),
+ * finds `.txt` files that have a header line but no footer, and — if the
+ * file's mtime is older than `STALE_GRACE_MS` — appends a synthetic footer
+ * marking it as `exitCode: null` (unknown). The grace window avoids racing
+ * the 5-second debounce of any logger that's actively writing.
  *
  * No-ops on files that already carry a footer; idempotent across boots.
  */
@@ -37,16 +39,20 @@ export interface SealResult {
   sealed: string[];
 }
 
-/** Walk every `.txt` under `<conception>/.condash/logs/YYYY/MM/DD/` and
- * append a synthetic footer to any file that has a header but no footer
- * AND has not been modified for at least `STALE_GRACE_MS`. */
+/** Walk every `.txt` under `<conception>/.condash/logs/YYYY/MM/DD/` and the
+ * task-run trees (`.condash/{scheduled,manual}/<slug>/`) and append a
+ * synthetic footer to any file that has a header but no footer AND has not
+ * been modified for at least `STALE_GRACE_MS`. */
 export async function sealOrphanLogs(
   conceptionPath: string,
   now: Date = new Date(),
 ): Promise<SealResult> {
   const root = condashLogsRoot(conceptionPath);
   const result: SealResult = { scanned: 0, sealed: [] };
-  const txtPaths = await collectTxtPaths(root);
+  const txtPaths = [
+    ...(await collectTxtPaths(root)),
+    ...(await collectTaskRunTxtPaths(conceptionPath)),
+  ];
   for (const path of txtPaths) {
     result.scanned += 1;
     try {
@@ -77,6 +83,23 @@ async function collectTxtPaths(root: string): Promise<string[]> {
         for (const f of files) {
           if (f.endsWith('.txt')) out.push(join(dp, f));
         }
+      }
+    }
+  }
+  return out;
+}
+
+/** Task runs live outside the logs root, under
+ * `.condash/{scheduled,manual}/<slug>/*.txt` — a killed/crashed run there
+ * would otherwise look "running" forever in the Task-runs view. */
+async function collectTaskRunTxtPaths(conceptionPath: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const trigger of TASK_TRIGGERS) {
+    const triggerRoot = join(condashDir(conceptionPath), trigger);
+    for (const slug of await readDirSafe(triggerRoot)) {
+      const dir = join(triggerRoot, slug);
+      for (const f of await readDirSafe(dir)) {
+        if (f.endsWith('.txt')) out.push(join(dir, f));
       }
     }
   }
@@ -132,7 +155,9 @@ async function readDirSafe(path: string): Promise<string[]> {
   try {
     return await fs.readdir(path);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    // ENOTDIR: a stray file where a slug directory is expected — skip it.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return [];
     throw err;
   }
 }

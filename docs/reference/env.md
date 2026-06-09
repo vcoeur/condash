@@ -9,15 +9,15 @@ description: The short list of environment variables condash reads.
 
 ## At a glance
 
-| Name | Purpose | Default | Accepted values |
-|---|---|---|---|
-| `CONDASH_CONCEPTION_PATH` | One-shot conception-path override (legacy alias `CONDASH_CONCEPTION` still accepted) | unset | Any absolute path |
-| `CLAUDE_PROJECT_DIR` | Back-compat alias for `CONDASH_CONCEPTION_PATH` in Claude Code sessions | unset | Any absolute path |
-| `CONDASH_FORCE_DEVICE_SCALE_FACTOR` | Force a fixed integer scale (Wayland fallback) | unset | Positive number |
-| `CONDASH_FORCE_PROD` | Force the renderer to load the packaged build (Playwright fixture) | unset | `1` or unset |
-| `SHELL` | Fallback for `terminal.shell` | `/bin/bash` | Absolute path to an interactive shell |
-| `XDG_CONFIG_HOME` | Linux per-user config root | `~/.config` | Any absolute path |
-| `ELECTRON_DISABLE_SANDBOX` | Disable Chromium's setuid sandbox | unset | `1` or unset |
+| Name                                | Purpose                                                                                         | Default     | Accepted values                       |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------- | ----------- | ------------------------------------- |
+| `CONDASH_CONCEPTION_PATH`           | One-shot conception-path override (legacy alias `CONDASH_CONCEPTION` still accepted — CLI only) | unset       | Any absolute path                     |
+| `CLAUDE_PROJECT_DIR`                | Back-compat alias for `CONDASH_CONCEPTION_PATH` in Claude Code sessions (CLI only)              | unset       | Any absolute path                     |
+| `CONDASH_FORCE_DEVICE_SCALE_FACTOR` | Force a fixed integer scale (Wayland fallback)                                                  | unset       | Positive number                       |
+| `CONDASH_FORCE_PROD`                | Force the renderer to load the packaged build (Playwright fixture)                              | unset       | `1` or unset                          |
+| `SHELL`                             | Fallback for `terminal.shell`                                                                   | `/bin/bash` | Absolute path to an interactive shell |
+| `XDG_CONFIG_HOME`                   | Linux per-user config root                                                                      | `~/.config` | Any absolute path                     |
+| `ELECTRON_DISABLE_SANDBOX`          | Disable Chromium's setuid sandbox                                                               | unset       | `1` or unset                          |
 
 condash itself reads almost no environment variables — configuration lives in `settings.json` (per-user) and `.condash/settings.json` (per-tree). The handful of vars below either feed Electron's startup or back the embedded terminal.
 
@@ -56,13 +56,13 @@ A one-shot override for the conception path. When set, it wins over the `lastCon
 - Demoing against a specific tree from a script.
 - Running multiple condash instances against different trees from different shells.
 
-The override is **session-scoped** — it is not persisted back into `settings.json`, and the next launch without the env var falls back to the saved value.
+The override is **session-scoped** — it is never persisted back into `settings.json`: every settings write (theme, layout, any other preference saved while the env var is set) starts from the on-disk state, so `lastConceptionPath` keeps the saved value and the next launch without the env var falls back to it.
 
-The legacy name `CONDASH_CONCEPTION` is still accepted for back-compat (skills and scripts written before the rename keep working); when both are set, `CONDASH_CONCEPTION_PATH` wins.
+The legacy name `CONDASH_CONCEPTION` is still accepted for back-compat (skills and scripts written before the rename keep working); when both are set, `CONDASH_CONCEPTION_PATH` wins. The legacy alias is **CLI-only** — the Electron app reads only `CONDASH_CONCEPTION_PATH`.
 
 ## `CLAUDE_PROJECT_DIR`
 
-Back-compat alias for `CONDASH_CONCEPTION_PATH`. Used by Claude Code sessions where the `CLAUDE_PROJECT_DIR` variable is already set. When both are set, `CONDASH_CONCEPTION_PATH` wins.
+Back-compat alias for `CONDASH_CONCEPTION_PATH`. Used by Claude Code sessions where the `CLAUDE_PROJECT_DIR` variable is already set. When both are set, `CONDASH_CONCEPTION_PATH` wins. **CLI-only** — the Electron app ignores it.
 
 ## `CONDASH_FORCE_DEVICE_SCALE_FACTOR`
 

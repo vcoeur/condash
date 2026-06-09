@@ -84,13 +84,27 @@ function adjacencyBonus(occurrences: readonly ScorerOccurrence[]): number {
   for (let i = 0; i < indices.length; i++) {
     const offsetsA = byToken.get(indices[i])!;
     for (let j = i + 1; j < indices.length; j++) {
-      const offsetsB = byToken.get(indices[j])!;
-      for (const a of offsetsA) {
-        for (const b of offsetsB) {
-          if (Math.abs(a - b) <= ADJACENCY_RADIUS) return ADJACENCY_BONUS;
-        }
-      }
+      if (anyWithinRadius(offsetsA, byToken.get(indices[j])!)) return ADJACENCY_BONUS;
     }
   }
   return 0;
+}
+
+/**
+ * True when any pair (a, b) sits within ADJACENCY_RADIUS. Both lists are
+ * ascending (the matcher emits per-token offsets in scan order), so a
+ * two-pointer merge does it in O(A+B) instead of the O(A×B) cross product.
+ */
+function anyWithinRadius(a: readonly number[], b: readonly number[]): boolean {
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const diff = a[i] - b[j];
+    if (Math.abs(diff) <= ADJACENCY_RADIUS) return true;
+    // The smaller offset can never get closer to anything later in the other
+    // (ascending) list — advance it.
+    if (diff < 0) i++;
+    else j++;
+  }
+  return false;
 }

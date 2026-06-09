@@ -167,4 +167,36 @@ describe('substitute', () => {
       expect(substitute('{a} {b:two} {c}', { a: 'one' })).toBe('one two {c}');
     });
   });
+
+  describe('code-like fragments are not markers', () => {
+    it('leaves a jq object construction verbatim (default starting with whitespace)', () => {
+      const recipe = `jq -r '{key: .sid, value: .}' sessions.json`;
+      expect(substitute(recipe, { key: 'X', value: 'Y' })).toBe(recipe);
+    });
+
+    it('leaves a generic {KEY: value} with a space after the colon verbatim', () => {
+      expect(substitute('{KEY: not a marker}', { KEY: 'filled' })).toBe('{KEY: not a marker}');
+    });
+
+    it('leaves ${FOO:-bar} shell parameter expansion verbatim', () => {
+      expect(substitute('echo ${FOO:-bar}', { FOO: 'x' })).toBe('echo ${FOO:-bar}');
+      expect(substitute('echo ${FOO:-bar}', {})).toBe('echo ${FOO:-bar}');
+    });
+
+    it('still treats {KEY:-dash} as a marker when not preceded by $', () => {
+      expect(substitute('{FOO:-bar}', {})).toBe('-bar');
+      expect(substitute('{FOO:-bar}', { FOO: 'x' })).toBe('x');
+    });
+
+    it('a marker directly after a literal $ still resolves when its default has no leading -', () => {
+      expect(substitute('cost: ${PRICE:0}', { PRICE: '5' })).toBe('cost: $5');
+      expect(substitute('cost: ${PRICE:0}', {})).toBe('cost: $0');
+    });
+
+    it('normal markers in the same template still resolve around the code fragments', () => {
+      expect(substitute(`run {cmd} | jq '{key: .sid}' # \${HOME:-/root}`, { cmd: 'list' })).toBe(
+        `run list | jq '{key: .sid}' # \${HOME:-/root}`,
+      );
+    });
+  });
 });

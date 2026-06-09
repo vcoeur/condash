@@ -24,13 +24,19 @@ let tmp: string;
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 let settingsPathValue: string;
 
+/** Minimal event shape accepted by `requireMainWindowSender`. */
+const trustedEvent = {
+  sender: { getType: () => 'window' },
+  senderFrame: { url: 'file:///app/dist/index.html', parent: null },
+};
+
 async function readSettingsFile(): Promise<Record<string, unknown>> {
   const raw = await fs.readFile(settingsPathValue, 'utf8');
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
 async function getTaskConfig(): Promise<Record<string, TaskConfigEntry>> {
-  return (await handlers.getTaskConfig()) as Record<string, TaskConfigEntry>;
+  return (await handlers.getTaskConfig(trustedEvent)) as Record<string, TaskConfigEntry>;
 }
 
 beforeEach(async () => {
@@ -72,7 +78,10 @@ afterEach(async () => {
 
 describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
   it('persists a one-shot runMode and reads it back', async () => {
-    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', runMode: 'oneshot' });
+    await handlers.setTaskConfig(trustedEvent, 'sample-task', {
+      schedule: '1m',
+      runMode: 'oneshot',
+    });
 
     const onDisk = await readSettingsFile();
     expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m', runMode: 'oneshot' } });
@@ -82,7 +91,10 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
   });
 
   it('does not persist the interactive default (stays absent)', async () => {
-    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', runMode: 'interactive' });
+    await handlers.setTaskConfig(trustedEvent, 'sample-task', {
+      schedule: '1m',
+      runMode: 'interactive',
+    });
 
     const onDisk = await readSettingsFile();
     // interactive is the implied default — only schedule survives.
@@ -95,14 +107,14 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
   it('keeps a task whose only setting is a one-shot runMode', async () => {
     // The delete-guard must treat runMode as a real setting, not prune the
     // entry as empty when schedule/timeout/excludeFromLogs are all absent.
-    await handlers.setTaskConfig(null, 'solo', { runMode: 'oneshot' });
+    await handlers.setTaskConfig(trustedEvent, 'solo', { runMode: 'oneshot' });
 
     const onDisk = await readSettingsFile();
     expect(onDisk.taskConfig).toEqual({ solo: { runMode: 'oneshot' } });
   });
 
   it('persists runMode alongside the other per-task settings', async () => {
-    await handlers.setTaskConfig(null, 'sample-task', {
+    await handlers.setTaskConfig(trustedEvent, 'sample-task', {
       schedule: '1m',
       timeout: '10m',
       excludeFromLogs: true,
@@ -118,7 +130,10 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
 
 describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
   it('persists an opted-in growth gate and reads it back', async () => {
-    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', gateOnUpdatedTabs: true });
+    await handlers.setTaskConfig(trustedEvent, 'sample-task', {
+      schedule: '1m',
+      gateOnUpdatedTabs: true,
+    });
 
     const onDisk = await readSettingsFile();
     expect(onDisk.taskConfig).toEqual({
@@ -130,7 +145,10 @@ describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
   });
 
   it('does not persist the default (no gate) — stays absent', async () => {
-    await handlers.setTaskConfig(null, 'sample-task', { schedule: '1m', gateOnUpdatedTabs: false });
+    await handlers.setTaskConfig(trustedEvent, 'sample-task', {
+      schedule: '1m',
+      gateOnUpdatedTabs: false,
+    });
 
     const onDisk = await readSettingsFile();
     expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m' } });
@@ -141,7 +159,7 @@ describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
 
   it('keeps a task whose only setting is the growth gate', async () => {
     // The delete-guard must treat gateOnUpdatedTabs as a real setting.
-    await handlers.setTaskConfig(null, 'solo', { gateOnUpdatedTabs: true });
+    await handlers.setTaskConfig(trustedEvent, 'solo', { gateOnUpdatedTabs: true });
 
     const onDisk = await readSettingsFile();
     expect(onDisk.taskConfig).toEqual({ solo: { gateOnUpdatedTabs: true } });

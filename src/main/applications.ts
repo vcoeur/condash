@@ -134,9 +134,21 @@ export async function resolveReference(
   index: Map<string, string>,
 ): Promise<RefResolution> {
   const trimmed = ref.trim();
-  if (isAbsolute(trimmed) || trimmed.startsWith('~')) {
-    const abs = trimmed.startsWith('~') ? resolve(homedir(), trimmed.slice(2)) : trimmed;
-    return { ref, kind: (await pathExists(abs)) ? 'path' : 'unknown' };
+  if (trimmed.startsWith('~')) {
+    // Only the bare `~` and `~/...` forms expand to the user's home;
+    // `~otheruser/...` would need a passwd lookup, so treat it as unknown
+    // rather than mangling it into `<home>/theruser/...`.
+    if (trimmed === '~') {
+      return { ref, kind: (await pathExists(homedir())) ? 'path' : 'unknown' };
+    }
+    if (trimmed.startsWith('~/')) {
+      const abs = resolve(homedir(), trimmed.slice(2));
+      return { ref, kind: (await pathExists(abs)) ? 'path' : 'unknown' };
+    }
+    return { ref, kind: 'unknown' };
+  }
+  if (isAbsolute(trimmed)) {
+    return { ref, kind: (await pathExists(trimmed)) ? 'path' : 'unknown' };
   }
   const handle = appHandle(trimmed);
   const byHandle = records.find((r) => r.handle === handle);
@@ -443,6 +455,15 @@ export async function renameApplication(
   if (!oldHandle || !newHandle) throw new Error('both handles must be non-empty');
   if (oldHandle === newHandle) throw new Error('old and new handle are identical');
 
+  // Mirror addApplication's collision check: the new handle must not already
+  // resolve to a handle or alias of ANOTHER app (live or retired). Renaming
+  // an app back onto one of its own aliases is allowed — the alias entry is
+  // dropped below so the app doesn't alias itself.
+  const owner = aliasIndex(await listApplications(conceptionPath)).get(newHandle);
+  if (owner !== undefined && owner !== oldHandle) {
+    throw new Error(`handle #${newHandle} already exists (resolves to #${owner})`);
+  }
+
   await mutateConfig(conceptionPath, (config) => {
     const repos = config.repositories ?? [];
     const entry = repos.find((r) => isRepoWithHandle(r, oldHandle));
@@ -454,6 +475,7 @@ export async function renameApplication(
       const obj = entry as Record<string, unknown>;
       const aliases = new Set<string>(Array.isArray(obj.aliases) ? (obj.aliases as string[]) : []);
       aliases.add(oldHandle);
+      aliases.delete(newHandle);
       obj.handle = newHandle;
       obj.aliases = Array.from(aliases);
     }
@@ -480,20 +502,43 @@ export async function renameApplication(
 }
 
 /**
- * Rewrite each `- <value>` line inside a YAML `apps:` block through `mapper`,
- * preserving the rest of the README byte-for-byte. Handles both quoted and
- * bare list items.
+ * Rewrite each `- <value>` line inside the YAML front-matter's `apps:` block
+ * through `mapper`, preserving the rest of the README byte-for-byte. Handles
+ * both quoted and bare list items.
+ *
+ * The rewrite is bounded to the leading `---` … `---` front-matter region —
+ * mirroring what the header parser reads — so an `apps:` line in the README
+ * body (e.g. inside a fenced code example) can never re-enter apps-mode and
+ * get rewritten. As an extra defence, a blank line also terminates the
+ * `apps:` block.
  */
 export function rewriteAppsRefs(raw: string, mapper: (ref: string) => string): string {
   const lines = raw.split('\n');
+  // Locate the front-matter bounds. Line 0 must open the block (tolerating a
+  // BOM and a trailing \r); without a closed front-matter there is nothing
+  // the header parser would read, so there is nothing to rewrite.
+  if (lines.length === 0 || lines[0].replace(/^\uFEFF/, '').trim() !== '---') return raw;
+  let fmEnd = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') {
+      fmEnd = i;
+      break;
+    }
+  }
+  if (fmEnd === -1) return raw;
+
   let inApps = false;
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 1; i < fmEnd; i++) {
     const line = lines[i];
     if (/^apps:\s*$/.test(line)) {
       inApps = true;
       continue;
     }
     if (inApps) {
+      if (line.trim() === '') {
+        inApps = false;
+        continue;
+      }
       const item = line.match(/^(\s*-\s*)(.*)$/);
       if (item) {
         const rawValue = item[2].trim();
@@ -507,8 +552,7 @@ export function rewriteAppsRefs(raw: string, mapper: (ref: string) => string): s
         }
         continue;
       }
-      // A non-list, non-blank line ends the apps block.
-      if (line.trim() !== '' && !/^\s/.test(line)) inApps = false;
+      // A non-list line ends the apps block.
       if (/^\S/.test(line)) inApps = false;
     }
   }

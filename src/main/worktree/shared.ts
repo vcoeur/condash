@@ -5,6 +5,7 @@
  * can stay focused on its own concern.
  */
 
+import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import { findProjectReadmes } from '../walk';
 import { readHeader } from '../header-io';
@@ -174,6 +175,67 @@ export function validateBranchName(branch: string): void {
  */
 export function branchToDir(branch: string): string {
   return branch.replace(/[\\/]/g, '-');
+}
+
+/** One entry of `git worktree list --porcelain`: the on-disk path and the
+ *  checked-out branch (null when detached). */
+export interface WorktreeListEntry {
+  path: string;
+  branch: string | null;
+}
+
+/**
+ * Snapshot the repo's registered worktrees via `git worktree list
+ * --porcelain`. Returns null when the query itself failed (not a repo,
+ * git missing) so callers can distinguish "no entries" from "couldn't ask".
+ */
+export async function listWorktreeEntries(repoCwd: string): Promise<WorktreeListEntry[] | null> {
+  let stdout: string;
+  try {
+    ({ stdout } = await exec('git', ['worktree', 'list', '--porcelain'], { cwd: repoCwd }));
+  } catch {
+    return null;
+  }
+  const entries: WorktreeListEntry[] = [];
+  let current: { path?: string; branch: string | null } = { branch: null };
+  const flush = () => {
+    if (current.path) entries.push({ path: current.path, branch: current.branch });
+    current = { branch: null };
+  };
+  for (const line of stdout.split('\n')) {
+    if (line.length === 0) {
+      flush();
+      continue;
+    }
+    if (line.startsWith('worktree ')) {
+      current.path = line.slice('worktree '.length).trim();
+    } else if (line.startsWith('branch refs/heads/')) {
+      current.branch = line.slice('branch refs/heads/'.length);
+    } else if (line === 'detached') {
+      current.branch = null;
+    }
+  }
+  flush();
+  return entries;
+}
+
+/**
+ * Find the snapshot entry registered at `target`, comparing both the raw
+ * path and the realpath (symlinked worktrees roots are common). Returns
+ * null when no entry matches — the directory at `target` is not a
+ * registered worktree of this repo.
+ */
+export async function findWorktreeEntry(
+  entries: readonly WorktreeListEntry[],
+  target: string,
+): Promise<WorktreeListEntry | null> {
+  const targetReal = await fs.realpath(target).catch(() => target);
+  for (const entry of entries) {
+    if (entry.path === target) return entry;
+    const real = await fs.realpath(entry.path).catch(() => entry.path);
+    if (real === targetReal) return entry;
+  }
+  return null;
 }
 
 /** True when `ref` resolves in the repo — works for local branches,

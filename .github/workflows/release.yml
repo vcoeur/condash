@@ -24,6 +24,10 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          # No pushes from this job. The later `git fetch origin main` works
+          # anonymously (public repo); restore credentials here if the repo
+          # ever goes private.
+          persist-credentials: false
 
       # Reject malformed tags. Stable `vX.Y.Z` and prerelease suffixes
       # (`-rc.N`, `-alpha*`, `-beta*`) both need the leading semver triplet.

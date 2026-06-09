@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, For, onCleanup, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
@@ -278,14 +278,22 @@ export function Card(props: {
   };
 
   const endDrag = () => {
+    // Idempotent, and a no-op unless *this* card started a drag — so the
+    // onCleanup below can't clobber another card's in-flight drag chrome
+    // when a non-dragging card unmounts mid-gesture.
+    if (!dragging) return;
+    dragging = false;
     if (ghost) {
       ghost.remove();
       ghost = null;
     }
     delete document.body.dataset.dragging;
-    dragging = false;
     setOverStatus(null);
   };
+
+  // A mid-drag unmount (e.g. a watcher-driven list refresh) would otherwise
+  // orphan the body-appended ghost and leave body.dataset.dragging set.
+  onCleanup(endDrag);
 
   const handlePointerDown = (event: PointerEvent) => {
     if (!isDraggable() || event.button !== 0) return;

@@ -46,11 +46,16 @@ export async function withFileQueue<T>(path: string, work: () => Promise<T>): Pr
   // doesn't block subsequent ones), then run our own work and rethrow any error
   // the caller cares about.
   const next: Promise<T> = prev.catch(() => undefined).then(work);
-  queues.set(
-    key,
-    next.finally(() => {
-      if (queues.get(key) === next) queues.delete(key);
-    }),
-  );
+  // The retained copy is pre-handled: a rejection from `work` must reach only
+  // the caller — a bare stored promise would surface the same error a second
+  // time as an unhandled rejection whenever no follower chains onto it. The
+  // cleanup also has to compare against the *stored* promise (not `next`),
+  // else entries linger in the map forever.
+  const stored: Promise<unknown> = next
+    .catch(() => undefined)
+    .finally(() => {
+      if (queues.get(key) === stored) queues.delete(key);
+    });
+  queues.set(key, stored);
   return next;
 }

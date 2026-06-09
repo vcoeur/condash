@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { listAgents } from '../agents';
-import { withConception } from './utils';
+import { requireMainWindowSender, withConception } from './utils';
 
 /**
  * Wire the agents IPC. Agents are read from the conception's effective config
@@ -9,5 +9,8 @@ import { withConception } from './utils';
  * modal, so there is no write verb here.
  */
 export function registerAgentsIpc(): void {
-  ipcMain.handle('listAgents', () => withConception((c) => listAgents(c), []));
+  ipcMain.handle('listAgents', (event) => {
+    requireMainWindowSender(event);
+    return withConception((c) => listAgents(c), []);
+  });
 }

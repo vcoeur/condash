@@ -1,4 +1,5 @@
 import type { SearchHighlight, SearchRegion, SearchSnippet, SearchTerm } from '../../shared/types';
+import { toLowerCaseSameLength } from './lowercase';
 import type { RegionLookup } from './regions';
 
 const MAX_SNIPPETS = 3;
@@ -37,7 +38,8 @@ export function buildSnippets(
   terms: readonly SearchTerm[],
   regions: RegionLookup,
 ): SearchSnippet[] {
-  const lower = raw.toLowerCase();
+  // Length-preserving: candidate offsets index into `raw` (window slicing).
+  const lower = toLowerCaseSameLength(raw);
 
   const candidates: Candidate[] = [];
   for (const term of terms) {
@@ -90,7 +92,8 @@ function collapseWhitespace(s: string): string {
 }
 
 function collectSnippetMatches(snippet: string, terms: readonly SearchTerm[]): SearchHighlight[] {
-  const lower = snippet.toLowerCase();
+  // Length-preserving: highlight offsets index into the snippet text.
+  const lower = toLowerCaseSameLength(snippet);
   const matches: SearchHighlight[] = [];
   for (const term of terms) {
     let cursor = 0;

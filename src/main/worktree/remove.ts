@@ -11,6 +11,8 @@ import {
   branchToDir,
   defaultWorktreesPath,
   findItemsDeclaringBranch,
+  findWorktreeEntry,
+  listWorktreeEntries,
   readConfig,
   repoLookupMap,
   resolveAppRepo,
@@ -49,6 +51,12 @@ export interface RemoveResult {
   partiallyRemoved: { repo: string; path: string; reason: string }[];
   /** Repos that had no worktree at this branch in the first place. */
   notPresent: string[];
+  /** Directories at the expected worktree path that are NOT registered
+   *  worktrees of the repo (manual clone, leftover from an earlier partial
+   *  remove). Never deleted — even under `--force-rm` — because they may
+   *  hold unpushed work git knows nothing about. `worktrees check` reports
+   *  the same dirs under its orphan vocabulary. */
+  orphaned: { repo: string; path: string; reason: string }[];
   /** Whether `<worktrees_path>/<branch>/` was rmdir'd (only if empty after). */
   parentRemoved: boolean;
 }
@@ -71,24 +79,57 @@ export async function removeBranchWorktrees(
   // by *other active* items so we don't yank a worktree out from under them).
   // Resolve every token to its canonical repo directory name so a `#vcoeur`
   // handle and a literal `--repo vcoeur.com` both target the same worktree.
-  const requested =
-    options.repos && options.repos.length > 0
-      ? new Set(options.repos.map((token) => resolveAppRepo(token, reposByName)?.name ?? token))
-      : new Set(
-          (await findItemsDeclaringBranch(conceptionPath, branch))
-            .flatMap((i) => i.apps)
-            .map((app) => resolveAppRepo(app, reposByName)?.name)
-            .filter((name): name is string => Boolean(name)),
-        );
-  // Compute the protected set from active items declaring this branch *that
-  // were not in the explicit override*. The skill is responsible for excluding
-  // the *closing* item from `requested` so its repos are eligible for removal.
+  const explicit = options.repos !== undefined && options.repos.length > 0;
+  const declaringItems = await findItemsDeclaringBranch(conceptionPath, branch);
+  const requested = explicit
+    ? new Set(options.repos!.map((token) => resolveAppRepo(token, reposByName)?.name ?? token))
+    : new Set(
+        declaringItems
+          .flatMap((i) => i.apps)
+          .map((app) => resolveAppRepo(app, reposByName)?.name)
+          .filter((name): name is string => Boolean(name)),
+      );
   const protectedSet = new Set<string>();
-  for (const item of await findItemsDeclaringBranch(conceptionPath, branch)) {
-    if (item.status === 'done') continue;
-    for (const app of item.apps) {
-      const repo = resolveAppRepo(app, reposByName)?.name;
-      if (repo && !requested.has(repo)) protectedSet.add(repo);
+  const protectedReasons = new Map<string, string>();
+  if (explicit) {
+    // Explicit mode: protect repos claimed by active items *that were not in
+    // the override*. The skill is responsible for excluding the *closing*
+    // item from `requested` so its repos are eligible for removal.
+    for (const item of declaringItems) {
+      if (item.status === 'done') continue;
+      for (const app of item.apps) {
+        const repo = resolveAppRepo(app, reposByName)?.name;
+        if (repo && !requested.has(repo)) {
+          protectedSet.add(repo);
+          protectedReasons.set(repo, 'still claimed by another active item');
+        }
+      }
+    }
+  } else {
+    // Implicit mode: `requested` is the union of every declaring item's
+    // repos, so the explicit-mode rule above would be vacuously empty.
+    // Protect a repo claimed by MORE THAN ONE active (now/review) item —
+    // removing it on behalf of one item would yank the worktree out from
+    // under the other. A repo claimed by a single active item is the user's
+    // clear removal target and stays eligible.
+    const activeClaims = new Map<string, number>();
+    for (const item of declaringItems) {
+      if (item.status !== 'now' && item.status !== 'review') continue;
+      const repos = new Set(
+        item.apps
+          .map((app) => resolveAppRepo(app, reposByName)?.name)
+          .filter((name): name is string => Boolean(name)),
+      );
+      for (const repo of repos) activeClaims.set(repo, (activeClaims.get(repo) ?? 0) + 1);
+    }
+    for (const [repo, claims] of activeClaims) {
+      if (claims >= 2) {
+        protectedSet.add(repo);
+        protectedReasons.set(
+          repo,
+          `claimed by ${claims} active items on this branch — pass --repo to override`,
+        );
+      }
     }
   }
 
@@ -98,12 +139,16 @@ export async function removeBranchWorktrees(
     protected: [],
     partiallyRemoved: [],
     notPresent: [],
+    orphaned: [],
     parentRemoved: false,
   };
 
   for (const name of [...requested].sort()) {
     if (protectedSet.has(name)) {
-      result.protected.push({ repo: name, reason: `still claimed by another active item` });
+      result.protected.push({
+        repo: name,
+        reason: protectedReasons.get(name) ?? 'still claimed by another active item',
+      });
       continue;
     }
     const lookup = reposByName.get(name);
@@ -116,6 +161,39 @@ export async function removeBranchWorktrees(
       result.notPresent.push(name);
       continue;
     }
+    // Snapshot the registry BEFORE attempting removal. Two guards hang off
+    // this snapshot:
+    //   1. A directory at the expected path that is NOT a registered
+    //      worktree (manual clone, leftover) must never enter the force-rm
+    //      path — `rm -rf` would erase work git knows nothing about.
+    //   2. `branchToDir` flattens slashes, so `foo/bar` and `foo-bar` share
+    //      a directory key. The registered entry must actually be on OUR
+    //      branch; otherwise we'd remove the other branch's worktree.
+    const snapshot = await listWorktreeEntries(lookup.cwd);
+    if (snapshot === null) {
+      // Can't query the registry — refuse rather than guess.
+      result.protected.push({
+        repo: name,
+        reason: `could not query \`git worktree list\` in ${lookup.cwd} — refusing to remove`,
+      });
+      continue;
+    }
+    const registered = await findWorktreeEntry(snapshot, target);
+    if (!registered) {
+      result.orphaned.push({
+        repo: name,
+        path: target,
+        reason: `directory exists but is not a registered worktree of ${lookup.cwd} — not removing (see \`worktrees check ${branch}\`)`,
+      });
+      continue;
+    }
+    if (registered.branch !== branch) {
+      result.protected.push({
+        repo: name,
+        reason: `worktree at ${target} is on branch '${registered.branch ?? '(detached)'}', not '${branch}' (flattened-path collision) — not removing`,
+      });
+      continue;
+    }
     const args = force ? ['worktree', 'remove', '--force', target] : ['worktree', 'remove', target];
     try {
       await exec('git', args, { cwd: lookup.cwd });
@@ -126,7 +204,10 @@ export async function removeBranchWorktrees(
       // rm step (partial remove — disk dirty, registry clean), or did it
       // refuse outright (genuinely protected)? `--force` removes the registry
       // entry first, then tries to delete the dir; a failure on the second
-      // half leaves the registry-vs-disk inconsistency users hit.
+      // half leaves the registry-vs-disk inconsistency users hit. The
+      // pre-removal snapshot above already proved the target WAS a
+      // registered worktree on this branch, so the force-rm path below can
+      // only fire on that partial-remove state.
       const stillRegistered = await isStillRegistered(lookup.cwd, target);
       if (stillRegistered) {
         result.protected.push({ repo: name, reason });

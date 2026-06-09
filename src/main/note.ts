@@ -73,6 +73,10 @@ export async function createProjectNote(projectPath: string, slug: string): Prom
     .join(' ');
   const projectName = basename(projectDir);
   const body = `# ${prefix} — ${title}\n\n> Created in ${projectName}.\n\n`;
+  // `wx` create — covered by the create-path exemption to the tmp→rename
+  // invariant (internals.md §2): exclusivity (EEXIST on a prefix race) is
+  // the point, and the target didn't exist before, so a crash can't corrupt
+  // an existing file.
   await fs.writeFile(path, body, { encoding: 'utf8', flag: 'wx' });
   return toPosix(path);
 }

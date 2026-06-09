@@ -52,12 +52,16 @@ export function createProjectsStore(deps: ProjectsStoreDeps): ProjectsStore {
   const [loaded, setLoaded] = createSignal(false);
 
   const reload = async (): Promise<void> => {
-    if (!deps.conceptionPath()) {
+    const path = deps.conceptionPath();
+    if (!path) {
       setBox('list', reconcile([] as Project[], { key: 'path' }));
       setLoaded(false);
       return;
     }
     const list = await window.condash.listProjects();
+    // Discard a stale result if the conception changed while the fetch was
+    // in flight — applying it would paint the previous conception's list.
+    if (deps.conceptionPath() !== path) return;
     setBox('list', reconcile(list, { key: 'path' }));
     setLoaded(true);
   };

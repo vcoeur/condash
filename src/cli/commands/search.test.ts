@@ -19,6 +19,8 @@ import {
   writeProjectReadme,
 } from './test-helpers';
 import { CliError } from '../output';
+import { UsageError } from '../parser';
+import { join } from 'node:path';
 
 let conceptionPath: string;
 
@@ -29,6 +31,12 @@ beforeEach(async () => {
 afterEach(async () => {
   await rmConception(conceptionPath);
 });
+
+async function seedLogFile(content: string): Promise<void> {
+  const logDir = join(conceptionPath, '.condash', 'logs', '2026', '06', '01');
+  await fs.mkdir(logDir, { recursive: true });
+  await fs.writeFile(join(logDir, '120000-abcd1234.txt'), content, 'utf8');
+}
 
 async function seedTwoSources(): Promise<void> {
   await writeProjectReadme(conceptionPath, 'unicorn-feature', {
@@ -113,6 +121,53 @@ describe('runSearch', () => {
     for (const hit of data.hits) expect(hit.source).toBe('knowledge');
   });
 
+  it('--scope logs is accepted and scans saved session logs', async () => {
+    await seedLogFile('the dragonfruit appears here\n');
+    const { stdout, threw } = await captureStdout(() =>
+      runSearch(
+        { noun: 'search', verb: '', positional: ['dragonfruit'], flags: { scope: 'logs' } },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeUndefined();
+    const data = parseJsonEnvelope<{ hits: Array<{ source: string }> }>(stdout).data!;
+    expect(data.hits).toHaveLength(1);
+    expect(data.hits[0].source).toBe('logs');
+  });
+
+  it('--scope resources and --scope skills are accepted', async () => {
+    for (const scope of ['resources', 'skills']) {
+      const { stdout, threw } = await captureStdout(() =>
+        runSearch(
+          { noun: 'search', verb: '', positional: ['anything'], flags: { scope } },
+          jsonCtx(),
+          conceptionPath,
+        ),
+      );
+      expect(threw).toBeUndefined();
+      const data = parseJsonEnvelope<{ hits: unknown[] }>(stdout).data!;
+      expect(data.hits).toEqual([]);
+    }
+  });
+
+  it('default scope (all) searches the markdown scopes but never logs', async () => {
+    await seedTwoSources();
+    await seedLogFile('a log line mentioning unicorn\n');
+    const { stdout } = await captureStdout(() =>
+      runSearch(
+        { noun: 'search', verb: '', positional: ['unicorn'], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const data = parseJsonEnvelope<{ hits: Array<{ source: string }> }>(stdout).data!;
+    const sources = new Set(data.hits.map((h) => h.source));
+    expect(sources.has('project')).toBe(true);
+    expect(sources.has('knowledge')).toBe(true);
+    expect(sources.has('logs')).toBe(false);
+  });
+
   it('--scope invalid throws USAGE', async () => {
     const { threw } = await captureStdout(() =>
       runSearch(
@@ -146,6 +201,17 @@ describe('runSearch', () => {
     );
     const data = parseJsonEnvelope<{ hits: unknown[] }>(stdout).data!;
     expect(data.hits.length).toBeLessThanOrEqual(3);
+  });
+
+  it('--limit with a non-numeric value throws a usage error', async () => {
+    const { threw } = await captureStdout(() =>
+      runSearch(
+        { noun: 'search', verb: '', positional: ['x'], flags: { limit: 'garbage' } },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(UsageError);
   });
 
   it('USAGE error when query is empty', async () => {

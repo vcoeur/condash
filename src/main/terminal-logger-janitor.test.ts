@@ -81,6 +81,27 @@ describe('runLogJanitor', () => {
     expect(existsSync(recent)).toBe(true);
   });
 
+  it('never evicts the current day under the size cap, even when over cap', async () => {
+    const now = new Date(2026, 4, 13, 15, 30);
+    const oneMb = 1 * 1024 * 1024;
+    const yesterday = makeDay(new Date(2026, 4, 12), oneMb);
+    const today = makeDay(new Date(2026, 4, 13), 3 * oneMb);
+    const result = await runLogJanitor(tmp, { retentionDays: 365, maxDirMb: 2 }, now);
+    // Yesterday is evicted; today survives even though the tree is still
+    // over cap — live writers are flushing into it.
+    expect(result.deletedByCap).toEqual([yesterday]);
+    expect(existsSync(yesterday)).toBe(false);
+    expect(existsSync(today)).toBe(true);
+  });
+
+  it('leaves today alone when it is the only directory and over cap', async () => {
+    const now = new Date(2026, 4, 13, 15, 30);
+    const today = makeDay(new Date(2026, 4, 13), 3 * 1024 * 1024);
+    const result = await runLogJanitor(tmp, { retentionDays: 365, maxDirMb: 1 }, now);
+    expect(result.deletedByCap).toEqual([]);
+    expect(existsSync(today)).toBe(true);
+  });
+
   it('skips non-numeric directory names', async () => {
     const root = condashLogsRoot(tmp);
     mkdirSync(join(root, 'notes'), { recursive: true });

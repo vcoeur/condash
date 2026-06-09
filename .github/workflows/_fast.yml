@@ -8,6 +8,14 @@ name: _fast
 on:
   workflow_call:
 
+# Least privilege: build-and-test only — no contents writes. A reusable
+# workflow's effective permissions are clamped to the caller's anyway; this
+# block keeps the floor explicit even when a caller carries broader scopes
+# (release.yml grants contents:write for its publish job, which lives there,
+# not here).
+permissions:
+  contents: read
+
 jobs:
   fast:
     name: Fast checks (typecheck + unit)
@@ -15,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       # No `cache: 'npm'`: the node_modules cache below already restores the full
       # install on a hit (npm ci is then skipped), so setup-node's npm cache only

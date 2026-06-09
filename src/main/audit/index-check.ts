@@ -7,6 +7,7 @@
 
 import { promises as fs } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { iterUnfencedLines } from '../../shared/header';
 import { pathExists } from '../fs-helpers';
 import { type AuditIssue, listAllSubdirs } from './shared';
 
@@ -41,34 +42,39 @@ export async function checkIndex(conceptionPath: string): Promise<AuditIssue[]> 
     }
     indexedByDir.set(d, new Set<string>());
   }
-  const linkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
+  // Per-line scan over unfenced lines only: a link-shaped example inside a
+  // fenced code block must not feed the auto-fixable `remove_index_line`
+  // action, and the classes exclude `\n` so a stray `[` can never pair with
+  // a link on a later line.
+  const linkRe = /\[([^\]\n]+)\]\(([^)\n]+)\)/g;
   for (const [d, entries] of indexedByDir) {
     const idx = join(d, 'index.md');
     const text = await fs.readFile(idx, 'utf8');
-    let m: RegExpExecArray | null;
-    linkRe.lastIndex = 0;
-    while ((m = linkRe.exec(text))) {
-      const rawLink = m[2].split('#')[0].split(' ')[0];
-      if (!rawLink || /^(https?|mailto):/i.test(rawLink)) continue;
-      if (rawLink.startsWith('../') || rawLink.startsWith('/')) continue;
-      const target = resolve(d, rawLink);
-      const relToD = relative(d, target).split(/[\\/]/);
-      const isBody = relToD.length === 1 && relToD[0].endsWith('.md') && relToD[0] !== 'index.md';
-      const isSubindex = relToD.length === 2 && relToD[1] === 'index.md';
-      if (!isBody && !isSubindex) continue;
-      const lineNo = text.slice(0, m.index).split('\n').length;
-      if (!(await pathExists(target))) {
-        issues.push({
-          check: 'index',
-          severity: 'warn',
-          file: relative(conceptionPath, idx),
-          line: lineNo,
-          message: `Index entry [${m[1]}](${rawLink}) points to a file that does not exist`,
-          fix: { action: 'remove_index_line', autoFix: true, path: rawLink, label: m[1] },
-        });
-        continue;
+    for (const { index: lineIdx, line } of iterUnfencedLines(text.split(/\r?\n/))) {
+      let m: RegExpExecArray | null;
+      linkRe.lastIndex = 0;
+      while ((m = linkRe.exec(line))) {
+        const rawLink = m[2].split('#')[0].split(' ')[0];
+        if (!rawLink || /^(https?|mailto):/i.test(rawLink)) continue;
+        if (rawLink.startsWith('../') || rawLink.startsWith('/')) continue;
+        const target = resolve(d, rawLink);
+        const relToD = relative(d, target).split(/[\\/]/);
+        const isBody = relToD.length === 1 && relToD[0].endsWith('.md') && relToD[0] !== 'index.md';
+        const isSubindex = relToD.length === 2 && relToD[1] === 'index.md';
+        if (!isBody && !isSubindex) continue;
+        if (!(await pathExists(target))) {
+          issues.push({
+            check: 'index',
+            severity: 'warn',
+            file: relative(conceptionPath, idx),
+            line: lineIdx + 1,
+            message: `Index entry [${m[1]}](${rawLink}) points to a file that does not exist`,
+            fix: { action: 'remove_index_line', autoFix: true, path: rawLink, label: m[1] },
+          });
+          continue;
+        }
+        entries.add(relative(conceptionPath, target));
       }
-      entries.add(relative(conceptionPath, target));
     }
   }
   // Orphans: a body file present on disk that no parent index references.

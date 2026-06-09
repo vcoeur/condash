@@ -5,7 +5,7 @@ import { deleteTask, listTasks, readTask, writeTask } from '../tasks';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { updateSettings } from '../settings';
 import { killTaskRun, listRunningTaskRuns } from '../task-scheduler';
-import { withConception } from './utils';
+import { requireMainWindowSender, withConception } from './utils';
 
 /**
  * Wire the Tasks-pane IPC. Every verb is conception-scoped (tasks live at
@@ -13,38 +13,54 @@ import { withConception } from './utils';
  * settings list.
  */
 export function registerTasksIpc(): void {
-  ipcMain.handle('listTasks', () => withConception((c) => listTasks(c), []));
+  ipcMain.handle('listTasks', (event) => {
+    requireMainWindowSender(event);
+    return withConception((c) => listTasks(c), []);
+  });
 
-  ipcMain.handle('readTask', (_, slug: string) => withConception((c) => readTask(c, slug), null));
+  ipcMain.handle('readTask', (event, slug: string) => {
+    requireMainWindowSender(event);
+    return withConception((c) => readTask(c, slug), null);
+  });
 
-  ipcMain.handle('writeTask', (_, slug: string, def: TaskDef, previousSlug?: string) =>
-    withConception((c) => writeTask(c, slug, def, previousSlug), ''),
-  );
+  ipcMain.handle('writeTask', (event, slug: string, def: TaskDef, previousSlug?: string) => {
+    requireMainWindowSender(event);
+    return withConception((c) => writeTask(c, slug, def, previousSlug), '');
+  });
 
-  ipcMain.handle('deleteTask', (_, slug: string) =>
-    withConception(async (c) => {
+  ipcMain.handle('deleteTask', (event, slug: string) => {
+    requireMainWindowSender(event);
+    return withConception(async (c) => {
       await deleteTask(c, slug);
-    }, undefined),
-  );
+    }, undefined);
+  });
 
   // Live headless scheduled runs (capability 1) — the Tasks pane's "Running"
   // section lists them and can kill one. Process-global, not conception-scoped:
   // the scheduler only ever runs the active conception's tasks.
-  ipcMain.handle('listRunningTaskRuns', () => listRunningTaskRuns());
-  ipcMain.handle('killTaskRun', (_, sid: string) => killTaskRun(sid));
+  ipcMain.handle('listRunningTaskRuns', (event) => {
+    requireMainWindowSender(event);
+    return listRunningTaskRuns();
+  });
+  ipcMain.handle('killTaskRun', (event, sid: string) => {
+    requireMainWindowSender(event);
+    return killTaskRun(sid);
+  });
 
   // Per-task schedule / timeout / excludeFromLogs / runMode config
   // (capability 1). Read merges through the effective config (condash.json over
   // settings.json); writes always target the per-machine settings.json
   // `taskConfig` map.
-  ipcMain.handle('getTaskConfig', () =>
-    withConception(async (c) => {
+  ipcMain.handle('getTaskConfig', (event) => {
+    requireMainWindowSender(event);
+    return withConception(async (c) => {
       const config = await getEffectiveConceptionConfig(c);
       return (config.taskConfig ?? {}) as Record<string, TaskConfigEntry>;
-    }, {}),
-  );
+    }, {});
+  });
 
-  ipcMain.handle('setTaskConfig', async (_, slug: string, entry: TaskConfigEntry) => {
+  ipcMain.handle('setTaskConfig', async (event, slug: string, entry: TaskConfigEntry) => {
+    requireMainWindowSender(event);
     if (typeof slug !== 'string' || slug.length === 0) {
       throw new Error('setTaskConfig: slug must be a non-empty string');
     }

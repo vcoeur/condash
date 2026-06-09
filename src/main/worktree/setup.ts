@@ -14,6 +14,8 @@ import {
   currentBranch,
   defaultWorktreesPath,
   findItemsDeclaringBranch,
+  findWorktreeEntry,
+  listWorktreeEntries,
   readConfig,
   refExists,
   repoLookupMap,
@@ -44,17 +46,25 @@ export interface SetupResult {
   branch: string;
   /** Repos we actually created worktrees for (skipping ones that already existed). */
   created: { repo: string; path: string }[];
-  /** Repos we skipped because the worktree already existed. */
+  /** Repos we skipped because the worktree already existed on this branch. */
   alreadyPresent: { repo: string; path: string }[];
-  /** Repos we couldn't set up — primary checkout already on the branch, etc. */
+  /** Repos we couldn't set up — primary checkout already on the branch, a
+   *  flattened-path collision with another branch's worktree, etc. */
   blocked: { repo: string; reason: string }[];
   /** `.env` files copied (relative to the worktree root). */
   envCopied: { repo: string; files: string[] }[];
-  /** Install commands run. */
-  installRan: { repo: string; command: string; ok: boolean }[];
-  /** Base ref new branches were created from (null when no base was resolved
-   *  and the repo's default tip was used). */
+  /** Install commands run. `stderrTail` carries the last few stderr lines
+   *  when the command failed, so a FAILED row is diagnosable. */
+  installRan: { repo: string; command: string; ok: boolean; stderrTail?: string }[];
+  /** Base ref new branches were created from (null when no base was resolved;
+   *  each repo then branches from its default-branch tip — `origin/HEAD`,
+   *  falling back to local `main`/`master`, falling back to the primary
+   *  checkout's HEAD). */
   base: string | null;
+  /** Stale-base warnings: for each repo where the start ref of a NEW branch
+   *  has an upstream, how many commits the ref trails that (already-fetched)
+   *  remote-tracking ref. No fetch is run — this only measures locally. */
+  baseBehind: { repo: string; ref: string; upstream: string; behind: number }[];
 }
 
 export async function setupBranchWorktrees(
@@ -82,6 +92,7 @@ export async function setupBranchWorktrees(
     envCopied: [],
     installRan: [],
     base: base ?? null,
+    baseBehind: [],
   };
 
   const branchDir = branchToDir(branch);
@@ -102,7 +113,24 @@ export async function setupBranchWorktrees(
     }
     const target = join(worktreesRoot, branchDir, name);
     if (await pathExists(target)) {
-      result.alreadyPresent.push({ repo: name, path: target });
+      // The directory key flattens slashes (`foo/bar` and `foo-bar` collide),
+      // and a leftover dir may not be a worktree at all. Classify honestly
+      // instead of reporting every existing dir as "already present".
+      const entries = await listWorktreeEntries(lookup.cwd);
+      const registered = entries ? await findWorktreeEntry(entries, target) : null;
+      if (!registered) {
+        result.blocked.push({
+          repo: name,
+          reason: `directory ${target} exists but is not a registered worktree of ${lookup.cwd}`,
+        });
+      } else if (registered.branch !== branch) {
+        result.blocked.push({
+          repo: name,
+          reason: `directory ${target} holds a worktree on branch '${registered.branch ?? '(detached)'}', not '${branch}' (flattened-path collision)`,
+        });
+      } else {
+        result.alreadyPresent.push({ repo: name, path: target });
+      }
       continue;
     }
     const primaryBranch = await currentBranch(lookup.cwd);
@@ -114,16 +142,32 @@ export async function setupBranchWorktrees(
       continue;
     }
     const branchOk = await branchExists(lookup.cwd, branch);
-    if (!branchOk && base) {
-      // New branch + base specified: the base must exist as a ref in this
-      // repo. Fail loudly rather than fall back to the repo default — that's
-      // exactly the silent-wrong-base behaviour issue #81 is about.
-      if (!(await refExists(lookup.cwd, base))) {
-        result.blocked.push({
-          repo: name,
-          reason: `base ref '${base}' not found in ${lookup.cwd} — run \`git fetch\` or create it locally first`,
-        });
-        continue;
+    let startRef: string | undefined;
+    if (!branchOk) {
+      if (base) {
+        // New branch + base specified: the base must exist as a ref in this
+        // repo. Fail loudly rather than fall back to the repo default — that's
+        // exactly the silent-wrong-base behaviour issue #81 is about.
+        if (!(await refExists(lookup.cwd, base))) {
+          result.blocked.push({
+            repo: name,
+            reason: `base ref '${base}' not found in ${lookup.cwd} — run \`git fetch\` or create it locally first`,
+          });
+          continue;
+        }
+        startRef = base;
+      } else {
+        // No base resolved: branch from the repo's default-branch tip, not
+        // whatever the primary checkout happens to have checked out (HEAD
+        // could be a stale feature branch).
+        startRef = await defaultBranchTip(lookup.cwd);
+      }
+      if (startRef) {
+        // Stale-base check: when the start ref has an upstream, measure how
+        // far it trails the (already-fetched) remote-tracking ref. We never
+        // fetch here — the warning tells the user to.
+        const behind = await behindUpstream(lookup.cwd, startRef);
+        if (behind) result.baseBehind.push({ repo: name, ref: startRef, ...behind });
       }
     }
     try {
@@ -131,7 +175,7 @@ export async function setupBranchWorktrees(
       if (!branchOk) args.push('-b', branch);
       args.push(target);
       if (branchOk) args.push(branch);
-      else if (base) args.push(base);
+      else if (startRef) args.push(startRef);
       await exec('git', args, { cwd: lookup.cwd });
       result.created.push({ repo: name, path: target });
     } catch (err) {
@@ -156,8 +200,13 @@ export async function setupBranchWorktrees(
     // Per-repo `install:` runs unconditionally now (#87) — the presence of
     // the field is the user already asking for it. --no-install skips.
     if (lookup.install && !options.skipInstall) {
-      const ok = await runInstall(target, lookup.install);
-      result.installRan.push({ repo: name, command: lookup.install, ok });
+      const install = await runInstall(target, lookup.install);
+      result.installRan.push({
+        repo: name,
+        command: lookup.install,
+        ok: install.ok,
+        ...(install.stderrTail ? { stderrTail: install.stderrTail } : {}),
+      });
     }
   }
 
@@ -165,11 +214,62 @@ export async function setupBranchWorktrees(
 }
 
 /**
+ * The repo's default-branch tip, used as the start ref for a new branch when
+ * no `**Base**` / `--base` resolved. Resolution order: `origin/HEAD` (what
+ * the remote calls its default branch), local `main`, local `master`,
+ * undefined (git then branches from the primary checkout's HEAD).
+ */
+async function defaultBranchTip(repoCwd: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await exec('git', ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], {
+      cwd: repoCwd,
+    });
+    const full = stdout.trim();
+    if (full.startsWith('refs/remotes/')) return full.slice('refs/remotes/'.length);
+  } catch {
+    // No origin/HEAD — fall through to the local conventions.
+  }
+  for (const candidate of ['main', 'master']) {
+    if (await refExists(repoCwd, `refs/heads/${candidate}`)) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * How far `ref` trails its upstream, measured against the already-fetched
+ * remote-tracking ref (`git rev-list --count <ref>..<ref>@{u}`). Returns null
+ * when the ref has no upstream (e.g. it is itself a remote-tracking ref),
+ * the lookup fails, or the ref is up to date.
+ */
+async function behindUpstream(
+  repoCwd: string,
+  ref: string,
+): Promise<{ upstream: string; behind: number } | null> {
+  try {
+    const { stdout: upstreamOut } = await exec(
+      'git',
+      ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${ref}@{u}`],
+      { cwd: repoCwd },
+    );
+    const upstream = upstreamOut.trim();
+    if (!upstream || upstream === `${ref}@{u}`) return null;
+    const { stdout: countOut } = await exec('git', ['rev-list', '--count', `${ref}..${upstream}`], {
+      cwd: repoCwd,
+    });
+    const behind = Number.parseInt(countOut.trim(), 10);
+    return Number.isFinite(behind) && behind > 0 ? { upstream, behind } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Pick the base ref. Explicit `--base` wins. Otherwise collect every distinct
  * `**Base**` value across declaring items: 0 → null (current behaviour), 1 →
  * use it, ≥2 → throw with the disagreeing items so the user can reconcile.
+ * Exported for unit tests.
  */
-function resolveBase(
+export function resolveBase(
   branch: string,
   explicit: string | undefined,
   items: { slug: string; base: string | null }[],
@@ -225,9 +325,9 @@ async function copyDeclaredFiles(
 /**
  * Reject anything that could escape the worktree on copy: absolute paths,
  * `..` segments, NUL. Forward and backslash separators are both checked
- * because a Windows config could carry either.
+ * because a Windows config could carry either. Exported for unit tests.
  */
-function isSafeRelativePath(rel: string): boolean {
+export function isSafeRelativePath(rel: string): boolean {
   if (!rel || rel.includes('\0')) return false;
   if (rel.startsWith('/') || rel.startsWith('\\')) return false;
   if (/^[A-Za-z]:[\\/]/.test(rel)) return false; // Windows drive prefix
@@ -235,15 +335,34 @@ function isSafeRelativePath(rel: string): boolean {
   return !segments.some((s) => s === '..' || s === '.');
 }
 
-async function runInstall(cwd: string, command: string): Promise<boolean> {
+/**
+ * Run the per-repo `install:` command. On failure, captures the last few
+ * stderr lines (falling back to the error message) so the FAILED row in the
+ * result is diagnosable instead of silent.
+ */
+async function runInstall(
+  cwd: string,
+  command: string,
+): Promise<{ ok: boolean; stderrTail?: string }> {
   try {
     await exec(process.platform === 'win32' ? 'cmd.exe' : 'sh', shellArgs(command), {
       cwd,
       maxBuffer: 64 * 1024 * 1024,
+      // npm install & friends legitimately run long — disable the exec
+      // module's 60 s default timeout for this call.
+      timeout: 0,
     });
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (err) {
+    const stderr = (err as { stderr?: unknown }).stderr;
+    const text =
+      typeof stderr === 'string' && stderr.trim().length > 0
+        ? stderr
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    const tail = text.trim().split('\n').slice(-5).join('\n');
+    return { ok: false, stderrTail: tail };
   }
 }
 

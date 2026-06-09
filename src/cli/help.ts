@@ -15,6 +15,51 @@ export const UNIVERSAL_FOOTER =
   'Universal: --json, --ndjson, --quiet, --no-color, --conception <path>';
 
 /**
+ * Top-level `condash --help` text. Lives here (not in index.ts) so the
+ * drift test can import it without triggering index.ts's `main()` side
+ * effect. Each noun's verb list must mention every verb the noun dispatches
+ * — `top-help.test.ts` cross-checks this text against the per-noun help.
+ */
+export const TOP_HELP = `condash <noun> <verb> [args] [--flags]
+
+GUI:
+  condash                       Launch the dashboard.
+  condash gui [chromium-switch] Launch with Chromium switches (debugging).
+
+Nouns:
+  projects     list, read, activity, resolve, search, validate, status get|set,
+               close, check-knowledge, reopen, backfill-closed, index, create,
+               scan-promotions, rewrite-headers
+  knowledge    tree, verify, retrieve, stamp, index
+  search       cross-tree search (--scope all|projects|knowledge|resources|skills|logs)
+  repos        list configured repositories
+  applications list, add, set, rename, sync-docs, validate (the #handle registry)
+  worktrees    list, check <branch>, mismatch, setup <branch>, remove <branch>
+  audit        umbrella audit (--include all|lfs,binaries,cross-repo,worktrees,
+               index,stale-index,stale-verification,knowledge-recheck,knowledge-check)
+  dirty        list, touch <tree>, clear <tree|all>
+  logs         days (default), list [<day>], read <sid|path>, tail (session logs)
+  skills       list shipped artefacts; install [<name-or-path>...]; status; validate
+  config       conception-path, path, list [--effective|--global],
+               get <key> [--effective|--global], set <key> <value> [--global],
+               migrate (legacy condash.json → .condash/settings.json)
+  help         this message; or 'condash help <noun>' for verbs
+
+Universal flags:
+  --conception <path>   Override conception root.
+  --json                Emit a single JSON envelope on stdout.
+  --ndjson              Emit one JSON object per line.
+  --quiet, -q           Suppress diagnostics on stderr.
+  --no-color            Disable ANSI styling.
+  -h, --help            Show help.
+  -v, --version         Show version.
+
+Exit codes:
+  0 ok    1 runtime    2 usage    3 validation
+  4 not-found    5 no-conception    6 ambiguous
+`;
+
+/**
  * Render a help block: the given lines, a blank line, the universal-flag
  * footer, and a trailing newline. Centralised so adding a universal flag is a
  * one-line edit here rather than a grep across every noun's help text.

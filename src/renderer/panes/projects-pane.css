@@ -797,12 +797,10 @@ body[data-dragging='project'] .row {
   color: var(--text-faint);
 }
 
-/* Blocked steps stay legible (no strikethrough) but tint amber so they
- * read as "needs attention" wherever the marker appears. Uses
- * `--col-warn` when defined; falls back to the same orange-amber the
- * unknown-status warning glyph uses. */
+/* Blocked steps stay legible (no strikethrough) but tint with the warn
+ * colour so they read as "needs attention" wherever the marker appears. */
 .step-marker-blocked .step-toggle {
-  color: var(--col-warn, #d97706);
+  color: var(--warn);
 }
 .row .slug {
   font-family: var(--font-mono);

@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
+import { posixSingleQuote } from '../shared/shell-quote';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,12 +31,6 @@ const RESOLVE_TIMEOUT_MS = 5000;
  * slice back out. */
 type ShellRunner = (shell: string, args: string[]) => Promise<{ stdout: string }>;
 
-/** Quote a token for a POSIX shell single-quoted context, escaping any
- * embedded single quote via the `'\''` idiom. */
-function singleQuote(token: string): string {
-  return `'${token.split("'").join("'\\''")}'`;
-}
-
 /**
  * Build the argv for the probe shell. Runs the Electron binary as plain Node
  * (`ELECTRON_RUN_AS_NODE`, set by the caller) to print the resolved env as
@@ -44,7 +39,9 @@ function singleQuote(token: string): string {
  */
 export function buildProbeArgs(execPath: string, marker: string): string[] {
   const inner = `process.stdout.write(${JSON.stringify(marker)}+JSON.stringify(process.env)+${JSON.stringify(marker)})`;
-  const command = `${singleQuote(execPath)} -e ${singleQuote(inner)}`;
+  // The probe is always a POSIX shell (resolveLoginPath bails on win32), so
+  // POSIX single-quoting from the shared shell-quote module is the right form.
+  const command = `${posixSingleQuote(execPath)} -e ${posixSingleQuote(inner)}`;
   // -l login (sources ~/.profile etc.), -i interactive (sources ~/.bashrc /
   // ~/.zshrc), -c run-and-exit. Together they capture both the login and the
   // interactive contributions to PATH regardless of where the user put it.
