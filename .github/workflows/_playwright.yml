@@ -35,7 +35,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          # 22+: @electron/rebuild 4 declares engines.node >=22.12.
+          node-version: '22'
 
       - name: Cache node_modules + electron caches
         id: deps-cache

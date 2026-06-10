@@ -22,6 +22,14 @@ files:
 
 asar: true
 
+# Native deps (node-pty) are already rebuilt for the Electron ABI by the
+# `postinstall` electron-rebuild (v4 — upstream node-gyp 12, which knows
+# VS 2026). electron-builder's own rebuild pass runs app-builder-lib's
+# bundled @electron/rebuild 3.6.1, whose node-gyp fork cannot detect the
+# VS 2026-only windows-2025-vs2026 runner image (killed the v4.38.x release
+# builds). Skip it: package node_modules as postinstall left them.
+npmRebuild: false
+
 # Unpack the CLI bundle + the conception template so the bash wrapper can
 # `exec` them via plain Node (ELECTRON_RUN_AS_NODE=1). Files inside the
 # asar archive are only readable through Electron's wrapped fs; plain Node
