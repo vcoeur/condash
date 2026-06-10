@@ -11,6 +11,10 @@ name: _build
 
 on:
   workflow_call:
+  # Manual smoke-test: build the 3-OS matrix from any ref without tagging.
+  # Nothing publishes — artifacts only (the GH Release upload lives in
+  # release.yml). Added 2026-06-10 to validate the VS2026 runner-image fix.
+  workflow_dispatch:
 
 # Least privilege: the matrix builds installers and uploads them as workflow
 # artifacts (runtime token — no contents writes). The GH Release upload that
@@ -28,13 +32,12 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-          # Pinned (2026-06-10): `windows-latest` now redirects to the
-          # windows-2025-vs2026 image, where node-gyp's Visual Studio finder
-          # dies on ERR_CHILD_PROCESS_STDIO_MAXBUFFER (Get-VSSetupInstance
-          # output too large) and electron-rebuild can't build node-pty —
-          # killed the v4.38.0 release build. Re-point to windows-latest once
-          # @electron/node-gyp handles the VS2026 image.
-          - windows-2025
+          # windows-latest resolves to the windows-2025-vs2026 image (VS 2026
+          # only, no VS 2022). That needs node-gyp >= 12.1 — provided by
+          # @electron/rebuild 4 (postinstall) and npmRebuild:false in
+          # electron-builder.yml (its bundled rebuild 3.6.1 cannot detect
+          # VS 2026; killed the v4.38.0/v4.38.1 release builds).
+          - windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -49,7 +52,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          # 22+: @electron/rebuild 4 declares engines.node >=22.12.
+          node-version: '22'
 
       - name: Install dependencies
         run: npm ci
