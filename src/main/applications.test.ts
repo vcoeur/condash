@@ -88,6 +88,27 @@ describe('listApplications', () => {
     expect(retired.retired).toBe(true);
     expect(retired.path).toBeUndefined();
   });
+
+  it('includes submodules as live apps carrying their parent handle (#335)', async () => {
+    writeConfig({
+      repositories: [
+        {
+          handle: 'parent-repo',
+          name: 'parent-repo',
+          submodules: [{ handle: 'child-a', name: 'child-a' }, 'ChildB'],
+        },
+        'standalone',
+      ],
+    });
+    const apps = await listApplications(tmp, emptyGlobal);
+    expect(apps.map((a) => a.handle)).toEqual(['parent-repo', 'child-a', 'childb', 'standalone']);
+    const childA = apps.find((a) => a.handle === 'child-a')!;
+    expect(childA.parent).toBe('parent-repo');
+    expect(childA.path).toBe('parent-repo/child-a');
+    expect(childA.retired).toBe(false);
+    expect(apps.find((a) => a.handle === 'parent-repo')!.parent).toBeUndefined();
+    expect(apps.find((a) => a.handle === 'standalone')!.parent).toBeUndefined();
+  });
 });
 
 describe('aliasIndex + resolveReference', () => {
@@ -130,6 +151,14 @@ describe('validateApplications', () => {
     expect(unknown[0].ref).toBe('#ghost');
     expect(alias).toHaveLength(1);
     expect(alias[0].suggestion).toBe('#agentsconf');
+  });
+
+  it('resolves a submodule handle referenced from a project README (#335)', async () => {
+    writeConfig({
+      repositories: [{ name: 'parent-repo', submodules: [{ handle: 'child-a', name: 'child-a' }] }],
+    });
+    writeReadme('2026-05-04-submodule', ['#child-a']);
+    expect(await validateApplications(tmp, emptyGlobal)).toEqual([]);
   });
 });
 
@@ -175,6 +204,25 @@ describe('renderAppsTable', () => {
     expect(await renderAppsTable(await listApplications(tmp, emptyGlobal))).toContain(
       `\`${join(checkout, 'AGENTS.md')}\``,
     );
+  });
+
+  it('renders submodules nested under their parent (#335)', async () => {
+    writeConfig({
+      repositories: [
+        {
+          handle: 'parent-repo',
+          name: 'parent-repo',
+          submodules: [{ handle: 'child-a', name: 'child-a' }],
+        },
+      ],
+    });
+    const table = await renderAppsTable(await listApplications(tmp, emptyGlobal));
+    const rows = table.split('\n');
+    const parentIdx = rows.findIndex((r) => r.includes('| `#parent-repo` |'));
+    const childIdx = rows.findIndex((r) => r.includes('| ↳ `#child-a` |'));
+    expect(parentIdx).toBeGreaterThan(-1);
+    expect(childIdx).toBe(parentIdx + 1);
+    expect(rows[childIdx]).toContain('`knowledge/internal/child-a.md`');
   });
 });
 
@@ -312,6 +360,13 @@ describe('add / set / rename round-trips', () => {
   it('rejects a duplicate handle on add', async () => {
     writeConfig({ repositories: [{ handle: 'condash', name: 'condash' }] });
     await expect(addApplication(tmp, { handle: 'condash', path: 'x' })).rejects.toThrow(/exists/);
+  });
+
+  it('rejects adding an app whose handle collides with a submodule (#335)', async () => {
+    writeConfig({
+      repositories: [{ name: 'parent-repo', submodules: [{ handle: 'child-a', name: 'child-a' }] }],
+    });
+    await expect(addApplication(tmp, { handle: 'child-a', path: 'x' })).rejects.toThrow(/exists/);
   });
 
   it('rejects renaming onto another app’s handle or alias', async () => {

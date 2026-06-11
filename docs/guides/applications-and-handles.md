@@ -45,6 +45,7 @@ The registry is your config's **`repositories[]`** array (`settings.json` defaul
 - **`handle`** — the canonical identity. Omit it and you get `appHandle(name)` (directory name, sigil-stripped + lowercased).
 - **`aliases`** — legacy spellings that still resolve to this handle. `validate` flags a README `apps:` value matching an alias and suggests the `#handle` rewrite; `rename` records the old handle here for you.
 - **`label`** — an optional human title rendered as a secondary subtitle; the primary pill is always the `#handle`.
+- **`submodules`** — nested repo entries are apps in their own right: each gets a handle by the same rules and resolves everywhere a handle is expected (a project may depend on a single submodule of a repo). `list` and the generated Apps table render them under their parent, prefixed `↳`.
 
 ### Retired apps
 
@@ -60,7 +61,7 @@ Retired handles **resolve** (so history stays valid) but are never rendered as c
 
 A project README's `apps:` entry must be one of:
 
-- a live `#handle` (in `repositories`),
+- a live `#handle` (in `repositories` — top-level or submodule),
 - a retired `#handle` (in `retired_apps`),
 - or an absolute path to an unregistered repo outside the workspace (`~/src/other/Thing`).
 
@@ -80,7 +81,7 @@ condash applications sync-docs           # regenerate the AGENTS.md Apps table
 
 | Verb | What it does |
 |------|--------------|
-| `list` | List every registered app (live + retired) with handle, label, path. |
+| `list` | List every registered app (live + retired) with handle, label, path; submodules render indented under their parent (`↳ #child`). |
 | `add <handle> --path <p> [--label <l>]` | Register a new live app. |
 | `set <handle> [--label <l>] [--path <p>]` | Update a registered app. |
 | `rename <old> <new>` | Rename a handle; records the old as an alias **and** rewrites every project README `apps:` reference that pointed at it. |

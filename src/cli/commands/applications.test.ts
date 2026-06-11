@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runApplications } from './applications';
 import {
   captureStdout,
+  humanCtx,
   jsonCtx,
   makeTmpConception,
   parseJsonEnvelope,
@@ -56,6 +57,22 @@ describe('runApplications list', () => {
     const apps = parseJsonEnvelope<Array<{ handle: string; retired: boolean }>>(stdout).data!;
     expect(apps.map((a) => a.handle)).toEqual(['kasten', 'kasten-manager']);
     expect(apps.find((a) => a.handle === 'kasten-manager')?.retired).toBe(true);
+  });
+
+  it('includes submodules, flagged as children in text mode (#335)', async () => {
+    await seed({
+      repositories: [{ name: 'parent-repo', submodules: [{ handle: 'child-a', name: 'child-a' }] }],
+    });
+    const json = await captureStdout(() =>
+      runApplications('list', args('list'), jsonCtx(), conceptionPath),
+    );
+    const apps = parseJsonEnvelope<Array<{ handle: string; parent?: string }>>(json.stdout).data!;
+    expect(apps.map((a) => a.handle)).toEqual(['parent-repo', 'child-a']);
+    expect(apps[1].parent).toBe('parent-repo');
+    const text = await captureStdout(() =>
+      runApplications('list', args('list'), humanCtx(), conceptionPath),
+    );
+    expect(text.stdout).toContain('  ↳ #child-a');
   });
 });
 

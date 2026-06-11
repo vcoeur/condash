@@ -32,6 +32,8 @@ export interface AppRecord {
   cwd?: string;
   /** Directory name (basename) for live apps. */
   dirName?: string;
+  /** Canonical handle of the parent repo when this app is a submodule. */
+  parent?: string;
   aliases: string[];
   retired: boolean;
 }
@@ -48,8 +50,10 @@ function retiredApps(config: ConfigShape & { retired_apps?: RawRetiredApp[] }): 
 }
 
 /**
- * List every registered application — live repos (top-level only; submodules
- * are not standalone apps) followed by retired handles, in declaration order.
+ * List every registered application — live repos (submodules included, each
+ * carrying its parent's handle) followed by retired handles, in declaration
+ * order. A submodule handle is first-class: a project may depend on a single
+ * submodule of a repo, so validate/list/sync-docs must all resolve it (#335).
  */
 export async function listApplications(
   conceptionPath: string,
@@ -64,8 +68,15 @@ export async function listApplications(
   const records: AppRecord[] = [];
   const live: RepoLookup[] = [];
   walkRepos(config, (entry) => {
-    if (!entry.parent) live.push(entry);
+    live.push(entry);
   });
+  // The walk emits a parent before its submodules, so the name → handle map is
+  // complete by the time a submodule's `parent` (the parent's dir name) needs
+  // resolving to the parent's canonical handle.
+  const handleByName = new Map<string, string>();
+  for (const entry of live) {
+    if (!entry.parent) handleByName.set(entry.name, entry.handle);
+  }
   for (const entry of live) {
     records.push({
       handle: entry.handle,
@@ -73,6 +84,9 @@ export async function listApplications(
       path: pathAsConfigured(config, entry),
       cwd: entry.cwd,
       dirName: entry.name,
+      parent: entry.parent
+        ? (handleByName.get(entry.parent) ?? appHandle(entry.parent))
+        : undefined,
       aliases: entry.aliases ?? [],
       retired: false,
     });
@@ -289,7 +303,8 @@ async function instructionsFile(cwd: string | undefined): Promise<string> {
  * `#handle`, the repo path (as configured), the absolute path to the app's
  * instruction file (`AGENTS.md`, else the legacy `CLAUDE.md` forms — so an
  * agent can open it directly), and the conventional knowledge file
- * `knowledge/internal/<handle>.md`. Retired apps are omitted — the table
+ * `knowledge/internal/<handle>.md`. Submodules render right after their parent
+ * with a `↳`-prefixed App cell. Retired apps are omitted — the table
  * documents live apps only.
  */
 export async function renderAppsTable(records: AppRecord[]): Promise<string> {
@@ -302,8 +317,9 @@ export async function renderAppsTable(records: AppRecord[]): Promise<string> {
     const repo = record.path ?? '';
     const agents = await instructionsFile(record.cwd);
     const agentsCell = agents ? `\`${agents}\`` : '';
+    const appCell = `${record.parent ? '↳ ' : ''}\`#${record.handle}\``;
     lines.push(
-      `| \`#${record.handle}\` | \`${repo}\` | ${agentsCell} | \`knowledge/internal/${record.handle}.md\` |`,
+      `| ${appCell} | \`${repo}\` | ${agentsCell} | \`knowledge/internal/${record.handle}.md\` |`,
     );
   }
   return lines.join('\n');
