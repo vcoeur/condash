@@ -15,9 +15,10 @@ import type { Deliverable } from '@shared/types';
 import type { ModalState } from './modal-types';
 import { ConfirmModal } from './confirm-modal';
 import { IconClose, IconExternal } from './icons';
-import { IconEdit, IconSave, IconView } from './note-modal-parts/icons';
+import { IconEdit, IconPdf, IconSave, IconView } from './note-modal-parts/icons';
 import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './note-modal-parts/find';
 import { ConfigSummaryPanel } from './note-modal-parts/config-summary';
+import { buildNotePdfHtml } from './note-modal-parts/export-pdf';
 import './note-modal.css';
 import './code-theme.css';
 
@@ -136,6 +137,22 @@ export function NoteModal(props: {
     if (savedAtTimer !== null) clearTimeout(savedAtTimer);
   });
 
+  // PDF export: busy flag (debounces the button) + a transient exported-✓
+  // pill mirroring the saved-✓ one.
+  const [exporting, setExporting] = createSignal(false);
+  const [exportedAt, setExportedAt] = createSignal<number | null>(null);
+  let exportedAtTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleExportedAtClear = (): void => {
+    if (exportedAtTimer !== null) clearTimeout(exportedAtTimer);
+    exportedAtTimer = setTimeout(() => {
+      setExportedAt(null);
+      exportedAtTimer = null;
+    }, 1500);
+  };
+  onCleanup(() => {
+    if (exportedAtTimer !== null) clearTimeout(exportedAtTimer);
+  });
+
   // Mirror the dirty flag out to the host. createEffect, not a wrapped
   // setDirty: covers every flip including the resets fired below on path
   // change, so the host's "unsaved" view never lags the modal's.
@@ -164,6 +181,7 @@ export function NoteModal(props: {
     setDirty(false);
     setError(null);
     setSavedAt(null);
+    setExportedAt(null);
     setFindOpen(false);
     setFindQuery('');
     setFindMatch(null);
@@ -361,6 +379,32 @@ export function NoteModal(props: {
     }
   };
 
+  // Export the current note as a PDF: build the self-contained document
+  // (fresh render + inline print CSS) and hand it to the main process, which
+  // owns the save dialog and the hidden print window. A `null` result means
+  // the user cancelled the dialog — only a real save shows the ✓ pill.
+  const exportPdf = async (): Promise<void> => {
+    const state = props.state;
+    const text = content();
+    if (!state || text == null || exporting()) return;
+    setError(null);
+    setExporting(true);
+    try {
+      const baseDir = state.path.replace(/\/[^/]*$/, '');
+      const title = state.title ?? state.path.split('/').pop() ?? 'note';
+      const doc = await buildNotePdfHtml(text, { baseDir, title });
+      const saved = await window.condash.exportNotePdf(state.path, doc);
+      if (saved) {
+        setExportedAt(Date.now());
+        scheduleExportedAtClear();
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Request a switch to view mode. If the editor is dirty, defer until the
   // user resolves the Save / Discard / Cancel dialog so edits aren't silently
   // lost when CodeMirror unmounts.
@@ -523,6 +567,11 @@ export function NoteModal(props: {
               ✓
             </span>
           </Show>
+          <Show when={exportedAt() !== null}>
+            <span class="modal-saved" title="PDF exported" aria-label="PDF exported">
+              ✓
+            </span>
+          </Show>
           <Show when={!props.state?.readOnly}>
             <button
               class="modal-button"
@@ -543,6 +592,17 @@ export function NoteModal(props: {
               aria-label="Save"
             >
               <IconSave />
+            </button>
+          </Show>
+          <Show when={mode() === 'view' && props.state && isMarkdown(props.state.path)}>
+            <button
+              class="modal-button"
+              onClick={() => void exportPdf()}
+              disabled={exporting()}
+              title="Export as PDF"
+              aria-label="Export as PDF"
+            >
+              <IconPdf />
             </button>
           </Show>
           <button

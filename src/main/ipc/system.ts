@@ -12,11 +12,15 @@ import {
 } from '../settings';
 import { resolveConceptionConfigPath } from '../effective-config';
 import { detectConceptionState, initConception } from '../conception-init';
+import { htmlToPdf } from '../export-pdf';
 import { requirePathUnder, requirePathUnderWorkspace } from '../path-bounds';
 import { setWatchedConception } from '../watcher';
 import { disposeRepoWatchers } from '../repo-watchers';
 import { readHelpDoc } from '../help';
 import { requireMainWindowSender, requireNonEmptyString } from './utils';
+
+/** Backstop cap on the renderer-built export document handed to `exportNotePdf`. */
+const MAX_EXPORT_HTML_CHARS = 8 * 1024 * 1024;
 
 /**
  * Bound a renderer-supplied path for `openPath` / `showInFolder`: it must
@@ -109,6 +113,31 @@ export function registerSystemIpc(opts: {
       url: pathToFileURL(real).href,
       filename: basename(real),
     };
+  });
+
+  ipcMain.handle('exportNotePdf', async (event, path: string, html: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('exportNotePdf', path);
+    requireNonEmptyString('exportNotePdf', html);
+    // Backstop against a runaway payload — a real note (mermaid SVGs
+    // included) stays far below this.
+    if (html.length > MAX_EXPORT_HTML_CHARS) {
+      throw new Error('exportNotePdf: document exceeds the export size cap');
+    }
+    // `path` only seeds the save dialog's default name/location — it is
+    // never read or written, and the write target is whatever the user picks
+    // in the dialog. So no workspace bound, mirroring openInEditor's
+    // documented trust boundary above.
+    const defaultPath = path.replace(/\.[^./\\]*$/, '') + '.pdf';
+    const result = await dialog.showSaveDialog({
+      title: 'Export as PDF',
+      defaultPath,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    const pdf = await htmlToPdf(html);
+    await fs.writeFile(result.filePath, pdf);
+    return toPosix(result.filePath);
   });
 
   ipcMain.handle('detectConceptionState', (event, path: string) => {

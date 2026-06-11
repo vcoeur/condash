@@ -304,7 +304,8 @@ function isPathUnder(child: string, parent: string): boolean {
  *   • repos — listRepos, listReposForPrimary, invalidateGitStatus,
  *     getDirtyDetails, listOpenWith, launchOpenWith, forceStopRepo.
  *   • settings — theme/layout/welcome/cardMinWidth/treeExpansion/getSettingsPath.
- *   • system — shell-out + app-info + conception path mutation.
+ *   • system — shell-out + app-info + conception path mutation + note-PDF
+ *     export.
  *   • terminal — every term.* verb.
  */
 function registerIpc(): void {

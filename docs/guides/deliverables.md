@@ -77,7 +77,9 @@ The embedded viewer is an Electron `<webview>` pointed at a `file://` URL — Ch
 
 ## Generating the PDF
 
-condash doesn't generate PDFs — you do, from whatever source lives alongside the item. The common shape:
+The quick path is built in: open any markdown note in the viewer and click **Export as PDF** in the header. condash prints the rendered note (code highlighting, task lists, Mermaid diagrams, embedded images) to a PDF via a save dialog that defaults to `<note-name>.pdf` next to the source — no external tools. The export always uses a light, print-oriented style regardless of the app theme.
+
+For finer typographic control (LaTeX-grade output, custom numbering), generate the PDF yourself from whatever source lives alongside the item. The common shape:
 
 - Write the body as Markdown under `<item>/notes/<name>.md`.
 - Convert with `~/.claude/scripts/md_to_pdf.sh` (pandoc + xelatex + mermaid-filter):
