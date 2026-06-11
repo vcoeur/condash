@@ -47,7 +47,8 @@ export async function runApplications(
         data
           .map((a) => {
             const tag = a.retired ? '(retired)' : (a.path ?? '');
-            return `#${a.handle.padEnd(20)}  ${tag}`;
+            const head = a.parent ? `  ↳ #${a.handle}` : `#${a.handle}`;
+            return `${head.padEnd(21)}  ${tag}`;
           })
           .join('\n') + '\n'
       );
@@ -185,7 +186,7 @@ function printHelp(verb: string | null): void {
       'The app registry — one canonical #handle per app, with label + path.',
       '',
       'Verbs:',
-      '  list                       List registered apps (live + retired).',
+      '  list                       List registered apps (live + retired; submodules nested).',
       '  add <handle> --path P      Register a new app.',
       '  set <handle> [--label|--path]   Update an app.',
       '  rename <old> <new>         Rename a handle; rewrites README refs.',
