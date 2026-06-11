@@ -39,6 +39,25 @@ export function IconView() {
   );
 }
 
+export function IconPdf() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 1.5h6l3 3v10h-9z" />
+      <path d="M9.5 1.5v3h3" />
+      <path d="M8 6.5v4" />
+      <path d="M6 8.8l2 2 2-2" />
+    </svg>
+  );
+}
+
 export function IconSave() {
   return (
     <svg

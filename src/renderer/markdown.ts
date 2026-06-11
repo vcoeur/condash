@@ -268,6 +268,44 @@ export async function runMermaidIn(container: HTMLElement): Promise<void> {
   if (blocks.length === 0) return;
 
   const mermaid = await getMermaid();
+  await renderMermaidBlocks(container, mermaid);
+}
+
+/**
+ * Render markdown into a print-ready HTML body for PDF export. A fresh render
+ * (so view-mode DOM state like find-bar highlights never leaks in) with
+ * mermaid diagrams forced to the light theme — a dark-themed SVG would be
+ * unreadable on a white page. The shared mermaid singleton is re-initialised
+ * back to the live app theme afterwards.
+ */
+export async function renderMarkdownForExport(
+  input: string,
+  options: RenderMarkdownOptions = {},
+): Promise<string> {
+  const html = await renderMarkdown(input, options);
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  if (container.querySelector('pre.mermaid')) {
+    const mermaid = await getMermaid();
+    mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' });
+    try {
+      await renderMermaidBlocks(container, mermaid);
+    } finally {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: activeMermaidTheme(),
+        securityLevel: 'strict',
+      });
+    }
+  }
+  return container.innerHTML;
+}
+
+async function renderMermaidBlocks(
+  container: HTMLElement,
+  mermaid: Awaited<ReturnType<typeof getMermaid>>,
+): Promise<void> {
+  const blocks = container.querySelectorAll<HTMLElement>('pre.mermaid');
   for (const block of blocks) {
     // This effect re-runs on every html()/theme change; once a block has been
     // turned into an SVG, skip it so we don't re-parse rendered output as source.

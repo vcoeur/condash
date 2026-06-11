@@ -26,12 +26,16 @@ vi.mock('electron', () => ({
     getVersion: () => '0.0.0-test',
     quit: vi.fn(),
   },
-  dialog: { showOpenDialog: vi.fn() },
+  dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
   shell: {
     openPath: vi.fn(async () => ''),
     openExternal: vi.fn(async () => undefined),
     showItemInFolder: vi.fn(),
   },
+}));
+
+vi.mock('../export-pdf', () => ({
+  htmlToPdf: vi.fn(async () => Buffer.from('%PDF-fake')),
 }));
 
 vi.mock('../settings', () => ({
@@ -182,6 +186,56 @@ describe('openPath', () => {
     expect(shell.openPath).toHaveBeenCalledWith(
       await fs.realpath(testGlobals.__testSettingsPath as string),
     );
+  });
+});
+
+describe('exportNotePdf', () => {
+  it('returns null without printing when the save dialog is cancelled', async () => {
+    const { dialog } = await import('electron');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (dialog.showSaveDialog as any).mockResolvedValue({ canceled: true });
+    const result = await handlers.exportNotePdf(trustedEvent, '/c/note.md', '<html></html>');
+    expect(result).toBeNull();
+    const { htmlToPdf } = await import('../export-pdf');
+    expect(htmlToPdf).not.toHaveBeenCalled();
+  });
+
+  it('prints and writes the PDF to the picked path', async () => {
+    const target = join(tmp, 'out.pdf');
+    const { dialog } = await import('electron');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (dialog.showSaveDialog as any).mockResolvedValue({ canceled: false, filePath: target });
+    const result = await handlers.exportNotePdf(trustedEvent, '/c/note.md', '<html></html>');
+    expect(result).toBe(target.split('\\').join('/'));
+    expect(await fs.readFile(target, 'utf8')).toBe('%PDF-fake');
+    // The dialog defaults to <note-name>.pdf next to the source note.
+    expect(dialog.showSaveDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: '/c/note.pdf' }),
+    );
+  });
+
+  it('rejects an oversized document before opening the dialog', async () => {
+    const huge = 'x'.repeat(8 * 1024 * 1024 + 1);
+    await expect(handlers.exportNotePdf(trustedEvent, '/c/note.md', huge)).rejects.toThrow(
+      /size cap/,
+    );
+    const { dialog } = await import('electron');
+    expect(dialog.showSaveDialog).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty arguments', async () => {
+    await expect(handlers.exportNotePdf(trustedEvent, '', '<html></html>')).rejects.toThrow(
+      /expected a non-empty string/,
+    );
+    await expect(handlers.exportNotePdf(trustedEvent, '/c/note.md', '')).rejects.toThrow(
+      /expected a non-empty string/,
+    );
+  });
+
+  it('rejects an untrusted (webview) sender', async () => {
+    await expect(
+      handlers.exportNotePdf(webviewEvent, '/c/note.md', '<html></html>'),
+    ).rejects.toThrow(/not an app window/);
   });
 });
 

@@ -379,6 +379,13 @@ export interface CondashApi {
    *  and percent-encoding). Returns the URL plus the basename so the
    *  renderer can render it without doing its own POSIX-only path split. */
   pdfToFileUrl(path: string): Promise<{ url: string; filename: string }>;
+  /** Export a rendered note as a PDF. `html` is the self-contained document
+   *  the renderer built (see `note-modal-parts/export-pdf.ts`); `path` is the
+   *  source note, used only to seed the save dialog's default `<name>.pdf`
+   *  target. The main process pops the save dialog, prints the document in a
+   *  hidden window via `printToPDF`, and writes the result. Resolves to the
+   *  saved file's path, or `null` when the user cancels the dialog. */
+  exportNotePdf(path: string, html: string): Promise<string | null>;
   /**
    * Subscribe to commands sent by the application menu (File → Search,
    * File → Open conception directory, File → Quit). Returns an unsubscribe.
