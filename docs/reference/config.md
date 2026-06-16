@@ -242,7 +242,7 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 
 **Agents** are a flat list of terminal launchers under the top-level `agents` key. The tab-strip spawn dropdown lists them (it always offers `New shell` first, then each agent by `label`). Picking one opens a new terminal tab running its `command` — that's the whole model. An agent is a **top-level** config key (like `repositories`), so it resolves global-default ← per-conception override like every other workspace key: define machine-wide defaults in `settings.json`, override or extend per tree in `.condash/settings.json`.
 
-**Favourites.** Mark agents with `"favorite": true` to keep the dropdown short: it then shows `New shell` + the favourites (each prefixed with a ★) directly, and tucks every non-favourite under a `More ▸` fly-out submenu. With **no** agent marked favourite, the dropdown lists every agent inline — so the split only takes effect once at least one agent opts in. Order within each group follows config order.
+**Favourites.** Mark agents with `"favorite": true` to keep the dropdown short: it then shows `New shell` + the favourites (each prefixed with a ★) directly, and tucks every non-favourite under a `More ▸` fly-out submenu. With **no** agent marked favourite, the dropdown lists every agent inline — so the split only takes effect once at least one agent opts in. Order within each group follows config order. A long `More ▸` list never runs off-screen: the fly-out is capped to the viewport and wraps into multiple columns (scrolling only as a last resort), and flips left or up so the whole popup stays visible.
 
 ```json
 {
