@@ -404,6 +404,33 @@ describe('SessionLogger', () => {
     expect(footer?.exitCode).toBe(0);
   });
 
+  it('close() persists the final buffer even when exit() never ran (kill path)', async () => {
+    // The quit / SIGKILL path closes a logger without an exit() — the forced
+    // final flush in doClose() must still land the output (with no footer,
+    // since the session never reported an exit code).
+    const logger = makeLogger(
+      tmp,
+      {
+        sid: 't-killpath',
+        side: 'my',
+        cwd: '/x',
+        spawn: { cmd: 'bash', argv: [] },
+      },
+      {},
+      // Large debounce so no periodic flush fires — only doClose's flush writes.
+      60_000,
+    );
+    logger.spawn();
+    logger.output('output never explicitly flushed\r\n');
+    await logger.close();
+
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body, footer } = parseFile(txt);
+    expect(body).toContain('output never explicitly flushed');
+    expect(footer).toBeNull();
+  });
+
   it('rendered file size is bounded by scrollback × line width', async () => {
     const logger = makeLogger(
       tmp,

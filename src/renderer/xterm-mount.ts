@@ -17,6 +17,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import type { TerminalXtermPrefs } from '@shared/types';
 import { liveTerms } from './xterm-registry';
+import { PromptDecorations } from './prompt-decorations';
 
 export type XtermPrefs = TerminalXtermPrefs;
 
@@ -322,26 +323,19 @@ export function mountXterm(
   // ---- OSC 133 prompt boundary tracking ----
   // A = prompt-start, B = prompt-end (input begins), C = command-start (output
   // begins), D = command-end + optional exit code: "133;D;<exit>".
-  const promptLines: number[] = [];
-  const promptDecorations: IDecoration[] = [];
+  // The prompt-line + decoration bookkeeping lives in PromptDecorations
+  // (prompt-decorations.ts) so it stays index-aligned and scrollback-bounded —
+  // the previous inline version pushed a second decoration entry per command,
+  // growing the list for the life of the tab.
   let lastExitCode: number | null = null;
-  const trimPromptHistory = (): void => {
-    // Keep the list bounded to what's still in the scrollback.
-    const minLine = term.buffer.active.baseY;
-    while (promptLines.length > 0 && promptLines[0] < minLine) {
-      promptLines.shift();
-      const dec = promptDecorations.shift();
-      dec?.dispose();
-    }
-  };
-  const markPromptDecoration = (line: number, exit: number | null): void => {
+  const makePromptDecoration = (line: number, exit: number | null): IDecoration | null => {
     try {
       const marker = term.registerMarker(
         line - (term.buffer.active.baseY + term.buffer.active.cursorY),
       );
-      if (!marker) return;
+      if (!marker) return null;
       const dec = term.registerDecoration({ marker, x: 0, width: 1, layer: 'top' });
-      if (!dec) return;
+      if (!dec) return null;
       dec.onRender((el) => {
         // CSS tokens, not hex literals, so the marker colours flip with the
         // theme (the decoration element lives in the document, so `var()`
@@ -353,29 +347,25 @@ export function mountXterm(
         el.style.opacity = '0.85';
         el.style.borderRadius = '1px';
       });
-      promptDecorations.push(dec);
+      return dec;
     } catch {
       /* decoration failures are non-fatal */
+      return null;
     }
   };
+  const prompts = new PromptDecorations<IDecoration>(makePromptDecoration);
   term.parser.registerOscHandler(133, (data) => {
     const parts = data.split(';');
     const kind = parts[0];
     const buf = term.buffer.active;
     const line = buf.baseY + buf.cursorY;
     if (kind === 'A') {
-      promptLines.push(line);
-      markPromptDecoration(line, lastExitCode);
-      trimPromptHistory();
+      prompts.start(line, lastExitCode, buf.baseY);
     } else if (kind === 'D') {
       const code = parts[1] !== undefined ? Number(parts[1]) : null;
       lastExitCode = Number.isFinite(code) ? (code as number) : null;
-      // Decorate the most recent prompt with the resolved exit code.
-      const lastIdx = promptLines.length - 1;
-      if (lastIdx >= 0) {
-        promptDecorations[lastIdx]?.dispose();
-        markPromptDecoration(promptLines[lastIdx], lastExitCode);
-      }
+      // Recolour the most recent prompt with the resolved exit code.
+      prompts.end(lastExitCode);
     }
     // 'B' (prompt-end) and 'C' (command-start) currently only used as data
     // boundaries; no decoration needed.
@@ -385,7 +375,7 @@ export function mountXterm(
   const jumpToPrompt = (direction: -1 | 1): void => {
     const buf = term.buffer.active;
     const cursorAbs = buf.baseY + buf.cursorY;
-    const sorted = [...promptLines].sort((a, b) => a - b);
+    const sorted = [...prompts.promptLines()].sort((a, b) => a - b);
     let target: number | null = null;
     if (direction < 0) {
       for (let i = sorted.length - 1; i >= 0; i--) {
@@ -437,14 +427,14 @@ export function mountXterm(
       return () => busyHandlers.delete(handler);
     },
     lastExitCode: () => lastExitCode,
-    promptLines: () => promptLines,
+    promptLines: () => prompts.promptLines(),
     jumpToPrompt,
     refreshTheme,
     dispose() {
       if (disposed) return;
       disposed = true;
       liveTerms.delete(mounted);
-      for (const d of promptDecorations) d.dispose();
+      prompts.dispose();
       term.dispose();
     },
   };
