@@ -33,7 +33,10 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  * Bytes flow: pty `output(data)` → `term.write(data)`. A debounced timer
  * (default 5 s) re-renders the buffer + header (+ footer if exited) and
  * atomically renames a temp file onto the `.txt` path. `exit()` and
- * `close()` force an immediate flush.
+ * `close()` force an immediate flush. The periodic flushes do NOT `fsync` —
+ * only the terminal flushes (exit / close) do; the atomic rename already keeps
+ * the file from ever being torn, and fsync-ing every few-second re-snapshot
+ * stalls the main process for durability a log viewer doesn't need.
  *
  * `input(data)` is intentionally a no-op — the pty echoes typed bytes
  * back through stdout, so feeding `in` into the headless xterm would
@@ -244,7 +247,8 @@ export class SessionLogger {
     this.exitCode = exitCode;
     this.finishedTs = new Date().toISOString();
     this.dirty = true;
-    this.flushNowFireAndForget();
+    // Terminal flush — fsync the final footer state to disk.
+    this.flushNowFireAndForget(true);
   }
 
   /** Idempotent — concurrent and repeated calls share one close pass.
@@ -266,6 +270,15 @@ export class SessionLogger {
       await this.flushChain;
     }
     await this.flushChain;
+    // Terminal flush: fsync the final state once. The periodic flushes above
+    // wrote it unsynced, and a session killed without exit() (quit / SIGKILL)
+    // never hit exit()'s sync — so force one durable write here. Gated on
+    // `enabled` so a logging-off session still writes nothing.
+    if (this.prefs.enabled) {
+      this.dirty = true;
+      this.flushNowFireAndForget(true);
+      await this.flushChain;
+    }
     this.cancelFlush();
     this.closed = true;
     this.term.dispose();
@@ -298,17 +311,20 @@ export class SessionLogger {
     }
   }
 
-  private flushNowFireAndForget(): void {
+  private flushNowFireAndForget(sync = false): void {
     // Append onto the serialised chain — never run two flushes
     // concurrently against the same `.txt.tmp`.
     this.flushChain = this.flushChain
-      .then(() => this.flushNow())
+      .then(() => this.flushNow(sync))
       .catch((err: Error) => {
         process.stderr.write(`condash terminal-logger: flush failed: ${err.message}\n`);
       });
   }
 
-  private async flushNow(): Promise<void> {
+  /** Render the buffer and atomically write it to the `.txt`. `sync` forces an
+   *  fsync before the rename for durability — set only on the terminal flushes
+   *  (exit / close), not the periodic ones (see the class doc). */
+  private async flushNow(sync = false): Promise<void> {
     if (!this.dirty || this.closed) return;
     this.dirty = false;
     // Wait for any queued xterm parse to complete before rendering —
@@ -322,14 +338,17 @@ export class SessionLogger {
     const text = this.composeFileContent(body, isTranscript ? 'transcript' : 'grid');
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
-      // tmp → fsync → rename, matching the atomic-write invariant
-      // (atomic-write.ts): an unsynced rename can surface a zero-length
-      // file after power loss.
+      // tmp → (fsync) → rename. The atomic rename keeps the file from ever
+      // being torn / zero-length; fsync makes the content itself durable across
+      // power loss. Periodic flushes skip the fsync (a live session re-snapshots
+      // its whole buffer every few seconds — fsync-ing each one stalls the main
+      // process's libuv threadpool for durability the log viewer doesn't need);
+      // the exit / close flushes pass `sync: true`.
       const tmp = `${this.txtPath}.tmp`;
       const fh = await open(tmp, 'w');
       try {
         await fh.writeFile(text, 'utf8');
-        await fh.sync();
+        if (sync) await fh.sync();
       } finally {
         await fh.close();
       }
