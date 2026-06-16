@@ -264,7 +264,7 @@ function App() {
   });
 
   // --- Repo actions (Code-pane row callbacks) ---------------------------
-  const { handleLaunch, handleForceStop, runForceStop, handleStopRepo, handleRunRepo } =
+  const { handleLaunch, handlePull, handleForceStop, runForceStop, handleStopRepo, handleRunRepo } =
     useRepoActions({
       allSessions,
       getTerminalHandle: () => terminalHandle,
@@ -689,6 +689,7 @@ function App() {
                         onSetAllSticky={branchFilter.setAllSticky}
                         onSetNoneBranches={branchFilter.setNone}
                         onOpen={handleOpenInEditor}
+                        onPull={(path) => void handlePull(path)}
                         onLaunch={(slot, path) => void handleLaunch(slot, path)}
                         onForceStop={(r) => void handleForceStop(r)}
                         onStop={handleStopRepo}

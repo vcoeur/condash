@@ -23,6 +23,7 @@ export function BranchActions(props: {
    * the row that actually represents it. */
   running: boolean;
   onOpen: (path: string) => void;
+  onPull: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onRun: (repo: RepoEntry, worktree?: Worktree) => void;
   onStop: (repo: RepoEntry) => void;
@@ -32,6 +33,12 @@ export function BranchActions(props: {
 
   const launcherEntries = (): OpenWithSlotKey[] =>
     LAUNCHER_SLOTS.filter((slot) => !!props.slots[slot]);
+
+  // "Pull branch" only makes sense for a real git checkout sitting on a
+  // branch — hidden for a missing path, a plain (non-git) directory, or a
+  // detached HEAD (no branch to fast-forward).
+  const canPull = (): boolean =>
+    !props.repo.missing && props.repo.isGit !== false && props.worktree.branch != null;
 
   return (
     <div class="branch-actions">
@@ -123,6 +130,20 @@ export function BranchActions(props: {
             </span>
             <span>Open in file manager</span>
           </button>
+          <Show when={canPull()}>
+            <button
+              class="branch-action-menu-item"
+              role="menuitem"
+              title="Fast-forward this branch to its upstream (git pull --ff-only)"
+              onClick={() => {
+                menu.close();
+                props.onPull(props.worktree.path);
+              }}
+            >
+              <span class="glyph">↓</span>
+              <span>Pull branch</span>
+            </button>
+          </Show>
         </div>
       </Show>
     </div>

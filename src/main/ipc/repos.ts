@@ -4,10 +4,16 @@ import { invalidateAll } from '../git-status-cache';
 import { recomputeAllWatchedRepos, setRepoWatchers, watchTargetsFromRepos } from '../repo-watchers';
 import { getDirtyDetails } from '../git-details';
 import { forceStopRepo, launchOpenWith, listOpenWith } from '../launchers';
+import { pullBranch } from '../pull-branch';
 import { requirePathUnderWorkspace } from '../path-bounds';
 import { readSettings } from '../settings';
 import type { OpenWithSlotKey } from '../../shared/types';
-import { requireConception, requireMainWindowSender, withConception } from './utils';
+import {
+  requireConception,
+  requireMainWindowSender,
+  requireNonEmptyString,
+  withConception,
+} from './utils';
 
 /**
  * Wire repo / git-status / launcher IPC handlers. The two listRepos verbs
@@ -90,6 +96,17 @@ export function registerReposIpc(): void {
       const realPath = await requirePathUnderWorkspace(path);
       return launchOpenWith(conceptionPath, slot, realPath);
     });
+  });
+
+  // Code-pane per-branch "Pull branch": fast-forward the worktree to its
+  // upstream. Bounded to the workspace + worktrees roots so the renderer can
+  // only drive a `git pull` inside a known checkout, never an arbitrary
+  // directory on disk.
+  ipcMain.handle('pullBranch', async (event, path: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('pullBranch', path);
+    const realPath = await requirePathUnderWorkspace(path);
+    return pullBranch(realPath);
   });
 
   ipcMain.handle('forceStopRepo', (event, repoName: string) => {

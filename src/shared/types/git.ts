@@ -42,6 +42,19 @@ export interface UpstreamStatus {
   ahead: number;
 }
 
+/** Outcome of a per-branch `git pull --ff-only` (the Code-pane "Pull branch"
+ *  action). The renderer toasts `message`; `status` picks the toast tone.
+ *  - `updated`: the worktree fast-forwarded to new upstream commits.
+ *  - `up-to-date`: already in sync — nothing to apply.
+ *  - `diverged`: local and upstream both advanced, so a fast-forward isn't
+ *    possible; condash can't resolve it, so it's reported, not swallowed.
+ *  - `dirty`: refused because the worktree has uncommitted changes. */
+export interface PullBranchResult {
+  status: 'updated' | 'up-to-date' | 'diverged' | 'dirty';
+  /** Human-readable one-line summary for the toast. */
+  message: string;
+}
+
 /** Click-to-inspect payload for the per-branch dirty badge. One row per
  *  dirty file (capped at a fixed file limit) with totals for the footer.
  *  Also carries unpushed-commit context so the popover can list them in a

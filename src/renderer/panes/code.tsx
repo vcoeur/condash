@@ -45,6 +45,7 @@ export function CodeView(props: {
   /** Switch the branch filter into "only main" mode. */
   onSetNoneBranches: () => void;
   onOpen: (path: string) => void;
+  onPull: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
   onStop: (repo: RepoEntry) => void;
@@ -121,6 +122,7 @@ export function CodeView(props: {
                   selectedBranches={props.selectedBranches}
                   stickyAllBranches={props.stickyAllBranches}
                   onOpen={props.onOpen}
+                  onPull={props.onPull}
                   onLaunch={props.onLaunch}
                   onForceStop={props.onForceStop}
                   onStop={props.onStop}
