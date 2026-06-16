@@ -14,6 +14,7 @@ import type {
   ProjectCreateInput,
   ProjectCreateResult,
   ProjectFileEntry,
+  PullBranchResult,
   RepoEntry,
   RepoEvent,
   ResourceNode,
@@ -81,6 +82,12 @@ export interface CondashApi {
   listOpenWith(): Promise<OpenWithSlots>;
   launchOpenWith(slot: OpenWithSlotKey, path: string): Promise<void>;
   forceStopRepo(repoName: string): Promise<void>;
+  /** Fast-forward a worktree to its upstream — the Code-pane per-branch
+   * "Pull branch" action (`git pull --ff-only`). Refuses on a dirty tree and
+   * reports updated / up-to-date / diverged via the result so the caller can
+   * toast the outcome; throws on an unexpected git failure (no upstream,
+   * network, not a repo). */
+  pullBranch(path: string): Promise<PullBranchResult>;
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;

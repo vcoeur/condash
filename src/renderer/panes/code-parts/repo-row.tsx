@@ -23,6 +23,7 @@ export function RepoRow(props: {
    *  (the "All (sticky)" mode from issue #169). */
   stickyAllBranches: boolean;
   onOpen: (path: string) => void;
+  onPull: (path: string) => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
   onStop: (repo: RepoEntry) => void;
@@ -137,6 +138,7 @@ export function RepoRow(props: {
                 onStop={props.onStop}
                 onOpenInTerm={props.onOpenInTerm}
                 onOpen={props.onOpen}
+                onPull={props.onPull}
               />
             </li>
           )}

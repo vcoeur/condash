@@ -10,6 +10,10 @@ export interface UseRepoActionsDeps {
 
 export interface UseRepoActions {
   handleLaunch: (slot: OpenWithSlotKey, path: string) => Promise<void>;
+  /** Code-pane per-branch "Pull branch" — `git pull --ff-only` in the
+   *  worktree, toasting updated / up-to-date / diverged / dirty. Drops the
+   *  git-status cache after a real fast-forward so the card's badges refresh. */
+  handlePull: (path: string) => Promise<void>;
   handleForceStop: (repo: RepoEntry) => void;
   runForceStop: (repo: RepoEntry) => Promise<void>;
   /** Per-card ⏹ — close the live code-side session for this repo, which
@@ -27,6 +31,20 @@ export function useRepoActions(deps: UseRepoActionsDeps): UseRepoActions {
       await window.condash.launchOpenWith(slot, path);
     } catch (err) {
       deps.flashToast(`Launch failed: ${(err as Error).message}`, 'error');
+    }
+  };
+
+  const handlePull = async (path: string): Promise<void> => {
+    try {
+      const result = await window.condash.pullBranch(path);
+      const kind =
+        result.status === 'updated' ? 'success' : result.status === 'up-to-date' ? 'info' : 'error';
+      deps.flashToast(result.message, kind);
+      // Only a real fast-forward moves HEAD / dirty / ahead — drop the git
+      // status cache so the card's badges reflect the new tip right away.
+      if (result.status === 'updated') await window.condash.invalidateGitStatus();
+    } catch (err) {
+      deps.flashToast(`Pull failed: ${(err as Error).message}`, 'error');
     }
   };
 
@@ -75,5 +93,5 @@ export function useRepoActions(deps: UseRepoActionsDeps): UseRepoActions {
     }
   };
 
-  return { handleLaunch, handleForceStop, runForceStop, handleStopRepo, handleRunRepo };
+  return { handleLaunch, handlePull, handleForceStop, runForceStop, handleStopRepo, handleRunRepo };
 }

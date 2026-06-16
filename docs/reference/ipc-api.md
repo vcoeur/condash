@@ -65,6 +65,7 @@ All writes are `tmp` → `fsync` → `rename`. The per-file write queue (`mutate
 | `invalidateGitStatus()` | Drop the 3 s TTL git-status cache (used by the Refresh button). |
 | `getDirtyDetails(path, opts?)` | Detailed `git status -s` + `git diff --stat HEAD` for a worktree path. Powers the click-to-inspect popover on the per-branch `N dirty` badge. Returns `null` when the path is missing or not a git repo. |
 | `forceStopRepo(repoName)` | Run the repo's `force_stop:` shell command — escape hatch for a port held by a non-condash process. |
+| `pullBranch(path)` | Fast-forward a worktree to its upstream (`git pull --ff-only`) — the per-branch **Pull branch** menu action. Refuses on a dirty tree and returns `updated` / `up-to-date` / `diverged` / `dirty` so the caller can toast the outcome; throws on an unexpected git failure (no upstream, network, not a repo). |
 | `listOpenWith()` | Return `open_with` slots from `<conception>/.condash/settings.json` (with legacy `condash.json` / `configuration.json` as read fallbacks). Slots resolve through the conception ⊕ global precedence; the global `settings.json` provides defaults. |
 | `launchOpenWith(slot, path)` | Spawn the configured editor against `path`. |
 | `openInEditor(path)` | Resolve the user's preferred editor and open the file. |
