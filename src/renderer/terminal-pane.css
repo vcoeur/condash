@@ -419,8 +419,9 @@
   color: var(--col-review);
 }
 
-/* The `More ▸` row: chevron pushed to the right, `position: relative` so the
- * fly-out submenu can anchor to it. */
+/* The `More ▸` row: chevron pushed to the right. `position: relative` keeps a
+ * stable anchor rect for the JS placement in column.tsx (which reads this
+ * row's `getBoundingClientRect`). */
 .terminal-tab-dropdown-more {
   display: flex;
   align-items: center;
@@ -430,14 +431,31 @@
 }
 
 /* Overflow submenu — nested inside the portal'd menu, so it inherits the
- * `.terminal-tab-dropdown-menu li` row styling via the descendant combinator
- * and only needs its own box + placement here. Opens to the right of the
- * `More ▸` row. */
+ * `.terminal-tab-dropdown-menu li` row styling via the descendant combinator.
+ *
+ * Stays `position: absolute` relative to the `More ▸` row (which is
+ * `position: relative`). The default `top`/`left` here open it to the *right*
+ * of the row, never over it — so a hover-to-open never drops a submenu item
+ * under the cursor mid-click. column.tsx only *refines* top/left (as offsets
+ * relative to the row) to flip the fly-out left or up when it would otherwise
+ * spill past a viewport edge, clearing the inline offset to fall back to these
+ * defaults when it fits.
+ *
+ * Multi-column: `column-count` is set imperatively in column.tsx from the
+ * viewport height, so a long agent list flows into side-by-side columns
+ * instead of running off the bottom. CSS multicol (not `flex column wrap`) is
+ * used deliberately — a column-wrap flex box doesn't grow its width to contain
+ * the wrapped columns in Chromium, leaving later columns hidden behind a
+ * horizontal scrollbar; multicol sizes the box to fit every column. The capped
+ * `max-height` keeps each column within the viewport band, and `overflow: auto`
+ * is the last-resort scroll if even the columns can't fit (very long list,
+ * short window). */
 .terminal-tab-dropdown-submenu {
   position: absolute;
   top: -5px;
-  left: 100%;
-  margin-left: 2px;
+  left: calc(100% + 2px);
+  column-gap: 4px;
+  overflow: auto;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 4px;
@@ -445,6 +463,15 @@
   list-style: none;
   padding: 4px 0;
   box-shadow: var(--shadow-lift);
+  /* Above the primary menu's rows so a flipped-left fly-out is never occluded
+   * by the favourites it overlaps. */
+  z-index: 1001;
+}
+
+/* Never split a row across a column boundary; keep labels single-line. */
+.terminal-tab-dropdown-submenu li {
+  break-inside: avoid;
+  white-space: nowrap;
 }
 
 /* ── Tab right-click context menu ─────────────────────────────────── */
