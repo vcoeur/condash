@@ -66,7 +66,11 @@ describe('OscTranscriptExtractor', () => {
   });
 
   it('orders multiple messages and joins them', () => {
-    const ex = new OscTranscriptExtractor();
+    // Pin the clock: with the real-time default, a run that straddles a
+    // wall-clock minute boundary splices a `<!-- minute -->` marker between the
+    // messages and breaks this exact-render assertion (the flake that reddened
+    // CI was the line-cap test below).
+    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 20, 15, 0));
     ex.feed(packets('0', { v: 1, t: 'msg', role: 'user', text: 'q' }));
     ex.feed(packets('1', { v: 1, t: 'msg', role: 'assistant', text: 'a' }));
     ex.feed(packets('2', { v: 1, t: 'end', sid: 's' }));
@@ -74,7 +78,8 @@ describe('OscTranscriptExtractor', () => {
   });
 
   it('labels reasoning frames distinctly from the assistant response', () => {
-    const ex = new OscTranscriptExtractor();
+    // Pinned clock — same minute-boundary flake guard as above.
+    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 20, 15, 0));
     ex.feed(packets('0', { v: 1, t: 'msg', role: 'user', text: 'why?' }));
     ex.feed(packets('1', { v: 1, t: 'msg', role: 'reasoning', text: 'thinking…' }));
     ex.feed(packets('2', { v: 1, t: 'msg', role: 'assistant', text: 'because' }));
@@ -129,7 +134,14 @@ describe('OscTranscriptExtractor', () => {
   });
 
   it('caps the transcript line count, dropping the oldest lines', () => {
-    const ex = new OscTranscriptExtractor();
+    // Pin the clock. With the real-time default, when this ~20k-message loop
+    // happens to straddle a wall-clock minute boundary, one `<!-- minute -->`
+    // marker is spliced in, occupies a slot in the capped list, and shifts the
+    // oldest retained message by one — `lines[0]` becomes `msg 51`, not `msg
+    // 50`. That is the intermittent failure that reddened main CI (a run that
+    // landed at exactly HH:35:00). A constant clock emits no markers, so the
+    // cap maths is exact and deterministic.
+    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 20, 15, 0));
     const overshoot = 50;
     for (let k = 0; k < MAX_TRANSCRIPT_LINES + overshoot; k++) {
       ex.feed(packets(`m${k}`, { v: 1, t: 'msg', role: 'assistant', text: `msg ${k}` }));
