@@ -224,6 +224,7 @@ const terminalLoggingSettings = z
     retentionDays: z.number().int().min(0).optional(),
     maxDirMb: z.number().int().min(0).optional(),
     scrollback: z.number().int().min(100).optional(),
+    markerIntervalSec: z.number().int().min(0).optional(),
   })
   .strict();
 

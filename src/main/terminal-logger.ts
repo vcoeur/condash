@@ -4,7 +4,7 @@ import { Terminal } from '@xterm/headless';
 import type { TaskRunContext, TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { META_LINE_PREFIX, type LogKind } from './logs-format';
-import { OscTranscriptExtractor } from './osc-transcript';
+import { OscTranscriptExtractor, timestampMarker } from './osc-transcript';
 import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
 
 /**
@@ -96,6 +96,7 @@ const DEFAULT_PREFS: Required<TerminalLoggingPrefs> = {
   retentionDays: 14,
   maxDirMb: 500,
   scrollback: 5000,
+  markerIntervalSec: 60,
 };
 
 /** Default 5-second debounce. Pty `output` calls schedule the flush; the
@@ -148,6 +149,7 @@ export function resolveLoggingPrefs(patch?: TerminalLoggingPrefs): Required<Term
     retentionDays: patch.retentionDays ?? DEFAULT_PREFS.retentionDays,
     maxDirMb: patch.maxDirMb ?? DEFAULT_PREFS.maxDirMb,
     scrollback: patch.scrollback ?? DEFAULT_PREFS.scrollback,
+    markerIntervalSec: patch.markerIntervalSec ?? DEFAULT_PREFS.markerIntervalSec,
   };
 }
 
@@ -176,6 +178,22 @@ export class SessionLogger {
    * When a session speaks it, the log body becomes the clean transcript
    * instead of the grid snapshot. */
   private readonly oscTranscript = new OscTranscriptExtractor();
+  /** Injectable clock — stamps `started`/`finished` and the timestamp markers
+   * so tests can drive cadence deterministically. */
+  private readonly now: () => Date;
+  /** Wall-clock ms between in-body timestamp markers; `0` disables them. */
+  private readonly markerIntervalMs: number;
+  /** True once output arrived since the last marker — the "new content" gate.
+   * Kept distinct from `dirty` (which exit/close also set) so a close flush
+   * never stamps an idle session. */
+  private contentSinceMarker = false;
+  /** Wall-clock of the last emitted marker, seeded to the session start so the
+   * first interval is silent (the header already records `started`). */
+  private lastMarkerAt: Date;
+  /** Append-only marker timeline for a grid log, rendered as a trailing block.
+   * Grid bodies are full repaints, so a marker cannot live inline — this lives
+   * in logger state and survives the repaint. Stays empty for transcripts. */
+  private readonly gridMarkers: string[] = [];
 
   constructor(
     conceptionPath: string,
@@ -183,11 +201,17 @@ export class SessionLogger {
     prefs?: TerminalLoggingPrefs,
     /** Test hook — override the debounce window. */
     flushMs: number = DEFAULT_FLUSH_MS,
+    /** Test hook — injectable clock for deterministic timestamp markers. */
+    now: () => Date = () => new Date(),
   ) {
     this.prefs = resolveLoggingPrefs(prefs);
     this.flushMs = flushMs;
-    this.startedTs = new Date().toISOString();
-    this.txtPath = sessionLogPath(conceptionPath, ctx.sid, new Date(), ctx.taskContext);
+    this.now = now;
+    this.markerIntervalMs = this.prefs.markerIntervalSec * 1000;
+    const start = now();
+    this.startedTs = start.toISOString();
+    this.lastMarkerAt = start;
+    this.txtPath = sessionLogPath(conceptionPath, ctx.sid, start, ctx.taskContext);
     this.rotateDir = ctx.taskContext
       ? taskRunDir(conceptionPath, ctx.taskContext.trigger, ctx.taskContext.taskSlug)
       : null;
@@ -239,13 +263,16 @@ export class SessionLogger {
     const clean = this.oscTranscript.feed(data);
     if (clean.length > 0) this.term.write(clean);
     this.dirty = true;
+    // Any chunk is new content — even a transcript-only chunk (clean empty,
+    // its message captured via feed()). Opens the marker's content gate.
+    this.contentSinceMarker = true;
     this.scheduleFlush();
   }
 
   exit(exitCode: number): void {
     if (!this.isEnabled()) return;
     this.exitCode = exitCode;
-    this.finishedTs = new Date().toISOString();
+    this.finishedTs = this.now().toISOString();
     this.dirty = true;
     // Terminal flush — fsync the final footer state to disk.
     this.flushNowFireAndForget(true);
@@ -334,6 +361,7 @@ export class SessionLogger {
     // A session that emitted an in-band transcript gets the clean transcript
     // as its body; everything else falls back to the rendered grid.
     const isTranscript = this.oscTranscript.hasTranscript();
+    this.maybeEmitTimestampMarker(isTranscript);
     const body = isTranscript ? this.oscTranscript.render() : renderBufferAsPlainText(this.term);
     const text = this.composeFileContent(body, isTranscript ? 'transcript' : 'grid');
     try {
@@ -358,9 +386,28 @@ export class SessionLogger {
     }
   }
 
-  /** Assemble the on-disk text: header line, blank, body, then (if the
-   * session has exited) blank + footer line. `kind` records whether `body` is
-   * the OSC transcript or the grid snapshot, so readers needn't guess. */
+  /** Emit a timestamp marker when the cadence interval has elapsed AND new
+   * output arrived since the last marker. An idle session never schedules a
+   * flush, so this is never reached for a stale terminal — the two gates
+   * together give "a regular-interval marker, only when there is new content".
+   * A transcript marker lands in the message stream; a grid marker appends to
+   * the trailing timeline (a grid body is a repaint and can't host it inline).
+   */
+  private maybeEmitTimestampMarker(isTranscript: boolean): void {
+    if (this.markerIntervalMs <= 0 || !this.contentSinceMarker) return;
+    const now = this.now();
+    if (now.getTime() - this.lastMarkerAt.getTime() < this.markerIntervalMs) return;
+    const marker = timestampMarker(now);
+    if (isTranscript) this.oscTranscript.pushTimestampMarker(marker);
+    else this.gridMarkers.push(marker);
+    this.contentSinceMarker = false;
+    this.lastMarkerAt = now;
+  }
+
+  /** Assemble the on-disk text: header line, blank, body, then (for a grid log
+   * with markers) a trailing `<!-- timeline -->` block, then (if the session
+   * has exited) blank + footer line. `kind` records whether `body` is the OSC
+   * transcript or the grid snapshot, so readers needn't guess. */
   private composeFileContent(body: string, kind: LogKind): string {
     const header: HeaderMeta = {
       sid: this.ctx.sid,
@@ -374,6 +421,11 @@ export class SessionLogger {
     };
     const lines: string[] = [`${META_LINE_PREFIX}${JSON.stringify(header)}`, ''];
     if (body.length > 0) lines.push(body);
+    // Grid bodies are repaints, so the interval markers live here in a trailing
+    // block instead of inline (transcripts carry theirs in the body already).
+    if (kind === 'grid' && this.gridMarkers.length > 0) {
+      lines.push('', '<!-- timeline -->', ...this.gridMarkers);
+    }
     if (this.exitCode !== undefined && this.finishedTs !== undefined) {
       const footer: FooterMeta = { finished: this.finishedTs, exitCode: this.exitCode };
       lines.push('', `${META_LINE_PREFIX}${JSON.stringify(footer)}`);

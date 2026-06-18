@@ -205,6 +205,8 @@ The file carries the rendered terminal buffer with two `# condash: {...}` JSON m
 
 The writer pipes pty bytes into a headless xterm (`@xterm/headless`) and every 5 seconds reads each row of the active buffer via `IBufferLine.translateToString(true)`, joins with `\n`, prepends the header (and appends the footer if the session has exited), and atomically replaces the `.txt`. Colour / bold / underline are deliberately not preserved — for full ANSI fidelity, use the live terminal pane's **Save buffer** button instead.
 
+The body also carries periodic `<!-- YYYY-MM-DD:HH:MM -->` timestamp markers at the `markerIntervalSec` cadence (default 60 s), emitted **only when new output has arrived** since the previous marker — so an idle tab is never stamped. A transcript marker sits inline at a message boundary; a grid snapshot collects its markers in a trailing `<!-- timeline -->` block (a repaint can't host them inline). The HTML-comment form stays invisible in rendered markdown and is skippable by a parser. Set `markerIntervalSec` to `0` to disable them.
+
 Toggling logging off does **not** delete past transcripts — the Logs pane keeps browsing them and the janitor's age/cap eviction stays in charge of cleanup.
 
 The whole `.condash/` directory is gitignored by default — the auto-migrator appends a `.condash/` line to your `.gitignore` the first time it lifts a legacy `condash.json` into the new layout, so logs (and per-host settings) stay per-host with no commit-leak risk.
@@ -250,7 +252,8 @@ The `terminal.logging` block in `.condash/settings.json` (or in the global `sett
       "enabled": false,
       "retentionDays": 14,
       "maxDirMb": 500,
-      "scrollback": 5000
+      "scrollback": 5000,
+      "markerIntervalSec": 60
     }
   }
 }

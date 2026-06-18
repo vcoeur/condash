@@ -294,6 +294,18 @@ describe('migrateRawSettings — dropped terminal.logging fields', () => {
     const parsed = JSON.parse(canon);
     expect(parsed.terminal.logging).toEqual({ retentionDays: 28, maxDirMb: 10000 });
   });
+
+  it('round-trips `terminal.logging.markerIntervalSec` through both canonicalisers', () => {
+    // Guards the strict-schema trap: a new terminal.logging key not added to
+    // `terminalLoggingSettings` would throw `Unrecognized key` on every save.
+    const json = JSON.stringify({ terminal: { logging: { markerIntervalSec: 30 } } });
+    expect(JSON.parse(validateAndCanonicaliseGlobalSettings(json)).terminal.logging).toEqual({
+      markerIntervalSec: 30,
+    });
+    expect(JSON.parse(validateAndCanonicaliseConceptionConfig(json)).terminal.logging).toEqual({
+      markerIntervalSec: 30,
+    });
+  });
 });
 
 describe('migrateRawSettings — launchers replaced by agents', () => {
