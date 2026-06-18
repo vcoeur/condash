@@ -457,3 +457,164 @@ describe('SessionLogger', () => {
     expect(statSync(txt).size).toBeLessThan(200 * 1024);
   });
 });
+
+describe('SessionLogger timestamp markers', () => {
+  const PREFIX = '\x1b]7373;agent-transcript;';
+  const BEL = '\x07';
+  /** One single-packet `msg` OSC frame, as a cooperating harness emits it. */
+  function msgPacket(id: string, role: string, text: string): string {
+    const b64 = Buffer.from(JSON.stringify({ v: 1, t: 'msg', role, text }), 'utf8').toString(
+      'base64',
+    );
+    return `${PREFIX}${id};0;1;${b64}${BEL}`;
+  }
+
+  const ctx: SessionContext = {
+    sid: 't-ts',
+    side: 'my',
+    cwd: '/x',
+    spawn: { cmd: 'bash', argv: [] },
+  };
+
+  /** A logger with an injected clock; `clockRef.now` is read on every tick. */
+  function makeClockedLogger(clockRef: { now: Date }, markerIntervalSec: number): SessionLogger {
+    return new SessionLogger(
+      tmp,
+      ctx,
+      { enabled: true, markerIntervalSec },
+      50,
+      () => clockRef.now,
+    );
+  }
+
+  const MARKER_RE = /<!-- \d{4}-\d{2}-\d{2}:\d{2}:\d{2} -->/g;
+
+  it('grid: no marker before the interval elapses', async () => {
+    const clk = { now: new Date(2026, 4, 30, 20, 0, 0) };
+    const logger = makeClockedLogger(clk, 60);
+    logger.spawn();
+    logger.output('one\r\n');
+    await logger.flushForTests();
+    clk.now = new Date(2026, 4, 30, 20, 0, 30); // +30s, under the 60s interval
+    logger.output('two\r\n');
+    await logger.flushForTests();
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body } = parseFile(txt);
+    expect(body).not.toContain('<!-- timeline -->');
+    expect(body).not.toMatch(MARKER_RE);
+  });
+
+  it('grid: emits a marker once the interval elapses with new content (trailing timeline)', async () => {
+    const clk = { now: new Date(2026, 4, 30, 20, 0, 0) };
+    const logger = makeClockedLogger(clk, 60);
+    logger.spawn();
+    logger.output('one\r\n');
+    await logger.flushForTests(); // elapsed 0 → no marker
+    clk.now = new Date(2026, 4, 30, 20, 1, 1); // +61s
+    logger.output('two\r\n');
+    await logger.flushForTests(); // marker due
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body } = parseFile(txt);
+    expect(body).toContain('<!-- timeline -->');
+    expect(body).toContain('<!-- 2026-05-30:20:01 -->');
+    // grid markers trail the rendered buffer content
+    expect(body.indexOf('one')).toBeLessThan(body.indexOf('<!-- timeline -->'));
+  });
+
+  it('grid: stamps at a regular cadence under continuous output', async () => {
+    const clk = { now: new Date(2026, 4, 30, 20, 0, 0) };
+    const logger = makeClockedLogger(clk, 60);
+    logger.spawn();
+    logger.output('a\r\n');
+    await logger.flushForTests(); // 20:00 → none
+    clk.now = new Date(2026, 4, 30, 20, 1, 1);
+    logger.output('b\r\n');
+    await logger.flushForTests(); // 20:01
+    clk.now = new Date(2026, 4, 30, 20, 2, 2);
+    logger.output('c\r\n');
+    await logger.flushForTests(); // 20:02
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body } = parseFile(txt);
+    expect(body).toContain('<!-- 2026-05-30:20:01 -->');
+    expect(body).toContain('<!-- 2026-05-30:20:02 -->');
+  });
+
+  it('grid: an idle exit flush after a marker adds no further marker', async () => {
+    const clk = { now: new Date(2026, 4, 30, 20, 0, 0) };
+    const logger = makeClockedLogger(clk, 60);
+    logger.spawn();
+    logger.output('one\r\n');
+    clk.now = new Date(2026, 4, 30, 20, 1, 1);
+    logger.output('two\r\n');
+    await logger.flushForTests(); // one marker at 20:01
+    clk.now = new Date(2026, 4, 30, 20, 5, 0); // far past interval, but no new output
+    logger.exit(0); // sets dirty, not contentSinceMarker
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body } = parseFile(txt);
+    expect(body.match(MARKER_RE) ?? []).toHaveLength(1);
+  });
+
+  it('grid: resumption after a long gap stamps immediately on new content', async () => {
+    const clk = { now: new Date(2026, 4, 30, 20, 0, 0) };
+    const logger = makeClockedLogger(clk, 60);
+    logger.spawn();
+    logger.output('one\r\n');
+    clk.now = new Date(2026, 4, 30, 20, 1, 1);
+    logger.output('two\r\n');
+    await logger.flushForTests(); // marker at 20:01
+    clk.now = new Date(2026, 4, 30, 20, 9, 0); // ~8 min gap
+    logger.output('three\r\n');
+    await logger.flushForTests(); // marker at 20:09, immediately
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body } = parseFile(txt);
+    expect(body).toContain('<!-- 2026-05-30:20:01 -->');
+    expect(body).toContain('<!-- 2026-05-30:20:09 -->');
+  });
+
+  it('transcript: marker is inline in the body, not a trailing grid block', async () => {
+    const clk = { now: new Date(2026, 4, 30, 20, 0, 0) };
+    const logger = makeClockedLogger(clk, 60);
+    logger.spawn();
+    logger.output(msgPacket('a', 'user', 'first'));
+    await logger.flushForTests(); // no marker (elapsed 0)
+    clk.now = new Date(2026, 4, 30, 20, 1, 1);
+    logger.output(msgPacket('b', 'assistant', 'second'));
+    await logger.flushForTests(); // marker due
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { header, body } = parseFile(txt);
+    expect((header as unknown as { kind?: string }).kind).toBe('transcript');
+    expect(body).toContain('[user] first');
+    expect(body).toContain('[assistant] second');
+    expect(body).toContain('<!-- 2026-05-30:20:01 -->');
+    expect(body).not.toContain('<!-- timeline -->');
+  });
+
+  it('markerIntervalSec: 0 disables periodic markers', async () => {
+    const clk = { now: new Date(2026, 4, 30, 20, 0, 0) };
+    const logger = makeClockedLogger(clk, 0);
+    logger.spawn();
+    logger.output('one\r\n');
+    await logger.flushForTests();
+    clk.now = new Date(2026, 4, 30, 20, 30, 0); // +30 min
+    logger.output('two\r\n');
+    await logger.flushForTests();
+    await logger.close();
+    const txt = logger.filePath();
+    if (!txt) throw new Error('no path');
+    const { body } = parseFile(txt);
+    expect(body).not.toContain('<!-- timeline -->');
+    expect(body).not.toMatch(MARKER_RE);
+  });
+});

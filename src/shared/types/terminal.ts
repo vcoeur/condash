@@ -110,8 +110,8 @@ export interface TerminalPrefs {
 
 /** Configuration for the per-session terminal log writer. Defaults are
  * applied by the writer when fields are absent (`enabled: false`,
- * `scrollback: 5000`, `retentionDays: 14`, `maxDirMb: 500`) — the
- * schema's defaults track the same values. */
+ * `scrollback: 5000`, `retentionDays: 14`, `maxDirMb: 500`,
+ * `markerIntervalSec: 60`) — the schema's defaults track the same values. */
 export interface TerminalLoggingPrefs {
   /** Toggle capture entirely. Default: false (opt-in for privacy). The
    * Logs pane stays usable for browsing existing transcripts even when
@@ -127,6 +127,11 @@ export interface TerminalLoggingPrefs {
    * rendered `.txt`. Larger value → more history kept, larger per-session
    * file. Default: 5000. */
   scrollback?: number;
+  /** Wall-clock seconds between in-body `<!-- YYYY-MM-DD:HH:MM -->` timestamp
+   * markers. A marker is emitted only when new output has arrived since the
+   * previous one, so an idle session is never stamped. Applies to both
+   * transcript and grid logs. Default: 60. `0` disables periodic markers. */
+  markerIntervalSec?: number;
 }
 
 /** Snapshot of a live (or recently-exited) terminal session, broadcast on

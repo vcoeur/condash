@@ -5,6 +5,8 @@ import {
   MAX_PENDING_FRAMES,
   MAX_TRANSCRIPT_LINES,
   OscTranscriptExtractor,
+  formatMinute,
+  timestampMarker,
 } from './osc-transcript';
 
 const BEL = '\x07';
@@ -66,11 +68,9 @@ describe('OscTranscriptExtractor', () => {
   });
 
   it('orders multiple messages and joins them', () => {
-    // Pin the clock: with the real-time default, a run that straddles a
-    // wall-clock minute boundary splices a `<!-- minute -->` marker between the
-    // messages and breaks this exact-render assertion (the flake that reddened
-    // CI was the line-cap test below).
-    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 20, 15, 0));
+    // The extractor no longer emits timestamp markers (the SessionLogger owns
+    // the cadence gate now), so this exact-render assertion is deterministic.
+    const ex = new OscTranscriptExtractor();
     ex.feed(packets('0', { v: 1, t: 'msg', role: 'user', text: 'q' }));
     ex.feed(packets('1', { v: 1, t: 'msg', role: 'assistant', text: 'a' }));
     ex.feed(packets('2', { v: 1, t: 'end', sid: 's' }));
@@ -78,8 +78,7 @@ describe('OscTranscriptExtractor', () => {
   });
 
   it('labels reasoning frames distinctly from the assistant response', () => {
-    // Pinned clock — same minute-boundary flake guard as above.
-    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 20, 15, 0));
+    const ex = new OscTranscriptExtractor();
     ex.feed(packets('0', { v: 1, t: 'msg', role: 'user', text: 'why?' }));
     ex.feed(packets('1', { v: 1, t: 'msg', role: 'reasoning', text: 'thinking…' }));
     ex.feed(packets('2', { v: 1, t: 'msg', role: 'assistant', text: 'because' }));
@@ -134,14 +133,9 @@ describe('OscTranscriptExtractor', () => {
   });
 
   it('caps the transcript line count, dropping the oldest lines', () => {
-    // Pin the clock. With the real-time default, when this ~20k-message loop
-    // happens to straddle a wall-clock minute boundary, one `<!-- minute -->`
-    // marker is spliced in, occupies a slot in the capped list, and shifts the
-    // oldest retained message by one — `lines[0]` becomes `msg 51`, not `msg
-    // 50`. That is the intermittent failure that reddened main CI (a run that
-    // landed at exactly HH:35:00). A constant clock emits no markers, so the
-    // cap maths is exact and deterministic.
-    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 20, 15, 0));
+    // The extractor no longer splices timestamp markers into the line list, so
+    // the cap maths is exact and deterministic (no marker occupies a slot).
+    const ex = new OscTranscriptExtractor();
     const overshoot = 50;
     for (let k = 0; k < MAX_TRANSCRIPT_LINES + overshoot; k++) {
       ex.feed(packets(`m${k}`, { v: 1, t: 'msg', role: 'assistant', text: `msg ${k}` }));
@@ -169,66 +163,33 @@ describe('OscTranscriptExtractor', () => {
   });
 });
 
-describe('OscTranscriptExtractor timestamp markers', () => {
+describe('OscTranscriptExtractor.pushTimestampMarker', () => {
   /** Feed one complete `msg` frame with a unique frameId. */
   function feedMsg(ex: OscTranscriptExtractor, role: string, text: string, id: string): void {
     ex.feed(packets(id, { v: 1, t: 'msg', role, text }));
   }
 
-  it('emits no marker for messages within the same minute', () => {
-    const clock = new Date(2026, 4, 30, 20, 15, 0);
-    const ex = new OscTranscriptExtractor(() => clock);
-    feedMsg(ex, 'user', 'hi', 'a');
-    feedMsg(ex, 'assistant', 'hey', 'b');
-    expect(ex.render()).toBe('[user] hi\n\n[assistant] hey');
-  });
-
-  it('never emits a marker before the first message', () => {
-    const ex = new OscTranscriptExtractor(() => new Date(2026, 4, 30, 9, 5, 0));
-    feedMsg(ex, 'user', 'only', 'a');
-    expect(ex.render()).toBe('[user] only');
-  });
-
-  it('inserts a marker when the minute rolls over', () => {
-    let clock = new Date(2026, 4, 30, 20, 15, 30);
-    const ex = new OscTranscriptExtractor(() => clock);
+  it('appends the marker line at a message boundary (between whole messages)', () => {
+    // The SessionLogger now owns the content + cadence gate and calls this when
+    // a marker is due; the extractor just appends a pre-formatted line.
+    const ex = new OscTranscriptExtractor();
     feedMsg(ex, 'user', 'first', 'a');
-    clock = new Date(2026, 4, 30, 20, 16, 5);
+    ex.pushTimestampMarker('<!-- 2026-05-30:20:16 -->');
     feedMsg(ex, 'assistant', 'second', 'b');
     expect(ex.render()).toBe('[user] first\n\n<!-- 2026-05-30:20:16 -->\n\n[assistant] second');
   });
 
-  it('emits exactly one marker per minute even with several messages', () => {
-    let clock = new Date(2026, 4, 30, 20, 15, 0);
-    const ex = new OscTranscriptExtractor(() => clock);
-    feedMsg(ex, 'user', 'm1', 'a');
-    clock = new Date(2026, 4, 30, 20, 16, 0);
-    feedMsg(ex, 'assistant', 'm2', 'b');
-    feedMsg(ex, 'user', 'm3', 'c');
-    expect(ex.render()).toBe(
-      '[user] m1\n\n<!-- 2026-05-30:20:16 -->\n\n[assistant] m2\n\n[user] m3',
-    );
+  it('is a no-op on render ordering beyond appending the given line verbatim', () => {
+    const ex = new OscTranscriptExtractor();
+    feedMsg(ex, 'user', 'only', 'a');
+    ex.pushTimestampMarker('<!-- 2026-01-03:04:06 -->');
+    expect(ex.render()).toBe('[user] only\n\n<!-- 2026-01-03:04:06 -->');
   });
+});
 
-  it('emits a marker for each successive minute rollover', () => {
-    let clock = new Date(2026, 11, 1, 0, 0, 0);
-    const ex = new OscTranscriptExtractor(() => clock);
-    feedMsg(ex, 'user', 'a', '1');
-    clock = new Date(2026, 11, 1, 0, 1, 0);
-    feedMsg(ex, 'assistant', 'b', '2');
-    clock = new Date(2026, 11, 1, 0, 2, 0);
-    feedMsg(ex, 'assistant', 'c', '3');
-    expect(ex.render()).toBe(
-      '[user] a\n\n<!-- 2026-12-01:00:01 -->\n\n[assistant] b\n\n<!-- 2026-12-01:00:02 -->\n\n[assistant] c',
-    );
-  });
-
-  it('zero-pads month, day, hour, and minute', () => {
-    let clock = new Date(2026, 0, 3, 4, 5, 0);
-    const ex = new OscTranscriptExtractor(() => clock);
-    feedMsg(ex, 'user', 'x', 'a');
-    clock = new Date(2026, 0, 3, 4, 6, 0);
-    feedMsg(ex, 'assistant', 'y', 'b');
-    expect(ex.render()).toContain('<!-- 2026-01-03:04:06 -->');
+describe('timestampMarker / formatMinute', () => {
+  it('formats a local-time Date as a zero-padded HTML-comment marker', () => {
+    expect(formatMinute(new Date(2026, 0, 3, 4, 6, 0))).toBe('2026-01-03:04:06');
+    expect(timestampMarker(new Date(2026, 0, 3, 4, 6, 0))).toBe('<!-- 2026-01-03:04:06 -->');
   });
 });

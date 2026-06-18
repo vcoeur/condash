@@ -915,7 +915,7 @@ export function TerminalFields(props: {
       <Subgroup
         id={subgroupId('logging')}
         title="Logging"
-        keywords="logging record session transcript retention disk size scrollback privacy"
+        keywords="logging record session transcript retention disk size scrollback privacy timestamp interval marker"
       >
         <p class="settings-hint">
           Off by default for privacy. When enabled, every terminal tab records its rendered output
@@ -984,6 +984,27 @@ export function TerminalFields(props: {
             <small class="settings-field-hint">
               How many lines the headless xterm retains per session. Larger → bigger
               <code> .txt</code> files; smaller → older output rolls off the top.
+            </small>
+          </label>
+          <label>
+            <span>Timestamp interval (seconds)</span>
+            <input
+              type="number"
+              min="0"
+              value={logging().markerIntervalSec ?? ''}
+              placeholder="60"
+              onChange={(e) =>
+                void props.updateLogging({
+                  markerIntervalSec: e.currentTarget.value
+                    ? Number(e.currentTarget.value)
+                    : undefined,
+                })
+              }
+            />
+            <small class="settings-field-hint">
+              How often a <code>&lt;!-- timestamp --&gt;</code> marker is written, but only when new
+              output has arrived since the last one — an idle session is never stamped.
+              <code> 0</code> disables periodic markers.
             </small>
           </label>
         </div>
