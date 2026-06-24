@@ -4,7 +4,7 @@ import { dialog } from 'electron';
 import type { TreeRoot } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { readSettings } from './settings';
-import { DEFAULT_RESOURCES_PATH } from './config-schema';
+import { DEFAULT_RESOURCES_PATH } from './config-migrate';
 import { requirePathUnder } from './path-bounds';
 
 /**

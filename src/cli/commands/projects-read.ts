@@ -44,9 +44,14 @@ export async function listProjects(
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   const readmes = await findProjectReadmes(conceptionPath);
+  // Read+parse every README concurrently (mirrors the IPC list path), then
+  // iterate in `readmes` order so row ordering and per-row logic are
+  // unchanged — only the I/O is parallelised.
+  const parsed = await Promise.all(readmes.map((readme) => parseReadmeWithHeader(readme)));
   const rows: ProjectListRow[] = [];
-  for (const readme of readmes) {
-    const { project, header: headerFields } = await parseReadmeWithHeader(readme);
+  for (let i = 0; i < readmes.length; i++) {
+    const readme = readmes[i];
+    const { project, header: headerFields } = parsed[i];
     const headerWarnings = validateHeader(headerFields, readme).warnings;
 
     if (statusFilter && !statusFilter.includes(project.status)) continue;

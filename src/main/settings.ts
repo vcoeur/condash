@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { LayoutState, Settings } from '../shared/types';
-import { migrateRawSettings } from './config-schema';
+import { migrateRawSettings } from './config-migrate';
 import { userDataDir } from './user-data-dir';
 
 const FILE_NAME = 'settings.json';

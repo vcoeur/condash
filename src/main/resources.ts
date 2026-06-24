@@ -3,7 +3,7 @@ import { basename, join } from 'node:path';
 import type { ResourceNode } from '../shared/types';
 import { toPosix } from '../shared/path';
 import { categorise, mimeFor } from '../shared/file-category';
-import { DEFAULT_RESOURCES_PATH } from './config-schema';
+import { DEFAULT_RESOURCES_PATH } from './config-migrate';
 import { parseHead } from './knowledge';
 import { readFileHead } from './read-file-head';
 

@@ -18,7 +18,7 @@ import {
   legacyConfigurationJsonPath,
 } from './condash-dir';
 import { settingsPath } from './settings';
-import { migrateRawSettings } from './config-schema';
+import { migrateRawSettings } from './config-migrate';
 
 /**
  * Two-layer config resolver. Reads the per-machine `settings.json` for
