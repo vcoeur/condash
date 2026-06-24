@@ -7,11 +7,7 @@ import {
   resolveConceptionConfigPath,
 } from '../../main/effective-config';
 import { migrateLegacyConfig } from '../../main/condash-dir-migrate';
-import {
-  conceptionConfigSchema,
-  globalSettingsSchema,
-  migrateRawSettings,
-} from '../../main/config-schema';
+import { migrateRawSettings } from '../../main/config-migrate';
 import { mutateSettingsJson, settingsPath } from '../../main/settings';
 import { atomicWrite } from '../../main/atomic-write';
 import { pickByDottedPath, setByDottedPath } from '../../shared/dotted-path';
@@ -166,11 +162,12 @@ export async function runConfig(
         setByDottedPath(current, key, parsedValue);
         written = structuredClone(current);
       });
+      const settingsWarnings = await schemaWarnings(written, 'settings.json');
       emit(
         ctx,
         { ok: true, target: 'settings.json', key },
         () => `set ${key} in settings.json\n`,
-        schemaWarnings(written, 'settings.json'),
+        settingsWarnings,
       );
     } else {
       const writePath = conceptionConfigWritePath(conceptionPath);
@@ -185,11 +182,12 @@ export async function runConfig(
         setByDottedPath(current, key, parsedValue);
         written = structuredClone(current);
       });
+      const conceptionWarnings = await schemaWarnings(written, '.condash/settings.json');
       emit(
         ctx,
         { ok: true, target: '.condash/settings.json', key },
         () => `set ${key} in .condash/settings.json\n`,
-        schemaWarnings(written, '.condash/settings.json'),
+        conceptionWarnings,
       );
     }
     return;
@@ -220,7 +218,10 @@ export async function runConfig(
  * rejects — warning here catches the typo at write time instead of bricking
  * the next Settings save.
  */
-function schemaWarnings(config: Record<string, unknown>, target: string): string[] {
+async function schemaWarnings(config: Record<string, unknown>, target: string): Promise<string[]> {
+  // Lazy-load the zod schemas so the read verbs (`config get`/`list`) never
+  // construct them — only `config set` reaches this write-time validation.
+  const { conceptionConfigSchema, globalSettingsSchema } = await import('../../main/config-schema');
   const schema = target === 'settings.json' ? globalSettingsSchema : conceptionConfigSchema;
   // Validate a clone: migrateRawSettings mutates in place, and the legacy-key
   // stripping it does must not silently alter what was just written.

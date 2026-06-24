@@ -1,4 +1,4 @@
-import { DEFAULT_RESOURCES_PATH, DEFAULT_SKILLS_PATH } from './config-schema';
+import { DEFAULT_RESOURCES_PATH, DEFAULT_SKILLS_PATH } from './config-migrate';
 
 /**
  * Resolve the on-disk conception-relative paths for the Resources and

@@ -2,17 +2,6 @@ import { CliError, ExitCodes, reportError, type OutputContext } from './output';
 import { TOP_HELP } from './help';
 import { parseArgs, takeUniversalFlags, UsageError } from './parser';
 import { resolveConception } from './conception';
-import { runProjects } from './commands/projects';
-import { runKnowledge } from './commands/knowledge';
-import { runSearch } from './commands/search';
-import { runRepos } from './commands/repos';
-import { runApplications } from './commands/applications';
-import { runWorktrees } from './commands/worktrees';
-import { runAuditCommand } from './commands/audit';
-import { runDirty } from './commands/dirty';
-import { runConfig } from './commands/config';
-import { runSkills } from './commands/skills';
-import { runLogs } from './commands/logs';
 
 const VERSION = process.env.CONDASH_CLI_VERSION ?? 'dev';
 
@@ -104,6 +93,7 @@ async function dispatch(
 ): Promise<number> {
   // Commands that don't need conception path resolution.
   if (args.noun === 'config' && args.verb === 'conception-path') {
+    const { runConfig } = await import('./commands/config');
     await runConfig(args.verb, args, ctx, '', universal.help, universal.conceptionPath);
     return ExitCodes.OK;
   }
@@ -122,39 +112,61 @@ async function dispatch(
   const help = universal.help;
 
   switch (args.noun) {
-    case 'projects':
+    case 'projects': {
+      const { runProjects } = await import('./commands/projects');
       await runProjects(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'knowledge':
+    }
+    case 'knowledge': {
+      const { runKnowledge } = await import('./commands/knowledge');
       await runKnowledge(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'search':
+    }
+    case 'search': {
+      const { runSearch } = await import('./commands/search');
       await runSearch(args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'repos':
+    }
+    case 'repos': {
+      const { runRepos } = await import('./commands/repos');
       await runRepos(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'applications':
+    }
+    case 'applications': {
+      const { runApplications } = await import('./commands/applications');
       await runApplications(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'worktrees':
+    }
+    case 'worktrees': {
+      const { runWorktrees } = await import('./commands/worktrees');
       await runWorktrees(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'audit':
+    }
+    case 'audit': {
+      const { runAuditCommand } = await import('./commands/audit');
       await runAuditCommand(args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'dirty':
+    }
+    case 'dirty': {
+      const { runDirty } = await import('./commands/dirty');
       await runDirty(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'logs':
+    }
+    case 'logs': {
+      const { runLogs } = await import('./commands/logs');
       await runLogs(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
-    case 'skills':
+    }
+    case 'skills': {
+      const { runSkills } = await import('./commands/skills');
       await runSkills(args.verb, args, ctx, help);
       return ExitCodes.OK;
-    case 'config':
+    }
+    case 'config': {
+      const { runConfig } = await import('./commands/config');
       await runConfig(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
+    }
     default:
       throw new CliError(ExitCodes.USAGE, `Unknown noun: ${args.noun}`);
   }
