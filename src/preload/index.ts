@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi, MenuCommand } from '../shared/api';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import type {
+  DashboardState,
+  DashboardTabSummariesMessage,
   RepoEvent,
   TermDataMessage,
   TermExitMessage,
@@ -116,6 +118,18 @@ const api: CondashApi = {
     return () => ipcRenderer.removeListener(EVENT_CHANNELS.termSessions, handler);
   },
   termTabsContext: () => ipcRenderer.invoke('termTabsContext'),
+  dashboardGetState: () => ipcRenderer.invoke('dashboardGetState'),
+  dashboardGetConfigView: () => ipcRenderer.invoke('dashboardGetConfigView'),
+  onDashboardState: (callback) => {
+    const handler = (_: unknown, state: DashboardState): void => callback(state);
+    ipcRenderer.on(EVENT_CHANNELS.dashboardState, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.dashboardState, handler);
+  },
+  onDashboardTabSummaries: (callback) => {
+    const handler = (_: unknown, msg: DashboardTabSummariesMessage): void => callback(msg);
+    ipcRenderer.on(EVENT_CHANNELS.dashboardTabSummaries, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.dashboardTabSummaries, handler);
+  },
   logsListDays: () => ipcRenderer.invoke('logsListDays'),
   logsListSessions: (day) => ipcRenderer.invoke('logsListSessions', day),
   logsReadSession: (filePath) => ipcRenderer.invoke('logsReadSession', filePath),

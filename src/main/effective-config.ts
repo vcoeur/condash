@@ -3,6 +3,7 @@ import type { ConfigShape } from './config-walk';
 import type {
   Agent,
   CardMinWidthPrefs,
+  DashboardSettings,
   LayoutState,
   TaskConfigEntry,
   TerminalPrefs,
@@ -62,6 +63,7 @@ export interface EffectiveConfig extends ConfigShape {
   treeExpansion?: TreeExpansionPrefs;
   agents?: Agent[];
   taskConfig?: Record<string, TaskConfigEntry>;
+  dashboard?: DashboardSettings;
 }
 
 /**

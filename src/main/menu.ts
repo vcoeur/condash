@@ -156,6 +156,13 @@ export function buildMenu(
       click: () => send('show-logs'),
     },
     {
+      label: 'Show Dashboard',
+      type: 'checkbox',
+      checked: layout.working === 'dashboard',
+      accelerator: 'CommandOrControl+Shift+D',
+      click: () => send('show-dashboard'),
+    },
+    {
       label: 'Hide working surface',
       enabled: layout.working !== null,
       click: () => send('hide-working'),

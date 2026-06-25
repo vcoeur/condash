@@ -18,6 +18,7 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
+import { DashboardView } from './panes/dashboard';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { usableActionTemplates } from './settings-modal-parts/data';
@@ -73,6 +74,7 @@ const WORKING_SURFACE_HANDLES: ReadonlyArray<{
   { key: 'resources', label: 'Resources', shortcut: 'Ctrl+R' },
   { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L' },
   { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
+  { key: 'dashboard', label: 'Dashboard', shortcut: 'Ctrl+Shift+D' },
 ];
 
 function App() {
@@ -622,6 +624,12 @@ function App() {
                 <Show when={layout().working === 'logs'}>
                   <section class="pane pane-working">
                     <LogsView openRequest={logsOpenRequest} refreshSignal={logsRefreshTick} />
+                  </section>
+                </Show>
+
+                <Show when={layout().working === 'dashboard'}>
+                  <section class="pane pane-working">
+                    <DashboardView />
                   </section>
                 </Show>
 

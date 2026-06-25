@@ -195,6 +195,55 @@ describe('configSchema taskConfig (capability 1)', () => {
   });
 });
 
+describe('configSchema dashboard', () => {
+  const dashboard = {
+    enabled: true,
+    provider: 'deepseek',
+    apiKey: 'sk-deepseek-xxx',
+    model: 'deepseek-chat',
+    intervalSec: 120,
+    gateOnActivity: true,
+    historyLimit: 20,
+  };
+
+  it('accepts a full dashboard block on both schemas', () => {
+    expect(configSchema.safeParse({ dashboard }).success).toBe(true);
+    expect(globalSettingsSchema.safeParse({ dashboard }).success).toBe(true);
+  });
+
+  it('accepts an empty dashboard block (all fields optional)', () => {
+    expect(configSchema.safeParse({ dashboard: {} }).success).toBe(true);
+  });
+
+  it('rejects an unknown provider', () => {
+    expect(configSchema.safeParse({ dashboard: { provider: 'openai' } }).success).toBe(false);
+  });
+
+  it('rejects an unknown dashboard field (strict)', () => {
+    expect(configSchema.safeParse({ dashboard: { secret: 'x' } }).success).toBe(false);
+  });
+
+  it('rejects a non-integer / non-positive intervalSec', () => {
+    expect(configSchema.safeParse({ dashboard: { intervalSec: 1.5 } }).success).toBe(false);
+    expect(configSchema.safeParse({ dashboard: { intervalSec: 0 } }).success).toBe(false);
+  });
+
+  it('round-trips the dashboard block through the global canonicaliser', () => {
+    const json = JSON.stringify({
+      dashboard: { enabled: true, apiKey: 'sk-x', model: 'deepseek-chat' },
+    });
+    const parsed = JSON.parse(validateAndCanonicaliseGlobalSettings(json));
+    expect(parsed.dashboard).toEqual({ enabled: true, apiKey: 'sk-x', model: 'deepseek-chat' });
+  });
+});
+
+describe('layoutSchema working — dashboard surface', () => {
+  it('accepts working: "dashboard"', () => {
+    const layout = { projects: true, working: 'dashboard', terminal: true, projectsWidth: 320 };
+    expect(globalSettingsSchema.safeParse({ layout }).success).toBe(true);
+  });
+});
+
 describe('configSchema dropped path keys', () => {
   // Both `resources_path` and `skills_path` were dropped in the reframe —
   // the Resources pane is hard-coded to `<root>/resources/` and the Skills
@@ -481,6 +530,16 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
           runMode: 'oneshot',
           gateOnUpdatedTabs: true,
         },
+      },
+      // setDashboardConfig (Settings → Dashboard) — every field
+      dashboard: {
+        enabled: true,
+        provider: 'deepseek',
+        apiKey: 'sk-deepseek-xxx',
+        model: 'deepseek-chat',
+        intervalSec: 120,
+        gateOnActivity: true,
+        historyLimit: 20,
       },
     };
     expect(() =>

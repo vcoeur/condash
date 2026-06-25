@@ -40,6 +40,7 @@ import {
 } from './settings-modal-parts/sections-repos-and-open-with';
 import { RecentConceptionsSection } from './settings-modal-parts/section-recent-conceptions';
 import { AgentsSection } from './settings-modal-parts/sections-agents';
+import { DashboardSection } from './settings-modal-parts/sections-dashboard';
 import { ActionBar, Button } from './actions';
 import { IconClose } from './icons';
 import './settings-modal.css';
@@ -1009,6 +1010,8 @@ export function SettingsModal(props: {
                   bindText={bindText}
                   patch={patchSettings}
                 />
+
+                <DashboardSection parsed={globalParsed} patch={patchSettings} />
               </div>
 
               {/* Conception tabpanel ----------------------------------- */}

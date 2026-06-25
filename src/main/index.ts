@@ -9,6 +9,7 @@ import { decideDispatch } from './dispatch';
 import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { setWatchedConception } from './watcher';
 import { setScheduledConception } from './task-scheduler';
+import { setDashboardConception } from './dashboard/engine';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll } from './terminals';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
@@ -26,6 +27,7 @@ import { registerSystemIpc } from './ipc/system';
 import { registerTerminalIpc } from './ipc/terminal';
 import { registerLogsIpc } from './ipc/logs';
 import { registerTreesIpc } from './ipc/trees';
+import { registerDashboardIpc } from './ipc/dashboard';
 
 // Unified-binary dispatch (v2.24.0). The Linux bash wrapper at
 // build/after-pack.cjs already routes CLI invocations to plain-Node mode
@@ -316,6 +318,7 @@ function registerIpc(): void {
   registerReposIpc();
   registerTerminalIpc();
   registerLogsIpc();
+  registerDashboardIpc();
   registerSettingsIpc({ onLayoutChange: rebuildMenu });
   registerSystemIpc({
     onConceptionPicked: (picked) => {
@@ -325,6 +328,8 @@ function registerIpc(): void {
       startJanitor(picked);
       // Re-point the task scheduler at the newly picked conception.
       void setScheduledConception(picked);
+      // Re-point the live terminal-tab dashboard engine.
+      void setDashboardConception(picked);
       // Heal any orphan "running" logs in the newly-picked conception so
       // the Logs pane reflects reality on first render.
       void sealOrphanLogs(picked).catch((err) => {
@@ -414,6 +419,8 @@ app.whenReady().then(async () => {
     setWatchedConception(conceptionPath),
     // Arm the per-task scheduler (capability 1) for the active conception.
     setScheduledConception(conceptionPath),
+    // Arm the live terminal-tab dashboard engine (opt-in; inert until enabled).
+    setDashboardConception(conceptionPath),
   ]);
   mainWindow = createdWindow;
   setMenuWindow(mainWindow);

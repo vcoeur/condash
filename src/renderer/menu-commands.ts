@@ -83,6 +83,10 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
       deps.selectWorking(deps.layout().working === 'logs' ? null : 'logs');
       return;
     }
+    if (command === 'show-dashboard') {
+      deps.selectWorking(deps.layout().working === 'dashboard' ? null : 'dashboard');
+      return;
+    }
     if (command === 'hide-working') {
       deps.selectWorking(null);
       return;

@@ -19,6 +19,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import type {
   Agent,
+  TabSummary,
   TaskRunContext,
   TermSide,
   TermSpawnRequest,
@@ -541,9 +542,41 @@ export function TerminalPane(props: {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: _code } : t)));
     if (!closingTabs.has(id)) closeTab(id);
   });
+
+  // ---- dashboard: live per-tab LLM summaries (title + hover popover) ----
+  // Merge the engine's per-sid summaries onto the matching tabs. When the
+  // feature is off no pushes arrive, so `llmTitle` stays undefined and the tab
+  // falls back to its cwd / OSC title.
+  const applyTabSummaries = (summaries: TabSummary[]): void => {
+    if (summaries.length === 0) return;
+    const bySid = new Map(summaries.map((s) => [s.sid, s]));
+    setTabs((prev) =>
+      prev.map((t) => {
+        const summary = bySid.get(t.id);
+        return summary
+          ? {
+              ...t,
+              llmTitle: summary.title,
+              contextLines: summary.contextLines,
+              currentAction: summary.currentAction,
+            }
+          : t;
+      }),
+    );
+  };
+  const offDashboard = window.condash.onDashboardTabSummaries(({ summaries }) =>
+    applyTabSummaries(summaries),
+  );
+  // Seed from the last persisted snapshot so titles show without waiting for the
+  // next engine cycle.
+  void window.condash.dashboardGetState().then((state) => {
+    if (state) applyTabSummaries(state.tabs);
+  });
+
   onCleanup(() => {
     offTermData();
     offTermExit();
+    offDashboard();
     for (const [, { mounted, element, detachListeners }] of xterms) {
       detachListeners?.();
       mounted.dispose();

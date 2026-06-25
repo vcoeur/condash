@@ -46,6 +46,7 @@ Every top-level key, in one place. **Scope** is which file the key is valid in: 
 | `open_with`             | both        | object       | —        | The three IDE/terminal launch slots (`main_ide`, `secondary_ide`, `terminal`). [↓](#open_with)                                                                                                                           |
 | `pdf_viewer`            | both        | array        | —        | Ordered fallback chain of external PDF viewers.                                                                                                                                                                          |
 | `terminal`              | both        | object       | —        | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`. **Merges one level deep** (the sole exception to top-level replace). [↓](#terminal)                                                                        |
+| `dashboard`             | both        | object       | —        | Live terminal-tab summarization (pi SDK + DeepSeek): `{enabled, provider, apiKey, model, intervalSec, gateOnActivity, historyLimit}`. Off by default; set it in **Settings → Dashboard**, which writes to the global file (the `apiKey` is a secret). [↓](#dashboard)                                                                 |
 | `theme`                 | both        | enum         | `system` | `light` \| `dark` \| `system`.                                                                                                                                                                                           |
 | `layout`                | both        | object       | —        | Persisted pane layout, including `leftView` (`projects` \| `tasks` \| `deliverables`). [↓](#layoutstate)                                                                                                                 |
 | `welcome`               | both        | object       | —        | `{ dismissed }` — first-launch welcome-screen state.                                                                                                                                                                     |
@@ -125,6 +126,24 @@ The janitor runs at app startup and every 24 hours: it (1) deletes day-dirs olde
 **Migration from `maxFileMb` / `ansiPolicy`:** both fields were dropped from the schema in v2.23.0 when per-file rotation and ANSI stripping were retired. Settings files that still carry them (typically conceptions upgraded straight from ≤ 2.22) are scrubbed in-flight on every read and the legacy keys vanish from disk on the next settings write — no manual action.
 
 Legacy formats — JSONL event streams from condash ≤ 2.22, compressed `.txt.gz` files from 2.23–2.26 — are ignored by the new viewer and global search. They sit on disk until the janitor's age-based eviction sweeps them. To clear them immediately, delete `<conception>/.condash/logs/` and start fresh.
+
+### Dashboard
+
+The `dashboard` block configures **live terminal-tab summarization**: a periodic loop in the main process reads the recent output of the open terminal tabs and summarizes it with the [pi coding-agent SDK](https://pi.dev) on a DeepSeek key, surfacing the result as (1) LLM-derived tab titles, (2) a hover popover, and (3) the **Dashboard** working surface (`Ctrl+Shift+D`). It is **off by default** — nothing runs and no data leaves the machine until you enable it. State (per-tab summaries + a rolling event history) persists at `<conception>/.condash/dashboard/state.json`.
+
+Edit it in **Settings → Dashboard** (Global tab). The whole block is meant for the per-machine `settings.json`: `apiKey` is a secret and must never be committed to a conception's `condash.json`.
+
+| Key              | Type        | Default          | Meaning                                                                                                                                                                                  |
+| ---------------- | ----------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`        | boolean     | `false`          | Master switch. Off → the engine is inert; on → summaries run on the interval.                                                                                                          |
+| `provider`       | enum        | `deepseek`       | LLM provider. Only `deepseek` is supported today (modelled as an enum so others can be added later).                                                                                   |
+| `apiKey`         | string      | —                | Provider API key. **Global file only.** When unset, falls back to the `DEEPSEEK_API_KEY` environment variable.                                                                          |
+| `model`          | string      | `deepseek-chat`  | Model id passed to the provider. A fast chat model is recommended over a reasoner for a short-interval loop.                                                                            |
+| `intervalSec`    | integer     | `120`            | Seconds between summarization cycles, **clamped to 30–300**.                                                                                                                            |
+| `gateOnActivity` | boolean     | `true`           | Skip a cycle when no open tab produced new output since the last run (reuses the scheduler's growth gate). Off → summarize every interval regardless.                                  |
+| `historyLimit`   | integer     | `20`             | Maximum retained events per tab and in the global history; older events roll off.                                                                                                       |
+
+> **Privacy:** enabling the dashboard transmits recent on-screen terminal output (which may include secrets) to the DeepSeek API, an external service. Leave it off for tabs that display credentials you don't want sent off-machine.
 
 ### Workspace keys
 

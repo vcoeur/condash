@@ -2,6 +2,7 @@ import type {
   ActionTemplate,
   Agent,
   CardMinWidthPrefs,
+  DashboardSettings,
   Platform,
   TerminalPrefs,
   TerminalXtermPrefs,
@@ -23,6 +24,7 @@ export type Section =
   | 'appearance:global'
   | 'terminal:global'
   | 'agents:global'
+  | 'dashboard:global'
   | 'workspace:conception'
   | 'repositories:conception'
   | 'open-with:conception'
@@ -50,6 +52,7 @@ export const SECTIONS: SectionMeta[] = [
   { id: 'appearance:global', label: 'Appearance', tab: 'global' },
   { id: 'terminal:global', label: 'Terminal', tab: 'global' },
   { id: 'agents:global', label: 'Agents', tab: 'global' },
+  { id: 'dashboard:global', label: 'Dashboard', tab: 'global' },
   // Conception tab.
   { id: 'workspace:conception', label: 'Workspace', tab: 'conception' },
   { id: 'repositories:conception', label: 'Repositories', tab: 'conception' },
@@ -70,6 +73,7 @@ export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   'appearance:global': ['theme', 'cardMinWidth'],
   'terminal:global': ['terminal'],
   'agents:global': ['agents'],
+  'dashboard:global': ['dashboard'],
   'workspace:conception': ['workspace_path', 'worktrees_path'],
   'repositories:conception': ['repositories'],
   'open-with:conception': ['open_with'],
@@ -252,6 +256,9 @@ export interface RawConfig {
   theme?: Theme;
   cardMinWidth?: CardMinWidthPrefs;
   terminal?: TerminalPrefs;
+  /** Live terminal-tab summarization. Global-only in the UI (the `apiKey`
+   *  secret must not be committed to a conception's condash.json). */
+  dashboard?: DashboardSettings;
   /** Conception-only fields — never set on the conception side. */
   lastConceptionPath?: string | null;
   recentConceptionPaths?: string[];
