@@ -6,7 +6,7 @@ import type { DashboardConfig, DashboardConfigView, DashboardSettings } from '..
 export const DASHBOARD_DEFAULTS = {
   enabled: false,
   provider: 'deepseek' as const,
-  model: 'deepseek-chat',
+  model: 'deepseek-v4-flash',
   intervalSec: 120,
   gateOnActivity: true,
   historyLimit: 20,
@@ -26,16 +26,20 @@ function clampInterval(seconds: number): number {
  * `intervalSec` clamped to [30, 300]. The API key falls back to the
  * `DEEPSEEK_API_KEY` environment variable when not set in settings, so a
  * headless / CI run can supply it without writing the per-machine file.
+ * `baseUrl` likewise falls back to `DEEPSEEK_BASE_URL`; blank means the
+ * provider's built-in endpoint.
  *
  * @param raw - The `dashboard` block from the effective config (may be absent).
  * @returns The resolved config the engine and summarizer consume.
  */
 export function resolveDashboardConfig(raw: DashboardSettings | undefined): DashboardConfig {
   const apiKey = raw?.apiKey?.trim() || process.env.DEEPSEEK_API_KEY?.trim() || undefined;
+  const baseUrl = raw?.baseUrl?.trim() || process.env.DEEPSEEK_BASE_URL?.trim() || undefined;
   return {
     enabled: raw?.enabled ?? DASHBOARD_DEFAULTS.enabled,
     provider: raw?.provider ?? DASHBOARD_DEFAULTS.provider,
     apiKey,
+    baseUrl,
     model: raw?.model?.trim() || DASHBOARD_DEFAULTS.model,
     intervalSec: clampInterval(raw?.intervalSec ?? DASHBOARD_DEFAULTS.intervalSec),
     gateOnActivity: raw?.gateOnActivity ?? DASHBOARD_DEFAULTS.gateOnActivity,
@@ -56,6 +60,7 @@ export function toDashboardConfigView(config: DashboardConfig): DashboardConfigV
     enabled: config.enabled,
     provider: config.provider,
     hasApiKey: Boolean(config.apiKey),
+    baseUrl: config.baseUrl,
     model: config.model,
     intervalSec: config.intervalSec,
     gateOnActivity: config.gateOnActivity,

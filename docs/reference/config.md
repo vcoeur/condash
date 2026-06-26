@@ -136,14 +136,15 @@ Edit it in **Settings → Dashboard** (Global tab). The whole block is meant for
 | Key              | Type        | Default          | Meaning                                                                                                                                                                                  |
 | ---------------- | ----------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`        | boolean     | `false`          | Master switch. Off → the engine is inert; on → summaries run on the interval.                                                                                                          |
-| `provider`       | enum        | `deepseek`       | LLM provider. Only `deepseek` is supported today (modelled as an enum so others can be added later).                                                                                   |
-| `apiKey`         | string      | —                | Provider API key. **Global file only.** When unset, falls back to the `DEEPSEEK_API_KEY` environment variable.                                                                          |
-| `model`          | string      | `deepseek-chat`  | Model id passed to the provider. A fast chat model is recommended over a reasoner for a short-interval loop.                                                                            |
+| `provider`       | enum        | `deepseek`       | Auth/registry namespace. Only `deepseek` is accepted today (modelled as an enum so others can be added later); a custom `baseUrl` lets it reach any OpenAI-compatible endpoint regardless. |
+| `apiKey`         | string      | —                | API key for the endpoint. **Global file only.** When unset, falls back to the `DEEPSEEK_API_KEY` environment variable.                                                                   |
+| `baseUrl`        | string      | —                | OpenAI-compatible API base URL. Blank → the provider's built-in endpoint (`https://api.deepseek.com`). Set it to a self-hosted / proxy endpoint (e.g. an opencode-go server) to use any model id it serves. Falls back to `DEEPSEEK_BASE_URL`. |
+| `model`          | string      | `deepseek-v4-flash` | Model id passed to the endpoint. Without a `baseUrl` it must be a built-in DeepSeek model (`deepseek-v4-flash` or `deepseek-v4-pro`); with a `baseUrl`, any id the endpoint serves.    |
 | `intervalSec`    | integer     | `120`            | Seconds between summarization cycles, **clamped to 30–300**.                                                                                                                            |
 | `gateOnActivity` | boolean     | `true`           | Skip a cycle when no open tab produced new output since the last run (reuses the scheduler's growth gate). Off → summarize every interval regardless.                                  |
 | `historyLimit`   | integer     | `20`             | Maximum retained events per tab and in the global history; older events roll off.                                                                                                       |
 
-> **Privacy:** enabling the dashboard transmits recent on-screen terminal output (which may include secrets) to the DeepSeek API, an external service. Leave it off for tabs that display credentials you don't want sent off-machine.
+> **Privacy:** enabling the dashboard transmits recent on-screen terminal output (which may include secrets) to the configured API endpoint — the DeepSeek API by default, or whatever `baseUrl` points at. Leave it off for tabs that display credentials you don't want sent off-machine.
 
 ### Workspace keys
 

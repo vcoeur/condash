@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron';
 import { EVENT_CHANNELS } from '../../shared/ipc-channels';
 import type { DashboardConfigView, DashboardState, TabSummary } from '../../shared/types';
 import { tabRecentText, tabsBytes, tabsContext } from '../terminals';
-import { readDashboardConfig, toDashboardConfigView } from './config';
+import { DASHBOARD_DEFAULTS, readDashboardConfig, toDashboardConfigView } from './config';
 import {
   emptyDashboardState,
   loadDashboardState,
@@ -77,12 +77,12 @@ export async function getDashboardConfigView(): Promise<DashboardConfigView> {
   if (!current) {
     return {
       enabled: false,
-      provider: 'deepseek',
+      provider: DASHBOARD_DEFAULTS.provider,
       hasApiKey: false,
-      model: 'deepseek-chat',
-      intervalSec: 120,
-      gateOnActivity: true,
-      historyLimit: 20,
+      model: DASHBOARD_DEFAULTS.model,
+      intervalSec: DASHBOARD_DEFAULTS.intervalSec,
+      gateOnActivity: DASHBOARD_DEFAULTS.gateOnActivity,
+      historyLimit: DASHBOARD_DEFAULTS.historyLimit,
     };
   }
   return toDashboardConfigView(await readDashboardConfig(current.path));

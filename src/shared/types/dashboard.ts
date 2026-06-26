@@ -54,6 +54,8 @@ export interface DashboardSettings {
   enabled?: boolean;
   provider?: 'deepseek';
   apiKey?: string;
+  /** OpenAI-compatible API base URL. Blank → the provider's built-in endpoint. */
+  baseUrl?: string;
   model?: string;
   intervalSec?: number;
   gateOnActivity?: boolean;
@@ -66,6 +68,8 @@ export interface DashboardConfig {
   enabled: boolean;
   provider: 'deepseek';
   apiKey?: string;
+  /** OpenAI-compatible API base URL; undefined → the provider's built-in endpoint. */
+  baseUrl?: string;
   model: string;
   intervalSec: number;
   gateOnActivity: boolean;
@@ -79,6 +83,8 @@ export interface DashboardConfigView {
   enabled: boolean;
   provider: 'deepseek';
   hasApiKey: boolean;
+  /** OpenAI-compatible API base URL; undefined → the provider's built-in endpoint. */
+  baseUrl?: string;
   model: string;
   intervalSec: number;
   gateOnActivity: boolean;

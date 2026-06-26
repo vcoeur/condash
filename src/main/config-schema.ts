@@ -360,7 +360,7 @@ const treeExpansionSchema = z
  * Per-machine in `settings.json` — `apiKey` is a secret and MUST live in the
  * global file, never a versioned conception `condash.json`. All fields are
  * optional; the engine applies defaults (provider `deepseek`, model
- * `deepseek-chat`, interval 120s clamped 30–300, activity-gated, 20 events).
+ * `deepseek-v4-flash`, interval 120s clamped 30–300, activity-gated, 20 events).
  */
 const dashboardSettings = z
   .object({
@@ -370,7 +370,12 @@ const dashboardSettings = z
     provider: z.enum(['deepseek']).optional(),
     /** Provider API key. GLOBAL settings only — never commit it to a conception file. */
     apiKey: z.string().optional(),
-    /** Model id (default `deepseek-chat` — fast/cheap for a short-interval loop). */
+    /** OpenAI-compatible API base URL. Blank → the provider's built-in endpoint
+     *  (`https://api.deepseek.com`). Set it to point at a self-hosted /
+     *  OpenAI-compatible gateway (e.g. an opencode-go server) with any `model` id. */
+    baseUrl: z.string().optional(),
+    /** Model id (default `deepseek-v4-flash`). Without a `baseUrl` it must be a
+     *  built-in provider model; with a `baseUrl` it can be any id the endpoint serves. */
     model: z.string().optional(),
     /** Summarization cadence in seconds. Clamped to 30–300 at read time. */
     intervalSec: z.number().int().positive().optional(),

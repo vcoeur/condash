@@ -156,6 +156,11 @@ function agentMessageText(message: unknown): string {
  * session, discovery (skills, extensions, context files like AGENTS.md) all
  * disabled, no tools — the model sees only the system + user prompt we pass.
  *
+ * When `config.baseUrl` is set the model id is registered against that
+ * OpenAI-compatible endpoint (DeepSeek's own gateway, a self-hosted proxy, an
+ * opencode-go server, …), so any model name the endpoint serves resolves. With
+ * no `baseUrl` the id must be a built-in provider model (e.g. `deepseek-v4-flash`).
+ *
  * The SDK is imported dynamically so it never enters the CLI bundle or the
  * app's startup path (the engine only calls this when the dashboard is enabled).
  *
@@ -173,6 +178,28 @@ async function runPiCompletion(
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey(config.provider, config.apiKey);
   const modelRegistry = ModelRegistry.inMemory(authStorage);
+  // A custom base URL means an OpenAI-compatible endpoint with a model id that
+  // may not exist in the built-in catalogue — register it so `find()` resolves.
+  // This replaces the built-in models for `config.provider`, which is fine: the
+  // dashboard only ever resolves this one model.
+  if (config.baseUrl) {
+    modelRegistry.registerProvider(config.provider, {
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      api: 'openai-completions',
+      models: [
+        {
+          id: config.model,
+          name: config.model,
+          reasoning: false,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 128000,
+          maxTokens: 8192,
+        },
+      ],
+    });
+  }
   const model = modelRegistry.find(config.provider, config.model);
   if (!model) {
     throw new Error(`dashboard: unknown model ${config.provider}/${config.model}`);

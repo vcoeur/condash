@@ -34,9 +34,9 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
         hover popover, and the Dashboard pane. Off by default.
       </p>
       <p class="settings-hint">
-        <strong>Privacy:</strong> when enabled, recent terminal output is sent to the DeepSeek API
-        (an external service). Don't enable it for tabs that display secrets you don't want
-        transmitted.
+        <strong>Privacy:</strong> when enabled, recent terminal output is sent to the configured API
+        endpoint (the DeepSeek API by default). Don't enable it for tabs that display secrets you
+        don't want transmitted.
       </p>
       <div class="settings-grid">
         <label class="settings-checkbox">
@@ -48,7 +48,7 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
           <span>Enable live tab summaries</span>
         </label>
         <label>
-          <span>DeepSeek API key</span>
+          <span>API key</span>
           <input
             type="password"
             autocomplete="off"
@@ -63,13 +63,30 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
           </small>
         </label>
         <label>
+          <span>API base URL</span>
+          <input
+            type="text"
+            placeholder="https://api.deepseek.com"
+            value={dashboard().baseUrl ?? ''}
+            onChange={(e) => void update({ baseUrl: e.currentTarget.value.trim() || undefined })}
+          />
+          <small class="settings-field-hint">
+            Optional. Blank uses the DeepSeek API. Set an OpenAI-compatible endpoint (e.g. an
+            opencode-go server) to use any <em>Model</em> id it serves.
+          </small>
+        </label>
+        <label>
           <span>Model</span>
           <input
             type="text"
-            placeholder="deepseek-chat"
+            placeholder="deepseek-v4-flash"
             value={dashboard().model ?? ''}
             onChange={(e) => void update({ model: e.currentTarget.value.trim() || undefined })}
           />
+          <small class="settings-field-hint">
+            Default <code>deepseek-v4-flash</code>. Without a base URL it must be a built-in
+            DeepSeek model (<code>deepseek-v4-flash</code> or <code>deepseek-v4-pro</code>).
+          </small>
         </label>
         <label>
           <span>Update interval (seconds)</span>
