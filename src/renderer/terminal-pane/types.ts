@@ -44,14 +44,28 @@ export interface Tab {
   colorSlot?: number;
   /** Process exit code; the tab can still be cleared via close. */
   exited?: number;
+  /** Few-word summary the dashboard engine derived from recent output (when
+   *  the Dashboard feature is enabled). Renderer-only ephemeral state pushed by
+   *  `onDashboardTabSummaries`; never persisted. Outranks the cwd basename / OSC
+   *  title for display so the tab reflects what it's actually doing. */
+  llmTitle?: string;
+  /** Few-line "current context" from the dashboard engine — shown in the tab's
+   *  hover popover. Renderer-only ephemeral state; never persisted. */
+  contextLines?: string[];
+  /** One-line "what is happening now" from the dashboard engine — shown in the
+   *  hover popover. Renderer-only ephemeral state; never persisted. */
+  currentAction?: string;
 }
 
-/** Display name for a tab. A user rename always wins; then the cwd basename if
- *  the shell emitted OSC 7 and the tab isn't pinned; then the window title the
- *  running program announced via OSC 0/2 (e.g. a harness summary) — which also
- *  surfaces on pinned tabs, where cwd is suppressed; otherwise the spawn label. */
+/** Display name for a tab. A user rename always wins; then the dashboard's
+ *  LLM-derived title (when the feature is on), so the tab reflects what it is
+ *  actually doing; then the cwd basename if the shell emitted OSC 7 and the tab
+ *  isn't pinned; then the window title the running program announced via OSC 0/2
+ *  (e.g. a harness summary) — which also surfaces on pinned tabs, where cwd is
+ *  suppressed; otherwise the spawn label. */
 export function displayName(tab: Tab): string {
   if (tab.customName) return tab.customName;
+  if (tab.llmTitle) return tab.llmTitle;
   if (!tab.pinned && tab.cwd) {
     const basename = tab.cwd.split('/').filter(Boolean).pop();
     if (basename) return basename;

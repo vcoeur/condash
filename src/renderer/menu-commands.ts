@@ -16,6 +16,8 @@ export interface MenuRouterDeps {
   toggleProjects: () => void;
   toggleTerminal: () => void;
   selectWorking: (next: WorkingSurface) => void;
+  /** Toggle the Dashboard body in the bottom band (next to Terminal). */
+  toggleDashboardBand: () => void;
   handleRefresh: () => void;
   handlePick: () => Promise<void>;
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -81,6 +83,10 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
     }
     if (command === 'show-logs') {
       deps.selectWorking(deps.layout().working === 'logs' ? null : 'logs');
+      return;
+    }
+    if (command === 'show-dashboard') {
+      deps.toggleDashboardBand();
       return;
     }
     if (command === 'hide-working') {

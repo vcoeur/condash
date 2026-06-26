@@ -3,6 +3,10 @@ import type {
   Agent,
   CardMinWidthPrefs,
   ConceptionInitState,
+  DashboardConfigView,
+  DashboardSettings,
+  DashboardState,
+  DashboardTabSummariesMessage,
   DirtyDetails,
   HelpDocName,
   KnowledgeNode,
@@ -302,6 +306,24 @@ export interface CondashApi {
    *  task run from the Tasks pane. */
   termTabsContext(): Promise<TabInfo[]>;
 
+  /** Latest dashboard snapshot (overview + per-tab cards + history), or `null`
+   *  when the engine has not produced one yet. Read on Dashboard-pane mount so
+   *  it shows the last state without waiting for the next cycle. */
+  dashboardGetState(): Promise<DashboardState | null>;
+  /** Resolved dashboard config minus the secret key (plus `hasApiKey`). Drives
+   *  the Dashboard pane's accurate off / no-key / waiting empty states. */
+  dashboardGetConfigView(): Promise<DashboardConfigView>;
+  /** Run a one-shot completion against the given dashboard settings to verify
+   *  the key / base URL / model work. Tests the unsaved draft values, so the
+   *  user can confirm before saving. Resolves `{ ok, error? }`, never rejects. */
+  dashboardTestConnection(settings: DashboardSettings): Promise<{ ok: boolean; error?: string }>;
+  /** Subscribe to full dashboard-state snapshots pushed after each engine
+   *  cycle. Returns an unsubscribe function. */
+  onDashboardState(callback: (state: DashboardState) => void): () => void;
+  /** Subscribe to the per-tab summaries pushed each cycle (tab titles + hover
+   *  popovers). Returns an unsubscribe function. */
+  onDashboardTabSummaries(callback: (msg: DashboardTabSummariesMessage) => void): () => void;
+
   /** List the day-directories present under
    * `<conception>/.condash/logs/` — newest first. Empty when no
    * conception is active or no logs have been captured. */
@@ -418,6 +440,7 @@ export type MenuCommand =
   | 'show-resources'
   | 'show-skills'
   | 'show-logs'
+  | 'show-dashboard'
   | 'hide-working'
   | 'refresh'
   | 'about'

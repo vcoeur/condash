@@ -21,6 +21,22 @@
   display: none;
 }
 
+/* Dashboard body — shown in the bottom band in place of the terminal columns
+ * when the Dashboard handle is active. The columns stay mounted (their xterm
+ * hosts are hidden) so terminals survive the switch; the tab strips stay
+ * visible above, carrying the Terminal / Dashboard handles. */
+.terminal-pane.dashboard-active .terminal-host {
+  display: none;
+}
+.terminal-pane.dashboard-active .terminal-columns {
+  flex: 0 0 auto;
+}
+.terminal-dashboard-band {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
 .terminal-pane-resize {
   position: absolute;
   top: 0;
@@ -515,6 +531,48 @@
 .terminal-tab-context-menu-item.danger:hover {
   background: color-mix(in srgb, var(--col-now) 16%, var(--bg-hover));
   color: var(--col-now);
+}
+
+.terminal-tab-popover.portal {
+  position: fixed;
+  max-width: 360px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  z-index: 1000;
+  box-shadow: var(--shadow-lift);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.terminal-tab-popover-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.terminal-tab-popover-action {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.terminal-tab-popover-context {
+  margin: 0;
+  padding-left: 16px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.terminal-tab-popover-cwd {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  word-break: break-all;
 }
 
 .terminal-tab[draggable='true']:active {

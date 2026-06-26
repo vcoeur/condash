@@ -144,6 +144,19 @@ function App() {
     startSplitterDrag,
   } = useLayout({ flashToast });
 
+  // Bottom-band body selector. The strip's Terminal / Dashboard handles switch
+  // which body shows when the pane is open; re-selecting the active band's
+  // handle closes the pane. Ephemeral per-session UI state (not persisted).
+  const [bottomView, setBottomView] = createSignal<'terminal' | 'dashboard'>('terminal');
+  const selectBottomBand = (view: 'terminal' | 'dashboard'): void => {
+    if (layout().terminal && bottomView() === view) {
+      toggleTerminal();
+    } else {
+      setBottomView(view);
+      ensureTerminalOpen();
+    }
+  };
+
   // --- Tree expansion + branch filter (existing stores) ------------------
   const treeExpansion = createTreeExpansion({ flashToast });
   const {
@@ -410,6 +423,7 @@ function App() {
     toggleProjects,
     toggleTerminal,
     selectWorking,
+    toggleDashboardBand: () => selectBottomBand('dashboard'),
     handleRefresh: () => handleRefresh(),
     handlePick: () => handlePick(),
     flashToast,
@@ -741,7 +755,8 @@ function App() {
       <TerminalPane
         open={layout().terminal}
         onClose={() => updateLayout({ terminal: false })}
-        onTogglePane={toggleTerminal}
+        bottomView={bottomView()}
+        onSelectBand={selectBottomBand}
         agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}

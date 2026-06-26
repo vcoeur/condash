@@ -18,6 +18,7 @@ import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
 import { spawnEnv } from './shell-env';
 import { SessionLogger } from './terminal-logger';
+import { cleanTerminalText } from './dashboard/clean-text';
 
 interface Session {
   id: string;
@@ -116,6 +117,19 @@ export function tabsBytes(): Map<string, number> {
     if (s.exited === undefined) out.set(s.id, s.bytesSeen);
   }
   return out;
+}
+
+/** Recent plain-text output for a live session — the rolling raw buffer with
+ *  ANSI escapes stripped and `\r` overwrites resolved, capped to the last
+ *  `maxChars` characters. Empty string when the sid is unknown or exited.
+ *  Sourced from the in-memory buffer, so it works regardless of whether on-disk
+ *  terminal logging is enabled. Drives the dashboard summarizer (capability:
+ *  live tab summaries). */
+export function tabRecentText(sid: string, maxChars = 8000): string {
+  const s = sessions.get(sid);
+  if (!s || s.exited !== undefined) return '';
+  const clean = cleanTerminalText(s.buffer);
+  return clean.length > maxChars ? clean.slice(-maxChars) : clean;
 }
 
 export function attachTerminal(

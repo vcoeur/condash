@@ -40,6 +40,7 @@ import {
 } from './settings-modal-parts/sections-repos-and-open-with';
 import { RecentConceptionsSection } from './settings-modal-parts/section-recent-conceptions';
 import { AgentsSection } from './settings-modal-parts/sections-agents';
+import { DashboardSection } from './settings-modal-parts/sections-dashboard';
 import { ActionBar, Button } from './actions';
 import { IconClose } from './icons';
 import './settings-modal.css';
@@ -1009,6 +1010,8 @@ export function SettingsModal(props: {
                   bindText={bindText}
                   patch={patchSettings}
                 />
+
+                <DashboardSection target="global" parsed={globalParsed} patch={patchSettings} />
               </div>
 
               {/* Conception tabpanel ----------------------------------- */}
@@ -1135,6 +1138,23 @@ export function SettingsModal(props: {
                     badge={{
                       stateOf: () => stateOf('agents'),
                       removeOverride: () => void removeOverride('agents'),
+                    }}
+                  />
+                </div>
+
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('dashboard:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <DashboardSection
+                    target="conception"
+                    parsed={parsed}
+                    patch={patchConfig}
+                    badge={{
+                      stateOf: () => stateOf('dashboard'),
+                      removeOverride: () => void removeOverride('dashboard'),
                     }}
                   />
                 </div>

@@ -24,6 +24,10 @@ export const EVENT_CHANNELS = {
   termExit: 'termExit',
   /** Full terminal-session snapshot broadcast. */
   termSessions: 'termSessions',
+  /** Live per-tab summaries (LLM title + popover) from the dashboard engine. */
+  dashboardTabSummaries: 'dashboard-tab-summaries',
+  /** Full dashboard state (overview + per-tab cards + history) snapshot. */
+  dashboardState: 'dashboard-state',
   /** Application-menu command (e.g. show-knowledge, new-project). */
   menuCommand: 'menu-command',
   /** Open-recent menu pick, carrying the chosen conception path. */

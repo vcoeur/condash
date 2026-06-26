@@ -19,6 +19,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import type {
   Agent,
+  TabSummary,
   TaskRunContext,
   TermSide,
   TermSpawnRequest,
@@ -44,6 +45,7 @@ import {
 import { createResizeHandlers } from './terminal-pane/resize';
 import { createSearchController } from './terminal-pane/search';
 import { type Column, displayName, type Tab } from './terminal-pane/types';
+import { DashboardView } from './panes/dashboard';
 import './panes/app-pill.css';
 import './terminal-pane.css';
 
@@ -92,9 +94,13 @@ export interface TerminalPaneHandle {
 export function TerminalPane(props: {
   open: boolean;
   onClose: () => void;
-  /** Toggle the pane open / closed. Used by the in-strip Terminal
-   *  handle which is visible whether the body is shown or not. */
-  onTogglePane: () => void;
+  /** Which body the bottom band shows when open: the terminals or the
+   *  Dashboard. The strip's Terminal / Dashboard handles switch between them. */
+  bottomView: 'terminal' | 'dashboard';
+  /** Select a bottom-band view from an in-strip handle. The parent decides the
+   *  open/close semantics (re-selecting the active band's handle closes the
+   *  pane); this just reports the intent. */
+  onSelectBand: (view: 'terminal' | 'dashboard') => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
   /** Configured agents (the `agents` settings list). Each renders as an option
    *  in the tab-strip spawn dropdown (alongside "New shell"). */
@@ -541,9 +547,41 @@ export function TerminalPane(props: {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: _code } : t)));
     if (!closingTabs.has(id)) closeTab(id);
   });
+
+  // ---- dashboard: live per-tab LLM summaries (title + hover popover) ----
+  // Merge the engine's per-sid summaries onto the matching tabs. When the
+  // feature is off no pushes arrive, so `llmTitle` stays undefined and the tab
+  // falls back to its cwd / OSC title.
+  const applyTabSummaries = (summaries: TabSummary[]): void => {
+    if (summaries.length === 0) return;
+    const bySid = new Map(summaries.map((s) => [s.sid, s]));
+    setTabs((prev) =>
+      prev.map((t) => {
+        const summary = bySid.get(t.id);
+        return summary
+          ? {
+              ...t,
+              llmTitle: summary.title,
+              contextLines: summary.contextLines,
+              currentAction: summary.currentAction,
+            }
+          : t;
+      }),
+    );
+  };
+  const offDashboard = window.condash.onDashboardTabSummaries(({ summaries }) =>
+    applyTabSummaries(summaries),
+  );
+  // Seed from the last persisted snapshot so titles show without waiting for the
+  // next engine cycle.
+  void window.condash.dashboardGetState().then((state) => {
+    if (state) applyTabSummaries(state.tabs);
+  });
+
   onCleanup(() => {
     offTermData();
     offTermExit();
+    offDashboard();
     for (const [, { mounted, element, detachListeners }] of xterms) {
       detachListeners?.();
       mounted.dispose();
@@ -630,6 +668,18 @@ export function TerminalPane(props: {
   });
   createEffect(() => {
     if (props.open) queueMicrotask(focusActive);
+  });
+
+  // Switching back from the Dashboard body re-shows the xterm hosts (they are
+  // CSS-hidden, not unmounted, so terminals survive). xterm must refit to the
+  // restored dimensions, otherwise the grid is sized for the hidden (0×0) host.
+  createEffect(() => {
+    if (props.open && props.bottomView === 'terminal') {
+      queueMicrotask(() => {
+        for (const entry of xterms.values()) entry.fit.fit();
+        focusActive();
+      });
+    }
   });
 
   // ---- drag-to-reorder + drag-between-columns ----
@@ -754,7 +804,9 @@ export function TerminalPane(props: {
         setActiveColumn(c);
         search.openSearch();
       }}
-      onTogglePane={() => props.onTogglePane()}
+      dashboardActive={props.bottomView === 'dashboard'}
+      onTogglePane={() => props.onSelectBand('terminal')}
+      onToggleDashboard={() => props.onSelectBand('dashboard')}
     />
   );
 
@@ -763,7 +815,10 @@ export function TerminalPane(props: {
   return (
     <section
       class="terminal-pane"
-      classList={{ closed: !props.open }}
+      classList={{
+        closed: !props.open,
+        'dashboard-active': props.open && props.bottomView === 'dashboard',
+      }}
       style={{ height: `${paneHeight()}px` }}
       ref={(el) => (paneSection = el)}
     >
@@ -820,6 +875,15 @@ export function TerminalPane(props: {
           </div>
         </Show>
       </div>
+      {/* Dashboard body — shown in place of the terminal columns when the
+          Dashboard handle is active. The columns stay mounted (CSS hides the
+          xterm hosts) so terminals are never disposed; the strip with both
+          handles remains visible above. */}
+      <Show when={props.open && props.bottomView === 'dashboard'}>
+        <div class="terminal-dashboard-band">
+          <DashboardView />
+        </div>
+      </Show>
       {search.SearchBar()}
     </section>
   );

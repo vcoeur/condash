@@ -8,6 +8,7 @@
 //   common      — cross-cutting primitives (Platform, ItemKind, HelpDocName, Theme)
 //   project     — project lifecycle (statuses, steps, deliverables, Project, create/transition)
 //   layout      — renderer view-state (WorkingSurface, LeftView, LayoutState)
+//   dashboard   — live terminal-tab summarization (state, per-tab summaries, config view)
 //   settings    — persisted settings + per-pane prefs + open-with slots
 //   git         — git/worktree status + repo entries + repo events
 //   terminal    — terminal sessions, prefs, agents, spawn/data/exit messages
@@ -19,6 +20,7 @@
 export * from './common';
 export * from './project';
 export * from './layout';
+export * from './dashboard';
 export * from './settings';
 export * from './git';
 export * from './terminal';

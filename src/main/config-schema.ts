@@ -352,6 +352,40 @@ const treeExpansionSchema = z
   .strict();
 
 /**
+ * Live terminal-tab summarization ("Dashboard"). Opt-in: a periodic main-process
+ * loop summarizes the active terminal tabs with the pi coding-agent SDK and
+ * surfaces the result as tab titles, a hover popover, and the Dashboard pane.
+ *
+ * Per-machine in `settings.json` — `apiKey` is a secret and MUST live in the
+ * global file, never a versioned conception `condash.json`. All fields are
+ * optional; the engine applies defaults (provider `deepseek`, model
+ * `deepseek-v4-flash`, interval 120s clamped 30–300, activity-gated, 20 events).
+ */
+const dashboardSettings = z
+  .object({
+    /** Master switch. Off by default — nothing runs and no data leaves the machine. */
+    enabled: z.boolean().optional(),
+    /** LLM provider. DeepSeek only for now; an enum so others can be added later. */
+    provider: z.enum(['deepseek']).optional(),
+    /** Provider API key. GLOBAL settings only — never commit it to a conception file. */
+    apiKey: z.string().optional(),
+    /** OpenAI-compatible API base URL. Blank → the provider's built-in endpoint
+     *  (`https://api.deepseek.com`). Set it to point at a self-hosted /
+     *  OpenAI-compatible gateway (e.g. an opencode-go server) with any `model` id. */
+    baseUrl: z.string().optional(),
+    /** Model id (default `deepseek-v4-flash`). Without a `baseUrl` it must be a
+     *  built-in provider model; with a `baseUrl` it can be any id the endpoint serves. */
+    model: z.string().optional(),
+    /** Summarization cadence in seconds. Clamped to 30–300 at read time. */
+    intervalSec: z.number().int().positive().optional(),
+    /** Skip a cycle when no open tab produced new output (reuses the growth gate). */
+    gateOnActivity: z.boolean().optional(),
+    /** Max retained events per tab and globally. */
+    historyLimit: z.number().int().positive().optional(),
+  })
+  .strict();
+
+/**
  * Workspace + presentational fields shared by global and per-conception
  * settings files. Picked apart from the path-tracking fields so the same
  * shape can be used in both files — the conception override variant just
@@ -403,6 +437,9 @@ const sharedSchemaFields = {
   pdf_viewer: z.array(z.string()).optional(),
   /** Terminal preferences. Per-machine in settings.json; overridable per-conception. */
   terminal: terminalSettings.optional(),
+  /** Live terminal-tab summarization. Per-machine in settings.json; the `apiKey`
+   *  secret belongs in the global file only. See {@link dashboardSettings}. */
+  dashboard: dashboardSettings.optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
   layout: layoutSchema.optional(),
   welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),

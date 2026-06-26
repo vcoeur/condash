@@ -30,10 +30,15 @@ export interface TerminalColumnProps {
   onSpawnShell: (col: Column, agentId: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
-  /** Toggle the pane open/closed. The Terminal handle in the strip
-   *  fires this. Only the left column renders the handle, so the pane
-   *  has exactly one toggle regardless of split state. */
+  /** Select the terminal body. The Terminal handle in the strip fires this.
+   *  Only the left column renders the handle, so the pane has exactly one pair
+   *  of handles regardless of split state. */
   onTogglePane: () => void;
+  /** True when the bottom band is showing the Dashboard rather than the
+   *  terminals. Drives the active state of the two strip handles. */
+  dashboardActive: boolean;
+  /** Select the Dashboard body. The Dashboard handle next to Terminal fires this. */
+  onToggleDashboard: () => void;
 }
 
 /** One row of the primary spawn menu: the plain shell, a launchable agent, or
@@ -365,6 +370,20 @@ export function TerminalColumn(props: TerminalColumnProps) {
   const ctxMenu = createDropdownMenu({ align: 'left' });
   const [ctxTabId, setCtxTabId] = createSignal<string | null>(null);
 
+  // Hover popover showing the dashboard summary (current action + context) for
+  // the tab under the cursor. Only the tabs that carry a dashboard summary
+  // trigger it; the rest keep the plain native title tooltip.
+  const [hovered, setHovered] = createSignal<Tab | null>(null);
+  const [hoverAt, setHoverAt] = createSignal<{ top: number; left: number } | null>(null);
+  const hasSummary = (tab: Tab): boolean =>
+    Boolean(tab.currentAction || (tab.contextLines && tab.contextLines.length > 0));
+  const openTabPopover = (tab: Tab, el: HTMLElement): void => {
+    if (!hasSummary(tab)) return;
+    const rect = el.getBoundingClientRect();
+    setHovered(tab);
+    setHoverAt({ top: rect.bottom + 4, left: rect.left });
+  };
+
   return (
     <div class="terminal-column" classList={{ active: props.isActiveColumn }}>
       <div
@@ -380,21 +399,34 @@ export function TerminalColumn(props: TerminalColumnProps) {
         onDrop={(e) => props.dnd.onDropOnStrip(e, props.col)}
         onClick={() => props.onActivateColumn(props.col)}
       >
-        {/* Terminal handle — only in the left column so the pane has
-         *  one toggle regardless of split state. Doubles as both
-         *  open-pane and hide-pane (active when open). */}
+        {/* Terminal + Dashboard handles — only in the left column so the pane
+         *  has one pair regardless of split state. Each is active when the pane
+         *  is open and showing its body; clicking the active one closes the
+         *  pane, clicking the other swaps the body. */}
         <Show when={props.col === 'left'}>
           <button
             class="terminal-pane-handle"
-            classList={{ active: props.paneOpen }}
-            aria-pressed={props.paneOpen}
+            classList={{ active: props.paneOpen && !props.dashboardActive }}
+            aria-pressed={props.paneOpen && !props.dashboardActive}
             onClick={(e) => {
               e.stopPropagation();
               props.onTogglePane();
             }}
-            title={props.paneOpen ? 'Hide Terminal' : 'Show Terminal'}
+            title={props.paneOpen && !props.dashboardActive ? 'Hide Terminal' : 'Show Terminal'}
           >
             Terminal
+          </button>
+          <button
+            class="terminal-pane-handle"
+            classList={{ active: props.paneOpen && props.dashboardActive }}
+            aria-pressed={props.paneOpen && props.dashboardActive}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onToggleDashboard();
+            }}
+            title={props.paneOpen && props.dashboardActive ? 'Hide Dashboard' : 'Show Dashboard'}
+          >
+            Dashboard
           </button>
         </Show>
         <For each={props.tabs}>
@@ -427,10 +459,19 @@ export function TerminalColumn(props: TerminalColumnProps) {
                 ctxMenu.openAt(e.clientX, e.clientY);
               }}
               onDblClick={() => props.onRequestRename(tab.id)}
-              // Always lead with the complete current title so a hover reveals
-              // the full text when the label is truncated; append the cwd as
-              // context when the shell reported one.
-              title={tab.cwd ? `${displayName(tab)} — ${tab.cwd}` : displayName(tab)}
+              onMouseEnter={(e) => openTabPopover(tab, e.currentTarget)}
+              onMouseLeave={() => setHovered(null)}
+              // When the dashboard has a summary for this tab, the rich hover
+              // popover replaces the native tooltip (showing both would stack two
+              // tooltips). Otherwise lead with the full title so a hover reveals
+              // truncated text, and append the cwd when the shell reported one.
+              title={
+                hasSummary(tab)
+                  ? undefined
+                  : tab.cwd
+                    ? `${displayName(tab)} — ${tab.cwd}`
+                    : displayName(tab)
+              }
             >
               <Show when={tab.busy && tab.exited === undefined && tab.id !== props.renamingId}>
                 <span class="terminal-tab-busy" aria-hidden="true" />
@@ -461,6 +502,29 @@ export function TerminalColumn(props: TerminalColumnProps) {
             </div>
           )}
         </For>
+        <Show when={hovered()}>
+          {(tab) => (
+            <Portal>
+              <div
+                class="terminal-tab-popover portal"
+                style={{ top: `${hoverAt()?.top ?? 0}px`, left: `${hoverAt()?.left ?? 0}px` }}
+              >
+                <div class="terminal-tab-popover-title">{displayName(tab())}</div>
+                <Show when={tab().currentAction}>
+                  <div class="terminal-tab-popover-action">{tab().currentAction}</div>
+                </Show>
+                <Show when={(tab().contextLines?.length ?? 0) > 0}>
+                  <ul class="terminal-tab-popover-context">
+                    <For each={tab().contextLines}>{(line) => <li>{line}</li>}</For>
+                  </ul>
+                </Show>
+                <Show when={tab().cwd}>
+                  <div class="terminal-tab-popover-cwd">{tab().cwd}</div>
+                </Show>
+              </div>
+            </Portal>
+          )}
+        </Show>
         <SpawnDropdown agents={props.agents} onSpawn={(id) => props.onSpawnShell(props.col, id)} />
         <span class="terminal-tab-strip-spacer" />
         <button
