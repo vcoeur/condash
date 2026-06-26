@@ -19,10 +19,49 @@
   color: var(--text-muted);
 }
 
-.dashboard-pane-error {
-  margin: 6px 0 0;
-  font-size: var(--text-sm);
+/* Failed-summary banner: a dropped cycle (auth / model / network) otherwise
+ * reads as the tab titles simply going quiet — make it loud and explained. */
+.dashboard-error-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger, #c0392b) 50%, var(--border));
+  border-left: 3px solid var(--danger, #c0392b);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--danger, #c0392b) 12%, var(--bg-elevated));
+}
+
+.dashboard-error-banner-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--danger, #c0392b);
+}
+
+.dashboard-error-banner-msg {
+  font-size: var(--text-sm);
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* Two-column key/value grid for the active summarizer settings. */
+.dashboard-settings {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  font-size: var(--text-sm);
+}
+
+.dashboard-settings dt {
+  color: var(--text-muted);
+}
+
+.dashboard-settings dd {
+  margin: 0;
+  color: var(--text);
   word-break: break-word;
 }
 
@@ -75,10 +114,11 @@
   color: var(--text);
 }
 
-.dashboard-tab-card-sid {
+.dashboard-tab-card-time {
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .dashboard-tab-card-action {
