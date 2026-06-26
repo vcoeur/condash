@@ -59,43 +59,6 @@
  * open, clicking the pill collapses the body. Active styling marks
  * the pill while the body is showing. Matches the Projects / Code /
  * Knowledge edge handles in shape. */
-.terminal-pane-handle {
-  flex-shrink: 0;
-  height: 22px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 4px;
-  transition:
-    background 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-}
-
-.terminal-pane-handle:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.terminal-pane-handle.active {
-  background: var(--bg-elevated);
-  color: var(--text);
-  border-color: var(--border-strong);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-}
-
 .terminal-columns {
   flex: 1;
   display: grid;
@@ -252,6 +215,30 @@
 
 .terminal-tab.active .terminal-tab-label {
   font-weight: 700;
+}
+
+/* Dashboard pseudo-tab: looks like a tab but is a fixed, always-first entry
+ * for the global Dashboard view (not a shell). A neutral surface + uppercase
+ * label set it apart from the app-pill-coloured terminal tabs; it still picks
+ * up the shared `.terminal-tab.active` accent ring when its body is showing. */
+.terminal-tab-dashboard {
+  background: var(--bg);
+  color: var(--text-muted);
+  border-color: var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+.terminal-tab-dashboard:hover,
+.terminal-tab-dashboard.active {
+  color: var(--text);
+}
+
+.terminal-tab-dashboard-icon {
+  font-size: var(--text-sm);
+  line-height: 1;
 }
 
 .terminal-tab.exited {

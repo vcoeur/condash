@@ -757,6 +757,10 @@ function App() {
         onClose={() => updateLayout({ terminal: false })}
         bottomView={bottomView()}
         onSelectBand={selectBottomBand}
+        onShowTerminalBand={() => {
+          setBottomView('terminal');
+          ensureTerminalOpen();
+        }}
         agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}

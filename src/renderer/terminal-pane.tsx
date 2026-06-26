@@ -95,12 +95,18 @@ export function TerminalPane(props: {
   open: boolean;
   onClose: () => void;
   /** Which body the bottom band shows when open: the terminals or the
-   *  Dashboard. The strip's Terminal / Dashboard handles switch between them. */
+   *  Dashboard. The Dashboard pseudo-tab toggles to 'dashboard'; activating any
+   *  real terminal tab returns to 'terminal'. */
   bottomView: 'terminal' | 'dashboard';
-  /** Select a bottom-band view from an in-strip handle. The parent decides the
-   *  open/close semantics (re-selecting the active band's handle closes the
-   *  pane); this just reports the intent. */
+  /** Toggle a bottom-band view from the strip. The parent decides the
+   *  open/close semantics (re-selecting the active band closes the pane); this
+   *  just reports the intent. The Dashboard pseudo-tab fires it with
+   *  'dashboard'. */
   onSelectBand: (view: 'terminal' | 'dashboard') => void;
+  /** Show the terminal body without the toggle-to-close semantics — fired when
+   *  a real terminal tab is activated, so picking a tab always lands on its
+   *  terminal (opening the pane if needed) and never closes it. */
+  onShowTerminalBand: () => void;
   registerHandle: (handle: TerminalPaneHandle | null) => void;
   /** Configured agents (the `agents` settings list). Each renders as an option
    *  in the tab-strip spawn dropdown (alongside "New shell"). */
@@ -786,6 +792,10 @@ export function TerminalPane(props: {
       onActivateTab={(c, id) => {
         setActiveIn(c, id);
         setActiveColumn(c);
+        // Selecting a terminal tab always lands on the terminal body (and opens
+        // the pane if it was closed) — picking a tab should never leave the
+        // Dashboard up or close the pane.
+        props.onShowTerminalBand();
       }}
       onRequestRename={setRenamingId}
       onCommitRename={commitRename}
@@ -805,7 +815,6 @@ export function TerminalPane(props: {
         search.openSearch();
       }}
       dashboardActive={props.bottomView === 'dashboard'}
-      onTogglePane={() => props.onSelectBand('terminal')}
       onToggleDashboard={() => props.onSelectBand('dashboard')}
     />
   );

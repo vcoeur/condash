@@ -14,8 +14,9 @@ export interface TerminalColumnProps {
   /** Configured agents (the `agents` settings list). One menu item each, in
    *  config order, alongside the "New shell" option. */
   agents: readonly Agent[];
-  /** True when the surrounding pane is currently visible. Drives the
-   *  active state of the in-strip Terminal handle. */
+  /** True when the surrounding pane is currently visible. Together with
+   *  `dashboardActive` it drives the active state of the in-strip Dashboard
+   *  pseudo-tab. */
   paneOpen: boolean;
   dnd: DragDropController;
   /** Refs for the xterm host (one per column; the parent stashes them so
@@ -30,14 +31,12 @@ export interface TerminalColumnProps {
   onSpawnShell: (col: Column, agentId: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
-  /** Select the terminal body. The Terminal handle in the strip fires this.
-   *  Only the left column renders the handle, so the pane has exactly one pair
-   *  of handles regardless of split state. */
-  onTogglePane: () => void;
   /** True when the bottom band is showing the Dashboard rather than the
-   *  terminals. Drives the active state of the two strip handles. */
+   *  terminals. Drives the active state of the Dashboard pseudo-tab (and
+   *  suppresses the active ring on the real terminal tabs). */
   dashboardActive: boolean;
-  /** Select the Dashboard body. The Dashboard handle next to Terminal fires this. */
+  /** Select the Dashboard body. The Dashboard pseudo-tab (always first in the
+   *  left column's strip) fires this; re-selecting it closes the pane. */
   onToggleDashboard: () => void;
 }
 
@@ -399,34 +398,28 @@ export function TerminalColumn(props: TerminalColumnProps) {
         onDrop={(e) => props.dnd.onDropOnStrip(e, props.col)}
         onClick={() => props.onActivateColumn(props.col)}
       >
-        {/* Terminal + Dashboard handles — only in the left column so the pane
-         *  has one pair regardless of split state. Each is active when the pane
-         *  is open and showing its body; clicking the active one closes the
-         *  pane, clicking the other swaps the body. */}
+        {/* Dashboard pseudo-tab — always present, always first, left column
+         *  only (it is one global view, not a per-column body). It reads as a
+         *  tab but is fixed: not draggable, renamable, or closable. Selecting
+         *  it shows the Dashboard body; selecting any real terminal tab below
+         *  switches back to the terminal view. Re-selecting it while active
+         *  closes the pane (same affordance the old Dashboard handle had). */}
         <Show when={props.col === 'left'}>
           <button
-            class="terminal-pane-handle"
-            classList={{ active: props.paneOpen && !props.dashboardActive }}
-            aria-pressed={props.paneOpen && !props.dashboardActive}
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onTogglePane();
-            }}
-            title={props.paneOpen && !props.dashboardActive ? 'Hide Terminal' : 'Show Terminal'}
-          >
-            Terminal
-          </button>
-          <button
-            class="terminal-pane-handle"
+            type="button"
+            class="terminal-tab terminal-tab-dashboard"
             classList={{ active: props.paneOpen && props.dashboardActive }}
             aria-pressed={props.paneOpen && props.dashboardActive}
+            title="Dashboard — live summary of all terminal tabs"
             onClick={(e) => {
               e.stopPropagation();
               props.onToggleDashboard();
             }}
-            title={props.paneOpen && props.dashboardActive ? 'Hide Dashboard' : 'Show Dashboard'}
           >
-            Dashboard
+            <span class="terminal-tab-dashboard-icon" aria-hidden="true">
+              ▦
+            </span>
+            <span class="terminal-tab-label">Dashboard</span>
           </button>
         </Show>
         <For each={props.tabs}>
@@ -434,7 +427,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
             <div
               class={`terminal-tab app-pill-${tab.colorSlot ?? 0}`}
               classList={{
-                active: tab.id === props.activeId,
+                active: tab.id === props.activeId && !props.dashboardActive,
                 exited: tab.exited !== undefined,
                 renaming: tab.id === props.renamingId,
                 dragging: props.dnd.draggingId() === tab.id,

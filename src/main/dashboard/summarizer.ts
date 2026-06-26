@@ -1,7 +1,43 @@
+import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DashboardConfig, DashboardEvent, TabSummary } from '../../shared/types';
+
+let undiciShimInstalled = false;
+/**
+ * Work around a runtime incompatibility between the pi SDK's bundled undici
+ * (pinned at 8.5.0) and Electron 33's Node 20.18 runtime.
+ *
+ * That undici reads `markAsUncloneable` from `node:worker_threads` at module
+ * load and assigns it to `webidl.util.markAsUncloneable` with no fallback.
+ * Node 20.18 (what Electron 33 ships) doesn't export the symbol, so the
+ * property is `undefined` and the first fetch Request/Response/Headers
+ * construction throws "webidl.util.markAsUncloneable is not a function" — which
+ * breaks every dashboard LLM call (the periodic summaries and the Settings
+ * "Test connection" button alike). Newer undici guards this with
+ * `|| (() => {})`; install the same no-op on the shared builtin's exports
+ * *before* the SDK pulls undici in. The mark only gates structuredClone across
+ * worker threads, which the dashboard never does, so a no-op is safe.
+ *
+ * A real CommonJS `require` (via createRequire) is deliberate: `await
+ * import('node:worker_threads')` hands back an esbuild ESM-interop wrapper whose
+ * mutation may not reach undici's `require()` view of the same module.
+ */
+function ensureUndiciElectronShim(): void {
+  if (undiciShimInstalled) return;
+  undiciShimInstalled = true;
+  // `process.execPath` (the absolute Electron binary path) is just a valid base
+  // for createRequire — esbuild leaves `import.meta.url` undefined in the CJS
+  // main bundle, and the base is irrelevant for resolving a builtin anyway.
+  const nodeRequire = createRequire(process.execPath);
+  const workerThreads = nodeRequire('node:worker_threads') as {
+    markAsUncloneable?: (value: unknown) => void;
+  };
+  if (typeof workerThreads.markAsUncloneable !== 'function') {
+    workerThreads.markAsUncloneable = () => {};
+  }
+}
 
 /** The fields the model is asked to produce for a single tab. */
 export interface TabSummaryResult {
@@ -185,6 +221,7 @@ async function runPiCompletion(
   userPrompt: string,
 ): Promise<string> {
   if (!config.apiKey) throw new Error('dashboard: no API key configured');
+  ensureUndiciElectronShim();
   const { AuthStorage, ModelRegistry, SessionManager, DefaultResourceLoader, createAgentSession } =
     await import('@earendil-works/pi-coding-agent');
 
