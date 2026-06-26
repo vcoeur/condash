@@ -18,7 +18,6 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
-import { DashboardView } from './panes/dashboard';
 import { SearchModal } from './search-modal';
 import { SettingsModal } from './settings-modal';
 import { usableActionTemplates } from './settings-modal-parts/data';
@@ -74,7 +73,6 @@ const WORKING_SURFACE_HANDLES: ReadonlyArray<{
   { key: 'resources', label: 'Resources', shortcut: 'Ctrl+R' },
   { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L' },
   { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
-  { key: 'dashboard', label: 'Dashboard', shortcut: 'Ctrl+Shift+D' },
 ];
 
 function App() {
@@ -145,6 +143,19 @@ function App() {
     topBandStyle,
     startSplitterDrag,
   } = useLayout({ flashToast });
+
+  // Bottom-band body selector. The strip's Terminal / Dashboard handles switch
+  // which body shows when the pane is open; re-selecting the active band's
+  // handle closes the pane. Ephemeral per-session UI state (not persisted).
+  const [bottomView, setBottomView] = createSignal<'terminal' | 'dashboard'>('terminal');
+  const selectBottomBand = (view: 'terminal' | 'dashboard'): void => {
+    if (layout().terminal && bottomView() === view) {
+      toggleTerminal();
+    } else {
+      setBottomView(view);
+      ensureTerminalOpen();
+    }
+  };
 
   // --- Tree expansion + branch filter (existing stores) ------------------
   const treeExpansion = createTreeExpansion({ flashToast });
@@ -412,6 +423,7 @@ function App() {
     toggleProjects,
     toggleTerminal,
     selectWorking,
+    toggleDashboardBand: () => selectBottomBand('dashboard'),
     handleRefresh: () => handleRefresh(),
     handlePick: () => handlePick(),
     flashToast,
@@ -627,12 +639,6 @@ function App() {
                   </section>
                 </Show>
 
-                <Show when={layout().working === 'dashboard'}>
-                  <section class="pane pane-working">
-                    <DashboardView />
-                  </section>
-                </Show>
-
                 <Show when={layout().working === 'skills'}>
                   <section class="pane pane-working">
                     <SkillsView
@@ -749,7 +755,8 @@ function App() {
       <TerminalPane
         open={layout().terminal}
         onClose={() => updateLayout({ terminal: false })}
-        onTogglePane={toggleTerminal}
+        bottomView={bottomView()}
+        onSelectBand={selectBottomBand}
         agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}

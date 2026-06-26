@@ -4,6 +4,7 @@ import type {
   CardMinWidthPrefs,
   ConceptionInitState,
   DashboardConfigView,
+  DashboardSettings,
   DashboardState,
   DashboardTabSummariesMessage,
   DirtyDetails,
@@ -312,6 +313,10 @@ export interface CondashApi {
   /** Resolved dashboard config minus the secret key (plus `hasApiKey`). Drives
    *  the Dashboard pane's accurate off / no-key / waiting empty states. */
   dashboardGetConfigView(): Promise<DashboardConfigView>;
+  /** Run a one-shot completion against the given dashboard settings to verify
+   *  the key / base URL / model work. Tests the unsaved draft values, so the
+   *  user can confirm before saving. Resolves `{ ok, error? }`, never rejects. */
+  dashboardTestConnection(settings: DashboardSettings): Promise<{ ok: boolean; error?: string }>;
   /** Subscribe to full dashboard-state snapshots pushed after each engine
    *  cycle. Returns an unsubscribe function. */
   onDashboardState(callback: (state: DashboardState) => void): () => void;

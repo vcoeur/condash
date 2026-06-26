@@ -156,9 +156,10 @@ export function buildMenu(
       click: () => send('show-logs'),
     },
     {
+      // The Dashboard lives in the bottom band next to Terminal, not the
+      // right-slot working surface, so this toggles that band rather than
+      // syncing a working-surface checkbox.
       label: 'Show Dashboard',
-      type: 'checkbox',
-      checked: layout.working === 'dashboard',
       accelerator: 'CommandOrControl+Shift+D',
       click: () => send('show-dashboard'),
     },

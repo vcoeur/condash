@@ -148,6 +148,35 @@ describe('getEffectiveConceptionConfig', () => {
     });
   });
 
+  it('merges dashboard one level deep so a conception override keeps the global key', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(
+      global,
+      JSON.stringify({
+        dashboard: {
+          enabled: false,
+          apiKey: 'sk-secret',
+          baseUrl: 'https://api.deepseek.com',
+          model: 'deepseek-v4-flash',
+        },
+      }),
+    );
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(
+      condashSettingsPath(tmp),
+      JSON.stringify({ dashboard: { enabled: true, intervalSec: 60 } }),
+    );
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    // Conception flips `enabled` + sets the interval; the global secret + endpoint survive.
+    expect(eff.dashboard).toEqual({
+      enabled: true,
+      apiKey: 'sk-secret',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+      intervalSec: 60,
+    });
+  });
+
   it('drops legacy launchers / launcher_command on read (replaced by Agents)', async () => {
     const global = join(tmp, 'settings.json');
     writeFileSync(

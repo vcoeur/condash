@@ -238,13 +238,6 @@ describe('configSchema dashboard', () => {
   });
 });
 
-describe('layoutSchema working — dashboard surface', () => {
-  it('accepts working: "dashboard"', () => {
-    const layout = { projects: true, working: 'dashboard', terminal: true, projectsWidth: 320 };
-    expect(globalSettingsSchema.safeParse({ layout }).success).toBe(true);
-  });
-});
-
 describe('configSchema dropped path keys', () => {
   // Both `resources_path` and `skills_path` were dropped in the reframe —
   // the Resources pane is hard-coded to `<root>/resources/` and the Skills

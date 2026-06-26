@@ -41,15 +41,18 @@ import { migrateRawSettings } from './config-migrate';
  * convenient. A conception that wants to override only one `open_with`
  * slot has to restate the others.
  *
- * One exception: `terminal`. Its sub-schema straddles per-machine input /
- * device prefs (`shell`, `shortcut`, `screenshot_dir`, `xterm`, …) and
- * per-tree retention policy (`logging.{retentionDays, maxDirMb, …}`). A pure
- * replace meant any tree that customised `terminal.logging` silently lost
- * every per-machine terminal pref — the screenshot-paste shortcut toasted
- * "no screenshot_dir". `terminal` therefore merges one level deep:
- * conception fields win at the sub-key level, missing sub-keys fall
- * through to the global block. Nested values inside `terminal.xterm` /
- * `terminal.logging` still replace whole.
+ * Two exceptions merge one level deep: `terminal` and `dashboard`.
+ * `terminal`'s sub-schema straddles per-machine input / device prefs
+ * (`shell`, `shortcut`, `screenshot_dir`, `xterm`, …) and per-tree retention
+ * policy (`logging.{retentionDays, maxDirMb, …}`). A pure replace meant any
+ * tree that customised `terminal.logging` silently lost every per-machine
+ * terminal pref — the screenshot-paste shortcut toasted "no screenshot_dir".
+ * `dashboard` is the same shape of problem: the secret `apiKey` + endpoint
+ * (`baseUrl`/`model`) are global-only, while a conception may override just
+ * `enabled` / `intervalSec`. Both therefore merge one level deep: conception
+ * fields win at the sub-key level, missing sub-keys fall through to the global
+ * block. Nested values (e.g. inside `terminal.xterm` / `terminal.logging`)
+ * still replace whole.
  */
 export interface EffectiveConfig extends ConfigShape {
   workspace_path?: string;
@@ -192,6 +195,15 @@ export async function getEffectiveConceptionConfig(
     if (GLOBAL_ONLY_KEYS.has(key)) continue;
     if (key === 'terminal' && isPlainObject(value) && isPlainObject(merged.terminal)) {
       merged.terminal = { ...merged.terminal, ...value };
+      continue;
+    }
+    // `dashboard` merges one level deep for the same reason as `terminal`: the
+    // secret `apiKey` + endpoint (baseUrl/model) live global-only, while a
+    // conception is allowed to override just `enabled` / `intervalSec`. A whole-
+    // block replace would drop the global key the moment a conception toggled
+    // the feature on. Nested values still replace whole.
+    if (key === 'dashboard' && isPlainObject(value) && isPlainObject(merged.dashboard)) {
+      merged.dashboard = { ...merged.dashboard, ...value };
       continue;
     }
     merged[key] = value;

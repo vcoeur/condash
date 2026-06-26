@@ -30,7 +30,8 @@ export type Section =
   | 'open-with:conception'
   | 'appearance:conception'
   | 'terminal:conception'
-  | 'agents:conception';
+  | 'agents:conception'
+  | 'dashboard:conception';
 
 export interface SectionMeta {
   id: Section;
@@ -60,6 +61,7 @@ export const SECTIONS: SectionMeta[] = [
   { id: 'appearance:conception', label: 'Appearance', tab: 'conception' },
   { id: 'terminal:conception', label: 'Terminal', tab: 'conception' },
   { id: 'agents:conception', label: 'Agents', tab: 'conception' },
+  { id: 'dashboard:conception', label: 'Dashboard', tab: 'conception' },
 ];
 
 /**
@@ -80,6 +82,7 @@ export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   'appearance:conception': ['theme', 'cardMinWidth'],
   'terminal:conception': ['terminal'],
   'agents:conception': ['agents'],
+  'dashboard:conception': ['dashboard'],
 };
 
 export interface TabMeta {

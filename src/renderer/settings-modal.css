@@ -521,6 +521,25 @@
   flex-wrap: wrap;
 }
 
+.settings-dashboard-test {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.settings-dashboard-test-ok {
+  font-size: var(--text-sm);
+  color: var(--success, #2e7d32);
+}
+
+.settings-dashboard-test-error {
+  font-size: var(--text-sm);
+  color: var(--danger, #c0392b);
+  word-break: break-word;
+}
+
 .settings-radio {
   display: inline-flex;
   align-items: center;

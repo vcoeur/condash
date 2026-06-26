@@ -36,8 +36,8 @@ The OS menu bar carries every system-level shortcut. Each item also dispatches a
 | View | Show Resources | `Ctrl+R` / `Cmd+R` | Show the Resources pane in the working slot. |
 | View | Show Skills | `Ctrl+L` / `Cmd+L` | Show the Skills pane in the working slot. |
 | View | Show Logs | `Ctrl+Shift+L` / `Cmd+Shift+L` | Show the Logs pane (per-session terminal log viewer) in the working slot. |
-| View | Show Dashboard | `Ctrl+Shift+D` / `Cmd+Shift+D` | Show the Dashboard pane (live terminal-tab summaries) in the working slot. |
-| View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills / Logs / Dashboard) is in the working slot. |
+| View | Show Dashboard | `Ctrl+Shift+D` / `Cmd+Shift+D` | Swap the bottom band to the Dashboard body (live terminal-tab summaries), next to Terminal. |
+| View | Hide working surface | — | Hide whichever pane (Code / Knowledge / Resources / Skills / Logs) is in the working slot. |
 | View | Show Terminal | `` Ctrl+` `` / `` Cmd+` `` | Toggle the Terminal pane at the bottom. |
 | View | Refresh | `F5` | Drop the git-status TTL cache and re-read every list. |
 | View | Reload window | `Ctrl+Shift+R` / `Cmd+Shift+R` | Reload the renderer (browser-style hard reload). The bare `Ctrl+R` slot is taken by **Show Resources**. |

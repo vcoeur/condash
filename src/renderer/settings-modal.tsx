@@ -1011,7 +1011,7 @@ export function SettingsModal(props: {
                   patch={patchSettings}
                 />
 
-                <DashboardSection parsed={globalParsed} patch={patchSettings} />
+                <DashboardSection target="global" parsed={globalParsed} patch={patchSettings} />
               </div>
 
               {/* Conception tabpanel ----------------------------------- */}
@@ -1138,6 +1138,23 @@ export function SettingsModal(props: {
                     badge={{
                       stateOf: () => stateOf('agents'),
                       removeOverride: () => void removeOverride('agents'),
+                    }}
+                  />
+                </div>
+
+                <div
+                  class="settings-section-frame"
+                  data-section-state={
+                    sectionFullyInherits('dashboard:conception') ? 'inherits' : 'overridden'
+                  }
+                >
+                  <DashboardSection
+                    target="conception"
+                    parsed={parsed}
+                    patch={patchConfig}
+                    badge={{
+                      stateOf: () => stateOf('dashboard'),
+                      removeOverride: () => void removeOverride('dashboard'),
                     }}
                   />
                 </div>

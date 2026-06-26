@@ -21,6 +21,22 @@
   display: none;
 }
 
+/* Dashboard body — shown in the bottom band in place of the terminal columns
+ * when the Dashboard handle is active. The columns stay mounted (their xterm
+ * hosts are hidden) so terminals survive the switch; the tab strips stay
+ * visible above, carrying the Terminal / Dashboard handles. */
+.terminal-pane.dashboard-active .terminal-host {
+  display: none;
+}
+.terminal-pane.dashboard-active .terminal-columns {
+  flex: 0 0 auto;
+}
+.terminal-dashboard-band {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
 .terminal-pane-resize {
   position: absolute;
   top: 0;

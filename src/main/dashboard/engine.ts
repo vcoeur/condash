@@ -9,7 +9,13 @@ import {
   pruneDashboardState,
   saveDashboardState,
 } from './state';
-import { makeEvent, summarizeTab, synthesizeOverview } from './summarizer';
+import {
+  clearSummarizerError,
+  getSummarizerError,
+  makeEvent,
+  summarizeTab,
+  synthesizeOverview,
+} from './summarizer';
 
 /** Base poll interval. Each tick re-reads config (cheap, like the task
  *  scheduler) and runs only when the resolved `intervalSec` has elapsed AND a
@@ -109,6 +115,7 @@ async function tick(conceptionPath: string): Promise<void> {
   inFlight = true;
   lastRunAt = now;
   prevBytes = bytes;
+  clearSummarizerError();
   try {
     const priorBySid = new Map(state.tabs.map((tab) => [tab.sid, tab]));
     // Carry forward summaries for still-live tabs; drop the closed ones.
@@ -161,7 +168,13 @@ async function tick(conceptionPath: string): Promise<void> {
     }
 
     state = pruneDashboardState(
-      { updatedAt: now, overview, tabs: nextTabs, history },
+      {
+        updatedAt: now,
+        overview,
+        tabs: nextTabs,
+        history,
+        lastError: getSummarizerError() ?? undefined,
+      },
       config.historyLimit,
     );
     await saveDashboardState(conceptionPath, state);

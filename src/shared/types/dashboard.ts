@@ -39,6 +39,10 @@ export interface DashboardState {
   tabs: TabSummary[];
   /** Bounded global history of notable cross-tab events, oldest first. */
   history: DashboardEvent[];
+  /** Last error from a summarization cycle (e.g. auth/model/network failure),
+   *  surfaced in the Dashboard so a silent no-op is explainable. Absent when the
+   *  last cycle's API calls all succeeded. */
+  lastError?: string;
 }
 
 /** The per-tab summaries pushed each cycle — the lightweight payload that drives

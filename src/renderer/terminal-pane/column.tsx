@@ -30,10 +30,15 @@ export interface TerminalColumnProps {
   onSpawnShell: (col: Column, agentId: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
-  /** Toggle the pane open/closed. The Terminal handle in the strip
-   *  fires this. Only the left column renders the handle, so the pane
-   *  has exactly one toggle regardless of split state. */
+  /** Select the terminal body. The Terminal handle in the strip fires this.
+   *  Only the left column renders the handle, so the pane has exactly one pair
+   *  of handles regardless of split state. */
   onTogglePane: () => void;
+  /** True when the bottom band is showing the Dashboard rather than the
+   *  terminals. Drives the active state of the two strip handles. */
+  dashboardActive: boolean;
+  /** Select the Dashboard body. The Dashboard handle next to Terminal fires this. */
+  onToggleDashboard: () => void;
 }
 
 /** One row of the primary spawn menu: the plain shell, a launchable agent, or
@@ -394,21 +399,34 @@ export function TerminalColumn(props: TerminalColumnProps) {
         onDrop={(e) => props.dnd.onDropOnStrip(e, props.col)}
         onClick={() => props.onActivateColumn(props.col)}
       >
-        {/* Terminal handle — only in the left column so the pane has
-         *  one toggle regardless of split state. Doubles as both
-         *  open-pane and hide-pane (active when open). */}
+        {/* Terminal + Dashboard handles — only in the left column so the pane
+         *  has one pair regardless of split state. Each is active when the pane
+         *  is open and showing its body; clicking the active one closes the
+         *  pane, clicking the other swaps the body. */}
         <Show when={props.col === 'left'}>
           <button
             class="terminal-pane-handle"
-            classList={{ active: props.paneOpen }}
-            aria-pressed={props.paneOpen}
+            classList={{ active: props.paneOpen && !props.dashboardActive }}
+            aria-pressed={props.paneOpen && !props.dashboardActive}
             onClick={(e) => {
               e.stopPropagation();
               props.onTogglePane();
             }}
-            title={props.paneOpen ? 'Hide Terminal' : 'Show Terminal'}
+            title={props.paneOpen && !props.dashboardActive ? 'Hide Terminal' : 'Show Terminal'}
           >
             Terminal
+          </button>
+          <button
+            class="terminal-pane-handle"
+            classList={{ active: props.paneOpen && props.dashboardActive }}
+            aria-pressed={props.paneOpen && props.dashboardActive}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onToggleDashboard();
+            }}
+            title={props.paneOpen && props.dashboardActive ? 'Hide Dashboard' : 'Show Dashboard'}
+          >
+            Dashboard
           </button>
         </Show>
         <For each={props.tabs}>

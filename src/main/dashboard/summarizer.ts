@@ -29,6 +29,19 @@ const MAX_RECENT_CHARS = 6000;
 const MAX_TITLE_WORDS = 6;
 const MAX_CONTEXT_LINES = 4;
 
+/** Last pi-completion failure within the current cycle, surfaced to the renderer
+ *  so a silent no-op (bad key, unknown model, network) is explainable. The
+ *  engine clears it at the start of each cycle and reads it after. */
+let lastError: string | null = null;
+/** Read the last summarization error (null when the last cycle was clean). */
+export function getSummarizerError(): string | null {
+  return lastError;
+}
+/** Reset the captured error — called by the engine at the start of each cycle. */
+export function clearSummarizerError(): void {
+  lastError = null;
+}
+
 /** Pull the first balanced-looking JSON object out of an LLM reply (which may
  *  wrap it in prose or a ```json fence despite instructions) and parse it.
  *  Returns null when no parseable object is present. */
@@ -254,6 +267,7 @@ export async function summarizeTab(
     const reply = await runPiCompletion(config, TAB_SYSTEM_PROMPT, buildTabUserPrompt(input));
     return parseTabSummary(reply);
   } catch (err) {
+    lastError = (err as Error).message;
     process.stderr.write(`condash dashboard: summarizeTab failed: ${(err as Error).message}\n`);
     return null;
   }
@@ -274,10 +288,33 @@ export async function synthesizeOverview(
     );
     return parseOverview(reply);
   } catch (err) {
+    lastError = (err as Error).message;
     process.stderr.write(
       `condash dashboard: synthesizeOverview failed: ${(err as Error).message}\n`,
     );
     return null;
+  }
+}
+
+/**
+ * Run a minimal completion to verify the configured key / base URL / model
+ * actually work. Used by the Settings "Test connection" button. Never throws —
+ * resolves to `{ ok: false, error }` so the UI can show the failure inline.
+ */
+export async function testDashboardConnection(
+  config: DashboardConfig,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!config.apiKey) return { ok: false, error: 'No API key configured.' };
+  try {
+    const reply = await runPiCompletion(
+      config,
+      'You are a connection test. Reply with the single word OK.',
+      'Reply with OK.',
+    );
+    if (!reply.trim()) return { ok: false, error: 'The endpoint returned an empty response.' };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
   }
 }
 

@@ -120,6 +120,7 @@ const api: CondashApi = {
   termTabsContext: () => ipcRenderer.invoke('termTabsContext'),
   dashboardGetState: () => ipcRenderer.invoke('dashboardGetState'),
   dashboardGetConfigView: () => ipcRenderer.invoke('dashboardGetConfigView'),
+  dashboardTestConnection: (settings) => ipcRenderer.invoke('dashboardTestConnection', settings),
   onDashboardState: (callback) => {
     const handler = (_: unknown, state: DashboardState): void => callback(state);
     ipcRenderer.on(EVENT_CHANNELS.dashboardState, handler);

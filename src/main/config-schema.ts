@@ -315,7 +315,6 @@ export const layoutSchema = z
       z.literal('resources'),
       z.literal('skills'),
       z.literal('logs'),
-      z.literal('dashboard'),
       z.null(),
     ]),
     terminal: z.boolean(),

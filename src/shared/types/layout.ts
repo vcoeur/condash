@@ -8,16 +8,11 @@
 // renderer must agree on one definition.
 
 /** Right-slot working surface — picks which of Code / Knowledge / Resources /
- * Skills / Logs / Dashboard is shown in the top-band right pane, or `null` to
- * leave it hidden. All are mutually exclusive: showing one swaps the others out. */
-export type WorkingSurface =
-  | 'code'
-  | 'knowledge'
-  | 'resources'
-  | 'skills'
-  | 'logs'
-  | 'dashboard'
-  | null;
+ * Skills / Logs is shown in the top-band right pane, or `null` to leave it
+ * hidden. All are mutually exclusive: showing one swaps the others out. (The
+ * Dashboard is not a working surface — it lives in the bottom band next to
+ * Terminal.) */
+export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
 
 /** Left-band view — which pane fills the left band when it is visible.
  * Selected by the left edge-strip handles (Projects / Tasks / Deliverables). */

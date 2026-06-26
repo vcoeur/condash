@@ -40,6 +40,16 @@ export function DashboardView() {
             No DeepSeek API key set. Add one in Settings → Dashboard.
           </p>
         </Show>
+        <Show
+          when={
+            config()?.enabled && config()?.hasApiKey && tabs().length === 0 && !state()?.lastError
+          }
+        >
+          <p class="dashboard-pane-hint">Waiting for active tabs to summarize…</p>
+        </Show>
+        <Show when={state()?.lastError}>
+          <p class="dashboard-pane-error">Last API error: {state()!.lastError}</p>
+        </Show>
       </header>
 
       <Show when={overview().length > 0}>
