@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { redactSecrets } from '../logs-redact';
 import type { DashboardConfig, DashboardEvent, TabSummary } from '../../shared/types';
 
 let undiciShimInstalled = false;
@@ -64,6 +65,13 @@ export interface TabInput {
 const MAX_RECENT_CHARS = 6000;
 const MAX_TITLE_WORDS = 6;
 const MAX_CONTEXT_LINES = 4;
+
+/** Hard ceiling on a single pi completion. The dashboard makes a tool-free
+ *  summarization call, so a slow but live model finishes well inside this; the
+ *  cap exists so a black-holed connection can't wedge the engine's `inFlight`
+ *  guard forever (it is only cleared once the await settles). Mirrors the task
+ *  scheduler bounding its headless runs with a timeout. */
+const COMPLETION_TIMEOUT_MS = 60_000;
 
 /** Last pi-completion failure within the current cycle, surfaced to the renderer
  *  so a silent no-op (bad key, unknown model, network) is explainable. The
@@ -181,33 +189,45 @@ const OVERVIEW_SYSTEM_PROMPT = [
   ' "events": string[] (0-3 short notable cross-tab events worth remembering, else [])}.',
 ].join(' ');
 
-function buildTabUserPrompt(input: TabInput): string {
+/** Assemble the per-tab user prompt. Every field that carries captured terminal
+ *  content — the command, cwd, the prior summary, and the recent output — is run
+ *  through `redactSecrets` here, the single chokepoint before the text is POSTed
+ *  to the LLM, so a secret printed in a watched tab never leaves the machine in
+ *  clear text. Locally stored/displayed data (titles, state.json) is untouched.
+ *  Exported for unit testing. */
+export function buildTabUserPrompt(input: TabInput): string {
   const lines: string[] = [];
-  lines.push(`Tab command: ${input.cmd ?? '(shell)'}`);
-  if (input.cwd) lines.push(`Working directory: ${input.cwd}`);
+  lines.push(`Tab command: ${input.cmd ? redactSecrets(input.cmd) : '(shell)'}`);
+  if (input.cwd) lines.push(`Working directory: ${redactSecrets(input.cwd)}`);
   if (input.prior) {
     lines.push('');
     lines.push('Prior summary:');
     lines.push(
-      JSON.stringify({
-        title: input.prior.title,
-        contextLines: input.prior.contextLines,
-        currentAction: input.prior.currentAction,
-      }),
+      redactSecrets(
+        JSON.stringify({
+          title: input.prior.title,
+          contextLines: input.prior.contextLines,
+          currentAction: input.prior.currentAction,
+        }),
+      ),
     );
   }
   lines.push('');
   lines.push('Most recent terminal output:');
   lines.push('"""');
-  lines.push(input.recentText.slice(-MAX_RECENT_CHARS));
+  lines.push(redactSecrets(input.recentText.slice(-MAX_RECENT_CHARS)));
   lines.push('"""');
   return lines.join('\n');
 }
 
-function buildOverviewUserPrompt(tabs: TabSummary[]): string {
+/** Assemble the cross-tab overview user prompt. The per-tab title/currentAction
+ *  it embeds are model-derived (already from redacted input going forward), but
+ *  redact them here too so this prompt is uniformly secret-free at the wire.
+ *  Exported for unit testing. */
+export function buildOverviewUserPrompt(tabs: TabSummary[]): string {
   const lines = ['Open tabs and their current summaries:', ''];
   for (const tab of tabs) {
-    lines.push(`- [${tab.sid}] ${tab.title}: ${tab.currentAction}`);
+    lines.push(`- [${tab.sid}] ${redactSecrets(tab.title)}: ${redactSecrets(tab.currentAction)}`);
   }
   return lines.join('\n');
 }
@@ -228,6 +248,37 @@ function agentMessageText(message: unknown): string {
     )
     .map((part) => part.text)
     .join('');
+}
+
+/**
+ * Reject if `promise` does not settle within `ms`, otherwise pass its result
+ * through. The timer is always cleared so a fast resolve never leaks a pending
+ * timeout, and a late rejection from the racing promise (after the timeout has
+ * already won) is swallowed so it can't surface as an unhandled rejection.
+ * Exported for unit testing.
+ *
+ * @param promise - The work to bound.
+ * @param ms - Deadline in milliseconds.
+ * @param label - Prefix for the timeout error message.
+ * @returns The resolved value of `promise` when it wins the race.
+ * @throws when the deadline elapses first.
+ */
+export async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+      ms,
+    );
+  });
+  // The original promise stays pending when the timeout wins; attach a no-op
+  // catch so a later rejection of it is not flagged as unhandled.
+  promise.catch(() => {});
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -317,7 +368,10 @@ async function runPiCompletion(
     if (event.type === 'turn_end') text += agentMessageText(event.message);
   });
   try {
-    await session.prompt(userPrompt);
+    // Bound the completion: a black-holed network connection must not hang the
+    // await forever (the engine's single-flight guard only clears once it
+    // settles). `dispose()` below tears down the session's HTTP client.
+    await withTimeout(session.prompt(userPrompt), COMPLETION_TIMEOUT_MS, 'dashboard: completion');
   } finally {
     unsubscribe();
     session.dispose();

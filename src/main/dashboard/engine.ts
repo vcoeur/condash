@@ -1,6 +1,12 @@
 import { BrowserWindow } from 'electron';
 import { EVENT_CHANNELS } from '../../shared/ipc-channels';
-import type { DashboardConfigView, DashboardState, TabInfo, TabSummary } from '../../shared/types';
+import type {
+  DashboardConfig,
+  DashboardConfigView,
+  DashboardState,
+  TabInfo,
+  TabSummary,
+} from '../../shared/types';
 import { tabRecentText, tabsBytes, tabsContext } from '../terminals';
 import { DASHBOARD_DEFAULTS, readDashboardConfig, toDashboardConfigView } from './config';
 import {
@@ -102,9 +108,23 @@ function rosterChanged(before: TabInfo[], after: TabInfo[]): boolean {
   return after.some((tab) => !sids.has(tab.sid));
 }
 
-async function tick(conceptionPath: string): Promise<void> {
+/** One dashboard cycle: refresh the open-tab roster, then (when enabled, keyed,
+ *  and due) summarize the changed tabs and synthesize the cross-tab overview.
+ *  A no-op when not armed for `conceptionPath`, already in flight, disabled, or
+ *  the config read throws. Exported for unit testing. */
+export async function tick(conceptionPath: string): Promise<void> {
   if (current?.path !== conceptionPath || inFlight) return;
-  const config = await readDashboardConfig(conceptionPath);
+  // Read config inside a guard: a malformed `.condash/settings.json` makes the
+  // effective-config read throw, and the tick is fired as `void tick(...)` from
+  // a bare interval with no global rejection handler — so a bad config must make
+  // the tick a no-op rather than an unhandled rejection every interval. Mirrors
+  // the task scheduler's tick.
+  let config: DashboardConfig;
+  try {
+    config = await readDashboardConfig(conceptionPath);
+  } catch {
+    return;
+  }
   if (!config.enabled) return;
 
   // Refresh the open-tab roster every tick — cheap, no LLM — so a newly opened

@@ -488,10 +488,19 @@ app.on('before-quit', (event) => {
   if (quitFlushStarted) return; // re-entrant Cmd-Q while the flush runs
   quitFlushStarted = true;
   void disposeRepoWatchers();
-  void killAll().finally(() => {
-    quitFlushDone = true;
-    app.quit();
-  });
+  // Tear down the scheduler + dashboard alongside the terminal sessions. An
+  // in-flight scheduled headless run is a separate `setsid` pty whose
+  // kill-timeout is a main-process timer that dies with the app, so without this
+  // an `interactive`-mode run reparents to init and survives the quit.
+  // setScheduledConception(null) SIGKILLs every live task run;
+  // setDashboardConception(null) clears the engine interval. Their pty sets are
+  // disjoint from killAll's interactive sessions, so the three don't race.
+  void Promise.all([setScheduledConception(null), setDashboardConception(null), killAll()]).finally(
+    () => {
+      quitFlushDone = true;
+      app.quit();
+    },
+  );
 });
 
 /** Run the terminal-logs janitor for `conceptionPath`. Pulls the
