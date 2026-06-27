@@ -261,8 +261,17 @@ export async function tick(conceptionPath: string): Promise<void> {
       },
       config.historyLimit,
     );
-    await saveDashboardState(conceptionPath, state);
+    // Push the freshly computed state to the renderer FIRST, then persist.
+    // Persistence is a best-effort next-launch seed; a save failure must never
+    // suppress the live UI update. The previous order (save, then push) meant a
+    // throwing save skipped the push entirely — so every summary, overview and
+    // resting-phase reset was computed but never reached the pane.
     pushState();
+    try {
+      await saveDashboardState(conceptionPath, state);
+    } catch (err) {
+      process.stderr.write(`condash dashboard: state persist failed: ${(err as Error).message}\n`);
+    }
   } catch (err) {
     process.stderr.write(`condash dashboard: tick failed: ${(err as Error).message}\n`);
   } finally {

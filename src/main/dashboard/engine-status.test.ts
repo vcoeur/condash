@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DashboardConfig, TabInfo } from '../../shared/types';
+import { EVENT_CHANNELS } from '../../shared/ipc-channels';
+import type { DashboardConfig, DashboardState, TabInfo } from '../../shared/types';
 import type { OverviewResult, TabSummaryResult } from './summarizer';
 
 // Mutable fixtures the mocks read, so each case can shape the engine's inputs.
@@ -10,10 +11,29 @@ const h = vi.hoisted(() => ({
   recent: '',
   summary: null as TabSummaryResult | null,
   overview: null as OverviewResult | null,
+  // Every `dashboardState` payload the engine broadcasts, in order — lets a test
+  // assert what actually reached the renderer (not just the in-memory state).
+  pushed: [] as DashboardState[],
 }));
 
-// The engine imports electron + broadcasts via getAllWindows(); stub to no-op.
-vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
+// The engine broadcasts via getAllWindows().webContents.send. A single fake
+// window records every `dashboardState` push so a test can assert the renderer
+// saw the final post-cycle state even when persistence fails.
+vi.mock('electron', () => ({
+  BrowserWindow: {
+    getAllWindows: () => [
+      {
+        isDestroyed: () => false,
+        webContents: {
+          isDestroyed: () => false,
+          send: (channel: string, payload: unknown) => {
+            if (channel === EVENT_CHANNELS.dashboardState) h.pushed.push(payload as DashboardState);
+          },
+        },
+      },
+    ],
+  },
+}));
 vi.mock('./config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./config')>();
   return { ...actual, readDashboardConfig: vi.fn(async () => h.config) };
@@ -58,6 +78,7 @@ beforeEach(() => {
   h.recent = '';
   h.summary = null;
   h.overview = null;
+  h.pushed = [];
 });
 
 afterEach(async () => {
@@ -97,5 +118,25 @@ describe('dashboard engine status', () => {
     });
     // The tab was actually summarized this cycle.
     expect(getDashboardState()?.tabs.map((tab) => tab.sid)).toEqual(['a']);
+  });
+
+  it('still pushes the final state to the renderer when persistence fails', async () => {
+    const { saveDashboardState } = await import('./state');
+    vi.mocked(saveDashboardState).mockRejectedValue(new Error('ENOENT: state dir missing'));
+    h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
+    h.bytes = new Map([['a', 12]]);
+    h.recent = 'real transcript output';
+    h.summary = { title: 'Build', contextLines: ['compiling'], currentAction: 'compiling' };
+    h.overview = { overview: ['Tab a is compiling'], events: [] };
+    await setDashboardConception(CONCEPTION);
+    // The renderer must still receive the post-cycle state — summarized tab,
+    // resting `waiting` phase — even though the save threw. The old order (save
+    // then push) skipped the push on a throwing save, so every summary and the
+    // phase reset never reached the pane (it stayed stuck on "summarizing").
+    await vi.waitFor(() => {
+      const last = h.pushed.at(-1);
+      expect(last?.engine?.phase).toBe('waiting');
+      expect(last?.tabs.map((tab) => tab.sid)).toEqual(['a']);
+    });
   });
 });

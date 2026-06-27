@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { condashDir } from '../condash-dir';
 import { atomicWrite } from '../atomic-write';
 import type { DashboardEvent, DashboardState, TabSummary } from '../../shared/types';
@@ -82,7 +82,14 @@ export async function saveDashboardState(
   conceptionPath: string,
   state: DashboardState,
 ): Promise<void> {
-  await atomicWrite(dashboardStatePath(conceptionPath), JSON.stringify(state, null, 2) + '\n');
+  const path = dashboardStatePath(conceptionPath);
+  // `.condash/dashboard/` is created lazily on the first save and never
+  // scaffolded elsewhere, so on a fresh conception it doesn't exist yet.
+  // `atomicWrite` needs the parent dir present (same convention as the config
+  // writers) — without this mkdir every save throws ENOENT, which the engine's
+  // catch swallows, so the dashboard never persists and never pushes a summary.
+  await mkdir(dirname(path), { recursive: true });
+  await atomicWrite(path, JSON.stringify(state, null, 2) + '\n');
 }
 
 /** Clamp every bounded array (global history + each tab's events) to the last
