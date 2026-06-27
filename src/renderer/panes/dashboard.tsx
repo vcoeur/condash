@@ -85,96 +85,106 @@ export function DashboardView() {
         </div>
       </Show>
 
-      <Show when={config()}>
-        {(cfg) => (
+      {/* Two-column working surface: a fixed meta rail (settings, the cross-tab
+          overview, and history) beside a wide tab-card grid that fills the
+          remaining width. Collapses to a single stacked column when narrow. */}
+      <div class="dashboard-body">
+        <aside class="dashboard-rail">
+          <Show when={config()}>
+            {(cfg) => (
+              <section class="dashboard-section">
+                <h3>Settings</h3>
+                <dl class="dashboard-settings">
+                  <dt>Status</dt>
+                  <dd>{statusLabel(cfg())}</dd>
+                  <dt>Model</dt>
+                  <dd>{cfg().model}</dd>
+                  <dt>Endpoint</dt>
+                  <dd>{endpoint(cfg())}</dd>
+                  <dt>Update interval</dt>
+                  <dd>{cfg().intervalSec}s</dd>
+                  <dt>Activity gate</dt>
+                  <dd>
+                    {cfg().gateOnActivity ? 'On — only changed tabs' : 'Off — every tab each cycle'}
+                  </dd>
+                </dl>
+              </section>
+            )}
+          </Show>
+
+          <Show when={overview().length > 0}>
+            <section class="dashboard-section">
+              <h3>What's going on</h3>
+              <ul class="dashboard-overview">
+                <For each={overview()}>{(line) => <li>{line}</li>}</For>
+              </ul>
+            </section>
+          </Show>
+
+          <Show when={history().length > 0}>
+            <section class="dashboard-section">
+              <h3>History</h3>
+              <ul class="dashboard-history">
+                <For each={[...history()].reverse()}>
+                  {(ev) => (
+                    <li>
+                      <span class="dashboard-event-time">{fmtTime(ev.at)}</span> {ev.text}
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </section>
+          </Show>
+        </aside>
+
+        <main class="dashboard-main">
           <section class="dashboard-section">
-            <h3>Settings</h3>
-            <dl class="dashboard-settings">
-              <dt>Status</dt>
-              <dd>{statusLabel(cfg())}</dd>
-              <dt>Model</dt>
-              <dd>{cfg().model}</dd>
-              <dt>Endpoint</dt>
-              <dd>{endpoint(cfg())}</dd>
-              <dt>Update interval</dt>
-              <dd>{cfg().intervalSec}s</dd>
-              <dt>Activity gate</dt>
-              <dd>
-                {cfg().gateOnActivity ? 'On — only changed tabs' : 'Off — every tab each cycle'}
-              </dd>
-            </dl>
+            <h3>Recently modified tabs</h3>
+            <Show
+              when={tabs().length > 0}
+              fallback={<p class="dashboard-pane-hint">No active tab summaries yet.</p>}
+            >
+              <ul class="dashboard-tab-list">
+                <For each={tabs()}>
+                  {(tab) => (
+                    <li class="dashboard-tab-card">
+                      <div class="dashboard-tab-card-head">
+                        <span class="dashboard-tab-card-title">{tab.title}</span>
+                        <span class="dashboard-tab-card-time" title={fmtTime(tab.updatedAt)}>
+                          {fmtRelative(tab.updatedAt)}
+                        </span>
+                      </div>
+                      <Show when={tab.currentAction}>
+                        <p class="dashboard-tab-card-action">{tab.currentAction}</p>
+                      </Show>
+                      <Show when={tab.contextLines.length > 0}>
+                        <ul class="dashboard-tab-card-context">
+                          <For each={tab.contextLines}>{(line) => <li>{line}</li>}</For>
+                        </ul>
+                      </Show>
+                      <Show when={tab.events.length > 0}>
+                        <details class="dashboard-tab-card-events">
+                          <summary>Recent events</summary>
+                          <ul>
+                            <For each={[...tab.events].reverse()}>
+                              {(ev) => (
+                                <li>
+                                  <span class="dashboard-event-time">{fmtTime(ev.at)}</span>{' '}
+                                  {ev.text}
+                                </li>
+                              )}
+                            </For>
+                          </ul>
+                        </details>
+                      </Show>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
           </section>
-        )}
-      </Show>
-
-      <Show when={overview().length > 0}>
-        <section class="dashboard-section">
-          <h3>What's going on</h3>
-          <ul class="dashboard-overview">
-            <For each={overview()}>{(line) => <li>{line}</li>}</For>
-          </ul>
-        </section>
-      </Show>
-
-      <section class="dashboard-section">
-        <h3>Recently modified tabs</h3>
-        <Show
-          when={tabs().length > 0}
-          fallback={<p class="dashboard-pane-hint">No active tab summaries yet.</p>}
-        >
-          <ul class="dashboard-tab-list">
-            <For each={tabs()}>
-              {(tab) => (
-                <li class="dashboard-tab-card">
-                  <div class="dashboard-tab-card-head">
-                    <span class="dashboard-tab-card-title">{tab.title}</span>
-                    <span class="dashboard-tab-card-time" title={fmtTime(tab.updatedAt)}>
-                      {fmtRelative(tab.updatedAt)}
-                    </span>
-                  </div>
-                  <Show when={tab.currentAction}>
-                    <p class="dashboard-tab-card-action">{tab.currentAction}</p>
-                  </Show>
-                  <Show when={tab.contextLines.length > 0}>
-                    <ul class="dashboard-tab-card-context">
-                      <For each={tab.contextLines}>{(line) => <li>{line}</li>}</For>
-                    </ul>
-                  </Show>
-                  <Show when={tab.events.length > 0}>
-                    <details class="dashboard-tab-card-events">
-                      <summary>Recent events</summary>
-                      <ul>
-                        <For each={[...tab.events].reverse()}>
-                          {(ev) => (
-                            <li>
-                              <span class="dashboard-event-time">{fmtTime(ev.at)}</span> {ev.text}
-                            </li>
-                          )}
-                        </For>
-                      </ul>
-                    </details>
-                  </Show>
-                </li>
-              )}
-            </For>
-          </ul>
-        </Show>
-      </section>
-
-      <Show when={history().length > 0}>
-        <section class="dashboard-section">
-          <h3>History</h3>
-          <ul class="dashboard-history">
-            <For each={[...history()].reverse()}>
-              {(ev) => (
-                <li>
-                  <span class="dashboard-event-time">{fmtTime(ev.at)}</span> {ev.text}
-                </li>
-              )}
-            </For>
-          </ul>
-        </section>
-      </Show>
+        </main>
+      </div>
 
       <Show when={state()?.updatedAt}>
         <footer class="dashboard-pane-footer">Updated {fmtTime(state()!.updatedAt)}</footer>

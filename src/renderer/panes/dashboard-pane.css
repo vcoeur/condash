@@ -1,10 +1,45 @@
 .dashboard-pane {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   height: 100%;
   overflow-y: auto;
   padding: 12px 14px;
+}
+
+/* Two-column working surface: a fixed-width meta rail beside a flexible
+ * tab-card grid that fills the remaining width. The pane itself scrolls; the
+ * rail sticks to the top so settings / overview / history stay in view while a
+ * long card grid scrolls past. `minmax(0, 1fr)` lets the grid column shrink
+ * instead of being forced wide by its content. */
+.dashboard-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.dashboard-rail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.dashboard-main {
+  min-width: 0;
+}
+
+/* Narrow window: drop the side-by-side rail and stack everything. */
+@media (max-width: 720px) {
+  .dashboard-body {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-rail {
+    position: static;
+  }
 }
 
 .dashboard-pane-header h2 {
@@ -84,13 +119,16 @@
   color: var(--text);
 }
 
+/* Responsive card grid: as many ~240px columns as fit, so the cards spread
+ * across the wide main column instead of one full-width card per row. */
 .dashboard-tab-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 10px;
+  align-items: start;
 }
 
 .dashboard-tab-card {
@@ -99,6 +137,8 @@
   background: var(--bg-elevated);
   padding: 10px 12px;
   box-shadow: var(--shadow-card);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-tab-card-head {
