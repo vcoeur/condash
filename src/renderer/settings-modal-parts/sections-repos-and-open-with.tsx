@@ -12,6 +12,7 @@ import { type BindTextFn, OPEN_WITH_SLOTS, type RawConfig } from './data';
 import { RepoRow } from './repo-row';
 import { SectionRow } from './section-row';
 import { SectionShell } from './section-shell';
+import { Button } from '../actions';
 
 interface RepositoriesSectionProps {
   parsed: () => RawConfig;
@@ -143,12 +144,12 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
           )}
         </For>
         <div class="settings-list-actions">
-          <button class="modal-button" onClick={() => void addRepo()}>
+          <Button variant="default" onClick={() => void addRepo()}>
             + Add repo
-          </button>
-          <button class="modal-button" onClick={() => void addSection()}>
+          </Button>
+          <Button variant="default" onClick={() => void addSection()}>
             + Add section
-          </button>
+          </Button>
         </div>
       </div>
     </SectionShell>

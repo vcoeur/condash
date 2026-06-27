@@ -10,6 +10,7 @@ import { For, Show, type JSX } from 'solid-js';
 import type { Agent } from '@shared/types';
 import { type BindTextFn, type RawConfig } from './data';
 import { SectionShell } from './section-shell';
+import { Button } from '../actions';
 
 interface AgentsSectionProps {
   /** Draft-aware config getter for the global file. */
@@ -87,30 +88,33 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
                   {entry.label.trim() || `Agent ${index() + 1}`}
                 </span>
                 <span class="settings-agent-row-actions">
-                  <button
-                    class="modal-button"
+                  <Button
+                    variant="default"
+                    class="btn--modal-head"
                     title="Move up"
                     disabled={index() === 0}
                     onClick={() => void moveAgent(index(), -1)}
                   >
                     ↑
-                  </button>
-                  <button
-                    class="modal-button"
+                  </Button>
+                  <Button
+                    variant="default"
+                    class="btn--modal-head"
                     title="Move down"
                     disabled={index() === agents().length - 1}
                     onClick={() => void moveAgent(index(), 1)}
                   >
                     ↓
-                  </button>
-                  <button
-                    class="modal-button"
+                  </Button>
+                  <Button
+                    variant="default"
+                    class="btn--modal-head"
                     title="Remove agent"
                     aria-label="Remove agent"
                     onClick={() => void removeAgent(index())}
                   >
                     ×
-                  </button>
+                  </Button>
                 </span>
               </div>
               <div class="settings-agent-card-fields">
@@ -190,9 +194,9 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
           )}
         </For>
         <div class="settings-list-actions">
-          <button class="modal-button" onClick={() => void addAgent()}>
+          <Button variant="default" onClick={() => void addAgent()}>
             + Add agent
-          </button>
+          </Button>
         </div>
       </div>
     </SectionShell>

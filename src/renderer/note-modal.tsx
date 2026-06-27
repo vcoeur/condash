@@ -14,6 +14,7 @@ import type { MountedEditor } from './editor';
 import type { Deliverable } from '@shared/types';
 import type { ModalState } from './modal-types';
 import { ConfirmModal } from './confirm-modal';
+import { Button } from './actions';
 import { IconClose, IconExternal } from './icons';
 import { IconEdit, IconPdf, IconSave, IconView } from './note-modal-parts/icons';
 import { clearFindHighlights, focusFindMatch, highlightFindMatches } from './note-modal-parts/find';
@@ -573,55 +574,60 @@ export function NoteModal(props: {
             </span>
           </Show>
           <Show when={!props.state?.readOnly}>
-            <button
-              class="modal-button"
+            <Button
+              variant="default"
+              class="btn--modal-head"
               classList={{ active: mode() === 'edit' }}
               onClick={requestViewMode}
               title={mode() === 'edit' ? 'View (Ctrl+E)' : 'Edit (Ctrl+E)'}
               aria-label={mode() === 'edit' ? 'Switch to view mode' : 'Switch to edit mode'}
             >
               {mode() === 'edit' ? <IconView /> : <IconEdit />}
-            </button>
+            </Button>
           </Show>
           <Show when={mode() === 'edit' && !props.state?.readOnly}>
-            <button
-              class="modal-button"
+            <Button
+              variant="default"
+              class="btn--modal-head"
               onClick={() => void save()}
               disabled={!dirty()}
               title="Save (Ctrl+S)"
               aria-label="Save"
             >
               <IconSave />
-            </button>
+            </Button>
           </Show>
           <Show when={mode() === 'view' && props.state && isMarkdown(props.state.path)}>
-            <button
-              class="modal-button"
+            <Button
+              variant="default"
+              class="btn--modal-head"
               onClick={() => void exportPdf()}
               disabled={exporting()}
               title="Export as PDF"
               aria-label="Export as PDF"
             >
               <IconPdf />
-            </button>
+            </Button>
           </Show>
-          <button
-            class="modal-button"
-            data-tone="open"
+          <Button
+            variant="default"
+            tone="open"
+            class="btn--modal-head"
             onClick={() => props.state && props.onOpenInEditor(props.state.path)}
             title="Open in $EDITOR"
             aria-label="Open in external editor"
           >
             <IconExternal />
-          </button>
-          <button
-            class="modal-button"
+          </Button>
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={handleBackdropClose}
             title="Close (Esc)"
             aria-label="Close"
           >
             <IconClose />
-          </button>
+          </Button>
         </header>
 
         <Show when={findOpen() && mode() === 'view'}>
@@ -641,18 +647,25 @@ export function NoteModal(props: {
                   : `${findMatch()!.index + 1} / ${findMatch()!.total}`}
               </span>
             </Show>
-            <button
-              class="modal-button"
+            <Button
+              variant="default"
+              class="btn--modal-head"
               onClick={() => stepFind(-1)}
               title="Previous (Shift+Enter)"
             >
               ↑
-            </button>
-            <button class="modal-button" onClick={() => stepFind(1)} title="Next (Enter)">
+            </Button>
+            <Button
+              variant="default"
+              class="btn--modal-head"
+              onClick={() => stepFind(1)}
+              title="Next (Enter)"
+            >
               ↓
-            </button>
-            <button
-              class="modal-button"
+            </Button>
+            <Button
+              variant="default"
+              class="btn--modal-head"
               onClick={() => {
                 setFindOpen(false);
                 setFindQuery('');
@@ -660,7 +673,7 @@ export function NoteModal(props: {
               title="Close (Esc)"
             >
               ×
-            </button>
+            </Button>
           </div>
         </Show>
 
@@ -684,23 +697,23 @@ export function NoteModal(props: {
         <Show when={pendingViewSwitch()}>
           <div class="modal-confirm" role="alertdialog" aria-label="Unsaved changes">
             <span class="modal-confirm-message">Unsaved changes — switch to view mode?</span>
-            <button
-              class="modal-button"
+            <Button
+              variant="default"
               onClick={() => void confirmSaveAndSwitch()}
               title="Save and switch to view"
             >
               Save
-            </button>
-            <button
-              class="modal-button"
+            </Button>
+            <Button
+              variant="default"
               onClick={confirmDiscardAndSwitch}
               title="Discard changes and switch to view"
             >
               Discard
-            </button>
-            <button class="modal-button" onClick={cancelViewSwitch} title="Stay in edit mode">
+            </Button>
+            <Button variant="default" onClick={cancelViewSwitch} title="Stay in edit mode">
               Cancel
-            </button>
+            </Button>
           </div>
         </Show>
 
@@ -719,9 +732,9 @@ export function NoteModal(props: {
           <Show when={content.error}>
             <div class="empty warn">
               Failed to read: {(content.error as Error).message}
-              <button class="modal-button" onClick={() => void reload()}>
+              <Button variant="default" onClick={() => void reload()}>
                 Reload
-              </button>
+              </Button>
             </div>
           </Show>
           <Show

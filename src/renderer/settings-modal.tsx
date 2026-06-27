@@ -583,14 +583,15 @@ export function SettingsModal(props: {
           >
             Discard
           </Button>
-          <button
-            class="modal-button"
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={attemptClose}
             title="Close (Esc)"
             aria-label="Close settings"
           >
             <IconClose />
-          </button>
+          </Button>
         </header>
 
         <div class="settings-search-bar">
@@ -663,20 +664,20 @@ export function SettingsModal(props: {
               )}
             </For>
             <div class="settings-rail-actions">
-              <button
-                class="modal-button"
+              <Button
+                variant="default"
                 onClick={openSettingsExternally}
                 title={`Open ${SCOPE_FILE.global} with the OS default editor`}
               >
                 Open {SCOPE_FILE.global}
-              </button>
-              <button
-                class="modal-button"
+              </Button>
+              <Button
+                variant="default"
                 onClick={openConfigExternally}
                 title={`Open ${SCOPE_FILE.conception} with the OS default editor`}
               >
                 Open .condash/settings.json
-              </button>
+              </Button>
             </div>
           </nav>
 

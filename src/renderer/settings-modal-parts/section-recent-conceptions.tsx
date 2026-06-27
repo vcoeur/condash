@@ -1,6 +1,7 @@
 import { createResource, createSignal, For, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { SectionShell } from './section-shell';
+import { Button } from '../actions';
 
 /**
  * Per-machine list of recently-opened conception paths (Personal group). Each
@@ -61,23 +62,24 @@ export function RecentConceptionsSection(): JSX.Element {
                 >
                   <code class="settings-recents-path">{path}</code>
                 </button>
-                <button
+                <Button
                   type="button"
-                  class="modal-button settings-recents-remove"
+                  variant="default"
+                  class="settings-recents-remove"
                   onClick={() => void handleRemove(path)}
                   title="Remove from recents"
                   aria-label={`Remove ${path} from recents`}
                 >
                   ×
-                </button>
+                </Button>
               </li>
             )}
           </For>
         </ul>
         <div class="settings-recents-actions">
-          <button type="button" class="modal-button" onClick={() => void handleClear()}>
+          <Button type="button" variant="default" onClick={() => void handleClear()}>
             Clear all
-          </button>
+          </Button>
         </div>
       </Show>
     </SectionShell>

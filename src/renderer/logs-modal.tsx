@@ -11,6 +11,7 @@ import {
 } from 'solid-js';
 import type { TermLogSessionMeta, TermLogSessionRead } from '@shared/types';
 import { Modal } from './modal';
+import { Button } from './actions';
 import './logs-modal.css';
 
 /**
@@ -185,9 +186,10 @@ export function LogsViewerModal(props: {
         </>
       }
       headExtra={
-        <button
+        <Button
           type="button"
-          class="modal-button"
+          variant="default"
+          class="btn--modal-head"
           title="Delete this session"
           aria-label="Delete this session"
           disabled={!sessionRead()?.meta}
@@ -197,7 +199,7 @@ export function LogsViewerModal(props: {
           }}
         >
           ⌫
-        </button>
+        </Button>
       }
     >
       <div class="logs-modal-search">

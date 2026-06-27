@@ -78,7 +78,7 @@ test('Resources viewers: image, highlighted code, HTML rendered/source, reveal',
     await expect(window.locator('.html-modal')).toBeVisible();
     await expect(window.locator('.html-modal .html-webview')).toBeVisible();
     // Flip to Source → highlighted markup.
-    await window.locator('.html-modal .modal-button--text', { hasText: 'Source' }).click();
+    await window.locator('.html-modal .modal-seg .btn', { hasText: 'Source' }).click();
     await expect(window.locator('.html-modal .html-source .hljs')).toBeVisible();
     await window.screenshot({ path: join(SHOTS, 'html-source.png') }).catch(() => undefined);
     await window.keyboard.press('Escape');

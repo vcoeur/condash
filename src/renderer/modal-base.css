@@ -190,57 +190,8 @@
   flex-shrink: 0;
 }
 
-.modal-button {
-  /* Modal-head action buttons — chunkier than the card's row-actions
-   * because the modal head needs the icons to read clearly without
-   * crowding the title. Slightly larger square + larger SVG, with a
-   * tinted hover that picks up an action-specific colour cue. */
-  background: var(--bg-subtle);
-  border: 1px solid transparent;
-  width: 32px;
-  height: 32px;
-  border-radius: 7px;
-  cursor: pointer;
-  color: var(--text-body);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition:
-    background 100ms ease,
-    color 100ms ease,
-    border-color 100ms ease;
-}
-
-.modal-button svg {
-  /* SVG is sized to fill 80% of the 32 px button so the icon content
-   * reads at full presence, not as a tiny glyph in a big box. */
-  width: 26px;
-  height: 26px;
-}
-
-.modal-button:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.modal-button:disabled {
-  color: var(--text-faint);
-  background: var(--bg-subtle);
-  border-color: var(--border);
-  cursor: not-allowed;
-}
-
-.modal-button.active {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-}
-
-.modal-button.modal-close:hover {
-  color: var(--warn);
-  border-color: var(--warn);
-}
+/* The 32 px modal-head icon idiom moved into the action framework as
+ * `.btn--modal-head` (actions.css); head buttons now render through <Button>. */
 
 .modal-body {
   flex: 1;
@@ -292,14 +243,6 @@
 
 .modal-backdrop {
   animation: backdrop-in 160ms ease;
-}
-
-.modal-button--text {
-  width: auto;
-  height: auto;
-  padding: 5px 12px;
-  font-size: var(--text-sm);
-  white-space: nowrap;
 }
 
 .help-modal {

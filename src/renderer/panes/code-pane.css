@@ -506,15 +506,6 @@
   border-color: var(--warn);
 }
 
-.modal-button.warn {
-  border-color: var(--warn);
-  color: var(--warn);
-}
-
-.modal-button.warn:hover {
-  background: color-mix(in srgb, var(--warn) 14%, var(--bg-elevated));
-}
-
 .branches {
   list-style: none;
   margin: 6px 0 0;

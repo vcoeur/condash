@@ -11,6 +11,7 @@ import { createSignal, Show, type JSX } from 'solid-js';
 import type { DashboardSettings } from '@shared/types';
 import { type RawConfig } from './data';
 import { SectionShell } from './section-shell';
+import { Button } from '../actions';
 
 /** Inline result of the "Test connection" probe. */
 type TestState =
@@ -155,14 +156,14 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
       </div>
 
       <div class="settings-dashboard-test">
-        <button
+        <Button
           type="button"
-          class="modal-button"
+          variant="default"
           disabled={!dashboard().apiKey || test().status === 'testing'}
           onClick={() => void runTest()}
         >
           {test().status === 'testing' ? 'Testing…' : 'Test connection'}
-        </button>
+        </Button>
         <Show when={test().status === 'ok'}>
           <span class="settings-dashboard-test-ok">✓ Connection OK</span>
         </Show>
