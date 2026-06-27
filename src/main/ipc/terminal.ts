@@ -15,8 +15,17 @@ import { latestScreenshot } from '../screenshot';
 import { requireScreenshotDir } from '../path-bounds';
 import { readSettings } from '../settings';
 import { globalSettingsSchema } from '../config-schema';
-import type { TermSpawnRequest } from '../../shared/types';
-import { requireMainWindowSender } from './utils';
+import type { TermSide, TermSpawnRequest } from '../../shared/types';
+import {
+  requireEnum,
+  requireMainWindowSender,
+  requireNonEmptyString,
+  requireRecord,
+} from './utils';
+
+/** The two terminal sides a session can live on — the allow-set for the
+ *  `termSetSide` enum decoder. */
+const TERM_SIDES: ReadonlySet<TermSide> = new Set(['my', 'code']);
 
 // The `terminal` block of the config schema — the same zod shape
 // `settings.json` is validated with, reused here so a renderer-supplied
@@ -27,15 +36,16 @@ const terminalPrefsSchema = globalSettingsSchema.shape.terminal;
 
 /** Wire every term.* IPC handler. Called once from main entry. */
 export function registerTerminalIpc(): void {
-  ipcMain.handle('termSpawn', async (event, request: TermSpawnRequest) => {
+  ipcMain.handle('termSpawn', async (event, request: unknown) => {
     requireMainWindowSender(event);
+    const spawnRequest = requireRecord('termSpawn', request) as unknown as TermSpawnRequest;
     const { lastConceptionPath: conceptionPath } = await readSettings();
-    return spawnTerminal(conceptionPath, event.sender, request);
+    return spawnTerminal(conceptionPath, event.sender, spawnRequest);
   });
 
-  ipcMain.handle('termWrite', (event, id: string, data: string) => {
+  ipcMain.handle('termWrite', (event, id: unknown, data: string) => {
     requireMainWindowSender(event);
-    writeTerminal(id, data);
+    writeTerminal(requireNonEmptyString('termWrite', id), data);
   });
 
   // Read the system clipboard from the main process. The renderer's
@@ -47,14 +57,14 @@ export function registerTerminalIpc(): void {
     return clipboard.readText();
   });
 
-  ipcMain.handle('termResize', (event, id: string, cols: number, rows: number) => {
+  ipcMain.handle('termResize', (event, id: unknown, cols: number, rows: number) => {
     requireMainWindowSender(event);
-    resizeTerminal(id, cols, rows);
+    resizeTerminal(requireNonEmptyString('termResize', id), cols, rows);
   });
 
-  ipcMain.handle('termClose', (event, id: string) => {
+  ipcMain.handle('termClose', (event, id: unknown) => {
     requireMainWindowSender(event);
-    closeSession(id);
+    closeSession(requireNonEmptyString('termClose', id));
   });
 
   ipcMain.handle('termList', (event) => {
@@ -67,17 +77,17 @@ export function registerTerminalIpc(): void {
     return tabsContext();
   });
 
-  ipcMain.handle('termAttach', (event, id: string) => {
+  ipcMain.handle('termAttach', (event, id: unknown) => {
     requireMainWindowSender(event);
-    return attachTerminal(id, event.sender);
+    return attachTerminal(requireNonEmptyString('termAttach', id), event.sender);
   });
 
-  ipcMain.handle('termSetSide', (event, id: string, side: 'my' | 'code') => {
+  ipcMain.handle('termSetSide', (event, id: unknown, side: unknown) => {
     requireMainWindowSender(event);
-    if (side !== 'my' && side !== 'code') {
-      throw new Error(`termSetSide: invalid side ${JSON.stringify(side)}`);
-    }
-    return setSessionSide(id, side);
+    return setSessionSide(
+      requireNonEmptyString('termSetSide', id),
+      requireEnum('termSetSide', side, TERM_SIDES),
+    );
   });
 
   ipcMain.handle('termGetPrefs', async (event) => {

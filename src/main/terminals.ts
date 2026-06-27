@@ -44,7 +44,9 @@ interface Session {
   /** Captured at spawn time so Stop doesn't need conceptionPath at kill time. */
   forceStop?: string;
   /** Rolling tail of stdout/stderr — replayed when a freshly-loaded renderer
-   * re-attaches via termAttach. Capped at MAX_BUFFER bytes. */
+   * re-attaches via termAttach. Readers expose only the last ≤ MAX_BUFFER
+   * chars (`recentTail`); the stored string may overrun the cap by up to
+   * BUFFER_SLACK between reslices (see `appendRecentTail`). */
   buffer: string;
   /** Process exit code; undefined while live. */
   exited?: number;
@@ -68,10 +70,44 @@ interface Session {
 }
 
 const MAX_BUFFER = 64_000;
+/** Reslice hysteresis: the rolling buffer is allowed to overrun MAX_BUFFER by
+ *  up to this many chars before the hot append path trims it back to the last
+ *  MAX_BUFFER. Without the slack, a high-throughput pty reallocated the whole
+ *  (up-to-64 KB) string on every output chunk; with it the reslice happens at
+ *  most once per BUFFER_SLACK chars. Readers still expose only the last
+ *  ≤ MAX_BUFFER chars via `recentTail`, so observable output is unchanged. */
+const BUFFER_SLACK = 16_000;
 const sessions = new Map<string, Session>();
 
+/**
+ * Append `data` to a rolling-tail buffer, reslicing to the last MAX_BUFFER
+ * chars only once the tail overruns MAX_BUFFER + BUFFER_SLACK. Pure (no session
+ * state) so the cap behaviour is unit-testable without a live pty.
+ *
+ * @param tail The current rolling tail.
+ * @param data The newly-emitted chunk to append.
+ * @returns The new tail — at most MAX_BUFFER + BUFFER_SLACK chars long.
+ */
+export function appendRecentTail(tail: string, data: string): string {
+  const next = tail + data;
+  return next.length > MAX_BUFFER + BUFFER_SLACK ? next.slice(-MAX_BUFFER) : next;
+}
+
+/**
+ * The last ≤ MAX_BUFFER chars of a rolling-tail buffer — what every reader
+ * replays. Trims any hysteresis overrun left by `appendRecentTail`, so the
+ * exposed tail is identical to the pre-hysteresis "always exactly capped"
+ * buffer. Pure, for unit testing alongside `appendRecentTail`.
+ *
+ * @param tail The rolling tail (possibly overrun past MAX_BUFFER).
+ * @returns The last MAX_BUFFER chars, or the whole tail when shorter.
+ */
+export function recentTail(tail: string): string {
+  return tail.length > MAX_BUFFER ? tail.slice(-MAX_BUFFER) : tail;
+}
+
 function appendBuffer(session: Session, data: string): void {
-  session.buffer = (session.buffer + data).slice(-MAX_BUFFER);
+  session.buffer = appendRecentTail(session.buffer, data);
 }
 
 function snapshot(): TermSession[] {
@@ -141,7 +177,9 @@ export function tabsBytes(): Map<string, number> {
 export function tabRecentText(sid: string, maxChars = 8000): string {
   const s = sessions.get(sid);
   if (!s || s.exited !== undefined) return '';
-  const text = s.transcript.hasTranscript() ? s.transcript.render() : cleanTerminalText(s.buffer);
+  const text = s.transcript.hasTranscript()
+    ? s.transcript.render()
+    : cleanTerminalText(recentTail(s.buffer));
   return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
@@ -157,7 +195,7 @@ export function attachTerminal(
   // but no live output arrives — `webContents.send` keeps targeting the
   // destroyed original WebContents and silently bails.
   if (!s.webContents.isDestroyed() && s.webContents.id === sender.id) {
-    return { output: s.buffer, exited: s.exited };
+    return { output: recentTail(s.buffer), exited: s.exited };
   }
   if (s.onWebContentsDestroyed) {
     try {
@@ -172,7 +210,7 @@ export function attachTerminal(
   };
   s.onWebContentsDestroyed = onDestroyed;
   sender.once('destroyed', onDestroyed);
-  return { output: s.buffer, exited: s.exited };
+  return { output: recentTail(s.buffer), exited: s.exited };
 }
 
 /** Move a session between the "my" and "code" sides. Used by the Code pane's
@@ -210,8 +248,9 @@ export function defaultShell(configured?: string): string {
  *  quoting agree with the spawn path. Detection is by shell-binary basename,
  *  so a user-configured `pwsh.exe` or `git-bash.exe` is routed correctly; the
  *  POSIX branch deliberately stays a non-login shell (rationale in the shared
- *  module — the login-shell PATH is injected via spawnEnv() instead). */
-function wrapForShell(shell: string, command: string): string[] {
+ *  module — the login-shell PATH is injected via spawnEnv() instead). Exported
+ *  for unit testing of the cross-OS family routing. */
+export function wrapForShell(shell: string, command: string): string[] {
   return shellCommandArgv(shellFamily(shell, process.platform === 'win32'), command);
 }
 

@@ -178,6 +178,24 @@ describe('logsListSessions', () => {
     expect(result).toEqual([]);
   });
 
+  it('lists every session most-recent-first across a busy day (bounded pool)', async () => {
+    // More files than the per-listing concurrency pool (32) so the read spans
+    // multiple waves — confirms the parallelized walk drops nothing and keeps
+    // the time-descending order.
+    const expected: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      const mm = String(i % 60).padStart(2, '0');
+      const sid = `t-${String(i).padStart(3, '0')}`;
+      writeSession('2026-05-13', `09${mm}00`, sid, 'x', {});
+      expected.push(sid);
+    }
+    expected.reverse(); // most recent (largest HHMMSS) first
+    const result = (await handlers.logsListSessions(trustedEvent, '2026-05-13')) as Array<{
+      sid: string;
+    }>;
+    expect(result.map((r) => r.sid)).toEqual(expected);
+  });
+
   it('ignores .jsonl files even when they share a directory with .txt files', async () => {
     const root = condashLogsRoot(tmp);
     mkdirSync(join(root, '2026', '05', '13'), { recursive: true });

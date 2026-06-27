@@ -3,7 +3,7 @@ import type { DashboardSettings } from '../../shared/types';
 import { getDashboardConfigView, getDashboardState } from '../dashboard/engine';
 import { resolveDashboardConfig } from '../dashboard/config';
 import { testDashboardConnection } from '../dashboard/summarizer';
-import { requireMainWindowSender } from './utils';
+import { requireMainWindowSender, requireOptionalRecord } from './utils';
 
 /** Wire the dashboard read IPC handlers. The push channels (state + per-tab
  *  summaries) are sent from the engine; these are pull accessors the Dashboard
@@ -21,8 +21,11 @@ export function registerDashboardIpc(): void {
 
   // Test the settings the user is editing (draft values, key included). The
   // summarizer's test helper never throws — it resolves { ok, error? }.
-  ipcMain.handle('dashboardTestConnection', (event, settings: DashboardSettings) => {
+  ipcMain.handle('dashboardTestConnection', (event, settings: unknown) => {
     requireMainWindowSender(event);
-    return testDashboardConnection(resolveDashboardConfig(settings ?? {}));
+    const draft = requireOptionalRecord('dashboardTestConnection', settings) as
+      | DashboardSettings
+      | undefined;
+    return testDashboardConnection(resolveDashboardConfig(draft));
   });
 }
