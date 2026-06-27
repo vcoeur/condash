@@ -21,6 +21,14 @@ const OSC_SEQUENCE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const CSI_SEQUENCE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 // Other two-byte escapes: ESC followed by a single byte in @-_ or \.
 const SHORT_ESCAPE = /\x1b[@-Z\\-_]/g;
+// ECMA-48 "nF" escapes: ESC + one-or-more intermediate bytes (0x20-0x2F) + a
+// final byte (0x30-0x7E). Covers charset designation (ESC ( B, ESC ) 0), DEC
+// line alignment (ESC # 8), UTF-8 select (ESC % G), etc. Without this the lone
+// ESC is later removed by the CONTROL_CHARS pass and the intermediate+final
+// bytes (e.g. "(B") leak into the cleaned text as repeated literal residue —
+// an alternate-screen TUI emits ESC ( B on every repaint, so the summarizer
+// would otherwise "see" a tab printing "(B" over and over.
+const NF_ESCAPE = /\x1b[\x20-\x2f]+[\x30-\x7e]/g;
 
 /**
  * Clean raw terminal output into plain text.
@@ -34,6 +42,9 @@ export function cleanTerminalText(raw: string): string {
   let text = raw.replace(/\r\n/g, '\n');
   text = text.replace(OSC_SEQUENCE, '');
   text = text.replace(CSI_SEQUENCE, '');
+  // Strip nF escapes before the CONTROL_CHARS pass below, which would otherwise
+  // delete only the lone ESC and leave the printable "(B" tail behind.
+  text = text.replace(NF_ESCAPE, '');
   text = text.replace(SHORT_ESCAPE, '');
   // Resolve carriage-return overwrites per line: a `\r` rewinds to column 0, so
   // the visible result of "10%\r50%\rdone" is "done". Keep the last segment.
