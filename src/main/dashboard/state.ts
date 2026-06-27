@@ -62,13 +62,11 @@ function coerceState(parsed: unknown): DashboardState | null {
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
     overview: Array.isArray(raw.overview) ? raw.overview.filter((l) => typeof l === 'string') : [],
     history: Array.isArray(raw.history) ? raw.history.filter(isEvent) : [],
-    tabs: raw.tabs
-      .filter(isTabSummary)
-      .map((tab) => ({
-        ...tab,
-        state: coerceTabState(tab.state),
-        events: tab.events.filter(isEvent),
-      })),
+    tabs: raw.tabs.filter(isTabSummary).map((tab) => ({
+      ...tab,
+      state: coerceTabState(tab.state),
+      events: tab.events.filter(isEvent),
+    })),
     // `roster` is live data (the currently-open tabs); a persisted copy is stale
     // the moment the app reopens, so always start empty and let the first tick
     // rebuild it from the live session map.
