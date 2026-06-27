@@ -14,6 +14,9 @@ import './dashboard-pane.css';
 export function DashboardView() {
   const [state, setState] = createSignal<DashboardState | null>(null);
   const [config, setConfig] = createSignal<DashboardConfigView | null>(null);
+  // Local 1s clock so the "next update in Xs" ETA counts down live between the
+  // engine's pushes (which only arrive on a real change, not every second).
+  const [nowMs, setNowMs] = createSignal(Date.now());
 
   const refreshConfig = (): void => {
     void window.condash.dashboardGetConfigView().then(setConfig);
@@ -22,6 +25,8 @@ export function DashboardView() {
   onMount(() => {
     void window.condash.dashboardGetState().then(setState);
     refreshConfig();
+    const clock = setInterval(() => setNowMs(Date.now()), 1000);
+    onCleanup(() => clearInterval(clock));
   });
   // Re-read the config view alongside each pushed state so the settings panel
   // tracks edits made in Settings while the Dashboard is open (the engine
@@ -35,6 +40,69 @@ export function DashboardView() {
   const roster = () => state()?.roster ?? [];
   const overview = () => state()?.overview ?? [];
   const history = () => state()?.history ?? [];
+  const engine = () => state()?.engine;
+
+  const secsUntil = (atMs: number): number => Math.max(0, Math.round((atMs - nowMs()) / 1000));
+
+  // "next update in Xs" for the status strip. Empty when there's no key (no
+  // cycle can run) so the strip just shows the paused phase instead.
+  const nextUpdateText = (): string => {
+    const status = engine();
+    if (!status || status.phase === 'no-api-key') return '';
+    if (status.phase === 'summarizing') return 'updating now…';
+    const secs = secsUntil(status.nextRunAt);
+    return secs <= 0 ? 'next update due now' : `next update in ${secs}s`;
+  };
+
+  // One-line description of what the summarizer loop is doing right now — shown
+  // even before any tab has a summary, so an idle-but-running engine reads as
+  // alive rather than dead.
+  const enginePhaseText = (): string => {
+    const status = engine();
+    if (!status) return 'Starting…';
+    const tabs = roster().length;
+    const plural = tabs === 1 ? '' : 's';
+    switch (status.phase) {
+      case 'summarizing':
+        return `Summarizing ${tabs} tab${plural}…`;
+      case 'waiting':
+        return `Waiting for activity · ${tabs} open tab${plural}`;
+      case 'idle':
+        return 'Idle — no open terminal tabs';
+      case 'no-api-key':
+        return 'Paused — set a DeepSeek API key in Settings';
+    }
+  };
+
+  const lastRunText = (): string => {
+    const status = engine();
+    return status && status.lastRunAt ? fmtTime(status.lastRunAt) : '—';
+  };
+
+  // When the LLM cross-tab overview is empty (no tab summarized yet) but tabs are
+  // open, synthesize a per-tab liveness line so "What's going on" is never blank
+  // while work is in progress.
+  const overviewLines = (): string[] => {
+    const llm = overview();
+    if (llm.length > 0) return llm;
+    return roster().map((tab) => {
+      const place = tab.cwd.split('/').filter(Boolean).pop();
+      const where = place ? ` (${place})` : '';
+      return `${tabLabel(tab)}${where} — running; no transcript captured yet. It will be summarized once it submits a prompt or finishes a turn.`;
+    });
+  };
+
+  // Time-slot text for an as-yet-unsummarized tab card: tracks the engine's next
+  // attempt instead of a flat "no summary yet", so the card looks live too.
+  const pendingTimeText = (): string => {
+    const status = engine();
+    if (status?.phase === 'summarizing') return 'summarizing…';
+    if (status && (status.phase === 'waiting' || status.phase === 'idle')) {
+      const secs = secsUntil(status.nextRunAt);
+      return secs <= 0 ? 'next attempt due now' : `next attempt in ${secs}s`;
+    }
+    return 'no summary yet';
+  };
 
   // One card per open tab: a summarized tab carries its rich summary; an
   // as-yet-unsummarized tab (no readable output, or before the first cycle)
@@ -99,6 +167,27 @@ export function DashboardView() {
         </div>
       </Show>
 
+      {/* Always-on liveness strip: next-update ETA + what the loop is doing now
+          + last run. Rendered whenever the engine is enabled, independent of any
+          tab summary, so an idle-but-running engine is never mistaken for dead. */}
+      <Show when={config()?.enabled}>
+        <section class="dashboard-status">
+          <dl class="dashboard-status-list">
+            <dt>Status</dt>
+            <dd>
+              {statusLabel(config()!)}
+              <Show when={nextUpdateText()}>
+                <span class="dashboard-status-next"> · {nextUpdateText()}</span>
+              </Show>
+            </dd>
+            <dt>Engine</dt>
+            <dd>{enginePhaseText()}</dd>
+            <dt>Last run</dt>
+            <dd>{lastRunText()}</dd>
+          </dl>
+        </section>
+      </Show>
+
       {/* Two-column working surface: a fixed meta rail (settings, the cross-tab
           overview, and history) beside a wide tab-card grid that fills the
           remaining width. Collapses to a single stacked column when narrow. */}
@@ -109,8 +198,6 @@ export function DashboardView() {
               <section class="dashboard-section">
                 <h3>Settings</h3>
                 <dl class="dashboard-settings">
-                  <dt>Status</dt>
-                  <dd>{statusLabel(cfg())}</dd>
                   <dt>Model</dt>
                   <dd>{cfg().model}</dd>
                   <dt>Endpoint</dt>
@@ -126,11 +213,11 @@ export function DashboardView() {
             )}
           </Show>
 
-          <Show when={overview().length > 0}>
+          <Show when={config()?.enabled && overviewLines().length > 0}>
             <section class="dashboard-section">
               <h3>What's going on</h3>
               <ul class="dashboard-overview">
-                <For each={overview()}>{(line) => <li>{line}</li>}</For>
+                <For each={overviewLines()}>{(line) => <li>{line}</li>}</For>
               </ul>
             </section>
           </Show>
@@ -169,14 +256,16 @@ export function DashboardView() {
                         <li class="dashboard-tab-card dashboard-tab-card-pending">
                           <div class="dashboard-tab-card-head">
                             <span class="dashboard-tab-card-title">{tabLabel(card.tab)}</span>
-                            <span class="dashboard-tab-card-time">no summary yet</span>
+                            <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
                           </div>
                           <ul class="dashboard-tab-card-context">
                             <Show when={card.tab.cmd}>
                               <li>Command: {card.tab.cmd}</li>
                             </Show>
                             <li>Directory: {card.tab.cwd}</li>
-                            <li>No readable output captured yet.</li>
+                            <li>
+                              Waiting for first agent output (a submitted prompt or finished turn).
+                            </li>
                           </ul>
                         </li>
                       }

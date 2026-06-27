@@ -81,6 +81,41 @@
   word-break: break-word;
 }
 
+/* Always-on liveness strip above the two-column body: next-update ETA, current
+ * loop phase, and last-run time. Visible whenever the engine is enabled, so an
+ * idle-but-running summarizer is never mistaken for a dead one. */
+.dashboard-status {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+
+.dashboard-status-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  font-size: var(--text-sm);
+}
+
+.dashboard-status-list dt {
+  color: var(--text-muted);
+}
+
+.dashboard-status-list dd {
+  margin: 0;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* The live countdown — tinted + tabular figures so it doesn't jitter as it ticks. */
+.dashboard-status-next {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Two-column key/value grid for the active summarizer settings. */
 .dashboard-settings {
   margin: 0;

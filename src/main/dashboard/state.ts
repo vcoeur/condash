@@ -58,6 +58,8 @@ function coerceState(parsed: unknown): DashboardState | null {
     // the moment the app reopens, so always start empty and let the first tick
     // rebuild it from the live session map.
     roster: [],
+    // `engine` is the live loop's status; a persisted copy is meaningless once
+    // the app restarts, so drop it and let the first tick re-establish it.
   };
 }
 
