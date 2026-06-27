@@ -409,12 +409,12 @@
 
 .settings-dashboard-test-ok {
   font-size: var(--text-sm);
-  color: var(--success, #2e7d32);
+  color: var(--success);
 }
 
 .settings-dashboard-test-error {
   font-size: var(--text-sm);
-  color: var(--danger, #c0392b);
+  color: var(--danger);
   word-break: break-word;
 }
 
@@ -644,7 +644,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-elevated);
 }

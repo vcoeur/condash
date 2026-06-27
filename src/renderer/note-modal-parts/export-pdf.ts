@@ -30,6 +30,12 @@ export async function buildNotePdfHtml(
     '<html data-theme="light">',
     '<head>',
     '<meta charset="utf-8" />',
+    // Lock the print document down: it is condash-generated (rendered note
+    // body + inline app CSS) and runs no scripts, so a strict CSP costs
+    // nothing here while it neutralises any beaconing from a crafted note.
+    // Images/fonts resolve over the conception-bounded condash-file: scheme
+    // (or inline data:); the code + print stylesheets are inline.
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src condash-file: data:; font-src condash-file: data:; style-src \'unsafe-inline\'" />',
     `<title>${escapeHtml(opts.title)}</title>`,
     `<style>${codeThemeCss}\n${exportCss}</style>`,
     '</head>',

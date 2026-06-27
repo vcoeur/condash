@@ -32,7 +32,6 @@ vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/electron-app' },
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 
 /** Minimal event shape accepted by `requireMainWindowSender`. */
@@ -44,7 +43,6 @@ const trustedEvent = {
 beforeEach(async () => {
   handlers = {};
   const { ipcMain } = await import('electron');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (ipcMain.handle as any).mockImplementation(
     (channel: string, fn: (...args: any[]) => Promise<unknown>) => {
       handlers[channel] = fn;

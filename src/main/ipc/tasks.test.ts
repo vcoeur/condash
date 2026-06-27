@@ -20,7 +20,6 @@ vi.mock('electron', () => ({
 }));
 
 let tmp: string;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 let settingsPathValue: string;
 let conceptionConfigPathValue: string;
@@ -52,7 +51,6 @@ beforeEach(async () => {
 
   handlers = {};
   const { ipcMain } = await import('electron');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (ipcMain.handle as any).mockImplementation(
     (channel: string, fn: (...args: any[]) => Promise<unknown>) => {
       handlers[channel] = fn;

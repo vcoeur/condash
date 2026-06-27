@@ -20,7 +20,6 @@ export function userDataDir(): string {
   // returns the path to the binary as a *string*, not the API object, so
   // we have to probe the shape before reaching `.app.getPath()`.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const candidate: unknown = require('electron');
     if (
       candidate !== null &&

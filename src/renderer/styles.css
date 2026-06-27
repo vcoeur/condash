@@ -97,6 +97,12 @@
   --danger: var(--warn);
   --text-dim: var(--text-faint);
 
+  /* Positive / success green. Unlike --danger (an alias onto --warn), success
+   * has no base in the palette to ride, so it carries its own value with a
+   * --dark-success mirror remapped across both dark paths below — exactly the
+   * pattern --border uses. Used by the Settings "test connection" OK state. */
+  --success: #2e7d32;
+
   /* Terminal-preview sample palette (Tokyo Night). These are intentionally
    * NOT the app palette: the Settings colour-grid preview shows a fixed
    * sample terminal theme so the user can judge contrast independently of
@@ -215,6 +221,7 @@
   --dark-col-backlog: #7d92ad;
   --dark-col-done: #7d8290;
   --dark-warn: #d6748f;
+  --dark-success: #3fb950;
   --dark-col-unknown: #d6748f;
   --dark-col-running: #5fc97f;
   --dark-col-dirty: #e8a878;
@@ -252,6 +259,7 @@
     --col-backlog: var(--dark-col-backlog);
     --col-done: var(--dark-col-done);
     --warn: var(--dark-warn);
+    --success: var(--dark-success);
     --col-unknown: var(--dark-col-unknown);
     --col-running: var(--dark-col-running);
     --col-dirty: var(--dark-col-dirty);
@@ -286,6 +294,7 @@
   --col-backlog: var(--dark-col-backlog);
   --col-done: var(--dark-col-done);
   --warn: var(--dark-warn);
+  --success: var(--dark-success);
   --col-unknown: var(--dark-col-unknown);
   --col-running: var(--dark-col-running);
   --col-dirty: var(--dark-col-dirty);
