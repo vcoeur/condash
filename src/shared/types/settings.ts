@@ -72,9 +72,12 @@ export interface Settings {
    *  to `conception`. */
   skillsActiveScope?: SkillScope;
   /** Per-task schedule / log-routing config keyed by task slug (capability
-   *  1). Shared with `condash.json` via the config schema's
-   *  `sharedSchemaFields`; the effective-config merge lets a conception
-   *  override the per-machine value. */
+   *  1). Conception-scoped (`SCOPE_OF.taskConfig === 'conception'`): the writer
+   *  (`setTaskConfig`) and reader (`getTaskConfig`) target
+   *  `<conception>/.condash/settings.json`, never this per-machine global file.
+   *  Declared here only so a global settings.json written by a pre-scope-fix
+   *  build — which misrouted the key into the global file — still type-checks
+   *  on read until the scope-partition migrator lifts it to the conception. */
   taskConfig?: Record<string, TaskConfigEntry>;
 }
 

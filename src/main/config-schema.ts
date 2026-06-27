@@ -1,5 +1,17 @@
 import { z } from 'zod';
-import type { CardMinWidthPrefs, TreeExpansionPrefs } from '../shared/types';
+import type {
+  ActionTemplate,
+  Agent,
+  CardMinWidthPrefs,
+  DashboardSettings,
+  LayoutState,
+  TaskConfigEntry,
+  TerminalLoggingPrefs,
+  TerminalPrefs,
+  TerminalXtermColors,
+  TerminalXtermPrefs,
+  TreeExpansionPrefs,
+} from '../shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
 
@@ -206,7 +218,7 @@ const xtermColors = z
     bright_magenta: z.string().optional(),
     bright_cyan: z.string().optional(),
     bright_white: z.string().optional(),
-  })
+  } satisfies Record<keyof TerminalXtermColors, z.ZodTypeAny>)
   .strict();
 
 const xtermSettings = z
@@ -222,7 +234,7 @@ const xtermSettings = z
     scrollback: z.number().int().nonnegative().optional(),
     ligatures: z.boolean().optional(),
     colors: xtermColors.optional(),
-  })
+  } satisfies Record<keyof TerminalXtermPrefs, z.ZodTypeAny>)
   .strict();
 
 const terminalLoggingSettings = z
@@ -232,7 +244,7 @@ const terminalLoggingSettings = z
     maxDirMb: z.number().int().min(0).optional(),
     scrollback: z.number().int().min(100).optional(),
     markerIntervalSec: z.number().int().min(0).optional(),
-  })
+  } satisfies Record<keyof TerminalLoggingPrefs, z.ZodTypeAny>)
   .strict();
 
 /** Single launcher slot. `label` is the user-defined display name shown
@@ -261,7 +273,7 @@ const actionTemplateSchema = z
     template: z.string(),
     submit: z.boolean().optional(),
     agent: z.string().optional(),
-  })
+  } satisfies Record<keyof ActionTemplate, z.ZodTypeAny>)
   .strict();
 
 /** One terminal-launcher agent. `id` is the stable identity referenced by
@@ -280,7 +292,7 @@ const agentSchema = z
     command: z.string(),
     promptFlags: z.boolean().optional(),
     favorite: z.boolean().optional(),
-  })
+  } satisfies Record<keyof Agent, z.ZodTypeAny>)
   .strict();
 
 const terminalSettings = z
@@ -295,7 +307,7 @@ const terminalSettings = z
     logging: terminalLoggingSettings.optional(),
     projectActions: z.array(actionTemplateSchema).optional(),
     newProjectActions: z.array(actionTemplateSchema).optional(),
-  })
+  } satisfies Record<keyof TerminalPrefs, z.ZodTypeAny>)
   .strict();
 
 /** LayoutState validator. Exported so the `setLayout` IPC handler can apply
@@ -319,7 +331,7 @@ export const layoutSchema = z
     ]),
     terminal: z.boolean(),
     projectsWidth: z.number().int().positive(),
-  })
+  } satisfies Record<keyof LayoutState, z.ZodTypeAny>)
   .strict();
 
 // One entry per card grid. The `satisfies Record<keyof CardMinWidthPrefs, …>`
@@ -382,7 +394,7 @@ const dashboardSettings = z
     gateOnActivity: z.boolean().optional(),
     /** Max retained events per tab and globally. */
     historyLimit: z.number().int().positive().optional(),
-  })
+  } satisfies Record<keyof DashboardSettings, z.ZodTypeAny>)
   .strict();
 
 /**
@@ -421,7 +433,7 @@ const conceptionOnlyFields = {
           excludeFromLogs: z.boolean().optional(),
           runMode: z.enum(['interactive', 'oneshot']).optional(),
           gateOnUpdatedTabs: z.boolean().optional(),
-        })
+        } satisfies Record<keyof TaskConfigEntry, z.ZodTypeAny>)
         .strict(),
     )
     .optional(),

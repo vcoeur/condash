@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { dirname } from 'node:path';
 import type { ConfigShape } from './config-walk';
 import type {
   Agent,
@@ -20,6 +21,8 @@ import {
 } from './condash-dir';
 import { settingsPath } from './settings';
 import { migrateRawSettings } from './config-migrate';
+import { atomicWrite } from './atomic-write';
+import { withFileQueue } from './mutate-shared';
 
 /**
  * Single read surface over the two settings files. Reads the per-machine
@@ -101,6 +104,44 @@ export async function resolveConceptionConfigPath(conceptionPath: string): Promi
  */
 export function conceptionConfigWritePath(conceptionPath: string): string {
   return condashSettingsPath(conceptionPath);
+}
+
+/**
+ * Atomic read-modify-write of a conception's config file — the conception-side
+ * analog of `updateSettings` for the per-machine `settings.json`. Reads the
+ * canonical `.condash/settings.json` (seeding from the legacy fallbacks when the
+ * canonical primary doesn't exist yet, so the first write never drops keys the
+ * user still keeps in a legacy `condash.json`), runs `mutator` against the
+ * parsed object, then writes it back to the canonical path. Serialised per write
+ * path so two concurrent conception-config mutations can't drop one another's
+ * update.
+ *
+ * @param conceptionPath active conception root
+ * @param mutator mutates the parsed config object in place
+ */
+export async function mutateConceptionConfig(
+  conceptionPath: string,
+  mutator: (config: Record<string, unknown>) => void | Promise<void>,
+): Promise<void> {
+  const writePath = conceptionConfigWritePath(conceptionPath);
+  return withFileQueue(writePath, async () => {
+    let current: Record<string, unknown> = {};
+    try {
+      const raw = await fs.readFile(writePath, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        current = parsed as Record<string, unknown>;
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    if (Object.keys(current).length === 0) {
+      current = await readConceptionConfigRaw(conceptionPath);
+    }
+    await mutator(current);
+    await fs.mkdir(dirname(writePath), { recursive: true });
+    await atomicWrite(writePath, JSON.stringify(current, null, 2) + '\n');
+  });
 }
 
 /**

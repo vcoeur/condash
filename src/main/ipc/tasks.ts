@@ -2,8 +2,7 @@ import { ipcMain } from 'electron';
 import type { TaskDef } from '../../shared/tasks';
 import type { TaskConfigEntry } from '../../shared/types';
 import { deleteTask, listTasks, readTask, writeTask } from '../tasks';
-import { getEffectiveConceptionConfig } from '../effective-config';
-import { updateSettings } from '../settings';
+import { getEffectiveConceptionConfig, mutateConceptionConfig } from '../effective-config';
 import { killTaskRun, listRunningTaskRuns } from '../task-scheduler';
 import { requireMainWindowSender, withConception } from './utils';
 
@@ -48,9 +47,10 @@ export function registerTasksIpc(): void {
   });
 
   // Per-task schedule / timeout / excludeFromLogs / runMode config
-  // (capability 1). Read merges through the effective config (condash.json over
-  // settings.json); writes always target the per-machine settings.json
-  // `taskConfig` map.
+  // (capability 1). Both read and write target the conception-owned
+  // `taskConfig` map in `<conception>/.condash/settings.json` — `taskConfig` is
+  // a conception-scoped key (`SCOPE_OF.taskConfig === 'conception'`), so it must
+  // never land in the per-machine global `settings.json`.
   ipcMain.handle('getTaskConfig', (event) => {
     requireMainWindowSender(event);
     return withConception(async (c) => {
@@ -78,26 +78,33 @@ export function registerTasksIpc(): void {
     const runMode = entry?.runMode === 'oneshot' ? 'oneshot' : undefined;
     // Opt-in growth gate — only `true` is persisted (absent = no gate).
     const gateOnUpdatedTabs = entry?.gateOnUpdatedTabs === true ? true : undefined;
-    await updateSettings((cur) => {
-      const map = { ...((cur.taskConfig ?? {}) as Record<string, TaskConfigEntry>) };
-      if (
-        schedule === undefined &&
-        timeout === undefined &&
-        excludeFromLogs === undefined &&
-        runMode === undefined &&
-        gateOnUpdatedTabs === undefined
-      ) {
-        delete map[slug];
-      } else {
-        map[slug] = {
-          ...(schedule ? { schedule } : {}),
-          ...(timeout ? { timeout } : {}),
-          ...(excludeFromLogs ? { excludeFromLogs } : {}),
-          ...(runMode ? { runMode } : {}),
-          ...(gateOnUpdatedTabs ? { gateOnUpdatedTabs } : {}),
-        };
-      }
-      return { ...cur, taskConfig: Object.keys(map).length > 0 ? map : undefined };
-    });
+    // Exhaustive projection keyed by `keyof TaskConfigEntry`: adding a field to
+    // the type without giving it a projection here is a tsc error, not a
+    // silently-dropped setting (the bug this whole entry-shape has shipped
+    // before). Build the persisted entry by stripping the absent/default
+    // fields generically so the field list lives in exactly one place.
+    const projected = {
+      schedule,
+      timeout,
+      excludeFromLogs,
+      runMode,
+      gateOnUpdatedTabs,
+    } satisfies Record<keyof TaskConfigEntry, unknown>;
+    const persisted: TaskConfigEntry = {};
+    for (const [key, value] of Object.entries(projected)) {
+      if (value !== undefined) (persisted as Record<string, unknown>)[key] = value;
+    }
+    await withConception(async (conceptionPath) => {
+      await mutateConceptionConfig(conceptionPath, (config) => {
+        const map = { ...((config.taskConfig ?? {}) as Record<string, TaskConfigEntry>) };
+        if (Object.keys(persisted).length === 0) {
+          delete map[slug];
+        } else {
+          map[slug] = persisted;
+        }
+        if (Object.keys(map).length > 0) config.taskConfig = map;
+        else delete config.taskConfig;
+      });
+    }, undefined);
   });
 }
