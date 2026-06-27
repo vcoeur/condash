@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { redactSecrets } from '../logs-redact';
-import type { DashboardConfig, DashboardEvent, TabSummary } from '../../shared/types';
+import type { DashboardConfig, DashboardEvent, TabState, TabSummary } from '../../shared/types';
 
 let undiciShimInstalled = false;
 /**
@@ -45,6 +45,11 @@ export interface TabSummaryResult {
   title: string;
   contextLines: string[];
   currentAction: string;
+  /** Coarse state used to colour the card; defaulted to `idle` when the reply
+   *  omits or garbles it. */
+  state: TabState;
+  /** The one-line question the tab is blocking on when `state === 'awaiting'`. */
+  awaitingPrompt?: string;
 }
 
 /** The fields the model is asked to produce for the cross-tab overview. */
@@ -114,6 +119,17 @@ function clampWords(text: string, maxWords: number): string {
   return words.slice(0, maxWords).join(' ');
 }
 
+const TAB_STATES: readonly TabState[] = ['working', 'awaiting', 'idle', 'error'];
+
+/** Coerce a model-supplied `state` value to a known `TabState`, defaulting to
+ *  `idle` for anything missing or unrecognised — so an old reply or a flaky
+ *  model can never break the colour rendering. */
+function coerceTabState(value: unknown): TabState {
+  return typeof value === 'string' && (TAB_STATES as readonly string[]).includes(value)
+    ? (value as TabState)
+    : 'idle';
+}
+
 /** Parse the model reply for a single tab into a `TabSummaryResult`, or null if
  *  it lacks a usable title. Exported for unit testing without a live model. */
 export function parseTabSummary(reply: string): TabSummaryResult | null {
@@ -122,10 +138,17 @@ export function parseTabSummary(reply: string): TabSummaryResult | null {
   const record = obj as Record<string, unknown>;
   const title = typeof record.title === 'string' ? clampWords(record.title, MAX_TITLE_WORDS) : '';
   if (!title) return null;
+  const state = coerceTabState(record.state);
+  const awaitingPrompt =
+    state === 'awaiting' && typeof record.awaitingPrompt === 'string'
+      ? record.awaitingPrompt.trim()
+      : '';
   return {
     title,
     contextLines: asStringArray(record.contextLines, MAX_CONTEXT_LINES),
     currentAction: typeof record.currentAction === 'string' ? record.currentAction.trim() : '',
+    state,
+    ...(awaitingPrompt ? { awaitingPrompt } : {}),
   };
 }
 
@@ -141,8 +164,9 @@ export function parseOverview(reply: string): OverviewResult | null {
 
 // Guardrails below were tuned against an eval of a week of real terminal logs on
 // deepseek-v4-flash: name the tool from cmd/status (never invent one), don't read
-// the user's draft prompt line as an action, distinguish working/awaiting/idle,
-// and title the work rather than the tool.
+// the user's draft prompt line as an action, classify the tab into one structured
+// `state` (working/awaiting/idle/error) the dashboard colours on, and title the
+// work rather than the tool.
 const TAB_SYSTEM_PROMPT = [
   'You summarize a single terminal tab for a developer dashboard.',
   'You are given the tab command/cwd, a prior summary (possibly stale), and the',
@@ -156,22 +180,27 @@ const TAB_SYSTEM_PROMPT = [
   'A line after a "❯" or ">" prompt marker is text the user is typing or about to',
   'send. It is not something the tab is doing or has done — never report it as the',
   'current action or as an event.',
-  'Distinguish three states. (1) Working: output is still progressing — say what',
-  'it is doing. (2) Awaiting the user: the program asked a specific question or',
-  'shows an interactive menu/prompt that needs an answer — say what answer it',
-  'awaits. (3) Idle: the work finished or nothing is pending — say so, and you may',
-  'add the last meaningful thing it did. An agent resting at an empty prompt after',
-  'finishing is idle, not blocked on you.',
+  'Classify the tab into exactly one state. "working": output is still',
+  'progressing — say what it is doing. "awaiting": the program asked a specific',
+  'question or shows an interactive menu/prompt that needs an answer — say what',
+  'answer it awaits. "idle": the work finished or nothing is pending — say so, and',
+  'you may add the last meaningful thing it did; an agent resting at an empty',
+  'prompt after finishing is idle, not blocked on you. "error": a command crashed',
+  'or a process exited non-zero and is NOT recovering — a recoverable warning is',
+  'not an error, it stays "working" or "idle".',
   'Treat informational notices and recoverable warnings as background noise (for',
   'example "workspace not trusted", "N permissions ignored", deprecation or auth',
-  'notices): never report them as the current action or a blocker.',
+  'notices): never report them as the current action, a blocker, or an error.',
   'Reply with ONLY a JSON object, no markdown fence:',
   '{"title": string (<=5 words naming the work, project, or subject the tab is',
-  ' about — not the program; use the program or directory name as the title only',
-  ' when the tab has done no real work yet),',
+  ' about — not the program; e.g. good "Auth refactor", bad "claude"; use the',
+  ' program or directory name as the title only when the tab has done no real work yet),',
   ' "contextLines": string[] (1-4 short factual lines: what this tab is for and recent progress),',
-  ' "currentAction": string (one short line for the state above: what is happening',
-  ' now, the answer it awaits, or the final/idle state)}.',
+  ' "currentAction": string (one short line for the state: what is happening now,',
+  ' the answer it awaits, or the final/idle state),',
+  ' "state": one of "working" | "awaiting" | "idle" | "error" (judged from the latest output),',
+  ' "awaitingPrompt": string (ONLY when state is "awaiting": the one-line question',
+  ' or selection it is blocking on, e.g. "Overwrite file? (y/n)"; omit otherwise)}.',
 ].join(' ');
 
 const OVERVIEW_SYSTEM_PROMPT = [

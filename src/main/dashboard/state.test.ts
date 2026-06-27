@@ -24,6 +24,7 @@ function stateWith(eventCount: number): DashboardState {
         title: 'build',
         contextLines: ['ctx'],
         currentAction: 'compiling',
+        state: 'idle',
         updatedAt: 100,
         events,
       },
@@ -109,5 +110,7 @@ describe('loadDashboardState', () => {
     expect(loaded?.roster).toEqual([]);
     expect(loaded?.engine).toBeUndefined();
     expect(loaded?.tabs.map((tab) => tab.sid)).toEqual(['t-1']);
+    // A pre-`state` persisted summary backfills to 'idle' on load.
+    expect(loaded?.tabs[0]?.state).toBe('idle');
   });
 });

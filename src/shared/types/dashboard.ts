@@ -15,6 +15,17 @@ export interface DashboardEvent {
   text: string;
 }
 
+/** Coarse machine-readable state of a tab, derived by the summarizer from the
+ *  latest output. Drives the colour a card is rendered with.
+ *  - `working` — output is still progressing.
+ *  - `awaiting` — the program asked a question or shows a menu/prompt that needs
+ *    the user to answer (the question itself is in `TabSummary.awaitingPrompt`).
+ *  - `idle` — the work finished or nothing is pending (an agent resting at an
+ *    empty prompt is idle, not blocked). The default when the model omits it.
+ *  - `error` — a command crashed or failed and is not recovering. Distinct from
+ *    `DashboardState.lastError`, which is the engine's own summarization failure. */
+export type TabState = 'working' | 'awaiting' | 'idle' | 'error';
+
 /** Live summary for a single terminal tab. */
 export interface TabSummary {
   /** Terminal session id — matches `TermSession.id` / `TabInfo.sid`. */
@@ -25,6 +36,12 @@ export interface TabSummary {
   contextLines: string[];
   /** One-line "what is happening now". */
   currentAction: string;
+  /** Coarse state used to colour the card. Always present — the parser defaults
+   *  it to `idle` when the model reply omits or garbles it. */
+  state: TabState;
+  /** When `state === 'awaiting'`, the one-line question or selection the tab is
+   *  blocked on (e.g. "overwrite state.json? (y/n)"). Absent otherwise. */
+  awaitingPrompt?: string;
   /** Epoch ms of the last update. */
   updatedAt: number;
   /** Bounded history of notable events for this tab, oldest first. */

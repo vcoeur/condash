@@ -228,6 +228,8 @@ export async function tick(conceptionPath: string): Promise<void> {
         title: result.title,
         contextLines: result.contextLines,
         currentAction: result.currentAction,
+        state: result.state,
+        ...(result.awaitingPrompt ? { awaitingPrompt: result.awaitingPrompt } : {}),
         updatedAt: now,
         events,
       };

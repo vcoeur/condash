@@ -8,7 +8,7 @@ import {
 } from './summarizer';
 
 describe('parseTabSummary', () => {
-  it('parses a clean JSON object', () => {
+  it('parses a clean JSON object and defaults a missing state to idle', () => {
     const reply = JSON.stringify({
       title: 'running tests',
       contextLines: ['vitest watch in condash', 'all green so far'],
@@ -18,13 +18,41 @@ describe('parseTabSummary', () => {
       title: 'running tests',
       contextLines: ['vitest watch in condash', 'all green so far'],
       currentAction: 'waiting for file changes',
+      state: 'idle',
     });
+  });
+
+  it('keeps a valid state and the awaiting question', () => {
+    const reply = JSON.stringify({
+      title: 'auth refactor',
+      contextLines: [],
+      currentAction: 'asking to overwrite',
+      state: 'awaiting',
+      awaitingPrompt: 'Overwrite state.json? (y/n)',
+    });
+    const parsed = parseTabSummary(reply);
+    expect(parsed?.state).toBe('awaiting');
+    expect(parsed?.awaitingPrompt).toBe('Overwrite state.json? (y/n)');
+  });
+
+  it('defaults an unrecognised state to idle and drops a non-awaiting awaitingPrompt', () => {
+    const reply = JSON.stringify({
+      title: 'building',
+      contextLines: [],
+      currentAction: 'compiling',
+      state: 'on-fire',
+      awaitingPrompt: 'this should be ignored',
+    });
+    const parsed = parseTabSummary(reply);
+    expect(parsed?.state).toBe('idle');
+    expect(parsed?.awaitingPrompt).toBeUndefined();
   });
 
   it('recovers JSON wrapped in prose / a markdown fence', () => {
     const reply =
-      'Sure!\n```json\n{"title":"build","contextLines":[],"currentAction":"compiling"}\n```';
+      'Sure!\n```json\n{"title":"build","contextLines":[],"currentAction":"compiling","state":"working"}\n```';
     expect(parseTabSummary(reply)?.title).toBe('build');
+    expect(parseTabSummary(reply)?.state).toBe('working');
   });
 
   it('clamps an overlong title to a few words and drops blank context lines', () => {
@@ -102,6 +130,7 @@ describe('buildTabUserPrompt redacts secrets before they reach the prompt', () =
         title: 'deploy',
         contextLines: ['key sk-AbCdEf0123456789ZyXwVuTs leaked earlier'],
         currentAction: 'waiting',
+        state: 'idle',
         updatedAt: 0,
         events: [],
       },
@@ -119,6 +148,7 @@ describe('buildOverviewUserPrompt redacts secrets in tab summaries', () => {
         title: 'using sk-AbCdEf0123456789ZyXwVuTs',
         contextLines: [],
         currentAction: 'idle',
+        state: 'idle',
         updatedAt: 0,
         events: [],
       },
