@@ -102,79 +102,87 @@ describe('readConceptionConfigRaw', () => {
 });
 
 describe('getEffectiveConceptionConfig', () => {
-  it('merges terminal one level deep so per-conception logging keeps per-machine prefs', async () => {
+  it('spreads the two disjoint files into one view (no key overlap)', async () => {
     const global = join(tmp, 'settings.json');
     writeFileSync(
       global,
       JSON.stringify({
-        terminal: {
-          shell: '/bin/zsh',
-          screenshot_dir: '/home/alice/Pictures/Screenshots',
-        },
+        theme: 'dark',
+        terminal: { shell: '/bin/zsh', screenshot_dir: '/home/alice/Pictures' },
       }),
     );
     mkdirSync(join(tmp, CONDASH_DIR));
     writeFileSync(
       condashSettingsPath(tmp),
-      JSON.stringify({
-        terminal: { logging: { retentionDays: 28 } },
-      }),
+      JSON.stringify({ workspace_path: '/home/alice/src', repositories: ['condash'] }),
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
-    expect(eff.terminal).toEqual({
-      shell: '/bin/zsh',
-      screenshot_dir: '/home/alice/Pictures/Screenshots',
-      logging: { retentionDays: 28 },
-    });
+    // Global-owned keys come straight from the global file…
+    expect(eff.theme).toBe('dark');
+    expect(eff.terminal).toEqual({ shell: '/bin/zsh', screenshot_dir: '/home/alice/Pictures' });
+    // …and conception-owned keys from the conception file. No precedence.
+    expect(eff.workspace_path).toBe('/home/alice/src');
+    expect((eff as { repositories?: unknown }).repositories).toEqual(['condash']);
   });
 
-  it('lets conception terminal sub-keys override the global ones', async () => {
+  it('takes a global-only key from the global file', async () => {
     const global = join(tmp, 'settings.json');
-    writeFileSync(
-      global,
-      JSON.stringify({
-        terminal: {
-          shell: '/bin/zsh',
-          screenshot_dir: '/a',
-        },
-      }),
-    );
+    writeFileSync(global, JSON.stringify({ theme: 'light', terminal: { shell: '/bin/bash' } }));
     mkdirSync(join(tmp, CONDASH_DIR));
-    writeFileSync(condashSettingsPath(tmp), JSON.stringify({ terminal: { screenshot_dir: '/b' } }));
+    writeFileSync(condashSettingsPath(tmp), JSON.stringify({ workspace_path: '/x' }));
     const eff = await getEffectiveConceptionConfig(tmp, global);
-    expect(eff.terminal).toEqual({
-      shell: '/bin/zsh',
-      screenshot_dir: '/b',
-    });
+    expect(eff.theme).toBe('light');
+    expect(eff.terminal).toEqual({ shell: '/bin/bash' });
   });
 
-  it('merges dashboard one level deep so a conception override keeps the global key', async () => {
+  it('takes a conception-only key from the conception file', async () => {
     const global = join(tmp, 'settings.json');
-    writeFileSync(
-      global,
-      JSON.stringify({
-        dashboard: {
-          enabled: false,
-          apiKey: 'sk-secret',
-          baseUrl: 'https://api.deepseek.com',
-          model: 'deepseek-v4-flash',
-        },
-      }),
-    );
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
     mkdirSync(join(tmp, CONDASH_DIR));
     writeFileSync(
       condashSettingsPath(tmp),
-      JSON.stringify({ dashboard: { enabled: true, intervalSec: 60 } }),
+      JSON.stringify({ workspace_path: '/home/alice/src', repositories: ['a', 'b'] }),
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
-    // Conception flips `enabled` + sets the interval; the global secret + endpoint survive.
-    expect(eff.dashboard).toEqual({
-      enabled: true,
-      apiKey: 'sk-secret',
-      baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
-      intervalSec: 60,
-    });
+    expect(eff.workspace_path).toBe('/home/alice/src');
+    expect((eff as { repositories?: unknown }).repositories).toEqual(['a', 'b']);
+  });
+
+  it('never surfaces the path-tracking keys (global-only, excluded from the view)', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(
+      global,
+      JSON.stringify({
+        theme: 'dark',
+        lastConceptionPath: '/home/alice/src/conception',
+        recentConceptionPaths: ['/home/alice/src/conception', '/home/alice/src/other'],
+      }),
+    );
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.theme).toBe('dark');
+    expect('lastConceptionPath' in eff).toBe(false);
+    expect('recentConceptionPaths' in eff).toBe(false);
+  });
+
+  it('reads the conception side from a legacy condash.json fallback', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
+    // No .condash/settings.json — only the legacy condash.json at the root.
+    writeFileSync(join(tmp, 'condash.json'), JSON.stringify({ workspace_path: '/legacy/src' }));
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.theme).toBe('dark');
+    expect(eff.workspace_path).toBe('/legacy/src');
+  });
+
+  it('reads the conception side from a legacy configuration.json fallback', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
+    writeFileSync(
+      join(tmp, 'configuration.json'),
+      JSON.stringify({ worktrees_path: '/legacy/worktrees' }),
+    );
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    expect(eff.worktrees_path).toBe('/legacy/worktrees');
   });
 
   it('drops legacy launchers / launcher_command on read (replaced by Agents)', async () => {
@@ -191,22 +199,5 @@ describe('getEffectiveConceptionConfig', () => {
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({ shell: '/bin/bash' });
-  });
-
-  it('still replaces non-terminal keys whole (open_with stays one-or-the-other)', async () => {
-    const global = join(tmp, 'settings.json');
-    writeFileSync(
-      global,
-      JSON.stringify({
-        open_with: { main_ide: { command: 'idea {path}' }, terminal: { command: 'ghostty' } },
-      }),
-    );
-    mkdirSync(join(tmp, CONDASH_DIR));
-    writeFileSync(
-      condashSettingsPath(tmp),
-      JSON.stringify({ open_with: { terminal: { command: 'kitty' } } }),
-    );
-    const eff = await getEffectiveConceptionConfig(tmp, global);
-    expect(eff.open_with).toEqual({ terminal: { command: 'kitty' } });
   });
 });

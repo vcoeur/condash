@@ -1,20 +1,6 @@
 {
-  "$schema_doc": "Source of truth for condash. See docs/reference/config.md for the full schema and per-OS recipes.",
+  "$schema_doc": "This tree's condash settings — paths, repositories, tasks. Personal settings (terminal, theme, IDE launchers, dashboard) live in the global settings.json. See docs/reference/config.md.",
   "workspace_path": "/path/to/workspace",
   "worktrees_path": "/path/to/workspace/../worktrees",
-  "repositories": [],
-  "open_with": {
-    "main_ide": {
-      "label": "Open in main IDE",
-      "command": "code {path}"
-    },
-    "secondary_ide": {
-      "label": "Open in secondary IDE",
-      "command": "codium {path}"
-    },
-    "terminal": {
-      "label": "Open terminal here",
-      "command": "x-terminal-emulator --working-directory {path}"
-    }
-  }
+  "repositories": []
 }

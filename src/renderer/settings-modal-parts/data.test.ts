@@ -8,7 +8,7 @@ import {
   removeActionTemplate,
   usableActionTemplates,
 } from './data';
-import { conceptionConfigSchema } from '../../main/config-schema';
+import { conceptionConfigSchema, globalSettingsSchema } from '../../main/config-schema';
 
 describe('buildSavePayload — repositories', () => {
   it('keeps a freshly-added blank repo as { name: "" } so the schema accepts it', () => {
@@ -58,7 +58,7 @@ describe('buildSavePayload — agents', () => {
     expect(payload.agents).toEqual([
       { id: 'claude-kimi', label: 'Claude · Kimi', command: 'claude-kimi' },
     ]);
-    expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
+    expect(globalSettingsSchema.safeParse(payload).success).toBe(true);
   });
 
   it('keeps a freshly-added blank agent row so the schema still accepts it', () => {
@@ -74,7 +74,7 @@ describe('buildSavePayload — agents', () => {
       { id: 'claude', label: 'Claude', command: 'claude' },
       { id: '', label: '', command: '' },
     ]);
-    expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
+    expect(globalSettingsSchema.safeParse(payload).success).toBe(true);
   });
 
   it('preserves favorite + promptFlags through Save (regression: the toggles were stripped)', () => {
@@ -98,7 +98,7 @@ describe('buildSavePayload — agents', () => {
         promptFlags: true,
       },
     ]);
-    expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
+    expect(globalSettingsSchema.safeParse(payload).success).toBe(true);
   });
 
   it('omits favorite + promptFlags when not set rather than writing false', () => {
@@ -246,7 +246,7 @@ describe('patchActionTemplate', () => {
       submit: true,
     });
     const payload = buildSavePayload({ terminal: { projectActions: actions } });
-    const result = conceptionConfigSchema.safeParse(payload);
+    const result = globalSettingsSchema.safeParse(payload);
     expect(result.success).toBe(true);
   });
 
@@ -258,7 +258,7 @@ describe('patchActionTemplate', () => {
       terminal: { projectActions: [{ label: '', template: '' }] },
     });
     expect(payload.terminal).toEqual({ projectActions: [{ label: '', template: '' }] });
-    const result = conceptionConfigSchema.safeParse(payload);
+    const result = globalSettingsSchema.safeParse(payload);
     expect(result.success).toBe(true);
   });
 });

@@ -98,22 +98,21 @@ condash picks it up live.
 
 ## Editing settings
 
-**File → Settings…** (`Ctrl+,`) opens a two-tab modal — **Global**
-(per-machine, writes to `settings.json`) and **This conception**
-(per-tree, writes to `.condash/settings.json`).
+**File → Settings…** (`Ctrl+,`) opens a single full-viewport modal —
+one scrolling surface whose left rail groups sections under two scope
+headers, one per file. Every setting has exactly one home, so there are
+no tabs, no inheritance, and nothing to override.
 
-- **Global** carries Recent conceptions, Appearance, Terminal — all
-  per-machine defaults.
-- **This conception** carries Workspace, Repositories, Open with, plus
-  per-tree overrides for Appearance and Terminal. An inheritance badge
-  on each field calls out whether the conception value matches the
-  global default or overrides it; a **Reset to global** button drops
-  the override.
+- **Personal · this machine** (writes `settings.json`) carries Recent
+  conceptions, Appearance, Terminal, Launchers, Open with, Dashboard.
+- **This conception** (writes `.condash/settings.json`) carries
+  Workspace & paths and Repositories — only what describes this tree.
 
-There is no in-modal JSON editor — each preference has its own form
-control. The **Open externally** button at the bottom of the rail
-opens the active tab's file (`.condash/settings.json` or `settings.json`)
-with your OS default handler.
+Each section shows a **scope chip** naming the file it writes; there are
+no inheritance badges or **Reset to global** buttons. There is no
+in-modal JSON editor — each preference has its own form control. The
+rail's **Open settings.json** / **Open .condash/settings.json** buttons
+open either file with your OS default handler.
 
 → Full breakdown: [Configuration](configuration.md).
 

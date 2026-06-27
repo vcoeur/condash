@@ -1,33 +1,22 @@
 /**
- * Agents section of the Settings modal.
- *
- * Agents are an inheritable top-level key, so this ships on BOTH tabs (Global
- * → settings.json, Conception → condash.json), parameterised on `target` and
- * rendered twice — same pattern as Appearance / Terminal. Each agent is a
- * `{ id, label, command }` terminal launcher; the section is a vertical list of
- * cards with add / remove / move-up-down. No drag-and-drop (HTML5 DnD is broken
- * under condash's Wayland Ozone backend) — order via the ↑/↓ buttons.
+ * Launchers (agents) section of the Settings modal — a personal (per-machine)
+ * setting in the global `settings.json`. Each agent is a `{ id, label, command }`
+ * terminal launcher; the section is a vertical list of cards with add / remove /
+ * move-up-down. No drag-and-drop (HTML5 DnD is broken under condash's Wayland
+ * Ozone backend) — order via the ↑/↓ buttons.
  */
 
 import { For, Show, type JSX } from 'solid-js';
 import type { Agent } from '@shared/types';
-import { type BindTextFn, type RawConfig, type SettingsTab } from './data';
-import { FieldBadgeRow, type InheritanceState } from './badges';
-
-/** Inheritance-badge inputs — passed on the conception side, omitted on global. */
-interface BadgeProps {
-  stateOf?: () => InheritanceState;
-  removeOverride?: () => void;
-}
+import { type BindTextFn, type RawConfig } from './data';
+import { SectionShell } from './section-shell';
 
 interface AgentsSectionProps {
-  target: SettingsTab;
-  /** Draft-aware config getter for this tab's file. */
+  /** Draft-aware config getter for the global file. */
   parsed: () => RawConfig;
   bindText: BindTextFn;
-  /** Stage a mutation to this tab's tree draft. */
+  /** Stage a mutation to the global tree draft. */
   patch: (mutator: (config: RawConfig) => void) => Promise<void>;
-  badge?: BadgeProps;
 }
 
 export function AgentsSection(props: AgentsSectionProps): JSX.Element {
@@ -64,30 +53,26 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
     Boolean(a.command.trim() || a.label.trim()) && !a.id.trim();
 
   return (
-    <section id={`settings-section-agents:${props.target}`} class="settings-section">
-      <div class="settings-section-head">
-        <h2>Agents</h2>
-        <Show when={props.badge}>
-          {(b) => (
-            <FieldBadgeRow
-              state={b().stateOf?.() ?? 'inherits'}
-              onRemove={() => b().removeOverride?.()}
-            />
-          )}
-        </Show>
-      </div>
-      <p class="settings-hint">
-        Terminal launchers listed in the tab-strip spawn dropdown. Each is a <code>label</code>{' '}
-        shown in the menu plus a <code>command</code> run in a fresh tab; <code>id</code> is a
-        stable identity referenced by tasks and project actions. Point <code>command</code> at a
-        wrapper on your <code>PATH</code> (e.g. <code>claude-kimi</code>) or inline it (e.g.{' '}
-        <code>claude</code>). The command inherits the terminal's environment — condash injects no
-        provider env or tokens. Mark agents <em>Favourite</em> to show them directly in the new-tab
-        menu; the rest move under a <code>More ▸</code> fly-out (with none marked, every agent is
-        listed inline). Enable <em>Seed prompt via flags</em> when the command speaks agedum's{' '}
-        <code>--run</code> / <code>--prompt</code> so tasks pass the prompt in argv instead of
-        typing it into the live TUI.
-      </p>
+    <SectionShell
+      id="agents"
+      title="Launchers"
+      scope="global"
+      hint={
+        <p class="settings-hint">
+          Terminal launchers listed in the tab-strip spawn dropdown — personal tools, the same in
+          every conception. Each is a <code>label</code> shown in the menu plus a{' '}
+          <code>command</code> run in a fresh tab; <code>id</code> is a stable identity referenced
+          by tasks and project actions. Point <code>command</code> at a wrapper on your{' '}
+          <code>PATH</code> (e.g. <code>claude-kimi</code>) or inline it (e.g. <code>claude</code>).
+          The command inherits the terminal's environment — condash injects no provider env or
+          tokens. Mark agents <em>Favourite</em> to show them directly in the new-tab menu; the rest
+          move under a <code>More ▸</code> fly-out (with none marked, every agent is listed inline).
+          Enable <em>Seed prompt via flags</em> when the command speaks agedum's <code>--run</code>{' '}
+          / <code>--prompt</code> so tasks pass the prompt in argv instead of typing it into the
+          live TUI.
+        </p>
+      }
+    >
       <div class="settings-bucket">
         <For each={agents()}>
           {(entry, index) => (
@@ -135,7 +120,7 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
                     type="text"
                     placeholder="Claude · Kimi"
                     {...props.bindText(
-                      `${props.target}.agents[${index()}].label`,
+                      `global.agents[${index()}].label`,
                       () => entry.label,
                       (v) => updateField(index(), { label: v }),
                     )}
@@ -147,7 +132,7 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
                     type="text"
                     placeholder="claude-kimi"
                     {...props.bindText(
-                      `${props.target}.agents[${index()}].command`,
+                      `global.agents[${index()}].command`,
                       () => entry.command,
                       (v) => updateField(index(), { command: v }),
                     )}
@@ -161,7 +146,7 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
                     classList={{ 'settings-input--invalid': idMissing(entry) }}
                     aria-invalid={idMissing(entry)}
                     {...props.bindText(
-                      `${props.target}.agents[${index()}].id`,
+                      `global.agents[${index()}].id`,
                       () => entry.id,
                       (v) => updateField(index(), { id: v }),
                     )}
@@ -210,6 +195,6 @@ export function AgentsSection(props: AgentsSectionProps): JSX.Element {
           </button>
         </div>
       </div>
-    </section>
+    </SectionShell>
   );
 }

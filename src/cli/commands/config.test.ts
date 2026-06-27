@@ -193,7 +193,27 @@ describe('config get', () => {
 });
 
 describe('config set', () => {
-  it('writes a string value to .condash/settings.json by default', async () => {
+  it('routes a conception-owned key (workspace_path) to .condash/settings.json by default', async () => {
+    await captureStdout(() =>
+      runConfig(
+        'set',
+        {
+          noun: 'config',
+          verb: 'set',
+          positional: ['workspace_path', '/home/me/src'],
+          flags: {},
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const written = JSON.parse(
+      await fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
+    );
+    expect(written.workspace_path).toBe('/home/me/src');
+  });
+
+  it('routes a global-owned key (theme) to settings.json without --global', async () => {
     await captureStdout(() =>
       runConfig(
         'set',
@@ -202,13 +222,53 @@ describe('config set', () => {
         conceptionPath,
       ),
     );
-    const written = JSON.parse(
-      await fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
-    );
+    const written = JSON.parse(await fs.readFile(join(xdgTmp, 'condash', 'settings.json'), 'utf8'));
     expect(written.theme).toBe('dark');
+    // The conception primary was never created — the key has no home there.
+    await expect(
+      fs.readFile(join(conceptionPath, '.condash', 'settings.json'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('parses JSON values when the input looks like one', async () => {
+  it('routes a dotted global key (terminal.logging.retentionDays) to settings.json without --global', async () => {
+    await captureStdout(() =>
+      runConfig(
+        'set',
+        {
+          noun: 'config',
+          verb: 'set',
+          positional: ['terminal.logging.retentionDays', '30'],
+          flags: {},
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const written = JSON.parse(await fs.readFile(join(xdgTmp, 'condash', 'settings.json'), 'utf8'));
+    expect(written.terminal.logging.retentionDays).toBe(30);
+  });
+
+  it('errors when --global is passed for a conception-owned key', async () => {
+    const { threw } = await captureStdout(() =>
+      runConfig(
+        'set',
+        {
+          noun: 'config',
+          verb: 'set',
+          positional: ['workspace_path', '/home/me/src'],
+          flags: { global: true },
+        },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    expect(threw).toBeInstanceOf(CliError);
+    expect((threw as CliError).exitCode).toBe(2);
+    expect((threw as CliError).message).toMatch(/workspace_path/);
+    expect((threw as CliError).message).toMatch(/--global/);
+  });
+
+  it('parses JSON values when the input looks like one (unknown key → conception default)', async () => {
     await captureStdout(() =>
       runConfig(
         'set',
@@ -223,7 +283,7 @@ describe('config set', () => {
     expect(written.count).toBe(42);
   });
 
-  it('writes to settings.json when --global is set', async () => {
+  it('writes to settings.json when --global is set for a global key', async () => {
     await captureStdout(() =>
       runConfig(
         'set',

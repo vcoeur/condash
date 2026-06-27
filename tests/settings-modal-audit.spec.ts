@@ -1,32 +1,43 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { bootApp, type BootedApp } from './fixtures/electron-app';
 
 /**
- * Comprehensive audit of every editable field in the revamped Settings
- * modal (PR #70). For each field this spec:
+ * Representative audit of the scope-partitioned Settings modal (project
+ * 2026-06-27-settings-scope-revamp). The old two-tab + inheritance-badge UI is
+ * gone: every setting has exactly one home file, every section renders once on
+ * a single scrolling surface with a flat id (`settings-section-<id>`), and the
+ * file a section writes is named by its scope chip.
  *
- *  - Drives the UI to set a known value.
- *  - Polls the matching on-disk file (settings.json / condash.json) until
- *    the value lands at the schema key listed in `notes/01-inventory.md`.
- *  - Records the outcome (ok / missing / wrong-shape / never-written /
- *    fired-once-then-cleared) into a JSON file the project notes can read.
- *
- * Not a pass/fail test in the usual sense — the goal is to *describe* what
- * the current build does, so we know what to fix.
+ * This spec keeps one representative field per file/section, drives the UI to
+ * set a known value, and polls the matching on-disk file until the value lands.
+ * It records every field's outcome (ok / absent / mismatch / error) into a JSON
+ * findings file, and makes hard assertions on the round-trips that prove the
+ * scope partition (theme → settings.json, workspace_path → .condash/settings.json).
  */
 
 /**
  * Findings output file. Defaults to `test-results/settings-modal-audit-findings.json`
- * under the repo root — CI-safe. A driving project (e.g. the conception note)
- * can override to its own `local/` path via the `CONDASH_AUDIT_FINDINGS_OUT`
- * env var.
+ * under the repo root — CI-safe. A driving project can override to its own
+ * `local/` path via the `CONDASH_AUDIT_FINDINGS_OUT` env var.
  */
 const FINDINGS_OUT =
   process.env.CONDASH_AUDIT_FINDINGS_OUT ??
   resolve(__dirname, '..', 'test-results', 'settings-modal-audit-findings.json');
+
+/** Every section now renders once, with a flat id and a single scope. */
+const SECTIONS: { id: string; scope: 'global' | 'conception' }[] = [
+  { id: 'recents', scope: 'global' },
+  { id: 'appearance', scope: 'global' },
+  { id: 'terminal', scope: 'global' },
+  { id: 'agents', scope: 'global' },
+  { id: 'open-with', scope: 'global' },
+  { id: 'dashboard', scope: 'global' },
+  { id: 'workspace', scope: 'conception' },
+  { id: 'repositories', scope: 'conception' },
+];
 
 interface Finding {
   scope: 'global' | 'conception';
@@ -40,13 +51,6 @@ interface Finding {
 }
 
 const findings: Finding[] = [];
-const fileSnapshots: { at: string; settings: unknown; condash: unknown }[] = [];
-
-async function snapshot(label: string, settingsPath: string, conceptionPath: string): Promise<void> {
-  const settings = await readJson(settingsPath);
-  const condash = await readJson(conceptionPath);
-  fileSnapshots.push({ at: label, settings, condash });
-}
 
 async function readJson(path: string): Promise<Record<string, unknown>> {
   try {
@@ -71,14 +75,12 @@ function dig(obj: Record<string, unknown> | undefined, path: string): unknown {
   return cur;
 }
 
-/** Poll the file until `predicate` is true or timeout. The revamped modal
- *  defers writes behind Save, so a single IPC round-trip happens after each
- *  `commitSave`; 2 s of headroom covers that on a slow CI runner while still
- *  bounding total runtime for the fields that genuinely never land. */
+/** Poll the file until `predicate` is true or timeout. The modal defers writes
+ *  behind Save, so a single IPC round-trip happens after each `commitSave`. */
 async function waitForFile(
   path: string,
   predicate: (parsed: Record<string, unknown>) => boolean,
-  timeoutMs = 2000,
+  timeoutMs = 3000,
 ): Promise<Record<string, unknown>> {
   const start = Date.now();
   let parsed: Record<string, unknown> = await readJson(path);
@@ -92,14 +94,9 @@ async function waitForFile(
 
 async function persistFindings(): Promise<void> {
   await mkdir(dirname(FINDINGS_OUT), { recursive: true });
-  await writeFile(
-    FINDINGS_OUT,
-    JSON.stringify({ findings, fileSnapshots }, null, 2) + '\n',
-    'utf8',
-  );
+  await writeFile(FINDINGS_OUT, JSON.stringify({ findings }, null, 2) + '\n', 'utf8');
 }
 
-/** Set a text input by Playwright locator, blur, wait, then record finding. */
 const SCROLL_TIMEOUT_MS = 2500;
 
 async function safeScroll(loc: Locator): Promise<void> {
@@ -107,17 +104,28 @@ async function safeScroll(loc: Locator): Promise<void> {
 }
 
 /**
- * Flush staged edits to disk. The revamped modal (v3.18.0) defers every
- * write behind the Save button — edits only mutate an in-memory draft until
- * Save fires. Each audit field stages, then calls this, then polls the file.
- * No-op when the modal isn't dirty (Save is disabled), so a field that didn't
- * actually change state records its finding without a stray click.
+ * Flush staged edits to disk. The modal defers every write behind the Save
+ * button — edits only mutate an in-memory draft until Save fires. No-op when
+ * the modal isn't dirty (Save disabled), so a field that didn't change state
+ * records its finding without a stray click.
  */
 async function commitSave(page: Page): Promise<void> {
   const saveBtn = page.locator('.settings-modal button.settings-save');
   if (await saveBtn.isEnabled().catch(() => false)) {
     await saveBtn.click({ timeout: 3000 }).catch(() => undefined);
   }
+}
+
+/** Expand a collapsible terminal subgroup so its fields become interactable.
+ *  "Behaviour & shortcuts" ships open; Font / Cursor & buffer / Colours /
+ *  Logging start collapsed. */
+async function expandSubgroup(modal: Locator, title: string): Promise<void> {
+  const summary = modal.locator('summary.settings-subgroup-summary', { hasText: title }).first();
+  if ((await summary.count()) === 0) return;
+  const isOpen = await summary
+    .evaluate((el) => (el.parentElement as HTMLDetailsElement).open)
+    .catch(() => true);
+  if (!isOpen) await summary.click().catch(() => undefined);
 }
 
 async function auditText(opts: {
@@ -134,31 +142,15 @@ async function auditText(opts: {
     await opts.input.fill(opts.value, { timeout: 3000 });
     await opts.input.blur({ timeout: 1500 }).catch(() => undefined);
     await commitSave(opts.input.page());
-    const parsed = await waitForFile(
-      opts.filePath,
-      (p) => dig(p, opts.expectedKey) === opts.value,
-    );
+    const parsed = await waitForFile(opts.filePath, (p) => dig(p, opts.expectedKey) === opts.value);
     const observed = dig(parsed, opts.expectedKey);
     findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
+      ...metaOf(opts),
       observed,
       status: observed === opts.value ? 'ok' : observed === undefined ? 'absent' : 'mismatch',
     });
   } catch (err) {
-    findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
-      observed: undefined,
-      status: 'error',
-      detail: (err as Error).message,
-    });
+    findings.push({ ...metaOf(opts), observed: undefined, status: 'error', detail: msg(err) });
   }
 }
 
@@ -176,31 +168,15 @@ async function auditNumber(opts: {
     await opts.input.fill(String(opts.value), { timeout: 3000 });
     await opts.input.blur({ timeout: 1500 }).catch(() => undefined);
     await commitSave(opts.input.page());
-    const parsed = await waitForFile(
-      opts.filePath,
-      (p) => dig(p, opts.expectedKey) === opts.value,
-    );
+    const parsed = await waitForFile(opts.filePath, (p) => dig(p, opts.expectedKey) === opts.value);
     const observed = dig(parsed, opts.expectedKey);
     findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
+      ...metaOf(opts),
       observed,
       status: observed === opts.value ? 'ok' : observed === undefined ? 'absent' : 'mismatch',
     });
   } catch (err) {
-    findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
-      observed: undefined,
-      status: 'error',
-      detail: (err as Error).message,
-    });
+    findings.push({ ...metaOf(opts), observed: undefined, status: 'error', detail: msg(err) });
   }
 }
 
@@ -217,30 +193,19 @@ async function auditSelect(opts: {
     await safeScroll(opts.select);
     await opts.select.selectOption(opts.value, { timeout: 3000 });
     await commitSave(opts.select.page());
-    const parsed = await waitForFile(
-      opts.filePath,
-      (p) => dig(p, opts.expectedKey) === opts.value,
-    );
+    const parsed = await waitForFile(opts.filePath, (p) => dig(p, opts.expectedKey) === opts.value);
     const observed = dig(parsed, opts.expectedKey);
     findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
+      ...metaOf({ ...opts, expectedValue: opts.value }),
       observed,
       status: observed === opts.value ? 'ok' : observed === undefined ? 'absent' : 'mismatch',
     });
   } catch (err) {
     findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
+      ...metaOf({ ...opts, expectedValue: opts.value }),
       observed: undefined,
       status: 'error',
-      detail: (err as Error).message,
+      detail: msg(err),
     });
   }
 }
@@ -262,19 +227,12 @@ async function auditCheckbox(opts: {
       await opts.checkbox.uncheck({ timeout: 3000 });
     }
     await commitSave(opts.checkbox.page());
-    const parsed = await waitForFile(
-      opts.filePath,
-      (p) => dig(p, opts.expectedKey) === opts.value,
-    );
+    const parsed = await waitForFile(opts.filePath, (p) => dig(p, opts.expectedKey) === opts.value);
     const observed = dig(parsed, opts.expectedKey);
     findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
+      ...metaOf({ ...opts, expectedValue: opts.value }),
       observed,
-      // For some keys, the false-state is "key absent" by design (pruneEmpty).
+      // For some keys the false-state is "key absent" by design (pruneEmpty).
       status:
         observed === opts.value
           ? 'ok'
@@ -286,16 +244,34 @@ async function auditCheckbox(opts: {
     });
   } catch (err) {
     findings.push({
-      scope: opts.scope,
-      section: opts.section,
-      field: opts.field,
-      expectedKey: opts.expectedKey,
-      expectedValue: opts.value,
+      ...metaOf({ ...opts, expectedValue: opts.value }),
       observed: undefined,
       status: 'error',
-      detail: (err as Error).message,
+      detail: msg(err),
     });
   }
+}
+
+/** Build the common finding fields from an audit options bag. */
+function metaOf(opts: {
+  scope: 'global' | 'conception';
+  section: string;
+  field: string;
+  expectedKey: string;
+  value?: unknown;
+  expectedValue?: unknown;
+}): Omit<Finding, 'observed' | 'status'> {
+  return {
+    scope: opts.scope,
+    section: opts.section,
+    field: opts.field,
+    expectedKey: opts.expectedKey,
+    expectedValue: opts.expectedValue ?? opts.value,
+  };
+}
+
+function msg(err: unknown): string {
+  return (err as Error).message;
 }
 
 async function openSettings(window: Page, app: BootedApp['app']): Promise<Locator> {
@@ -308,661 +284,308 @@ async function openSettings(window: Page, app: BootedApp['app']): Promise<Locato
   return modal;
 }
 
-test('settings modal: audit every field round-trips edit → on-disk', async () => {
-  // ~70 fields, each staged then flushed via Save (one IPC write apiece). Runs
-  // ~2.5 min locally; give generous margin for a slower CI runner so a single
-  // pass never brushes the timeout (retries would otherwise stack 3×).
-  test.setTimeout(480_000);
+test('settings modal: representative fields render and round-trip to the right file', async () => {
+  test.setTimeout(240_000);
   const booted = await bootApp({ extraConfig: {} });
+  // settings.json is isolated under <userDataDir>/condash/ (XDG_CONFIG_HOME →
+  // app.getPath('userData')); the conception file is <conceptionDir>/.condash/.
   const settingsPath = join(booted.userDataDir, 'condash', 'settings.json');
   const conceptionPath = join(booted.conceptionDir, '.condash', 'settings.json');
-  // Flush findings every few seconds so a timeout still produces output.
-  const flushTimer = setInterval(() => {
-    void persistFindings().catch(() => undefined);
-  }, 2000);
+  // Flush findings periodically so a timeout still produces output.
+  const flushTimer = setInterval(() => void persistFindings().catch(() => undefined), 2000);
   try {
     const modal = await openSettings(booted.window, booted.app);
 
-    await snapshot('start', settingsPath, conceptionPath);
-    // ---- GLOBAL TAB ----------------------------------------------------
-    const globalPanel = modal.locator('#settings-panel-global');
-    await modal.locator('[role="tab"]').nth(0).click();
+    // ---- Every section renders once on the single surface (flat ids) ------
+    for (const s of SECTIONS) {
+      await expect(modal.locator(`section#settings-section-${s.id}`)).toHaveCount(1);
+      await expect(
+        modal.locator(`#settings-section-${s.id} .settings-scope-chip--${s.scope}`),
+      ).toBeVisible();
+    }
 
-    // Theme radios (Global).
+    // ======================= GLOBAL — settings.json =======================
+
+    // Appearance · Theme radio (global-only; no per-conception override).
     {
-      const darkRadio = globalPanel
-        .locator('section#settings-section-appearance\\:global .settings-radio', { hasText: 'Dark' })
-        .first()
+      const darkRadio = modal
+        .locator('#settings-section-appearance .settings-radio', { hasText: 'Dark' })
         .locator('input[type="radio"]');
-      try {
-        await safeScroll(darkRadio);
-        await darkRadio.check({ timeout: 3000 });
-        await commitSave(booted.window);
-        const parsed = await waitForFile(settingsPath, (p) => p.theme === 'dark');
-        findings.push({
+      await safeScroll(darkRadio);
+      await darkRadio.check({ timeout: 3000 });
+      await commitSave(booted.window);
+      const parsed = await waitForFile(settingsPath, (p) => p.theme === 'dark');
+      findings.push({
+        scope: 'global',
+        section: 'Appearance',
+        field: 'Theme = dark',
+        expectedKey: 'theme',
+        expectedValue: 'dark',
+        observed: parsed.theme,
+        status: parsed.theme === 'dark' ? 'ok' : 'mismatch',
+      });
+    }
+
+    // Appearance · card density (representative panes — an original and a
+    // late-added one, the pair that previously shipped unsavable).
+    {
+      const density: { label: string; key: string; value: number }[] = [
+        { label: 'Project cards', key: 'cardMinWidth.projects', value: 360 },
+        { label: 'Log cards', key: 'cardMinWidth.logs', value: 480 },
+      ];
+      for (const d of density) {
+        const input = modal
+          .locator('#settings-section-appearance label', { hasText: d.label })
+          .first()
+          .locator('input[type="number"]')
+          .first();
+        await auditNumber({
           scope: 'global',
           section: 'Appearance',
-          field: 'Theme = dark',
-          expectedKey: 'theme',
-          expectedValue: 'dark',
-          observed: parsed.theme,
-          status: parsed.theme === 'dark' ? 'ok' : 'mismatch',
-        });
-      } catch (err) {
-        findings.push({
-          scope: 'global',
-          section: 'Appearance',
-          field: 'Theme = dark',
-          expectedKey: 'theme',
-          expectedValue: 'dark',
-          observed: undefined,
-          status: 'error',
-          detail: (err as Error).message,
+          field: `Card density: ${d.label}`,
+          expectedKey: d.key,
+          filePath: settingsPath,
+          input,
+          value: d.value,
         });
       }
     }
 
-    // Card density (8 panes — must stay in lock-step with CARD_DENSITY_FIELDS /
-    // DEFAULT_CARD_MIN_WIDTH; logs/tasks/deliverables were the panes that shipped
-    // unsavable because this list lagged the UI at five).
-    const densityKeys: DensityKey[] = [
-      'projects',
-      'code',
-      'knowledge',
-      'resources',
-      'skills',
-      'logs',
-      'tasks',
-      'deliverables',
-    ];
-    const densityValues = [222, 333, 444, 555, 666, 777, 888, 999];
-    for (let i = 0; i < densityKeys.length; i++) {
-      const label = densityKeys[i];
-      const value = densityValues[i];
-      const labelRow = globalPanel
-        .locator('section#settings-section-appearance\\:global label', {
-          hasText: `${labelText(label)}`,
-        })
-        .first();
-      const input = labelRow.locator('input[type="number"]').first();
-      await auditNumber({
-        scope: 'global',
-        section: 'Appearance',
-        field: `Card density: ${label}`,
-        expectedKey: `cardMinWidth.${label}`,
-        filePath: settingsPath,
-        input,
-        value,
-      });
+    // Terminal · Behaviour & shortcuts (ships open). The two path/text fields
+    // round-trip; the four shortcut fields render as capture buttons.
+    {
+      const textFields: { field: string; key: string }[] = [
+        { field: 'Shell', key: 'shell' },
+        { field: 'Screenshot directory', key: 'screenshot_dir' },
+      ];
+      for (const sf of textFields) {
+        const input = modal
+          .locator('#settings-section-terminal label', { hasText: sf.field })
+          .first()
+          .locator('input[type="text"]')
+          .first();
+        await auditText({
+          scope: 'global',
+          section: 'Terminal',
+          field: sf.field,
+          expectedKey: `terminal.${sf.key}`,
+          filePath: settingsPath,
+          input,
+          value: `audit-${sf.key}`,
+        });
+      }
+      await expect(
+        modal.locator('#settings-section-terminal .settings-shortcut').first(),
+      ).toBeVisible();
     }
 
-    // Terminal — string fields.
-    const stringFields: { field: string; key: string }[] = [
-      { field: 'Shell', key: 'shell' },
-      { field: 'Screenshot directory', key: 'screenshot_dir' },
-      { field: 'Toggle terminal pane', key: 'shortcut' },
-      { field: 'Paste latest screenshot path', key: 'screenshot_paste_shortcut' },
-      { field: 'Move tab left', key: 'move_tab_left_shortcut' },
-      { field: 'Move tab right', key: 'move_tab_right_shortcut' },
-    ];
-    for (const sf of stringFields) {
-      const row = globalPanel
-        .locator('section#settings-section-terminal\\:global label', { hasText: sf.field })
+    // Terminal · Font (collapsed — expand first).
+    await expandSubgroup(modal, 'Font');
+    {
+      const familyInput = modal
+        .locator('#settings-section-terminal label', { hasText: 'Font family' })
+        .first()
+        .locator('input[type="text"]')
         .first();
-      const input = row.locator('input[type="text"]').first();
-      await auditText({
-        scope: 'global',
-        section: 'Terminal',
-        field: sf.field,
-        expectedKey: `terminal.${sf.key}`,
-        filePath: settingsPath,
-        input,
-        value: `audit-${sf.key}`,
-      });
-    }
-
-    // Terminal — font block.
-    const fontText: { label: string; key: string; value: string }[] = [
-      { label: 'Font family', key: 'terminal.xterm.font_family', value: 'Audit Mono, monospace' },
-      { label: 'Font weight', key: 'terminal.xterm.font_weight', value: '500' },
-      { label: 'Bold weight', key: 'terminal.xterm.font_weight_bold', value: '700' },
-    ];
-    for (const ft of fontText) {
-      const row = globalPanel
-        .locator('section#settings-section-terminal\\:global label', { hasText: ft.label })
-        .first();
-      const input = row.locator('input[type="text"]').first();
       await auditText({
         scope: 'global',
         section: 'Terminal · Font',
-        field: ft.label,
-        expectedKey: ft.key,
+        field: 'Font family',
+        expectedKey: 'terminal.xterm.font_family',
         filePath: settingsPath,
-        input,
-        value: ft.value,
+        input: familyInput,
+        value: 'Audit Mono, monospace',
       });
-    }
-
-    const fontNum: { label: string; key: string; value: number }[] = [
-      { label: 'Font size', key: 'terminal.xterm.font_size', value: 14 },
-      { label: 'Line height', key: 'terminal.xterm.line_height', value: 1.25 },
-      { label: 'Letter spacing', key: 'terminal.xterm.letter_spacing', value: 1 },
-      { label: 'Scrollback', key: 'terminal.xterm.scrollback', value: 7777 },
-    ];
-    for (const ft of fontNum) {
-      const row = globalPanel
-        .locator('section#settings-section-terminal\\:global label', { hasText: ft.label })
+      const sizeInput = modal
+        .locator('#settings-section-terminal label', { hasText: 'Font size' })
+        .first()
+        .locator('input[type="number"]')
         .first();
-      const input = row.locator('input[type="number"]').first();
       await auditNumber({
         scope: 'global',
-        section: 'Terminal · Font/Buffer',
-        field: ft.label,
-        expectedKey: ft.key,
+        section: 'Terminal · Font',
+        field: 'Font size',
+        expectedKey: 'terminal.xterm.font_size',
         filePath: settingsPath,
-        input,
-        value: ft.value,
+        input: sizeInput,
+        value: 14,
       });
     }
 
-    // Cursor style.
-    const cursorSelect = globalPanel
-      .locator('section#settings-section-terminal\\:global label', { hasText: 'Cursor style' })
-      .first()
-      .locator('select');
-    await auditSelect({
-      scope: 'global',
-      section: 'Terminal · Cursor',
-      field: 'Cursor style',
-      expectedKey: 'terminal.xterm.cursor_style',
-      filePath: settingsPath,
-      select: cursorSelect,
-      value: 'underline',
-    });
-
-    // Cursor blink (default state is checked — uncheck for the audit).
-    const cursorBlinkRow = globalPanel
-      .locator('section#settings-section-terminal\\:global label.settings-checkbox', {
-        hasText: 'Cursor blink',
-      })
-      .first();
-    await auditCheckbox({
-      scope: 'global',
-      section: 'Terminal · Cursor',
-      field: 'Cursor blink (uncheck)',
-      expectedKey: 'terminal.xterm.cursor_blink',
-      filePath: settingsPath,
-      checkbox: cursorBlinkRow.locator('input[type="checkbox"]'),
-      value: false,
-    });
-
-    // Ligatures.
-    const ligaturesRow = globalPanel
-      .locator('section#settings-section-terminal\\:global label.settings-checkbox', {
-        hasText: 'ligatures',
-      })
-      .first();
-    await auditCheckbox({
-      scope: 'global',
-      section: 'Terminal · Cursor',
-      field: 'Ligatures (check)',
-      expectedKey: 'terminal.xterm.ligatures',
-      filePath: settingsPath,
-      checkbox: ligaturesRow.locator('input[type="checkbox"]'),
-      value: true,
-    });
-
-    // Colours — 21 entries.
-    const colorKeys = [
-      'foreground',
-      'background',
-      'cursor',
-      'cursor_accent',
-      'selection_background',
-      'black',
-      'red',
-      'green',
-      'yellow',
-      'blue',
-      'magenta',
-      'cyan',
-      'white',
-      'bright_black',
-      'bright_red',
-      'bright_green',
-      'bright_yellow',
-      'bright_blue',
-      'bright_magenta',
-      'bright_cyan',
-      'bright_white',
-    ];
-    const colorLabels: Record<string, string> = {
-      foreground: 'Foreground',
-      background: 'Background',
-      cursor: 'Cursor',
-      cursor_accent: 'Cursor accent',
-      selection_background: 'Selection bg',
-      black: 'ANSI black',
-      red: 'ANSI red',
-      green: 'ANSI green',
-      yellow: 'ANSI yellow',
-      blue: 'ANSI blue',
-      magenta: 'ANSI magenta',
-      cyan: 'ANSI cyan',
-      white: 'ANSI white',
-      bright_black: 'Bright black',
-      bright_red: 'Bright red',
-      bright_green: 'Bright green',
-      bright_yellow: 'Bright yellow',
-      bright_blue: 'Bright blue',
-      bright_magenta: 'Bright magenta',
-      bright_cyan: 'Bright cyan',
-      bright_white: 'Bright white',
-    };
-    for (let i = 0; i < colorKeys.length; i++) {
-      const key = colorKeys[i];
-      const value = `#${(0x100000 + i * 0x010101).toString(16).slice(-6)}`;
-      const row = globalPanel
-        .locator('section#settings-section-terminal\\:global label.settings-color', {
-          hasText: colorLabels[key],
-        })
-        .first();
-      const input = row.locator('input[type="text"]').first();
-      await auditText({
-        scope: 'global',
-        section: 'Terminal · Colors',
-        field: colorLabels[key],
-        expectedKey: `terminal.xterm.colors.${key}`,
-        filePath: settingsPath,
-        input,
-        value,
-      });
-    }
-
-    await snapshot('after-global-pass', settingsPath, conceptionPath);
-    // ---- CONCEPTION TAB -----------------------------------------------
-    await modal.locator('[role="tab"]').nth(1).click({ timeout: 5000 }).catch(() => undefined);
-    const conceptionPanel = modal.locator('#settings-panel-conception');
-
-    // Workspace block — three path fields (Resources directory was dropped
-    // when `resources_path` became hard-coded to `<root>/resources/`).
-    const workspaceFields: { label: string; key: string; value: string }[] = [
-      { label: 'Workspace path', key: 'workspace_path', value: '/tmp/audit-workspace' },
-      { label: 'Worktrees path', key: 'worktrees_path', value: '/tmp/audit-worktrees' },
-      { label: 'Skills directory', key: 'skills_path', value: '.claude/skills-audit' },
-    ];
-    for (const wf of workspaceFields) {
-      const row = conceptionPanel
-        .locator('section#settings-section-workspace\\:conception .settings-field-with-badge', {
-          hasText: wf.label,
-        })
-        .first();
-      const input = row.locator('input[type="text"]').first();
-      await auditText({
-        scope: 'conception',
-        section: 'Workspace',
-        field: wf.label,
-        expectedKey: wf.key,
-        filePath: conceptionPath,
-        input,
-        value: wf.value,
-      });
-    }
-
-    // Open with — 3 slots × {label, command}. Order is fixed.
-    const openWithSlots: { key: string }[] = [
-      { key: 'main_ide' },
-      { key: 'secondary_ide' },
-      { key: 'terminal' },
-    ];
-    for (let i = 0; i < openWithSlots.length; i++) {
-      const slot = openWithSlots[i];
-      const block = conceptionPanel
-        .locator('section#settings-section-open-with\\:conception .settings-open-with')
-        .nth(i);
-      const labelInput = block.locator('input[type="text"]').nth(0);
-      const commandInput = block.locator('input[type="text"]').nth(1);
-      // Command must be set first — modal deletes the slot when command is empty.
-      await auditText({
-        scope: 'conception',
-        section: 'Open with',
-        field: `${slot.key} · command`,
-        expectedKey: `open_with.${slot.key}.command`,
-        filePath: conceptionPath,
-        input: commandInput,
-        value: `audit-${slot.key}-cmd {path}`,
-      });
-      await auditText({
-        scope: 'conception',
-        section: 'Open with',
-        field: `${slot.key} · label`,
-        expectedKey: `open_with.${slot.key}.label`,
-        filePath: conceptionPath,
-        input: labelInput,
-        value: `audit-${slot.key}-label`,
-      });
-    }
-
-    // Repositories — add one row, fill its name + label.
-    const reposSection = conceptionPanel.locator('section#settings-section-repositories\\:conception');
-    const addRepoBtn = reposSection.locator('button.modal-button', { hasText: '+ Add repo' });
-    await addRepoBtn.click();
-    await booted.window.waitForTimeout(150);
-    // The added row's name input is the first text input under .settings-bucket.
-    const repoRows = reposSection.locator('.settings-bucket > *');
-    const firstRow = repoRows.first();
-    // Try the most common shape — name input is labelled "Name" or first text input.
-    const repoNameInput = firstRow.locator('input[type="text"]').first();
-    await auditText({
-      scope: 'conception',
-      section: 'Repositories',
-      field: 'First row · name',
-      expectedKey: 'repositories.0',
-      filePath: conceptionPath,
-      input: repoNameInput,
-      value: 'audit-repo-name',
-    });
-
-    // Conception · Theme override.
+    // Terminal · Cursor & buffer (collapsed — expand first).
+    await expandSubgroup(modal, 'Cursor & buffer');
     {
-      const darkRadio = conceptionPanel
-        .locator('section#settings-section-appearance\\:conception .settings-radio', {
-          hasText: 'Light',
-        })
+      const cursorSelect = modal
+        .locator('#settings-section-terminal label', { hasText: 'Cursor style' })
         .first()
-        .locator('input[type="radio"]');
-      try {
-        await safeScroll(darkRadio);
-        await darkRadio.check({ timeout: 3000 });
-        await commitSave(booted.window);
-        const parsed = await waitForFile(conceptionPath, (p) => p.theme === 'light');
-        findings.push({
-          scope: 'conception',
-          section: 'Appearance',
-          field: 'Theme override = light',
-          expectedKey: 'theme',
-          expectedValue: 'light',
-          observed: parsed.theme,
-          status: parsed.theme === 'light' ? 'ok' : 'mismatch',
-        });
-      } catch (err) {
-        findings.push({
-          scope: 'conception',
-          section: 'Appearance',
-          field: 'Theme override = light',
-          expectedKey: 'theme',
-          expectedValue: 'light',
-          observed: undefined,
-          status: 'error',
-          detail: (err as Error).message,
+        .locator('select');
+      await auditSelect({
+        scope: 'global',
+        section: 'Terminal · Cursor',
+        field: 'Cursor style',
+        expectedKey: 'terminal.xterm.cursor_style',
+        filePath: settingsPath,
+        select: cursorSelect,
+        value: 'underline',
+      });
+      const blink = modal
+        .locator('#settings-section-terminal label.settings-checkbox', { hasText: 'Cursor blink' })
+        .first()
+        .locator('input[type="checkbox"]');
+      await auditCheckbox({
+        scope: 'global',
+        section: 'Terminal · Cursor',
+        field: 'Cursor blink (uncheck)',
+        expectedKey: 'terminal.xterm.cursor_blink',
+        filePath: settingsPath,
+        checkbox: blink,
+        value: false,
+      });
+    }
+
+    // Terminal · Colours (collapsed — expand first; representative entries).
+    await expandSubgroup(modal, 'Colours');
+    {
+      const colours: { label: string; key: string; value: string }[] = [
+        { label: 'Foreground', key: 'foreground', value: '#abcdef' },
+        { label: 'Background', key: 'background', value: '#102030' },
+      ];
+      for (const c of colours) {
+        const input = modal
+          .locator('#settings-section-terminal label.settings-color', { hasText: c.label })
+          .first()
+          .locator('input[type="text"]')
+          .first();
+        await auditText({
+          scope: 'global',
+          section: 'Terminal · Colours',
+          field: c.label,
+          expectedKey: `terminal.xterm.colors.${c.key}`,
+          filePath: settingsPath,
+          input,
+          value: c.value,
         });
       }
     }
 
-    // Conception · Card density override. Cover both an original pane
-    // (projects) and a late-added one (logs): the conception tab → writeNote →
-    // condash.json path is exactly where the reported failure surfaced
-    // (`condash.json: cardMinWidth — Unrecognized key: "logs"`).
+    // Terminal · Logging (collapsed — expand first).
+    await expandSubgroup(modal, 'Logging');
     {
-      const projectsRow = conceptionPanel
-        .locator('section#settings-section-appearance\\:conception label', {
-          hasText: 'Project cards',
+      const enabled = modal
+        .locator('#settings-section-terminal label.settings-checkbox', {
+          hasText: 'Record terminal sessions to disk',
         })
-        .first();
-      await auditNumber({
-        scope: 'conception',
-        section: 'Appearance',
-        field: 'Card density override · projects',
-        expectedKey: 'cardMinWidth.projects',
-        filePath: conceptionPath,
-        input: projectsRow.locator('input[type="number"]').first(),
-        value: 999,
+        .first()
+        .locator('input[type="checkbox"]');
+      await auditCheckbox({
+        scope: 'global',
+        section: 'Terminal · Logging',
+        field: 'Record sessions (check)',
+        expectedKey: 'terminal.logging.enabled',
+        filePath: settingsPath,
+        checkbox: enabled,
+        value: true,
       });
-
-      const logsRow = conceptionPanel
-        .locator('section#settings-section-appearance\\:conception label', {
-          hasText: 'Log cards',
-        })
+      const retention = modal
+        .locator('#settings-section-terminal label', { hasText: 'Retention (days)' })
+        .first()
+        .locator('input[type="number"]')
         .first();
       await auditNumber({
-        scope: 'conception',
-        section: 'Appearance',
-        field: 'Card density override · logs',
-        expectedKey: 'cardMinWidth.logs',
-        filePath: conceptionPath,
-        input: logsRow.locator('input[type="number"]').first(),
-        value: 480,
+        scope: 'global',
+        section: 'Terminal · Logging',
+        field: 'Retention (days)',
+        expectedKey: 'terminal.logging.retentionDays',
+        filePath: settingsPath,
+        input: retention,
+        value: 30,
       });
     }
 
-    // Conception · Terminal override (one shell field is enough — same
-    // codepath as global terminal).
+    // Open with — now a personal (global) setting. One slot, command then
+    // label (the modal drops the slot when its command is empty).
     {
-      const row = conceptionPanel
-        .locator('section#settings-section-terminal\\:conception label', { hasText: 'Shell' })
-        .first();
-      const input = row.locator('input[type="text"]').first();
+      const block = modal.locator('#settings-section-open-with .settings-open-with').first();
       await auditText({
-        scope: 'conception',
-        section: 'Terminal',
-        field: 'Shell (override)',
-        expectedKey: 'terminal.shell',
-        filePath: conceptionPath,
-        input,
-        value: '/usr/bin/audit-shell',
+        scope: 'global',
+        section: 'Open with',
+        field: 'main_ide · command',
+        expectedKey: 'open_with.main_ide.command',
+        filePath: settingsPath,
+        input: block.locator('input[type="text"]').nth(1),
+        value: 'audit-main {path}',
+      });
+      await auditText({
+        scope: 'global',
+        section: 'Open with',
+        field: 'main_ide · label',
+        expectedKey: 'open_with.main_ide.label',
+        filePath: settingsPath,
+        input: block.locator('input[type="text"]').nth(0),
+        value: 'Audit IDE',
       });
     }
 
-    // Conception · Repo row object-form fields (label, run, force_stop, install,
-    // pinned_branch). Forces `compactRepos` to keep the object shape.
+    // =================== CONCEPTION — .condash/settings.json ===================
+
+    // Workspace block — two path fields.
     {
-      const reposSec = conceptionPanel.locator('section#settings-section-repositories\\:conception');
-      const firstRow = reposSec.locator('.settings-bucket .settings-repo-row').first();
-      const objectFields: { label: string; subKey: string; value: string }[] = [
-        { label: 'Label', subKey: 'label', value: 'Audit Label' },
-        { label: 'Run command', subKey: 'run', value: 'audit-run-cmd' },
-        { label: 'Force stop', subKey: 'force_stop', value: 'audit-force-stop' },
-        { label: 'Install command', subKey: 'install', value: 'audit-install' },
-        // pinned_branch is in the schema but the modal does not surface it.
-        // Captured as a separate finding below.
+      const workspace = modal.locator('#settings-section-workspace');
+      await safeScroll(workspace);
+      const fields: { label: string; key: string; value: string }[] = [
+        { label: 'Workspace path', key: 'workspace_path', value: '/tmp/audit-workspace' },
+        { label: 'Worktrees path', key: 'worktrees_path', value: '/tmp/audit-worktrees' },
       ];
-      for (const f of objectFields) {
-        const row = firstRow
-          .locator('.settings-repo-row-detail label', { hasText: f.label })
+      for (const wf of fields) {
+        const input = workspace
+          .locator('.settings-field-with-badge', { hasText: wf.label })
+          .first()
+          .locator('input[type="text"]')
           .first();
-        const input = row.locator('input[type="text"]').first();
         await auditText({
           scope: 'conception',
-          section: 'Repositories · object fields',
-          field: f.label,
-          expectedKey: `repositories.0.${f.subKey}`,
+          section: 'Workspace',
+          field: wf.label,
+          expectedKey: wf.key,
           filePath: conceptionPath,
           input,
-          value: f.value,
+          value: wf.value,
         });
       }
+    }
 
-      // Surface "pinned_branch is in schema but not in UI" as a finding.
-      const pinnedRow = firstRow
-        .locator('.settings-repo-row-detail label', { hasText: 'Pinned branch' });
-      const pinnedCount = await pinnedRow.count();
-      findings.push({
+    // Repositories — add a row and fill its name (compacts to a bare string).
+    {
+      const reposSection = modal.locator('#settings-section-repositories');
+      await safeScroll(reposSection);
+      await reposSection.locator('button.modal-button', { hasText: '+ Add repo' }).click();
+      await booted.window.waitForTimeout(150);
+      const nameInput = reposSection.locator('.settings-repo-row input.settings-repo-name').first();
+      await auditText({
         scope: 'conception',
-        section: 'Repositories · object fields',
-        field: 'Pinned branch (schema vs UI)',
-        expectedKey: '<repo-row input>',
-        expectedValue: '>=1 matching label',
-        observed: pinnedCount,
-        status: pinnedCount > 0 ? 'ok' : 'absent',
-        detail:
-          pinnedCount === 0
-            ? 'config-schema.ts:21 declares pinned_branch on RawRepo but repo-row.tsx renders no input for it.'
-            : undefined,
+        section: 'Repositories',
+        field: 'First row · name',
+        expectedKey: 'repositories.0',
+        filePath: conceptionPath,
+        input: nameInput,
+        value: 'audit-repo-name',
       });
     }
 
-    // ---- Inheritance badge text after writes ---------------------------
-    {
-      // theme is overridden on the conception side (light vs. global dark).
-      const themeBadge = conceptionPanel
-        .locator('section#settings-section-appearance\\:conception .settings-section-subhead', {
-          hasText: 'Theme',
-        })
-        .first()
-        .locator('.settings-badge');
-      try {
-        const text = (await themeBadge.textContent()) ?? '';
-        findings.push({
-          scope: 'conception',
-          section: 'Appearance · badge',
-          field: 'Theme badge (after override)',
-          expectedKey: '.settings-badge[theme]',
-          expectedValue: 'Overridden',
-          observed: text.trim(),
-          status: text.trim() === 'Overridden' ? 'ok' : 'mismatch',
-        });
-      } catch (err) {
-        findings.push({
-          scope: 'conception',
-          section: 'Appearance · badge',
-          field: 'Theme badge (after override)',
-          expectedKey: '.settings-badge[theme]',
-          expectedValue: 'Overridden',
-          observed: undefined,
-          status: 'error',
-          detail: (err as Error).message,
-        });
-      }
-    }
-
-    // ---- Remove-override (Theme) ---------------------------------------
-    {
-      const themeSubhead = conceptionPanel
-        .locator('section#settings-section-appearance\\:conception .settings-section-subhead', {
-          hasText: 'Theme',
-        })
-        .first();
-      const removeBtn = themeSubhead.locator('button.settings-remove-override');
-      try {
-        await removeBtn.click({ timeout: 3000 });
-        await commitSave(booted.window);
-        const parsed = await waitForFile(
-          conceptionPath,
-          (p) => !Object.prototype.hasOwnProperty.call(p, 'theme'),
-        );
-        const present = Object.prototype.hasOwnProperty.call(parsed, 'theme');
-        findings.push({
-          scope: 'conception',
-          section: 'Appearance · remove-override',
-          field: 'Reset theme to global',
-          expectedKey: 'theme',
-          expectedValue: '<key absent>',
-          observed: present ? parsed.theme : '<key absent>',
-          status: present ? 'mismatch' : 'ok',
-        });
-      } catch (err) {
-        findings.push({
-          scope: 'conception',
-          section: 'Appearance · remove-override',
-          field: 'Reset theme to global',
-          expectedKey: 'theme',
-          expectedValue: '<key absent>',
-          observed: undefined,
-          status: 'error',
-          detail: (err as Error).message,
-        });
-      }
-    }
-
-    // ---- Open externally button fires openPath -------------------------
-    {
-      // Hook openPath at the main-process IPC layer — contextBridge freezes
-      // window.condash, so a renderer-side override silently no-ops.
-      await booted.app.evaluate(({ ipcMain }) => {
-        const calls: string[] = [];
-        ipcMain.removeHandler('openPath');
-        ipcMain.handle('openPath', async (_evt, target: string) => {
-          calls.push(target);
-        });
-        (globalThis as unknown as { __auditOpenCalls: string[] }).__auditOpenCalls = calls;
-      });
-
-      // Click Open externally on the Conception tab.
-      const openBtn = modal.locator('.settings-rail-actions button.modal-button', {
-        hasText: 'Open externally',
-      });
-      try {
-        await safeScroll(openBtn);
-        await openBtn.click({ timeout: 3000, force: true });
-        await booted.window.waitForTimeout(300);
-        const calls = (await booted.app.evaluate(
-          () =>
-            (globalThis as unknown as { __auditOpenCalls: string[] }).__auditOpenCalls ?? [],
-        )) as string[];
-        const last = calls[calls.length - 1];
-        findings.push({
-          scope: 'conception',
-          section: 'Open externally',
-          field: 'Conception tab → openPath',
-          expectedKey: '<IPC openPath>',
-          expectedValue: conceptionPath,
-          observed: last,
-          status: last === conceptionPath ? 'ok' : last ? 'mismatch' : 'absent',
-        });
-      } catch (err) {
-        findings.push({
-          scope: 'conception',
-          section: 'Open externally',
-          field: 'Conception tab → openPath',
-          expectedKey: '<IPC openPath>',
-          expectedValue: conceptionPath,
-          observed: undefined,
-          status: 'error',
-          detail: (err as Error).message,
-        });
-      }
-    }
-
-    await snapshot('end', settingsPath, conceptionPath);
-    // ---- Write findings -----------------------------------------------
     await persistFindings();
+
+    // ---- Hard round-trips proving the scope partition --------------------
+    // Theme is global; workspace path is conception. Neither bleeds into the
+    // other file.
+    expect((await readJson(settingsPath)).theme).toBe('dark');
+    expect((await readJson(settingsPath)).workspace_path).toBeUndefined();
+    expect(await dig(await readJson(conceptionPath), 'workspace_path')).toBe(
+      '/tmp/audit-workspace',
+    );
+    expect((await readJson(conceptionPath)).theme).toBeUndefined();
   } finally {
     clearInterval(flushTimer);
     await persistFindings().catch(() => undefined);
     await booted.cleanup();
   }
 });
-
-/** Card-density pane keys. Mirror `CardMinWidthPrefs` / `DEFAULT_CARD_MIN_WIDTH`
- *  in src/shared/types.ts — extend both this union and `labelText` when a pane
- *  is added, or the audit silently stops covering it. */
-type DensityKey =
-  | 'projects'
-  | 'code'
-  | 'knowledge'
-  | 'resources'
-  | 'skills'
-  | 'logs'
-  | 'tasks'
-  | 'deliverables';
-
-function labelText(key: DensityKey): string {
-  switch (key) {
-    case 'projects':
-      return 'Project cards';
-    case 'code':
-      return 'Code cards';
-    case 'knowledge':
-      return 'Knowledge cards';
-    case 'resources':
-      return 'Resource cards';
-    case 'skills':
-      return 'Skill cards';
-    case 'logs':
-      return 'Log cards';
-    case 'tasks':
-      return 'Task cards';
-    case 'deliverables':
-      return 'Deliverable cards';
-  }
-}

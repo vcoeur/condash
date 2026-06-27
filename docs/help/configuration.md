@@ -1,18 +1,20 @@
 # Configuration
 
 condash reads two JSON files. Both are optional — sensible defaults
-apply when keys are missing — and **both share the same schema**, so
-any workspace key can live in either file.
+apply when keys are missing — and the two have **disjoint schemas**, so
+every setting key lives in exactly one of them.
 
 | File | Where | Lifecycle |
 |---|---|---|
-| `settings.json` | `~/.config/condash/settings.json` (Linux) | Per-machine. Owns `lastConceptionPath` + `recentConceptionPaths` (cap 5) and global defaults for every other key. |
-| `.condash/settings.json` | `<conception>/.condash/settings.json` (legacy fallbacks `condash.json`, `configuration.json`) | Per-conception, **per-host** (gitignored by default). Carries overrides that win at top-level granularity. |
+| `settings.json` | `~/.config/condash/settings.json` (Linux) | Per-machine. Holds everything personal — appearance, terminal, launchers, open-with, the dashboard — plus `lastConceptionPath` + `recentConceptionPaths` (cap 5). |
+| `.condash/settings.json` | `<conception>/.condash/settings.json` (legacy fallbacks `condash.json`, `configuration.json`) | Per-conception, **per-host** (gitignored by default). Holds only this tree's `workspace_path`, `worktrees_path`, `repositories`, `retired_apps`, `taskConfig`. |
 
-**Override model**: top-level keys in `.condash/settings.json` replace the
-matching keys in `settings.json` entirely (arrays replace, objects replace
-whole, no deep merge). The only fields a conception cannot describe
-are `lastConceptionPath` and `recentConceptionPaths`.
+**Key ownership**: every setting has exactly one home — there is no
+override, inheritance, or merge. A key written to the wrong file is
+rejected by the strict schema; on conception open, condash's
+scope-partition migrator relocates any mis-homed key to its owning file.
+A conception cannot describe its own location, so `lastConceptionPath`
+and `recentConceptionPaths` are global-only.
 
 **Read precedence** for the per-conception file: `.condash/settings.json`
 (canonical) → `condash.json` (legacy) → `configuration.json` (legacy²).
@@ -29,19 +31,18 @@ writes always target `.condash/settings.json`.
     "condash",
     { "name": "myapp", "run": "make dev" },
     "conception"
-  ],
-  "open_with": {
-    "main_ide": { "label": "Open in IDE", "command": "code {path}" }
-  }
+  ]
 }
 ```
+
+Only the tree-shape keys are valid here — personal keys like `open_with`,
+`pdf_viewer`, and `terminal` belong to the global `settings.json`.
 
 | Key | Meaning |
 |---|---|
 | `workspace_path` | Where condash scans for git repos. |
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
 | `repositories` | Ordered list of repos to surface on the Code pane. Each entry is a string, a `{name, …}` object (optional `submodules`, `run`, `force_stop`, `label`, `install`, `env`, `pinned_branch`), or a `{"section": "<heading>"}` marker that groups every following repo under a header — see [Reference → Configuration → `repositories`](../reference/config.md#repositories) for the full table. |
-| `open_with` | Three launcher slots (`main_ide`, `secondary_ide`, `terminal`). `{path}` is replaced with the absolute target path. |
 
 The Skills pane (`<conception>/.agents/skills/`) and Resources pane
 (`<conception>/resources/`) read hard-coded folders — no override is
@@ -82,52 +83,43 @@ The first-launch folder picker writes `lastConceptionPath` for you and
 prepends the path to `recentConceptionPaths`. Theme follows the OS
 unless you set it explicitly via the toolbar toggle.
 
-Workspace keys (`workspace_path`, `worktrees_path`, `repositories`,
-`open_with`, `pdf_viewer`, …) are also valid in `settings.json` as
-global defaults. A conception's `.condash/settings.json` may override
-any of them per-tree.
+Personal keys (`terminal`, `theme`, `cardMinWidth`, `open_with`,
+`pdf_viewer`, `dashboard`, `agents`, …) live **only** in `settings.json`;
+the tree-shape keys (`workspace_path`, `worktrees_path`, `repositories`,
+`retired_apps`, `taskConfig`) live **only** in `.condash/settings.json`.
+A key in the wrong file is rejected (and relocated on the next conception
+open).
 
 ## Editing in the app
 
-**File → Settings…** (`Ctrl+,`) opens a full-viewport modal with a
-two-tab layout. There is no in-modal JSON editor — each preference has
-its own form control.
+**File → Settings…** (`Ctrl+,`) opens a full-viewport modal — one
+scrolling surface, no tabs, no in-modal JSON editor (each preference has
+its own form control). The left rail groups the sections under two scope
+headers, one per file, and each section carries a **scope chip** naming
+the file it writes.
 
-**Global** tab (writes to `settings.json`):
+**Personal · this machine** (writes `settings.json`):
 
-- **Recent conception paths** — manage the recents list backing
+- **Recent conceptions** — manage the recents list backing
   **File → Open Recent**.
 - **Appearance** — theme; per-pane card-grid min-widths.
 - **Terminal** — embedded terminal preferences.
-
-**This conception** tab (writes to `.condash/settings.json`; the
-legacy `condash.json` and `configuration.json` are read but never
-written to):
-
-- **Workspace** — `workspace_path`, `worktrees_path`.
-- **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
+- **Launchers** — the `agents` list.
 - **Open with** — slot labels and commands.
-- **Appearance** — theme + card-grid min-widths overridden for this
-  conception only.
-- **Terminal** — `terminal` block overridden for this conception only.
+- **Dashboard** — live tab-summarization config (incl. the secret `apiKey`).
 
-Inheritance badges on the **This conception** tab call out where each
-top-level key sits relative to the global value:
+**This conception** (writes `.condash/settings.json`; the legacy
+`condash.json` and `configuration.json` are read but never written to):
 
-- **Inherits** — no override in `.condash/settings.json`. The effective
-  value is whatever `settings.json` (or the bundled default) provides.
-  Editing the field on this tab writes the override.
-- **Overridden** — `.condash/settings.json` sets the key to a value that
-  differs from `settings.json`. A **Reset to global** button drops the
-  override and falls back to inheritance.
-- **Matches global** — `.condash/settings.json` carries the key but the
-  value matches `settings.json` exactly. The override is redundant; a
-  **Remove override** button clears the line so the key inherits.
+- **Workspace & paths** — `workspace_path`, `worktrees_path`.
+- **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 
-The rail at the left of the modal carries **Save** (flush focused-but-
-unblurred edits) and **Open externally** (open the active tab's file
-in your `$EDITOR`). Modal writes round-trip through the same atomic
-save + schema-validation path the CLI uses, either way.
+Because every setting has exactly one home, there are no inheritance
+badges, no override state, and no **Reset to global** buttons — that
+machinery was removed with the scope-partition revamp. A small **dirty
+pip** next to a section flags unsaved edits; **Save** flushes every
+staged draft and **Discard** drops them. Each draft round-trips through
+the same atomic save + schema-validation path the CLI uses.
 
 ## File → Open Recent
 
@@ -145,12 +137,12 @@ The `condash config` verbs read and write the same files:
 condash config path                       # show both file paths
 condash config list                       # show .condash/settings.json
 condash config list --global              # show settings.json
-condash config list --effective           # show merged view (conception ⊕ global)
-condash config get repositories[0]        # query the conception layer
-condash config get theme --effective      # query the merged view
+condash config list --effective           # combined read view (both files)
+condash config get repositories[0]        # query the conception file
+condash config get theme --effective      # theme is a personal key — read the combined view
 condash config get theme --global         # query settings.json
-condash config set theme dark             # write to .condash/settings.json
-condash config set theme dark --global    # write to settings.json
+condash config set workspace_path /src    # auto-routed to .condash/settings.json (tree key)
+condash config set theme dark             # auto-routed to settings.json (personal key)
 ```
 
 ## When changes apply

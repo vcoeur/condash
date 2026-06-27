@@ -1,13 +1,12 @@
 import { createResource, createSignal, For, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
+import { SectionShell } from './section-shell';
 
 /**
- * Per-machine list of recently-opened conception paths, displayed on the
- * Global tab. Each row shows the basename + dimmed parent path, plus an
- * inline "Remove" button. A "Clear all" button at the foot drops the
- * whole list. Reactivity: re-fetched whenever `version` changes — the
- * component bumps it on every successful mutation so the list refreshes
- * without a full modal reload.
+ * Per-machine list of recently-opened conception paths (Personal group). Each
+ * row shows the path plus an inline "Remove" button; "Clear all" drops the
+ * whole list. Re-fetched whenever `version` changes — bumped on every
+ * successful mutation so the list refreshes without a full modal reload.
  */
 export function RecentConceptionsSection(): JSX.Element {
   const [version, setVersion] = createSignal(0);
@@ -28,12 +27,17 @@ export function RecentConceptionsSection(): JSX.Element {
   };
 
   return (
-    <section id="settings-section-recents:global" class="settings-section">
-      <h2>Recent conception paths</h2>
-      <p class="settings-section-hint">
-        Newest first. Drives the File → Open Recent submenu. Removing a path here also removes it
-        from the menu — your active conception is unaffected.
-      </p>
+    <SectionShell
+      id="recents"
+      title="Recent conceptions"
+      scope="global"
+      hint={
+        <p class="settings-section-hint">
+          Newest first. Drives the File → Open Recent submenu. Removing a path here also removes it
+          from the menu — your active conception is unaffected.
+        </p>
+      }
+    >
       <Show
         when={(recents() ?? []).length > 0}
         fallback={
@@ -76,6 +80,6 @@ export function RecentConceptionsSection(): JSX.Element {
           </button>
         </div>
       </Show>
-    </section>
+    </SectionShell>
   );
 }

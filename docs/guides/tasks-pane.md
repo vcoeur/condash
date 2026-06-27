@@ -93,7 +93,7 @@ Click **+ New task**, or **click a task card** to open the **editor popup** for 
 
 The editor carries **Save** / **Cancel** and, for an existing task, a **Delete** button that asks for confirmation first. Renaming the slug moves the task directory.
 
-The **Schedule**, **Run mode**, **Run timeout**, **Only run when a tab changed**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception may override it in `condash.json`). Clearing them all removes the entry.
+The **Schedule**, **Run mode**, **Run timeout**, **Only run when a tab changed**, and **Keep out of logs** fields are *not* stored in `task.json` (which stays `name` + `agent`); they live under a `taskConfig` map keyed by slug in `.condash/settings.json` (a conception-owned key — `taskConfig` describes this tree's tasks and lives nowhere else). Clearing them all removes the entry.
 
 ## Schedule a task
 

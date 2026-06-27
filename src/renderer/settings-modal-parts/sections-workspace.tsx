@@ -1,10 +1,8 @@
 /**
- * Workspace section of the Settings modal — conception tab only.
- *
- * Two FieldWithBadge inputs over the two conception-side path keys:
- * `workspace_path`, `worktrees_path`. The Resources pane (always
- * `<root>/resources/`) and the Skills pane (always `<root>/.agents/skills/`)
- * are hard-coded post-reframe — no override rows for either.
+ * Workspace section of the Settings modal — a per-conception setting (writes
+ * `.condash/settings.json`). Two path inputs over `workspace_path` and
+ * `worktrees_path`. The Resources pane (always `<root>/resources/`) and the
+ * Skills pane (always `<root>/.agents/skills/`) are hard-coded post-reframe.
  */
 
 import { type JSX } from 'solid-js';
@@ -16,41 +14,40 @@ import {
   WORKTREES_PLACEHOLDER,
   pick,
 } from './data';
-import { FieldWithBadge } from './fields';
-import type { InheritanceState } from './badges';
+import { LabeledField } from './fields';
+import { SectionShell } from './section-shell';
 
 interface WorkspaceSectionProps {
   bindText: BindTextFn;
   parsed: () => RawConfig;
-  stateOf: <K extends keyof RawConfig>(key: K) => InheritanceState;
-  removeOverride: <K extends keyof RawConfig>(key: K) => Promise<void>;
-  patchConfig: (mutator: (config: RawConfig) => void) => Promise<void>;
+  patch: (mutator: (config: RawConfig) => void) => Promise<void>;
   platform: () => Platform | undefined;
 }
 
 export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
   const setWorkspacePath = (value: string): Promise<void> =>
-    props.patchConfig((c) => {
+    props.patch((c) => {
       c.workspace_path = value || undefined;
     });
 
   const setWorktreesPath = (value: string): Promise<void> =>
-    props.patchConfig((c) => {
+    props.patch((c) => {
       c.worktrees_path = value || undefined;
     });
 
   return (
-    <section id="settings-section-workspace:conception" class="settings-section">
-      <div class="settings-section-head">
-        <h2>Workspace</h2>
-      </div>
+    <SectionShell
+      id="workspace"
+      title="Workspace & paths"
+      scope="conception"
+      hint={
+        <p class="settings-section-hint">
+          Where this conception's repositories and worktrees live on this machine.
+        </p>
+      }
+    >
       <div class="settings-grid settings-grid--wide">
-        <FieldWithBadge
-          label="Workspace path"
-          pathScope="abs"
-          state={props.stateOf('workspace_path')}
-          onRemove={() => void props.removeOverride('workspace_path')}
-        >
+        <LabeledField label="Workspace path" pathScope="abs">
           <input
             type="text"
             placeholder={pick(WORKSPACE_PLACEHOLDER, props.platform())}
@@ -60,13 +57,8 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
               setWorkspacePath,
             )}
           />
-        </FieldWithBadge>
-        <FieldWithBadge
-          label="Worktrees path"
-          pathScope="abs"
-          state={props.stateOf('worktrees_path')}
-          onRemove={() => void props.removeOverride('worktrees_path')}
-        >
+        </LabeledField>
+        <LabeledField label="Worktrees path" pathScope="abs">
           <input
             type="text"
             placeholder={pick(WORKTREES_PLACEHOLDER, props.platform())}
@@ -76,8 +68,8 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
               setWorktreesPath,
             )}
           />
-        </FieldWithBadge>
+        </LabeledField>
       </div>
-    </section>
+    </SectionShell>
   );
 }

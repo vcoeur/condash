@@ -128,7 +128,7 @@ export async function runConfig(
     return;
   }
   if (verb === 'set') {
-    const writeGlobal = takeBoolFlag(args, 'global');
+    const explicitGlobal = takeBoolFlag(args, 'global');
     assertNoExtraFlags(args, NOUN_FLAGS);
     const key = args.positional[0];
     const value = args.positional[1];
@@ -149,6 +149,26 @@ export async function runConfig(
       } catch {
         parsedValue = value;
       }
+    }
+    // Route to the file that owns this key. Each setting lives in exactly one
+    // scope (`SCOPE_OF`); the target is derived from the dotted path's first
+    // segment, so `--global` is no longer needed for personal keys. When the
+    // key is owned by the conception, `--global` is a contradiction and errs;
+    // an unrecognised key (typo, or a `$schema_doc` doc field) honours the
+    // explicit flag, defaulting to the conception file.
+    const { SCOPE_OF } = await import('../../main/config-schema');
+    const topKey = topLevelKeyOf(key);
+    const owned = SCOPE_OF[topKey];
+    let writeGlobal: boolean;
+    if (owned === undefined) {
+      writeGlobal = explicitGlobal;
+    } else if (owned === 'conception' && explicitGlobal) {
+      throw new CliError(
+        ExitCodes.USAGE,
+        `${topKey} is a per-conception setting — it lives in .condash/settings.json. Drop --global.`,
+      );
+    } else {
+      writeGlobal = owned === 'global';
     }
     let written: Record<string, unknown> = {};
     if (writeGlobal) {
@@ -208,6 +228,14 @@ export async function runConfig(
     return;
   }
   throw new CliError(ExitCodes.USAGE, `Unknown config verb: ${verb}`);
+}
+
+/** The top-level key a dotted path addresses — the segment before the first
+ *  `.` or `[`. `terminal.logging.enabled` → `terminal`; `repositories[0].path`
+ *  → `repositories`. Used to look the key up in `SCOPE_OF`. */
+function topLevelKeyOf(dotted: string): string {
+  const match = /^[^.[]+/.exec(dotted);
+  return match ? match[0] : dotted;
 }
 
 /**
@@ -320,20 +348,24 @@ function printHelp(verb: string | null): void {
     case 'set':
       process.stdout.write(
         renderHelp([
-          'condash config set <key> <value> [--global]',
+          'condash config set <key> <value>',
           '',
           'Write one config key. Value is parsed as JSON when it looks like one,',
-          'otherwise treated as a literal string. Default target: .condash/settings.json.',
+          'otherwise treated as a literal string.',
           '',
-          'Optional:',
-          '  --global   Write to ~/.config/condash/settings.json instead.',
+          'The target file is chosen automatically by the key: personal settings',
+          '(terminal, theme, dashboard, open_with, agents, …) write the global',
+          '~/.config/condash/settings.json; this-tree settings (workspace_path,',
+          'worktrees_path, repositories, retired_apps, taskConfig) write the',
+          "conception's .condash/settings.json. --global is rejected for a",
+          'conception-owned key.',
           '',
           'Note: array-index segments (repositories[0].path) are read-only —',
           'set the whole array as a JSON value instead.',
           '',
           'Examples:',
           '  condash config set workspace_path /home/me/src',
-          '  condash config set terminal.logging.retentionDays 30 --global',
+          '  condash config set terminal.logging.retentionDays 30',
         ]),
       );
       return;

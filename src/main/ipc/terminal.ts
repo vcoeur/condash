@@ -14,15 +14,16 @@ import {
 import { latestScreenshot } from '../screenshot';
 import { requireScreenshotDir } from '../path-bounds';
 import { readSettings } from '../settings';
-import { conceptionConfigSchema } from '../config-schema';
+import { globalSettingsSchema } from '../config-schema';
 import type { TermSpawnRequest } from '../../shared/types';
 import { requireMainWindowSender } from './utils';
 
 // The `terminal` block of the config schema — the same zod shape
 // `settings.json` is validated with, reused here so a renderer-supplied
 // prefs patch can't persist arbitrary keys (or non-string `shell`, which
-// later feeds the pty program) into settings.json.
-const terminalPrefsSchema = conceptionConfigSchema.shape.terminal;
+// later feeds the pty program) into settings.json. `terminal` is a global
+// (per-machine) key, so it comes from the global schema.
+const terminalPrefsSchema = globalSettingsSchema.shape.terminal;
 
 /** Wire every term.* IPC handler. Called once from main entry. */
 export function registerTerminalIpc(): void {

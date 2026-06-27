@@ -31,13 +31,12 @@ test('Settings: + Add section appends a section marker to condash.json', async (
 
     const modal = booted.window.locator('.settings-modal');
     await expect(modal).toBeVisible();
-    await modal.locator('[role="tab"]').nth(1).click(); // conception tab
-    const conceptionPanel = modal.locator('#settings-panel-conception');
-    await expect(conceptionPanel).toBeVisible();
 
-    const reposSection = conceptionPanel.locator(
-      'section#settings-section-repositories\\:conception',
-    );
+    // The revamped modal renders every section on one scrolling surface — no
+    // tab to switch to. Repositories lives under "This conception" with a flat
+    // id; scroll it into view before driving its controls.
+    const reposSection = modal.locator('section#settings-section-repositories');
+    await reposSection.scrollIntoViewIfNeeded();
     const addSectionBtn = reposSection.locator('button.modal-button', {
       hasText: '+ Add section',
     });

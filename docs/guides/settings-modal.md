@@ -1,6 +1,6 @@
 ---
 title: The Settings modal · condash guide
-description: Where condash keeps its configuration — the two-tab modal, what each section writes, and how per-conception overrides inherit from your per-machine defaults.
+description: Where condash keeps its configuration — one scrolling modal, two files with disjoint schemas, and which setting lives where.
 ---
 
 # The Settings modal
@@ -11,48 +11,45 @@ description: Where condash keeps its configuration — the two-tab modal, what e
 
 Open it from **File → Settings** (or `Ctrl+,`). It's a full-viewport modal, not a popover. Everything it edits is plain JSON on disk — the modal is a convenience over the same two files documented in **[Config files](../reference/config.md)**; nothing here is exclusive to the UI.
 
-## Two tabs, two files
+## One modal, two files
 
-The modal has exactly two tabs, and the tab you're on decides **which file** your edits land in:
+There are no tabs. The modal is a single scrolling surface; the left rail groups its sections under two scope headers, one per file. **Every setting has exactly one home** — the two files have disjoint schemas, so a setting is never in both, and there is nothing to override or inherit. The scope header decides **which file** the sections under it write to:
 
-| Tab | Writes to | Holds |
+| Scope group | Writes to | Holds |
 |-----|-----------|-------|
-| **Global** | `settings.json` in the OS user-data directory (per-machine) | Your machine-wide defaults + the active conception path and recents list. |
-| **This conception** | `<conception>/.condash/settings.json` (per-tree, per-host) | Overrides for *this* conception only. |
+| **Personal · this machine** | `settings.json` in the OS user-data directory (per-machine) | Everything personal to you and this machine — appearance, terminal, launchers, open-with, the dashboard — plus the active conception path and recents list. |
+| **This conception** | `<conception>/.condash/settings.json` (per-tree, per-host) | Only what describes *this* tree: its workspace / worktree paths, its repo list, and its task config. |
 
-Both files share the **same schema**. The active conception path and the recents list are Global-only — they describe your machine, not any one tree.
+Each section also carries a **scope chip** naming the file it writes. The active conception path and the recents list are personal-only — they describe your machine, not any one tree.
 
 ## Which sections live where
 
-The left rail lists the sections of the current tab:
+The left rail lists every section once, under its scope group:
 
-- **Global** — Recent conceptions · Appearance · Terminal · Agents
-- **This conception** — Workspace · Repositories · Open with · Appearance · Terminal · Agents
+- **Personal · this machine** — Recent conceptions · Appearance · Terminal · Launchers · Open with · Dashboard
+- **This conception** — Workspace & paths · Repositories
 
-Three sections — **Appearance**, **Terminal**, **Agents** — appear on *both* tabs. Those are the **inheritable** ones: set a default on Global, override it per tree on This conception. The conception-only sections (Workspace, Repositories, Open with) appear on This conception because overriding them per machine makes no sense.
-
-| Section | Tab(s) | Config key(s) | Guide |
-|---------|--------|---------------|-------|
-| Recent conceptions | Global | *(managed outside the file)* | [Configure the conception path](configure-conception-path.md) |
-| Workspace | This conception | `workspace_path`, `worktrees_path` | [Repositories and open-with buttons](repositories-and-open-with.md) |
+| Section | Scope group | Config key(s) | Guide |
+|---------|-------------|---------------|-------|
+| Recent conceptions | Personal | *(managed outside the file)* | [Configure the conception path](configure-conception-path.md) |
+| Appearance | Personal | `theme`, `cardMinWidth` | — |
+| Terminal | Personal | `terminal` | [Embedded terminal](terminal.md) |
+| Launchers | Personal | `agents` | [Agent CLIs and model providers](agent-clis-and-models.md) |
+| Open with | Personal | `open_with` | [Repositories and open-with buttons](repositories-and-open-with.md) |
+| Dashboard | Personal | `dashboard` | [Config files → Dashboard](../reference/config.md#dashboard) |
+| Workspace & paths | This conception | `workspace_path`, `worktrees_path` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 | Repositories | This conception | `repositories` | [Repositories and open-with buttons](repositories-and-open-with.md) |
-| Open with | This conception | `open_with` | [Repositories and open-with buttons](repositories-and-open-with.md) |
-| Appearance | Both | `theme`, `cardMinWidth` | — |
-| Terminal | Both | `terminal` | [Embedded terminal](terminal.md) |
-| Agents | Both | `agents` | [Agent CLIs and model providers](agent-clis-and-models.md) |
 
 App identity (`#handle`, `retired_apps`, `aliases`) is edited inline in the **Repositories** section — see **[Applications and handles](applications-and-handles.md)**.
 
-## How inheritance works
+## One home per setting — no inheritance
 
-For an inheritable key, the rule is **top-level replace**: if This conception sets the key, its value replaces the Global value wholesale — arrays replace arrays, objects replace objects, no deep merge. The one documented exception is `terminal`, which merges one level deep so a conception that customises `terminal.logging` keeps your per-machine `terminal.screenshot_dir` and shortcuts (see [Config files → terminal](../reference/config.md#terminal)).
+Because the two files have disjoint schemas, there is no override and no inheritance: a setting reads from its one owning file, full stop. There are no inheritance badges, no **Reset to global** buttons, and no per-conception diff view — all of that went away with the scope-partition revamp. A setting written to the wrong file by an older condash is relocated to its owning file automatically the next time you open the conception (see [Config files → Scope-partition migration](../reference/config.md#scope-partition-migrator)).
 
-On the **This conception** tab, each inheritable control carries a badge telling you whether the value is **inherited** from Global or **overridden** here. A per-conception diff view collapses the sections that fully inherit, so you see at a glance what this tree actually changes.
-
-A small **dirty pip** next to a section label means you have unsaved edits in it. The modal remembers the last tab and section you were on, so reopening lands you where you left off.
+A small **dirty pip** next to a section label means that section has unsaved edits. Stage as many edits as you like across both files, then **Save** to flush them to disk (each file through its own atomic CAS write) or **Discard** to drop them. The rail highlights whichever section is currently in view as you scroll.
 
 ## What it does *not* edit
 
-Layout state (`leftView`, branch filters, tree-expansion), the welcome-screen dismissal, and the recents list are written by the app as you use it — they live in the same files but have no Settings section. For the exhaustive key list, see **[Config files → All config keys](../reference/config.md#all-config-keys)**.
+Layout state (`leftView`, branch filters, tree-expansion), the welcome-screen dismissal, and the recents list are written by the app as you use it — they live in `settings.json` but have no Settings section. For the exhaustive key list, see **[Config files → All config keys](../reference/config.md#all-config-keys)**.
 
-→ Prefer editing the JSON directly? Every key, with defaults and the override model, is in **[Config files](../reference/config.md)**.
+→ Prefer editing the JSON directly? Every key, with defaults and which file owns it, is in **[Config files](../reference/config.md)**.

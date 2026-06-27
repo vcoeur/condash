@@ -21,7 +21,6 @@ import {
   TERMINAL_STRING_FIELDS,
   THEME_OPTIONS,
 } from './data';
-import { FieldBadgeRow, type InheritanceState } from './badges';
 
 // --- Search context ---------------------------------------------------
 
@@ -131,14 +130,10 @@ export function Subgroup(props: {
   );
 }
 
-/** Field row that pairs a labelled control with an inheritance badge.
- *  Used on the conception tab; pass `state="inherits"` and `hide` from the
- *  global tab if it ever needs the same shape. */
-export function FieldWithBadge(props: {
+/** Labelled control row with an optional `[abs]`/`[rel]` path chip. */
+export function LabeledField(props: {
   label: string;
   hint?: string;
-  state: InheritanceState;
-  onRemove: () => void;
   /** Path-scope tag: 'abs' shows an [abs] chip, 'rel' shows [rel]. Omit
    *  for non-path fields. */
   pathScope?: 'abs' | 'rel';
@@ -161,7 +156,6 @@ export function FieldWithBadge(props: {
             )}
           </Show>
         </span>
-        <FieldBadgeRow state={props.state} onRemove={props.onRemove} />
       </span>
       {props.children}
       <Show when={props.hint}>

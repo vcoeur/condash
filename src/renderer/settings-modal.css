@@ -62,71 +62,6 @@
   font-size: var(--text-sm);
 }
 
-/* Tab strip — switches between the Global panel and the This-conception
- * panel. Lives between the modal header and the settings-shell rail/scroll
- * row. ARIA tablist semantics; arrow-key nav handled in JS. */
-.settings-tablist {
-  flex-shrink: 0;
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-  padding: 0 16px;
-}
-
-.settings-tab {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 10px 16px 8px;
-  margin: 0;
-  color: var(--text-muted);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  transition:
-    color 0.08s ease,
-    border-color 0.08s ease;
-}
-
-.settings-tab:hover {
-  color: var(--text);
-}
-
-.settings-tab.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.settings-tab-label {
-  font-family: var(--font-display);
-  font-size: var(--text-md);
-  font-weight: 600;
-  letter-spacing: -0.005em;
-}
-
-.settings-tab-file {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  color: var(--text-faint);
-}
-
-.settings-tab.active .settings-tab-file {
-  color: var(--text-muted);
-}
-
-.settings-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  border-radius: 4px;
-}
-
 .settings-shell {
   flex: 1;
   min-height: 0;
@@ -154,43 +89,6 @@
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
-}
-
-.settings-rail-group-heading {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 14px 6px;
-}
-
-.settings-rail-group-label {
-  font-family: var(--font-ui);
-  font-size: var(--text-3xs);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-.settings-rail-group-heading code {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-  color: var(--text-muted);
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-/* Brief context paragraph rendered above the rail's section list — tells
- * the user which file the active tab edits. Replaces the per-group heading
- * row that lived inside the scroll viewport in v2.15.0. */
-.settings-rail-hint {
-  margin: 0 14px 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  line-height: 1.4;
 }
 
 .settings-rail-actions {
@@ -260,6 +158,35 @@
   border-left-color: var(--accent);
 }
 
+/* Grouped rail: one header per scope (Personal / This conception). The header
+ * label carries the scope colour so the two lanes read as two files. */
+.settings-rail-group-head {
+  margin: 0;
+  padding: 2px 14px 6px 22px;
+  font-family: var(--font-ui);
+  font-size: var(--text-3xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.settings-rail-group[data-scope='global'] .settings-rail-group-head {
+  color: var(--scope-global);
+}
+.settings-rail-group[data-scope='conception'] .settings-rail-group-head {
+  color: var(--scope-conception);
+}
+
+/* Scope colours — the one legend the eye learns once. Indigo accent for
+ * Personal, project-green for This conception. */
+.settings-modal {
+  --scope-global: var(--accent);
+  --scope-conception: var(--kind-project);
+}
+[data-theme='dark'] .settings-modal {
+  /* Lift the project green off the dark background for legible chip text. */
+  --scope-conception: #5fae84;
+}
+
 .settings-scroll {
   flex: 1;
   min-width: 0;
@@ -276,93 +203,25 @@
   max-width: 1200px;
 }
 
-.settings-group-divider {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 18px 18px 12px;
-  margin: 28px 0 16px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  position: relative;
-}
-
-.settings-group-divider::before {
-  content: '';
-  position: absolute;
-  left: -28px;
-  right: 0;
-  top: -16px;
-  height: 1px;
-  background: var(--border);
-}
-
-.settings-group-divider:first-of-type {
-  margin-top: 0;
-}
-
-.settings-group-divider:first-of-type::before {
-  display: none;
-}
-
-.settings-group-divider h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  letter-spacing: -0.005em;
-  color: var(--text);
-  text-transform: none;
-}
-
-.settings-group-divider code {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--bg-subtle);
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-.settings-group-divider-hint {
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  flex-basis: 100%;
-}
-
-.settings-group-divider-actions {
-  display: inline-flex;
-  gap: 6px;
-  margin-left: auto;
-  align-items: center;
-}
-
-/* Tabpanel — wraps every section in one tab. Both stay mounted (so
- * drafts and scroll position survive a tab switch); the inactive panel
- * is `display: none`-hidden via the modifier class. */
-.settings-tabpanel {
-  display: block;
-}
-
-.settings-tabpanel--hidden {
-  display: none;
-}
-
 .settings-section {
-  padding: 8px 0 32px;
+  padding: 8px 0 32px 16px;
   border-bottom: 1px solid var(--border);
+  border-left: 2px solid transparent;
   scroll-margin-top: 16px;
 }
 
-/* Section heading row that hosts h2 + badge group on the same line. Used
- * on the conception tab where each top-level key carries a visible
- * inheritance badge. */
+/* Per-scope left-edge accent: each section sits in its file's colour lane. */
+.settings-section[data-scope='global'] {
+  border-left-color: color-mix(in srgb, var(--scope-global) 45%, transparent);
+}
+.settings-section[data-scope='conception'] {
+  border-left-color: color-mix(in srgb, var(--scope-conception) 50%, transparent);
+}
+
+/* Section heading row: title on the left, scope chip pushed to the right. */
 .settings-section-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 10px;
@@ -370,18 +229,37 @@
 
 .settings-section-head h2 {
   margin: 0;
+  flex: 1;
 }
 
-.settings-section-subhead {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 18px 0 8px;
+/* Scope chip — names the file a section writes to. */
+.settings-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  white-space: nowrap;
 }
-
-.settings-section-subhead h3 {
-  margin: 0;
+.settings-scope-chip-mark {
+  font-size: var(--text-3xs);
+  line-height: 1;
+}
+.settings-scope-chip--global {
+  color: var(--scope-global);
+  background: color-mix(in srgb, var(--scope-global) 12%, transparent);
+  border-color: color-mix(in srgb, var(--scope-global) 28%, transparent);
+}
+.settings-scope-chip--conception {
+  color: var(--scope-conception);
+  background: color-mix(in srgb, var(--scope-conception) 14%, transparent);
+  border-color: color-mix(in srgb, var(--scope-conception) 32%, transparent);
 }
 
 .settings-section-hint {
@@ -671,12 +549,10 @@
  * variant — `.modal-button` defaults to a 32 × 32 icon square (note-modal
  * head action), which clips multi-word labels like "+ with run / label". */
 .settings-modal--full .settings-list-actions .modal-button,
-.settings-modal--full .settings-group-divider-actions .modal-button,
 .settings-modal--full .settings-rail-actions .modal-button,
 .settings-modal--full .settings-recents-row .modal-button,
 .settings-modal--full .settings-recents-actions .modal-button,
-.settings-modal--full .settings-conception-path .modal-button,
-.settings-modal--full .settings-field-badges .modal-button {
+.settings-modal--full .settings-conception-path .modal-button {
   width: auto;
   height: auto;
   padding: 5px 12px;
@@ -787,71 +663,8 @@
 
 /* ---- Inheritance badges (conception tab) ------------------------------- */
 
-/* Pill rendered next to a top-level key's editor on the conception tab.
- * Three variants — neutral / accent / warning — driven by classList from
- * the `inheritanceState` helper. */
-.settings-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  font-family: var(--font-ui);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1.4;
-  white-space: nowrap;
-  text-transform: uppercase;
-}
-
-.settings-badge--inherits {
-  color: var(--text-muted);
-  border-color: var(--border);
-  background: var(--bg-subtle);
-}
-
-.settings-badge--overridden {
-  color: #044a26;
-  background: #d1f5dd;
-  border-color: #6dcf94;
-}
-
-.settings-badge--matches {
-  color: #6a4a06;
-  background: #fff1c8;
-  border-color: #e6c66a;
-}
-
-[data-theme='dark'] .settings-badge--overridden {
-  color: #c2efd2;
-  background: rgba(34, 102, 64, 0.4);
-  border-color: rgba(120, 200, 150, 0.55);
-}
-
-[data-theme='dark'] .settings-badge--matches {
-  color: #f0d9a8;
-  background: rgba(120, 92, 28, 0.45);
-  border-color: rgba(220, 180, 90, 0.55);
-}
-
-/* Container for the badge plus the optional Remove-override button. Used
- * inside section-head rows AND inside FieldWithBadge. */
-.settings-field-badges {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.settings-remove-override {
-  font-size: var(--text-2xs);
-  padding: 2px 8px;
-}
-
-/* Field row holding label + badges on one line above the input. Used for
- * per-field badges on the conception tab (workspace paths, etc.). */
+/* Field row holding a label on one line above the input. Used for the
+ * workspace path fields. */
 .settings-field-with-badge {
   display: flex;
   flex-direction: column;
@@ -1398,15 +1211,6 @@
 .settings-repo-row--drop-target {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-
-/* ---- Diff view toggle (G1) ----------------------------------------- */
-
-/* Overrides-only toggle is a framework .btn (size sm) with .btn--active for
- * its pressed state; see settings-modal.tsx. */
-
-.settings-modal[data-diff-only='true'] .settings-section-frame[data-section-state='inherits'] {
-  display: none;
 }
 
 /* ---- Recents: click-to-open --------------------------------------- */

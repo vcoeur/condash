@@ -3,6 +3,7 @@ import {
   conceptionConfigSchema as configSchema,
   globalSettingsSchema,
   migrateRawSettings,
+  SCOPE_OF,
   validateAndCanonicaliseConceptionConfig,
   validateAndCanonicaliseGlobalSettings,
 } from './config-schema';
@@ -99,9 +100,10 @@ describe('configSchema repoEntry', () => {
   });
 });
 
-describe('configSchema agents', () => {
+describe('globalSettings agents', () => {
+  // `agents` is a global-only key now — the conception schema rejects it.
   it('accepts the optional favorite + promptFlags flags', () => {
-    const result = configSchema.safeParse({
+    const result = globalSettingsSchema.safeParse({
       agents: [
         { id: 'claude', label: 'Claude', command: 'claude', favorite: true },
         { id: 'kimi', label: 'Kimi', command: 'claude-kimi', promptFlags: true },
@@ -116,14 +118,22 @@ describe('configSchema agents', () => {
   });
 
   it('rejects an unknown agent field (strict)', () => {
-    const result = configSchema.safeParse({
+    const result = globalSettingsSchema.safeParse({
       agents: [{ id: 'claude', label: 'Claude', command: 'claude', favourite: true }],
     });
     expect(result.success).toBe(false);
   });
 
-  it('round-trips favorite through the conception canonicaliser', () => {
-    const canon = validateAndCanonicaliseConceptionConfig(
+  it('is a global-only key — the conception schema rejects it', () => {
+    expect(
+      configSchema.safeParse({
+        agents: [{ id: 'claude', label: 'Claude', command: 'claude' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('round-trips favorite through the global canonicaliser', () => {
+    const canon = validateAndCanonicaliseGlobalSettings(
       JSON.stringify({
         agents: [{ id: 'claude', label: 'Claude', command: 'claude', favorite: true }],
       }),
@@ -188,9 +198,9 @@ describe('configSchema taskConfig (capability 1)', () => {
     );
   });
 
-  it('is accepted by the global settings schema too (shared field)', () => {
+  it('is a conception-only key — the global settings schema rejects it', () => {
     expect(globalSettingsSchema.safeParse({ taskConfig: { x: { schedule: '30s' } } }).success).toBe(
-      true,
+      false,
     );
   });
 });
@@ -207,26 +217,29 @@ describe('configSchema dashboard', () => {
     historyLimit: 20,
   };
 
-  it('accepts a full dashboard block on both schemas', () => {
-    expect(configSchema.safeParse({ dashboard }).success).toBe(true);
+  it('accepts a full dashboard block on the global schema and rejects it on the conception one', () => {
+    // `dashboard` is global-only now (the `apiKey` secret keeps it per-machine).
     expect(globalSettingsSchema.safeParse({ dashboard }).success).toBe(true);
+    expect(configSchema.safeParse({ dashboard }).success).toBe(false);
   });
 
   it('accepts an empty dashboard block (all fields optional)', () => {
-    expect(configSchema.safeParse({ dashboard: {} }).success).toBe(true);
+    expect(globalSettingsSchema.safeParse({ dashboard: {} }).success).toBe(true);
   });
 
   it('rejects an unknown provider', () => {
-    expect(configSchema.safeParse({ dashboard: { provider: 'openai' } }).success).toBe(false);
+    expect(globalSettingsSchema.safeParse({ dashboard: { provider: 'openai' } }).success).toBe(
+      false,
+    );
   });
 
   it('rejects an unknown dashboard field (strict)', () => {
-    expect(configSchema.safeParse({ dashboard: { secret: 'x' } }).success).toBe(false);
+    expect(globalSettingsSchema.safeParse({ dashboard: { secret: 'x' } }).success).toBe(false);
   });
 
   it('rejects a non-integer / non-positive intervalSec', () => {
-    expect(configSchema.safeParse({ dashboard: { intervalSec: 1.5 } }).success).toBe(false);
-    expect(configSchema.safeParse({ dashboard: { intervalSec: 0 } }).success).toBe(false);
+    expect(globalSettingsSchema.safeParse({ dashboard: { intervalSec: 1.5 } }).success).toBe(false);
+    expect(globalSettingsSchema.safeParse({ dashboard: { intervalSec: 0 } }).success).toBe(false);
   });
 
   it('round-trips the dashboard block through the global canonicaliser', () => {
@@ -273,19 +286,21 @@ describe('migrateRawSettings — defunct top-level keys', () => {
   });
 
   it('lets a conception save round-trip a legacy resources_path / skills_path body', () => {
-    // Reproduces the reported failure: editing agents on the conception tab
-    // canonicalises `.condash/settings.json`, which carried these two keys.
+    // Reproduces the reported failure: editing the conception tab canonicalises
+    // `.condash/settings.json`, which carried these two defunct keys alongside
+    // live conception-owned keys.
     const json = JSON.stringify({
       workspace_path: '/home/alice/src/vcoeur',
       resources_path: 'resources',
       skills_path: '.claude/skills',
-      agents: [{ id: 'claude', label: 'Claude', command: 'agedum claude', promptFlags: true }],
+      repositories: ['condash'],
     });
     const canon = validateAndCanonicaliseConceptionConfig(json);
     const parsed = JSON.parse(canon);
     expect('resources_path' in parsed).toBe(false);
     expect('skills_path' in parsed).toBe(false);
-    expect(parsed.agents[0].promptFlags).toBe(true);
+    expect(parsed.workspace_path).toBe('/home/alice/src/vcoeur');
+    expect(parsed.repositories).toEqual(['condash']);
   });
 
   it('lets a global save keep `skillsActiveScope` while stripping defunct keys', () => {
@@ -326,28 +341,27 @@ describe('migrateRawSettings — dropped terminal.logging fields', () => {
     expect(migrated.terminal.logging).toEqual({});
   });
 
-  it('lets `validateAndCanonicaliseConceptionConfig` re-serialise a legacy maxFileMb body', () => {
+  it('lets `validateAndCanonicaliseGlobalSettings` re-serialise a legacy maxFileMb body', () => {
     // Without the migration this would throw `terminal.logging.maxFileMb —
-    // Unrecognised key` and block every Settings-modal save on conceptions
-    // upgraded from v2.22 or earlier.
+    // Unrecognised key` and block every Settings-modal save on machines
+    // upgraded from v2.22 or earlier. `terminal` is a global-only key now.
     const json = JSON.stringify({
       terminal: { logging: { retentionDays: 28, maxDirMb: 10000, maxFileMb: 5 } },
     });
-    const canon = validateAndCanonicaliseConceptionConfig(json);
+    const canon = validateAndCanonicaliseGlobalSettings(json);
     const parsed = JSON.parse(canon);
     expect(parsed.terminal.logging).toEqual({ retentionDays: 28, maxDirMb: 10000 });
   });
 
-  it('round-trips `terminal.logging.markerIntervalSec` through both canonicalisers', () => {
+  it('round-trips `terminal.logging.markerIntervalSec` through the global canonicaliser', () => {
     // Guards the strict-schema trap: a new terminal.logging key not added to
     // `terminalLoggingSettings` would throw `Unrecognized key` on every save.
+    // `terminal` is global-only now, so the conception canonicaliser rejects it.
     const json = JSON.stringify({ terminal: { logging: { markerIntervalSec: 30 } } });
     expect(JSON.parse(validateAndCanonicaliseGlobalSettings(json)).terminal.logging).toEqual({
       markerIntervalSec: 30,
     });
-    expect(JSON.parse(validateAndCanonicaliseConceptionConfig(json)).terminal.logging).toEqual({
-      markerIntervalSec: 30,
-    });
+    expect(() => validateAndCanonicaliseConceptionConfig(json)).toThrow(/terminal/);
   });
 });
 
@@ -387,13 +401,14 @@ describe('migrateRawSettings — launchers replaced by agents', () => {
     expect('launcher' in migrated.terminal.projectActions[0]).toBe(false);
   });
 
-  it('lets `validateAndCanonicaliseConceptionConfig` re-serialise a body carrying legacy launchers', () => {
+  it('lets `validateAndCanonicaliseGlobalSettings` re-serialise a body carrying legacy launchers', () => {
     // The strict schema would reject the stale `launchers` key outright; the
-    // migration drops it first so the Settings modal can still save.
+    // migration drops it first so the Settings modal can still save. `terminal`
+    // is a global-only key now.
     const json = JSON.stringify({
       terminal: { launchers: [{ label: 'λ', command: 'claude' }], shell: '/bin/zsh' },
     });
-    const canon = validateAndCanonicaliseConceptionConfig(json);
+    const canon = validateAndCanonicaliseGlobalSettings(json);
     const parsed = JSON.parse(canon);
     expect(parsed.terminal.launchers).toBeUndefined();
     expect(parsed.terminal.shell).toBe('/bin/zsh');
@@ -407,33 +422,38 @@ describe('configSchema cardMinWidth — every card grid is accepted', () => {
   // `condash.json: cardMinWidth — Unrecognized key: "logs"`. Drive every
   // canonical key through the schema so a future pane can't drift again.
   it('accepts every key in DEFAULT_CARD_MIN_WIDTH', () => {
+    // `cardMinWidth` is a global-only key now.
     for (const key of CARD_MIN_WIDTH_KEYS) {
-      const result = configSchema.safeParse({ cardMinWidth: { [key]: 500 } });
+      const result = globalSettingsSchema.safeParse({ cardMinWidth: { [key]: 500 } });
       expect(result.success, `cardMinWidth.${key} should be accepted`).toBe(true);
     }
   });
 
   it('accepts a full eight-key cardMinWidth object', () => {
-    const result = configSchema.safeParse({ cardMinWidth: { ...DEFAULT_CARD_MIN_WIDTH } });
+    const result = globalSettingsSchema.safeParse({ cardMinWidth: { ...DEFAULT_CARD_MIN_WIDTH } });
     expect(result.success).toBe(true);
   });
 
   it('still rejects an unknown cardMinWidth key (typo guard intact)', () => {
-    const result = configSchema.safeParse({ cardMinWidth: { logz: 500 } });
+    const result = globalSettingsSchema.safeParse({ cardMinWidth: { logz: 500 } });
     expect(result.success).toBe(false);
   });
 
   it('rejects a non-positive cardMinWidth value', () => {
-    expect(configSchema.safeParse({ cardMinWidth: { logs: 0 } }).success).toBe(false);
-    expect(configSchema.safeParse({ cardMinWidth: { logs: -10 } }).success).toBe(false);
+    expect(globalSettingsSchema.safeParse({ cardMinWidth: { logs: 0 } }).success).toBe(false);
+    expect(globalSettingsSchema.safeParse({ cardMinWidth: { logs: -10 } }).success).toBe(false);
   });
 
-  it('lets a conception save round-trip a `logs` card width (the reported failure)', () => {
-    // Reproduces the screenshot: editing the Log-cards min-width on the
-    // conception tab canonicalises condash.json. Before the fix this threw
-    // `condash.json: cardMinWidth — Unrecognized key: "logs"`.
+  it('is a global-only key — the conception schema rejects it', () => {
+    expect(configSchema.safeParse({ cardMinWidth: { logs: 500 } }).success).toBe(false);
+  });
+
+  it('lets a global save round-trip a `logs` card width (the reported failure)', () => {
+    // Reproduces the screenshot: editing the Log-cards min-width canonicalises
+    // the global settings.json. Before the fix this threw
+    // `settings.json: cardMinWidth — Unrecognized key: "logs"`.
     const json = JSON.stringify({ cardMinWidth: { logs: 500, tasks: 360, deliverables: 380 } });
-    const canon = validateAndCanonicaliseConceptionConfig(json);
+    const canon = validateAndCanonicaliseGlobalSettings(json);
     const parsed = JSON.parse(canon);
     expect(parsed.cardMinWidth).toEqual({ logs: 500, tasks: 360, deliverables: 380 });
   });
@@ -473,11 +493,12 @@ describe('configSchema treeExpansion — every IPC-written key is accepted', () 
 
 describe('every settings key the IPC layer can write survives the canonicaliser', () => {
   // Class fix for the skillsUser bug: build a settings object exercising every
-  // setter-reachable key and assert the global canonicaliser accepts it. A new
-  // IPC setter whose key (or sub-key) is missing from the schema fails here
-  // instead of bricking every subsequent Global Settings save in production.
-  it('round-trips a settings object covering every IPC setter', () => {
-    const everySetterKey = {
+  // setter-reachable key and assert the owning file's canonicaliser accepts it.
+  // A new IPC setter whose key (or sub-key) is missing from the schema fails
+  // here instead of bricking every subsequent Settings save in production. With
+  // disjoint schemas the keys are split by their owning file.
+  it('round-trips every global IPC setter through the global canonicaliser', () => {
+    const everyGlobalSetterKey = {
       // pickConceptionPath / openConception / removeRecentConceptionPath
       lastConceptionPath: '/home/me/src/conception',
       recentConceptionPaths: ['/home/me/src/conception', '/home/me/src/other'],
@@ -515,16 +536,6 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
         xterm: { font_size: 13, cursor_blink: true },
         logging: { enabled: true, retentionDays: 14, maxDirMb: 500, scrollback: 10000 },
       },
-      // writeTaskConfig (Tasks editor) — every TaskConfigEntry field
-      taskConfig: {
-        'sample-task': {
-          schedule: '5m',
-          timeout: '1m',
-          excludeFromLogs: true,
-          runMode: 'oneshot',
-          gateOnUpdatedTabs: true,
-        },
-      },
       // setDashboardConfig (Settings → Dashboard) — every field
       dashboard: {
         enabled: true,
@@ -538,7 +549,30 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       },
     };
     expect(() =>
-      validateAndCanonicaliseGlobalSettings(JSON.stringify(everySetterKey)),
+      validateAndCanonicaliseGlobalSettings(JSON.stringify(everyGlobalSetterKey)),
+    ).not.toThrow();
+  });
+
+  it('round-trips every conception IPC setter through the conception canonicaliser', () => {
+    const everyConceptionSetterKey = {
+      // tree-owned location + repo list
+      workspace_path: '/home/me/src',
+      worktrees_path: '/home/me/src/worktrees',
+      repositories: [{ section: 'Apps' }, 'condash', { name: 'frontend', run: 'make dev' }],
+      retired_apps: [{ handle: 'oldapp', aliases: ['legacy-name'] }],
+      // writeTaskConfig (Tasks editor) — every TaskConfigEntry field
+      taskConfig: {
+        'sample-task': {
+          schedule: '5m',
+          timeout: '1m',
+          excludeFromLogs: true,
+          runMode: 'oneshot',
+          gateOnUpdatedTabs: true,
+        },
+      },
+    };
+    expect(() =>
+      validateAndCanonicaliseConceptionConfig(JSON.stringify(everyConceptionSetterKey)),
     ).not.toThrow();
   });
 });
@@ -579,5 +613,45 @@ describe('config field-naming convention (D6-2 — frozen)', () => {
     expect(SNAKE_OR_CAMEL.test('PascalCase')).toBe(false);
     expect(SNAKE_OR_CAMEL.test('SCREAMING_SNAKE')).toBe(false);
     expect(SNAKE_OR_CAMEL.test('mixed_Snake')).toBe(false);
+  });
+});
+
+describe('SCOPE_OF is consistent with the two disjoint schemas', () => {
+  // `SCOPE_OF` is the single source of truth for which file owns each key. It
+  // must never drift from the two `.strict()` schemas: every key it maps is
+  // accepted only by its owning scope and rejected (as an unknown key) by the
+  // other. `$schema_doc` is the one key both schemas accept, so it is
+  // deliberately absent from the map.
+  const conceptionShape = new Set(Object.keys(configSchema.shape));
+  const globalShape = new Set(Object.keys(globalSettingsSchema.shape));
+
+  it('maps every key to exactly the schema that owns it', () => {
+    for (const [key, scope] of Object.entries(SCOPE_OF)) {
+      if (scope === 'conception') {
+        expect(conceptionShape.has(key), `${key} should be a conception key`).toBe(true);
+        expect(globalShape.has(key), `${key} should not be a global key`).toBe(false);
+      } else {
+        expect(globalShape.has(key), `${key} should be a global key`).toBe(true);
+        expect(conceptionShape.has(key), `${key} should not be a conception key`).toBe(false);
+      }
+    }
+  });
+
+  it('each owned key is rejected by the other (strict) schema', () => {
+    for (const [key, scope] of Object.entries(SCOPE_OF)) {
+      const other = scope === 'conception' ? globalSettingsSchema : configSchema;
+      // A value-agnostic probe: the key is unknown to the other schema, so
+      // `.strict()` rejects it regardless of the value supplied.
+      expect(
+        other.safeParse({ [key]: null }).success,
+        `${key} must be rejected by the other schema`,
+      ).toBe(false);
+    }
+  });
+
+  it('omits $schema_doc, which both schemas accept in either file', () => {
+    expect('$schema_doc' in SCOPE_OF).toBe(false);
+    expect(conceptionShape.has('$schema_doc')).toBe(true);
+    expect(globalShape.has('$schema_doc')).toBe(true);
   });
 });
