@@ -14,7 +14,8 @@ import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
 import { atomicWrite } from './atomic-write';
 import { condashSettingsPath } from './condash-dir';
-import { settingsPath } from './settings';
+import { settingsPath, withSettingsQueue } from './settings';
+import { withFileQueue } from './mutate-shared';
 import { SCOPE_OF, type SettingsScope } from './config-schema';
 import { migrateRawSettings } from './config-migrate';
 
@@ -79,6 +80,29 @@ export async function partitionSettingsScopes(
   globalFile: string = settingsPath(),
 ): Promise<ScopeMigrationResult> {
   const conceptionFile = condashSettingsPath(conception);
+  // Hold both write queues across the whole read→compute→write. The global
+  // read+write must sit inside `withSettingsQueue` so a concurrent
+  // `updateSettings` (e.g. setTheme) can't land between this migrator's read of
+  // the global file and its write-back and be silently dropped; likewise the
+  // conception read+write must sit inside `withFileQueue(conceptionFile)`
+  // against a concurrent `mutateConceptionConfig` / Settings-modal save. The
+  // conception-file queue is the outer lock and the settings queue the inner
+  // one — matching write-config's ordering (file queue outside, settings queue
+  // inside) so the settings queue is always the innermost lock and the two can
+  // never deadlock.
+  return withFileQueue(conceptionFile, () =>
+    withSettingsQueue(() => partitionUnlocked(conception, globalFile, conceptionFile)),
+  );
+}
+
+/** Body of `partitionSettingsScopes`, run with both file queues already held.
+ *  Reads both files, computes the partition, and writes back any file that
+ *  changed. */
+async function partitionUnlocked(
+  conception: string,
+  globalFile: string,
+  conceptionFile: string,
+): Promise<ScopeMigrationResult> {
   const [globalRaw, conceptionRaw] = await Promise.all([
     readJsonObject(globalFile),
     readJsonObject(conceptionFile),

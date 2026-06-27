@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { LayoutState, Settings } from '../shared/types';
+import { atomicWrite } from './atomic-write';
 import { migrateRawSettings } from './config-migrate';
 import { userDataDir } from './user-data-dir';
 
@@ -183,9 +184,12 @@ export function removeRecent(recents: string[], path: string): string[] {
   return recents.filter((p) => p !== path);
 }
 
-// `tmp → fsync → rename`: a `fs.writeFile` truncate-then-write window can
-// leave settings.json zero-length on power-loss; the `welcome.dismissed`
-// flag is small but losing the lastConceptionPath bricks the next launch.
+// `tmp → fsync → rename → dir-fsync`: a `fs.writeFile` truncate-then-write
+// window can leave settings.json zero-length on power-loss, and an unsynced
+// parent directory can lose the rename even though the file data synced; the
+// `welcome.dismissed` flag is small but losing the lastConceptionPath bricks
+// the next launch. `atomicWrite` (the shared writer) covers both fsyncs plus
+// best-effort tmp cleanup on failure.
 async function writeSettingsRaw(next: Settings): Promise<void> {
   const path = settingsPath();
   await fs.mkdir(dirname(path), { recursive: true });
@@ -195,27 +199,7 @@ async function writeSettingsRaw(next: Settings): Promise<void> {
     ...next,
     recentConceptionPaths: pruneRecents(next.recentConceptionPaths ?? []),
   };
-  await writeJsonAtomic(path, JSON.stringify(persisted, null, 2) + '\n');
-}
-
-/** `tmp → fsync → rename` with best-effort tmp cleanup on failure, so a
- * throwing write/sync/rename doesn't leak `.<ts>.<pid>.tmp` files into the
- * config directory. */
-async function writeJsonAtomic(path: string, content: string): Promise<void> {
-  const tmp = join(dirname(path), `.${Date.now()}.${process.pid}.tmp`);
-  try {
-    const fh = await fs.open(tmp, 'w');
-    try {
-      await fh.writeFile(content, 'utf8');
-      await fh.sync();
-    } finally {
-      await fh.close();
-    }
-    await fs.rename(tmp, path);
-  } catch (err) {
-    await fs.unlink(tmp).catch(() => undefined);
-    throw err;
-  }
+  await atomicWrite(path, JSON.stringify(persisted, null, 2) + '\n');
 }
 
 /**
@@ -268,6 +252,6 @@ export async function mutateSettingsJson(
     }
     await mutator(current);
     await fs.mkdir(dirname(path), { recursive: true });
-    await writeJsonAtomic(path, JSON.stringify(current, null, 2) + '\n');
+    await atomicWrite(path, JSON.stringify(current, null, 2) + '\n');
   });
 }
