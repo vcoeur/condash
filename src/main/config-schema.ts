@@ -386,12 +386,15 @@ const dashboardSettings = z
   .strict();
 
 /**
- * Workspace + presentational fields shared by global and per-conception
- * settings files. Picked apart from the path-tracking fields so the same
- * shape can be used in both files — the conception override variant just
- * omits `lastConceptionPath` + `recentConceptionPaths`.
+ * Fields owned by the per-conception `.condash/settings.json` — the things
+ * that describe **this one tree**: where its repos live, the repo list, the
+ * defunct handles its closed projects reference, and its task config. Every
+ * other setting is personal/per-machine and lives in the global file.
+ *
+ * `$schema_doc` is a documentation pointer (not a setting); it is allowed in
+ * either file and is therefore the one key present in both field groups.
  */
-const sharedSchemaFields = {
+const conceptionOnlyFields = {
   $schema_doc: z.string().optional(),
   workspace_path: z.string().optional(),
   worktrees_path: z.string().optional(),
@@ -399,10 +402,6 @@ const sharedSchemaFields = {
   /** Defunct app handles kept for historical project references. Validated
    *  against, never rendered as code cards. */
   retired_apps: z.array(retiredAppEntry).optional(),
-  /** Terminal-launcher agents — a flat `{id,label,command}` list surfaced in
-   *  the tab-strip spawn dropdown. Replaces the per-file `<conception>/agents/`
-   *  store. */
-  agents: z.array(agentSchema).optional(),
   /** Per-task config keyed by task slug (capability 1). `schedule` is an
    *  opt-in cadence (`30s`/`2m`/`1h`/`7d`) that arms the headless scheduler;
    *  absent = not scheduled. `timeout` is the per-task run-timeout override
@@ -426,6 +425,20 @@ const sharedSchemaFields = {
         .strict(),
     )
     .optional(),
+} as const;
+
+/**
+ * Fields owned by the per-machine global `settings.json` — everything that
+ * describes **you / this machine / the app**, identical no matter which
+ * conception is open. Disjoint from {@link conceptionOnlyFields} (save for the
+ * shared `$schema_doc` doc pointer), so the two `.strict()` schemas below can
+ * never accept the same setting key in both files.
+ */
+const globalOnlyFields = {
+  $schema_doc: z.string().optional(),
+  /** Terminal-launcher agents — a flat `{id,label,command}` list surfaced in
+   *  the tab-strip spawn dropdown. Personal tools, identical across trees. */
+  agents: z.array(agentSchema).optional(),
   open_with: z
     .object({
       main_ide: openWithSlot.optional(),
@@ -435,10 +448,12 @@ const sharedSchemaFields = {
     .strict()
     .optional(),
   pdf_viewer: z.array(z.string()).optional(),
-  /** Terminal preferences. Per-machine in settings.json; overridable per-conception. */
+  /** Terminal preferences (device/input, `xterm`, on-disk `logging`, and the
+   *  project-workflow action templates). Per-machine — one whole global key. */
   terminal: terminalSettings.optional(),
-  /** Live terminal-tab summarization. Per-machine in settings.json; the `apiKey`
-   *  secret belongs in the global file only. See {@link dashboardSettings}. */
+  /** Live terminal-tab summarization. The `apiKey` secret keeps this global;
+   *  it reads the same terminal-capture pipeline as `terminal.logging`. See
+   *  {@link dashboardSettings}. */
   dashboard: dashboardSettings.optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
   layout: layoutSchema.optional(),
@@ -454,7 +469,7 @@ const sharedSchemaFields = {
 
 /**
  * Path-tracking fields the global per-machine `settings.json` owns. A
- * conception's `condash.json` is forbidden from setting these — a tree
+ * conception's settings file is forbidden from setting these — a tree
  * cannot describe its own location, and the recents list is necessarily
  * machine-local.
  */
@@ -468,20 +483,45 @@ const pathTrackingFields = {
 /** Schema for `<userData>/settings.json`. */
 export const globalSettingsSchema = z
   .object({
-    ...sharedSchemaFields,
+    ...globalOnlyFields,
     ...pathTrackingFields,
     /** Active scope toggle in the Skills pane (`conception` vs `user`).
-     *  Per-machine UI state written by `setSkillsActiveScope`; global-only, so
-     *  it is absent from `conceptionConfigSchema`. Mirrors `SkillScope` in
-     *  shared/types/settings.ts. */
+     *  Per-machine UI state written by `setSkillsActiveScope`. Mirrors
+     *  `SkillScope` in shared/types/settings.ts. */
     skillsActiveScope: z.enum(['conception', 'user']).optional(),
   })
   .strict();
 
-/** Schema for `<conception>/condash.json` — same shape minus path-self. */
-export const conceptionConfigSchema = z.object(sharedSchemaFields).strict();
+/** Schema for `<conception>/.condash/settings.json` — the disjoint tree-owned
+ *  field group. A global key found here is rejected by `.strict()`. */
+export const conceptionConfigSchema = z.object(conceptionOnlyFields).strict();
 
 export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
+
+export type SettingsScope = 'global' | 'conception';
+
+/**
+ * Single source of truth for which file owns each top-level setting key,
+ * derived from the two disjoint field groups so it can never drift from the
+ * schemas. The migrator, the CLI `config set`, and the Settings UI route a
+ * key to its owning file through this map rather than re-encoding the split.
+ * `$schema_doc` is a doc pointer allowed in either file and is intentionally
+ * absent.
+ */
+export const SCOPE_OF: Record<string, SettingsScope> = {
+  ...Object.fromEntries(
+    Object.keys(conceptionOnlyFields)
+      .filter((key) => key !== '$schema_doc')
+      .map((key) => [key, 'conception' as const]),
+  ),
+  ...Object.fromEntries(
+    Object.keys(globalOnlyFields)
+      .filter((key) => key !== '$schema_doc')
+      .map((key) => [key, 'global' as const]),
+  ),
+  ...Object.fromEntries(Object.keys(pathTrackingFields).map((key) => [key, 'global' as const])),
+  skillsActiveScope: 'global',
+};
 
 // `DEFAULT_RESOURCES_PATH` / `DEFAULT_SKILLS_PATH` live in the zod-free
 // `config-migrate.ts` so read-path importers don't construct the schemas above.

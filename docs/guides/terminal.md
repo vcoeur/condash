@@ -121,7 +121,7 @@ A snippet sourced from a non-condash terminal (gnome-terminal, iTerm2, …) emit
 
 ## Live theming and font tweaks (Settings → Terminal)
 
-**File → Settings… → Terminal** (`Ctrl+,`, then the **Terminal** section) live-edits the `terminal.xterm` block: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. The Terminal section ships on both Settings tabs: the **Global** copy writes to `settings.json` (per-machine default); the **This conception** copy writes to `.condash/settings.json` (per-tree, per-host override). Each field on the conception tab carries an inheritance badge with a Reset-to-global button. Either way, changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
+**File → Settings… → Terminal** (`Ctrl+,`, then the **Terminal** section) live-edits the `terminal.xterm` block: font family / size / line-height / letter-spacing / weight, cursor style + blink, scrollback depth, the ligatures toggle, and the full ANSI colour palette. `terminal` is a **personal** setting — the whole block lives in the per-machine `settings.json`, so the section sits under **Personal · this machine** and writes there (there is one copy, no per-conception override and no inheritance badge). Changes apply to existing tabs without a relaunch — the renderer rebuilds the xterm options object on save.
 
 See [`terminal.xterm` in the config reference](../reference/config.md#terminalxterm) for the full key table.
 
@@ -175,7 +175,7 @@ The spawn dropdown is populated from the top-level **`agents`** list, not from a
 
 ## Editing shortcuts
 
-The Settings modal's **Terminal** tab has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are the top-level [`agents`](../reference/config.md#agents) list, edited in the Settings modal's **Agents** section (Global + This-conception tabs).
+The Settings modal's **Terminal** section has a form field for every `terminal.*` key listed under [Configuration surface](#configuration-surface) above — `shortcut`, `screenshot_paste_shortcut`, `move_tab_left_shortcut`, `move_tab_right_shortcut`, `screenshot_dir`, `shell`. Edit them there and the change applies on save. To test a new shortcut, set it and press the combination — no relaunch needed. Agents are the top-level [`agents`](../reference/config.md#agents) list, edited in the Settings modal's **Launchers** section (under **Personal · this machine**).
 
 ## Platform notes
 

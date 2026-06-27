@@ -12,100 +12,83 @@ import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '@shared/co
 
 export type SettingsTab = 'global' | 'conception';
 
-/**
- * Sections rendered on each tab. Theme + cardMinWidth + terminal appear on
- * BOTH tabs because they are inheritable: the global control writes to
- * `settings.json` and the conception control writes to `condash.json`. The
- * id is suffixed with `:global` / `:conception` so scroll-spy can tell them
- * apart.
- */
+/** Which file owns a section. `global` → personal per-machine `settings.json`;
+ *  `conception` → this tree's `.condash/settings.json`. Every section has
+ *  exactly one scope now — there is no inheritance or override. Alias of
+ *  `SettingsTab`, named for the scope-chip vocabulary the new UI uses. */
+export type SettingsScope = SettingsTab;
+
+/** Each setting lives in exactly one file, so each section appears exactly
+ *  once (no `:global`/`:conception` duplication). */
 export type Section =
-  | 'recents:global'
-  | 'appearance:global'
-  | 'terminal:global'
-  | 'agents:global'
-  | 'dashboard:global'
-  | 'workspace:conception'
-  | 'repositories:conception'
-  | 'open-with:conception'
-  | 'appearance:conception'
-  | 'terminal:conception'
-  | 'agents:conception'
-  | 'dashboard:conception';
+  | 'recents'
+  | 'appearance'
+  | 'terminal'
+  | 'agents'
+  | 'open-with'
+  | 'dashboard'
+  | 'workspace'
+  | 'repositories';
 
 export interface SectionMeta {
   id: Section;
   label: string;
-  tab: SettingsTab;
+  scope: SettingsScope;
 }
 
 /**
- * Order matters — drives both the left-rail section list and the scroll-
- * spy that flips `section` as the user scrolls through the active tab's
- * panel. Workspace / Repositories / Open with live on the conception tab
- * only because that's where overriding them makes sense; the Global tab
- * hosts per-machine defaults (theme + cardMinWidth + terminal) that every
- * conception inherits unless overridden.
+ * Order matters — drives the grouped left-rail and the scroll-spy that flips
+ * the active section. Sections are grouped by `scope`: the personal group
+ * (settings.json) first, then this-conception (.condash/settings.json). Each
+ * section is rendered once, with a scope chip naming its file.
  */
 export const SECTIONS: SectionMeta[] = [
-  // Global tab.
-  { id: 'recents:global', label: 'Recent conceptions', tab: 'global' },
-  { id: 'appearance:global', label: 'Appearance', tab: 'global' },
-  { id: 'terminal:global', label: 'Terminal', tab: 'global' },
-  { id: 'agents:global', label: 'Agents', tab: 'global' },
-  { id: 'dashboard:global', label: 'Dashboard', tab: 'global' },
-  // Conception tab.
-  { id: 'workspace:conception', label: 'Workspace', tab: 'conception' },
-  { id: 'repositories:conception', label: 'Repositories', tab: 'conception' },
-  { id: 'open-with:conception', label: 'Open with', tab: 'conception' },
-  { id: 'appearance:conception', label: 'Appearance', tab: 'conception' },
-  { id: 'terminal:conception', label: 'Terminal', tab: 'conception' },
-  { id: 'agents:conception', label: 'Agents', tab: 'conception' },
-  { id: 'dashboard:conception', label: 'Dashboard', tab: 'conception' },
+  // Personal · this machine — settings.json.
+  { id: 'recents', label: 'Recent conceptions', scope: 'global' },
+  { id: 'appearance', label: 'Appearance', scope: 'global' },
+  { id: 'terminal', label: 'Terminal', scope: 'global' },
+  { id: 'agents', label: 'Launchers', scope: 'global' },
+  { id: 'open-with', label: 'Open with', scope: 'global' },
+  { id: 'dashboard', label: 'Dashboard', scope: 'global' },
+  // This conception — .condash/settings.json.
+  { id: 'workspace', label: 'Workspace & paths', scope: 'conception' },
+  { id: 'repositories', label: 'Repositories', scope: 'conception' },
 ];
 
 /**
- * Top-level RawConfig keys that each section reads/writes. Used by the
- * rail's dirty-pip computation: a section is dirty when any of its keys
- * differ between disk and the active draft. `recents:global` is intentionally
- * empty — recents are managed outside the settings modal.
+ * Top-level RawConfig keys each section reads/writes — drives the rail's
+ * unsaved-changes pip (a section is dirty when any of its keys differ between
+ * disk and the active draft). `recents` is empty: it is managed outside the
+ * modal.
  */
 export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
-  'recents:global': [],
-  'appearance:global': ['theme', 'cardMinWidth'],
-  'terminal:global': ['terminal'],
-  'agents:global': ['agents'],
-  'dashboard:global': ['dashboard'],
-  'workspace:conception': ['workspace_path', 'worktrees_path'],
-  'repositories:conception': ['repositories'],
-  'open-with:conception': ['open_with'],
-  'appearance:conception': ['theme', 'cardMinWidth'],
-  'terminal:conception': ['terminal'],
-  'agents:conception': ['agents'],
-  'dashboard:conception': ['dashboard'],
+  recents: [],
+  appearance: ['theme', 'cardMinWidth'],
+  terminal: ['terminal'],
+  agents: ['agents'],
+  'open-with': ['open_with'],
+  dashboard: ['dashboard'],
+  workspace: ['workspace_path', 'worktrees_path'],
+  repositories: ['repositories'],
 };
 
-export interface TabMeta {
-  id: SettingsTab;
-  label: string;
-  file: string;
-  hint: string;
-}
+/** The on-disk file each scope writes to (shown in the scope-chip tooltip). */
+export const SCOPE_FILE: Record<SettingsScope, string> = {
+  global: 'settings.json',
+  conception: '.condash/settings.json',
+};
 
-export const TABS: TabMeta[] = [
-  {
-    id: 'global',
-    label: 'Global',
-    file: 'settings.json',
-    hint: 'Per-machine defaults stored in the OS user-data directory. Owns the active conception path and the recents list. Inherited by every conception unless that conception overrides the key in its `condash.json`.',
-  },
-  {
-    id: 'conception',
-    label: 'This conception',
-    file: 'condash.json',
-    hint: 'Top-level keys here override the matching keys in settings.json. Reads fall back to legacy `configuration.json` when `condash.json` is absent; writes always target `condash.json`.',
-  },
-];
+/** Short chip label for a scope. */
+export const SCOPE_LABEL: Record<SettingsScope, string> = {
+  global: 'Personal',
+  conception: 'This conception',
+};
+
+/** Rail group header for a scope. */
+export const SCOPE_GROUP_LABEL: Record<SettingsScope, string> = {
+  global: 'Personal · this machine',
+  conception: 'This conception',
+};
 
 export interface ColorEntry {
   key: keyof NonNullable<TerminalXtermPrefs['colors']>;
@@ -259,14 +242,12 @@ export interface RawConfig {
   theme?: Theme;
   cardMinWidth?: CardMinWidthPrefs;
   terminal?: TerminalPrefs;
-  /** Live terminal-tab summarization. Global-only in the UI (the `apiKey`
-   *  secret must not be committed to a conception's condash.json). */
+  /** Live terminal-tab summarization. Personal/global key (the `apiKey`
+   *  secret never lands in a tree's settings file). */
   dashboard?: DashboardSettings;
-  /** Conception-only fields — never set on the conception side. */
+  /** Path-tracking fields — global file only, never written by a section. */
   lastConceptionPath?: string | null;
   recentConceptionPaths?: string[];
-  /** Modal UI state — last-active tab. Persists per-machine. */
-  lastSettingsTab?: SettingsTab;
 }
 
 /**

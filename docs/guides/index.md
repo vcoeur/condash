@@ -11,7 +11,7 @@ Each guide answers one specific question.
 
 - **[Configure the conception path](configure-conception-path.md)** — change the folder condash renders, with the menu, the CLI, or by editing `settings.json`.
 - **[Repositories and open-with buttons](repositories-and-open-with.md)** — populate the Code pane and wire IDE/terminal launch slots.
-- **[The Settings modal](settings-modal.md)** — the two-tab modal, what each section writes, and how per-conception overrides inherit from your machine defaults.
+- **[The Settings modal](settings-modal.md)** — one scrolling modal, two files with disjoint schemas, and which setting lives where.
 - **[Applications and handles](applications-and-handles.md)** — identify each app by one canonical `#handle`, manage the registry, keep `apps:` references resolving.
 
 **Daily**

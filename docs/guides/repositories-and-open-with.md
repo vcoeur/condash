@@ -9,7 +9,7 @@ description: Point condash at your workspace, list the repos surfaced on the Cod
 
 **When to read this.** The **Code** pane shows the wrong repos, the order isn't what you want, or the "open in IDE" button launches the wrong thing (or nothing).
 
-Everything on this page lives in `<conception_path>/.condash/settings.json` (legacy filenames `condash.json` and `configuration.json` are read as fallbacks). Note that `settings.json` (per-machine, global) and `.condash/settings.json` (per-conception, per-host) share the same schema; top-level keys in the per-conception file override the global ones.
+The workspace, worktrees, and repository settings on this page live in `<conception_path>/.condash/settings.json` (legacy filenames `condash.json` and `configuration.json` are read as fallbacks). The `open_with` launcher slots are a **personal** setting and live in the per-machine `settings.json` instead. The two files have **disjoint** schemas — each key has exactly one home, so there is no override or merge between them.
 
 ## Workspace and worktrees paths
 
@@ -81,7 +81,7 @@ A submodule entry is either a string (`"apps/web"`) or an inline object (`{"name
 
 ## The three `open_with` slots
 
-Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **terminal**. Wire them in `.condash/settings.json`:
+Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **terminal**. Wire them in the per-machine `settings.json` (`open_with` is a personal setting, not a conception one):
 
 ```json
 {
@@ -96,7 +96,7 @@ Each repo row has three icon buttons: **main IDE**, **secondary IDE**, **termina
 - **`label`** — the tooltip text shown on hover.
 - **`command`** — a single shell-style command. The literal `{path}` is replaced with the absolute path of the repo (or submodule row) being opened.
 
-> **No fallback chain.** The Electron build takes a single `command` string per slot — there is no `commands` list with sequential trial. If you need machine-specific fallbacks (`idea` then `idea.sh`), wrap them in a small launcher script that does the trial-and-fall-through itself, or override the slot per-machine in `settings.json`.
+> **No fallback chain.** The Electron build takes a single `command` string per slot — there is no `commands` list with sequential trial. If you need machine-specific fallbacks (`idea` then `idea.sh`), wrap them in a small launcher script that does the trial-and-fall-through itself.
 
 Commands are parsed shell-style, so quoting works the way you'd expect: `"/Applications/JetBrains Toolbox/idea.app" {path}` is a single argv[0] + `{path}`.
 
@@ -104,11 +104,11 @@ Built-in defaults for the three slots reproduce the previous IntelliJ / VS Code 
 
 ## Editing via the Settings modal
 
-Open **File → Settings…** (`Ctrl+,`) and pick the **Workspace**, **Repositories**, or **Open with** tab — each has form fields backed by `.condash/settings.json`. There is no in-modal JSON editor; for keys outside the modal (e.g. nested `repositories[].submodules` shapes, `pdf_viewer`), use the **Open externally** button in the header to edit the raw JSON in your `$EDITOR`. Either path runs through the same atomic save + strict zod schema.
+Open **File → Settings…** (`Ctrl+,`). **Workspace & paths** and **Repositories** sit under the **This conception** group (backed by `.condash/settings.json`); **Open with** sits under **Personal · this machine** (backed by `settings.json`). Each has form fields — there is no in-modal JSON editor; for keys outside the modal (e.g. nested `repositories[].submodules` shapes, `pdf_viewer`), use the rail's **Open …** buttons to edit the raw JSON in your `$EDITOR`. Either path runs through the same atomic save + strict zod schema.
 
 Changes to `open_with` and `terminal` reload the dashboard live; `workspace_path`, `worktrees_path`, and the `repositories` list need a restart.
 
-Prefer overriding IDE launcher paths per machine? Put the override in `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json` instead — `settings.json` wins on overlap.
+`open_with` is a **personal** setting — it lives only in the per-machine `${XDG_CONFIG_HOME:-~/.config}/condash/settings.json`, so your launcher paths stay the same across every conception on this machine.
 
 ## Starting a dev server from the row
 

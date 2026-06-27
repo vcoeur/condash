@@ -30,7 +30,7 @@ Every app condash knows about has exactly one canonical **`#handle`** — a shor
 
 ## Where the registry lives
 
-The registry is your config's **`repositories[]`** array (`settings.json` defaults, overridable per tree in `.condash/settings.json`). Each entry's `handle` defaults to the directory name — sigil-stripped and lowercased — so simple repos need set nothing. Domain-style or camelCase repos should pin one explicitly:
+The registry is your config's **`repositories[]`** array — a conception-owned key, so it lives in this tree's `.condash/settings.json` (and nowhere else). Each entry's `handle` defaults to the directory name — sigil-stripped and lowercased — so simple repos need set nothing. Domain-style or camelCase repos should pin one explicitly:
 
 ```json
 {

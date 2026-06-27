@@ -22,9 +22,15 @@ import { settingsPath } from './settings';
 import { migrateRawSettings } from './config-migrate';
 
 /**
- * Two-layer config resolver. Reads the per-machine `settings.json` for
- * workspace-shape defaults and the per-conception settings file for the
- * override layer, then top-level-merges with conception winning.
+ * Single read surface over the two settings files. Reads the per-machine
+ * `settings.json` (personal/app settings) and the per-conception settings
+ * file (this tree's paths, repos, tasks), then spreads them into one view.
+ *
+ * The two schemas are **disjoint** (`SCOPE_OF` in `config-schema.ts`): no
+ * setting key lives in both files, so the spread can never collide and there
+ * is no precedence to reason about. The override model — top-level replace
+ * plus the one-level-deep `terminal` / `dashboard` merges — was removed when
+ * every key was given exactly one home.
  *
  * `lastConceptionPath` and `recentConceptionPaths` live exclusively on the
  * global side and are never included in the merged view — a conception
@@ -34,25 +40,6 @@ import { migrateRawSettings } from './config-migrate';
  * (canonical), with two legacy fallbacks: `<conception>/condash.json` and
  * `<conception>/configuration.json`. The migrator (`condash-dir-migrate`)
  * lifts legacy files into the canonical location.
- *
- * "Top-level replace" semantics: each top-level key in the conception
- * config replaces the matching key in the global settings entirely. Arrays
- * replace; objects replace whole. No deep merge — predictable beats
- * convenient. A conception that wants to override only one `open_with`
- * slot has to restate the others.
- *
- * Two exceptions merge one level deep: `terminal` and `dashboard`.
- * `terminal`'s sub-schema straddles per-machine input / device prefs
- * (`shell`, `shortcut`, `screenshot_dir`, `xterm`, …) and per-tree retention
- * policy (`logging.{retentionDays, maxDirMb, …}`). A pure replace meant any
- * tree that customised `terminal.logging` silently lost every per-machine
- * terminal pref — the screenshot-paste shortcut toasted "no screenshot_dir".
- * `dashboard` is the same shape of problem: the secret `apiKey` + endpoint
- * (`baseUrl`/`model`) are global-only, while a conception may override just
- * `enabled` / `intervalSec`. Both therefore merge one level deep: conception
- * fields win at the sub-key level, missing sub-keys fall through to the global
- * block. Nested values (e.g. inside `terminal.xterm` / `terminal.logging`)
- * still replace whole.
  */
 export interface EffectiveConfig extends ConfigShape {
   workspace_path?: string;
@@ -173,10 +160,10 @@ async function readGlobalSettingsRaw(settingsFile: string): Promise<Record<strin
 const GLOBAL_ONLY_KEYS = new Set(['lastConceptionPath', 'recentConceptionPaths', 'conceptionPath']);
 
 /**
- * Compute the effective config for a conception by merging the global
- * settings.json's workspace fields with the conception's settings file
- * (legacy fallback applied). Top-level replace; conception wins. The two
- * path-tracking keys never participate.
+ * Compute the effective config for a conception. With disjoint schemas no
+ * setting key can appear in both files, so this is a plain spread that can
+ * never collide. The path-tracking keys stay global-only and never enter the
+ * effective view.
  */
 export async function getEffectiveConceptionConfig(
   conceptionPath: string,
@@ -193,26 +180,9 @@ export async function getEffectiveConceptionConfig(
   }
   for (const [key, value] of Object.entries(conception)) {
     if (GLOBAL_ONLY_KEYS.has(key)) continue;
-    if (key === 'terminal' && isPlainObject(value) && isPlainObject(merged.terminal)) {
-      merged.terminal = { ...merged.terminal, ...value };
-      continue;
-    }
-    // `dashboard` merges one level deep for the same reason as `terminal`: the
-    // secret `apiKey` + endpoint (baseUrl/model) live global-only, while a
-    // conception is allowed to override just `enabled` / `intervalSec`. A whole-
-    // block replace would drop the global key the moment a conception toggled
-    // the feature on. Nested values still replace whole.
-    if (key === 'dashboard' && isPlainObject(value) && isPlainObject(merged.dashboard)) {
-      merged.dashboard = { ...merged.dashboard, ...value };
-      continue;
-    }
     merged[key] = value;
   }
   return merged as EffectiveConfig;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 // Re-export the new constants from `./condash-dir` for callers that still

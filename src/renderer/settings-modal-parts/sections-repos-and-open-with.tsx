@@ -1,31 +1,29 @@
 /**
- * Repositories + Open-with sections of the Settings modal — conception
- * tab only. Both render lists driven by closures from the modal shell.
- * Each section owns its own list-mutation helpers (add / remove / move /
- * patch entry) — pure `patchConfig` wrappers, no state shared with the
- * modal shell.
+ * Repositories + Open-with sections of the Settings modal. Repositories is a
+ * per-conception setting (this tree's repo list); Open with is personal (the
+ * IDE/terminal launch commands on this machine). Each renders a list driven by
+ * closures from the modal shell, with its own list-mutation helpers (pure
+ * patch wrappers).
  */
 
 import { createSignal, For, Show, type JSX } from 'solid-js';
 import { isSectionMarker, type RawRepo } from '@shared/config-types';
 import { type BindTextFn, OPEN_WITH_SLOTS, type RawConfig } from './data';
-import { FieldBadgeRow, type InheritanceState } from './badges';
 import { RepoRow } from './repo-row';
 import { SectionRow } from './section-row';
+import { SectionShell } from './section-shell';
 
 interface RepositoriesSectionProps {
   parsed: () => RawConfig;
   bindText: BindTextFn;
-  stateOf: <K extends keyof RawConfig>(key: K) => InheritanceState;
-  removeOverride: <K extends keyof RawConfig>(key: K) => Promise<void>;
-  patchConfig: (mutator: (config: RawConfig) => void) => Promise<void>;
+  patch: (mutator: (config: RawConfig) => void) => Promise<void>;
 }
 
 export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Element {
   const repos = (): RawRepo[] => props.parsed().repositories ?? [];
 
   const updateRepos = (mutate: (entries: RawRepo[]) => RawRepo[]): Promise<void> =>
-    props.patchConfig((c) => {
+    props.patch((c) => {
       const current = (c.repositories ?? []).slice();
       c.repositories = mutate(current);
     });
@@ -97,21 +95,20 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
   };
 
   return (
-    <section id="settings-section-repositories:conception" class="settings-section">
-      <div class="settings-section-head">
-        <h2>Repositories</h2>
-        <FieldBadgeRow
-          state={props.stateOf('repositories')}
-          onRemove={() => void props.removeOverride('repositories')}
-        />
-      </div>
-      <p class="settings-hint">
-        Each entry is either just a name (resolved against <code>workspace_path</code>) or an object
-        with optional <code>label</code>, <code>run</code>, <code>force_stop</code>,{' '}
-        <code>install</code>, <code>env</code>, and <code>submodules</code>. A{' '}
-        <code>{'{ "section": "…" }'}</code> entry inserts a header above the repos that follow it,
-        in this list and in the Code pane.
-      </p>
+    <SectionShell
+      id="repositories"
+      title="Repositories"
+      scope="conception"
+      hint={
+        <p class="settings-hint">
+          Each entry is either just a name (resolved against <code>workspace_path</code>) or an
+          object with optional <code>label</code>, <code>run</code>, <code>force_stop</code>,{' '}
+          <code>install</code>, <code>env</code>, and <code>submodules</code>. A{' '}
+          <code>{'{ "section": "…" }'}</code> entry inserts a header above the repos that follow it,
+          in this list and in the Code pane.
+        </p>
+      }
+    >
       <div class="settings-bucket">
         <For each={repos()}>
           {(entry, index) => (
@@ -154,16 +151,14 @@ export function RepositoriesSection(props: RepositoriesSectionProps): JSX.Elemen
           </button>
         </div>
       </div>
-    </section>
+    </SectionShell>
   );
 }
 
 interface OpenWithSectionProps {
   parsed: () => RawConfig;
   bindText: BindTextFn;
-  stateOf: <K extends keyof RawConfig>(key: K) => InheritanceState;
-  removeOverride: <K extends keyof RawConfig>(key: K) => Promise<void>;
-  patchConfig: (mutator: (config: RawConfig) => void) => Promise<void>;
+  patch: (mutator: (config: RawConfig) => void) => Promise<void>;
 }
 
 export function OpenWithSection(props: OpenWithSectionProps): JSX.Element {
@@ -171,7 +166,7 @@ export function OpenWithSection(props: OpenWithSectionProps): JSX.Element {
     key: 'main_ide' | 'secondary_ide' | 'terminal',
     patch: { label?: string; command?: string },
   ): Promise<void> =>
-    props.patchConfig((c) => {
+    props.patch((c) => {
       const openWith = (c.open_with ?? {}) as Record<string, { label?: string; command?: string }>;
       const current = openWith[key] ?? {};
       const merged = { ...current, ...patch };
@@ -184,18 +179,18 @@ export function OpenWithSection(props: OpenWithSectionProps): JSX.Element {
     });
 
   return (
-    <section id="settings-section-open-with:conception" class="settings-section">
-      <div class="settings-section-head">
-        <h2>Open with</h2>
-        <FieldBadgeRow
-          state={props.stateOf('open_with')}
-          onRemove={() => void props.removeOverride('open_with')}
-        />
-      </div>
-      <p class="settings-hint">
-        Three slots used by the per-folder &quot;Open in…&quot; menu. <code>{'{path}'}</code> is
-        substituted with the absolute path.
-      </p>
+    <SectionShell
+      id="open-with"
+      title="Open with"
+      scope="global"
+      hint={
+        <p class="settings-hint">
+          The IDE / terminal commands behind the per-folder &quot;Open in…&quot; menu — per-machine,
+          since they point at binaries on this computer. <code>{'{path}'}</code> is substituted with
+          the absolute path.
+        </p>
+      }
+    >
       <div class="settings-grid settings-grid--wide">
         <For each={OPEN_WITH_SLOTS}>
           {(slot) => {
@@ -222,7 +217,7 @@ export function OpenWithSection(props: OpenWithSectionProps): JSX.Element {
                   type="text"
                   placeholder={`Open in ${slot.label.toLowerCase()}`}
                   {...props.bindText(
-                    `conception.open_with.${slot.key}.label`,
+                    `global.open_with.${slot.key}.label`,
                     () => current().label,
                     (v) => updateOpenWithSlot(slot.key, { label: v }),
                   )}
@@ -231,7 +226,7 @@ export function OpenWithSection(props: OpenWithSectionProps): JSX.Element {
                   type="text"
                   placeholder="idea {path}"
                   {...props.bindText(
-                    `conception.open_with.${slot.key}.command`,
+                    `global.open_with.${slot.key}.command`,
                     () => current().command,
                     (v) => updateOpenWithSlot(slot.key, { command: v }),
                   )}
@@ -241,6 +236,6 @@ export function OpenWithSection(props: OpenWithSectionProps): JSX.Element {
           }}
         </For>
       </div>
-    </section>
+    </SectionShell>
   );
 }

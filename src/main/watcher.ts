@@ -5,6 +5,7 @@ import { toPosix } from '../shared/path';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import type { TreeEvent } from '../shared/types';
 import { migrateLegacyConfig } from './condash-dir-migrate';
+import { partitionSettingsScopes, scopeMigrationDidWork } from './scope-partition-migrate';
 import { resolveConceptionPaths } from './conception-paths';
 import { applyIndexFsEvent, clearSearchIndex, rebuildSearchIndex } from './search/index-cache';
 
@@ -95,6 +96,25 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   await migrateLegacyConfig(conceptionPath).catch((err) => {
     process.stderr.write(`condash: migrateLegacyConfig failed: ${err}\n`);
   });
+
+  // Partition settings into the post-revamp layout: each key in exactly one
+  // file (personal → settings.json, this-tree → .condash/settings.json).
+  // Idempotent; writes nothing once both files are already partitioned.
+  await partitionSettingsScopes(conceptionPath)
+    .then((result) => {
+      if (scopeMigrationDidWork(result)) {
+        const parts: string[] = [];
+        if (result.movedToGlobal.length) parts.push(`→global: ${result.movedToGlobal.join(', ')}`);
+        if (result.movedToConception.length)
+          parts.push(`→conception: ${result.movedToConception.join(', ')}`);
+        if (result.dropped.length)
+          parts.push(`dropped: ${result.dropped.map((drop) => drop.key).join(', ')}`);
+        process.stderr.write(`condash: settings scope migration (${parts.join('; ')})\n`);
+      }
+    })
+    .catch((err) => {
+      process.stderr.write(`condash: partitionSettingsScopes failed: ${err}\n`);
+    });
 
   const { resources, skills } = resolveConceptionPaths();
   const roots: RootSet = {
