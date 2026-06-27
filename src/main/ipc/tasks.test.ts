@@ -23,6 +23,7 @@ let tmp: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 let settingsPathValue: string;
+let conceptionConfigPathValue: string;
 
 /** Minimal event shape accepted by `requireMainWindowSender`. */
 const trustedEvent = {
@@ -30,8 +31,10 @@ const trustedEvent = {
   senderFrame: { url: 'file:///app/dist/index.html', parent: null },
 };
 
-async function readSettingsFile(): Promise<Record<string, unknown>> {
-  const raw = await fs.readFile(settingsPathValue, 'utf8');
+/** Read the conception config file (`<conception>/.condash/settings.json`) —
+ *  the conception-scoped home `setTaskConfig` writes `taskConfig` into. */
+async function readConceptionConfig(): Promise<Record<string, unknown>> {
+  const raw = await fs.readFile(conceptionConfigPathValue, 'utf8');
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
@@ -43,6 +46,7 @@ beforeEach(async () => {
   vi.resetModules();
   tmp = mkdtempSync(join(tmpdir(), 'condash-task-config-'));
   settingsPathValue = join(tmp, 'settings.json');
+  conceptionConfigPathValue = join(tmp, '.condash', 'settings.json');
   const isolatedTmp = tmp;
   vi.doMock('../user-data-dir', () => ({ userDataDir: () => isolatedTmp }));
 
@@ -54,9 +58,10 @@ beforeEach(async () => {
       handlers[channel] = fn;
     },
   );
-  // getTaskConfig resolves through the active conception. Point it at the tmp
-  // dir — with no `.condash/` there, the global settings.json `taskConfig`
-  // (where setTaskConfig writes) is the layer surfaced on read.
+  // Point the active conception at the tmp dir via the global settings pointer.
+  // `taskConfig` is conception-scoped, so setTaskConfig writes it into
+  // `<tmp>/.condash/settings.json`; the global settings.json carries only the
+  // path pointer and never a `taskConfig` key.
   await fs.writeFile(
     settingsPathValue,
     JSON.stringify({ lastConceptionPath: tmp, recentConceptionPaths: [] }),
@@ -83,8 +88,14 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
       runMode: 'oneshot',
     });
 
-    const onDisk = await readSettingsFile();
+    const onDisk = await readConceptionConfig();
     expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m', runMode: 'oneshot' } });
+
+    // F1 regression: the conception-scoped key must NOT leak into the
+    // per-machine global settings.json — a write there throws `Unrecognized
+    // key` on the next Global Settings save.
+    const globalRaw = await fs.readFile(settingsPathValue, 'utf8');
+    expect((JSON.parse(globalRaw) as Record<string, unknown>).taskConfig).toBeUndefined();
 
     const effective = await getTaskConfig();
     expect(effective['sample-task'].runMode).toBe('oneshot');
@@ -96,7 +107,7 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
       runMode: 'interactive',
     });
 
-    const onDisk = await readSettingsFile();
+    const onDisk = await readConceptionConfig();
     // interactive is the implied default — only schedule survives.
     expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m' } });
 
@@ -109,7 +120,7 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
     // entry as empty when schedule/timeout/excludeFromLogs are all absent.
     await handlers.setTaskConfig(trustedEvent, 'solo', { runMode: 'oneshot' });
 
-    const onDisk = await readSettingsFile();
+    const onDisk = await readConceptionConfig();
     expect(onDisk.taskConfig).toEqual({ solo: { runMode: 'oneshot' } });
   });
 
@@ -121,7 +132,7 @@ describe('setTaskConfig / getTaskConfig runMode round-trip', () => {
       runMode: 'oneshot',
     });
 
-    const onDisk = await readSettingsFile();
+    const onDisk = await readConceptionConfig();
     expect(onDisk.taskConfig).toEqual({
       'sample-task': { schedule: '1m', timeout: '10m', excludeFromLogs: true, runMode: 'oneshot' },
     });
@@ -135,7 +146,7 @@ describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
       gateOnUpdatedTabs: true,
     });
 
-    const onDisk = await readSettingsFile();
+    const onDisk = await readConceptionConfig();
     expect(onDisk.taskConfig).toEqual({
       'sample-task': { schedule: '1m', gateOnUpdatedTabs: true },
     });
@@ -150,7 +161,7 @@ describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
       gateOnUpdatedTabs: false,
     });
 
-    const onDisk = await readSettingsFile();
+    const onDisk = await readConceptionConfig();
     expect(onDisk.taskConfig).toEqual({ 'sample-task': { schedule: '1m' } });
 
     const effective = await getTaskConfig();
@@ -161,7 +172,7 @@ describe('setTaskConfig / getTaskConfig gateOnUpdatedTabs round-trip', () => {
     // The delete-guard must treat gateOnUpdatedTabs as a real setting.
     await handlers.setTaskConfig(trustedEvent, 'solo', { gateOnUpdatedTabs: true });
 
-    const onDisk = await readSettingsFile();
+    const onDisk = await readConceptionConfig();
     expect(onDisk.taskConfig).toEqual({ solo: { gateOnUpdatedTabs: true } });
   });
 });

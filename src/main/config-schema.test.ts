@@ -497,83 +497,134 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
   // A new IPC setter whose key (or sub-key) is missing from the schema fails
   // here instead of bricking every subsequent Settings save in production. With
   // disjoint schemas the keys are split by their owning file.
+  // Lifted to describe scope so the coverage test below can assert these two
+  // literals exercise every key SCOPE_OF owns. A literal omitting a newly-owned
+  // key fails the coverage test, not silently in production on the next save.
+  const everyGlobalSetterKey = {
+    // pickConceptionPath / openConception / removeRecentConceptionPath
+    lastConceptionPath: '/home/me/src/conception',
+    recentConceptionPaths: ['/home/me/src/conception', '/home/me/src/other'],
+    // setTheme
+    theme: 'dark',
+    // setLayout
+    layout: {
+      projects: true,
+      leftView: 'deliverables',
+      working: 'logs',
+      terminal: true,
+      projectsWidth: 320,
+    },
+    // setWelcomeDismissed
+    welcome: { dismissed: true },
+    // setCardMinWidth — every pane key
+    cardMinWidth: Object.fromEntries(CARD_MIN_WIDTH_KEYS.map((key) => [key, 500])),
+    // setTreeExpansion — every tree key
+    treeExpansion: {
+      knowledge: ['topics'],
+      resources: ['renders'],
+      skills: ['pr'],
+      skillsUser: ['git'],
+    },
+    // setSelectedBranches / setBranchFilterStickyAll
+    selectedBranches: ['main', 'feature-x'],
+    branchFilterStickyAll: false,
+    // setSkillsActiveScope
+    skillsActiveScope: 'user',
+    // termSetPrefs
+    terminal: {
+      shell: '/bin/zsh',
+      shortcut: 'Ctrl+T',
+      screenshot_dir: '/home/me/Pictures',
+      xterm: { font_size: 13, cursor_blink: true },
+      logging: { enabled: true, retentionDays: 14, maxDirMb: 500, scrollback: 10000 },
+    },
+    // setDashboardConfig (Settings → Dashboard) — every field
+    dashboard: {
+      enabled: true,
+      provider: 'deepseek',
+      apiKey: 'sk-deepseek-xxx',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-flash',
+      intervalSec: 120,
+      gateOnActivity: true,
+      historyLimit: 20,
+    },
+    // agents / open_with / pdf_viewer have no narrow IPC setter — they are
+    // edited through the Settings modal's raw save (writeNote →
+    // validateAndCanonicaliseGlobalSettings), the same canonicaliser asserted
+    // here. Covered so the coverage test sees the whole global schema exercised.
+    agents: [
+      { id: 'claude', label: 'Claude', command: 'claude', promptFlags: true, favorite: true },
+    ],
+    open_with: {
+      main_ide: { label: 'VS Code', command: 'code -g {file}:{line}' },
+      secondary_ide: { command: 'subl {file}' },
+      terminal: { command: 'kitty' },
+    },
+    pdf_viewer: ['zathura', '{file}'],
+  };
+
+  const everyConceptionSetterKey = {
+    // tree-owned location + repo list
+    workspace_path: '/home/me/src',
+    worktrees_path: '/home/me/src/worktrees',
+    repositories: [{ section: 'Apps' }, 'condash', { name: 'frontend', run: 'make dev' }],
+    retired_apps: [{ handle: 'oldapp', aliases: ['legacy-name'] }],
+    // setTaskConfig (Tasks editor) — every TaskConfigEntry field
+    taskConfig: {
+      'sample-task': {
+        schedule: '5m',
+        timeout: '1m',
+        excludeFromLogs: true,
+        runMode: 'oneshot',
+        gateOnUpdatedTabs: true,
+      },
+    },
+  };
+
   it('round-trips every global IPC setter through the global canonicaliser', () => {
-    const everyGlobalSetterKey = {
-      // pickConceptionPath / openConception / removeRecentConceptionPath
-      lastConceptionPath: '/home/me/src/conception',
-      recentConceptionPaths: ['/home/me/src/conception', '/home/me/src/other'],
-      // setTheme
-      theme: 'dark',
-      // setLayout
-      layout: {
-        projects: true,
-        leftView: 'deliverables',
-        working: 'logs',
-        terminal: true,
-        projectsWidth: 320,
-      },
-      // setWelcomeDismissed
-      welcome: { dismissed: true },
-      // setCardMinWidth — every pane key
-      cardMinWidth: Object.fromEntries(CARD_MIN_WIDTH_KEYS.map((key) => [key, 500])),
-      // setTreeExpansion — every tree key
-      treeExpansion: {
-        knowledge: ['topics'],
-        resources: ['renders'],
-        skills: ['pr'],
-        skillsUser: ['git'],
-      },
-      // setSelectedBranches / setBranchFilterStickyAll
-      selectedBranches: ['main', 'feature-x'],
-      branchFilterStickyAll: false,
-      // setSkillsActiveScope
-      skillsActiveScope: 'user',
-      // termSetPrefs
-      terminal: {
-        shell: '/bin/zsh',
-        shortcut: 'Ctrl+T',
-        screenshot_dir: '/home/me/Pictures',
-        xterm: { font_size: 13, cursor_blink: true },
-        logging: { enabled: true, retentionDays: 14, maxDirMb: 500, scrollback: 10000 },
-      },
-      // setDashboardConfig (Settings → Dashboard) — every field
-      dashboard: {
-        enabled: true,
-        provider: 'deepseek',
-        apiKey: 'sk-deepseek-xxx',
-        baseUrl: 'https://api.deepseek.com',
-        model: 'deepseek-v4-flash',
-        intervalSec: 120,
-        gateOnActivity: true,
-        historyLimit: 20,
-      },
-    };
     expect(() =>
       validateAndCanonicaliseGlobalSettings(JSON.stringify(everyGlobalSetterKey)),
     ).not.toThrow();
   });
 
   it('round-trips every conception IPC setter through the conception canonicaliser', () => {
-    const everyConceptionSetterKey = {
-      // tree-owned location + repo list
-      workspace_path: '/home/me/src',
-      worktrees_path: '/home/me/src/worktrees',
-      repositories: [{ section: 'Apps' }, 'condash', { name: 'frontend', run: 'make dev' }],
-      retired_apps: [{ handle: 'oldapp', aliases: ['legacy-name'] }],
-      // writeTaskConfig (Tasks editor) — every TaskConfigEntry field
-      taskConfig: {
-        'sample-task': {
-          schedule: '5m',
-          timeout: '1m',
-          excludeFromLogs: true,
-          runMode: 'oneshot',
-          gateOnUpdatedTabs: true,
-        },
-      },
-    };
     expect(() =>
       validateAndCanonicaliseConceptionConfig(JSON.stringify(everyConceptionSetterKey)),
     ).not.toThrow();
+  });
+
+  // SCOPE_OF is derived from the two field groups, so it cannot silently drift
+  // from the schemas — assert it anyway to lock the invariant against a future
+  // hand-edit that re-encodes the split, and to anchor the coverage test below.
+  it('SCOPE_OF owns exactly the keys of the two strict schemas', () => {
+    const schemaKeys = new Set<string>([
+      ...Object.keys(globalSettingsSchema.shape),
+      ...Object.keys(configSchema.shape),
+    ]);
+    // `$schema_doc` is a doc pointer allowed in either file — intentionally not
+    // a SCOPE_OF entry.
+    schemaKeys.delete('$schema_doc');
+    expect(new Set(Object.keys(SCOPE_OF))).toEqual(schemaKeys);
+  });
+
+  // The trap this whole describe guards against: a new IPC-writable key that no
+  // test exercises ships and bricks the next save. A new owned key lands in
+  // SCOPE_OF automatically (it is derived from the field groups), so requiring
+  // the round-trip literals to cover every SCOPE_OF key forces a literal update
+  // — and with it a canonicaliser round-trip — before the key can merge.
+  it('the round-trip literals exercise every key SCOPE_OF owns', () => {
+    const covered = new Set<string>([
+      ...Object.keys(everyGlobalSetterKey),
+      ...Object.keys(everyConceptionSetterKey),
+    ]);
+    for (const key of Object.keys(SCOPE_OF)) {
+      expect(
+        covered.has(key),
+        `SCOPE_OF owns "${key}" but no round-trip literal exercises it — add it to ` +
+          `everyGlobalSetterKey / everyConceptionSetterKey so the canonicaliser is tested against it`,
+      ).toBe(true);
+    }
   });
 });
 
