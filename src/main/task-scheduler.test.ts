@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { resolveGate, resolveRunMode, resolveRunTimeout } from './task-scheduler';
+import type { TabInfo } from '../shared/types';
+import {
+  isTaskDue,
+  resolveGate,
+  resolveRunMode,
+  resolveRunTimeout,
+  selectUpdatedTabs,
+} from './task-scheduler';
 
 const DEFAULT_MS = 10 * 60_000;
 
@@ -39,5 +46,65 @@ describe('resolveGate', () => {
     expect(resolveGate(undefined)).toBe(false);
     expect(resolveGate({})).toBe(false);
     expect(resolveGate({ gateOnUpdatedTabs: false })).toBe(false);
+  });
+});
+
+describe('isTaskDue', () => {
+  it('is due once at least the cadence has elapsed since the last check', () => {
+    expect(isTaskDue(10_000, 0, 5_000)).toBe(true);
+    expect(isTaskDue(5_000, 0, 5_000)).toBe(true); // exactly the cadence
+  });
+
+  it('is not due before the cadence has elapsed', () => {
+    expect(isTaskDue(4_999, 0, 5_000)).toBe(false);
+    expect(isTaskDue(10_000, 8_000, 5_000)).toBe(false);
+  });
+
+  it('a never-checked task (lastCheckedAt 0) is due on the first non-trivial now', () => {
+    expect(isTaskDue(20_000, 0, 20_000)).toBe(true);
+  });
+});
+
+describe('selectUpdatedTabs', () => {
+  const tab = (sid: string): TabInfo => ({ sid, cwd: `/w/${sid}` });
+
+  it('returns every tab on the first run (empty previous snapshot)', () => {
+    const tabs = [tab('a'), tab('b')];
+    const current = new Map([
+      ['a', 10],
+      ['b', 20],
+    ]);
+    expect(selectUpdatedTabs(tabs, current, new Map()).map((t) => t.sid)).toEqual(['a', 'b']);
+  });
+
+  it('returns only tabs whose byte count moved since the previous snapshot', () => {
+    const tabs = [tab('a'), tab('b'), tab('c')];
+    const current = new Map([
+      ['a', 10],
+      ['b', 25],
+      ['c', 30],
+    ]);
+    const previous = new Map([
+      ['a', 10], // unchanged
+      ['b', 20], // grew
+      ['c', 30], // unchanged
+    ]);
+    expect(selectUpdatedTabs(tabs, current, previous).map((t) => t.sid)).toEqual(['b']);
+  });
+
+  it('treats a newly-opened tab (absent from previous) as updated', () => {
+    const tabs = [tab('a'), tab('new')];
+    const current = new Map([
+      ['a', 10],
+      ['new', 5],
+    ]);
+    const previous = new Map([['a', 10]]);
+    expect(selectUpdatedTabs(tabs, current, previous).map((t) => t.sid)).toEqual(['new']);
+  });
+
+  it('is empty when nothing changed', () => {
+    const tabs = [tab('a')];
+    const counts = new Map([['a', 10]]);
+    expect(selectUpdatedTabs(tabs, counts, new Map(counts))).toEqual([]);
   });
 });

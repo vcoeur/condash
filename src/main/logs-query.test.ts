@@ -202,6 +202,38 @@ describe('listSessions — enumerate + filter', () => {
   });
 });
 
+describe('parallelized listing (bounded concurrency pool)', () => {
+  // More files than the pool size (32) so the listing spans multiple waves —
+  // guards that the parallelized walk still returns every row in the same
+  // sorted order the old serial loop produced.
+  it('listSessions returns all rows newest-first across a busy day', async () => {
+    const expected: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      const hh = String(8 + Math.floor(i / 60)).padStart(2, '0');
+      const mm = String(i % 60).padStart(2, '0');
+      const sid = `t-${String(i).padStart(3, '0')}`;
+      await makeLog({ day: '2026-05-30', time: `${hh}${mm}00`, sid, exitCode: 0 });
+      expected.push(sid);
+    }
+    expected.reverse(); // newest spawn-time first
+    const rows = await listSessions(tmp, { day: '2026-05-30' });
+    expect(rows.map((r) => r.sid)).toEqual(expected);
+  });
+
+  it('listDays counts every session and sums sizes across many files', async () => {
+    for (let i = 0; i < 40; i++) {
+      const mm = String(i % 60).padStart(2, '0');
+      await makeLog({ day: '2026-05-30', time: `09${mm}00`, sid: `t-d${i}`, exitCode: 0 });
+    }
+    await makeLog({ day: '2026-05-29', time: '120000', sid: 't-prev', exitCode: 0 });
+    const days = await listDays(tmp);
+    expect(days.map((d) => d.day)).toEqual(['2026-05-30', '2026-05-29']);
+    expect(days[0].sessions).toBe(40);
+    expect(days[1].sessions).toBe(1);
+    expect(days[0].bytes).toBeGreaterThan(0);
+  });
+});
+
 describe('long headers (> 4 KB)', () => {
   it('parses a header line larger than the old fixed 4 KB head read', async () => {
     // A promptFlags run rides its full prompt in argv — easily over 4 KB.

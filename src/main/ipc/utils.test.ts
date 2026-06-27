@@ -5,7 +5,12 @@
  * no Electron runtime needed.
  */
 import { describe, expect, it } from 'vitest';
-import { requireMainWindowSender, requireOptionalStringArray } from './utils';
+import {
+  requireMainWindowSender,
+  requireOptionalRecord,
+  requireOptionalStringArray,
+  requireRecord,
+} from './utils';
 
 function makeEvent(overrides: {
   senderType?: string;
@@ -91,6 +96,43 @@ describe('requireOptionalStringArray', () => {
     );
     expect(() => requireOptionalStringArray('search', ['a', 1])).toThrow(
       /search: expected an array of strings/,
+    );
+  });
+});
+
+describe('requireRecord', () => {
+  it('returns a plain object unchanged', () => {
+    const obj = { side: 'my', cols: 80 };
+    expect(requireRecord('termSpawn', obj)).toBe(obj);
+    expect(requireRecord('termSpawn', {})).toEqual({});
+  });
+
+  it('throws the typed error for non-objects, null, and arrays', () => {
+    expect(() => requireRecord('termSpawn', null)).toThrow(/termSpawn: expected an object/);
+    expect(() => requireRecord('termSpawn', undefined)).toThrow(/termSpawn: expected an object/);
+    expect(() => requireRecord('termSpawn', 'nope')).toThrow(/termSpawn: expected an object/);
+    expect(() => requireRecord('termSpawn', 42)).toThrow(/termSpawn: expected an object/);
+    expect(() => requireRecord('termSpawn', ['a'])).toThrow(/termSpawn: expected an object/);
+  });
+});
+
+describe('requireOptionalRecord', () => {
+  it('passes undefined and null through as undefined', () => {
+    expect(requireOptionalRecord('dashboardTestConnection', undefined)).toBeUndefined();
+    expect(requireOptionalRecord('dashboardTestConnection', null)).toBeUndefined();
+  });
+
+  it('returns a present object unchanged', () => {
+    const obj = { apiKey: 'k', enabled: true };
+    expect(requireOptionalRecord('dashboardTestConnection', obj)).toBe(obj);
+  });
+
+  it('throws the typed error for present non-objects', () => {
+    expect(() => requireOptionalRecord('dashboardTestConnection', 'nope')).toThrow(
+      /dashboardTestConnection: expected an object/,
+    );
+    expect(() => requireOptionalRecord('dashboardTestConnection', ['a'])).toThrow(
+      /dashboardTestConnection: expected an object/,
     );
   });
 });

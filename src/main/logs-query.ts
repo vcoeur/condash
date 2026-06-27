@@ -24,6 +24,12 @@ import {
 } from './logs-format';
 import { redactSecrets } from './logs-redact';
 import { condashLogsRoot } from './condash-dir';
+import { runWithConcurrency } from './search/concurrency';
+
+/** Bound on the per-file stat / meta reads a single listing fans out — a busy
+ *  conception holds hundreds of session files, so a serial walk would stack up
+ *  that many round-trips. Matches the search disk-scan pool size. */
+const LISTING_CONCURRENCY = 32;
 
 /** One enumerated session file, before any metadata is read off disk. */
 export interface SessionRef {
@@ -191,8 +197,21 @@ async function enumerateSessions(conception: string, monthPrefix?: string): Prom
 /** Enumerate days that hold at least one session, newest first. */
 export async function listDays(conception: string, monthPrefix?: string): Promise<DayRow[]> {
   const refs = await enumerateSessions(conception, monthPrefix);
+  // Stat the files under a bounded pool rather than one-at-a-time; a vanished
+  // file contributes 0 bytes but the ref is still counted, matching the prior
+  // (stat-in-try/catch-after-increment) behaviour.
+  const sizes = await runWithConcurrency(
+    refs.map((ref) => async () => {
+      try {
+        return (await fs.stat(ref.path)).size;
+      } catch {
+        return 0;
+      }
+    }),
+    LISTING_CONCURRENCY,
+  );
   const byDay = new Map<string, { path: string; sessions: number; bytes: number }>();
-  for (const ref of refs) {
+  refs.forEach((ref, i) => {
     let entry = byDay.get(ref.day);
     if (!entry) {
       // The day directory is the parent of the session file.
@@ -200,12 +219,8 @@ export async function listDays(conception: string, monthPrefix?: string): Promis
       byDay.set(ref.day, entry);
     }
     entry.sessions += 1;
-    try {
-      entry.bytes += (await fs.stat(ref.path)).size;
-    } catch {
-      /* vanished between readdir and stat — ignore */
-    }
-  }
+    entry.bytes += sizes[i];
+  });
   return [...byDay.entries()]
     .map(([day, e]) => ({ day, path: e.path, sessions: e.sessions, bytes: e.bytes }))
     .sort((a, b) => (a.day < b.day ? 1 : -1));
@@ -339,11 +354,22 @@ export async function listSessions(
 ): Promise<SessionRow[]> {
   const monthPrefix = filters.day ? filters.day.slice(0, 7) : undefined;
   const refs = await enumerateSessions(conception, monthPrefix);
+  // Apply the cheap ref-level predicates (day / sid) before touching disk, then
+  // build the surviving rows under a bounded pool. `runWithConcurrency`
+  // preserves input order, and the post-build filters + final sort run over the
+  // result exactly as the serial loop did — so the output is identical, only
+  // the I/O is parallel. `buildRow` returns null on a vanished file (skipped).
+  const candidates = refs.filter(
+    (ref) =>
+      (!filters.day || ref.day === filters.day) &&
+      (!filters.sid || ref.sid.startsWith(filters.sid)),
+  );
+  const built = await runWithConcurrency(
+    candidates.map((ref) => () => buildRow(ref)),
+    LISTING_CONCURRENCY,
+  );
   const rows: SessionRow[] = [];
-  for (const ref of refs) {
-    if (filters.day && ref.day !== filters.day) continue;
-    if (filters.sid && !ref.sid.startsWith(filters.sid)) continue;
-    const row = await buildRow(ref);
+  for (const row of built) {
     if (!row) continue;
     if (filters.repo && row.repo !== filters.repo) continue;
     if (filters.active && !row.active) continue;

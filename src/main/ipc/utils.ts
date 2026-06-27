@@ -50,6 +50,31 @@ export function requireOptionalStringArray(channel: string, value: unknown): str
 }
 
 /**
+ * Require a plain object (non-null, non-array) — a structured IPC request
+ * payload the handler then reads fields off. Returns it as a string-keyed
+ * record; the handler casts to the concrete request type it expects.
+ */
+export function requireRecord(channel: string, value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${channel}: expected an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Like `requireRecord` but tolerates an absent argument (`undefined` / `null` →
+ * `undefined`), for optional object payloads such as the dashboard settings
+ * patch a handler defaults to `{}`.
+ */
+export function requireOptionalRecord(
+  channel: string,
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requireRecord(channel, value);
+}
+
+/**
  * Minimal structural slice of Electron's `IpcMainInvokeEvent` used by the
  * sender guard. Kept structural (no `electron` import) so unit tests can pass
  * a plain object without an Electron runtime.

@@ -64,6 +64,35 @@ export function resolveGate(entry: TaskConfigEntry | undefined): boolean {
   return entry?.gateOnUpdatedTabs === true;
 }
 
+/** Whether a task is due to run this tick: at least `cadence` ms have elapsed
+ *  since it was last launched (or deliberately skipped). Pure, for unit testing
+ *  without a real timer. Exported for unit testing.
+ *
+ *  @param now Current epoch-ms.
+ *  @param lastCheckedAt Epoch-ms of the last launch/skip (0 before the first).
+ *  @param cadence The task's schedule interval in ms.
+ *  @returns True when the task should be considered this tick. */
+export function isTaskDue(now: number, lastCheckedAt: number, cadence: number): boolean {
+  return now - lastCheckedAt >= cadence;
+}
+
+/** The open tabs whose cumulative byte count moved since a task's last run —
+ *  the `{UPDATED_TABS}` subset and the input to the per-tab growth gate. On the
+ *  first run `previous` is empty, so every open tab reads as updated. Pure, for
+ *  unit testing without live ptys. Exported for unit testing.
+ *
+ *  @param tabs The currently-open tabs (`tabsContext()` at tick time).
+ *  @param current Per-sid live byte counts (`tabsBytes()` at tick time).
+ *  @param previous Per-sid byte counts captured at the task's last launch.
+ *  @returns The subset of `tabs` whose byte count differs from `previous`. */
+export function selectUpdatedTabs(
+  tabs: TabInfo[],
+  current: Map<string, number>,
+  previous: Map<string, number>,
+): TabInfo[] {
+  return tabs.filter((tab) => current.get(tab.sid) !== previous.get(tab.sid));
+}
+
 /** The agedum prompt-seeding flag for a run mode: `--run` runs the prompt once
  *  and exits; `--prompt` seeds it and stays interactive. */
 function promptFlag(mode: RunMode): string {
@@ -268,14 +297,13 @@ async function tick(conceptionPath: string): Promise<void> {
       states.set(slug, state);
     }
     if (state.inFlight) continue;
-    if (now - state.lastCheckedAt < cadence) continue;
+    if (!isTaskDue(now, state.lastCheckedAt, cadence)) continue;
 
     // Per-tab growth: the open tabs whose byte count moved since the last run.
     // On the first run every tab reads as updated (no prior snapshot). The run
     // is always handed exactly this subset via `{UPDATED_TABS}`.
     const bytes = tabsBytes();
-    const prevBytes = state.bytesPerSid;
-    const updated = tabsContext().filter((tab) => bytes.get(tab.sid) !== prevBytes.get(tab.sid));
+    const updated = selectUpdatedTabs(tabsContext(), bytes, state.bytesPerSid);
     // Growth gate, opt-in per task: a gated task skips a tick when nothing
     // changed (or nothing is open) rather than spend the agent. An ungated task
     // runs on every interval regardless — it may not act on `{UPDATED_TABS}`.

@@ -8,7 +8,14 @@ import { condashDir, condashLogsRoot } from '../condash-dir';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings } from '../settings';
 import { isTaskRunPath, listTaskRuns } from '../task-runs';
+import { runWithConcurrency } from '../search/concurrency';
 import { requireMainWindowSender } from './utils';
+
+/** Bound on the per-file metadata reads a single listing fans out — each
+ *  session file costs a stat plus a head/tail meta read, so a busy day would
+ *  otherwise serialise hundreds of round-trips on the interaction path. Matches
+ *  the search disk-scan pool size. */
+const LISTING_CONCURRENCY = 32;
 
 // Re-exported so callers that historically imported `splitContent` from this
 // file keep working. New code should import directly from `../logs-format`.
@@ -120,14 +127,15 @@ async function listSessionsForDay(day: string): Promise<TermLogSessionMeta[]> {
   const [y, m, d] = day.split('-');
   const dayPath = join(condashLogsRoot(conception), y, m, d);
 
-  const files = await readDirSafe(dayPath);
-  const metas: TermLogSessionMeta[] = [];
-  for (const name of files) {
-    if (!isSessionFile(name)) continue;
-    const fullPath = join(dayPath, name);
-    const meta = await readSessionMetaSummary(fullPath, day, name);
-    if (meta) metas.push(meta);
-  }
+  const sessionFiles = (await readDirSafe(dayPath)).filter(isSessionFile);
+  // Fan the per-file meta reads out under a bounded pool rather than awaiting
+  // each in series. `readSessionMetaSummary` already swallows its own per-file
+  // errors (returns null), so one unreadable file can't kill the listing.
+  const built = await runWithConcurrency(
+    sessionFiles.map((name) => () => readSessionMetaSummary(join(dayPath, name), day, name)),
+    LISTING_CONCURRENCY,
+  );
+  const metas: TermLogSessionMeta[] = built.filter((m): m is TermLogSessionMeta => m !== null);
   // Sort by HHMMSS descending — most recent first within a day.
   metas.sort((a, b) => (a.time < b.time ? 1 : -1));
   return metas;
