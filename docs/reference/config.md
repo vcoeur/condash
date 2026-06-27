@@ -144,7 +144,7 @@ Edit it once in **Settings → Dashboard** (under **Personal · this machine**).
 | `gateOnActivity` | boolean     | `true`           | Skip a cycle when no open tab produced new output since the last run (reuses the scheduler's growth gate). Off → summarize every interval regardless.                                  |
 | `historyLimit`   | integer     | `20`             | Maximum retained events per tab and in the global history; older events roll off.                                                                                                       |
 
-> **Privacy:** enabling the dashboard transmits recent on-screen terminal output (which may include secrets) to the configured API endpoint — the DeepSeek API by default, or whatever `baseUrl` points at. Leave it off for tabs that display credentials you don't want sent off-machine.
+> **Privacy:** enabling the dashboard transmits recent on-screen terminal output to the configured API endpoint — the DeepSeek API by default, or whatever `baseUrl` points at. Before any text leaves the machine it is run through the same secret redactor as `condash logs --redact` (provider key prefixes, bearer tokens, JWTs, secret-named assignments, PEM private-key blocks → `«redacted:…»`). That redactor is conservative by design and recognises only high-precision secret shapes, so it is a backstop, not a guarantee: leave the dashboard off for tabs that display credentials you don't want sent off-machine.
 
 ### Workspace keys
 
