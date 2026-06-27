@@ -57,7 +57,6 @@ vi.mock('../effective-config', () => ({
 vi.mock('../watcher', () => ({ setWatchedConception: vi.fn(async () => undefined) }));
 vi.mock('../repo-watchers', () => ({ disposeRepoWatchers: vi.fn(async () => undefined) }));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let handlers: Record<string, (...args: any[]) => Promise<unknown>>;
 let onConceptionPicked: ReturnType<typeof vi.fn>;
 let tmp: string;
@@ -78,7 +77,6 @@ beforeEach(async () => {
   vi.clearAllMocks();
   handlers = {};
   const { ipcMain } = await import('electron');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (ipcMain.handle as any).mockImplementation(
     (channel: string, fn: (...args: any[]) => Promise<unknown>) => {
       handlers[channel] = fn;
@@ -192,7 +190,6 @@ describe('openPath', () => {
 describe('exportNotePdf', () => {
   it('returns null without printing when the save dialog is cancelled', async () => {
     const { dialog } = await import('electron');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (dialog.showSaveDialog as any).mockResolvedValue({ canceled: true });
     const result = await handlers.exportNotePdf(trustedEvent, '/c/note.md', '<html></html>');
     expect(result).toBeNull();
@@ -203,7 +200,6 @@ describe('exportNotePdf', () => {
   it('prints and writes the PDF to the picked path', async () => {
     const target = join(tmp, 'out.pdf');
     const { dialog } = await import('electron');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (dialog.showSaveDialog as any).mockResolvedValue({ canceled: false, filePath: target });
     const result = await handlers.exportNotePdf(trustedEvent, '/c/note.md', '<html></html>');
     expect(result).toBe(target.split('\\').join('/'));

@@ -13,17 +13,13 @@
 // Control-character ranges we drop (everything below 0x20 except \n and \t,
 // plus DEL). Declared once; the `\r` overwrite pass runs before this so lone
 // carriage returns are resolved rather than deleted.
-// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
 // OSC: ESC ] ... terminated by BEL or ESC \. Stripped first so the BEL
 // terminator is consumed here rather than by the control-char pass.
-// eslint-disable-next-line no-control-regex
 const OSC_SEQUENCE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 // CSI: ESC [ params intermediate final.
-// eslint-disable-next-line no-control-regex
 const CSI_SEQUENCE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 // Other two-byte escapes: ESC followed by a single byte in @-_ or \.
-// eslint-disable-next-line no-control-regex
 const SHORT_ESCAPE = /\x1b[@-Z\\-_]/g;
 
 /**

@@ -61,10 +61,10 @@
   flex-direction: column;
   gap: 2px;
   padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--danger, #c0392b) 50%, var(--border));
-  border-left: 3px solid var(--danger, #c0392b);
+  border: 1px solid color-mix(in srgb, var(--danger) 50%, var(--border));
+  border-left: 3px solid var(--danger);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--danger, #c0392b) 12%, var(--bg-elevated));
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
 }
 
 .dashboard-error-banner-label {
@@ -72,7 +72,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--danger, #c0392b);
+  color: var(--danger);
 }
 
 .dashboard-error-banner-msg {
