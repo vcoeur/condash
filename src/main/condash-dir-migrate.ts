@@ -1,6 +1,7 @@
 import { existsSync, promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { atomicWrite } from './atomic-write';
+import { withFileQueue } from './mutate-shared';
 import {
   CONDASH_DIR,
   condashDir,
@@ -89,7 +90,12 @@ export async function migrateLegacyConfig(conception: string): Promise<Migration
   }
 
   await fs.mkdir(condashDir(conception), { recursive: true });
-  await atomicWrite(target, content);
+  // Each settings-file write goes through its own per-path queue so a
+  // concurrent conception-config writer (Settings-modal save / `config set`,
+  // both via `withFileQueue`) can't interleave with the migration. `target`
+  // and `source` are distinct paths and each queue is acquired-then-released
+  // before the next, so there is no nesting and no deadlock.
+  await withFileQueue(target, () => atomicWrite(target, content));
 
   const now = new Date();
   const tombstone =
@@ -102,7 +108,7 @@ export async function migrateLegacyConfig(conception: string): Promise<Migration
       null,
       2,
     ) + '\n';
-  await atomicWrite(source, tombstone);
+  await withFileQueue(source, () => atomicWrite(source, tombstone));
 
   const gitignoreUpdated = await ensureGitignoreEntry(conception);
 
@@ -127,26 +133,31 @@ export async function ensureGitignoreEntry(conception: string): Promise<boolean>
   if (!existsSync(join(conception, '.git'))) return false;
 
   const gitignorePath = join(conception, '.gitignore');
-  let existing = '';
-  try {
-    existing = await fs.readFile(gitignorePath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
+  // Read-modify-write under the file's own queue so the read of the existing
+  // contents and the write-back stay atomic against any concurrent writer of
+  // the same `.gitignore`.
+  return withFileQueue(gitignorePath, async () => {
+    let existing = '';
+    try {
+      existing = await fs.readFile(gitignorePath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
 
-  if (GITIGNORE_PATTERN_RE.test(existing)) return false;
+    if (GITIGNORE_PATTERN_RE.test(existing)) return false;
 
-  let updated: string;
-  if (existing.length === 0) {
-    updated = GITIGNORE_BLOCK;
-  } else if (existing.endsWith('\n')) {
-    updated = existing + '\n' + GITIGNORE_BLOCK;
-  } else {
-    updated = existing + '\n\n' + GITIGNORE_BLOCK;
-  }
+    let updated: string;
+    if (existing.length === 0) {
+      updated = GITIGNORE_BLOCK;
+    } else if (existing.endsWith('\n')) {
+      updated = existing + '\n' + GITIGNORE_BLOCK;
+    } else {
+      updated = existing + '\n\n' + GITIGNORE_BLOCK;
+    }
 
-  await atomicWrite(gitignorePath, updated);
-  return true;
+    await atomicWrite(gitignorePath, updated);
+    return true;
+  });
 }
 
 async function pathExists(path: string): Promise<boolean> {
