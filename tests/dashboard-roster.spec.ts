@@ -66,7 +66,7 @@ test('Dashboard lists every open tab even with no summaries', async () => {
     // summarized) the loop's liveness must be visible — this is the "I see no
     // update / what's going on" fix. With no key the phase is the paused state.
     await expect(pane.locator('.dashboard-status')).toBeVisible();
-    await expect(pane.locator('.dashboard-status-list')).toContainText('Paused');
+    await expect(pane.locator('.dashboard-status')).toContainText('Paused');
     // "What's going on" is no longer blank: it narrates the open-but-unsummarized
     // tabs instead of hiding until a summary exists.
     await expect(pane.locator('.dashboard-overview')).toContainText('no transcript captured yet');

@@ -30,4 +30,20 @@ describe('cleanTerminalText', () => {
   it('returns empty string for escape-only input', () => {
     expect(cleanTerminalText('\x1b[2J\x1b[H')).toBe('');
   });
+
+  it('consumes nF charset-designation escapes instead of leaking "(B"', () => {
+    // ESC ( B = "designate G0 = US-ASCII"; the printable "(B" tail must not survive.
+    expect(cleanTerminalText('\x1b(Bhello')).toBe('hello');
+    expect(cleanTerminalText('\x1b(B\x1b)0\x1b*B\x1b+B')).toBe('');
+    expect(cleanTerminalText('\x1b#8aligned')).toBe('aligned');
+  });
+
+  it('cleans an alternate-screen repaint frame to empty (no "(B" residue)', () => {
+    // Regression: a TUI repainting via cursor addressing emits ESC ( B every
+    // frame; the cleaned text must not read as a tab printing "(B" repeatedly.
+    const frame = '\x1b[H\x1b(B\x1b[2K\x1b(B'.repeat(6);
+    const cleaned = cleanTerminalText(frame);
+    expect(cleaned).not.toContain('(B');
+    expect(cleaned).toBe('');
+  });
 });

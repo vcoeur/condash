@@ -169,22 +169,28 @@ export function DashboardView() {
 
       {/* Always-on liveness strip: next-update ETA + what the loop is doing now
           + last run. Rendered whenever the engine is enabled, independent of any
-          tab summary, so an idle-but-running engine is never mistaken for dead. */}
+          tab summary, so an idle-but-running engine is never mistaken for dead.
+          A single horizontal line — three labelled segments separated by hairline
+          dividers — so it stays compact above the working surface. */}
       <Show when={config()?.enabled}>
         <section class="dashboard-status">
-          <dl class="dashboard-status-list">
-            <dt>Status</dt>
-            <dd>
+          <span class="dashboard-status-item">
+            <span class="dashboard-status-label">Status</span>
+            <span>
               {statusLabel(config()!)}
               <Show when={nextUpdateText()}>
                 <span class="dashboard-status-next"> · {nextUpdateText()}</span>
               </Show>
-            </dd>
-            <dt>Engine</dt>
-            <dd>{enginePhaseText()}</dd>
-            <dt>Last run</dt>
-            <dd>{lastRunText()}</dd>
-          </dl>
+            </span>
+          </span>
+          <span class="dashboard-status-item">
+            <span class="dashboard-status-label">Engine</span>
+            <span>{enginePhaseText()}</span>
+          </span>
+          <span class="dashboard-status-item">
+            <span class="dashboard-status-label">Last run</span>
+            <span>{lastRunText()}</span>
+          </span>
         </section>
       </Show>
 
