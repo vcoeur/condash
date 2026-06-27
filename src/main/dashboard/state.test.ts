@@ -7,6 +7,7 @@ import {
   emptyDashboardState,
   loadDashboardState,
   pruneDashboardState,
+  saveDashboardState,
 } from './state';
 import type { DashboardState } from '../../shared/types';
 
@@ -59,6 +60,20 @@ describe('emptyDashboardState', () => {
       roster: [],
       history: [],
     });
+  });
+});
+
+describe('saveDashboardState', () => {
+  it('creates the .condash/dashboard dir on a fresh conception and round-trips', async () => {
+    // A fresh conception has no `.condash/dashboard/` — the dir is created
+    // lazily on first save and scaffolded nowhere else. Deliberately do NOT
+    // mkdir it here: without the save's own mkdir, `atomicWrite` throws ENOENT
+    // and every persist silently fails (the bug this guards against). Note the
+    // sibling load test mkdir's the dir itself, which is exactly what masked it.
+    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-save-'));
+    await expect(saveDashboardState(dir, emptyDashboardState(7))).resolves.toBeUndefined();
+    const loaded = await loadDashboardState(dir);
+    expect(loaded?.updatedAt).toBe(7);
   });
 });
 
