@@ -107,7 +107,12 @@ describe('dashboard engine status', () => {
     h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
     h.bytes = new Map([['a', 12]]);
     h.recent = 'real transcript output';
-    h.summary = { title: 'Build', contextLines: ['compiling'], currentAction: 'compiling' };
+    h.summary = {
+      title: 'Build',
+      contextLines: ['compiling'],
+      currentAction: 'compiling',
+      state: 'working',
+    };
     h.overview = { overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     await vi.waitFor(() => {
@@ -126,7 +131,12 @@ describe('dashboard engine status', () => {
     h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
     h.bytes = new Map([['a', 12]]);
     h.recent = 'real transcript output';
-    h.summary = { title: 'Build', contextLines: ['compiling'], currentAction: 'compiling' };
+    h.summary = {
+      title: 'Build',
+      contextLines: ['compiling'],
+      currentAction: 'compiling',
+      state: 'working',
+    };
     h.overview = { overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     // The renderer must still receive the post-cycle state — summarized tab,

@@ -1,6 +1,22 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { DashboardConfigView, DashboardState, TabInfo, TabSummary } from '@shared/types';
+import type {
+  DashboardConfigView,
+  DashboardState,
+  TabInfo,
+  TabState,
+  TabSummary,
+} from '@shared/types';
+import { appColorClass, appPillText } from '@shared/app-color';
+import './app-pill.css';
 import './dashboard-pane.css';
+
+/** Human label for the state pill, by state. */
+const STATE_LABEL: Record<TabState, string> = {
+  working: 'Working',
+  awaiting: 'Awaiting you',
+  idle: 'Idle',
+  error: 'Error',
+};
 
 /**
  * The Dashboard working surface: a detailed, always-current view of what the
@@ -118,6 +134,32 @@ export function DashboardView() {
   const tabLabel = (tab: TabInfo): string =>
     tab.cmd?.trim() || tab.cwd.split('/').filter(Boolean).pop() || tab.sid;
 
+  // The app a tab belongs to: its launched repo if known, else the cwd's last
+  // path segment. Rendered as a hash-coloured `#handle` pill so a busy grid is
+  // scannable by project.
+  const repoRef = (tab: TabInfo): string =>
+    tab.repo?.trim() || tab.cwd.split('/').filter(Boolean).pop() || '';
+  // The program driving the tab — the first token of the command (basename), so
+  // a card shows "claude" / "pi" / "make" next to the repo. Empty cmd → shell.
+  const agentName = (tab: TabInfo): string => {
+    const first = tab.cmd?.trim().split(/\s+/)[0] ?? '';
+    return first.split('/').pop() || 'shell';
+  };
+  // For an awaiting tab, the blocking question is the headline; otherwise the
+  // model's one-line current action.
+  const cardAction = (summary: TabSummary): string =>
+    summary.state === 'awaiting' && summary.awaitingPrompt
+      ? summary.awaitingPrompt
+      : summary.currentAction;
+
+  // Cross-tab state tally for the chip row above the grid — counted over the
+  // live summarized tabs (state().tabs holds only still-open ones).
+  const tally = (): Record<TabState, number> => {
+    const counts: Record<TabState, number> = { working: 0, awaiting: 0, idle: 0, error: 0 };
+    for (const tab of state()?.tabs ?? []) counts[tab.state] += 1;
+    return counts;
+  };
+
   const fmtTime = (ms: number): string => new Date(ms).toLocaleTimeString();
   const fmtRelative = (ms: number): string => {
     const seconds = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -173,8 +215,9 @@ export function DashboardView() {
           A single horizontal line — three labelled segments separated by hairline
           dividers — so it stays compact above the working surface. */}
       <Show when={config()?.enabled}>
-        <section class="dashboard-status">
+        <section class="dashboard-status" data-phase={engine()?.phase ?? 'idle'}>
           <span class="dashboard-status-item">
+            <span class="dashboard-status-dot" />
             <span class="dashboard-status-label">Status</span>
             <span>
               {statusLabel(config()!)}
@@ -246,7 +289,30 @@ export function DashboardView() {
 
         <main class="dashboard-main">
           <section class="dashboard-section">
-            <h3>Open tabs</h3>
+            {/* Header row: title + the cross-tab state tally — the cockpit's
+                at-a-glance triage readout. A chip per non-empty state. */}
+            <div class="dashboard-tab-head">
+              <h3>Open tabs{cards().length > 0 ? ` · ${cards().length}` : ''}</h3>
+              <Show
+                when={(['working', 'awaiting', 'idle', 'error'] as const).some(
+                  (s) => tally()[s] > 0,
+                )}
+              >
+                <div class="dashboard-tally">
+                  <For
+                    each={(['working', 'awaiting', 'idle', 'error'] as const).filter(
+                      (s) => tally()[s] > 0,
+                    )}
+                  >
+                    {(s) => (
+                      <span class="dashboard-tally-chip" data-state={s}>
+                        <b>{tally()[s]}</b> {STATE_LABEL[s].toLowerCase()}
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
             <Show
               when={cards().length > 0}
               fallback={<p class="dashboard-pane-hint">No open terminal tabs.</p>}
@@ -259,15 +325,29 @@ export function DashboardView() {
                       fallback={
                         // No summary yet: the tab is still visible, drawn from
                         // its command/cwd, so the user always sees every tab.
-                        <li class="dashboard-tab-card dashboard-tab-card-pending">
+                        <li
+                          class="dashboard-tab-card dashboard-tab-card-pending"
+                          data-state="pending"
+                        >
                           <div class="dashboard-tab-card-head">
-                            <span class="dashboard-tab-card-title">{tabLabel(card.tab)}</span>
-                            <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
+                            <span class="dashboard-tab-state" data-state="pending">
+                              <span class="dashboard-tab-state-dot" />
+                              Starting
+                            </span>
+                            <span class="dashboard-tab-card-meta">
+                              <Show when={repoRef(card.tab)}>
+                                <span
+                                  class={`dashboard-repo-pill ${appColorClass(repoRef(card.tab))}`}
+                                >
+                                  {appPillText(repoRef(card.tab))}
+                                </span>
+                              </Show>
+                              <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
+                              <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
+                            </span>
                           </div>
+                          <div class="dashboard-tab-card-title">{tabLabel(card.tab)}</div>
                           <ul class="dashboard-tab-card-context">
-                            <Show when={card.tab.cmd}>
-                              <li>Command: {card.tab.cmd}</li>
-                            </Show>
                             <li>Directory: {card.tab.cwd}</li>
                             <li>
                               Waiting for first agent output (a submitted prompt or finished turn).
@@ -277,18 +357,32 @@ export function DashboardView() {
                       }
                     >
                       {(summary) => (
-                        <li class="dashboard-tab-card">
+                        <li class="dashboard-tab-card" data-state={summary().state}>
                           <div class="dashboard-tab-card-head">
-                            <span class="dashboard-tab-card-title">{summary().title}</span>
-                            <span
-                              class="dashboard-tab-card-time"
-                              title={fmtTime(summary().updatedAt)}
-                            >
-                              {fmtRelative(summary().updatedAt)}
+                            <span class="dashboard-tab-state" data-state={summary().state}>
+                              <span class="dashboard-tab-state-dot" />
+                              {STATE_LABEL[summary().state]}
+                            </span>
+                            <span class="dashboard-tab-card-meta">
+                              <Show when={repoRef(card.tab)}>
+                                <span
+                                  class={`dashboard-repo-pill ${appColorClass(repoRef(card.tab))}`}
+                                >
+                                  {appPillText(repoRef(card.tab))}
+                                </span>
+                              </Show>
+                              <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
+                              <span
+                                class="dashboard-tab-card-time"
+                                title={fmtTime(summary().updatedAt)}
+                              >
+                                {fmtRelative(summary().updatedAt)}
+                              </span>
                             </span>
                           </div>
-                          <Show when={summary().currentAction}>
-                            <p class="dashboard-tab-card-action">{summary().currentAction}</p>
+                          <div class="dashboard-tab-card-title">{summary().title}</div>
+                          <Show when={cardAction(summary())}>
+                            <p class="dashboard-tab-card-action">{cardAction(summary())}</p>
                           </Show>
                           <Show when={summary().contextLines.length > 0}>
                             <ul class="dashboard-tab-card-context">

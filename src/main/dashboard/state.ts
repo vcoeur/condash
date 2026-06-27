@@ -2,7 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { condashDir } from '../condash-dir';
 import { atomicWrite } from '../atomic-write';
-import type { DashboardEvent, DashboardState, TabSummary } from '../../shared/types';
+import type { DashboardEvent, DashboardState, TabState, TabSummary } from '../../shared/types';
 
 /** Subdirectory under `.condash/` that holds the dashboard's persisted state. */
 const DASHBOARD_SUBDIR = 'dashboard';
@@ -16,6 +16,17 @@ export function dashboardStatePath(conceptionPath: string): string {
 /** A fresh, empty dashboard state. */
 export function emptyDashboardState(updatedAt: number): DashboardState {
   return { updatedAt, overview: [], tabs: [], roster: [], history: [] };
+}
+
+const TAB_STATES: readonly TabState[] = ['working', 'awaiting', 'idle', 'error'];
+
+/** Backfill `state` for a persisted summary written before the field existed
+ *  (or with a garbled value): default to `idle` so an old `state.json` loads
+ *  cleanly instead of yielding an undefined state the renderer can't colour. */
+function coerceTabState(value: unknown): TabState {
+  return typeof value === 'string' && (TAB_STATES as readonly string[]).includes(value)
+    ? (value as TabState)
+    : 'idle';
 }
 
 function isEvent(value: unknown): value is DashboardEvent {
@@ -53,7 +64,11 @@ function coerceState(parsed: unknown): DashboardState | null {
     history: Array.isArray(raw.history) ? raw.history.filter(isEvent) : [],
     tabs: raw.tabs
       .filter(isTabSummary)
-      .map((tab) => ({ ...tab, events: tab.events.filter(isEvent) })),
+      .map((tab) => ({
+        ...tab,
+        state: coerceTabState(tab.state),
+        events: tab.events.filter(isEvent),
+      })),
     // `roster` is live data (the currently-open tabs); a persisted copy is stale
     // the moment the app reopens, so always start empty and let the first tick
     // rebuild it from the live session map.

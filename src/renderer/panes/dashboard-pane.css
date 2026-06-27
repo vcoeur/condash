@@ -90,12 +90,26 @@
   flex-wrap: wrap;
   align-items: baseline;
   row-gap: 4px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--state-color, var(--accent));
   border-radius: var(--radius);
-  background: var(--bg-subtle);
+  background: color-mix(in srgb, var(--state-color, var(--accent)) 7%, var(--bg-subtle));
   font-size: var(--text-sm);
+}
+
+/* Phase → accent colour for the strip's bar, wash, live dot, and countdown. */
+.dashboard-status[data-phase='summarizing'] {
+  --state-color: var(--accent);
+}
+.dashboard-status[data-phase='waiting'] {
+  --state-color: var(--col-running);
+}
+.dashboard-status[data-phase='idle'] {
+  --state-color: var(--text-faint);
+}
+.dashboard-status[data-phase='no-api-key'] {
+  --state-color: var(--warn);
 }
 
 .dashboard-status-item {
@@ -120,10 +134,36 @@
   color: var(--text-muted);
 }
 
+/* Live dot in the Status segment — pulses while a cycle is in flight, steady
+ * otherwise, so the strip reads as a heartbeat. */
+.dashboard-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  align-self: center;
+  background: var(--state-color, var(--accent));
+}
+.dashboard-status[data-phase='summarizing'] .dashboard-status-dot {
+  animation: dashboard-ping 1.6s ease-out infinite;
+}
+@keyframes dashboard-ping {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-color) 60%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
 /* The live countdown — tinted + tabular figures so it doesn't jitter as it ticks. */
 .dashboard-status-next {
-  color: var(--accent);
+  color: var(--state-color, var(--accent));
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 /* Two-column key/value grid for the active summarizer settings. */
@@ -164,6 +204,45 @@
   color: var(--text);
 }
 
+/* "Open tabs" header row: section title on the left, the cross-tab state tally
+ * on the right. The tally is the cockpit's at-a-glance triage readout. */
+.dashboard-tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.dashboard-tab-head h3 {
+  margin: 0;
+}
+
+.dashboard-tally {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* One chip per non-empty state — count + label, tinted in the state colour. */
+.dashboard-tally-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--state-color, var(--text-muted));
+  background: color-mix(in srgb, var(--state-color, var(--text-muted)) 13%, var(--bg-elevated));
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--state-color, var(--text-muted)) 26%, transparent);
+}
+.dashboard-tally-chip b {
+  font-weight: 800;
+  font-size: var(--text-sm);
+}
+
 /* Responsive card grid: as many ~240px columns as fit, so the cards spread
  * across the wide main column instead of one full-width card per row. */
 .dashboard-tab-list {
@@ -176,36 +255,141 @@
   align-items: start;
 }
 
+/* Per-state accent colour, mapped onto the app's existing palette tokens and
+ * shared by the card bar/wash, the state pill, and the tally chips. Scoped to
+ * the pane so it can't leak onto other `data-state` users elsewhere. */
+.dashboard-pane [data-state='working'] {
+  --state-color: var(--col-running);
+}
+.dashboard-pane [data-state='awaiting'] {
+  --state-color: var(--col-review);
+}
+.dashboard-pane [data-state='idle'] {
+  --state-color: var(--col-done);
+}
+.dashboard-pane [data-state='error'] {
+  --state-color: var(--warn);
+}
+.dashboard-pane [data-state='pending'] {
+  --state-color: var(--text-faint);
+}
+
+/* The state-coloured card. A left bar (::before) + a faint wash carry the
+ * state; the pill names it in words so colour is never the only signal. */
 .dashboard-tab-card {
-  border: 1px solid var(--border);
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--state-color, var(--border)) 30%, var(--border));
   border-radius: var(--radius);
-  background: var(--bg-elevated);
-  padding: 10px 12px;
+  background: color-mix(in srgb, var(--state-color, transparent) 8%, var(--bg-elevated));
+  padding: 11px 13px 11px 15px;
   box-shadow: var(--shadow-card);
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
+/* The left state bar. */
+.dashboard-tab-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--state-color, var(--border));
+}
+
+/* Awaiting-you is the one card that should pull the eye across a full grid:
+ * a coloured ring + a soft glow. */
+.dashboard-tab-card[data-state='awaiting'] {
+  border-color: color-mix(in srgb, var(--state-color) 55%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--state-color) 35%, transparent),
+    0 6px 18px color-mix(in srgb, var(--state-color) 20%, transparent);
+}
+
 /* A tab with no summary yet (no readable output, or before the first cycle).
- * Dimmed and dashed so it reads as "present but not yet summarized" rather than
- * a full summary card — the point is only that the tab is never invisible. */
+ * Dashed + dimmed so it reads as "present but not yet summarized" — the point
+ * is only that the tab is never invisible. */
 .dashboard-tab-card-pending {
   border-style: dashed;
   background: transparent;
   box-shadow: none;
-  opacity: 0.85;
+  opacity: 0.9;
+}
+.dashboard-tab-card-pending::before {
+  opacity: 0.5;
 }
 
 .dashboard-tab-card-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
+/* The state pill — tinted in the state colour with a coloured-ink label, so it
+ * stays legible (AA) in both the light and dark themes. */
+.dashboard-tab-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-3xs);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--state-color, var(--text-muted));
+  background: color-mix(in srgb, var(--state-color, var(--text-muted)) 16%, transparent);
+}
+.dashboard-tab-state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: currentColor;
+}
+
+/* Right side of the head: the #repo pill, the driving program, and relative time. */
+.dashboard-tab-card-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+/* #handle pill — reuses the per-app hash palette (--app-pill-bg/fg set by the
+ * appColorClass `app-pill-N` class) so a tab's repo reads with the same colour
+ * it has in the Projects and Code panes. */
+.dashboard-repo-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--app-pill-bg, var(--bg-subtle));
+  color: var(--app-pill-fg, var(--text));
+}
+.dashboard-tab-agent {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* Title is now the card's heading, on its own line below the state row. */
 .dashboard-tab-card-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
+  margin: 7px 0 0;
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
   color: var(--text);
 }
 
@@ -268,4 +452,28 @@
   margin-top: auto;
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* Dark "control room": the live-state bars glow, so a working / awaiting / error
+ * card reads as a lit indicator on the dark surface — the cockpit-at-night feel.
+ * Mirrors the two dark activation paths used app-wide (explicit toggle + OS
+ * preference with no light override). */
+[data-theme='dark'] .dashboard-tab-card[data-state='working']::before,
+[data-theme='dark'] .dashboard-tab-card[data-state='awaiting']::before,
+[data-theme='dark'] .dashboard-tab-card[data-state='error']::before {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--state-color) 75%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .dashboard-tab-card[data-state='working']::before,
+  :root:not([data-theme='light']) .dashboard-tab-card[data-state='awaiting']::before,
+  :root:not([data-theme='light']) .dashboard-tab-card[data-state='error']::before {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--state-color) 75%, transparent);
+  }
+}
+
+/* Honour reduced-motion: drop the pulsing status dot. */
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-status[data-phase='summarizing'] .dashboard-status-dot {
+    animation: none;
+  }
 }
