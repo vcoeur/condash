@@ -3,6 +3,8 @@ import { EVENT_CHANNELS } from '../../shared/ipc-channels';
 import type {
   DashboardConfig,
   DashboardConfigView,
+  DashboardEnginePhase,
+  DashboardEngineStatus,
   DashboardState,
   TabInfo,
   TabSummary,
@@ -53,6 +55,23 @@ function pushState(): void {
   broadcast(EVENT_CHANNELS.dashboardTabSummaries, { summaries: state.tabs });
 }
 
+/** Publish the live loop status (phase + next-run ETA), pushing only when it
+ *  changed. Cheap (no LLM) — called at each tick's decision points so the pane
+ *  shows the engine is alive even before any tab has a summary. */
+function publishEngine(next: DashboardEngineStatus): void {
+  const cur = state.engine;
+  if (
+    cur &&
+    cur.phase === next.phase &&
+    cur.nextRunAt === next.nextRunAt &&
+    cur.lastRunAt === next.lastRunAt
+  ) {
+    return;
+  }
+  state = { ...state, engine: next };
+  pushState();
+}
+
 /**
  * Arm (or re-point) the dashboard engine for `conceptionPath`, or tear it down
  * with `null`. Mirrors the task-scheduler / log-janitor lifecycle: clears the
@@ -76,6 +95,10 @@ export async function setDashboardConception(conceptionPath: string | null): Pro
   const interval = setInterval(() => void tick(conceptionPath), TICK_MS);
   current = { path: conceptionPath, interval };
   pushState();
+  // Run one tick immediately so the roster and live engine status appear at once
+  // instead of after a full TICK_MS of a blank-looking pane. inFlight guards any
+  // overlap with the scheduled interval.
+  void tick(conceptionPath);
 }
 
 /** Latest dashboard snapshot, or null when the engine is not armed. */
@@ -137,10 +160,22 @@ export async function tick(conceptionPath: string): Promise<void> {
     pushState();
   }
 
-  if (!config.apiKey) return;
+  // Resting phase between cycles: `idle` with no open tabs, else `waiting`
+  // (with the gate on, that reads as "waiting for activity").
+  const restingPhase: DashboardEnginePhase = roster.length === 0 ? 'idle' : 'waiting';
+
+  if (!config.apiKey) {
+    publishEngine({ phase: 'no-api-key', nextRunAt: 0, lastRunAt });
+    return;
+  }
 
   const now = Date.now();
-  if (now - lastRunAt < config.intervalSec * 1000) return;
+  const intervalMs = config.intervalSec * 1000;
+  if (now - lastRunAt < intervalMs) {
+    // Counting down to the next cycle.
+    publishEngine({ phase: restingPhase, nextRunAt: lastRunAt + intervalMs, lastRunAt });
+    return;
+  }
 
   const meta = new Map(roster.map((tab) => [tab.sid, tab]));
   const liveSids = new Set(meta.keys());
@@ -150,12 +185,18 @@ export async function tick(conceptionPath: string): Promise<void> {
   // still refreshes the overview even with no growth.
   const updated = [...liveSids].filter((sid) => bytes.get(sid) !== prevBytes.get(sid));
   const removed = state.tabs.some((tab) => !liveSids.has(tab.sid));
-  if (config.gateOnActivity && updated.length === 0 && !removed) return;
+  if (config.gateOnActivity && updated.length === 0 && !removed) {
+    // Due, but nothing changed — the activity gate holds the cycle. Re-window the
+    // ETA so the pane keeps counting down (alive) instead of sitting at "due now".
+    publishEngine({ phase: restingPhase, nextRunAt: now + intervalMs, lastRunAt });
+    return;
+  }
 
   inFlight = true;
   lastRunAt = now;
   prevBytes = bytes;
   clearSummarizerError();
+  publishEngine({ phase: 'summarizing', nextRunAt: now + intervalMs, lastRunAt: now });
   try {
     const priorBySid = new Map(state.tabs.map((tab) => [tab.sid, tab]));
     // Carry forward summaries for still-live tabs; drop the closed ones.
@@ -214,6 +255,8 @@ export async function tick(conceptionPath: string): Promise<void> {
         tabs: nextTabs,
         roster,
         history,
+        // Cycle done — back to resting, counting down to the next one.
+        engine: { phase: restingPhase, nextRunAt: now + intervalMs, lastRunAt: now },
         lastError: getSummarizerError() ?? undefined,
       },
       config.historyLimit,

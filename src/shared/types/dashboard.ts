@@ -31,6 +31,27 @@ export interface TabSummary {
   events: DashboardEvent[];
 }
 
+/** What the summarizer loop is doing right now. Surfaced so an idle-but-running
+ *  engine (nothing to summarize yet) is distinguishable from a dead one.
+ *  - `summarizing` — a cycle is in flight (the LLM call is running).
+ *  - `waiting` — armed, tabs open, counting down to the next cycle (default
+ *    resting state; with the activity gate on this is "waiting for activity").
+ *  - `idle` — armed but no open terminal tabs to summarize.
+ *  - `no-api-key` — enabled but no key, so summaries can't run. */
+export type DashboardEnginePhase = 'summarizing' | 'waiting' | 'idle' | 'no-api-key';
+
+/** Liveness of the summarizer loop, independent of whether any tab has a
+ *  summary yet. Live-only: rebuilt each tick, never trusted from disk. */
+export interface DashboardEngineStatus {
+  /** Current loop phase. */
+  phase: DashboardEnginePhase;
+  /** Epoch ms when the next summarize cycle is due (`lastRunAt + interval`).
+   *  At/under "now" means due imminently. Meaningless for `no-api-key`. */
+  nextRunAt: number;
+  /** Epoch ms of the last completed summarize cycle, 0 if none yet. */
+  lastRunAt: number;
+}
+
 /** Full dashboard snapshot: the cross-tab narrative plus per-tab summaries. */
 export interface DashboardState {
   /** Epoch ms of the last engine cycle that produced this state. */
@@ -49,6 +70,10 @@ export interface DashboardState {
   roster: TabInfo[];
   /** Bounded global history of notable cross-tab events, oldest first. */
   history: DashboardEvent[];
+  /** Liveness of the summarizer loop (next-run ETA + current phase), so the
+   *  pane shows it's alive even before any tab has a summary. Live-only: reset
+   *  on load and rebuilt each tick. Absent only before the first tick. */
+  engine?: DashboardEngineStatus;
   /** Last error from a summarization cycle (e.g. auth/model/network failure),
    *  surfaced in the Dashboard so a silent no-op is explainable. Absent when the
    *  last cycle's API calls all succeeded. */

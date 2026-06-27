@@ -55,9 +55,21 @@ test('Dashboard lists every open tab even with no summaries', async () => {
     await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 60' })).toBeVisible();
     await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 61' })).toBeVisible();
     await expect(
-      pane.locator('.dashboard-tab-card-pending').filter({ hasText: 'No readable output' }).first(),
+      pane
+        .locator('.dashboard-tab-card-pending')
+        .filter({ hasText: 'Waiting for first agent output' })
+        .first(),
     ).toBeVisible();
     expect(await pane.locator('.dashboard-tab-card-pending').count()).toBeGreaterThanOrEqual(2);
+
+    // Always-on engine-status strip: even with no key (so nothing is ever
+    // summarized) the loop's liveness must be visible — this is the "I see no
+    // update / what's going on" fix. With no key the phase is the paused state.
+    await expect(pane.locator('.dashboard-status')).toBeVisible();
+    await expect(pane.locator('.dashboard-status-list')).toContainText('Paused');
+    // "What's going on" is no longer blank: it narrates the open-but-unsummarized
+    // tabs instead of hiding until a summary exists.
+    await expect(pane.locator('.dashboard-overview')).toContainText('no transcript captured yet');
 
     // Evidence screenshot for the incident record.
     const outDir = resolve(__dirname, 'screenshots-out');

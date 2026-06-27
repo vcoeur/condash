@@ -76,6 +76,8 @@ describe('loadDashboardState', () => {
         overview: ['busy'],
         history: [],
         roster: [{ sid: 'gone', cwd: '/old' }],
+        // Stale liveness from the previous run — must be dropped on load.
+        engine: { phase: 'summarizing', nextRunAt: 999, lastRunAt: 5 },
         tabs: [
           {
             sid: 't-1',
@@ -90,6 +92,7 @@ describe('loadDashboardState', () => {
     );
     const loaded = await loadDashboardState(dir);
     expect(loaded?.roster).toEqual([]);
+    expect(loaded?.engine).toBeUndefined();
     expect(loaded?.tabs.map((tab) => tab.sid)).toEqual(['t-1']);
   });
 });
