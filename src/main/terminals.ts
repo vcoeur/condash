@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { mkdirSync, rmSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { BrowserWindow, type WebContents } from 'electron';
 import * as pty from 'node-pty';
@@ -20,6 +22,7 @@ import { spawnEnv } from './shell-env';
 import { SessionLogger } from './terminal-logger';
 import { cleanTerminalText } from './dashboard/clean-text';
 import { OscTranscriptExtractor } from './osc-transcript';
+import { readFileTranscript, sidecarTranscriptPath } from './file-transcript';
 
 interface Session {
   id: string;
@@ -67,6 +70,14 @@ interface Session {
    * instead of the repaint-noise raw `buffer`. Stays empty for programs that
    * don't emit the protocol (plain shells, kimi). */
   transcript: OscTranscriptExtractor;
+  /** Per-tab neutral sidecar transcript path (`.condash/transcripts/<sid>.ndjson`),
+   * passed to the spawned program via `CONDASH_TRANSCRIPT_FILE`. A cooperating
+   * program (the agedum claude hook / opencode plugin) appends neutral frames
+   * here; the summarizer prefers it over the in-band OSC capture and the raw
+   * buffer because a file reliably reaches condash where the program's
+   * `/dev/tty` echo does not. Unset when spawned without an active conception
+   * (no place to write). */
+  transcriptFile?: string;
 }
 
 const MAX_BUFFER = 64_000;
@@ -177,9 +188,17 @@ export function tabsBytes(): Map<string, number> {
 export function tabRecentText(sid: string, maxChars = 8000): string {
   const s = sessions.get(sid);
   if (!s || s.exited !== undefined) return '';
-  const text = s.transcript.hasTranscript()
-    ? s.transcript.render()
-    : cleanTerminalText(recentTail(s.buffer));
+  // Precedence: the cooperating program's neutral sidecar file (reliable,
+  // survives a hook running without condash's controlling terminal) → the
+  // in-band OSC capture (same protocol, fragile transport) → the cleaned raw
+  // buffer (plain shells and line-oriented commands; just repaint noise for an
+  // alternate-screen TUI).
+  const fileText = s.transcriptFile ? readFileTranscript(s.transcriptFile) : '';
+  const text = fileText.trim()
+    ? fileText
+    : s.transcript.hasTranscript()
+      ? s.transcript.render()
+      : cleanTerminalText(recentTail(s.buffer));
   return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
@@ -323,6 +342,26 @@ export async function spawnTerminal(
   delete childEnv.npm_config_globalconfig;
   delete childEnv.npm_config_userconfig;
 
+  // Generated before the spawn so the per-tab sidecar path can be handed to the
+  // child via the environment. A cooperating program (the agedum claude hook /
+  // opencode plugin) appends neutral transcript frames to this file; condash
+  // reads them back for the dashboard summary. Keyed by `id`, so two tabs in the
+  // same cwd never share a file. Only set with an active conception (a writable
+  // place under `.condash/`); mkdir failures fall back to no sidecar rather than
+  // pointing the child at a directory that doesn't exist.
+  const id = makeId();
+  let transcriptFile: string | undefined;
+  if (conceptionPath) {
+    const candidate = sidecarTranscriptPath(conceptionPath, id);
+    try {
+      mkdirSync(dirname(candidate), { recursive: true });
+      childEnv.CONDASH_TRANSCRIPT_FILE = candidate;
+      transcriptFile = candidate;
+    } catch {
+      /* no sidecar this run — summarizer falls back to OSC / buffer */
+    }
+  }
+
   const ptyProcess = pty.spawn(program, argv, {
     name: 'xterm-256color',
     cols,
@@ -331,7 +370,6 @@ export async function spawnTerminal(
     env: childEnv,
   });
 
-  const id = makeId();
   const logger = conceptionPath
     ? new SessionLogger(
         conceptionPath,
@@ -359,6 +397,7 @@ export async function spawnTerminal(
     buffer: '',
     logger,
     transcript: new OscTranscriptExtractor(),
+    transcriptFile,
   };
   sessions.set(id, session);
   logger?.spawn();
@@ -547,6 +586,15 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
     // killAll already closed in its own sweep doesn't double-close here.
     if (session.logger) {
       void session.logger.close();
+    }
+    // Drop the per-tab sidecar transcript — it's only useful while the tab is
+    // live. Best-effort; a leftover is harmless (gitignored) if this fails.
+    if (session.transcriptFile) {
+      try {
+        rmSync(session.transcriptFile, { force: true });
+      } catch {
+        /* leftover sidecar is harmless */
+      }
     }
     sessions.delete(id);
     broadcastSessions();

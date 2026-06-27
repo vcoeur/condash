@@ -67,6 +67,21 @@ export interface TranscriptFrame {
   text?: string;
 }
 
+/**
+ * Render one neutral message frame as a transcript line. Single-sourced so the
+ * in-band OSC extractor and the file-based sidecar reader format messages
+ * identically (`[role] text`), keeping the summarizer's input shape stable
+ * regardless of which transport delivered the frame.
+ *
+ * @param role - The frame's `role` (`user` / `reasoning` / anything else → `assistant`).
+ * @param text - The message text.
+ * @returns The `[role] text` line.
+ */
+export function transcriptLine(role: string | undefined, text: string): string {
+  const who = role === 'user' ? 'user' : role === 'reasoning' ? 'reasoning' : 'assistant';
+  return `[${who}] ${text}`;
+}
+
 export class OscTranscriptExtractor {
   /** Unconsumed tail — holds an incomplete sequence (or a partial PREFIX) that
    * spans feed boundaries. */
@@ -167,9 +182,7 @@ export class OscTranscriptExtractor {
   private applyFrame(frame: TranscriptFrame): void {
     if (frame.t === 'msg' && typeof frame.text === 'string') {
       this.captured = true;
-      const who =
-        frame.role === 'user' ? 'user' : frame.role === 'reasoning' ? 'reasoning' : 'assistant';
-      this.lines.push(`[${who}] ${frame.text}`);
+      this.lines.push(transcriptLine(frame.role, frame.text));
       // Keep only the newest MAX_TRANSCRIPT_LINES entries.
       if (this.lines.length > MAX_TRANSCRIPT_LINES) {
         this.lines.splice(0, this.lines.length - MAX_TRANSCRIPT_LINES);
