@@ -5,6 +5,8 @@
 // share. The raw on-disk config shape lives in `main/config-schema.ts`
 // (`dashboard` block); these are the runtime/IPC views of it.
 
+import type { TabInfo } from './terminal';
+
 /** One past event in a tab's (or the global) rolling history. */
 export interface DashboardEvent {
   /** Epoch ms when the event was recorded. */
@@ -35,8 +37,16 @@ export interface DashboardState {
   updatedAt: number;
   /** Cross-tab "what's going on" narrative — a few lines, referencing tabs. */
   overview: string[];
-  /** Per-tab summaries, one per live tab the engine has seen. */
+  /** Per-tab summaries, one per live tab the engine has produced a summary for.
+   *  A tab with no readable output yet (or before the first summary cycle) is
+   *  absent here but still present in `roster`. */
   tabs: TabSummary[];
+  /** Every currently-open terminal tab, refreshed each engine tick. The renderer
+   *  renders one card per entry: a tab present in `tabs` shows its rich summary,
+   *  one that isn't shows a fallback row from its cmd/cwd — so no open tab is
+   *  ever invisible. Live-only: reset to `[]` on load and rebuilt from the live
+   *  session map each tick, never trusted from disk. */
+  roster: TabInfo[];
   /** Bounded global history of notable cross-tab events, oldest first. */
   history: DashboardEvent[];
   /** Last error from a summarization cycle (e.g. auth/model/network failure),

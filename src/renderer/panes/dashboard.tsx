@@ -1,14 +1,15 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { DashboardConfigView, DashboardState } from '@shared/types';
+import type { DashboardConfigView, DashboardState, TabInfo, TabSummary } from '@shared/types';
 import './dashboard-pane.css';
 
 /**
  * The Dashboard working surface: a detailed, always-current view of what the
  * terminal tabs are doing. Renders the active summarizer settings, any last
- * summarization error, the cross-tab overview, a card per recently-modified tab
- * (most-recent first, with title, current action, context, recent events), and
- * a global event history. Self-contained — subscribes to the engine's pushed
- * state and seeds from the last snapshot on mount.
+ * summarization error, the cross-tab overview, one card per open tab (the full
+ * roster — a summarized tab shows title, current action, context and recent
+ * events; an as-yet-unsummarized tab shows a fallback from its command/cwd so it
+ * is never invisible), and a global event history. Self-contained — subscribes
+ * to the engine's pushed state and seeds from the last snapshot on mount.
  */
 export function DashboardView() {
   const [state, setState] = createSignal<DashboardState | null>(null);
@@ -31,10 +32,23 @@ export function DashboardView() {
   });
   onCleanup(offState);
 
-  // Most-recently-updated tab first, so the list reads as "recently modified".
-  const tabs = () => [...(state()?.tabs ?? [])].sort((a, b) => b.updatedAt - a.updatedAt);
+  const roster = () => state()?.roster ?? [];
   const overview = () => state()?.overview ?? [];
   const history = () => state()?.history ?? [];
+
+  // One card per open tab: a summarized tab carries its rich summary; an
+  // as-yet-unsummarized tab (no readable output, or before the first cycle)
+  // gets a fallback drawn from its command/cwd — so no open tab is ever missing
+  // from the list. Summarized tabs sort first by recency; unsummarized ones
+  // (updatedAt treated as -1) fall to the end.
+  const cards = (): Array<{ tab: TabInfo; summary?: TabSummary }> => {
+    const bySid = new Map((state()?.tabs ?? []).map((tab) => [tab.sid, tab]));
+    return roster()
+      .map((tab) => ({ tab, summary: bySid.get(tab.sid) }))
+      .sort((a, b) => (b.summary?.updatedAt ?? -1) - (a.summary?.updatedAt ?? -1));
+  };
+  const tabLabel = (tab: TabInfo): string =>
+    tab.cmd?.trim() || tab.cwd.split('/').filter(Boolean).pop() || tab.sid;
 
   const fmtTime = (ms: number): string => new Date(ms).toLocaleTimeString();
   const fmtRelative = (ms: number): string => {
@@ -68,10 +82,10 @@ export function DashboardView() {
         </Show>
         <Show
           when={
-            config()?.enabled && config()?.hasApiKey && tabs().length === 0 && !state()?.lastError
+            config()?.enabled && config()?.hasApiKey && roster().length === 0 && !state()?.lastError
           }
         >
-          <p class="dashboard-pane-hint">Waiting for active tabs to summarize…</p>
+          <p class="dashboard-pane-hint">No open terminal tabs to summarize…</p>
         </Show>
       </header>
 
@@ -139,45 +153,71 @@ export function DashboardView() {
 
         <main class="dashboard-main">
           <section class="dashboard-section">
-            <h3>Recently modified tabs</h3>
+            <h3>Open tabs</h3>
             <Show
-              when={tabs().length > 0}
-              fallback={<p class="dashboard-pane-hint">No active tab summaries yet.</p>}
+              when={cards().length > 0}
+              fallback={<p class="dashboard-pane-hint">No open terminal tabs.</p>}
             >
               <ul class="dashboard-tab-list">
-                <For each={tabs()}>
-                  {(tab) => (
-                    <li class="dashboard-tab-card">
-                      <div class="dashboard-tab-card-head">
-                        <span class="dashboard-tab-card-title">{tab.title}</span>
-                        <span class="dashboard-tab-card-time" title={fmtTime(tab.updatedAt)}>
-                          {fmtRelative(tab.updatedAt)}
-                        </span>
-                      </div>
-                      <Show when={tab.currentAction}>
-                        <p class="dashboard-tab-card-action">{tab.currentAction}</p>
-                      </Show>
-                      <Show when={tab.contextLines.length > 0}>
-                        <ul class="dashboard-tab-card-context">
-                          <For each={tab.contextLines}>{(line) => <li>{line}</li>}</For>
-                        </ul>
-                      </Show>
-                      <Show when={tab.events.length > 0}>
-                        <details class="dashboard-tab-card-events">
-                          <summary>Recent events</summary>
-                          <ul>
-                            <For each={[...tab.events].reverse()}>
-                              {(ev) => (
-                                <li>
-                                  <span class="dashboard-event-time">{fmtTime(ev.at)}</span>{' '}
-                                  {ev.text}
-                                </li>
-                              )}
-                            </For>
+                <For each={cards()}>
+                  {(card) => (
+                    <Show
+                      when={card.summary}
+                      fallback={
+                        // No summary yet: the tab is still visible, drawn from
+                        // its command/cwd, so the user always sees every tab.
+                        <li class="dashboard-tab-card dashboard-tab-card-pending">
+                          <div class="dashboard-tab-card-head">
+                            <span class="dashboard-tab-card-title">{tabLabel(card.tab)}</span>
+                            <span class="dashboard-tab-card-time">no summary yet</span>
+                          </div>
+                          <ul class="dashboard-tab-card-context">
+                            <Show when={card.tab.cmd}>
+                              <li>Command: {card.tab.cmd}</li>
+                            </Show>
+                            <li>Directory: {card.tab.cwd}</li>
+                            <li>No readable output captured yet.</li>
                           </ul>
-                        </details>
-                      </Show>
-                    </li>
+                        </li>
+                      }
+                    >
+                      {(summary) => (
+                        <li class="dashboard-tab-card">
+                          <div class="dashboard-tab-card-head">
+                            <span class="dashboard-tab-card-title">{summary().title}</span>
+                            <span
+                              class="dashboard-tab-card-time"
+                              title={fmtTime(summary().updatedAt)}
+                            >
+                              {fmtRelative(summary().updatedAt)}
+                            </span>
+                          </div>
+                          <Show when={summary().currentAction}>
+                            <p class="dashboard-tab-card-action">{summary().currentAction}</p>
+                          </Show>
+                          <Show when={summary().contextLines.length > 0}>
+                            <ul class="dashboard-tab-card-context">
+                              <For each={summary().contextLines}>{(line) => <li>{line}</li>}</For>
+                            </ul>
+                          </Show>
+                          <Show when={summary().events.length > 0}>
+                            <details class="dashboard-tab-card-events">
+                              <summary>Recent events</summary>
+                              <ul>
+                                <For each={[...summary().events].reverse()}>
+                                  {(ev) => (
+                                    <li>
+                                      <span class="dashboard-event-time">{fmtTime(ev.at)}</span>{' '}
+                                      {ev.text}
+                                    </li>
+                                  )}
+                                </For>
+                              </ul>
+                            </details>
+                          </Show>
+                        </li>
+                      )}
+                    </Show>
                   )}
                 </For>
               </ul>

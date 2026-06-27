@@ -19,6 +19,7 @@ import { tokenise } from './launchers';
 import { spawnEnv } from './shell-env';
 import { SessionLogger } from './terminal-logger';
 import { cleanTerminalText } from './dashboard/clean-text';
+import { OscTranscriptExtractor } from './osc-transcript';
 
 interface Session {
   id: string;
@@ -57,6 +58,13 @@ interface Session {
    * Null when the spawn happened without an active conception (no place
    * to write). */
   logger: SessionLogger | null;
+  /** Always-on in-band transcript capture (OSC 7373), independent of the disk
+   * logger and of on-disk logging being enabled. An alternate-screen agent TUI
+   * (claude / opencode) leaves its conversation only in this protocol, never in
+   * the terminal grid — so the dashboard summarizer reads this when present
+   * instead of the repaint-noise raw `buffer`. Stays empty for programs that
+   * don't emit the protocol (plain shells, kimi). */
+  transcript: OscTranscriptExtractor;
 }
 
 const MAX_BUFFER = 64_000;
@@ -119,17 +127,22 @@ export function tabsBytes(): Map<string, number> {
   return out;
 }
 
-/** Recent plain-text output for a live session — the rolling raw buffer with
- *  ANSI escapes stripped and `\r` overwrites resolved, capped to the last
- *  `maxChars` characters. Empty string when the sid is unknown or exited.
- *  Sourced from the in-memory buffer, so it works regardless of whether on-disk
- *  terminal logging is enabled. Drives the dashboard summarizer (capability:
- *  live tab summaries). */
+/** Recent plain-text output for a live session, capped to the last `maxChars`
+ *  characters. Empty string when the sid is unknown or exited. Drives the
+ *  dashboard summarizer (capability: live tab summaries).
+ *
+ *  Prefers the faithful in-band transcript when the program emits one (claude /
+ *  opencode over OSC 7373): an alternate-screen TUI repaints via cursor
+ *  addressing, so the rolling raw buffer is just frame noise that reads as
+ *  "only a control sequence". Falls back to the cleaned raw buffer (ANSI
+ *  stripped, `\r` overwrites resolved) for plain shells and non-emitters.
+ *  Both sources are in-memory, so this works whether or not on-disk terminal
+ *  logging is enabled. */
 export function tabRecentText(sid: string, maxChars = 8000): string {
   const s = sessions.get(sid);
   if (!s || s.exited !== undefined) return '';
-  const clean = cleanTerminalText(s.buffer);
-  return clean.length > maxChars ? clean.slice(-maxChars) : clean;
+  const text = s.transcript.hasTranscript() ? s.transcript.render() : cleanTerminalText(s.buffer);
+  return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
 export function attachTerminal(
@@ -306,6 +319,7 @@ export async function spawnTerminal(
     forceStop,
     buffer: '',
     logger,
+    transcript: new OscTranscriptExtractor(),
   };
   sessions.set(id, session);
   logger?.spawn();
@@ -317,6 +331,10 @@ export async function spawnTerminal(
   ptyProcess.onData((data) => {
     session.bytesSeen += data.length;
     appendBuffer(session, data);
+    // Capture any in-band transcript regardless of disk logging — the dashboard
+    // reads it for a faithful summary. The stripped return is ignored here; the
+    // raw `data` still drives the grid buffer and the renderer.
+    session.transcript.feed(data);
     session.logger?.output(data);
     if (session.webContents.isDestroyed()) return;
     session.webContents.send(EVENT_CHANNELS.termData, { id, data });

@@ -15,7 +15,7 @@ export function dashboardStatePath(conceptionPath: string): string {
 
 /** A fresh, empty dashboard state. */
 export function emptyDashboardState(updatedAt: number): DashboardState {
-  return { updatedAt, overview: [], tabs: [], history: [] };
+  return { updatedAt, overview: [], tabs: [], roster: [], history: [] };
 }
 
 function isEvent(value: unknown): value is DashboardEvent {
@@ -54,6 +54,10 @@ function coerceState(parsed: unknown): DashboardState | null {
     tabs: raw.tabs
       .filter(isTabSummary)
       .map((tab) => ({ ...tab, events: tab.events.filter(isEvent) })),
+    // `roster` is live data (the currently-open tabs); a persisted copy is stale
+    // the moment the app reopens, so always start empty and let the first tick
+    // rebuild it from the live session map.
+    roster: [],
   };
 }
 

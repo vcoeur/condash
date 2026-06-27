@@ -141,6 +141,16 @@
   overflow-wrap: anywhere;
 }
 
+/* A tab with no summary yet (no readable output, or before the first cycle).
+ * Dimmed and dashed so it reads as "present but not yet summarized" rather than
+ * a full summary card — the point is only that the tab is never invisible. */
+.dashboard-tab-card-pending {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.85;
+}
+
 .dashboard-tab-card-head {
   display: flex;
   align-items: baseline;
