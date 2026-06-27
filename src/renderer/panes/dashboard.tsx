@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type {
   DashboardConfigView,
   DashboardState,
@@ -57,6 +57,10 @@ export function DashboardView() {
   const overview = () => state()?.overview ?? [];
   const history = () => state()?.history ?? [];
   const engine = () => state()?.engine;
+  // The tabs whose summary is being recomputed in the in-flight cycle. A card
+  // whose sid is in here is badged "Summarizing" (transient), overriding its
+  // pending/last state so an actively-refreshing tab reads as live.
+  const summarizingSids = createMemo(() => new Set(state()?.summarizingSids ?? []));
 
   const secsUntil = (atMs: number): number => Math.max(0, Math.round((atMs - nowMs()) / 1000));
 
@@ -152,6 +156,21 @@ export function DashboardView() {
       ? summary.awaitingPrompt
       : summary.currentAction;
 
+  // The badge state to render for a card: a tab being recomputed this cycle
+  // reads "summarizing" (transient), otherwise its own pending/summarized state.
+  // 'pending' and 'summarizing' are display-only states, not TabStates.
+  const cardState = (
+    sid: string,
+    base: TabState | 'pending',
+  ): TabState | 'pending' | 'summarizing' => (summarizingSids().has(sid) ? 'summarizing' : base);
+  // Human label for a card's badge, covering the two display-only states.
+  const cardStateLabel = (display: TabState | 'pending' | 'summarizing'): string =>
+    display === 'summarizing'
+      ? 'Summarizing'
+      : display === 'pending'
+        ? 'Starting'
+        : STATE_LABEL[display];
+
   // Cross-tab state tally for the chip row above the grid — counted over the
   // live summarized tabs (state().tabs holds only still-open ones).
   const tally = (): Record<TabState, number> => {
@@ -175,29 +194,32 @@ export function DashboardView() {
   const statusLabel = (cfg: DashboardConfigView): string =>
     !cfg.enabled ? 'Off' : cfg.hasApiKey ? 'On' : 'On — no API key';
 
+  // The single contextual hint shown above the status strip when the engine
+  // can't produce summaries (off / no key / no open tabs). Null when there's
+  // nothing to say, so the header is omitted entirely rather than leaving an
+  // empty gap where the old "Dashboard" heading used to sit.
+  const headerHint = (): string | null => {
+    const cfg = config();
+    if (!cfg) return null;
+    if (!cfg.enabled)
+      return 'Live tab summaries are off. Enable them and set a DeepSeek API key in Settings → Dashboard.';
+    if (!cfg.hasApiKey) return 'No DeepSeek API key set. Add one in Settings → Dashboard.';
+    if (roster().length === 0 && !state()?.lastError) return 'No open terminal tabs to summarize…';
+    return null;
+  };
+
   return (
     <div class="dashboard-pane">
-      <header class="dashboard-pane-header">
-        <h2>Dashboard</h2>
-        <Show when={config() && !config()!.enabled}>
-          <p class="dashboard-pane-hint">
-            Live tab summaries are off. Enable them and set a DeepSeek API key in Settings →
-            Dashboard.
-          </p>
-        </Show>
-        <Show when={config()?.enabled && !config()?.hasApiKey}>
-          <p class="dashboard-pane-hint">
-            No DeepSeek API key set. Add one in Settings → Dashboard.
-          </p>
-        </Show>
-        <Show
-          when={
-            config()?.enabled && config()?.hasApiKey && roster().length === 0 && !state()?.lastError
-          }
-        >
-          <p class="dashboard-pane-hint">No open terminal tabs to summarize…</p>
-        </Show>
-      </header>
+      {/* No standing title — the pane lives under the "DASHBOARD" tab, so a
+          second "Dashboard" heading was pure redundancy. The header now carries
+          only a contextual hint, and only when there is one. */}
+      <Show when={headerHint()}>
+        {(hint) => (
+          <header class="dashboard-pane-header">
+            <p class="dashboard-pane-hint">{hint()}</p>
+          </header>
+        )}
+      </Show>
 
       {/* Surfaced prominently: a failed summarization cycle (auth / model /
           network) would otherwise be a silent no-op — the tab titles just stop
@@ -327,12 +349,15 @@ export function DashboardView() {
                         // its command/cwd, so the user always sees every tab.
                         <li
                           class="dashboard-tab-card dashboard-tab-card-pending"
-                          data-state="pending"
+                          data-state={cardState(card.tab.sid, 'pending')}
                         >
                           <div class="dashboard-tab-card-head">
-                            <span class="dashboard-tab-state" data-state="pending">
+                            <span
+                              class="dashboard-tab-state"
+                              data-state={cardState(card.tab.sid, 'pending')}
+                            >
                               <span class="dashboard-tab-state-dot" />
-                              Starting
+                              {cardStateLabel(cardState(card.tab.sid, 'pending'))}
                             </span>
                             <span class="dashboard-tab-card-meta">
                               <Show when={repoRef(card.tab)}>
@@ -343,7 +368,11 @@ export function DashboardView() {
                                 </span>
                               </Show>
                               <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
-                              <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
+                              {/* The SUMMARIZING badge already says it's in
+                                  flight; don't repeat "summarizing…" here. */}
+                              <Show when={!summarizingSids().has(card.tab.sid)}>
+                                <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
+                              </Show>
                             </span>
                           </div>
                           <div class="dashboard-tab-card-title">{tabLabel(card.tab)}</div>
@@ -357,11 +386,17 @@ export function DashboardView() {
                       }
                     >
                       {(summary) => (
-                        <li class="dashboard-tab-card" data-state={summary().state}>
+                        <li
+                          class="dashboard-tab-card"
+                          data-state={cardState(summary().sid, summary().state)}
+                        >
                           <div class="dashboard-tab-card-head">
-                            <span class="dashboard-tab-state" data-state={summary().state}>
+                            <span
+                              class="dashboard-tab-state"
+                              data-state={cardState(summary().sid, summary().state)}
+                            >
                               <span class="dashboard-tab-state-dot" />
-                              {STATE_LABEL[summary().state]}
+                              {cardStateLabel(cardState(summary().sid, summary().state))}
                             </span>
                             <span class="dashboard-tab-card-meta">
                               <Show when={repoRef(card.tab)}>

@@ -196,7 +196,16 @@ export async function tick(conceptionPath: string): Promise<void> {
   lastRunAt = now;
   prevBytes = bytes;
   clearSummarizerError();
-  publishEngine({ phase: 'summarizing', nextRunAt: now + intervalMs, lastRunAt: now });
+  // Enter the summarizing window: publish the phase AND the set of tabs being
+  // recomputed this cycle, so the renderer can badge exactly those cards
+  // "Summarizing" while their LLM call is in flight. A direct push (not
+  // publishEngine) because the per-tab overlay rides alongside the phase change.
+  state = {
+    ...state,
+    engine: { phase: 'summarizing', nextRunAt: now + intervalMs, lastRunAt: now },
+    summarizingSids: updated,
+  };
+  pushState();
   try {
     const priorBySid = new Map(state.tabs.map((tab) => [tab.sid, tab]));
     // Carry forward summaries for still-live tabs; drop the closed ones.
@@ -259,6 +268,8 @@ export async function tick(conceptionPath: string): Promise<void> {
         history,
         // Cycle done — back to resting, counting down to the next one.
         engine: { phase: restingPhase, nextRunAt: now + intervalMs, lastRunAt: now },
+        // Window closed — drop the transient per-tab summarizing overlay.
+        summarizingSids: [],
         lastError: getSummarizerError() ?? undefined,
       },
       config.historyLimit,
@@ -276,6 +287,12 @@ export async function tick(conceptionPath: string): Promise<void> {
     }
   } catch (err) {
     process.stderr.write(`condash dashboard: tick failed: ${(err as Error).message}\n`);
+    // A throw before the resting-state push leaves the summarizing overlay set;
+    // clear it so cards don't stay stuck reading "Summarizing".
+    if (state.summarizingSids?.length) {
+      state = { ...state, summarizingSids: [] };
+      pushState();
+    }
   } finally {
     inFlight = false;
   }

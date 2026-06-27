@@ -42,14 +42,8 @@
   }
 }
 
-.dashboard-pane-header h2 {
-  margin: 0;
-  font-size: var(--text-lg, 16px);
-  color: var(--text);
-}
-
 .dashboard-pane-hint {
-  margin: 6px 0 0;
+  margin: 0;
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
@@ -273,6 +267,12 @@
 .dashboard-pane [data-state='pending'] {
   --state-color: var(--text-faint);
 }
+/* Transient: the tab's summary is being recomputed right now. Accent-coloured to
+ * match the engine status strip's "summarizing" phase, so the card and the
+ * header read as the same live event. */
+.dashboard-pane [data-state='summarizing'] {
+  --state-color: var(--accent);
+}
 
 /* The state-coloured card. A left bar (::before) + a faint wash carry the
  * state; the pill names it in words so colour is never the only signal. */
@@ -320,6 +320,16 @@
 .dashboard-tab-card-pending::before {
   opacity: 0.5;
 }
+/* ...unless it's being summarized right now: an in-flight first summary is an
+ * active event, so drop the dashed/dimmed "not yet" treatment and let it read
+ * like any other live card. */
+.dashboard-tab-card-pending[data-state='summarizing'] {
+  border-style: solid;
+  opacity: 1;
+}
+.dashboard-tab-card-pending[data-state='summarizing']::before {
+  opacity: 1;
+}
 
 .dashboard-tab-card-head {
   display: flex;
@@ -350,6 +360,11 @@
   border-radius: 50%;
   flex: 0 0 auto;
   background: currentColor;
+}
+/* A summarizing card pulses its badge dot, mirroring the status strip's live
+ * heartbeat, so an in-flight refresh reads as motion, not just colour. */
+.dashboard-tab-card[data-state='summarizing'] .dashboard-tab-state-dot {
+  animation: dashboard-ping 1.6s ease-out infinite;
 }
 
 /* Right side of the head: the #repo pill, the driving program, and relative time. */
@@ -473,7 +488,8 @@
 
 /* Honour reduced-motion: drop the pulsing status dot. */
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-status[data-phase='summarizing'] .dashboard-status-dot {
+  .dashboard-status[data-phase='summarizing'] .dashboard-status-dot,
+  .dashboard-tab-card[data-state='summarizing'] .dashboard-tab-state-dot {
     animation: none;
   }
 }
