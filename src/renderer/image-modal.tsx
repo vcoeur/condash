@@ -1,5 +1,6 @@
 import { createSignal, Show } from 'solid-js';
 import { Modal } from './modal';
+import { Button } from './actions';
 import { pathToCondashFileUrl } from './markdown';
 import './image-modal.css';
 
@@ -32,20 +33,22 @@ export function ImageModal(props: {
       onClose={props.onClose}
       headExtra={
         <>
-          <button
-            class="modal-button"
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={() => props.onReveal(props.path)}
             title="Reveal in file manager"
           >
             ⤷
-          </button>
-          <button
-            class="modal-button"
+          </Button>
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={() => props.onOpenInOs(props.path)}
             title="Open in OS default viewer"
           >
             ↗
-          </button>
+          </Button>
         </>
       }
     >

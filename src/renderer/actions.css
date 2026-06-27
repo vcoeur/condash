@@ -21,15 +21,13 @@
  *                      warn in every pane, not pane-by-pane.
  *   .action-bar        footer commit/cancel row (cancel left, primary right)
  *   .seg / .seg-item   segmented toggle group (scope / view switches)
+ *   .btn--modal-head   the chunky 32 px modal-head icon idiom (close, reveal,
+ *                      edit/save/pdf, …) — the former standalone .modal-button,
+ *                      now a modifier in this one vocabulary
  *
  * The <Button>/<IconButton>/<ActionBar> wrappers in actions.tsx render these
  * classes so call-sites name intent, not chrome. Built entirely on the
- * styles.css token set (colour / type / radius) — no literals, no new tokens.
- *
- * Out of scope by design: the 32 px modal-head icon button (`.modal-button`
- * in modal-base.css) stays its own idiom — it is already internally
- * consistent and is the deliberate output of the phase-4 modal shell. It is
- * the head-bar sibling of .btn--icon; the two share shape and tokens. */
+ * styles.css token set (colour / type / radius) — no literals, no new tokens. */
 
 .btn {
   display: inline-flex;
@@ -155,6 +153,44 @@
   stroke-width: 1.7;
 }
 
+/* Modal-head icon button — the chunky 32 px head idiom (close, reveal,
+ * open-in-OS, edit/save/pdf, delete-session, the note find-bar steppers).
+ * Larger box + glyph than the quiet .btn--icon row button, and prominent
+ * (text-body, inherited from .btn--default) at rest rather than muted.
+ * Rehomed verbatim from the former standalone `.modal-button`; pair it with
+ * <Button variant="default"> — NOT <IconButton>, whose `.btn--icon svg`
+ * stroke-width would thin these glyphs. `tone` still colours the hover verb
+ * cue (e.g. tone="stop" reproduces the close button's warn hover). */
+.btn--modal-head {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  gap: 0;
+  border-radius: 7px;
+  flex-shrink: 0;
+  /* Glyph buttons (×, ↑, ↓, ⤷) inherited the 14 px body size; `.btn` forces
+   * 13 px, so restore it. Harmless for the SVG-icon buttons. */
+  font-size: var(--text-md);
+}
+.btn--modal-head svg {
+  width: 26px;
+  height: 26px;
+}
+/* Reproduce the former .modal-button:disabled — explicit faint colours at
+ * full opacity, not the .btn 50 %-opacity wash. */
+.btn--modal-head:disabled,
+.btn--modal-head[aria-disabled='true'] {
+  opacity: 1;
+  color: var(--text-faint);
+  background: var(--bg-subtle);
+  border-color: var(--border);
+}
+/* Pressed toggle (the note modal's edit/view switch). */
+.btn--modal-head.active {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
 /* ---- Semantic tone (the verb's colour) --------------------------------- */
 /* On an icon button: colours the hover text + border by the action's verb,
  * so the same verb reads the same in every pane (resting state stays
@@ -163,30 +199,22 @@
  * specificity. */
 /* open (navigate / reveal) and add (create / new) share the brand accent —
  * both are the positive "go forward" verb; previously add actions drifted
- * across amber / green / accent pane-by-pane. */
-/* `.modal-button` (the 32 px modal-head icon button, modal-base.css) carries
- * tones too, so a verb in a modal head — "open in OS", "work on" — reads the
- * same accent/green/warn cue as the same verb in a pane row. */
+ * across amber / green / accent pane-by-pane. A verb in a modal head ("open
+ * in OS", "work on") reads the same cue as the same verb in a pane row. */
 .btn[data-tone='open']:hover:not(:disabled),
-.btn[data-tone='add']:hover:not(:disabled),
-.modal-button[data-tone='open']:hover:not(:disabled),
-.modal-button[data-tone='add']:hover:not(:disabled) {
+.btn[data-tone='add']:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--accent);
 }
 /* work / run — start a terminal or run a command: the "go live" green. */
 .btn[data-tone='work']:hover:not(:disabled),
-.btn[data-tone='run']:hover:not(:disabled),
-.modal-button[data-tone='work']:hover:not(:disabled),
-.modal-button[data-tone='run']:hover:not(:disabled) {
+.btn[data-tone='run']:hover:not(:disabled) {
   color: var(--col-running);
   border-color: var(--col-running);
 }
 /* stop / danger — halt, kill, delete, discard. */
 .btn[data-tone='stop']:hover:not(:disabled),
-.btn[data-tone='danger']:hover:not(:disabled),
-.modal-button[data-tone='stop']:hover:not(:disabled),
-.modal-button[data-tone='danger']:hover:not(:disabled) {
+.btn[data-tone='danger']:hover:not(:disabled) {
   color: var(--warn);
   border-color: var(--warn);
 }

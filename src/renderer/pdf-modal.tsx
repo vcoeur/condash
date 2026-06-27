@@ -1,5 +1,6 @@
 import { createResource, Show } from 'solid-js';
 import { Modal } from './modal';
+import { Button } from './actions';
 import './pdf-modal.css';
 
 export function PdfModal(props: {
@@ -27,20 +28,22 @@ export function PdfModal(props: {
       onClose={props.onClose}
       headExtra={
         <>
-          <button
-            class="modal-button"
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={() => props.onReveal(props.path)}
             title="Reveal in file manager"
           >
             ⤷
-          </button>
-          <button
-            class="modal-button"
+          </Button>
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={() => props.onOpenInOs(props.path)}
             title="Open in OS default viewer"
           >
             ↗
-          </button>
+          </Button>
         </>
       }
     >

@@ -274,25 +274,28 @@ export function ProjectPreview(props: {
                     if (action) props.onProjectAction?.(project(), action);
                   }
                 }}
-                class="modal-button work-on-button"
+                class="work-on-button"
               />
-              <button
-                class="modal-button"
-                data-tone="open"
+              <Button
+                variant="default"
+                tone="open"
+                class="btn--modal-head"
                 onClick={() => props.onOpenInEditor(projectDir(project().path))}
                 title="Open folder in OS"
                 aria-label="Open folder in OS"
               >
                 <IconExternal />
-              </button>
-              <button
-                class="modal-button modal-close"
+              </Button>
+              <Button
+                variant="default"
+                tone="stop"
+                class="btn--modal-head"
                 onClick={props.onClose}
                 title="Close (Esc)"
                 aria-label="Close"
               >
                 <IconClose />
-              </button>
+              </Button>
             </header>
 
             <div class="preview-body">

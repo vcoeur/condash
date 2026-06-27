@@ -1,6 +1,7 @@
 import { Show, type JSX } from 'solid-js';
 import type { RawRepo } from '@shared/config-types';
 import type { BindTextFn, DndHandlers } from './data';
+import { Button } from '../actions';
 
 /**
  * One row in the repositories list that is a `{ section: "…" }` marker — a
@@ -65,25 +66,32 @@ export function SectionRow(props: {
             (v) => props.onPatch({ section: v }),
           )}
         />
-        <button
-          class="modal-button"
+        <Button
+          variant="default"
+          class="btn--modal-head"
           title="Move up"
           disabled={props.index === 0}
           onClick={() => props.onMove(-1)}
         >
           ↑
-        </button>
-        <button
-          class="modal-button"
+        </Button>
+        <Button
+          variant="default"
+          class="btn--modal-head"
           title="Move down"
           disabled={props.index === props.total - 1}
           onClick={() => props.onMove(1)}
         >
           ↓
-        </button>
-        <button class="modal-button" title="Remove section" onClick={() => props.onRemove()}>
+        </Button>
+        <Button
+          variant="default"
+          class="btn--modal-head"
+          title="Remove section"
+          onClick={() => props.onRemove()}
+        >
           ×
-        </button>
+        </Button>
       </div>
     </div>
   );

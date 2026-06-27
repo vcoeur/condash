@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { RawRepo, RawSubmoduleRepo } from '@shared/config-types';
 import { type BindTextFn, type DndHandlers, moveItem } from './data';
+import { Button } from '../actions';
 import { Caret } from '../icons';
 
 const REPO_ROW_OPEN_KEY = 'condash:settings-modal:repo-row-open';
@@ -165,25 +166,32 @@ export function RepoRow(props: {
             {summary()}
           </span>
         </Show>
-        <button
-          class="modal-button"
+        <Button
+          variant="default"
+          class="btn--modal-head"
           title="Move up"
           disabled={props.index === 0}
           onClick={() => props.onMove(-1)}
         >
           ↑
-        </button>
-        <button
-          class="modal-button"
+        </Button>
+        <Button
+          variant="default"
+          class="btn--modal-head"
           title="Move down"
           disabled={props.index === props.total - 1}
           onClick={() => props.onMove(1)}
         >
           ↓
-        </button>
-        <button class="modal-button" title="Remove" onClick={() => props.onRemove()}>
+        </Button>
+        <Button
+          variant="default"
+          class="btn--modal-head"
+          title="Remove"
+          onClick={() => props.onRemove()}
+        >
           ×
-        </button>
+        </Button>
       </div>
       <Show when={nameMissing()}>
         <p class="settings-repo-name-error">
@@ -319,12 +327,12 @@ export function RepoRow(props: {
           </div>
         </Show>
         <div class="settings-list-actions">
-          <button
-            class="modal-button"
+          <Button
+            variant="default"
             onClick={() => void updateSubmodules((all) => [...all, { name: '' }])}
           >
             + Add sub repo
-          </button>
+          </Button>
         </div>
       </Show>
     </div>

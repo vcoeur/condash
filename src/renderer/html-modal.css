@@ -34,3 +34,14 @@
   gap: 4px;
   flex-shrink: 0;
 }
+
+/* The tabs are <Button variant="default"> text buttons. Carry over the two
+ * deltas the former `.modal-button--text` had over `.btn--default`: the 7 px
+ * head radius, and the selected-tab accent border (formerly `.modal-button.active`). */
+.modal-seg .btn {
+  border-radius: 7px;
+}
+.modal-seg .btn.active {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}

@@ -37,7 +37,7 @@ test('Settings: + Add section appends a section marker to condash.json', async (
     // id; scroll it into view before driving its controls.
     const reposSection = modal.locator('section#settings-section-repositories');
     await reposSection.scrollIntoViewIfNeeded();
-    const addSectionBtn = reposSection.locator('button.modal-button', {
+    const addSectionBtn = reposSection.locator('button.btn', {
       hasText: '+ Add section',
     });
     await addSectionBtn.click();

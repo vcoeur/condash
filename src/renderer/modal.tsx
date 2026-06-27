@@ -1,5 +1,6 @@
 import { type JSX, Show } from 'solid-js';
 import { createBackdropClose, useModalEscHandler } from './modal-helpers';
+import { Button } from './actions';
 import { IconClose } from './icons';
 
 export interface ModalProps {
@@ -75,14 +76,16 @@ export function Modal(props: ModalProps): JSX.Element {
             {props.headLeading}
           </Show>
           {props.headExtra}
-          <button
-            class="modal-button modal-close"
+          <Button
+            variant="default"
+            tone="stop"
+            class="btn--modal-head"
             onClick={() => props.onClose()}
             title={props.closeTitle ?? 'Close (Esc)'}
             aria-label={props.closeLabel ?? 'Close'}
           >
             <IconClose />
-          </button>
+          </Button>
         </header>
         {props.children}
       </div>

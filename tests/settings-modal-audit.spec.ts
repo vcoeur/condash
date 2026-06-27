@@ -558,7 +558,7 @@ test('settings modal: representative fields render and round-trip to the right f
     {
       const reposSection = modal.locator('#settings-section-repositories');
       await safeScroll(reposSection);
-      await reposSection.locator('button.modal-button', { hasText: '+ Add repo' }).click();
+      await reposSection.locator('button.btn', { hasText: '+ Add repo' }).click();
       await booted.window.waitForTimeout(150);
       const nameInput = reposSection.locator('.settings-repo-row input.settings-repo-name').first();
       await auditText({

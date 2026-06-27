@@ -545,24 +545,10 @@
   margin-top: 4px;
 }
 
-/* Text-bearing buttons inside the settings modal need the natural-width
- * variant — `.modal-button` defaults to a 32 × 32 icon square (note-modal
- * head action), which clips multi-word labels like "+ with run / label". */
-.settings-modal--full .settings-list-actions .modal-button,
-.settings-modal--full .settings-rail-actions .modal-button,
-.settings-modal--full .settings-recents-row .modal-button,
-.settings-modal--full .settings-recents-actions .modal-button,
-.settings-modal--full .settings-conception-path .modal-button {
-  width: auto;
-  height: auto;
-  padding: 5px 12px;
-  border-radius: 6px;
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  white-space: nowrap;
-  line-height: 1.2;
-}
+/* The settings text actions now render through <Button variant="default">,
+ * whose `.btn--default` already supplies this natural-width chrome (5/12
+ * padding, 6 px radius, 13 px / 500 label) — so the former `.modal-button`
+ * un-square override here is no longer needed. */
 
 /* Compact override for the per-field "Reset to global" / "Remove
  * override" button — sits next to a small badge and shouldn't dwarf it. */
@@ -1246,16 +1232,12 @@
   white-space: nowrap;
 }
 
+/* The remove (×) is now a <Button variant="default">; it already carries the
+ * default chrome the former `.modal-button` text-override gave it. Only the
+ * row-shrink guard remains live (the 26 px-square props were always clobbered
+ * by that higher-specificity override, so they never rendered). */
 .settings-recents-remove {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: var(--text-lg);
-  line-height: 1;
 }
 
 .settings-empty-hint {

@@ -1,4 +1,5 @@
 import { createSignal } from 'solid-js';
+import { Button } from '../actions';
 
 /**
  * Reference panel surfaced above the rendered body when the open file is
@@ -36,8 +37,9 @@ export function ConfigSummaryPanel(props: { onOpenFullDoc: () => void }) {
     >
       <summary>
         Reference — top-level keys
-        <button
-          class="modal-button config-summary-link"
+        <Button
+          variant="default"
+          class="config-summary-link"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -46,7 +48,7 @@ export function ConfigSummaryPanel(props: { onOpenFullDoc: () => void }) {
           title="Open the full configuration reference"
         >
           Full reference →
-        </button>
+        </Button>
       </summary>
       <ul class="config-summary-list">
         {CONFIG_SUMMARY.map((row) => (

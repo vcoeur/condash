@@ -1,5 +1,6 @@
 import { createResource, createSignal, Show } from 'solid-js';
 import { Modal } from './modal';
+import { Button } from './actions';
 import { highlightCode, pathToCondashFileUrl } from './markdown';
 import './html-modal.css';
 
@@ -49,41 +50,43 @@ export function HtmlModal(props: {
       headExtra={
         <>
           <div class="modal-seg" role="tablist" aria-label="HTML view mode">
-            <button
+            <Button
               type="button"
               role="tab"
-              class="modal-button modal-button--text"
+              variant="default"
               classList={{ active: mode() === 'rendered' }}
               aria-selected={mode() === 'rendered'}
               onClick={() => setMode('rendered')}
             >
               Rendered
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               role="tab"
-              class="modal-button modal-button--text"
+              variant="default"
               classList={{ active: mode() === 'source' }}
               aria-selected={mode() === 'source'}
               onClick={() => setMode('source')}
             >
               Source
-            </button>
+            </Button>
           </div>
-          <button
-            class="modal-button"
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={() => props.onReveal(props.path)}
             title="Reveal in file manager"
           >
             ⤷
-          </button>
-          <button
-            class="modal-button"
+          </Button>
+          <Button
+            variant="default"
+            class="btn--modal-head"
             onClick={() => props.onOpenInOs(props.path)}
             title="Open in OS default browser"
           >
             ↗
-          </button>
+          </Button>
         </>
       }
     >

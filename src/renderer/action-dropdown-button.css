@@ -170,17 +170,24 @@
 }
 
 /* Modal-header variant — same treatment as row-card so the trigger blends
- * into the header instead of carrying full button chrome. */
-.action-dropdown-button.modal-button.work-on-button {
-  width: auto;
-  height: auto;
+ * into the header instead of carrying full button chrome. Self-contained now
+ * that the trigger no longer composes with the removed `.modal-button`: it
+ * supplies its own 26 px head-glyph sizing (scoped to the trigger content so
+ * the caret keeps its 12 px) and 7 px head radius. */
+.action-dropdown-button.work-on-button {
   padding: 4px 6px;
   border: none;
+  border-radius: 7px;
   background: transparent;
   font-weight: 500;
 }
 
-.action-dropdown-button.modal-button.work-on-button:hover {
+.action-dropdown-button.work-on-button .action-dropdown-trigger-content svg {
+  width: 26px;
+  height: 26px;
+}
+
+.action-dropdown-button.work-on-button:hover {
   background: var(--bg-hover);
   color: var(--col-running);
   border-color: transparent;

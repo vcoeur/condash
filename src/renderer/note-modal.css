@@ -10,11 +10,6 @@
   max-height: calc(100% - 48px);
 }
 
-.modal-button.work-on-button:hover {
-  color: var(--col-now);
-  border-color: var(--col-now);
-}
-
 .md-rendered {
   font-size: var(--text-md);
   line-height: 1.6;
