@@ -1,5 +1,13 @@
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { emptyDashboardState, pruneDashboardState } from './state';
+import {
+  dashboardStatePath,
+  emptyDashboardState,
+  loadDashboardState,
+  pruneDashboardState,
+} from './state';
 import type { DashboardState } from '../../shared/types';
 
 function stateWith(eventCount: number): DashboardState {
@@ -8,6 +16,7 @@ function stateWith(eventCount: number): DashboardState {
     updatedAt: 100,
     overview: ['doing things'],
     history: events,
+    roster: [{ sid: 't-1', cwd: '/work' }],
     tabs: [
       {
         sid: 't-1',
@@ -43,6 +52,44 @@ describe('pruneDashboardState', () => {
 
 describe('emptyDashboardState', () => {
   it('produces an empty state stamped with the given time', () => {
-    expect(emptyDashboardState(42)).toEqual({ updatedAt: 42, overview: [], tabs: [], history: [] });
+    expect(emptyDashboardState(42)).toEqual({
+      updatedAt: 42,
+      overview: [],
+      tabs: [],
+      roster: [],
+      history: [],
+    });
+  });
+});
+
+describe('loadDashboardState', () => {
+  it('keeps summarized tabs but resets the live roster to empty', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-state-'));
+    const path = dashboardStatePath(dir);
+    await mkdir(join(dir, '.condash', 'dashboard'), { recursive: true });
+    // A persisted roster is stale the moment the app reopens, so load must drop
+    // it; the summarized tabs (real history) must survive.
+    await writeFile(
+      path,
+      JSON.stringify({
+        updatedAt: 5,
+        overview: ['busy'],
+        history: [],
+        roster: [{ sid: 'gone', cwd: '/old' }],
+        tabs: [
+          {
+            sid: 't-1',
+            title: 'build',
+            contextLines: [],
+            currentAction: '',
+            updatedAt: 5,
+            events: [],
+          },
+        ],
+      }),
+    );
+    const loaded = await loadDashboardState(dir);
+    expect(loaded?.roster).toEqual([]);
+    expect(loaded?.tabs.map((tab) => tab.sid)).toEqual(['t-1']);
   });
 });

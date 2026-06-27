@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { EVENT_CHANNELS } from '../../shared/ipc-channels';
-import type { DashboardConfigView, DashboardState, TabSummary } from '../../shared/types';
+import type { DashboardConfigView, DashboardState, TabInfo, TabSummary } from '../../shared/types';
 import { tabRecentText, tabsBytes, tabsContext } from '../terminals';
 import { DASHBOARD_DEFAULTS, readDashboardConfig, toDashboardConfigView } from './config';
 import {
@@ -94,15 +94,35 @@ export async function getDashboardConfigView(): Promise<DashboardConfigView> {
   return toDashboardConfigView(await readDashboardConfig(current.path));
 }
 
+/** True when the open-tab set differs by membership (a tab opened or closed).
+ *  cmd/cwd are fixed at spawn, so a sid-set comparison catches every change. */
+function rosterChanged(before: TabInfo[], after: TabInfo[]): boolean {
+  if (before.length !== after.length) return true;
+  const sids = new Set(before.map((tab) => tab.sid));
+  return after.some((tab) => !sids.has(tab.sid));
+}
+
 async function tick(conceptionPath: string): Promise<void> {
   if (current?.path !== conceptionPath || inFlight) return;
   const config = await readDashboardConfig(conceptionPath);
-  if (!config.enabled || !config.apiKey) return;
+  if (!config.enabled) return;
+
+  // Refresh the open-tab roster every tick — cheap, no LLM — so a newly opened
+  // tab becomes visible within one tick even before its first summary (and even
+  // with no API key), and a closed tab drops out. The renderer renders a card
+  // per roster entry, falling back to cmd/cwd for a tab with no summary yet.
+  const roster = tabsContext();
+  if (rosterChanged(state.roster, roster)) {
+    state = { ...state, roster };
+    pushState();
+  }
+
+  if (!config.apiKey) return;
 
   const now = Date.now();
   if (now - lastRunAt < config.intervalSec * 1000) return;
 
-  const meta = new Map(tabsContext().map((tab) => [tab.sid, tab]));
+  const meta = new Map(roster.map((tab) => [tab.sid, tab]));
   const liveSids = new Set(meta.keys());
   const bytes = tabsBytes();
   // Tabs whose byte count moved since the last run (new tabs read as updated —
@@ -172,6 +192,7 @@ async function tick(conceptionPath: string): Promise<void> {
         updatedAt: now,
         overview,
         tabs: nextTabs,
+        roster,
         history,
         lastError: getSummarizerError() ?? undefined,
       },

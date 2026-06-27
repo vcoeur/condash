@@ -27,6 +27,10 @@ export interface BootedApp {
 export async function bootApp(
   options: {
     extraConfig?: Record<string, unknown>;
+    /** Extra keys merged into the per-machine global `settings.json` (the
+     *  `XDG_CONFIG_HOME/condash/settings.json` the app boots from) — e.g.
+     *  `{ dashboard: { enabled: true }, layout: { terminal: true } }`. */
+    globalConfig?: Record<string, unknown>;
     prepare?: (conceptionDir: string) => Promise<void>;
     /** Extra env vars merged into the Electron launch — e.g. the
      *  `CONDASH_USER_*` overrides that point the global Skills scope at a
@@ -72,6 +76,7 @@ export async function bootApp(
         lastConceptionPath: conceptionDir,
         recentConceptionPaths: [conceptionDir],
         theme: 'system',
+        ...(options.globalConfig ?? {}),
       },
       null,
       2,
