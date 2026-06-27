@@ -1,15 +1,9 @@
 import { render } from 'solid-js/web';
 import { createMemo, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
-import { NoteModal } from './note-modal';
-import { ProjectPreview } from './project-preview';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
-import { PdfModal } from './pdf-modal';
-import { HtmlModal } from './html-modal';
-import { ImageModal } from './image-modal';
-import { HelpModal } from './help-modal';
+import { ModalHost } from './modal-host';
 import { WelcomeScreen } from './welcome-screen';
-import { PromptModal } from './prompt-modal';
 import { ProjectsView } from './panes/projects';
 import { DeliverablesView } from './panes/deliverables';
 import { TasksView } from './panes/tasks';
@@ -18,10 +12,7 @@ import { CodeView } from './panes/code';
 import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
-import { SearchModal } from './search-modal';
-import { SettingsModal } from './settings-modal';
 import { usableActionTemplates } from './settings-modal-parts/data';
-import { NewProjectModal } from './new-project-modal';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { createTreeExpansion } from './tree-expansion';
@@ -32,9 +23,6 @@ import { createProjectsStore } from './projects-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
 import { createMenuRouter } from './menu-commands';
-import { AboutModal } from './about-modal';
-import { ConfirmModal } from './confirm-modal';
-import { ShortcutsOverlay } from './shortcuts-overlay';
 import { useToast } from './hooks/use-toast';
 import { usePromptModal } from './hooks/use-prompt-modal';
 import { useTheme } from './hooks/use-theme';
@@ -769,200 +757,71 @@ function App() {
         }}
       />
 
-      <ProjectPreview
-        project={previewProject()}
-        onClose={() => setPreviewPath(null)}
-        onToggleStep={handleToggleStep}
-        onEditStepText={handleEditStepText}
-        onAddStep={handleAddStep}
-        onChangeStatus={(p, s) => void handleDropOnColumn(p.path, s)}
-        onOpenReadme={handleOpenReadmeFromPreview}
-        onOpenFile={(path) => handleOpenFileFromPreview(path, previewPath)}
-        onOpenInEditor={handleOpenInEditor}
-        onOpenDeliverable={handleOpenDeliverableFromPreview}
-        onWorkOn={(p) => void bridge.handleWorkOn(p)}
-        projectActions={projectActionItems()}
-        onProjectAction={(p, a) => void bridge.handleProjectAction(p, a)}
-        onCreateNote={(p) => void handleCreateProjectNote(p)}
+      <ModalHost
+        previewProject={previewProject}
+        previewPath={previewPath}
+        setPreviewPath={setPreviewPath}
+        handleToggleStep={handleToggleStep}
+        handleEditStepText={handleEditStepText}
+        handleAddStep={handleAddStep}
+        handleDropOnColumn={handleDropOnColumn}
+        handleOpenReadmeFromPreview={handleOpenReadmeFromPreview}
+        handleOpenFileFromPreview={handleOpenFileFromPreview}
+        handleOpenDeliverableFromPreview={handleOpenDeliverableFromPreview}
+        handleWikilink={handleWikilink}
+        handleCreateProjectNote={handleCreateProjectNote}
+        handleOpenInEditor={handleOpenInEditor}
+        handleOpenKnowledgeFile={handleOpenKnowledgeFile}
+        openDeliverable={openDeliverable}
+        projectActionItems={projectActionItems}
+        bridge={bridge}
+        router={router}
+        modal={modal}
+        setModal={setModal}
+        setNoteDirty={setNoteDirty}
+        isDark={isDark}
+        helpDoc={helpDoc}
+        setHelpDoc={setHelpDoc}
+        aboutOpen={aboutOpen}
+        setAboutOpen={setAboutOpen}
+        shortcutsOpen={shortcutsOpen}
+        setShortcutsOpen={setShortcutsOpen}
+        promptState={promptState}
+        setPromptState={setPromptState}
+        pdfPath={pdfPath}
+        setPdfPath={setPdfPath}
+        htmlPath={htmlPath}
+        setHtmlPath={setHtmlPath}
+        imagePath={imagePath}
+        setImagePath={setImagePath}
+        searchModalOpen={searchModalOpen}
+        setSearchModalOpen={setSearchModalOpen}
+        setLogsOpenRequest={setLogsOpenRequest}
+        nextLogsOpenNonce={nextLogsOpenNonce}
+        selectWorking={selectWorking}
+        settingsOpen={settingsOpen}
+        setSettingsOpen={setSettingsOpen}
+        conceptionPath={conceptionPath}
+        theme={theme}
+        handleThemeChange={handleThemeChange}
+        cardMinWidth={cardMinWidth}
+        handleCardMinWidthChange={handleCardMinWidthChange}
+        newProjectOpen={newProjectOpen}
+        setNewProjectOpen={setNewProjectOpen}
+        reloadProjects={reloadProjects}
+        flashToast={flashToast}
+        quitConfirmOpen={quitConfirmOpen}
+        setQuitConfirmOpen={setQuitConfirmOpen}
+        noteDirty={noteDirty}
+        handleConfirmQuit={handleConfirmQuit}
+        forceStopState={forceStopState}
+        setForceStopState={setForceStopState}
+        runForceStop={runForceStop}
+        initConfirmState={initConfirmState}
+        setInitConfirmState={setInitConfirmState}
+        runInit={runInit}
+        toast={toast}
       />
-
-      <Show when={modal()}>
-        <NoteModal
-          state={modal()}
-          onClose={() => router.closeChildModal(() => setModal(null))}
-          onOpenInEditor={handleOpenInEditor}
-          onOpenDeliverable={openDeliverable}
-          onWikilink={handleWikilink}
-          onOpenMarkdown={(path) => router.navigateInModal({ path })}
-          onBack={router.handleModalBack}
-          onOpenPdf={(path) => setPdfPath(path)}
-          onOpenHelp={(doc) => setHelpDoc(doc)}
-          onDirtyChange={setNoteDirty}
-          dark={isDark()}
-        />
-      </Show>
-
-      <Show when={helpDoc()}>
-        <HelpModal doc={helpDoc()!} onClose={() => setHelpDoc(null)} />
-      </Show>
-
-      <Show when={aboutOpen()}>
-        <AboutModal onClose={() => setAboutOpen(false)} />
-      </Show>
-
-      <Show when={shortcutsOpen()}>
-        <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />
-      </Show>
-
-      <PromptModal state={promptState()} onClose={() => setPromptState(null)} />
-
-      <Show when={pdfPath()}>
-        <PdfModal
-          path={pdfPath()!}
-          onClose={() => router.closeChildModal(() => setPdfPath(null))}
-          onOpenInOs={handleOpenInEditor}
-          onReveal={(p) => void window.condash.showInFolder(p)}
-        />
-      </Show>
-
-      <Show when={htmlPath()}>
-        <HtmlModal
-          path={htmlPath()!}
-          onClose={() => router.closeChildModal(() => setHtmlPath(null))}
-          onOpenInOs={handleOpenInEditor}
-          onReveal={(p) => void window.condash.showInFolder(p)}
-        />
-      </Show>
-
-      <Show when={imagePath()}>
-        <ImageModal
-          path={imagePath()!}
-          onClose={() => router.closeChildModal(() => setImagePath(null))}
-          onOpenInOs={handleOpenInEditor}
-          onReveal={(p) => void window.condash.showInFolder(p)}
-        />
-      </Show>
-
-      <Show when={searchModalOpen()}>
-        <SearchModal
-          onClose={() => setSearchModalOpen(false)}
-          onOpenProject={(projectDir) => {
-            // ProjectPreview is keyed on the README path (matching
-            // Project.path), but search returns the project directory —
-            // map back to the README so the preview lookup hits.
-            router.setPreviewBackPath(null);
-            setPreviewPath(`${projectDir}/README.md`);
-          }}
-          onOpenFile={handleOpenKnowledgeFile}
-          onOpenLog={(path) => {
-            // Open the Logs pane and post an open-request the pane reacts
-            // to. Nonce bumps every time so reactivating the same path
-            // still fires the createEffect.
-            setLogsOpenRequest({ path, nonce: nextLogsOpenNonce() });
-            selectWorking('logs');
-          }}
-        />
-      </Show>
-
-      <Show when={settingsOpen() && conceptionPath()}>
-        <SettingsModal
-          conceptionPath={conceptionPath()!}
-          theme={theme()}
-          onChangeTheme={handleThemeChange}
-          cardMinWidth={cardMinWidth()}
-          onChangeCardMinWidth={handleCardMinWidthChange}
-          onClose={() => setSettingsOpen(false)}
-        />
-      </Show>
-
-      <Show when={newProjectOpen()}>
-        <NewProjectModal
-          onClose={() => setNewProjectOpen(false)}
-          onCreated={(result) => {
-            setNewProjectOpen(false);
-            // Refresh the project list and prime the popup. The popup
-            // resolves the Project object via `previewProject()`, which
-            // re-reads `projects()`, so the popup mounts as soon as
-            // reload settles.
-            void reloadProjects();
-            setPreviewPath(result.readme);
-            flashToast(`Created ${result.relPath}`, 'success');
-          }}
-        />
-      </Show>
-
-      <Show when={quitConfirmOpen()}>
-        <ConfirmModal
-          title="Quit Condash?"
-          body={() => (
-            <>
-              <p class="confirm-message">Any running terminal sessions will be terminated.</p>
-              <Show when={noteDirty()}>
-                <p class="confirm-warn">Unsaved note edits will also be lost.</p>
-              </Show>
-            </>
-          )}
-          confirmLabel="Quit"
-          cancelLabel="Cancel"
-          destructive
-          onCancel={() => setQuitConfirmOpen(false)}
-          onConfirm={() => {
-            setQuitConfirmOpen(false);
-            handleConfirmQuit();
-          }}
-        />
-      </Show>
-
-      <Show when={forceStopState()}>
-        {(repo) => (
-          <ConfirmModal
-            title={`Force-stop ${repo().name}?`}
-            body="The repo's run command will be killed via the configured force_stop. Use only when the dev server is unresponsive."
-            confirmLabel="Force-stop"
-            destructive
-            onCancel={() => setForceStopState(null)}
-            onConfirm={() => {
-              const r = repo();
-              setForceStopState(null);
-              void runForceStop(r);
-            }}
-          />
-        )}
-      </Show>
-
-      <Show when={initConfirmState()}>
-        {(state) => (
-          <ConfirmModal
-            title="Initialise from template?"
-            body={
-              `This folder is missing ${state().missing.join(' and ')}.\n\n` +
-              'Initialise it from the bundled conception template? ' +
-              'Skill files, seed indexes, and example config will be laid down. ' +
-              'Existing files are left alone.'
-            }
-            confirmLabel="Initialise"
-            onCancel={() => setInitConfirmState(null)}
-            onConfirm={() => {
-              const path = state().path;
-              setInitConfirmState(null);
-              void runInit(path);
-            }}
-          />
-        )}
-      </Show>
-
-      <Show when={toast()}>
-        {(t) => (
-          <div
-            class="toast"
-            data-kind={t().kind}
-            role={t().kind === 'error' ? 'alert' : 'status'}
-            aria-live={t().kind === 'error' ? 'assertive' : 'polite'}
-          >
-            {t().msg}
-          </div>
-        )}
-      </Show>
     </div>
   );
 }
