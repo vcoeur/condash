@@ -248,13 +248,16 @@ export async function tick(conceptionPath: string): Promise<void> {
     }
 
     let overview = state.overview;
+    let globalWork = state.globalWork;
     let history = state.history;
     if (nextTabs.length === 0) {
       overview = [];
+      globalWork = undefined;
     } else {
       const synthesized = await synthesizeOverview(config, nextTabs);
       if (synthesized) {
         overview = synthesized.overview;
+        globalWork = synthesized.globalWork || undefined;
         history = [...history, ...synthesized.events.map((text) => makeEvent(text, now))];
       }
     }
@@ -262,6 +265,7 @@ export async function tick(conceptionPath: string): Promise<void> {
     state = pruneDashboardState(
       {
         updatedAt: now,
+        globalWork,
         overview,
         tabs: nextTabs,
         roster,

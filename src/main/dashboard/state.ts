@@ -60,6 +60,9 @@ function coerceState(parsed: unknown): DashboardState | null {
   if (!Array.isArray(raw.tabs)) return null;
   return {
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
+    // Level-1 headline: present in states written by a newer build; absent (left
+    // off) in an older `state.json` from before the two-level summary.
+    ...(typeof raw.globalWork === 'string' ? { globalWork: raw.globalWork } : {}),
     overview: Array.isArray(raw.overview) ? raw.overview.filter((l) => typeof l === 'string') : [],
     history: Array.isArray(raw.history) ? raw.history.filter(isEvent) : [],
     tabs: raw.tabs.filter(isTabSummary).map((tab) => ({

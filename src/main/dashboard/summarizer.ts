@@ -54,6 +54,10 @@ export interface TabSummaryResult {
 
 /** The fields the model is asked to produce for the cross-tab overview. */
 export interface OverviewResult {
+  /** Level 1: one line naming the overarching work across all tabs right now.
+   *  Empty when the model omits it. */
+  globalWork: string;
+  /** Level 2: the finer detail / current-activity lines. */
   overview: string[];
   events: string[];
 }
@@ -152,14 +156,17 @@ export function parseTabSummary(reply: string): TabSummaryResult | null {
   };
 }
 
-/** Parse the model reply for the cross-tab overview, or null on garbage. */
+/** Parse the model reply for the cross-tab overview, or null on garbage. The
+ *  detail lines (Level 2) are the required content — a reply with none is
+ *  rejected; `globalWork` (Level 1) is optional and defaults to empty. */
 export function parseOverview(reply: string): OverviewResult | null {
   const obj = extractJsonObject(reply);
   if (typeof obj !== 'object' || obj === null) return null;
   const record = obj as Record<string, unknown>;
   const overview = asStringArray(record.overview, 5);
   if (overview.length === 0) return null;
-  return { overview, events: asStringArray(record.events, 3) };
+  const globalWork = typeof record.globalWork === 'string' ? record.globalWork.trim() : '';
+  return { globalWork, overview, events: asStringArray(record.events, 3) };
 }
 
 // Guardrails below were tuned against an eval of a week of real terminal logs on
@@ -212,8 +219,15 @@ const OVERVIEW_SYSTEM_PROMPT = [
   'summary says the program asked a question or needs a selection. Do not',
   'aggregate several idle prompts into "waiting for input everywhere". Treat',
   'warnings and recoverable errors as routine.',
+  'Produce two levels. Level 1 "globalWork": ONE short line naming the overarching',
+  'thing the developer is working on across the tabs right now — the big picture,',
+  'not a per-tab detail (e.g. "Shipping the condash dashboard summarizer", "Debugging',
+  'the fovea auth flow"). When the tabs are unrelated, name the dominant or most',
+  'active thread rather than inventing a false common goal. Level 2 "overview": the',
+  'finer detail and current activity behind it.',
   'Reply with ONLY a JSON object, no markdown fence:',
-  '{"overview": string[] (2-5 short lines describing the overall current activity,',
+  '{"globalWork": string (one short line — the global current work, Level 1),',
+  ' "overview": string[] (2-5 short lines of detail / current activity, Level 2,',
   ' referencing tabs by title when useful),',
   ' "events": string[] (0-3 short notable cross-tab events worth remembering, else [])}.',
 ].join(' ');

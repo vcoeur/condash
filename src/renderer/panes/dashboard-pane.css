@@ -188,6 +188,16 @@
   color: var(--text-muted);
 }
 
+/* Level 1 of the cross-tab summary: the one-line "global current work" headline —
+ * the big picture across all tabs, set apart above the finer detail lines. */
+.dashboard-global-work {
+  margin: 0 0 10px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+}
+
 .dashboard-overview {
   margin: 0;
   padding-left: 18px;
@@ -267,12 +277,6 @@
 .dashboard-pane [data-state='pending'] {
   --state-color: var(--text-faint);
 }
-/* Transient: the tab's summary is being recomputed right now. Accent-coloured to
- * match the engine status strip's "summarizing" phase, so the card and the
- * header read as the same live event. */
-.dashboard-pane [data-state='summarizing'] {
-  --state-color: var(--accent);
-}
 
 /* The state-coloured card. A left bar (::before) + a faint wash carry the
  * state; the pill names it in words so colour is never the only signal. */
@@ -285,6 +289,11 @@
   box-shadow: var(--shadow-card);
   min-width: 0;
   overflow-wrap: anywhere;
+  /* Hard guarantee: a card can never spill its content past its own border —
+   * the head's nowrap meta (a long #repo / agent / time) would otherwise extend
+   * the box. The box-shadow glow is painted outside the border box, so clipping
+   * here doesn't touch the awaiting card's ring. */
+  overflow: hidden;
 }
 
 /* The left state bar. */
@@ -320,22 +329,15 @@
 .dashboard-tab-card-pending::before {
   opacity: 0.5;
 }
-/* ...unless it's being summarized right now: an in-flight first summary is an
- * active event, so drop the dashed/dimmed "not yet" treatment and let it read
- * like any other live card. */
-.dashboard-tab-card-pending[data-state='summarizing'] {
-  border-style: solid;
-  opacity: 1;
-}
-.dashboard-tab-card-pending[data-state='summarizing']::before {
-  opacity: 1;
-}
 
 .dashboard-tab-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
+  /* Wrap rather than overflow: on a narrow card the meta drops to its own line
+   * below the state pill instead of pushing the time off the right edge. */
+  flex-wrap: wrap;
 }
 
 /* The state pill — tinted in the state colour with a coloured-ink label, so it
@@ -361,18 +363,30 @@
   flex: 0 0 auto;
   background: currentColor;
 }
-/* A summarizing card pulses its badge dot, mirroring the status strip's live
- * heartbeat, so an in-flight refresh reads as motion, not just colour. */
-.dashboard-tab-card[data-state='summarizing'] .dashboard-tab-state-dot {
+/* Tiny per-card "being summarized right now" marker — a small accent dot that
+ * pulses. The card keeps its own state colour and badge; this is just a faint
+ * live cue that its summary is refreshing. The loud "Summarizing N tabs…" label
+ * lives only in the top status strip. */
+.dashboard-tab-summarizing {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--accent);
   animation: dashboard-ping 1.6s ease-out infinite;
 }
 
-/* Right side of the head: the #repo pill, the driving program, and relative time. */
+/* Right side of the head: the #repo pill, the driving program, and relative time.
+ * Allowed to wrap and take the leftover width so it reflows onto its own line
+ * (right-aligned) rather than spilling past the card edge. */
 .dashboard-tab-card-meta {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   font-size: var(--text-2xs);
   color: var(--text-muted);
 }
@@ -489,7 +503,7 @@
 /* Honour reduced-motion: drop the pulsing status dot. */
 @media (prefers-reduced-motion: reduce) {
   .dashboard-status[data-phase='summarizing'] .dashboard-status-dot,
-  .dashboard-tab-card[data-state='summarizing'] .dashboard-tab-state-dot {
+  .dashboard-tab-summarizing {
     animation: none;
   }
 }

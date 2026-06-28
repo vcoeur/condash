@@ -112,5 +112,26 @@ describe('loadDashboardState', () => {
     expect(loaded?.tabs.map((tab) => tab.sid)).toEqual(['t-1']);
     // A pre-`state` persisted summary backfills to 'idle' on load.
     expect(loaded?.tabs[0]?.state).toBe('idle');
+    // A pre-two-level state has no Level-1 headline — it loads as absent.
+    expect(loaded?.globalWork).toBeUndefined();
+  });
+
+  it('round-trips the Level-1 globalWork headline when present', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-gw-'));
+    await mkdir(join(dir, '.condash', 'dashboard'), { recursive: true });
+    await writeFile(
+      dashboardStatePath(dir),
+      JSON.stringify({
+        updatedAt: 5,
+        globalWork: 'Shipping the dashboard summarizer',
+        overview: ['detail one', 'detail two'],
+        history: [],
+        roster: [],
+        tabs: [],
+      }),
+    );
+    const loaded = await loadDashboardState(dir);
+    expect(loaded?.globalWork).toBe('Shipping the dashboard summarizer');
+    expect(loaded?.overview).toEqual(['detail one', 'detail two']);
   });
 });

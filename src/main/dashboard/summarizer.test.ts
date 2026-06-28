@@ -74,26 +74,30 @@ describe('parseTabSummary', () => {
 });
 
 describe('parseOverview', () => {
-  it('parses overview + events', () => {
+  it('parses globalWork (Level 1) + overview (Level 2) + events', () => {
     const reply = JSON.stringify({
+      globalWork: 'shipping the condash dashboard summarizer',
       overview: ['building condash', 'tests passing'],
       events: ['PR opened'],
     });
     expect(parseOverview(reply)).toEqual({
+      globalWork: 'shipping the condash dashboard summarizer',
       overview: ['building condash', 'tests passing'],
       events: ['PR opened'],
     });
   });
 
-  it('defaults events to empty and caps overview length', () => {
+  it('defaults globalWork + events to empty and caps overview length', () => {
     const reply = JSON.stringify({ overview: ['a', 'b', 'c', 'd', 'e', 'f'] });
     const parsed = parseOverview(reply);
+    expect(parsed?.globalWork).toBe('');
     expect(parsed?.events).toEqual([]);
     expect(parsed?.overview).toHaveLength(5);
   });
 
-  it('returns null when overview is empty or missing', () => {
+  it('returns null when overview is empty or missing, even with a globalWork', () => {
     expect(parseOverview('{"overview":[]}')).toBeNull();
+    expect(parseOverview('{"globalWork":"x","overview":[]}')).toBeNull();
     expect(parseOverview('garbage')).toBeNull();
   });
 });
