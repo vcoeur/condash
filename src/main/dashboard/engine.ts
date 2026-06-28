@@ -131,6 +131,56 @@ function rosterChanged(before: TabInfo[], after: TabInfo[]): boolean {
   return after.some((tab) => !sids.has(tab.sid));
 }
 
+/** A `working` tab that has produced no new output for this many summarize
+ *  intervals is treated as finished — the multiplier that sizes the idle-decay
+ *  grace window. Two cycles of silence keeps a momentarily-quiet but genuinely
+ *  working tab (a slow build between progress lines) from flickering to idle. */
+export const DECAY_INTERVALS = 2;
+
+/**
+ * Locally retire tabs stuck on a `working` badge after going quiet to `idle`,
+ * with no LLM call. The summarize gate keys on byte growth, so a tab that
+ * finished and fell silent is never re-summarized and would otherwise stay
+ * frozen on its last `working` state — the very transition to idle (output
+ * stopping) is exactly what the gate reads as "nothing to do". A tab qualifies
+ * only when it is `working`, its byte count has not grown since the last
+ * summarize run, and its summary is older than the grace window. `awaiting`
+ * (legitimately blocked on a prompt) and `error` are left untouched — their
+ * quiet is real, not a finished turn.
+ *
+ * @param tabs - Current per-tab summaries.
+ * @param bytes - Live byte counts per sid for this tick.
+ * @param prev - Byte counts captured at the last summarize run (the growth gate).
+ * @param now - Current epoch ms.
+ * @param intervalMs - Resolved summarize cadence; the grace is `DECAY_INTERVALS`× it.
+ * @returns A new tabs array when anything decayed, else the input array unchanged
+ *   (referential equality) so the caller can skip a redundant push.
+ */
+export function decayStaleWorkingTabs(
+  tabs: TabSummary[],
+  bytes: Map<string, number>,
+  prev: Map<string, number>,
+  now: number,
+  intervalMs: number,
+): TabSummary[] {
+  const graceMs = intervalMs * DECAY_INTERVALS;
+  let changed = false;
+  const next = tabs.map((tab) => {
+    if (tab.state !== 'working') return tab;
+    // Grew since the last run → still active; it gets re-summarized, not decayed.
+    if (bytes.get(tab.sid) !== prev.get(tab.sid)) return tab;
+    if (now - tab.updatedAt < graceMs) return tab;
+    changed = true;
+    return {
+      ...tab,
+      state: 'idle' as const,
+      currentAction: 'Idle — no recent output',
+      updatedAt: now,
+    };
+  });
+  return changed ? next : tabs;
+}
+
 /** One dashboard cycle: refresh the open-tab roster, then (when enabled, keyed,
  *  and due) summarize the changed tabs and synthesize the cross-tab overview.
  *  A no-op when not armed for `conceptionPath`, already in flight, disabled, or
@@ -185,6 +235,18 @@ export async function tick(conceptionPath: string): Promise<void> {
   // still refreshes the overview even with no growth.
   const updated = [...liveSids].filter((sid) => bytes.get(sid) !== prevBytes.get(sid));
   const removed = state.tabs.some((tab) => !liveSids.has(tab.sid));
+
+  // Retire any `working` tab that has gone silent past the grace window to
+  // `idle` (no LLM call) before the gate can hold the cycle — otherwise a
+  // finished-but-quiet tab is never re-summarized and stays frozen on its last
+  // `working` badge. Runs every due tick regardless of the gate, since a quiet
+  // tab is never in `updated` and so is never refreshed by the summarize loop.
+  const decayed = decayStaleWorkingTabs(state.tabs, bytes, prevBytes, now, intervalMs);
+  if (decayed !== state.tabs) {
+    state = { ...state, tabs: decayed };
+    pushState();
+  }
+
   if (config.gateOnActivity && updated.length === 0 && !removed) {
     // Due, but nothing changed — the activity gate holds the cycle. Re-window the
     // ETA so the pane keeps counting down (alive) instead of sitting at "due now".
