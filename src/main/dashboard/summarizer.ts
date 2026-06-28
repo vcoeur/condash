@@ -173,7 +173,11 @@ export function parseOverview(reply: string): OverviewResult | null {
 // deepseek-v4-flash: name the tool from cmd/status (never invent one), don't read
 // the user's draft prompt line as an action, classify the tab into one structured
 // `state` (working/awaiting/idle/error) the dashboard colours on, and title the
-// work rather than the tool.
+// work rather than the tool. A finished coding-agent turn (a complete reply
+// already printed, input box back to empty) is `idle`, not `working`: the model
+// over-eagerly read a long visible reply as "still generating", which the
+// activity gate then froze on the card. The engine's idle-decay is the backstop;
+// the finished-turn rule below is the fix at the source.
 const TAB_SYSTEM_PROMPT = [
   'You summarize a single terminal tab for a developer dashboard.',
   'You are given the tab command/cwd, a prior summary (possibly stale), and the',
@@ -192,7 +196,12 @@ const TAB_SYSTEM_PROMPT = [
   'question or shows an interactive menu/prompt that needs an answer — say what',
   'answer it awaits. "idle": the work finished or nothing is pending — say so, and',
   'you may add the last meaningful thing it did; an agent resting at an empty',
-  'prompt after finishing is idle, not blocked on you. "error": a command crashed',
+  'prompt after finishing is idle, not blocked on you. A coding agent (claude,',
+  'opencode, pi, codex) that has printed a complete reply and returned to an empty',
+  'input box is idle, not working — a long reply already visible in full is',
+  'finished output, not work in progress. Call such a tab "working" only when a',
+  'live progress indicator is present: a running spinner, an "esc to interrupt" or',
+  '"thinking" hint, or text still actively streaming. "error": a command crashed',
   'or a process exited non-zero and is NOT recovering — a recoverable warning is',
   'not an error, it stays "working" or "idle".',
   'Treat informational notices and recoverable warnings as background noise (for',

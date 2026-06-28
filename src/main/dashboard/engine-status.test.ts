@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EVENT_CHANNELS } from '../../shared/ipc-channels';
-import type { DashboardConfig, DashboardState, TabInfo } from '../../shared/types';
+import type {
+  DashboardConfig,
+  DashboardState,
+  TabInfo,
+  TabState,
+  TabSummary,
+} from '../../shared/types';
 import type { OverviewResult, TabSummaryResult } from './summarizer';
 
 // Mutable fixtures the mocks read, so each case can shape the engine's inputs.
@@ -55,7 +61,12 @@ vi.mock('./state', async (importOriginal) => {
   return { ...actual, saveDashboardState: vi.fn(async () => {}) };
 });
 
-import { getDashboardState, setDashboardConception } from './engine';
+import {
+  DECAY_INTERVALS,
+  decayStaleWorkingTabs,
+  getDashboardState,
+  setDashboardConception,
+} from './engine';
 
 const CONCEPTION = '/tmp/condash-engine-status-test';
 
@@ -178,5 +189,78 @@ describe('dashboard engine status', () => {
       expect(last?.engine?.phase).toBe('waiting');
       expect(last?.tabs.map((tab) => tab.sid)).toEqual(['a']);
     });
+  });
+});
+
+describe('decayStaleWorkingTabs', () => {
+  const INTERVAL = 30_000;
+  const GRACE = INTERVAL * DECAY_INTERVALS;
+
+  /** A minimal summary fixture, overridable per case. */
+  function tab(
+    over: Partial<TabSummary> & Pick<TabSummary, 'sid' | 'state' | 'updatedAt'>,
+  ): TabSummary {
+    return { title: 't', contextLines: [], currentAction: 'doing', events: [], ...over };
+  }
+
+  it('retires a working tab quiet past the grace window to idle', () => {
+    const tabs = [tab({ sid: 'a', state: 'working', updatedAt: 0, currentAction: 'generating' })];
+    // bytes === prev → no growth since the last run; now − updatedAt === GRACE.
+    const bytes = new Map([['a', 100]]);
+    const out = decayStaleWorkingTabs(tabs, bytes, bytes, GRACE, INTERVAL);
+    expect(out).not.toBe(tabs);
+    expect(out[0].state).toBe('idle');
+    expect(out[0].currentAction).toBe('Idle — no recent output');
+    expect(out[0].updatedAt).toBe(GRACE);
+  });
+
+  it('leaves a working tab whose bytes grew since the last run (still active)', () => {
+    const tabs = [tab({ sid: 'a', state: 'working', updatedAt: 0 })];
+    const prev = new Map([['a', 100]]);
+    const bytes = new Map([['a', 140]]);
+    const out = decayStaleWorkingTabs(tabs, bytes, prev, GRACE * 5, INTERVAL);
+    expect(out).toBe(tabs);
+    expect(out[0].state).toBe('working');
+  });
+
+  it('leaves a working tab still inside the grace window', () => {
+    const tabs = [tab({ sid: 'a', state: 'working', updatedAt: 0 })];
+    const bytes = new Map([['a', 100]]);
+    const out = decayStaleWorkingTabs(tabs, bytes, bytes, GRACE - 1, INTERVAL);
+    expect(out).toBe(tabs);
+  });
+
+  it('never touches awaiting, error, or idle tabs however long they are quiet', () => {
+    const tabs: TabSummary[] = [
+      tab({ sid: 'a', state: 'awaiting', updatedAt: 0, awaitingPrompt: 'Overwrite? (y/n)' }),
+      tab({ sid: 'b', state: 'error', updatedAt: 0 }),
+      tab({ sid: 'c', state: 'idle', updatedAt: 0 }),
+    ];
+    const bytes = new Map<string, number>([
+      ['a', 1],
+      ['b', 1],
+      ['c', 1],
+    ]);
+    const out = decayStaleWorkingTabs(tabs, bytes, bytes, GRACE * 100, INTERVAL);
+    expect(out).toBe(tabs);
+    expect(out.map((t) => t.state)).toEqual<TabState[]>(['awaiting', 'error', 'idle']);
+  });
+
+  it('decays only the quiet working tabs, leaving an active sibling working', () => {
+    const tabs: TabSummary[] = [
+      tab({ sid: 'quiet', state: 'working', updatedAt: 0 }),
+      tab({ sid: 'busy', state: 'working', updatedAt: 0 }),
+    ];
+    const prev = new Map<string, number>([
+      ['quiet', 10],
+      ['busy', 10],
+    ]);
+    const bytes = new Map<string, number>([
+      ['quiet', 10], // unchanged
+      ['busy', 50], // grew
+    ]);
+    const out = decayStaleWorkingTabs(tabs, bytes, prev, GRACE, INTERVAL);
+    expect(out.find((t) => t.sid === 'quiet')?.state).toBe('idle');
+    expect(out.find((t) => t.sid === 'busy')?.state).toBe('working');
   });
 });
