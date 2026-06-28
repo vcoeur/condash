@@ -91,6 +91,12 @@ export interface DashboardState {
    *  pane shows it's alive even before any tab has a summary. Live-only: reset
    *  on load and rebuilt each tick. Absent only before the first tick. */
   engine?: DashboardEngineStatus;
+  /** SIDs whose summary is being recomputed in the in-flight cycle (the LLM call
+   *  is running for them). The renderer overlays a transient "Summarizing" badge
+   *  on these cards so an actively-refreshing tab reads as live instead of stuck
+   *  on its prior state. Empty between cycles. Live-only: never trusted from
+   *  disk, rebuilt each tick. */
+  summarizingSids?: string[];
   /** Last error from a summarization cycle (e.g. auth/model/network failure),
    *  surfaced in the Dashboard so a silent no-op is explainable. Absent when the
    *  last cycle's API calls all succeeded. */

@@ -125,6 +125,36 @@ describe('dashboard engine status', () => {
     expect(getDashboardState()?.tabs.map((tab) => tab.sid)).toEqual(['a']);
   });
 
+  it('marks the in-flight tab "summarizing", then clears the overlay when it rests', async () => {
+    h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
+    h.bytes = new Map([['a', 12]]);
+    h.recent = 'real transcript output';
+    h.summary = {
+      title: 'Build',
+      contextLines: ['compiling'],
+      currentAction: 'compiling',
+      state: 'working',
+    };
+    h.overview = { overview: ['Tab a is compiling'], events: [] };
+    await setDashboardConception(CONCEPTION);
+    // While the LLM call is in flight the renderer must have seen the tab in
+    // `summarizingSids` alongside the `summarizing` phase — that's the signal the
+    // card badge reads to render "Summarizing" instead of its prior state.
+    await vi.waitFor(() =>
+      expect(
+        h.pushed.some(
+          (s) => s.engine?.phase === 'summarizing' && (s.summarizingSids ?? []).includes('a'),
+        ),
+      ).toBe(true),
+    );
+    // Once the cycle settles, the transient overlay is dropped so the card falls
+    // back to its real state ('working').
+    await vi.waitFor(() => {
+      expect(getDashboardState()?.engine?.phase).toBe('waiting');
+      expect(getDashboardState()?.summarizingSids).toEqual([]);
+    });
+  });
+
   it('still pushes the final state to the renderer when persistence fails', async () => {
     const { saveDashboardState } = await import('./state');
     vi.mocked(saveDashboardState).mockRejectedValue(new Error('ENOENT: state dir missing'));
