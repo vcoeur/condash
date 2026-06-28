@@ -113,7 +113,7 @@ describe('dashboard engine status', () => {
       currentAction: 'compiling',
       state: 'working',
     };
-    h.overview = { overview: ['Tab a is compiling'], events: [] };
+    h.overview = { globalWork: 'Building condash', overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     await vi.waitFor(() => {
       const status = getDashboardState()?.engine;
@@ -135,7 +135,7 @@ describe('dashboard engine status', () => {
       currentAction: 'compiling',
       state: 'working',
     };
-    h.overview = { overview: ['Tab a is compiling'], events: [] };
+    h.overview = { globalWork: 'Building condash', overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     // While the LLM call is in flight the renderer must have seen the tab in
     // `summarizingSids` alongside the `summarizing` phase — that's the signal the
@@ -167,7 +167,7 @@ describe('dashboard engine status', () => {
       currentAction: 'compiling',
       state: 'working',
     };
-    h.overview = { overview: ['Tab a is compiling'], events: [] };
+    h.overview = { globalWork: 'Building condash', overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     // The renderer must still receive the post-cycle state — summarized tab,
     // resting `waiting` phase — even though the save threw. The old order (save

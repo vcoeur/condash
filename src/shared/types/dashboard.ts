@@ -73,7 +73,13 @@ export interface DashboardEngineStatus {
 export interface DashboardState {
   /** Epoch ms of the last engine cycle that produced this state. */
   updatedAt: number;
-  /** Cross-tab "what's going on" narrative — a few lines, referencing tabs. */
+  /** Level 1 of the cross-tab summary: a single line naming the overarching work
+   *  in flight across all tabs right now (the "global current work" headline).
+   *  Absent before the first overview synthesis, when no tab is summarized, or
+   *  when the model omits it — the renderer then shows only the detail lines. */
+  globalWork?: string;
+  /** Level 2 of the cross-tab summary: the finer detail / current-activity lines
+   *  ("what's going on"), referencing tabs by title when useful. */
   overview: string[];
   /** Per-tab summaries, one per live tab the engine has produced a summary for.
    *  A tab with no readable output yet (or before the first summary cycle) is
@@ -92,9 +98,9 @@ export interface DashboardState {
    *  on load and rebuilt each tick. Absent only before the first tick. */
   engine?: DashboardEngineStatus;
   /** SIDs whose summary is being recomputed in the in-flight cycle (the LLM call
-   *  is running for them). The renderer overlays a transient "Summarizing" badge
-   *  on these cards so an actively-refreshing tab reads as live instead of stuck
-   *  on its prior state. Empty between cycles. Live-only: never trusted from
+   *  is running for them). The renderer marks these cards with a small pulsing
+   *  dot so an actively-refreshing tab reads as live; the card keeps its own
+   *  state badge and colour. Empty between cycles. Live-only: never trusted from
    *  disk, rebuilt each tick. */
   summarizingSids?: string[];
   /** Last error from a summarization cycle (e.g. auth/model/network failure),

@@ -54,12 +54,13 @@ export function DashboardView() {
   onCleanup(offState);
 
   const roster = () => state()?.roster ?? [];
+  const globalWork = () => state()?.globalWork?.trim() ?? '';
   const overview = () => state()?.overview ?? [];
   const history = () => state()?.history ?? [];
   const engine = () => state()?.engine;
   // The tabs whose summary is being recomputed in the in-flight cycle. A card
-  // whose sid is in here is badged "Summarizing" (transient), overriding its
-  // pending/last state so an actively-refreshing tab reads as live.
+  // whose sid is in here shows a small pulsing marker — its own state badge and
+  // colour are untouched; the loud "Summarizing" label lives in the status strip.
   const summarizingSids = createMemo(() => new Set(state()?.summarizingSids ?? []));
 
   const secsUntil = (atMs: number): number => Math.max(0, Math.round((atMs - nowMs()) / 1000));
@@ -116,8 +117,10 @@ export function DashboardView() {
   // attempt instead of a flat "no summary yet", so the card looks live too.
   const pendingTimeText = (): string => {
     const status = engine();
-    if (status?.phase === 'summarizing') return 'summarizing…';
-    if (status && (status.phase === 'waiting' || status.phase === 'idle')) {
+    if (
+      status &&
+      (status.phase === 'waiting' || status.phase === 'idle' || status.phase === 'summarizing')
+    ) {
       const secs = secsUntil(status.nextRunAt);
       return secs <= 0 ? 'next attempt due now' : `next attempt in ${secs}s`;
     }
@@ -155,21 +158,6 @@ export function DashboardView() {
     summary.state === 'awaiting' && summary.awaitingPrompt
       ? summary.awaitingPrompt
       : summary.currentAction;
-
-  // The badge state to render for a card: a tab being recomputed this cycle
-  // reads "summarizing" (transient), otherwise its own pending/summarized state.
-  // 'pending' and 'summarizing' are display-only states, not TabStates.
-  const cardState = (
-    sid: string,
-    base: TabState | 'pending',
-  ): TabState | 'pending' | 'summarizing' => (summarizingSids().has(sid) ? 'summarizing' : base);
-  // Human label for a card's badge, covering the two display-only states.
-  const cardStateLabel = (display: TabState | 'pending' | 'summarizing'): string =>
-    display === 'summarizing'
-      ? 'Summarizing'
-      : display === 'pending'
-        ? 'Starting'
-        : STATE_LABEL[display];
 
   // Cross-tab state tally for the chip row above the grid — counted over the
   // live summarized tabs (state().tabs holds only still-open ones).
@@ -284,12 +272,20 @@ export function DashboardView() {
             )}
           </Show>
 
-          <Show when={config()?.enabled && overviewLines().length > 0}>
+          <Show when={config()?.enabled && (globalWork() || overviewLines().length > 0)}>
             <section class="dashboard-section">
-              <h3>What's going on</h3>
-              <ul class="dashboard-overview">
-                <For each={overviewLines()}>{(line) => <li>{line}</li>}</For>
-              </ul>
+              <h3>Global current work</h3>
+              {/* Level 1: the one-line big-picture headline. */}
+              <Show when={globalWork()}>
+                <p class="dashboard-global-work">{globalWork()}</p>
+              </Show>
+              {/* Level 2: the finer detail / current-activity lines, directly
+                  under the headline. */}
+              <Show when={overviewLines().length > 0}>
+                <ul class="dashboard-overview">
+                  <For each={overviewLines()}>{(line) => <li>{line}</li>}</For>
+                </ul>
+              </Show>
             </section>
           </Show>
 
@@ -349,15 +345,12 @@ export function DashboardView() {
                         // its command/cwd, so the user always sees every tab.
                         <li
                           class="dashboard-tab-card dashboard-tab-card-pending"
-                          data-state={cardState(card.tab.sid, 'pending')}
+                          data-state="pending"
                         >
                           <div class="dashboard-tab-card-head">
-                            <span
-                              class="dashboard-tab-state"
-                              data-state={cardState(card.tab.sid, 'pending')}
-                            >
+                            <span class="dashboard-tab-state" data-state="pending">
                               <span class="dashboard-tab-state-dot" />
-                              {cardStateLabel(cardState(card.tab.sid, 'pending'))}
+                              Starting
                             </span>
                             <span class="dashboard-tab-card-meta">
                               <Show when={repoRef(card.tab)}>
@@ -368,11 +361,12 @@ export function DashboardView() {
                                 </span>
                               </Show>
                               <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
-                              {/* The SUMMARIZING badge already says it's in
-                                  flight; don't repeat "summarizing…" here. */}
-                              <Show when={!summarizingSids().has(card.tab.sid)}>
-                                <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
+                              {/* Tiny live cue while this card's first summary is
+                                  in flight — the card itself stays "Starting". */}
+                              <Show when={summarizingSids().has(card.tab.sid)}>
+                                <span class="dashboard-tab-summarizing" title="Summarizing…" />
                               </Show>
+                              <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
                             </span>
                           </div>
                           <div class="dashboard-tab-card-title">{tabLabel(card.tab)}</div>
@@ -386,17 +380,11 @@ export function DashboardView() {
                       }
                     >
                       {(summary) => (
-                        <li
-                          class="dashboard-tab-card"
-                          data-state={cardState(summary().sid, summary().state)}
-                        >
+                        <li class="dashboard-tab-card" data-state={summary().state}>
                           <div class="dashboard-tab-card-head">
-                            <span
-                              class="dashboard-tab-state"
-                              data-state={cardState(summary().sid, summary().state)}
-                            >
+                            <span class="dashboard-tab-state" data-state={summary().state}>
                               <span class="dashboard-tab-state-dot" />
-                              {cardStateLabel(cardState(summary().sid, summary().state))}
+                              {STATE_LABEL[summary().state]}
                             </span>
                             <span class="dashboard-tab-card-meta">
                               <Show when={repoRef(card.tab)}>
@@ -407,6 +395,11 @@ export function DashboardView() {
                                 </span>
                               </Show>
                               <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
+                              {/* Tiny live cue while this card's summary refreshes —
+                                  state badge + colour stay the card's real state. */}
+                              <Show when={summarizingSids().has(summary().sid)}>
+                                <span class="dashboard-tab-summarizing" title="Summarizing…" />
+                              </Show>
                               <span
                                 class="dashboard-tab-card-time"
                                 title={fmtTime(summary().updatedAt)}
