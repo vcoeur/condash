@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DASHBOARD_DEFAULTS, MIN_CARD_INPUT_CHARS, resolveDashboardConfig } from './config';
+import {
+  DASHBOARD_DEFAULTS,
+  MIN_CARD_INPUT_CHARS,
+  resolveDashboardConfig,
+  toDashboardConfigView,
+} from './config';
 
 describe('resolveDashboardConfig — two model tiers', () => {
   it('applies the two-tier defaults when nothing is set', () => {
@@ -35,5 +40,30 @@ describe('resolveDashboardConfig — two model tiers', () => {
     expect(resolveDashboardConfig({ cardInputChars: 100 }).cardInputChars).toBe(
       MIN_CARD_INPUT_CHARS,
     );
+  });
+});
+
+describe('toDashboardConfigView — both tiers reach the renderer', () => {
+  it('exposes the writer model, reasoning flags, and card window (never the raw key)', () => {
+    const view = toDashboardConfigView(
+      resolveDashboardConfig({
+        apiKey: 'sk-secret',
+        model: 'flash-x',
+        writerModel: 'pro-x',
+        cardReasoning: true,
+        writerReasoning: false,
+        cardInputChars: 24000,
+      }),
+    );
+    expect(view).toMatchObject({
+      hasApiKey: true,
+      model: 'flash-x',
+      writerModel: 'pro-x',
+      cardReasoning: true,
+      writerReasoning: false,
+      cardInputChars: 24000,
+    });
+    // The secret is never projected onto the renderer-facing view.
+    expect(view).not.toHaveProperty('apiKey');
   });
 });

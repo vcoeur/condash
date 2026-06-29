@@ -113,7 +113,7 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
           </small>
         </label>
         <label>
-          <span>Model</span>
+          <span>Card model</span>
           <input
             type="text"
             placeholder="deepseek-v4-flash"
@@ -121,8 +121,73 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
             onChange={(e) => void update({ model: e.currentTarget.value.trim() || undefined })}
           />
           <small class="settings-field-hint">
-            Default <code>deepseek-v4-flash</code>. Without a base URL it must be a built-in
-            DeepSeek model (<code>deepseek-v4-flash</code> or <code>deepseek-v4-pro</code>).
+            The cheap, high-volume tier that summarizes each tab. Default{' '}
+            <code>deepseek-v4-flash</code>. Without a base URL it must be a built-in DeepSeek model
+            (<code>deepseek-v4-flash</code> or <code>deepseek-v4-pro</code>).
+          </small>
+        </label>
+        <label>
+          <span>Writer model</span>
+          <input
+            type="text"
+            placeholder="deepseek-v4-pro"
+            value={dashboard().writerModel ?? ''}
+            onChange={(e) =>
+              void update({ writerModel: e.currentTarget.value.trim() || undefined })
+            }
+          />
+          <small class="settings-field-hint">
+            The richer tier that synthesizes the cross-tab headline and overview from the per-tab
+            cards. Default <code>deepseek-v4-pro</code>. Leave blank to reuse the card model.
+          </small>
+        </label>
+
+        <div class="settings-field-span">
+          <label class="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={dashboard().cardReasoning ?? false}
+              onChange={(e) => void update({ cardReasoning: e.currentTarget.checked })}
+            />
+            <span>Card model reasoning</span>
+          </label>
+          <small class="settings-field-hint">
+            Off by default — per-tab extraction is mechanical, and reasoning only adds latency
+            (~3–5× slower) without better cards.
+          </small>
+        </div>
+        <div class="settings-field-span">
+          <label class="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={dashboard().writerReasoning ?? true}
+              onChange={(e) => void update({ writerReasoning: e.currentTarget.checked })}
+            />
+            <span>Writer model reasoning</span>
+          </label>
+          <small class="settings-field-hint">
+            On by default — cross-tab synthesis is the one place reasoning measurably improves the
+            narrative.
+          </small>
+        </div>
+
+        <label>
+          <span>Card input window (characters)</span>
+          <input
+            type="number"
+            min="2000"
+            step="1000"
+            placeholder="16000"
+            value={dashboard().cardInputChars ?? ''}
+            onChange={(e) =>
+              void update({
+                cardInputChars: e.currentTarget.value ? Number(e.currentTarget.value) : undefined,
+              })
+            }
+          />
+          <small class="settings-field-hint">
+            Recent tab output fed to the card model each cycle. Default 16000; floored at 2000.
+            Larger windows give the card model more to work with at a higher per-call cost.
           </small>
         </label>
 
