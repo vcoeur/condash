@@ -335,12 +335,20 @@ export async function tick(conceptionPath: string): Promise<void> {
     const nextTabs: TabSummary[] = state.tabs.filter((tab) => liveSids.has(tab.sid));
     const indexOf = (sid: string): number => nextTabs.findIndex((tab) => tab.sid === sid);
 
-    for (const sid of updated) {
-      const tabMeta = meta.get(sid);
-      if (!tabMeta) continue;
-      const summary = await buildSummary(config, tabMeta, priorBySid.get(sid), now);
+    // Summarize the changed tabs concurrently — each is an independent, tool-free
+    // HTTP completion, so a board of N tabs costs ~one call's latency instead of
+    // N in series (the dominant win once per-tab reasoning is off). Results are
+    // folded in `updated` order so placement stays deterministic.
+    const built = await Promise.all(
+      updated.map((sid) => {
+        const tabMeta = meta.get(sid);
+        if (!tabMeta) return Promise.resolve(null);
+        return buildSummary(config, tabMeta, priorBySid.get(sid), now);
+      }),
+    );
+    for (const summary of built) {
       if (!summary) continue;
-      const at = indexOf(sid);
+      const at = indexOf(summary.sid);
       if (at >= 0) nextTabs[at] = summary;
       else nextTabs.push(summary);
     }
