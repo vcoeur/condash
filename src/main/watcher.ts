@@ -107,6 +107,8 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
         if (result.movedToGlobal.length) parts.push(`→global: ${result.movedToGlobal.join(', ')}`);
         if (result.movedToConception.length)
           parts.push(`→conception: ${result.movedToConception.join(', ')}`);
+        if (result.merged.length)
+          parts.push(`merged: ${result.merged.map((merge) => merge.key).join(', ')}`);
         if (result.dropped.length)
           parts.push(`dropped: ${result.dropped.map((drop) => drop.key).join(', ')}`);
         process.stderr.write(`condash: settings scope migration (${parts.join('; ')})\n`);

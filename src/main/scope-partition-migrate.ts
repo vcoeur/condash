@@ -2,8 +2,11 @@
  * One-shot, idempotent migrator that partitions a machine's settings into the
  * post-revamp layout: every setting key lives in exactly one file, decided by
  * `SCOPE_OF`. A key found in the wrong file is moved to its owning file; when
- * the owning file already carries that key, the misplaced copy is dropped
- * (owned-file value wins) and reported.
+ * the owning file already carries that key, an object value is **deep-merged**
+ * into the owner (owner leaf wins, so disjoint sub-keys split across the two
+ * files — e.g. `terminal.screenshot_dir` in global + `terminal.logging` in the
+ * conception — survive), while a scalar / array value is dropped (owner wins
+ * wholesale). All of it is reported.
  *
  * Runs on every conception open, right after `migrateLegacyConfig` has lifted
  * any legacy `condash.json` / `configuration.json` into the canonical
@@ -26,6 +29,15 @@ export interface ScopeMigrationDrop {
   droppedFrom: SettingsScope;
 }
 
+/** A misplaced **object** key whose sub-keys were deep-merged into the owning
+ *  file's existing object instead of dropped, so disjoint sub-keys split across
+ *  the two files survive (e.g. `terminal.screenshot_dir` in global +
+ *  `terminal.logging` in the conception). `into` is the owning file. */
+export interface ScopeMigrationMerge {
+  key: string;
+  into: SettingsScope;
+}
+
 export interface ScopeMigrationResult {
   conception: string;
   /** Conception-file keys lifted into the global file. */
@@ -34,16 +46,19 @@ export interface ScopeMigrationResult {
   movedToConception: string[];
   /** Misplaced keys dropped in favour of the owning file's existing value. */
   dropped: ScopeMigrationDrop[];
+  /** Misplaced object keys merged into the owning file's existing object. */
+  merged: ScopeMigrationMerge[];
   globalWritten: boolean;
   conceptionWritten: boolean;
 }
 
-/** True when this migration changed anything (moved or dropped a key). */
+/** True when this migration changed anything (moved, merged, or dropped a key). */
 export function scopeMigrationDidWork(result: ScopeMigrationResult): boolean {
   return (
     result.movedToGlobal.length > 0 ||
     result.movedToConception.length > 0 ||
-    result.dropped.length > 0
+    result.dropped.length > 0 ||
+    result.merged.length > 0
   );
 }
 
@@ -63,6 +78,76 @@ async function readJsonObject(path: string): Promise<Record<string, unknown>> {
 
 function serialise(obj: Record<string, unknown>): string {
   return JSON.stringify(obj, null, 2) + '\n';
+}
+
+/** A non-null, non-array object — the only shape we deep-merge. Arrays
+ *  (`agents`, `repositories`, …) keep whole-value semantics on a conflict. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Merge `incoming` beneath `owner`, recursing into nested plain objects. The
+ * owning file is authoritative: a key present on both sides keeps the owner's
+ * value (recursing when both are plain objects), and only keys the owner lacks
+ * are carried over from `incoming`. Returns the merged object plus whether the
+ * owner gained anything — `changed: false` means `incoming` was a pure subset,
+ * so the owning file needs no rewrite. Neither input is mutated.
+ */
+function deepMergeOwnerWins(
+  owner: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): { value: Record<string, unknown>; changed: boolean } {
+  const value: Record<string, unknown> = { ...owner };
+  let changed = false;
+  for (const [key, incomingVal] of Object.entries(incoming)) {
+    if (!(key in value)) {
+      value[key] = incomingVal;
+      changed = true;
+    } else if (isPlainObject(value[key]) && isPlainObject(incomingVal)) {
+      const sub = deepMergeOwnerWins(value[key] as Record<string, unknown>, incomingVal);
+      value[key] = sub.value;
+      if (sub.changed) changed = true;
+    }
+    // else: the owner already holds a value here and it wins — no change.
+  }
+  return { value, changed };
+}
+
+/**
+ * Route `misplaced` keys (sitting in the file that does not own them) into
+ * `ownerOut`, the owning file's output. A key absent from the owner is moved
+ * verbatim; a key already present is **deep-merged** when both values are plain
+ * objects (owner leaf wins, disjoint sub-keys preserved — the
+ * `terminal.{screenshot_dir,logging}` split) and otherwise dropped (owner value
+ * wins wholesale, as for scalars and arrays). Mutates `ownerOut` and appends to
+ * `result`; returns whether the owner gained sub-keys via a merge (the signal
+ * that the owning file must be rewritten).
+ */
+function routeMisplaced(
+  misplaced: Array<[string, unknown]>,
+  ownerOut: Record<string, unknown>,
+  ownerScope: SettingsScope,
+  result: ScopeMigrationResult,
+): boolean {
+  const fromScope: SettingsScope = ownerScope === 'global' ? 'conception' : 'global';
+  const movedList = ownerScope === 'global' ? result.movedToGlobal : result.movedToConception;
+  let ownerGained = false;
+  for (const [key, value] of misplaced) {
+    const ownerVal = ownerOut[key];
+    if (!(key in ownerOut)) {
+      ownerOut[key] = value;
+      movedList.push(key);
+    } else if (isPlainObject(ownerVal) && isPlainObject(value)) {
+      const merged = deepMergeOwnerWins(ownerVal, value);
+      ownerOut[key] = merged.value;
+      result.merged.push({ key, into: ownerScope });
+      if (merged.changed) ownerGained = true;
+    } else {
+      result.dropped.push({ key, droppedFrom: fromScope });
+    }
+  }
+  return ownerGained;
 }
 
 /**
@@ -115,6 +200,7 @@ async function partitionUnlocked(
     movedToGlobal: [],
     movedToConception: [],
     dropped: [],
+    merged: [],
     globalWritten: false,
     conceptionWritten: false,
   };
@@ -134,31 +220,19 @@ async function partitionUnlocked(
     else conceptionOut[key] = value; // owned-conception, $schema_doc, or unknown — keep
   }
 
-  // Route misplaced keys into their owning file; owned-file value wins.
-  for (const [key, value] of toGlobal) {
-    if (key in globalOut) result.dropped.push({ key, droppedFrom: 'conception' });
-    else {
-      globalOut[key] = value;
-      result.movedToGlobal.push(key);
-    }
-  }
-  for (const [key, value] of toConception) {
-    if (key in conceptionOut) result.dropped.push({ key, droppedFrom: 'global' });
-    else {
-      conceptionOut[key] = value;
-      result.movedToConception.push(key);
-    }
-  }
+  // Route misplaced keys into their owning file: move when absent, deep-merge
+  // when both sides are plain objects (disjoint sub-keys survive), else drop.
+  const globalGained = routeMisplaced(toGlobal, globalOut, 'global', result);
+  const conceptionGained = routeMisplaced(toConception, conceptionOut, 'conception', result);
 
-  // Each file changes only when a key entered or left it.
-  const globalChanged =
-    result.movedToGlobal.length > 0 ||
-    result.movedToConception.length > 0 ||
-    result.dropped.some((drop) => drop.droppedFrom === 'global');
+  // A file changes when a key left it (every misplaced key is routed out of its
+  // source file) or entered it (a move, or a merge that added sub-keys). The
+  // misplaced buckets are the authority on what left: every `toConception` key
+  // is removed from the global file regardless of how it lands, and likewise
+  // every `toGlobal` key leaves the conception file.
+  const globalChanged = toConception.length > 0 || result.movedToGlobal.length > 0 || globalGained;
   const conceptionChanged =
-    result.movedToConception.length > 0 ||
-    result.movedToGlobal.length > 0 ||
-    result.dropped.some((drop) => drop.droppedFrom === 'conception');
+    toGlobal.length > 0 || result.movedToConception.length > 0 || conceptionGained;
 
   if (globalChanged) {
     await atomicWrite(globalFile, serialise(globalOut));
