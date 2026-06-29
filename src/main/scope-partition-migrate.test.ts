@@ -114,6 +114,54 @@ describe('partitionSettingsScopes', () => {
     expect(readGlobal().theme).toBe('dark');
   });
 
+  it('(b2) deep-merges a split object key — disjoint sub-keys survive (regression: terminal.logging)', async () => {
+    // The real-world shape that broke logging on Jun 27: `terminal` lived in
+    // BOTH files under the old inheritance model — global held the shell/
+    // screenshot keys, the conception held `logging`. A whole-key drop loses
+    // `terminal.logging`; the merge must keep both sides.
+    writeGlobal({
+      theme: 'dark',
+      terminal: { screenshot_dir: '/s', move_tab_left_shortcut: 'Ctrl+Left' },
+    });
+    writeConception({
+      workspace_path: '/x',
+      terminal: { logging: { enabled: true, retentionDays: 30 } },
+    });
+
+    const result = await partitionSettingsScopes(tmp, globalFile);
+
+    // The misplaced object is merged into the owning (global) file, not dropped.
+    expect(result.merged).toEqual([{ key: 'terminal', into: 'global' }]);
+    expect(result.dropped).toEqual([]);
+    // Global keeps its own sub-keys AND gains the conception's `logging`.
+    expect(readGlobal().terminal).toEqual({
+      screenshot_dir: '/s',
+      move_tab_left_shortcut: 'Ctrl+Left',
+      logging: { enabled: true, retentionDays: 30 },
+    });
+    expect(result.globalWritten).toBe(true);
+    // The conception file no longer carries the misplaced `terminal`.
+    expect('terminal' in readConception()).toBe(false);
+    expect(readConception().workspace_path).toBe('/x');
+    expect(result.conceptionWritten).toBe(true);
+  });
+
+  it('(b3) on a leaf conflict inside a merged object the owning file wins', async () => {
+    writeGlobal({ terminal: { logging: { enabled: false } } });
+    writeConception({ terminal: { logging: { enabled: true }, screenshot_dir: '/s' } });
+
+    const result = await partitionSettingsScopes(tmp, globalFile);
+
+    expect(result.merged).toEqual([{ key: 'terminal', into: 'global' }]);
+    // Owning leaf (`logging.enabled: false`) wins; the conception-only
+    // `screenshot_dir` is still recovered.
+    expect(readGlobal().terminal).toEqual({
+      logging: { enabled: false },
+      screenshot_dir: '/s',
+    });
+    expect('terminal' in readConception()).toBe(false);
+  });
+
   it('(c) is idempotent — a second run moves nothing and writes nothing', async () => {
     writeGlobal({});
     writeConception({ workspace_path: '/x', theme: 'dark' });
@@ -188,6 +236,7 @@ describe('scopeMigrationDidWork', () => {
       movedToGlobal: [] as string[],
       movedToConception: [] as string[],
       dropped: [] as { key: string; droppedFrom: 'global' | 'conception' }[],
+      merged: [] as { key: string; into: 'global' | 'conception' }[],
       globalWritten: false,
       conceptionWritten: false,
     };
@@ -197,5 +246,8 @@ describe('scopeMigrationDidWork', () => {
     expect(
       scopeMigrationDidWork({ ...base, dropped: [{ key: 'theme', droppedFrom: 'conception' }] }),
     ).toBe(true);
+    expect(scopeMigrationDidWork({ ...base, merged: [{ key: 'terminal', into: 'global' }] })).toBe(
+      true,
+    );
   });
 });
