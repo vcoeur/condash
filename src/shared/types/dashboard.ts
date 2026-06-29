@@ -178,7 +178,16 @@ export interface DashboardConfigView {
   hasApiKey: boolean;
   /** OpenAI-compatible API base URL; undefined → the provider's built-in endpoint. */
   baseUrl?: string;
+  /** Per-tab "card" model (cheap tier). */
   model: string;
+  /** Cross-tab "writer" model (richer tier). */
+  writerModel: string;
+  /** Whether the card model reasons. */
+  cardReasoning: boolean;
+  /** Whether the writer model reasons. */
+  writerReasoning: boolean;
+  /** Chars of recent tab output fed to the card model. */
+  cardInputChars: number;
   intervalSec: number;
   gateOnActivity: boolean;
   historyLimit: number;

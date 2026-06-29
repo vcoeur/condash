@@ -6,8 +6,6 @@ import type {
   TabState,
   TabSummary,
 } from '@shared/types';
-import { appColorClass, appPillText } from '@shared/app-color';
-import './app-pill.css';
 import './dashboard-pane.css';
 
 /** Human label for the state pill, by state. */
@@ -164,13 +162,10 @@ export function DashboardView() {
   const tabLabel = (tab: TabInfo): string =>
     tab.cmd?.trim() || tab.cwd.split('/').filter(Boolean).pop() || tab.sid;
 
-  // The app a tab belongs to: its launched repo if known, else the cwd's last
-  // path segment. Rendered as a hash-coloured `#handle` pill so a busy grid is
-  // scannable by project.
-  const repoRef = (tab: TabInfo): string =>
-    tab.repo?.trim() || tab.cwd.split('/').filter(Boolean).pop() || '';
   // The program driving the tab — the first token of the command (basename), so
-  // a card shows "claude" / "pi" / "make" next to the repo. Empty cmd → shell.
+  // a card leads with "claude" / "pi" / "make". Empty cmd → shell. (The repo/app
+  // a tab sits in is deliberately not shown: it mirrors the cwd and adds no
+  // signal the title/action don't already carry.)
   const agentName = (tab: TabInfo): string => {
     const first = tab.cmd?.trim().split(/\s+/)[0] ?? '';
     return first.split('/').pop() || 'shell';
@@ -280,8 +275,16 @@ export function DashboardView() {
               <section class="dashboard-section">
                 <h3>Settings</h3>
                 <dl class="dashboard-settings">
-                  <dt>Model</dt>
-                  <dd>{cfg().model}</dd>
+                  <dt>Card model</dt>
+                  <dd>
+                    {cfg().model}
+                    {cfg().cardReasoning ? ' · reasoning on' : ''}
+                  </dd>
+                  <dt>Writer model</dt>
+                  <dd>
+                    {cfg().writerModel}
+                    {cfg().writerReasoning ? ' · reasoning on' : ''}
+                  </dd>
                   <dt>Endpoint</dt>
                   <dd>{endpoint(cfg())}</dd>
                   <dt>Update interval</dt>
@@ -376,13 +379,6 @@ export function DashboardView() {
                               Starting
                             </span>
                             <span class="dashboard-tab-card-meta">
-                              <Show when={repoRef(card.tab)}>
-                                <span
-                                  class={`dashboard-repo-pill ${appColorClass(repoRef(card.tab))}`}
-                                >
-                                  {appPillText(repoRef(card.tab))}
-                                </span>
-                              </Show>
                               <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
                               {/* Tiny live cue while this card's first summary is
                                   in flight — the card itself stays "Starting". */}
@@ -411,13 +407,6 @@ export function DashboardView() {
                               {STATE_LABEL[summary().state]}
                             </span>
                             <span class="dashboard-tab-card-meta">
-                              <Show when={repoRef(card.tab)}>
-                                <span
-                                  class={`dashboard-repo-pill ${appColorClass(repoRef(card.tab))}`}
-                                >
-                                  {appPillText(repoRef(card.tab))}
-                                </span>
-                              </Show>
                               <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
                               {/* Tiny live cue while this card's summary refreshes —
                                   state badge + colour stay the card's real state. */}
@@ -435,7 +424,9 @@ export function DashboardView() {
                           </div>
                           <div class="dashboard-tab-card-title">{summary().title}</div>
                           <Show when={cardAction(summary())}>
-                            <p class="dashboard-tab-card-action">{cardAction(summary())}</p>
+                            <p class="dashboard-tab-card-action" data-state={summary().state}>
+                              {cardAction(summary())}
+                            </p>
                           </Show>
                           <Show when={summary().contextLines.length > 0}>
                             <ul class="dashboard-tab-card-context">

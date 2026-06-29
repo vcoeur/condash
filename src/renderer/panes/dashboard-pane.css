@@ -278,32 +278,45 @@
   --state-color: var(--text-faint);
 }
 
-/* The state-coloured card. A left bar (::before) + a faint wash carry the
+/* The state-coloured card. A bold left bar (::before) + a wash carry the
  * state; the pill names it in words so colour is never the only signal. */
 .dashboard-tab-card {
   position: relative;
-  border: 1px solid color-mix(in srgb, var(--state-color, var(--border)) 30%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--state-color, var(--border)) 38%, var(--border));
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--state-color, transparent) 8%, var(--bg-elevated));
-  padding: 11px 13px 11px 15px;
+  background: color-mix(in srgb, var(--state-color, transparent) 11%, var(--bg-elevated));
+  padding: 13px 15px 13px 18px;
   box-shadow: var(--shadow-card);
   min-width: 0;
   overflow-wrap: anywhere;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
   /* Hard guarantee: a card can never spill its content past its own border —
-   * the head's nowrap meta (a long #repo / agent / time) would otherwise extend
-   * the box. The box-shadow glow is painted outside the border box, so clipping
+   * the head's nowrap meta (a long agent / time) would otherwise extend the
+   * box. The box-shadow glow is painted outside the border box, so clipping
    * here doesn't touch the awaiting card's ring. */
   overflow: hidden;
 }
 
-/* The left state bar. */
+/* Lift on hover so the grid feels live and the focused card stands proud. */
+.dashboard-tab-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--state-color, var(--border)) 55%, var(--border));
+  box-shadow:
+    var(--shadow-card),
+    0 6px 16px color-mix(in srgb, var(--state-color, #000000) 18%, transparent);
+}
+
+/* The bold left state bar — a thick, full-height edge in the state colour. */
 .dashboard-tab-card::before {
   content: '';
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 5px;
   border-radius: var(--radius) 0 0 var(--radius);
   background: var(--state-color, var(--border));
 }
@@ -311,10 +324,10 @@
 /* Awaiting-you is the one card that should pull the eye across a full grid:
  * a coloured ring + a soft glow. */
 .dashboard-tab-card[data-state='awaiting'] {
-  border-color: color-mix(in srgb, var(--state-color) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--state-color) 60%, var(--border));
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--state-color) 35%, transparent),
-    0 6px 18px color-mix(in srgb, var(--state-color) 20%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--state-color) 40%, transparent),
+    0 6px 18px color-mix(in srgb, var(--state-color) 22%, transparent);
 }
 
 /* A tab with no summary yet (no readable output, or before the first cycle).
@@ -340,28 +353,36 @@
   flex-wrap: wrap;
 }
 
-/* The state pill — tinted in the state colour with a coloured-ink label, so it
- * stays legible (AA) in both the light and dark themes. */
+/* The state pill — a bold, tinted badge with a coloured-ink label and an inset
+ * ring, so the state reads instantly and stays legible (AA) in both themes. */
 .dashboard-tab-state {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
+  gap: 6px;
+  padding: 3px 10px;
   border-radius: var(--radius-pill);
-  font-size: var(--text-3xs);
+  font-size: var(--text-2xs);
   font-weight: 800;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--state-color, var(--text-muted));
-  background: color-mix(in srgb, var(--state-color, var(--text-muted)) 16%, transparent);
+  background: color-mix(in srgb, var(--state-color, var(--text-muted)) 22%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--state-color, var(--text-muted)) 32%, transparent);
 }
 .dashboard-tab-state-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex: 0 0 auto;
   background: currentColor;
+}
+/* Working / awaiting are live states — give their dot a soft halo so the badge
+ * reads as a lit indicator. */
+.dashboard-tab-card[data-state='working'] .dashboard-tab-state-dot,
+.dashboard-tab-card[data-state='awaiting'] .dashboard-tab-state-dot {
+  box-shadow: 0 0 6px color-mix(in srgb, currentColor 80%, transparent);
 }
 /* Tiny per-card "being summarized right now" marker — a small accent dot that
  * pulses. The card keeps its own state colour and badge; this is just a faint
@@ -376,8 +397,8 @@
   animation: dashboard-ping 1.6s ease-out infinite;
 }
 
-/* Right side of the head: the #repo pill, the driving program, and relative time.
- * Allowed to wrap and take the leftover width so it reflows onto its own line
+/* Right side of the head: the driving program and relative time. Allowed to
+ * wrap and take the leftover width so it reflows onto its own line
  * (right-aligned) rather than spilling past the card edge. */
 .dashboard-tab-card-meta {
   display: inline-flex;
@@ -391,25 +412,18 @@
   color: var(--text-muted);
 }
 
-/* #handle pill — reuses the per-app hash palette (--app-pill-bg/fg set by the
- * appColorClass `app-pill-N` class) so a tab's repo reads with the same colour
- * it has in the Projects and Code panes. */
-.dashboard-repo-pill {
-  display: inline-flex;
-  align-items: center;
+/* The program driving the tab (claude / pi / make / shell) — a compact mono
+ * chip, now the only identity element in the head (the repo pill was dropped as
+ * redundant with the title/action). */
+.dashboard-tab-agent {
   padding: 1px 7px;
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
-  background: var(--app-pill-bg, var(--bg-subtle));
-  color: var(--app-pill-fg, var(--text));
-}
-.dashboard-tab-agent {
-  font-family: var(--font-mono);
-  color: var(--text-faint);
-  white-space: nowrap;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
 }
 
 /* Per-card "Update now" — a small ghost button in the meta row that forces an
@@ -438,13 +452,14 @@
   cursor: default;
 }
 
-/* Title is now the card's heading, on its own line below the state row. */
+/* The card's hero — the work title, on its own line below the state row. Sized
+ * up and weighted heavier so it carries the card at a glance. */
 .dashboard-tab-card-title {
-  margin: 7px 0 0;
-  font-size: var(--text-base);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
+  margin: 9px 0 0;
+  font-size: var(--text-lg);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
   color: var(--text);
 }
 
@@ -455,20 +470,51 @@
   white-space: nowrap;
 }
 
+/* The one-line current action, directly under the title. */
 .dashboard-tab-card-action {
-  margin: 6px 0 0;
+  margin: 7px 0 0;
   font-size: var(--text-sm);
+  line-height: 1.4;
   color: var(--text);
 }
 
+/* An awaiting tab's action IS a question for the user — render it as a tinted
+ * callout with a leading accent so it pulls the eye and reads as actionable. */
+.dashboard-tab-card-action[data-state='awaiting'] {
+  margin-top: 9px;
+  padding: 8px 11px;
+  border-radius: var(--radius);
+  border-left: 3px solid var(--state-color);
+  background: color-mix(in srgb, var(--state-color) 13%, transparent);
+  font-weight: 600;
+}
+
 .dashboard-tab-card-context {
-  margin: 6px 0 0;
-  padding-left: 16px;
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   font-size: var(--text-xs);
+  line-height: 1.4;
   color: var(--text-muted);
+}
+/* State-coloured dot markers — bolder and more intentional than the default
+ * disc, and they tie each context line back to the card's state. */
+.dashboard-tab-card-context li {
+  position: relative;
+  padding-left: 15px;
+}
+.dashboard-tab-card-context li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0.5em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--state-color, var(--text-faint)) 70%, var(--text-faint));
 }
 
 .dashboard-tab-card-events {

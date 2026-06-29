@@ -387,6 +387,15 @@
   gap: 6px !important;
 }
 
+/* A full-width grid cell that stacks a checkbox above its explanatory hint —
+ * the grid would otherwise drop a standalone hint into the next column. */
+.settings-field-span {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .settings-color-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
