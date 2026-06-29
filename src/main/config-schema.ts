@@ -385,9 +385,19 @@ const dashboardSettings = z
      *  (`https://api.deepseek.com`). Set it to point at a self-hosted /
      *  OpenAI-compatible gateway (e.g. an opencode-go server) with any `model` id. */
     baseUrl: z.string().optional(),
-    /** Model id (default `deepseek-v4-flash`). Without a `baseUrl` it must be a
-     *  built-in provider model; with a `baseUrl` it can be any id the endpoint serves. */
+    /** Per-tab "card" model (cheap tier; default `deepseek-v4-flash`). Without a
+     *  `baseUrl` it must be a built-in provider model; with a `baseUrl` it can be
+     *  any id the endpoint serves. Legacy single-tier configs that set only
+     *  `model` get it as the card model. */
     model: z.string().optional(),
+    /** Cross-tab "writer" model (richer tier; default `deepseek-v4-pro`). */
+    writerModel: z.string().optional(),
+    /** Whether the card model reasons (default false — mechanical extraction). */
+    cardReasoning: z.boolean().optional(),
+    /** Whether the writer model reasons (default true — cross-tab synthesis). */
+    writerReasoning: z.boolean().optional(),
+    /** Chars of recent tab output fed to the card model (default 16000). */
+    cardInputChars: z.number().int().positive().optional(),
     /** Summarization cadence in seconds. Clamped to 30–300 at read time. */
     intervalSec: z.number().int().positive().optional(),
     /** Skip a cycle when no open tab produced new output (reuses the growth gate). */

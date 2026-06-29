@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCompletionBody,
   buildOverviewUserPrompt,
   buildTabUserPrompt,
   parseOverview,
@@ -159,6 +160,29 @@ describe('buildOverviewUserPrompt redacts secrets in tab summaries', () => {
     ]);
     expect(prompt).not.toContain('sk-AbCdEf0123456789ZyXwVuTs');
     expect(prompt).toContain('«redacted:api-key»');
+  });
+});
+
+describe('buildCompletionBody', () => {
+  const base = { model: 'deepseek-v4-flash', system: 'sys', user: 'usr', maxTokens: 1500 };
+
+  it('builds a system+user chat body at temperature 0 with no reasoning switch when reasoning is on', () => {
+    const body = buildCompletionBody({ ...base, disableReasoning: false });
+    expect(body).toMatchObject({
+      model: 'deepseek-v4-flash',
+      temperature: 0,
+      max_tokens: 1500,
+      messages: [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: 'usr' },
+      ],
+    });
+    expect(body.thinking).toBeUndefined();
+  });
+
+  it('adds the DeepSeek thinking:{type:disabled} switch when reasoning is disabled', () => {
+    const body = buildCompletionBody({ ...base, disableReasoning: true });
+    expect(body.thinking).toEqual({ type: 'disabled' });
   });
 });
 

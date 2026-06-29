@@ -1,6 +1,7 @@
 // Live terminal-tab summarization ("Dashboard"). The main-process engine
-// periodically summarizes the active terminal tabs with the pi coding-agent SDK
-// and pushes the result to the renderer; these shapes are the wire contract for
+// periodically summarizes the active terminal tabs via a direct call to an
+// OpenAI-compatible LLM endpoint and pushes the result to the renderer; these
+// shapes are the wire contract for
 // that data plus the resolved (defaulted) config the engine and Settings UI
 // share. The raw on-disk config shape lives in `main/config-schema.ts`
 // (`dashboard` block); these are the runtime/IPC views of it.
@@ -124,7 +125,22 @@ export interface DashboardSettings {
   apiKey?: string;
   /** OpenAI-compatible API base URL. Blank → the provider's built-in endpoint. */
   baseUrl?: string;
+  /** Per-tab "card" model — the cheap, high-volume tier that extracts each tab's
+   *  state + facts. Legacy single-tier configs that set only `model` get it as
+   *  the card model. Default `deepseek-v4-flash`. */
   model?: string;
+  /** Cross-tab "writer" model — the richer tier that synthesizes the global
+   *  headline + overview from the per-tab cards. Default `deepseek-v4-pro`. */
+  writerModel?: string;
+  /** Whether the card model reasons. Default false: card work is mechanical
+   *  state+fact extraction, where reasoning only adds latency (~3–5× slower). */
+  cardReasoning?: boolean;
+  /** Whether the writer model reasons. Default true: cross-tab synthesis is the
+   *  one place reasoning measurably improves the narrative. */
+  writerReasoning?: boolean;
+  /** Chars of recent tab output fed to the card model. Default 16000 — larger
+   *  than the legacy 6000 because the cheap tier can afford a wider window. */
+  cardInputChars?: number;
   intervalSec?: number;
   gateOnActivity?: boolean;
   historyLimit?: number;
@@ -138,7 +154,16 @@ export interface DashboardConfig {
   apiKey?: string;
   /** OpenAI-compatible API base URL; undefined → the provider's built-in endpoint. */
   baseUrl?: string;
+  /** Per-tab "card" model (cheap tier). */
   model: string;
+  /** Cross-tab "writer" model (richer tier). */
+  writerModel: string;
+  /** Whether the card model reasons (default false). */
+  cardReasoning: boolean;
+  /** Whether the writer model reasons (default true). */
+  writerReasoning: boolean;
+  /** Chars of recent tab output fed to the card model. */
+  cardInputChars: number;
   intervalSec: number;
   gateOnActivity: boolean;
   historyLimit: number;

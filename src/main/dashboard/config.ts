@@ -6,11 +6,23 @@ import type { DashboardConfig, DashboardConfigView, DashboardSettings } from '..
 export const DASHBOARD_DEFAULTS = {
   enabled: false,
   provider: 'deepseek' as const,
+  // Two model tiers: a cheap, reasoning-off `model` extracts each tab's card from
+  // a wide window; a richer `writerModel` (reasoning on) synthesizes the cross-tab
+  // narrative. Validated against a week of real logs — see the conception project
+  // 2026-06-29-dashboard-summarizer-revamp.
   model: 'deepseek-v4-flash',
+  writerModel: 'deepseek-v4-pro',
+  cardReasoning: false,
+  writerReasoning: true,
+  cardInputChars: 16000,
   intervalSec: 120,
   gateOnActivity: true,
   historyLimit: 20,
 };
+
+/** Lower bound on the card input window; a too-small value starves fact
+ *  extraction. Mirrors the legacy fixed window as the floor. */
+export const MIN_CARD_INPUT_CHARS = 2000;
 
 /** Cadence bounds — the user asked for a 30s–5min window. */
 export const MIN_INTERVAL_SEC = 30;
@@ -35,12 +47,22 @@ function clampInterval(seconds: number): number {
 export function resolveDashboardConfig(raw: DashboardSettings | undefined): DashboardConfig {
   const apiKey = raw?.apiKey?.trim() || process.env.DEEPSEEK_API_KEY?.trim() || undefined;
   const baseUrl = raw?.baseUrl?.trim() || process.env.DEEPSEEK_BASE_URL?.trim() || undefined;
+  const model = raw?.model?.trim() || DASHBOARD_DEFAULTS.model;
   return {
     enabled: raw?.enabled ?? DASHBOARD_DEFAULTS.enabled,
     provider: raw?.provider ?? DASHBOARD_DEFAULTS.provider,
     apiKey,
     baseUrl,
-    model: raw?.model?.trim() || DASHBOARD_DEFAULTS.model,
+    model,
+    // A single-tier config (only `model` set) drives the writer with the same
+    // model, preserving today's behaviour until a writer tier is configured.
+    writerModel: raw?.writerModel?.trim() || raw?.model?.trim() || DASHBOARD_DEFAULTS.writerModel,
+    cardReasoning: raw?.cardReasoning ?? DASHBOARD_DEFAULTS.cardReasoning,
+    writerReasoning: raw?.writerReasoning ?? DASHBOARD_DEFAULTS.writerReasoning,
+    cardInputChars: Math.max(
+      MIN_CARD_INPUT_CHARS,
+      Math.round(raw?.cardInputChars ?? DASHBOARD_DEFAULTS.cardInputChars),
+    ),
     intervalSec: clampInterval(raw?.intervalSec ?? DASHBOARD_DEFAULTS.intervalSec),
     gateOnActivity: raw?.gateOnActivity ?? DASHBOARD_DEFAULTS.gateOnActivity,
     historyLimit: raw?.historyLimit ?? DASHBOARD_DEFAULTS.historyLimit,

@@ -23,19 +23,10 @@ const devMode = watchMode || process.argv.includes('--dev');
 /** Modules that must NOT be bundled — they need to live in node_modules at
  *  runtime (Electron-internal wiring or native bindings). The shared list
  *  lives in `scripts/shared/externals.mjs`; per-target additions go here. */
-const EXTERNAL = [
-  ...SHARED_EXTERNALS,
-  // The dashboard summarizer dynamically imports this ESM-only coding-agent
-  // SDK (only the main process touches it — see src/main/dashboard/). esbuild
-  // bundling it into the CJS main bundle corrupts the package's lazy ESM init
-  // (the `__esm` ordering leaves `AuthStorage` undefined → the Settings "Test
-  // connection" button crashed with "Cannot read properties of undefined
-  // (reading 'inMemory')"). Keep it external so `import()` resolves it as real
-  // ESM from node_modules at runtime — Electron 33 loads ESM from inside
-  // app.asar, so packaged builds work without asarUnpack. Bonus: drops the
-  // main bundle from ~8 MB back to ~0.8 MB.
-  '@earendil-works/pi-coding-agent',
-];
+// No per-target externals today: the dashboard summarizer used to dynamically
+// import the pi coding-agent SDK (kept external to protect its ESM init), but it
+// now POSTs directly to the OpenAI-compatible endpoint, so the SDK is gone.
+const EXTERNAL = [...SHARED_EXTERNALS];
 
 /** @type {import('esbuild').BuildOptions} */
 const shared = {
