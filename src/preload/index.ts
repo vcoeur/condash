@@ -121,6 +121,7 @@ const api: CondashApi = {
   dashboardGetState: () => ipcRenderer.invoke('dashboardGetState'),
   dashboardGetConfigView: () => ipcRenderer.invoke('dashboardGetConfigView'),
   dashboardTestConnection: (settings) => ipcRenderer.invoke('dashboardTestConnection', settings),
+  dashboardRefreshTab: (sid) => ipcRenderer.invoke('dashboardRefreshTab', sid),
   onDashboardState: (callback) => {
     const handler = (_: unknown, state: DashboardState): void => callback(state);
     ipcRenderer.on(EVENT_CHANNELS.dashboardState, handler);

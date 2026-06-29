@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 vi.mock('node-pty', () => ({ spawn: () => ({}) }));
 
-import { appendRecentTail, defaultShell, recentTail, wrapForShell } from './terminals';
+import { appendRecentTail, defaultShell, liveTabInfo, recentTail, wrapForShell } from './terminals';
+import type { TermSide } from '../shared/types';
 
 /** Mirror of the module-internal cap + hysteresis so the assertions can pin the
  *  exact thresholds the readers depend on. */
@@ -62,6 +63,46 @@ describe('defaultShell', () => {
   it('falls back to /bin/bash on POSIX when $SHELL is unset', () => {
     delete process.env.SHELL;
     expect(defaultShell(undefined)).toBe('/bin/bash');
+  });
+});
+
+describe('liveTabInfo — roster side/exit filtering (#366)', () => {
+  /** A minimal session-like row for the mapper, overridable per case. */
+  const row = (over: {
+    id: string;
+    side: TermSide;
+    exited?: number;
+    repo?: string;
+    cmd?: string;
+  }) => ({
+    cwd: `/w/${over.id}`,
+    ...over,
+  });
+
+  const entries = [
+    row({ id: 'my-live', side: 'my', cmd: 'claude' }),
+    row({ id: 'my-exited', side: 'my', exited: 0 }),
+    row({ id: 'code-dev', side: 'code', repo: 'app', cmd: 'make dev' }),
+    row({ id: 'code-exited', side: 'code', exited: 1 }),
+  ];
+
+  it('excludes exited sessions on both sides', () => {
+    expect(liveTabInfo(entries).map((t) => t.sid)).toEqual(['my-live', 'code-dev']);
+  });
+
+  it("with side 'my', keeps only live terminal tabs (drops code-side dev servers)", () => {
+    expect(liveTabInfo(entries, 'my').map((t) => t.sid)).toEqual(['my-live']);
+  });
+
+  it("with side 'code', keeps only live code-side sessions", () => {
+    expect(liveTabInfo(entries, 'code').map((t) => t.sid)).toEqual(['code-dev']);
+  });
+
+  it('maps repo/cmd only when present', () => {
+    const [tab] = liveTabInfo([row({ id: 'a', side: 'my' })]);
+    expect(tab).toEqual({ sid: 'a', cwd: '/w/a' });
+    const [withMeta] = liveTabInfo([row({ id: 'b', side: 'code', repo: 'r', cmd: 'c' })], 'code');
+    expect(withMeta).toEqual({ sid: 'b', cwd: '/w/b', repo: 'r', cmd: 'c' });
   });
 });
 

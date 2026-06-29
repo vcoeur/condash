@@ -144,20 +144,51 @@ export function listTerminalSessions(): TermSession[] {
   return snapshot();
 }
 
+/** Minimal session shape the TabInfo mapper reads — a structural subset of the
+ *  module-internal `Session` so `liveTabInfo` is callable (and unit-testable)
+ *  with plain objects, no live pty. */
+type TabInfoSource = Pick<Session, 'id' | 'cwd' | 'repo' | 'cmd' | 'side' | 'exited'>;
+
 /**
- * Build the `{TABS}` provided-var payload (capability 2): the open, still-live
- * tabs as `[{sid, cwd, repo, cmd}]`. Exited sessions are excluded — a task acts
- * only on tabs that actually exist; condash keeps no per-tab state for it.
+ * Shape the still-live subset of `entries` into the `{sid, cwd, repo?, cmd?}`
+ * provided-var rows. Exited sessions are always excluded. With `side` given,
+ * restricts to that side; without it, every live session is included. Pure over
+ * its input so the side/exit filtering is unit-testable without a live pty.
+ *
+ * @param entries Sessions to consider (typically the live `sessions` map).
+ * @param side Optional side filter (`'my'` for the dashboard's terminal-tab roster).
+ * @returns One TabInfo per matching live session.
  */
-export function tabsContext(): TabInfo[] {
-  return [...sessions.values()]
-    .filter((s) => s.exited === undefined)
+export function liveTabInfo(entries: Iterable<TabInfoSource>, side?: TermSide): TabInfo[] {
+  return [...entries]
+    .filter((s) => s.exited === undefined && (side === undefined || s.side === side))
     .map((s) => ({
       sid: s.id,
       cwd: s.cwd,
       ...(s.repo ? { repo: s.repo } : {}),
       ...(s.cmd ? { cmd: s.cmd } : {}),
     }));
+}
+
+/**
+ * Build the `{TABS}` provided-var payload (capability 2): the open, still-live
+ * tabs as `[{sid, cwd, repo, cmd}]`. Exited sessions are excluded — a task acts
+ * only on tabs that actually exist; condash keeps no per-tab state for it.
+ * Includes both sides; the dashboard's narrower roster is `dashboardRoster()`.
+ */
+export function tabsContext(): TabInfo[] {
+  return liveTabInfo(sessions.values());
+}
+
+/**
+ * The dashboard's open-tab roster: the user's live terminal tabs only
+ * (`side: 'my'`). Code-pane Run sessions (`side: 'code'`) are long-running dev
+ * servers (a Vite dev server, a backend HTTP server) rather than agent tabs —
+ * counting them inflated the dashboard's "Open tabs · N" header and rendered them
+ * as perpetually-idle cards with no corresponding terminal tab (issue #366).
+ */
+export function dashboardRoster(): TabInfo[] {
+  return liveTabInfo(sessions.values(), 'my');
 }
 
 /** Per-sid cumulative bytes emitted, for every live session. The scheduler

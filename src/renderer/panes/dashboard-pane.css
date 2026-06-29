@@ -412,6 +412,32 @@
   white-space: nowrap;
 }
 
+/* Per-card "Update now" — a small ghost button in the meta row that forces an
+ * immediate re-summarization of just this tab, bypassing the activity gate. */
+.dashboard-tab-refresh {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dashboard-tab-refresh:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-faint);
+  background: var(--bg-subtle);
+}
+.dashboard-tab-refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Title is now the card's heading, on its own line below the state row. */
 .dashboard-tab-card-title {
   margin: 7px 0 0;
