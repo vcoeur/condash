@@ -45,7 +45,7 @@ vi.mock('./config', async (importOriginal) => {
   return { ...actual, readDashboardConfig: vi.fn(async () => h.config) };
 });
 vi.mock('../terminals', () => ({
-  tabsContext: () => h.tabs,
+  dashboardRoster: () => h.tabs,
   tabsBytes: () => h.bytes,
   tabRecentText: () => h.recent,
 }));
@@ -65,7 +65,9 @@ import {
   DECAY_INTERVALS,
   decayStaleWorkingTabs,
   getDashboardState,
+  refreshTab,
   setDashboardConception,
+  tick,
 } from './engine';
 
 const CONCEPTION = '/tmp/condash-engine-status-test';
@@ -166,6 +168,71 @@ describe('dashboard engine status', () => {
     });
   });
 
+  it('prunes a closed tab from the roster AND the tally every tick (no summarize cycle)', async () => {
+    h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
+    h.bytes = new Map([['a', 12]]);
+    h.recent = 'real transcript output';
+    h.summary = {
+      title: 'Build',
+      contextLines: ['compiling'],
+      currentAction: 'compiling',
+      state: 'working',
+    };
+    h.overview = { globalWork: 'Building', overview: ['Tab a'], events: [] };
+    await setDashboardConception(CONCEPTION);
+    await vi.waitFor(() => expect(getDashboardState()?.tabs.map((t) => t.sid)).toEqual(['a']));
+    // Close the tab. The next tick is not "due" (the interval hasn't elapsed), so
+    // no summarize cycle runs — yet the tab must still drop from the roster AND
+    // from `tabs` (the working/idle tally), so a status can't outlive its tab.
+    h.tabs = [];
+    h.bytes = new Map();
+    await vi.waitFor(async () => {
+      await tick(CONCEPTION);
+      expect(getDashboardState()?.roster).toEqual([]);
+      expect(getDashboardState()?.tabs).toEqual([]);
+    });
+  });
+
+  it('refreshTab re-summarizes one tab on demand, bypassing the activity gate', async () => {
+    h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
+    h.bytes = new Map([['a', 12]]);
+    h.recent = 'real transcript output';
+    h.summary = { title: 'First', contextLines: [], currentAction: 'compiling', state: 'working' };
+    h.overview = { globalWork: 'g', overview: ['o'], events: [] };
+    await setDashboardConception(CONCEPTION);
+    await vi.waitFor(() =>
+      expect(getDashboardState()?.tabs.find((t) => t.sid === 'a')?.title).toBe('First'),
+    );
+    // No bytes grew since the run, so a scheduled cycle's gate would hold — but a
+    // forced per-card refresh must still re-summarize this tab.
+    h.summary = { title: 'Updated', contextLines: [], currentAction: 'finished', state: 'idle' };
+    await vi.waitFor(async () => {
+      await refreshTab('a');
+      const tab = getDashboardState()?.tabs.find((t) => t.sid === 'a');
+      expect(tab?.title).toBe('Updated');
+      expect(tab?.state).toBe('idle');
+    });
+  });
+
+  it('refreshTab is a no-op for a sid that is not a live tab', async () => {
+    h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
+    h.bytes = new Map([['a', 12]]);
+    h.recent = 'real transcript output';
+    h.summary = { title: 'First', contextLines: [], currentAction: 'compiling', state: 'working' };
+    h.overview = { globalWork: 'g', overview: ['o'], events: [] };
+    await setDashboardConception(CONCEPTION);
+    await vi.waitFor(() =>
+      expect(getDashboardState()?.tabs.find((t) => t.sid === 'a')?.title).toBe('First'),
+    );
+    // A summary is available, but 'ghost' isn't in the roster — nothing changes.
+    h.summary = { title: 'ShouldNotApply', contextLines: [], currentAction: 'x', state: 'idle' };
+    await refreshTab('ghost');
+    expect(getDashboardState()?.tabs.find((t) => t.sid === 'a')?.title).toBe('First');
+  });
+
+  // Kept last: it mutates the shared saveDashboardState mock to reject, which
+  // `vi.clearAllMocks()` (calls only, not implementations) wouldn't undo — so a
+  // later test would inherit the rejecting save and log spurious persist errors.
   it('still pushes the final state to the renderer when persistence fails', async () => {
     const { saveDashboardState } = await import('./state');
     vi.mocked(saveDashboardState).mockRejectedValue(new Error('ENOENT: state dir missing'));

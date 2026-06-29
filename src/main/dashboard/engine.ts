@@ -9,7 +9,7 @@ import type {
   TabInfo,
   TabSummary,
 } from '../../shared/types';
-import { tabRecentText, tabsBytes, tabsContext } from '../terminals';
+import { dashboardRoster, tabRecentText, tabsBytes } from '../terminals';
 import { DASHBOARD_DEFAULTS, readDashboardConfig, toDashboardConfigView } from './config';
 import {
   emptyDashboardState,
@@ -181,6 +181,53 @@ export function decayStaleWorkingTabs(
   return changed ? next : tabs;
 }
 
+/**
+ * Run one tab through the summarizer and fold the result into a TabSummary,
+ * carrying the prior summary's event history and appending an event when the
+ * current action changes. Returns null when the tab has no readable recent
+ * output or the model declines — the caller leaves any prior summary in place.
+ * Shared by the scheduled cycle and the per-card `refreshTab`.
+ *
+ * @param config Resolved dashboard config (provider / key / model).
+ * @param tabMeta The tab's identity (sid, cmd, cwd) from the roster.
+ * @param prior The tab's existing summary, if any.
+ * @param now Epoch ms stamped onto the summary and any new event.
+ * @returns The new summary, or null when nothing could be summarized.
+ */
+async function buildSummary(
+  config: DashboardConfig,
+  tabMeta: TabInfo,
+  prior: TabSummary | undefined,
+  now: number,
+): Promise<TabSummary | null> {
+  const recentText = tabRecentText(tabMeta.sid);
+  if (!recentText.trim()) return null;
+  const result = await summarizeTab(config, {
+    sid: tabMeta.sid,
+    cmd: tabMeta.cmd,
+    cwd: tabMeta.cwd,
+    recentText,
+    prior,
+  });
+  if (!result) return null;
+  const events = prior ? [...prior.events] : [];
+  // Record an event whenever the "current action" changes — the rolling history
+  // of what the tab has done over time.
+  if (!prior || prior.currentAction !== result.currentAction) {
+    if (result.currentAction) events.push(makeEvent(result.currentAction, now));
+  }
+  return {
+    sid: tabMeta.sid,
+    title: result.title,
+    contextLines: result.contextLines,
+    currentAction: result.currentAction,
+    state: result.state,
+    ...(result.awaitingPrompt ? { awaitingPrompt: result.awaitingPrompt } : {}),
+    updatedAt: now,
+    events,
+  };
+}
+
 /** One dashboard cycle: refresh the open-tab roster, then (when enabled, keyed,
  *  and due) summarize the changed tabs and synthesize the cross-tab overview.
  *  A no-op when not armed for `conceptionPath`, already in flight, disabled, or
@@ -204,9 +251,18 @@ export async function tick(conceptionPath: string): Promise<void> {
   // tab becomes visible within one tick even before its first summary (and even
   // with no API key), and a closed tab drops out. The renderer renders a card
   // per roster entry, falling back to cmd/cwd for a tab with no summary yet.
-  const roster = tabsContext();
-  if (rosterChanged(state.roster, roster)) {
-    state = { ...state, roster };
+  // Only the user's terminal tabs (`side: 'my'`) — Code-pane Run dev servers are
+  // not agent tabs and must not inflate the count or appear as idle cards (#366).
+  const roster = dashboardRoster();
+  const liveSids = new Set(roster.map((tab) => tab.sid));
+  // Drop summaries for closed tabs every tick — no LLM, no API key, independent
+  // of the summarize gate — so a closed tab's working/idle tally entry (and any
+  // stuck status badge) comes off immediately instead of lingering until the next
+  // summarize cycle, which the activity gate or a missing key could defer
+  // indefinitely. Without this the status could outlive the tab it describes.
+  const liveTabs = state.tabs.filter((tab) => liveSids.has(tab.sid));
+  if (rosterChanged(state.roster, roster) || liveTabs.length !== state.tabs.length) {
+    state = { ...state, roster, tabs: liveTabs };
     pushState();
   }
 
@@ -228,13 +284,14 @@ export async function tick(conceptionPath: string): Promise<void> {
   }
 
   const meta = new Map(roster.map((tab) => [tab.sid, tab]));
-  const liveSids = new Set(meta.keys());
   const bytes = tabsBytes();
   // Tabs whose byte count moved since the last run (new tabs read as updated —
-  // no prior snapshot). Removed tabs are detected separately so a closed tab
-  // still refreshes the overview even with no growth.
+  // no prior snapshot). A tab that closed since the last run still forces a cycle
+  // so the cross-tab overview drops it even with no byte growth — detected from
+  // last run's sid snapshot (`prevBytes`), which survives the per-tick tab prune
+  // above (where `state.tabs` is already pruned, so it can't carry the signal).
   const updated = [...liveSids].filter((sid) => bytes.get(sid) !== prevBytes.get(sid));
-  const removed = state.tabs.some((tab) => !liveSids.has(tab.sid));
+  const removed = [...prevBytes.keys()].some((sid) => !liveSids.has(sid));
 
   // Retire any `working` tab that has gone silent past the grace window to
   // `idle` (no LLM call) before the gate can hold the cycle — otherwise a
@@ -256,7 +313,11 @@ export async function tick(conceptionPath: string): Promise<void> {
 
   inFlight = true;
   lastRunAt = now;
-  prevBytes = bytes;
+  // Snapshot only the dashboard's own (my-side) live sids: the next cycle reads
+  // this both to gate on byte growth and to detect a tab that closed since this
+  // run, so it must not carry code-side dev-server sids that would read as
+  // perpetually "removed".
+  prevBytes = new Map([...liveSids].map((sid) => [sid, bytes.get(sid) ?? 0]));
   clearSummarizerError();
   // Enter the summarizing window: publish the phase AND the set of tabs being
   // recomputed this cycle, so the renderer can badge exactly those cards
@@ -277,33 +338,8 @@ export async function tick(conceptionPath: string): Promise<void> {
     for (const sid of updated) {
       const tabMeta = meta.get(sid);
       if (!tabMeta) continue;
-      const recentText = tabRecentText(sid);
-      if (!recentText.trim()) continue;
-      const result = await summarizeTab(config, {
-        sid,
-        cmd: tabMeta.cmd,
-        cwd: tabMeta.cwd,
-        recentText,
-        prior: priorBySid.get(sid),
-      });
-      if (!result) continue;
-      const prior = priorBySid.get(sid);
-      const events = prior ? [...prior.events] : [];
-      // Record an event whenever the "current action" changes — this is the
-      // rolling history of what the tab has done over time.
-      if (!prior || prior.currentAction !== result.currentAction) {
-        if (result.currentAction) events.push(makeEvent(result.currentAction, now));
-      }
-      const summary: TabSummary = {
-        sid,
-        title: result.title,
-        contextLines: result.contextLines,
-        currentAction: result.currentAction,
-        state: result.state,
-        ...(result.awaitingPrompt ? { awaitingPrompt: result.awaitingPrompt } : {}),
-        updatedAt: now,
-        events,
-      };
+      const summary = await buildSummary(config, tabMeta, priorBySid.get(sid), now);
+      if (!summary) continue;
       const at = indexOf(sid);
       if (at >= 0) nextTabs[at] = summary;
       else nextTabs.push(summary);
@@ -359,6 +395,70 @@ export async function tick(conceptionPath: string): Promise<void> {
       state = { ...state, summarizingSids: [] };
       pushState();
     }
+  } finally {
+    inFlight = false;
+  }
+}
+
+/**
+ * Force an immediate re-summarization of a single tab — the per-card "Update
+ * now" button — bypassing both the interval and the activity gate so the user
+ * can refresh a card whose status looks stale on demand. A no-op when the engine
+ * isn't armed for an enabled, keyed conception, a cycle is already in flight, the
+ * sid isn't a live tab, or the tab has no readable output yet. Refreshes only
+ * that card; the cross-tab overview refreshes on the next scheduled cycle.
+ *
+ * @param sid The tab to refresh.
+ */
+export async function refreshTab(sid: string): Promise<void> {
+  const armed = current;
+  if (!armed || inFlight) return;
+  let config: DashboardConfig;
+  try {
+    config = await readDashboardConfig(armed.path);
+  } catch {
+    return;
+  }
+  if (!config.enabled || !config.apiKey) return;
+  const tabMeta = dashboardRoster().find((tab) => tab.sid === sid);
+  if (!tabMeta) return;
+
+  inFlight = true;
+  const now = Date.now();
+  clearSummarizerError();
+  // Badge just this card "Summarizing" while its single LLM call is in flight.
+  state = { ...state, summarizingSids: [sid] };
+  pushState();
+  try {
+    const prior = state.tabs.find((tab) => tab.sid === sid);
+    const summary = await buildSummary(config, tabMeta, prior, now);
+    if (summary) {
+      const others = state.tabs.filter((tab) => tab.sid !== sid);
+      // Bank this sid's byte count so the next scheduled cycle's growth gate
+      // doesn't redundantly re-summarize a tab the user just refreshed.
+      prevBytes.set(sid, tabsBytes().get(sid) ?? prevBytes.get(sid) ?? 0);
+      state = {
+        ...state,
+        tabs: [...others, summary],
+        updatedAt: now,
+        summarizingSids: [],
+        lastError: getSummarizerError() ?? undefined,
+      };
+    } else {
+      // Nothing summarizable (no output yet / model declined): clear the overlay
+      // and surface any error, leaving the prior summary in place.
+      state = { ...state, summarizingSids: [], lastError: getSummarizerError() ?? undefined };
+    }
+    pushState();
+    try {
+      await saveDashboardState(armed.path, state);
+    } catch (err) {
+      process.stderr.write(`condash dashboard: state persist failed: ${(err as Error).message}\n`);
+    }
+  } catch (err) {
+    process.stderr.write(`condash dashboard: tab refresh failed: ${(err as Error).message}\n`);
+    state = { ...state, summarizingSids: [] };
+    pushState();
   } finally {
     inFlight = false;
   }

@@ -65,6 +65,29 @@ export function DashboardView() {
 
   const secsUntil = (atMs: number): number => Math.max(0, Math.round((atMs - nowMs()) / 1000));
 
+  // The per-card "Update now" button forces an immediate re-summarization of one
+  // tab. Only meaningful — and only shown — when the engine can actually run a
+  // summary (enabled with a key); the main process no-ops otherwise.
+  const canRefresh = (): boolean => !!config()?.enabled && !!config()?.hasApiKey;
+  const refreshCard = (sid: string): void => {
+    void window.condash.dashboardRefreshTab(sid);
+  };
+  // Small ghost button shared by both card variants. Disabled while this card's
+  // summary is already being recomputed so a double-click can't queue two runs.
+  const refreshButton = (sid: string) => (
+    <Show when={canRefresh()}>
+      <button
+        type="button"
+        class="dashboard-tab-refresh"
+        title="Re-summarize this tab now"
+        disabled={summarizingSids().has(sid)}
+        onClick={() => refreshCard(sid)}
+      >
+        Update
+      </button>
+    </Show>
+  );
+
   // "next update in Xs" for the status strip. Empty when there's no key (no
   // cycle can run) so the strip just shows the paused phase instead.
   const nextUpdateText = (): string => {
@@ -367,6 +390,7 @@ export function DashboardView() {
                                 <span class="dashboard-tab-summarizing" title="Summarizing…" />
                               </Show>
                               <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
+                              {refreshButton(card.tab.sid)}
                             </span>
                           </div>
                           <div class="dashboard-tab-card-title">{tabLabel(card.tab)}</div>
@@ -406,6 +430,7 @@ export function DashboardView() {
                               >
                                 {fmtRelative(summary().updatedAt)}
                               </span>
+                              {refreshButton(card.tab.sid)}
                             </span>
                           </div>
                           <div class="dashboard-tab-card-title">{summary().title}</div>

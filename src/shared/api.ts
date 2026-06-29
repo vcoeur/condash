@@ -317,6 +317,10 @@ export interface CondashApi {
    *  the key / base URL / model work. Tests the unsaved draft values, so the
    *  user can confirm before saving. Resolves `{ ok, error? }`, never rejects. */
   dashboardTestConnection(settings: DashboardSettings): Promise<{ ok: boolean; error?: string }>;
+  /** Force an immediate re-summarization of one tab card (the per-card "Update
+   *  now" button), bypassing the interval and activity gate. No-ops when the
+   *  engine is off / unkeyed / mid-cycle or the sid isn't a live tab. */
+  dashboardRefreshTab(sid: string): Promise<void>;
   /** Subscribe to full dashboard-state snapshots pushed after each engine
    *  cycle. Returns an unsubscribe function. */
   onDashboardState(callback: (state: DashboardState) => void): () => void;

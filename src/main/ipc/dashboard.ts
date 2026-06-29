@@ -1,9 +1,9 @@
 import { ipcMain } from 'electron';
 import type { DashboardSettings } from '../../shared/types';
-import { getDashboardConfigView, getDashboardState } from '../dashboard/engine';
+import { getDashboardConfigView, getDashboardState, refreshTab } from '../dashboard/engine';
 import { resolveDashboardConfig } from '../dashboard/config';
 import { testDashboardConnection } from '../dashboard/summarizer';
-import { requireMainWindowSender, requireOptionalRecord } from './utils';
+import { requireMainWindowSender, requireNonEmptyString, requireOptionalRecord } from './utils';
 
 /** Wire the dashboard read IPC handlers. The push channels (state + per-tab
  *  summaries) are sent from the engine; these are pull accessors the Dashboard
@@ -27,5 +27,12 @@ export function registerDashboardIpc(): void {
       | DashboardSettings
       | undefined;
     return testDashboardConnection(resolveDashboardConfig(draft));
+  });
+
+  // Force an immediate re-summarization of one card (the per-card "Update now"
+  // button). The engine no-ops when not enabled/keyed or already mid-cycle.
+  ipcMain.handle('dashboardRefreshTab', (event, sid: unknown) => {
+    requireMainWindowSender(event);
+    return refreshTab(requireNonEmptyString('dashboardRefreshTab', sid));
   });
 }

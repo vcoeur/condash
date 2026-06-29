@@ -80,3 +80,61 @@ test('Dashboard lists every open tab even with no summaries', async () => {
     await booted.cleanup();
   }
 });
+
+/**
+ * Regression for #366: the Code-pane Run button spawns a `side: 'code'` session
+ * (a long-running dev server). Those are panes, not agent tabs, and must not
+ * inflate the "Open tabs · N" count nor render as cards — only the user's
+ * `side: 'my'` terminal tabs belong on the dashboard roster.
+ */
+test('Dashboard roster excludes Code-pane Run (code-side) dev servers', async () => {
+  test.setTimeout(90_000);
+  const booted = await bootApp({
+    globalConfig: {
+      dashboard: { enabled: true },
+      layout: { projects: true, working: 'code', terminal: true },
+    },
+  });
+  try {
+    // One genuine terminal tab (my-side) and one Code-pane Run dev server
+    // (code-side). Only the my-side tab is an "open tab" for the dashboard.
+    await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'sleep 60' }),
+    );
+    await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'code', command: 'sleep 62' }),
+    );
+
+    const dashTab = booted.window.locator('.terminal-tab-dashboard');
+    await dashTab.waitFor({ state: 'visible', timeout: 10_000 });
+    await dashTab.click();
+
+    // The roster settles to exactly the one my-side tab — never the code-side
+    // dev server — even after both sessions are live.
+    await expect
+      .poll(
+        async () => {
+          const state = await booted.window.evaluate(() => window.condash.dashboardGetState());
+          return state?.roster?.map((tab) => tab.cmd) ?? [];
+        },
+        { timeout: 60_000, intervals: [500] },
+      )
+      .toEqual(['sleep 60']);
+
+    const pane = booted.window.locator('.dashboard-pane');
+    await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 60' })).toBeVisible();
+    // The dev server is not rendered as a card…
+    await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 62' })).toHaveCount(0);
+    // …and the header counts only the one open terminal tab.
+    await expect(pane.locator('.dashboard-tab-head h3')).toContainText('Open tabs · 1');
+
+    const outDir = resolve(__dirname, 'screenshots-out');
+    await mkdir(outDir, { recursive: true });
+    await booted.window.setViewportSize({ width: 1280, height: 900 });
+    await booted.window
+      .screenshot({ path: join(outDir, 'dashboard-roster-code-excluded.png') })
+      .catch(() => {});
+  } finally {
+    await booted.cleanup();
+  }
+});
