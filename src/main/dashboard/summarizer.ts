@@ -220,6 +220,11 @@ export function parseSubtitle(reply: string): string {
 // over-eagerly read a long visible reply as "still generating", which the
 // activity gate then froze on the card. The engine's idle-decay is the backstop;
 // the finished-turn rule below is the fix at the source.
+// The dual failure — a MID-turn `[user]` transcript tail misread as awaiting/idle
+// because the live spinner is grid-only and the transcript freezes on the user's
+// request until the next `Stop` — is forced back to `working` deterministically in
+// `buildSummary` (engine.ts); the `[user]`-tail rule below reinforces the card
+// content the model writes for it.
 const TAB_SYSTEM_PROMPT = [
   'You summarize a single terminal tab for a developer dashboard.',
   'You are given the tab command/cwd, a prior summary (possibly stale), and the',
@@ -250,6 +255,15 @@ const TAB_SYSTEM_PROMPT = [
   '"thinking" hint, or text still actively streaming. "error": a command crashed',
   'or a process exited non-zero and is NOT recovering — a recoverable warning is',
   'not an error, it stays "working" or "idle".',
+  'The recent output may be a transcript whose messages are tagged [user],',
+  '[assistant], or [reasoning]. When the LAST tagged message is [user] — the user',
+  'just submitted a request and no [assistant] reply is framed after it — the agent',
+  'has received it and is mid-turn: classify "working" and pick the matching',
+  'activity, never "awaiting" or "idle". The reply may not have streamed into the',
+  'transcript yet, so the absence of a visible progress indicator does not mean it',
+  'is resting. The finished-reply-is-idle and "awaiting" judgements apply only when',
+  'the last message is [assistant], and "awaiting" still requires that [assistant]',
+  'message to end on a concrete blocking question.',
   'Treat informational notices and recoverable warnings as background noise (for',
   'example "workspace not trusted", "N permissions ignored", deprecation or auth',
   'notices): never report them as the current action, a blocker, or an error.',

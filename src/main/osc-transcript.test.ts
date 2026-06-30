@@ -6,6 +6,7 @@ import {
   MAX_TRANSCRIPT_LINES,
   OscTranscriptExtractor,
   formatMinute,
+  lastTranscriptRole,
   timestampMarker,
 } from './osc-transcript';
 
@@ -191,5 +192,33 @@ describe('timestampMarker / formatMinute', () => {
   it('formats a local-time Date as a zero-padded HTML-comment marker', () => {
     expect(formatMinute(new Date(2026, 0, 3, 4, 6, 0))).toBe('2026-01-03:04:06');
     expect(timestampMarker(new Date(2026, 0, 3, 4, 6, 0))).toBe('<!-- 2026-01-03:04:06 -->');
+  });
+});
+
+describe('lastTranscriptRole', () => {
+  it('returns the role of the last message', () => {
+    const text = ['[user] do the thing', '[assistant] on it', '[reasoning] thinking…'].join('\n\n');
+    expect(lastTranscriptRole(text)).toBe('reasoning');
+  });
+
+  it('detects a [user] tail (the mid-turn signal)', () => {
+    const text = ['[assistant] previous turn done', '[user] now do the next thing'].join('\n\n');
+    expect(lastTranscriptRole(text)).toBe('user');
+  });
+
+  it('detects an [assistant] tail', () => {
+    const text = ['[user] question?', '[assistant] answer.'].join('\n\n');
+    expect(lastTranscriptRole(text)).toBe('assistant');
+  });
+
+  it('is unaffected by a multi-line message body', () => {
+    // Continuation lines of a message are not new markers; the message role wins.
+    const text = '[assistant] earlier\n\n[user] line one\nline two\nline three';
+    expect(lastTranscriptRole(text)).toBe('user');
+  });
+
+  it('returns null for markerless grid text', () => {
+    expect(lastTranscriptRole('alice@host:~/src$ ls\nfoo bar')).toBeNull();
+    expect(lastTranscriptRole('')).toBeNull();
   });
 });

@@ -10,6 +10,7 @@ import type {
   TabSummary,
 } from '../../shared/types';
 import { dashboardRoster, tabRecentText, tabsBytes } from '../terminals';
+import { lastTranscriptRole } from '../osc-transcript';
 import { DASHBOARD_DEFAULTS, readDashboardConfig, toDashboardConfigView } from './config';
 import {
   emptyDashboardState,
@@ -22,6 +23,7 @@ import {
   getSummarizerError,
   makeEvent,
   summarizeTab,
+  type TabSummaryResult,
   writeSubtitle,
 } from './summarizer';
 import { deriveProvenance } from './provenance';
@@ -234,6 +236,40 @@ export function decayStaleWorkingTabs(
 }
 
 /**
+ * Force a mid-turn agent's card to `working` when the transcript tail is a
+ * `[user]` message. The OSC sidecar transcript only gains an assistant chunk at
+ * the agent's next `Stop`, so a long in-flight turn leaves it frozen on the
+ * user's just-submitted request; the card model — blind to the live spinner,
+ * which lives only in the grid the transcript path never reads — then misreads
+ * that `[user]` tail as `awaiting` or `idle`, showing a busy agent as resting. A
+ * `[user]` tail is an unambiguous mid-turn signal, so override to `working`,
+ * lift an `awaiting`/`idle` activity to `implementing`, and drop any stale
+ * `awaitingPrompt`. `error` is left intact — a real crash must not read as work —
+ * and `decayStaleWorkingTabs` is the backstop for the rare case the agent exited
+ * right after the prompt (no assistant frame → it goes byte-quiet and decays back
+ * to idle past the grace window). A non-transcript grid fallback has no `[user]`
+ * marker, so this is a no-op there. Mutates and returns `result`. Exported for
+ * unit testing.
+ *
+ * @param result - The card model's parsed summary for this tab (mutated in place).
+ * @param recentText - The exact text the card model was given (the transcript).
+ * @returns The same `result`, corrected when a `[user]` tail was detected.
+ */
+export function forceWorkingOnUserTail(
+  result: TabSummaryResult,
+  recentText: string,
+): TabSummaryResult {
+  if (result.state !== 'error' && lastTranscriptRole(recentText) === 'user') {
+    result.state = 'working';
+    if (result.activity === 'awaiting' || result.activity === 'idle') {
+      result.activity = 'implementing';
+    }
+    result.awaitingPrompt = '';
+  }
+  return result;
+}
+
+/**
  * Run one tab through the summarizer and fold the result into a TabSummary:
  * the cheap card model extracts the facts + activity, local provenance is
  * derived (app / worktree / projects), and the writer model composes the
@@ -267,6 +303,10 @@ async function buildSummary(
     prior,
   });
   if (!result) return null;
+  // Correct a mid-turn agent the card model misread as resting (see
+  // forceWorkingOnUserTail). Done before the writer call so the subtitle is
+  // composed from the corrected state.
+  forceWorkingOnUserTail(result, recentText);
   // Provenance is local (no LLM): config + tree reads, fed to the writer for the
   // subtitle and attached to the card for the UI pills.
   const provenance = await deriveProvenance(conceptionPath, tabMeta);

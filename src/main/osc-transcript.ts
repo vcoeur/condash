@@ -82,6 +82,28 @@ export function transcriptLine(role: string | undefined, text: string): string {
   return `[${who}] ${text}`;
 }
 
+/** Role tag of the LAST message in rendered transcript text, or null when the
+ * text carries no `[role]` markers (e.g. a plain-shell grid fallback, where the
+ * summarizer reads cleaned buffer rather than a transcript). Reads back the
+ * `[user]`/`[assistant]`/`[reasoning]` shape {@link transcriptLine} writes.
+ *
+ * The dashboard uses this to detect a mid-turn agent: the OSC emitter frames a
+ * chunk only on `UserPromptSubmit` and each assistant `Stop`, so a `[user]` tail
+ * means the user's request was the last framed message and no assistant turn has
+ * completed since — the agent is working on it, not waiting on the user.
+ *
+ * @param text - Rendered transcript text (one `[role] …` line per message start).
+ * @returns The last message's role, or null when no marker is present.
+ */
+export function lastTranscriptRole(text: string): 'user' | 'assistant' | 'reasoning' | null {
+  const marker = /^\[(user|assistant|reasoning)\] /gm;
+  let role: 'user' | 'assistant' | 'reasoning' | null = null;
+  for (const match of text.matchAll(marker)) {
+    role = match[1] as 'user' | 'assistant' | 'reasoning';
+  }
+  return role;
+}
+
 export class OscTranscriptExtractor {
   /** Unconsumed tail — holds an incomplete sequence (or a partial PREFIX) that
    * spans feed boundaries. */
