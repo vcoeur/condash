@@ -125,12 +125,11 @@ export function DashboardView() {
 
   // One card per open tab: a summarized tab carries its rich summary; an
   // as-yet-unsummarized tab gets a fallback drawn from its command/cwd — so no
-  // open tab is ever missing. Summarized tabs sort first by recency.
+  // open tab is ever missing. Cards stay in roster order so they always line up
+  // with the tab strip.
   const cards = (): Array<{ tab: TabInfo; summary?: TabSummary }> => {
     const bySid = new Map((state()?.tabs ?? []).map((tab) => [tab.sid, tab]));
-    return roster()
-      .map((tab) => ({ tab, summary: bySid.get(tab.sid) }))
-      .sort((a, b) => (b.summary?.updatedAt ?? -1) - (a.summary?.updatedAt ?? -1));
+    return roster().map((tab) => ({ tab, summary: bySid.get(tab.sid) }));
   };
 
   // Fallback label for a tab with no summary yet: the command, else the cwd's
