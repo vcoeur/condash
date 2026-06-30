@@ -7,7 +7,7 @@ import type {
   TabState,
   TabSummary,
 } from '../../shared/types';
-import type { OverviewResult, TabSummaryResult } from './summarizer';
+import type { TabSummaryResult } from './summarizer';
 
 // Mutable fixtures the mocks read, so each case can shape the engine's inputs.
 const h = vi.hoisted(() => ({
@@ -16,7 +16,7 @@ const h = vi.hoisted(() => ({
   bytes: new Map<string, number>(),
   recent: '',
   summary: null as TabSummaryResult | null,
-  overview: null as OverviewResult | null,
+  subtitle: '',
   // Every `dashboardState` payload the engine broadcasts, in order — lets a test
   // assert what actually reached the renderer (not just the in-memory state).
   pushed: [] as DashboardState[],
@@ -54,7 +54,11 @@ vi.mock('./summarizer', () => ({
   getSummarizerError: () => null,
   makeEvent: (text: string, at: number) => ({ at, text }),
   summarizeTab: vi.fn(async () => h.summary),
-  synthesizeOverview: vi.fn(async () => h.overview),
+  writeSubtitle: vi.fn(async () => h.subtitle),
+}));
+// Provenance is local fs/config; stub it so the engine tests stay hermetic.
+vi.mock('./provenance', () => ({
+  deriveProvenance: vi.fn(async () => ({})),
 }));
 vi.mock('./state', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./state')>();
@@ -94,7 +98,7 @@ beforeEach(() => {
   h.bytes = new Map();
   h.recent = '';
   h.summary = null;
-  h.overview = null;
+  h.subtitle = '';
   h.pushed = [];
 });
 
@@ -129,8 +133,8 @@ describe('dashboard engine status', () => {
       contextLines: ['compiling'],
       currentAction: 'compiling',
       state: 'working',
+      activity: 'implementing',
     };
-    h.overview = { globalWork: 'Building condash', overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     await vi.waitFor(() => {
       const status = getDashboardState()?.engine;
@@ -151,8 +155,8 @@ describe('dashboard engine status', () => {
       contextLines: ['compiling'],
       currentAction: 'compiling',
       state: 'working',
+      activity: 'implementing',
     };
-    h.overview = { globalWork: 'Building condash', overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     // While the LLM call is in flight the renderer must have seen the tab in
     // `summarizingSids` alongside the `summarizing` phase — that's the signal the
@@ -181,8 +185,8 @@ describe('dashboard engine status', () => {
       contextLines: ['compiling'],
       currentAction: 'compiling',
       state: 'working',
+      activity: 'implementing',
     };
-    h.overview = { globalWork: 'Building', overview: ['Tab a'], events: [] };
     await setDashboardConception(CONCEPTION);
     await vi.waitFor(() => expect(getDashboardState()?.tabs.map((t) => t.sid)).toEqual(['a']));
     // Close the tab. The next tick is not "due" (the interval hasn't elapsed), so
@@ -201,15 +205,26 @@ describe('dashboard engine status', () => {
     h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
     h.bytes = new Map([['a', 12]]);
     h.recent = 'real transcript output';
-    h.summary = { title: 'First', contextLines: [], currentAction: 'compiling', state: 'working' };
-    h.overview = { globalWork: 'g', overview: ['o'], events: [] };
+    h.summary = {
+      title: 'First',
+      contextLines: [],
+      currentAction: 'compiling',
+      state: 'working',
+      activity: 'implementing',
+    };
     await setDashboardConception(CONCEPTION);
     await vi.waitFor(() =>
       expect(getDashboardState()?.tabs.find((t) => t.sid === 'a')?.title).toBe('First'),
     );
     // No bytes grew since the run, so a scheduled cycle's gate would hold — but a
     // forced per-card refresh must still re-summarize this tab.
-    h.summary = { title: 'Updated', contextLines: [], currentAction: 'finished', state: 'idle' };
+    h.summary = {
+      title: 'Updated',
+      contextLines: [],
+      currentAction: 'finished',
+      state: 'idle',
+      activity: 'idle',
+    };
     await vi.waitFor(async () => {
       await refreshTab('a');
       const tab = getDashboardState()?.tabs.find((t) => t.sid === 'a');
@@ -222,14 +237,25 @@ describe('dashboard engine status', () => {
     h.tabs = [{ sid: 'a', cwd: '/w', cmd: 'sh' }];
     h.bytes = new Map([['a', 12]]);
     h.recent = 'real transcript output';
-    h.summary = { title: 'First', contextLines: [], currentAction: 'compiling', state: 'working' };
-    h.overview = { globalWork: 'g', overview: ['o'], events: [] };
+    h.summary = {
+      title: 'First',
+      contextLines: [],
+      currentAction: 'compiling',
+      state: 'working',
+      activity: 'implementing',
+    };
     await setDashboardConception(CONCEPTION);
     await vi.waitFor(() =>
       expect(getDashboardState()?.tabs.find((t) => t.sid === 'a')?.title).toBe('First'),
     );
     // A summary is available, but 'ghost' isn't in the roster — nothing changes.
-    h.summary = { title: 'ShouldNotApply', contextLines: [], currentAction: 'x', state: 'idle' };
+    h.summary = {
+      title: 'ShouldNotApply',
+      contextLines: [],
+      currentAction: 'x',
+      state: 'idle',
+      activity: 'idle',
+    };
     await refreshTab('ghost');
     expect(getDashboardState()?.tabs.find((t) => t.sid === 'a')?.title).toBe('First');
   });
@@ -248,8 +274,8 @@ describe('dashboard engine status', () => {
       contextLines: ['compiling'],
       currentAction: 'compiling',
       state: 'working',
+      activity: 'implementing',
     };
-    h.overview = { globalWork: 'Building condash', overview: ['Tab a is compiling'], events: [] };
     await setDashboardConception(CONCEPTION);
     // The renderer must still receive the post-cycle state — summarized tab,
     // resting `waiting` phase — even though the save threw. The old order (save
@@ -271,7 +297,15 @@ describe('decayStaleWorkingTabs', () => {
   function tab(
     over: Partial<TabSummary> & Pick<TabSummary, 'sid' | 'state' | 'updatedAt'>,
   ): TabSummary {
-    return { title: 't', contextLines: [], currentAction: 'doing', events: [], ...over };
+    return {
+      title: 't',
+      subtitle: '',
+      contextLines: [],
+      currentAction: 'doing',
+      activity: 'idle',
+      events: [],
+      ...over,
+    };
   }
 
   it('retires a working tab quiet past the grace window to idle', () => {

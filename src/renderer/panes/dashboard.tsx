@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type {
+  ActivityStage,
   DashboardConfigView,
   DashboardState,
   TabInfo,
@@ -8,7 +9,7 @@ import type {
 } from '@shared/types';
 import './dashboard-pane.css';
 
-/** Human label for the state pill, by state. */
+/** Human label for the health state, used on the card's state-dot tooltip. */
 const STATE_LABEL: Record<TabState, string> = {
   working: 'Working',
   awaiting: 'Awaiting you',
@@ -16,20 +17,54 @@ const STATE_LABEL: Record<TabState, string> = {
   error: 'Error',
 };
 
+/** Human label for the finer work-stage activity badge. */
+const ACTIVITY_LABEL: Record<ActivityStage, string> = {
+  implementing: 'Implementing',
+  designing: 'Designing',
+  reviewing: 'Reviewing',
+  'making-pr': 'Making PR',
+  documenting: 'Documenting',
+  testing: 'Testing',
+  debugging: 'Debugging',
+  researching: 'Researching',
+  awaiting: 'Awaiting',
+  idle: 'Idle',
+};
+
+/** The per-state tallies always shown in the top status line, in this order. */
+const TALLY_STATES: readonly TabState[] = ['working', 'awaiting', 'idle'];
+
+/** One rendered breadcrumb segment under a card's title. */
+interface Crumb {
+  /** Visible text of the segment. */
+  text: string;
+  /** Full value for the hover tooltip when `text` may be truncated. */
+  full?: string;
+  /** Render in the mono face (used for the `#app` and `wt:` provenance crumbs). */
+  mono?: boolean;
+  /** A trailing `+N` more-projects affordance, when several projects match. */
+  extra?: string;
+  /** Tooltip listing the remaining project titles behind `extra`. */
+  extraTitle?: string;
+}
+
 /**
- * The Dashboard working surface: a detailed, always-current view of what the
- * terminal tabs are doing. Renders the active summarizer settings, any last
- * summarization error, the cross-tab overview, one card per open tab (the full
- * roster — a summarized tab shows title, current action, context and recent
- * events; an as-yet-unsummarized tab shows a fallback from its command/cwd so it
- * is never invisible), and a global event history. Self-contained — subscribes
- * to the engine's pushed state and seeds from the last snapshot on mount.
+ * The Dashboard working surface: a Direction-B "breadcrumb" view of what the
+ * terminal tabs are doing. A single thin top status line (product label +
+ * on/off dot, live tab tallies, last-update time, and a hover popover with the
+ * full summarizer config) sits above a responsive grid of tab cards. Each card
+ * leads with a minimal header (health dot + age + per-tab update button), then a
+ * title with an activity badge, a provenance breadcrumb (`#app › wt:branch ›
+ * project`), a one-sentence subtitle, and a short recent-actions timeline. A tab
+ * with no summary yet keeps a graceful fallback so it is never invisible.
+ * Self-contained — subscribes to the engine's pushed state and seeds from the
+ * last snapshot on mount.
  */
 export function DashboardView() {
   const [state, setState] = createSignal<DashboardState | null>(null);
   const [config, setConfig] = createSignal<DashboardConfigView | null>(null);
-  // Local 1s clock so the "next update in Xs" ETA counts down live between the
-  // engine's pushes (which only arrive on a real change, not every second).
+  // Local 1s clock so relative ages ("3m") and the pending next-attempt hint
+  // tick live between the engine's pushes (which only arrive on a real change).
   const [nowMs, setNowMs] = createSignal(Date.now());
 
   const refreshConfig = (): void => {
@@ -42,26 +77,20 @@ export function DashboardView() {
     const clock = setInterval(() => setNowMs(Date.now()), 1000);
     onCleanup(() => clearInterval(clock));
   });
-  // Re-read the config view alongside each pushed state so the settings panel
-  // tracks edits made in Settings while the Dashboard is open (the engine
-  // re-reads its config every cycle; this keeps the displayed copy in step).
+  // Re-read the config view alongside each pushed state so the hover popover
+  // tracks edits made in Settings while the Dashboard is open.
   const offState = window.condash.onDashboardState((next) => {
     setState(next);
     refreshConfig();
   });
   onCleanup(offState);
 
-  const roster = () => state()?.roster ?? [];
-  const globalWork = () => state()?.globalWork?.trim() ?? '';
-  const overview = () => state()?.overview ?? [];
-  const history = () => state()?.history ?? [];
+  const roster = (): TabInfo[] => state()?.roster ?? [];
   const engine = () => state()?.engine;
   // The tabs whose summary is being recomputed in the in-flight cycle. A card
-  // whose sid is in here shows a small pulsing marker — its own state badge and
-  // colour are untouched; the loud "Summarizing" label lives in the status strip.
+  // whose sid is in here shows a small pulsing marker; its own state badge and
+  // colour are untouched.
   const summarizingSids = createMemo(() => new Set(state()?.summarizingSids ?? []));
-
-  const secsUntil = (atMs: number): number => Math.max(0, Math.round((atMs - nowMs()) / 1000));
 
   // The per-card "Update now" button forces an immediate re-summarization of one
   // tab. Only meaningful — and only shown — when the engine can actually run a
@@ -86,150 +115,174 @@ export function DashboardView() {
     </Show>
   );
 
-  // "next update in Xs" for the status strip. Empty when there's no key (no
-  // cycle can run) so the strip just shows the paused phase instead.
-  const nextUpdateText = (): string => {
-    const status = engine();
-    if (!status || status.phase === 'no-api-key') return '';
-    if (status.phase === 'summarizing') return 'updating now…';
-    const secs = secsUntil(status.nextRunAt);
-    return secs <= 0 ? 'next update due now' : `next update in ${secs}s`;
-  };
-
-  // One-line description of what the summarizer loop is doing right now — shown
-  // even before any tab has a summary, so an idle-but-running engine reads as
-  // alive rather than dead.
-  const enginePhaseText = (): string => {
-    const status = engine();
-    if (!status) return 'Starting…';
-    const tabs = roster().length;
-    const plural = tabs === 1 ? '' : 's';
-    switch (status.phase) {
-      case 'summarizing':
-        return `Summarizing ${tabs} tab${plural}…`;
-      case 'waiting':
-        return `Waiting for activity · ${tabs} open tab${plural}`;
-      case 'idle':
-        return 'Idle — no open terminal tabs';
-      case 'no-api-key':
-        return 'Paused — set a DeepSeek API key in Settings';
-    }
-  };
-
-  const lastRunText = (): string => {
-    const status = engine();
-    return status && status.lastRunAt ? fmtTime(status.lastRunAt) : '—';
-  };
-
-  // When the LLM cross-tab overview is empty (no tab summarized yet) but tabs are
-  // open, synthesize a per-tab liveness line so "What's going on" is never blank
-  // while work is in progress.
-  const overviewLines = (): string[] => {
-    const llm = overview();
-    if (llm.length > 0) return llm;
-    return roster().map((tab) => {
-      const place = tab.cwd.split('/').filter(Boolean).pop();
-      const where = place ? ` (${place})` : '';
-      return `${tabLabel(tab)}${where} — running; no transcript captured yet. It will be summarized once it submits a prompt or finishes a turn.`;
-    });
-  };
-
-  // Time-slot text for an as-yet-unsummarized tab card: tracks the engine's next
-  // attempt instead of a flat "no summary yet", so the card looks live too.
-  const pendingTimeText = (): string => {
-    const status = engine();
-    if (
-      status &&
-      (status.phase === 'waiting' || status.phase === 'idle' || status.phase === 'summarizing')
-    ) {
-      const secs = secsUntil(status.nextRunAt);
-      return secs <= 0 ? 'next attempt due now' : `next attempt in ${secs}s`;
-    }
-    return 'no summary yet';
-  };
-
-  // One card per open tab: a summarized tab carries its rich summary; an
-  // as-yet-unsummarized tab (no readable output, or before the first cycle)
-  // gets a fallback drawn from its command/cwd — so no open tab is ever missing
-  // from the list. Summarized tabs sort first by recency; unsummarized ones
-  // (updatedAt treated as -1) fall to the end.
-  const cards = (): Array<{ tab: TabInfo; summary?: TabSummary }> => {
-    const bySid = new Map((state()?.tabs ?? []).map((tab) => [tab.sid, tab]));
-    return roster()
-      .map((tab) => ({ tab, summary: bySid.get(tab.sid) }))
-      .sort((a, b) => (b.summary?.updatedAt ?? -1) - (a.summary?.updatedAt ?? -1));
-  };
-  const tabLabel = (tab: TabInfo): string =>
-    tab.cmd?.trim() || tab.cwd.split('/').filter(Boolean).pop() || tab.sid;
-
-  // The program driving the tab — the first token of the command (basename), so
-  // a card leads with "claude" / "pi" / "make". Empty cmd → shell. (The repo/app
-  // a tab sits in is deliberately not shown: it mirrors the cwd and adds no
-  // signal the title/action don't already carry.)
-  const agentName = (tab: TabInfo): string => {
-    const first = tab.cmd?.trim().split(/\s+/)[0] ?? '';
-    return first.split('/').pop() || 'shell';
-  };
-  // For an awaiting tab, the blocking question is the headline; otherwise the
-  // model's one-line current action.
-  const cardAction = (summary: TabSummary): string =>
-    summary.state === 'awaiting' && summary.awaitingPrompt
-      ? summary.awaitingPrompt
-      : summary.currentAction;
-
-  // Cross-tab state tally for the chip row above the grid — counted over the
-  // live summarized tabs (state().tabs holds only still-open ones).
+  // Cross-tab state tally for the top line — counted over the live summarized
+  // tabs (state().tabs holds only still-open ones).
   const tally = (): Record<TabState, number> => {
     const counts: Record<TabState, number> = { working: 0, awaiting: 0, idle: 0, error: 0 };
     for (const tab of state()?.tabs ?? []) counts[tab.state] += 1;
     return counts;
   };
 
-  const fmtTime = (ms: number): string => new Date(ms).toLocaleTimeString();
-  const fmtRelative = (ms: number): string => {
-    const seconds = Math.max(0, Math.round((Date.now() - ms) / 1000));
-    if (seconds < 10) return 'just now';
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.round(minutes / 60);
-    return `${hours}h ago`;
+  // One card per open tab: a summarized tab carries its rich summary; an
+  // as-yet-unsummarized tab gets a fallback drawn from its command/cwd — so no
+  // open tab is ever missing. Summarized tabs sort first by recency.
+  const cards = (): Array<{ tab: TabInfo; summary?: TabSummary }> => {
+    const bySid = new Map((state()?.tabs ?? []).map((tab) => [tab.sid, tab]));
+    return roster()
+      .map((tab) => ({ tab, summary: bySid.get(tab.sid) }))
+      .sort((a, b) => (b.summary?.updatedAt ?? -1) - (a.summary?.updatedAt ?? -1));
   };
-  const endpoint = (cfg: DashboardConfigView): string =>
-    cfg.baseUrl?.trim() ? cfg.baseUrl : 'DeepSeek (default endpoint)';
-  const statusLabel = (cfg: DashboardConfigView): string =>
-    !cfg.enabled ? 'Off' : cfg.hasApiKey ? 'On' : 'On — no API key';
 
-  // The single contextual hint shown above the status strip when the engine
-  // can't produce summaries (off / no key / no open tabs). Null when there's
-  // nothing to say, so the header is omitted entirely rather than leaving an
-  // empty gap where the old "Dashboard" heading used to sit.
+  // Fallback label for a tab with no summary yet: the command, else the cwd's
+  // last path segment, else the sid.
+  const tabLabel = (tab: TabInfo): string => tab.cmd?.trim() || dirName(tab) || tab.sid;
+  const dirName = (tab: TabInfo): string => tab.cwd.split('/').filter(Boolean).pop() ?? '';
+
+  // The provenance breadcrumb under a card title — only the segments that exist,
+  // so missing app / worktree / project carry no dangling separator.
+  const breadcrumb = (summary: TabSummary): Crumb[] => {
+    const crumbs: Crumb[] = [];
+    if (summary.app) crumbs.push({ text: `#${summary.app}`, mono: true });
+    if (summary.worktree)
+      crumbs.push({ text: `wt:${summary.worktree}`, full: summary.worktree, mono: true });
+    const projects = summary.projects ?? [];
+    if (projects.length === 1) {
+      crumbs.push({ text: projects[0].title, full: projects[0].title });
+    } else if (projects.length > 1) {
+      crumbs.push({
+        text: projects[0].title,
+        full: projects[0].title,
+        extra: `+${projects.length - 1}`,
+        extraTitle: projects
+          .slice(1)
+          .map((project) => project.title)
+          .join('\n'),
+      });
+    }
+    return crumbs;
+  };
+
+  const fmtTime = (ms: number): string => new Date(ms).toLocaleTimeString();
+  // HH:MM for the top line's "updated" stamp.
+  const fmtClock = (ms: number): string =>
+    new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Compact relative age ("now" / "12s" / "3m" / "2h"), reactive on the 1s clock.
+  const fmtAge = (ms: number): string => {
+    const seconds = Math.max(0, Math.round((nowMs() - ms) / 1000));
+    if (seconds < 5) return 'now';
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes}m`;
+    return `${Math.round(minutes / 60)}h`;
+  };
+
+  // The age-slot text for a pending card: the engine's next attempt if it is
+  // counting down, else a flat "pending".
+  const pendingHint = (): string => {
+    const status = engine();
+    if (
+      status &&
+      (status.phase === 'waiting' || status.phase === 'idle' || status.phase === 'summarizing')
+    ) {
+      const secs = Math.max(0, Math.round((status.nextRunAt - nowMs()) / 1000));
+      return secs <= 0 ? 'soon' : `in ${secs}s`;
+    }
+    return 'pending';
+  };
+
+  // The on/off dot state and label for the top line.
+  const powerState = (cfg: DashboardConfigView): 'on' | 'off' | 'nokey' =>
+    !cfg.enabled ? 'off' : cfg.hasApiKey ? 'on' : 'nokey';
+  const powerLabel = (cfg: DashboardConfigView): string =>
+    !cfg.enabled ? 'Off' : cfg.hasApiKey ? 'On' : 'On · no key';
+  const endpointLabel = (cfg: DashboardConfigView): string =>
+    cfg.baseUrl?.trim() ? cfg.baseUrl : 'DeepSeek (default)';
+
+  // Actionable guidance shown under the top line only when the engine can't
+  // produce summaries at all (off / no key). The empty-tab case is handled by
+  // the grid's own fallback.
   const headerHint = (): string | null => {
     const cfg = config();
     if (!cfg) return null;
     if (!cfg.enabled)
       return 'Live tab summaries are off. Enable them and set a DeepSeek API key in Settings → Dashboard.';
     if (!cfg.hasApiKey) return 'No DeepSeek API key set. Add one in Settings → Dashboard.';
-    if (roster().length === 0 && !state()?.lastError) return 'No open terminal tabs to summarize…';
     return null;
   };
 
   return (
     <div class="dashboard-pane">
-      {/* No standing title — the pane lives under the "DASHBOARD" tab, so a
-          second "Dashboard" heading was pure redundancy. The header now carries
-          only a contextual hint, and only when there is one. */}
-      <Show when={headerHint()}>
-        {(hint) => (
-          <header class="dashboard-pane-header">
-            <p class="dashboard-pane-hint">{hint()}</p>
+      {/* Thin top status line: product label + on/off dot, live tab tallies,
+          last-update time, and a hover popover carrying the full config. */}
+      <Show when={config()}>
+        {(cfg) => (
+          <header class="dashboard-topline">
+            <span class="dashboard-topline-brand">
+              condash<span class="dashboard-topline-mark"> ▸ </span>dashboard
+            </span>
+            <span class="dashboard-topline-power" data-power={powerState(cfg())}>
+              <span class="dashboard-topline-power-dot" />
+              {powerLabel(cfg())}
+            </span>
+            <span class="dashboard-topline-tallies">
+              <span class="dashboard-topline-tally">
+                <b>{roster().length}</b> tabs
+              </span>
+              <For each={TALLY_STATES}>
+                {(s) => (
+                  <span class="dashboard-topline-tally" data-state={s}>
+                    <b>{tally()[s]}</b> {s}
+                  </span>
+                )}
+              </For>
+              <Show when={tally().error > 0}>
+                <span class="dashboard-topline-tally" data-state="error">
+                  <b>{tally().error}</b> error
+                </span>
+              </Show>
+            </span>
+            <span class="dashboard-topline-updated">
+              <Show when={state()?.updatedAt} fallback="not yet run">
+                updated {fmtClock(state()!.updatedAt)}
+              </Show>
+            </span>
+            {/* Hover/focus reveals the full summarizer config. Secrets stay out —
+                only "set"/"missing" for the API key, never the key itself. */}
+            <span class="dashboard-topline-config" tabindex="0">
+              config
+              <div class="dashboard-topline-config-pop" role="tooltip">
+                <dl>
+                  <dt>Provider</dt>
+                  <dd>{cfg().provider}</dd>
+                  <dt>Card model</dt>
+                  <dd>
+                    {cfg().model}
+                    {cfg().cardReasoning ? ' · reasoning on' : ' · reasoning off'}
+                  </dd>
+                  <dt>Writer model</dt>
+                  <dd>
+                    {cfg().writerModel}
+                    {cfg().writerReasoning ? ' · reasoning on' : ' · reasoning off'}
+                  </dd>
+                  <dt>Endpoint</dt>
+                  <dd>{endpointLabel(cfg())}</dd>
+                  <dt>Interval</dt>
+                  <dd>{cfg().intervalSec}s</dd>
+                  <dt>Activity gate</dt>
+                  <dd>{cfg().gateOnActivity ? 'On — only changed tabs' : 'Off — every tab'}</dd>
+                  <dt>API key</dt>
+                  <dd>{cfg().hasApiKey ? 'set' : 'missing'}</dd>
+                </dl>
+              </div>
+            </span>
           </header>
         )}
       </Show>
 
-      {/* Surfaced prominently: a failed summarization cycle (auth / model /
-          network) would otherwise be a silent no-op — the tab titles just stop
-          updating. The banner explains why. */}
+      <Show when={headerHint()}>{(hint) => <p class="dashboard-pane-hint">{hint()}</p>}</Show>
+
+      {/* A failed summarization cycle (auth / model / network) would otherwise be
+          a silent no-op — the tab titles just stop updating. The banner explains. */}
       <Show when={state()?.lastError}>
         <div class="dashboard-error-banner" role="alert">
           <span class="dashboard-error-banner-label">Last summary failed</span>
@@ -237,230 +290,136 @@ export function DashboardView() {
         </div>
       </Show>
 
-      {/* Always-on liveness strip: next-update ETA + what the loop is doing now
-          + last run. Rendered whenever the engine is enabled, independent of any
-          tab summary, so an idle-but-running engine is never mistaken for dead.
-          A single horizontal line — three labelled segments separated by hairline
-          dividers — so it stays compact above the working surface. */}
-      <Show when={config()?.enabled}>
-        <section class="dashboard-status" data-phase={engine()?.phase ?? 'idle'}>
-          <span class="dashboard-status-item">
-            <span class="dashboard-status-dot" />
-            <span class="dashboard-status-label">Status</span>
-            <span>
-              {statusLabel(config()!)}
-              <Show when={nextUpdateText()}>
-                <span class="dashboard-status-next"> · {nextUpdateText()}</span>
-              </Show>
-            </span>
-          </span>
-          <span class="dashboard-status-item">
-            <span class="dashboard-status-label">Engine</span>
-            <span>{enginePhaseText()}</span>
-          </span>
-          <span class="dashboard-status-item">
-            <span class="dashboard-status-label">Last run</span>
-            <span>{lastRunText()}</span>
-          </span>
-        </section>
-      </Show>
-
-      {/* Two-column working surface: a fixed meta rail (settings, the cross-tab
-          overview, and history) beside a wide tab-card grid that fills the
-          remaining width. Collapses to a single stacked column when narrow. */}
-      <div class="dashboard-body">
-        <aside class="dashboard-rail">
-          <Show when={config()}>
-            {(cfg) => (
-              <section class="dashboard-section">
-                <h3>Settings</h3>
-                <dl class="dashboard-settings">
-                  <dt>Card model</dt>
-                  <dd>
-                    {cfg().model}
-                    {cfg().cardReasoning ? ' · reasoning on' : ''}
-                  </dd>
-                  <dt>Writer model</dt>
-                  <dd>
-                    {cfg().writerModel}
-                    {cfg().writerReasoning ? ' · reasoning on' : ''}
-                  </dd>
-                  <dt>Endpoint</dt>
-                  <dd>{endpoint(cfg())}</dd>
-                  <dt>Update interval</dt>
-                  <dd>{cfg().intervalSec}s</dd>
-                  <dt>Activity gate</dt>
-                  <dd>
-                    {cfg().gateOnActivity ? 'On — only changed tabs' : 'Off — every tab each cycle'}
-                  </dd>
-                </dl>
-              </section>
-            )}
-          </Show>
-
-          <Show when={config()?.enabled && (globalWork() || overviewLines().length > 0)}>
-            <section class="dashboard-section">
-              <h3>Global current work</h3>
-              {/* Level 1: the one-line big-picture headline. */}
-              <Show when={globalWork()}>
-                <p class="dashboard-global-work">{globalWork()}</p>
-              </Show>
-              {/* Level 2: the finer detail / current-activity lines, directly
-                  under the headline. */}
-              <Show when={overviewLines().length > 0}>
-                <ul class="dashboard-overview">
-                  <For each={overviewLines()}>{(line) => <li>{line}</li>}</For>
-                </ul>
-              </Show>
-            </section>
-          </Show>
-
-          <Show when={history().length > 0}>
-            <section class="dashboard-section">
-              <h3>History</h3>
-              <ul class="dashboard-history">
-                <For each={[...history()].reverse()}>
-                  {(ev) => (
-                    <li>
-                      <span class="dashboard-event-time">{fmtTime(ev.at)}</span> {ev.text}
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </section>
-          </Show>
-        </aside>
-
-        <main class="dashboard-main">
-          <section class="dashboard-section">
-            {/* Header row: title + the cross-tab state tally — the cockpit's
-                at-a-glance triage readout. A chip per non-empty state. */}
-            <div class="dashboard-tab-head">
-              <h3>Open tabs{cards().length > 0 ? ` · ${cards().length}` : ''}</h3>
+      <Show
+        when={cards().length > 0}
+        fallback={<p class="dashboard-pane-hint">No open terminal tabs to summarize.</p>}
+      >
+        <ul class="dashboard-card-grid">
+          <For each={cards()}>
+            {(card) => (
               <Show
-                when={(['working', 'awaiting', 'idle', 'error'] as const).some(
-                  (s) => tally()[s] > 0,
-                )}
-              >
-                <div class="dashboard-tally">
-                  <For
-                    each={(['working', 'awaiting', 'idle', 'error'] as const).filter(
-                      (s) => tally()[s] > 0,
-                    )}
-                  >
-                    {(s) => (
-                      <span class="dashboard-tally-chip" data-state={s}>
-                        <b>{tally()[s]}</b> {STATE_LABEL[s].toLowerCase()}
+                when={card.summary}
+                fallback={
+                  // No summary yet: the tab stays visible, drawn from its
+                  // command/cwd, with the engine's next-attempt hint.
+                  <li class="dashboard-card dashboard-card-pending" data-state="pending">
+                    <div class="dashboard-card-head">
+                      <span class="dashboard-card-dot" title="Starting" />
+                      <span class="dashboard-card-head-right">
+                        <Show when={summarizingSids().has(card.tab.sid)}>
+                          <span class="dashboard-tab-summarizing" title="Summarizing…" />
+                        </Show>
+                        <span class="dashboard-card-age">{pendingHint()}</span>
+                        {refreshButton(card.tab.sid)}
                       </span>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
-            <Show
-              when={cards().length > 0}
-              fallback={<p class="dashboard-pane-hint">No open terminal tabs.</p>}
-            >
-              <ul class="dashboard-tab-list">
-                <For each={cards()}>
-                  {(card) => (
-                    <Show
-                      when={card.summary}
-                      fallback={
-                        // No summary yet: the tab is still visible, drawn from
-                        // its command/cwd, so the user always sees every tab.
-                        <li
-                          class="dashboard-tab-card dashboard-tab-card-pending"
-                          data-state="pending"
-                        >
-                          <div class="dashboard-tab-card-head">
-                            <span class="dashboard-tab-state" data-state="pending">
-                              <span class="dashboard-tab-state-dot" />
-                              Starting
-                            </span>
-                            <span class="dashboard-tab-card-meta">
-                              <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
-                              {/* Tiny live cue while this card's first summary is
-                                  in flight — the card itself stays "Starting". */}
-                              <Show when={summarizingSids().has(card.tab.sid)}>
-                                <span class="dashboard-tab-summarizing" title="Summarizing…" />
-                              </Show>
-                              <span class="dashboard-tab-card-time">{pendingTimeText()}</span>
-                              {refreshButton(card.tab.sid)}
-                            </span>
-                          </div>
-                          <div class="dashboard-tab-card-title">{tabLabel(card.tab)}</div>
-                          <ul class="dashboard-tab-card-context">
-                            <li>Directory: {card.tab.cwd}</li>
-                            <li>
-                              Waiting for first agent output (a submitted prompt or finished turn).
-                            </li>
-                          </ul>
-                        </li>
-                      }
-                    >
-                      {(summary) => (
-                        <li class="dashboard-tab-card" data-state={summary().state}>
-                          <div class="dashboard-tab-card-head">
-                            <span class="dashboard-tab-state" data-state={summary().state}>
-                              <span class="dashboard-tab-state-dot" />
-                              {STATE_LABEL[summary().state]}
-                            </span>
-                            <span class="dashboard-tab-card-meta">
-                              <span class="dashboard-tab-agent">{agentName(card.tab)}</span>
-                              {/* Tiny live cue while this card's summary refreshes —
-                                  state badge + colour stay the card's real state. */}
-                              <Show when={summarizingSids().has(summary().sid)}>
-                                <span class="dashboard-tab-summarizing" title="Summarizing…" />
+                    </div>
+                    <div class="dashboard-card-title-row">
+                      <div class="dashboard-card-title" title={tabLabel(card.tab)}>
+                        {tabLabel(card.tab)}
+                      </div>
+                      <span class="dashboard-card-activity" data-activity="idle">
+                        Starting
+                      </span>
+                    </div>
+                    <Show when={dirName(card.tab)}>
+                      <div class="dashboard-card-breadcrumb">
+                        <span class="dashboard-card-crumb is-mono" title={card.tab.cwd}>
+                          {dirName(card.tab)}
+                        </span>
+                      </div>
+                    </Show>
+                    <p class="dashboard-card-subtitle">
+                      Waiting for first agent output (a submitted prompt or finished turn).
+                    </p>
+                  </li>
+                }
+              >
+                {(summary) => (
+                  <li class="dashboard-card" data-state={summary().state}>
+                    <div class="dashboard-card-head">
+                      <span
+                        class="dashboard-card-dot"
+                        data-state={summary().state}
+                        title={STATE_LABEL[summary().state]}
+                      />
+                      <span class="dashboard-card-head-right">
+                        <Show when={summarizingSids().has(summary().sid)}>
+                          <span class="dashboard-tab-summarizing" title="Summarizing…" />
+                        </Show>
+                        <span class="dashboard-card-age" title={fmtTime(summary().updatedAt)}>
+                          {fmtAge(summary().updatedAt)}
+                        </span>
+                        {refreshButton(summary().sid)}
+                      </span>
+                    </div>
+
+                    <div class="dashboard-card-title-row">
+                      <div class="dashboard-card-title" title={summary().title}>
+                        {summary().title}
+                      </div>
+                      <span class="dashboard-card-activity" data-activity={summary().activity}>
+                        {ACTIVITY_LABEL[summary().activity]}
+                      </span>
+                    </div>
+
+                    <Show when={breadcrumb(summary()).length > 0}>
+                      <div class="dashboard-card-breadcrumb">
+                        <For each={breadcrumb(summary())}>
+                          {(crumb, index) => (
+                            <>
+                              <Show when={index() > 0}>
+                                <span class="dashboard-card-crumb-sep">›</span>
                               </Show>
                               <span
-                                class="dashboard-tab-card-time"
-                                title={fmtTime(summary().updatedAt)}
+                                class="dashboard-card-crumb"
+                                classList={{ 'is-mono': !!crumb.mono }}
+                                title={crumb.full ?? crumb.text}
                               >
-                                {fmtRelative(summary().updatedAt)}
+                                {crumb.text}
+                                <Show when={crumb.extra}>
+                                  <span class="dashboard-card-crumb-more" title={crumb.extraTitle}>
+                                    {crumb.extra}
+                                  </span>
+                                </Show>
                               </span>
-                              {refreshButton(card.tab.sid)}
-                            </span>
-                          </div>
-                          <div class="dashboard-tab-card-title">{summary().title}</div>
-                          <Show when={cardAction(summary())}>
-                            <p class="dashboard-tab-card-action" data-state={summary().state}>
-                              {cardAction(summary())}
-                            </p>
-                          </Show>
-                          <Show when={summary().contextLines.length > 0}>
-                            <ul class="dashboard-tab-card-context">
-                              <For each={summary().contextLines}>{(line) => <li>{line}</li>}</For>
-                            </ul>
-                          </Show>
-                          <Show when={summary().events.length > 0}>
-                            <details class="dashboard-tab-card-events">
-                              <summary>Recent events</summary>
-                              <ul>
-                                <For each={[...summary().events].reverse()}>
-                                  {(ev) => (
-                                    <li>
-                                      <span class="dashboard-event-time">{fmtTime(ev.at)}</span>{' '}
-                                      {ev.text}
-                                    </li>
-                                  )}
-                                </For>
-                              </ul>
-                            </details>
-                          </Show>
-                        </li>
-                      )}
+                            </>
+                          )}
+                        </For>
+                      </div>
                     </Show>
-                  )}
-                </For>
-              </ul>
-            </Show>
-          </section>
-        </main>
-      </div>
 
-      <Show when={state()?.updatedAt}>
-        <footer class="dashboard-pane-footer">Updated {fmtTime(state()!.updatedAt)}</footer>
+                    <Show when={summary().subtitle}>
+                      <p class="dashboard-card-subtitle">{summary().subtitle}</p>
+                    </Show>
+
+                    {/* An awaiting tab's blocking question — a tinted callout so it
+                        pulls the eye and reads as actionable. */}
+                    <Show when={summary().state === 'awaiting' && summary().awaitingPrompt}>
+                      <p class="dashboard-card-awaiting">{summary().awaitingPrompt}</p>
+                    </Show>
+
+                    {/* Recent actions: up to four events, most recent first, with
+                        relative timestamps — a visible feed, not a collapsed disclosure. */}
+                    <Show when={summary().events.length > 0}>
+                      <ul class="dashboard-card-actions">
+                        <For each={[...summary().events].reverse().slice(0, 4)}>
+                          {(ev) => (
+                            <li>
+                              <span class="dashboard-card-action-time" title={fmtTime(ev.at)}>
+                                {fmtAge(ev.at)}
+                              </span>
+                              <span class="dashboard-card-action-text">{ev.text}</span>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                    </Show>
+                  </li>
+                )}
+              </Show>
+            )}
+          </For>
+        </ul>
       </Show>
     </div>
   );

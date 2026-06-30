@@ -22,14 +22,21 @@ import {
   getSummarizerError,
   makeEvent,
   summarizeTab,
-  synthesizeOverview,
+  writeSubtitle,
 } from './summarizer';
+import { deriveProvenance } from './provenance';
 
 /** Base poll interval. Each tick re-reads config (cheap, like the task
- *  scheduler) and runs only when the resolved `intervalSec` has elapsed AND a
- *  tab changed — so settings edits (enable, key, cadence) take effect within
- *  one tick without a restart. */
+ *  scheduler) and refreshes exactly the tabs whose own per-tab clock is due AND
+ *  whose activity gate passes — so settings edits (enable, key, cadence) take
+ *  effect within one tick without a restart. */
 const TICK_MS = 15_000;
+
+/** Per-tab jitter window. A tab's reschedule is `now + intervalMs + jitter`,
+ *  where `jitter ∈ [0, JITTER_WINDOW_MS)` is fixed per sid — wide enough (one
+ *  tick) that tabs which would otherwise come due on the same tick desync and
+ *  stop hammering the LLM endpoint in lockstep. */
+const JITTER_WINDOW_MS = TICK_MS;
 
 interface Armed {
   path: string;
@@ -38,8 +45,16 @@ interface Armed {
 
 let current: Armed | null = null;
 let state: DashboardState = emptyDashboardState(0);
-/** Per-sid `bytesSeen` captured at the last actual run — the growth gate. */
+/** Per-sid `bytesSeen` captured at each tab's last summarize attempt — the
+ *  per-tab growth gate baseline. */
 let prevBytes = new Map<string, number>();
+/** Per-sid next-refresh timestamp (epoch ms). A sid with no entry is treated as
+ *  due immediately, so a freshly-opened tab gets its first summary promptly;
+ *  after each attempt the clock is set to `now + intervalMs + jitter`. */
+let nextDueAt = new Map<string, number>();
+/** Per-sid fixed jitter offset, assigned on first sight, in `[0, JITTER_WINDOW_MS)`. */
+let jitterBySid = new Map<string, number>();
+/** Epoch ms of the last tick that actually summarized a tab — engine status only. */
 let lastRunAt = 0;
 let inFlight = false;
 
@@ -86,6 +101,8 @@ export async function setDashboardConception(conceptionPath: string | null): Pro
     current = null;
   }
   prevBytes = new Map();
+  nextDueAt = new Map();
+  jitterBySid = new Map();
   lastRunAt = 0;
   inFlight = false;
   state = emptyDashboardState(0);
@@ -133,6 +150,37 @@ function rosterChanged(before: TabInfo[], after: TabInfo[]): boolean {
   if (before.length !== after.length) return true;
   const sids = new Set(before.map((tab) => tab.sid));
   return after.some((tab) => !sids.has(tab.sid));
+}
+
+/** Fixed per-tab jitter offset, assigned lazily on first sight. */
+function jitterFor(sid: string): number {
+  let jitter = jitterBySid.get(sid);
+  if (jitter === undefined) {
+    jitter = Math.floor(Math.random() * JITTER_WINDOW_MS);
+    jitterBySid.set(sid, jitter);
+  }
+  return jitter;
+}
+
+/** Drop scheduler bookkeeping for sids that are no longer live, so a closed
+ *  tab's clock / byte baseline / jitter doesn't linger or leak. */
+function pruneSchedulerMaps(liveSids: Set<string>): void {
+  for (const sid of [...prevBytes.keys()]) if (!liveSids.has(sid)) prevBytes.delete(sid);
+  for (const sid of [...nextDueAt.keys()]) if (!liveSids.has(sid)) nextDueAt.delete(sid);
+  for (const sid of [...jitterBySid.keys()]) if (!liveSids.has(sid)) jitterBySid.delete(sid);
+}
+
+/** Earliest next-refresh time across the live tabs — drives the engine-status
+ *  countdown. A sid with no clock yet (brand new) counts as one interval out so
+ *  the ETA never reports a stale "due now". Returns `now + intervalMs` when no
+ *  tab is open. */
+function earliestDue(now: number, liveSids: Set<string>, intervalMs: number): number {
+  let min = Infinity;
+  for (const sid of liveSids) {
+    const due = nextDueAt.get(sid) ?? now + intervalMs;
+    if (due < min) min = due;
+  }
+  return min === Infinity ? now + intervalMs : min;
 }
 
 /** A `working` tab that has produced no new output for this many summarize
@@ -186,20 +234,25 @@ export function decayStaleWorkingTabs(
 }
 
 /**
- * Run one tab through the summarizer and fold the result into a TabSummary,
- * carrying the prior summary's event history and appending an event when the
- * current action changes. Returns null when the tab has no readable recent
- * output or the model declines — the caller leaves any prior summary in place.
- * Shared by the scheduled cycle and the per-card `refreshTab`.
+ * Run one tab through the summarizer and fold the result into a TabSummary:
+ * the cheap card model extracts the facts + activity, local provenance is
+ * derived (app / worktree / projects), and the writer model composes the
+ * subtitle from both. Carries the prior summary's event history and appends an
+ * event when the current action changes. Returns null when the tab has no
+ * readable recent output or the card model declines — the caller leaves any
+ * prior summary in place. Shared by the scheduled cycle and the per-card
+ * `refreshTab`.
  *
  * @param config Resolved dashboard config (provider / key / model).
- * @param tabMeta The tab's identity (sid, cmd, cwd) from the roster.
+ * @param conceptionPath The active conception root, for provenance derivation.
+ * @param tabMeta The tab's identity (sid, cmd, cwd, repo) from the roster.
  * @param prior The tab's existing summary, if any.
  * @param now Epoch ms stamped onto the summary and any new event.
  * @returns The new summary, or null when nothing could be summarized.
  */
 async function buildSummary(
   config: DashboardConfig,
+  conceptionPath: string,
   tabMeta: TabInfo,
   prior: TabSummary | undefined,
   now: number,
@@ -214,6 +267,20 @@ async function buildSummary(
     prior,
   });
   if (!result) return null;
+  // Provenance is local (no LLM): config + tree reads, fed to the writer for the
+  // subtitle and attached to the card for the UI pills.
+  const provenance = await deriveProvenance(conceptionPath, tabMeta);
+  const subtitle = await writeSubtitle(
+    config,
+    {
+      title: result.title,
+      currentAction: result.currentAction,
+      contextLines: result.contextLines,
+      activity: result.activity,
+      state: result.state,
+    },
+    provenance,
+  );
   const events = prior ? [...prior.events] : [];
   // Record an event whenever the "current action" changes — the rolling history
   // of what the tab has done over time.
@@ -223,19 +290,27 @@ async function buildSummary(
   return {
     sid: tabMeta.sid,
     title: result.title,
+    subtitle,
     contextLines: result.contextLines,
     currentAction: result.currentAction,
     state: result.state,
+    activity: result.activity,
     ...(result.awaitingPrompt ? { awaitingPrompt: result.awaitingPrompt } : {}),
+    ...(provenance.app ? { app: provenance.app } : {}),
+    ...(provenance.worktree ? { worktree: provenance.worktree } : {}),
+    ...(provenance.projects && provenance.projects.length > 0
+      ? { projects: provenance.projects }
+      : {}),
     updatedAt: now,
     events,
   };
 }
 
-/** One dashboard cycle: refresh the open-tab roster, then (when enabled, keyed,
- *  and due) summarize the changed tabs and synthesize the cross-tab overview.
- *  A no-op when not armed for `conceptionPath`, already in flight, disabled, or
- *  the config read throws. Exported for unit testing. */
+/** One dashboard tick: refresh the open-tab roster, decay stale cards, then
+ *  (when enabled and keyed) summarize exactly the tabs whose own per-tab clock
+ *  is due and whose activity gate passes. A no-op when not armed for
+ *  `conceptionPath`, already in flight, disabled, or the config read throws.
+ *  Exported for unit testing. */
 export async function tick(conceptionPath: string): Promise<void> {
   if (current?.path !== conceptionPath || inFlight) return;
   // Read config inside a guard: a malformed `.condash/settings.json` makes the
@@ -259,6 +334,8 @@ export async function tick(conceptionPath: string): Promise<void> {
   // not agent tabs and must not inflate the count or appear as idle cards (#366).
   const roster = dashboardRoster();
   const liveSids = new Set(roster.map((tab) => tab.sid));
+  // Retire scheduler bookkeeping for closed tabs (clock / baseline / jitter).
+  pruneSchedulerMaps(liveSids);
   // Drop summaries for closed tabs every tick — no LLM, no API key, independent
   // of the summarize gate — so a closed tab's working/idle tally entry (and any
   // stuck status badge) comes off immediately instead of lingering until the next
@@ -281,73 +358,91 @@ export async function tick(conceptionPath: string): Promise<void> {
 
   const now = Date.now();
   const intervalMs = config.intervalSec * 1000;
-  if (now - lastRunAt < intervalMs) {
-    // Counting down to the next cycle.
-    publishEngine({ phase: restingPhase, nextRunAt: lastRunAt + intervalMs, lastRunAt });
-    return;
-  }
-
-  const meta = new Map(roster.map((tab) => [tab.sid, tab]));
   const bytes = tabsBytes();
-  // Tabs whose byte count moved since the last run (new tabs read as updated —
-  // no prior snapshot). A tab that closed since the last run still forces a cycle
-  // so the cross-tab overview drops it even with no byte growth — detected from
-  // last run's sid snapshot (`prevBytes`), which survives the per-tick tab prune
-  // above (where `state.tabs` is already pruned, so it can't carry the signal).
-  const updated = [...liveSids].filter((sid) => bytes.get(sid) !== prevBytes.get(sid));
-  const removed = [...prevBytes.keys()].some((sid) => !liveSids.has(sid));
 
   // Retire any `working` tab that has gone silent past the grace window to
-  // `idle` (no LLM call) before the gate can hold the cycle — otherwise a
-  // finished-but-quiet tab is never re-summarized and stays frozen on its last
-  // `working` badge. Runs every due tick regardless of the gate, since a quiet
-  // tab is never in `updated` and so is never refreshed by the summarize loop.
+  // `idle` (no LLM call) — otherwise a finished-but-quiet tab, never in the
+  // due+grown set, is never re-summarized and stays frozen on its last
+  // `working` badge. Runs every tick regardless of dueness or the gate.
   const decayed = decayStaleWorkingTabs(state.tabs, bytes, prevBytes, now, intervalMs);
   if (decayed !== state.tabs) {
     state = { ...state, tabs: decayed };
     pushState();
   }
 
-  if (config.gateOnActivity && updated.length === 0 && !removed) {
-    // Due, but nothing changed — the activity gate holds the cycle. Re-window the
-    // ETA so the pane keeps counting down (alive) instead of sitting at "due now".
-    publishEngine({ phase: restingPhase, nextRunAt: now + intervalMs, lastRunAt });
+  // Tabs whose own clock is due this tick (no entry ⇒ due immediately).
+  const dueSids = roster.map((tab) => tab.sid).filter((sid) => (nextDueAt.get(sid) ?? 0) <= now);
+  if (dueSids.length === 0) {
+    publishEngine({
+      phase: restingPhase,
+      nextRunAt: earliestDue(now, liveSids, intervalMs),
+      lastRunAt,
+    });
+    return;
+  }
+
+  // Per-tab activity gate: a due tab summarizes when the gate is off or its
+  // bytes grew since its own last attempt.
+  const gatePass = (sid: string): boolean =>
+    !config.gateOnActivity || bytes.get(sid) !== prevBytes.get(sid);
+  const toSummarize = dueSids.filter(gatePass);
+
+  // Re-window a due-but-gated tab (no LLM): it waits one more interval, its byte
+  // baseline left intact so activity since its last attempt still trips the gate.
+  for (const sid of dueSids) {
+    if (!toSummarize.includes(sid)) nextDueAt.set(sid, now + intervalMs + jitterFor(sid));
+  }
+
+  if (toSummarize.length === 0) {
+    // Every due tab is gate-held — nothing to summarize this tick.
+    publishEngine({
+      phase: restingPhase,
+      nextRunAt: earliestDue(now, liveSids, intervalMs),
+      lastRunAt,
+    });
     return;
   }
 
   inFlight = true;
   lastRunAt = now;
-  // Snapshot only the dashboard's own (my-side) live sids: the next cycle reads
-  // this both to gate on byte growth and to detect a tab that closed since this
-  // run, so it must not carry code-side dev-server sids that would read as
-  // perpetually "removed".
-  prevBytes = new Map([...liveSids].map((sid) => [sid, bytes.get(sid) ?? 0]));
+  // Advance the clock + byte baseline for each tab we will summarize. The
+  // baseline moves only on an actual attempt, so a not-yet-due tab's growth is
+  // still detected when its own clock comes due.
+  for (const sid of toSummarize) {
+    nextDueAt.set(sid, now + intervalMs + jitterFor(sid));
+    prevBytes.set(sid, bytes.get(sid) ?? 0);
+  }
   clearSummarizerError();
   // Enter the summarizing window: publish the phase AND the set of tabs being
-  // recomputed this cycle, so the renderer can badge exactly those cards
+  // recomputed this tick, so the renderer can badge exactly those cards
   // "Summarizing" while their LLM call is in flight. A direct push (not
   // publishEngine) because the per-tab overlay rides alongside the phase change.
   state = {
     ...state,
-    engine: { phase: 'summarizing', nextRunAt: now + intervalMs, lastRunAt: now },
-    summarizingSids: updated,
+    engine: {
+      phase: 'summarizing',
+      nextRunAt: earliestDue(now, liveSids, intervalMs),
+      lastRunAt: now,
+    },
+    summarizingSids: toSummarize,
   };
   pushState();
   try {
+    const meta = new Map(roster.map((tab) => [tab.sid, tab]));
     const priorBySid = new Map(state.tabs.map((tab) => [tab.sid, tab]));
     // Carry forward summaries for still-live tabs; drop the closed ones.
     const nextTabs: TabSummary[] = state.tabs.filter((tab) => liveSids.has(tab.sid));
     const indexOf = (sid: string): number => nextTabs.findIndex((tab) => tab.sid === sid);
 
-    // Summarize the changed tabs concurrently — each is an independent, tool-free
-    // HTTP completion, so a board of N tabs costs ~one call's latency instead of
-    // N in series (the dominant win once per-tab reasoning is off). Results are
-    // folded in `updated` order so placement stays deterministic.
+    // Summarize the due tabs concurrently — each is an independent, tool-free
+    // pair of HTTP completions (card + subtitle), so a board of N tabs costs
+    // ~one tab's latency instead of N in series. Folded in `toSummarize` order
+    // so placement stays deterministic.
     const built = await Promise.all(
-      updated.map((sid) => {
+      toSummarize.map((sid) => {
         const tabMeta = meta.get(sid);
         if (!tabMeta) return Promise.resolve(null);
-        return buildSummary(config, tabMeta, priorBySid.get(sid), now);
+        return buildSummary(config, conceptionPath, tabMeta, priorBySid.get(sid), now);
       }),
     );
     for (const summary of built) {
@@ -357,31 +452,18 @@ export async function tick(conceptionPath: string): Promise<void> {
       else nextTabs.push(summary);
     }
 
-    let overview = state.overview;
-    let globalWork = state.globalWork;
-    let history = state.history;
-    if (nextTabs.length === 0) {
-      overview = [];
-      globalWork = undefined;
-    } else {
-      const synthesized = await synthesizeOverview(config, nextTabs);
-      if (synthesized) {
-        overview = synthesized.overview;
-        globalWork = synthesized.globalWork || undefined;
-        history = [...history, ...synthesized.events.map((text) => makeEvent(text, now))];
-      }
-    }
-
     state = pruneDashboardState(
       {
         updatedAt: now,
-        globalWork,
-        overview,
         tabs: nextTabs,
         roster,
-        history,
-        // Cycle done — back to resting, counting down to the next one.
-        engine: { phase: restingPhase, nextRunAt: now + intervalMs, lastRunAt: now },
+        history: state.history,
+        // Tick done — back to resting, counting down to the next due tab.
+        engine: {
+          phase: restingPhase,
+          nextRunAt: earliestDue(now, liveSids, intervalMs),
+          lastRunAt: now,
+        },
         // Window closed — drop the transient per-tab summarizing overlay.
         summarizingSids: [],
         lastError: getSummarizerError() ?? undefined,
@@ -391,7 +473,7 @@ export async function tick(conceptionPath: string): Promise<void> {
     // Push the freshly computed state to the renderer FIRST, then persist.
     // Persistence is a best-effort next-launch seed; a save failure must never
     // suppress the live UI update. The previous order (save, then push) meant a
-    // throwing save skipped the push entirely — so every summary, overview and
+    // throwing save skipped the push entirely — so every summary and the
     // resting-phase reset was computed but never reached the pane.
     pushState();
     try {
@@ -418,7 +500,7 @@ export async function tick(conceptionPath: string): Promise<void> {
  * can refresh a card whose status looks stale on demand. A no-op when the engine
  * isn't armed for an enabled, keyed conception, a cycle is already in flight, the
  * sid isn't a live tab, or the tab has no readable output yet. Refreshes only
- * that card; the cross-tab overview refreshes on the next scheduled cycle.
+ * that card and pushes its per-tab clock a full interval out.
  *
  * @param sid The tab to refresh.
  */
@@ -443,12 +525,14 @@ export async function refreshTab(sid: string): Promise<void> {
   pushState();
   try {
     const prior = state.tabs.find((tab) => tab.sid === sid);
-    const summary = await buildSummary(config, tabMeta, prior, now);
+    const summary = await buildSummary(config, armed.path, tabMeta, prior, now);
     if (summary) {
       const others = state.tabs.filter((tab) => tab.sid !== sid);
-      // Bank this sid's byte count so the next scheduled cycle's growth gate
-      // doesn't redundantly re-summarize a tab the user just refreshed.
+      // Bank this sid's byte count and push its clock a full interval out so the
+      // next scheduled cycle's growth gate doesn't redundantly re-summarize a tab
+      // the user just refreshed.
       prevBytes.set(sid, tabsBytes().get(sid) ?? prevBytes.get(sid) ?? 0);
+      nextDueAt.set(sid, now + config.intervalSec * 1000 + jitterFor(sid));
       state = {
         ...state,
         tabs: [...others, summary],

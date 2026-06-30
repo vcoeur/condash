@@ -15,16 +15,17 @@ function stateWith(eventCount: number): DashboardState {
   const events = Array.from({ length: eventCount }, (_, i) => ({ at: i, text: `e${i}` }));
   return {
     updatedAt: 100,
-    overview: ['doing things'],
     history: events,
     roster: [{ sid: 't-1', cwd: '/work' }],
     tabs: [
       {
         sid: 't-1',
         title: 'build',
+        subtitle: 'Building the thing',
         contextLines: ['ctx'],
         currentAction: 'compiling',
         state: 'idle',
+        activity: 'implementing',
         updatedAt: 100,
         events,
       },
@@ -56,7 +57,6 @@ describe('emptyDashboardState', () => {
   it('produces an empty state stamped with the given time', () => {
     expect(emptyDashboardState(42)).toEqual({
       updatedAt: 42,
-      overview: [],
       tabs: [],
       roster: [],
       history: [],
@@ -89,7 +89,6 @@ describe('loadDashboardState', () => {
       path,
       JSON.stringify({
         updatedAt: 5,
-        overview: ['busy'],
         history: [],
         roster: [{ sid: 'gone', cwd: '/old' }],
         // Stale liveness from the previous run — must be dropped on load.
@@ -110,28 +109,45 @@ describe('loadDashboardState', () => {
     expect(loaded?.roster).toEqual([]);
     expect(loaded?.engine).toBeUndefined();
     expect(loaded?.tabs.map((tab) => tab.sid)).toEqual(['t-1']);
-    // A pre-`state` persisted summary backfills to 'idle' on load.
+    // A pre-redesign persisted summary backfills its new fields on load.
     expect(loaded?.tabs[0]?.state).toBe('idle');
-    // A pre-two-level state has no Level-1 headline — it loads as absent.
-    expect(loaded?.globalWork).toBeUndefined();
+    expect(loaded?.tabs[0]?.activity).toBe('idle');
+    expect(loaded?.tabs[0]?.subtitle).toBe('');
   });
 
-  it('round-trips the Level-1 globalWork headline when present', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-gw-'));
+  it('round-trips the redesign tab fields (subtitle, activity, provenance) when present', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'condash-dash-fields-'));
     await mkdir(join(dir, '.condash', 'dashboard'), { recursive: true });
     await writeFile(
       dashboardStatePath(dir),
       JSON.stringify({
         updatedAt: 5,
-        globalWork: 'Shipping the dashboard summarizer',
-        overview: ['detail one', 'detail two'],
         history: [],
         roster: [],
-        tabs: [],
+        tabs: [
+          {
+            sid: 't-1',
+            title: 'redesign',
+            subtitle: 'Shipping the dashboard redesign',
+            contextLines: [],
+            currentAction: 'editing',
+            state: 'working',
+            activity: 'implementing',
+            app: 'condash',
+            worktree: 'dashboard-redesign',
+            projects: [{ slug: 's', title: 'Redesign' }],
+            updatedAt: 5,
+            events: [],
+          },
+        ],
       }),
     );
     const loaded = await loadDashboardState(dir);
-    expect(loaded?.globalWork).toBe('Shipping the dashboard summarizer');
-    expect(loaded?.overview).toEqual(['detail one', 'detail two']);
+    const tab = loaded?.tabs[0];
+    expect(tab?.subtitle).toBe('Shipping the dashboard redesign');
+    expect(tab?.activity).toBe('implementing');
+    expect(tab?.app).toBe('condash');
+    expect(tab?.worktree).toBe('dashboard-redesign');
+    expect(tab?.projects).toEqual([{ slug: 's', title: 'Redesign' }]);
   });
 });

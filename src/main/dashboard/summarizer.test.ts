@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCompletionBody,
-  buildOverviewUserPrompt,
+  buildSubtitleUserPrompt,
   buildTabUserPrompt,
-  parseOverview,
+  parseSubtitle,
   parseTabSummary,
   withTimeout,
 } from './summarizer';
 
 describe('parseTabSummary', () => {
-  it('parses a clean JSON object and defaults a missing state to idle', () => {
+  it('parses a clean JSON object and defaults a missing state + activity to idle', () => {
     const reply = JSON.stringify({
       title: 'running tests',
       contextLines: ['vitest watch in condash', 'all green so far'],
@@ -20,6 +20,7 @@ describe('parseTabSummary', () => {
       contextLines: ['vitest watch in condash', 'all green so far'],
       currentAction: 'waiting for file changes',
       state: 'idle',
+      activity: 'idle',
     });
   });
 
@@ -29,11 +30,23 @@ describe('parseTabSummary', () => {
       contextLines: [],
       currentAction: 'asking to overwrite',
       state: 'awaiting',
+      activity: 'awaiting',
       awaitingPrompt: 'Overwrite state.json? (y/n)',
     });
     const parsed = parseTabSummary(reply);
     expect(parsed?.state).toBe('awaiting');
     expect(parsed?.awaitingPrompt).toBe('Overwrite state.json? (y/n)');
+  });
+
+  it('keeps a valid activity and defaults an unrecognised one to idle', () => {
+    const ok = parseTabSummary(
+      JSON.stringify({ title: 't', contextLines: [], currentAction: 'x', activity: 'making-pr' }),
+    );
+    expect(ok?.activity).toBe('making-pr');
+    const bad = parseTabSummary(
+      JSON.stringify({ title: 't', contextLines: [], currentAction: 'x', activity: 'vibing' }),
+    );
+    expect(bad?.activity).toBe('idle');
   });
 
   it('defaults an unrecognised state to idle and drops a non-awaiting awaitingPrompt', () => {
@@ -51,9 +64,10 @@ describe('parseTabSummary', () => {
 
   it('recovers JSON wrapped in prose / a markdown fence', () => {
     const reply =
-      'Sure!\n```json\n{"title":"build","contextLines":[],"currentAction":"compiling","state":"working"}\n```';
+      'Sure!\n```json\n{"title":"build","contextLines":[],"currentAction":"compiling","state":"working","activity":"implementing"}\n```';
     expect(parseTabSummary(reply)?.title).toBe('build');
     expect(parseTabSummary(reply)?.state).toBe('working');
+    expect(parseTabSummary(reply)?.activity).toBe('implementing');
   });
 
   it('clamps an overlong title to a few words and drops blank context lines', () => {
@@ -74,32 +88,26 @@ describe('parseTabSummary', () => {
   });
 });
 
-describe('parseOverview', () => {
-  it('parses globalWork (Level 1) + overview (Level 2) + events', () => {
-    const reply = JSON.stringify({
-      globalWork: 'shipping the condash dashboard summarizer',
-      overview: ['building condash', 'tests passing'],
-      events: ['PR opened'],
-    });
-    expect(parseOverview(reply)).toEqual({
-      globalWork: 'shipping the condash dashboard summarizer',
-      overview: ['building condash', 'tests passing'],
-      events: ['PR opened'],
-    });
+describe('parseSubtitle', () => {
+  it('extracts the subtitle sentence from a JSON reply', () => {
+    expect(parseSubtitle('{"subtitle": "Shipping the dashboard redesign for condash"}')).toBe(
+      'Shipping the dashboard redesign for condash',
+    );
   });
 
-  it('defaults globalWork + events to empty and caps overview length', () => {
-    const reply = JSON.stringify({ overview: ['a', 'b', 'c', 'd', 'e', 'f'] });
-    const parsed = parseOverview(reply);
-    expect(parsed?.globalWork).toBe('');
-    expect(parsed?.events).toEqual([]);
-    expect(parsed?.overview).toHaveLength(5);
+  it('recovers a subtitle wrapped in a markdown fence', () => {
+    expect(parseSubtitle('```json\n{"subtitle":"Refactoring auth"}\n```')).toBe('Refactoring auth');
   });
 
-  it('returns null when overview is empty or missing, even with a globalWork', () => {
-    expect(parseOverview('{"overview":[]}')).toBeNull();
-    expect(parseOverview('{"globalWork":"x","overview":[]}')).toBeNull();
-    expect(parseOverview('garbage')).toBeNull();
+  it('clamps an overlong subtitle to 140 chars', () => {
+    const long = 'x'.repeat(300);
+    expect(parseSubtitle(JSON.stringify({ subtitle: long })).length).toBe(140);
+  });
+
+  it('returns empty string for a missing or non-string subtitle', () => {
+    expect(parseSubtitle('{"subtitle": 5}')).toBe('');
+    expect(parseSubtitle('garbage')).toBe('');
+    expect(parseSubtitle('{}')).toBe('');
   });
 });
 
@@ -133,9 +141,11 @@ describe('buildTabUserPrompt redacts secrets before they reach the prompt', () =
       prior: {
         sid: 's1',
         title: 'deploy',
+        subtitle: '',
         contextLines: ['key sk-AbCdEf0123456789ZyXwVuTs leaked earlier'],
         currentAction: 'waiting',
         state: 'idle',
+        activity: 'idle',
         updatedAt: 0,
         events: [],
       },
@@ -145,21 +155,28 @@ describe('buildTabUserPrompt redacts secrets before they reach the prompt', () =
   });
 });
 
-describe('buildOverviewUserPrompt redacts secrets in tab summaries', () => {
-  it('masks a secret in a tab title or current action', () => {
-    const prompt = buildOverviewUserPrompt([
+describe('buildSubtitleUserPrompt redacts secrets in the card facts + provenance', () => {
+  it('masks a secret in a context line or a project title', () => {
+    const prompt = buildSubtitleUserPrompt(
       {
-        sid: 's1',
         title: 'using sk-AbCdEf0123456789ZyXwVuTs',
-        contextLines: [],
         currentAction: 'idle',
+        contextLines: ['ran with sk-AbCdEf0123456789ZyXwVuTs'],
+        activity: 'idle',
         state: 'idle',
-        updatedAt: 0,
-        events: [],
       },
-    ]);
+      {
+        app: 'condash',
+        worktree: 'dashboard-redesign',
+        projects: [{ slug: 's', title: 'Redesign' }],
+      },
+    );
     expect(prompt).not.toContain('sk-AbCdEf0123456789ZyXwVuTs');
     expect(prompt).toContain('«redacted:api-key»');
+    // Provenance names pass through (no secret shapes).
+    expect(prompt).toContain('App: condash');
+    expect(prompt).toContain('Worktree/branch: dashboard-redesign');
+    expect(prompt).toContain('Project(s): Redesign');
   });
 });
 

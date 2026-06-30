@@ -7,9 +7,9 @@ export const DASHBOARD_DEFAULTS = {
   enabled: false,
   provider: 'deepseek' as const,
   // Two model tiers: a cheap, reasoning-off `model` extracts each tab's card from
-  // a wide window; a richer `writerModel` (reasoning on) synthesizes the cross-tab
-  // narrative. Validated against a week of real logs — see the conception project
-  // 2026-06-29-dashboard-summarizer-revamp.
+  // a wide window; a richer `writerModel` (reasoning on) composes each tab's
+  // one-sentence subtitle. Validated against a week of real logs — see the
+  // conception project 2026-06-29-dashboard-summarizer-revamp.
   model: 'deepseek-v4-flash',
   writerModel: 'deepseek-v4-pro',
   cardReasoning: false,
