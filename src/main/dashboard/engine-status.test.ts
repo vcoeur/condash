@@ -68,6 +68,7 @@ vi.mock('./state', async (importOriginal) => {
 import {
   DECAY_INTERVALS,
   decayStaleWorkingTabs,
+  forceWorkingOnUserTail,
   getDashboardState,
   refreshTab,
   setDashboardConception,
@@ -367,5 +368,80 @@ describe('decayStaleWorkingTabs', () => {
     const out = decayStaleWorkingTabs(tabs, bytes, prev, GRACE, INTERVAL);
     expect(out.find((t) => t.sid === 'quiet')?.state).toBe('idle');
     expect(out.find((t) => t.sid === 'busy')?.state).toBe('working');
+  });
+});
+
+describe('forceWorkingOnUserTail', () => {
+  /** A minimal card-model result fixture, overridable per case. */
+  function result(over: Partial<TabSummaryResult> = {}): TabSummaryResult {
+    return {
+      title: 't',
+      contextLines: [],
+      currentAction: 'doing',
+      state: 'idle',
+      activity: 'idle',
+      ...over,
+    };
+  }
+
+  // The conception-cleanup screenshot: the model called it `awaiting` while the
+  // transcript tail was the user's just-submitted request.
+  it('forces an awaiting result to working when the transcript tail is [user]', () => {
+    const recent = [
+      '[assistant] Pushed v4.55.1 and updated the knowledge file.',
+      '[user] remove isolate-0x3b662000-2259340-v8.log, and commit all conception',
+    ].join('\n\n');
+    const out = forceWorkingOnUserTail(
+      result({ state: 'awaiting', activity: 'awaiting', awaitingPrompt: 'Confirm? (y/n)' }),
+      recent,
+    );
+    expect(out.state).toBe('working');
+    expect(out.activity).toBe('implementing');
+    expect(out.awaitingPrompt).toBe('');
+  });
+
+  // The this-session screenshot: a single [user] frame, model called it idle.
+  it('forces an idle result to working when the transcript tail is [user]', () => {
+    const out = forceWorkingOnUserTail(
+      result({ state: 'idle', activity: 'idle' }),
+      '[user] dashboard is wrong, claude was working not waiting my input',
+    );
+    expect(out.state).toBe('working');
+    expect(out.activity).toBe('implementing');
+  });
+
+  it('keeps a concrete work activity when forcing (only awaiting/idle are lifted)', () => {
+    const out = forceWorkingOnUserTail(
+      result({ state: 'awaiting', activity: 'debugging' }),
+      '[user] please fix the failing test',
+    );
+    expect(out.state).toBe('working');
+    expect(out.activity).toBe('debugging');
+  });
+
+  it('leaves an [assistant] tail untouched (a finished reply stays idle)', () => {
+    const recent = [
+      '[user] summarize the diff',
+      '[assistant] Done — the change adds one guard and a test. Anything else?',
+    ].join('\n\n');
+    const out = forceWorkingOnUserTail(result({ state: 'idle', activity: 'idle' }), recent);
+    expect(out.state).toBe('idle');
+    expect(out.activity).toBe('idle');
+  });
+
+  it('preserves an error state even with a [user] tail', () => {
+    const out = forceWorkingOnUserTail(
+      result({ state: 'error', activity: 'idle' }),
+      '[user] run the build',
+    );
+    expect(out.state).toBe('error');
+  });
+
+  it('is a no-op on markerless grid text (no transcript)', () => {
+    const out = forceWorkingOnUserTail(
+      result({ state: 'idle', activity: 'idle' }),
+      'alice@host:~/src$ ls\nfoo  bar  baz',
+    );
+    expect(out.state).toBe('idle');
   });
 });
