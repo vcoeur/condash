@@ -78,7 +78,7 @@ export interface TabInput {
 }
 
 const MAX_RECENT_CHARS = 6000;
-const MAX_TITLE_WORDS = 6;
+const MAX_TITLE_WORDS = 7;
 const MAX_CONTEXT_LINES = 4;
 /** Hard ceiling on the writer-model subtitle (one sentence). */
 const MAX_SUBTITLE_CHARS = 140;
@@ -201,14 +201,24 @@ export function parseTabSummary(reply: string): TabSummaryResult | null {
   };
 }
 
-/** Parse the writer model's subtitle reply (a JSON object carrying one
- *  sentence), clamped to {@link MAX_SUBTITLE_CHARS}. Returns `''` when the reply
- *  has no usable `subtitle` string. Exported for unit testing. */
-export function parseSubtitle(reply: string): string {
+/** The writer tier's two reader-facing strings: a polished `title` (clamped to
+ *  {@link MAX_TITLE_WORDS}) and a `subtitle` (clamped to
+ *  {@link MAX_SUBTITLE_CHARS}). Either is `''` when the reply omits or garbles
+ *  it — the caller falls back to the cheap pre-pass's draft title. */
+export interface CardWriterResult {
+  title: string;
+  subtitle: string;
+}
+
+/** Parse the writer model's reply (a JSON object carrying a `title` and a
+ *  `subtitle`). Returns empty strings for any field the reply lacks, so the
+ *  caller can fall back. Exported for unit testing. */
+export function parseCardWriter(reply: string): CardWriterResult {
   const obj = extractJsonObject(reply);
-  if (typeof obj !== 'object' || obj === null) return '';
+  if (typeof obj !== 'object' || obj === null) return { title: '', subtitle: '' };
   const record = obj as Record<string, unknown>;
-  return clampChars(record.subtitle, MAX_SUBTITLE_CHARS);
+  const title = typeof record.title === 'string' ? clampWords(record.title, MAX_TITLE_WORDS) : '';
+  return { title, subtitle: clampChars(record.subtitle, MAX_SUBTITLE_CHARS) };
 }
 
 // Guardrails below were tuned against an eval of a week of real terminal logs on
@@ -280,12 +290,13 @@ const TAB_SYSTEM_PROMPT = [
   'stack trace and editing is debugging; an empty prompt after a finished reply is',
   'idle. Default to "idle" when unsure.',
   'Reply with ONLY a JSON object, no markdown fence:',
-  '{"title": string (<=5 words naming the work, project, or subject the tab is',
-  ' about — not the program; e.g. good "Auth refactor", bad "claude". Never derive',
-  ' the title from an example, suggestion, greeting, or placeholder the program',
-  ' prints on an empty prompt (e.g. a "Try \\"how do I…\\"" hint) — that is not work',
-  ' the tab did; when the tab has done no real work yet, title it by its program or',
-  ' directory name instead),',
+  '{"title": string (3 to 7 words naming the work, project, or subject the tab is',
+  ' about — not the program; specific and descriptive, not a single bare noun.',
+  ' Good: "Refactor auth token refresh", "Dashboard card-title model bake-off";',
+  ' too terse: "Auth", "Titles", "claude". Never derive the title from an example,',
+  ' suggestion, greeting, or placeholder the program prints on an empty prompt',
+  ' (e.g. a "Try \\"how do I…\\"" hint) — that is not work the tab did; when the tab',
+  ' has done no real work yet, title it by its program or directory name instead),',
   ' "contextLines": string[] (1-4 short factual lines: what this tab is for and recent progress),',
   ' "currentAction": string (one short line for the state: what is happening now,',
   ' the answer it awaits, or the final/idle state),',
@@ -296,18 +307,33 @@ const TAB_SYSTEM_PROMPT = [
   ' or selection it is blocking on, e.g. "Overwrite file? (y/n)"; omit otherwise)}.',
 ].join(' ');
 
-const SUBTITLE_SYSTEM_PROMPT = [
-  'You write ONE short sentence (at most 140 characters) describing the PURPOSE of',
-  'the work in a single terminal tab — the goal, not the command or tool.',
-  'You are given the card facts (title, current action, a few context lines, the',
-  'activity stage and state) and provenance (the app, the worktree/branch, and any',
+// The expensive "writer" tier composes BOTH reader-facing strings (title +
+// subtitle) from the facts the cheap pre-pass distilled — it never sees the raw
+// terminal output, so it cannot re-ground, only polish. The cheap pass still
+// emits a draft title (used as the fallback when this call empties or garbles),
+// so the card's most prominent field never depends on this pricier, occasionally
+// flaky call. The 3-7-word title guidance lives here because this is the tier
+// that owns the published title.
+const CARD_WRITER_SYSTEM_PROMPT = [
+  "You compose the two reader-facing strings on a terminal tab's dashboard card —",
+  'a TITLE and a SUBTITLE — from distilled facts a cheap pre-pass extracted from',
+  'the raw terminal output. You do NOT see the raw output; work only from the facts.',
+  'You are given a draft title, the current action, a few context lines, the',
+  'activity stage and state, and provenance (the app, the worktree/branch, and any',
   'conception project titles for that branch).',
-  'Name what the operator is trying to accomplish and why, weaving in the app and',
-  'project when they add context. Do not name the program (claude, opencode, git).',
-  'Do not invent facts beyond what you are given. Prefer the project title as the',
-  'goal when one is present.',
+  'TITLE: 3 to 7 words naming the work, project, or subject the tab is about — not',
+  'the program (never "claude"/"opencode"/"git"), specific and descriptive, not a',
+  'single bare noun. Good: "Refactor auth token refresh", "Dashboard card-title',
+  'model bake-off". Too terse: "Auth", "Titles". Improve on the draft title when the',
+  'facts let you; return the draft title unchanged when they do not.',
+  'SUBTITLE: ONE short sentence (at most 140 characters) describing the PURPOSE of',
+  'the work — the goal, not the command or tool. Name what the operator is trying to',
+  'accomplish and why, weaving in the app and project when they add context. Prefer',
+  'the project title as the goal when one is present.',
+  'Do not invent facts beyond what you are given. Do not name the program in either',
+  'field.',
   'Reply with ONLY a JSON object, no markdown fence:',
-  '{"subtitle": string (one sentence, <=140 chars, no trailing tool name)}.',
+  '{"title": string (3-7 words), "subtitle": string (one sentence, <=140 chars)}.',
 ].join(' ');
 
 /** Assemble the per-tab user prompt. Every field that carries captured terminal
@@ -341,15 +367,15 @@ export function buildTabUserPrompt(input: TabInput, maxChars: number = MAX_RECEN
   return lines.join('\n');
 }
 
-/** Assemble the per-tab subtitle user prompt from the card facts + provenance.
- *  Every captured-content field (title, action, context, plus the provenance
- *  names) is run through `redactSecrets` here — the single chokepoint before the
- *  text is POSTed — so nothing secret leaves the machine in clear text. The
- *  activity/state enums are model-derived and carry no captured content.
- *  Exported for unit testing. */
-export function buildSubtitleUserPrompt(facts: SubtitleInput, provenance: TabProvenance): string {
+/** Assemble the writer-tier user prompt (title + subtitle) from the card facts +
+ *  provenance. Every captured-content field (the draft title, action, context,
+ *  plus the provenance names) is run through `redactSecrets` here — the single
+ *  chokepoint before the text is POSTed — so nothing secret leaves the machine in
+ *  clear text. The activity/state enums are model-derived and carry no captured
+ *  content. Exported for unit testing. */
+export function buildWriterUserPrompt(facts: SubtitleInput, provenance: TabProvenance): string {
   const lines: string[] = [];
-  lines.push(`Title: ${redactSecrets(facts.title)}`);
+  lines.push(`Draft title (improve when the facts allow): ${redactSecrets(facts.title)}`);
   lines.push(`Activity: ${facts.activity} (state: ${facts.state})`);
   if (facts.currentAction) lines.push(`Current action: ${redactSecrets(facts.currentAction)}`);
   for (const line of facts.contextLines.slice(0, MAX_CONTEXT_LINES)) {
@@ -407,9 +433,20 @@ interface CompletionRequest {
   maxTokens: number;
 }
 
+/** Per-model sampling temperature. 0 (greedy) is the default: it keeps the
+ *  extraction/classification stable across the every-cycle re-summarize so a
+ *  card's title/state doesn't flicker when nothing changed. The opencode-go
+ *  gateway's Moonshot/kimi models are the exception — they reject any
+ *  temperature other than 1 ("HTTP 400 … only 1 is allowed for this model"), so
+ *  a hardcoded 0 silently 400s every cycle on them. Send 1 for those; 0 for
+ *  everything else. Exported for unit testing. */
+export function temperatureForModel(model: string): number {
+  return /kimi|moonshot/i.test(model) ? 1 : 0;
+}
+
 /** Build the OpenAI-compatible chat-completions request body. Pure + exported
  *  so the reasoning switch and message shape are unit-testable without a network
- *  call. `temperature: 0` keeps summaries stable across cycles. */
+ *  call. Temperature is per-model (see {@link temperatureForModel}). */
 export function buildCompletionBody(request: CompletionRequest): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: request.model,
@@ -417,7 +454,7 @@ export function buildCompletionBody(request: CompletionRequest): Record<string, 
       { role: 'system', content: request.system },
       { role: 'user', content: request.user },
     ],
-    temperature: 0,
+    temperature: temperatureForModel(request.model),
     max_tokens: request.maxTokens,
   };
   // DeepSeek-format reasoning kill switch. pi never emits this for v4 models
@@ -480,9 +517,11 @@ async function runCompletion(config: DashboardConfig, request: CompletionRequest
   }
 }
 
-/** Summarize one terminal tab with the cheap "card" model (reasoning off by
- *  default) over a wide window. Returns null when the model reply can't be parsed
- *  or the call fails — the engine then keeps the prior summary. */
+/** Pre-process one terminal tab with the cheap "card" model (reasoning off by
+ *  default) over a wide window: it reads the raw output and distils the facts —
+ *  `state`, `activity`, `contextLines`, `currentAction`, and a draft `title` the
+ *  writer tier polishes (and falls back to). Returns null when the model reply
+ *  can't be parsed or the call fails — the engine then keeps the prior summary. */
 export async function summarizeTab(
   config: DashboardConfig,
   input: TabInput,
@@ -505,30 +544,33 @@ export async function summarizeTab(
   }
 }
 
-/** Compose the per-tab subtitle from the card facts + provenance with the
- *  richer "writer" model (reasoning on by default). Returns `''` when the call
- *  fails or the reply has no usable sentence — the engine then leaves the tab's
- *  subtitle blank. */
-export async function writeSubtitle(
+/** Compose the per-tab title + subtitle from the card facts + provenance with
+ *  the richer "writer" model. Returns empty strings for either field when the
+ *  call fails or the reply garbles it — the engine then falls back to the cheap
+ *  pre-pass's draft title and leaves the subtitle blank. Reasoning defaults off:
+ *  a model bake-off found reasoning-on returns an empty reply on a non-trivial
+ *  fraction of calls, which is unacceptable now that this tier owns the published
+ *  title. */
+export async function writeCard(
   config: DashboardConfig,
   facts: SubtitleInput,
   provenance: TabProvenance,
-): Promise<string> {
+): Promise<CardWriterResult> {
   try {
     const reply = await runCompletion(config, {
       model: config.writerModel,
-      system: SUBTITLE_SYSTEM_PROMPT,
-      user: buildSubtitleUserPrompt(facts, provenance),
+      system: CARD_WRITER_SYSTEM_PROMPT,
+      user: buildWriterUserPrompt(facts, provenance),
       disableReasoning: !config.writerReasoning,
-      // A subtitle is one short sentence; reasoning still wants headroom (it
-      // counts against max_tokens) but far less than the old cross-tab narrative.
+      // Two short strings; reasoning still wants headroom (it counts against
+      // max_tokens) but far less than the old cross-tab narrative.
       maxTokens: config.writerReasoning ? 2000 : 500,
     });
-    return parseSubtitle(reply);
+    return parseCardWriter(reply);
   } catch (err) {
     lastError = (err as Error).message;
-    process.stderr.write(`condash dashboard: writeSubtitle failed: ${(err as Error).message}\n`);
-    return '';
+    process.stderr.write(`condash dashboard: writeCard failed: ${(err as Error).message}\n`);
+    return { title: '', subtitle: '' };
   }
 }
 

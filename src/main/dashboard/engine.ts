@@ -24,7 +24,7 @@ import {
   makeEvent,
   summarizeTab,
   type TabSummaryResult,
-  writeSubtitle,
+  writeCard,
 } from './summarizer';
 import { deriveProvenance } from './provenance';
 
@@ -270,12 +270,16 @@ export function forceWorkingOnUserTail(
 }
 
 /**
- * Run one tab through the summarizer and fold the result into a TabSummary:
- * the cheap card model extracts the facts + activity, local provenance is
- * derived (app / worktree / projects), and the writer model composes the
- * subtitle from both. Carries the prior summary's event history and appends an
- * event when the current action changes. Returns null when the tab has no
- * readable recent output or the card model declines — the caller leaves any
+ * Run one tab through the two-tier summarizer and fold the result into a
+ * TabSummary: the cheap card model pre-processes the raw output into facts +
+ * state/activity + a draft title, local provenance is derived (app / worktree /
+ * projects), and the richer writer model composes the published title + subtitle
+ * from those facts. The writer never sees the raw output, so it polishes rather
+ * than re-grounds; its title falls back to the cheap draft when the (pricier,
+ * occasionally flaky) writer call empties — so the card's most prominent field
+ * never depends on that call. Carries the prior summary's event history and
+ * appends an event when the current action changes. Returns null when the tab has
+ * no readable recent output or the card model declines — the caller leaves any
  * prior summary in place. Shared by the scheduled cycle and the per-card
  * `refreshTab`.
  *
@@ -308,9 +312,9 @@ async function buildSummary(
   // composed from the corrected state.
   forceWorkingOnUserTail(result, recentText);
   // Provenance is local (no LLM): config + tree reads, fed to the writer for the
-  // subtitle and attached to the card for the UI pills.
+  // title + subtitle and attached to the card for the UI pills.
   const provenance = await deriveProvenance(conceptionPath, tabMeta);
-  const subtitle = await writeSubtitle(
+  const written = await writeCard(
     config,
     {
       title: result.title,
@@ -321,6 +325,11 @@ async function buildSummary(
     },
     provenance,
   );
+  // The writer owns the published title but falls back to the cheap pre-pass's
+  // draft when its (pricier, occasionally empty) reply has none, so the card's
+  // most prominent field never blanks.
+  const title = written.title || result.title;
+  const subtitle = written.subtitle;
   const events = prior ? [...prior.events] : [];
   // Record an event whenever the "current action" changes — the rolling history
   // of what the tab has done over time.
@@ -329,7 +338,7 @@ async function buildSummary(
   }
   return {
     sid: tabMeta.sid,
-    title: result.title,
+    title,
     subtitle,
     contextLines: result.contextLines,
     currentAction: result.currentAction,
@@ -475,9 +484,9 @@ export async function tick(conceptionPath: string): Promise<void> {
     const indexOf = (sid: string): number => nextTabs.findIndex((tab) => tab.sid === sid);
 
     // Summarize the due tabs concurrently — each is an independent, tool-free
-    // pair of HTTP completions (card + subtitle), so a board of N tabs costs
-    // ~one tab's latency instead of N in series. Folded in `toSummarize` order
-    // so placement stays deterministic.
+    // pair of HTTP completions (cheap pre-pass + writer), so a board of N tabs
+    // costs ~one tab's latency instead of N in series. Folded in `toSummarize`
+    // order so placement stays deterministic.
     const built = await Promise.all(
       toSummarize.map((sid) => {
         const tabMeta = meta.get(sid);

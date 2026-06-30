@@ -6,14 +6,17 @@ import type { DashboardConfig, DashboardConfigView, DashboardSettings } from '..
 export const DASHBOARD_DEFAULTS = {
   enabled: false,
   provider: 'deepseek' as const,
-  // Two model tiers: a cheap, reasoning-off `model` extracts each tab's card from
-  // a wide window; a richer `writerModel` (reasoning on) composes each tab's
-  // one-sentence subtitle. Validated against a week of real logs — see the
-  // conception project 2026-06-29-dashboard-summarizer-revamp.
+  // Two model tiers: a cheap, reasoning-off `model` pre-processes each tab's raw
+  // window into facts + state/activity + a draft title; a richer `writerModel`
+  // composes the published title + one-sentence subtitle from those facts. Both
+  // default reasoning-off: a model bake-off over a week of real logs found
+  // reasoning-on adds 4-10x latency with no title gain on the card tier and
+  // returns an empty reply on a non-trivial fraction of writer calls —
+  // unacceptable now that the writer owns the title.
   model: 'deepseek-v4-flash',
   writerModel: 'deepseek-v4-pro',
   cardReasoning: false,
-  writerReasoning: true,
+  writerReasoning: false,
   cardInputChars: 16000,
   intervalSec: 120,
   gateOnActivity: true,

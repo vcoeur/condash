@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCompletionBody,
-  buildSubtitleUserPrompt,
   buildTabUserPrompt,
-  parseSubtitle,
+  buildWriterUserPrompt,
+  parseCardWriter,
   parseTabSummary,
+  temperatureForModel,
   withTimeout,
 } from './summarizer';
 
@@ -77,7 +78,7 @@ describe('parseTabSummary', () => {
       currentAction: 'x',
     });
     const parsed = parseTabSummary(reply);
-    expect(parsed?.title).toBe('one two three four five six');
+    expect(parsed?.title).toBe('one two three four five six seven');
     expect(parsed?.contextLines).toEqual(['keep']);
   });
 
@@ -88,26 +89,42 @@ describe('parseTabSummary', () => {
   });
 });
 
-describe('parseSubtitle', () => {
-  it('extracts the subtitle sentence from a JSON reply', () => {
-    expect(parseSubtitle('{"subtitle": "Shipping the dashboard redesign for condash"}')).toBe(
-      'Shipping the dashboard redesign for condash',
+describe('parseCardWriter', () => {
+  it('extracts the title and subtitle from a JSON reply', () => {
+    expect(
+      parseCardWriter(
+        '{"title": "Dashboard card redesign", "subtitle": "Shipping the dashboard redesign for condash"}',
+      ),
+    ).toEqual({
+      title: 'Dashboard card redesign',
+      subtitle: 'Shipping the dashboard redesign for condash',
+    });
+  });
+
+  it('recovers a reply wrapped in a markdown fence', () => {
+    expect(
+      parseCardWriter('```json\n{"title":"Refactor auth","subtitle":"Refactoring auth"}\n```'),
+    ).toEqual({
+      title: 'Refactor auth',
+      subtitle: 'Refactoring auth',
+    });
+  });
+
+  it('clamps an overlong title to 7 words and the subtitle to 140 chars', () => {
+    const res = parseCardWriter(
+      JSON.stringify({
+        title: 'one two three four five six seven eight nine',
+        subtitle: 'x'.repeat(300),
+      }),
     );
+    expect(res.title).toBe('one two three four five six seven');
+    expect(res.subtitle.length).toBe(140);
   });
 
-  it('recovers a subtitle wrapped in a markdown fence', () => {
-    expect(parseSubtitle('```json\n{"subtitle":"Refactoring auth"}\n```')).toBe('Refactoring auth');
-  });
-
-  it('clamps an overlong subtitle to 140 chars', () => {
-    const long = 'x'.repeat(300);
-    expect(parseSubtitle(JSON.stringify({ subtitle: long })).length).toBe(140);
-  });
-
-  it('returns empty string for a missing or non-string subtitle', () => {
-    expect(parseSubtitle('{"subtitle": 5}')).toBe('');
-    expect(parseSubtitle('garbage')).toBe('');
-    expect(parseSubtitle('{}')).toBe('');
+  it('returns empty strings for missing or non-string fields', () => {
+    expect(parseCardWriter('{"title": 5, "subtitle": 5}')).toEqual({ title: '', subtitle: '' });
+    expect(parseCardWriter('garbage')).toEqual({ title: '', subtitle: '' });
+    expect(parseCardWriter('{}')).toEqual({ title: '', subtitle: '' });
   });
 });
 
@@ -155,9 +172,9 @@ describe('buildTabUserPrompt redacts secrets before they reach the prompt', () =
   });
 });
 
-describe('buildSubtitleUserPrompt redacts secrets in the card facts + provenance', () => {
+describe('buildWriterUserPrompt redacts secrets in the card facts + provenance', () => {
   it('masks a secret in a context line or a project title', () => {
-    const prompt = buildSubtitleUserPrompt(
+    const prompt = buildWriterUserPrompt(
       {
         title: 'using sk-AbCdEf0123456789ZyXwVuTs',
         currentAction: 'idle',
@@ -200,6 +217,20 @@ describe('buildCompletionBody', () => {
   it('adds the DeepSeek thinking:{type:disabled} switch when reasoning is disabled', () => {
     const body = buildCompletionBody({ ...base, disableReasoning: true });
     expect(body.thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('sends temperature 1 for a kimi model that rejects 0', () => {
+    const body = buildCompletionBody({ ...base, model: 'kimi-k2.7-code', disableReasoning: true });
+    expect(body.temperature).toBe(1);
+  });
+});
+
+describe('temperatureForModel', () => {
+  it('returns 1 for kimi/Moonshot models, 0 otherwise', () => {
+    expect(temperatureForModel('kimi-k2.7-code')).toBe(1);
+    expect(temperatureForModel('moonshot-v1-8k')).toBe(1);
+    expect(temperatureForModel('deepseek-v4-flash')).toBe(0);
+    expect(temperatureForModel('glm-5.2')).toBe(0);
   });
 });
 
