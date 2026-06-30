@@ -56,7 +56,27 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm ci
+        # `npm ci` on the windows-latest runner intermittently dies with an
+        # EEXIST/EPERM race in the shared npm cacache (a rename into
+        # `_cacache\content-v2` collides while antivirus still holds the temp
+        # file) — it killed the v4.55.0 release's windows leg, skipping publish.
+        # Retry up to 3x, wiping the npm cache + node_modules between tries so a
+        # half-written cacache entry can't poison the retry. `shell: bash` runs
+        # on all three runner OSes (Git Bash on Windows); a genuine lockfile
+        # error still fails every attempt and exits non-zero.
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::npm ci (attempt $attempt)"
+            if npm ci; then echo "::endgroup::"; exit 0; fi
+            echo "::endgroup::"
+            echo "npm ci failed on attempt $attempt; clearing caches before retry" >&2
+            npm cache clean --force || true
+            rm -rf node_modules || true
+            [ "$attempt" -lt 3 ] && sleep 10
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
 
       # Tag-derived version: the git tag is the source of truth, not a committed
       # bump. `_build.yml` runs only from release.yml (tag push), so ref_name is
