@@ -2,7 +2,13 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { condashDir } from '../condash-dir';
 import { atomicWrite } from '../atomic-write';
-import type { DashboardEvent, DashboardState, TabState, TabSummary } from '../../shared/types';
+import type {
+  ActivityStage,
+  DashboardEvent,
+  DashboardState,
+  TabState,
+  TabSummary,
+} from '../../shared/types';
 
 /** Subdirectory under `.condash/` that holds the dashboard's persisted state. */
 const DASHBOARD_SUBDIR = 'dashboard';
@@ -15,7 +21,7 @@ export function dashboardStatePath(conceptionPath: string): string {
 
 /** A fresh, empty dashboard state. */
 export function emptyDashboardState(updatedAt: number): DashboardState {
-  return { updatedAt, overview: [], tabs: [], roster: [], history: [] };
+  return { updatedAt, tabs: [], roster: [], history: [] };
 }
 
 const TAB_STATES: readonly TabState[] = ['working', 'awaiting', 'idle', 'error'];
@@ -26,6 +32,27 @@ const TAB_STATES: readonly TabState[] = ['working', 'awaiting', 'idle', 'error']
 function coerceTabState(value: unknown): TabState {
   return typeof value === 'string' && (TAB_STATES as readonly string[]).includes(value)
     ? (value as TabState)
+    : 'idle';
+}
+
+const ACTIVITY_STAGES: readonly ActivityStage[] = [
+  'implementing',
+  'designing',
+  'reviewing',
+  'making-pr',
+  'documenting',
+  'testing',
+  'debugging',
+  'researching',
+  'awaiting',
+  'idle',
+];
+
+/** Backfill `activity` for a persisted summary written before the field existed
+ *  (or with a garbled value): default to `idle`. */
+function coerceActivity(value: unknown): ActivityStage {
+  return typeof value === 'string' && (ACTIVITY_STAGES as readonly string[]).includes(value)
+    ? (value as ActivityStage)
     : 'idle';
 }
 
@@ -60,14 +87,14 @@ function coerceState(parsed: unknown): DashboardState | null {
   if (!Array.isArray(raw.tabs)) return null;
   return {
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
-    // Level-1 headline: present in states written by a newer build; absent (left
-    // off) in an older `state.json` from before the two-level summary.
-    ...(typeof raw.globalWork === 'string' ? { globalWork: raw.globalWork } : {}),
-    overview: Array.isArray(raw.overview) ? raw.overview.filter((l) => typeof l === 'string') : [],
     history: Array.isArray(raw.history) ? raw.history.filter(isEvent) : [],
     tabs: raw.tabs.filter(isTabSummary).map((tab) => ({
       ...tab,
+      // Backfill the redesign fields for an older `state.json` that predates
+      // them: default activity to `idle` and subtitle to ''.
+      subtitle: typeof tab.subtitle === 'string' ? tab.subtitle : '',
       state: coerceTabState(tab.state),
+      activity: coerceActivity(tab.activity),
       events: tab.events.filter(isEvent),
     })),
     // `roster` is live data (the currently-open tabs); a persisted copy is stale

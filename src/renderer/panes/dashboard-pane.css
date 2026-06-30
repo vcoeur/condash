@@ -7,49 +7,163 @@
   padding: 12px 14px;
 }
 
-/* Two-column working surface: a fixed-width meta rail beside a flexible
- * tab-card grid that fills the remaining width. The pane itself scrolls; the
- * rail sticks to the top so settings / overview / history stay in view while a
- * long card grid scrolls past. `minmax(0, 1fr)` lets the grid column shrink
- * instead of being forced wide by its content. */
-.dashboard-body {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.dashboard-rail {
-  position: sticky;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.dashboard-main {
-  min-width: 0;
-}
-
-/* Narrow window: drop the side-by-side rail and stack everything. */
-@media (max-width: 720px) {
-  .dashboard-body {
-    grid-template-columns: 1fr;
-  }
-  .dashboard-rail {
-    position: static;
-  }
-}
-
 .dashboard-pane-hint {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
-/* Failed-summary banner: a dropped cycle (auth / model / network) otherwise
- * reads as the tab titles simply going quiet — make it loud and explained. */
+/* ---------------------------------------------------------------------------
+ * Top status line — a single thin row: product label + on/off dot, live tab
+ * tallies, last-update time, and a hover popover with the full config. Replaces
+ * the old three-segment Status/Engine/Last-run strip.
+ * ------------------------------------------------------------------------- */
+.dashboard-topline {
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.dashboard-topline-brand {
+  font-weight: 700;
+  color: var(--text);
+}
+.dashboard-topline-mark {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+/* On/off pill: a dot in the power colour plus the word. */
+.dashboard-topline-power {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dashboard-topline-power-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--power-color, var(--text-faint));
+}
+.dashboard-topline-power[data-power='on'] {
+  --power-color: var(--col-running);
+}
+.dashboard-topline-power[data-power='off'] {
+  --power-color: var(--text-faint);
+}
+.dashboard-topline-power[data-power='nokey'] {
+  --power-color: var(--warn);
+}
+.dashboard-topline-power[data-power='on'] .dashboard-topline-power-dot {
+  box-shadow: 0 0 6px color-mix(in srgb, var(--power-color) 80%, transparent);
+}
+
+/* Live tab tallies — middot-separated, the count coloured by state. */
+.dashboard-topline-tallies {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dashboard-topline-tally {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.dashboard-topline-tally + .dashboard-topline-tally::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--text-faint);
+}
+.dashboard-topline-tally b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--state-color, var(--text));
+}
+
+.dashboard-topline-updated {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Config affordance + hover popover. The popover is absolutely positioned so it
+ * never shifts the line; it reveals on hover or keyboard focus. */
+.dashboard-topline-config {
+  position: relative;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: default;
+  user-select: none;
+}
+.dashboard-topline-config:hover,
+.dashboard-topline-config:focus-visible {
+  color: var(--text);
+  border-color: var(--text-faint);
+  outline: none;
+}
+.dashboard-topline-config-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  box-shadow:
+    var(--shadow-card),
+    0 8px 24px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    visibility 0.12s;
+}
+.dashboard-topline-config:hover .dashboard-topline-config-pop,
+.dashboard-topline-config:focus-within .dashboard-topline-config-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.dashboard-topline-config-pop dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 5px 14px;
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+.dashboard-topline-config-pop dt {
+  color: var(--text-muted);
+}
+.dashboard-topline-config-pop dd {
+  margin: 0;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* ---------------------------------------------------------------------------
+ * Failed-summary banner: a dropped cycle (auth / model / network) otherwise
+ * reads as the tab titles simply going quiet — make it loud and explained.
+ * ------------------------------------------------------------------------- */
 .dashboard-error-banner {
   display: flex;
   flex-direction: column;
@@ -60,7 +174,6 @@
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
 }
-
 .dashboard-error-banner-label {
   font-size: var(--text-xs);
   font-weight: 600;
@@ -68,200 +181,29 @@
   letter-spacing: 0.04em;
   color: var(--danger);
 }
-
 .dashboard-error-banner-msg {
   font-size: var(--text-sm);
   color: var(--text);
   word-break: break-word;
 }
 
-/* Always-on liveness strip above the two-column body: next-update ETA, current
- * loop phase, and last-run time. Visible whenever the engine is enabled, so an
- * idle-but-running summarizer is never mistaken for a dead one. Laid out as a
- * single horizontal line; segments wrap only when the pane is too narrow. */
-.dashboard-status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  row-gap: 4px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--state-color, var(--accent));
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--state-color, var(--accent)) 7%, var(--bg-subtle));
-  font-size: var(--text-sm);
-}
-
-/* Phase → accent colour for the strip's bar, wash, live dot, and countdown. */
-.dashboard-status[data-phase='summarizing'] {
-  --state-color: var(--accent);
-}
-.dashboard-status[data-phase='waiting'] {
-  --state-color: var(--col-running);
-}
-.dashboard-status[data-phase='idle'] {
-  --state-color: var(--text-faint);
-}
-.dashboard-status[data-phase='no-api-key'] {
-  --state-color: var(--warn);
-}
-
-.dashboard-status-item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 0 14px;
-  color: var(--text);
-  word-break: break-word;
-}
-
-.dashboard-status-item:first-child {
-  padding-left: 0;
-}
-
-/* Hairline divider between adjacent segments on the same line. */
-.dashboard-status-item + .dashboard-status-item {
-  border-left: 1px solid var(--border);
-}
-
-.dashboard-status-label {
-  color: var(--text-muted);
-}
-
-/* Live dot in the Status segment — pulses while a cycle is in flight, steady
- * otherwise, so the strip reads as a heartbeat. */
-.dashboard-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-  align-self: center;
-  background: var(--state-color, var(--accent));
-}
-.dashboard-status[data-phase='summarizing'] .dashboard-status-dot {
-  animation: dashboard-ping 1.6s ease-out infinite;
-}
-@keyframes dashboard-ping {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-color) 60%, transparent);
-  }
-  70% {
-    box-shadow: 0 0 0 7px transparent;
-  }
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
-/* The live countdown — tinted + tabular figures so it doesn't jitter as it ticks. */
-.dashboard-status-next {
-  color: var(--state-color, var(--accent));
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-/* Two-column key/value grid for the active summarizer settings. */
-.dashboard-settings {
-  margin: 0;
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 12px;
-  font-size: var(--text-sm);
-}
-
-.dashboard-settings dt {
-  color: var(--text-muted);
-}
-
-.dashboard-settings dd {
-  margin: 0;
-  color: var(--text);
-  word-break: break-word;
-}
-
-.dashboard-section h3 {
-  margin: 0 0 8px;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-}
-
-/* Level 1 of the cross-tab summary: the one-line "global current work" headline —
- * the big picture across all tabs, set apart above the finer detail lines. */
-.dashboard-global-work {
-  margin: 0 0 10px;
-  font-size: var(--text-base);
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--text);
-}
-
-.dashboard-overview {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--text-sm);
-  color: var(--text);
-}
-
-/* "Open tabs" header row: section title on the left, the cross-tab state tally
- * on the right. The tally is the cockpit's at-a-glance triage readout. */
-.dashboard-tab-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.dashboard-tab-head h3 {
-  margin: 0;
-}
-
-.dashboard-tally {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* One chip per non-empty state — count + label, tinted in the state colour. */
-.dashboard-tally-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--state-color, var(--text-muted));
-  background: color-mix(in srgb, var(--state-color, var(--text-muted)) 13%, var(--bg-elevated));
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--state-color, var(--text-muted)) 26%, transparent);
-}
-.dashboard-tally-chip b {
-  font-weight: 800;
-  font-size: var(--text-sm);
-}
-
-/* Responsive card grid: as many ~240px columns as fit, so the cards spread
- * across the wide main column instead of one full-width card per row. */
-.dashboard-tab-list {
+/* ---------------------------------------------------------------------------
+ * Card grid — as many ~360px columns as fit, each capped so a few tabs grow to
+ * fill a row without ballooning while many tabs wrap naturally.
+ * ------------------------------------------------------------------------- */
+.dashboard-card-grid {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 12px;
   align-items: start;
 }
 
-/* Per-state accent colour, mapped onto the app's existing palette tokens and
- * shared by the card bar/wash, the state pill, and the tally chips. Scoped to
- * the pane so it can't leak onto other `data-state` users elsewhere. */
+/* Per-state accent colour, mapped onto the app's palette tokens and shared by
+ * the card bar/wash, the health dot, and the awaiting ring. Scoped to the pane
+ * so it can't leak onto other `data-state` users elsewhere. */
 .dashboard-pane [data-state='working'] {
   --state-color: var(--col-running);
 }
@@ -278,14 +220,15 @@
   --state-color: var(--text-faint);
 }
 
-/* The state-coloured card. A bold left bar (::before) + a wash carry the
- * state; the pill names it in words so colour is never the only signal. */
-.dashboard-tab-card {
+/* The state-coloured card. A bold left bar (::before) + a wash carry the state;
+ * the health dot in the head names it too, so colour is never the only signal. */
+.dashboard-card {
   position: relative;
+  max-width: 580px;
   border: 1px solid color-mix(in srgb, var(--state-color, var(--border)) 38%, var(--border));
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--state-color, transparent) 11%, var(--bg-elevated));
-  padding: 13px 15px 13px 18px;
+  padding: 12px 15px 13px 18px;
   box-shadow: var(--shadow-card);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -293,15 +236,9 @@
     transform 0.12s ease,
     box-shadow 0.12s ease,
     border-color 0.12s ease;
-  /* Hard guarantee: a card can never spill its content past its own border —
-   * the head's nowrap meta (a long agent / time) would otherwise extend the
-   * box. The box-shadow glow is painted outside the border box, so clipping
-   * here doesn't touch the awaiting card's ring. */
-  overflow: hidden;
 }
 
-/* Lift on hover so the grid feels live and the focused card stands proud. */
-.dashboard-tab-card:hover {
+.dashboard-card:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--state-color, var(--border)) 55%, var(--border));
   box-shadow:
@@ -310,7 +247,7 @@
 }
 
 /* The bold left state bar — a thick, full-height edge in the state colour. */
-.dashboard-tab-card::before {
+.dashboard-card::before {
   content: '';
   position: absolute;
   left: 0;
@@ -323,71 +260,59 @@
 
 /* Awaiting-you is the one card that should pull the eye across a full grid:
  * a coloured ring + a soft glow. */
-.dashboard-tab-card[data-state='awaiting'] {
+.dashboard-card[data-state='awaiting'] {
   border-color: color-mix(in srgb, var(--state-color) 60%, var(--border));
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--state-color) 40%, transparent),
     0 6px 18px color-mix(in srgb, var(--state-color) 22%, transparent);
 }
 
-/* A tab with no summary yet (no readable output, or before the first cycle).
- * Dashed + dimmed so it reads as "present but not yet summarized" — the point
- * is only that the tab is never invisible. */
-.dashboard-tab-card-pending {
+/* A tab with no summary yet — dashed + dimmed so it reads as "present but not
+ * yet summarized"; the point is only that the tab is never invisible. */
+.dashboard-card-pending {
   border-style: dashed;
   background: transparent;
   box-shadow: none;
   opacity: 0.9;
 }
-.dashboard-tab-card-pending::before {
+.dashboard-card-pending::before {
   opacity: 0.5;
 }
 
-.dashboard-tab-card-head {
+/* --- Card header: health dot left, age + update button right ---------------- */
+.dashboard-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 8px;
-  /* Wrap rather than overflow: on a narrow card the meta drops to its own line
-   * below the state pill instead of pushing the time off the right edge. */
-  flex-wrap: wrap;
+  gap: 8px;
 }
-
-/* The state pill — a bold, tinted badge with a coloured-ink label and an inset
- * ring, so the state reads instantly and stays legible (AA) in both themes. */
-.dashboard-tab-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
-  font-size: var(--text-2xs);
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--state-color, var(--text-muted));
-  background: color-mix(in srgb, var(--state-color, var(--text-muted)) 22%, transparent);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--state-color, var(--text-muted)) 32%, transparent);
-}
-.dashboard-tab-state-dot {
-  width: 7px;
-  height: 7px;
+.dashboard-card-dot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex: 0 0 auto;
-  background: currentColor;
+  background: var(--state-color, var(--text-faint));
 }
-/* Working / awaiting are live states — give their dot a soft halo so the badge
- * reads as a lit indicator. */
-.dashboard-tab-card[data-state='working'] .dashboard-tab-state-dot,
-.dashboard-tab-card[data-state='awaiting'] .dashboard-tab-state-dot {
-  box-shadow: 0 0 6px color-mix(in srgb, currentColor 80%, transparent);
+.dashboard-card[data-state='working'] .dashboard-card-dot,
+.dashboard-card[data-state='awaiting'] .dashboard-card-dot {
+  box-shadow: 0 0 6px color-mix(in srgb, var(--state-color) 80%, transparent);
 }
-/* Tiny per-card "being summarized right now" marker — a small accent dot that
- * pulses. The card keeps its own state colour and badge; this is just a faint
- * live cue that its summary is refreshing. The loud "Summarizing N tabs…" label
- * lives only in the top status strip. */
+.dashboard-card-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+.dashboard-card-age {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Tiny "being summarized right now" marker — a small accent dot that pulses.
+ * The card keeps its own state colour and badge; this is just a live cue. */
 .dashboard-tab-summarizing {
   width: 5px;
   height: 5px;
@@ -396,38 +321,20 @@
   background: var(--accent);
   animation: dashboard-ping 1.6s ease-out infinite;
 }
-
-/* Right side of the head: the driving program and relative time. Allowed to
- * wrap and take the leftover width so it reflows onto its own line
- * (right-aligned) rather than spilling past the card edge. */
-.dashboard-tab-card-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
+@keyframes dashboard-ping {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
-/* The program driving the tab (claude / pi / make / shell) — a compact mono
- * chip, now the only identity element in the head (the repo pill was dropped as
- * redundant with the title/action). */
-.dashboard-tab-agent {
-  padding: 1px 7px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  white-space: nowrap;
-  background: var(--bg-subtle);
-  color: var(--text-muted);
-}
-
-/* Per-card "Update now" — a small ghost button in the meta row that forces an
- * immediate re-summarization of just this tab, bypassing the activity gate. */
+/* Per-card "Update now" — a small ghost button that forces an immediate
+ * re-summarization of just this tab, bypassing the activity gate. */
 .dashboard-tab-refresh {
   flex: 0 0 auto;
   padding: 1px 8px;
@@ -452,129 +359,151 @@
   cursor: default;
 }
 
-/* The card's hero — the work title, on its own line below the state row. Sized
- * up and weighted heavier so it carries the card at a glance. */
-.dashboard-tab-card-title {
-  margin: 9px 0 0;
+/* --- Title row: hero title + activity badge -------------------------------- */
+.dashboard-card-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+.dashboard-card-title {
   font-size: var(--text-lg);
   font-weight: 800;
   letter-spacing: -0.015em;
   line-height: 1.2;
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.dashboard-tab-card-time {
-  font-size: var(--text-xs);
+/* Activity badge — a deliberately SUBDUED neutral pill (not a health colour),
+ * so it reads as a work-stage tag distinct from the state dot. */
+.dashboard-card-activity {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-subtle);
   color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-/* The one-line current action, directly under the title. */
-.dashboard-tab-card-action {
-  margin: 7px 0 0;
-  font-size: var(--text-sm);
-  line-height: 1.4;
-  color: var(--text);
+/* --- Breadcrumb: #app › wt:branch › project ------------------------------- */
+.dashboard-card-breadcrumb {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dashboard-card-crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dashboard-card-crumb.is-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+.dashboard-card-crumb-sep {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+}
+.dashboard-card-crumb-more {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-3xs);
+  font-weight: 700;
+  cursor: default;
 }
 
-/* An awaiting tab's action IS a question for the user — render it as a tinted
- * callout with a leading accent so it pulls the eye and reads as actionable. */
-.dashboard-tab-card-action[data-state='awaiting'] {
-  margin-top: 9px;
+/* --- Subtitle: one sentence, wrap to two lines then ellipsis --------------- */
+.dashboard-card-subtitle {
+  margin: 8px 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-body);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* An awaiting tab's blocking question — a tinted callout with a leading accent. */
+.dashboard-card-awaiting {
+  margin: 9px 0 0;
   padding: 8px 11px;
   border-radius: var(--radius);
   border-left: 3px solid var(--state-color);
   background: color-mix(in srgb, var(--state-color) 13%, transparent);
+  font-size: var(--text-sm);
+  line-height: 1.4;
   font-weight: 600;
+  color: var(--text);
 }
 
-.dashboard-tab-card-context {
-  margin: 9px 0 0;
-  padding: 0;
+/* --- Recent actions feed (visible, not collapsed) ------------------------- */
+.dashboard-card-actions {
+  margin: 10px 0 0;
+  padding: 9px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: var(--text-xs);
-  line-height: 1.4;
   color: var(--text-muted);
 }
-/* State-coloured dot markers — bolder and more intentional than the default
- * disc, and they tie each context line back to the card's state. */
-.dashboard-tab-card-context li {
-  position: relative;
-  padding-left: 15px;
-}
-.dashboard-tab-card-context li::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 0.5em;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--state-color, var(--text-faint)) 70%, var(--text-faint));
-}
-
-.dashboard-tab-card-events {
-  margin-top: 8px;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.dashboard-tab-card-events summary {
-  cursor: pointer;
-  user-select: none;
-}
-
-.dashboard-tab-card-events ul,
-.dashboard-history {
-  margin: 4px 0 0;
-  padding-left: 16px;
-  list-style: none;
+.dashboard-card-actions li {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
-
-.dashboard-history {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.dashboard-event-time {
+.dashboard-card-action-time {
+  flex: 0 0 auto;
+  width: 30px;
+  text-align: right;
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  margin-right: 4px;
+  color: var(--text-faint);
+}
+.dashboard-card-action-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-body);
 }
 
-.dashboard-pane-footer {
-  margin-top: auto;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-/* Dark "control room": the live-state bars glow, so a working / awaiting / error
- * card reads as a lit indicator on the dark surface — the cockpit-at-night feel.
- * Mirrors the two dark activation paths used app-wide (explicit toggle + OS
- * preference with no light override). */
-[data-theme='dark'] .dashboard-tab-card[data-state='working']::before,
-[data-theme='dark'] .dashboard-tab-card[data-state='awaiting']::before,
-[data-theme='dark'] .dashboard-tab-card[data-state='error']::before {
+/* Dark "control room": live-state bars glow so a working / awaiting / error
+ * card reads as a lit indicator on the dark surface. Mirrors the two dark
+ * activation paths used app-wide (explicit toggle + OS preference). */
+[data-theme='dark'] .dashboard-card[data-state='working']::before,
+[data-theme='dark'] .dashboard-card[data-state='awaiting']::before,
+[data-theme='dark'] .dashboard-card[data-state='error']::before {
   box-shadow: 0 0 12px color-mix(in srgb, var(--state-color) 75%, transparent);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .dashboard-tab-card[data-state='working']::before,
-  :root:not([data-theme='light']) .dashboard-tab-card[data-state='awaiting']::before,
-  :root:not([data-theme='light']) .dashboard-tab-card[data-state='error']::before {
+  :root:not([data-theme='light']) .dashboard-card[data-state='working']::before,
+  :root:not([data-theme='light']) .dashboard-card[data-state='awaiting']::before,
+  :root:not([data-theme='light']) .dashboard-card[data-state='error']::before {
     box-shadow: 0 0 12px color-mix(in srgb, var(--state-color) 75%, transparent);
   }
 }
 
-/* Honour reduced-motion: drop the pulsing status dot. */
+/* Honour reduced-motion: drop the pulsing markers. */
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-status[data-phase='summarizing'] .dashboard-status-dot,
   .dashboard-tab-summarizing {
     animation: none;
   }

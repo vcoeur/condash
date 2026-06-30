@@ -1,6 +1,13 @@
 import { createRequire } from 'node:module';
 import { redactSecrets } from '../logs-redact';
-import type { DashboardConfig, DashboardEvent, TabState, TabSummary } from '../../shared/types';
+import type {
+  ActivityStage,
+  DashboardConfig,
+  DashboardEvent,
+  TabState,
+  TabSummary,
+} from '../../shared/types';
+import type { TabProvenance } from './provenance';
 
 let undiciShimInstalled = false;
 /**
@@ -45,18 +52,20 @@ export interface TabSummaryResult {
   /** Coarse state used to colour the card; defaulted to `idle` when the reply
    *  omits or garbles it. */
   state: TabState;
+  /** Finer-grained work stage; defaulted to `idle` when the reply omits or
+   *  garbles it. */
+  activity: ActivityStage;
   /** The one-line question the tab is blocking on when `state === 'awaiting'`. */
   awaitingPrompt?: string;
 }
 
-/** The fields the model is asked to produce for the cross-tab overview. */
-export interface OverviewResult {
-  /** Level 1: one line naming the overarching work across all tabs right now.
-   *  Empty when the model omits it. */
-  globalWork: string;
-  /** Level 2: the finer detail / current-activity lines. */
-  overview: string[];
-  events: string[];
+/** The card-model facts handed to the writer model to compose a subtitle. */
+export interface SubtitleInput {
+  title: string;
+  currentAction: string;
+  contextLines: string[];
+  activity: ActivityStage;
+  state: TabState;
 }
 
 /** Tab metadata + recent output handed to the summarizer for one tab. */
@@ -71,6 +80,8 @@ export interface TabInput {
 const MAX_RECENT_CHARS = 6000;
 const MAX_TITLE_WORDS = 6;
 const MAX_CONTEXT_LINES = 4;
+/** Hard ceiling on the writer-model subtitle (one sentence). */
+const MAX_SUBTITLE_CHARS = 140;
 
 /** Hard ceiling on a single pi completion. The dashboard makes a tool-free
  *  summarization call, so a slow but live model finishes well inside this; the
@@ -128,6 +139,13 @@ function clampWords(text: string, maxWords: number): string {
   return words.slice(0, maxWords).join(' ');
 }
 
+/** Trim and hard-cap a string to `maxChars`, returning `''` for a non-string. */
+function clampChars(value: unknown, maxChars: number): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  return trimmed.length > maxChars ? trimmed.slice(0, maxChars) : trimmed;
+}
+
 const TAB_STATES: readonly TabState[] = ['working', 'awaiting', 'idle', 'error'];
 
 /** Coerce a model-supplied `state` value to a known `TabState`, defaulting to
@@ -136,6 +154,27 @@ const TAB_STATES: readonly TabState[] = ['working', 'awaiting', 'idle', 'error']
 function coerceTabState(value: unknown): TabState {
   return typeof value === 'string' && (TAB_STATES as readonly string[]).includes(value)
     ? (value as TabState)
+    : 'idle';
+}
+
+const ACTIVITY_STAGES: readonly ActivityStage[] = [
+  'implementing',
+  'designing',
+  'reviewing',
+  'making-pr',
+  'documenting',
+  'testing',
+  'debugging',
+  'researching',
+  'awaiting',
+  'idle',
+];
+
+/** Coerce a model-supplied `activity` value to a known `ActivityStage`,
+ *  defaulting to `idle` for anything missing or unrecognised. */
+function coerceActivity(value: unknown): ActivityStage {
+  return typeof value === 'string' && (ACTIVITY_STAGES as readonly string[]).includes(value)
+    ? (value as ActivityStage)
     : 'idle';
 }
 
@@ -157,21 +196,19 @@ export function parseTabSummary(reply: string): TabSummaryResult | null {
     contextLines: asStringArray(record.contextLines, MAX_CONTEXT_LINES),
     currentAction: typeof record.currentAction === 'string' ? record.currentAction.trim() : '',
     state,
+    activity: coerceActivity(record.activity),
     ...(awaitingPrompt ? { awaitingPrompt } : {}),
   };
 }
 
-/** Parse the model reply for the cross-tab overview, or null on garbage. The
- *  detail lines (Level 2) are the required content — a reply with none is
- *  rejected; `globalWork` (Level 1) is optional and defaults to empty. */
-export function parseOverview(reply: string): OverviewResult | null {
+/** Parse the writer model's subtitle reply (a JSON object carrying one
+ *  sentence), clamped to {@link MAX_SUBTITLE_CHARS}. Returns `''` when the reply
+ *  has no usable `subtitle` string. Exported for unit testing. */
+export function parseSubtitle(reply: string): string {
   const obj = extractJsonObject(reply);
-  if (typeof obj !== 'object' || obj === null) return null;
+  if (typeof obj !== 'object' || obj === null) return '';
   const record = obj as Record<string, unknown>;
-  const overview = asStringArray(record.overview, 5);
-  if (overview.length === 0) return null;
-  const globalWork = typeof record.globalWork === 'string' ? record.globalWork.trim() : '';
-  return { globalWork, overview, events: asStringArray(record.events, 3) };
+  return clampChars(record.subtitle, MAX_SUBTITLE_CHARS);
 }
 
 // Guardrails below were tuned against an eval of a week of real terminal logs on
@@ -216,6 +253,18 @@ const TAB_SYSTEM_PROMPT = [
   'Treat informational notices and recoverable warnings as background noise (for',
   'example "workspace not trusted", "N permissions ignored", deprecation or auth',
   'notices): never report them as the current action, a blocker, or an error.',
+  'Also classify the finer-grained ACTIVITY — what the operator is doing NOW, by',
+  'the task, NOT the tool name. Choose exactly one: "implementing" (writing or',
+  'editing code), "designing" (planning or architecting before code is written),',
+  '"reviewing" (reading or answering a code review or a diff), "making-pr"',
+  '(opening or updating a pull request), "documenting" (writing docs, a README, or',
+  'notes), "testing" (running or writing tests), "debugging" (diagnosing a failure',
+  'or crash), "researching" (reading or searching to decide what to do),',
+  '"awaiting" (blocked on a concrete prompt that needs the operator), or "idle"',
+  '(nothing in progress). Judge from the latest output: e.g. a git push + PR URL',
+  'or "gh pr create" is making-pr; running a test command is testing; reading a',
+  'stack trace and editing is debugging; an empty prompt after a finished reply is',
+  'idle. Default to "idle" when unsure.',
   'Reply with ONLY a JSON object, no markdown fence:',
   '{"title": string (<=5 words naming the work, project, or subject the tab is',
   ' about — not the program; e.g. good "Auth refactor", bad "claude". Never derive',
@@ -227,30 +276,24 @@ const TAB_SYSTEM_PROMPT = [
   ' "currentAction": string (one short line for the state: what is happening now,',
   ' the answer it awaits, or the final/idle state),',
   ' "state": one of "working" | "awaiting" | "idle" | "error" (judged from the latest output),',
+  ' "activity": one of "implementing" | "designing" | "reviewing" | "making-pr" |',
+  ' "documenting" | "testing" | "debugging" | "researching" | "awaiting" | "idle",',
   ' "awaitingPrompt": string (ONLY when state is "awaiting": the one-line question',
   ' or selection it is blocking on, e.g. "Overwrite file? (y/n)"; omit otherwise)}.',
 ].join(' ');
 
-const OVERVIEW_SYSTEM_PROMPT = [
-  'You summarize what a developer is doing across several terminal tabs.',
-  'You are given each tab id and its current summary.',
-  'Describe the overall activity factually. Do not escalate one tab into a',
-  'cross-tab crisis. Idle tabs resting at a prompt are the normal state, not',
-  'blocks: only describe the developer as waiting or blocked for a tab whose',
-  'summary says the program asked a question or needs a selection. Do not',
-  'aggregate several idle prompts into "waiting for input everywhere". Treat',
-  'warnings and recoverable errors as routine.',
-  'Produce two levels. Level 1 "globalWork": ONE short line naming the overarching',
-  'thing the developer is working on across the tabs right now — the big picture,',
-  'not a per-tab detail (e.g. "Shipping the condash dashboard summarizer", "Debugging',
-  'the fovea auth flow"). When the tabs are unrelated, name the dominant or most',
-  'active thread rather than inventing a false common goal. Level 2 "overview": the',
-  'finer detail and current activity behind it.',
+const SUBTITLE_SYSTEM_PROMPT = [
+  'You write ONE short sentence (at most 140 characters) describing the PURPOSE of',
+  'the work in a single terminal tab — the goal, not the command or tool.',
+  'You are given the card facts (title, current action, a few context lines, the',
+  'activity stage and state) and provenance (the app, the worktree/branch, and any',
+  'conception project titles for that branch).',
+  'Name what the operator is trying to accomplish and why, weaving in the app and',
+  'project when they add context. Do not name the program (claude, opencode, git).',
+  'Do not invent facts beyond what you are given. Prefer the project title as the',
+  'goal when one is present.',
   'Reply with ONLY a JSON object, no markdown fence:',
-  '{"globalWork": string (one short line — the global current work, Level 1),',
-  ' "overview": string[] (2-5 short lines of detail / current activity, Level 2,',
-  ' referencing tabs by title when useful),',
-  ' "events": string[] (0-3 short notable cross-tab events worth remembering, else [])}.',
+  '{"subtitle": string (one sentence, <=140 chars, no trailing tool name)}.',
 ].join(' ');
 
 /** Assemble the per-tab user prompt. Every field that carries captured terminal
@@ -284,21 +327,25 @@ export function buildTabUserPrompt(input: TabInput, maxChars: number = MAX_RECEN
   return lines.join('\n');
 }
 
-/** Assemble the cross-tab overview user prompt. The per-tab title/currentAction
- *  it embeds are model-derived (already from redacted input going forward), but
- *  redact them here too so this prompt is uniformly secret-free at the wire.
+/** Assemble the per-tab subtitle user prompt from the card facts + provenance.
+ *  Every captured-content field (title, action, context, plus the provenance
+ *  names) is run through `redactSecrets` here — the single chokepoint before the
+ *  text is POSTed — so nothing secret leaves the machine in clear text. The
+ *  activity/state enums are model-derived and carry no captured content.
  *  Exported for unit testing. */
-export function buildOverviewUserPrompt(tabs: TabSummary[]): string {
-  const lines = ['Open tabs and their current summaries:', ''];
-  for (const tab of tabs) {
-    lines.push(
-      `- [${tab.sid}] (${tab.state}) ${redactSecrets(tab.title)}: ${redactSecrets(tab.currentAction)}`,
-    );
-    // A couple of the tab's context lines give the writer enough material to spot
-    // a shared thread or a notable cross-tab event without re-reading transcripts.
-    for (const line of tab.contextLines.slice(0, 3)) {
-      lines.push(`    • ${redactSecrets(line)}`);
-    }
+export function buildSubtitleUserPrompt(facts: SubtitleInput, provenance: TabProvenance): string {
+  const lines: string[] = [];
+  lines.push(`Title: ${redactSecrets(facts.title)}`);
+  lines.push(`Activity: ${facts.activity} (state: ${facts.state})`);
+  if (facts.currentAction) lines.push(`Current action: ${redactSecrets(facts.currentAction)}`);
+  for (const line of facts.contextLines.slice(0, MAX_CONTEXT_LINES)) {
+    lines.push(`Context: ${redactSecrets(line)}`);
+  }
+  if (provenance.app) lines.push(`App: ${redactSecrets(provenance.app)}`);
+  if (provenance.worktree) lines.push(`Worktree/branch: ${redactSecrets(provenance.worktree)}`);
+  const projectTitles = (provenance.projects ?? []).map((p) => p.title).filter(Boolean);
+  if (projectTitles.length > 0) {
+    lines.push(`Project(s): ${projectTitles.map((t) => redactSecrets(t)).join('; ')}`);
   }
   return lines.join('\n');
 }
@@ -444,30 +491,30 @@ export async function summarizeTab(
   }
 }
 
-/** Build the cross-tab overview from the current per-tab summaries with the
- *  richer "writer" model (reasoning on by default — the one place it measurably
- *  improves the narrative). Returns null when there is nothing to summarize or
- *  the call fails. */
-export async function synthesizeOverview(
+/** Compose the per-tab subtitle from the card facts + provenance with the
+ *  richer "writer" model (reasoning on by default). Returns `''` when the call
+ *  fails or the reply has no usable sentence — the engine then leaves the tab's
+ *  subtitle blank. */
+export async function writeSubtitle(
   config: DashboardConfig,
-  tabs: TabSummary[],
-): Promise<OverviewResult | null> {
-  if (tabs.length === 0) return null;
+  facts: SubtitleInput,
+  provenance: TabProvenance,
+): Promise<string> {
   try {
     const reply = await runCompletion(config, {
       model: config.writerModel,
-      system: OVERVIEW_SYSTEM_PROMPT,
-      user: buildOverviewUserPrompt(tabs),
+      system: SUBTITLE_SYSTEM_PROMPT,
+      user: buildSubtitleUserPrompt(facts, provenance),
       disableReasoning: !config.writerReasoning,
-      maxTokens: config.writerReasoning ? 8000 : 2000,
+      // A subtitle is one short sentence; reasoning still wants headroom (it
+      // counts against max_tokens) but far less than the old cross-tab narrative.
+      maxTokens: config.writerReasoning ? 2000 : 500,
     });
-    return parseOverview(reply);
+    return parseSubtitle(reply);
   } catch (err) {
     lastError = (err as Error).message;
-    process.stderr.write(
-      `condash dashboard: synthesizeOverview failed: ${(err as Error).message}\n`,
-    );
-    return null;
+    process.stderr.write(`condash dashboard: writeSubtitle failed: ${(err as Error).message}\n`);
+    return '';
   }
 }
 

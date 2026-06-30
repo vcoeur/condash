@@ -27,12 +27,42 @@ export interface DashboardEvent {
  *    `DashboardState.lastError`, which is the engine's own summarization failure. */
 export type TabState = 'working' | 'awaiting' | 'idle' | 'error';
 
+/** Finer-grained work stage for a tab, classified from what the operator is
+ *  doing NOW (not the tool in use) — distinct from the coarse `TabState`, which
+ *  stays the health colour. Drives the per-card activity badge. Defaulted to
+ *  `idle` when the model reply omits or garbles it.
+ *  - `implementing` — writing or editing code.
+ *  - `designing` — planning/architecting before code is written.
+ *  - `reviewing` — reading or answering a code review or diff.
+ *  - `making-pr` — opening or updating a pull request.
+ *  - `documenting` — writing docs, a README, or notes.
+ *  - `testing` — running or writing tests.
+ *  - `debugging` — diagnosing a failure or crash.
+ *  - `researching` — reading/searching to decide what to do.
+ *  - `awaiting` — blocked on a concrete prompt that needs the operator.
+ *  - `idle` — nothing in progress. The default. */
+export type ActivityStage =
+  | 'implementing'
+  | 'designing'
+  | 'reviewing'
+  | 'making-pr'
+  | 'documenting'
+  | 'testing'
+  | 'debugging'
+  | 'researching'
+  | 'awaiting'
+  | 'idle';
+
 /** Live summary for a single terminal tab. */
 export interface TabSummary {
   /** Terminal session id — matches `TermSession.id` / `TabInfo.sid`. */
   sid: string;
   /** Few-word title shown on the tab. */
   title: string;
+  /** One sentence (<=140 chars) naming the context + purpose of the current
+   *  work — distinct from the <=5-word `title`. Defaulted to `''` when the
+   *  writer model declines or fails. */
+  subtitle: string;
   /** Few-line "current context" shown in the hover popover. */
   contextLines: string[];
   /** One-line "what is happening now". */
@@ -40,9 +70,21 @@ export interface TabSummary {
   /** Coarse state used to colour the card. Always present — the parser defaults
    *  it to `idle` when the model reply omits or garbles it. */
   state: TabState;
+  /** Finer-grained work stage (distinct from `state`). Always present — defaults
+   *  to `idle` when the model reply omits or garbles it. */
+  activity: ActivityStage;
   /** When `state === 'awaiting'`, the one-line question or selection the tab is
    *  blocked on (e.g. "overwrite state.json? (y/n)"). Absent otherwise. */
   awaitingPrompt?: string;
+  /** Provenance: the app `#handle` the tab's cwd belongs to, stored WITHOUT the
+   *  leading `#` (the UI adds it). Absent when the cwd maps to no known app. */
+  app?: string;
+  /** Provenance: the worktree/branch directory name when the tab's cwd is under
+   *  `<worktrees_path>/<branch>/<repo>/`. Absent for non-worktree cwds. */
+  worktree?: string;
+  /** Provenance: the conception projects whose README `branch:` matches this
+   *  tab's `worktree`. Absent/empty when none match. */
+  projects?: { slug: string; title: string }[];
   /** Epoch ms of the last update. */
   updatedAt: number;
   /** Bounded history of notable events for this tab, oldest first. */
@@ -70,18 +112,10 @@ export interface DashboardEngineStatus {
   lastRunAt: number;
 }
 
-/** Full dashboard snapshot: the cross-tab narrative plus per-tab summaries. */
+/** Full dashboard snapshot: the per-tab summaries plus live roster. */
 export interface DashboardState {
   /** Epoch ms of the last engine cycle that produced this state. */
   updatedAt: number;
-  /** Level 1 of the cross-tab summary: a single line naming the overarching work
-   *  in flight across all tabs right now (the "global current work" headline).
-   *  Absent before the first overview synthesis, when no tab is summarized, or
-   *  when the model omits it — the renderer then shows only the detail lines. */
-  globalWork?: string;
-  /** Level 2 of the cross-tab summary: the finer detail / current-activity lines
-   *  ("what's going on"), referencing tabs by title when useful. */
-  overview: string[];
   /** Per-tab summaries, one per live tab the engine has produced a summary for.
    *  A tab with no readable output yet (or before the first summary cycle) is
    *  absent here but still present in `roster`. */
@@ -129,14 +163,15 @@ export interface DashboardSettings {
    *  state + facts. Legacy single-tier configs that set only `model` get it as
    *  the card model. Default `deepseek-v4-flash`. */
   model?: string;
-  /** Cross-tab "writer" model — the richer tier that synthesizes the global
-   *  headline + overview from the per-tab cards. Default `deepseek-v4-pro`. */
+  /** "Writer" model — the richer tier that composes each card's one-sentence
+   *  subtitle (the work's context + purpose) from the card facts and the tab's
+   *  derived provenance. Default `deepseek-v4-pro`. */
   writerModel?: string;
   /** Whether the card model reasons. Default false: card work is mechanical
    *  state+fact extraction, where reasoning only adds latency (~3–5× slower). */
   cardReasoning?: boolean;
-  /** Whether the writer model reasons. Default true: cross-tab synthesis is the
-   *  one place reasoning measurably improves the narrative. */
+  /** Whether the writer model reasons. Default true: composing the per-tab
+   *  subtitle is the one place reasoning measurably improves the wording. */
   writerReasoning?: boolean;
   /** Chars of recent tab output fed to the card model. Default 16000 — larger
    *  than the legacy 6000 because the cheap tier can afford a wider window. */

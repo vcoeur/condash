@@ -50,26 +50,35 @@ test('Dashboard lists every open tab even with no summaries', async () => {
       .toBeGreaterThanOrEqual(2);
 
     // Both tabs render as (fallback) cards — the headline fix: no open tab is
-    // invisible, even with nothing summarized.
+    // invisible, even with nothing summarized. (Direction-B markup: the pending
+    // card is `.dashboard-card.dashboard-card-pending` and the title lives in
+    // `.dashboard-card-title`.)
     const pane = booted.window.locator('.dashboard-pane');
-    await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 60' })).toBeVisible();
-    await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 61' })).toBeVisible();
+    await expect(pane.locator('.dashboard-card-title', { hasText: 'sleep 60' })).toBeVisible();
+    await expect(pane.locator('.dashboard-card-title', { hasText: 'sleep 61' })).toBeVisible();
     await expect(
       pane
-        .locator('.dashboard-tab-card-pending')
+        .locator('.dashboard-card-pending')
         .filter({ hasText: 'Waiting for first agent output' })
         .first(),
     ).toBeVisible();
-    expect(await pane.locator('.dashboard-tab-card-pending').count()).toBeGreaterThanOrEqual(2);
+    expect(await pane.locator('.dashboard-card-pending').count()).toBeGreaterThanOrEqual(2);
 
-    // Always-on engine-status strip: even with no key (so nothing is ever
-    // summarized) the loop's liveness must be visible — this is the "I see no
-    // update / what's going on" fix. With no key the phase is the paused state.
-    await expect(pane.locator('.dashboard-status')).toBeVisible();
-    await expect(pane.locator('.dashboard-status')).toContainText('Paused');
-    // "What's going on" is no longer blank: it narrates the open-but-unsummarized
-    // tabs instead of hiding until a summary exists.
-    await expect(pane.locator('.dashboard-overview')).toContainText('no transcript captured yet');
+    // Liveness without a key (Direction-B): the always-visible top status line
+    // must reflect the no-key state — this is the "I see no update / what's going
+    // on" fix, now carried by the top-line power dot + the guidance hint rather
+    // than the old status/overview strip.
+    await expect(pane.locator('.dashboard-topline-power[data-power="nokey"]')).toBeVisible();
+    await expect(pane.locator('.dashboard-topline-power[data-power="nokey"]')).toContainText('On');
+    // The actionable guidance line is shown (engine can't summarize without a key).
+    await expect(
+      pane.locator('.dashboard-pane-hint', { hasText: 'No DeepSeek API key' }),
+    ).toBeVisible();
+    // Pending cards still surface the engine's next-attempt hint in the age slot;
+    // with no key the engine is paused, so the hint reads "pending".
+    await expect(pane.locator('.dashboard-card-pending .dashboard-card-age').first()).toContainText(
+      'pending',
+    );
 
     // Evidence screenshot for the incident record.
     const outDir = resolve(__dirname, 'screenshots-out');
@@ -122,11 +131,15 @@ test('Dashboard roster excludes Code-pane Run (code-side) dev servers', async ()
       .toEqual(['sleep 60']);
 
     const pane = booted.window.locator('.dashboard-pane');
-    await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 60' })).toBeVisible();
+    await expect(pane.locator('.dashboard-card-title', { hasText: 'sleep 60' })).toBeVisible();
     // The dev server is not rendered as a card…
-    await expect(pane.locator('.dashboard-tab-card-title', { hasText: 'sleep 62' })).toHaveCount(0);
-    // …and the header counts only the one open terminal tab.
-    await expect(pane.locator('.dashboard-tab-head h3')).toContainText('Open tabs · 1');
+    await expect(pane.locator('.dashboard-card-title', { hasText: 'sleep 62' })).toHaveCount(0);
+    // …and the top-line total-tabs tally counts only the one open terminal tab
+    // (the `data-state`-less tally is the running total; Direction-B's replacement
+    // for the old "Open tabs · N" header).
+    await expect(pane.locator('.dashboard-topline-tally:not([data-state])')).toContainText(
+      '1 tabs',
+    );
 
     const outDir = resolve(__dirname, 'screenshots-out');
     await mkdir(outDir, { recursive: true });
