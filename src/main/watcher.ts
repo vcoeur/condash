@@ -9,6 +9,13 @@ import { partitionSettingsScopes, scopeMigrationDidWork } from './scope-partitio
 import { resolveConceptionPaths } from './conception-paths';
 import { applyIndexFsEvent, clearSearchIndex, rebuildSearchIndex } from './search/index-cache';
 import { clearReadmeCache, invalidateReadmeCache } from './parse-cache';
+import {
+  buildWatchPaths,
+  classify,
+  type ChokidarEvent,
+  type RootSet,
+  type WatchPaths,
+} from './watch-classify';
 
 const DEBOUNCE_MS = 250;
 
@@ -16,42 +23,6 @@ const NODE_MODULES_RE = /[/\\]node_modules[/\\]/;
 const DIST_RE = /[/\\]dist[/\\]/;
 const TARGET_RE = /[/\\]target[/\\]/;
 const DOTFILE_SEGMENT_RE = /(^|[/\\])\.[^/\\]+/;
-
-interface RootSet {
-  resources: string;
-  skills: string;
-}
-
-/** Constant paths computed once per conception. `classify` referenced these
- * by re-running `join + toPosix` on every chokidar event before — pre-
- * compute them and close over the bundle so the hot path is just string
- * compares. */
-interface WatchPaths {
-  conceptionP: string;
-  condashSettings: string;
-  condashJson: string;
-  configJson: string;
-  agentsRoot: string;
-  claudeRoot: string;
-  claudeDot: string;
-  projectsPrefix: string;
-  knowledgePrefix: string;
-}
-
-function buildWatchPaths(conception: string): WatchPaths {
-  const conceptionP = toPosix(conception);
-  return {
-    conceptionP,
-    condashSettings: toPosix(join(conception, '.condash', 'settings.json')),
-    condashJson: toPosix(join(conception, 'condash.json')),
-    configJson: toPosix(join(conception, 'configuration.json')),
-    agentsRoot: toPosix(join(conception, 'AGENTS.md')),
-    claudeRoot: toPosix(join(conception, 'CLAUDE.md')),
-    claudeDot: toPosix(join(conception, '.claude', 'CLAUDE.md')),
-    projectsPrefix: `${conceptionP}/projects/`,
-    knowledgePrefix: `${conceptionP}/knowledge/`,
-  };
-}
 
 let current: {
   path: string;
@@ -213,8 +184,6 @@ async function refreshWatchedConception(): Promise<void> {
   await setWatchedConception(path);
 }
 
-type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
-
 // Promise chain so two rapid condash.json edits queue their
 // rebuilds instead of racing — the second close() can otherwise land
 // while the first refresh is still reassigning `current`, leaking a
@@ -223,8 +192,9 @@ let refreshChain: Promise<void> = Promise.resolve();
 
 function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: WatchPaths): void {
   // Keep the in-memory search index incrementally fresh. Independent of the
-  // renderer `classify` below: it covers project notes too (which classify maps
-  // to `unknown`), and only touches indexed markdown files.
+  // renderer `classify` below and broader: it indexes project notes too (which
+  // classify routes to a scoped project-card patch), and only touches indexed
+  // markdown files.
   if (current) {
     void applyIndexFsEvent(current.path, eventName, path).catch((err) => {
       console.error('[watcher] applyIndexFsEvent failed', err);
@@ -239,8 +209,15 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
   }
 
   const event = classify(eventName as ChokidarEvent, path, roots, paths);
-  if (event.kind === 'unknown') pendingUnknown = true;
-  else pending.push(event);
+  if (event.kind === 'ignore') {
+    // Recognised as store-irrelevant (index regen etc.). The search index +
+    // parse-cache above already handled any real content change; nothing to
+    // notify the renderer about, and crucially NOT an `unknown` fan-out.
+  } else if (event.kind === 'unknown') {
+    pendingUnknown = true;
+  } else {
+    pending.push(event);
+  }
   // A config edit may have changed `skills_path`. Rebuild the
   // watcher so the new root is observed and the old one isn't.
   // Serialise via refreshChain so concurrent edits don't race the
@@ -254,75 +231,6 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
       });
   }
   schedule();
-}
-
-function classify(
-  eventName: ChokidarEvent,
-  path: string,
-  roots: RootSet,
-  paths: WatchPaths,
-): TreeEvent {
-  const op = chokidarToOp(eventName);
-  if (!op) return { kind: 'unknown' };
-
-  // Chokidar can emit native or POSIX separators depending on platform and
-  // base-path shape. Compare on a POSIX-normalised view so prefix/suffix
-  // checks work the same on macOS, Linux, and Windows.
-  const pathP = toPosix(path);
-
-  // Config files: the canonical `.condash/settings.json` plus the two
-  // legacy names at the conception root. All three participate so an
-  // in-flight rename / hand-edit of any is reflected.
-  if (
-    pathP === paths.condashSettings ||
-    pathP === paths.condashJson ||
-    pathP === paths.configJson
-  ) {
-    return { kind: 'config', path };
-  }
-
-  // Conception-level AGENTS.md (canonical) and legacy CLAUDE.md surface
-  // in the Skills pane as the pinned callout — route changes through the
-  // `skills` event so the pane refetches and the pinned entry repaints.
-  if (pathP === paths.agentsRoot || pathP === paths.claudeRoot || pathP === paths.claudeDot) {
-    return { kind: 'skills', op, path };
-  }
-
-  // Project README: <conception>/projects/<month>/<slug>/README.md
-  if (pathP.startsWith(paths.projectsPrefix) && pathP.endsWith('/README.md')) {
-    const tail = pathP.slice(paths.projectsPrefix.length, -'/README.md'.length);
-    if (tail.split('/').length === 2) {
-      return { kind: 'project', op, path };
-    }
-    return { kind: 'unknown' };
-  }
-
-  // Knowledge: any `.md` under <conception>/knowledge/.
-  if (pathP.startsWith(paths.knowledgePrefix) && pathP.toLowerCase().endsWith('.md')) {
-    return { kind: 'knowledge', op, path };
-  }
-
-  // Resources: every file under the configured resources root.
-  if (pathP === roots.resources || pathP.startsWith(`${roots.resources}/`)) {
-    return { kind: 'resources', op, path };
-  }
-
-  // Skills: every `.md` file under the configured skills root.
-  if (
-    (pathP === roots.skills || pathP.startsWith(`${roots.skills}/`)) &&
-    (pathP.toLowerCase().endsWith('.md') || op === 'unlink')
-  ) {
-    return { kind: 'skills', op, path };
-  }
-
-  return { kind: 'unknown' };
-}
-
-function chokidarToOp(eventName: ChokidarEvent): 'add' | 'change' | 'unlink' | null {
-  if (eventName === 'add') return 'add';
-  if (eventName === 'change') return 'change';
-  if (eventName === 'unlink') return 'unlink';
-  return null;
 }
 
 function schedule(): void {

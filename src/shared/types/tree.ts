@@ -14,6 +14,13 @@ export type TreeEvent =
   | { kind: 'skills'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'logs'; op: 'add' | 'change' | 'unlink'; path: string }
   | { kind: 'config'; path: string }
+  /** Project-tree structure changed (a project dir added/removed, a bulk
+   *  checkout): reload only the project list, not the whole dashboard (R1). */
+  | { kind: 'projects-reload' }
+  /** Recognised as store-irrelevant (an `index.md` regen, a file above the
+   *  slug level): touch no renderer store. Kept distinct from `unknown` so it
+   *  doesn't trigger the whole-dashboard fan-out. */
+  | { kind: 'ignore' }
   | { kind: 'unknown' };
 
 export interface KnowledgeNode {
