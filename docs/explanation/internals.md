@@ -96,14 +96,17 @@ When a Run button fires for a repo on the code side, any prior code-side session
 
 ### 6. Chokidar watcher contract
 
-A single watcher rooted at `<conception>/`, debounced 250 ms. Events are classified into:
+A single watcher rooted at `<conception>/`, debounced 250 ms. The classifier is pure and lives in `src/main/watch-classify.ts` (split out of `watcher.ts` so it unit-tests under the node env — `watcher.ts` itself pulls in electron + chokidar). Its guiding rule: an ordinary in-tree edit must reload as little as possible; only a genuinely unrecognised path falls to `unknown`. Events are classified into:
 
 - `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject` (timeline-stripped to match the list projection — see §7).
+- `project` (scoped, from an in-project file) — **any other file** under `projects/<month>/<slug>/` (a `notes/` file, a `local/` asset, a nested README) maps to a `change` on that slug's README, so the renderer patches **just that one card** (a `getProject` parse-cache hit + a no-op reconcile) instead of the whole-dashboard fan-out. Never a removal — the README still exists.
+- `projects-reload` — a project **directory** add/remove (a create/delete, a `notes/` dir appearing, a bulk git checkout). Reloads only the project list, none of the other panes.
+- `ignore` — a `projects/**/index.md` regen (or any file above the slug level): store-irrelevant, touches nothing. The search index is still kept fresh independently upstream.
 - `knowledge` — any `.md` under `knowledge/`. Coarse — the renderer just bumps `refreshKey`.
 - `config` — the canonical `.condash/settings.json` (that single file — the rest of `.condash/` is never watched), or a legacy `condash.json` / `configuration.json` at the conception root. Same coarse handling; a `config` event also triggers a watcher rebuild in case `skills_path` changed.
-- `unknown` — any classification failure. Forces a full re-render.
+- `unknown` — any classification failure. Forces the full whole-dashboard re-render (projects + knowledge + resources + skills + config + repos). This is now the true last resort: before this narrowing, ordinary note edits, `index.md` regens, and dir events all fell here, so routine in-tree activity re-paid the whole reload (review finding R1).
 
-A burst of `unknown` events collapses to a single `unknown` event before the renderer is notified.
+A burst of `unknown` events collapses to a single `unknown` event before the renderer is notified. The single-global-chokidar-rooted-at-`<conception>` watcher is unchanged — this is a **classification** narrowing, not a watcher-architecture change.
 
 ### 6a. Code-panel refresh: scalar vs. set membership
 

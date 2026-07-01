@@ -40,6 +40,7 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
   let resourcesDirty = false;
   let skillsDirty = false;
   let configDirty = false;
+  let projectsDirty = false;
   let unknownSeen = false;
 
   for (const event of events) {
@@ -50,6 +51,17 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
       // otherwise drop every later event and the UI would flash back
       // to pre-event state until the reload resolves.
       unknownSeen = true;
+      continue;
+    }
+    if (event.kind === 'ignore') {
+      // Store-irrelevant (index regen etc.). The watcher already drops these
+      // before notifying; guarded here so a stray one is a no-op, not a crash.
+      continue;
+    }
+    if (event.kind === 'projects-reload') {
+      // Project-tree structure changed (dir add/remove, bulk checkout): reload
+      // only the project list — none of the other panes (R1).
+      projectsDirty = true;
       continue;
     }
     if (event.kind === 'config') {
@@ -112,6 +124,7 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
   }
 
   const tasks: Promise<unknown>[] = [];
+  if (projectsDirty) tasks.push(deps.reloadProjects());
   if (knowledgeDirty) tasks.push(deps.reloadKnowledge());
   // A `condash.json` edit can change settings the trees indirectly depend
   // on (the resources/skills paths themselves are hard-coded since the
