@@ -12,7 +12,7 @@ describe('resolveDashboardConfig — two model tiers', () => {
     expect(config.model).toBe(DASHBOARD_DEFAULTS.model);
     expect(config.writerModel).toBe(DASHBOARD_DEFAULTS.writerModel);
     expect(config.cardReasoning).toBe(false);
-    expect(config.writerReasoning).toBe(true);
+    expect(config.writerReasoning).toBe(false);
     expect(config.cardInputChars).toBe(DASHBOARD_DEFAULTS.cardInputChars);
   });
 

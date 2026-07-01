@@ -54,7 +54,9 @@ vi.mock('./summarizer', () => ({
   getSummarizerError: () => null,
   makeEvent: (text: string, at: number) => ({ at, text }),
   summarizeTab: vi.fn(async () => h.summary),
-  writeSubtitle: vi.fn(async () => h.subtitle),
+  // The writer adds no title here, so the engine falls back to the cheap pass's
+  // draft title (h.summary.title) — what these tests assert flows through.
+  writeCard: vi.fn(async () => ({ title: '', subtitle: h.subtitle })),
 }));
 // Provenance is local fs/config; stub it so the engine tests stay hermetic.
 vi.mock('./provenance', () => ({
