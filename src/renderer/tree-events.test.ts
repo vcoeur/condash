@@ -19,7 +19,8 @@ function makeDeps() {
 const getProject = vi.fn();
 
 beforeEach(() => {
-  getProject.mockReset().mockResolvedValue({ path: README, timeline: [] } as Project);
+  // Only `path` + `timeline` are read by applyTreeEvents' patch path.
+  getProject.mockReset().mockResolvedValue({ path: README, timeline: [] } as unknown as Project);
   // applyTreeEvents reaches window.condash.getProject for `project` events.
   (globalThis as unknown as { window: unknown }).window = { condash: { getProject } };
 });

@@ -51,7 +51,7 @@ export function buildWatchPaths(conception: string): WatchPaths {
   };
 }
 
-export function chokidarToOp(eventName: ChokidarEvent): 'add' | 'change' | 'unlink' | null {
+function chokidarToOp(eventName: ChokidarEvent): 'add' | 'change' | 'unlink' | null {
   if (eventName === 'add') return 'add';
   if (eventName === 'change') return 'change';
   if (eventName === 'unlink') return 'unlink';
