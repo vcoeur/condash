@@ -248,7 +248,11 @@ export function createTerminalController(props: TerminalPaneProps) {
       const id = activeIdIn(col);
       for (const [tid, h] of xterms) {
         if (h.column !== col) continue;
-        h.element.style.display = tid === id ? 'flex' : 'none';
+        const visible = tid === id;
+        h.element.style.display = visible ? 'flex' : 'none';
+        // Keep the WebGL pool in step with real visibility so hidden background
+        // tabs release their GPU context and the visible one keeps it (F1).
+        h.mounted.setVisible(visible);
       }
     }
     const id = activeIdIn(activeColumn());

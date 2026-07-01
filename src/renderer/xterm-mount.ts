@@ -18,6 +18,7 @@ import '@xterm/xterm/css/xterm.css';
 import type { TerminalXtermPrefs } from '@shared/types';
 import { liveTerms } from './xterm-registry';
 import { PromptDecorations } from './prompt-decorations';
+import { webglPool, type WebglSlot } from './webgl-pool';
 
 export type XtermPrefs = TerminalXtermPrefs;
 
@@ -53,6 +54,10 @@ export interface MountedTerm {
    * pick up the new palette without a re-attach. User color overrides from
    * `XtermPrefs` win over the CSS fallback. */
   refreshTheme(prefs?: XtermPrefs): void;
+  /** Report whether this terminal is currently visible so the shared WebGL
+   * pool keeps visible terminals GPU-rendered and evicts long-hidden ones'
+   * contexts (review F1 — the ~16-tab GPU-context cliff). Idempotent. */
+  setVisible(visible: boolean): void;
   /** Tear down the xterm. Idempotent — safe to call from both onCleanup and
    * an explicit detach (e.g. when re-siding a session). */
   dispose(): void;
@@ -219,31 +224,51 @@ export function mountXterm(
 
   term.open(hostElement);
 
-  // ---- WebGL renderer (best-effort; falls back to DOM) ----
-  // On context loss (GPU reset, tab visibility race, driver crash) the
-  // disposed-only path leaves the terminal stuck on a blank canvas — the
-  // DOM fallback never re-attaches because no addon is wired any more.
-  // Recover by remounting a fresh WebGL addon on the next frame; if that
-  // throws (driver still wedged, repeated loss), bail to the default DOM
-  // renderer for the lifetime of this terminal.
+  // ---- WebGL renderer, pooled (best-effort; falls back to DOM) ----
+  // Every mounted tab used to hold its own WebGL context; past ~16 tabs the GPU
+  // force-loses contexts and the retry churn below fires in a storm (review F1).
+  // The context now lives in the shared `webglPool`, which caps live contexts
+  // and disposes the least-recently-visible terminal's context on overflow —
+  // xterm reverts to its DOM renderer, no data loss. `attach`/`detach` build and
+  // dispose the addon; the pool decides when each runs. On GPU context loss
+  // (driver reset, not overflow) we rebuild on the next frame — but only if the
+  // pool still wants this terminal live, so recovery can't smuggle us past the
+  // cap. After two losses we give up and stay on the DOM renderer.
+  let currentWebgl: WebglAddon | null = null;
   let webglRetries = 0;
-  const attachWebgl = (): void => {
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => {
-        webgl.dispose();
-        if (webglRetries >= 2) return;
-        webglRetries++;
-        // Defer one frame so the GPU process has a chance to settle before
-        // we ask for a fresh context.
-        requestAnimationFrame(attachWebgl);
-      });
-      term.loadAddon(webgl);
-    } catch {
-      /* GPU unavailable; keep the default DOM renderer */
-    }
+  const webglSlot: WebglSlot = {
+    attach() {
+      if (currentWebgl) return;
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          webgl.dispose();
+          if (currentWebgl === webgl) currentWebgl = null;
+          if (webglRetries >= 2) return;
+          webglRetries++;
+          // Defer one frame so the GPU process can settle, then rebuild only if
+          // the pool hasn't evicted us in the meantime.
+          requestAnimationFrame(() => {
+            if (!currentWebgl && webglPool.has(webglSlot)) webglSlot.attach();
+          });
+        });
+        term.loadAddon(webgl);
+        currentWebgl = webgl;
+      } catch {
+        /* GPU unavailable; keep the default DOM renderer */
+      }
+    },
+    detach() {
+      if (!currentWebgl) return;
+      try {
+        currentWebgl.dispose();
+      } catch {
+        /* already disposed */
+      }
+      currentWebgl = null;
+    },
   };
-  attachWebgl();
+  webglPool.touch(webglSlot);
 
   // ---- ligatures (gated; loads font-ligatures behind the scenes) ----
   if (prefs.ligatures) {
@@ -430,10 +455,17 @@ export function mountXterm(
     promptLines: () => prompts.promptLines(),
     jumpToPrompt,
     refreshTheme,
+    setVisible(visible: boolean) {
+      if (disposed) return;
+      if (visible) webglPool.show(webglSlot);
+      else webglPool.hide(webglSlot);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       liveTerms.delete(mounted);
+      // Drop our pool slot before term.dispose() (which disposes the WebglAddon).
+      webglPool.remove(webglSlot);
       prompts.dispose();
       term.dispose();
     },
