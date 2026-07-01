@@ -84,9 +84,19 @@ export interface Project {
    * item retains the date the latest close left behind. */
   closedAt: string | null;
   /** Parsed `## Timeline` entries in source order. Empty when the section
-   * is absent. Powers the popup's collapsed-by-default Timeline pane and
-   * the card's first/last-date display. */
+   * is absent. Powers the popup's collapsed-by-default Timeline pane.
+   *
+   * The `listProjects` projection **empties this array** in the resident
+   * renderer list + every IPC clone (it grows unbounded with a project's age —
+   * G1): cards read `lastActivity` instead, and the preview lazy-fetches the
+   * full project (with `timeline`) via `getProject`. `getProject` and the CLI
+   * paths keep it populated. */
   timeline: TimelineEntry[];
+  /** Date (`YYYY-MM-DD`) of the most recent `## Timeline` entry, or null when
+   * the section is empty — precomputed so the card's last-activity label needn't
+   * carry the whole `timeline[]`. `parseReadme` always sets it; only hand-built
+   * fixtures omit it (hence optional). */
+  lastActivity?: string | null;
 }
 
 export interface ProjectFileEntry {

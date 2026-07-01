@@ -34,6 +34,19 @@ async function assertUnderConception(path: string): Promise<void> {
   await requirePathUnder(path, conceptionPath);
 }
 
+/**
+ * Slim a parsed project for the resident list: drop the unbounded `timeline[]`
+ * (it grows with a project's age — G1) while keeping the precomputed
+ * `lastActivity` scalar the card needs. The preview lazy-fetches the full
+ * project (with `timeline`) via `getProject`. Returns the cached object
+ * untouched when there's nothing to trim; otherwise a shallow copy so the
+ * parse-cache entry keeps its full timeline.
+ */
+function toListProjection(project: Project): Project {
+  if (project.timeline.length === 0) return project;
+  return { ...project, timeline: [] };
+}
+
 async function listProjects(): Promise<Project[]> {
   const { lastConceptionPath: conceptionPath } = await readSettings();
   if (!conceptionPath) return [];
@@ -41,7 +54,7 @@ async function listProjects(): Promise<Project[]> {
   const readmes = await findProjectReadmes(conceptionPath);
   // parseReadmeCached memoises on path + mtime, so a reload with no file changes
   // re-parses nothing — the R2 fix for the whole-tree re-parse on every reload.
-  const projects = await Promise.all(readmes.map(parseReadmeCached));
+  const projects = (await Promise.all(readmes.map(parseReadmeCached))).map(toListProjection);
 
   return projects.sort(compareByStatusThenSlug);
 }

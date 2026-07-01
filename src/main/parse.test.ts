@@ -366,3 +366,33 @@ apps: []
     expect(project.deliverables.map((d) => d.label)).toEqual(['Yes']);
   });
 });
+
+describe('lastActivity (timeline projection scalar)', () => {
+  const header = `---
+date: 2026-05-19
+kind: project
+status: now
+---
+
+# X
+`;
+
+  it('is the most recent ## Timeline date, regardless of source order', async () => {
+    const body = `${header}
+## Timeline
+
+- 2026-05-19 — opened
+- 2026-05-25 — shipped
+- 2026-05-21 — reviewed
+`;
+    const path = await writeReadme('2026-05-19-la', body);
+    const project = await parseReadme(path);
+    expect(project.lastActivity).toBe('2026-05-25');
+  });
+
+  it('is null when the README has no ## Timeline entries', async () => {
+    const path = await writeReadme('2026-05-19-none', `${header}\n## Goal\n\nNo timeline.\n`);
+    const project = await parseReadme(path);
+    expect(project.lastActivity).toBeNull();
+  });
+});

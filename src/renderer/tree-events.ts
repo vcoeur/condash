@@ -79,11 +79,15 @@ export async function applyTreeEvents(events: TreeEvent[], deps: TreeEventsDeps)
         deps.mutateProjects((items) => items.filter((p) => p.path !== event.path));
         continue;
       }
+      // `getProject` returns the full project (with `timeline[]`); the resident
+      // list keeps timelines out (G1 — matches the `listProjects` projection),
+      // so patch with a timeline-stripped copy. The card reads `lastActivity`.
+      const row = project.timeline.length === 0 ? project : { ...project, timeline: [] };
       deps.mutateProjects((items) => {
-        const idx = items.findIndex((p) => p.path === project.path);
-        if (idx === -1) return [...items, project];
+        const idx = items.findIndex((p) => p.path === row.path);
+        if (idx === -1) return [...items, row];
         const next = items.slice();
-        next[idx] = project;
+        next[idx] = row;
         return next;
       });
     } catch {

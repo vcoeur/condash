@@ -82,16 +82,21 @@ export function firstDate(p: Project): string {
   return slugDate(p.slug);
 }
 
-/** Last date for the card / popup timeline header. Most recent entry's
- * date in `## Timeline`; falls back to the slug date when the timeline
- * is empty (legacy items pre-template). */
+/** Last date for the card / popup timeline header. Prefers the precomputed
+ * `lastActivity` scalar — the resident list carries it but not the full
+ * `timeline[]` (G1 projection). Falls back to scanning `timeline` for a full
+ * project that predates the scalar (e.g. a hand-built object), then to the slug
+ * date when there's no timeline at all (legacy items pre-template). */
 export function lastDate(p: Project): string {
-  if (!p.timeline || p.timeline.length === 0) return slugDate(p.slug);
-  let max = p.timeline[0].date;
-  for (const e of p.timeline) {
-    if (e.date > max) max = e.date;
+  if (p.lastActivity) return p.lastActivity;
+  if (p.timeline && p.timeline.length > 0) {
+    let max = p.timeline[0].date;
+    for (const e of p.timeline) {
+      if (e.date > max) max = e.date;
+    }
+    return max;
   }
-  return max;
+  return slugDate(p.slug);
 }
 
 /** Render the first/last range as a single date when they coincide, an
