@@ -8,6 +8,7 @@ import { migrateLegacyConfig } from './condash-dir-migrate';
 import { partitionSettingsScopes, scopeMigrationDidWork } from './scope-partition-migrate';
 import { resolveConceptionPaths } from './conception-paths';
 import { applyIndexFsEvent, clearSearchIndex, rebuildSearchIndex } from './search/index-cache';
+import { clearReadmeCache, invalidateReadmeCache } from './parse-cache';
 
 const DEBOUNCE_MS = 250;
 
@@ -66,8 +67,10 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   if (current?.path === conceptionPath) return;
 
   // Conception is changing — drop the in-memory search index; it's rebuilt
-  // below for the new conception (or left empty when clearing).
+  // below for the new conception (or left empty when clearing). Drop the
+  // README parse memo too so the new tree never serves a stale entry.
   clearSearchIndex();
+  clearReadmeCache();
 
   if (current) {
     await current.watcher.close().catch(() => undefined);
@@ -226,6 +229,13 @@ function onWatchEvent(eventName: string, path: string, roots: RootSet, paths: Wa
     void applyIndexFsEvent(current.path, eventName, path).catch((err) => {
       console.error('[watcher] applyIndexFsEvent failed', err);
     });
+  }
+
+  // Drop the README parse memo for a file that changed or was removed so the
+  // next listProjects/getProject re-parses it (R2). Keyed by path, so this is a
+  // cheap no-op for the (vast majority of) non-README events.
+  if (eventName === 'change' || eventName === 'unlink') {
+    invalidateReadmeCache(path);
   }
 
   const event = classify(eventName as ChokidarEvent, path, roots, paths);

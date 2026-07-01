@@ -13,7 +13,7 @@ import { touchDirtyMarker } from '../dirty';
 import { listProjectFiles } from '../files';
 import { addStep, editStepText, toggleStep, transitionStatus, writeNote } from '../mutate';
 import { createProjectNote, readNote } from '../note';
-import { parseReadme } from '../parse';
+import { parseReadmeCached } from '../parse-cache';
 import { requirePathUnder } from '../path-bounds';
 import { readSettings, settingsPath } from '../settings';
 import { findProjectReadmes } from '../walk';
@@ -39,14 +39,16 @@ async function listProjects(): Promise<Project[]> {
   if (!conceptionPath) return [];
 
   const readmes = await findProjectReadmes(conceptionPath);
-  const projects = await Promise.all(readmes.map(parseReadme));
+  // parseReadmeCached memoises on path + mtime, so a reload with no file changes
+  // re-parses nothing — the R2 fix for the whole-tree re-parse on every reload.
+  const projects = await Promise.all(readmes.map(parseReadmeCached));
 
   return projects.sort(compareByStatusThenSlug);
 }
 
 async function getProject(path: string): Promise<Project | null> {
   try {
-    return await parseReadme(path);
+    return await parseReadmeCached(path);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
