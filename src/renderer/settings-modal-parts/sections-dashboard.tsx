@@ -137,8 +137,9 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
             }
           />
           <small class="settings-field-hint">
-            The richer tier that synthesizes the cross-tab headline and overview from the per-tab
-            cards. Default <code>deepseek-v4-pro</code>. Leave blank to reuse the card model.
+            The richer tier that composes each tab's title (3–7 words) and one-sentence subtitle
+            from the card facts. Default <code>deepseek-v4-pro</code>. Leave blank to reuse the card
+            model.
           </small>
         </label>
 
@@ -160,14 +161,14 @@ export function DashboardSection(props: DashboardSectionProps): JSX.Element {
           <label class="settings-checkbox">
             <input
               type="checkbox"
-              checked={dashboard().writerReasoning ?? true}
+              checked={dashboard().writerReasoning ?? false}
               onChange={(e) => void update({ writerReasoning: e.currentTarget.checked })}
             />
             <span>Writer model reasoning</span>
           </label>
           <small class="settings-field-hint">
-            On by default — cross-tab synthesis is the one place reasoning measurably improves the
-            narrative.
+            Off by default — reasoning-on returns an empty reply on a non-trivial fraction of writer
+            calls, which would blank the title (this tier now writes it) and the subtitle.
           </small>
         </div>
 
