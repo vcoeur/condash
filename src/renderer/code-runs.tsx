@@ -144,11 +144,16 @@ function CodeRunRow(props: {
   // Re-attach the xterm element to whichever host node is currently mounted.
   // createEffect re-runs when expanded() flips back on.
   createEffect(() => {
-    if (!expanded() || !host) return;
+    if (!expanded() || !host) {
+      // Collapsed row → release the WebGL context back to the pool (F1).
+      mounted?.setVisible(false);
+      return;
+    }
     void ensureMounted().then(() => {
       if (host && xtermElement.parentElement !== host) {
         host.appendChild(xtermElement);
       }
+      mounted?.setVisible(true);
       requestAnimationFrame(() => {
         try {
           mounted?.fit.fit();

@@ -162,6 +162,10 @@ The sub-file vocabulary is fixed so a reader can predict the layout:
 
 Existing `-parts/` dirs: `panes/projects-parts/`, `panes/code-parts/`, `panes/tasks-parts/`, `settings-modal-parts/`, `note-modal-parts/`, `project-preview-parts/`. A sub-component that *is* a modal renders through the shared `<Modal>` shell (invariant 10) — it does not hand-roll a backdrop/header. `settings-modal.tsx` is the one pane still over the threshold with a richer split owed (its Esc/save contract keeps it off the shared shell); decompose it further when next substantially touched.
 
+### 13. Terminal WebGL contexts are pooled { #webgl-pool }
+
+xterm's `WebglAddon` holds one GPU context per terminal, and condash eagerly mounts every open "my terms" tab (`terminal-pane/controller.ts` mounts each session, hidden ones included). Each open tab therefore used to hold its own live WebGL context; past the browser's ~16-context ceiling the GPU force-loses contexts and the addon's context-loss retry churns — the "slow with many terminals open" cliff. A shared LRU pool (`src/renderer/webgl-pool.ts`) now caps the number of live contexts (default 8): `mountXterm` registers each terminal's context as a pool slot, the terminal pane calls `MountedTerm.setVisible()` from `focusActive()` so the currently-shown tab(s) are protected and long-hidden tabs release their context (falling back to xterm's DOM renderer — no data loss), and re-showing a tab re-attaches a fresh context. The pool module is `@xterm/*`-free so it unit-tests under the node vitest env (`webgl-pool.test.ts`), mirroring the `prompt-decorations.ts` split. The addon's own `onContextLoss` rebuild still runs for genuine GPU resets, but only if the pool still wants that terminal live — recovery can't smuggle a terminal past the cap.
+
 ## Environment hygiene { #environment-hygiene }
 
 condash spawns subprocesses (terminals, runners, `force_stop` commands, open-with launchers). The main process scrubs the environment before each spawn to avoid leaking interpreter-specific vars into unrelated child programs:
