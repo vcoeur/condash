@@ -88,7 +88,7 @@ The embedded terminal (`termSpawn`) takes a `cwd` field that goes through the sa
 | Anything outside the resolved conception path | Path validation rejects escapes. |
 | Item directory renames / moves | The flat-month layout means items stay put for life; slug / date changes need `git mv` in the user's shell. |
 | `knowledge/` tree | Read-only from the dashboard. Edit in your editor (or via the `/knowledge` skill). |
-| Caches or indices | There are none — the tree is re-parsed on each call, with chokidar pushing events for staleness only. |
+| Caches or indices | Read-side only, kept fresh by chokidar: an mtime-keyed `parseReadme` memo (`src/main/parse-cache.ts`) skips re-parsing unchanged READMEs, and the in-memory search index. Both are invalidated by the watcher on change/unlink; writes always hit disk. |
 | Lock files | Concurrent edits are detected via the drift check on `toggleStep` / `editStepText` / `writeNote`; there's no advisory lock. |
 
 ## Skill-invoked edits

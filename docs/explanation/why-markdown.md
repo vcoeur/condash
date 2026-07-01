@@ -77,8 +77,8 @@ The dashboard is not the only way to view or edit this file. That's the whole po
 
 Concretely:
 
-- No database. The tree is re-parsed on every request.
-- No cache. Edit a README in your editor, refresh the window, see the change.
+- No database. The Markdown files are the state, parsed straight from disk.
+- No stale cache. A README parse is memoised by file mtime (and dropped by the file watcher on change/unlink), so an unchanged tree re-parses nothing — yet editing a README, in condash or your own editor, changes its mtime and the next refresh always shows the change.
 - No sync server. condash binds to `127.0.0.1`. If you want multi-machine, you `git pull`.
 - No auth. Single-user, localhost-only.
 - No signup. Download a release, launch `condash`.
