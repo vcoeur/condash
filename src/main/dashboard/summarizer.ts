@@ -235,7 +235,8 @@ export function parseCardWriter(reply: string): CardWriterResult {
 // request until the next `Stop` — is forced back to `working` deterministically in
 // `buildSummary` (engine.ts); the `[user]`-tail rule below reinforces the card
 // content the model writes for it.
-const TAB_SYSTEM_PROMPT = [
+// Exported for unit testing (the delegated-agent guidance is a regression guard).
+export const TAB_SYSTEM_PROMPT = [
   'You summarize a single terminal tab for a developer dashboard.',
   'You are given the tab command/cwd, a prior summary (possibly stale), and the',
   'most recent terminal output.',
@@ -274,6 +275,16 @@ const TAB_SYSTEM_PROMPT = [
   'is resting. The finished-reply-is-idle and "awaiting" judgements apply only when',
   'the last message is [assistant], and "awaiting" still requires that [assistant]',
   'message to end on a concrete blocking question.',
+  'Delegated work is also "working" even with no visible progress indicator: when',
+  'the latest [assistant] message says the agent has launched, dispatched, or is',
+  'waiting on or monitoring background / parallel / sub-agents or tasks that are',
+  'still running (for example "launched 2 agents in parallel ... while they run",',
+  '"waiting for the background agents to finish", "monitoring the parallel jobs"),',
+  'the turn is still in flight — classify "working" with the matching activity',
+  '(usually "researching", or the delegated work\'s stage), never "idle". This is',
+  'distinct from an [assistant] message reporting that those agents or tasks have',
+  'FINISHED or returned their results, where the agent is resting or asking what to',
+  'do next — that is "idle".',
   'Treat informational notices and recoverable warnings as background noise (for',
   'example "workspace not trusted", "N permissions ignored", deprecation or auth',
   'notices): never report them as the current action, a blocker, or an error.',

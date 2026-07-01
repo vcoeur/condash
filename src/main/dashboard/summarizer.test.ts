@@ -5,6 +5,7 @@ import {
   buildWriterUserPrompt,
   parseCardWriter,
   parseTabSummary,
+  TAB_SYSTEM_PROMPT,
   temperatureForModel,
   withTimeout,
 } from './summarizer';
@@ -257,5 +258,23 @@ describe('withTimeout', () => {
     // withTimeout must keep this from becoming an unhandled rejection.
     rejectLater(new Error('late failure'));
     await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+});
+
+describe('TAB_SYSTEM_PROMPT delegated-agent guidance', () => {
+  // Regression guard for the delegated-background-agent idle-misread: an
+  // [assistant] tail describing still-running delegated work (the "Waiting for N
+  // background agents to finish" state) is grid-only chrome, never framed into the
+  // transcript, so the classifier only ever sees the assistant's prose. The prompt
+  // must therefore carry the semantic itself. Guards both halves so neither is
+  // silently dropped.
+  it('classifies still-running background/parallel/sub-agents as working', () => {
+    expect(TAB_SYSTEM_PROMPT).toContain('Delegated work is also "working"');
+    expect(TAB_SYSTEM_PROMPT).toContain('background / parallel / sub-agents or tasks');
+    expect(TAB_SYSTEM_PROMPT).toMatch(/still running[\s\S]*classify "working"/);
+  });
+
+  it('still treats finished delegated work as idle', () => {
+    expect(TAB_SYSTEM_PROMPT).toMatch(/FINISHED or returned their results[\s\S]*that is "idle"/);
   });
 });
