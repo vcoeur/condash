@@ -31,12 +31,18 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  *   # condash: {"finished":"…Z","exitCode":0}   ← only after exit()
  *
  * Bytes flow: pty `output(data)` → `term.write(data)`. A debounced timer
- * (default 5 s) re-renders the buffer + header (+ footer if exited) and
- * atomically renames a temp file onto the `.txt` path. `exit()` and
- * `close()` force an immediate flush. The periodic flushes do NOT `fsync` —
- * only the terminal flushes (exit / close) do; the atomic rename already keeps
- * the file from ever being torn, and fsync-ing every few-second re-snapshot
- * stalls the main process for durability a log viewer doesn't need.
+ * (default 5 s) re-renders the buffer + header (+ footer if exited) and writes
+ * the `.txt`. When the composed text is a pure prefix-extension of what's
+ * already on disk — the common case for a growing transcript — the periodic
+ * flush **appends only the delta** rather than rewriting the whole (possibly
+ * multi-MB) file each cycle. Any non-append change (a grid repaint, a
+ * byte-cap trim) and the durable `exit()` / `close()` flushes take the atomic
+ * tmp → (fsync) → rename full rewrite instead. `writtenText` tracks the on-disk
+ * content across both paths. The periodic flushes do NOT `fsync` — only the
+ * terminal flushes (exit / close) do; the atomic rename already keeps the file
+ * from ever being torn, appends never truncate existing content, and fsync-ing
+ * every few-second flush stalls the main process for durability a log viewer
+ * doesn't need.
  *
  * `input(data)` is intentionally a no-op — the pty echoes typed bytes
  * back through stdout, so feeding `in` into the headless xterm would
@@ -172,6 +178,11 @@ export class SessionLogger {
   private closePromise: Promise<void> | null = null;
   private paused = false;
   private dirty = false;
+  /** Exact text last written to `txtPath`, or null when the next flush must do a
+   * full rewrite (nothing on disk yet, or a prior write failed). When the newly
+   * composed text is a pure prefix-extension of this, a periodic flush appends
+   * only the delta instead of rewriting the whole file (the G9 fix). */
+  private writtenText: string | null = null;
   private readonly flushMs: number;
   /** Pulls any in-band "agent transcript over OSC" frames out of the pty
    * stream. Harness-blind: it knows the generic protocol, not the program.
@@ -366,12 +377,32 @@ export class SessionLogger {
     const text = this.composeFileContent(body, isTranscript ? 'transcript' : 'grid');
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
-      // tmp → (fsync) → rename. The atomic rename keeps the file from ever
-      // being torn / zero-length; fsync makes the content itself durable across
-      // power loss. Periodic flushes skip the fsync (a live session re-snapshots
-      // its whole buffer every few seconds — fsync-ing each one stalls the main
-      // process's libuv threadpool for durability the log viewer doesn't need);
-      // the exit / close flushes pass `sync: true`.
+      if (!sync && this.writtenText !== null && text.startsWith(this.writtenText)) {
+        // Append-only fast path (periodic flushes only). The file body only
+        // grew — a transcript gains whole messages/markers at the end, the
+        // footer appends after the body — so append just the delta instead of
+        // rewriting the entire (possibly multi-MB) transcript every few seconds
+        // (the G9 write-amplification). A grid repaint or a byte-cap trim is not
+        // a prefix-extension, so it falls through to the full rewrite below; the
+        // durable exit/close flushes (`sync`) always take the full path too.
+        const delta = text.slice(this.writtenText.length);
+        if (delta.length > 0) {
+          const fh = await open(this.txtPath, 'a');
+          try {
+            await fh.write(delta);
+          } finally {
+            await fh.close();
+          }
+        }
+        this.writtenText = text;
+        return;
+      }
+      // Full rewrite: tmp → (fsync) → rename. The atomic rename keeps the file
+      // from ever being torn / zero-length; fsync makes the content itself
+      // durable across power loss. Periodic flushes skip the fsync (a live
+      // session re-snapshots its buffer every few seconds — fsync-ing each one
+      // stalls the main process's libuv threadpool for durability the log viewer
+      // doesn't need); the exit / close flushes pass `sync: true`.
       const tmp = `${this.txtPath}.tmp`;
       const fh = await open(tmp, 'w');
       try {
@@ -381,8 +412,12 @@ export class SessionLogger {
         await fh.close();
       }
       await rename(tmp, this.txtPath);
+      this.writtenText = text;
     } catch (err) {
       process.stderr.write(`condash terminal-logger: write failed: ${(err as Error).message}\n`);
+      // Offset bookkeeping may now be stale (a partial append, a failed rename):
+      // force a full rewrite on the next flush to re-establish the file exactly.
+      this.writtenText = null;
     }
   }
 

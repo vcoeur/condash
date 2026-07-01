@@ -41,6 +41,15 @@ const ST = '\x1b\\';
  * tests. */
 export const MAX_TRANSCRIPT_LINES = 20_000;
 
+/** Cap on the accumulated transcript **bytes**, alongside the line cap. A single
+ * message line can reach a few MB (a big assistant turn), so 20k lines alone
+ * doesn't bound memory — a handful of huge lines can still hold tens of MB
+ * resident and, with disk logging on, be rewritten every flush (review G9).
+ * Oldest lines are dropped once total content exceeds this, down to (but never
+ * below) a single line. Generous enough that a real conversation never hits it.
+ * Exported for tests. */
+export const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
+
 /** Bail-out threshold for an unterminated OSC sequence. A cooperating writer
  * terminates each packet promptly; past this size we stop waiting, re-emit
  * the buffered bytes to the passthrough (so the grid keeps rendering instead
@@ -112,6 +121,11 @@ export class OscTranscriptExtractor {
    * the accumulated payload size for the per-frame cap. */
   private pieces = new Map<string, { n: number; got: Map<number, string>; chars: number }>();
   private lines: string[] = [];
+  /** Byte length of `lines[i]`, parallel array, so the byte cap trims without
+   * re-measuring the whole transcript on every append. */
+  private lineBytes: number[] = [];
+  /** Running sum of `lineBytes` — the value the byte cap is enforced against. */
+  private totalBytes = 0;
   private captured = false;
 
   /** Feed a raw pty chunk. Returns the chunk with our OSC sequences stripped,
@@ -204,13 +218,28 @@ export class OscTranscriptExtractor {
   private applyFrame(frame: TranscriptFrame): void {
     if (frame.t === 'msg' && typeof frame.text === 'string') {
       this.captured = true;
-      this.lines.push(transcriptLine(frame.role, frame.text));
-      // Keep only the newest MAX_TRANSCRIPT_LINES entries.
-      if (this.lines.length > MAX_TRANSCRIPT_LINES) {
-        this.lines.splice(0, this.lines.length - MAX_TRANSCRIPT_LINES);
-      }
+      this.appendLine(transcriptLine(frame.role, frame.text));
     } else if (frame.t === 'end') {
       this.captured = true;
+    }
+  }
+
+  /** Append a transcript line and trim the oldest entries back under both the
+   * line cap and the byte cap. Single-sourced so message lines and timestamp
+   * markers enforce identical bounds. */
+  private appendLine(line: string): void {
+    this.lines.push(line);
+    const bytes = Buffer.byteLength(line, 'utf8');
+    this.lineBytes.push(bytes);
+    this.totalBytes += bytes;
+    // Drop oldest until under both caps, but never below one line — a single
+    // over-budget message is kept whole rather than rendering an empty body.
+    while (
+      this.lines.length > MAX_TRANSCRIPT_LINES ||
+      (this.totalBytes > MAX_TRANSCRIPT_BYTES && this.lines.length > 1)
+    ) {
+      this.lines.shift();
+      this.totalBytes -= this.lineBytes.shift() ?? 0;
     }
   }
 
@@ -222,10 +251,7 @@ export class OscTranscriptExtractor {
    * @param markerLine the full `<!-- YYYY-MM-DD:HH:MM -->` line to append.
    */
   pushTimestampMarker(markerLine: string): void {
-    this.lines.push(markerLine);
-    if (this.lines.length > MAX_TRANSCRIPT_LINES) {
-      this.lines.splice(0, this.lines.length - MAX_TRANSCRIPT_LINES);
-    }
+    this.appendLine(markerLine);
   }
 
   /** True once any protocol frame has been decoded — the caller should then

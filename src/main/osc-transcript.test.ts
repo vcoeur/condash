@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/headless';
 import {
   MAX_OSC_BUFFER_CHARS,
   MAX_PENDING_FRAMES,
+  MAX_TRANSCRIPT_BYTES,
   MAX_TRANSCRIPT_LINES,
   OscTranscriptExtractor,
   formatMinute,
@@ -145,6 +146,23 @@ describe('OscTranscriptExtractor', () => {
     expect(lines.length).toBe(MAX_TRANSCRIPT_LINES);
     expect(lines[0]).toBe(`[assistant] msg ${overshoot}`);
     expect(lines[lines.length - 1]).toBe(`[assistant] msg ${MAX_TRANSCRIPT_LINES + overshoot - 1}`);
+  });
+
+  it('caps the transcript by bytes, dropping the oldest big messages', () => {
+    // A handful of multi-MB messages can blow past the byte budget while staying
+    // well under the 20k-line cap — the byte cap is what bounds memory here.
+    const ex = new OscTranscriptExtractor();
+    const big = 'x'.repeat(1_000_000); // ~1 MB per message
+    const count = 10; // ~10 MB fed; cap is 8 MB
+    for (let k = 0; k < count; k++) {
+      ex.feed(packets(`b${k}`, { v: 1, t: 'msg', role: 'assistant', text: `${k}:${big}` }));
+    }
+    const rendered = ex.render();
+    // Bounded by the byte cap (a little slack for the `\n\n` separators).
+    expect(Buffer.byteLength(rendered, 'utf8')).toBeLessThanOrEqual(MAX_TRANSCRIPT_BYTES + 1024);
+    // Newest survived; oldest were trimmed.
+    expect(rendered).toContain(`[assistant] ${count - 1}:`);
+    expect(rendered).not.toContain('[assistant] 0:');
   });
 
   it('display-safety: the OSC is not rendered by xterm', async () => {
