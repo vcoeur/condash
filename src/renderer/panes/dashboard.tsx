@@ -407,7 +407,9 @@ export function DashboardView() {
                               <span class="dashboard-card-action-time" title={fmtTime(ev.at)}>
                                 {fmtAge(ev.at)}
                               </span>
-                              <span class="dashboard-card-action-text">{ev.text}</span>
+                              <span class="dashboard-card-action-text" title={ev.text}>
+                                {ev.text}
+                              </span>
                             </li>
                           )}
                         </For>
