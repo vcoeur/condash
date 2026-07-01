@@ -98,7 +98,7 @@ When a Run button fires for a repo on the code side, any prior code-side session
 
 A single watcher rooted at `<conception>/`, debounced 250 ms. Events are classified into:
 
-- `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject`.
+- `project` — `projects/<month>/<slug>/README.md` add/change/unlink. Renderer patches the project list in place via `getProject` (timeline-stripped to match the list projection — see §7).
 - `knowledge` — any `.md` under `knowledge/`. Coarse — the renderer just bumps `refreshKey`.
 - `config` — the canonical `.condash/settings.json` (that single file — the rest of `.condash/` is never watched), or a legacy `condash.json` / `configuration.json` at the conception root. Same coarse handling; a `config` event also triggers a watcher rebuild in case `skills_path` changed.
 - `unknown` — any classification failure. Forces a full re-render.
@@ -117,6 +117,8 @@ F5 / View → Refresh fans out across **every working surface** (`reloadAll` in 
 ### 7. IPC contract
 
 `CondashApi` in `src/shared/api.ts` is the *whole* IPC surface. The preload (`src/preload/index.ts`) implements every verb as a one-line `ipcRenderer.invoke`; the main process registers one handler per verb. `src/main/index.ts:registerIpc` is a thin dispatcher that calls each per-domain module under `src/main/ipc/` (`projects.ts`, `trees.ts`, `repos.ts`, `settings.ts`, `system.ts`, `terminal.ts`). No string-mux'd actions, no implicit channels.
+
+**`listProjects` projection.** `listProjects` returns the same `Project[]` shape as `getProject`, but with the potentially large `timeline[]` **emptied** on every row (`toListProjection` in `ipc/projects.ts`) — the array grows with a project's age, and multiplied across hundreds of resident projects + every reload's structured-clone it was a real long-session cost (review G1). The single timeline datum the card needs — the most recent entry's date — is precomputed at parse time as `Project.lastActivity` (kept on the row). The **preview** is the only surface that renders the full `timeline[]`, and it lazy-fetches the full project via `getProject` (a parse-cache hit, so effectively free) when it opens. The tree-events single-card patch strips the timeline the same way so the resident list stays uniformly timeline-free.
 
 Subscriptions (`onTreeEvents`, `onTermData`, `onTermExit`, `onTermSessions`) return an unsubscribe function; the renderer holds it and calls it from `onCleanup`.
 

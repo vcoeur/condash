@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Project, Step, StepMarker } from '../../../shared/types';
-import { nextOpenStep } from './data';
+import type { Project, Step, StepMarker, TimelineEntry } from '../../../shared/types';
+import { lastDate, nextOpenStep } from './data';
 
 function step(marker: StepMarker, text: string, lineIndex = 0): Step {
   return { lineIndex, marker, text, section: 'Steps' };
@@ -58,5 +58,26 @@ describe('nextOpenStep', () => {
 
   it('still surfaces a blocked [!] step', () => {
     expect(nextOpenStep(project([step('-', 'a', 0), step('!', 'b', 1)]))?.text).toBe('b');
+  });
+});
+
+describe('lastDate (timeline projection)', () => {
+  const withDates = (over: Partial<Project>): Project => ({ ...project([]), ...over });
+  const entry = (date: string): TimelineEntry => ({ date, text: 'x' });
+
+  it('prefers the precomputed lastActivity scalar (resident list row)', () => {
+    // The row carries lastActivity but an emptied timeline — the card still
+    // shows the right date without holding the full timeline[].
+    expect(lastDate(withDates({ lastActivity: '2026-06-30', timeline: [] }))).toBe('2026-06-30');
+  });
+
+  it('falls back to scanning timeline for a full project without the scalar', () => {
+    expect(lastDate(withDates({ timeline: [entry('2026-06-01'), entry('2026-06-10')] }))).toBe(
+      '2026-06-10',
+    );
+  });
+
+  it('falls back to the slug date when there is no timeline at all', () => {
+    expect(lastDate(withDates({ slug: '2026-05-28-x', timeline: [] }))).toBe('2026-05-28');
   });
 });

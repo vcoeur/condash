@@ -55,6 +55,12 @@ function parseReadmeFromRaw(raw: string, path: string, preparsedHeader?: HeaderF
   const deliverables = extractDeliverables(lines, dirname(path));
   const closedAt = extractClosedAt(lines);
   const timeline = parseTimelineEntries(raw);
+  // Precompute the most-recent timeline date so the list projection can drop
+  // the full `timeline[]` yet still drive the card's last-activity label (G1).
+  let lastActivity: string | null = null;
+  for (const entry of timeline) {
+    if (lastActivity === null || entry.date > lastActivity) lastActivity = entry.date;
+  }
 
   const slug = basename(dirname(path));
 
@@ -74,6 +80,7 @@ function parseReadmeFromRaw(raw: string, path: string, preparsedHeader?: HeaderF
     deliverableCount: deliverables.length,
     closedAt,
     timeline,
+    lastActivity,
   };
 }
 

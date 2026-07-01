@@ -85,6 +85,14 @@ export function ProjectPreview(props: {
     async (path) => (path ? await window.condash.listProjectFiles(path) : []),
   );
 
+  // The resident list drops `timeline[]` (G1 projection), so fetch the full
+  // project for the Timeline pane. Cheap — `getProject` is served from the
+  // main-process parse-cache (a hit right after `listProjects` populated it).
+  const [fullProject] = createResource(
+    () => props.project?.path ?? null,
+    async (path) => (path ? await window.condash.getProject(path) : null),
+  );
+
   const handleKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
       // Let the local edit/add inputs swallow Escape themselves.
@@ -507,7 +515,7 @@ export function ProjectPreview(props: {
               </main>
             </div>
 
-            <TimelinePane project={project()} />
+            <TimelinePane project={fullProject() ?? project()} />
           </div>
         </div>
       )}
