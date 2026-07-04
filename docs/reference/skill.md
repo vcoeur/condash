@@ -1,6 +1,6 @@
 ---
 title: Management skills · condash reference
-description: Reference for the three shipped Claude Code skills — /projects, /knowledge, /pr — and how they shell out to the condash CLI.
+description: Reference for the four shipped Claude Code skills — /projects, /knowledge, /pr, /applications — and how they shell out to the condash CLI.
 ---
 
 # Management skills
@@ -9,13 +9,14 @@ description: Reference for the three shipped Claude Code skills — /projects, /
 
 ## At a glance
 
-condash ships three [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
+condash ships four [Claude Code](https://docs.claude.com/en/docs/claude-code/) skills. They live under [`conception-template/.agents/skills/`](https://github.com/vcoeur/condash/tree/main/conception-template/.agents/skills) in the repo and land at `<conception>/.agents/skills/` after running `condash skills install`. Each skill is placed verbatim — `SKILL.md` plus any task `.md` files and an optional `SKILL.<harness>.md` overlay. condash does not compile them to per-harness directories; the harness launcher renders them per agent at run time.
 
 | Skill | Scope | What it does |
 |---|---|---|
 | **`/projects`** | items + worktrees | Create / read / update / close projects, incidents, and documents. Manage worktrees per branch. |
 | **`/knowledge`** | knowledge tree | Retrieve, update, index, and verify durable reference material in `<conception>/knowledge/`. Audits (orphans, dangling links, cross-repo refs, worktree drift, LFS coverage, large binaries, stale stamps) flow through `verify`. |
 | **`/pr`** | git | Open a GitHub PR from the current branch with the project README's timeline-append rule applied. |
+| **`/applications`** | app registry | Manage the `#handle` app registry (list / add / set / rename / sync-docs / validate) — the single source of truth for how apps are referenced across the tree. |
 
 The skills are **editorial only**. Every mechanical step shells out to `condash`, so the dashboard, the CLI, and the skills always see the same canonical view of the tree. A skill never re-implements parsing or validation in `bash + grep + sed`.
 

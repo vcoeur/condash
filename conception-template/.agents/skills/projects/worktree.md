@@ -32,6 +32,8 @@ The CLI owns the multi-app derivation, the protected-set logic, and the per-repo
 
    **Base ref.** The CLI reads `base` from every item declaring `<branch>` and uses it as the start point for new branches. All declaring items must agree on the base (the call fails with the disagreeing slugs otherwise). `--base <ref>` overrides the README field for one-shot setups. When no item declares `base` and `--base` isn't passed, new branches are created off the repo's default tip.
 
+   **Fetch before setup.** The base is the **local** tip, which may trail `origin`. Before running setup, `git -C <workspace_path>/<repo> fetch origin` and fast-forward local `main` for each declaring repo — otherwise the branch starts from a stale base and you may re-implement or conflict with already-merged work, surfacing only at PR time.
+
    The CLI:
    - reads `apps` from every item declaring `<branch>` and unions the top-level repos,
    - skips repos with `pinned_branch:` (those track a different axis),
