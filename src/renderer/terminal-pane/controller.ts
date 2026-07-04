@@ -22,6 +22,7 @@ import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
 import { type Column, displayName, type Tab } from './types';
+import { TerminalWorkerManager } from '../terminal-worker-manager';
 import type {
   AgentChoice,
   SpawnOptions,
@@ -146,6 +147,35 @@ export function createTerminalController(props: TerminalPaneProps) {
   // completes) and double-mount.
   const pendingMounts = new Set<string>();
 
+  // ---- PR-F: hidden tabs parse in a Web Worker ----
+  // Only the active tab(s) keep a live DOM Terminal. All other tabs are owned by
+  // a headless `@xterm/headless` Terminal in the worker. Switching tabs is an
+  // async serialize/hydrate round-trip.
+  const worker = new TerminalWorkerManager();
+  const workerSessions = new Set<string>();
+  // Tabs that are mid-transition (serialize/mount) must not accept writes on
+  // either side; they are buffered and flushed once the destination exists.
+  const transitioning = new Set<string>();
+  const transitionBuffers = new Map<string, string[]>();
+
+  const bufferTransitionWrite = (id: string, chunk: string): void => {
+    const arr = transitionBuffers.get(id);
+    if (arr) arr.push(chunk);
+    else transitionBuffers.set(id, [chunk]);
+  };
+
+  const flushTransitionBuffer = (id: string, target: 'dom' | 'worker'): void => {
+    const chunks = transitionBuffers.get(id);
+    if (!chunks || chunks.length === 0) return;
+    transitionBuffers.delete(id);
+    const data = chunks.join('');
+    if (target === 'dom') {
+      xterms.get(id)?.term.write(data);
+    } else {
+      worker.write(id, data);
+    }
+  };
+
   /** Mount an xterm element into the host of its column. xterm + its addons are
    * dynamic-imported on first call so they stay out of the boot chunk; the
    * module is cached after the first load. */
@@ -243,18 +273,8 @@ export function createTerminalController(props: TerminalPaneProps) {
     }
   };
 
-  const focusActive = (): void => {
-    for (const col of ['left', 'right'] as Column[]) {
-      const id = activeIdIn(col);
-      for (const [tid, h] of xterms) {
-        if (h.column !== col) continue;
-        const visible = tid === id;
-        h.element.style.display = visible ? 'flex' : 'none';
-        // Keep the WebGL pool in step with real visibility so hidden background
-        // tabs release their GPU context and the visible one keeps it (F1).
-        h.mounted.setVisible(visible);
-      }
-    }
+  /** Focus + fit the active DOM Terminal, if one exists. */
+  const focusActiveDom = (): void => {
     const id = activeIdIn(activeColumn());
     if (!id) return;
     const handle = xterms.get(id);
@@ -266,6 +286,89 @@ export function createTerminalController(props: TerminalPaneProps) {
       }
       handle.term.focus();
     }
+  };
+
+  /** Serialize/hydrate guard. Visibility transitions are async (dynamic import
+   *  of xterm + worker round-trip), so concurrent calls chain on a single
+   *  promise to avoid interleaving demote/promote races for the same session. */
+  let visibilityChain: Promise<void> = Promise.resolve();
+
+  /** Ensure the only live DOM Terminals are the active tabs; every other tab is
+   *  owned by a headless worker Terminal. Promoting a tab pulls a serialized
+   *  snapshot from the worker and hydrates a fresh DOM Terminal; demoting a tab
+   *  serializes the DOM Terminal, seeds the worker, and disposes the DOM. */
+  const syncVisibility = async (): Promise<void> => {
+    if (!props.open || props.bottomView !== 'terminal') {
+      // Pane closed or dashboard shown: hide every DOM Terminal's element and
+      // release GPU contexts; do not dispose them so the buffer stays live.
+      for (const [, h] of xterms) {
+        h.element.style.display = 'none';
+        h.mounted.setVisible(false);
+      }
+      return;
+    }
+
+    const desiredDomIds = new Set<string>();
+    for (const col of ['left', 'right'] as Column[]) {
+      const id = activeIdIn(col);
+      if (id) desiredDomIds.add(id);
+    }
+
+    // Promote worker tabs that should be visible.
+    for (const id of desiredDomIds) {
+      if (xterms.has(id) || transitioning.has(id)) continue;
+      transitioning.add(id);
+      try {
+        const tab = tabs().find((t) => t.id === id);
+        const col = tab?.column ?? 'left';
+        const replay = workerSessions.has(id)
+          ? await worker.serialize(id)
+          : (transitionBuffers.get(id)?.join('') ?? sessionData.get(id) ?? '');
+        workerSessions.delete(id);
+        await mountForSession(id, col, replay);
+        flushTransitionBuffer(id, 'dom');
+      } finally {
+        transitioning.delete(id);
+      }
+    }
+
+    // Demote DOM tabs that should be hidden.
+    for (const [tid, h] of xterms) {
+      if (desiredDomIds.has(tid) || transitioning.has(tid)) continue;
+      transitioning.add(tid);
+      try {
+        const snapshot = h.serialize.serialize();
+        await worker.create(tid, h.term.cols, h.term.rows, h.term.options.scrollback as number);
+        worker.write(tid, snapshot);
+        workerSessions.add(tid);
+        h.detachListeners?.();
+        h.mounted.dispose();
+        h.element.remove();
+        xterms.delete(tid);
+        flushTransitionBuffer(tid, 'worker');
+      } finally {
+        transitioning.delete(tid);
+      }
+    }
+
+    // Update CSS visibility + WebGL pool for the remaining DOM tabs.
+    for (const col of ['left', 'right'] as Column[]) {
+      const id = activeIdIn(col);
+      for (const [tid, h] of xterms) {
+        if (h.column !== col) continue;
+        const visible = tid === id;
+        h.element.style.display = visible ? 'flex' : 'none';
+        h.mounted.setVisible(visible);
+      }
+    }
+
+    focusActiveDom();
+  };
+
+  /** Public sync entry used by search and handle methods that need the active
+   *  terminal focused after a UI change. */
+  const focusActive = (): void => {
+    visibilityChain = visibilityChain.then(() => syncVisibility()).catch(() => undefined);
   };
 
   const search = createSearchController({
@@ -357,6 +460,11 @@ export function createTerminalController(props: TerminalPaneProps) {
       handle?.mounted.dispose();
       handle?.element.remove();
       xterms.delete(id);
+      if (workerSessions.has(id)) {
+        workerSessions.delete(id);
+        void worker.dispose(id);
+      }
+      transitionBuffers.delete(id);
       sessionData.delete(id);
       // The tab is gone from the snapshot — its close has landed, so the
       // closing guard can be released (otherwise the set grows forever).
@@ -463,8 +571,17 @@ export function createTerminalController(props: TerminalPaneProps) {
   const offTermData = window.condash.onTermData(({ id, data }) => {
     appendSessionData(id, data);
     checkReadyWaiters(id);
-    const handle = xterms.get(id);
-    handle?.term.write(data);
+    if (transitioning.has(id)) {
+      bufferTransitionWrite(id, data);
+    } else if (xterms.has(id)) {
+      xterms.get(id)!.term.write(data);
+    } else if (workerSessions.has(id)) {
+      worker.write(id, data);
+    } else {
+      // Tab exists in the snapshot but has not been mounted or seeded yet
+      // (race between termData and reconcile). Buffer for the first show.
+      bufferTransitionWrite(id, data);
+    }
   });
   const offTermExit = window.condash.onTermExit(({ id, code: _code }) => {
     // Auto-close the tab on process exit — the previous "[process exited N]"
@@ -515,6 +632,11 @@ export function createTerminalController(props: TerminalPaneProps) {
       element.remove();
     }
     xterms.clear();
+    for (const sid of workerSessions) {
+      void worker.dispose(sid);
+    }
+    workerSessions.clear();
+    transitionBuffers.clear();
     for (const waiters of readyWaiters.values()) {
       for (const w of waiters) {
         clearTimeout(w.timer);

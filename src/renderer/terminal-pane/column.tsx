@@ -426,6 +426,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
           {(tab) => (
             <div
               class={`terminal-tab app-pill-${tab.colorSlot ?? 0}`}
+              data-sid={tab.id}
               classList={{
                 active: tab.id === props.activeId && !props.dashboardActive,
                 exited: tab.exited !== undefined,
