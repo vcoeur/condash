@@ -652,9 +652,10 @@ export function createTerminalController(props: TerminalPaneProps) {
       element.remove();
     }
     xterms.clear();
-    for (const sid of workerSessions) {
-      void worker.dispose(sid);
-    }
+    // Tear down the worker thread wholesale. This also frees any headless
+    // Terminals for sessions no longer tracked in `workerSessions` (e.g. a tab
+    // shown again after being hidden), which a per-session dispose loop misses.
+    worker.terminate();
     workerSessions.clear();
     transitionBuffers.clear();
     for (const waiters of readyWaiters.values()) {

@@ -1,14 +1,16 @@
-// Thin promise wrapper around the headless-terminal Web Worker. One request at
-// a time per session id is enough for our needs: writes/resizes are
-// fire-and-forget, while create/serialize/dispose round-trip so the controller
-// can sequence them safely.
+// Thin promise wrapper around the headless-terminal Web Worker. Writes are
+// fire-and-forget; create/serialize/dispose round-trip so the controller can
+// sequence them safely. Each round-trip carries a request id (`rid`) the worker
+// echoes back, so a reply is matched to its request exactly rather than by
+// session order (which breaks if two requests for one session are ever in
+// flight at once).
 
 export class TerminalWorkerManager {
   private worker: Worker;
   private nextRequestId = 0;
   private pending = new Map<
     number,
-    { sid: string; resolve: (value: string) => void; reject: (err: Error) => void }
+    { resolve: (value: string) => void; reject: (err: Error) => void }
   >();
 
   constructor() {
@@ -18,21 +20,15 @@ export class TerminalWorkerManager {
       { type: 'module', name: 'condash-terminal-worker' },
     );
     this.worker.onmessage = (
-      ev: MessageEvent<{ type: string; sid: string; data?: string; error?: string }>,
+      ev: MessageEvent<{ type: string; rid?: number; data?: string; error?: string }>,
     ) => {
-      const { type, sid, data, error } = ev.data;
-      // Resolve the oldest pending request for this session. Writes/resizes do
-      // not expect replies, so only create/serialize/dispose end up here.
-      let matched: number | null = null;
-      for (const [id, p] of this.pending) {
-        if (p.sid === sid) {
-          matched = id;
-          break;
-        }
-      }
-      if (matched === null) return;
-      const p = this.pending.get(matched)!;
-      this.pending.delete(matched);
+      const { type, rid, data, error } = ev.data;
+      // Only create/serialize/dispose carry a `rid` and expect a reply; writes
+      // do not. Match the reply to its request by id.
+      if (rid === undefined) return;
+      const p = this.pending.get(rid);
+      if (!p) return;
+      this.pending.delete(rid);
       if (type === 'error') {
         p.reject(new Error(error ?? 'terminal worker error'));
       } else {
@@ -59,9 +55,9 @@ export class TerminalWorkerManager {
 
   private request(type: string, sid: string, payload?: Record<string, unknown>): Promise<string> {
     return new Promise((resolve, reject) => {
-      const id = this.nextRequestId++;
-      this.pending.set(id, { sid, resolve, reject });
-      this.worker.postMessage({ type, sid, ...payload });
+      const rid = this.nextRequestId++;
+      this.pending.set(rid, { resolve, reject });
+      this.worker.postMessage({ type, sid, rid, ...payload });
     });
   }
 
@@ -73,15 +69,22 @@ export class TerminalWorkerManager {
     this.worker.postMessage({ type: 'write', sid, data });
   }
 
-  resize(sid: string, cols: number, rows: number): void {
-    this.worker.postMessage({ type: 'resize', sid, cols, rows });
-  }
-
   serialize(sid: string): Promise<string> {
     return this.request('serialize', sid);
   }
 
   dispose(sid: string): Promise<void> {
     return this.request('dispose', sid).then(() => undefined);
+  }
+
+  /** Terminate the underlying worker thread and reject any in-flight requests.
+   *  Called when the controller is torn down so the worker (and every headless
+   *  Terminal it still holds) does not outlive it. */
+  terminate(): void {
+    for (const [id, p] of this.pending) {
+      p.reject(new Error('terminal worker terminated'));
+      this.pending.delete(id);
+    }
+    this.worker.terminate();
   }
 }

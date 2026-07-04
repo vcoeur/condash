@@ -6,11 +6,10 @@ import { Terminal } from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
 
 type WorkerMessage =
-  | { type: 'create'; sid: string; cols: number; rows: number; scrollback: number }
+  | { type: 'create'; sid: string; rid: number; cols: number; rows: number; scrollback: number }
   | { type: 'write'; sid: string; data: string }
-  | { type: 'resize'; sid: string; cols: number; rows: number }
-  | { type: 'serialize'; sid: string }
-  | { type: 'dispose'; sid: string };
+  | { type: 'serialize'; sid: string; rid: number }
+  | { type: 'dispose'; sid: string; rid: number };
 
 interface WorkerSession {
   term: Terminal;
@@ -19,12 +18,14 @@ interface WorkerSession {
 
 const sessions = new Map<string, WorkerSession>();
 
-function post(type: 'created' | 'serialized' | 'disposed' | 'error', sid: string, data?: string) {
-  self.postMessage({ type, sid, data });
+/** Resolve the manager's request `rid` with a string payload. */
+function reply(rid: number, data: string): void {
+  self.postMessage({ type: 'ok', rid, data });
 }
 
-function getSession(sid: string): WorkerSession | undefined {
-  return sessions.get(sid);
+/** Reject the manager's request `rid` with an error message. */
+function replyError(rid: number, message: string): void {
+  self.postMessage({ type: 'error', rid, error: message });
 }
 
 function handleCreate(msg: Extract<WorkerMessage, { type: 'create' }>): void {
@@ -39,14 +40,14 @@ function handleCreate(msg: Extract<WorkerMessage, { type: 'create' }>): void {
     const serialize = new SerializeAddon();
     term.loadAddon(serialize);
     sessions.set(msg.sid, { term, serialize });
-    post('created', msg.sid);
+    reply(msg.rid, '');
   } catch (err) {
-    post('error', msg.sid, err instanceof Error ? err.message : String(err));
+    replyError(msg.rid, err instanceof Error ? err.message : String(err));
   }
 }
 
 function handleWrite(msg: Extract<WorkerMessage, { type: 'write' }>): void {
-  const session = getSession(msg.sid);
+  const session = sessions.get(msg.sid);
   if (!session) return;
   try {
     session.term.write(msg.data);
@@ -55,26 +56,16 @@ function handleWrite(msg: Extract<WorkerMessage, { type: 'write' }>): void {
   }
 }
 
-function handleResize(msg: Extract<WorkerMessage, { type: 'resize' }>): void {
-  const session = getSession(msg.sid);
-  if (!session) return;
-  try {
-    session.term.resize(msg.cols, msg.rows);
-  } catch {
-    /* resize on a dead session is non-fatal */
-  }
-}
-
 function handleSerialize(msg: Extract<WorkerMessage, { type: 'serialize' }>): void {
-  const session = getSession(msg.sid);
+  const session = sessions.get(msg.sid);
   if (!session) {
-    post('serialized', msg.sid, '');
+    reply(msg.rid, '');
     return;
   }
   try {
-    post('serialized', msg.sid, session.serialize.serialize());
+    reply(msg.rid, session.serialize.serialize());
   } catch (err) {
-    post('error', msg.sid, err instanceof Error ? err.message : String(err));
+    replyError(msg.rid, err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -92,7 +83,7 @@ function disposeSession(sid: string): void {
 
 function handleDispose(msg: Extract<WorkerMessage, { type: 'dispose' }>): void {
   disposeSession(msg.sid);
-  post('disposed', msg.sid);
+  reply(msg.rid, '');
 }
 
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
@@ -103,9 +94,6 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       break;
     case 'write':
       handleWrite(msg);
-      break;
-    case 'resize':
-      handleResize(msg);
       break;
     case 'serialize':
       handleSerialize(msg);
