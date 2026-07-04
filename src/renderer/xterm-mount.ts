@@ -127,6 +127,15 @@ function buildTheme(
  * wire write/resize/data handlers + Ctrl+C-copy / Ctrl+V-paste, and replay
  * any buffered tail. The caller still owns visibility (display: none/flex)
  * and focus management. */
+declare global {
+  interface Window {
+    /** Test-only registry of live DOM Terminals keyed by session id. Populated
+     *  by `mountXterm` so Playwright tests can read buffer text without
+     *  depending on the active renderer (DOM vs canvas/WebGL). */
+    __condashXterms?: Map<string, Terminal>;
+  }
+}
+
 export function mountXterm(
   hostElement: HTMLElement,
   sessionId: string,
@@ -223,6 +232,14 @@ export function mountXterm(
   });
 
   term.open(hostElement);
+
+  // Register for test-only buffer inspection when the test harness has opted
+  // in. This is the only reliable way to read terminal content regardless of
+  // whether the active renderer is DOM or canvas/WebGL.
+  if (document.body.hasAttribute('data-test-xterm-registry')) {
+    if (!window.__condashXterms) window.__condashXterms = new Map();
+    window.__condashXterms.set(sessionId, term);
+  }
 
   // ---- WebGL renderer, pooled (best-effort; falls back to DOM) ----
   // Every mounted tab used to hold its own WebGL context; past ~16 tabs the GPU
@@ -464,6 +481,7 @@ export function mountXterm(
       if (disposed) return;
       disposed = true;
       liveTerms.delete(mounted);
+      window.__condashXterms?.delete(sessionId);
       // Drop our pool slot before term.dispose() (which disposes the WebglAddon).
       webglPool.remove(webglSlot);
       prompts.dispose();
