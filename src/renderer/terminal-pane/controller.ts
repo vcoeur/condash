@@ -321,10 +321,22 @@ export function createTerminalController(props: TerminalPaneProps) {
       try {
         const tab = tabs().find((t) => t.id === id);
         const col = tab?.column ?? 'left';
-        const replay = workerSessions.has(id)
-          ? await worker.serialize(id)
-          : (transitionBuffers.get(id)?.join('') ?? sessionData.get(id) ?? '');
+        const fromWorker = workerSessions.has(id);
+        let replay: string;
+        if (fromWorker) {
+          replay = await worker.serialize(id);
+        } else {
+          // Defensive: this tab never had a worker Terminal (shown before it was
+          // ever demoted). Replay the buffered tail and drop it here so the
+          // flush below does not write the same bytes a second time.
+          replay = transitionBuffers.get(id)?.join('') ?? sessionData.get(id) ?? '';
+          transitionBuffers.delete(id);
+        }
         workerSessions.delete(id);
+        // The snapshot captured everything; the worker Terminal is now stale.
+        // Dispose it so a hidden→shown→closed session does not leak its headless
+        // Terminal (and full scrollback) in the worker for the app's lifetime.
+        if (fromWorker) void worker.dispose(id);
         await mountForSession(id, col, replay);
         flushTransitionBuffer(id, 'dom');
       } finally {
@@ -438,7 +450,15 @@ export function createTerminalController(props: TerminalPaneProps) {
       };
       setTabs((prev) => [...prev, tab]);
       setMeta(s.id, { label, customName: meta?.customName, column, colorSlot, pinned });
+      // Any termData that arrived before this mount was buffered by the
+      // onTermData fallback, but it is already part of `attach.output` (the pty
+      // buffer tail). Drop that buffer so it is not replayed a second time when
+      // this tab is first demoted to the worker. Chunks that land during the
+      // async mount below are re-buffered and flushed once the DOM Terminal
+      // exists.
+      transitionBuffers.delete(s.id);
       await mountForSession(s.id, column, attach?.output);
+      flushTransitionBuffer(s.id, 'dom');
       setActiveIn(column, s.id);
       setActiveColumn(column);
       queueMicrotask(focusActive);
