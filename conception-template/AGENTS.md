@@ -6,7 +6,7 @@
 
 This `## General` section is shipped by condash and overwritten on every `condash skills install` — condash owns everything from the top of the file through the `<!-- end condash agents -->` marker. Per-conception content lives **below** the marker, in `## Specifics`, which condash never touches.
 
-A conception is a Markdown tree condash manages: durable reference material under `knowledge/`, and dated work items (projects, incidents, documents) under `projects/`. Both trees are self-describing through their `index.md` files. condash is the single parser for the tree — drive every read and write through a skill or a `condash` verb, never by hand-scaffolding paths.
+A conception is a Markdown tree condash manages: durable reference material under `knowledge/`, and dated work items (projects, incidents, documents) under `projects/`. Both trees are self-describing through their `index.md` files. condash is the single parser for the tree — drive every read and write through a skill or a `condash` verb, never by hand-scaffolding paths: no `mkdir`, no raw `Write`/`Edit` on tree-canonical paths, no raw `git worktree add`. The skill owns slug validation, enum checks, template generation, and index tracking; hand-scaffolding silently breaks the dashboard.
 
 ### Layout
 

@@ -66,7 +66,7 @@ Kind-specific additions (incidents only): `environment: <PROD/STAGING/DEV>`, `se
 
 ## Deliverables
 
-A `## Deliverables` section lists an item's tangible outputs. condash renders them on the project card and in the **Deliverables** pane, and opens each by type. One bullet per item, in one of two forms:
+A `## Deliverables` section lists **only the outputs you explicitly designate as deliverables** — not every artefact the work produces or touches. Intermediate files, scratch renders, supporting notes, and incidental outputs stay out of the section (and so off the project card and the Deliverables pane); when unsure, leave it off and ask. condash renders the listed ones on the project card and in the **Deliverables** pane, and opens each by type. One bullet per item, in one of two forms:
 
 ```markdown
 - [<label>](<target>) — <optional comment>      # local file or http(s) URL
