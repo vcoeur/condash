@@ -415,7 +415,14 @@ export function createTerminalController(props: TerminalPaneProps) {
 
   // ---- onTermSessions: single source of truth for adds/removes ----
   const reconcile = async (
-    snap: readonly { id: string; side: TermSide; exited?: number; repo?: string }[],
+    snap: readonly {
+      id: string;
+      side: TermSide;
+      exited?: number;
+      repo?: string;
+      memBytes?: number;
+      memMaxBytes?: number;
+    }[],
   ) => {
     const known = new Set(tabs().map((t) => t.id));
     for (const s of snap) {
@@ -447,6 +454,8 @@ export function createTerminalController(props: TerminalPaneProps) {
         colorSlot,
         pinned,
         exited: s.exited,
+        memBytes: s.memBytes,
+        memMaxBytes: s.memMaxBytes,
       };
       setTabs((prev) => [...prev, tab]);
       setMeta(s.id, { label, customName: meta?.customName, column, colorSlot, pinned });
@@ -466,7 +475,7 @@ export function createTerminalController(props: TerminalPaneProps) {
     setTabs((prev) =>
       prev.map((t) => {
         const s = snap.find((x) => x.id === t.id);
-        return s ? { ...t, exited: s.exited } : t;
+        return s ? { ...t, exited: s.exited, memBytes: s.memBytes, memMaxBytes: s.memMaxBytes } : t;
       }),
     );
     const stillMyById = new Map<string, boolean>();
@@ -520,7 +529,14 @@ export function createTerminalController(props: TerminalPaneProps) {
   // belt for anything that still slips through).
   let reconcileChain: Promise<void> = Promise.resolve();
   const queueReconcile = (
-    snap: readonly { id: string; side: TermSide; exited?: number; repo?: string }[],
+    snap: readonly {
+      id: string;
+      side: TermSide;
+      exited?: number;
+      repo?: string;
+      memBytes?: number;
+      memMaxBytes?: number;
+    }[],
   ): void => {
     reconcileChain = reconcileChain.then(() => reconcile(snap)).catch(() => undefined);
   };

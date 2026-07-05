@@ -47,7 +47,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `taskConfig`            | conception  | object       | —        | Per-task `{schedule?, timeout?, runMode?, excludeFromLogs?, gateOnUpdatedTabs?}` keyed by slug — opt-in headless scheduling + run timeout + run mode (`--prompt`/`--run`) + run-log routing + activity gate. [↓](#tasks) |
 | `open_with`             | global      | object       | —        | The three IDE/terminal launch slots (`main_ide`, `secondary_ide`, `terminal`). [↓](#open_with)                                                                                                                           |
 | `pdf_viewer`            | global      | array        | —        | Ordered fallback chain of external PDF viewers.                                                                                                                                                                          |
-| `terminal`              | global      | object       | —        | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`, project-action templates — one whole personal/per-machine key. [↓](#terminal)                                                                        |
+| `terminal`              | global      | object       | —        | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`, `memory` containment, project-action templates — one whole personal/per-machine key. [↓](#terminal)                                                                        |
 | `dashboard`             | global      | object       | —        | Live terminal-tab summarization (direct OpenAI-compatible endpoint, DeepSeek by default): `{enabled, provider, apiKey, baseUrl, model, writerModel, cardReasoning, writerReasoning, cardInputChars, intervalSec, gateOnActivity, historyLimit}`. Off by default; set it in **Settings → Dashboard**, which writes to the global file (the `apiKey` is a secret). [↓](#dashboard)                                                                 |
 | `theme`                 | global      | enum         | `system` | `light` \| `dark` \| `system`.                                                                                                                                                                                           |
 | `layout`                | global      | object       | —        | Persisted pane layout, including `leftView` (`projects` \| `tasks` \| `deliverables`). [↓](#layoutstate)                                                                                                                 |
@@ -264,6 +264,22 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 | `move_tab_left_shortcut`    | `Ctrl+Left`                                             | Move the active tab to the left pane.                                                                                                                                                |
 | `move_tab_right_shortcut`   | `Ctrl+Right`                                            | Move the active tab to the right pane.                                                                                                                                               |
 | `xterm`                     | `{}`                                                    | xterm.js renderer settings — see [`terminal.xterm`](#terminalxterm) below. Editable through the Settings modal's **Terminal** section.                                               |
+| `memory`                    | `{}` (enabled)                                          | Per-tab memory containment via a systemd user scope (Linux only) — see [`terminal.memory`](#terminal-memory) below.                                                                  |
+
+### Terminal memory { #terminal-memory }
+
+On Linux with a systemd **user** manager and cgroup v2, condash spawns each terminal tab's pty inside its own transient `systemd-run --user --scope` carrying a memory ceiling. A tab that runs away — a leaking or over-eager agent — then trips its **own** cgroup's OOM killer and is killed **alone**, instead of the leak exhausting system RAM+swap and triggering a *global* OOM whose kill can land on condash's own renderer and take every tab down with it. On any other host the block is a no-op and tabs spawn directly. The tab strip shows each scoped tab's live usage, turning into a warning badge as it approaches the cap. Capability is probed once (a throwaway scope) and cached.
+
+All keys optional; sizes are systemd size strings (`"6G"`, `"512M"`, `"infinity"`).
+
+| Key       | Default | Meaning                                                                                                                       |
+| --------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `enabled` | `true`  | Master switch. Set `false` to force plain spawns everywhere. No effect on hosts without a systemd user manager + cgroup v2.  |
+| `high`    | `"6G"`  | Soft limit (`MemoryHigh`): the kernel throttles + reclaims the tab's cgroup past this, buying time before the hard wall.     |
+| `max`     | `"8G"`  | Hard limit (`MemoryMax`): the tab's cgroup is OOM-killed at this ceiling — what guarantees a leak kills only the one tab.    |
+| `swapMax` | `"2G"`  | Swap ceiling (`MemorySwapMax`) so a capped tab can't instead exhaust system swap.                                            |
+
+Raise `max` for legitimately memory-hungry runs (e.g. a multi-agent session); the trade-off is a higher ceiling before a runaway is contained.
 
 ### Agents { #agents }
 

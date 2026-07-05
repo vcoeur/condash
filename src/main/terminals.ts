@@ -18,6 +18,7 @@ import { findRepoEntry, type ConfigShape } from './config-walk';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
+import { wrapWithMemoryScope, sampleCgroupMemory } from './tab-scope';
 import { spawnEnv } from './shell-env';
 import { SessionLogger } from './terminal-logger';
 import { cleanTerminalText } from './dashboard/clean-text';
@@ -53,6 +54,15 @@ interface Session {
   buffer: string;
   /** Process exit code; undefined while live. */
   exited?: number;
+  /** True when this tab's pty was wrapped in a memory scope (systemd-run). Only
+   * scoped tabs are memory-sampled — an unscoped pid resolves to condash's own
+   * cgroup, which would misreport the whole dashboard as the tab's usage. */
+  memScoped: boolean;
+  /** Latest sampled cgroup memory usage (bytes) for a scoped tab; undefined
+   * until the first sample (and always for unscoped tabs). */
+  memBytes?: number;
+  /** Resolved hard cap (bytes) of this tab's scope, when numeric. */
+  memMaxBytes?: number;
   /** Per-session 'destroyed' listener handle on `webContents` — kept on the
    * session so `stopSession` can remove it (otherwise long-lived renderers
    * accumulate one stale closure per spawned-and-closed session). */
@@ -128,20 +138,69 @@ function snapshot(): TermSession[] {
     repo: s.repo,
     cwd: s.cwd,
     exited: s.exited,
+    memBytes: s.memBytes,
+    memMaxBytes: s.memMaxBytes,
   }));
+}
+
+/**
+ * Send an event to a renderer, tolerating a webContents whose render process
+ * has crashed or whose frame was disposed (render-process-gone) but which
+ * `isDestroyed()` still reports as live. After an OOM kill or renderer crash the
+ * frame is disposed-but-not-destroyed, so a bare `.send` logs "Render frame was
+ * disposed before WebFrameMain could be accessed" and can throw. A pty
+ * `onData`/`onExit` callback runs outside any request scope, so an escaping
+ * throw there would take the whole main process (and every tab) down — guard the
+ * crashed state and swallow any residual throw so a dead renderer stays local.
+ */
+function safeSend(wc: WebContents, channel: string, payload: unknown): void {
+  if (wc.isDestroyed() || wc.isCrashed()) return;
+  try {
+    wc.send(channel, payload);
+  } catch {
+    /* frame disposed between the check and the send — drop the event */
+  }
 }
 
 function broadcastSessions(): void {
   const snap = snapshot();
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    if (win.webContents.isDestroyed()) continue;
-    win.webContents.send(EVENT_CHANNELS.termSessions, snap);
+    safeSend(win.webContents, EVENT_CHANNELS.termSessions, snap);
   }
 }
 
 export function listTerminalSessions(): TermSession[] {
   return snapshot();
+}
+
+let memoryInterval: ReturnType<typeof setInterval> | null = null;
+
+/** Sample every scoped tab's cgroup memory and rebroadcast the snapshot when a
+ *  figure changed, so the renderer's per-tab meter tracks usage. One small file
+ *  read per live scoped pty; unscoped tabs are skipped (their pid resolves to
+ *  condash's own cgroup — not the tab's). Broadcasts only on change, so idle
+ *  tabs cost nothing downstream. */
+function sampleMemory(): void {
+  let changed = false;
+  for (const s of sessions.values()) {
+    if (!s.memScoped || s.exited !== undefined || !s.pty) continue;
+    const bytes = sampleCgroupMemory(s.pty.pid);
+    if (bytes !== s.memBytes) {
+      s.memBytes = bytes;
+      changed = true;
+    }
+  }
+  if (changed) broadcastSessions();
+}
+
+/** Begin periodic per-tab memory sampling (idempotent). Called once at app
+ *  start; the interval is unref'd so it never keeps the process alive on its
+ *  own. */
+export function startMemorySampling(intervalMs = 2500): void {
+  if (memoryInterval) return;
+  memoryInterval = setInterval(sampleMemory, intervalMs);
+  memoryInterval.unref?.();
 }
 
 /** Minimal session shape the TabInfo mapper reads — a structural subset of the
@@ -393,7 +452,14 @@ export async function spawnTerminal(
     }
   }
 
-  const ptyProcess = pty.spawn(program, argv, {
+  // Contain the tab in its own memory-limited systemd scope (Linux + systemd +
+  // cgroup v2) so a runaway agent is OOM-killed alone instead of pressuring the
+  // whole machine into a global OOM. No-op elsewhere. Conception override wins
+  // over the per-machine default; both may be unset (→ enabled defaults). The
+  // logger keeps recording the *real* program/argv, not the wrapper.
+  const memPrefs = config.terminal?.memory ?? settings.terminal?.memory;
+  const spawnTarget = wrapWithMemoryScope(program, argv, memPrefs);
+  const ptyProcess = pty.spawn(spawnTarget.program, spawnTarget.argv, {
     name: 'xterm-256color',
     cols,
     rows,
@@ -429,6 +495,8 @@ export async function spawnTerminal(
     logger,
     transcript: new OscTranscriptExtractor(),
     transcriptFile,
+    memScoped: spawnTarget.program === 'systemd-run',
+    memMaxBytes: spawnTarget.scopeMaxBytes,
   };
   sessions.set(id, session);
   logger?.spawn();
@@ -445,16 +513,13 @@ export async function spawnTerminal(
     // raw `data` still drives the grid buffer and the renderer.
     session.transcript.feed(data);
     session.logger?.output(data);
-    if (session.webContents.isDestroyed()) return;
-    session.webContents.send(EVENT_CHANNELS.termData, { id, data });
+    safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {
     session.exited = exitCode;
     session.pty = null;
     session.logger?.exit(exitCode);
-    if (!session.webContents.isDestroyed()) {
-      session.webContents.send(EVENT_CHANNELS.termExit, { id, code: exitCode });
-    }
+    safeSend(session.webContents, EVENT_CHANNELS.termExit, { id, code: exitCode });
     // Keep the entry around (with `exited` set) so renderers that reload
     // can still see it via termList — closeSession removes it on demand.
     broadcastSessions();

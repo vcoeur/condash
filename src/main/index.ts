@@ -11,7 +11,7 @@ import { setWatchedConception } from './watcher';
 import { setScheduledConception } from './task-scheduler';
 import { setDashboardConception } from './dashboard/engine';
 import { disposeRepoWatchers } from './repo-watchers';
-import { killAll } from './terminals';
+import { killAll, startMemorySampling } from './terminals';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
 import { loginPath } from './shell-env';
 import { runLogJanitor } from './terminal-logger-janitor';
@@ -66,6 +66,20 @@ if (!electronProcess.defaultApp) {
     process.exit(result.status ?? 1);
   }
 }
+
+// Main-process last-resort guards. condash's terminal ptys, file watchers, and
+// headless task runs fire async callbacks outside any request scope; an
+// unhandled throw or promise rejection there would otherwise crash the whole
+// dashboard — and with it every open terminal tab. Log and keep running so a
+// single subsystem fault is never fatal. Registered after CLI dispatch (which
+// has already exited for non-GUI invocations) so this only affects the GUI.
+process.on('uncaughtException', (err) => {
+  process.stderr.write(`condash uncaughtException: ${err?.stack ?? String(err)}\n`);
+});
+process.on('unhandledRejection', (reason) => {
+  const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  process.stderr.write(`condash unhandledRejection: ${detail}\n`);
+});
 
 function resolveCliBundlePath(): string | null {
   // dist-electron/main/index.js → walk up to find the unpacked CLI bundle.
@@ -386,6 +400,34 @@ app.on('web-contents-created', (_event, contents) => {
   });
 });
 
+// Renderer-crash recovery. An OOM kill or a GPU/network-service cascade can
+// dispose the main renderer frame while the main process keeps running (and its
+// pty handlers keep feeding output at the dead frame). Without recovery the
+// window is left blank/wedged; reload it so the dashboard comes back. A
+// 'clean-exit' is a normal teardown (window close), not a crash — skip it.
+app.on('render-process-gone', (_event, contents, details) => {
+  process.stderr.write(
+    `condash render-process-gone: reason=${details.reason} exitCode=${details.exitCode ?? '?'}\n`,
+  );
+  if (details.reason === 'clean-exit') return;
+  const win = BrowserWindow.fromWebContents(contents);
+  // Only reload when the crashed contents is a window's top frame — a <webview>
+  // (the in-modal PDF viewer) crashing must not blow away the whole window.
+  if (win && !win.isDestroyed() && win.webContents === contents) {
+    win.reload();
+  }
+});
+
+// A GPU / network / utility helper crashing (seen in the OOM cascade as
+// "Network service crashed") is recoverable — Electron respawns these — but log
+// it so the pattern is visible next time.
+app.on('child-process-gone', (_event, details) => {
+  process.stderr.write(
+    `condash child-process-gone: type=${details.type} reason=${details.reason}` +
+      `${details.name ? ` name=${details.name}` : ''}\n`,
+  );
+});
+
 app.whenReady().then(async () => {
   registerIpc();
   registerNoteAssetProtocol();
@@ -393,6 +435,9 @@ app.whenReady().then(async () => {
   // doesn't pay the probe-shell latency. Fire-and-forget; resolveLoginPath
   // swallows its own failures and falls back to the inherited PATH.
   void loginPath();
+  // Begin per-tab memory sampling so the terminal meter tracks each scoped
+  // tab's cgroup usage. Cheap + unref'd; inert on hosts without memory scopes.
+  startMemorySampling();
   // One-shot: copy any pre-existing terminal block out of configuration.json
   // and into settings.json. Idempotent — does nothing once settings owns
   // the data. Runs before window creation so the renderer's first

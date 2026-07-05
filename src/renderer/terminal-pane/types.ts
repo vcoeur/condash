@@ -44,6 +44,14 @@ export interface Tab {
   colorSlot?: number;
   /** Process exit code; the tab can still be cleared via close. */
   exited?: number;
+  /** Live cgroup-scope memory usage (bytes) for a memory-scoped tab; undefined
+   *  for unscoped tabs. Broadcast by main's per-tab sampler. Drives the tab's
+   *  memory meter. */
+  memBytes?: number;
+  /** The tab scope's hard memory cap (bytes); the meter warns as `memBytes`
+   *  approaches it. Undefined when the tab is unscoped or the cap is
+   *  non-numeric. */
+  memMaxBytes?: number;
   /** Few-word summary the dashboard engine derived from recent output (when
    *  the Dashboard feature is enabled). Renderer-only ephemeral state pushed by
    *  `onDashboardTabSummaries`; never persisted. Outranks the cwd basename / OSC

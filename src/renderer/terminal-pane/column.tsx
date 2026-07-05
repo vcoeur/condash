@@ -5,6 +5,35 @@ import { createDropdownMenu } from '../dropdown-menu';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
 
+/** Compact memory label for the per-tab meter. Tab scopes are GB-scale, so this
+ *  stays short ("6.2G"), dropping to MB only below ~100 MB. */
+function formatMem(bytes: number): string {
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 0.1) return `${gb.toFixed(1)}G`;
+  return `${Math.round(bytes / 1024 ** 2)}M`;
+}
+
+/** True once a scoped tab is within 80% of its hard cap — the early-warning
+ *  band before the cgroup OOM kills it. */
+function memWarn(tab: Tab): boolean {
+  return (
+    tab.memBytes !== undefined &&
+    tab.memMaxBytes !== undefined &&
+    tab.memBytes / tab.memMaxBytes >= 0.8
+  );
+}
+
+/** Native-tooltip text for the tab meter. */
+function memTitle(tab: Tab): string {
+  if (tab.memBytes === undefined) return '';
+  const used = formatMem(tab.memBytes);
+  if (tab.memMaxBytes === undefined) return `Memory: ${used}`;
+  return (
+    `Memory: ${used} of ${formatMem(tab.memMaxBytes)} cap` +
+    (memWarn(tab) ? ' — approaching cap; this tab will be killed at the cap' : '')
+  );
+}
+
 export interface TerminalColumnProps {
   col: Column;
   tabs: Tab[];
@@ -492,6 +521,21 @@ export function TerminalColumn(props: TerminalColumnProps) {
                     e.stopPropagation();
                   }}
                 />
+              </Show>
+              <Show
+                when={
+                  tab.exited === undefined &&
+                  tab.memBytes !== undefined &&
+                  tab.id !== props.renamingId
+                }
+              >
+                <span
+                  class="terminal-tab-mem"
+                  classList={{ warn: memWarn(tab) }}
+                  title={memTitle(tab)}
+                >
+                  {formatMem(tab.memBytes!)}
+                </span>
               </Show>
             </div>
           )}
