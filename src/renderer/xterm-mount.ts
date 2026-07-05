@@ -133,6 +133,11 @@ declare global {
      *  by `mountXterm` so Playwright tests can read buffer text without
      *  depending on the active renderer (DOM vs canvas/WebGL). */
     __condashXterms?: Map<string, Terminal>;
+    /** Test-only ordered log of session ids passed to `refreshSession` (manual
+     *  Refresh or auto-refresh-on-switch). Populated by the controller only when
+     *  the `data-test-xterm-registry` opt-in is set, so Playwright can assert a
+     *  repaint fired without racing the fleeting resize nudge. */
+    __condashRefreshLog?: string[];
   }
 }
 

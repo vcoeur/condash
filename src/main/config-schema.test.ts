@@ -363,6 +363,16 @@ describe('migrateRawSettings — dropped terminal.logging fields', () => {
     });
     expect(() => validateAndCanonicaliseConceptionConfig(json)).toThrow(/terminal/);
   });
+
+  it('round-trips `terminal.autoRefreshOnTabSwitch` through the global canonicaliser', () => {
+    // Same strict-schema guard as above: the boolean toggle must be a known key
+    // in `terminalSettings` or the Settings save would throw `Unrecognized key`.
+    const json = JSON.stringify({ terminal: { autoRefreshOnTabSwitch: true } });
+    expect(JSON.parse(validateAndCanonicaliseGlobalSettings(json)).terminal).toEqual({
+      autoRefreshOnTabSwitch: true,
+    });
+    expect(() => validateAndCanonicaliseConceptionConfig(json)).toThrow(/terminal/);
+  });
 });
 
 describe('migrateRawSettings — launchers replaced by agents', () => {

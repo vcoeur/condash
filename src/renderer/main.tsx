@@ -752,6 +752,7 @@ function App() {
         agents={agents()}
         cwd={conceptionPath()}
         xtermPrefs={terminalPrefs()?.xterm}
+        autoRefreshOnTabSwitch={terminalPrefs()?.autoRefreshOnTabSwitch}
         registerHandle={(handle) => {
           terminalHandle = handle;
         }}

@@ -321,6 +321,7 @@ const terminalSettings = z
     projectActions: z.array(actionTemplateSchema).optional(),
     newProjectActions: z.array(actionTemplateSchema).optional(),
     memory: terminalMemorySettings.optional(),
+    autoRefreshOnTabSwitch: z.boolean().optional(),
   } satisfies Record<keyof TerminalPrefs, z.ZodTypeAny>)
   .strict();
 

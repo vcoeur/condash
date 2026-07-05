@@ -49,9 +49,12 @@ export function TerminalFields(props: {
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
+  setAutoRefreshOnTabSwitch: (value: boolean) => Promise<void>;
   platform: () => Platform | undefined;
 }): JSX.Element {
   const logging = (): TerminalLoggingPrefs => props.prefs().logging ?? {};
+  // Opt-in: only `true` renders checked (undefined / false → off).
+  const autoRefreshOnTabSwitch = (): boolean => props.prefs().autoRefreshOnTabSwitch === true;
   // Opt-in by default: only treat the checkbox as on when the user has
   // explicitly set the flag. `undefined` and `false` both render unchecked.
   const loggingEnabled = (): boolean => logging().enabled === true;
@@ -66,10 +69,25 @@ export function TerminalFields(props: {
       <Subgroup
         id={subgroupId('behaviour')}
         title="Behaviour & shortcuts"
-        keywords={`shell screenshot shortcut keybinding ${behaviourKeywords}`}
+        keywords={`shell screenshot shortcut keybinding refresh repaint auto tab switch ${behaviourKeywords}`}
         defaultOpen
       >
         <div class="settings-grid">
+          <div class="settings-field-span">
+            <label class="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={autoRefreshOnTabSwitch()}
+                onChange={(e) => void props.setAutoRefreshOnTabSwitch(e.currentTarget.checked)}
+              />
+              <span>Auto-refresh on tab switch</span>
+            </label>
+            <small class="settings-field-hint">
+              Repaint a tab when you switch to it, so a live full-screen TUI (Claude Code, Ink,
+              ncurses) never shows a stale snapshot after the hidden-tab round-trip. Same as
+              pressing Refresh on every switch.
+            </small>
+          </div>
           <For each={TERMINAL_STRING_FIELDS}>
             {(field) => (
               <label>

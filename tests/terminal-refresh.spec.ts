@@ -98,3 +98,71 @@ test('Refresh repaints the active terminal, restoring its size and keeping its b
     await booted.cleanup();
   }
 });
+
+/** Ordered log of session ids passed to `refreshSession`, or [] if none yet. */
+async function refreshLog(window: Page): Promise<string[]> {
+  return window.evaluate(() => window.__condashRefreshLog ?? []);
+}
+
+// With `terminal.autoRefreshOnTabSwitch` enabled, switching to a tab must run
+// the same repaint automatically. The resize nudge itself is a sub-frame
+// transient (a competing re-fit collapses the one-row dip almost immediately),
+// so instead of racing it we assert on `__condashRefreshLog` — the controller's
+// record that `refreshSession` ran for the newly-active tab. The manual-Refresh
+// test above already proves that repaint restores size and preserves the buffer.
+test('auto-refresh on tab switch repaints the newly-active tab', async () => {
+  const booted = await bootApp({
+    globalConfig: {
+      layout: { terminal: true },
+      terminal: { autoRefreshOnTabSwitch: true },
+    },
+  });
+  booted.window.on('console', (msg) => console.log('RENDERER CONSOLE:', msg.text()));
+  try {
+    await booted.window.evaluate(() => {
+      document.body.setAttribute('data-test-xterm-registry', '');
+    });
+
+    // Two shells in the (default) left column. The last spawned ('b') is active;
+    // 'a' parses in the worker until we switch to it.
+    const a = await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "ALFA\n"; sleep 30' }),
+    );
+    const b = await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "BRAVO\n"; sleep 30' }),
+    );
+    await wait(500);
+    await booted.window.waitForSelector(`[data-sid="${a.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await booted.window.waitForSelector(`[data-sid="${b.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await waitForDomTerm(booted.window, b.id);
+
+    // Switch to 'a' and wait for its DOM Terminal to hydrate. The switch (b → a)
+    // must have appended 'a' to the refresh log — proof the auto-refresh fired
+    // on the newly-active tab, not just on the earlier spawns.
+    const before = await refreshLog(booted.window);
+    await booted.window.click(`[data-sid="${a.id}"]`);
+    await waitForDomTerm(booted.window, a.id);
+
+    await expect
+      .poll(async () => (await refreshLog(booted.window)).slice(before.length), {
+        timeout: 5000,
+      })
+      .toContain(a.id);
+
+    // The tab is live and its marker survived the auto-refresh exactly once.
+    const text = await readXtermBuffer(booted.window, a.id);
+    expect(countOccurrences(text, 'ALFA'), 'marker intact after auto-refresh').toBe(1);
+    expect(await rowsOf(booted.window, a.id), 'tab live after auto-refresh').toBeGreaterThan(1);
+
+    await booted.window.evaluate((id) => window.condash.termClose(id), a.id);
+    await booted.window.evaluate((id) => window.condash.termClose(id), b.id);
+  } finally {
+    await booted.cleanup();
+  }
+});

@@ -517,6 +517,11 @@ export function SettingsModal(props: {
       return { ...p, logging: merged };
     });
 
+  // Store only the "on" state; `false` prunes to undefined so the block stays
+  // minimal (matches the ligatures / logging.enabled precedent, tested `=== true`).
+  const setAutoRefreshOnTabSwitch = (value: boolean): Promise<void> =>
+    patchTerminal((p) => ({ ...p, autoRefreshOnTabSwitch: value || undefined }));
+
   // --- Scroll-to-section ---------------------------------------------
 
   const scrollToSection = (id: Section): void => {
@@ -730,6 +735,7 @@ export function SettingsModal(props: {
                 updateXterm={updateXterm}
                 updateColor={updateColor}
                 updateLogging={updateLogging}
+                setAutoRefreshOnTabSwitch={setAutoRefreshOnTabSwitch}
                 platform={platform}
               />
 
