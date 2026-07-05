@@ -1,5 +1,5 @@
 /**
- * Per-tab memory containment (main process only).
+ * Memory containment (main process only): per-tab scopes + an app-scope backstop.
  *
  * A terminal tab runs an arbitrary program — often an agent harness that can
  * leak or legitimately balloon to many GB. Left uncontained, one tab's growth
@@ -9,12 +9,21 @@
  * `systemd-run --user --scope` carrying a memory ceiling, so a runaway tab trips
  * its **own** cgroup's OOM killer and dies alone.
  *
+ * The per-tab scope only binds processes spawned through the tab path. A child
+ * that skips it — a tab left uncapped by a probe edge case, a stale pre-cap
+ * condash still running, or a non-tab helper — stays in condash's own
+ * `app-gnome-condash-*.scope`, which carries no limit, and a runaway there again
+ * escalates to a global OOM (the 2026-07-05 crash recurred this way). So we also
+ * cap that app scope at startup (`capOwnAppScope`): a backstop that makes a
+ * global OOM impossible regardless of how a child got spawned.
+ *
  * This is Linux-only (needs a reachable systemd user manager + cgroup v2). On
  * any other host the wrapper is a no-op and the caller spawns the program
  * directly, exactly as before.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { totalmem } from 'node:os';
 import type { TerminalMemoryPrefs } from '../shared/types';
 
 /** Defaults for the per-tab scope (systemd size strings). Sized to fit ordinary
@@ -25,37 +34,65 @@ const DEFAULT_MEMORY_HIGH = '6G';
 const DEFAULT_MEMORY_MAX = '8G';
 const DEFAULT_MEMORY_SWAP_MAX = '2G';
 
-let cachedAvailable: boolean | null = null;
+// Only a *confirmed available* result is cached (`true`). A probe failure is
+// NOT cached: a transient failure (systemd-run momentarily unavailable under
+// load, user manager restarting) must not disable containment for the whole
+// session — that is precisely how a tab gets silently left uncapped. We re-probe
+// on the next call instead, so a transient glitch self-heals. Definitive
+// "unsupported" hosts short-circuit in `platformSupportsMemoryScope` before any
+// probe, so re-probing only ever costs anything on a Linux+cgroup-v2 host.
+let cachedAvailable = false;
+// One-shot guard so a capable-host probe failure warns once, not per tab spawn.
+let warnedUncapped = false;
 
 /**
- * Whether per-tab memory scoping can work on this host. Verified once by
- * actually creating a throwaway `--user --scope` that sets a memory limit —
- * the only reliable check that covers systemd-run presence, user-manager
- * reachability, and memory-controller delegation together — then cached for the
- * process lifetime.
+ * Whether per-tab memory scoping can work on this host, verified by actually
+ * creating a throwaway `--user --scope` with a memory limit — the only reliable
+ * check that covers systemd-run presence, user-manager reachability, and
+ * memory-controller delegation together. A success is cached for the process
+ * lifetime; a failure on a capable host is re-checked next call.
  *
  * @returns True when a memory-limited user scope can be created here.
  */
 function memoryScopeAvailable(): boolean {
-  if (cachedAvailable === null) cachedAvailable = probe();
-  return cachedAvailable;
+  if (cachedAvailable) return true;
+  if (!platformSupportsMemoryScope()) return false;
+  const ok = runScopeProbe();
+  if (ok) cachedAvailable = true;
+  return ok;
 }
 
-function probe(): boolean {
+/**
+ * Definitive, cheap "could this host ever do memory scopes" check — no
+ * subprocess. False here is permanent for the process (Windows/macOS, no
+ * user-manager runtime dir, cgroup v1), so the caller can safely stay quiet
+ * about an uncapped spawn. True means the host looks capable and only the live
+ * probe can confirm.
+ *
+ * @returns True on a Linux cgroup-v2 host with a user-manager runtime dir.
+ */
+function platformSupportsMemoryScope(): boolean {
   if (process.platform !== 'linux') return false;
   // A user scope needs the per-user systemd manager, which needs a runtime dir.
   if (!process.env.XDG_RUNTIME_DIR) return false;
   // cgroup v2's unified hierarchy exposes this file; cgroup v1 does not, and
   // per-user memory delegation is a v2 feature.
   try {
-    if (!existsSync('/sys/fs/cgroup/cgroup.controllers')) return false;
+    return existsSync('/sys/fs/cgroup/cgroup.controllers');
   } catch {
     return false;
   }
-  // Representative probe: a transient user scope that sets the same properties
-  // we use at spawn time, running `true`. --collect reaps the unit; the probe
-  // is side-effect free. A non-zero status (no systemd-run, no user manager,
-  // memory controller not delegated) → containment is unavailable here.
+}
+
+/**
+ * The live probe: a transient user scope that sets the same properties we use
+ * at spawn time, running `true`. `--collect` reaps the unit; the probe is
+ * side-effect free. A non-zero status (no systemd-run, no user manager, memory
+ * controller not delegated) → containment is unavailable right now.
+ *
+ * @returns True when the throwaway scope was created successfully.
+ */
+function runScopeProbe(): boolean {
   const result = spawnSync(
     'systemd-run',
     [
@@ -197,11 +234,131 @@ export function wrapWithMemoryScope(
   // Enabled unless explicitly turned off — robustness by default on capable
   // hosts.
   if (prefs?.enabled === false) return { program, argv };
-  if (!memoryScopeAvailable()) return { program, argv };
+  if (!memoryScopeAvailable()) {
+    // On a host that looks capable (Linux + cgroup v2) but where the live probe
+    // failed, the tab is spawned UNCAPPED — the silent hole behind the
+    // 2026-07-05 crash. Warn once so it's diagnosable; the app-scope backstop
+    // still contains it. Genuinely unsupported hosts (Windows/macOS) stay quiet.
+    if (!warnedUncapped && platformSupportsMemoryScope()) {
+      warnedUncapped = true;
+      process.stderr.write(
+        'condash: per-tab memory scope unavailable on a capable host — tabs spawned uncapped ' +
+          '(app-scope backstop still applies)\n',
+      );
+    }
+    return { program, argv };
+  }
   const max = prefs?.max ?? DEFAULT_MEMORY_MAX;
   return {
     program: 'systemd-run',
     argv: scopeArgv(program, argv, prefs),
     scopeMaxBytes: parseSize(max),
   };
+}
+
+// --- App-scope backstop -----------------------------------------------------
+
+/** RAM left for the rest of the session by the default app-scope cap, so
+ * condash's cgroup trips its own OOM before the system's global one. */
+const APP_SCOPE_RESERVE_BYTES = 3 * 1024 ** 3;
+/** Default app-scope swap ceiling — the lever that stops a runaway from
+ * thrashing all of system swap into a global OOM (the 2026-07-05 escalation). */
+const DEFAULT_APP_SCOPE_SWAP_MAX = '2G';
+
+/**
+ * Default hard cap for condash's own app scope: physical RAM minus a reserve,
+ * floored at half RAM so a small-memory host still gets a usable ceiling.
+ * Deliberately below total RAM so the cgroup OOM fires before the system's.
+ *
+ * @param totalBytes Physical RAM in bytes (os.totalmem()).
+ * @returns A systemd size string ("…M") for MemoryMax.
+ */
+export function defaultAppScopeMax(totalBytes: number): string {
+  const floor = Math.floor(totalBytes * 0.5);
+  const capped = Math.max(totalBytes - APP_SCOPE_RESERVE_BYTES, floor);
+  return `${Math.floor(capped / 1024 ** 2)}M`;
+}
+
+/**
+ * The systemd scope unit condash should self-cap, parsed from a
+ * `/proc/<pid>/cgroup` body. Returns condash's own desktop-launched app scope
+ * (`app-…condash….scope`) and nothing else — never a shared session scope, a
+ * dev-from-terminal launch, or a cgroup-v1 host — so the backstop can only ever
+ * cap condash's own scope. Pure → unit-testable without systemd.
+ *
+ * @param cgroupContent The text of /proc/<pid>/cgroup.
+ * @returns The scope unit name, or undefined when it isn't condash's app scope.
+ */
+export function ownAppScopeUnit(cgroupContent: string): string | undefined {
+  // cgroup v2 is a single unified "0::<path>" line; v1 has no such line.
+  const match = /^0::(.*)$/m.exec(cgroupContent);
+  if (!match) return undefined;
+  const leaf = match[1].split('/').pop() ?? '';
+  if (leaf.startsWith('app-') && /condash/i.test(leaf) && leaf.endsWith('.scope')) return leaf;
+  return undefined;
+}
+
+/**
+ * Build the `systemctl --user set-property` argv that caps a scope unit's
+ * memory at runtime. `--runtime` keeps it to the unit's lifetime (re-applied on
+ * every launch); pure, so the argv shape is unit-testable without systemd.
+ *
+ * @param unit The `.scope` unit name.
+ * @param max MemoryMax size string.
+ * @param swapMax MemorySwapMax size string.
+ * @returns The full argv for `systemctl`.
+ */
+export function appScopeSetPropertyArgv(unit: string, max: string, swapMax: string): string[] {
+  return [
+    '--user',
+    'set-property',
+    '--runtime',
+    unit,
+    `MemoryMax=${max}`,
+    `MemorySwapMax=${swapMax}`,
+  ];
+}
+
+/** Outcome of the app-scope backstop attempt — the caller logs it. */
+export interface AppScopeCapResult {
+  applied: boolean;
+  /** Why the cap was not applied. */
+  skipped?: 'disabled' | 'unsupported' | 'no-scope' | 'set-property-failed';
+  unit?: string;
+  max?: string;
+  swapMax?: string;
+}
+
+/**
+ * Cap condash's own app scope so a child that escapes per-tab scoping can't
+ * pressure the machine into a global OOM — it trips condash's cgroup OOM
+ * instead. Idempotent (meant to run once per launch); a clean no-op when
+ * disabled, off a memory-scope-capable host, or when condash isn't in its own
+ * app scope. Reads the main process's cgroup, derives the scope unit, and
+ * applies the limits via `systemctl --user set-property`.
+ *
+ * @param prefs Effective `terminal.memory` prefs; the `appScope` sub-object is read.
+ * @returns What was applied, or why not.
+ */
+export function capOwnAppScope(prefs: TerminalMemoryPrefs | undefined): AppScopeCapResult {
+  const appPrefs = prefs?.appScope;
+  if (appPrefs?.enabled === false) return { applied: false, skipped: 'disabled' };
+  if (!memoryScopeAvailable()) return { applied: false, skipped: 'unsupported' };
+  let unit: string | undefined;
+  try {
+    unit = ownAppScopeUnit(readFileSync('/proc/self/cgroup', 'utf8'));
+  } catch {
+    unit = undefined;
+  }
+  if (!unit) return { applied: false, skipped: 'no-scope' };
+  const max = appPrefs?.max ?? defaultAppScopeMax(totalmem());
+  const swapMax = appPrefs?.swapMax ?? DEFAULT_APP_SCOPE_SWAP_MAX;
+  const result = spawnSync('systemctl', appScopeSetPropertyArgv(unit, max, swapMax), {
+    stdio: 'ignore',
+    timeout: 5000,
+  });
+  if (result.status !== 0) {
+    return { applied: false, skipped: 'set-property-failed', unit, max, swapMax };
+  }
+  return { applied: true, unit, max, swapMax };
 }

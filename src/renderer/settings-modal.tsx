@@ -3,7 +3,9 @@ import { onMount, onCleanup } from 'solid-js';
 import type {
   CardMinWidthPrefs,
   Platform,
+  AppScopeMemoryPrefs,
   TerminalLoggingPrefs,
+  TerminalMemoryPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
   Theme,
@@ -517,6 +519,38 @@ export function SettingsModal(props: {
       return { ...p, logging: merged };
     });
 
+  // Per-tab memory caps. Mirrors updateLogging: shallow-merge into
+  // `terminal.memory`, pruning undefined keys so the config stays minimal.
+  const updateMemory = (patch: Partial<TerminalMemoryPrefs>): Promise<void> =>
+    patchTerminal((p) => {
+      const memory = (p.memory ?? {}) as TerminalMemoryPrefs;
+      const merged: TerminalMemoryPrefs = { ...memory };
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) {
+          delete (merged as Record<string, unknown>)[k];
+        } else {
+          (merged as Record<string, unknown>)[k] = v;
+        }
+      }
+      return { ...p, memory: merged };
+    });
+
+  // App-scope backstop caps — a nested object under `terminal.memory.appScope`.
+  const updateAppScopeMemory = (patch: Partial<AppScopeMemoryPrefs>): Promise<void> =>
+    patchTerminal((p) => {
+      const memory = (p.memory ?? {}) as TerminalMemoryPrefs;
+      const appScope = (memory.appScope ?? {}) as AppScopeMemoryPrefs;
+      const mergedApp: AppScopeMemoryPrefs = { ...appScope };
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) {
+          delete (mergedApp as Record<string, unknown>)[k];
+        } else {
+          (mergedApp as Record<string, unknown>)[k] = v;
+        }
+      }
+      return { ...p, memory: { ...memory, appScope: mergedApp } };
+    });
+
   // Store only the "on" state; `false` prunes to undefined so the block stays
   // minimal (matches the ligatures / logging.enabled precedent, tested `=== true`).
   const setAutoRefreshOnTabSwitch = (value: boolean): Promise<void> =>
@@ -735,6 +769,8 @@ export function SettingsModal(props: {
                 updateXterm={updateXterm}
                 updateColor={updateColor}
                 updateLogging={updateLogging}
+                updateMemory={updateMemory}
+                updateAppScopeMemory={updateAppScopeMemory}
                 setAutoRefreshOnTabSwitch={setAutoRefreshOnTabSwitch}
                 platform={platform}
               />

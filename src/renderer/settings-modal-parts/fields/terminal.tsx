@@ -2,8 +2,10 @@ import { For, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type {
   ActionTemplate,
+  AppScopeMemoryPrefs,
   Platform,
   TerminalLoggingPrefs,
+  TerminalMemoryPrefs,
   TerminalPrefs,
   TerminalXtermPrefs,
 } from '@shared/types';
@@ -49,6 +51,8 @@ export function TerminalFields(props: {
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
+  updateMemory: (patch: Partial<TerminalMemoryPrefs>) => Promise<void>;
+  updateAppScopeMemory: (patch: Partial<AppScopeMemoryPrefs>) => Promise<void>;
   setAutoRefreshOnTabSwitch: (value: boolean) => Promise<void>;
   platform: () => Platform | undefined;
 }): JSX.Element {
@@ -58,6 +62,13 @@ export function TerminalFields(props: {
   // Opt-in by default: only treat the checkbox as on when the user has
   // explicitly set the flag. `undefined` and `false` both render unchecked.
   const loggingEnabled = (): boolean => logging().enabled === true;
+  // Memory containment is the inverse: on by default on capable hosts, so only
+  // an explicit `false` renders unchecked. Toggling on prunes to undefined to
+  // keep the config minimal (the default already means on).
+  const memory = (): TerminalMemoryPrefs => props.prefs().memory ?? {};
+  const memoryEnabled = (): boolean => memory().enabled !== false;
+  const appScope = (): AppScopeMemoryPrefs => memory().appScope ?? {};
+  const appScopeEnabled = (): boolean => appScope().enabled !== false;
   const idPrefix = `${props.target}.terminal`;
   const subgroupId = (suffix: string): string => `${props.target}.terminal.${suffix}`;
   // Static keyword strings drive search matching. Concatenating field
@@ -433,6 +444,116 @@ export function TerminalFields(props: {
               How often a <code>&lt;!-- timestamp --&gt;</code> marker is written, but only when new
               output has arrived since the last one — an idle session is never stamped.
               <code> 0</code> disables periodic markers.
+            </small>
+          </label>
+        </div>
+      </Subgroup>
+
+      <Subgroup
+        id={subgroupId('memory')}
+        title="Memory containment"
+        keywords="memory cap limit oom crash scope systemd cgroup runaway agent leak backstop MemoryMax MemorySwapMax swap"
+      >
+        <p class="settings-hint">
+          Linux + systemd only (ignored elsewhere). Each terminal tab runs inside its own
+          memory-limited <code>systemd</code> scope, so a runaway agent is OOM-killed alone instead
+          of pressuring the whole machine. The app-scope backstop caps condash's own scope too, so a
+          child that ever escapes the per-tab cap still can't trigger a whole-session OOM. Sizes are
+          systemd strings, e.g. <code>8G</code>, <code>512M</code>.
+        </p>
+        <div class="settings-grid">
+          <label class="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={memoryEnabled()}
+              onChange={(e) =>
+                void props.updateMemory({ enabled: e.currentTarget.checked ? undefined : false })
+              }
+            />
+            <span>Contain each tab in its own memory scope</span>
+          </label>
+          <label>
+            <span>Per-tab soft limit (MemoryHigh)</span>
+            <input
+              type="text"
+              value={memory().high ?? ''}
+              placeholder="6G"
+              onChange={(e) =>
+                void props.updateMemory({ high: e.currentTarget.value.trim() || undefined })
+              }
+            />
+            <small class="settings-field-hint">
+              Past this the kernel throttles and reclaims the tab, buying time before the hard cap.
+            </small>
+          </label>
+          <label>
+            <span>Per-tab hard cap (MemoryMax)</span>
+            <input
+              type="text"
+              value={memory().max ?? ''}
+              placeholder="8G"
+              onChange={(e) =>
+                void props.updateMemory({ max: e.currentTarget.value.trim() || undefined })
+              }
+            />
+            <small class="settings-field-hint">
+              A tab exceeding this trips its own cgroup OOM and dies alone.
+            </small>
+          </label>
+          <label>
+            <span>Per-tab swap cap (MemorySwapMax)</span>
+            <input
+              type="text"
+              value={memory().swapMax ?? ''}
+              placeholder="2G"
+              onChange={(e) =>
+                void props.updateMemory({ swapMax: e.currentTarget.value.trim() || undefined })
+              }
+            />
+            <small class="settings-field-hint">
+              Stops a capped tab from exhausting system swap instead.
+            </small>
+          </label>
+          <label class="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={appScopeEnabled()}
+              onChange={(e) =>
+                void props.updateAppScopeMemory({
+                  enabled: e.currentTarget.checked ? undefined : false,
+                })
+              }
+            />
+            <span>Backstop: cap condash’s own scope (prevents whole-session OOM)</span>
+          </label>
+          <label>
+            <span>App-scope hard cap (MemoryMax)</span>
+            <input
+              type="text"
+              value={appScope().max ?? ''}
+              placeholder="auto (RAM − 3G)"
+              onChange={(e) =>
+                void props.updateAppScopeMemory({ max: e.currentTarget.value.trim() || undefined })
+              }
+            />
+            <small class="settings-field-hint">
+              Applied to condash’s app scope at startup. Default: physical RAM minus a reserve.
+            </small>
+          </label>
+          <label>
+            <span>App-scope swap cap (MemorySwapMax)</span>
+            <input
+              type="text"
+              value={appScope().swapMax ?? ''}
+              placeholder="2G"
+              onChange={(e) =>
+                void props.updateAppScopeMemory({
+                  swapMax: e.currentTarget.value.trim() || undefined,
+                })
+              }
+            />
+            <small class="settings-field-hint">
+              The lever that stops a runaway from thrashing all of system swap.
             </small>
           </label>
         </div>

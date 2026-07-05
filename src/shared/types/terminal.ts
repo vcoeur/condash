@@ -140,6 +140,34 @@ export interface TerminalMemoryPrefs {
    * exhaust system swap (what turned this crash into a global OOM). Default
    * "2G". */
   swapMax?: string;
+  /** Backstop cap on condash's **own** app scope. The per-tab caps above only
+   * bind processes spawned through the tab path; a child that skips it (a tab
+   * left uncapped by a probe edge case, a stale pre-cap condash instance, or a
+   * non-tab helper) stays in condash's uncapped `app-gnome-condash-*.scope` and
+   * a runaway there escalates to a global OOM that kills the whole session
+   * (incident 2026-07-05). Capping that scope at startup makes a global OOM
+   * impossible: an uncapped child trips condash's own cgroup OOM instead. */
+  appScope?: AppScopeMemoryPrefs;
+}
+
+/** Backstop memory limits applied to condash's own app scope at startup, via
+ * `systemctl --user set-property`. Linux + systemd + cgroup v2 only; a clean
+ * no-op elsewhere, exactly like the per-tab cap. Sizes are systemd size strings
+ * ("12G", "2G", "infinity"); when unset, `max` defaults to physical RAM minus a
+ * reserve (so condash's cgroup trips before the system's global OOM) and
+ * `swapMax` defaults to "2G". */
+export interface AppScopeMemoryPrefs {
+  /** Toggle the backstop. Default: enabled on supported hosts. Set `false` to
+   * leave condash's app scope uncapped (per-tab caps still apply). */
+  enabled?: boolean;
+  /** Hard limit (systemd `MemoryMax`) on condash + every child that isn't in
+   * its own tab scope. Default: physical RAM minus a reserve, floored at half
+   * RAM. */
+  max?: string;
+  /** Swap ceiling (systemd `MemorySwapMax`) on the app scope — the lever that
+   * stops a runaway from thrashing all of system swap into a global OOM.
+   * Default "2G". */
+  swapMax?: string;
 }
 
 /** Configuration for the per-session terminal log writer. Defaults are
