@@ -12,6 +12,7 @@ import { setScheduledConception } from './task-scheduler';
 import { setDashboardConception } from './dashboard/engine';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll, startMemorySampling } from './terminals';
+import { capOwnAppScope } from './tab-scope';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
 import { loginPath } from './shell-env';
 import { runLogJanitor } from './terminal-logger-janitor';
@@ -444,6 +445,24 @@ app.whenReady().then(async () => {
   // termGetPrefs always sees the post-migration state.
   await migrateTerminalFromConfigIfNeeded();
   const settings = await readSettings();
+  // Backstop: cap condash's own app scope so a child that escapes per-tab
+  // scoping (a probe edge case, a stale pre-cap instance, a non-tab helper)
+  // trips condash's cgroup OOM instead of the machine's global one — the
+  // 2026-07-05 crash recurred exactly this way. Linux + systemd only; a no-op
+  // elsewhere. Read from settings.json (the app scope is condash-global, not
+  // per-conception).
+  const appScopeCap = capOwnAppScope(settings.terminal?.memory);
+  if (appScopeCap.applied) {
+    process.stderr.write(
+      `condash app-scope backstop: ${appScopeCap.unit} MemoryMax=${appScopeCap.max} ` +
+        `MemorySwapMax=${appScopeCap.swapMax}\n`,
+    );
+  } else if (appScopeCap.skipped === 'no-scope' || appScopeCap.skipped === 'set-property-failed') {
+    // 'disabled' / 'unsupported' are expected (opt-out / non-Linux); only the
+    // surprising misses warrant a line so a silently-uncapped app scope is
+    // diagnosable.
+    process.stderr.write(`condash app-scope backstop not applied: ${appScopeCap.skipped}\n`);
+  }
   const conceptionPath = settings.lastConceptionPath;
   cachedConceptionPath = conceptionPath;
   // The menu only needs the just-read settings — build it up front.

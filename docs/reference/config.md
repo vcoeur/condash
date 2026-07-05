@@ -269,18 +269,29 @@ Embedded-terminal preferences. All keys are optional; an empty string means "fal
 
 ### Terminal memory { #terminal-memory }
 
-On Linux with a systemd **user** manager and cgroup v2, condash spawns each terminal tab's pty inside its own transient `systemd-run --user --scope` carrying a memory ceiling. A tab that runs away — a leaking or over-eager agent — then trips its **own** cgroup's OOM killer and is killed **alone**, instead of the leak exhausting system RAM+swap and triggering a *global* OOM whose kill can land on condash's own renderer and take every tab down with it. On any other host the block is a no-op and tabs spawn directly. The tab strip shows each scoped tab's live usage, turning into a warning badge as it approaches the cap. Capability is probed once (a throwaway scope) and cached.
+On Linux with a systemd **user** manager and cgroup v2, condash spawns each terminal tab's pty inside its own transient `systemd-run --user --scope` carrying a memory ceiling. A tab that runs away — a leaking or over-eager agent — then trips its **own** cgroup's OOM killer and is killed **alone**, instead of the leak exhausting system RAM+swap and triggering a *global* OOM whose kill can land on condash's own renderer and take every tab down with it. On any other host the block is a no-op and tabs spawn directly. The tab strip shows each scoped tab's live usage, turning into a warning badge as it approaches the cap. Capability is probed with a throwaway scope; a **success is cached**, but a **transient failure is re-checked** on the next spawn — a momentary glitch (systemd busy under load, user manager restarting) never silently disables containment for the rest of the session. When a tab is nonetheless spawned uncapped on a capable host, condash logs a one-time warning.
+
+The per-tab scope only binds processes spawned through the tab path. A child that skips it — a non-tab helper, or a tab left uncapped because the probe failed — stays in condash's own `app-gnome-condash-*.scope`, which carries no limit; a runaway there again escalates to a *global* OOM (this recurred and took down a whole GNOME session on 2026-07-05). The **`appScope` backstop** closes that: at startup condash caps its own app scope via `systemctl --user set-property`, so any child that escapes the per-tab cap trips condash's cgroup OOM instead of the machine's global one. Same Linux + systemd gate; a no-op elsewhere.
 
 All keys optional; sizes are systemd size strings (`"6G"`, `"512M"`, `"infinity"`).
 
-| Key       | Default | Meaning                                                                                                                       |
-| --------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `enabled` | `true`  | Master switch. Set `false` to force plain spawns everywhere. No effect on hosts without a systemd user manager + cgroup v2.  |
-| `high`    | `"6G"`  | Soft limit (`MemoryHigh`): the kernel throttles + reclaims the tab's cgroup past this, buying time before the hard wall.     |
-| `max`     | `"8G"`  | Hard limit (`MemoryMax`): the tab's cgroup is OOM-killed at this ceiling — what guarantees a leak kills only the one tab.    |
-| `swapMax` | `"2G"`  | Swap ceiling (`MemorySwapMax`) so a capped tab can't instead exhaust system swap.                                            |
+| Key        | Default   | Meaning                                                                                                                       |
+| ---------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`  | `true`    | Master switch for the per-tab caps. Set `false` to force plain spawns everywhere. No effect on hosts without a systemd user manager + cgroup v2.  |
+| `high`     | `"6G"`    | Soft limit (`MemoryHigh`): the kernel throttles + reclaims the tab's cgroup past this, buying time before the hard wall.     |
+| `max`      | `"8G"`    | Hard limit (`MemoryMax`): the tab's cgroup is OOM-killed at this ceiling — what guarantees a leak kills only the one tab.    |
+| `swapMax`  | `"2G"`    | Swap ceiling (`MemorySwapMax`) so a capped tab can't instead exhaust system swap.                                            |
+| `appScope` | `{}` (on) | Backstop cap on condash's **own** app scope — see below.                                                                     |
 
 Raise `max` for legitimately memory-hungry runs (e.g. a multi-agent session); the trade-off is a higher ceiling before a runaway is contained.
+
+**`terminal.memory.appScope`** — the whole-session backstop. All keys optional.
+
+| Key       | Default             | Meaning                                                                                                                                     |
+| --------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled` | `true`              | Set `false` to leave condash's app scope uncapped (per-tab caps still apply).                                                              |
+| `max`     | physical RAM − 3 GB | Hard limit (`MemoryMax`) on condash + any child not in its own tab scope. Floored at half RAM. Kept below total RAM so the cgroup OOM fires before the system's global one. |
+| `swapMax` | `"2G"`              | Swap ceiling (`MemorySwapMax`) on the app scope — the lever that stops a runaway from thrashing all of system swap into a global OOM.        |
 
 ### Agents { #agents }
 

@@ -3,6 +3,7 @@ import type {
   ActionTemplate,
   Agent,
   CardMinWidthPrefs,
+  AppScopeMemoryPrefs,
   DashboardSettings,
   LayoutState,
   TaskConfigEntry,
@@ -251,12 +252,23 @@ const terminalLoggingSettings = z
 /** Per-tab memory-scope limits. Sizes are opaque systemd size strings
  *  ("6G", "512M", "infinity") — systemd validates them at spawn time, so the
  *  schema only enforces "string". */
+/** Backstop cap on condash's own app scope. Same opaque-size-string rules as
+ *  the per-tab limits. */
+const appScopeMemorySettings = z
+  .object({
+    enabled: z.boolean().optional(),
+    max: z.string().optional(),
+    swapMax: z.string().optional(),
+  } satisfies Record<keyof AppScopeMemoryPrefs, z.ZodTypeAny>)
+  .strict();
+
 const terminalMemorySettings = z
   .object({
     enabled: z.boolean().optional(),
     high: z.string().optional(),
     max: z.string().optional(),
     swapMax: z.string().optional(),
+    appScope: appScopeMemorySettings.optional(),
   } satisfies Record<keyof TerminalMemoryPrefs, z.ZodTypeAny>)
   .strict();
 
