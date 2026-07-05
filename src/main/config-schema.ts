@@ -7,6 +7,7 @@ import type {
   LayoutState,
   TaskConfigEntry,
   TerminalLoggingPrefs,
+  TerminalMemoryPrefs,
   TerminalPrefs,
   TerminalXtermColors,
   TerminalXtermPrefs,
@@ -247,6 +248,18 @@ const terminalLoggingSettings = z
   } satisfies Record<keyof TerminalLoggingPrefs, z.ZodTypeAny>)
   .strict();
 
+/** Per-tab memory-scope limits. Sizes are opaque systemd size strings
+ *  ("6G", "512M", "infinity") — systemd validates them at spawn time, so the
+ *  schema only enforces "string". */
+const terminalMemorySettings = z
+  .object({
+    enabled: z.boolean().optional(),
+    high: z.string().optional(),
+    max: z.string().optional(),
+    swapMax: z.string().optional(),
+  } satisfies Record<keyof TerminalMemoryPrefs, z.ZodTypeAny>)
+  .strict();
+
 /** Single launcher slot. `label` is the user-defined display name shown
  *  in the tab-strip dropdown; `command` is the shell command run on spawn;
  *  `title`, when present, is the initial pinned tab label.
@@ -307,6 +320,7 @@ const terminalSettings = z
     logging: terminalLoggingSettings.optional(),
     projectActions: z.array(actionTemplateSchema).optional(),
     newProjectActions: z.array(actionTemplateSchema).optional(),
+    memory: terminalMemorySettings.optional(),
   } satisfies Record<keyof TerminalPrefs, z.ZodTypeAny>)
   .strict();
 

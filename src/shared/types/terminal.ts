@@ -106,6 +106,34 @@ export interface TerminalPrefs {
    *  Empty or missing → the button stays a single button that opens
    *  NewProjectModal as today. */
   newProjectActions?: ActionTemplate[];
+  /** Per-tab memory containment via a transient systemd user scope. See
+   *  TerminalMemoryPrefs. No-op on unsupported platforms. */
+  memory?: TerminalMemoryPrefs;
+}
+
+/** Per-tab memory containment. When enabled — and the host supports it (Linux
+ * with a reachable systemd **user** manager and cgroup v2) — each terminal tab's
+ * pty is spawned inside its own transient `systemd-run --user --scope` carrying
+ * these limits. A runaway tab then trips its **own** cgroup's OOM killer and
+ * dies alone, instead of the leak pressuring the whole system into a global OOM
+ * that can take the entire dashboard (and every other tab) down with it. On an
+ * unsupported host the spawn is unchanged. Sizes are systemd size strings
+ * ("6G", "512M", "infinity"). */
+export interface TerminalMemoryPrefs {
+  /** Toggle containment. Default: enabled on supported hosts. Set `false` to
+   * force plain spawns everywhere. */
+  enabled?: boolean;
+  /** Soft limit (systemd `MemoryHigh`): past this the kernel throttles and
+   * reclaims the tab's cgroup, buying time before the hard wall. Default "6G". */
+  high?: string;
+  /** Hard limit (systemd `MemoryMax`): the tab's cgroup is OOM-killed at this
+   * ceiling. This is the guarantee that a leak kills only the one tab. Default
+   * "8G". */
+  max?: string;
+  /** Swap ceiling (systemd `MemorySwapMax`) so a capped tab can't instead
+   * exhaust system swap (what turned this crash into a global OOM). Default
+   * "2G". */
+  swapMax?: string;
 }
 
 /** Configuration for the per-session terminal log writer. Defaults are
@@ -149,6 +177,13 @@ export interface TermSession {
   cwd?: string;
   /** Process exit code if the pty has terminated; undefined while live. */
   exited?: number;
+  /** Live memory usage (bytes) of the tab's own cgroup scope, when the tab was
+   * spawned in a memory scope (Linux + systemd). Undefined for unscoped tabs and
+   * before the first sample. Drives the per-tab memory meter. */
+  memBytes?: number;
+  /** The tab scope's hard memory cap (bytes), when scoped with a numeric
+   * `MemoryMax`. The renderer warns as `memBytes` approaches it. */
+  memMaxBytes?: number;
 }
 
 export interface TermSpawnRequest {

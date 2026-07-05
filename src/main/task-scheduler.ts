@@ -31,6 +31,7 @@ import { parseCadence } from '../shared/cadence';
 import { quoteForShell, shellCommandArgv, shellFamily } from '../shared/shell-quote';
 import { SessionLogger } from './terminal-logger';
 import { defaultShell, tabsContext, tabsBytes } from './terminals';
+import { wrapWithMemoryScope } from './tab-scope';
 import type { Agent, RunMode, RunningTaskRun, TabInfo, TaskConfigEntry } from '../shared/types';
 
 /** How often the scheduler wakes to check for due tasks. */
@@ -221,7 +222,12 @@ async function runHeadless(
   logger.spawn();
   const logPath = logger.filePath() ?? '';
 
-  const child = pty.spawn(shell, argv, {
+  // Contain a headless scheduled run in its own memory-limited scope too — a
+  // background agent can balloon just like an interactive tab. No-op on hosts
+  // without systemd cgroup support. The negative-pid SIGKILL below still reaches
+  // the scoped tree via the process group.
+  const scoped = wrapWithMemoryScope(shell, argv, config.terminal?.memory);
+  const child = pty.spawn(scoped.program, scoped.argv, {
     name: 'xterm-256color',
     cols: 120,
     rows: 40,

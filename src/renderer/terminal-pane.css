@@ -304,6 +304,26 @@
   }
 }
 
+/* Per-tab memory meter — live cgroup-scope usage for a memory-scoped tab,
+ * trailing the label. Muted until the tab nears its hard cap, then `.warn`
+ * turns it into an early-warning badge (the cgroup OOM kills the tab at the
+ * cap). Only rendered for scoped, still-live tabs. */
+.terminal-tab-mem {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-tab-mem.warn {
+  opacity: 1;
+  color: #000;
+  background: var(--warn-bg, #f0c674);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
 .terminal-tab-rename {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
