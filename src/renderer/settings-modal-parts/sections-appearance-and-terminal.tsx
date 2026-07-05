@@ -65,6 +65,7 @@ interface TerminalSectionProps {
   updateXterm: (patch: Partial<TerminalXtermPrefs>) => Promise<void>;
   updateColor: (key: ColorEntry['key'], value: string) => void;
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
+  setAutoRefreshOnTabSwitch: (value: boolean) => Promise<void>;
   platform: () => Platform | undefined;
 }
 
@@ -100,6 +101,7 @@ export function TerminalSection(props: TerminalSectionProps): JSX.Element {
         updateXterm={props.updateXterm}
         updateColor={props.updateColor}
         updateLogging={props.updateLogging}
+        setAutoRefreshOnTabSwitch={props.setAutoRefreshOnTabSwitch}
         platform={props.platform}
       />
     </SectionShell>

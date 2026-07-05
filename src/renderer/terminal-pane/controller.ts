@@ -756,6 +756,32 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (props.open) queueMicrotask(focusActive);
   });
 
+  // ---- auto-refresh on tab switch (opt-in) ----
+  // When `terminal.autoRefreshOnTabSwitch` is on, repaint a tab the moment it
+  // becomes its column's active tab — the same fix as the manual Refresh button,
+  // applied automatically so a hidden→visible full-screen TUI never shows a
+  // stale hydrated frame. Diffing each column's active id against its previous
+  // value fires only on a genuine switch to a *different* tab: it skips
+  // first-open (prev null) and ignores the no-op signal re-fire that
+  // `refreshSession` itself triggers when it re-asserts the active id. Deferred
+  // to a microtask so we don't write the active-id signal from inside an effect.
+  let prevActive: { left: string | null; right: string | null } = { left: null, right: null };
+  createEffect(() => {
+    const current = activeIds();
+    const enabled = props.autoRefreshOnTabSwitch === true;
+    if (enabled) {
+      for (const col of ['left', 'right'] as const) {
+        const next = current[col];
+        const prev = prevActive[col];
+        if (next && prev && next !== prev) {
+          const id = next;
+          queueMicrotask(() => refreshSession(id));
+        }
+      }
+    }
+    prevActive = { left: current.left, right: current.right };
+  });
+
   // Switching back from the Dashboard body re-shows the xterm hosts (they are
   // CSS-hidden, not unmounted, so terminals survive). xterm must refit to the
   // restored dimensions, otherwise the grid is sized for the hidden (0×0) host.
@@ -818,6 +844,12 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (!id) return;
     const tab = tabs().find((t) => t.id === id);
     if (!tab) return;
+    // Test seam (mirrors `__condashXterms`): record each repaint so e2e can
+    // assert auto-refresh-on-switch fired without racing the sub-frame resize
+    // nudge. Inert unless the test opts into the registry.
+    if (document.body.hasAttribute('data-test-xterm-registry')) {
+      (window.__condashRefreshLog ??= []).push(id);
+    }
     setActiveIn(tab.column, id);
     setActiveColumn(tab.column);
     // Chain after any in-flight promote/demote so the DOM Terminal for this
