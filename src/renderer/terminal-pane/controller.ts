@@ -797,6 +797,61 @@ export function createTerminalController(props: TerminalPaneProps) {
     URL.revokeObjectURL(url);
   };
 
+  // ---- refresh (repaint) ----
+  // How long to hold the intermediate (rows-1) size before restoring it. The
+  // pause lets the running program process the first SIGWINCH and repaint at the
+  // new size before the second one restores it — two genuine size deltas, so the
+  // program treats it as a real resize (a coalesced no-op delta might not
+  // trigger a redraw at all).
+  const REPAINT_NUDGE_MS = 80;
+
+  /** Force the program running in a session to repaint its whole screen by
+   *  nudging the pty one row shorter and back (two SIGWINCHes). Full-screen TUIs
+   *  redraw from scratch on resize; plain shells ignore it. This is the manual
+   *  escape hatch for the half-frame a live TUI can show after the hidden-tab
+   *  serialize/hydrate round-trip (see `terminal-worker` / internals §14):
+   *  `SerializeAddon` can't perfectly reproduce a mid-repaint TUI's cursor and
+   *  scroll-region state, so the snapshot hydrated on tab-switch may carry stale
+   *  rows. Scrollback is kept. The session is promoted to its column's active
+   *  DOM Terminal first so there is a live terminal to resize. */
+  const refreshSession = (id: string | null): void => {
+    if (!id) return;
+    const tab = tabs().find((t) => t.id === id);
+    if (!tab) return;
+    setActiveIn(tab.column, id);
+    setActiveColumn(tab.column);
+    // Chain after any in-flight promote/demote so the DOM Terminal for this
+    // session exists (and is settled) before we resize it.
+    visibilityChain = visibilityChain
+      .then(async () => {
+        await syncVisibility();
+        const handle = xterms.get(id);
+        if (!handle) return;
+        const { cols, rows } = handle.term;
+        if (rows <= 1) {
+          handle.term.focus();
+          return;
+        }
+        handle.term.resize(cols, rows - 1);
+        setTimeout(() => {
+          // Bail if the tab was demoted, closed, or re-mounted while we waited.
+          if (xterms.get(id) !== handle) return;
+          try {
+            handle.fit.fit();
+            handle.term.focus();
+          } catch {
+            /* host not sized yet / term disposed */
+          }
+        }, REPAINT_NUDGE_MS);
+      })
+      .catch(() => undefined);
+  };
+
+  /** Repaint the given column's active tab — backs the Refresh strip button. */
+  const refreshColumn = (col: Column): void => {
+    refreshSession(activeIdIn(col));
+  };
+
   // ---- exposed handle ----
   const handle: TerminalPaneHandle = {
     spawn,
@@ -884,6 +939,8 @@ export function createTerminalController(props: TerminalPaneProps) {
     spawnUserShell,
     resolveAgent,
     saveActiveBuffer,
+    refreshColumn,
+    refreshSession,
     dnd,
     search,
     resize,

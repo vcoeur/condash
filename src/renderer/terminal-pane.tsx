@@ -124,6 +124,8 @@ export function TerminalPane(props: TerminalPaneProps) {
     spawnUserShell,
     resolveAgent,
     saveActiveBuffer,
+    refreshColumn,
+    refreshSession,
     dnd,
     search,
     resize,
@@ -172,6 +174,11 @@ export function TerminalPane(props: TerminalPaneProps) {
         setActiveColumn(c);
         search.openSearch();
       }}
+      onRefresh={(c) => {
+        setActiveColumn(c);
+        refreshColumn(c);
+      }}
+      onRefreshTab={(id) => refreshSession(id)}
       dashboardActive={props.bottomView === 'dashboard'}
       onToggleDashboard={() => props.onSelectBand('dashboard')}
     />

@@ -60,6 +60,13 @@ export interface TerminalColumnProps {
   onSpawnShell: (col: Column, agentId: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
+  /** Repaint the column's active tab (Refresh strip button). Nudges the pty
+   *  size so the running program redraws — clears a half-frame left by the
+   *  hidden-tab serialize/hydrate round-trip. */
+  onRefresh: (col: Column) => void;
+  /** Repaint a specific tab (Refresh context-menu item); promotes it to active
+   *  first so there is a live terminal to redraw. */
+  onRefreshTab: (id: string) => void;
   /** True when the bottom band is showing the Dashboard rather than the
    *  terminals. Drives the active state of the Dashboard pseudo-tab (and
    *  suppresses the active ring on the real terminal tabs). */
@@ -589,6 +596,18 @@ export function TerminalColumn(props: TerminalColumnProps) {
         >
           Find
         </button>
+        <button
+          class="terminal-tab-add"
+          data-label="refresh"
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onRefresh(props.col);
+          }}
+          title="Repaint the active terminal (fixes a stale buffer after tab-switch)"
+          aria-label="Refresh"
+        >
+          Refresh
+        </button>
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />
       {/* Right-click tab menu. Portal'd to the body so it escapes the strip's
@@ -614,6 +633,17 @@ export function TerminalColumn(props: TerminalColumnProps) {
               }}
             >
               Rename
+            </button>
+            <button
+              class="terminal-tab-context-menu-item"
+              role="menuitem"
+              onClick={() => {
+                const id = ctxTabId();
+                ctxMenu.close();
+                if (id) props.onRefreshTab(id);
+              }}
+            >
+              Refresh
             </button>
             <button
               class="terminal-tab-context-menu-item danger"
