@@ -94,9 +94,9 @@ export function TerminalFields(props: {
               <span>Auto-refresh on tab switch</span>
             </label>
             <small class="settings-field-hint">
-              Repaint a tab when you switch to it, so a live full-screen TUI (Claude Code, Ink,
-              ncurses) never shows a stale snapshot after the hidden-tab round-trip. Same as
-              pressing Refresh on every switch.
+              Full-screen TUIs (Claude Code, opencode, Ink, ncurses) already repaint automatically
+              on switch — their hydrated snapshot is lossy. Turn this on to also repaint plain
+              shells on every switch, i.e. treat every tab like pressing Refresh.
             </small>
           </div>
           <For each={TERMINAL_STRING_FIELDS}>

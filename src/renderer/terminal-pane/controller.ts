@@ -157,6 +157,12 @@ export function createTerminalController(props: TerminalPaneProps) {
   // either side; they are buffered and flushed once the destination exists.
   const transitioning = new Set<string>();
   const transitionBuffers = new Map<string, string[]>();
+  // Sessions mid-Refresh: their pty is held one row short so the running program
+  // observes a real resize and repaints. A competing `fit()` (e.g. the one at the
+  // tail of every `syncVisibility`) would restore the full size within a frame
+  // and collapse that dip before a debounced TUI ever samples it — so fit skips
+  // any session listed here until the nudge restores the size itself.
+  const nudging = new Set<string>();
 
   const bufferTransitionWrite = (id: string, chunk: string): void => {
     const arr = transitionBuffers.get(id);
@@ -280,7 +286,10 @@ export function createTerminalController(props: TerminalPaneProps) {
     const handle = xterms.get(id);
     if (handle) {
       try {
-        handle.fit.fit();
+        // Don't refit a session whose Refresh nudge is holding the pty one row
+        // short — restoring the size now would collapse the dip before the
+        // program repaints. The nudge's own timeout refits when it's done.
+        if (!nudging.has(id)) handle.fit.fit();
       } catch {
         /* not yet sized */
       }
@@ -756,27 +765,29 @@ export function createTerminalController(props: TerminalPaneProps) {
     if (props.open) queueMicrotask(focusActive);
   });
 
-  // ---- auto-refresh on tab switch (opt-in) ----
-  // When `terminal.autoRefreshOnTabSwitch` is on, repaint a tab the moment it
-  // becomes its column's active tab — the same fix as the manual Refresh button,
-  // applied automatically so a hidden→visible full-screen TUI never shows a
-  // stale hydrated frame. Diffing each column's active id against its previous
-  // value fires only on a genuine switch to a *different* tab: it skips
-  // first-open (prev null) and ignores the no-op signal re-fire that
-  // `refreshSession` itself triggers when it re-asserts the active id. Deferred
-  // to a microtask so we don't write the active-id signal from inside an effect.
+  // ---- auto-refresh on tab switch ----
+  // Repaint a tab the moment it becomes its column's active tab — the same fix as
+  // the manual Refresh button, applied automatically so a hidden→visible full-
+  // screen TUI never shows the lossy hydrated frame. A live TUI's snapshot is
+  // inherently lossy (`SerializeAddon` can't reproduce its cursor / scroll-region
+  // / colour state), so alt-buffer tabs are always repainted on switch; plain
+  // shells hydrate faithfully and are left alone unless `autoRefreshOnTabSwitch`
+  // opts every tab in. Diffing each column's active id against its previous value
+  // fires only on a genuine switch to a *different* tab: it skips first-open
+  // (prev null) and ignores the no-op signal re-fire `refreshSession` makes when
+  // it re-asserts the active id. Deferred to a microtask so we don't write the
+  // active-id signal from inside an effect; `refreshSession` itself decides, once
+  // the tab has hydrated, whether the alt-buffer condition holds.
   let prevActive: { left: string | null; right: string | null } = { left: null, right: null };
   createEffect(() => {
     const current = activeIds();
-    const enabled = props.autoRefreshOnTabSwitch === true;
-    if (enabled) {
-      for (const col of ['left', 'right'] as const) {
-        const next = current[col];
-        const prev = prevActive[col];
-        if (next && prev && next !== prev) {
-          const id = next;
-          queueMicrotask(() => refreshSession(id));
-        }
+    const refreshAll = props.autoRefreshOnTabSwitch === true;
+    for (const col of ['left', 'right'] as const) {
+      const next = current[col];
+      const prev = prevActive[col];
+      if (next && prev && next !== prev) {
+        const id = next;
+        queueMicrotask(() => refreshSession(id, { onlyIfAltBuffer: !refreshAll }));
       }
     }
     prevActive = { left: current.left, right: current.right };
@@ -824,34 +835,43 @@ export function createTerminalController(props: TerminalPaneProps) {
   };
 
   // ---- refresh (repaint) ----
-  // How long to hold the intermediate (rows-1) size before restoring it. The
-  // pause lets the running program process the first SIGWINCH and repaint at the
-  // new size before the second one restores it — two genuine size deltas, so the
-  // program treats it as a real resize (a coalesced no-op delta might not
-  // trigger a redraw at all).
-  const REPAINT_NUDGE_MS = 80;
+  // How long to hold the intermediate (rows-1) size before restoring it. This
+  // must exceed the running program's own resize debounce, or it never samples
+  // the smaller size and the nudge collapses to a no-op: opencode (Bubbletea)
+  // coalesces resizes for ~100ms, so at the old 80ms hold it emitted nothing and
+  // the tab stayed on its garbled hydrated frame no matter how often you pressed
+  // Refresh. 160ms clears that debounce with margin while staying imperceptible;
+  // holding the dip this long only works because `focusActiveDom` now skips
+  // refitting a nudging session (otherwise a chained `syncVisibility` restored
+  // the full size within a frame).
+  const REPAINT_NUDGE_MS = 160;
 
   /** Force the program running in a session to repaint its whole screen by
    *  nudging the pty one row shorter and back (two SIGWINCHes). Full-screen TUIs
-   *  redraw from scratch on resize; plain shells ignore it. This is the manual
-   *  escape hatch for the half-frame a live TUI can show after the hidden-tab
-   *  serialize/hydrate round-trip (see `terminal-worker` / internals §14):
-   *  `SerializeAddon` can't perfectly reproduce a mid-repaint TUI's cursor and
-   *  scroll-region state, so the snapshot hydrated on tab-switch may carry stale
-   *  rows. Scrollback is kept. The session is promoted to its column's active
-   *  DOM Terminal first so there is a live terminal to resize. */
-  const refreshSession = (id: string | null): void => {
+   *  redraw from scratch on resize; plain shells ignore it. This is the escape
+   *  hatch for the half-frame a live TUI can show after the hidden-tab
+   *  serialize/hydrate round-trip (see `terminal-worker` / internals §terminal-
+   *  worker): `SerializeAddon` can't perfectly reproduce a mid-repaint TUI's
+   *  cursor and scroll-region state, so the snapshot hydrated on tab-switch may
+   *  carry stale rows. Scrollback is kept. The session is promoted to its
+   *  column's active DOM Terminal first so there is a live terminal to resize.
+   *
+   *  `onlyIfAltBuffer` (the auto-on-switch default) restricts the nudge to a
+   *  session currently on the alternate screen buffer — i.e. a live full-screen
+   *  TUI, the only kind whose hydrated frame is lossy. A plain shell hydrates
+   *  faithfully, so nudging it on every switch would just churn its layout for
+   *  nothing. The manual Refresh button passes no options and always nudges. */
+  const refreshSession = (id: string | null, opts?: { onlyIfAltBuffer?: boolean }): void => {
     if (!id) return;
     const tab = tabs().find((t) => t.id === id);
     if (!tab) return;
-    // Test seam (mirrors `__condashXterms`): record each repaint so e2e can
-    // assert auto-refresh-on-switch fired without racing the sub-frame resize
-    // nudge. Inert unless the test opts into the registry.
-    if (document.body.hasAttribute('data-test-xterm-registry')) {
-      (window.__condashRefreshLog ??= []).push(id);
-    }
-    setActiveIn(tab.column, id);
-    setActiveColumn(tab.column);
+    // Promote the session to its column's active DOM Terminal so there is a live
+    // terminal to resize — but only when it isn't already active. Re-asserting an
+    // unchanged active id still allocates a new signal object, which re-runs the
+    // focus effect → a chained `syncVisibility` → `focusActiveDom`, and that
+    // extra fit is exactly what used to collapse the nudge dip.
+    if (activeIdIn(tab.column) !== id) setActiveIn(tab.column, id);
+    if (activeColumn() !== tab.column) setActiveColumn(tab.column);
     // Chain after any in-flight promote/demote so the DOM Terminal for this
     // session exists (and is settled) before we resize it.
     visibilityChain = visibilityChain
@@ -859,13 +879,31 @@ export function createTerminalController(props: TerminalPaneProps) {
         await syncVisibility();
         const handle = xterms.get(id);
         if (!handle) return;
+        // Auto-on-switch only repaints live full-screen TUIs (alt buffer); a
+        // faithfully-hydrated shell is left as-is. Checked post-hydrate so the
+        // buffer type reflects the snapshot we just replayed.
+        if (opts?.onlyIfAltBuffer && handle.term.buffer.active.type !== 'alternate') {
+          handle.term.focus();
+          return;
+        }
+        // Test seam (mirrors `__condashXterms`): record each repaint we actually
+        // run so e2e can assert the nudge fired without racing the sub-frame
+        // resize. Inert unless the test opts into the registry.
+        if (document.body.hasAttribute('data-test-xterm-registry')) {
+          (window.__condashRefreshLog ??= []).push(id);
+        }
         const { cols, rows } = handle.term;
         if (rows <= 1) {
           handle.term.focus();
           return;
         }
+        // Hold the pty one row short across REPAINT_NUDGE_MS so a debounced TUI
+        // samples the smaller size and repaints; `nudging` keeps a competing fit
+        // from restoring the size early (see `focusActiveDom`).
+        nudging.add(id);
         handle.term.resize(cols, rows - 1);
         setTimeout(() => {
+          nudging.delete(id);
           // Bail if the tab was demoted, closed, or re-mounted while we waited.
           if (xterms.get(id) !== handle) return;
           try {
@@ -876,7 +914,9 @@ export function createTerminalController(props: TerminalPaneProps) {
           }
         }, REPAINT_NUDGE_MS);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        nudging.delete(id);
+      });
   };
 
   /** Repaint the given column's active tab — backs the Refresh strip button. */
