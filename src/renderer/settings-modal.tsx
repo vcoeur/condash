@@ -551,10 +551,11 @@ export function SettingsModal(props: {
       return { ...p, memory: { ...memory, appScope: mergedApp } };
     });
 
-  // Store only the "on" state; `false` prunes to undefined so the block stays
-  // minimal (matches the ligatures / logging.enabled precedent, tested `=== true`).
-  const setAutoRefreshOnTabSwitch = (value: boolean): Promise<void> =>
-    patchTerminal((p) => ({ ...p, autoRefreshOnTabSwitch: value || undefined }));
+  // On by default: store only the explicit "off" state; `true` / undefined
+  // prune to undefined so the block stays minimal (matches the memory.enabled
+  // precedent).
+  const setAutoRefreshOnTabSwitch = (value: boolean | undefined): Promise<void> =>
+    patchTerminal((p) => ({ ...p, autoRefreshOnTabSwitch: value === false ? false : undefined }));
 
   // --- Scroll-to-section ---------------------------------------------
 

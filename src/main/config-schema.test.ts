@@ -373,6 +373,15 @@ describe('migrateRawSettings — dropped terminal.logging fields', () => {
     });
     expect(() => validateAndCanonicaliseConceptionConfig(json)).toThrow(/terminal/);
   });
+
+  it('round-trips `terminal.autoRefreshOnTabSwitch: false` through the global canonicaliser', () => {
+    // The explicit opt-out value must survive canonicalisation so users can
+    // restore the alt-buffer-only behaviour.
+    const json = JSON.stringify({ terminal: { autoRefreshOnTabSwitch: false } });
+    expect(JSON.parse(validateAndCanonicaliseGlobalSettings(json)).terminal).toEqual({
+      autoRefreshOnTabSwitch: false,
+    });
+  });
 });
 
 describe('migrateRawSettings — launchers replaced by agents', () => {

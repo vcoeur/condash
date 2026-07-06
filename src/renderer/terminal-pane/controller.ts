@@ -781,7 +781,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   let prevActive: { left: string | null; right: string | null } = { left: null, right: null };
   createEffect(() => {
     const current = activeIds();
-    const refreshAll = props.autoRefreshOnTabSwitch === true;
+    const refreshAll = props.autoRefreshOnTabSwitch !== false;
     for (const col of ['left', 'right'] as const) {
       const next = current[col];
       const prev = prevActive[col];
