@@ -766,22 +766,25 @@ export function createTerminalController(props: TerminalPaneProps) {
   });
 
   // ---- auto-refresh on tab switch ----
-  // Repaint a tab the moment it becomes its column's active tab — the same fix as
-  // the manual Refresh button, applied automatically so a hidden→visible full-
-  // screen TUI never shows the lossy hydrated frame. A live TUI's snapshot is
-  // inherently lossy (`SerializeAddon` can't reproduce its cursor / scroll-region
-  // / colour state), so alt-buffer tabs are always repainted on switch; plain
-  // shells hydrate faithfully and are left alone unless `autoRefreshOnTabSwitch`
-  // opts every tab in. Diffing each column's active id against its previous value
-  // fires only on a genuine switch to a *different* tab: it skips first-open
-  // (prev null) and ignores the no-op signal re-fire `refreshSession` makes when
-  // it re-asserts the active id. Deferred to a microtask so we don't write the
-  // active-id signal from inside an effect; `refreshSession` itself decides, once
-  // the tab has hydrated, whether the alt-buffer condition holds.
+  // Repaint a tab the moment it becomes its column's active tab — the same fix
+  // as the manual Refresh button, applied automatically so a hidden→visible tab
+  // never shows a stale hydrated frame. On by default (`autoRefreshOnTabSwitch`
+  // is treated as true unless explicitly `false`): every tab — full-screen TUI,
+  // plain shell, agent session — is nudged on switch. Setting it to `false`
+  // restricts the nudge to alt-buffer tabs only (live full-screen TUIs, the one
+  // kind whose hydrated frame is inherently lossy — `SerializeAddon` can't
+  // reproduce their cursor / scroll-region / colour state); plain shells then
+  // hydrate faithfully and are left alone. Diffing each column's active id
+  // against its previous value fires only on a genuine switch to a *different*
+  // tab: it skips first-open (prev null) and ignores the no-op signal re-fire
+  // `refreshSession` makes when it re-asserts the active id. Deferred to a
+  // microtask so we don't write the active-id signal from inside an effect;
+  // `refreshSession` itself decides, once the tab has hydrated, whether the
+  // alt-buffer condition holds.
   let prevActive: { left: string | null; right: string | null } = { left: null, right: null };
   createEffect(() => {
     const current = activeIds();
-    const refreshAll = props.autoRefreshOnTabSwitch === true;
+    const refreshAll = props.autoRefreshOnTabSwitch !== false;
     for (const col of ['left', 'right'] as const) {
       const next = current[col];
       const prev = prevActive[col];
@@ -856,11 +859,13 @@ export function createTerminalController(props: TerminalPaneProps) {
    *  carry stale rows. Scrollback is kept. The session is promoted to its
    *  column's active DOM Terminal first so there is a live terminal to resize.
    *
-   *  `onlyIfAltBuffer` (the auto-on-switch default) restricts the nudge to a
-   *  session currently on the alternate screen buffer — i.e. a live full-screen
-   *  TUI, the only kind whose hydrated frame is lossy. A plain shell hydrates
-   *  faithfully, so nudging it on every switch would just churn its layout for
-   *  nothing. The manual Refresh button passes no options and always nudges. */
+   *  `onlyIfAltBuffer` restricts the nudge to a session currently on the
+   *  alternate screen buffer — i.e. a live full-screen TUI, the only kind whose
+   *  hydrated frame is lossy. A plain shell hydrates faithfully, so nudging it on
+   *  every switch would just churn its layout for nothing. The auto-on-switch
+   *  path passes `onlyIfAltBuffer: true` only when the user has explicitly set
+   *  `autoRefreshOnTabSwitch: false`; the default (and the manual Refresh button)
+   *  always nudges. */
   const refreshSession = (id: string | null, opts?: { onlyIfAltBuffer?: boolean }): void => {
     if (!id) return;
     const tab = tabs().find((t) => t.id === id);
@@ -879,9 +884,9 @@ export function createTerminalController(props: TerminalPaneProps) {
         await syncVisibility();
         const handle = xterms.get(id);
         if (!handle) return;
-        // Auto-on-switch only repaints live full-screen TUIs (alt buffer); a
-        // faithfully-hydrated shell is left as-is. Checked post-hydrate so the
-        // buffer type reflects the snapshot we just replayed.
+        // The opt-out path (onlyIfAltBuffer) repaints only live full-screen TUIs
+        // (alt buffer); a faithfully-hydrated shell is left as-is. Checked
+        // post-hydrate so the buffer type reflects the snapshot we just replayed.
         if (opts?.onlyIfAltBuffer && handle.term.buffer.active.type !== 'alternate') {
           handle.term.focus();
           return;

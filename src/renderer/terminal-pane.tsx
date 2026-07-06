@@ -108,9 +108,9 @@ export interface TerminalPaneProps {
   /** User-configured xterm preferences (font, colours, scrollback, …). Pulled
    *  from condash.json under `terminal.xterm`. Undefined = defaults. */
   xtermPrefs?: TerminalXtermPrefs;
-  /** When true, switching to a tab auto-runs the Refresh (repaint) action on the
-   *  newly-active tab. Pulled from `terminal.autoRefreshOnTabSwitch`. Undefined /
-   *  false = Refresh stays a manual action. */
+  /** When not explicitly false, switching to a tab auto-runs the Refresh
+   *  (repaint) action on the newly-active tab. Pulled from
+   *  `terminal.autoRefreshOnTabSwitch`. */
   autoRefreshOnTabSwitch?: boolean;
 }
 

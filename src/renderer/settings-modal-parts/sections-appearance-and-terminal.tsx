@@ -69,7 +69,7 @@ interface TerminalSectionProps {
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
   updateMemory: (patch: Partial<TerminalMemoryPrefs>) => Promise<void>;
   updateAppScopeMemory: (patch: Partial<AppScopeMemoryPrefs>) => Promise<void>;
-  setAutoRefreshOnTabSwitch: (value: boolean) => Promise<void>;
+  setAutoRefreshOnTabSwitch: (value: boolean | undefined) => Promise<void>;
   platform: () => Platform | undefined;
 }
 

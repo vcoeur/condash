@@ -109,11 +109,11 @@ export interface TerminalPrefs {
   /** Per-tab memory containment via a transient systemd user scope. See
    *  TerminalMemoryPrefs. No-op on unsupported platforms. */
   memory?: TerminalMemoryPrefs;
-  /** When true, switching to a terminal tab automatically runs the Refresh
-   *  action on the newly-active tab — repainting it after the hidden-tab
-   *  serialize/hydrate round-trip so a live full-screen TUI (Claude Code, Ink,
-   *  ncurses) never shows a stale snapshot. Default: false (Refresh stays a
-   *  manual button / context-menu action). */
+  /** When true (the default), switching to a terminal tab automatically runs
+   *  the Refresh action on the newly-active tab — repainting it after the
+   *  hidden-tab serialize/hydrate round-trip so a live full-screen TUI (Claude
+   *  Code, Ink, ncurses) never shows a stale snapshot. Set explicitly to false
+   *  to restrict auto-refresh to alternate-buffer tabs only. */
   autoRefreshOnTabSwitch?: boolean;
 }
 

@@ -243,11 +243,10 @@ test('Refresh repaints a debounced alt-screen TUI (the opencode case)', async ()
   }
 });
 
-// Even with `autoRefreshOnTabSwitch` OFF (the default), switching to a live
-// full-screen TUI must auto-repaint it — its hydrated frame is inherently lossy.
-// A plain shell, which hydrates faithfully, must NOT be auto-refreshed on switch
-// while the opt-in is off.
-test('auto-refresh (default): alt-screen tab repaints on switch, plain shell does not', async () => {
+// `autoRefreshOnTabSwitch` defaults to true, so switching to any tab runs
+// Refresh. Plain shells have nothing to repaint, so we assert via the refresh
+// log; alt-screen TUIs additionally show a real paint advance.
+test('auto-refresh (default): every tab repaints on switch', async () => {
   const booted = await bootApp({ globalConfig: { layout: { terminal: true } } });
   booted.window.on('console', (msg) => console.log('RENDERER CONSOLE:', msg.text()));
   try {
@@ -274,14 +273,65 @@ test('auto-refresh (default): alt-screen tab repaints on switch, plain shell doe
     });
     await waitForDomTerm(booted.window, sh.id);
 
-    // Switch to the plain shell: with the opt-in off it must NOT be refreshed.
+    // Switch to the plain shell: with the default on it must be logged.
+    await booted.window.click(`[data-sid="${sh.id}"]`);
+    await waitForDomTerm(booted.window, sh.id);
+    await expect.poll(() => refreshLog(booted.window), { timeout: 5000 }).toContain(sh.id);
+
+    // Switch back to the TUI: logged and actually repainted.
+    await booted.window.click(`[data-sid="${tui.id}"]`);
+    await waitForDomTerm(booted.window, tui.id);
+    await expect.poll(() => refreshLog(booted.window), { timeout: 5000 }).toContain(tui.id);
+    await expect
+      .poll(() => latestPaintCount(booted.window, tui.id), { timeout: 5000 })
+      .toBeGreaterThan(1);
+
+    await booted.window.evaluate((id) => window.condash.termClose(id), tui.id);
+    await booted.window.evaluate((id) => window.condash.termClose(id), sh.id);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+// With `autoRefreshOnTabSwitch` explicitly false, only alternate-buffer tabs
+// are auto-refreshed — plain shells hydrate faithfully and are left alone.
+test('auto-refresh opt-out: alt-screen tab repaints on switch, plain shell does not', async () => {
+  const booted = await bootApp({
+    globalConfig: {
+      layout: { terminal: true },
+      terminal: { autoRefreshOnTabSwitch: false },
+    },
+  });
+  booted.window.on('console', (msg) => console.log('RENDERER CONSOLE:', msg.text()));
+  try {
+    await booted.window.evaluate(() => {
+      document.body.setAttribute('data-test-xterm-registry', '');
+    });
+
+    const tui = await booted.window.evaluate(
+      (script) => window.condash.termSpawn({ side: 'my', command: `node ${script}` }),
+      DEBOUNCE_TUI,
+    );
+    const sh = await booted.window.evaluate(() =>
+      window.condash.termSpawn({ side: 'my', command: 'printf "SHELL\n"; sleep 30' }),
+    );
+    await booted.window.waitForSelector(`[data-sid="${tui.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await booted.window.waitForSelector(`[data-sid="${sh.id}"]`, {
+      state: 'attached',
+      timeout: 5000,
+    });
+    await waitForDomTerm(booted.window, sh.id);
+
+    // Switch to the plain shell: with the setting off it must NOT be refreshed.
     await booted.window.click(`[data-sid="${sh.id}"]`);
     await waitForDomTerm(booted.window, sh.id);
     await wait(600); // give any (unwanted) auto-refresh time to log itself
     expect(await refreshLog(booted.window), 'plain shell not auto-refreshed').not.toContain(sh.id);
 
-    // Switch back to the TUI: it is on the alt buffer, so it must auto-refresh
-    // (logged) and actually repaint (paint count advances past the initial 1).
+    // Switch back to the TUI: it is on the alt buffer, so it must auto-refresh.
     await booted.window.click(`[data-sid="${tui.id}"]`);
     await waitForDomTerm(booted.window, tui.id);
     await expect.poll(() => refreshLog(booted.window), { timeout: 5000 }).toContain(tui.id);

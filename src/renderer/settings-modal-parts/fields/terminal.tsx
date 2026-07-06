@@ -53,12 +53,12 @@ export function TerminalFields(props: {
   updateLogging: (patch: Partial<TerminalLoggingPrefs>) => Promise<void>;
   updateMemory: (patch: Partial<TerminalMemoryPrefs>) => Promise<void>;
   updateAppScopeMemory: (patch: Partial<AppScopeMemoryPrefs>) => Promise<void>;
-  setAutoRefreshOnTabSwitch: (value: boolean) => Promise<void>;
+  setAutoRefreshOnTabSwitch: (value: boolean | undefined) => Promise<void>;
   platform: () => Platform | undefined;
 }): JSX.Element {
   const logging = (): TerminalLoggingPrefs => props.prefs().logging ?? {};
-  // Opt-in: only `true` renders checked (undefined / false → off).
-  const autoRefreshOnTabSwitch = (): boolean => props.prefs().autoRefreshOnTabSwitch === true;
+  // On by default: only an explicit `false` renders unchecked.
+  const autoRefreshOnTabSwitch = (): boolean => props.prefs().autoRefreshOnTabSwitch !== false;
   // Opt-in by default: only treat the checkbox as on when the user has
   // explicitly set the flag. `undefined` and `false` both render unchecked.
   const loggingEnabled = (): boolean => logging().enabled === true;
@@ -89,14 +89,16 @@ export function TerminalFields(props: {
               <input
                 type="checkbox"
                 checked={autoRefreshOnTabSwitch()}
-                onChange={(e) => void props.setAutoRefreshOnTabSwitch(e.currentTarget.checked)}
+                onChange={(e) =>
+                  void props.setAutoRefreshOnTabSwitch(e.currentTarget.checked ? undefined : false)
+                }
               />
               <span>Auto-refresh on tab switch</span>
             </label>
             <small class="settings-field-hint">
-              Full-screen TUIs (Claude Code, opencode, Ink, ncurses) already repaint automatically
-              on switch — their hydrated snapshot is lossy. Turn this on to also repaint plain
-              shells on every switch, i.e. treat every tab like pressing Refresh.
+              On by default. Repaints the newly-active tab on every switch so a hidden tab never
+              shows a stale snapshot — full-screen TUIs, plain shells, and agent sessions alike.
+              Uncheck to restrict auto-refresh to full-screen TUIs only.
             </small>
           </div>
           <For each={TERMINAL_STRING_FIELDS}>
