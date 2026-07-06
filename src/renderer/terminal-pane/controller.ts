@@ -884,9 +884,9 @@ export function createTerminalController(props: TerminalPaneProps) {
         await syncVisibility();
         const handle = xterms.get(id);
         if (!handle) return;
-        // Auto-on-switch only repaints live full-screen TUIs (alt buffer); a
-        // faithfully-hydrated shell is left as-is. Checked post-hydrate so the
-        // buffer type reflects the snapshot we just replayed.
+        // The opt-out path (onlyIfAltBuffer) repaints only live full-screen TUIs
+        // (alt buffer); a faithfully-hydrated shell is left as-is. Checked
+        // post-hydrate so the buffer type reflects the snapshot we just replayed.
         if (opts?.onlyIfAltBuffer && handle.term.buffer.active.type !== 'alternate') {
           handle.term.focus();
           return;
