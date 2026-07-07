@@ -538,6 +538,28 @@ body[data-dragging='project'] .row {
   max-width: 220px;
 }
 
+/* Open-PR badge on the branch row — one per matching open PR for the
+ * project's branch. Clickable (opens the PR in the browser); the accent
+ * lifts it out of the faint branch/slug meta text, and a draft PR reads a
+ * touch fainter so a ready-for-review PR stands out. */
+.row .meta-icon.pr-badge {
+  cursor: pointer;
+  color: var(--accent);
+  background: var(--bg-subtle);
+  border: 1px solid transparent;
+  padding: 1px 6px;
+  margin: -1px 0;
+}
+
+.row .meta-icon.pr-badge:hover {
+  border-color: var(--border-strong);
+}
+
+.row .meta-icon.pr-badge.draft {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 .row .row-action {
   display: inline-flex;
   align-items: center;

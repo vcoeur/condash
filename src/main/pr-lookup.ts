@@ -12,8 +12,13 @@
 // mapping is unit-tested without a live gh (mirrors the classify* split in
 // pull-branch.ts). A short TTL cache keyed by (path, branch) collapses the
 // repeated lookups a user makes reopening the same card's menu.
+//
+// `listOpenPullRequests` is the batch variant behind the Projects-pane card
+// badges: one `gh pr list` per repo returns every open PR (with its head
+// branch), so a pane full of project cards costs one call per repo instead of
+// one per card. It's cached by repo cwd.
 
-import type { PullRequestInfo } from '../shared/types';
+import type { OpenPullRequest, PullRequestInfo } from '../shared/types';
 import { exec } from './exec';
 
 /** How long a resolved lookup (a PR or a "none") is reused before `gh` is
@@ -26,22 +31,47 @@ const CACHE_TTL_MS = 60_000;
  *  pending for a minute. */
 const LOOKUP_TIMEOUT_MS = 15_000;
 
+/** Upper bound on open PRs read per repo for the Projects-pane batch. Well
+ *  above any realistic open-PR count for the repos condash tracks; a repo
+ *  with more simply won't badge the overflow. */
+const LIST_LIMIT = 100;
+
 interface CacheEntry {
   at: number;
   value: PullRequestInfo | null;
 }
 const cache = new Map<string, CacheEntry>();
 
+interface ListCacheEntry {
+  at: number;
+  value: OpenPullRequest[];
+}
+const listCache = new Map<string, ListCacheEntry>();
+
 const cacheKey = (path: string, branch: string): string => JSON.stringify([path, branch]);
 
-/** Shape of one element of `gh pr list --json url,number,title,isDraft`
- *  output. Fields are `unknown` because the array is parsed from untrusted
- *  stdout and validated in `parseGhPrList`. */
+/** Shape of one element of `gh pr list --json …` output. Fields are `unknown`
+ *  because the array is parsed from untrusted stdout and validated in the
+ *  parsers below. `headRefName` is only requested by the batch list. */
 interface GhPrRow {
   number?: unknown;
   url?: unknown;
   title?: unknown;
   isDraft?: unknown;
+  headRefName?: unknown;
+}
+
+/** Map one validated `gh pr list` row to a `PullRequestInfo`, or null when a
+ *  required field is missing / wrong-typed. Shared by both parsers. */
+function toPullRequestInfo(row: GhPrRow): PullRequestInfo | null {
+  if (typeof row.number !== 'number') return null;
+  if (typeof row.url !== 'string' || row.url.length === 0) return null;
+  return {
+    number: row.number,
+    url: row.url,
+    title: typeof row.title === 'string' ? row.title : '',
+    isDraft: row.isDraft === true,
+  };
 }
 
 /** Parse `gh pr list --json …` stdout into the first well-formed PR, or null
@@ -55,15 +85,30 @@ export function parseGhPrList(stdout: string): PullRequestInfo | null {
     return null;
   }
   if (!Array.isArray(parsed) || parsed.length === 0) return null;
-  const first = parsed[0] as GhPrRow;
-  if (typeof first.number !== 'number') return null;
-  if (typeof first.url !== 'string' || first.url.length === 0) return null;
-  return {
-    number: first.number,
-    url: first.url,
-    title: typeof first.title === 'string' ? first.title : '',
-    isDraft: first.isDraft === true,
-  };
+  return toPullRequestInfo(parsed[0] as GhPrRow);
+}
+
+/** Parse `gh pr list --json …,headRefName` stdout into every well-formed open
+ *  PR, each carrying its head branch. Rows missing a required field or a
+ *  string `headRefName` are dropped; an empty / unparseable payload yields an
+ *  empty array. Pure; exported for tests. */
+export function parseOpenPrList(stdout: string): OpenPullRequest[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: OpenPullRequest[] = [];
+  for (const raw of parsed) {
+    const row = raw as GhPrRow;
+    const info = toPullRequestInfo(row);
+    if (!info) continue;
+    if (typeof row.headRefName !== 'string' || row.headRefName.length === 0) continue;
+    out.push({ ...info, headRefName: row.headRefName });
+  }
+  return out;
 }
 
 /**
@@ -108,5 +153,43 @@ export async function lookupPullRequest(
     value = null;
   }
   cache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/**
+ * List every open PR in the repo checked out at `cwd`, each with its head
+ * branch — the batch behind the Projects-pane card badges. One call covers
+ * every card for that repo. Returns an empty array when the repo has no open
+ * PRs or the lookup can't run (unauthenticated gh, no GitHub remote, gh
+ * absent). Never throws; cached by `cwd` for `CACHE_TTL_MS`.
+ *
+ * @param cwd Absolute path to a checkout of the repo (any worktree of it).
+ * @returns The repo's open PRs (possibly empty).
+ */
+export async function listOpenPullRequests(cwd: string): Promise<OpenPullRequest[]> {
+  const hit = listCache.get(cwd);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+
+  let value: OpenPullRequest[] = [];
+  try {
+    const { stdout } = await exec(
+      'gh',
+      [
+        'pr',
+        'list',
+        '--state',
+        'open',
+        '--json',
+        'url,number,title,isDraft,headRefName',
+        '--limit',
+        String(LIST_LIMIT),
+      ],
+      { cwd, timeout: LOOKUP_TIMEOUT_MS },
+    );
+    value = parseOpenPrList(stdout);
+  } catch {
+    value = [];
+  }
+  listCache.set(cwd, { at: Date.now(), value });
   return value;
 }

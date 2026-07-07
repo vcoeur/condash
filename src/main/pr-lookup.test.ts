@@ -5,7 +5,7 @@
  * / field-mapping is covered.
  */
 import { describe, expect, it } from 'vitest';
-import { parseGhPrList } from './pr-lookup';
+import { parseGhPrList, parseOpenPrList } from './pr-lookup';
 
 describe('parseGhPrList', () => {
   it('maps the first PR of a populated list', () => {
@@ -77,5 +77,61 @@ describe('parseGhPrList', () => {
     expect(parseGhPrList(JSON.stringify([{ number: 1, url: '' }]))).toBeNull();
     // number as a string.
     expect(parseGhPrList(JSON.stringify([{ number: '1', url: 'https://x/pull/1' }]))).toBeNull();
+  });
+});
+
+describe('parseOpenPrList', () => {
+  it('maps every well-formed row, carrying the head branch', () => {
+    const out = JSON.stringify([
+      {
+        number: 12,
+        url: 'https://example.com/pull/12',
+        title: 'feat one',
+        isDraft: false,
+        headRefName: 'feature-one',
+      },
+      {
+        number: 34,
+        url: 'https://example.com/pull/34',
+        title: 'feat two',
+        isDraft: true,
+        headRefName: 'feature-two',
+      },
+    ]);
+    expect(parseOpenPrList(out)).toEqual([
+      {
+        number: 12,
+        url: 'https://example.com/pull/12',
+        title: 'feat one',
+        isDraft: false,
+        headRefName: 'feature-one',
+      },
+      {
+        number: 34,
+        url: 'https://example.com/pull/34',
+        title: 'feat two',
+        isDraft: true,
+        headRefName: 'feature-two',
+      },
+    ]);
+  });
+
+  it('drops rows missing a usable head branch or a required field', () => {
+    const out = JSON.stringify([
+      { number: 1, url: 'https://x/pull/1', headRefName: 'ok' },
+      { number: 2, url: 'https://x/pull/2' }, // no headRefName
+      { number: 3, url: 'https://x/pull/3', headRefName: '' }, // empty headRefName
+      { url: 'https://x/pull/4', headRefName: 'no-number' }, // no number
+    ]);
+    const result = parseOpenPrList(out);
+    expect(result.map((pr) => pr.number)).toEqual([1]);
+    expect(result[0].headRefName).toBe('ok');
+  });
+
+  it('returns an empty array for empty, non-array, or malformed input', () => {
+    expect(parseOpenPrList('[]')).toEqual([]);
+    expect(parseOpenPrList('{"number":1}')).toEqual([]);
+    expect(parseOpenPrList('not json')).toEqual([]);
+    expect(parseOpenPrList('')).toEqual([]);
   });
 });

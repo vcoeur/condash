@@ -95,6 +95,16 @@ export interface PullRequestInfo {
   isDraft: boolean;
 }
 
+/** An open PR carrying its head branch — one element of the per-repo open-PR
+ *  list that backs the Projects-pane card badges. The renderer indexes these
+ *  by `headRefName` so each project card can match its own `branch` without a
+ *  per-card `gh` call. */
+export interface OpenPullRequest extends PullRequestInfo {
+  /** The PR's head branch name (`gh`'s `headRefName`) — the key a project
+   *  card's `branch` is matched against. */
+  headRefName: string;
+}
+
 export interface Worktree {
   /** Absolute path on disk. */
   path: string;
