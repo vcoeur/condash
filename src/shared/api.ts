@@ -19,6 +19,7 @@ import type {
   ProjectCreateResult,
   ProjectFileEntry,
   PullBranchResult,
+  PullRequestInfo,
   RepoEntry,
   RepoEvent,
   ResourceNode,
@@ -92,6 +93,12 @@ export interface CondashApi {
    * toast the outcome; throws on an unexpected git failure (no upstream,
    * network, not a repo). */
   pullBranch(path: string): Promise<PullBranchResult>;
+  /** Resolve the open GitHub PR whose head is `branch` (via `gh pr list
+   * --head`, run in the worktree at `path`). Powers the Code-pane per-branch
+   * "Open PR" menu item. Returns null when there's no open PR for the branch
+   * or the lookup can't run (unauthenticated gh, no GitHub remote); the menu
+   * omits the row on null and never surfaces an error. */
+  lookupPullRequest(path: string, branch: string): Promise<PullRequestInfo | null>;
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;
