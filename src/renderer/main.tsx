@@ -1,5 +1,14 @@
 import { render } from 'solid-js/web';
-import { createMemo, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Match,
+  Show,
+  Switch,
+} from 'solid-js';
 import type { KnowledgeNode, ResourceNode, SkillNode } from '@shared/types';
 import { TerminalPane, type TerminalPaneHandle } from './terminal-pane';
 import { ModalHost } from './modal-host';
@@ -20,6 +29,7 @@ import { createBranchFilterStore } from './branch-filter-store';
 import { createReposStore } from './repos-store';
 import { createSessionsStore } from './sessions-store';
 import { createProjectsStore } from './projects-store';
+import { reloadPrIndex } from './pr-index-store';
 import { createTreeStore } from './tree-store';
 import { createGlobalKeyboard } from './global-keyboard';
 import { createMenuRouter } from './menu-commands';
@@ -162,6 +172,15 @@ function App() {
   // --- Domain stores ----------------------------------------------------
   const projectsStore = createProjectsStore({ conceptionPath });
   const { projects, loaded: projectsLoaded, mutate, reload: reloadProjects } = projectsStore;
+
+  // Keep the Projects-pane PR badges in sync with the project list: refetch the
+  // per-repo open-PR index whenever the project set changes — initial load, a
+  // watcher-driven card patch, a manual refresh, or a conception switch. The
+  // main-process lookups are TTL-cached per repo, so list churn doesn't spam
+  // `gh`; a conception with no branch-bearing projects clears the index.
+  createEffect(() => {
+    void reloadPrIndex(projects());
+  });
 
   const knowledgeStore = createTreeStore<KnowledgeNode>({
     conceptionPath,

@@ -2,8 +2,9 @@ import { createSignal, For, onCleanup, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import { KNOWN_STATUSES } from '@shared/types';
 import { appColorClass, appPillText } from '@shared/app-color';
-import { Caret, TerminalIcon } from '../../icons';
+import { Caret, IconExternal, TerminalIcon } from '../../icons';
 import { ActionDropdownButton } from '../../action-dropdown-button';
+import { prsForProject } from '../../pr-index-store';
 import {
   Group,
   MARKER_LABEL,
@@ -218,7 +219,8 @@ export function Card(props: {
       draggedThisGesture = false;
       return;
     }
-    if ((event.target as HTMLElement).closest('.step-toggle, .expander, .row-action')) return;
+    if ((event.target as HTMLElement).closest('.step-toggle, .expander, .row-action, .pr-badge'))
+      return;
     props.onOpen(props.item);
   };
 
@@ -300,7 +302,9 @@ export function Card(props: {
     // Let interactive children (work-on dropdown, expander, step toggles)
     // keep their own click behaviour.
     if (
-      (event.target as HTMLElement).closest('.title-actions, .expander, .step-toggle, .row-action')
+      (event.target as HTMLElement).closest(
+        '.title-actions, .expander, .step-toggle, .row-action, .pr-badge',
+      )
     ) {
       return;
     }
@@ -468,6 +472,22 @@ export function Card(props: {
               {props.item.branch}
             </span>
           </Show>
+          <For each={prsForProject(props.item)}>
+            {(pr) => (
+              <button
+                class="meta-icon pr-badge"
+                classList={{ draft: pr.isDraft }}
+                title={`${pr.isDraft ? 'Draft PR' : 'Open PR'} #${pr.number}: ${pr.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void window.condash.openExternal(pr.url);
+                }}
+              >
+                <IconExternal />
+                <span>#{pr.number}</span>
+              </button>
+            )}
+          </For>
           <Show when={statusUnknown()}>
             <span class="meta-icon warn" title={`Unknown status: ${props.item.status}`}>
               <WarnIcon />

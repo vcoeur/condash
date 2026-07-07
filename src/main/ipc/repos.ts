@@ -5,7 +5,8 @@ import { recomputeAllWatchedRepos, setRepoWatchers, watchTargetsFromRepos } from
 import { getDirtyDetails } from '../git-details';
 import { forceStopRepo, launchOpenWith, listOpenWith } from '../launchers';
 import { pullBranch } from '../pull-branch';
-import { lookupPullRequest } from '../pr-lookup';
+import { listOpenPullRequests, lookupPullRequest } from '../pr-lookup';
+import { readConfig, repoLookupMap, resolveAppRepo } from '../worktree/shared';
 import { requirePathUnderWorkspace } from '../path-bounds';
 import { readSettings } from '../settings';
 import type { OpenWithSlotKey } from '../../shared/types';
@@ -121,6 +122,24 @@ export function registerReposIpc(): void {
     requireNonEmptyString('lookupPullRequest', branch);
     const realPath = await requirePathUnderWorkspace(path);
     return lookupPullRequest(realPath, branch);
+  });
+
+  // Projects-pane card badges: list every open GitHub PR for the repo an
+  // `apps:` token resolves to (`gh pr list --state open`, one call per repo).
+  // The renderer passes an app handle / repo name — never a path — and this
+  // resolves it to the configured repo's checkout via the same name/handle/
+  // alias map the worktree resolver uses, so a compromised renderer can't
+  // point `gh` at an arbitrary directory. Returns [] for an unknown app, no
+  // conception, or a lookup that can't run — the pane simply shows no badges.
+  ipcMain.handle('listOpenPullRequests', (event, app: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('listOpenPullRequests', app);
+    return withConception(async (conceptionPath) => {
+      const config = await readConfig(conceptionPath);
+      const repo = resolveAppRepo(app, repoLookupMap(config));
+      if (!repo) return [];
+      return listOpenPullRequests(repo.cwd);
+    }, []);
   });
 
   ipcMain.handle('forceStopRepo', (event, repoName: string) => {

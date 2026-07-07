@@ -11,6 +11,7 @@ import type {
   HelpDocName,
   KnowledgeNode,
   LayoutState,
+  OpenPullRequest,
   OpenWithSlotKey,
   OpenWithSlots,
   Platform,
@@ -99,6 +100,12 @@ export interface CondashApi {
    * or the lookup can't run (unauthenticated gh, no GitHub remote); the menu
    * omits the row on null and never surfaces an error. */
   lookupPullRequest(path: string, branch: string): Promise<PullRequestInfo | null>;
+  /** List every open GitHub PR for the repo the `apps:` token `app` resolves
+   * to (one `gh pr list` per repo), each carrying its head branch. Powers the
+   * Projects-pane card badges: the renderer indexes these by head branch so
+   * each project card matches its own branch without a per-card call. Returns
+   * an empty array for an unknown app or a lookup that can't run. */
+  listOpenPullRequests(app: string): Promise<OpenPullRequest[]>;
   openInEditor(path: string): Promise<void>;
   pickConceptionPath(): Promise<string | null>;
   getConceptionPath(): Promise<string | null>;
