@@ -1,7 +1,14 @@
-import { For, Show } from 'solid-js';
+import { createResource, For, Show } from 'solid-js';
 import type { OpenWithSlotKey, OpenWithSlots, RepoEntry, Worktree } from '@shared/types';
 import { createDropdownMenu } from '../../dropdown-menu';
-import { ChevronDownIcon, FolderIcon, RunIcon, StopIcon, TerminalIcon } from '../../icons';
+import {
+  ChevronDownIcon,
+  FolderIcon,
+  IconExternal,
+  RunIcon,
+  StopIcon,
+  TerminalIcon,
+} from '../../icons';
 import { LAUNCHER_GLYPH, LAUNCHER_SLOTS } from './data';
 
 /**
@@ -39,6 +46,20 @@ export function BranchActions(props: {
   // detached HEAD (no branch to fast-forward).
   const canPull = (): boolean =>
     !props.repo.missing && props.repo.isGit !== false && props.worktree.branch != null;
+
+  // Fire the open-PR lookup only while the menu is open, and only for a real
+  // git branch (same eligibility as canPull). The source returns null
+  // otherwise, so createResource skips the `gh` call. The main process TTL-
+  // caches by (path, branch), so reopening the same card's menu is instant.
+  const prLookupSource = (): { path: string; branch: string } | null => {
+    if (!menu.isOpen()) return null;
+    const branch = props.worktree.branch;
+    if (props.repo.missing || props.repo.isGit === false || branch == null) return null;
+    return { path: props.worktree.path, branch };
+  };
+  const [pullRequest] = createResource(prLookupSource, (src) =>
+    window.condash.lookupPullRequest(src.path, src.branch),
+  );
 
   return (
     <div class="branch-actions">
@@ -143,6 +164,27 @@ export function BranchActions(props: {
               <span class="glyph">↓</span>
               <span>Pull branch</span>
             </button>
+          </Show>
+          <Show when={pullRequest()}>
+            {(pr) => (
+              <button
+                class="branch-action-menu-item"
+                role="menuitem"
+                title={`${pr().isDraft ? 'Draft PR' : 'Open PR'} #${pr().number}: ${pr().title}`}
+                onClick={() => {
+                  menu.close();
+                  void window.condash.openExternal(pr().url);
+                }}
+              >
+                <span class="glyph">
+                  <IconExternal />
+                </span>
+                <span>
+                  Open PR #{pr().number}
+                  {pr().isDraft ? ' (draft)' : ''}
+                </span>
+              </button>
+            )}
           </Show>
         </div>
       </Show>

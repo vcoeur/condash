@@ -79,6 +79,22 @@ export interface DirtyDetails {
   unpushedTruncated: boolean;
 }
 
+/** An open GitHub pull request whose head is a worktree's branch — the
+ *  payload behind the Code-pane per-branch "Open PR" menu item. Resolved
+ *  on demand (via `gh pr list --head <branch>`) when the actions menu opens;
+ *  null when no open PR exists for that branch (or the lookup couldn't run). */
+export interface PullRequestInfo {
+  /** PR number (`#412`). */
+  number: number;
+  /** Web URL — opened in the browser via `openExternal`. */
+  url: string;
+  /** PR title, surfaced in the menu-item tooltip. */
+  title: string;
+  /** True when the PR is a draft — the menu item badges it so a draft
+   *  reads differently from a ready-for-review PR. */
+  isDraft: boolean;
+}
+
 export interface Worktree {
   /** Absolute path on disk. */
   path: string;

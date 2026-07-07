@@ -5,6 +5,7 @@ import { recomputeAllWatchedRepos, setRepoWatchers, watchTargetsFromRepos } from
 import { getDirtyDetails } from '../git-details';
 import { forceStopRepo, launchOpenWith, listOpenWith } from '../launchers';
 import { pullBranch } from '../pull-branch';
+import { lookupPullRequest } from '../pr-lookup';
 import { requirePathUnderWorkspace } from '../path-bounds';
 import { readSettings } from '../settings';
 import type { OpenWithSlotKey } from '../../shared/types';
@@ -107,6 +108,19 @@ export function registerReposIpc(): void {
     requireNonEmptyString('pullBranch', path);
     const realPath = await requirePathUnderWorkspace(path);
     return pullBranch(realPath);
+  });
+
+  // Code-pane per-branch "Open PR": resolve the open GitHub PR whose head is
+  // this worktree's branch (via `gh pr list --head`). Bounded to the workspace
+  // + worktrees roots so the renderer can only drive a `gh` lookup from inside
+  // a known checkout, never an arbitrary directory. Returns null when there's
+  // no open PR (or gh can't run) — the menu simply omits the row.
+  ipcMain.handle('lookupPullRequest', async (event, path: string, branch: string) => {
+    requireMainWindowSender(event);
+    requireNonEmptyString('lookupPullRequest', path);
+    requireNonEmptyString('lookupPullRequest', branch);
+    const realPath = await requirePathUnderWorkspace(path);
+    return lookupPullRequest(realPath, branch);
   });
 
   ipcMain.handle('forceStopRepo', (event, repoName: string) => {

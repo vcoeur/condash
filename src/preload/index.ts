@@ -27,6 +27,7 @@ const api: CondashApi = {
   launchOpenWith: (slot, path) => ipcRenderer.invoke('launchOpenWith', slot, path),
   forceStopRepo: (repoName) => ipcRenderer.invoke('forceStopRepo', repoName),
   pullBranch: (path) => ipcRenderer.invoke('pullBranch', path),
+  lookupPullRequest: (path, branch) => ipcRenderer.invoke('lookupPullRequest', path, branch),
   openInEditor: (path) => ipcRenderer.invoke('openInEditor', path),
   pickConceptionPath: () => ipcRenderer.invoke('pickConceptionPath'),
   getConceptionPath: () => ipcRenderer.invoke('getConceptionPath'),
