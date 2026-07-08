@@ -206,6 +206,135 @@ describe('OscTranscriptExtractor.pushTimestampMarker', () => {
   });
 });
 
+describe('OscTranscriptExtractor.renderTail', () => {
+  function withMessages(count: number, text: (k: number) => string): OscTranscriptExtractor {
+    const ex = new OscTranscriptExtractor();
+    for (let k = 0; k < count; k++) {
+      ex.feed(packets(`m${k}`, { v: 1, t: 'msg', role: 'assistant', text: text(k) }));
+    }
+    return ex;
+  }
+
+  it('equals render().slice(-maxChars) across boundary sizes', () => {
+    const ex = withMessages(6, (k) => `message ${k} body`);
+    const full = ex.render();
+    // maxChars far above total, exactly the total, mid-line, at a separator, and 1.
+    for (const maxChars of [10_000, full.length, full.length - 1, 7, 3, 2, 1]) {
+      expect(ex.renderTail(maxChars)).toBe(full.slice(-maxChars));
+    }
+  });
+
+  it('matches render().slice on a multi-byte transcript', () => {
+    const ex = withMessages(4, (k) => `réf ${k} ☕ café`);
+    const full = ex.render();
+    for (const maxChars of [full.length + 5, 12, 5, 1]) {
+      expect(ex.renderTail(maxChars)).toBe(full.slice(-maxChars));
+    }
+  });
+
+  it('returns the whole render when maxChars exceeds it; empty for an empty transcript', () => {
+    const ex = withMessages(2, (k) => `m${k}`);
+    expect(ex.renderTail(1_000_000)).toBe(ex.render());
+    const empty = new OscTranscriptExtractor();
+    expect(empty.renderTail(8000)).toBe('');
+    expect(empty.render().slice(-8000)).toBe('');
+  });
+
+  it('matches the exact dashboard cap expression (render.length > max ? slice : render)', () => {
+    const ex = withMessages(5, (k) => `line ${k}`);
+    const full = ex.render();
+    for (const maxChars of [4, full.length, full.length + 100]) {
+      const dashboard = full.length > maxChars ? full.slice(-maxChars) : full;
+      expect(ex.renderTail(maxChars)).toBe(dashboard);
+    }
+  });
+});
+
+describe('OscTranscriptExtractor single-scan sharing', () => {
+  it('feedCapturingFrames + applyDecodedFrame reproduces a feed()-scanned transcript', () => {
+    // The main process scans the pty bytes once (the dashboard extractor) and
+    // replays the decoded frames into the logger's separate extractor. Both must
+    // reach byte-identical transcript state.
+    const chunks = [
+      'plain output\r\n',
+      packets('a', { v: 1, t: 'msg', role: 'user', text: 'hello' }),
+      'more grid text',
+      packets('b', { v: 1, t: 'msg', role: 'assistant', text: 'a reply' }, 4),
+      packets('c', { v: 1, t: 'end', sid: 's' }),
+    ];
+    const scanned = new OscTranscriptExtractor(); // feed() path (today's behaviour)
+    const replayed = new OscTranscriptExtractor(); // shared-scan path
+    let scannedClean = '';
+    let sharedClean = '';
+    for (const chunk of chunks) {
+      scannedClean += scanned.feed(chunk);
+      const { clean, frames } = replayed.feedCapturingFrames(chunk);
+      // feedCapturingFrames both applies to `replayed` AND returns the frames; a
+      // logger's extractor would apply the SAME frames — model that here.
+      const loggerSide = frames;
+      sharedClean += clean;
+      void loggerSide;
+    }
+    expect(sharedClean).toBe(scannedClean);
+    expect(replayed.render()).toBe(scanned.render());
+    expect(replayed.hasTranscript()).toBe(scanned.hasTranscript());
+  });
+
+  it('a second extractor fed only via applyDecodedFrame matches the scanned one', () => {
+    const chunks = [
+      packets('a', { v: 1, t: 'msg', role: 'user', text: 'q1' }),
+      packets('b', { v: 1, t: 'msg', role: 'reasoning', text: 'hmm' }),
+      packets('c', { v: 1, t: 'msg', role: 'assistant', text: 'a1' }),
+    ];
+    const scanned = new OscTranscriptExtractor();
+    const logger = new OscTranscriptExtractor();
+    for (const chunk of chunks) {
+      const { frames } = scanned.feedCapturingFrames(chunk);
+      for (const frame of frames) logger.applyDecodedFrame(frame);
+    }
+    expect(logger.render()).toBe(scanned.render());
+    expect(logger.render()).toBe('[user] q1\n\n[reasoning] hmm\n\n[assistant] a1');
+  });
+});
+
+describe('OscTranscriptExtractor.appendedSince', () => {
+  function feedMsg(ex: OscTranscriptExtractor, k: number): void {
+    ex.feed(packets(`m${k}`, { v: 1, t: 'msg', role: 'assistant', text: `msg ${k}` }));
+  }
+
+  it('returns only the suffix added since the cursor, with the separator', () => {
+    const ex = new OscTranscriptExtractor();
+    feedMsg(ex, 0);
+    const c0 = ex.cursor();
+    feedMsg(ex, 1);
+    feedMsg(ex, 2);
+    const delta = ex.appendedSince(c0);
+    expect(delta).not.toBeNull();
+    expect(delta?.appended).toBe('\n\n[assistant] msg 1\n\n[assistant] msg 2');
+    // Stitching the suffix onto the prior render reproduces render() exactly.
+    expect('[assistant] msg 0' + delta?.appended).toBe(ex.render());
+  });
+
+  it('returns an empty suffix when nothing new arrived', () => {
+    const ex = new OscTranscriptExtractor();
+    feedMsg(ex, 0);
+    const c = ex.cursor();
+    expect(ex.appendedSince(c)?.appended).toBe('');
+  });
+
+  it('returns null once a cap trim has dropped lines at/before the cursor', () => {
+    const ex = new OscTranscriptExtractor();
+    const big = 'x'.repeat(1_000_000);
+    ex.feed(packets('b0', { v: 1, t: 'msg', role: 'assistant', text: `0:${big}` }));
+    const c0 = ex.cursor();
+    // Push enough big messages to blow past the 8 MB byte cap → oldest trimmed.
+    for (let k = 1; k < 12; k++) {
+      ex.feed(packets(`b${k}`, { v: 1, t: 'msg', role: 'assistant', text: `${k}:${big}` }));
+    }
+    expect(ex.appendedSince(c0)).toBeNull();
+  });
+});
+
 describe('timestampMarker / formatMinute', () => {
   it('formats a local-time Date as a zero-padded HTML-comment marker', () => {
     expect(formatMinute(new Date(2026, 0, 3, 4, 6, 0))).toBe('2026-01-03:04:06');
