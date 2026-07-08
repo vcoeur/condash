@@ -278,3 +278,47 @@ export async function readConfig(conceptionPath: string): Promise<ConfigWithPath
 export function defaultWorktreesPath(): string {
   return join(process.env.HOME ?? '', 'src', 'worktrees');
 }
+
+/**
+ * Glob match a branch name against a pattern. Supports `*` (any sequence) and
+ * `?` (single character). Escapes all other regex metacharacters so branch
+ * names like `release/1.0` or `hotfix-2.3` match literally.
+ */
+export function matchBranchGlob(pattern: string, branch: string): boolean {
+  let regexStr = '';
+  for (const char of pattern) {
+    if (char === '*') {
+      regexStr += '.*';
+    } else if (char === '?') {
+      regexStr += '.';
+    } else {
+      regexStr += escapeRegexChar(char);
+    }
+  }
+  return new RegExp(`^${regexStr}$`).test(branch);
+}
+
+function escapeRegexChar(char: string): string {
+  return /[-[\]{}()*+\\^$|#]/g.test(char) ? '\\' + char : char;
+}
+
+/** Default branch names that `condash worktrees remove` must never delete. */
+export const DEFAULT_LONG_LIVED_BRANCHES: readonly string[] = ['main', 'master'];
+
+/**
+ * Return whether `branch` matches any of the configured `long_lived_branches`
+ * patterns. When no patterns are configured, falls back to
+ * {@link DEFAULT_LONG_LIVED_BRANCHES}.
+ */
+export function isLongLivedBranch(
+  branch: string,
+  patterns: string[] | undefined,
+): { longLived: boolean; matched?: string } {
+  const effectivePatterns = patterns ?? [...DEFAULT_LONG_LIVED_BRANCHES];
+  for (const pattern of effectivePatterns) {
+    if (matchBranchGlob(pattern, branch)) {
+      return { longLived: true, matched: pattern };
+    }
+  }
+  return { longLived: false };
+}

@@ -249,6 +249,70 @@ describe('implicit-mode protection (two items, one branch)', () => {
   });
 });
 
+describe('long-lived branch protection', () => {
+  it('protects default long-lived branches (master) by default', async () => {
+    await git(repo, 'branch', 'master');
+    const target = join(worktreesRoot, 'master', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, 'master');
+    const result = await removeBranchWorktrees(conception, 'master', { repos: ['demo'] });
+    expect(result.removed).toEqual([]);
+    expect(result.partiallyRemoved).toEqual([]);
+    expect(result.protected).toHaveLength(1);
+    expect(result.protected[0].repo).toBe('demo');
+    expect(result.protected[0].reason).toContain('long-lived branch');
+    expect(existsSync(target)).toBe(true);
+  });
+
+  it('protects branches matching configured globs', async () => {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo' }],
+          long_lived_branches: ['preprod', 'release/*'],
+        },
+        null,
+        2,
+      ),
+    );
+    const target = join(worktreesRoot, 'release-1.0', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', 'release/1.0');
+    const result = await removeBranchWorktrees(conception, 'release/1.0', { repos: ['demo'] });
+    expect(result.removed).toEqual([]);
+    expect(result.partiallyRemoved).toEqual([]);
+    expect(result.protected).toHaveLength(1);
+    expect(result.protected[0].repo).toBe('demo');
+    expect(result.protected[0].reason).toContain('release/*');
+    expect(existsSync(target)).toBe(true);
+  });
+
+  it('still removes a non-long-lived branch when a list is configured', async () => {
+    writeFileSync(
+      join(conception, 'condash.json'),
+      JSON.stringify(
+        {
+          workspace_path: join(tmp, 'workspace'),
+          worktrees_path: worktreesRoot,
+          repositories: [{ name: 'demo' }],
+          long_lived_branches: ['preprod'],
+        },
+        null,
+        2,
+      ),
+    );
+    const target = join(worktreesRoot, 'feature-xyz', 'demo');
+    await git(repo, 'worktree', 'add', '-q', target, '-b', 'feature-xyz');
+    const result = await removeBranchWorktrees(conception, 'feature-xyz', { repos: ['demo'] });
+    expect(result.protected).toEqual([]);
+    expect(result.partiallyRemoved).toEqual([]);
+    expect(result.removed).toHaveLength(1);
+    expect(result.removed[0]).toMatchObject({ repo: 'demo', path: target });
+    expect(existsSync(target)).toBe(false);
+  });
+});
+
 // Restore env at module unload so the test process leaves no trace.
 process.on('exit', () => {
   if (prevXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
