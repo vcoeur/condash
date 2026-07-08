@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import type { JSX } from 'solid-js';
 import type { RunningTaskRun } from '@shared/types';
 import type { TaskListItem } from '@shared/tasks';
@@ -13,9 +13,13 @@ export function TaskRunning(props: {
   tasks: () => readonly TaskListItem[];
   onKill: (sid: string) => void;
 }): JSX.Element {
-  // A 1s clock so the elapsed time ticks (and an expanded row re-tails its log).
+  // A 1s clock so the elapsed time ticks (and an expanded row re-tails its log)
+  // — but only while runs exist. An idle Tasks pane (the common case, now that
+  // the roster arrives on a push) spins no timer and re-tails nothing (B5).
   const [now, setNow] = createSignal(Date.now());
-  onMount(() => {
+  const hasRuns = createMemo(() => props.runs().length > 0);
+  createEffect(() => {
+    if (!hasRuns()) return;
     const clock = setInterval(() => setNow(Date.now()), 1000);
     onCleanup(() => clearInterval(clock));
   });

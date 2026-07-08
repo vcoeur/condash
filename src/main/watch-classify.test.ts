@@ -66,8 +66,37 @@ describe('classify — project dir add/remove reloads only projects (R1)', () =>
     expect(cl('unlinkDir', '/c/projects/2026-07/slug')).toEqual({ kind: 'projects-reload' });
   });
 
-  it('keeps dir events OUTSIDE projects/ as the true catch-all', () => {
-    expect(cl('addDir', '/c/resources/newdir')).toEqual({ kind: 'unknown' });
+  it('keeps dir events outside every known tree as the true catch-all', () => {
+    expect(cl('addDir', '/c/some-repo/subdir')).toEqual({ kind: 'unknown' });
+    expect(cl('unlinkDir', '/c/.git/objects')).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('classify — dir add/remove under knowledge/ & resources/ scope-reloads (B3)', () => {
+  it('routes a knowledge subdir add/remove to a scoped knowledge reload, not unknown', () => {
+    expect(cl('addDir', '/c/knowledge/topics/x')).toEqual({
+      kind: 'knowledge',
+      op: 'add',
+      path: '/c/knowledge/topics/x',
+    });
+    expect(cl('unlinkDir', '/c/knowledge/topics/x')).toEqual({
+      kind: 'knowledge',
+      op: 'unlink',
+      path: '/c/knowledge/topics/x',
+    });
+  });
+
+  it('routes a resources subdir add/remove to a scoped resources reload, not unknown', () => {
+    expect(cl('addDir', '/c/resources/newdir')).toEqual({
+      kind: 'resources',
+      op: 'add',
+      path: '/c/resources/newdir',
+    });
+    expect(cl('unlinkDir', '/c/resources/local/shots')).toEqual({
+      kind: 'resources',
+      op: 'unlink',
+      path: '/c/resources/local/shots',
+    });
   });
 });
 

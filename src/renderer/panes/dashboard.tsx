@@ -116,21 +116,24 @@ export function DashboardView() {
   );
 
   // Cross-tab state tally for the top line — counted over the live summarized
-  // tabs (state().tabs holds only still-open ones).
-  const tally = (): Record<TabState, number> => {
+  // tabs (state().tabs holds only still-open ones). Memoised: the top line reads
+  // it up to 4× per render (three tallies + the error Show/count), and it should
+  // recompute only when the pushed state changes, not per read.
+  const tally = createMemo<Record<TabState, number>>(() => {
     const counts: Record<TabState, number> = { working: 0, awaiting: 0, idle: 0, error: 0 };
     for (const tab of state()?.tabs ?? []) counts[tab.state] += 1;
     return counts;
-  };
+  });
 
   // One card per open tab: a summarized tab carries its rich summary; an
   // as-yet-unsummarized tab gets a fallback drawn from its command/cwd — so no
   // open tab is ever missing. Cards stay in roster order so they always line up
-  // with the tab strip.
-  const cards = (): Array<{ tab: TabInfo; summary?: TabSummary }> => {
+  // with the tab strip. Memoised — read both by the grid's `length` guard and
+  // its `<For>`, so it should build the roster×summary join once per state push.
+  const cards = createMemo<Array<{ tab: TabInfo; summary?: TabSummary }>>(() => {
     const bySid = new Map((state()?.tabs ?? []).map((tab) => [tab.sid, tab]));
     return roster().map((tab) => ({ tab, summary: bySid.get(tab.sid) }));
-  };
+  });
 
   // Fallback label for a tab with no summary yet: the command, else the cwd's
   // last path segment, else the sid.

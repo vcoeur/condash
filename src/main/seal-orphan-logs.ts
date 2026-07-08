@@ -106,42 +106,52 @@ async function collectTaskRunTxtPaths(conceptionPath: string): Promise<string[]>
   return out;
 }
 
-/** Returns true iff a footer was actually appended to `txtPath`. */
-async function sealOneIfOrphan(txtPath: string, now: Date): Promise<boolean> {
-  let stat: Awaited<ReturnType<typeof fs.stat>>;
-  try {
-    stat = await fs.stat(txtPath);
-  } catch {
-    return false;
-  }
-  if (!stat.isFile()) return false;
-  if (now.getTime() - stat.mtimeMs < STALE_GRACE_MS) return false;
+/** Bytes read from each end of a candidate when deciding whether to seal it.
+ * The header is line 1 and the footer is the last line, so a bounded head +
+ * tail read is enough to (a) confirm the file is a session log, (b) detect an
+ * existing footer, and (c) tell whether the last byte is a newline — without
+ * ever reading a multi-MB transcript body just to append a footer (B6).
+ * Generous versus any realistic header/footer line (a few hundred bytes of
+ * JSON); a body line longer than this only ever appears between the two ends,
+ * which we never need to read. */
+const EDGE_BYTES = 64 * 1024;
 
-  const text = await fs.readFile(txtPath, 'utf8');
-  if (hasFooter(text)) return false;
-  // Need a header to seal — otherwise the file isn't a session log we
-  // recognise. (parseMetaLine fails closed on anything else, so this
-  // is belt + braces.)
-  const firstLine = text.split('\n', 1)[0] ?? '';
-  if (!parseMetaLine(firstLine)) return false;
-
-  const footer = {
-    finished: new Date(stat.mtimeMs).toISOString(),
-    exitCode: UNKNOWN_EXIT_CODE,
-    sealedByRecovery: true,
-  };
-  const suffix =
-    (text.endsWith('\n') ? '' : '\n') + '\n' + META_PREFIX + JSON.stringify(footer) + '\n';
-  await fs.appendFile(txtPath, suffix, 'utf8');
-  return true;
+/** The bytes at each end of the candidate file needed to decide a seal. */
+interface FileEdges {
+  /** Text of the first line (the header candidate). */
+  firstLine: string;
+  /** Up to `EDGE_BYTES` from the end of the file (the footer candidate + last byte). */
+  tail: string;
+  /** True when the tail read reached byte 0 (small file) — then its first split
+   *  segment is a complete line, not a truncated one. */
+  tailReachesStart: boolean;
 }
 
-function hasFooter(text: string): boolean {
-  // Scan the tail for a META_PREFIX line that carries finished/exitCode.
-  // The header (line 1) also starts with META_PREFIX but doesn't carry
-  // either field, so it's not a false positive.
-  const lines = text.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
+/** Read only the first line + the final `EDGE_BYTES` of an open file. */
+async function readEdges(fh: fs.FileHandle, size: number): Promise<FileEdges> {
+  const headLen = Math.min(EDGE_BYTES, size);
+  const headBuf = Buffer.alloc(headLen);
+  if (headLen > 0) await fh.read(headBuf, 0, headLen, 0);
+  const firstLine = headBuf.toString('utf8').split('\n', 1)[0] ?? '';
+
+  const tailLen = Math.min(EDGE_BYTES, size);
+  const tailStart = size - tailLen;
+  const tailBuf = Buffer.alloc(tailLen);
+  if (tailLen > 0) await fh.read(tailBuf, 0, tailLen, tailStart);
+  return { firstLine, tail: tailBuf.toString('utf8'), tailReachesStart: tailStart === 0 };
+}
+
+/** Whether the file's tail already carries a footer meta line. Mirrors a
+ * whole-file backward scan over complete lines: the footer is always the last
+ * line, so it lives in the tail; a header meta line (`started`) short-circuits
+ * to "no footer above it", matching the pre-tail full scan byte-for-byte. */
+function tailHasFooter(edges: FileEdges): boolean {
+  const lines = edges.tail.split('\n');
+  // When the tail didn't reach byte 0 its first segment is a truncated line —
+  // drop it so we only scan complete lines (a full-file line scan would never
+  // see a partial line, and the footer is always complete at the very end).
+  const lo = edges.tailReachesStart ? 0 : 1;
+  for (let i = lines.length - 1; i >= lo; i--) {
     const m = parseMetaLine(lines[i]);
     if (!m) continue;
     if ('finished' in m || 'exitCode' in m) return true;
@@ -149,6 +159,40 @@ function hasFooter(text: string): boolean {
     if ('started' in m) return false;
   }
   return false;
+}
+
+/** Returns true iff a footer was actually appended to `txtPath`. */
+async function sealOneIfOrphan(txtPath: string, now: Date): Promise<boolean> {
+  let fh: fs.FileHandle;
+  try {
+    fh = await fs.open(txtPath, 'r');
+  } catch {
+    return false;
+  }
+  try {
+    const stat = await fh.stat();
+    if (!stat.isFile()) return false;
+    if (now.getTime() - stat.mtimeMs < STALE_GRACE_MS) return false;
+
+    const edges = await readEdges(fh, stat.size);
+    if (tailHasFooter(edges)) return false;
+    // Need a header to seal — otherwise the file isn't a session log we
+    // recognise. (parseMetaLine fails closed on anything else, so this
+    // is belt + braces.)
+    if (!parseMetaLine(edges.firstLine)) return false;
+
+    const footer = {
+      finished: new Date(stat.mtimeMs).toISOString(),
+      exitCode: UNKNOWN_EXIT_CODE,
+      sealedByRecovery: true,
+    };
+    const suffix =
+      (edges.tail.endsWith('\n') ? '' : '\n') + '\n' + META_PREFIX + JSON.stringify(footer) + '\n';
+    await fs.appendFile(txtPath, suffix, 'utf8');
+    return true;
+  } finally {
+    await fh.close();
+  }
 }
 
 async function readDirSafe(path: string): Promise<string[]> {

@@ -132,5 +132,54 @@ describe('sealOrphanLogs', () => {
   });
 });
 
-// Silence unused-import lint when stat isn't used (defensive — keep import).
-void stat;
+describe('sealOrphanLogs — tail-seal byte parity (B6)', () => {
+  const expectedFooterSuffix = (mtimeMs: number, endsWithNewline: boolean): string =>
+    (endsWithNewline ? '\n' : '\n\n') +
+    '# condash: ' +
+    JSON.stringify({
+      finished: new Date(mtimeMs).toISOString(),
+      exitCode: null,
+      sealedByRecovery: true,
+    }) +
+    '\n';
+
+  it('seals a large-body orphan by appending only the footer — body untouched, bytes identical to the full-read result', async () => {
+    const c = await makeConception();
+    const p = logPath(c, '130000-big.txt');
+    // Body far larger than the 64 KB tail window: the whole-file read this fix
+    // removes would have paid for all of it just to append a footer.
+    const original = HEADER + '\n\n' + 'x'.repeat(200 * 1024) + '\nmore output\n';
+    await writeFile(p, original, 'utf8');
+    await backdate(p, 60);
+    const st = await stat(p);
+    const r = await sealOrphanLogs(c);
+    expect(r.sealed).toContain(p);
+    expect(await readFile(p, 'utf8')).toBe(original + expectedFooterSuffix(st.mtimeMs, true));
+    await rm(c, { recursive: true, force: true });
+  });
+
+  it('prepends the missing newline when the orphan file does not end in one', async () => {
+    const c = await makeConception();
+    const p = logPath(c, '130100-nonl.txt');
+    const original = HEADER + '\n\nno trailing newline'; // no '\n' at EOF
+    await writeFile(p, original, 'utf8');
+    await backdate(p, 60);
+    const st = await stat(p);
+    const r = await sealOrphanLogs(c);
+    expect(r.sealed).toContain(p);
+    expect(await readFile(p, 'utf8')).toBe(original + expectedFooterSuffix(st.mtimeMs, false));
+    await rm(c, { recursive: true, force: true });
+  });
+
+  it('detects an existing footer past a huge body — the tail window still catches it', async () => {
+    const c = await makeConception();
+    const p = logPath(c, '130200-bigsealed.txt');
+    const original = HEADER + '\n\n' + 'y'.repeat(200 * 1024) + '\n\n' + FOOTER_OK + '\n';
+    await writeFile(p, original, 'utf8');
+    await backdate(p, 60);
+    const r = await sealOrphanLogs(c);
+    expect(r.sealed).not.toContain(p);
+    expect(await readFile(p, 'utf8')).toBe(original);
+    await rm(c, { recursive: true, force: true });
+  });
+});

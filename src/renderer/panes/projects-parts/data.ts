@@ -240,13 +240,43 @@ export function groupByStatus(items: Project[]): Map<string, Project[]> {
   return buckets;
 }
 
-export function projectsTabGroups(buckets: Map<string, Project[]>): Group[] {
+/** Shallow reference-equality on two project lists — same length, same objects
+ * in the same order. `groupByStatus` rebuilds each bucket array on every
+ * projects() change but reuses the unchanged Project objects, so this is enough
+ * to tell a genuinely-changed bucket from a merely-rebuilt one. */
+function sameProjectList(a: readonly Project[], b: readonly Project[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Materialise the ordered `Group[]` the Projects pane renders, iterating the
+ * stable `PROJECT_SECTION_ORDER`. Pass the previous result as `prev` to keep
+ * object identity for any status whose item list is unchanged (R2): the pane's
+ * `<For>` is reference-keyed, so a reused `Group` object means its `GroupBlock`
+ * (and every card + the synchronous localStorage collapse read it does on
+ * mount) survives untouched when an unrelated status changes. Called with no
+ * `prev` it allocates fresh groups, exactly as before.
+ */
+export function projectsTabGroups(
+  buckets: Map<string, Project[]>,
+  prev?: readonly Group[],
+): Group[] {
+  const prevByStatus = prev ? new Map(prev.map((g) => [g.status, g])) : undefined;
+  const reuseOrBuild = (status: string, items: Project[]): Group => {
+    const previous = prevByStatus?.get(status);
+    return previous && sameProjectList(previous.items, items) ? previous : { status, items };
+  };
   const out: Group[] = [];
   for (const status of PROJECT_SECTION_ORDER) {
-    out.push({ status, items: buckets.get(status) ?? [] });
+    out.push(reuseOrBuild(status, buckets.get(status) ?? []));
   }
   const unknown = buckets.get(UNKNOWN) ?? [];
-  if (unknown.length > 0) out.push({ status: UNKNOWN, items: unknown });
+  if (unknown.length > 0) out.push(reuseOrBuild(UNKNOWN, unknown));
   return out;
 }
 

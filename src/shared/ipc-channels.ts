@@ -28,6 +28,9 @@ export const EVENT_CHANNELS = {
   dashboardTabSummaries: 'dashboard-tab-summaries',
   /** Full dashboard state (overview + per-tab cards + history) snapshot. */
   dashboardState: 'dashboard-state',
+  /** Live headless task-run roster — pushed on each run start / exit so the
+   *  Tasks pane updates without polling. */
+  taskRuns: 'task-runs',
   /** Application-menu command (e.g. show-knowledge, new-project). */
   menuCommand: 'menu-command',
   /** Open-recent menu pick, carrying the chosen conception path. */

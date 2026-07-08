@@ -73,12 +73,26 @@ export function classify(
   const pathP = toPosix(path);
   const projectsRoot = paths.projectsPrefix.slice(0, -1); // strip trailing '/'
 
-  // Directory add/remove under projects/ — a project create/delete, a `notes/`
-  // dir appearing, or a bulk git checkout. Reload ONLY the project list, never
-  // the whole-dashboard fan-out (R1). Dir events elsewhere stay the catch-all.
+  // Directory add/remove — route to the one scoped reload for whichever tree
+  // the dir sits under, never the whole-dashboard + repo-sweep fan-out.
+  //   projects/  — a project create/delete, a `notes/` dir appearing, or a bulk
+  //                git checkout → reload only the project list (R1).
+  //   knowledge/ or resources/ — a `mkdir knowledge/topics/x` / a new resources
+  //                subdir → reload only that tree, not ~20 git spawns (B3). The
+  //                renderer reloads the whole tree for these kinds, so op/path
+  //                don't affect the outcome, but the TreeEvent shape carries them.
+  // A dir event anywhere else stays the true catch-all.
   if (eventName === 'addDir' || eventName === 'unlinkDir') {
     if (pathP === projectsRoot || pathP.startsWith(paths.projectsPrefix)) {
       return { kind: 'projects-reload' };
+    }
+    const dirOp = eventName === 'addDir' ? 'add' : 'unlink';
+    const knowledgeRoot = paths.knowledgePrefix.slice(0, -1); // strip trailing '/'
+    if (pathP === knowledgeRoot || pathP.startsWith(paths.knowledgePrefix)) {
+      return { kind: 'knowledge', op: dirOp, path };
+    }
+    if (pathP === roots.resources || pathP.startsWith(`${roots.resources}/`)) {
+      return { kind: 'resources', op: dirOp, path };
     }
     return { kind: 'unknown' };
   }

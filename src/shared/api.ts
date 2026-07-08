@@ -301,6 +301,11 @@ export interface CondashApi {
   listRunningTaskRuns(): Promise<RunningTaskRun[]>;
   /** Kill (and discard) the live run with this sid. False when none is live. */
   killTaskRun(sid: string): Promise<boolean>;
+  /** Subscribe to the live headless task-run roster, pushed on each run start /
+   *  exit so the Tasks pane's "Running" section updates without polling. The
+   *  initial state is seeded by `listRunningTaskRuns()`. Returns an unsubscribe
+   *  function. */
+  onTaskRuns(callback: (runs: RunningTaskRun[]) => void): () => void;
 
   termSpawn(request: TermSpawnRequest): Promise<{ id: string; cwd: string }>;
   termWrite(id: string, data: string): Promise<void>;

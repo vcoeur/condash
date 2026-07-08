@@ -101,3 +101,23 @@ export function sameStringList(
   }
   return true;
 }
+
+/**
+ * Extend a session's rolling readiness tail with a new pty chunk — but only
+ * while a readiness waiter is active for it. The tail feeds `waitForReady`'s
+ * agent-prompt detection alone, and only during a spawn window; capturing
+ * (concat + `max`-byte slice) for every chunk of every tab the rest of the
+ * time was pure UI-thread overhead (review finding R1). Returns `undefined`
+ * to mean "don't store" (no waiter); otherwise the new tail, trimmed to the
+ * last `max` bytes.
+ */
+export function captureReadinessTail(
+  hasWaiter: boolean,
+  prev: string | undefined,
+  chunk: string,
+  max: number,
+): string | undefined {
+  if (!hasWaiter) return undefined;
+  const next = (prev ?? '') + chunk;
+  return next.length > max ? next.slice(-max) : next;
+}

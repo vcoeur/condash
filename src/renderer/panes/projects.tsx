@@ -1,9 +1,10 @@
-import { For, Show } from 'solid-js';
+import { createMemo, For, Show } from 'solid-js';
 import type { ActionTemplate, Project, Step } from '@shared/types';
 import './projects-pane.css';
 import './app-pill.css';
 import {
   COLLAPSED_BY_DEFAULT,
+  type Group,
   groupDone,
   projectsTabGroups,
   todayIso,
@@ -43,9 +44,15 @@ export function ProjectsView(props: {
   onNewProjectAction?: (action: ActionTemplate) => void;
 }) {
   const scrollRef = usePaneScrollMemory('projects');
+  // Materialise the section groups once per bucket change, reusing the prior
+  // Group object for any status whose membership is unchanged so the
+  // reference-keyed `<For>` below doesn't remount an untouched section's
+  // GroupBlock (and its synchronous localStorage collapse read) on an unrelated
+  // status/step change (R2).
+  const groups = createMemo<Group[]>((prev) => projectsTabGroups(props.buckets, prev));
   return (
     <div class="projects-stack" ref={scrollRef}>
-      <For each={projectsTabGroups(props.buckets)}>
+      <For each={groups()}>
         {(group) => {
           // The "+ New project" button rides the NOW section header so it
           // sits on the same row as the section title. Other sections

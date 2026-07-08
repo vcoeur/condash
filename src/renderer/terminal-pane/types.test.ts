@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayName, sameStringList, type Tab } from './types';
+import { captureReadinessTail, displayName, sameStringList, type Tab } from './types';
 
 function tab(overrides: Partial<Tab>): Tab {
   return {
@@ -96,5 +96,23 @@ describe('sameStringList — T7 contextLines compare', () => {
     expect(sameStringList(['a', 'b'], ['a', 'c'])).toBe(false);
     expect(sameStringList(['a', 'b'], ['b', 'a'])).toBe(false);
     expect(sameStringList(['a'], ['a', 'b'])).toBe(false);
+  });
+});
+
+describe('captureReadinessTail — R1 waiter-gated capture', () => {
+  it('skips capture (returns undefined) when no waiter is registered', () => {
+    expect(captureReadinessTail(false, undefined, 'chunk', 64)).toBeUndefined();
+    // Even with a prior tail, a now-waiterless session stops accumulating.
+    expect(captureReadinessTail(false, 'old', 'chunk', 64)).toBeUndefined();
+  });
+
+  it('accumulates onto the prior tail while a waiter is registered', () => {
+    expect(captureReadinessTail(true, undefined, 'ab', 64)).toBe('ab');
+    expect(captureReadinessTail(true, 'ab', 'cd', 64)).toBe('abcd');
+  });
+
+  it('trims to the last `max` bytes so the buffer stays bounded', () => {
+    expect(captureReadinessTail(true, 'abcd', 'ef', 4)).toBe('cdef');
+    expect(captureReadinessTail(true, '', '0123456789', 4)).toBe('6789');
   });
 });
