@@ -176,17 +176,43 @@ export function listTerminalSessions(): TermSession[] {
 
 let memoryInterval: ReturnType<typeof setInterval> | null = null;
 
+/** Broadcast quantum for the per-tab memory meter (bytes). A scoped tab's cgroup
+ *  `memory.current` drifts by a few hundred KB on nearly every 2.5s sample, but
+ *  the tab-strip meter renders at ~0.1 GB steps (`formatMem` in
+ *  terminal-pane/column.tsx) and flips its ≥80%-of-cap `.warn` at a GB-scale
+ *  threshold — so a sub-quantum wiggle changes nothing on screen. Rebroadcasting
+ *  the whole termSessions snapshot only when a tab moves at least this far from
+ *  its last broadcast value collapses the steady-state churn (review finding T5)
+ *  while keeping the meter and warn threshold accurate to well under one displayed
+ *  digit: 8 MB is finer than both the 0.1 GB display step and the sub-100 MB
+ *  MB-rounded display. */
+export const MEM_BROADCAST_QUANTUM_BYTES = 8 * 1024 * 1024;
+
+/** Whether a fresh memory sample warrants updating the stored value and
+ *  rebroadcasting: the first reading, a transition to/from "no reading", or a
+ *  move of at least MEM_BROADCAST_QUANTUM_BYTES from the last broadcast value.
+ *  Pure so the quantization threshold is unit-testable; exported for tests. */
+export function memSampleChanged(previous: number | undefined, next: number | undefined): boolean {
+  if (previous === next) return false;
+  if (previous === undefined || next === undefined) return true;
+  return Math.abs(next - previous) >= MEM_BROADCAST_QUANTUM_BYTES;
+}
+
 /** Sample every scoped tab's cgroup memory and rebroadcast the snapshot when a
- *  figure changed, so the renderer's per-tab meter tracks usage. One small file
- *  read per live scoped pty; unscoped tabs are skipped (their pid resolves to
- *  condash's own cgroup — not the tab's). Broadcasts only on change, so idle
- *  tabs cost nothing downstream. */
+ *  figure moved by a meaningful step, so the renderer's per-tab meter tracks
+ *  usage. One small file read per live scoped pty; unscoped tabs are skipped
+ *  (their pid resolves to condash's own cgroup — not the tab's). An active
+ *  process's memory.current moves on virtually every sample, so the change test
+ *  is quantized (`memSampleChanged`) — an exact-byte compare would rebroadcast
+ *  the whole snapshot continuously even when the rendered meter wouldn't change
+ *  (T5). Broadcasts only on a quantized change, so idle tabs cost nothing
+ *  downstream. */
 function sampleMemory(): void {
   let changed = false;
   for (const s of sessions.values()) {
     if (!s.memScoped || s.exited !== undefined || !s.pty) continue;
     const bytes = sampleCgroupMemory(s.pty.pid);
-    if (bytes !== s.memBytes) {
+    if (memSampleChanged(s.memBytes, bytes)) {
       s.memBytes = bytes;
       changed = true;
     }
@@ -287,7 +313,9 @@ export function tabRecentText(sid: string, maxChars = 8000): string {
   const text = fileText.trim()
     ? fileText
     : s.transcript.hasTranscript()
-      ? s.transcript.render()
+      ? // `renderTail` walks lines backwards for the tail only — no full
+        // multi-MB re-join — and equals `render().slice(-maxChars)` here.
+        s.transcript.renderTail(maxChars)
       : cleanTerminalText(recentTail(s.buffer));
   return text.length > maxChars ? text.slice(-maxChars) : text;
 }
@@ -509,10 +537,17 @@ export async function spawnTerminal(
     session.bytesSeen += data.length;
     appendBuffer(session, data);
     // Capture any in-band transcript regardless of disk logging — the dashboard
-    // reads it for a faithful summary. The stripped return is ignored here; the
-    // raw `data` still drives the grid buffer and the renderer.
-    session.transcript.feed(data);
-    session.logger?.output(data);
+    // reads it for a faithful summary. Scan the OSC out **once** here: when a
+    // disk logger is present, hand it the stripped `clean` text and the decoded
+    // `frames` so it need not re-scan the same bytes (it replays the frames into
+    // its own transcript extractor). The raw `data` still drives the grid buffer
+    // and the renderer. When there's no logger, the plain scan suffices.
+    if (session.logger) {
+      const { clean, frames } = session.transcript.feedCapturingFrames(data);
+      session.logger.output(data, { clean, frames });
+    } else {
+      session.transcript.feed(data);
+    }
     safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {

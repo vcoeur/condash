@@ -1,4 +1,5 @@
-import { createMemo, createSignal, onCleanup, type Accessor } from 'solid-js';
+import { createMemo, onCleanup, type Accessor } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
 import type { TermSession } from '../shared/types';
 
 /**
@@ -30,11 +31,23 @@ export interface SessionsStore {
 }
 
 export function createSessionsStore(): SessionsStore {
-  const [allSessions, setAllSessions] = createSignal<readonly TermSession[]>([]);
+  // A Solid store fed by `reconcile(..., { key: 'id' })` — the same pattern
+  // projects-store / repos-store use — so an unchanged `TermSession` keeps its
+  // object identity across pushes. The main process rebroadcasts the FULL
+  // snapshot on any change (e.g. the 2.5 s memory sampler), and a plain signal
+  // replaced the whole array with fresh IPC-cloned objects each time — so every
+  // `<For>`-keyed `CodeRunRow` was disposed and recreated, resetting its
+  // `expanded` signal and destroying its mounted mini-xterm (an expanded live run
+  // visibly collapsed every 2.5 s — review finding T6/R3). Reconcile keeps the
+  // identity, so the row and its terminal survive; the derived memos read
+  // fine-grained, so a memBytes-only change on a `my`-side tab retriggers none of
+  // them (they read `repo` / `exited` / `side` / `cwd`, never `memBytes`).
+  const [box, setBox] = createStore<{ list: TermSession[] }>({ list: [] });
+  const allSessions: Accessor<readonly TermSession[]> = () => box.list;
 
   const liveRepos = createMemo<ReadonlySet<string>>(() => {
     const live = new Set<string>();
-    for (const s of allSessions()) {
+    for (const s of box.list) {
       if (s.repo && s.exited === undefined) live.add(s.repo);
     }
     return live;
@@ -42,7 +55,7 @@ export function createSessionsStore(): SessionsStore {
 
   const liveSessionCwds = createMemo<ReadonlyMap<string, string>>(() => {
     const out = new Map<string, string>();
-    for (const s of allSessions()) {
+    for (const s of box.list) {
       if (!s.repo || s.exited !== undefined) continue;
       if (s.cwd) out.set(s.repo, s.cwd);
     }
@@ -50,16 +63,16 @@ export function createSessionsStore(): SessionsStore {
   });
 
   const codeRunSessions = createMemo<readonly TermSession[]>(() =>
-    allSessions().filter((s) => s.side === 'code'),
+    box.list.filter((s) => s.side === 'code'),
   );
 
   let hasReceivedEvent = false;
   const offTermSessions = window.condash.onTermSessions((sessions) => {
     hasReceivedEvent = true;
-    setAllSessions(sessions);
+    setBox('list', reconcile(sessions as TermSession[], { key: 'id' }));
   });
   void window.condash.termList().then((sessions) => {
-    if (!hasReceivedEvent) setAllSessions(sessions);
+    if (!hasReceivedEvent) setBox('list', reconcile(sessions as TermSession[], { key: 'id' }));
   });
   onCleanup(offTermSessions);
 

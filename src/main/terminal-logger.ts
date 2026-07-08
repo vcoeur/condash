@@ -4,7 +4,13 @@ import { Terminal } from '@xterm/headless';
 import type { TaskRunContext, TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { META_LINE_PREFIX, type LogKind } from './logs-format';
-import { OscTranscriptExtractor, timestampMarker } from './osc-transcript';
+import {
+  OscTranscriptExtractor,
+  timestampMarker,
+  type TranscriptCursor,
+  type TranscriptDelta,
+  type TranscriptFrame,
+} from './osc-transcript';
 import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
 
 /**
@@ -30,19 +36,26 @@ import { rotateTaskRuns, taskRunDir, taskRunLogPath } from './task-runs';
  *   <blank line>            ← only present after exit()
  *   # condash: {"finished":"…Z","exitCode":0}   ← only after exit()
  *
- * Bytes flow: pty `output(data)` → `term.write(data)`. A debounced timer
- * (default 5 s) re-renders the buffer + header (+ footer if exited) and writes
- * the `.txt`. When the composed text is a pure prefix-extension of what's
- * already on disk — the common case for a growing transcript — the periodic
- * flush **appends only the delta** rather than rewriting the whole (possibly
- * multi-MB) file each cycle. Any non-append change (a grid repaint, a
- * byte-cap trim) and the durable `exit()` / `close()` flushes take the atomic
- * tmp → (fsync) → rename full rewrite instead. `writtenText` tracks the on-disk
- * content across both paths. The periodic flushes do NOT `fsync` — only the
- * terminal flushes (exit / close) do; the atomic rename already keeps the file
- * from ever being torn, appends never truncate existing content, and fsync-ing
- * every few-second flush stalls the main process for durability a log viewer
- * doesn't need.
+ * Bytes flow: pty `output(data)` → `term.write(clean)`. A debounced timer
+ * (default 5 s) writes the `.txt`, and its cost is kept proportional to NEW
+ * output, not the retained size:
+ *   - Transcript sessions **append only the lines added since the last write**
+ *     — a per-flush watermark ({@link bodyCursor}) into the extractor, plus a
+ *     byte-length + short tail sample of what's on disk — instead of re-joining
+ *     the whole (multi-MB) transcript and prefix-comparing the whole file.
+ *   - Grid sessions **skip the whole-buffer render** when no new bytes reached
+ *     the term since the last write (a grid repaint isn't append-shaped, so a
+ *     grown grid still takes a full rewrite).
+ * Any inconsistency (a byte-cap trim dropped written lines, the header `kind`
+ * flipped, the on-disk length/tail no longer matches, a prior write error) and
+ * the durable `exit()` / `close()` flushes take the atomic tmp → (fsync) →
+ * rename full rewrite instead, which re-establishes the file and the
+ * bookkeeping exactly. Only a compact watermark is retained in memory, never
+ * the whole file text. The periodic flushes do NOT `fsync` — only the terminal
+ * flushes (exit / close) do; the atomic rename already keeps the file from ever
+ * being torn, appends never truncate existing content, and fsync-ing every
+ * few-second flush stalls the main process for durability a log viewer doesn't
+ * need.
  *
  * `input(data)` is intentionally a no-op — the pty echoes typed bytes
  * back through stdout, so feeding `in` into the headless xterm would
@@ -116,6 +129,11 @@ const DEFAULT_FLUSH_MS = 5000;
 const COLS = 200;
 const ROWS = 50;
 
+/** Bytes of the file's tail kept in memory as a cheap integrity sample. Checked
+ * before an incremental append (with the byte-length watermark) in place of the
+ * old whole-file compare — a mismatch falls back to a full rewrite. */
+const TAIL_SAMPLE_BYTES = 64;
+
 /** Sentinel prefix for the metadata header / footer lines inside a
  * `.txt`. The `# ` mimics shell-comment syntax — readable in `cat`,
  * grep-friendly. Defined in `./logs-format` so the search / CLI graph can
@@ -161,7 +179,10 @@ export function resolveLoggingPrefs(patch?: TerminalLoggingPrefs): Required<Term
 
 export class SessionLogger {
   private prefs: Required<TerminalLoggingPrefs>;
-  private term: Terminal;
+  /** Headless xterm buffer for the grid-body render. Constructed lazily on the
+   * first grid byte (see {@link ensureTerm}) so a logging-off spawn or a pure
+   * OSC-transcript session never allocates one. Null until then / after close. */
+  private term: Terminal | null = null;
   private flushTimer: NodeJS.Timeout | null = null;
   /** Tail of the serialised flush chain. Each new flush appends; close
    * awaits the tail so all writes drain before the term is disposed. */
@@ -178,11 +199,35 @@ export class SessionLogger {
   private closePromise: Promise<void> | null = null;
   private paused = false;
   private dirty = false;
-  /** Exact text last written to `txtPath`, or null when the next flush must do a
-   * full rewrite (nothing on disk yet, or a prior write failed). When the newly
-   * composed text is a pure prefix-extension of this, a periodic flush appends
-   * only the delta instead of rewriting the whole file (the G9 fix). */
-  private writtenText: string | null = null;
+  // ── On-disk bookkeeping (replaces retaining the whole file text in memory).
+  // Compact watermark of what's currently in `txtPath`, so a periodic flush can
+  // append only the new transcript suffix (or skip a redundant grid render)
+  // without re-composing + prefix-comparing the whole (multi-MB) file. Any
+  // inconsistency resets these to force a full atomic rewrite next flush.
+  /** File length in **bytes** last written, or null when the next flush must do
+   * a full rewrite (nothing on disk yet, or a prior write failed). */
+  private diskLen: number | null = null;
+  /** The exact header line (`# condash: {…}`) last written. A change — the
+   * grid→transcript `kind` flip, say — forces a full rewrite. */
+  private writtenHeaderLine: string | null = null;
+  /** Which body kind is currently on disk, so a kind flip forces a full rewrite. */
+  private writtenKind: LogKind | null = null;
+  /** Transcript watermark matching the on-disk body, for the incremental
+   * append. Null when the on-disk body is a grid snapshot / nothing. */
+  private bodyCursor: TranscriptCursor | null = null;
+  /** Last few bytes on disk — a cheap tail sample checked before an incremental
+   * append (the short-form replacement for the old whole-file `startsWith`). A
+   * mismatch (or a length mismatch vs {@link diskLen}) falls back to a rewrite. */
+  private writtenTail: Buffer = Buffer.alloc(0);
+  /** {@link termBytesSeen} at the last grid write — lets a grid flush skip the
+   * whole-buffer render when no new bytes reached the term since. -1 = none. */
+  private lastGridBytes = -1;
+  /** {@link gridMarkers} length at the last grid write, paired with
+   * {@link lastGridBytes} so a pending marker still forces a rewrite. -1 = none. */
+  private lastGridMarkerCount = -1;
+  /** Running count of bytes written into the headless term (the grid-body
+   * source), the watermark the grid render-skip compares against. */
+  private termBytesSeen = 0;
   private readonly flushMs: number;
   /** Pulls any in-band "agent transcript over OSC" frames out of the pty
    * stream. Harness-blind: it knows the generic protocol, not the program.
@@ -226,15 +271,24 @@ export class SessionLogger {
     this.rotateDir = ctx.taskContext
       ? taskRunDir(conceptionPath, ctx.taskContext.trigger, ctx.taskContext.taskSlug)
       : null;
-    this.term = new Terminal({
-      cols: COLS,
-      rows: ROWS,
-      scrollback: this.prefs.scrollback,
-      // Required since xterm.js 5.4 for `ILinkProvider` and the buffer-line
-      // APIs used by `renderBufferAsPlainText`. Safe to leave enabled — the
-      // flag only unlocks stable APIs that haven't been promoted to default.
-      allowProposedApi: true,
-    });
+  }
+
+  /** Lazily construct the headless xterm on first need (a grid byte to render).
+   * Deferred out of the constructor so a logging-off spawn or a session that
+   * only ever emits OSC-transcript frames never allocates the ~MB buffer. */
+  private ensureTerm(): Terminal {
+    if (!this.term) {
+      this.term = new Terminal({
+        cols: COLS,
+        rows: ROWS,
+        scrollback: this.prefs.scrollback,
+        // Required since xterm.js 5.4 for `ILinkProvider` and the buffer-line
+        // APIs used by `renderBufferAsPlainText`. Safe to leave enabled — the
+        // flag only unlocks stable APIs that haven't been promoted to default.
+        allowProposedApi: true,
+      });
+    }
+    return this.term;
   }
 
   /** True when new writes should be accepted. Lets callers short-circuit
@@ -267,15 +321,36 @@ export class SessionLogger {
     /* intentional no-op — see class doc */
   }
 
-  output(data: string): void {
+  /**
+   * Record one pty output chunk.
+   *
+   * @param data - The raw pty chunk (used to gate empty writes; the caller may
+   *   pass `pre` so this chunk is not OSC-scanned a second time here).
+   * @param pre - When supplied, the result of the single OSC scan `terminals.ts`
+   *   already ran for the session-wide dashboard extractor: the stripped `clean`
+   *   text and the frames it decoded. The logger reuses them — writing `clean`
+   *   to the grid term and replaying `frames` into its own transcript extractor
+   *   — instead of scanning the same bytes again. Omitted by standalone callers
+   *   (task runs, tests), which have no shared extractor, so the logger scans.
+   */
+  output(data: string, pre?: { clean: string; frames: TranscriptFrame[] }): void {
     if (!this.isEnabled() || data.length === 0) return;
     // Strip any in-band transcript OSC out of the stream first, so the grid
     // render never carries it; feed only the remainder to xterm.
-    const clean = this.oscTranscript.feed(data);
-    if (clean.length > 0) this.term.write(clean);
+    let clean: string;
+    if (pre) {
+      clean = pre.clean;
+      for (const frame of pre.frames) this.oscTranscript.applyDecodedFrame(frame);
+    } else {
+      clean = this.oscTranscript.feed(data);
+    }
+    if (clean.length > 0) {
+      this.ensureTerm().write(clean);
+      this.termBytesSeen += clean.length;
+    }
     this.dirty = true;
     // Any chunk is new content — even a transcript-only chunk (clean empty,
-    // its message captured via feed()). Opens the marker's content gate.
+    // its message captured above). Opens the marker's content gate.
     this.contentSinceMarker = true;
     this.scheduleFlush();
   }
@@ -319,7 +394,7 @@ export class SessionLogger {
     }
     this.cancelFlush();
     this.closed = true;
-    this.term.dispose();
+    if (this.term) this.term.dispose();
   }
 
   /** Test hook — force an immediate flush regardless of debounce. */
@@ -359,50 +434,84 @@ export class SessionLogger {
       });
   }
 
-  /** Render the buffer and atomically write it to the `.txt`. `sync` forces an
-   *  fsync before the rename for durability — set only on the terminal flushes
-   *  (exit / close), not the periodic ones (see the class doc). */
+  /** Render the buffer and write it to the `.txt`. `sync` forces an fsync before
+   *  the rename for durability — set only on the terminal flushes (exit / close),
+   *  not the periodic ones (see the class doc). Periodic flushes take a cheap
+   *  incremental path when they can (append the new transcript suffix, or skip a
+   *  redundant grid render); anything else, and every `sync` flush, does the full
+   *  atomic tmp → (fsync) → rename rewrite. */
   private async flushNow(sync = false): Promise<void> {
     if (!this.dirty || this.closed) return;
     this.dirty = false;
-    // Wait for any queued xterm parse to complete before rendering —
-    // otherwise the buffer may not reflect the most recent `output` call.
-    await new Promise<void>((resolve) => this.term.write('', () => resolve()));
+    // Wait for any queued xterm parse to complete before rendering — otherwise
+    // the buffer may not reflect the most recent `output` call. No term until
+    // the first grid byte arrives (lazy), so a transcript-only / never-wrote
+    // session has nothing to drain.
+    if (this.term) {
+      await new Promise<void>((resolve) => this.term!.write('', () => resolve()));
+    }
     if (this.closed) return;
     // A session that emitted an in-band transcript gets the clean transcript
     // as its body; everything else falls back to the rendered grid.
     const isTranscript = this.oscTranscript.hasTranscript();
     this.maybeEmitTimestampMarker(isTranscript);
-    const body = isTranscript ? this.oscTranscript.render() : renderBufferAsPlainText(this.term);
-    const text = this.composeFileContent(body, isTranscript ? 'transcript' : 'grid');
+    const kind: LogKind = isTranscript ? 'transcript' : 'grid';
+    const headerLine = this.composeHeaderLine(kind);
+
+    // Grid render-skip: a grid body is a full repaint, not append-shaped, so it
+    // never takes the incremental path — but when no new bytes reached the term
+    // and no new marker is pending since the last grid write, the snapshot is
+    // byte-identical to what's on disk. Skip the (multi-MB `translateToString`)
+    // render and the write. `sync` flushes fall through so the footer lands.
+    if (
+      !sync &&
+      !isTranscript &&
+      this.diskLen !== null &&
+      this.writtenKind === 'grid' &&
+      this.writtenHeaderLine === headerLine &&
+      this.termBytesSeen === this.lastGridBytes &&
+      this.gridMarkers.length === this.lastGridMarkerCount
+    ) {
+      return;
+    }
+
+    // Transcript incremental append: append only the lines added since the last
+    // write instead of re-joining + prefix-comparing the whole (multi-MB) file.
+    if (
+      !sync &&
+      isTranscript &&
+      // Once exit() has written the footer, the footer is the file's last line —
+      // an append would land content BELOW it. Force the full rewrite instead
+      // (output() can still arrive after exit() on the scheduler kill path).
+      this.exitCode === undefined &&
+      this.diskLen !== null &&
+      this.writtenKind === 'transcript' &&
+      this.writtenHeaderLine === headerLine &&
+      this.bodyCursor !== null &&
+      this.bodyCursor.appended > this.bodyCursor.trimmed // prior body non-empty
+    ) {
+      const delta = this.oscTranscript.appendedSince(this.bodyCursor);
+      if (delta !== null && (await this.appendTranscriptDelta(delta))) return;
+      // delta === null (a cap trim dropped written lines) or the tail/length
+      // guard failed → fall through to the full rewrite, which re-establishes
+      // the file and the bookkeeping exactly.
+    }
+
+    // Full atomic rewrite: grid repaint, first write, header/kind flip, a trim,
+    // a guard mismatch, or any terminal (sync) flush.
+    const body = isTranscript
+      ? this.oscTranscript.render()
+      : this.term
+        ? renderBufferAsPlainText(this.term)
+        : '';
+    const text = this.composeFileContent(body, kind);
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
-      if (!sync && this.writtenText !== null && text.startsWith(this.writtenText)) {
-        // Append-only fast path (periodic flushes only). The file body only
-        // grew — a transcript gains whole messages/markers at the end, the
-        // footer appends after the body — so append just the delta instead of
-        // rewriting the entire (possibly multi-MB) transcript every few seconds
-        // (the G9 write-amplification). A grid repaint or a byte-cap trim is not
-        // a prefix-extension, so it falls through to the full rewrite below; the
-        // durable exit/close flushes (`sync`) always take the full path too.
-        const delta = text.slice(this.writtenText.length);
-        if (delta.length > 0) {
-          const fh = await open(this.txtPath, 'a');
-          try {
-            await fh.write(delta);
-          } finally {
-            await fh.close();
-          }
-        }
-        this.writtenText = text;
-        return;
-      }
-      // Full rewrite: tmp → (fsync) → rename. The atomic rename keeps the file
-      // from ever being torn / zero-length; fsync makes the content itself
-      // durable across power loss. Periodic flushes skip the fsync (a live
-      // session re-snapshots its buffer every few seconds — fsync-ing each one
-      // stalls the main process's libuv threadpool for durability the log viewer
-      // doesn't need); the exit / close flushes pass `sync: true`.
+      // The atomic rename keeps the file from ever being torn / zero-length;
+      // fsync makes the content itself durable across power loss. Periodic
+      // flushes skip the fsync (a live session re-snapshots every few seconds —
+      // fsync-ing each stalls the main process's libuv threadpool for durability
+      // the log viewer doesn't need); the exit / close flushes pass `sync`.
       const tmp = `${this.txtPath}.tmp`;
       const fh = await open(tmp, 'w');
       try {
@@ -412,13 +521,94 @@ export class SessionLogger {
         await fh.close();
       }
       await rename(tmp, this.txtPath);
-      this.writtenText = text;
+      this.recordWrite(text, kind, headerLine);
     } catch (err) {
       process.stderr.write(`condash terminal-logger: write failed: ${(err as Error).message}\n`);
-      // Offset bookkeeping may now be stale (a partial append, a failed rename):
-      // force a full rewrite on the next flush to re-establish the file exactly.
-      this.writtenText = null;
+      // Bookkeeping may now be stale (a partial write, a failed rename): force a
+      // full rewrite on the next flush to re-establish the file exactly.
+      this.resetBookkeeping();
     }
+  }
+
+  /** Append a transcript delta onto the on-disk file, after a cheap check that
+   *  the file still matches our length + tail watermark. Returns false (caller
+   *  falls back to a full rewrite) on any mismatch or write error. The file is
+   *  `header\n\n<body>\n` in-flight; extending `<body>` by `delta.appended`
+   *  (which starts with `\n\n` — guaranteed by the caller's non-empty-body gate)
+   *  appends exactly `delta.appended.slice(1) + '\n'`: the file's existing
+   *  trailing `\n` doubles as the first `\n` of the new separator. */
+  private async appendTranscriptDelta(delta: TranscriptDelta): Promise<boolean> {
+    if (delta.appended.length === 0) {
+      this.bodyCursor = delta.cursor; // nothing new to write; watermark still advances
+      return true;
+    }
+    const deltaBytes = Buffer.from(`${delta.appended.slice(1)}\n`, 'utf8');
+    try {
+      if (!(await this.diskTailMatches())) return false;
+      const fh = await open(this.txtPath, 'a');
+      try {
+        await fh.write(deltaBytes);
+      } finally {
+        await fh.close();
+      }
+      this.diskLen = (this.diskLen ?? 0) + deltaBytes.length;
+      this.writtenTail = tailBytes(
+        Buffer.concat([this.writtenTail, deltaBytes]),
+        TAIL_SAMPLE_BYTES,
+      );
+      this.bodyCursor = delta.cursor;
+      return true;
+    } catch (err) {
+      process.stderr.write(`condash terminal-logger: append failed: ${(err as Error).message}\n`);
+      this.resetBookkeeping();
+      return false;
+    }
+  }
+
+  /** Cheap integrity check before an incremental append (the short-form
+   *  replacement for the old whole-file `startsWith`): the file must still be
+   *  exactly {@link diskLen} bytes and end with the {@link writtenTail} we last
+   *  wrote. Reads only the trailing sample, never the whole file. */
+  private async diskTailMatches(): Promise<boolean> {
+    const fh = await open(this.txtPath, 'r');
+    try {
+      const st = await fh.stat();
+      if (st.size !== this.diskLen) return false;
+      const want = this.writtenTail;
+      if (want.length === 0) return true;
+      const got = Buffer.alloc(want.length);
+      await fh.read(got, 0, want.length, st.size - want.length);
+      return got.equals(want);
+    } finally {
+      await fh.close();
+    }
+  }
+
+  /** Record the compact on-disk bookkeeping after a successful full rewrite. */
+  private recordWrite(text: string, kind: LogKind, headerLine: string): void {
+    const bytes = Buffer.from(text, 'utf8');
+    this.diskLen = bytes.length;
+    this.writtenTail = tailBytes(bytes, TAIL_SAMPLE_BYTES);
+    this.writtenKind = kind;
+    this.writtenHeaderLine = headerLine;
+    // The transcript cursor matches the body just rendered (no lines appended
+    // between render and here). Grid bodies aren't append-tracked → null.
+    this.bodyCursor = kind === 'transcript' ? this.oscTranscript.cursor() : null;
+    if (kind === 'grid') {
+      this.lastGridBytes = this.termBytesSeen;
+      this.lastGridMarkerCount = this.gridMarkers.length;
+    }
+  }
+
+  /** Drop all on-disk bookkeeping so the next flush does a full rewrite. */
+  private resetBookkeeping(): void {
+    this.diskLen = null;
+    this.writtenTail = Buffer.alloc(0);
+    this.writtenKind = null;
+    this.writtenHeaderLine = null;
+    this.bodyCursor = null;
+    this.lastGridBytes = -1;
+    this.lastGridMarkerCount = -1;
   }
 
   /** Emit a timestamp marker when the cadence interval has elapsed AND new
@@ -439,11 +629,10 @@ export class SessionLogger {
     this.lastMarkerAt = now;
   }
 
-  /** Assemble the on-disk text: header line, blank, body, then (for a grid log
-   * with markers) a trailing `<!-- timeline -->` block, then (if the session
-   * has exited) blank + footer line. `kind` records whether `body` is the OSC
-   * transcript or the grid snapshot, so readers needn't guess. */
-  private composeFileContent(body: string, kind: LogKind): string {
+  /** The `# condash: {…}` header line for `kind`. Single-sourced so the
+   * incremental flush's header-change guard compares byte-identically against
+   * what {@link composeFileContent} writes. */
+  private composeHeaderLine(kind: LogKind): string {
     const header: HeaderMeta = {
       sid: this.ctx.sid,
       side: this.ctx.side,
@@ -454,7 +643,15 @@ export class SessionLogger {
       started: this.startedTs,
       kind,
     };
-    const lines: string[] = [`${META_LINE_PREFIX}${JSON.stringify(header)}`, ''];
+    return `${META_LINE_PREFIX}${JSON.stringify(header)}`;
+  }
+
+  /** Assemble the on-disk text: header line, blank, body, then (for a grid log
+   * with markers) a trailing `<!-- timeline -->` block, then (if the session
+   * has exited) blank + footer line. `kind` records whether `body` is the OSC
+   * transcript or the grid snapshot, so readers needn't guess. */
+  private composeFileContent(body: string, kind: LogKind): string {
+    const lines: string[] = [this.composeHeaderLine(kind), ''];
     if (body.length > 0) lines.push(body);
     // Grid bodies are repaints, so the interval markers live here in a trailing
     // block instead of inline (transcripts carry theirs in the body already).
@@ -484,4 +681,9 @@ function renderBufferAsPlainText(term: Terminal): string {
   // padded with blanks all the way to the viewport bottom.
   while (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
   return rows.join('\n');
+}
+
+/** The last `n` bytes of `buf` (the whole buffer when shorter). */
+function tailBytes(buf: Buffer, n: number): Buffer {
+  return buf.length <= n ? buf : buf.subarray(buf.length - n);
 }
