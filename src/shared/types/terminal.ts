@@ -249,6 +249,10 @@ export interface TabInfo {
 export interface TermDataMessage {
   id: string;
   data: string;
+  /** Flow-control epoch of the session at send time. The preload ack echoes it
+   *  back so an ack that raced a flow reset (renderer re-attach) is ignored
+   *  instead of debiting the fresh epoch's backlog. */
+  epoch: number;
 }
 
 export interface TermExitMessage {

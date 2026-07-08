@@ -12,7 +12,12 @@ import { rebuildSearchIndex } from './search/index-cache';
 import { setScheduledConception } from './task-scheduler';
 import { setDashboardConception } from './dashboard/engine';
 import { disposeRepoWatchers } from './repo-watchers';
-import { killAll, startMemorySampling } from './terminals';
+import {
+  killAll,
+  resetFlowsForWebContents,
+  startMemorySampling,
+  trackedSessionIds,
+} from './terminals';
 import { capOwnAppScopeAsync } from './tab-scope';
 import { prewarmDefaultPanes } from './prewarm';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
@@ -251,6 +256,15 @@ async function createWindow(initialPath: string | null): Promise<BrowserWindow> 
     return { action: 'deny' };
   });
 
+  // Any re-navigation (manual reload, the render-process-gone recovery reload)
+  // discards the page's JS context and with it the termAck listener — reset
+  // flow control for every session bound to this window so bytes counted
+  // in-flight to the old context can't pin a pty paused forever (L2). Covers
+  // code-side sessions, which the renderer's reconcile never re-attaches.
+  win.webContents.on('did-start-loading', () => {
+    resetFlowsForWebContents(win.webContents);
+  });
+
   win.once('ready-to-show', () => win.show());
 
   if (isDev) {
@@ -356,8 +370,10 @@ function registerIpc(): void {
       // Re-point the live terminal-tab dashboard engine.
       void setDashboardConception(picked);
       // Heal any orphan "running" logs in the newly-picked conception so
-      // the Logs pane reflects reality on first render.
-      void sealOrphanLogs(picked).catch((err) => {
+      // the Logs pane reflects reality on first render. Sessions are NOT
+      // killed on a conception switch, so skip every tracked sid — a quiet
+      // live tab must not be stamped with a recovery footer (E4).
+      void sealOrphanLogs(picked, trackedSessionIds()).catch((err) => {
         process.stderr.write(`condash seal-orphan-logs: ${(err as Error).message}\n`);
       });
     },
@@ -545,7 +561,7 @@ app.whenReady().then(async () => {
   // (SIGKILL / OS shutdown / dev hot reload) so the Logs UI shows "ended ?".
   if (conceptionPath) {
     startJanitor(conceptionPath);
-    void sealOrphanLogs(conceptionPath).catch((err) => {
+    void sealOrphanLogs(conceptionPath, trackedSessionIds()).catch((err) => {
       process.stderr.write(`condash seal-orphan-logs: ${(err as Error).message}\n`);
     });
   }

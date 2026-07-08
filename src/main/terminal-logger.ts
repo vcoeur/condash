@@ -457,6 +457,14 @@ export class SessionLogger {
   private async flushNow(sync = false): Promise<void> {
     if (!this.dirty || this.closed) return;
     this.dirty = false;
+    // Snapshot the grid byte watermark BEFORE the drain below: it counts bytes
+    // handed to the term, and only those written ahead of the drain marker are
+    // guaranteed parsed into the buffer this flush renders. output() racing any
+    // of this method's awaits advances the count for bytes the rendered body
+    // may not contain — recording that inflated count would let the next flush
+    // wrongly take the render-skip and silently drop them (L1). An under-count
+    // merely costs one redundant rewrite.
+    const renderGridBytes = this.termBytesSeen;
     // Wait for any queued xterm parse to complete before rendering — otherwise
     // the buffer may not reflect the most recent `output` call. No term until
     // the first grid byte arrives (lazy), so a transcript-only / never-wrote
@@ -518,6 +526,17 @@ export class SessionLogger {
       : this.term
         ? renderBufferAsPlainText(this.term)
         : '';
+    // Snapshot the transcript/marker watermarks that describe *this* body at
+    // render time, BEFORE the async write window below. Pty output() runs
+    // synchronously during the awaits (mkdir/open/writeFile/rename); reading
+    // these in recordWrite() afterwards would fold those raced lines into the
+    // on-disk bookkeeping though the just-written file lacks them — a permanent
+    // silent hole the next incremental append starts past (L1). Both are exact
+    // here: the extractor and the marker timeline are updated synchronously, so
+    // they match render()'s output byte-for-byte. (The grid byte watermark was
+    // snapshotted earlier, ahead of the xterm drain — see the top of flushNow.)
+    const renderCursor = isTranscript ? this.oscTranscript.cursor() : null;
+    const renderGridMarkerCount = this.gridMarkers.length;
     const text = this.composeFileContent(body, kind);
     try {
       await mkdir(dirname(this.txtPath), { recursive: true });
@@ -535,7 +554,14 @@ export class SessionLogger {
         await fh.close();
       }
       await rename(tmp, this.txtPath);
-      this.recordWrite(text, kind, headerLine);
+      this.recordWrite(
+        text,
+        kind,
+        headerLine,
+        renderCursor,
+        renderGridBytes,
+        renderGridMarkerCount,
+      );
     } catch (err) {
       process.stderr.write(`condash terminal-logger: write failed: ${(err as Error).message}\n`);
       // Bookkeeping may now be stale (a partial write, a failed rename): force a
@@ -598,19 +624,29 @@ export class SessionLogger {
     }
   }
 
-  /** Record the compact on-disk bookkeeping after a successful full rewrite. */
-  private recordWrite(text: string, kind: LogKind, headerLine: string): void {
+  /** Record the compact on-disk bookkeeping after a successful full rewrite. The
+   *  watermarks are the ones captured at render time (before the write's async
+   *  window) — NOT the extractor's current state, which output() may have
+   *  advanced during the awaits (L1). */
+  private recordWrite(
+    text: string,
+    kind: LogKind,
+    headerLine: string,
+    renderCursor: TranscriptCursor | null,
+    renderGridBytes: number,
+    renderGridMarkerCount: number,
+  ): void {
     const bytes = Buffer.from(text, 'utf8');
     this.diskLen = bytes.length;
     this.writtenTail = tailBytes(bytes, TAIL_SAMPLE_BYTES);
     this.writtenKind = kind;
     this.writtenHeaderLine = headerLine;
-    // The transcript cursor matches the body just rendered (no lines appended
-    // between render and here). Grid bodies aren't append-tracked → null.
-    this.bodyCursor = kind === 'transcript' ? this.oscTranscript.cursor() : null;
+    // The transcript cursor matches the body just rendered. Grid bodies aren't
+    // append-tracked → null.
+    this.bodyCursor = kind === 'transcript' ? renderCursor : null;
     if (kind === 'grid') {
-      this.lastGridBytes = this.termBytesSeen;
-      this.lastGridMarkerCount = this.gridMarkers.length;
+      this.lastGridBytes = renderGridBytes;
+      this.lastGridMarkerCount = renderGridMarkerCount;
     }
   }
 

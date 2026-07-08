@@ -11,6 +11,7 @@ import {
   BATCH_FLUSH_MS,
   HIGH_WATERMARK_BYTES,
   LOW_WATERMARK_BYTES,
+  PAUSE_WATCHDOG_MS,
   TerminalFlow,
   type Pausable,
   type TerminalFlowOptions,
@@ -26,12 +27,20 @@ function fakePty(): Pausable & {
 
 /** Build a flow controller with a send spy and a live pty stub. Small
  *  thresholds keep the assertions readable; the production defaults are pinned
- *  separately below. */
+ *  separately below. `delivered` mimics safeSend's return — flip it off to
+ *  simulate a gone frame. */
 function makeFlow(over: TerminalFlowOptions = {}) {
   const sent: string[] = [];
+  const epochs: number[] = [];
   const pty = fakePty();
+  let delivered = true;
   const flow = new TerminalFlow(
-    (data) => sent.push(data),
+    (data, epoch) => {
+      if (!delivered) return false;
+      sent.push(data);
+      epochs.push(epoch);
+      return true;
+    },
     () => pty,
     {
       highWatermark: 20,
@@ -41,7 +50,15 @@ function makeFlow(over: TerminalFlowOptions = {}) {
       ...over,
     },
   );
-  return { flow, sent, pty };
+  return {
+    flow,
+    sent,
+    epochs,
+    pty,
+    setDelivered(value: boolean) {
+      delivered = value;
+    },
+  };
 }
 
 describe('TerminalFlow — micro-batching (T2)', () => {
@@ -193,7 +210,10 @@ describe('TerminalFlow — teardown + re-attach', () => {
     let live: Pausable | null = fakePty();
     const first = live;
     const flow = new TerminalFlow(
-      (d) => sent.push(d),
+      (d) => {
+        sent.push(d);
+        return true;
+      },
       () => live,
       {
         highWatermark: 20,
@@ -210,6 +230,122 @@ describe('TerminalFlow — teardown + re-attach', () => {
   });
 });
 
+describe('TerminalFlow — undelivered sends are not counted (L3)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('does not count bytes the send dropped, so an un-ackable backlog never pauses', () => {
+    const { flow, sent, pty, setDelivered } = makeFlow();
+    setDelivered(false); // frame gone: safeSend drops every payload
+    for (let i = 0; i < 5; i++) flow.enqueue('0123456789'); // 50 bytes ≫ high(20)
+    expect(sent).toEqual([]);
+    expect(flow.inFlightBytes).toBe(0);
+    expect(pty.pause).not.toHaveBeenCalled();
+    expect(flow.isPaused).toBe(false);
+  });
+
+  it('resumes counting once delivery recovers', () => {
+    const { flow, pty, setDelivered } = makeFlow();
+    setDelivered(false);
+    flow.enqueue('0123456789'); // dropped, not counted
+    setDelivered(true);
+    flow.enqueue('0123456789');
+    flow.enqueue('0123456789'); // 20 delivered ≥ high(20)
+    expect(flow.inFlightBytes).toBe(20);
+    expect(pty.pause).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TerminalFlow — pause watchdog (L3)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('resumes a pty stuck paused once the watchdog window elapses with no acks', () => {
+    const { flow, pty } = makeFlow({ watchdogMs: 500 });
+    flow.enqueue('0123456789');
+    flow.enqueue('0123456789'); // in-flight 20 → paused
+    expect(flow.isPaused).toBe(true);
+    vi.advanceTimersByTime(499);
+    expect(pty.resume).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(pty.resume).toHaveBeenCalledTimes(1);
+    expect(flow.isPaused).toBe(false);
+  });
+
+  it('an ack-driven resume disarms the watchdog (no second resume later)', () => {
+    const { flow, pty } = makeFlow({ watchdogMs: 500 });
+    flow.enqueue('0123456789');
+    flow.enqueue('0123456789'); // paused
+    flow.ack(20); // drains below low(8) → resume + disarm
+    expect(pty.resume).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(pty.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('reset() disarms the watchdog along with everything else', () => {
+    const { flow, pty } = makeFlow({ watchdogMs: 500 });
+    flow.enqueue('0123456789');
+    flow.enqueue('0123456789'); // paused
+    flow.reset(); // resumes + disarms
+    expect(pty.resume).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(pty.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('a re-pause after a watchdog resume re-arms the watchdog', () => {
+    const { flow, pty } = makeFlow({ watchdogMs: 500 });
+    flow.enqueue('0123456789');
+    flow.enqueue('0123456789'); // paused (in-flight 20)
+    vi.advanceTimersByTime(500); // watchdog resume
+    expect(pty.resume).toHaveBeenCalledTimes(1);
+    flow.enqueue('0123456789'); // in-flight 30 ≥ high again → re-pause
+    expect(pty.pause).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(500);
+    expect(pty.resume).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('TerminalFlow — ack epochs (L4)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('stamps every send with the current epoch and bumps it on reset', () => {
+    const { flow, epochs } = makeFlow();
+    flow.enqueue('0123456789');
+    flow.reset();
+    flow.enqueue('0123456789');
+    expect(epochs.length).toBe(2);
+    expect(epochs[1]).toBe(epochs[0] + 1);
+  });
+
+  it('ignores an ack carrying a stale epoch (pre-reset straggler)', () => {
+    const { flow, epochs, pty } = makeFlow();
+    flow.enqueue('0123456789'); // epoch e0, in-flight 10
+    const stale = epochs[0];
+    flow.reset(); // epoch e1, in-flight 0
+    flow.enqueue('0123456789');
+    flow.enqueue('0123456789'); // in-flight 20 → paused
+    expect(flow.isPaused).toBe(true);
+    // The old renderer's ack for the pre-reset payload arrives late: it must
+    // not debit the new epoch's backlog (nor resume the pty).
+    flow.ack(10, stale);
+    expect(flow.inFlightBytes).toBe(20);
+    expect(flow.isPaused).toBe(true);
+    // A current-epoch ack works as usual (the only resume — reset ran unpaused).
+    flow.ack(20, epochs[1]);
+    expect(flow.inFlightBytes).toBe(0);
+    expect(pty.resume).toHaveBeenCalledTimes(1);
+    expect(flow.isPaused).toBe(false);
+  });
+
+  it('an epoch-less ack (malformed / legacy) still credits the current epoch', () => {
+    const { flow } = makeFlow();
+    flow.enqueue('0123456789');
+    flow.ack(10);
+    expect(flow.inFlightBytes).toBe(0);
+  });
+});
+
 describe('TerminalFlow — production thresholds', () => {
   it('exports the documented watermark + batch constants', () => {
     expect(HIGH_WATERMARK_BYTES).toBe(256 * 1024);
@@ -218,5 +354,9 @@ describe('TerminalFlow — production thresholds', () => {
     expect(BATCH_FLUSH_MS).toBe(12);
     // Hysteresis is real (high strictly above low) so pause/resume can't thrash.
     expect(HIGH_WATERMARK_BYTES).toBeGreaterThan(LOW_WATERMARK_BYTES);
+    // The pause backstop is far above any healthy renderer's drain time yet
+    // bounded, so a stalled frame can't hold a pty paused into node-pty's
+    // exit-drain window (L3).
+    expect(PAUSE_WATCHDOG_MS).toBeGreaterThan(0);
   });
 });

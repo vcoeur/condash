@@ -11,7 +11,6 @@ type FakeHandle = {
   typeIntoActive: ReturnType<typeof vi.fn>;
   hasActive: ReturnType<typeof vi.fn>;
   getActiveSessionId: ReturnType<typeof vi.fn>;
-  waitForReady: ReturnType<typeof vi.fn>;
 };
 
 function makeFakeHandle(): FakeHandle {
@@ -23,7 +22,6 @@ function makeFakeHandle(): FakeHandle {
     typeIntoActive: vi.fn(),
     hasActive: vi.fn().mockReturnValue(true),
     getActiveSessionId: vi.fn().mockReturnValue('session-1'),
-    waitForReady: vi.fn().mockResolvedValue(undefined),
   };
 }
 

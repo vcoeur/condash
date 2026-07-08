@@ -21,7 +21,7 @@ import { createDragDropController } from './drag-drop';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
-import { captureReadinessTail, type Column, displayName, sameStringList, type Tab } from './types';
+import { type Column, displayName, sameStringList, type Tab } from './types';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
 import type {
   AgentChoice,
@@ -62,63 +62,6 @@ export function createTerminalController(props: TerminalPaneProps) {
   // user-initiated close (right-click → Close) and process-exit close
   // don't race.
   const closingTabs = new Set<string>();
-
-  // Accumulated raw pty output per session (ANSI codes included), kept as a
-  // rolling tail. Used only by waitForReady to detect agent prompt markers
-  // without re-parsing xterm buffers — a freshly emitted prompt sits at the
-  // tail, so retaining the last MAX_SESSION_DATA bytes is sufficient while
-  // bounding renderer memory for a long-lived tab (the full scrollback already
-  // lives in the xterm itself).
-  const MAX_SESSION_DATA = 64 * 1024;
-  const sessionData = new Map<string, string>();
-
-  /** Append a chunk to a session's rolling readiness buffer — but only while a
-   *  readiness waiter is registered for it (R1). No waiter → skip the per-chunk
-   *  concat + 64 KB slice entirely; the buffer feeds waitForReady alone. */
-  const appendSessionData = (id: string, chunk: string): void => {
-    const next = captureReadinessTail(
-      readyWaiters.has(id),
-      sessionData.get(id),
-      chunk,
-      MAX_SESSION_DATA,
-    );
-    if (next !== undefined) sessionData.set(id, next);
-  };
-
-  // Pending readiness waiters keyed by session id.
-  const readyWaiters = new Map<
-    string,
-    {
-      pattern: RegExp;
-      resolve: () => void;
-      reject: (err: Error) => void;
-      timer: ReturnType<typeof setTimeout>;
-    }[]
-  >();
-
-  const stripAnsi = (text: string): string =>
-    text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\x1b\][0-9;]*[^\x07]*\x07/g, '');
-
-  const checkReadyWaiters = (sessionId: string): void => {
-    const waiters = readyWaiters.get(sessionId);
-    if (!waiters || waiters.length === 0) return;
-    const raw = sessionData.get(sessionId) || '';
-    const cleaned = stripAnsi(raw);
-    const remaining = waiters.filter((w) => {
-      if (w.pattern.test(cleaned)) {
-        clearTimeout(w.timer);
-        w.resolve();
-        return false;
-      }
-      return true;
-    });
-    if (remaining.length === 0) {
-      readyWaiters.delete(sessionId);
-      sessionData.delete(sessionId);
-    } else {
-      readyWaiters.set(sessionId, remaining);
-    }
-  };
 
   const xterms = new Map<
     string,
@@ -200,9 +143,6 @@ export function createTerminalController(props: TerminalPaneProps) {
     element.style.display = 'none';
     const host = hostFor(column);
     if (host) host.appendChild(element);
-    if (replay) {
-      appendSessionData(id, replay);
-    }
     const { mountXterm } = await import('../xterm-mount');
     // Bail if a dispose/race removed the need while the chunk was loading.
     if (xterms.has(id)) {
@@ -355,7 +295,7 @@ export function createTerminalController(props: TerminalPaneProps) {
           // Defensive: this tab never had a worker Terminal (shown before it was
           // ever demoted). Replay the buffered tail and drop it here so the
           // flush below does not write the same bytes a second time.
-          replay = transitionBuffers.get(id)?.join('') ?? sessionData.get(id) ?? '';
+          replay = transitionBuffers.get(id)?.join('') ?? '';
           transitionBuffers.delete(id);
         }
         workerSessions.delete(id);
@@ -537,18 +477,9 @@ export function createTerminalController(props: TerminalPaneProps) {
         void worker.dispose(id);
       }
       transitionBuffers.delete(id);
-      sessionData.delete(id);
       // The tab is gone from the snapshot — its close has landed, so the
       // closing guard can be released (otherwise the set grows forever).
       closingTabs.delete(id);
-      const waiters = readyWaiters.get(id);
-      if (waiters) {
-        for (const w of waiters) {
-          clearTimeout(w.timer);
-          w.reject(new Error('Session closed'));
-        }
-        readyWaiters.delete(id);
-      }
     }
     if (toDrop.length > 0) {
       setTabs((prev) => prev.filter((t) => !toDrop.includes(t.id)));
@@ -648,8 +579,6 @@ export function createTerminalController(props: TerminalPaneProps) {
 
   // ---- live data + exit notification ----
   const offTermData = window.condash.onTermData(({ id, data }) => {
-    appendSessionData(id, data);
-    checkReadyWaiters(id);
     if (transitioning.has(id)) {
       bufferTransitionWrite(id, data);
     } else if (xterms.has(id)) {
@@ -732,14 +661,6 @@ export function createTerminalController(props: TerminalPaneProps) {
     worker.terminate();
     workerSessions.clear();
     transitionBuffers.clear();
-    for (const waiters of readyWaiters.values()) {
-      for (const w of waiters) {
-        clearTimeout(w.timer);
-        w.reject(new Error('Pane closed'));
-      }
-    }
-    readyWaiters.clear();
-    sessionData.clear();
   });
 
   const closeTab = (id: string) => {
@@ -1011,26 +932,6 @@ export function createTerminalController(props: TerminalPaneProps) {
     },
     hasActive: () => Boolean(activeIdIn(activeColumn())),
     getActiveSessionId: () => activeIdIn(activeColumn()),
-    waitForReady: (sessionId, pattern, timeoutMs = 15000) =>
-      new Promise<void>((resolve, reject) => {
-        const raw = sessionData.get(sessionId) || '';
-        if (pattern.test(stripAnsi(raw))) {
-          resolve();
-          return;
-        }
-        const timer = setTimeout(() => {
-          const waiters = readyWaiters.get(sessionId);
-          if (waiters) {
-            const filtered = waiters.filter((w) => w.resolve !== resolve);
-            if (filtered.length === 0) readyWaiters.delete(sessionId);
-            else readyWaiters.set(sessionId, filtered);
-          }
-          reject(new Error(`Timed out waiting for agent prompt (${timeoutMs}ms)`));
-        }, timeoutMs);
-        const entry = { pattern, resolve, reject, timer };
-        const existing = readyWaiters.get(sessionId) || [];
-        readyWaiters.set(sessionId, [...existing, entry]);
-      }),
   };
   onMount(() => props.registerHandle(handle));
   onCleanup(() => props.registerHandle(null));
