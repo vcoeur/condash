@@ -76,6 +76,28 @@ export interface TranscriptFrame {
   text?: string;
 }
 
+/** An opaque watermark into the rendered transcript: how many lines have ever
+ * been appended and how many the caps have ever trimmed off the front. Paired
+ * with {@link OscTranscriptExtractor.appendedSince} so a caller that already
+ * rendered up to a prior cursor appends only the new suffix, and detects a cap
+ * trim that dropped lines it had already written. */
+export interface TranscriptCursor {
+  /** Total lines ever appended (monotonic) at snapshot time. */
+  appended: number;
+  /** Total lines ever trimmed off the front (monotonic) at snapshot time. */
+  trimmed: number;
+}
+
+/** The transcript suffix accumulated since a prior {@link TranscriptCursor}. */
+export interface TranscriptDelta {
+  /** Body text to append after the previously-rendered body — including the
+   * leading `\n\n` separator when the prior body was non-empty; '' when no new
+   * lines arrived. */
+  appended: string;
+  /** The up-to-date cursor to store and pass back on the next call. */
+  cursor: TranscriptCursor;
+}
+
 /**
  * Render one neutral message frame as a transcript line. Single-sourced so the
  * in-band OSC extractor and the file-based sidecar reader format messages
@@ -127,11 +149,37 @@ export class OscTranscriptExtractor {
   /** Running sum of `lineBytes` — the value the byte cap is enforced against. */
   private totalBytes = 0;
   private captured = false;
+  /** Monotonic count of lines ever appended (never decremented by a cap trim).
+   * Backs the {@link cursor} watermark that drives the logger's incremental,
+   * append-only flush. */
+  private appendedCount = 0;
+  /** Monotonic count of lines ever dropped off the front by a cap trim. A
+   * change since a caller's watermark means its already-written prefix is
+   * stale. */
+  private trimmedCount = 0;
 
   /** Feed a raw pty chunk. Returns the chunk with our OSC sequences stripped,
    * for the caller to forward to the grid renderer. Incomplete sequences are
    * buffered until the rest arrives. */
   feed(data: string): string {
+    return this.scan(data, null);
+  }
+
+  /** Like {@link feed}, but also returns every transcript frame this chunk
+   * completed. Lets the main process scan the pty bytes **once** — the
+   * session-wide dashboard extractor does the scan — and hand the already
+   * decoded frames to the disk logger's separate extractor via
+   * {@link applyDecodedFrame}, so the same bytes are never OSC-scanned twice. */
+  feedCapturingFrames(data: string): { clean: string; frames: TranscriptFrame[] } {
+    const frames: TranscriptFrame[] = [];
+    const clean = this.scan(data, frames);
+    return { clean, frames };
+  }
+
+  /** Scan a raw pty chunk: strip our OSC sequences (returned for the grid
+   * renderer) and apply any completed frames to this extractor. When
+   * `framesOut` is provided, each applied frame is also collected there. */
+  private scan(data: string, framesOut: TranscriptFrame[] | null): string {
     this.buf += data;
     let clean = '';
     for (;;) {
@@ -169,14 +217,15 @@ export class OscTranscriptExtractor {
         }
         break;
       }
-      this.ingest(this.buf.slice(afterPrefix, end));
+      this.ingest(this.buf.slice(afterPrefix, end), framesOut);
       this.buf = this.buf.slice(end + termLen);
     }
     return clean;
   }
 
-  /** Parse one packet body: `<frameId>;<i>;<n>;<base64piece>`. */
-  private ingest(body: string): void {
+  /** Parse one packet body: `<frameId>;<i>;<n>;<base64piece>`. When a frame
+   * completes it is applied and, if `framesOut` is set, collected there. */
+  private ingest(body: string, framesOut: TranscriptFrame[] | null): void {
     const sep1 = body.indexOf(';');
     const sep2 = body.indexOf(';', sep1 + 1);
     const sep3 = body.indexOf(';', sep2 + 1);
@@ -209,13 +258,18 @@ export class OscTranscriptExtractor {
     for (let k = 0; k < entry.n; k++) b64 += entry.got.get(k) ?? '';
     try {
       const frame = JSON.parse(Buffer.from(b64, 'base64').toString('utf8')) as TranscriptFrame;
-      this.applyFrame(frame);
+      this.applyDecodedFrame(frame);
+      if (framesOut) framesOut.push(frame);
     } catch {
       /* malformed frame — ignore, never break capture */
     }
   }
 
-  private applyFrame(frame: TranscriptFrame): void {
+  /** Apply one already-decoded frame to this extractor's state — no OSC
+   * byte-scan. {@link feedCapturingFrames} returns the frames a single scan
+   * produced; a second extractor replays them here to reach the same state the
+   * raw stream would, so the bytes are scanned once in the main process. */
+  applyDecodedFrame(frame: TranscriptFrame): void {
     if (frame.t === 'msg' && typeof frame.text === 'string') {
       this.captured = true;
       this.appendLine(transcriptLine(frame.role, frame.text));
@@ -229,6 +283,7 @@ export class OscTranscriptExtractor {
    * markers enforce identical bounds. */
   private appendLine(line: string): void {
     this.lines.push(line);
+    this.appendedCount++;
     const bytes = Buffer.byteLength(line, 'utf8');
     this.lineBytes.push(bytes);
     this.totalBytes += bytes;
@@ -240,7 +295,54 @@ export class OscTranscriptExtractor {
     ) {
       this.lines.shift();
       this.totalBytes -= this.lineBytes.shift() ?? 0;
+      this.trimmedCount++;
     }
+  }
+
+  /** Snapshot the current append/trim watermark — see {@link TranscriptCursor}. */
+  cursor(): TranscriptCursor {
+    return { appended: this.appendedCount, trimmed: this.trimmedCount };
+  }
+
+  /** Compute what to append to a body last rendered at `prev` to bring it up to
+   * date, or `null` when a cap trim has dropped a line at or before `prev` — in
+   * which case the caller's on-disk prefix is stale and it must re-render the
+   * whole body. With a fresh `prev` (no trim since), the returned `appended` is
+   * exactly the suffix {@link render} would now add. */
+  appendedSince(prev: TranscriptCursor): TranscriptDelta | null {
+    // A trim removes only the oldest (already-written) lines, so any growth in
+    // `trimmed` invalidates the caller's prefix.
+    if (prev.trimmed !== this.trimmedCount) return null;
+    // Global line index `prev.appended` sits at this array offset, since the
+    // array currently holds indices [trimmedCount, appendedCount).
+    const fromIndex = prev.appended - this.trimmedCount;
+    if (fromIndex < 0 || fromIndex > this.lines.length) return null;
+    const cursor = this.cursor();
+    const newLines = this.lines.slice(fromIndex);
+    if (newLines.length === 0) return { appended: '', cursor };
+    // Leading separator only when a prior (non-empty) body already existed.
+    const sep = prev.appended > prev.trimmed ? '\n\n' : '';
+    return { appended: sep + newLines.join('\n\n'), cursor };
+  }
+
+  /** The last `maxChars` characters of {@link render}, built by walking lines
+   * backwards and joining only the needed suffix — so a multi-MB transcript is
+   * never fully re-joined just to read its tail. For `maxChars > 0` this is
+   * byte-for-byte `render().slice(-maxChars)`: both are a whole-line-or-shorter
+   * suffix of the same `\n\n`-joined body. Returns '' for `maxChars <= 0`. */
+  renderTail(maxChars: number): string {
+    if (maxChars <= 0) return '';
+    const parts: string[] = [];
+    let total = 0;
+    for (let i = this.lines.length - 1; i >= 0; i--) {
+      if (parts.length > 0) total += 2; // the '\n\n' separator to the next line
+      total += this.lines[i].length;
+      parts.push(this.lines[i]);
+      if (total >= maxChars) break;
+    }
+    parts.reverse();
+    const joined = parts.join('\n\n');
+    return joined.length > maxChars ? joined.slice(-maxChars) : joined;
   }
 
   /** Append a pre-formatted timestamp marker line to the transcript. The

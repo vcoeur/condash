@@ -313,7 +313,9 @@ export function tabRecentText(sid: string, maxChars = 8000): string {
   const text = fileText.trim()
     ? fileText
     : s.transcript.hasTranscript()
-      ? s.transcript.render()
+      ? // `renderTail` walks lines backwards for the tail only — no full
+        // multi-MB re-join — and equals `render().slice(-maxChars)` here.
+        s.transcript.renderTail(maxChars)
       : cleanTerminalText(recentTail(s.buffer));
   return text.length > maxChars ? text.slice(-maxChars) : text;
 }
@@ -535,10 +537,17 @@ export async function spawnTerminal(
     session.bytesSeen += data.length;
     appendBuffer(session, data);
     // Capture any in-band transcript regardless of disk logging — the dashboard
-    // reads it for a faithful summary. The stripped return is ignored here; the
-    // raw `data` still drives the grid buffer and the renderer.
-    session.transcript.feed(data);
-    session.logger?.output(data);
+    // reads it for a faithful summary. Scan the OSC out **once** here: when a
+    // disk logger is present, hand it the stripped `clean` text and the decoded
+    // `frames` so it need not re-scan the same bytes (it replays the frames into
+    // its own transcript extractor). The raw `data` still drives the grid buffer
+    // and the renderer. When there's no logger, the plain scan suffices.
+    if (session.logger) {
+      const { clean, frames } = session.transcript.feedCapturingFrames(data);
+      session.logger.output(data, { clean, frames });
+    } else {
+      session.transcript.feed(data);
+    }
     safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data });
   });
   ptyProcess.onExit(({ exitCode }) => {
