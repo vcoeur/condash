@@ -95,7 +95,8 @@ export function WorkspaceSection(props: WorkspaceSectionProps): JSX.Element {
             'These branches are protected from condash worktrees remove and are never auto-deleted. ' +
             'Glob wildcards are supported: * matches any run of characters and ? matches one character ' +
             '(e.g. release/*, hotfix-?). When the list is empty, the runtime falls back to the default ' +
-            'main + master, so leaving it empty does not disable protection.'
+            'main + master, so leaving it empty does not disable protection. A non-empty list replaces ' +
+            'that default rather than extending it — keep main and master here if you still want them protected.'
           }
         >
           <For each={branches()}>
