@@ -589,6 +589,7 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
     worktrees_path: '/home/me/src/worktrees',
     repositories: [{ section: 'Apps' }, 'condash', { name: 'frontend', run: 'make dev' }],
     retired_apps: [{ handle: 'oldapp', aliases: ['legacy-name'] }],
+    long_lived_branches: ['main', 'release/*'],
     // setTaskConfig (Tasks editor) — every TaskConfigEntry field
     taskConfig: {
       'sample-task': {

@@ -451,6 +451,9 @@ const conceptionOnlyFields = {
   /** Defunct app handles kept for historical project references. Validated
    *  against, never rendered as code cards. */
   retired_apps: z.array(retiredAppEntry).optional(),
+  /** Branch names that `condash worktrees remove` must never delete. Supports
+   *  glob wildcards `*` and `?`. Defaults to `["main", "master"]` when unset. */
+  long_lived_branches: z.array(z.string().min(1)).optional(),
   /** Per-task config keyed by task slug (capability 1). `schedule` is an
    *  opt-in cadence (`30s`/`2m`/`1h`/`7d`) that arms the headless scheduler;
    *  absent = not scheduled. `timeout` is the per-task run-timeout override

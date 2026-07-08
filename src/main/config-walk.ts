@@ -18,7 +18,9 @@ export { isSectionMarker, type RawRepo, type RawSubmoduleRepo };
 
 export interface ConfigShape {
   workspace_path?: string;
+  worktrees_path?: string;
   repositories?: RawRepo[];
+  long_lived_branches?: string[];
   terminal?: TerminalPrefs;
 }
 

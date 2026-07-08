@@ -47,6 +47,7 @@ import { withFileQueue } from './mutate-shared';
 export interface EffectiveConfig extends ConfigShape {
   workspace_path?: string;
   worktrees_path?: string;
+  long_lived_branches?: string[];
   open_with?: Record<string, { label?: string; command: string }>;
   pdf_viewer?: string[];
   terminal?: TerminalPrefs;

@@ -6,7 +6,14 @@
  * top-level repo, so both layers are stripped.
  */
 import { describe, expect, it } from 'vitest';
-import { repoLookupMap, resolveAppRepo, rootRepoFromApp, type ConfigWithPaths } from './shared';
+import {
+  repoLookupMap,
+  resolveAppRepo,
+  rootRepoFromApp,
+  isLongLivedBranch,
+  matchBranchGlob,
+  type ConfigWithPaths,
+} from './shared';
 
 describe('rootRepoFromApp', () => {
   it('returns the bare name when already canonical', () => {
@@ -62,7 +69,7 @@ describe('repoLookupMap + resolveAppRepo (handle/alias resolution)', () => {
     expect(resolveAppRepo('#condash', map)?.name).toBe('condash');
   });
 
-  it('lets a real directory name win over another repo’s handle on collision', () => {
+  it('lets a real directory name win over another repo handle on collision', () => {
     const map = repoLookupMap(config);
     expect(resolveAppRepo('foo', map)?.name).toBe('foo');
   });
@@ -70,5 +77,35 @@ describe('repoLookupMap + resolveAppRepo (handle/alias resolution)', () => {
   it('returns null for a token that names no configured repo', () => {
     const map = repoLookupMap(config);
     expect(resolveAppRepo('#nope', map)).toBeNull();
+  });
+});
+
+describe('isLongLivedBranch + matchBranchGlob', () => {
+  it('defaults to protecting main and master', () => {
+    expect(isLongLivedBranch('main', undefined).longLived).toBe(true);
+    expect(isLongLivedBranch('master', undefined).longLived).toBe(true);
+    expect(isLongLivedBranch('feature-xyz', undefined).longLived).toBe(false);
+  });
+
+  it('supports glob patterns', () => {
+    const patterns = ['preprod', 'release/*', 'hotfix-?'];
+    expect(isLongLivedBranch('preprod', patterns).longLived).toBe(true);
+    expect(isLongLivedBranch('release/1.0', patterns).longLived).toBe(true);
+    expect(isLongLivedBranch('hotfix-a', patterns).longLived).toBe(true);
+    expect(isLongLivedBranch('hotfix-ab', patterns).longLived).toBe(false);
+    expect(isLongLivedBranch('release', patterns).longLived).toBe(false);
+    expect(isLongLivedBranch('feature-xyz', patterns).longLived).toBe(false);
+  });
+
+  it('treats literal characters in branch names as literals', () => {
+    const patterns = ['release/1.0'];
+    expect(isLongLivedBranch('release/1.0', patterns).longLived).toBe(true);
+    expect(isLongLivedBranch('releaseX1.0', patterns).longLived).toBe(false);
+  });
+
+  it('reports the matched pattern', () => {
+    const result = isLongLivedBranch('release/2.0', ['main', 'release/*']);
+    expect(result.longLived).toBe(true);
+    expect(result.matched).toBe('release/*');
   });
 });

@@ -12,6 +12,7 @@ import {
   defaultWorktreesPath,
   findItemsDeclaringBranch,
   findWorktreeEntry,
+  isLongLivedBranch,
   listWorktreeEntries,
   readConfig,
   repoLookupMap,
@@ -142,6 +143,17 @@ export async function removeBranchWorktrees(
     orphaned: [],
     parentRemoved: false,
   };
+
+  const longLived = isLongLivedBranch(branch, config.long_lived_branches);
+  if (longLived.longLived) {
+    for (const name of [...requested].sort()) {
+      result.protected.push({
+        repo: name,
+        reason: `long-lived branch (matches '${longLived.matched}') — remove manually if really intended`,
+      });
+    }
+    return result;
+  }
 
   for (const name of [...requested].sort()) {
     if (protectedSet.has(name)) {
