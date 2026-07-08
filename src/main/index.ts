@@ -171,6 +171,11 @@ const DEV_URL = 'http://localhost:5600';
 // first listProjects/listRepos burst and the chokidar install — search uses the
 // on-disk fallback until the index is live, so the gap is invisible to the user.
 const SEARCH_INDEX_BUILD_IDLE_MS = 500;
+// Unconditional backstop for the deferred kick: if `ready-to-show` already fired
+// on a still-not-visible window (its once-listener then never refires) and no
+// `show`/`focus` follows, the index would never build this session (W4). After
+// this delay, kick regardless — the disk-scan fallback covers the wait.
+const SEARCH_INDEX_BUILD_BACKSTOP_MS = 30_000;
 // Treat the build as "dev" when not packaged AND not explicitly forced into
 // production mode. CONDASH_FORCE_PROD=1 is set by the Playwright fixture so
 // tests load the real file:// build instead of the Vite dev URL.
@@ -515,7 +520,10 @@ app.whenReady().then(async () => {
   // falls back to a disk scan while the in-memory index is still unbuilt
   // (search/index.ts + index-cache.ts).
   if (conceptionPath) {
+    let indexKicked = false;
     const kickIndexBuild = (): void => {
+      if (indexKicked) return;
+      indexKicked = true;
       setTimeout(() => {
         void rebuildSearchIndex(conceptionPath).catch((err) =>
           process.stderr.write(`condash rebuildSearchIndex: ${(err as Error).message}\n`),
@@ -524,9 +532,21 @@ app.whenReady().then(async () => {
     };
     // `ready-to-show` may already have fired by the time createWindow's loadFile
     // resolved (the window is shown from that handler); check visibility to cover
-    // the already-fired case, otherwise wait for the event.
-    if (mainWindow.isVisible()) kickIndexBuild();
-    else mainWindow.once('ready-to-show', kickIndexBuild);
+    // the already-fired case.
+    if (mainWindow.isVisible()) {
+      kickIndexBuild();
+    } else {
+      // Otherwise latch on any of these — whichever fires first wins (the guard
+      // makes the kick run once). `ready-to-show` can already have fired on a
+      // window that is still not visible, in which case its once-listener never
+      // refires; `show`/`focus` and the unconditional timeout backstop cover
+      // that so the index always builds this session (W4).
+      const win = mainWindow;
+      win.once('ready-to-show', kickIndexBuild);
+      win.once('show', kickIndexBuild);
+      win.once('focus', kickIndexBuild);
+      setTimeout(kickIndexBuild, SEARCH_INDEX_BUILD_BACKSTOP_MS);
+    }
   }
   // App-scope memory backstop, off the pre-window critical path (S5) and fully
   // asynchronous: `capOwnAppScopeAsync` runs its systemd probe + `set-property`

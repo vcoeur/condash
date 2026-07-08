@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { CondashApi, MenuCommand } from '../shared/api';
+import type { CondashApi, MenuCommand, WatcherStatusMessage } from '../shared/api';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import type {
   DashboardState,
@@ -176,6 +176,11 @@ const api: CondashApi = {
     const handler = (): void => callback();
     ipcRenderer.on(EVENT_CHANNELS.menuClearRecents, handler);
     return () => ipcRenderer.removeListener(EVENT_CHANNELS.menuClearRecents, handler);
+  },
+  onWatcherStatus: (callback) => {
+    const handler = (_: unknown, msg: WatcherStatusMessage): void => callback(msg);
+    ipcRenderer.on(EVENT_CHANNELS.watcherStatus, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.watcherStatus, handler);
   },
 };
 

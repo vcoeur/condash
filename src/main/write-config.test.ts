@@ -76,3 +76,52 @@ describe('writeNote on the global settings.json', () => {
     expect(onDisk.theme).toBe('system');
   });
 });
+
+describe('writeNote config dispatch by directory (B4)', () => {
+  let conceptionDir: string;
+
+  // `settingsFile` (mocked user-data-dir) is the exact global settings path.
+  // Point it at a conception root so the legacy-name dir-gate has a root to
+  // compare against.
+  beforeEach(async () => {
+    conceptionDir = join(tmp, 'my-conception');
+    await fs.mkdir(conceptionDir, { recursive: true });
+    await fs.writeFile(
+      settingsFile,
+      JSON.stringify({ lastConceptionPath: conceptionDir }, null, 2) + '\n',
+    );
+  });
+
+  // A body the strict conception-config schema rejects — its presence proves
+  // which branch handled the write.
+  const UNKNOWN_KEY_BODY = JSON.stringify({ totallyUnknownKey123: 1 }, null, 2);
+
+  it('saves an in-tree docs/examples/configuration.json as a plain note', async () => {
+    const { writeNote } = await import('./write-config');
+    const sampleDir = join(conceptionDir, 'docs', 'examples');
+    await fs.mkdir(sampleDir, { recursive: true });
+    const samplePath = join(sampleDir, 'configuration.json');
+    // Plain-note path: saved verbatim, never canonicalised or rejected.
+    const saved = await writeNote(samplePath, '', UNKNOWN_KEY_BODY);
+    expect(saved).toBe(UNKNOWN_KEY_BODY);
+    expect(await fs.readFile(samplePath, 'utf8')).toBe(UNKNOWN_KEY_BODY);
+  });
+
+  it('still treats a legacy configuration.json AT the conception root as config', async () => {
+    const { writeNote } = await import('./write-config');
+    const legacyPath = join(conceptionDir, 'configuration.json');
+    // Config path: the strict schema rejects the unknown key and throws.
+    await expect(writeNote(legacyPath, '', UNKNOWN_KEY_BODY)).rejects.toThrow(
+      /totallyUnknownKey123/,
+    );
+  });
+
+  it('saves an in-tree settings.json (not the exact global path) as a plain note', async () => {
+    const { writeNote } = await import('./write-config');
+    const noteDir = join(conceptionDir, 'docs');
+    await fs.mkdir(noteDir, { recursive: true });
+    const notePath = join(noteDir, 'settings.json');
+    const saved = await writeNote(notePath, '', UNKNOWN_KEY_BODY);
+    expect(saved).toBe(UNKNOWN_KEY_BODY);
+  });
+});

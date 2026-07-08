@@ -40,6 +40,11 @@ export interface CachedParse {
 
 interface DiskEntry extends CachedParse {
   mtimeMs: number;
+  /** File size in bytes. Keyed alongside `mtimeMs` — matching the sibling
+   *  in-memory memos in `settings.ts` / `effective-config.ts` — so an edit that
+   *  changes content but lands on the same mtime tick (coarse-mtime filesystem,
+   *  rapid rewrite) still invalidates the entry. */
+  size: number;
 }
 
 interface CacheFile {
@@ -52,7 +57,9 @@ interface CacheFile {
 // serve wrongly. A version mismatch discards the whole file and re-parses
 // cold — the mtime key catches content drift but not code drift, so this is
 // the guard for the latter.
-export const PARSE_CACHE_VERSION = 1;
+// v2: entries gained a `size` field (keyed alongside `mtimeMs`). Old v1 files
+// carry no `size`, so bumping discards them wholesale for a clean cold re-parse.
+export const PARSE_CACHE_VERSION = 2;
 
 const CACHE_SUBDIR = 'cache';
 const CACHE_FILENAME = 'readme-parse.json';
@@ -78,6 +85,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function isDiskEntry(value: unknown): value is DiskEntry {
   if (!isObject(value)) return false;
   if (typeof value.mtimeMs !== 'number') return false;
+  if (typeof value.size !== 'number') return false;
   const project = value.project;
   if (!isObject(project)) return false;
   if (
@@ -175,8 +183,11 @@ export async function parseReadmesWithDiskCache(
     readmes.map(async (readme) => {
       const key = toPosix(readme);
       let mtimeMs: number;
+      let size: number;
       try {
-        mtimeMs = (await fs.stat(readme)).mtimeMs;
+        const st = await fs.stat(readme);
+        mtimeMs = st.mtimeMs;
+        size = st.size;
       } catch {
         // Can't stat (vanished mid-scan) — parse directly and don't cache;
         // parseReadmeWithHeader throws the same ENOENT the old direct path did.
@@ -184,12 +195,12 @@ export async function parseReadmesWithDiskCache(
         return { key, entry: null as DiskEntry | null, parsed: { project, header } };
       }
       const hit = cache.get(key);
-      if (hit && hit.mtimeMs === mtimeMs) {
+      if (hit && hit.mtimeMs === mtimeMs && hit.size === size) {
         return { key, entry: hit, parsed: { project: hit.project, header: hit.header } };
       }
       const { project, header } = await parseReadmeWithHeader(readme);
       freshCount++;
-      const entry: DiskEntry = { mtimeMs, project, header };
+      const entry: DiskEntry = { mtimeMs, size, project, header };
       return { key, entry, parsed: { project, header } };
     }),
   );

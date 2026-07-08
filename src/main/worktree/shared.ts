@@ -299,7 +299,10 @@ export function matchBranchGlob(pattern: string, branch: string): boolean {
 }
 
 function escapeRegexChar(char: string): string {
-  return /[-[\]{}()*+\\^$|#]/g.test(char) ? '\\' + char : char;
+  // `.` must be escaped too — without it `release-1.x` also matches
+  // `release-1Ax` and `v1.2` matches `v132`, so a literal-dot branch name
+  // gets a spurious "long-lived branch" refusal.
+  return /[-[\]{}()*+.\\^$|#]/g.test(char) ? '\\' + char : char;
 }
 
 /** Default branch names that `condash worktrees remove` must never delete. */

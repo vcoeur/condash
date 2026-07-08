@@ -13,7 +13,8 @@
  * filtering / slicing the command line needs.
  */
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { toPosix } from '../shared/path';
 import {
   detectKind,
   parseMetaLine,
@@ -214,8 +215,10 @@ export async function listDays(conception: string, monthPrefix?: string): Promis
   refs.forEach((ref, i) => {
     let entry = byDay.get(ref.day);
     if (!entry) {
-      // The day directory is the parent of the session file.
-      entry = { path: ref.path.slice(0, ref.path.lastIndexOf('/')), sessions: 0, bytes: 0 };
+      // The day directory is the parent of the session file. `dirname` uses the
+      // platform separator — slicing on a literal `/` would return the whole
+      // native path unchanged on Windows.
+      entry = { path: dirname(ref.path), sessions: 0, bytes: 0 };
       byDay.set(ref.day, entry);
     }
     entry.sessions += 1;
@@ -410,9 +413,18 @@ export async function resolveSession(
   selector: string,
 ): Promise<SessionRef | null> {
   const root = condashLogsRoot(conception);
-  // Direct path under the logs root.
-  if (selector.endsWith('.txt') && selector.includes('/') && selector.startsWith(root)) {
-    const m = SESSION_RE.exec(selector);
+  // Direct path under the logs root. Match on the POSIX-normalised form so a
+  // native Windows path (backslash separators) resolves — `SESSION_RE` and the
+  // `includes('/')` / `startsWith(root)` checks are all `/`-based. The original
+  // `selector` is kept as the ref path so the subsequent `fs` read is native.
+  const selectorPosix = toPosix(selector);
+  const rootPosix = toPosix(root);
+  if (
+    selectorPosix.endsWith('.txt') &&
+    selectorPosix.includes('/') &&
+    selectorPosix.startsWith(rootPosix)
+  ) {
+    const m = SESSION_RE.exec(selectorPosix);
     if (!m) return null;
     return { path: selector, day: `${m[1]}-${m[2]}-${m[3]}`, time: hhmmssToTime(m[4]), sid: m[5] };
   }

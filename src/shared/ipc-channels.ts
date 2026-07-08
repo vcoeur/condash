@@ -37,4 +37,6 @@ export const EVENT_CHANNELS = {
   menuOpenRecent: 'menu-open-recent',
   /** Clear-recents menu command. */
   menuClearRecents: 'menu-clear-recents',
+  /** File-watcher status notice (e.g. inotify exhaustion) → renderer toast. */
+  watcherStatus: 'watcher-status',
 } as const;

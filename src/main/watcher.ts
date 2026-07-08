@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { toPosix } from '../shared/path';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { safeSend } from './safe-send';
+import { reportWatcherError } from './watcher-status';
 import type { TreeEvent } from '../shared/types';
 import { migrateLegacyConfig } from './condash-dir-migrate';
 import { partitionSettingsScopes, scopeMigrationDidWork } from './scope-partition-migrate';
@@ -34,6 +35,10 @@ let current: {
 let timer: NodeJS.Timeout | null = null;
 let pending: TreeEvent[] = [];
 let pendingUnknown = false;
+// Conception path for which we've already spent our one watcher re-arm. Keyed
+// on the path so a genuinely new conception gets a fresh attempt, but a
+// persistent error (e.g. EMFILE surviving the rebuild) can't loop (W3a).
+let treeReArmedForPath: string | null = null;
 
 export async function setWatchedConception(
   conceptionPath: string | null,
@@ -159,7 +164,18 @@ export async function setWatchedConception(
   const paths = buildWatchPaths(conceptionPath);
   watcher.on('all', (eventName, path) => onWatchEvent(eventName, path, roots, paths));
   watcher.on('error', (err) => {
-    console.error('[watcher]', err);
+    // Surface the failure to the user (inotify exhaustion etc. would otherwise
+    // silently leave the tree views stale), then attempt ONE re-arm for this
+    // conception — the rebuild both re-establishes coverage after a transient
+    // failure and, via refreshWatchedConception, pushes a synthetic full-refresh
+    // so nothing changed during the gap is missed (W3).
+    reportWatcherError(err, 'conception tree');
+    if (treeReArmedForPath !== conceptionPath) {
+      treeReArmedForPath = conceptionPath;
+      refreshChain = refreshChain
+        .then(() => refreshWatchedConception())
+        .catch((e) => console.error('[watcher] re-arm failed', e));
+    }
   });
 
   current = { path: conceptionPath, watcher, roots, paths };
@@ -196,6 +212,16 @@ async function refreshWatchedConception(): Promise<void> {
   pending = [];
   pendingUnknown = false;
   await setWatchedConception(path);
+  // The close→reattach window above can drop FS events: the replacement
+  // watcher's initial scan takes real time and `ignoreInitial: true` suppresses
+  // a replay of it, so anything that changed while no watcher was live would be
+  // missed until the next event, leaving push-driven views stale (W3b). Push
+  // one synthetic full-refresh so the renderer re-reads every store against
+  // current disk state, reconciling the gap.
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    safeSend(win.webContents, EVENT_CHANNELS.treeEvents, [{ kind: 'unknown' } as TreeEvent]);
+  }
 }
 
 // Promise chain so two rapid condash.json edits queue their

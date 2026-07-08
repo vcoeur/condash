@@ -119,6 +119,23 @@ describe('parseReadmesWithDiskCache', () => {
     expect(second.project.stepCounts.done).toBe(1);
   });
 
+  it('re-parses when only the size changes (same mtime) — the size key (P4)', async () => {
+    await utimes(readme, PINNED, PINNED);
+    const [first] = await parseReadmesWithDiskCache(root, [readme]);
+    expect(first.project.stepCounts.done).toBe(1);
+
+    // Complete the open step AND grow the file, then restore the SAME mtime.
+    // With mtime-only keying this is a false hit; the size component catches it.
+    await writeFile(
+      readme,
+      README.replace('- [ ] two', '- [x] two') + '\n<!-- padding changes the byte size -->\n',
+      'utf8',
+    );
+    await utimes(readme, PINNED, PINNED);
+    const [second] = await parseReadmesWithDiskCache(root, [readme]);
+    expect(second.project.stepCounts.done).toBe(2);
+  });
+
   it('re-parses when the README mtime changes', async () => {
     await utimes(readme, PINNED, PINNED);
     await parseReadmesWithDiskCache(root, [readme]);
@@ -148,7 +165,7 @@ describe('parseReadmesWithDiskCache', () => {
     const direct = await parseReadme(readme);
     await writeParseCache(
       root,
-      new Map([[ghost, { mtimeMs: 1, project: direct, header: { extra: {} } as never }]]),
+      new Map([[ghost, { mtimeMs: 1, size: 1, project: direct, header: { extra: {} } as never }]]),
     );
 
     await parseReadmesWithDiskCache(root, [readme]);

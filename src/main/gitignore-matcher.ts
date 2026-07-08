@@ -24,15 +24,15 @@ import { join } from 'node:path';
 import { toPosix } from '../shared/path';
 
 /**
- * Hardcoded floor — always ignored regardless of what the repo's gitignore
- * says. Tested against the repo-root-relative POSIX path.
+ * Always-ignored floor — matched regardless of what the repo's gitignore says,
+ * and regardless of whether the node is a file or a directory. Tested against
+ * the repo-root-relative POSIX path.
  *
- * `.condash` is the load-bearing addition over the old `WORKTREE_IGNORED`
- * list: it is condash's own per-conception state dir (session logs flush every
- * few seconds), so the direct self-trigger fix must not depend on the
- * conception's `.gitignore` actually listing it. The other five entries carry
- * over the pre-gitignore behaviour as a backstop for repos whose gitignore is
- * missing or wrong.
+ * `.condash` is the load-bearing entry: it is condash's own per-conception
+ * state dir (session logs flush every few seconds), so the self-trigger fix
+ * must not depend on the conception's `.gitignore` actually listing it. `.git`
+ * and `node_modules` are the other invariant "never a real file" dirs. All
+ * three are directories in every practical case.
  *
  * Deliberately NOT "ignore every dot-directory": tracked dot-dirs are real
  * (`.github/`, `.agents/`, `.vscode/`) and blanket-ignoring them would drop
@@ -40,14 +40,29 @@ import { toPosix } from '../shared/path';
  * `.claude`, `__pycache__`, …) are already gitignored in practice, so the
  * gitignore matcher covers them without over-reaching here.
  */
-const HARDCODED_FLOOR: readonly RegExp[] = [
+const ALWAYS_FLOOR: readonly RegExp[] = [
   /(^|\/)\.git(\/|$)/,
   /(^|\/)\.condash(\/|$)/,
   /(^|\/)node_modules(\/|$)/,
-  /(^|\/)dist[^/]*(\/|$)/,
-  /(^|\/)build[^/]*(\/|$)/,
-  /(^|\/)target(\/|$)/,
 ];
+
+/**
+ * Build/output directory floor — a backstop for repos whose gitignore is
+ * missing or wrong. Unlike {@link ALWAYS_FLOOR} these are ignored ONLY when the
+ * matching segment is a *directory* (see `ignores`): a FILE named `dist`,
+ * `build.rs`, or `target` is ordinary source and must stay watched (W1).
+ *
+ * `dist`/`build` match the word plus any separator-suffixed variant
+ * (`dist-electron`, `dist-cli`, `build-out`) but NOT a longer word that merely
+ * begins with those letters (`distribution`, `distance.py`, `builder.ts`,
+ * `building.md`) — those are real source names the old `dist[^/]*` / `build[^/]*`
+ * prefix wrongly suppressed, including the whole `src/distribution/` tree (W1).
+ * `target` is an exact segment. A build dir with an unusual name is covered by
+ * the repo's own gitignore; the floor only needs the common conventions.
+ */
+function isBuildFloorSegment(segment: string): boolean {
+  return segment === 'target' || /^(?:dist|build)(?:$|[^a-zA-Z0-9])/.test(segment);
+}
 
 /** A path→ignored predicate scoped to one watch root. */
 export interface GitignoreMatcher {
@@ -92,8 +107,19 @@ export function buildGitignoreMatcher(root: string, ruleText: string): Gitignore
       const rel = toRepoRelative(rootPosix, toPosix(absPath));
       // Root itself or anything outside the root — never our concern.
       if (rel === null || rel === '') return false;
-      // Floor first: cheap regex, and correct even when gitignore is silent.
-      for (const floor of HARDCODED_FLOOR) if (floor.test(rel)) return true;
+      // Always-floor first: cheap regex, correct even when gitignore is silent.
+      for (const floor of ALWAYS_FLOOR) if (floor.test(rel)) return true;
+      // Build-dir floor (dir-only): a matching segment is ignored only when it
+      // is a directory. A NON-FINAL match is a directory by definition (it has
+      // children after it → blocks descent); a FINAL match is a directory only
+      // when isDirectory === true. A FILE named `dist`/`build.rs`/`target` stays
+      // watched, and with no stats (isDirectory === undefined) a final-only
+      // match stays watched too — the conservative choice (W1).
+      const segments = rel.split('/');
+      for (let i = 0; i < segments.length; i++) {
+        if (!isBuildFloorSegment(segments[i])) continue;
+        if (i < segments.length - 1 || isDirectory === true) return true;
+      }
       if (ig.ignores(rel)) return true;
       // A dir-only pattern (`foo/`) matches `foo/` and `foo/child` but not the
       // bare `foo` node — so to block descent we must probe the trailing-slash
@@ -123,8 +149,16 @@ export function buildGitignoreMatcher(root: string, ruleText: string): Gitignore
  * @returns concatenated rule text (empty string when nothing is readable).
  */
 export function readRuleText(root: string, globalExcludesFile: string | null): string {
-  const sources = [join(root, '.gitignore'), join(root, '.git', 'info', 'exclude')];
+  // Concatenate in ASCENDING git precedence, because the `ignore` package is
+  // last-match-wins: the source that gets the final word must be the one git
+  // ranks highest. Git precedence (low → high) is global excludes →
+  // `.git/info/exclude` → the repo's `.gitignore`. Concatenating the other way
+  // (the old order) inverted it, so e.g. a global `*.log` beat a repo
+  // `!server.log` and the matcher ignored a file git tracks and watches (W2).
+  const sources: string[] = [];
   if (globalExcludesFile) sources.push(globalExcludesFile);
+  sources.push(join(root, '.git', 'info', 'exclude'));
+  sources.push(join(root, '.gitignore'));
   const parts: string[] = [];
   for (const source of sources) {
     try {
