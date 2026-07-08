@@ -81,3 +81,23 @@ export function displayName(tab: Tab): string {
   if (tab.termTitle) return tab.termTitle;
   return tab.label;
 }
+
+/**
+ * Element-wise equality of two optional string lists. Both undefined → equal;
+ * exactly one undefined → not equal; otherwise same length and same elements in
+ * order. Lets the dashboard-summary reconcile skip reallocating a Tab when a
+ * pushed summary's `contextLines` are unchanged, so the reference-keyed tab-row
+ * `<For>` doesn't tear down and rebuild an unchanged row (review finding T7).
+ */
+export function sameStringList(
+  a: readonly string[] | undefined,
+  b: readonly string[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}

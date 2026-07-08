@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayName, type Tab } from './types';
+import { displayName, sameStringList, type Tab } from './types';
 
 function tab(overrides: Partial<Tab>): Tab {
   return {
@@ -80,5 +80,21 @@ describe('displayName', () => {
         ),
       ).toBe('session 7');
     });
+  });
+});
+
+describe('sameStringList — T7 contextLines compare', () => {
+  it('treats both-undefined as equal and one-side-undefined as different', () => {
+    expect(sameStringList(undefined, undefined)).toBe(true);
+    expect(sameStringList(undefined, [])).toBe(false);
+    expect(sameStringList(['a'], undefined)).toBe(false);
+  });
+
+  it('compares element-wise in order', () => {
+    expect(sameStringList([], [])).toBe(true);
+    expect(sameStringList(['a', 'b'], ['a', 'b'])).toBe(true);
+    expect(sameStringList(['a', 'b'], ['a', 'c'])).toBe(false);
+    expect(sameStringList(['a', 'b'], ['b', 'a'])).toBe(false);
+    expect(sameStringList(['a'], ['a', 'b'])).toBe(false);
   });
 });

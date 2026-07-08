@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   conceptionConfigWritePath,
   getEffectiveConceptionConfig,
+  invalidateEffectiveConfigMemo,
   readConceptionConfigRaw,
   resolveConceptionConfigPath,
 } from './effective-config';
@@ -14,6 +15,9 @@ let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'condash-eff-cfg-'));
+  // The read memo is a module-level single slot; drop it so a prior case's
+  // cached (conceptionPath, settingsFile) entry can't leak into this one.
+  invalidateEffectiveConfigMemo();
 });
 
 afterEach(() => {
@@ -199,5 +203,58 @@ describe('getEffectiveConceptionConfig', () => {
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({ shell: '/bin/bash' });
+  });
+});
+
+describe('getEffectiveConceptionConfig — B4 mtime+size read memo', () => {
+  it('returns the cached object by reference when neither file changed', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(condashSettingsPath(tmp), JSON.stringify({ workspace_path: '/x' }));
+    const first = await getEffectiveConceptionConfig(tmp, global);
+    const second = await getEffectiveConceptionConfig(tmp, global);
+    // Same reference: a hit skips the read + parse + merge entirely.
+    expect(second).toBe(first);
+  });
+
+  it('re-reads after the conception file changes (size bump defeats the memo)', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(condashSettingsPath(tmp), JSON.stringify({ workspace_path: '/x' }));
+    const first = await getEffectiveConceptionConfig(tmp, global);
+    // A different byte length changes the stat size, so the memo misses even if
+    // the write lands in the same millisecond.
+    writeFileSync(condashSettingsPath(tmp), JSON.stringify({ workspace_path: '/changed/longer' }));
+    const second = await getEffectiveConceptionConfig(tmp, global);
+    expect(second).not.toBe(first);
+    expect(second.workspace_path).toBe('/changed/longer');
+  });
+
+  it('re-reads after the global settings file changes', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
+    mkdirSync(join(tmp, CONDASH_DIR));
+    writeFileSync(condashSettingsPath(tmp), JSON.stringify({ workspace_path: '/x' }));
+    const first = await getEffectiveConceptionConfig(tmp, global);
+    writeFileSync(global, JSON.stringify({ theme: 'light', cardMinWidth: { logs: 240 } }));
+    const second = await getEffectiveConceptionConfig(tmp, global);
+    expect(second).not.toBe(first);
+    expect(second.theme).toBe('light');
+  });
+
+  it('keys on the legacy condash.json when that is the file that resolved', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
+    // No .condash/settings.json — the conception side resolves to condash.json.
+    writeFileSync(join(tmp, 'condash.json'), JSON.stringify({ workspace_path: '/legacy' }));
+    const first = await getEffectiveConceptionConfig(tmp, global);
+    expect(first.workspace_path).toBe('/legacy');
+    // A change to the resolved legacy file must still invalidate the memo.
+    writeFileSync(join(tmp, 'condash.json'), JSON.stringify({ workspace_path: '/legacy/moved' }));
+    const second = await getEffectiveConceptionConfig(tmp, global);
+    expect(second).not.toBe(first);
+    expect(second.workspace_path).toBe('/legacy/moved');
   });
 });

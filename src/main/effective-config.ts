@@ -200,16 +200,129 @@ async function readGlobalSettingsRaw(settingsFile: string): Promise<Record<strin
 
 const GLOBAL_ONLY_KEYS = new Set(['lastConceptionPath', 'recentConceptionPaths', 'conceptionPath']);
 
+// Mtime+size-keyed read memo for the merged effective config (review finding B4).
+//
+// The dashboard engine (15 s), the task scheduler (20 s), and several IPC getters
+// all call `getEffectiveConceptionConfig`, each an unconditional read + JSON.parse
+// + migrate of BOTH the global `settings.json` and the conception config file.
+// With N idle terminal tabs those ticks re-derive an identical object every few
+// seconds. The memo turns an unchanged pair of files into two `fs.stat`s: on a hit
+// (both files' mtimeMs AND size unchanged, and the same resolved conception
+// candidate) it returns the cached merged view without re-reading or re-parsing;
+// on a miss it reads, merges, and stores.
+//
+// Keyed on (mtimeMs, size) of the global settings file and of whichever
+// conception candidate actually resolved — the canonical
+// `.condash/settings.json`, else the legacy `condash.json` / `configuration.json`
+// fallbacks (first existing in read-priority order). A single slot keyed on
+// (conceptionPath, settingsFile) is enough: there is one active conception, and a
+// query with different paths simply misses and re-reads (never returns stale).
+//
+// Stat-per-read means NO explicit invalidation wiring is needed: condash's own
+// writes (via `mutateConceptionConfig` / `updateSettings` / `mutateSettingsJson`)
+// bump the file mtime, and so does any external editor, so the next read observes
+// the change. The only way to defeat the memo is an edit landing in the same
+// millisecond AND at the identical byte length — a vanishingly unlikely collision,
+// accepted (the same staleness contract as the settings.ts read memo).
+//
+// The cached object is returned BY REFERENCE, not cloned: no caller mutates the
+// result — every reader (`repos.ts`, `worktree-ops.ts`, `launchers.ts`,
+// `audit.ts`, `terminals.ts`, `path-bounds.ts`, the dashboard/scheduler ticks, the
+// IPC getters, the CLI `config` verbs) either reads scalar fields, spreads them
+// into a fresh object, or serialises the result over IPC (audited across the
+// codebase). Same read-only sharing contract as the settings.ts / parseReadme
+// memos. Treat the result as immutable — INCLUDING nested objects (`terminal`,
+// `repositories[]` entries, `taskConfig`): mutating a nested leaf silently
+// poisons the cache for every reader until the next file change. To change
+// config, go through updateSettings / mutateConceptionConfig, never by editing
+// what this returns.
+interface FileStatKey {
+  /** Absolute path stat'd (the resolved candidate), or '' when none exists. */
+  path: string;
+  mtimeMs: number;
+  size: number;
+}
+const ABSENT_STAT_KEY: FileStatKey = { path: '', mtimeMs: -1, size: -1 };
+
+interface EffectiveConfigMemoEntry {
+  conceptionPath: string;
+  settingsFile: string;
+  globalKey: FileStatKey;
+  conceptionKey: FileStatKey;
+  value: EffectiveConfig;
+}
+let effectiveConfigMemo: EffectiveConfigMemoEntry | null = null;
+
+/** Drop the effective-config read memo. Stat-per-read makes this unnecessary in
+ *  production (writes bump mtime); exported for test isolation. */
+export function invalidateEffectiveConfigMemo(): void {
+  effectiveConfigMemo = null;
+}
+
+function fileStatKeyEqual(a: FileStatKey, b: FileStatKey): boolean {
+  return a.path === b.path && a.mtimeMs === b.mtimeMs && a.size === b.size;
+}
+
+/** Stat `file`, returning its identity key or the absent sentinel on ENOENT. */
+async function statFileKey(file: string): Promise<FileStatKey> {
+  try {
+    const st = await fs.stat(file);
+    return { path: file, mtimeMs: st.mtimeMs, size: st.size };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ...ABSENT_STAT_KEY };
+    throw err;
+  }
+}
+
+/** Identity key for the conception config: the first existing candidate in
+ *  read-priority order (canonical `.condash/settings.json`, then the legacy
+ *  `condash.json` / `configuration.json` fallbacks), so the memo re-reads only
+ *  when the file that actually resolved changes. Absent sentinel when none exist.
+ *  A tombstoned legacy file is never the first existing candidate in a real tree
+ *  (the migrator writes the canonical file whenever it tombstones a legacy one),
+ *  so keying on first-existing tracks the resolved file; the read path still
+ *  skips tombstones itself on a miss. */
+async function statConceptionKey(conceptionPath: string): Promise<FileStatKey> {
+  const candidates = [
+    condashSettingsPath(conceptionPath),
+    legacyCondashJsonPath(conceptionPath),
+    legacyConfigurationJsonPath(conceptionPath),
+  ];
+  for (const candidate of candidates) {
+    const key = await statFileKey(candidate);
+    if (key.path) return key;
+  }
+  return { ...ABSENT_STAT_KEY };
+}
+
 /**
  * Compute the effective config for a conception. With disjoint schemas no
  * setting key can appear in both files, so this is a plain spread that can
  * never collide. The path-tracking keys stay global-only and never enter the
- * effective view.
+ * effective view. Memoised on both files' (mtimeMs, size) — see the memo note
+ * above — so an unchanged pair of files costs two stats instead of two full
+ * read+parse+migrate passes.
  */
 export async function getEffectiveConceptionConfig(
   conceptionPath: string,
   settingsFile: string = settingsPath(),
 ): Promise<EffectiveConfig> {
+  // Stat both inputs first: a cache hit costs these two stats and skips the
+  // read + JSON.parse + migrate of both files.
+  const [globalKey, conceptionKey] = await Promise.all([
+    statFileKey(settingsFile),
+    statConceptionKey(conceptionPath),
+  ]);
+  const memo = effectiveConfigMemo;
+  if (
+    memo &&
+    memo.conceptionPath === conceptionPath &&
+    memo.settingsFile === settingsFile &&
+    fileStatKeyEqual(memo.globalKey, globalKey) &&
+    fileStatKeyEqual(memo.conceptionKey, conceptionKey)
+  ) {
+    return memo.value;
+  }
   const [global, conception] = await Promise.all([
     readGlobalSettingsRaw(settingsFile),
     readConceptionConfigRaw(conceptionPath),
@@ -223,7 +336,9 @@ export async function getEffectiveConceptionConfig(
     if (GLOBAL_ONLY_KEYS.has(key)) continue;
     merged[key] = value;
   }
-  return merged as EffectiveConfig;
+  const value = merged as EffectiveConfig;
+  effectiveConfigMemo = { conceptionPath, settingsFile, globalKey, conceptionKey, value };
+  return value;
 }
 
 // Re-export the new constants from `./condash-dir` for callers that still

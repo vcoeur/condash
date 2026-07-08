@@ -11,7 +11,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 vi.mock('node-pty', () => ({ spawn: () => ({}) }));
 
-import { appendRecentTail, defaultShell, liveTabInfo, recentTail, wrapForShell } from './terminals';
+import {
+  appendRecentTail,
+  defaultShell,
+  liveTabInfo,
+  MEM_BROADCAST_QUANTUM_BYTES,
+  memSampleChanged,
+  recentTail,
+  wrapForShell,
+} from './terminals';
 import type { TermSide } from '../shared/types';
 
 /** Mirror of the module-internal cap + hysteresis so the assertions can pin the
@@ -103,6 +111,35 @@ describe('liveTabInfo — roster side/exit filtering (#366)', () => {
     expect(tab).toEqual({ sid: 'a', cwd: '/w/a' });
     const [withMeta] = liveTabInfo([row({ id: 'b', side: 'code', repo: 'r', cmd: 'c' })], 'code');
     expect(withMeta).toEqual({ sid: 'b', cwd: '/w/b', repo: 'r', cmd: 'c' });
+  });
+});
+
+describe('memSampleChanged — T5 memory-broadcast quantization', () => {
+  it('reports the first reading (undefined → number) as changed', () => {
+    expect(memSampleChanged(undefined, 1_000_000)).toBe(true);
+  });
+
+  it('reports a transition to "no reading" (number → undefined) as changed', () => {
+    expect(memSampleChanged(1_000_000, undefined)).toBe(true);
+  });
+
+  it('treats both-undefined and byte-identical readings as unchanged', () => {
+    expect(memSampleChanged(undefined, undefined)).toBe(false);
+    expect(memSampleChanged(5_000_000, 5_000_000)).toBe(false);
+  });
+
+  it('suppresses a sub-quantum wiggle (the steady-state idle churn)', () => {
+    const base = 6_400_000_000; // ~6.4 GB, near a typical 80%-of-8GB warn line
+    expect(memSampleChanged(base, base + 1)).toBe(false);
+    expect(memSampleChanged(base, base + (MEM_BROADCAST_QUANTUM_BYTES - 1))).toBe(false);
+    expect(memSampleChanged(base, base - (MEM_BROADCAST_QUANTUM_BYTES - 1))).toBe(false);
+  });
+
+  it('broadcasts a move of at least one quantum, in either direction', () => {
+    const base = 6_400_000_000;
+    expect(memSampleChanged(base, base + MEM_BROADCAST_QUANTUM_BYTES)).toBe(true);
+    expect(memSampleChanged(base, base - MEM_BROADCAST_QUANTUM_BYTES)).toBe(true);
+    expect(memSampleChanged(base, base + MEM_BROADCAST_QUANTUM_BYTES * 4)).toBe(true);
   });
 });
 
