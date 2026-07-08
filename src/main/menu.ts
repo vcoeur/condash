@@ -2,6 +2,7 @@ import { BrowserWindow, Menu, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
+import { safeSend } from './safe-send';
 import type { LayoutState } from '../shared/types';
 
 type Recents = { paths: string[]; current: string | null };
@@ -9,6 +10,16 @@ type Recents = { paths: string[]; current: string | null };
 let mainWindowRef: BrowserWindow | null = null;
 let lastLayout: LayoutState = DEFAULT_LAYOUT;
 let lastRecents: Recents = { paths: [], current: null };
+
+/** Push a menu-command event to the live window through `safeSend`, guarding a
+ *  torn-down `mainWindowRef` (accessing `.webContents` on a destroyed
+ *  BrowserWindow throws). Menu clicks fire outside any request scope, so a bare
+ *  send to a disposed-but-not-destroyed frame could throw into the app loop
+ *  (E5). */
+function sendToMain(channel: string, payload?: unknown): void {
+  if (!mainWindowRef || mainWindowRef.isDestroyed()) return;
+  safeSend(mainWindowRef.webContents, channel, payload);
+}
 
 /** Inject the live window reference. Menu callbacks fire IPC at the window. */
 export function setMenuWindow(win: BrowserWindow | null): void {
@@ -49,7 +60,7 @@ export function buildMenu(
   lastLayout = layout;
   lastRecents = recents;
   const send = (command: string): void => {
-    mainWindowRef?.webContents.send(EVENT_CHANNELS.menuCommand, command);
+    sendToMain(EVENT_CHANNELS.menuCommand, command);
   };
 
   const openRecentSubmenu: MenuItemConstructorOptions[] = recents.paths.length
@@ -59,14 +70,14 @@ export function buildMenu(
           type: 'checkbox' as const,
           checked: path === recents.current,
           click: () => {
-            mainWindowRef?.webContents.send(EVENT_CHANNELS.menuOpenRecent, path);
+            sendToMain(EVENT_CHANNELS.menuOpenRecent, path);
           },
         })),
         { type: 'separator' as const },
         {
           label: 'Clear menu',
           click: () => {
-            mainWindowRef?.webContents.send(EVENT_CHANNELS.menuClearRecents);
+            sendToMain(EVENT_CHANNELS.menuClearRecents);
           },
         },
       ]

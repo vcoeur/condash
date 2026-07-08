@@ -46,10 +46,16 @@ export function createBranchFilterStore(deps: BranchFilterStoreDeps): BranchFilt
   // sticky-all default is computed in main (true when the user had no explicit
   // selection) so the first paint matches the old "show every branch" behaviour
   // for upgrading installs.
-  void getBootstrap().then((boot) => {
-    setSelectedBranches(new Set(boot.selectedBranches));
-    setStickyAllSignal(boot.branchFilterStickyAll);
-  });
+  void getBootstrap()
+    .then((boot) => {
+      setSelectedBranches(new Set(boot.selectedBranches));
+      setStickyAllSignal(boot.branchFilterStickyAll);
+    })
+    // A failed bootstrap must not leave an unhandled rejection: keep the
+    // defaults (empty set + sticky-all "show every branch") and toast (B2).
+    .catch((err) =>
+      deps.flashToast(`Could not load branch filter: ${(err as Error).message}`, 'error'),
+    );
 
   const persistSet = (next: ReadonlySet<string>): void => {
     void window.condash.setSelectedBranches(Array.from(next)).catch((err) => {

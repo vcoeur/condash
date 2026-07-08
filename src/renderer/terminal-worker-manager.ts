@@ -13,6 +13,14 @@ export class TerminalWorkerManager {
     { resolve: (value: string) => void; reject: (err: Error) => void }
   >();
 
+  /** Watchdog for a round-trip RPC (create / serialize / dispose). A lost worker
+   *  reply — a crashed or wedged worker thread — would otherwise leave the
+   *  request pending forever, and with it the controller's `transitioning` entry
+   *  for that tab (its `finally` never runs), freezing tab promotion. Rejecting
+   *  after this bound lets the `finally` run so the entry clears and the
+   *  transition degrades to a retry-able state (R1). */
+  private static readonly REQUEST_TIMEOUT_MS = 10_000;
+
   /** Spawn the worker thread on first use and cache it. Constructing the
    *  manager is free — the Worker (and its whole module graph) is created only
    *  when a tab first needs offloading to the headless side (the first demote,
@@ -64,7 +72,29 @@ export class TerminalWorkerManager {
   private request(type: string, sid: string, payload?: Record<string, unknown>): Promise<string> {
     return new Promise((resolve, reject) => {
       const rid = this.nextRequestId++;
-      this.pending.set(rid, { resolve, reject });
+      // Reject a reply that never comes so the caller's `finally` runs (R1).
+      const timer = setTimeout(() => {
+        const pending = this.pending.get(rid);
+        if (!pending) return;
+        this.pending.delete(rid);
+        pending.reject(
+          new Error(
+            `terminal worker '${type}' timed out after ${TerminalWorkerManager.REQUEST_TIMEOUT_MS}ms`,
+          ),
+        );
+      }, TerminalWorkerManager.REQUEST_TIMEOUT_MS);
+      // Clear the watchdog on either settle path (reply, worker error, or
+      // terminate) — all of which resolve/reject through these two closures.
+      this.pending.set(rid, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
       this.ensureWorker().postMessage({ type, sid, rid, ...payload });
     });
   }

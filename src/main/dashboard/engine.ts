@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { EVENT_CHANNELS } from '../../shared/ipc-channels';
+import { safeSend } from '../safe-send';
 import type {
   DashboardConfig,
   DashboardConfigView,
@@ -59,11 +60,17 @@ let jitterBySid = new Map<string, number>();
 /** Epoch ms of the last tick that actually summarized a tab — engine status only. */
 let lastRunAt = 0;
 let inFlight = false;
+/** Bumped on every engine re-point / teardown. A tick / refreshTab captures it
+ *  at entry and re-checks after each await, so a cycle whose 60 s LLM round-trips
+ *  straddle a conception switch neither overwrites the new tree's reset state,
+ *  pushes the old tree's cards to the new dashboard, nor unlatches a running new
+ *  cycle's `inFlight` in its `finally` (E3). Same idiom as the task scheduler (E1). */
+let generation = 0;
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
-    win.webContents.send(channel, payload);
+    if (win.isDestroyed()) continue;
+    safeSend(win.webContents, channel, payload);
   }
 }
 
@@ -98,6 +105,9 @@ function publishEngine(next: DashboardEngineStatus): void {
  */
 export async function setDashboardConception(conceptionPath: string | null): Promise<void> {
   if (current?.path === conceptionPath) return;
+  // Invalidate every in-flight tick / refreshTab captured against the prior
+  // generation so none of them mutate `state` or push for the torn-down tree (E3).
+  generation += 1;
   if (current) {
     clearInterval(current.interval);
     current = null;
@@ -366,6 +376,10 @@ async function buildSummary(
  *  Exported for unit testing. */
 export async function tick(conceptionPath: string): Promise<void> {
   if (current?.path !== conceptionPath || inFlight) return;
+  // Snapshot the generation at entry: setDashboardConception bumps it on every
+  // re-point / teardown, so this cycle can tell — after any await below — that it
+  // now belongs to a switched-away tree and bail before touching `state` (E3).
+  const myGeneration = generation;
   // Read config inside a guard: a malformed `.condash/settings.json` makes the
   // effective-config read throw, and the tick is fired as `void tick(...)` from
   // a bare interval with no global rejection handler — so a bad config must make
@@ -377,6 +391,9 @@ export async function tick(conceptionPath: string): Promise<void> {
   } catch {
     return;
   }
+  // A conception switch during the config read must abort this cycle before it
+  // mutates the (now reset) module state for the wrong tree.
+  if (generation !== myGeneration) return;
   if (!config.enabled) return;
 
   // Refresh the open-tab roster every tick — cheap, no LLM — so a newly opened
@@ -498,6 +515,11 @@ export async function tick(conceptionPath: string): Promise<void> {
         return buildSummary(config, conceptionPath, tabMeta, priorBySid.get(sid), now);
       }),
     );
+    // The LLM round-trips above can span a conception switch. If one landed, this
+    // cycle now belongs to the old tree — bail before it overwrites the new tree's
+    // reset state or pushes old-tree cards to the new dashboard (E3). The `finally`
+    // below leaves the new cycle's `inFlight` alone (generation-guarded).
+    if (generation !== myGeneration) return;
     for (const summary of built) {
       if (!summary) continue;
       const at = indexOf(summary.sid);
@@ -537,13 +559,17 @@ export async function tick(conceptionPath: string): Promise<void> {
   } catch (err) {
     process.stderr.write(`condash dashboard: tick failed: ${(err as Error).message}\n`);
     // A throw before the resting-state push leaves the summarizing overlay set;
-    // clear it so cards don't stay stuck reading "Summarizing".
-    if (state.summarizingSids?.length) {
+    // clear it so cards don't stay stuck reading "Summarizing". Only for our own
+    // generation — a switch during the cycle already reset `state` (E3).
+    if (generation === myGeneration && state.summarizingSids?.length) {
       state = { ...state, summarizingSids: [] };
       pushState();
     }
   } finally {
-    inFlight = false;
+    // Only unlatch our own generation's guard: a conception switch mid-cycle set
+    // `inFlight = false` and a fresh tick may already have re-latched it, so
+    // clearing it here unconditionally would unlatch that running new cycle (E3).
+    if (generation === myGeneration) inFlight = false;
   }
 }
 
@@ -560,12 +586,16 @@ export async function tick(conceptionPath: string): Promise<void> {
 export async function refreshTab(sid: string): Promise<void> {
   const armed = current;
   if (!armed || inFlight) return;
+  // Same generation guard as `tick` (E3): a conception switch during either await
+  // below must abort before this refresh clobbers the new tree's state.
+  const myGeneration = generation;
   let config: DashboardConfig;
   try {
     config = await readDashboardConfig(armed.path);
   } catch {
     return;
   }
+  if (generation !== myGeneration) return;
   if (!config.enabled || !config.apiKey) return;
   const tabMeta = dashboardRoster().find((tab) => tab.sid === sid);
   if (!tabMeta) return;
@@ -579,6 +609,9 @@ export async function refreshTab(sid: string): Promise<void> {
   try {
     const prior = state.tabs.find((tab) => tab.sid === sid);
     const summary = await buildSummary(config, armed.path, tabMeta, prior, now);
+    // A switch during the LLM round-trip means this refresh now belongs to the
+    // old tree — bail before writing its card into the new tree's state (E3).
+    if (generation !== myGeneration) return;
     if (summary) {
       const others = state.tabs.filter((tab) => tab.sid !== sid);
       // Bank this sid's byte count and push its clock a full interval out so the
@@ -606,9 +639,13 @@ export async function refreshTab(sid: string): Promise<void> {
     }
   } catch (err) {
     process.stderr.write(`condash dashboard: tab refresh failed: ${(err as Error).message}\n`);
-    state = { ...state, summarizingSids: [] };
-    pushState();
+    // Only clear the overlay for our own generation — a switch already reset it.
+    if (generation === myGeneration) {
+      state = { ...state, summarizingSids: [] };
+      pushState();
+    }
   } finally {
-    inFlight = false;
+    // Unlatch only our own generation's guard (see the tick's finally, E3).
+    if (generation === myGeneration) inFlight = false;
   }
 }

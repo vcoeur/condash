@@ -20,6 +20,7 @@ import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
 import { wrapWithMemoryScope, sampleCgroupMemory } from './tab-scope';
 import { spawnEnv } from './shell-env';
+import { safeSend } from './safe-send';
 import { SessionLogger } from './terminal-logger';
 import { cleanTerminalText } from './dashboard/clean-text';
 import { OscTranscriptExtractor } from './osc-transcript';
@@ -147,31 +148,6 @@ function snapshot(): TermSession[] {
     memBytes: s.memBytes,
     memMaxBytes: s.memMaxBytes,
   }));
-}
-
-/**
- * Send an event to a renderer, tolerating a webContents whose render process
- * has crashed or whose frame was disposed (render-process-gone) but which
- * `isDestroyed()` still reports as live. After an OOM kill or renderer crash the
- * frame is disposed-but-not-destroyed, so a bare `.send` logs "Render frame was
- * disposed before WebFrameMain could be accessed" and can throw. A pty
- * `onData`/`onExit` callback runs outside any request scope, so an escaping
- * throw there would take the whole main process (and every tab) down — guard the
- * crashed state and swallow any residual throw so a dead renderer stays local.
- *
- * Returns whether the payload was actually handed to a live frame — a dropped
- * send must not be counted as in-flight by the flow controller (no ack will
- * ever arrive for it, and the stale count would pin the pty paused; L3).
- */
-function safeSend(wc: WebContents, channel: string, payload: unknown): boolean {
-  if (wc.isDestroyed() || wc.isCrashed()) return false;
-  try {
-    wc.send(channel, payload);
-    return true;
-  } catch {
-    /* frame disposed between the check and the send — drop the event */
-    return false;
-  }
 }
 
 function broadcastSessions(): void {

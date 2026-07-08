@@ -107,6 +107,36 @@ describe('degenerate settings.json roots', () => {
   });
 });
 
+describe('corrupt settings.json recovery (B1)', () => {
+  it('boots with defaults and renames the corrupt file aside on a parse error', async () => {
+    // A truncated / hand-broken JSON body — JSON.parse throws a SyntaxError.
+    await fs.writeFile(settingsFile, '{ "theme": "dark", ');
+    const { readSettings, DEFAULT_LAYOUT } = await loadSettingsModule();
+    const settings = await readSettings();
+    // Degrades to defaults rather than rethrowing into the boot chain.
+    expect(settings.lastConceptionPath).toBeNull();
+    expect(settings.theme).toBe('system');
+    expect(settings.layout).toEqual(DEFAULT_LAYOUT);
+    // The original path is cleared…
+    await expect(fs.access(settingsFile)).rejects.toThrow();
+    // …and a `.corrupt-<ts>` sibling now holds the bad content.
+    const entries = await fs.readdir(tmp);
+    const aside = entries.filter((e) => e.startsWith('settings.json.corrupt-'));
+    expect(aside).toHaveLength(1);
+    expect(await fs.readFile(join(tmp, aside[0]), 'utf8')).toBe('{ "theme": "dark", ');
+  });
+
+  it('a subsequent write after recovery produces a valid file', async () => {
+    await fs.writeFile(settingsFile, 'not json at all');
+    const { readSettings, updateSettings } = await loadSettingsModule();
+    // Recovery renames the corrupt file aside and returns defaults.
+    await readSettings();
+    await updateSettings((cur) => ({ ...cur, theme: 'light' }));
+    const onDisk = JSON.parse(await fs.readFile(settingsFile, 'utf8')) as Record<string, unknown>;
+    expect(onDisk.theme).toBe('light');
+  });
+});
+
 describe('settings.json read memo', () => {
   // `dark` and `lite` are both 4-char sentinels: writing one over the other
   // keeps the JSON byte length (hence the stat `size`) identical, so these tests

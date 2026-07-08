@@ -18,6 +18,7 @@ import {
   startMemorySampling,
   trackedSessionIds,
 } from './terminals';
+import { clearBootRepos } from './repos';
 import { capOwnAppScopeAsync } from './tab-scope';
 import { prewarmDefaultPanes } from './prewarm';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
@@ -363,6 +364,10 @@ function registerIpc(): void {
     onConceptionPicked: (picked) => {
       cachedConceptionPath = picked;
       updateWindowTitle(picked);
+      // Drop any boot repo-prewarm slot: it was warmed for the old tree (or for
+      // the new tree during a fast boot-time switch) and must never be awaited by
+      // a later listRepos, which would hand back the wrong tree's repos (B5).
+      clearBootRepos();
       void rebuildMenuFromSettings();
       startJanitor(picked);
       // Re-point the task scheduler at the newly picked conception.

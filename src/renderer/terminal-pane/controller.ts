@@ -107,6 +107,21 @@ export function createTerminalController(props: TerminalPaneProps) {
   // either side; they are buffered and flushed once the destination exists.
   const transitioning = new Set<string>();
   const transitionBuffers = new Map<string, string[]>();
+  // Per-column count of in-flight visibility transitions. The #397 focus-churn
+  // guard (`promote`) gates on the tab's OWN column via this — not the global
+  // `transitioning` set — so a stuck transition (e.g. a lost worker RPC before
+  // the watchdog fires) on one column can't eat focus-promotion on the other,
+  // and the worker RPC watchdog time-bounds any stuck-ness (R1). Kept in lockstep
+  // with `transitioning` through beginTransition / endTransition.
+  const transitioningInColumn: Record<Column, number> = { left: 0, right: 0 };
+  const beginTransition = (id: string, column: Column): void => {
+    transitioning.add(id);
+    transitioningInColumn[column] += 1;
+  };
+  const endTransition = (id: string, column: Column): void => {
+    transitioning.delete(id);
+    transitioningInColumn[column] = Math.max(0, transitioningInColumn[column] - 1);
+  };
   // Sessions mid-Refresh: their pty is held one row short so the running program
   // observes a real resize and repaints. A competing `fit()` (e.g. the one at the
   // tail of every `syncVisibility`) would restore the full size within a frame
@@ -178,19 +193,20 @@ export function createTerminalController(props: TerminalPaneProps) {
     // xterm (otherwise typing into it works but the tab strip's "active"
     // styling stays on whichever tab last got a click).
     const promote = () => {
-      // Ignore focus churn during a visibility transition. A tab switch
-      // demotes the old DOM Terminal and mounts the new one, and that
+      // `xterms.get(id)?.column` so a tab that's been moved between columns
+      // still resolves to its current side.
+      const col = xterms.get(id)?.column ?? column;
+      // Ignore focus churn during a visibility transition IN THIS COLUMN. A tab
+      // switch demotes the old DOM Terminal and mounts the new one, and that
       // teardown/mount moves DOM focus programmatically — a `focusin` fires on
       // a terminal the user did NOT select. Honouring it here would call
       // `setActiveIn` for the wrong tab, reverting the in-flight switch and
       // demoting the tab the user actually picked (the hidden-tab round-trip
-      // then reads no live Terminal). Genuine user clicks/focus land in the
-      // steady state, when nothing is transitioning, so gating on an empty
-      // `transitioning` set keeps the intended behaviour without the race.
-      if (transitioning.size > 0) return;
-      // `xterms.get(id)?.column` so a tab that's been moved between columns
-      // still resolves to its current side.
-      const col = xterms.get(id)?.column ?? column;
+      // then reads no live Terminal). Gating on the column (not the global set)
+      // keeps that guard while letting a genuine click in the OTHER column
+      // through even when this one is mid-transition or stuck (R1). Genuine user
+      // clicks/focus land in the steady state, when this column is idle.
+      if (transitioningInColumn[col] > 0) return;
       if (activeIdIn(col) !== id) setActiveIn(col, id);
       if (activeColumn() !== col) setActiveColumn(col);
     };
@@ -283,14 +299,23 @@ export function createTerminalController(props: TerminalPaneProps) {
     // Promote worker tabs that should be visible.
     for (const id of desiredDomIds) {
       if (xterms.has(id) || transitioning.has(id)) continue;
-      transitioning.add(id);
+      const tab = tabs().find((t) => t.id === id);
+      const col = tab?.column ?? 'left';
+      beginTransition(id, col);
       try {
-        const tab = tabs().find((t) => t.id === id);
-        const col = tab?.column ?? 'left';
         const fromWorker = workerSessions.has(id);
         let replay: string;
         if (fromWorker) {
-          replay = await worker.serialize(id);
+          try {
+            replay = await worker.serialize(id);
+          } catch {
+            // The worker RPC failed / timed out (watchdog). Don't leave the
+            // active tab blank: mount with whatever buffered tail we have so the
+            // user gets a live terminal (scrollback may be lost) rather than an
+            // empty pane, and the transition still clears via the finally (R1).
+            replay = transitionBuffers.get(id)?.join('') ?? '';
+            transitionBuffers.delete(id);
+          }
         } else {
           // Defensive: this tab never had a worker Terminal (shown before it was
           // ever demoted). Replay the buffered tail and drop it here so the
@@ -302,18 +327,21 @@ export function createTerminalController(props: TerminalPaneProps) {
         // The snapshot captured everything; the worker Terminal is now stale.
         // Dispose it so a hidden→shown→closed session does not leak its headless
         // Terminal (and full scrollback) in the worker for the app's lifetime.
-        if (fromWorker) void worker.dispose(id);
+        // Fire-and-forget, but `.catch` it: the dispose RPC can now reject via the
+        // watchdog, and an unhandled rejection would spam the renderer (R1).
+        if (fromWorker) void worker.dispose(id).catch(() => undefined);
         await mountForSession(id, col, replay);
         flushTransitionBuffer(id, 'dom');
       } finally {
-        transitioning.delete(id);
+        endTransition(id, col);
       }
     }
 
     // Demote DOM tabs that should be hidden.
     for (const [tid, h] of xterms) {
       if (desiredDomIds.has(tid) || transitioning.has(tid)) continue;
-      transitioning.add(tid);
+      const demoteColumn = h.column;
+      beginTransition(tid, demoteColumn);
       try {
         const snapshot = h.serialize.serialize();
         await worker.create(tid, h.term.cols, h.term.rows, h.term.options.scrollback as number);
@@ -325,7 +353,7 @@ export function createTerminalController(props: TerminalPaneProps) {
         xterms.delete(tid);
         flushTransitionBuffer(tid, 'worker');
       } finally {
-        transitioning.delete(tid);
+        endTransition(tid, demoteColumn);
       }
     }
 
@@ -474,7 +502,10 @@ export function createTerminalController(props: TerminalPaneProps) {
       xterms.delete(id);
       if (workerSessions.has(id)) {
         workerSessions.delete(id);
-        void worker.dispose(id);
+        // `.catch`: the dispose RPC can now reject via the watchdog, and an
+        // unhandled rejection from this fire-and-forget call would spam the
+        // renderer (R1).
+        void worker.dispose(id).catch(() => undefined);
       }
       transitionBuffers.delete(id);
       // The tab is gone from the snapshot — its close has landed, so the

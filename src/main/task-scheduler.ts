@@ -23,6 +23,7 @@ import { randomBytes } from 'node:crypto';
 import { BrowserWindow } from 'electron';
 import * as pty from 'node-pty';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
+import { safeSend } from './safe-send';
 import { listAgents } from './agents';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings } from './settings';
@@ -125,6 +126,12 @@ let current: { path: string; interval: ReturnType<typeof setInterval> } | null =
 const states = new Map<string, TaskState>();
 /** In-flight headless runs keyed by sid — surfaced + killable from the UI. */
 const running = new Map<string, RunHandle>();
+/** Bumped on every scheduler re-point / teardown. A tick captures it at entry
+ *  and a launched `runHeadless` carries it; both re-check it after their awaits
+ *  so a straggler that resumes post-teardown neither repopulates `states` nor
+ *  spawns a background pty into a cleared `running` map — which would orphan the
+ *  pty past quit, its kill-timer dead with the app (E1). */
+let generation = 0;
 
 /** Snapshot of the currently-running headless task runs (capability 1). */
 export function listRunningTaskRuns(): RunningTaskRun[] {
@@ -142,8 +149,8 @@ export function listRunningTaskRuns(): RunningTaskRun[] {
 function broadcastRuns(): void {
   const payload = listRunningTaskRuns();
   for (const win of BrowserWindow.getAllWindows()) {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
-    win.webContents.send(EVENT_CHANNELS.taskRuns, payload);
+    if (win.isDestroyed()) continue;
+    safeSend(win.webContents, EVENT_CHANNELS.taskRuns, payload);
   }
 }
 
@@ -183,6 +190,7 @@ async function runHeadless(
   updatedTabs: TabInfo[],
   timeoutMs: number,
   mode: RunMode,
+  launchGeneration: number,
 ): Promise<void> {
   const task = await readTask(conceptionPath, slug);
   if (!task) throw new Error(`task ${slug} not found`);
@@ -218,7 +226,38 @@ async function runHeadless(
   delete childEnv.npm_config_globalconfig;
   delete childEnv.npm_config_userconfig;
 
+  // Teardown/switch guard (E1): the scheduler may have been re-pointed or torn
+  // down during the setup awaits above (readTask / listAgents / readSettings /
+  // config / spawnEnv). Abort HERE — after the last await, before any logger or
+  // pty is allocated — so a run started for the old tree never spawns a
+  // background pty into a cleared `running` map (its kill-timer is a
+  // main-process timer that dies with the app, orphaning the pty past quit).
+  // There is no await between this check and `pty.spawn` below, and the teardown
+  // path is fully synchronous, so the check→spawn is effectively atomic. Placed
+  // before the logger is constructed so an abort also can't leak an unsealed log.
+  if (generation !== launchGeneration) return;
+
   const sid = makeSid();
+
+  // Contain a headless scheduled run in its own memory-limited scope too — a
+  // background agent can balloon just like an interactive tab. No-op on hosts
+  // without systemd cgroup support. The negative-pid SIGKILL below still reaches
+  // the scoped tree via the process group.
+  const scoped = wrapWithMemoryScope(shell, argv, config.terminal?.memory);
+  // Spawn BEFORE constructing the logger (E2): `pty.spawn` throws on a bad shell
+  // (ENOENT). Building the logger first would write its "running" header and
+  // then never close it on the throw — the tick's log-only catch can't seal a
+  // logger it never received — leaving a forever-"running" task-run log until
+  // the next boot's orphan sweep. Mirrors the interactive path (terminals.ts),
+  // which likewise constructs its logger only after a successful spawn.
+  const child = pty.spawn(scoped.program, scoped.argv, {
+    name: 'xterm-256color',
+    cols: 120,
+    rows: 40,
+    cwd: conceptionPath,
+    env: childEnv,
+  });
+
   // Force-enable the logger: a scheduled run is always recorded to its
   // segregated dir regardless of the user's global terminal-logging toggle.
   const logger = new SessionLogger(
@@ -234,19 +273,6 @@ async function runHeadless(
   );
   logger.spawn();
   const logPath = logger.filePath() ?? '';
-
-  // Contain a headless scheduled run in its own memory-limited scope too — a
-  // background agent can balloon just like an interactive tab. No-op on hosts
-  // without systemd cgroup support. The negative-pid SIGKILL below still reaches
-  // the scoped tree via the process group.
-  const scoped = wrapWithMemoryScope(shell, argv, config.terminal?.memory);
-  const child = pty.spawn(scoped.program, scoped.argv, {
-    name: 'xterm-256color',
-    cols: 120,
-    rows: 40,
-    cwd: conceptionPath,
-    env: childEnv,
-  });
 
   await new Promise<void>((resolve) => {
     let settled = false;
@@ -299,14 +325,24 @@ async function runHeadless(
   });
 }
 
-/** One scheduler tick: launch every due, non-in-flight, grown task. */
-async function tick(conceptionPath: string): Promise<void> {
+/** One scheduler tick: launch every due, non-in-flight, grown task. Exported for
+ *  unit testing of the teardown-race guard (E1). */
+export async function tick(conceptionPath: string): Promise<void> {
+  // Snapshot the generation at entry: setScheduledConception bumps it on every
+  // re-point / teardown, so a tick that resumes after its config-read await can
+  // tell it now belongs to a torn-down or switched-away tree and bail (E1).
+  const launchGeneration = generation;
   let config;
   try {
     config = await getEffectiveConceptionConfig(conceptionPath);
   } catch {
     return;
   }
+  // Re-point / teardown may have fired during the await above. Bail before
+  // touching per-task state so a straggler neither repopulates `states` for the
+  // torn-down tree nor launches a run into a cleared `running` map. The rest of
+  // this tick is synchronous, so this single re-check covers the whole launch.
+  if (generation !== launchGeneration) return;
   const taskConfig = (config.taskConfig ?? {}) as Record<string, TaskConfigEntry>;
   // Early-out before any per-task bookkeeping when nothing is scheduled — the
   // common case (no task carries a `schedule`), so an idle scheduler tick costs
@@ -345,7 +381,14 @@ async function tick(conceptionPath: string): Promise<void> {
     state.inFlight = true;
     state.lastCheckedAt = now;
     state.bytesPerSid = bytes;
-    void runHeadless(conceptionPath, slug, updated, resolveRunTimeout(entry), resolveRunMode(entry))
+    void runHeadless(
+      conceptionPath,
+      slug,
+      updated,
+      resolveRunTimeout(entry),
+      resolveRunMode(entry),
+      launchGeneration,
+    )
       .catch((err) => {
         process.stderr.write(`condash task-scheduler: ${slug}: ${(err as Error).message}\n`);
       })
@@ -363,6 +406,9 @@ async function tick(conceptionPath: string): Promise<void> {
  */
 export async function setScheduledConception(conceptionPath: string | null): Promise<void> {
   if (current?.path === conceptionPath) return;
+  // Invalidate every in-flight tick / launched run captured against the prior
+  // generation so none of them mutate state or spawn for the torn-down tree (E1).
+  generation += 1;
   if (current) {
     clearInterval(current.interval);
     current = null;
