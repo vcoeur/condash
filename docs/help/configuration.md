@@ -35,13 +35,13 @@ writes always target `.condash/settings.json`.
 }
 ```
 
-Only the tree-shape keys are valid here — personal keys like `open_with`,
-`pdf_viewer`, and `terminal` belong to the global `settings.json`.
+Only the tree-shape keys (`workspace_path`, `worktrees_path`, `long_lived_branches`, `repositories`, `retired_apps`, `taskConfig`) are valid here — personal keys like `open_with`, `pdf_viewer`, and `terminal` belong to the global `settings.json`.
 
 | Key | Meaning |
 |---|---|
 | `workspace_path` | Where condash scans for git repos. |
 | `worktrees_path` | Sandbox for the "Open in IDE" buttons. |
+| `long_lived_branches` | Branch patterns (`*` / `?` globs) that `condash worktrees remove` never deletes. Defaults to `main` + `master`. |
 | `repositories` | Ordered list of repos to surface on the Code pane. Each entry is a string, a `{name, …}` object (optional `submodules`, `run`, `force_stop`, `label`, `install`, `env`, `pinned_branch`), or a `{"section": "<heading>"}` marker that groups every following repo under a header — see [Reference → Configuration → `repositories`](../reference/config.md#repositories) for the full table. |
 
 The Skills pane (`<conception>/.agents/skills/`) and Resources pane
@@ -85,8 +85,8 @@ unless you set it explicitly via the toolbar toggle.
 
 Personal keys (`terminal`, `theme`, `cardMinWidth`, `open_with`,
 `pdf_viewer`, `dashboard`, `agents`, …) live **only** in `settings.json`;
-the tree-shape keys (`workspace_path`, `worktrees_path`, `repositories`,
-`retired_apps`, `taskConfig`) live **only** in `.condash/settings.json`.
+the tree-shape keys (`workspace_path`, `worktrees_path`, `long_lived_branches`,
+`repositories`, `retired_apps`, `taskConfig`) live **only** in `.condash/settings.json`.
 A key in the wrong file is rejected (and relocated on the next conception
 open).
 
@@ -111,7 +111,7 @@ the file it writes.
 **This conception** (writes `.condash/settings.json`; the legacy
 `condash.json` and `configuration.json` are read but never written to):
 
-- **Workspace & paths** — `workspace_path`, `worktrees_path`.
+- **Workspace & paths** — `workspace_path`, `worktrees_path`, `long_lived_branches`.
 - **Repositories** — ordered repo list, per-repo `run` / `force_stop`.
 
 Because every setting has exactly one home, there are no inheritance
