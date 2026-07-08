@@ -68,7 +68,7 @@ export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   agents: ['agents'],
   'open-with': ['open_with'],
   dashboard: ['dashboard'],
-  workspace: ['workspace_path', 'worktrees_path'],
+  workspace: ['workspace_path', 'worktrees_path', 'long_lived_branches'],
   repositories: ['repositories'],
 };
 
@@ -235,6 +235,7 @@ export interface RawConfig {
   $schema_doc?: string;
   workspace_path?: string;
   worktrees_path?: string;
+  long_lived_branches?: string[];
   repositories?: RawRepo[];
   agents?: Agent[];
   open_with?: Record<string, { label?: string; command?: string }>;
@@ -327,7 +328,7 @@ export function pruneEmpty(value: unknown): unknown {
  * rejects with `expected string, received undefined`.
  */
 export function buildSavePayload(config: RawConfig): RawConfig {
-  const { repositories, agents, terminal, ...rest } = config;
+  const { repositories, agents, terminal, long_lived_branches, ...rest } = config;
   const pruned = pruneEmpty(rest) as RawConfig;
   if (terminal !== undefined) {
     const compacted = compactTerminal(terminal as RawTerminal);
@@ -338,6 +339,10 @@ export function buildSavePayload(config: RawConfig): RawConfig {
   }
   if (agents !== undefined) {
     pruned.agents = compactAgents(agents);
+  }
+  if (long_lived_branches !== undefined) {
+    const filtered = long_lived_branches.filter((p) => p.trim().length > 0);
+    if (filtered.length > 0) pruned.long_lived_branches = filtered;
   }
   return pruned;
 }

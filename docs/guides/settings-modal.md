@@ -37,7 +37,7 @@ The left rail lists every section once, under its scope group:
 | Launchers | Personal | `agents` | [Agent CLIs and model providers](agent-clis-and-models.md) |
 | Open with | Personal | `open_with` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 | Dashboard | Personal | `dashboard` | [Config files → Dashboard](../reference/config.md#dashboard) |
-| Workspace & paths | This conception | `workspace_path`, `worktrees_path` | [Repositories and open-with buttons](repositories-and-open-with.md) |
+| Workspace & paths | This conception | `workspace_path`, `worktrees_path`, `long_lived_branches` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 | Repositories | This conception | `repositories` | [Repositories and open-with buttons](repositories-and-open-with.md) |
 
 App identity (`#handle`, `retired_apps`, `aliases`) is edited inline in the **Repositories** section — see **[Applications and handles](applications-and-handles.md)**.

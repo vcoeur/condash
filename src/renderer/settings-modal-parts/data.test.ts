@@ -111,6 +111,24 @@ describe('buildSavePayload — agents', () => {
   });
 });
 
+describe('buildSavePayload — long_lived_branches', () => {
+  it('strips empty-string entries and keeps non-empty ones', () => {
+    const payload = buildSavePayload({ long_lived_branches: ['main', '', '  ', 'release/*'] });
+    expect(payload.long_lived_branches).toEqual(['main', 'release/*']);
+    expect(conceptionConfigSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('omits the key when every entry is blank', () => {
+    const payload = buildSavePayload({ long_lived_branches: ['', '  '] });
+    expect(payload.long_lived_branches).toBeUndefined();
+  });
+
+  it('omits the key when the list is undefined', () => {
+    const payload = buildSavePayload({});
+    expect(payload.long_lived_branches).toBeUndefined();
+  });
+});
+
 describe('compactRepos — invariants', () => {
   it('round-trips a blank-name entry without dropping the row', () => {
     expect(compactRepos([{ name: '' }])).toEqual([{ name: '' }]);
