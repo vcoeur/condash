@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { findProjectReadmes } from '../../main/walk';
 import { parseReadmeWithHeader } from '../../main/parse';
+import { parseReadmesWithDiskCache } from '../../main/parse-cache-disk';
 import { search as searchAll } from '../../main/search';
 import { type SearchHit } from '../../shared/types';
 import { compareByStatusThenSlug } from '../../shared/projects';
@@ -44,10 +45,12 @@ export async function listProjects(
   assertNoExtraFlags(args, NOUN_FLAGS);
 
   const readmes = await findProjectReadmes(conceptionPath);
-  // Read+parse every README concurrently (mirrors the IPC list path), then
-  // iterate in `readmes` order so row ordering and per-row logic are
-  // unchanged — only the I/O is parallelised.
-  const parsed = await Promise.all(readmes.map((readme) => parseReadmeWithHeader(readme)));
+  // Parse every README concurrently, but serve unchanged files from the
+  // persistent `.condash/cache/` mtime-keyed cache so a fresh CLI process skips
+  // the readFile + ~6-pass parse per hit (review finding S2). Output order and
+  // per-row logic are unchanged — the returned array is in `readmes` order and
+  // each `{ project, header }` is identical to a direct parse.
+  const parsed = await parseReadmesWithDiskCache(conceptionPath, readmes);
   const rows: ProjectListRow[] = [];
   for (let i = 0; i < readmes.length; i++) {
     const readme = readmes[i];
