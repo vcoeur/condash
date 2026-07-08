@@ -120,7 +120,9 @@ function extractSummary(lines: readonly string[]): string | undefined {
   let inFirstSection = false;
   let buffer: string[] = [];
 
-  for (const line of lines) {
+  // Fence-aware (like extractSteps / extractClosedAt): a `## Heading` or prose
+  // inside a fenced code block must not truncate or pollute the summary.
+  for (const { line } of iterUnfencedLines(lines)) {
     if (HEADING2.test(line)) {
       if (inFirstSection && buffer.length > 0) break;
       inFirstSection = true;
@@ -169,7 +171,9 @@ function extractDeliverables(lines: readonly string[], itemDir: string): Deliver
   let inDeliverables = false;
   const out: Deliverable[] = [];
 
-  for (const line of lines) {
+  // Fence-aware: a fenced `- [label](file.pdf)` line must not become a ghost
+  // deliverable, and a fenced `## Heading` must not open/close the section.
+  for (const { line } of iterUnfencedLines(lines)) {
     const heading = line.match(HEADING2);
     if (heading) {
       inDeliverables = heading[1].trim().toLowerCase().startsWith('deliverable');

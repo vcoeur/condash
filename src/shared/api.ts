@@ -459,6 +459,19 @@ export interface CondashApi {
   onMenuOpenRecent(callback: (path: string) => void): () => void;
   /** File → Open Recent → Clear menu click. Returns an unsubscribe. */
   onMenuClearRecents(callback: () => void): () => void;
+  /**
+   * Subscribe to file-watcher status notices pushed by the main process — a
+   * chokidar error (e.g. inotify exhaustion) that leaves coverage partial, so
+   * the renderer can surface an actionable toast instead of the failure being
+   * stderr-only. Returns an unsubscribe.
+   */
+  onWatcherStatus(callback: (message: WatcherStatusMessage) => void): () => void;
+}
+
+/** A file-watcher status notice surfaced to the user (W3). */
+export interface WatcherStatusMessage {
+  message: string;
+  kind: 'error' | 'info';
 }
 
 export type MenuCommand =

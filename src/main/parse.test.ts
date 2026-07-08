@@ -162,6 +162,57 @@ apps: []
     const project = await parseReadme(path);
     expect(project.closedAt).toBe('2026-05-15');
   });
+
+  it('summary is not truncated by a fenced ## heading (P1)', async () => {
+    const body = `---
+date: 2026-05-19
+kind: project
+status: now
+apps: []
+---
+
+# Test
+
+## Goal
+
+Real summary prose.
+
+\`\`\`sh
+## not a real heading in a shell block
+\`\`\`
+
+## Steps
+
+- [ ] one
+`;
+    const path = await writeReadme('2026-05-19-fenced-summary', body);
+    const project = await parseReadme(path);
+    // The fenced `## …` line must neither truncate the summary nor pollute it.
+    expect(project.summary).toBe('Real summary prose.');
+  });
+
+  it('does not collect a fenced [label](file) line as a deliverable (P1)', async () => {
+    const body = `---
+date: 2026-05-19
+kind: project
+status: now
+apps: []
+---
+
+# Test
+
+## Deliverables
+
+- [Real](notes/real.md) — a genuine deliverable
+
+\`\`\`markdown
+- [Ghost](notes/ghost.pdf) — an example inside a fence
+\`\`\`
+`;
+    const path = await writeReadme('2026-05-19-fenced-deliverable', body);
+    const project = await parseReadme(path);
+    expect(project.deliverables.map((d) => d.label)).toEqual(['Real']);
+  });
 });
 
 describe('[!] step marker', () => {

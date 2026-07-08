@@ -307,6 +307,19 @@ describe('resolveSession', () => {
     expect(ref?.time).toBe('10:00:00');
   });
 
+  it('resolves a native-separator (Windows-shaped) absolute path (P2)', async () => {
+    const path = await makeLog({ day: '2026-05-30', time: '100000', sid: 't-win', exitCode: 0 });
+    // Simulate native Windows separators. resolveSession must POSIX-normalise
+    // before the `startsWith(root)` / `includes('/')` checks and SESSION_RE, or
+    // a backslash path never resolves. (Constructed manually — tests run on
+    // Linux, where join() would never emit backslashes.)
+    const windowsShaped = path.replace(/\//g, '\\');
+    const ref = await resolveSession(tmp, windowsShaped);
+    expect(ref?.sid).toBe('t-win');
+    expect(ref?.day).toBe('2026-05-30');
+    expect(ref?.time).toBe('10:00:00');
+  });
+
   it('returns null when nothing matches', async () => {
     await makeLog({ day: '2026-05-30', time: '100000', sid: 't-abc1', exitCode: 0 });
     expect(await resolveSession(tmp, 't-zzz')).toBeNull();

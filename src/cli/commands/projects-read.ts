@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { findProjectReadmes } from '../../main/walk';
 import { parseReadmeWithHeader } from '../../main/parse';
 import { parseReadmesWithDiskCache } from '../../main/parse-cache-disk';
@@ -66,7 +66,10 @@ export async function listProjects(
     // one), decorated with the three fields the parser exposes only via the
     // header — `absPath`/`date`/`headerWarnings` — which the JSON-envelope
     // contract has long carried.
-    const itemDir = readme.replace(/\/README\.md$/, '');
+    // `dirname` strips the README filename with the platform separator — a
+    // literal `/README.md` regex leaves a trailing `\README.md` on a native
+    // Windows path, corrupting `path`/`absPath` and the `relative()` below.
+    const itemDir = dirname(readme);
     rows.push({
       slug: project.slug,
       path: relative(conceptionPath, itemDir),

@@ -131,4 +131,11 @@ export function createMenuRouter(deps: MenuRouterDeps): void {
     });
   });
   onCleanup(offMenuClearRecents);
+
+  // Surface file-watcher failures (e.g. inotify exhaustion) the main process
+  // pushes — otherwise the tree/dirty views silently stop auto-updating (W3).
+  const offWatcherStatus = window.condash.onWatcherStatus((msg) => {
+    deps.flashToast(msg.message, msg.kind);
+  });
+  onCleanup(offWatcherStatus);
 }

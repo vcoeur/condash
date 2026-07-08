@@ -107,4 +107,14 @@ describe('isLongLivedBranch + matchBranchGlob', () => {
     expect(result.longLived).toBe(true);
     expect(result.matched).toBe('release/*');
   });
+
+  it('escapes `.` so it is a literal, not a wildcard (P3)', () => {
+    // `release-1.x` must match only a literal dot. Before the escape fix the
+    // unescaped `.` matched any character, so `release-1Ax` was wrongly refused
+    // as a long-lived branch.
+    expect(isLongLivedBranch('release-1.x', ['release-1.x']).longLived).toBe(true);
+    expect(isLongLivedBranch('release-1Ax', ['release-1.x']).longLived).toBe(false);
+    expect(isLongLivedBranch('v1.2', ['v1.2']).longLived).toBe(true);
+    expect(isLongLivedBranch('v132', ['v1.2']).longLived).toBe(false);
+  });
 });

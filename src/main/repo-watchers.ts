@@ -55,6 +55,7 @@ import { promisify } from 'node:util';
 import type { RepoEntry, RepoEvent } from '../shared/types';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { safeSend } from './safe-send';
+import { reportWatcherError } from './watcher-status';
 import { getDirtyCount, getUpstreamStatus, invalidateForPath } from './git-status-cache';
 import { buildGitignoreMatcher, readRuleText, type GitignoreMatcher } from './gitignore-matcher';
 
@@ -132,6 +133,51 @@ const watchers = new Map<string, WatcherEntry>();
 const pendingScalarTimers = new Map<string, NodeJS.Timeout>();
 const pendingStructuralTimers = new Map<string, NodeJS.Timeout>();
 
+// The target set most recently passed to `setRepoWatchers`, plus the signature
+// of the set we've already spent our one error re-arm on. Re-arm is guarded by
+// the signature so a persistent failure (e.g. EMFILE surviving the rebuild)
+// can't loop, while a genuinely new repo set gets a fresh attempt (W3a).
+let lastRepoTargets: WatchedPath[] = [];
+let repoReArmedForSignature: string | null = null;
+
+function targetSetSignature(targets: readonly WatchedPath[]): string {
+  return targets
+    .map((t) => t.path)
+    .sort()
+    .join('\n');
+}
+
+/** Close every current watcher + pending timer, WITHOUT touching the re-arm
+ *  guard. Shared by `disposeRepoWatchers` (which also resets the guard) and the
+ *  error re-arm path (which must not, or it would loop). */
+async function teardownAllRepoWatchers(): Promise<void> {
+  const closing: Promise<void>[] = [];
+  for (const entry of watchers.values()) {
+    closing.push(entry.worktree.close().catch(() => undefined));
+    closing.push(entry.gitMeta.close().catch(() => undefined));
+    if (entry.structural) closing.push(entry.structural.close().catch(() => undefined));
+  }
+  watchers.clear();
+  for (const t of pendingScalarTimers.values()) clearTimeout(t);
+  pendingScalarTimers.clear();
+  for (const t of pendingStructuralTimers.values()) clearTimeout(t);
+  pendingStructuralTimers.clear();
+  await Promise.all(closing);
+}
+
+/** After a chokidar error surfaced to the user, tear down + rebuild the whole
+ *  repo-watcher set ONCE per target signature. Synchronous guard set so a burst
+ *  of errors across the worktree / git-meta / structural watchers only rebuilds
+ *  once (W3a). */
+function reArmRepoWatchers(): void {
+  const signature = targetSetSignature(lastRepoTargets);
+  if (repoReArmedForSignature === signature) return;
+  repoReArmedForSignature = signature;
+  void teardownAllRepoWatchers()
+    .then(() => setRepoWatchers(lastRepoTargets))
+    .catch((e) => console.error('[repo-watcher] re-arm failed', e));
+}
+
 function broadcast(events: RepoEvent[]): void {
   if (events.length === 0) return;
   for (const win of BrowserWindow.getAllWindows()) {
@@ -188,6 +234,10 @@ function scheduleStructural(repoPath: string): void {
  *  rapid structural events) cannot race a stale chokidar instance
  *  against its replacement. */
 export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
+  // Remember the current target set so an error handler can re-arm against it.
+  // Deliberately not resetting `repoReArmedForSignature` here — the error
+  // re-arm path calls back in with the same targets and must stay guarded.
+  lastRepoTargets = targets;
   const wantedKeys = new Set(targets.map((t) => t.path));
   const globalExcludesFile = await resolveGlobalExcludesFile();
   const closing: Promise<void>[] = [];
@@ -238,7 +288,8 @@ export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
       scheduleRecompute(target);
     });
     worktree.on('error', (err) => {
-      console.error(`[repo-watcher] worktree ${target.path}:`, err);
+      reportWatcherError(err, `repo ${target.path}`);
+      reArmRepoWatchers();
     });
 
     const gitMeta = chokidar.watch(
@@ -257,7 +308,8 @@ export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
     );
     gitMeta.on('all', () => scheduleRecompute(target));
     gitMeta.on('error', (err) => {
-      console.error(`[repo-watcher] git-meta ${target.path}:`, err);
+      reportWatcherError(err, `repo ${target.path} (git metadata)`);
+      reArmRepoWatchers();
     });
 
     let structural: FSWatcher | undefined;
@@ -317,7 +369,8 @@ function buildStructuralWatcher(repoPath: string): FSWatcher {
     scheduleStructural(repoPath);
   });
   w.on('error', (err) => {
-    console.error(`[repo-watcher] structural ${repoPath}:`, err);
+    reportWatcherError(err, `repo ${repoPath} (worktrees)`);
+    reArmRepoWatchers();
   });
   return w;
 }
@@ -384,18 +437,11 @@ export async function recomputeAllWatchedRepos(): Promise<void> {
   broadcast(eventTuples.flat());
 }
 
-/** Tear down everything. Called on app quit and conception-path change. */
+/** Tear down everything. Called on app quit and conception-path change. Resets
+ *  the error re-arm guard so the next conception's watcher set gets its own
+ *  one-shot re-arm. */
 export async function disposeRepoWatchers(): Promise<void> {
-  const closing: Promise<void>[] = [];
-  for (const entry of watchers.values()) {
-    closing.push(entry.worktree.close().catch(() => undefined));
-    closing.push(entry.gitMeta.close().catch(() => undefined));
-    if (entry.structural) closing.push(entry.structural.close().catch(() => undefined));
-  }
-  watchers.clear();
-  for (const t of pendingScalarTimers.values()) clearTimeout(t);
-  pendingScalarTimers.clear();
-  for (const t of pendingStructuralTimers.values()) clearTimeout(t);
-  pendingStructuralTimers.clear();
-  await Promise.all(closing);
+  repoReArmedForSignature = null;
+  lastRepoTargets = [];
+  await teardownAllRepoWatchers();
 }

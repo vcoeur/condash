@@ -3,7 +3,7 @@ import { basename, dirname } from 'node:path';
 import { atomicWrite } from './atomic-write';
 import { isConceptionSettingsPath } from './condash-dir';
 import { withFileQueue } from './mutate-shared';
-import { withSettingsQueue } from './settings';
+import { readSettings, settingsPath, withSettingsQueue } from './settings';
 
 /**
  * Generic drift-checked note writer plus the settings/config canonicalisation
@@ -18,17 +18,23 @@ export async function writeNote(
   newContent: string,
 ): Promise<string> {
   const baseName = basename(path);
+  // The global per-machine settings.json is matched by its EXACT path, never by
+  // basename — so an in-tree note that merely shares the name (an exported
+  // sample, another tool's `settings.json`) saves as a plain note instead of
+  // being canonicalised against — and rejected by — the global schema (B4).
+  const isGlobalSettings = path === settingsPath();
   // The canonical conception config lives at `<conception>/.condash/settings.json`
-  // — same basename as the global per-machine `~/.config/condash/settings.json`,
-  // so we disambiguate via the parent-directory check. The two legacy names at
-  // the conception root (`condash.json`, `configuration.json`) are also handled
-  // here even though the writer no longer targets them — keeps `condash
-  // config set` working against a legacy file the user hasn't migrated yet.
+  // (dir-gated by `isConceptionSettingsPath`). The two legacy names at the
+  // conception root (`condash.json`, `configuration.json`) are still recognised
+  // — keeps `condash config set` working against an unmigrated file — but ONLY
+  // when the file sits directly at the conception root. A sample/exported
+  // `configuration.json` edited elsewhere in the tree is a plain note, not
+  // config (which would either throw a baffling `Unrecognized key` or silently
+  // reformat it — B4).
   const isConceptionConfig =
     isConceptionSettingsPath(path) ||
-    baseName === 'condash.json' ||
-    baseName === 'configuration.json';
-  const isGlobalSettings = baseName === 'settings.json' && !isConceptionSettingsPath(path);
+    ((baseName === 'condash.json' || baseName === 'configuration.json') &&
+      (await isAtConceptionRoot(path)));
 
   const work = async (): Promise<string> => {
     let onDisk = '';
@@ -82,4 +88,12 @@ export async function writeNote(
   );
   if (!result.ok) throw result.error;
   return result.value;
+}
+
+/** True when `path` sits directly at the active conception root — the only
+ *  place a legacy `condash.json` / `configuration.json` is treated as config
+ *  rather than a plain note. */
+async function isAtConceptionRoot(path: string): Promise<boolean> {
+  const { lastConceptionPath } = await readSettings();
+  return lastConceptionPath !== null && dirname(path) === lastConceptionPath;
 }
