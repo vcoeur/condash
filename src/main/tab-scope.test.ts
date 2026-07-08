@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   appScopeSetPropertyArgv,
-  capOwnAppScope,
+  capOwnAppScopeAsync,
   defaultAppScopeMax,
   ownAppScopeUnit,
   parseSize,
+  probeArgv,
   scopeArgv,
   wrapWithMemoryScope,
 } from './tab-scope';
@@ -128,10 +129,30 @@ describe('appScopeSetPropertyArgv', () => {
   });
 });
 
-describe('capOwnAppScope', () => {
-  it('is a no-op when the backstop is explicitly disabled', () => {
-    // enabled:false short-circuits before any host probing → deterministic.
-    expect(capOwnAppScope({ appScope: { enabled: false } })).toEqual({
+describe('probeArgv', () => {
+  it('builds the throwaway --user --scope probe that runs `true`', () => {
+    expect(probeArgv()).toEqual([
+      '--user',
+      '--scope',
+      '--quiet',
+      '--collect',
+      '-p',
+      'MemoryHigh=64M',
+      '-p',
+      'MemoryMax=128M',
+      '-p',
+      'MemorySwapMax=0',
+      '--',
+      'true',
+    ]);
+  });
+});
+
+describe('capOwnAppScopeAsync', () => {
+  it('is a no-op when the backstop is explicitly disabled', async () => {
+    // enabled:false short-circuits before any host probing → deterministic, and
+    // resolves without touching systemd (no execFile).
+    await expect(capOwnAppScopeAsync({ appScope: { enabled: false } })).resolves.toEqual({
       applied: false,
       skipped: 'disabled',
     });
