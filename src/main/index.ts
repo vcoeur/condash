@@ -12,7 +12,7 @@ import { setScheduledConception } from './task-scheduler';
 import { setDashboardConception } from './dashboard/engine';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll, startMemorySampling } from './terminals';
-import { capOwnAppScope } from './tab-scope';
+import { capOwnAppScopeAsync } from './tab-scope';
 import { prewarmDefaultPanes } from './prewarm';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
 import { loginPath } from './shell-env';
@@ -476,21 +476,21 @@ app.whenReady().then(async () => {
   ]);
   mainWindow = createdWindow;
   setMenuWindow(mainWindow);
-  // App-scope memory backstop, moved off the pre-window critical path (S5).
-  // `capOwnAppScope` is a blocking spawnSync (25-40 ms per launch, and up to a
-  // 5 s stall if the systemd user manager hangs) with no dependency on the
-  // window — its only real constraint is being in place before the first
-  // terminal tab could spawn, which is a post-window user action. So it runs
-  // after the boot Promise.all, deferred one turn via setImmediate so it can't
-  // stall the renderer's first IPC round-trips either. It caps condash's own app
-  // scope so a child that escapes per-tab scoping (a probe edge case, a stale
-  // pre-cap instance, a non-tab helper) trips condash's cgroup OOM instead of
-  // the machine's global one (the 2026-07-05 crash recurred exactly this way).
-  // Linux + systemd only; a no-op elsewhere. Reads settings.json (the app scope
-  // is condash-global, not per-conception). Messages + semantics are unchanged
-  // from the former pre-window call site.
-  setImmediate(() => {
-    const appScopeCap = capOwnAppScope(settings.terminal?.memory);
+  // App-scope memory backstop, off the pre-window critical path (S5) and fully
+  // asynchronous: `capOwnAppScopeAsync` runs its systemd probe + `set-property`
+  // via execFile, so a hung or slow systemd user manager can never freeze the
+  // main process. (The former blocking `spawnSync` could stall the main process
+  // for up to 5 s if the user manager hung — long enough to block every pending
+  // IPC, including a live terminal's data forwarding.) Fire-and-forget: its only
+  // real constraint is being in place before the first terminal tab could spawn,
+  // a post-window user action. It caps condash's own app scope so a child that
+  // escapes per-tab scoping (a probe edge case, a stale pre-cap instance, a
+  // non-tab helper) trips condash's cgroup OOM instead of the machine's global
+  // one (the 2026-07-05 crash recurred exactly this way). Linux + systemd only; a
+  // no-op elsewhere. Reads settings.json (the app scope is condash-global, not
+  // per-conception). Messages + skip-reason semantics are unchanged from the
+  // former sync call site.
+  void capOwnAppScopeAsync(settings.terminal?.memory).then((appScopeCap) => {
     if (appScopeCap.applied) {
       process.stderr.write(
         `condash app-scope backstop: ${appScopeCap.unit} MemoryMax=${appScopeCap.max} ` +

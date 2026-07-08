@@ -231,6 +231,16 @@ export function createTerminalController(props: TerminalPaneProps) {
     // xterm (otherwise typing into it works but the tab strip's "active"
     // styling stays on whichever tab last got a click).
     const promote = () => {
+      // Ignore focus churn during a visibility transition. A tab switch
+      // demotes the old DOM Terminal and mounts the new one, and that
+      // teardown/mount moves DOM focus programmatically — a `focusin` fires on
+      // a terminal the user did NOT select. Honouring it here would call
+      // `setActiveIn` for the wrong tab, reverting the in-flight switch and
+      // demoting the tab the user actually picked (the hidden-tab round-trip
+      // then reads no live Terminal). Genuine user clicks/focus land in the
+      // steady state, when nothing is transitioning, so gating on an empty
+      // `transitioning` set keeps the intended behaviour without the race.
+      if (transitioning.size > 0) return;
       // `xterms.get(id)?.column` so a tab that's been moved between columns
       // still resolves to its current side.
       const col = xterms.get(id)?.column ?? column;

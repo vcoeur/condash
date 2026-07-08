@@ -14,17 +14,21 @@
  * condash still running, or a non-tab helper — stays in condash's own
  * `app-gnome-condash-*.scope`, which carries no limit, and a runaway there again
  * escalates to a global OOM (the 2026-07-05 crash recurred this way). So we also
- * cap that app scope at startup (`capOwnAppScope`): a backstop that makes a
+ * cap that app scope at startup (`capOwnAppScopeAsync`): a backstop that makes a
  * global OOM impossible regardless of how a child got spawned.
  *
  * This is Linux-only (needs a reachable systemd user manager + cgroup v2). On
  * any other host the wrapper is a no-op and the caller spawns the program
  * directly, exactly as before.
  */
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { totalmem } from 'node:os';
+import { promisify } from 'node:util';
 import type { TerminalMemoryPrefs } from '../shared/types';
+
+const execFileAsync = promisify(execFile);
 
 /** Defaults for the per-tab scope (systemd size strings). Sized to fit ordinary
  * interactive + agent use while capping a runaway well below a typical
@@ -63,6 +67,24 @@ function memoryScopeAvailable(): boolean {
 }
 
 /**
+ * Async twin of {@link memoryScopeAvailable}: same cache and platform
+ * short-circuit, but the live probe runs off the event loop
+ * ({@link runScopeProbeAsync}). Shares the `cachedAvailable` flag, so a success
+ * here also spares the per-tab path a re-probe (and vice versa) — the app-scope
+ * backstop priming the cache before the first tab spawn, exactly as it did when
+ * the backstop ran on the pre-window path.
+ *
+ * @returns True when a memory-limited user scope can be created here.
+ */
+async function memoryScopeAvailableAsync(): Promise<boolean> {
+  if (cachedAvailable) return true;
+  if (!platformSupportsMemoryScope()) return false;
+  const ok = await runScopeProbeAsync();
+  if (ok) cachedAvailable = true;
+  return ok;
+}
+
+/**
  * Definitive, cheap "could this host ever do memory scopes" check — no
  * subprocess. False here is permanent for the process (Windows/macOS, no
  * user-manager runtime dir, cgroup v1), so the caller can safely stay quiet
@@ -85,33 +107,61 @@ function platformSupportsMemoryScope(): boolean {
 }
 
 /**
- * The live probe: a transient user scope that sets the same properties we use
- * at spawn time, running `true`. `--collect` reaps the unit; the probe is
- * side-effect free. A non-zero status (no systemd-run, no user manager, memory
- * controller not delegated) → containment is unavailable right now.
+ * The `systemd-run --user --scope` argv for the live probe: a throwaway
+ * transient unit that sets the same property kinds we use at spawn time and
+ * runs `true`. `--collect` reaps the unit, so the probe is side-effect free.
+ * Pure and shared by both the sync and async probes so they exercise the
+ * identical systemd surface.
+ *
+ * @returns The full argv for `systemd-run`.
+ */
+export function probeArgv(): string[] {
+  return [
+    '--user',
+    '--scope',
+    '--quiet',
+    '--collect',
+    '-p',
+    'MemoryHigh=64M',
+    '-p',
+    'MemoryMax=128M',
+    '-p',
+    'MemorySwapMax=0',
+    '--',
+    'true',
+  ];
+}
+
+/**
+ * The live probe (synchronous): runs {@link probeArgv} and reports success. A
+ * non-zero status (no systemd-run, no user manager, memory controller not
+ * delegated) → containment is unavailable right now. Blocks the caller for up
+ * to 5 s, so it is only used on the per-tab spawn path (already synchronous);
+ * the app-scope backstop uses {@link runScopeProbeAsync} to stay off the event
+ * loop.
  *
  * @returns True when the throwaway scope was created successfully.
  */
 function runScopeProbe(): boolean {
-  const result = spawnSync(
-    'systemd-run',
-    [
-      '--user',
-      '--scope',
-      '--quiet',
-      '--collect',
-      '-p',
-      'MemoryHigh=64M',
-      '-p',
-      'MemoryMax=128M',
-      '-p',
-      'MemorySwapMax=0',
-      '--',
-      'true',
-    ],
-    { stdio: 'ignore', timeout: 5000 },
-  );
+  const result = spawnSync('systemd-run', probeArgv(), { stdio: 'ignore', timeout: 5000 });
   return result.status === 0;
+}
+
+/**
+ * The live probe (asynchronous): same {@link probeArgv} run via `execFile` so it
+ * never blocks the main event loop. `execFile` rejects on a non-zero exit or the
+ * 5 s timeout — both mean "unavailable right now", so any rejection maps to
+ * false.
+ *
+ * @returns True when the throwaway scope was created successfully.
+ */
+async function runScopeProbeAsync(): Promise<boolean> {
+  try {
+    await execFileAsync('systemd-run', probeArgv(), { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -337,27 +387,38 @@ export interface AppScopeCapResult {
  * app scope. Reads the main process's cgroup, derives the scope unit, and
  * applies the limits via `systemctl --user set-property`.
  *
+ * Fully asynchronous: every step that can stall — the availability probe and the
+ * `set-property` call — runs off the event loop via `execFile`, and
+ * `/proc/self/cgroup` is read with async fs, so a hung or slow systemd user
+ * manager can never freeze the main process. (The former blocking `spawnSync`
+ * could stall the main process for up to 5 s if the user manager hung, blocking
+ * every pending IPC.) Shares the pure argv/parse helpers with the synchronous
+ * per-tab spawn path.
+ *
  * @param prefs Effective `terminal.memory` prefs; the `appScope` sub-object is read.
  * @returns What was applied, or why not.
  */
-export function capOwnAppScope(prefs: TerminalMemoryPrefs | undefined): AppScopeCapResult {
+export async function capOwnAppScopeAsync(
+  prefs: TerminalMemoryPrefs | undefined,
+): Promise<AppScopeCapResult> {
   const appPrefs = prefs?.appScope;
   if (appPrefs?.enabled === false) return { applied: false, skipped: 'disabled' };
-  if (!memoryScopeAvailable()) return { applied: false, skipped: 'unsupported' };
+  if (!(await memoryScopeAvailableAsync())) return { applied: false, skipped: 'unsupported' };
   let unit: string | undefined;
   try {
-    unit = ownAppScopeUnit(readFileSync('/proc/self/cgroup', 'utf8'));
+    unit = ownAppScopeUnit(await readFile('/proc/self/cgroup', 'utf8'));
   } catch {
     unit = undefined;
   }
   if (!unit) return { applied: false, skipped: 'no-scope' };
   const max = appPrefs?.max ?? defaultAppScopeMax(totalmem());
   const swapMax = appPrefs?.swapMax ?? DEFAULT_APP_SCOPE_SWAP_MAX;
-  const result = spawnSync('systemctl', appScopeSetPropertyArgv(unit, max, swapMax), {
-    stdio: 'ignore',
-    timeout: 5000,
-  });
-  if (result.status !== 0) {
+  try {
+    await execFileAsync('systemctl', appScopeSetPropertyArgv(unit, max, swapMax), {
+      timeout: 5000,
+    });
+  } catch {
+    // Non-zero exit or the 5 s timeout — the cap did not take.
     return { applied: false, skipped: 'set-property-failed', unit, max, swapMax };
   }
   return { applied: true, unit, max, swapMax };
