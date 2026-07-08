@@ -110,6 +110,58 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
   return Promise.all(flat.map((entry) => buildEntry(entry, parentByName, parentWorktrees)));
 }
 
+// Boot prewarm handoff (review finding S1). The whenReady handler kicks off a
+// listRepos before the window even exists, so the ~20-repo git-status fan-out
+// (~460 ms measured) overlaps window creation instead of blocking the Code
+// pane's first paint. A naive prewarm alone wouldn't help: the git-status cache
+// TTL is 3 s, so by the time the renderer's first listRepos runs (after the
+// window loads and the renderer mounts) the warmed entries could already have
+// expired — re-running the whole fan-out. Instead we stash the boot scan's
+// promise here and let the renderer's first listRepos *await the same promise*,
+// which resolves once regardless of the underlying cache TTL. One-shot: the slot
+// is consumed on first read, so later refreshes recompute fresh.
+let bootReposPromise: Promise<RepoEntry[]> | null = null;
+let bootReposPath: string | null = null;
+
+/**
+ * Kick off the boot repo scan for `conceptionPath` and stash its promise for the
+ * renderer's first `listRepos` to reuse. Fire-and-forget from whenReady; the
+ * returned promise is the stashed one so the caller can attach its own
+ * error-swallowing `.catch`. Overwrites any prior prewarm (e.g. a fast
+ * conception switch during boot) so the stashed path always matches the latest.
+ *
+ * @param conceptionPath active conception root
+ * @returns the boot scan promise (also stored for {@link takeBootRepos})
+ */
+export function prewarmRepos(conceptionPath: string): Promise<RepoEntry[]> {
+  bootReposPath = conceptionPath;
+  bootReposPromise = listRepos(conceptionPath);
+  return bootReposPromise;
+}
+
+/**
+ * `listRepos` for the renderer's first call: reuse the boot prewarm's in-flight
+ * (or already-resolved) result when one is pending for the same conception,
+ * otherwise run a fresh scan. Falls back to a fresh scan if the prewarm itself
+ * rejected. The boot slot is consumed one-shot, so every later refresh recomputes.
+ *
+ * @param conceptionPath active conception root
+ * @returns the repo entries
+ */
+export async function listReposReusingBoot(conceptionPath: string): Promise<RepoEntry[]> {
+  if (bootReposPromise && bootReposPath === conceptionPath) {
+    const pending = bootReposPromise;
+    bootReposPromise = null;
+    bootReposPath = null;
+    try {
+      return await pending;
+    } catch {
+      // The boot prewarm failed — fall through to a fresh scan.
+    }
+  }
+  return listRepos(conceptionPath);
+}
+
 /**
  * Per-primary partial reload. Returns the primary's `RepoEntry` plus
  * every submodule child re-rooted on the primary's freshly-listed

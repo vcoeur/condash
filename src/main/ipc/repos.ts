@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { listRepos, listReposForPrimary } from '../repos';
+import { listRepos, listReposForPrimary, listReposReusingBoot } from '../repos';
 import { invalidateAll } from '../git-status-cache';
 import { recomputeAllWatchedRepos, setRepoWatchers, watchTargetsFromRepos } from '../repo-watchers';
 import { getDirtyDetails } from '../git-details';
@@ -27,7 +27,11 @@ export function registerReposIpc(): void {
   ipcMain.handle('listRepos', (event) => {
     requireMainWindowSender(event);
     return withConception(async (conceptionPath) => {
-      const repos = await listRepos(conceptionPath);
+      // Reuse the boot prewarm's scan on the renderer's first call (S1) so the
+      // ~20-repo git fan-out isn't re-run — and can't be lost to the 3 s
+      // git-status TTL — before first paint. Consumed one-shot; every later
+      // refresh runs a fresh listRepos.
+      const repos = await listReposReusingBoot(conceptionPath);
       // Sync the per-repo FS watchers to the live repo set: a config edit
       // that adds or removes a repo is reflected here, since this handler
       // re-runs on every renderer-driven repos refresh.

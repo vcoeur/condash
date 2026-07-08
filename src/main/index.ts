@@ -13,6 +13,7 @@ import { setDashboardConception } from './dashboard/engine';
 import { disposeRepoWatchers } from './repo-watchers';
 import { killAll, startMemorySampling } from './terminals';
 import { capOwnAppScope } from './tab-scope';
+import { prewarmDefaultPanes } from './prewarm';
 import { migrateTerminalFromConfigIfNeeded } from './settings-migrations';
 import { loginPath } from './shell-env';
 import { runLogJanitor } from './terminal-logger-janitor';
@@ -445,26 +446,13 @@ app.whenReady().then(async () => {
   // termGetPrefs always sees the post-migration state.
   await migrateTerminalFromConfigIfNeeded();
   const settings = await readSettings();
-  // Backstop: cap condash's own app scope so a child that escapes per-tab
-  // scoping (a probe edge case, a stale pre-cap instance, a non-tab helper)
-  // trips condash's cgroup OOM instead of the machine's global one — the
-  // 2026-07-05 crash recurred exactly this way. Linux + systemd only; a no-op
-  // elsewhere. Read from settings.json (the app scope is condash-global, not
-  // per-conception).
-  const appScopeCap = capOwnAppScope(settings.terminal?.memory);
-  if (appScopeCap.applied) {
-    process.stderr.write(
-      `condash app-scope backstop: ${appScopeCap.unit} MemoryMax=${appScopeCap.max} ` +
-        `MemorySwapMax=${appScopeCap.swapMax}\n`,
-    );
-  } else if (appScopeCap.skipped === 'no-scope' || appScopeCap.skipped === 'set-property-failed') {
-    // 'disabled' / 'unsupported' are expected (opt-out / non-Linux); only the
-    // surprising misses warrant a line so a silently-uncapped app scope is
-    // diagnosable.
-    process.stderr.write(`condash app-scope backstop not applied: ${appScopeCap.skipped}\n`);
-  }
   const conceptionPath = settings.lastConceptionPath;
   cachedConceptionPath = conceptionPath;
+  // Prewarm the two cold scans that gate the default panes — the project-README
+  // parse (Projects pane) and the repo git-status fan-out (Code pane) — in
+  // parallel with createWindow below (S1). Fire-and-forget: never delays first
+  // paint, swallows its own errors, and only runs when a conception is set.
+  if (conceptionPath) prewarmDefaultPanes(conceptionPath);
   // The menu only needs the just-read settings — build it up front.
   buildMenu(settings.layout ?? DEFAULT_LAYOUT, {
     paths: settings.recentConceptionPaths ?? [],
@@ -488,6 +476,36 @@ app.whenReady().then(async () => {
   ]);
   mainWindow = createdWindow;
   setMenuWindow(mainWindow);
+  // App-scope memory backstop, moved off the pre-window critical path (S5).
+  // `capOwnAppScope` is a blocking spawnSync (25-40 ms per launch, and up to a
+  // 5 s stall if the systemd user manager hangs) with no dependency on the
+  // window — its only real constraint is being in place before the first
+  // terminal tab could spawn, which is a post-window user action. So it runs
+  // after the boot Promise.all, deferred one turn via setImmediate so it can't
+  // stall the renderer's first IPC round-trips either. It caps condash's own app
+  // scope so a child that escapes per-tab scoping (a probe edge case, a stale
+  // pre-cap instance, a non-tab helper) trips condash's cgroup OOM instead of
+  // the machine's global one (the 2026-07-05 crash recurred exactly this way).
+  // Linux + systemd only; a no-op elsewhere. Reads settings.json (the app scope
+  // is condash-global, not per-conception). Messages + semantics are unchanged
+  // from the former pre-window call site.
+  setImmediate(() => {
+    const appScopeCap = capOwnAppScope(settings.terminal?.memory);
+    if (appScopeCap.applied) {
+      process.stderr.write(
+        `condash app-scope backstop: ${appScopeCap.unit} MemoryMax=${appScopeCap.max} ` +
+          `MemorySwapMax=${appScopeCap.swapMax}\n`,
+      );
+    } else if (
+      appScopeCap.skipped === 'no-scope' ||
+      appScopeCap.skipped === 'set-property-failed'
+    ) {
+      // 'disabled' / 'unsupported' are expected (opt-out / non-Linux); only the
+      // surprising misses warrant a line so a silently-uncapped app scope is
+      // diagnosable.
+      process.stderr.write(`condash app-scope backstop not applied: ${appScopeCap.skipped}\n`);
+    }
+  });
   // Background maintenance — independent of first paint, so kick it after the
   // window is up rather than ahead of it. Sweep `.condash/logs/` for expired
   // day-directories (once now + every 24 h; bounded by the effective

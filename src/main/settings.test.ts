@@ -106,3 +106,69 @@ describe('degenerate settings.json roots', () => {
     expect(onDisk.theme).toBe('light');
   });
 });
+
+describe('settings.json read memo', () => {
+  // `dark` and `lite` are both 4-char sentinels: writing one over the other
+  // keeps the JSON byte length (hence the stat `size`) identical, so these tests
+  // can isolate the `mtime` half of the (mtimeMs, size) memo key. (`lite` is not
+  // a real Theme — the zod-free read path doesn't validate, it just round-trips.)
+  it('caches an unchanged file and returns the same object reference', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ theme: 'dark' }));
+    const { readSettings } = await loadSettingsModule();
+    const first = await readSettings();
+    const second = await readSettings();
+    // A cache hit returns the memoised object — it did not re-read or re-parse.
+    expect(second).toBe(first);
+    expect(first.theme).toBe('dark');
+  });
+
+  it('re-reads once the file mtime changes (same size)', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ theme: 'dark' }));
+    const { readSettings } = await loadSettingsModule();
+    expect((await readSettings()).theme).toBe('dark');
+    // Rewrite with a same-length value and force a strictly-later mtime so only
+    // the mtime half of the key can trigger the miss.
+    await fs.writeFile(settingsFile, JSON.stringify({ theme: 'lite' }));
+    const { mtimeMs } = await fs.stat(settingsFile);
+    const later = new Date(mtimeMs + 5000);
+    await fs.utimes(settingsFile, later, later);
+    expect((await readSettings()).theme).toBe('lite');
+  });
+
+  it('a settings write invalidates the memo', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ theme: 'dark' }));
+    const { readSettings, updateSettings } = await loadSettingsModule();
+    expect((await readSettings()).theme).toBe('dark');
+    await updateSettings((cur) => ({ ...cur, theme: 'light' }));
+    expect((await readSettings()).theme).toBe('light');
+  });
+
+  it('serves a stale hit under an unchanged stat, and invalidateSettingsMemo forces a re-read', async () => {
+    // Pin a fixed integer-ms mtime so an in-place same-length rewrite keeps the
+    // exact (mtimeMs, size) key — proving both the staleness contract and that
+    // explicit invalidation (not a stat change) is what forces the re-read.
+    const pinned = new Date(1_700_000_000_000);
+    await fs.writeFile(settingsFile, JSON.stringify({ theme: 'dark' }));
+    await fs.utimes(settingsFile, pinned, pinned);
+    const { readSettings, invalidateSettingsMemo } = await loadSettingsModule();
+    expect((await readSettings()).theme).toBe('dark');
+    // Edit externally but restore the identical mtime and byte length: the memo
+    // key is unchanged, so the stale parse is still served (accepted contract).
+    await fs.writeFile(settingsFile, JSON.stringify({ theme: 'lite' }));
+    await fs.utimes(settingsFile, pinned, pinned);
+    expect((await readSettings()).theme).toBe('dark');
+    // Explicit invalidation drops the memo → the next read re-reads from disk.
+    invalidateSettingsMemo();
+    expect((await readSettings()).theme).toBe('lite');
+  });
+
+  it('falls back to defaults (and drops the memo) when the file is removed', async () => {
+    await fs.writeFile(settingsFile, JSON.stringify({ theme: 'dark' }));
+    const { readSettings, DEFAULT_LAYOUT } = await loadSettingsModule();
+    expect((await readSettings()).theme).toBe('dark');
+    await fs.rm(settingsFile);
+    const afterRemoval = await readSettings();
+    expect(afterRemoval.theme).toBe('system');
+    expect(afterRemoval.layout).toEqual(DEFAULT_LAYOUT);
+  });
+});
