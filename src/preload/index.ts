@@ -5,6 +5,7 @@ import type {
   DashboardState,
   DashboardTabSummariesMessage,
   RepoEvent,
+  RunningTaskRun,
   TermDataMessage,
   TermExitMessage,
   TermSession,
@@ -63,6 +64,11 @@ const api: CondashApi = {
   deleteTask: (slug) => ipcRenderer.invoke('deleteTask', slug),
   listRunningTaskRuns: () => ipcRenderer.invoke('listRunningTaskRuns'),
   killTaskRun: (sid) => ipcRenderer.invoke('killTaskRun', sid),
+  onTaskRuns: (callback) => {
+    const handler = (_: unknown, runs: RunningTaskRun[]): void => callback(runs);
+    ipcRenderer.on(EVENT_CHANNELS.taskRuns, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.taskRuns, handler);
+  },
   getSettingsPath: () => ipcRenderer.invoke('getSettingsPath'),
   getGlobalSettingsRaw: () => ipcRenderer.invoke('getGlobalSettingsRaw'),
   writeGlobalSettings: (expectedContent, newContent) =>

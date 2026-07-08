@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Project, Step, StepMarker, TimelineEntry } from '../../../shared/types';
-import { lastDate, nextOpenStep } from './data';
+import { groupByStatus, lastDate, nextOpenStep, projectsTabGroups } from './data';
 
 function step(marker: StepMarker, text: string, lineIndex = 0): Step {
   return { lineIndex, marker, text, section: 'Steps' };
@@ -17,6 +17,25 @@ function project(steps: Step[]): Project {
     branch: null,
     base: null,
     steps,
+    stepCounts: { todo: 0, doing: 0, done: 0, blocked: 0, dropped: 0 },
+    deliverables: [],
+    deliverableCount: 0,
+    closedAt: null,
+    timeline: [],
+  } as Project;
+}
+
+function projectAt(slug: string, status: string, path = `/p/${slug}`): Project {
+  return {
+    slug,
+    path,
+    title: slug,
+    kind: 'project',
+    status,
+    apps: [],
+    branch: null,
+    base: null,
+    steps: [],
     stepCounts: { todo: 0, doing: 0, done: 0, blocked: 0, dropped: 0 },
     deliverables: [],
     deliverableCount: 0,
@@ -79,5 +98,47 @@ describe('lastDate (timeline projection)', () => {
 
   it('falls back to the slug date when there is no timeline at all', () => {
     expect(lastDate(withDates({ slug: '2026-05-28-x', timeline: [] }))).toBe('2026-05-28');
+  });
+});
+
+describe('projectsTabGroups — stable section order + identity (R2)', () => {
+  it('emits groups in PROJECT_SECTION_ORDER, appending unknown only when non-empty', () => {
+    const groups = projectsTabGroups(
+      groupByStatus([projectAt('2026-05-01-a', 'now'), projectAt('2026-05-02-b', 'later')]),
+    );
+    expect(groups.map((g) => g.status)).toEqual(['now', 'review', 'later', 'backlog', 'done']);
+  });
+
+  it('reuses the prior Group object for a status whose membership is unchanged', () => {
+    const now = projectAt('2026-05-01-a', 'now');
+    const later = projectAt('2026-05-02-b', 'later');
+    const first = projectsTabGroups(groupByStatus([now, later]));
+
+    // A step toggle on the "now" project replaces only that object; "later" keeps
+    // its reference, mirroring how the real mutate path rebuilds projects().
+    const nowChanged = { ...now, steps: [step('x', 'done')] } as Project;
+    const second = projectsTabGroups(groupByStatus([nowChanged, later]), first);
+
+    const byStatus = (groups: ReturnType<typeof projectsTabGroups>, status: string) =>
+      groups.find((g) => g.status === status)!;
+
+    // Unchanged bucket → same object identity (no GroupBlock remount).
+    expect(byStatus(second, 'later')).toBe(byStatus(first, 'later'));
+    expect(byStatus(second, 'review')).toBe(byStatus(first, 'review'));
+    // Changed bucket → a fresh object.
+    expect(byStatus(second, 'now')).not.toBe(byStatus(first, 'now'));
+  });
+
+  it('rebuilds both source and destination groups when an item moves status', () => {
+    const p = projectAt('2026-05-01-a', 'now');
+    const other = projectAt('2026-05-02-b', 'later');
+    const first = projectsTabGroups(groupByStatus([p, other]));
+    const moved = { ...p, status: 'review' } as Project;
+    const second = projectsTabGroups(groupByStatus([moved, other]), first);
+    const byStatus = (groups: ReturnType<typeof projectsTabGroups>, status: string) =>
+      groups.find((g) => g.status === status)!;
+    expect(byStatus(second, 'now')).not.toBe(byStatus(first, 'now')); // lost the item
+    expect(byStatus(second, 'review')).not.toBe(byStatus(first, 'review')); // gained it
+    expect(byStatus(second, 'later')).toBe(byStatus(first, 'later')); // untouched
   });
 });

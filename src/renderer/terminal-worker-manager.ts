@@ -6,20 +6,26 @@
 // flight at once).
 
 export class TerminalWorkerManager {
-  private worker: Worker;
+  private worker: Worker | null = null;
   private nextRequestId = 0;
   private pending = new Map<
     number,
     { resolve: (value: string) => void; reject: (err: Error) => void }
   >();
 
-  constructor() {
-    this.worker = new Worker(
+  /** Spawn the worker thread on first use and cache it. Constructing the
+   *  manager is free — the Worker (and its whole module graph) is created only
+   *  when a tab first needs offloading to the headless side (the first demote,
+   *  i.e. the first time a second tab is hidden), keeping it off the boot path
+   *  (R4). A single active tab never spawns it. */
+  private ensureWorker(): Worker {
+    if (this.worker) return this.worker;
+    const worker = new Worker(
       /* @vite-ignore */
       new URL('./terminal-worker.ts', import.meta.url),
       { type: 'module', name: 'condash-terminal-worker' },
     );
-    this.worker.onmessage = (
+    worker.onmessage = (
       ev: MessageEvent<{ type: string; rid?: number; data?: string; error?: string }>,
     ) => {
       const { type, rid, data, error } = ev.data;
@@ -35,7 +41,7 @@ export class TerminalWorkerManager {
         p.resolve(data ?? '');
       }
     };
-    this.worker.onerror = (err) => {
+    worker.onerror = (err) => {
       // eslint-disable-next-line no-console
       console.error(
         '[terminal-worker] load/runtime error',
@@ -51,13 +57,15 @@ export class TerminalWorkerManager {
         this.pending.delete(id);
       }
     };
+    this.worker = worker;
+    return worker;
   }
 
   private request(type: string, sid: string, payload?: Record<string, unknown>): Promise<string> {
     return new Promise((resolve, reject) => {
       const rid = this.nextRequestId++;
       this.pending.set(rid, { resolve, reject });
-      this.worker.postMessage({ type, sid, rid, ...payload });
+      this.ensureWorker().postMessage({ type, sid, rid, ...payload });
     });
   }
 
@@ -66,7 +74,7 @@ export class TerminalWorkerManager {
   }
 
   write(sid: string, data: string): void {
-    this.worker.postMessage({ type: 'write', sid, data });
+    this.ensureWorker().postMessage({ type: 'write', sid, data });
   }
 
   serialize(sid: string): Promise<string> {
@@ -85,6 +93,9 @@ export class TerminalWorkerManager {
       p.reject(new Error('terminal worker terminated'));
       this.pending.delete(id);
     }
-    this.worker.terminate();
+    // No-op when the worker was never spawned (single-tab session that never
+    // demoted, R4).
+    this.worker?.terminate();
+    this.worker = null;
   }
 }

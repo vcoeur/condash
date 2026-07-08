@@ -53,21 +53,38 @@ export function TasksView(props: {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [fill, setFill] = createSignal<FillState | null>(null);
 
-  // Live headless scheduled runs, polled from the main-side scheduler. The poll
-  // is cheap (an in-memory map snapshot) and 2s is responsive enough for runs
-  // that live for minutes.
+  // Live headless scheduled runs. The scheduler pushes the roster on every run
+  // start / exit (B5), so this is push-driven; the slow interval is only a
+  // backstop against a missed push (the scheduler is the sole writer, so drift
+  // is unlikely). Seeded once on mount.
   const [running, setRunning] = createSignal<readonly RunningTaskRun[]>([]);
+  // A monotonic epoch guards against a stale seed/poll snapshot clobbering an
+  // authoritative push that lands during the `listRunningTaskRuns()` round trip:
+  // a push bumps the epoch, and a refresh only applies its result if the epoch
+  // is unchanged since it started (F1). Without this, a start/exit inside the
+  // seed window could be reverted for up to a full poll interval.
+  let runsEpoch = 0;
   const refreshRunning = async (): Promise<void> => {
+    const epoch = runsEpoch;
     try {
-      setRunning(await window.condash.listRunningTaskRuns());
+      const runs = await window.condash.listRunningTaskRuns();
+      if (epoch === runsEpoch) setRunning(runs);
     } catch {
       /* scheduler not ready / no conception — leave the list as-is */
     }
   };
   onMount(() => {
+    // Subscribe before the seed so a push during the seed's round trip is kept.
+    const offTaskRuns = window.condash.onTaskRuns((runs) => {
+      runsEpoch += 1;
+      setRunning(runs);
+    });
     void refreshRunning();
-    const poll = setInterval(() => void refreshRunning(), 2000);
-    onCleanup(() => clearInterval(poll));
+    const poll = setInterval(() => void refreshRunning(), 30000);
+    onCleanup(() => {
+      offTaskRuns();
+      clearInterval(poll);
+    });
   });
   const killRun = async (sid: string): Promise<void> => {
     await window.condash.killTaskRun(sid).catch(() => undefined);

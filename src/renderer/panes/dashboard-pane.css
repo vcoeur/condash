@@ -312,24 +312,35 @@
 }
 
 /* Tiny "being summarized right now" marker — a small accent dot that pulses.
- * The card keeps its own state colour and badge; this is just a live cue. */
+ * The card keeps its own state colour and badge; this is just a live cue. The
+ * ring animates transform + opacity on a pseudo-element (compositor-only), not
+ * box-shadow spread (which repaints every frame). */
 .dashboard-tab-summarizing {
+  position: relative;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   flex: 0 0 auto;
   background: var(--accent);
+}
+.dashboard-tab-summarizing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
   animation: dashboard-ping 1.6s ease-out infinite;
+  will-change: transform, opacity;
 }
 @keyframes dashboard-ping {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+    transform: scale(1);
+    opacity: 0.6;
   }
-  70% {
-    box-shadow: 0 0 0 7px transparent;
-  }
+  70%,
   100% {
-    box-shadow: 0 0 0 0 transparent;
+    transform: scale(3.8);
+    opacity: 0;
   }
 }
 

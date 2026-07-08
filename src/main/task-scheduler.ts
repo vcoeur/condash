@@ -20,7 +20,9 @@
  * `taskConfig` entry sets a cadence, and it carries its own agent.
  */
 import { randomBytes } from 'node:crypto';
+import { BrowserWindow } from 'electron';
 import * as pty from 'node-pty';
+import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { listAgents } from './agents';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings } from './settings';
@@ -132,6 +134,17 @@ export function listRunningTaskRuns(): RunningTaskRun[] {
     startedAt,
     logPath,
   }));
+}
+
+/** Push the live run roster to every renderer. Called on each run start / exit
+ *  (and on teardown) so the Tasks pane reflects the change immediately instead
+ *  of waiting out a poll interval (B5). */
+function broadcastRuns(): void {
+  const payload = listRunningTaskRuns();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
+    win.webContents.send(EVENT_CHANNELS.taskRuns, payload);
+  }
 }
 
 /** Kill (and discard) the in-flight run with this sid. Returns false when no
@@ -254,6 +267,7 @@ async function runHeadless(
       settled = true;
       clearTimeout(timer);
       running.delete(sid);
+      broadcastRuns();
       void logger.close().finally(resolve);
     };
     // Kill path (timeout or UI discard): stamp a sealed footer before the
@@ -276,6 +290,7 @@ async function runHeadless(
       logPath,
       kill: killAndSettle,
     });
+    broadcastRuns();
     child.onData((data) => logger.output(data));
     child.onExit(({ exitCode }) => {
       logger.exit(exitCode);
@@ -357,6 +372,8 @@ export async function setScheduledConception(conceptionPath: string | null): Pro
   for (const run of [...running.values()]) run.kill();
   running.clear();
   states.clear();
+  // Ensure the pane empties even if a straggler slipped the per-run push above.
+  broadcastRuns();
   if (!conceptionPath) return;
   const interval = setInterval(() => void tick(conceptionPath), TICK_MS);
   current = { path: conceptionPath, interval };

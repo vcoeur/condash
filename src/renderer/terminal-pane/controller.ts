@@ -21,7 +21,7 @@ import { createDragDropController } from './drag-drop';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
-import { type Column, displayName, sameStringList, type Tab } from './types';
+import { captureReadinessTail, type Column, displayName, sameStringList, type Tab } from './types';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
 import type {
   AgentChoice,
@@ -72,10 +72,17 @@ export function createTerminalController(props: TerminalPaneProps) {
   const MAX_SESSION_DATA = 64 * 1024;
   const sessionData = new Map<string, string>();
 
-  /** Append a chunk to a session's rolling buffer, trimming to the tail cap. */
+  /** Append a chunk to a session's rolling readiness buffer — but only while a
+   *  readiness waiter is registered for it (R1). No waiter → skip the per-chunk
+   *  concat + 64 KB slice entirely; the buffer feeds waitForReady alone. */
   const appendSessionData = (id: string, chunk: string): void => {
-    const next = (sessionData.get(id) ?? '') + chunk;
-    sessionData.set(id, next.length > MAX_SESSION_DATA ? next.slice(-MAX_SESSION_DATA) : next);
+    const next = captureReadinessTail(
+      readyWaiters.has(id),
+      sessionData.get(id),
+      chunk,
+      MAX_SESSION_DATA,
+    );
+    if (next !== undefined) sessionData.set(id, next);
   };
 
   // Pending readiness waiters keyed by session id.

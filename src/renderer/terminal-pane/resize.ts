@@ -30,11 +30,32 @@ export function createResizeHandlers(deps: ResizeDeps): {
   const refit = (): void => {
     for (const fit of deps.fitAddons()) {
       try {
+        // fit() only calls term.resize() when the computed cols/rows actually
+        // change, and term.onResize (→ termResize IPC) fires only on a real
+        // change — so an unchanged drag tick sends no pty resize.
         fit.fit();
       } catch {
         /* not yet sized */
       }
     }
+  };
+
+  // Coalesce the per-mousemove refit to one call per animation frame: a splitter
+  // drag fires mousemove far faster than 60 fps, and each fit() measures char
+  // cells (a layout read). The signal-driven CSS resize still tracks the pointer
+  // synchronously; only the xterm canvas fit is throttled to the frame.
+  let refitRaf: number | null = null;
+  const scheduleRefit = (): void => {
+    if (refitRaf !== null) return;
+    refitRaf = requestAnimationFrame(() => {
+      refitRaf = null;
+      refit();
+    });
+  };
+  const cancelScheduledRefit = (): void => {
+    if (refitRaf === null) return;
+    cancelAnimationFrame(refitRaf);
+    refitRaf = null;
   };
 
   const persist = (): void => {
@@ -49,11 +70,14 @@ export function createResizeHandlers(deps: ResizeDeps): {
       const ratio = (e.clientX - rect.left) / rect.width;
       const clamped = Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO, ratio));
       deps.setSplitRatio(clamped);
-      refit();
+      scheduleRefit();
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      // Settle the final size exactly, dropping any frame still pending.
+      cancelScheduledRefit();
+      refit();
       persist();
     };
     window.addEventListener('mousemove', onMove);
@@ -70,11 +94,14 @@ export function createResizeHandlers(deps: ResizeDeps): {
       const delta = startY - e.clientY;
       const next = Math.max(MIN_PANE_HEIGHT, Math.min(maxHeight, startHeight + delta));
       deps.setPaneHeight(next);
-      refit();
+      scheduleRefit();
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      // Settle the final size exactly, dropping any frame still pending.
+      cancelScheduledRefit();
+      refit();
       persist();
     };
     window.addEventListener('mousemove', onMove);
