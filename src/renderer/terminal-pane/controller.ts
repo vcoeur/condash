@@ -21,7 +21,7 @@ import { createDragDropController } from './drag-drop';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
-import { type Column, displayName, type Tab } from './types';
+import { type Column, displayName, sameStringList, type Tab } from './types';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
 import type {
   AgentChoice,
@@ -481,12 +481,29 @@ export function createTerminalController(props: TerminalPaneProps) {
       setActiveColumn(column);
       queueMicrotask(focusActive);
     }
-    setTabs((prev) =>
-      prev.map((t) => {
-        const s = snap.find((x) => x.id === t.id);
-        return s ? { ...t, exited: s.exited, memBytes: s.memBytes, memMaxBytes: s.memMaxBytes } : t;
-      }),
-    );
+    // Reconcile the exited/memory fields onto the existing tabs while preserving
+    // object identity: the main process rebroadcasts the FULL snapshot every 2.5 s
+    // (the memory sampler), and a fresh `{ ...t }` per tab churned every
+    // reference-keyed row's `<For>` mount — busy-dot animations restarted, hover
+    // popovers died — even when nothing changed. Build an id→snapshot map (drops
+    // the O(n²) `snap.find` in the map) and return the SAME object when
+    // exited/memBytes/memMaxBytes are unchanged, allocating only on a real change;
+    // return `prev` unchanged when no tab moved so the signal doesn't even notify
+    // (review finding T5).
+    const snapById = new Map(snap.map((s) => [s.id, s]));
+    setTabs((prev) => {
+      let mutated = false;
+      const next = prev.map((t) => {
+        const s = snapById.get(t.id);
+        if (!s) return t;
+        if (t.exited === s.exited && t.memBytes === s.memBytes && t.memMaxBytes === s.memMaxBytes) {
+          return t;
+        }
+        mutated = true;
+        return { ...t, exited: s.exited, memBytes: s.memBytes, memMaxBytes: s.memMaxBytes };
+      });
+      return mutated ? next : prev;
+    });
     const stillMyById = new Map<string, boolean>();
     for (const s of snap) stillMyById.set(s.id, s.side === 'my');
     const toDrop = tabs()
@@ -644,19 +661,34 @@ export function createTerminalController(props: TerminalPaneProps) {
   const applyTabSummaries = (summaries: TabSummary[]): void => {
     if (summaries.length === 0) return;
     const bySid = new Map(summaries.map((s) => [s.sid, s]));
-    setTabs((prev) =>
-      prev.map((t) => {
+    // Field-compare before allocating: the engine pushes summaries at its cadence
+    // and re-sends unchanged title/contextLines/currentAction for a steady tab, so
+    // a fresh `{ ...t }` per summarized sid rebuilt its reference-keyed row for
+    // nothing. Return the SAME object when the three summary-derived fields are
+    // unchanged (contextLines compared element-wise), and `prev` when no tab moved
+    // so the signal doesn't notify (review finding T7).
+    setTabs((prev) => {
+      let mutated = false;
+      const next = prev.map((t) => {
         const summary = bySid.get(t.id);
-        return summary
-          ? {
-              ...t,
-              llmTitle: summary.title,
-              contextLines: summary.contextLines,
-              currentAction: summary.currentAction,
-            }
-          : t;
-      }),
-    );
+        if (!summary) return t;
+        if (
+          t.llmTitle === summary.title &&
+          t.currentAction === summary.currentAction &&
+          sameStringList(t.contextLines, summary.contextLines)
+        ) {
+          return t;
+        }
+        mutated = true;
+        return {
+          ...t,
+          llmTitle: summary.title,
+          contextLines: summary.contextLines,
+          currentAction: summary.currentAction,
+        };
+      });
+      return mutated ? next : prev;
+    });
   };
   const offDashboard = window.condash.onDashboardTabSummaries(({ summaries }) =>
     applyTabSummaries(summaries),

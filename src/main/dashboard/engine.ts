@@ -174,15 +174,19 @@ function pruneSchedulerMaps(liveSids: Set<string>): void {
 
 /** Earliest next-refresh time across the live tabs — drives the engine-status
  *  countdown. A sid with no clock yet (brand new) counts as one interval out so
- *  the ETA never reports a stale "due now". Returns `now + intervalMs` when no
- *  tab is open. */
+ *  the ETA never reports a stale "due now". Returns a stable `0` when no tab is
+ *  open: a moving `now + intervalMs` sentinel would change on every tick and
+ *  defeat `publishEngine`'s change guard, pushing an unchanged empty-roster state
+ *  to the renderer every tick (review finding T7-main). The renderer treats
+ *  nextRunAt 0 as "soon" and, with an empty roster, renders no pending cards at
+ *  all — so the ETA is never actually shown for the empty case. */
 function earliestDue(now: number, liveSids: Set<string>, intervalMs: number): number {
   let min = Infinity;
   for (const sid of liveSids) {
     const due = nextDueAt.get(sid) ?? now + intervalMs;
     if (due < min) min = due;
   }
-  return min === Infinity ? now + intervalMs : min;
+  return min === Infinity ? 0 : min;
 }
 
 /** A `working` tab that has produced no new output for this many summarize

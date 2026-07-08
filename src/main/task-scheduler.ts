@@ -293,10 +293,19 @@ async function tick(conceptionPath: string): Promise<void> {
     return;
   }
   const taskConfig = (config.taskConfig ?? {}) as Record<string, TaskConfigEntry>;
-  const now = Date.now();
+  // Early-out before any per-task bookkeeping when nothing is scheduled — the
+  // common case (no task carries a `schedule`), so an idle scheduler tick costs
+  // just the memoized config read (2 stats) plus this scan (review finding
+  // B4/T7-main). Cadence is parsed once here and reused below.
+  const scheduled: Array<[string, TaskConfigEntry, number]> = [];
   for (const [slug, entry] of Object.entries(taskConfig)) {
     const cadence = parseCadence(entry?.schedule);
-    if (cadence === null) continue;
+    if (cadence !== null) scheduled.push([slug, entry, cadence]);
+  }
+  if (scheduled.length === 0) return;
+
+  const now = Date.now();
+  for (const [slug, entry, cadence] of scheduled) {
     let state = states.get(slug);
     if (!state) {
       state = { lastCheckedAt: 0, inFlight: false, bytesPerSid: new Map() };
