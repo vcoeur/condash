@@ -12,15 +12,25 @@ export async function findProjectReadmes(conceptionPath: string): Promise<string
   const projectsRoot = join(conceptionPath, 'projects');
   const months = await readSubdirs(projectsRoot);
 
-  const results: string[] = [];
-  for (const month of months) {
-    const items = await readSubdirs(join(projectsRoot, month));
-    for (const item of items) {
-      const readme = join(projectsRoot, month, item, 'README.md');
-      if (await exists(readme)) results.push(readme);
-    }
-  }
-  return results;
+  // Probe every month's items — and each item's README existence — concurrently.
+  // The old serial await-in-loop paid one round-trip per project dir (~700 at
+  // boot on a large tree, ~330-390 ms — review finding S1). Output order is
+  // preserved: months are sorted, items within a month are sorted, and
+  // Promise.all keeps array order, so the flattened result matches the old walk.
+  const perMonth = await Promise.all(
+    months.map(async (month) => {
+      const monthDir = join(projectsRoot, month);
+      const items = await readSubdirs(monthDir);
+      const readmes = await Promise.all(
+        items.map(async (item) => {
+          const readme = join(monthDir, item, 'README.md');
+          return (await exists(readme)) ? readme : null;
+        }),
+      );
+      return readmes.filter((readme): readme is string => readme !== null);
+    }),
+  );
+  return perMonth.flat();
 }
 
 async function readSubdirs(dir: string): Promise<string[]> {

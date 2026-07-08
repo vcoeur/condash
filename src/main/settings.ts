@@ -21,7 +21,15 @@ let settingsQueue: Promise<unknown> = Promise.resolve();
  * `updateSettings` — two disjoint queues would let a narrow IPC mutation land
  * inside the raw save's read→write window and get silently overwritten. */
 export function withSettingsQueue<T>(work: () => Promise<T>): Promise<T> {
-  const next: Promise<T> = settingsQueue.catch(() => undefined).then(work);
+  const next: Promise<T> = settingsQueue
+    .catch(() => undefined)
+    .then(work)
+    // Every queued operation is a settings.json write (updateSettings,
+    // mutateSettingsJson, and the Settings-modal raw save in write-config.ts all
+    // funnel through here), so drop the read memo when one settles — the next
+    // readSettings then re-reads the just-written file (S7). Runs on success and
+    // failure alike; invalidating after a failed write is harmless.
+    .finally(() => invalidateSettingsMemo());
   settingsQueue = next.catch(() => undefined);
   return next;
 }
@@ -101,37 +109,101 @@ function migrateLegacyShape(parsed: Record<string, unknown>): {
   };
 }
 
+// Mtime+size-keyed read memo for settings.json.
+//
+// A single GUI boot calls readSettings ~20× (every IPC getter, some twice via
+// getEffectiveConceptionConfig), each an unconditional readFile + JSON.parse +
+// migrate of the same small file (review finding S7). The memo turns an
+// unchanged file into a single `fs.stat`: on a hit (mtime AND size both
+// unchanged since the cached parse) it returns the cached Settings without
+// re-reading or re-parsing; on a miss it reads, parses, and stores.
+//
+// Every settings.json write funnels through `withSettingsQueue`, which drops
+// this memo on completion, so condash's own writes always invalidate.
+//
+// Staleness contract: the key is (mtimeMs, size). fs.stat exposes ms-precision
+// mtimes, so the only way to defeat the memo is an *external* editor writing the
+// file within the same millisecond AND to the identical byte length — a
+// vanishingly unlikely collision (any real edit changes content length or lands
+// in a later millisecond), and it is accepted.
+//
+// The cached Settings object is returned by reference, NOT cloned: no caller
+// mutates the result — every readSettings consumer either destructures fields or
+// reads them, and every updateSettings mutator returns a fresh `{ ...cur }`
+// spread rather than mutating `cur` in place (audited across the codebase). Same
+// read-only sharing contract as parseReadmeCached. Treat the result as immutable.
+interface SettingsMemoEntry {
+  mtimeMs: number;
+  size: number;
+  settings: Settings;
+}
+let settingsMemo: SettingsMemoEntry | null = null;
+
+/** Drop the settings.json read memo. Called from `withSettingsQueue` after every
+ *  write so the next read re-reads from disk. Exported for tests. */
+export function invalidateSettingsMemo(): void {
+  settingsMemo = null;
+}
+
+/** Build the typed `Settings` view from settings.json's raw text. Shared by the
+ *  memoised reader; assumes the file has already been stat'd. */
+function buildSettings(raw: string): Settings {
+  const rawParsed: unknown = JSON.parse(raw);
+  // A degenerate root (`null`, a string, an array) must not crash boot —
+  // fall back to defaults, same guard as effective-config's reader.
+  if (!rawParsed || typeof rawParsed !== 'object' || Array.isArray(rawParsed)) {
+    return { ...empty };
+  }
+  // Normalise legacy shapes (leftView 'outputs', dropped terminal keys, …)
+  // before the typed view is built, so e.g. getLayout never surfaces an
+  // unmigrated value to the renderer.
+  const parsed = migrateRawSettings(rawParsed) as Record<string, unknown>;
+  const { lastConceptionPath, recentConceptionPaths } = migrateLegacyShape(parsed);
+  // Strip the legacy key from the parsed view so the spread below doesn't
+  // re-add it to the in-memory Settings shape.
+  const { conceptionPath: _drop, ...rest } = parsed as Record<string, unknown> & {
+    conceptionPath?: unknown;
+  };
+  void _drop;
+  const layoutCandidate =
+    rest.layout && typeof rest.layout === 'object' ? (rest.layout as LayoutState) : undefined;
+  return {
+    ...empty,
+    ...(rest as Partial<Settings>),
+    lastConceptionPath,
+    recentConceptionPaths: pruneRecents(recentConceptionPaths),
+    layout: { ...DEFAULT_LAYOUT, ...(layoutCandidate ?? {}) },
+  };
+}
+
 async function readSettingsFromDisk(): Promise<Settings> {
+  const path = settingsPath();
+  // Stat first: a cache hit costs one `stat` and skips the readFile + parse.
+  let stat;
   try {
-    const raw = await fs.readFile(settingsPath(), 'utf8');
-    const rawParsed: unknown = JSON.parse(raw);
-    // A degenerate root (`null`, a string, an array) must not crash boot —
-    // fall back to defaults, same guard as effective-config's reader.
-    if (!rawParsed || typeof rawParsed !== 'object' || Array.isArray(rawParsed)) {
+    stat = await fs.stat(path);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      settingsMemo = null;
       return { ...empty };
     }
-    // Normalise legacy shapes (leftView 'outputs', dropped terminal keys, …)
-    // before the typed view is built, so e.g. getLayout never surfaces an
-    // unmigrated value to the renderer.
-    const parsed = migrateRawSettings(rawParsed) as Record<string, unknown>;
-    const { lastConceptionPath, recentConceptionPaths } = migrateLegacyShape(parsed);
-    // Strip the legacy key from the parsed view so the spread below doesn't
-    // re-add it to the in-memory Settings shape.
-    const { conceptionPath: _drop, ...rest } = parsed as Record<string, unknown> & {
-      conceptionPath?: unknown;
-    };
-    void _drop;
-    const layoutCandidate =
-      rest.layout && typeof rest.layout === 'object' ? (rest.layout as LayoutState) : undefined;
-    return {
-      ...empty,
-      ...(rest as Partial<Settings>),
-      lastConceptionPath,
-      recentConceptionPaths: pruneRecents(recentConceptionPaths),
-      layout: { ...DEFAULT_LAYOUT, ...(layoutCandidate ?? {}) },
-    };
+    throw err;
+  }
+  const memo = settingsMemo;
+  if (memo && memo.mtimeMs === stat.mtimeMs && memo.size === stat.size) {
+    return memo.settings;
+  }
+  try {
+    const raw = await fs.readFile(path, 'utf8');
+    const settings = buildSettings(raw);
+    settingsMemo = { mtimeMs: stat.mtimeMs, size: stat.size, settings };
+    return settings;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { ...empty };
+    // TOCTOU: the file may have been removed between stat and read.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      settingsMemo = null;
+      return { ...empty };
+    }
     throw err;
   }
 }

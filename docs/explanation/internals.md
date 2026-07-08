@@ -77,6 +77,8 @@ Every rewrite of an existing file is `tmp` → `fsync` → `rename` (`atomic-wri
 
 The 3 s window is short enough that staleness is invisible to a human; the cache only matters when chokidar fires a burst of events or the user mashes Refresh.
 
+**Boot prewarm (review finding S1).** The two cold scans that gate the default panes are warmed at `whenReady`, in parallel with `createWindow` and never blocking it (`src/main/prewarm.ts`): the project-README parse memo (via the same `findProjectReadmes` + `parseReadmeCached` path `listProjects` uses) and the repo git-status fan-out (`listRepos`). Because the git-status TTL is only 3 s — shorter than the window-create + renderer-mount gap — a naive prewarm would expire before the renderer's first `listRepos` and re-run the whole fan-out; so the boot scan's promise is stashed and the first `listRepos` awaits *that same promise* (`listReposReusingBoot` in `repos.ts`), reused one-shot regardless of the underlying cache's TTL. The parse memo needs no such trick — it is mtime-keyed, not time-bounded. Both prewarms are fire-and-forget and swallow their own errors.
+
 ### 4. PTY kill pipeline { #pty-kill-pipeline }
 
 `terminals.ts:stopSession` runs the same sequence for every session terminate, including `killAll` on window close:
