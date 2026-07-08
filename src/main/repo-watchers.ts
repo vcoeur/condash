@@ -14,9 +14,13 @@
  *
  * Watchers per repo working tree:
  *
- *   - the worktree root, ignoring `.git/`, `node_modules/`, `dist*`,
- *     `build*`, `target/` — catches edits that don't touch the index
- *     (axis 1);
+ *   - the worktree root, ignoring **everything git ignores** (via
+ *     `gitignore-matcher.ts`) plus a hardcoded floor (`.git`, `.condash`,
+ *     `node_modules`, `dist*`, `build*`, `target`) — catches edits that
+ *     don't touch the index (axis 1). Driving the ignore set off gitignore
+ *     both silences the self-trigger loop (condash writes `.condash/` every
+ *     few seconds) and stops chokidar descending into gitignored trees
+ *     (`.venv/`, `__pycache__/`), which is what shrinks the inotify set;
  *   - `.git/index`, `.git/refs/heads/`, `.git/refs/remotes/`,
  *     `.git/packed-refs`, `.git/FETCH_HEAD`, `.git/config` — catches
  *     stage, unstage, branch-create, push, fetch, set-upstream
@@ -43,22 +47,67 @@
  */
 import chokidar, { type FSWatcher } from 'chokidar';
 import { BrowserWindow } from 'electron';
+import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
+import { promisify } from 'node:util';
 import type { RepoEntry, RepoEvent } from '../shared/types';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { getDirtyCount, getUpstreamStatus, invalidateForPath } from './git-status-cache';
+import { buildGitignoreMatcher, readRuleText, type GitignoreMatcher } from './gitignore-matcher';
+
+const execFileAsync = promisify(execFile);
 
 const SCALAR_DEBOUNCE_MS = 500;
 const STRUCTURAL_DEBOUNCE_MS = 250;
 
-const WORKTREE_IGNORED = [
-  /(^|[/\\])\.git([/\\]|$)/,
-  /(^|[/\\])node_modules([/\\]|$)/,
-  /(^|[/\\])dist[^/\\]*([/\\]|$)/,
-  /(^|[/\\])build[^/\\]*([/\\]|$)/,
-  /(^|[/\\])target([/\\]|$)/,
-];
+/** Mutable holder so a `.gitignore` edit can swap in a freshly-built matcher
+ *  without tearing down the chokidar watcher — the `ignored` closure reads
+ *  `holder.matcher` on every call, so a reassignment takes effect for all
+ *  subsequent events/descents. */
+interface MatcherHolder {
+  matcher: GitignoreMatcher;
+}
+
+/** The user's global excludes file (`git config core.excludesFile`), resolved
+ *  once for the app lifetime — it is per-user, not per-conception. `null` once
+ *  resolved-to-absent. */
+let globalExcludesPromise: Promise<string | null> | undefined;
+
+function resolveGlobalExcludesFile(): Promise<string | null> {
+  if (!globalExcludesPromise) globalExcludesPromise = computeGlobalExcludesFile();
+  return globalExcludesPromise;
+}
+
+function expandHome(p: string): string {
+  if (p === '~') return homedir();
+  if (p.startsWith('~/')) return join(homedir(), p.slice(2));
+  return p;
+}
+
+/** Resolve the global excludes file: explicit `core.excludesFile`, else the
+ *  XDG default (`$XDG_CONFIG_HOME/git/ignore` → `~/.config/git/ignore`).
+ *  Returns null when neither exists — a missing global excludes file is normal. */
+async function computeGlobalExcludesFile(): Promise<string | null> {
+  let configured: string | null = null;
+  try {
+    const { stdout } = await execFileAsync('git', ['config', '--get', 'core.excludesFile']);
+    const trimmed = stdout.trim();
+    if (trimmed.length > 0) configured = expandHome(trimmed);
+  } catch {
+    // git absent, or the key is unset — fall through to the XDG default.
+  }
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const fallback = xdg ? join(xdg, 'git', 'ignore') : join(homedir(), '.config', 'git', 'ignore');
+  const candidate = configured ?? fallback;
+  return existsSync(candidate) ? candidate : null;
+}
+
+/** Build a gitignore-backed matcher for one watch root from its rule sources. */
+function buildWorktreeMatcher(root: string, globalExcludesFile: string | null): GitignoreMatcher {
+  return buildGitignoreMatcher(root, readRuleText(root, globalExcludesFile));
+}
 
 interface WatchedPath {
   path: string;
@@ -139,6 +188,7 @@ function scheduleStructural(repoPath: string): void {
  *  against its replacement. */
 export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
   const wantedKeys = new Set(targets.map((t) => t.path));
+  const globalExcludesFile = await resolveGlobalExcludesFile();
   const closing: Promise<void>[] = [];
 
   for (const [path, entry] of watchers) {
@@ -163,13 +213,29 @@ export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
 
   for (const target of targets) {
     if (watchers.has(target.path)) continue;
+    // One matcher per root, held mutably so a `.gitignore` edit can rebuild it.
+    const holder: MatcherHolder = {
+      matcher: buildWorktreeMatcher(target.path, globalExcludesFile),
+    };
     const worktree = chokidar.watch(target.path, {
-      ignored: WORKTREE_IGNORED,
+      // Function form so chokidar also refuses to DESCEND into ignored dirs
+      // (that is what shrinks the inotify watch set). `entry.stats` supplies
+      // isDirectory during the recursive scan, letting dir-only patterns match.
+      ignored: (path, stats) => holder.matcher.ignores(path, stats?.isDirectory()),
       ignoreInitial: true,
       persistent: true,
       depth: 99,
     });
-    worktree.on('all', () => scheduleRecompute(target));
+    worktree.on('all', (_event, changedPath) => {
+      // A `.gitignore` edit can itself change `git status` output (so it must
+      // recompute) AND changes the ignore set (so rebuild the matcher). Already
+      // -watched dirs aren't retroactively pruned until the next full re-arm,
+      // which is acceptable — new rules still govern every subsequent event.
+      if (basename(changedPath) === '.gitignore') {
+        holder.matcher = buildWorktreeMatcher(target.path, globalExcludesFile);
+      }
+      scheduleRecompute(target);
+    });
     worktree.on('error', (err) => {
       console.error(`[repo-watcher] worktree ${target.path}:`, err);
     });

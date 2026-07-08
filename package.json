@@ -61,6 +61,7 @@
     "chokidar": "^4.0.3",
     "electron-updater": "^6.6.0",
     "highlight.js": "^11.11.1",
+    "ignore": "^7.0.5",
     "markdown-it": "^14.1.1",
     "markdown-it-anchor": "^9.2.0",
     "markdown-it-task-lists": "^2.1.1",
