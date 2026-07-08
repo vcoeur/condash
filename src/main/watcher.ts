@@ -34,7 +34,10 @@ let timer: NodeJS.Timeout | null = null;
 let pending: TreeEvent[] = [];
 let pendingUnknown = false;
 
-export async function setWatchedConception(conceptionPath: string | null): Promise<void> {
+export async function setWatchedConception(
+  conceptionPath: string | null,
+  opts: { deferIndexBuild?: boolean } = {},
+): Promise<void> {
   if (current?.path === conceptionPath) return;
 
   // Conception is changing — drop the in-memory search index; it's rebuilt
@@ -163,9 +166,19 @@ export async function setWatchedConception(conceptionPath: string | null): Promi
   // Build the in-memory search index for the markdown sources. Fire-and-forget
   // so it never blocks boot; queries fall back to the on-disk scan until it
   // resolves, and the watcher keeps it fresh thereafter.
-  void rebuildSearchIndex(conceptionPath).catch((err) => {
-    console.error('[watcher] rebuildSearchIndex failed', err);
-  });
+  //
+  // On the boot call (`deferIndexBuild`) this rebuild — a full-tree re-read of
+  // ~700 files — is skipped here and kicked by index.ts after `ready-to-show` +
+  // an idle tick instead (S8), so it never competes with the renderer's first
+  // listProjects/listRepos and the chokidar install for the cold page cache.
+  // Search stays correct in the gap: index-cache returns null while unbuilt and
+  // search/index.ts falls back to an on-disk scan. Conception switches / config
+  // refreshes leave `deferIndexBuild` unset and rebuild immediately.
+  if (!opts.deferIndexBuild) {
+    void rebuildSearchIndex(conceptionPath).catch((err) => {
+      console.error('[watcher] rebuildSearchIndex failed', err);
+    });
+  }
 }
 
 /**

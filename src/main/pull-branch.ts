@@ -9,7 +9,6 @@
 // up-to-date / diverged decision is unit-tested without a live git (mirrors
 // the parsePorcelain / parseNumstat split in git-details.ts).
 
-import { simpleGit } from 'simple-git';
 import type { PullBranchResult } from '../shared/types';
 import { getDirtyCount } from './git-status-cache';
 
@@ -59,6 +58,10 @@ export async function pullBranch(path: string): Promise<PullBranchResult> {
       message: `Worktree has ${dirty} uncommitted change${dirty === 1 ? '' : 's'} — commit or stash before pulling`,
     };
   }
+  // Lazy so importing this module (reachable on the pre-window boot path via
+  // `ipc/repos`) doesn't pull simple-git's graph before first paint — it loads
+  // only on this post-window "Pull branch" action.
+  const { simpleGit } = await import('simple-git');
   const git = simpleGit({ baseDir: path });
   try {
     const stdout = await git.raw(['pull', '--ff-only']);

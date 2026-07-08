@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js';
 import type { Accessor } from 'solid-js';
+import { getBootstrap } from './bootstrap';
 
 export interface BranchFilterStoreDeps {
   /** Surface a transient toast in the renderer (used for persist failures). */
@@ -41,14 +42,13 @@ export function createBranchFilterStore(deps: BranchFilterStoreDeps): BranchFilt
   const [selectedBranches, setSelectedBranches] = createSignal<ReadonlySet<string>>(new Set());
   const [stickyAll, setStickyAllSignal] = createSignal<boolean>(true);
 
-  // Hydrate. The sticky-all default is computed in main (true when the
-  // user had no explicit selection) so the first paint matches the old
-  // "show every branch" behaviour for upgrading installs.
-  void window.condash.getSelectedBranches().then((list) => {
-    setSelectedBranches(new Set(list));
-  });
-  void window.condash.getBranchFilterStickyAll().then((value) => {
-    setStickyAllSignal(value);
+  // Hydrate from the one-shot boot bundle (both values arrive together). The
+  // sticky-all default is computed in main (true when the user had no explicit
+  // selection) so the first paint matches the old "show every branch" behaviour
+  // for upgrading installs.
+  void getBootstrap().then((boot) => {
+    setSelectedBranches(new Set(boot.selectedBranches));
+    setStickyAllSignal(boot.branchFilterStickyAll);
   });
 
   const persistSet = (next: ReadonlySet<string>): void => {

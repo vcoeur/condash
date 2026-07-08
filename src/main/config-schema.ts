@@ -16,6 +16,21 @@ import type {
 } from '../shared/types';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
 import { migrateRawSettings } from './config-migrate';
+import {
+  SCOPE_OF,
+  type SettingsScope,
+  type ConceptionOnlyKey,
+  type GlobalOnlyKey,
+  type PathTrackingKey,
+} from './config-scope';
+
+// `SCOPE_OF` / `SettingsScope` now live in the zod-free `config-scope.ts` so the
+// boot-path scope-partition migrator can import them without constructing the
+// schemas below. Re-exported here so existing importers (`config.ts`, the schema
+// test) keep resolving against `config-schema.ts`. The `satisfies` clauses on the
+// three field groups below prove the schema keys and the scope-map arrays never
+// drift apart.
+export { SCOPE_OF, type SettingsScope };
 
 // The raw repo-entry contract is process-agnostic and lives in shared/ so the
 // renderer can reference it without importing this zod-based module. Re-export
@@ -477,7 +492,7 @@ const conceptionOnlyFields = {
         .strict(),
     )
     .optional(),
-} as const;
+} satisfies Record<'$schema_doc' | ConceptionOnlyKey, z.ZodTypeAny>;
 
 /**
  * Fields owned by the per-machine global `settings.json` — everything that
@@ -517,7 +532,7 @@ const globalOnlyFields = {
    *  newly-created branches are auto-pinned. When false, the `selectedBranches`
    *  set is honoured exactly (empty = only main visible). Issue #169. */
   branchFilterStickyAll: z.boolean().optional(),
-} as const;
+} satisfies Record<'$schema_doc' | GlobalOnlyKey, z.ZodTypeAny>;
 
 /**
  * Path-tracking fields the global per-machine `settings.json` owns. A
@@ -530,7 +545,7 @@ const pathTrackingFields = {
   lastConceptionPath: z.string().nullable().optional(),
   /** Most-recently-opened paths, newest first, capped at RECENT_CONCEPTION_PATHS_CAP. */
   recentConceptionPaths: z.array(z.string()).optional(),
-} as const;
+} satisfies Record<PathTrackingKey, z.ZodTypeAny>;
 
 /** Schema for `<userData>/settings.json`. */
 export const globalSettingsSchema = z
@@ -550,30 +565,10 @@ export const conceptionConfigSchema = z.object(conceptionOnlyFields).strict();
 
 export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
 
-export type SettingsScope = 'global' | 'conception';
-
-/**
- * Single source of truth for which file owns each top-level setting key,
- * derived from the two disjoint field groups so it can never drift from the
- * schemas. The migrator, the CLI `config set`, and the Settings UI route a
- * key to its owning file through this map rather than re-encoding the split.
- * `$schema_doc` is a doc pointer allowed in either file and is intentionally
- * absent.
- */
-export const SCOPE_OF: Record<string, SettingsScope> = {
-  ...Object.fromEntries(
-    Object.keys(conceptionOnlyFields)
-      .filter((key) => key !== '$schema_doc')
-      .map((key) => [key, 'conception' as const]),
-  ),
-  ...Object.fromEntries(
-    Object.keys(globalOnlyFields)
-      .filter((key) => key !== '$schema_doc')
-      .map((key) => [key, 'global' as const]),
-  ),
-  ...Object.fromEntries(Object.keys(pathTrackingFields).map((key) => [key, 'global' as const])),
-  skillsActiveScope: 'global',
-};
+// `SCOPE_OF` (the key → owning-file map) and `SettingsScope` are defined in the
+// zod-free `config-scope.ts` and re-exported at the top of this file. The
+// `satisfies Record<…, z.ZodTypeAny>` clauses on the three field groups above
+// keep the schema keys and the scope-map arrays in lock-step at compile time.
 
 // `DEFAULT_RESOURCES_PATH` / `DEFAULT_SKILLS_PATH` live in the zod-free
 // `config-migrate.ts` so read-path importers don't construct the schemas above.

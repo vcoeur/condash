@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js';
 import type { CardMinWidthPrefs } from '@shared/types';
 import { DEFAULT_CARD_MIN_WIDTH } from '@shared/types';
+import { getBootstrap } from '../bootstrap';
 
 /** Push the user-configured card grid min-widths onto `:root` as CSS
  *  pixels. The pane stylesheets read
@@ -46,9 +47,9 @@ export function useCardMinWidth(): UseCardMinWidth {
     ...DEFAULT_CARD_MIN_WIDTH,
   });
   applyCardMinWidth(cardMinWidth());
-  void window.condash.getCardMinWidth().then((prefs) => {
-    setCardMinWidth(prefs);
-    applyCardMinWidth(prefs);
+  void getBootstrap().then((boot) => {
+    setCardMinWidth(boot.cardMinWidth);
+    applyCardMinWidth(boot.cardMinWidth);
   });
 
   const handleCardMinWidthChange = (patch: CardMinWidthPrefs): void => {

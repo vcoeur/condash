@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js';
 import type { Accessor } from 'solid-js';
 import type { SkillScope, TreeRoot } from '@shared/types';
+import { getBootstrap } from './bootstrap';
 
 export interface TreeExpansionDeps {
   /** Surface a transient toast in the renderer (used for persist failures). */
@@ -40,7 +41,8 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
   );
   const [skillsUserExpanded, setSkillsUserExpanded] = createSignal<ReadonlySet<string>>(new Set());
 
-  void window.condash.getTreeExpansion().then((prefs) => {
+  void getBootstrap().then((boot) => {
+    const prefs = boot.treeExpansion;
     setKnowledgeExpanded(new Set(prefs.knowledge));
     setResourcesExpanded(new Set(prefs.resources));
     // Legacy `skills` key was the conception-scope set in earlier versions —

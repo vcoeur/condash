@@ -10,7 +10,6 @@
 // popover can render a separate section for commits queued for push, in
 // the same round-trip as the dirty-file list.
 
-import { simpleGit } from 'simple-git';
 import type { UnpushedCommit, UpstreamStatus } from '../shared/types';
 import {
   getUpstreamStatus,
@@ -117,6 +116,10 @@ export async function getDirtyDetails(
   opts: DirtyDetailsOptions = {},
 ): Promise<DirtyDetails | null> {
   try {
+    // Lazy so importing this module (reachable on the pre-window boot path via
+    // `ipc/repos`) doesn't pull simple-git's graph before first paint — it loads
+    // only on this post-window "inspect dirty" popover read.
+    const { simpleGit } = await import('simple-git');
     const git = simpleGit({ baseDir: path });
     const statusArgs = ['status', '--porcelain=v1'];
     // `--no-renames` keeps numstat paths aligned with porcelain (which we

@@ -2,10 +2,6 @@ import { promises as fs } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { atomicWrite } from './atomic-write';
 import { isConceptionSettingsPath } from './condash-dir';
-import {
-  validateAndCanonicaliseConceptionConfig,
-  validateAndCanonicaliseGlobalSettings,
-} from './config-schema';
 import { withFileQueue } from './mutate-shared';
 import { withSettingsQueue } from './settings';
 
@@ -47,9 +43,15 @@ export async function writeNote(
     }
 
     let finalContent: string;
+    // `config-schema` (≈45 ms of zod schema construction) is dynamic-imported on
+    // the config/settings save branch only, so this module — reachable on the
+    // pre-window boot path via the `mutate` barrel — stays off the eager zod
+    // graph (S4). A plain README/note save never loads it.
     if (isConceptionConfig) {
+      const { validateAndCanonicaliseConceptionConfig } = await import('./config-schema');
       finalContent = validateAndCanonicaliseConceptionConfig(newContent);
     } else if (isGlobalSettings) {
+      const { validateAndCanonicaliseGlobalSettings } = await import('./config-schema');
       finalContent = validateAndCanonicaliseGlobalSettings(newContent);
     } else {
       finalContent = newContent;

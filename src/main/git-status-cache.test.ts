@@ -41,9 +41,12 @@ describe('getDirtyCount coalescing', () => {
     rawMock.mockReturnValue(d.promise);
     const p1 = getDirtyCount('/coalesce-a');
     const p2 = getDirtyCount('/coalesce-a');
-    // Let the async computation reach its git call before asserting.
-    await new Promise((r) => setImmediate(r));
-    expect(rawMock).toHaveBeenCalledTimes(1);
+    // Let the async computation reach its git call before asserting. The
+    // dirty-count path lazy-imports `simple-git` (kept off the pre-window boot
+    // graph), so the first call crosses an extra async hop — poll for the git
+    // call rather than assume a fixed tick. Coalescing guarantees it settles at
+    // exactly one invocation.
+    await vi.waitFor(() => expect(rawMock).toHaveBeenCalledTimes(1));
     d.resolve(' M a.ts\n M b.ts\n');
     expect(await p1).toBe(2);
     expect(await p2).toBe(2);

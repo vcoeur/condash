@@ -1,11 +1,11 @@
 import { ipcMain } from 'electron';
 import { toPosix } from '../../shared/path';
-import { layoutSchema } from '../config-schema';
 import { getEffectiveConceptionConfig } from '../effective-config';
 import { DEFAULT_LAYOUT, readSettings, settingsPath, updateSettings } from '../settings';
 import type {
   CardMinWidthPrefs,
   LayoutState,
+  Settings,
   SkillScope,
   Theme,
   TreeExpansionPrefs,
@@ -58,6 +58,183 @@ function pruneDefaults(prefs: CardMinWidthPrefs): CardMinWidthPrefs | undefined 
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+// --- Value resolvers ----------------------------------------------------
+// Each getter's computation is extracted into a pure(-ish) resolver over an
+// already-read `Settings` so the `bootstrap` IPC (ipc/bootstrap.ts) can assemble
+// the whole mount-time bundle from ONE `readSettings()` instead of ~9 separate
+// getter round-trips, each re-reading settings.json. The individual `get*`
+// handlers below call the same resolvers, so the two paths can never diverge.
+
+/** Effective theme: a conception override beats the global value; falls back to
+ *  the global `settings.theme`. Mirrors the `getTheme` handler. */
+export async function resolveTheme(settings: Settings): Promise<Theme> {
+  if (settings.lastConceptionPath) {
+    const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
+    if (effective.theme) return effective.theme as Theme;
+  }
+  return settings.theme;
+}
+
+/** Persisted composite layout, or the built-in default. Mirrors `getLayout`. */
+export function resolveLayout(settings: Settings): LayoutState {
+  return settings.layout ?? DEFAULT_LAYOUT;
+}
+
+/** Whether the first-launch welcome screen was dismissed. Mirrors
+ *  `getWelcomeDismissed`. */
+export function resolveWelcomeDismissed(settings: Settings): boolean {
+  return settings.welcome?.dismissed === true;
+}
+
+/** Fully-resolved per-pane card min-widths (conception override beats global,
+ *  every key filled from the defaults). Mirrors `getCardMinWidth`. */
+export async function resolveCardMinWidth(
+  settings: Settings,
+): Promise<Required<CardMinWidthPrefs>> {
+  let raw: Partial<CardMinWidthPrefs> | undefined = settings.cardMinWidth;
+  if (settings.lastConceptionPath) {
+    const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
+    if (effective.cardMinWidth) {
+      raw = effective.cardMinWidth as Partial<CardMinWidthPrefs>;
+    }
+  }
+  const out: Required<CardMinWidthPrefs> = { ...DEFAULT_CARD_MIN_WIDTH };
+  for (const key of CARD_MIN_KEYS) {
+    const v = raw?.[key];
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
+  }
+  return out;
+}
+
+/** Per-pane tree-expansion sets with the legacy per-harness `skills*` keys
+ *  folded into the single `skills` key. Opportunistically rewrites settings.json
+ *  to drop the legacy keys (fire-and-forget). Mirrors `getTreeExpansion`. */
+export function resolveTreeExpansion(settings: Settings): Required<TreeExpansionPrefs> {
+  const { treeExpansion } = settings;
+  const out: Required<Pick<TreeExpansionPrefs, TreeExpansionKey>> = {
+    knowledge: [],
+    resources: [],
+    skills: [],
+    skillsUser: [],
+  };
+  // Pre-reframe per-harness keys (`skillsGeneric`, `skillsClaude`,
+  // `skillsKimi`, `skillsOpencode`) collapse into the single
+  // `skills` (conception-scope) key. Take the union of all four
+  // legacy keys + the canonical `skills` value so users keep their
+  // expansion state on upgrade.
+  const legacyExpansion = treeExpansion as
+    | (TreeExpansionPrefs & {
+        skillsGeneric?: unknown;
+        skillsClaude?: unknown;
+        skillsKimi?: unknown;
+        skillsOpencode?: unknown;
+      })
+    | undefined;
+  const legacyHarnessSources = legacyExpansion
+    ? [
+        legacyExpansion.skillsGeneric,
+        legacyExpansion.skillsClaude,
+        legacyExpansion.skillsKimi,
+        legacyExpansion.skillsOpencode,
+      ]
+    : [];
+  let hadLegacyHarnessKey = false;
+  if (legacyHarnessSources.some((v) => Array.isArray(v))) {
+    hadLegacyHarnessKey = true;
+    const seen = new Set<string>();
+    for (const candidate of legacyHarnessSources) {
+      if (!Array.isArray(candidate)) continue;
+      for (const entry of candidate) {
+        if (typeof entry === 'string') seen.add(entry);
+      }
+    }
+    out.skills = Array.from(seen);
+  }
+  for (const key of TREE_EXPANSION_KEYS) {
+    const v = treeExpansion?.[key];
+    if (Array.isArray(v)) {
+      // Coerce to string + dedupe; filter anything that isn't a string
+      // so a corrupt settings file can't crash the renderer.
+      const seen = new Set<string>();
+      for (const entry of v) {
+        if (typeof entry === 'string') seen.add(entry);
+      }
+      // If `skills` is explicitly present alongside legacy harness keys,
+      // the explicit value wins (legacy only fills the gap).
+      if (seen.size > 0 || !(key === 'skills' && hadLegacyHarnessKey)) {
+        out[key] = Array.from(seen);
+      }
+    }
+  }
+  // Opportunistically rewrite settings.json without the legacy
+  // per-harness keys so they don't linger indefinitely for users who
+  // never trigger a tree-expansion mutation. Fire-and-forget — failure
+  // here is non-fatal and the next read will simply re-migrate.
+  if (hadLegacyHarnessKey) {
+    void updateSettings((cur) => {
+      const curTreeExpansion = cur.treeExpansion as
+        | (TreeExpansionPrefs & {
+            skillsGeneric?: string[];
+            skillsClaude?: string[];
+            skillsKimi?: string[];
+            skillsOpencode?: string[];
+          })
+        | undefined;
+      if (!curTreeExpansion) return cur;
+      const {
+        skillsGeneric: _gen,
+        skillsClaude: _claude,
+        skillsKimi: _kimi,
+        skillsOpencode: _opencode,
+        ...rest
+      } = curTreeExpansion;
+      void _gen;
+      void _claude;
+      void _kimi;
+      void _opencode;
+      const merged: TreeExpansionPrefs = { ...rest };
+      if (rest.skills === undefined && out.skills.length > 0) {
+        merged.skills = out.skills;
+      }
+      return { ...cur, treeExpansion: merged };
+    }).catch(() => undefined);
+  }
+  return out;
+}
+
+/** Pinned branch names, coerced + deduped. Mirrors `getSelectedBranches`. */
+export function resolveSelectedBranches(settings: Settings): string[] {
+  const { selectedBranches } = settings;
+  if (!Array.isArray(selectedBranches)) return [];
+  const seen = new Set<string>();
+  for (const entry of selectedBranches) {
+    if (typeof entry === 'string' && entry.length > 0) seen.add(entry);
+  }
+  return Array.from(seen);
+}
+
+/** Branch-pin "All (sticky)" mode with the back-compat default. Mirrors
+ *  `getBranchFilterStickyAll`. */
+export function resolveBranchFilterStickyAll(settings: Settings): boolean {
+  const { branchFilterStickyAll, selectedBranches } = settings;
+  if (typeof branchFilterStickyAll === 'boolean') return branchFilterStickyAll;
+  const hasSelection = Array.isArray(selectedBranches) && selectedBranches.length > 0;
+  return !hasSelection;
+}
+
+/** Skills-pane active scope, validated, default `conception`. Mirrors
+ *  `getSkillsActiveScope`. */
+export function resolveSkillsActiveScope(settings: Settings): SkillScope {
+  const { skillsActiveScope } = settings;
+  if (
+    typeof skillsActiveScope === 'string' &&
+    SKILL_SCOPE_SET.has(skillsActiveScope as SkillScope)
+  ) {
+    return skillsActiveScope as SkillScope;
+  }
+  return 'conception';
+}
+
 /**
  * Wire every theme / layout / welcome / settings-path IPC handler.
  *
@@ -72,12 +249,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     // global value. Falls back to 'system' when neither side has set a
     // theme. Re-routed through the effective resolver in v2.15.1 so
     // per-conception overrides take effect app-wide.
-    const settings = await readSettings();
-    if (settings.lastConceptionPath) {
-      const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
-      if (effective.theme) return effective.theme as Theme;
-    }
-    return settings.theme;
+    return resolveTheme(await readSettings());
   });
 
   ipcMain.handle('getSettingsPath', (event) => {
@@ -93,14 +265,17 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('getLayout', async (event) => {
     requireMainWindowSender(event);
-    const { layout } = await readSettings();
-    return layout ?? DEFAULT_LAYOUT;
+    return resolveLayout(await readSettings());
   });
 
   ipcMain.handle('setLayout', async (event, raw: unknown) => {
     requireMainWindowSender(event);
     // Same shape check the settings save path enforces — keeps the IPC trust
     // boundary uniform with the shared decoders used by the other setters.
+    // `config-schema` (≈45 ms of zod construction) is dynamic-imported here so
+    // this write-path handler is the only thing that pulls it — the pre-window
+    // boot graph stays zod-free (mirrors the CLI's config read/write split).
+    const { layoutSchema } = await import('../config-schema');
     const result = layoutSchema.safeParse(raw);
     if (!result.success) {
       const issue = result.error.issues[0];
@@ -114,8 +289,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('getWelcomeDismissed', async (event) => {
     requireMainWindowSender(event);
-    const { welcome } = await readSettings();
-    return welcome?.dismissed === true;
+    return resolveWelcomeDismissed(await readSettings());
   });
 
   ipcMain.handle('setWelcomeDismissed', async (event, raw: unknown) => {
@@ -134,114 +308,12 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
     // the effective resolver in v2.15.1 so per-conception overrides
     // take effect app-wide. The shape is built from the bundled
     // defaults so missing keys never reach the renderer as undefined.
-    const settings = await readSettings();
-    let raw: Partial<CardMinWidthPrefs> | undefined = settings.cardMinWidth;
-    if (settings.lastConceptionPath) {
-      const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
-      if (effective.cardMinWidth) {
-        raw = effective.cardMinWidth as Partial<CardMinWidthPrefs>;
-      }
-    }
-    const out: Required<CardMinWidthPrefs> = { ...DEFAULT_CARD_MIN_WIDTH };
-    for (const key of CARD_MIN_KEYS) {
-      const v = raw?.[key];
-      if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
-    }
-    return out;
+    return resolveCardMinWidth(await readSettings());
   });
 
   ipcMain.handle('getTreeExpansion', async (event) => {
     requireMainWindowSender(event);
-    const { treeExpansion } = await readSettings();
-    const out: Required<Pick<TreeExpansionPrefs, TreeExpansionKey>> = {
-      knowledge: [],
-      resources: [],
-      skills: [],
-      skillsUser: [],
-    };
-    // Pre-reframe per-harness keys (`skillsGeneric`, `skillsClaude`,
-    // `skillsKimi`, `skillsOpencode`) collapse into the single
-    // `skills` (conception-scope) key. Take the union of all four
-    // legacy keys + the canonical `skills` value so users keep their
-    // expansion state on upgrade.
-    const legacyExpansion = treeExpansion as
-      | (TreeExpansionPrefs & {
-          skillsGeneric?: unknown;
-          skillsClaude?: unknown;
-          skillsKimi?: unknown;
-          skillsOpencode?: unknown;
-        })
-      | undefined;
-    const legacyHarnessSources = legacyExpansion
-      ? [
-          legacyExpansion.skillsGeneric,
-          legacyExpansion.skillsClaude,
-          legacyExpansion.skillsKimi,
-          legacyExpansion.skillsOpencode,
-        ]
-      : [];
-    let hadLegacyHarnessKey = false;
-    if (legacyHarnessSources.some((v) => Array.isArray(v))) {
-      hadLegacyHarnessKey = true;
-      const seen = new Set<string>();
-      for (const candidate of legacyHarnessSources) {
-        if (!Array.isArray(candidate)) continue;
-        for (const entry of candidate) {
-          if (typeof entry === 'string') seen.add(entry);
-        }
-      }
-      out.skills = Array.from(seen);
-    }
-    for (const key of TREE_EXPANSION_KEYS) {
-      const v = treeExpansion?.[key];
-      if (Array.isArray(v)) {
-        // Coerce to string + dedupe; filter anything that isn't a string
-        // so a corrupt settings file can't crash the renderer.
-        const seen = new Set<string>();
-        for (const entry of v) {
-          if (typeof entry === 'string') seen.add(entry);
-        }
-        // If `skills` is explicitly present alongside legacy harness keys,
-        // the explicit value wins (legacy only fills the gap).
-        if (seen.size > 0 || !(key === 'skills' && hadLegacyHarnessKey)) {
-          out[key] = Array.from(seen);
-        }
-      }
-    }
-    // Opportunistically rewrite settings.json without the legacy
-    // per-harness keys so they don't linger indefinitely for users who
-    // never trigger a tree-expansion mutation. Fire-and-forget — failure
-    // here is non-fatal and the next read will simply re-migrate.
-    if (hadLegacyHarnessKey) {
-      void updateSettings((cur) => {
-        const curTreeExpansion = cur.treeExpansion as
-          | (TreeExpansionPrefs & {
-              skillsGeneric?: string[];
-              skillsClaude?: string[];
-              skillsKimi?: string[];
-              skillsOpencode?: string[];
-            })
-          | undefined;
-        if (!curTreeExpansion) return cur;
-        const {
-          skillsGeneric: _gen,
-          skillsClaude: _claude,
-          skillsKimi: _kimi,
-          skillsOpencode: _opencode,
-          ...rest
-        } = curTreeExpansion;
-        void _gen;
-        void _claude;
-        void _kimi;
-        void _opencode;
-        const merged: TreeExpansionPrefs = { ...rest };
-        if (rest.skills === undefined && out.skills.length > 0) {
-          merged.skills = out.skills;
-        }
-        return { ...cur, treeExpansion: merged };
-      }).catch(() => undefined);
-    }
-    return out;
+    return resolveTreeExpansion(await readSettings());
   });
 
   ipcMain.handle('setTreeExpansion', async (event, raw: unknown) => {
@@ -275,14 +347,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('getSelectedBranches', async (event) => {
     requireMainWindowSender(event);
-    const { selectedBranches } = await readSettings();
-    if (!Array.isArray(selectedBranches)) return [] as string[];
-    // Coerce + dedupe defensively in case a hand-edit corrupted the file.
-    const seen = new Set<string>();
-    for (const entry of selectedBranches) {
-      if (typeof entry === 'string' && entry.length > 0) seen.add(entry);
-    }
-    return Array.from(seen);
+    return resolveSelectedBranches(await readSettings());
   });
 
   ipcMain.handle('setSelectedBranches', async (event, raw: unknown) => {
@@ -308,10 +373,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   // had an explicit selection that should keep working).
   ipcMain.handle('getBranchFilterStickyAll', async (event) => {
     requireMainWindowSender(event);
-    const { branchFilterStickyAll, selectedBranches } = await readSettings();
-    if (typeof branchFilterStickyAll === 'boolean') return branchFilterStickyAll;
-    const hasSelection = Array.isArray(selectedBranches) && selectedBranches.length > 0;
-    return !hasSelection;
+    return resolveBranchFilterStickyAll(await readSettings());
   });
 
   ipcMain.handle('setBranchFilterStickyAll', async (event, raw: unknown) => {
@@ -325,14 +387,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
   // to the user-scope agedum sources.
   ipcMain.handle('getSkillsActiveScope', async (event): Promise<SkillScope> => {
     requireMainWindowSender(event);
-    const { skillsActiveScope } = await readSettings();
-    if (
-      typeof skillsActiveScope === 'string' &&
-      SKILL_SCOPE_SET.has(skillsActiveScope as SkillScope)
-    ) {
-      return skillsActiveScope as SkillScope;
-    }
-    return 'conception';
+    return resolveSkillsActiveScope(await readSettings());
   });
 
   ipcMain.handle('setSkillsActiveScope', async (event, raw: unknown) => {

@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js';
 import type { LayoutState, LeftView, WorkingSurface } from '@shared/types';
+import { getBootstrap } from '../bootstrap';
 
 /** Renderer-side default; mirrors the main-process `DEFAULT_LAYOUT`. Used both
  *  for the pre-load signal value and to back-fill fields a persisted layout
@@ -54,11 +55,10 @@ export function useLayout(deps: UseLayoutDeps): UseLayout {
   // value loads (avoids a frame of empty UI).
   const [layout, setLayoutState] = createSignal<LayoutState>({ ...DEFAULT_LAYOUT });
 
-  void window.condash
-    .getLayout()
+  void getBootstrap()
     // Merge over the defaults so a layout persisted before a field existed
     // (e.g. `leftView`) is back-filled rather than landing as `undefined`.
-    .then((loaded) => setLayoutState({ ...DEFAULT_LAYOUT, ...loaded }))
+    .then((boot) => setLayoutState({ ...DEFAULT_LAYOUT, ...boot.layout }))
     .catch((err) => deps.flashToast(`Could not load layout: ${(err as Error).message}`, 'error'));
 
   const updateLayout = (patch: Partial<LayoutState>): void => {

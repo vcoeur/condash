@@ -22,6 +22,7 @@ import { ResourcesView } from './panes/resources';
 import { SkillsView } from './panes/skills';
 import { LogsView } from './panes/logs';
 import { usableActionTemplates } from './settings-modal-parts/data';
+import { getBootstrap } from './bootstrap';
 import { createModalRouter } from './modal-router';
 import { createTerminalBridge } from './terminal-bridge';
 import { createTreeExpansion } from './tree-expansion';
@@ -81,9 +82,11 @@ function App() {
   // --- Conception path (early so downstream stores can pick it up as a
   //     dep without circular hand-shakes) ---
   const [conceptionPath, setConceptionPath] = createSignal<string | null>(null);
-  void window.condash
-    .getConceptionPath()
-    .then(setConceptionPath)
+  // Seed the conception path from the one-shot boot bundle rather than a
+  // dedicated getConceptionPath hop — the same bundle feeds every mount-time
+  // settings store below, so the whole boot costs one IPC round-trip (S6).
+  void getBootstrap()
+    .then((boot) => setConceptionPath(boot.conceptionPath))
     .catch((err) =>
       flashToast(`Could not load conception path: ${(err as Error).message}`, 'error'),
     );

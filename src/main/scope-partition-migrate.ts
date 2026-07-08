@@ -19,7 +19,7 @@ import { atomicWrite } from './atomic-write';
 import { condashSettingsPath } from './condash-dir';
 import { settingsPath, withSettingsQueue } from './settings';
 import { withFileQueue } from './mutate-shared';
-import { SCOPE_OF, type SettingsScope } from './config-schema';
+import { SCOPE_OF, type SettingsScope } from './config-scope';
 import { migrateRawSettings } from './config-migrate';
 
 /** A misplaced key whose copy was dropped because the owning file already
