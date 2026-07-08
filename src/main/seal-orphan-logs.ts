@@ -42,9 +42,15 @@ export interface SealResult {
 /** Walk every `.txt` under `<conception>/.condash/logs/YYYY/MM/DD/` and the
  * task-run trees (`.condash/{scheduled,manual}/<slug>/`) and append a
  * synthetic footer to any file that has a header but no footer AND has not
- * been modified for at least `STALE_GRACE_MS`. */
+ * been modified for at least `STALE_GRACE_MS`. `liveSids` names sessions the
+ * caller still tracks (live or mid-close, their logger still open): their logs
+ * are skipped regardless of mtime — the sweep also runs on every conception
+ * re-pick, where a quiet live tab is stale-looking but very much running, and
+ * a bogus footer there would show it "ended ?" and make the live logger's next
+ * flush full-rewrite (E4). */
 export async function sealOrphanLogs(
   conceptionPath: string,
+  liveSids: ReadonlySet<string> = new Set(),
   now: Date = new Date(),
 ): Promise<SealResult> {
   const root = condashLogsRoot(conceptionPath);
@@ -56,7 +62,7 @@ export async function sealOrphanLogs(
   for (const path of txtPaths) {
     result.scanned += 1;
     try {
-      const sealed = await sealOneIfOrphan(path, now);
+      const sealed = await sealOneIfOrphan(path, now, liveSids);
       if (sealed) result.sealed.push(path);
     } catch (err) {
       process.stderr.write(`condash seal-orphan-logs: ${path}: ${(err as Error).message}\n`);
@@ -162,7 +168,11 @@ function tailHasFooter(edges: FileEdges): boolean {
 }
 
 /** Returns true iff a footer was actually appended to `txtPath`. */
-async function sealOneIfOrphan(txtPath: string, now: Date): Promise<boolean> {
+async function sealOneIfOrphan(
+  txtPath: string,
+  now: Date,
+  liveSids: ReadonlySet<string>,
+): Promise<boolean> {
   let fh: fs.FileHandle;
   try {
     fh = await fs.open(txtPath, 'r');
@@ -179,7 +189,11 @@ async function sealOneIfOrphan(txtPath: string, now: Date): Promise<boolean> {
     // Need a header to seal — otherwise the file isn't a session log we
     // recognise. (parseMetaLine fails closed on anything else, so this
     // is belt + braces.)
-    if (!parseMetaLine(edges.firstLine)) return false;
+    const header = parseMetaLine(edges.firstLine);
+    if (!header) return false;
+    // A session condash still tracks is not an orphan, however stale its
+    // mtime — its logger is alive and owns the footer (E4).
+    if (header.sid && liveSids.has(header.sid)) return false;
 
     const footer = {
       finished: new Date(stat.mtimeMs).toISOString(),

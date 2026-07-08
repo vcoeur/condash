@@ -53,11 +53,14 @@ export function registerTerminalIpc(): void {
   // Renderer → main flow-control credit: the preload `termData` forwarder acks
   // the bytes it delivered so main can release pty backpressure. High-frequency
   // and reply-less in spirit; a malformed `bytes` is ignored rather than thrown
-  // so a stray ack never surfaces as a renderer error.
-  ipcMain.handle('termAck', (event, id: unknown, bytes: unknown) => {
+  // so a stray ack never surfaces as a renderer error. The echoed flow `epoch`
+  // lets main drop an ack that raced a flow reset (re-attach); a malformed
+  // epoch is passed as undefined, which the flow treats as "no epoch check".
+  ipcMain.handle('termAck', (event, id: unknown, bytes: unknown, epoch: unknown) => {
     requireMainWindowSender(event);
     if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return;
-    ackTerminal(requireNonEmptyString('termAck', id), bytes);
+    const ackEpoch = typeof epoch === 'number' && Number.isFinite(epoch) ? epoch : undefined;
+    ackTerminal(requireNonEmptyString('termAck', id), bytes, ackEpoch);
   });
 
   ipcMain.handle('termResize', (event, id: unknown, cols: number, rows: number) => {

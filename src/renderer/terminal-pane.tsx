@@ -75,11 +75,6 @@ export interface TerminalPaneHandle {
   hasActive(): boolean;
   /** Return the active session ID for the active column, or null. */
   getActiveSessionId(): string | null;
-  /** Wait until the accumulated output for `sessionId` matches `pattern`,
-   *  or reject after `timeoutMs` (default 15 s). Resolves immediately if
-   *  the pattern already matches. ANSI escape sequences are stripped before
-   *  matching so patterns can target visible text only. */
-  waitForReady(sessionId: string, pattern: RegExp, timeoutMs?: number): Promise<void>;
 }
 
 export interface TerminalPaneProps {

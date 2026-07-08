@@ -132,6 +132,39 @@ describe('sealOrphanLogs', () => {
   });
 });
 
+describe('sealOrphanLogs — live sessions are never sealed (E4)', () => {
+  it('skips a stale-looking log whose sid is still tracked live', async () => {
+    // The sweep also runs on every conception re-pick; a quiet live tab is
+    // stale by mtime but very much running — its log must stay footer-less.
+    const c = await makeConception();
+    const live = logPath(c, '140000-live.txt');
+    const dead = logPath(c, '140100-dead.txt');
+    // HEADER carries sid "abc" — mark that one live.
+    await writeFile(live, HEADER + '\n\nquiet but running\n', 'utf8');
+    await writeFile(dead, HEADER.replace('"sid":"abc"', '"sid":"def"') + '\n\ncrashed\n', 'utf8');
+    await backdate(live, 60);
+    await backdate(dead, 60);
+    const r = await sealOrphanLogs(c, new Set(['abc']));
+    expect(r.sealed).not.toContain(live);
+    expect(r.sealed).toContain(dead);
+    const { footer } = splitContent(await readFile(live, 'utf8'));
+    expect(footer).toBeNull();
+    await rm(c, { recursive: true, force: true });
+  });
+
+  it('seals the same log once the sid is no longer live', async () => {
+    const c = await makeConception();
+    const p = logPath(c, '140200-later.txt');
+    await writeFile(p, HEADER + '\n\nbody\n', 'utf8');
+    await backdate(p, 60);
+    const r1 = await sealOrphanLogs(c, new Set(['abc']));
+    expect(r1.sealed).not.toContain(p);
+    const r2 = await sealOrphanLogs(c, new Set());
+    expect(r2.sealed).toContain(p);
+    await rm(c, { recursive: true, force: true });
+  });
+});
+
 describe('sealOrphanLogs — tail-seal byte parity (B6)', () => {
   const expectedFooterSuffix = (mtimeMs: number, endsWithNewline: boolean): string =>
     (endsWithNewline ? '\n' : '\n\n') +

@@ -158,13 +158,19 @@ function snapshot(): TermSession[] {
  * `onData`/`onExit` callback runs outside any request scope, so an escaping
  * throw there would take the whole main process (and every tab) down — guard the
  * crashed state and swallow any residual throw so a dead renderer stays local.
+ *
+ * Returns whether the payload was actually handed to a live frame — a dropped
+ * send must not be counted as in-flight by the flow controller (no ack will
+ * ever arrive for it, and the stale count would pin the pty paused; L3).
  */
-function safeSend(wc: WebContents, channel: string, payload: unknown): void {
-  if (wc.isDestroyed() || wc.isCrashed()) return;
+function safeSend(wc: WebContents, channel: string, payload: unknown): boolean {
+  if (wc.isDestroyed() || wc.isCrashed()) return false;
   try {
     wc.send(channel, payload);
+    return true;
   } catch {
     /* frame disposed between the check and the send — drop the event */
+    return false;
   }
 }
 
@@ -365,6 +371,31 @@ export function attachTerminal(
   return { output: recentTail(s.buffer), exited: s.exited };
 }
 
+/** Reset flow control for EVERY session bound to `wc`. Wired to the window's
+ * `did-start-loading` (a reload / crash-recovery re-navigation): the old page's
+ * JS context — and its `termAck` listener — is gone, so bytes counted in-flight
+ * to it can never be acked. `attachTerminal` covers only sessions the fresh
+ * renderer re-attaches, which its reconcile does for `my`-side tabs alone; a
+ * `code`-side session (a dev server run) is re-attached lazily on first row
+ * expand, so a chatty one streaming through the reload gap would otherwise hit
+ * the high watermark and pin its pty paused forever — shown "running", dev
+ * server blocked on a full kernel pty buffer (L2). Resetting here is safe for
+ * every session: pending bytes are already part of the rolling buffer tail the
+ * renderer replays on (re-)attach. */
+export function resetFlowsForWebContents(wc: WebContents): void {
+  for (const s of sessions.values()) {
+    if (s.webContents === wc) s.flow.reset();
+  }
+}
+
+/** Sids of every tracked session — live ptys and exited-but-still-open rows,
+ * whose `SessionLogger` stays open until `closeSession`. The orphan-log seal
+ * skips these so a quiet live tab (or a lingering exited row mid-close) is
+ * never stamped with a bogus recovery footer (E4). */
+export function trackedSessionIds(): Set<string> {
+  return new Set(sessions.keys());
+}
+
 /** Move a session between the "my" and "code" sides. Used by the Code pane's
  * pop-out button to surface a running dev server in the bottom pane. */
 export function setSessionSide(id: string, side: TermSide): void {
@@ -530,7 +561,11 @@ export async function spawnTerminal(
   // `pty`, and both must be reflected on the next flush / pause.
   let session: Session;
   const flow = new TerminalFlow(
-    (data) => safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data }),
+    // The epoch rides on every payload and is echoed back in the renderer's
+    // termAck, so an ack minted before a flow.reset() can't debit the fresh
+    // epoch's backlog (L4). safeSend's return tells the flow whether the bytes
+    // actually reached a live frame.
+    (data, epoch) => safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data, epoch }),
     () => session.pty,
   );
   session = {
@@ -612,10 +647,11 @@ export function writeTerminal(id: string, data: string): void {
 
 /** Credit `bytes` the renderer reports having consumed for session `id`, so the
  *  flow controller can release pty backpressure once the backlog drains. Fed by
- *  the preload `termAck` forwarder (one ack per delivered `termData` payload).
+ *  the preload `termAck` forwarder (one ack per delivered `termData` payload,
+ *  echoing that payload's flow `epoch` — a stale epoch is ignored, L4).
  *  A no-op for an unknown / already-closed session. */
-export function ackTerminal(id: string, bytes: number): void {
-  sessions.get(id)?.flow.ack(bytes);
+export function ackTerminal(id: string, bytes: number, epoch?: number): void {
+  sessions.get(id)?.flow.ack(bytes, epoch);
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number): void {

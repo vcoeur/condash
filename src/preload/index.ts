@@ -198,6 +198,7 @@ contextBridge.exposeInMainWorld('condash', api);
 ipcRenderer.on(EVENT_CHANNELS.termData, (_event, msg: TermDataMessage) => {
   if (!msg || msg.data.length === 0) return;
   // Fire-and-forget: swallow any reject (e.g. a torn-down window) so a
-  // high-frequency ack never surfaces as an unhandled rejection.
-  void ipcRenderer.invoke('termAck', msg.id, msg.data.length).catch(() => undefined);
+  // high-frequency ack never surfaces as an unhandled rejection. The payload's
+  // flow epoch is echoed back so main can drop an ack that raced a flow reset.
+  void ipcRenderer.invoke('termAck', msg.id, msg.data.length, msg.epoch).catch(() => undefined);
 });
