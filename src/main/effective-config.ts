@@ -249,7 +249,7 @@ interface EffectiveConfigMemoEntry {
   conceptionPath: string;
   settingsFile: string;
   globalKey: FileStatKey;
-  conceptionKey: FileStatKey;
+  conceptionKeys: FileStatKey[];
   value: EffectiveConfig;
 }
 let effectiveConfigMemo: EffectiveConfigMemoEntry | null = null;
@@ -264,6 +264,10 @@ function fileStatKeyEqual(a: FileStatKey, b: FileStatKey): boolean {
   return a.path === b.path && a.mtimeMs === b.mtimeMs && a.size === b.size;
 }
 
+function fileStatKeysEqual(a: FileStatKey[], b: FileStatKey[]): boolean {
+  return a.length === b.length && a.every((key, i) => fileStatKeyEqual(key, b[i]));
+}
+
 /** Stat `file`, returning its identity key or the absent sentinel on ENOENT. */
 async function statFileKey(file: string): Promise<FileStatKey> {
   try {
@@ -275,25 +279,24 @@ async function statFileKey(file: string): Promise<FileStatKey> {
   }
 }
 
-/** Identity key for the conception config: the first existing candidate in
+/** Identity keys for the conception config: the stat of EVERY candidate in
  *  read-priority order (canonical `.condash/settings.json`, then the legacy
- *  `condash.json` / `configuration.json` fallbacks), so the memo re-reads only
- *  when the file that actually resolved changes. Absent sentinel when none exist.
- *  A tombstoned legacy file is never the first existing candidate in a real tree
- *  (the migrator writes the canonical file whenever it tombstones a legacy one),
- *  so keying on first-existing tracks the resolved file; the read path still
- *  skips tombstones itself on a miss. */
-async function statConceptionKey(conceptionPath: string): Promise<FileStatKey> {
+ *  `condash.json` / `configuration.json` fallbacks), absent-sentinel per missing
+ *  one. Keying on all three — not just the first existing — is what makes the memo
+ *  tombstone-correct (B3): `readConceptionConfigRaw` SKIPS a tombstoned first
+ *  candidate and reads a later live one, so keying only on the first existing file
+ *  (a committed tombstoned `condash.json` shadowing a live `configuration.json` in
+ *  a fresh clone) would pin the memo on the tombstone's mtime and never invalidate
+ *  when the live file the read path actually used was edited. Statting all three is
+ *  stat-only (no reads on the hit path) and obviously correct — any candidate the
+ *  resolver could pick, changing, invalidates. */
+async function statConceptionKeys(conceptionPath: string): Promise<FileStatKey[]> {
   const candidates = [
     condashSettingsPath(conceptionPath),
     legacyCondashJsonPath(conceptionPath),
     legacyConfigurationJsonPath(conceptionPath),
   ];
-  for (const candidate of candidates) {
-    const key = await statFileKey(candidate);
-    if (key.path) return key;
-  }
-  return { ...ABSENT_STAT_KEY };
+  return Promise.all(candidates.map((candidate) => statFileKey(candidate)));
 }
 
 /**
@@ -308,11 +311,12 @@ export async function getEffectiveConceptionConfig(
   conceptionPath: string,
   settingsFile: string = settingsPath(),
 ): Promise<EffectiveConfig> {
-  // Stat both inputs first: a cache hit costs these two stats and skips the
-  // read + JSON.parse + migrate of both files.
-  const [globalKey, conceptionKey] = await Promise.all([
+  // Stat every input first: a cache hit costs these stats and skips the read +
+  // JSON.parse + migrate of both files. The conception side stats all three
+  // candidates so a tombstone-shadowed live file still invalidates (B3).
+  const [globalKey, conceptionKeys] = await Promise.all([
     statFileKey(settingsFile),
-    statConceptionKey(conceptionPath),
+    statConceptionKeys(conceptionPath),
   ]);
   const memo = effectiveConfigMemo;
   if (
@@ -320,7 +324,7 @@ export async function getEffectiveConceptionConfig(
     memo.conceptionPath === conceptionPath &&
     memo.settingsFile === settingsFile &&
     fileStatKeyEqual(memo.globalKey, globalKey) &&
-    fileStatKeyEqual(memo.conceptionKey, conceptionKey)
+    fileStatKeysEqual(memo.conceptionKeys, conceptionKeys)
   ) {
     return memo.value;
   }
@@ -338,7 +342,7 @@ export async function getEffectiveConceptionConfig(
     merged[key] = value;
   }
   const value = merged as EffectiveConfig;
-  effectiveConfigMemo = { conceptionPath, settingsFile, globalKey, conceptionKey, value };
+  effectiveConfigMemo = { conceptionPath, settingsFile, globalKey, conceptionKeys, value };
   return value;
 }
 

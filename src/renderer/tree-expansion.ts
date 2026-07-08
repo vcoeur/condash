@@ -41,16 +41,22 @@ export function createTreeExpansion(deps: TreeExpansionDeps): TreeExpansion {
   );
   const [skillsUserExpanded, setSkillsUserExpanded] = createSignal<ReadonlySet<string>>(new Set());
 
-  void getBootstrap().then((boot) => {
-    const prefs = boot.treeExpansion;
-    setKnowledgeExpanded(new Set(prefs.knowledge));
-    setResourcesExpanded(new Set(prefs.resources));
-    // Legacy `skills` key was the conception-scope set in earlier versions —
-    // hydrate from it when present so users with prior expanded state don't
-    // lose it on the reframe upgrade.
-    setSkillsConceptionExpanded(new Set(prefs.skills));
-    setSkillsUserExpanded(new Set(prefs.skillsUser));
-  });
+  void getBootstrap()
+    .then((boot) => {
+      const prefs = boot.treeExpansion;
+      setKnowledgeExpanded(new Set(prefs.knowledge));
+      setResourcesExpanded(new Set(prefs.resources));
+      // Legacy `skills` key was the conception-scope set in earlier versions —
+      // hydrate from it when present so users with prior expanded state don't
+      // lose it on the reframe upgrade.
+      setSkillsConceptionExpanded(new Set(prefs.skills));
+      setSkillsUserExpanded(new Set(prefs.skillsUser));
+    })
+    // A failed bootstrap must not leave an unhandled rejection: keep the
+    // empty-set defaults (fully-collapsed panes) and surface a toast (B2).
+    .catch((err) =>
+      deps.flashToast(`Could not load tree expansion: ${(err as Error).message}`, 'error'),
+    );
 
   const skillsGetter = (scope: SkillScope): Accessor<ReadonlySet<string>> =>
     scope === 'user' ? skillsUserExpanded : skillsConceptionExpanded;

@@ -3,6 +3,7 @@ import { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { toPosix } from '../shared/path';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
+import { safeSend } from './safe-send';
 import type { TreeEvent } from '../shared/types';
 import { migrateLegacyConfig } from './condash-dir-migrate';
 import { partitionSettingsScopes, scopeMigrationDidWork } from './scope-partition-migrate';
@@ -256,7 +257,7 @@ function schedule(): void {
     if (events.length === 0) return;
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.isDestroyed()) continue;
-      win.webContents.send(EVENT_CHANNELS.treeEvents, events);
+      safeSend(win.webContents, EVENT_CHANNELS.treeEvents, events);
     }
   }, DEBOUNCE_MS);
 }

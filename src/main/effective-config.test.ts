@@ -257,4 +257,30 @@ describe('getEffectiveConceptionConfig — B4 mtime+size read memo', () => {
     expect(second).not.toBe(first);
     expect(second.workspace_path).toBe('/legacy/moved');
   });
+
+  it('invalidates when a tombstone-shadowed live file changes (B3)', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, JSON.stringify({ theme: 'dark' }));
+    // Fresh-clone layout: a committed, tombstoned condash.json shadows a live
+    // configuration.json. `readConceptionConfigRaw` skips the tombstone (the
+    // first existing candidate) and reads the latter, so the memo must be keyed
+    // on the live file's stat — not the tombstone's — or edits never invalidate.
+    writeFileSync(
+      join(tmp, 'condash.json'),
+      JSON.stringify({ _moved_to: `${CONDASH_DIR}/settings.json` }),
+    );
+    writeFileSync(join(tmp, 'configuration.json'), JSON.stringify({ workspace_path: '/live' }));
+    const first = await getEffectiveConceptionConfig(tmp, global);
+    expect(first.workspace_path).toBe('/live');
+    // Edit ONLY the live configuration.json; the tombstoned condash.json (first
+    // existing candidate) is untouched. Pre-B3 the memo keyed on the tombstone
+    // and served the stale '/live' forever.
+    writeFileSync(
+      join(tmp, 'configuration.json'),
+      JSON.stringify({ workspace_path: '/live/edited-longer' }),
+    );
+    const second = await getEffectiveConceptionConfig(tmp, global);
+    expect(second).not.toBe(first);
+    expect(second.workspace_path).toBe('/live/edited-longer');
+  });
 });

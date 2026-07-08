@@ -32,6 +32,9 @@ vi.mock('electron', () => ({
         isDestroyed: () => false,
         webContents: {
           isDestroyed: () => false,
+          // The broadcast now funnels through the shared `safeSend`, which also
+          // probes `isCrashed()` (E5) — a real WebContents has it.
+          isCrashed: () => false,
           send: (channel: string, payload: unknown) => {
             if (channel === EVENT_CHANNELS.dashboardState) h.pushed.push(payload as DashboardState);
           },

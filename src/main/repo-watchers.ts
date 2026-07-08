@@ -54,6 +54,7 @@ import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { RepoEntry, RepoEvent } from '../shared/types';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
+import { safeSend } from './safe-send';
 import { getDirtyCount, getUpstreamStatus, invalidateForPath } from './git-status-cache';
 import { buildGitignoreMatcher, readRuleText, type GitignoreMatcher } from './gitignore-matcher';
 
@@ -135,7 +136,7 @@ function broadcast(events: RepoEvent[]): void {
   if (events.length === 0) return;
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    win.webContents.send(EVENT_CHANNELS.repoEvents, events);
+    safeSend(win.webContents, EVENT_CHANNELS.repoEvents, events);
   }
 }
 

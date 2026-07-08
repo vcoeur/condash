@@ -122,6 +122,17 @@ export async function listRepos(conceptionPath: string): Promise<RepoEntry[]> {
 // is consumed on first read, so later refreshes recompute fresh.
 let bootReposPromise: Promise<RepoEntry[]> | null = null;
 let bootReposPath: string | null = null;
+/** Epoch ms the current boot slot was stashed — drives the TTL backstop. */
+let bootReposAt = 0;
+
+/** Max age of a stashed boot-prewarm slot before `listReposReusingBoot` refuses
+ *  it and rescans (B5). The slot is meant for the renderer's first `listRepos`,
+ *  which races boot by a second or two; `clearBootRepos` on a conception switch
+ *  is the primary guard, and this is the belt-and-braces for a slot that was
+ *  neither consumed nor cleared. Generous enough that a legitimately slow boot
+ *  handoff is never discarded, tight enough that an "switch away, switch back
+ *  hours later" never awaits a stale promise (wrong branches / dirty counts). */
+const BOOT_REPOS_TTL_MS = 30_000;
 
 /**
  * Kick off the boot repo scan for `conceptionPath` and stash its promise for the
@@ -131,33 +142,51 @@ let bootReposPath: string | null = null;
  * conception switch during boot) so the stashed path always matches the latest.
  *
  * @param conceptionPath active conception root
- * @returns the boot scan promise (also stored for {@link takeBootRepos})
+ * @returns the boot scan promise (also stored for {@link listReposReusingBoot})
  */
 export function prewarmRepos(conceptionPath: string): Promise<RepoEntry[]> {
   bootReposPath = conceptionPath;
+  bootReposAt = Date.now();
   bootReposPromise = listRepos(conceptionPath);
   return bootReposPromise;
 }
 
 /**
+ * Drop any stashed boot-prewarm slot. Called at the conception-switch choke
+ * point (index.ts `onConceptionPicked`) so a slot warmed for the old tree — or
+ * for the new tree during a fast boot-time switch — can never be awaited by a
+ * later `listReposReusingBoot` and hand back the wrong tree's repos (B5).
+ */
+export function clearBootRepos(): void {
+  bootReposPromise = null;
+  bootReposPath = null;
+  bootReposAt = 0;
+}
+
+/**
  * `listRepos` for the renderer's first call: reuse the boot prewarm's in-flight
- * (or already-resolved) result when one is pending for the same conception,
- * otherwise run a fresh scan. Falls back to a fresh scan if the prewarm itself
- * rejected. The boot slot is consumed one-shot, so every later refresh recomputes.
+ * (or already-resolved) result when one is pending for the same conception and
+ * still fresh, otherwise run a fresh scan. Falls back to a fresh scan if the
+ * prewarm itself rejected. The boot slot is consumed one-shot, so every later
+ * refresh recomputes.
  *
  * @param conceptionPath active conception root
  * @returns the repo entries
  */
 export async function listReposReusingBoot(conceptionPath: string): Promise<RepoEntry[]> {
-  if (bootReposPromise && bootReposPath === conceptionPath) {
+  const fresh = Date.now() - bootReposAt <= BOOT_REPOS_TTL_MS;
+  if (bootReposPromise && bootReposPath === conceptionPath && fresh) {
     const pending = bootReposPromise;
-    bootReposPromise = null;
-    bootReposPath = null;
+    clearBootRepos();
     try {
       return await pending;
     } catch {
       // The boot prewarm failed — fall through to a fresh scan.
     }
+  } else if (bootReposPromise) {
+    // A slot for another tree, or one that outlived its TTL, must never be
+    // reused — drop it so it can't be awaited by a later call.
+    clearBootRepos();
   }
   return listRepos(conceptionPath);
 }

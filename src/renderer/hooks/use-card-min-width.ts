@@ -47,10 +47,15 @@ export function useCardMinWidth(): UseCardMinWidth {
     ...DEFAULT_CARD_MIN_WIDTH,
   });
   applyCardMinWidth(cardMinWidth());
-  void getBootstrap().then((boot) => {
-    setCardMinWidth(boot.cardMinWidth);
-    applyCardMinWidth(boot.cardMinWidth);
-  });
+  void getBootstrap()
+    .then((boot) => {
+      setCardMinWidth(boot.cardMinWidth);
+      applyCardMinWidth(boot.cardMinWidth);
+    })
+    // A failed bootstrap must not leave an unhandled rejection: the
+    // DEFAULT_CARD_MIN_WIDTH variables applied above stay in effect (B2). This
+    // hook has no toast channel, so log for the console like use-welcome.
+    .catch((err) => console.error('hydration: card min-width bootstrap failed', err));
 
   const handleCardMinWidthChange = (patch: CardMinWidthPrefs): void => {
     const next: Required<CardMinWidthPrefs> = { ...cardMinWidth(), ...patch };

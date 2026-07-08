@@ -145,6 +145,30 @@ export function invalidateSettingsMemo(): void {
   settingsMemo = null;
 }
 
+/**
+ * Move a corrupt `settings.json` aside so the next boot starts clean, logging
+ * what happened. Best-effort: a rename failure (permissions, cross-device) is
+ * logged and swallowed — booting with defaults still beats not booting.
+ *
+ * @param path Absolute path of the corrupt settings file.
+ * @param err The `JSON.parse` SyntaxError that flagged the corruption.
+ */
+async function quarantineCorruptSettings(path: string, err: unknown): Promise<void> {
+  const asidePath = `${path}.corrupt-${Date.now()}`;
+  const detail = (err as Error).message;
+  try {
+    await fs.rename(path, asidePath);
+    process.stderr.write(
+      `condash: ${FILE_NAME} is corrupt (${detail}); renamed to ${asidePath} — booting with defaults\n`,
+    );
+  } catch (renameErr) {
+    process.stderr.write(
+      `condash: ${FILE_NAME} is corrupt (${detail}) and could not be renamed aside ` +
+        `(${(renameErr as Error).message}) — booting with defaults\n`,
+    );
+  }
+}
+
 /** Build the typed `Settings` view from settings.json's raw text. Shared by the
  *  memoised reader; assumes the file has already been stat'd. */
 function buildSettings(raw: string): Settings {
@@ -201,6 +225,19 @@ async function readSettingsFromDisk(): Promise<Settings> {
   } catch (err) {
     // TOCTOU: the file may have been removed between stat and read.
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      settingsMemo = null;
+      return { ...empty };
+    }
+    // A corrupt file — a hand-edit, a half-written external save, disk
+    // corruption — makes `buildSettings`' JSON.parse throw a SyntaxError. This
+    // read is on the un-caught `whenReady` chain (index.ts), so rethrowing here
+    // would leave `createWindow` un-run and, on Linux, the process lingering
+    // headless. Rescue boot instead: move the corrupt file aside and return
+    // defaults. Losing `lastConceptionPath` beats not starting (B1). No dialog:
+    // settings.ts is on the CLI (plain-Node) read path and must not import
+    // electron — the stderr line is the surfaced signal.
+    if (err instanceof SyntaxError) {
+      await quarantineCorruptSettings(path, err);
       settingsMemo = null;
       return { ...empty };
     }
