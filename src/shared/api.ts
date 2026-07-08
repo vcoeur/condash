@@ -1,6 +1,7 @@
 import type { TaskDef, TaskListItem } from './tasks';
 import type {
   Agent,
+  BootstrapData,
   CardMinWidthPrefs,
   ConceptionInitState,
   DashboardConfigView,
@@ -47,6 +48,17 @@ import type {
 } from './types';
 
 export interface CondashApi {
+  /**
+   * One-shot boot bundle: the active conception path plus every mount-time
+   * settings value (theme, layout, welcome, card min-widths, tree expansion,
+   * branch filter, skills scope, open-with slots, terminal prefs) in a single
+   * round-trip backed by a single settings read in main. The renderer calls
+   * this once at startup so its stores skip the serial `getConceptionPath` gate
+   * and the ~15 separate settings getters (review finding S6). Every field
+   * matches the shape its individual getter returns; the getters remain for
+   * reloads and other call sites.
+   */
+  bootstrap(): Promise<BootstrapData>;
   listProjects(): Promise<Project[]>;
   getProject(path: string): Promise<Project | null>;
   readKnowledgeTree(): Promise<KnowledgeNode | null>;

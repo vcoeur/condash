@@ -11,7 +11,6 @@
  */
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { z } from 'zod';
 import { extractMarkers, type TaskDef, type TaskListItem } from '../shared/tasks';
 import { isValidSlugTail } from '../shared/slug';
 import { listAgents } from './agents';
@@ -21,10 +20,27 @@ const TASKS_DIRNAME = 'tasks';
 const CONFIG_FILENAME = 'task.json';
 const PROMPT_FILENAME = 'prompt.md';
 
-const taskConfigSchema = z.object({
-  name: z.string().min(1),
-  agent: z.string(),
-});
+/**
+ * Validate a `task.json` body without zod. A plain check keeps this module —
+ * reachable on the pre-window boot path via `ipc/tasks` (listTasks at boot) and
+ * `task-scheduler` — off the eager zod graph (S4). Mirrors the former
+ * `z.object({ name: z.string().min(1), agent: z.string() })`: unknown keys are
+ * dropped, `name` must be a non-empty string, `agent` a string; a violation
+ * throws (the caller in `listTasks` catches + skips, as it did for a ZodError).
+ */
+function parseTaskConfig(raw: unknown): { name: string; agent: string } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('task.json: expected an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.name !== 'string' || obj.name.length < 1) {
+    throw new Error('task.json: `name` must be a non-empty string');
+  }
+  if (typeof obj.agent !== 'string') {
+    throw new Error('task.json: `agent` must be a string');
+  }
+  return { name: obj.name, agent: obj.agent };
+}
 
 function tasksDir(conceptionPath: string): string {
   return join(conceptionPath, TASKS_DIRNAME);
@@ -47,7 +63,7 @@ async function readTaskDir(conceptionPath: string, slug: string): Promise<TaskDe
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
   }
-  const config = taskConfigSchema.parse(JSON.parse(configText));
+  const config = parseTaskConfig(JSON.parse(configText));
   let prompt = '';
   try {
     prompt = await fs.readFile(join(dir, PROMPT_FILENAME), 'utf8');
@@ -115,7 +131,7 @@ export async function writeTask(
   if (previousSlug && previousSlug !== safe && (await readTaskDir(conceptionPath, safe)) !== null) {
     throw new Error(`a task "${safe}" already exists — rename it or pick another slug`);
   }
-  const config = taskConfigSchema.parse({ name: def.name, agent: def.agent });
+  const config = parseTaskConfig({ name: def.name, agent: def.agent });
   const dir = join(tasksDir(conceptionPath), safe);
   await fs.mkdir(dir, { recursive: true });
   // Atomic writes: tasks/ sits inside the watched conception tree, where the

@@ -15,8 +15,17 @@
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { simpleGit, type SimpleGit } from 'simple-git';
+import type { SimpleGit } from 'simple-git';
 import type { UpstreamStatus } from '../shared/types';
+
+// `simple-git` is dynamic-imported at its two call sites (below) rather than
+// statically, so importing this module — which happens on the pre-window boot
+// path via `repo-watchers` / `ipc/repos` — doesn't evaluate simple-git's module
+// graph before first paint. It loads on the first `git status` / upstream
+// lookup (a post-window Code-pane read). Mirrors the CLI's lazy-dispatch split.
+async function loadSimpleGit(): Promise<typeof import('simple-git').simpleGit> {
+  return (await import('simple-git')).simpleGit;
+}
 
 /** A resolved cache slot, or the in-flight promise for a miss being
  *  computed. Storing the promise lets concurrent misses coalesce onto one
@@ -141,6 +150,7 @@ export async function getDirtyCount(
 /** The uncached `git status` computation behind {@link getDirtyCount}. */
 async function computeDirtyCount(path: string, opts: DirtyCountOptions): Promise<number | null> {
   try {
+    const simpleGit = await loadSimpleGit();
     const git = simpleGit({ baseDir: path });
     // Use the raw porcelain output so we can filter on the status prefix
     // without re-parsing simple-git's already-parsed shape. `-- .` scopes
@@ -200,6 +210,7 @@ export async function getUpstreamStatus(path: string): Promise<UpstreamStatus | 
   const cached = upstreamCache.get(path);
   if (cached && now - cached.capturedAt < TTL_MS) return cached.upstream;
   try {
+    const simpleGit = await loadSimpleGit();
     const git = simpleGit({ baseDir: path });
     let upstreamRef: string | null = null;
     try {

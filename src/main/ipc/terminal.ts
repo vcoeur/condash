@@ -15,7 +15,6 @@ import {
 import { latestScreenshot } from '../screenshot';
 import { requireScreenshotDir } from '../path-bounds';
 import { readSettings } from '../settings';
-import { globalSettingsSchema } from '../config-schema';
 import type { TermSide, TermSpawnRequest } from '../../shared/types';
 import {
   requireEnum,
@@ -27,13 +26,6 @@ import {
 /** The two terminal sides a session can live on — the allow-set for the
  *  `termSetSide` enum decoder. */
 const TERM_SIDES: ReadonlySet<TermSide> = new Set(['my', 'code']);
-
-// The `terminal` block of the config schema — the same zod shape
-// `settings.json` is validated with, reused here so a renderer-supplied
-// prefs patch can't persist arbitrary keys (or non-string `shell`, which
-// later feeds the pty program) into settings.json. `terminal` is a global
-// (per-machine) key, so it comes from the global schema.
-const terminalPrefsSchema = globalSettingsSchema.shape.terminal;
 
 /** Wire every term.* IPC handler. Called once from main entry. */
 export function registerTerminalIpc(): void {
@@ -114,7 +106,12 @@ export function registerTerminalIpc(): void {
     // Validate the whole nested patch through the config schema before it
     // is persisted — `terminal.shell` becomes the pty program on the next
     // spawn, so a malformed payload must be rejected at this boundary, not
-    // discovered at spawn time.
+    // discovered at spawn time. `config-schema` (≈45 ms of zod construction) is
+    // dynamic-imported here so this write-path handler is the only thing that
+    // pulls it — the pre-window boot graph stays zod-free. `terminal` is a
+    // global (per-machine) key, so its shape comes from the global schema.
+    const { globalSettingsSchema } = await import('../config-schema');
+    const terminalPrefsSchema = globalSettingsSchema.shape.terminal;
     const parsed = terminalPrefsSchema.safeParse(prefs);
     if (!parsed.success) {
       throw new Error(`termSetPrefs: invalid terminal prefs — ${parsed.error.message}`);

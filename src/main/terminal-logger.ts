@@ -1,6 +1,6 @@
 import { mkdir, open, rename } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { Terminal } from '@xterm/headless';
+import type { Terminal } from '@xterm/headless';
 import type { TaskRunContext, TermSide, TerminalLoggingPrefs } from '../shared/types';
 import { condashLogsRoot } from './condash-dir';
 import { META_LINE_PREFIX, type LogKind } from './logs-format';
@@ -128,6 +128,19 @@ const DEFAULT_FLUSH_MS = 5000;
  * cosmetic. Settable later if anyone asks. */
 const COLS = 200;
 const ROWS = 50;
+
+// Lazy handle on the `@xterm/headless` constructor. The import above is
+// type-only; this cached require means importing this module — which happens on
+// the pre-window boot path via `terminals` (killAll / startMemorySampling) and
+// `task-scheduler` — never evaluates @xterm/headless's module graph before first
+// paint. The headless Terminal is constructed only on the first grid byte of a
+// logging-on session (see `ensureTerm`), a post-window event.
+let headlessTerminalCtor: typeof import('@xterm/headless').Terminal | null = null;
+function loadHeadlessTerminal(): typeof import('@xterm/headless').Terminal {
+  headlessTerminalCtor ??= (require('@xterm/headless') as typeof import('@xterm/headless'))
+    .Terminal;
+  return headlessTerminalCtor;
+}
 
 /** Bytes of the file's tail kept in memory as a cheap integrity sample. Checked
  * before an incremental append (with the byte-length watermark) in place of the
@@ -278,6 +291,7 @@ export class SessionLogger {
    * only ever emits OSC-transcript frames never allocates the ~MB buffer. */
   private ensureTerm(): Terminal {
     if (!this.term) {
+      const Terminal = loadHeadlessTerminal();
       this.term = new Terminal({
         cols: COLS,
         rows: ROWS,

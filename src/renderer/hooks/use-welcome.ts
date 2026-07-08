@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js';
 import type { HelpDoc } from '../help-modal';
+import { getBootstrap } from '../bootstrap';
 
 export interface UseWelcomeDeps {
   conceptionPath: () => string | null;
@@ -24,9 +25,8 @@ export interface UseWelcome {
 
 export function useWelcome(deps: UseWelcomeDeps): UseWelcome {
   const [welcomeDismissed, setWelcomeDismissed] = createSignal<boolean>(false);
-  void window.condash
-    .getWelcomeDismissed()
-    .then(setWelcomeDismissed)
+  void getBootstrap()
+    .then((boot) => setWelcomeDismissed(boot.welcomeDismissed))
     .catch((err) => console.error('hydration: getWelcomeDismissed failed', err));
 
   const shouldShowWelcome = (): boolean => {

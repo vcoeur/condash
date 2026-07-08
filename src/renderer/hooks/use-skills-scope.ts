@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js';
 import type { SkillScope } from '@shared/types';
+import { getBootstrap } from '../bootstrap';
 
 export interface UseSkillsScopeDeps {
   flashToast: (msg: string, kind?: 'success' | 'error' | 'info') => void;
@@ -20,9 +21,8 @@ export interface UseSkillsScope {
  */
 export function useSkillsScope(deps: UseSkillsScopeDeps): UseSkillsScope {
   const [skillsActiveScope, setSkillsActiveScope] = createSignal<SkillScope>('conception');
-  void window.condash
-    .getSkillsActiveScope()
-    .then((scope) => setSkillsActiveScope(scope))
+  void getBootstrap()
+    .then((boot) => setSkillsActiveScope(boot.skillsActiveScope))
     .catch((err) =>
       deps.flashToast(`Could not load Skills scope: ${(err as Error).message}`, 'error'),
     );

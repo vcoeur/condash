@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { decideDispatch } from './dispatch';
 import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { setWatchedConception } from './watcher';
+import { rebuildSearchIndex } from './search/index-cache';
 import { setScheduledConception } from './task-scheduler';
 import { setDashboardConception } from './dashboard/engine';
 import { disposeRepoWatchers } from './repo-watchers';
@@ -20,6 +21,7 @@ import { runLogJanitor } from './terminal-logger-janitor';
 import { sealOrphanLogs } from './seal-orphan-logs';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { buildMenu, rebuildMenu, rebuildMenuFromSettings, setMenuWindow } from './menu';
+import { registerBootstrapIpc } from './ipc/bootstrap';
 import { registerAgentsIpc } from './ipc/agents';
 import { registerTasksIpc } from './ipc/tasks';
 import { registerProjectsIpc } from './ipc/projects';
@@ -157,6 +159,12 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const DEV_URL = 'http://localhost:5600';
+
+// Idle delay before the deferred boot search-index rebuild (S8). Waited after
+// `ready-to-show` so the full-tree re-read lands well clear of the renderer's
+// first listProjects/listRepos burst and the chokidar install — search uses the
+// on-disk fallback until the index is live, so the gap is invisible to the user.
+const SEARCH_INDEX_BUILD_IDLE_MS = 500;
 // Treat the build as "dev" when not packaged AND not explicitly forced into
 // production mode. CONDASH_FORCE_PROD=1 is set by the Playwright fixture so
 // tests load the real file:// build instead of the Vite dev URL.
@@ -327,6 +335,7 @@ function isPathUnder(child: string, parent: string): boolean {
  *   • terminal — every term.* verb.
  */
 function registerIpc(): void {
+  registerBootstrapIpc();
   registerProjectsIpc();
   registerAgentsIpc();
   registerTasksIpc();
@@ -468,7 +477,9 @@ app.whenReady().then(async () => {
   // rather than serialising both awaits ahead of first paint.
   const [createdWindow] = await Promise.all([
     createWindow(conceptionPath),
-    setWatchedConception(conceptionPath),
+    // Attach the FS watcher but DEFER its full-tree search-index rebuild (S8) —
+    // it's kicked below after the window is ready to show.
+    setWatchedConception(conceptionPath, { deferIndexBuild: true }),
     // Arm the per-task scheduler (capability 1) for the active conception.
     setScheduledConception(conceptionPath),
     // Arm the live terminal-tab dashboard engine (opt-in; inert until enabled).
@@ -476,6 +487,26 @@ app.whenReady().then(async () => {
   ]);
   mainWindow = createdWindow;
   setMenuWindow(mainWindow);
+  // S8: kick the deferred boot search-index rebuild — a full-tree re-read of
+  // ~700 files — only after `ready-to-show`, then on an idle timer, so it never
+  // competes with the renderer's first listProjects/listRepos and the chokidar
+  // install for the cold page cache. Search stays correct in the gap: search()
+  // falls back to a disk scan while the in-memory index is still unbuilt
+  // (search/index.ts + index-cache.ts).
+  if (conceptionPath) {
+    const kickIndexBuild = (): void => {
+      setTimeout(() => {
+        void rebuildSearchIndex(conceptionPath).catch((err) =>
+          process.stderr.write(`condash rebuildSearchIndex: ${(err as Error).message}\n`),
+        );
+      }, SEARCH_INDEX_BUILD_IDLE_MS);
+    };
+    // `ready-to-show` may already have fired by the time createWindow's loadFile
+    // resolved (the window is shown from that handler); check visibility to cover
+    // the already-fired case, otherwise wait for the event.
+    if (mainWindow.isVisible()) kickIndexBuild();
+    else mainWindow.once('ready-to-show', kickIndexBuild);
+  }
   // App-scope memory backstop, off the pre-window critical path (S5) and fully
   // asynchronous: `capOwnAppScopeAsync` runs its systemd probe + `set-property`
   // via execFile, so a hung or slow systemd user manager can never freeze the

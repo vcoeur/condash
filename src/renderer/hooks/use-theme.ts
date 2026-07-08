@@ -2,6 +2,7 @@ import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import type { Theme } from '@shared/types';
 import { resetMermaidTheme } from '../markdown';
 import { refreshAllXtermThemes } from '../xterm-registry';
+import { getBootstrap } from '../bootstrap';
 
 function applyTheme(theme: Theme): void {
   const root = document.documentElement;
@@ -60,11 +61,10 @@ export function useTheme(deps: UseThemeDeps): UseTheme {
     refreshAllXtermThemes();
   });
 
-  void window.condash
-    .getTheme()
-    .then((t) => {
-      setTheme(t);
-      applyTheme(t);
+  void getBootstrap()
+    .then((boot) => {
+      setTheme(boot.theme);
+      applyTheme(boot.theme);
     })
     .catch((err) => deps.flashToast(`Could not load theme: ${(err as Error).message}`, 'error'));
 

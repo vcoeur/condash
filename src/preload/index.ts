@@ -12,6 +12,7 @@ import type {
 } from '../shared/types';
 
 const api: CondashApi = {
+  bootstrap: () => ipcRenderer.invoke('bootstrap'),
   listProjects: () => ipcRenderer.invoke('listProjects'),
   getProject: (path) => ipcRenderer.invoke('getProject', path),
   readKnowledgeTree: () => ipcRenderer.invoke('readKnowledgeTree'),

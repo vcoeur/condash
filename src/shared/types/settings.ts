@@ -81,6 +81,42 @@ export interface Settings {
   taskConfig?: Record<string, TaskConfigEntry>;
 }
 
+/**
+ * One-shot boot bundle returned by the `bootstrap` IPC. Collapses the active
+ * conception path plus every mount-time settings getter (theme, layout,
+ * welcome, card min-widths, tree expansion, branch filter, skills scope, open-
+ * with slots, terminal prefs) into a single round-trip + a single settings read
+ * in main, so the renderer's stores start without the serial `getConceptionPath`
+ * gate and without ~15 separate settings reads (review finding S6). Each field
+ * carries the exact value — same shape — its individual getter would return, so
+ * a renderer store can seed from it interchangeably. The individual getters stay
+ * for reloads / other call sites.
+ */
+export interface BootstrapData {
+  /** Active conception path (`getConceptionPath`). */
+  conceptionPath: string | null;
+  /** Effective theme (`getTheme`). */
+  theme: Theme;
+  /** Composite layout, DEFAULT_LAYOUT-backfilled by main (`getLayout`). */
+  layout: LayoutState;
+  /** First-launch welcome dismissed flag (`getWelcomeDismissed`). */
+  welcomeDismissed: boolean;
+  /** Fully-resolved per-pane card min-widths (`getCardMinWidth`). */
+  cardMinWidth: Required<CardMinWidthPrefs>;
+  /** Fully-resolved per-pane tree-expansion sets (`getTreeExpansion`). */
+  treeExpansion: Required<TreeExpansionPrefs>;
+  /** Pinned branches, deduped (`getSelectedBranches`). */
+  selectedBranches: string[];
+  /** Branch-pin "All (sticky)" mode (`getBranchFilterStickyAll`). */
+  branchFilterStickyAll: boolean;
+  /** Skills-pane active scope (`getSkillsActiveScope`). */
+  skillsActiveScope: SkillScope;
+  /** Configured Open-With slots (`listOpenWith`). */
+  openWith: OpenWithSlots;
+  /** Effective terminal prefs (`termGetPrefs`). */
+  terminalPrefs: TerminalPrefs;
+}
+
 /** Sets of expanded directory `relPath`s for the three tree panes. The
  * empty-string entry is the root of that pane. */
 export interface TreeExpansionPrefs {
