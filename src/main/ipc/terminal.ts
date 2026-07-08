@@ -1,5 +1,6 @@
 import { clipboard, ipcMain } from 'electron';
 import {
+  ackTerminal,
   attachTerminal,
   closeSession,
   getTerminalPrefs,
@@ -55,6 +56,16 @@ export function registerTerminalIpc(): void {
   ipcMain.handle('clipboardReadText', (event) => {
     requireMainWindowSender(event);
     return clipboard.readText();
+  });
+
+  // Renderer → main flow-control credit: the preload `termData` forwarder acks
+  // the bytes it delivered so main can release pty backpressure. High-frequency
+  // and reply-less in spirit; a malformed `bytes` is ignored rather than thrown
+  // so a stray ack never surfaces as a renderer error.
+  ipcMain.handle('termAck', (event, id: unknown, bytes: unknown) => {
+    requireMainWindowSender(event);
+    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return;
+    ackTerminal(requireNonEmptyString('termAck', id), bytes);
   });
 
   ipcMain.handle('termResize', (event, id: unknown, cols: number, rows: number) => {

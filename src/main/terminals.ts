@@ -24,6 +24,7 @@ import { SessionLogger } from './terminal-logger';
 import { cleanTerminalText } from './dashboard/clean-text';
 import { OscTranscriptExtractor } from './osc-transcript';
 import { readFileTranscript, sidecarTranscriptPath } from './file-transcript';
+import { TerminalFlow } from './terminal-flow';
 
 interface Session {
   id: string;
@@ -88,6 +89,11 @@ interface Session {
    * `/dev/tty` echo does not. Unset when spawned without an active conception
    * (no place to write). */
   transcriptFile?: string;
+  /** Pty → renderer micro-batch + backpressure state (review findings T1/T2).
+   * The raw `onData` chunk is still fed to the buffer / transcript / logger
+   * synchronously; only the `termData` send is routed through here, so it
+   * coalesces bursts and pauses the pty when the renderer falls behind. */
+  flow: TerminalFlow;
 }
 
 const MAX_BUFFER = 64_000;
@@ -326,6 +332,15 @@ export function attachTerminal(
 ): { output: string; exited?: number } | null {
   const s = sessions.get(id);
   if (!s) return null;
+  // Reset flow control on EVERY re-attach: the previous page's JS context — and
+  // with it its `termAck` listener — is gone, so it will never ack the bytes
+  // still outstanding to it (which would pin the pty paused forever), and any
+  // pending batch is already part of the buffer tail replayed below, so drop it
+  // rather than double-write it into the reloaded terminal. This must run on the
+  // same-WebContents path too: a plain renderer reload reuses the same
+  // WebContents (stable `id`, no `'destroyed'` event), so the early return below
+  // is the *common* re-attach, not a rare one.
+  s.flow.reset();
   // Reassign the live data sink to the calling renderer so that subsequent
   // `termData` events from the still-running pty land in the freshly-loaded
   // window. Without this, after a renderer reload the session row is visible
@@ -509,7 +524,16 @@ export async function spawnTerminal(
         config.terminal?.logging,
       )
     : null;
-  const session: Session = {
+  // `flow` closes over `session`, so declare the binding first and fill it in
+  // once the object exists. The `send` / `getPty` closures read `session` live:
+  // attachTerminal reassigns `webContents` on renderer reload and onExit nulls
+  // `pty`, and both must be reflected on the next flush / pause.
+  let session: Session;
+  const flow = new TerminalFlow(
+    (data) => safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data }),
+    () => session.pty,
+  );
+  session = {
     id,
     side: request.side,
     pty: ptyProcess,
@@ -525,6 +549,7 @@ export async function spawnTerminal(
     transcriptFile,
     memScoped: spawnTarget.program === 'systemd-run',
     memMaxBytes: spawnTarget.scopeMaxBytes,
+    flow,
   };
   sessions.set(id, session);
   logger?.spawn();
@@ -548,12 +573,20 @@ export async function spawnTerminal(
     } else {
       session.transcript.feed(data);
     }
-    safeSend(session.webContents, EVENT_CHANNELS.termData, { id, data });
+    // Batch the renderer send only — the buffer / transcript / logger above
+    // still see every raw chunk, so on-disk output stays byte-identical. The
+    // flow controller coalesces and feeds the in-flight counter that gates
+    // pty.pause()/resume().
+    session.flow.enqueue(data);
   });
   ptyProcess.onExit(({ exitCode }) => {
     session.exited = exitCode;
     session.pty = null;
     session.logger?.exit(exitCode);
+    // Deliver any batched-but-unsent output before the exit notification so the
+    // renderer never sees termExit ahead of the tab's final bytes; this also
+    // clears the coalescing timer so nothing fires after the pty is gone.
+    session.flow.flush();
     safeSend(session.webContents, EVENT_CHANNELS.termExit, { id, code: exitCode });
     // Keep the entry around (with `exited` set) so renderers that reload
     // can still see it via termList — closeSession removes it on demand.
@@ -575,6 +608,14 @@ export function writeTerminal(id: string, data: string): void {
   if (!session?.pty) return;
   session.logger?.input(data);
   session.pty.write(data);
+}
+
+/** Credit `bytes` the renderer reports having consumed for session `id`, so the
+ *  flow controller can release pty backpressure once the backlog drains. Fed by
+ *  the preload `termAck` forwarder (one ack per delivered `termData` payload).
+ *  A no-op for an unknown / already-closed session. */
+export function ackTerminal(id: string, bytes: number): void {
+  sessions.get(id)?.flow.ack(bytes);
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number): void {
@@ -706,6 +747,10 @@ async function stopSession(id: string, opts: StopOpts = {}): Promise<void> {
   }
 
   if (removeEntry) {
+    // Deliver any batched-but-unsent output and clear the coalescing timer so
+    // nothing fires after the entry is dropped. onExit usually already flushed;
+    // this covers a Stop while the pty was still emitting.
+    session.flow.flush();
     if (session.onWebContentsDestroyed && !session.webContents.isDestroyed()) {
       try {
         session.webContents.removeListener('destroyed', session.onWebContentsDestroyed);
@@ -791,6 +836,9 @@ export async function killAll(forWebContents?: WebContents): Promise<void> {
   const closes = targets.map(([, s]) => s.logger?.close() ?? Promise.resolve());
   await bounded(Promise.allSettled(closes), 1500);
 
+  // Flush + clear each session's batch timer before dropping the entry so no
+  // coalescing timer outlives the map (it would later fire on a dead session).
+  for (const [, s] of targets) s.flow.flush();
   for (const [id] of targets) sessions.delete(id);
   broadcastSessions();
 }

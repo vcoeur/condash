@@ -11,7 +11,6 @@ import {
   resolveAppRepo,
   rootRepoFromApp,
   isLongLivedBranch,
-  matchBranchGlob,
   type ConfigWithPaths,
 } from './shared';
 

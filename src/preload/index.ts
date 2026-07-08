@@ -173,3 +173,24 @@ const api: CondashApi = {
 };
 
 contextBridge.exposeInMainWorld('condash', api);
+
+// Flow-control ack (review finding T1). A single dedicated `termData` listener —
+// registered once here, independent of however many `onTermData` subscribers the
+// app wires up — acks the bytes of each delivered payload back to main. Main
+// counts sent-but-unacked bytes and pauses/resumes the pty on that backlog, so
+// acking here (on receipt in the one renderer-side forwarder) bounds the dominant
+// unbounded vector: the main→renderer IPC queue and the renderer event-loop
+// backlog when a fast agent outruns a saturated renderer. It deliberately does
+// not wait for xterm's internal parser to drain (a `term.write` callback ack) —
+// that would have to be threaded through the DOM path, the fire-and-forget
+// headless-worker postMessage path, the transition buffer, and both the terminal
+// pane and code-run subscribers, with single-owner accounting across side/
+// visibility changes. Acking once per delivered payload keeps the accounting
+// exact (no residual, nothing to reset on reload) and single-owner. The main-side
+// batching (T2) already keeps each payload — and thus each ack — coarse.
+ipcRenderer.on(EVENT_CHANNELS.termData, (_event, msg: TermDataMessage) => {
+  if (!msg || msg.data.length === 0) return;
+  // Fire-and-forget: swallow any reject (e.g. a torn-down window) so a
+  // high-frequency ack never surfaces as an unhandled rejection.
+  void ipcRenderer.invoke('termAck', msg.id, msg.data.length).catch(() => undefined);
+});
