@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi, MenuCommand, WatcherStatusMessage } from '../shared/api';
-import { EVENT_CHANNELS } from '../shared/ipc-channels';
+import { EVENT_CHANNELS, TERM_ACK_CHANNEL } from '../shared/ipc-channels';
 import type {
   DashboardState,
   DashboardTabSummariesMessage,
@@ -205,5 +205,7 @@ ipcRenderer.on(EVENT_CHANNELS.termData, (_event, msg: TermDataMessage) => {
   // Fire-and-forget: swallow any reject (e.g. a torn-down window) so a
   // high-frequency ack never surfaces as an unhandled rejection. The payload's
   // flow epoch is echoed back so main can drop an ack that raced a flow reset.
-  void ipcRenderer.invoke('termAck', msg.id, msg.data.length, msg.epoch).catch(() => undefined);
+  void ipcRenderer
+    .invoke(TERM_ACK_CHANNEL, msg.id, msg.data.length, msg.epoch)
+    .catch(() => undefined);
 });

@@ -22,11 +22,6 @@ import { KNOWN_STATUSES } from './types';
 
 export const META_LINE = /^\*\*([A-Za-z][\w -]*)\*\*\s*:\s*(.+?)\s*$/;
 export const HEADING2 = /^##\s+(.+)$/;
-/** Triple-backtick or triple-tilde fence-open/close marker. Tildes count too —
- * pandoc / CommonMark accept both. Used by `iterUnfencedLines` to skip
- * fenced code blocks when scanning README bodies for step / timeline /
- * link patterns. */
-export const FENCE_LINE = /^\s*(?:```|~~~)/;
 /** Fence marker with the run captured, so `iterUnfencedLines` can record the
  * opening fence's character + length and only close on a matching marker. */
 const FENCE_MARKER_RE = /^\s*(`{3,}|~{3,})/;
@@ -93,10 +88,6 @@ const FOLDER_NAME_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 
 export function isItemFolderName(name: string): boolean {
   return FOLDER_NAME_RE.test(name);
-}
-
-export function itemFolderRegex(): RegExp {
-  return FOLDER_NAME_RE;
 }
 
 export interface HeaderFields {

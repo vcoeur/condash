@@ -11,7 +11,13 @@ import type {
   TreeExpansionPrefs,
 } from '../../shared/types';
 import { CARD_MIN_WIDTH_KEYS, DEFAULT_CARD_MIN_WIDTH, SKILL_SCOPES } from '../../shared/types';
-import { requireBoolean, requireEnum, requireMainWindowSender, requireStringArray } from './utils';
+import {
+  requireBoolean,
+  requireEnum,
+  requireMainWindowSender,
+  requireOptionalRecord,
+  requireStringArray,
+} from './utils';
 
 // Tree-expansion keys after the reframe: knowledge, resources, plus one
 // skills set per scope (conception / user). The pre-reframe per-harness
@@ -65,8 +71,10 @@ function pruneDefaults(prefs: CardMinWidthPrefs): CardMinWidthPrefs | undefined 
 // getter round-trips, each re-reading settings.json. The individual `get*`
 // handlers below call the same resolvers, so the two paths can never diverge.
 
-/** Effective theme: a conception override beats the global value; falls back to
- *  the global `settings.theme`. Mirrors the `getTheme` handler. */
+/** Effective theme. `theme` is a global-only key (there is no conception
+ *  override), so this resolves to the global `settings.theme` — read through
+ *  `getEffectiveConceptionConfig` only to keep one settings read surface.
+ *  Mirrors the `getTheme` handler. */
 export async function resolveTheme(settings: Settings): Promise<Theme> {
   if (settings.lastConceptionPath) {
     const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
@@ -86,8 +94,9 @@ export function resolveWelcomeDismissed(settings: Settings): boolean {
   return settings.welcome?.dismissed === true;
 }
 
-/** Fully-resolved per-pane card min-widths (conception override beats global,
- *  every key filled from the defaults). Mirrors `getCardMinWidth`. */
+/** Fully-resolved per-pane card min-widths, every key filled from the defaults.
+ *  `cardMinWidth` is a global-only key (no conception override); the effective
+ *  read returns the global value. Mirrors `getCardMinWidth`. */
 export async function resolveCardMinWidth(
   settings: Settings,
 ): Promise<Required<CardMinWidthPrefs>> {
@@ -245,10 +254,9 @@ export function resolveSkillsActiveScope(settings: Settings): SkillScope {
 export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState) => void }): void {
   ipcMain.handle('getTheme', async (event) => {
     requireMainWindowSender(event);
-    // Effective theme: condash.json's override beats settings.json's
-    // global value. Falls back to 'system' when neither side has set a
-    // theme. Re-routed through the effective resolver in v2.15.1 so
-    // per-conception overrides take effect app-wide.
+    // `theme` is a global-only key — no conception override — so this returns
+    // the global `settings.theme` (falling back to 'system' when unset).
+    // See resolveTheme.
     return resolveTheme(await readSettings());
   });
 
@@ -303,11 +311,9 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('getCardMinWidth', async (event) => {
     requireMainWindowSender(event);
-    // Effective per-pane min-width: condash.json's override (whole
-    // object replaces global) beats settings.json. Re-routed through
-    // the effective resolver in v2.15.1 so per-conception overrides
-    // take effect app-wide. The shape is built from the bundled
-    // defaults so missing keys never reach the renderer as undefined.
+    // `cardMinWidth` is a global-only key — no conception override. The shape
+    // is built from the bundled defaults so missing keys never reach the
+    // renderer as undefined. See resolveCardMinWidth.
     return resolveCardMinWidth(await readSettings());
   });
 
@@ -318,7 +324,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('setTreeExpansion', async (event, raw: unknown) => {
     requireMainWindowSender(event);
-    const input = (raw ?? {}) as Record<string, unknown>;
+    const input = requireOptionalRecord('setTreeExpansion', raw) ?? {};
     const allowed = new Set<string>(TREE_EXPANSION_KEYS);
     for (const key of Object.keys(input)) {
       if (!allowed.has(key)) {
@@ -398,7 +404,7 @@ export function registerSettingsIpc(opts: { onLayoutChange: (layout: LayoutState
 
   ipcMain.handle('setCardMinWidth', async (event, raw: unknown) => {
     requireMainWindowSender(event);
-    const input = (raw ?? {}) as Record<string, unknown>;
+    const input = requireOptionalRecord('setCardMinWidth', raw) ?? {};
     // Reject unknown keys outright — silently dropping them used to mask
     // typos like `{ projets: 200 }` in renderer code.
     const allowed = new Set<string>(CARD_MIN_KEYS);

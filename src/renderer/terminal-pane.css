@@ -318,8 +318,8 @@
 
 .terminal-tab-mem.warn {
   opacity: 1;
-  color: #000;
-  background: var(--warn-bg, #f0c674);
+  color: var(--warn-fg);
+  background: var(--warn-bg);
   border-radius: 3px;
   padding: 0 3px;
 }

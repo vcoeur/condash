@@ -80,10 +80,6 @@ export function validation(message: string, details: Record<string, unknown> = {
   throw new CliError(ExitCodes.VALIDATION, message, details);
 }
 
-export function usage(message: string): never {
-  throw new CliError(ExitCodes.USAGE, message);
-}
-
 export function noConception(triedSources: string[]): never {
   throw new CliError(ExitCodes.NO_CONCEPTION, 'No conception path resolved', { triedSources });
 }

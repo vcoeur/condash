@@ -226,10 +226,15 @@ export function pick(
 }
 
 /**
- * Subset of the unified config schema that the Settings modal reads + writes.
- * Mirrors `globalSettingsSchema` / `conceptionConfigSchema` from
- * `src/main/config-schema.ts` — every overridable key is present here so
- * the same RawConfig shape can describe either file.
+ * Subset of the two disjoint config schemas that the Settings modal reads +
+ * writes. Mirrors the keys of `globalSettingsSchema` / `conceptionConfigSchema`
+ * from `src/main/config-schema.ts` — one RawConfig shape carries whichever
+ * file's keys a save touches (the two schemas are disjoint, so there is no
+ * overlap to reconcile). Schema keys the modal never edits (UI-state such as
+ * `layout` / `treeExpansion` / `selectedBranches`, and `retired_apps` /
+ * `taskConfig`) are intentionally omitted; the parity test in
+ * `config-parity.test.ts` allowlists each with a reason so a NEW schema key
+ * can't silently go missing from Settings.
  */
 export interface RawConfig {
   $schema_doc?: string;
@@ -250,6 +255,41 @@ export interface RawConfig {
   lastConceptionPath?: string | null;
   recentConceptionPaths?: string[];
 }
+
+/**
+ * Every top-level key of {@link RawConfig}, as runtime data. `RawConfig` is a TS
+ * interface (erased at runtime), so the config-parity test can't read its keys
+ * directly — this array is the runtime mirror it enumerates. The two guards keep
+ * it in lock-step with the interface at **compile time** in both directions: the
+ * `satisfies` clause rejects a key that isn't on `RawConfig`, and the
+ * `satisfies` assertion below errors if a `RawConfig` field is missing from the
+ * list. So a new field forces an entry here, and `config-parity.test.ts` then
+ * forces that field to mirror the zod schemas.
+ */
+export const RAW_CONFIG_KEYS = [
+  '$schema_doc',
+  'workspace_path',
+  'worktrees_path',
+  'long_lived_branches',
+  'repositories',
+  'agents',
+  'open_with',
+  'pdf_viewer',
+  'theme',
+  'cardMinWidth',
+  'terminal',
+  'dashboard',
+  'lastConceptionPath',
+  'recentConceptionPaths',
+] as const satisfies readonly (keyof RawConfig)[];
+
+// Compile-time completeness: errors if any RawConfig key is absent from
+// RAW_CONFIG_KEYS above (the `satisfies` clause guards the reverse direction).
+// A bare assertion statement, so it leaves no unused declaration for
+// `noUnusedLocals` to flag.
+true satisfies [Exclude<keyof RawConfig, (typeof RAW_CONFIG_KEYS)[number]>] extends [never]
+  ? true
+  : false;
 
 /**
  * Repository entries that carry only `{ name }` (no label / run / force_stop /

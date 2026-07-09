@@ -1,5 +1,6 @@
 import { existsSync, promises as fs } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
+import { conceptionConfigCandidates } from '../main/condash-dir';
 import { readSettings } from '../main/settings';
 import { noConception } from './output';
 
@@ -86,15 +87,10 @@ async function looksLikeConception(path: string): Promise<boolean> {
   }
   // Both a config file and a `projects/` directory are required: any folder
   // with a stray config file (e.g. a webpack/babel config in an unrelated
-  // repo) used to silently retarget the CLI. Recognised in priority order:
-  //   `.condash/settings.json` (canonical),
-  //   `condash.json` (legacy),
-  //   `configuration.json` (legacy²).
-  if (
-    !existsSync(`${path}/.condash/settings.json`) &&
-    !existsSync(`${path}/condash.json`) &&
-    !existsSync(`${path}/configuration.json`)
-  ) {
+  // repo) used to silently retarget the CLI. Any of the recognised config
+  // candidates (`.condash/settings.json` canonical, then the legacy names)
+  // satisfies the marker.
+  if (!conceptionConfigCandidates(path).some((candidate) => existsSync(candidate))) {
     return false;
   }
   try {

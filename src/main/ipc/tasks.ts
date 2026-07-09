@@ -4,7 +4,12 @@ import type { TaskConfigEntry } from '../../shared/types';
 import { deleteTask, listTasks, readTask, writeTask } from '../tasks';
 import { getEffectiveConceptionConfig, mutateConceptionConfig } from '../effective-config';
 import { killTaskRun, listRunningTaskRuns } from '../task-scheduler';
-import { requireMainWindowSender, withConception } from './utils';
+import {
+  requireMainWindowSender,
+  requireNonEmptyString,
+  requireRecord,
+  withConception,
+} from './utils';
 
 /**
  * Wire the Tasks-pane IPC. Every verb is conception-scoped (tasks live at
@@ -17,20 +22,24 @@ export function registerTasksIpc(): void {
     return withConception((c) => listTasks(c), []);
   });
 
-  ipcMain.handle('readTask', (event, slug: string) => {
+  ipcMain.handle('readTask', (event, slug: unknown) => {
     requireMainWindowSender(event);
-    return withConception((c) => readTask(c, slug), null);
+    const taskSlug = requireNonEmptyString('readTask', slug);
+    return withConception((c) => readTask(c, taskSlug), null);
   });
 
-  ipcMain.handle('writeTask', (event, slug: string, def: TaskDef, previousSlug?: string) => {
+  ipcMain.handle('writeTask', (event, slug: unknown, def: unknown, previousSlug?: string) => {
     requireMainWindowSender(event);
-    return withConception((c) => writeTask(c, slug, def, previousSlug), '');
+    const taskSlug = requireNonEmptyString('writeTask', slug);
+    const taskDef = requireRecord('writeTask', def) as unknown as TaskDef;
+    return withConception((c) => writeTask(c, taskSlug, taskDef, previousSlug), '');
   });
 
-  ipcMain.handle('deleteTask', (event, slug: string) => {
+  ipcMain.handle('deleteTask', (event, slug: unknown) => {
     requireMainWindowSender(event);
+    const taskSlug = requireNonEmptyString('deleteTask', slug);
     return withConception(async (c) => {
-      await deleteTask(c, slug);
+      await deleteTask(c, taskSlug);
     }, undefined);
   });
 
@@ -59,11 +68,9 @@ export function registerTasksIpc(): void {
     }, {});
   });
 
-  ipcMain.handle('setTaskConfig', async (event, slug: string, entry: TaskConfigEntry) => {
+  ipcMain.handle('setTaskConfig', async (event, slug: unknown, entry: TaskConfigEntry) => {
     requireMainWindowSender(event);
-    if (typeof slug !== 'string' || slug.length === 0) {
-      throw new Error('setTaskConfig: slug must be a non-empty string');
-    }
+    const taskSlug = requireNonEmptyString('setTaskConfig', slug);
     const schedule =
       typeof entry?.schedule === 'string' && entry.schedule.trim().length > 0
         ? entry.schedule.trim()
@@ -98,9 +105,9 @@ export function registerTasksIpc(): void {
       await mutateConceptionConfig(conceptionPath, (config) => {
         const map = { ...((config.taskConfig ?? {}) as Record<string, TaskConfigEntry>) };
         if (Object.keys(persisted).length === 0) {
-          delete map[slug];
+          delete map[taskSlug];
         } else {
-          map[slug] = persisted;
+          map[taskSlug] = persisted;
         }
         if (Object.keys(map).length > 0) config.taskConfig = map;
         else delete config.taskConfig;

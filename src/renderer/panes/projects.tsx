@@ -26,7 +26,7 @@ export {
   nextMarker,
 } from './projects-parts/data';
 export type { Group } from './projects-parts/data';
-export { KindGlyph, NewNoteIcon, StepIcon } from './projects-parts/icons';
+export { KindGlyph, StepIcon } from './projects-parts/icons';
 
 export function ProjectsView(props: {
   buckets: Map<string, Project[]>;

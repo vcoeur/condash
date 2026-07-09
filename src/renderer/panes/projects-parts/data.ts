@@ -16,8 +16,6 @@ export const MARKER_LABEL: Record<StepMarker, string> = {
  * pre-`!` user habit: todo → doing → done → dropped → back to todo. */
 const CLICK_CYCLE: readonly StepMarker[] = [' ', '~', 'x', '-'];
 
-export const DRAG_MIME = 'application/x-condash-project-path';
-
 export const UNKNOWN = '?';
 
 /** Order of stacked sections on the Projects pane. `backlog` and `done`

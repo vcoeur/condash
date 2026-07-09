@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { conceptionConfigCandidates } from './condash-dir';
 import { pathExists } from './fs-helpers';
 
 import type { ConceptionInitState } from '../shared/types';
@@ -37,11 +38,9 @@ export async function detectConceptionState(path: string): Promise<ConceptionIni
   const hasProjects = await isDirectory(join(path, 'projects'));
   // `.condash/settings.json` is canonical; `condash.json` and
   // `configuration.json` are legacy fallbacks (both read indefinitely).
-  // Any of the three satisfies the marker.
-  const hasConfiguration =
-    (await isFile(join(path, '.condash', 'settings.json'))) ||
-    (await isFile(join(path, 'condash.json'))) ||
-    (await isFile(join(path, 'configuration.json')));
+  // Any of the candidates satisfies the marker.
+  const configChecks = await Promise.all(conceptionConfigCandidates(path).map(isFile));
+  const hasConfiguration = configChecks.some(Boolean);
   return {
     pathExists: true,
     hasProjects,

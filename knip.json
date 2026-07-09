@@ -12,6 +12,7 @@
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/renderer/*.d.ts"],
   "ignoreDependencies": ["electron-updater"],
+  "ignoreExportsUsedInFile": true,
   "vite": {
     "config": ["vite.config.ts"]
   },
@@ -26,9 +27,9 @@
     "unresolved": "error",
     "binaries": "error",
     "duplicates": "error",
-    "exports": "warn",
+    "exports": "error",
     "nsExports": "warn",
-    "types": "warn",
+    "types": "error",
     "nsTypes": "warn",
     "enumMembers": "warn",
     "classMembers": "warn"

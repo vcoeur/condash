@@ -44,12 +44,17 @@ export { isSectionMarker, type RawRepo, type RawSubmoduleRepo };
 export { migrateRawSettings };
 
 /**
- * Schemas for the two condash settings files. The unified shape lives here
- * so the global per-machine `settings.json` and the per-conception
- * `condash.json` (which replaces the legacy `configuration.json`) stay in
- * lock-step. Top-level keys in `condash.json` replace the matching keys in
- * `settings.json` at read time; the only fields a conception cannot set
- * are `lastConceptionPath` and `recentConceptionPaths`.
+ * Schemas for the two condash settings files. The two files hold DISJOINT key
+ * sets — every top-level key has exactly one home, decided by `SCOPE_OF` in
+ * `config-scope.ts` (built from the `conceptionOnlyFields` / `globalOnlyFields`
+ * / `pathTrackingFields` groups below), and each `.strict()` schema rejects a
+ * key found in the wrong file. There is NO override, inheritance, or merge:
+ * `getEffectiveConceptionConfig` (`effective-config.ts`) is a plain spread of
+ * the two files, so a key only ever has one value, read from its owning file.
+ * The path-tracking keys (`lastConceptionPath` / `recentConceptionPaths`) are
+ * global-only — a conception cannot describe its own location. The only field
+ * accepted in both files is the `$schema_doc` doc pointer (not a setting).
+ * Per-key reference: `docs/reference/config.md`.
  *
  * Field-naming convention (FROZEN — see `config-schema.test.ts`):
  * the user-facing config surface mixes two casings for historical reasons,
@@ -197,13 +202,6 @@ const retiredAppEntry = z
     aliases: z.array(z.string().min(1)).optional(),
   })
   .strict();
-
-/** A retired (defunct) app handle — see {@link retiredAppEntry}. */
-export interface RetiredApp {
-  handle: string;
-  label?: string;
-  aliases?: string[];
-}
 
 const openWithSlot = z
   .object({
@@ -407,8 +405,10 @@ const treeExpansionSchema = z
 
 /**
  * Live terminal-tab summarization ("Dashboard"). Opt-in: a periodic main-process
- * loop summarizes the active terminal tabs with the pi coding-agent SDK and
- * surfaces the result as tab titles, a hover popover, and the Dashboard pane.
+ * loop summarizes the active terminal tabs by POSTing directly to an
+ * OpenAI-compatible LLM endpoint (DeepSeek by default) — no SDK — and surfaces
+ * the result as tab titles, a hover popover, and the Dashboard body in the
+ * bottom band.
  *
  * Per-machine in `settings.json` — `apiKey` is a secret and MUST live in the
  * global file, never a versioned conception `condash.json`. All fields are
@@ -432,11 +432,15 @@ const dashboardSettings = z
      *  any id the endpoint serves. Legacy single-tier configs that set only
      *  `model` get it as the card model. */
     model: z.string().optional(),
-    /** Cross-tab "writer" model (richer tier; default `deepseek-v4-pro`). */
+    /** Per-card "writer" model (richer tier; default `deepseek-v4-pro`) —
+     *  composes each tab's published title + subtitle from the card facts.
+     *  There is no cross-tab synthesis (removed in v4.55.0). */
     writerModel: z.string().optional(),
     /** Whether the card model reasons (default false — mechanical extraction). */
     cardReasoning: z.boolean().optional(),
-    /** Whether the writer model reasons (default true — cross-tab synthesis). */
+    /** Whether the writer model reasons (default false — a bake-off found
+     *  reasoning-on returns an empty reply on a non-trivial fraction of writer
+     *  calls, unacceptable now this tier owns the title). */
     writerReasoning: z.boolean().optional(),
     /** Chars of recent tab output fed to the card model (default 16000). */
     cardInputChars: z.number().int().positive().optional(),
@@ -562,8 +566,6 @@ export const globalSettingsSchema = z
 /** Schema for `<conception>/.condash/settings.json` — the disjoint tree-owned
  *  field group. A global key found here is rejected by `.strict()`. */
 export const conceptionConfigSchema = z.object(conceptionOnlyFields).strict();
-
-export type ConceptionConfig = z.infer<typeof conceptionConfigSchema>;
 
 // `SCOPE_OF` (the key → owning-file map) and `SettingsScope` are defined in the
 // zod-free `config-scope.ts` and re-exported at the top of this file. The

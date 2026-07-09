@@ -235,27 +235,6 @@ export function KindGlyph(props: { kind: string }) {
   );
 }
 
-// New note — page silhouette with a small detached "+" glyph in the top-
-// right corner. Detached (rather than centred-on-page) so it reads as
-// "add a note" rather than "new file" — and so it doesn't collide with
-// the document kind glyph used elsewhere on the card.
-export function NewNoteIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="1.5" y="3.25" width="8.5" height="11" rx="1.25" />
-      <path d="M3.5 6.5h4.5M3.5 9h4.5M3.5 11.5h2.5" />
-      <path d="M12.5 2.5v3.5M10.75 4.25h3.5" stroke-width="1.8" />
-    </svg>
-  );
-}
-
 // Unknown-status warning — circle with a duotone wash, a bold short
 // vertical bar, and a slightly larger dot below. Reads cleanly at 12 px.
 export function WarnIcon() {

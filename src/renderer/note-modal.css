@@ -31,6 +31,11 @@
   margin-top: 0;
 }
 
+/* Rendered-Markdown heading + inline ladder — sized in `em` ON PURPOSE so the
+ * document's headings, code, and blockquotes scale relative to the note body's
+ * --text-* base instead of snapping to fixed px steps. Invariant-11 type-scale
+ * exemption (same spirit as the icon-glyph exemption): this is rendered
+ * document text, not app chrome. */
 .md-rendered h1 {
   font-size: 1.6em;
 }

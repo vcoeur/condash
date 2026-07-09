@@ -36,6 +36,15 @@ function languageExtension(lang: EditorLanguage): Extension {
   return lang === 'json' ? json() : markdown();
 }
 
+/**
+ * Mount a CodeMirror editor into the given parent — the public entry point of
+ * this module.
+ *
+ * @public Lazily loaded by `note-modal.tsx` via
+ *   `import('./editor').then(({ mountEditor }) => …)`; knip can't trace a
+ *   destructured dynamic import, so mark it public to keep the deadcode gate
+ *   honest rather than delete a live export.
+ */
 export function mountEditor(opts: MountOptions): MountedEditor {
   // Per-mount compartment: reconfigure() targets the View instance, so a
   // module-level singleton would have all open editors share one mutation

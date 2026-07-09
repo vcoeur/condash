@@ -36,12 +36,6 @@ import { DashboardView } from './panes/dashboard';
 import './panes/app-pill.css';
 import './terminal-pane.css';
 
-export type { Column, Tab } from './terminal-pane/types';
-export type { TerminalPrefs } from '@shared/types';
-
-// Defaults re-exported for unit tests that need to reach for them.
-export { DEFAULT_PANE_HEIGHT, DEFAULT_SPLIT_RATIO } from './terminal-pane/persistence';
-
 export interface SpawnOptions {
   /** Lock the tab title to `label` so OSC 7 cwd updates from the shell
    *  don't override it. Default false (current "+" new-shell behavior). */
