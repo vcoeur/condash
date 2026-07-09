@@ -17,10 +17,6 @@ import { requireMainWindowSender } from './utils';
  *  the search disk-scan pool size. */
 const LISTING_CONCURRENCY = 32;
 
-// Re-exported so callers that historically imported `splitContent` from this
-// file keep working. New code should import directly from `../logs-format`.
-export { splitContent };
-
 /**
  * IPC surface for the Logs pane.
  *

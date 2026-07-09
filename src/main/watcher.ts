@@ -6,6 +6,7 @@ import { EVENT_CHANNELS } from '../shared/ipc-channels';
 import { safeSend } from './safe-send';
 import { reportWatcherError } from './watcher-status';
 import type { TreeEvent } from '../shared/types';
+import { conceptionConfigCandidates } from './condash-dir';
 import { migrateLegacyConfig } from './condash-dir-migrate';
 import { partitionSettingsScopes, scopeMigrationDidWork } from './scope-partition-migrate';
 import { resolveConceptionPaths } from './conception-paths';
@@ -118,7 +119,11 @@ export async function setWatchedConception(
   // `.condash/` (its `logs/` would flood events).
   const agentsRoot = toPosix(join(conceptionPath, 'AGENTS.md'));
   const claudeDot = toPosix(join(conceptionPath, '.claude', 'CLAUDE.md'));
-  const condashSettings = toPosix(join(conceptionPath, '.condash', 'settings.json'));
+  const configCandidates = conceptionConfigCandidates(conceptionPath);
+  // Only the canonical `.condash/settings.json` (candidate 0) is dotfile-filtered
+  // and so needs the ignore bypass; the two legacy names sit at the conception
+  // root and are never filtered.
+  const condashSettings = toPosix(configCandidates[0]);
   const ignored = (path: string): boolean => {
     if (NODE_MODULES_RE.test(path) || DIST_RE.test(path) || TARGET_RE.test(path)) return true;
     if (!DOTFILE_SEGMENT_RE.test(path)) return false;
@@ -140,11 +145,10 @@ export async function setWatchedConception(
       join(conceptionPath, 'knowledge'),
       join(conceptionPath, resources),
       join(conceptionPath, skills),
-      // Canonical per-conception config plus the two legacy names. The
-      // canonical file only — never the whole `.condash/` dir (logs flood).
-      join(conceptionPath, '.condash', 'settings.json'),
-      join(conceptionPath, 'condash.json'),
-      join(conceptionPath, 'configuration.json'),
+      // Canonical per-conception config plus the two legacy names — the single
+      // `conceptionConfigCandidates` list. The canonical file only, never the
+      // whole `.condash/` dir (logs flood).
+      ...configCandidates,
       // Conception-level AGENTS.md is the pinned Skills-pane callout
       // post-reframe; legacy CLAUDE.md (root and `.claude/`) still
       // surfaces for back-compat. Repaint the pane on edit, hence the

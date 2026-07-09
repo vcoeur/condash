@@ -18,10 +18,17 @@ import type { SearchAddon } from '@xterm/addon-search';
 import type { SerializeAddon } from '@xterm/addon-serialize';
 import type { MountedTerm } from '../xterm-mount';
 import { createDragDropController } from './drag-drop';
+import { decideRefreshAction, refreshOnSwitchTargets, REPAINT_NUDGE_MS } from './nudge-machine';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
 import { type Column, displayName, sameStringList, type Tab } from './types';
+import {
+  desiredDomIds,
+  domVisibility,
+  planVisibility,
+  shouldPromoteOnFocus,
+} from './visibility-plan';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
 import type {
   AgentChoice,
@@ -206,7 +213,7 @@ export function createTerminalController(props: TerminalPaneProps) {
       // keeps that guard while letting a genuine click in the OTHER column
       // through even when this one is mid-transition or stuck (R1). Genuine user
       // clicks/focus land in the steady state, when this column is idle.
-      if (transitioningInColumn[col] > 0) return;
+      if (!shouldPromoteOnFocus(transitioningInColumn[col])) return;
       if (activeIdIn(col) !== id) setActiveIn(col, id);
       if (activeColumn() !== col) setActiveColumn(col);
     };
@@ -290,15 +297,15 @@ export function createTerminalController(props: TerminalPaneProps) {
       return;
     }
 
-    const desiredDomIds = new Set<string>();
-    for (const col of ['left', 'right'] as Column[]) {
-      const id = activeIdIn(col);
-      if (id) desiredDomIds.add(id);
-    }
+    // Snapshot the promote/demote plan up front: which desired tabs need a DOM
+    // Terminal, which mounted tabs should demote to the worker. The per-id work
+    // below mutates `xterms` / `transitioning` only for the id it is processing,
+    // so a plan computed here stays valid across the loop (see visibility-plan).
+    const desired = desiredDomIds({ left: activeIdIn('left'), right: activeIdIn('right') });
+    const plan = planVisibility({ desired, mounted: xterms.keys(), transitioning });
 
     // Promote worker tabs that should be visible.
-    for (const id of desiredDomIds) {
-      if (xterms.has(id) || transitioning.has(id)) continue;
+    for (const id of plan.toPromote) {
       const tab = tabs().find((t) => t.id === id);
       const col = tab?.column ?? 'left';
       beginTransition(id, col);
@@ -338,8 +345,9 @@ export function createTerminalController(props: TerminalPaneProps) {
     }
 
     // Demote DOM tabs that should be hidden.
-    for (const [tid, h] of xterms) {
-      if (desiredDomIds.has(tid) || transitioning.has(tid)) continue;
+    for (const tid of plan.toDemote) {
+      const h = xterms.get(tid);
+      if (!h) continue;
       const demoteColumn = h.column;
       beginTransition(tid, demoteColumn);
       try {
@@ -357,15 +365,17 @@ export function createTerminalController(props: TerminalPaneProps) {
       }
     }
 
-    // Update CSS visibility + WebGL pool for the remaining DOM tabs.
-    for (const col of ['left', 'right'] as Column[]) {
-      const id = activeIdIn(col);
-      for (const [tid, h] of xterms) {
-        if (h.column !== col) continue;
-        const visible = tid === id;
-        h.element.style.display = visible ? 'flex' : 'none';
-        h.mounted.setVisible(visible);
-      }
+    // Update CSS visibility + WebGL pool for the remaining DOM tabs. Read the
+    // active ids fresh here (not the top-of-function `desired`): the awaited
+    // promote/demote round-trips above may have let a later click move the
+    // active tab, and the visible terminal must track that latest state.
+    const active = { left: activeIdIn('left'), right: activeIdIn('right') };
+    const mountedTabs = Array.from(xterms, ([id, h]) => ({ id, column: h.column }));
+    for (const [tid, visible] of domVisibility(mountedTabs, active)) {
+      const h = xterms.get(tid);
+      if (!h) continue;
+      h.element.style.display = visible ? 'flex' : 'none';
+      h.mounted.setVisible(visible);
     }
 
     focusActiveDom();
@@ -785,14 +795,12 @@ export function createTerminalController(props: TerminalPaneProps) {
   let prevActive: { left: string | null; right: string | null } = { left: null, right: null };
   createEffect(() => {
     const current = activeIds();
-    const refreshAll = props.autoRefreshOnTabSwitch !== false;
-    for (const col of ['left', 'right'] as const) {
-      const next = current[col];
-      const prev = prevActive[col];
-      if (next && prev && next !== prev) {
-        const id = next;
-        queueMicrotask(() => refreshSession(id, { onlyIfAltBuffer: !refreshAll }));
-      }
+    for (const target of refreshOnSwitchTargets(
+      prevActive,
+      current,
+      props.autoRefreshOnTabSwitch,
+    )) {
+      queueMicrotask(() => refreshSession(target.id, { onlyIfAltBuffer: target.onlyIfAltBuffer }));
     }
     prevActive = { left: current.left, right: current.right };
   });
@@ -839,16 +847,9 @@ export function createTerminalController(props: TerminalPaneProps) {
   };
 
   // ---- refresh (repaint) ----
-  // How long to hold the intermediate (rows-1) size before restoring it. This
-  // must exceed the running program's own resize debounce, or it never samples
-  // the smaller size and the nudge collapses to a no-op: opencode (Bubbletea)
-  // coalesces resizes for ~100ms, so at the old 80ms hold it emitted nothing and
-  // the tab stayed on its garbled hydrated frame no matter how often you pressed
-  // Refresh. 160ms clears that debounce with margin while staying imperceptible;
-  // holding the dip this long only works because `focusActiveDom` now skips
-  // refitting a nudging session (otherwise a chained `syncVisibility` restored
-  // the full size within a frame).
-  const REPAINT_NUDGE_MS = 160;
+  // The nudge timing (`REPAINT_NUDGE_MS`) and the whether/what-kind decisions
+  // (`decideRefreshAction`) live in the pure `nudge-machine` module; the wiring
+  // below keeps only the effects — the promote, the timer, and the DOM resize.
 
   /** Force the program running in a session to repaint its whole screen by
    *  nudging the pty one row shorter and back (two SIGWINCHes). Full-screen TUIs
@@ -884,37 +885,49 @@ export function createTerminalController(props: TerminalPaneProps) {
       .then(async () => {
         await syncVisibility();
         const handle = xterms.get(id);
-        if (!handle) return;
-        // The opt-out path (onlyIfAltBuffer) repaints only live full-screen TUIs
-        // (alt buffer); a faithfully-hydrated shell is left as-is. Checked
-        // post-hydrate so the buffer type reflects the snapshot we just replayed.
-        if (opts?.onlyIfAltBuffer && handle.term.buffer.active.type !== 'alternate') {
-          handle.term.focus();
+        // The pure decision: skip (no live terminal — demoted / closed /
+        // re-mounted mid-hydration), focus-only (the alt-buffer opt-out excluded a
+        // faithfully-hydrated shell, or the terminal is too short to give up a
+        // row), or nudge. `bufferType` is read post-hydrate so it reflects the
+        // snapshot just replayed.
+        const action = decideRefreshAction({
+          mounted: Boolean(handle),
+          bufferType: handle?.term.buffer.active.type,
+          rows: handle?.term.rows,
+          onlyIfAltBuffer: opts?.onlyIfAltBuffer ?? false,
+        });
+        if (action.kind === 'skip') return;
+        // Past `skip`, `decideRefreshAction` guarantees a live handle; bind it
+        // non-nullable so the deferred restore below narrows cleanly.
+        const live = handle!;
+        if (action.kind === 'focus-only' && action.reason === 'altGate') {
+          live.term.focus();
           return;
         }
-        // Test seam (mirrors `__condashXterms`): record each repaint we actually
-        // run so e2e can assert the nudge fired without racing the sub-frame
+        // Past the alt-buffer gate. Test seam (mirrors `__condashXterms`): record
+        // here so e2e can assert the nudge fired without racing the sub-frame
         // resize. Inert unless the test opts into the registry.
         if (document.body.hasAttribute('data-test-xterm-registry')) {
           (window.__condashRefreshLog ??= []).push(id);
         }
-        const { cols, rows } = handle.term;
-        if (rows <= 1) {
-          handle.term.focus();
+        if (action.kind === 'focus-only') {
+          // reason === 'tooShort': a ≤1-row terminal can't lose a row.
+          live.term.focus();
           return;
         }
         // Hold the pty one row short across REPAINT_NUDGE_MS so a debounced TUI
         // samples the smaller size and repaints; `nudging` keeps a competing fit
         // from restoring the size early (see `focusActiveDom`).
+        const { cols, rows } = live.term;
         nudging.add(id);
-        handle.term.resize(cols, rows - 1);
+        live.term.resize(cols, rows - 1);
         setTimeout(() => {
           nudging.delete(id);
           // Bail if the tab was demoted, closed, or re-mounted while we waited.
-          if (xterms.get(id) !== handle) return;
+          if (xterms.get(id) !== live) return;
           try {
-            handle.fit.fit();
-            handle.term.focus();
+            live.fit.fit();
+            live.term.focus();
           } catch {
             /* host not sized yet / term disposed */
           }

@@ -1,15 +1,13 @@
 import { promises as fs } from 'node:fs';
-import { dirname } from 'node:path';
 import {
-  conceptionConfigWritePath,
   getEffectiveConceptionConfig,
+  mutateConceptionConfig,
   readConceptionConfigRaw,
   resolveConceptionConfigPath,
 } from '../../main/effective-config';
 import { migrateLegacyConfig } from '../../main/condash-dir-migrate';
 import { migrateRawSettings } from '../../main/config-migrate';
 import { mutateSettingsJson, settingsPath } from '../../main/settings';
-import { atomicWrite } from '../../main/atomic-write';
 import { pickByDottedPath, setByDottedPath } from '../../shared/dotted-path';
 import { CliError, ExitCodes, emit, type OutputContext } from '../output';
 import { resolveConception } from '../conception';
@@ -190,15 +188,12 @@ export async function runConfig(
         settingsWarnings,
       );
     } else {
-      const writePath = conceptionConfigWritePath(conceptionPath);
-      // If the canonical primary doesn't exist yet but a legacy file does,
-      // seed the new primary from the legacy content so the first `set`
-      // doesn't silently drop the user's existing keys.
-      const existing = await readConceptionConfigRaw(conceptionPath);
-      await mutateJsonFile(writePath, (current) => {
-        if (Object.keys(current).length === 0) {
-          for (const [k, v] of Object.entries(existing)) current[k] = v;
-        }
+      // Route through the shared, write-queued conception-config mutator — the
+      // same writer the GUI + `condash applications` use — so a concurrent
+      // in-process write can't lose an update. It seeds the canonical primary
+      // from a legacy `condash.json` / `configuration.json` when the primary
+      // doesn't exist yet, so the first `set` never drops existing keys.
+      await mutateConceptionConfig(conceptionPath, (current) => {
         setByDottedPath(current, key, parsedValue);
         written = structuredClone(current);
       });
@@ -259,32 +254,6 @@ async function schemaWarnings(config: Record<string, unknown>, target: string): 
     const where = issue.path.length > 0 ? issue.path.join('.') : '<root>';
     return `${target}: ${where} — ${issue.message}; the GUI Settings save will reject this file until it is fixed`;
   });
-}
-
-/** Read-modify-write a JSON file atomically; creates the file (and its
- * parent directory) when missing. Used for the per-conception
- * `.condash/settings.json`; the global file goes through the main settings
- * writer (`mutateSettingsJson`) to share its serialising queue. */
-async function mutateJsonFile(
-  path: string,
-  mutate: (current: Record<string, unknown>) => void,
-): Promise<void> {
-  let current: Record<string, unknown> = {};
-  try {
-    const raw = await fs.readFile(path, 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      current = parsed as Record<string, unknown>;
-    }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
-  mutate(current);
-  // The new canonical config lives in `.condash/`, which may not exist yet
-  // on a fresh conception. `atomicWrite` needs the parent dir present, so
-  // mkdir -p before writing.
-  await fs.mkdir(dirname(path), { recursive: true });
-  await atomicWrite(path, JSON.stringify(current, null, 2) + '\n');
 }
 
 function printHelp(verb: string | null): void {

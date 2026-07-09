@@ -103,6 +103,14 @@
    * pattern --border uses. Used by the Settings "test connection" OK state. */
   --success: #2e7d32;
 
+  /* Early-warning chip — the per-tab memory meter's `.warn` badge (amber fill,
+   * black text). A FIXED amber pair, deliberately theme-independent like the
+   * --preview-* sample below: amber reads on both themes, and black reads on
+   * amber on both, so it needs no dark remap. Distinct from --warn (the
+   * saturated red "danger" hue) — this is a caution, not an error. */
+  --warn-bg: #f0c674;
+  --warn-fg: #000;
+
   /* Terminal-preview sample palette (Tokyo Night). These are intentionally
    * NOT the app palette: the Settings colour-grid preview shows a fixed
    * sample terminal theme so the user can judge contrast independently of

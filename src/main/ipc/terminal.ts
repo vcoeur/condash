@@ -16,6 +16,7 @@ import { latestScreenshot } from '../screenshot';
 import { requireScreenshotDir } from '../path-bounds';
 import { readSettings } from '../settings';
 import type { TermSide, TermSpawnRequest } from '../../shared/types';
+import { TERM_ACK_CHANNEL } from '../../shared/ipc-channels';
 import {
   requireEnum,
   requireMainWindowSender,
@@ -56,11 +57,11 @@ export function registerTerminalIpc(): void {
   // so a stray ack never surfaces as a renderer error. The echoed flow `epoch`
   // lets main drop an ack that raced a flow reset (re-attach); a malformed
   // epoch is passed as undefined, which the flow treats as "no epoch check".
-  ipcMain.handle('termAck', (event, id: unknown, bytes: unknown, epoch: unknown) => {
+  ipcMain.handle(TERM_ACK_CHANNEL, (event, id: unknown, bytes: unknown, epoch: unknown) => {
     requireMainWindowSender(event);
     if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return;
     const ackEpoch = typeof epoch === 'number' && Number.isFinite(epoch) ? epoch : undefined;
-    ackTerminal(requireNonEmptyString('termAck', id), bytes, ackEpoch);
+    ackTerminal(requireNonEmptyString(TERM_ACK_CHANNEL, id), bytes, ackEpoch);
   });
 
   ipcMain.handle('termResize', (event, id: unknown, cols: number, rows: number) => {
@@ -103,9 +104,7 @@ export function registerTerminalIpc(): void {
 
   ipcMain.handle('termSetPrefs', async (event, prefs: unknown) => {
     requireMainWindowSender(event);
-    if (!prefs || typeof prefs !== 'object') {
-      throw new Error('termSetPrefs: payload must be an object');
-    }
+    const prefsRecord = requireRecord('termSetPrefs', prefs);
     // Validate the whole nested patch through the config schema before it
     // is persisted — `terminal.shell` becomes the pty program on the next
     // spawn, so a malformed payload must be rejected at this boundary, not
@@ -115,7 +114,7 @@ export function registerTerminalIpc(): void {
     // global (per-machine) key, so its shape comes from the global schema.
     const { globalSettingsSchema } = await import('../config-schema');
     const terminalPrefsSchema = globalSettingsSchema.shape.terminal;
-    const parsed = terminalPrefsSchema.safeParse(prefs);
+    const parsed = terminalPrefsSchema.safeParse(prefsRecord);
     if (!parsed.success) {
       throw new Error(`termSetPrefs: invalid terminal prefs — ${parsed.error.message}`);
     }

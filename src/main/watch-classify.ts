@@ -13,6 +13,7 @@
 
 import { join } from 'node:path';
 import { toPosix } from '../shared/path';
+import { conceptionConfigCandidates } from './condash-dir';
 import type { TreeEvent } from '../shared/types';
 
 export type ChokidarEvent = 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir';
@@ -26,9 +27,9 @@ export interface RootSet {
  *  compares, not repeated `join + toPosix`. */
 export interface WatchPaths {
   conceptionP: string;
-  condashSettings: string;
-  condashJson: string;
-  configJson: string;
+  /** The three conception-config candidates (POSIX), from the single
+   *  `conceptionConfigCandidates` list — a `config` event matches any of them. */
+  configCandidates: string[];
   agentsRoot: string;
   claudeRoot: string;
   claudeDot: string;
@@ -40,9 +41,7 @@ export function buildWatchPaths(conception: string): WatchPaths {
   const conceptionP = toPosix(conception);
   return {
     conceptionP,
-    condashSettings: toPosix(join(conception, '.condash', 'settings.json')),
-    condashJson: toPosix(join(conception, 'condash.json')),
-    configJson: toPosix(join(conception, 'configuration.json')),
+    configCandidates: conceptionConfigCandidates(conception).map(toPosix),
     agentsRoot: toPosix(join(conception, 'AGENTS.md')),
     claudeRoot: toPosix(join(conception, 'CLAUDE.md')),
     claudeDot: toPosix(join(conception, '.claude', 'CLAUDE.md')),
@@ -101,11 +100,7 @@ export function classify(
   if (!op) return { kind: 'unknown' };
 
   // Config files: canonical `.condash/settings.json` + two legacy names.
-  if (
-    pathP === paths.condashSettings ||
-    pathP === paths.condashJson ||
-    pathP === paths.configJson
-  ) {
+  if (paths.configCandidates.includes(pathP)) {
     return { kind: 'config', path };
   }
 

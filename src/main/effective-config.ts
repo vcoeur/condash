@@ -11,14 +11,7 @@ import type {
   Theme,
   TreeExpansionPrefs,
 } from '../shared/types';
-import {
-  CONDASH_DIR,
-  CONDASH_SETTINGS_FILENAME,
-  condashSettingsPath,
-  isTombstone,
-  legacyCondashJsonPath,
-  legacyConfigurationJsonPath,
-} from './condash-dir';
+import { conceptionConfigCandidates, condashSettingsPath, isTombstone } from './condash-dir';
 import { settingsPath } from './settings';
 import { migrateRawSettings } from './config-migrate';
 import { atomicWrite } from './atomic-write';
@@ -68,11 +61,7 @@ export interface EffectiveConfig extends ConfigShape {
  * for empty trees so the GUI can create it on first save.
  */
 export async function resolveConceptionConfigPath(conceptionPath: string): Promise<string> {
-  const candidates = [
-    condashSettingsPath(conceptionPath),
-    legacyCondashJsonPath(conceptionPath),
-    legacyConfigurationJsonPath(conceptionPath),
-  ];
+  const candidates = conceptionConfigCandidates(conceptionPath);
   for (const candidate of candidates) {
     let raw: string;
     try {
@@ -157,11 +146,7 @@ export async function mutateConceptionConfig(
 export async function readConceptionConfigRaw(
   conceptionPath: string,
 ): Promise<Record<string, unknown>> {
-  const candidates = [
-    condashSettingsPath(conceptionPath),
-    legacyCondashJsonPath(conceptionPath),
-    legacyConfigurationJsonPath(conceptionPath),
-  ];
+  const candidates = conceptionConfigCandidates(conceptionPath);
   for (const candidate of candidates) {
     try {
       const raw = await fs.readFile(candidate, 'utf8');
@@ -291,11 +276,7 @@ async function statFileKey(file: string): Promise<FileStatKey> {
  *  stat-only (no reads on the hit path) and obviously correct — any candidate the
  *  resolver could pick, changing, invalidates. */
 async function statConceptionKeys(conceptionPath: string): Promise<FileStatKey[]> {
-  const candidates = [
-    condashSettingsPath(conceptionPath),
-    legacyCondashJsonPath(conceptionPath),
-    legacyConfigurationJsonPath(conceptionPath),
-  ];
+  const candidates = conceptionConfigCandidates(conceptionPath);
   return Promise.all(candidates.map((candidate) => statFileKey(candidate)));
 }
 
@@ -345,8 +326,3 @@ export async function getEffectiveConceptionConfig(
   effectiveConfigMemo = { conceptionPath, settingsFile, globalKey, conceptionKeys, value };
   return value;
 }
-
-// Re-export the new constants from `./condash-dir` for callers that still
-// import via this module. Centralising them in condash-dir.ts keeps the
-// path layout in one file; the re-exports avoid a churn-only diff.
-export { CONDASH_DIR, CONDASH_SETTINGS_FILENAME, condashSettingsPath };

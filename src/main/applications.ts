@@ -18,7 +18,7 @@ import { homedir } from 'node:os';
 import { appHandle } from '../shared/app-color';
 import { parseHeader } from '../shared/header';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
-import { getEffectiveConceptionConfig, readConceptionConfigRaw } from './effective-config';
+import { getEffectiveConceptionConfig, mutateConceptionConfig } from './effective-config';
 import { findProjectReadmes } from './walk';
 import { pathExists } from './fs-helpers';
 
@@ -371,32 +371,20 @@ interface MutableConfig extends Record<string, unknown> {
 }
 
 /**
- * Read the raw conception config (whichever file holds it), apply `mutate`,
- * and write it back to the canonical path. Mirrors `config set`: when the
- * canonical file is empty but a legacy `condash.json` exists, the legacy
- * content is seeded first so no keys are dropped.
+ * Read the raw conception config, apply `mutate`, and write it back to the
+ * canonical path — through the shared, **write-queued** `mutateConceptionConfig`
+ * so a concurrent registry edit (or a concurrent GUI settings save on the same
+ * file) can't lose an update to a read-modify-write race. The queued writer
+ * already seeds from a legacy `condash.json` / `configuration.json` when the
+ * canonical file is empty, so no keys are dropped.
  */
 async function mutateConfig(
   conceptionPath: string,
   mutate: (config: MutableConfig) => void,
 ): Promise<void> {
-  const { atomicWrite } = await import('./atomic-write');
-  const { conceptionConfigWritePath } = await import('./effective-config');
-  const writePath = conceptionConfigWritePath(conceptionPath);
-  const existing = (await readConceptionConfigRaw(conceptionPath)) as MutableConfig;
-  let current: MutableConfig = {};
-  try {
-    const rawWrite = await fs.readFile(writePath, 'utf8');
-    const parsed = JSON.parse(rawWrite);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) current = parsed;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
-  if (Object.keys(current).length === 0) current = existing;
-  mutate(current);
-  const { dirname } = await import('node:path');
-  await fs.mkdir(dirname(writePath), { recursive: true });
-  await atomicWrite(writePath, JSON.stringify(current, null, 2) + '\n');
+  await mutateConceptionConfig(conceptionPath, (config) => {
+    mutate(config as MutableConfig);
+  });
 }
 
 /** Register a new live application. Fails if the handle already resolves. */

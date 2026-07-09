@@ -60,6 +60,26 @@ export function legacyConfigurationJsonPath(conception: string): string {
 }
 
 /**
+ * The per-conception config file paths in **read-priority order**: the
+ * canonical `.condash/settings.json`, then the two legacy root fallbacks
+ * (`condash.json`, `configuration.json`). Single authoritative list — every
+ * site that probes for, watches, or resolves the conception config derives it
+ * from here so the set and its order never drift between copies.
+ *
+ * This is a pure path list. Tombstone-skipping (a migrator-lifted legacy file
+ * left as a `_moved_*` marker) is the reader's concern: apply {@link isTombstone}
+ * at the call site after picking a candidate. Sites that only need existence
+ * (the conception detector, the watcher's watch set) consume the list as-is.
+ */
+export function conceptionConfigCandidates(conception: string): string[] {
+  return [
+    condashSettingsPath(conception),
+    legacyCondashJsonPath(conception),
+    legacyConfigurationJsonPath(conception),
+  ];
+}
+
+/**
  * Identify a conception-scoped settings.json by directory layout —
  * `.condash/settings.json` vs. the global per-machine settings.json that
  * shares the same basename. Used by `writeNote`'s schema-dispatch so a
