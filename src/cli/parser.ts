@@ -33,6 +33,7 @@ export const BOOL_FLAGS: ReadonlySet<string> = new Set([
   'version',
   'with-notes',
   'dry-run',
+  'no-push',
   'rewrite-aggregated',
   'all',
   'include-worktrees',

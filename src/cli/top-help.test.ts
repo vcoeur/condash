@@ -20,6 +20,7 @@ import { runApplications } from './commands/applications';
 import { runWorktrees } from './commands/worktrees';
 import { runDirty } from './commands/dirty';
 import { runLogs } from './commands/logs';
+import { runSync } from './commands/sync';
 import { runSkills } from './commands/skills';
 import { runConfig } from './commands/config';
 import { ALL_AUDIT_CHECKS } from './commands/audit';
@@ -81,6 +82,7 @@ const NOUN_RUNNERS: Record<string, (verb: string | null) => Promise<void> | void
   worktrees: (v) => runWorktrees(v, emptyArgs('worktrees'), humanCtx(), '', true),
   dirty: (v) => runDirty(v, emptyArgs('dirty'), humanCtx(), '', true),
   logs: (v) => runLogs(v, emptyArgs('logs'), humanCtx(), '', true),
+  sync: (v) => runSync(v, emptyArgs('sync'), humanCtx(), '', true),
   skills: (v) => runSkills(v, emptyArgs('skills'), humanCtx(), true),
   config: (v) => runConfig(v, emptyArgs('config'), humanCtx(), '', true),
 };

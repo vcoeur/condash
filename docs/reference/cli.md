@@ -33,7 +33,7 @@ One binary, one launcher: the `condash` entry on PATH inspects its argv. With no
 CLI nouns:
 
 ```
-projects   knowledge   search   repos   applications   worktrees   audit   dirty   logs   skills   config   help
+projects   knowledge   search   repos   applications   worktrees   audit   dirty   sync   logs   skills   config   help
 ```
 
 A typo (`condash projct list`) reports an unknown noun and exits with code 2 (usage).
@@ -210,6 +210,54 @@ Read or touch the dirty-index sentinels (`projects/.index-dirty`, `knowledge/.in
 | `clear <tree\|all>` | Clear one tree's marker, or all of them |
 
 The skills (`/projects index`, `/knowledge index`) clear these after they regenerate.
+
+### `sync`
+
+The conception's **single writer** to git. When several agent sessions work in one checkout, each on its own item, and each commits its own work, they corrupt each other three ways:
+
+1. **The git index is shared process-wide.** Session A runs `git add`, session B runs `git commit` a second later, and B's commit carries A's staged files. Path-scoping B's commit doesn't help — the pathspec scopes what is matched, not what is committed out of the index.
+2. **`index.md` files are fan-in.** `projects/index.md` and `projects/<YYYY-MM>/index.md` are regenerated from every item's front-matter, so whoever commits one commits every other session's status flips. No session considers them theirs, so they sit dirty.
+3. **Pushes race.** Concurrent pushes reject non-fast-forward, and the reflex `git pull --rebase` rewrites the working tree under a session that is mid-edit.
+
+A conception has one author and no CI, so if exactly one process ever commits, all three dissolve at once: one writer means no index race, the writer owns `index.md` and regenerates it before committing, and nothing else writes the remote so every push is a fast-forward.
+
+| Verb | What it does |
+|---|---|
+| `run [--dry-run] [--no-push] [--quiet-period <secs>]` | The sweeper. The default verb — bare `condash sync` runs it |
+| `commit <item> --message "<subject>" [--dry-run] [--no-push]` | Milestone commit for one item, under the same lock |
+
+`run`, in order:
+
+1. Takes an exclusive, **non-blocking** lock at `<git-dir>/condash-sync.lock`. If held, exits 0 — the next tick picks the work up.
+2. Refuses (exit 3) mid-merge, mid-rebase, mid-cherry-pick, mid-revert, or with a conflicted tree.
+3. Considers only paths under `projects/` and `knowledge/`. Gitignored paths (`resources/local/`, `projects/**/local/`, the `.index-dirty` sentinels) never enter a commit.
+4. **Skips any path whose mtime is younger than the quiet period** (default 90 s). A session mid-write is left alone and swept next tick — the property that makes `run` safe on a timer while sessions are live. `--quiet-period 0` disables it.
+5. Regenerates the indexes if either `.index-dirty` marker is present — **unless step 4 held anything back**. An index is fan-in over every item, so regenerating one while an item is still mid-write would commit a `projects/index.md` whose bullets point at a directory the sweep deliberately didn't commit. When that happens the whole index step is deferred, the marker stays set, and the next settled tick does it. (Only quiet-period skips defer; an `unresolved` path never becomes eligible and so must not wedge the indexes forever.)
+6. Groups eligible paths by resolved item: one commit per item (`<YYYY-MM-DD-slug>: sync`), one for knowledge (`knowledge: sync`), one for the regenerated indexes (`indexes: sync`) — the index commit always lands after the item commits it refers to.
+7. Pushes, when the branch ends up ahead of its upstream.
+
+`commit` takes the same lock and commits just that item's paths, so closing an item keeps a real subject line and cannot race the sweeper. Two differences from `run`: no quiet period applies, and a held lock is an error (exit 3) rather than a silent skip — a milestone that quietly did nothing is worse than one that says so. There is no `-m` short flag; condash's short flags are boolean-only.
+
+A rejected push is a **warning, not a failure** (exit stays 0, `pushError` is set in `--json`). The commits are local, and the next `run` retries because the push condition is "ahead of upstream", not "we just committed". `sync` never rebases and never force-pushes — that would be contention mechanism 3.
+
+Paths under `projects/` or `knowledge/` that match no known shape (say `projects/stray.md`) are reported under `skipped[]` with reason `unresolved` and are never committed.
+
+**There is no scheduler in condash.** The verb is the deliverable; the schedule is the operator's business. A `systemd --user` timer:
+
+```ini
+# ~/.config/systemd/user/condash-sync.service
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/condash sync run --conception %h/src/vcoeur/conception
+
+# ~/.config/systemd/user/condash-sync.timer
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target
+```
 
 ### `logs`
 
