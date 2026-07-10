@@ -36,6 +36,7 @@ export const GLOBAL_ONLY_KEYS = [
   'pdf_viewer',
   'terminal',
   'dashboard',
+  'autoSync',
   'theme',
   'layout',
   'welcome',

@@ -35,6 +35,7 @@ const SECTIONS: { id: string; scope: 'global' | 'conception' }[] = [
   { id: 'agents', scope: 'global' },
   { id: 'open-with', scope: 'global' },
   { id: 'dashboard', scope: 'global' },
+  { id: 'auto-sync', scope: 'global' },
   { id: 'workspace', scope: 'conception' },
   { id: 'repositories', scope: 'conception' },
 ];

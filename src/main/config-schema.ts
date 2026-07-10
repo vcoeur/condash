@@ -4,6 +4,7 @@ import type {
   Agent,
   CardMinWidthPrefs,
   AppScopeMemoryPrefs,
+  AutoSyncSettings,
   DashboardSettings,
   LayoutState,
   TaskConfigEntry,
@@ -454,6 +455,22 @@ const dashboardSettings = z
   .strict();
 
 /**
+ * `autoSync` — the GUI-driven periodic committer. Global/per-machine: it
+ * describes how *this machine* drives commits while a conception is open, not
+ * anything about the tree itself. All fields optional; `intervalMinutes` is
+ * clamped to 1–120 and `quietPeriodSeconds` to 0–3600 at read time
+ * (`src/main/sync/auto-config.ts`).
+ */
+const autoSyncSettings = z
+  .object({
+    enabled: z.boolean().optional(),
+    intervalMinutes: z.number().int().positive().optional(),
+    quietPeriodSeconds: z.number().int().min(0).optional(),
+    push: z.boolean().optional(),
+  } satisfies Record<keyof AutoSyncSettings, z.ZodTypeAny>)
+  .strict();
+
+/**
  * Fields owned by the per-conception `.condash/settings.json` — the things
  * that describe **this one tree**: where its repos live, the repo list, the
  * defunct handles its closed projects reference, and its task config. Every
@@ -526,6 +543,9 @@ const globalOnlyFields = {
    *  it reads the same terminal-capture pipeline as `terminal.logging`. See
    *  {@link dashboardSettings}. */
   dashboard: dashboardSettings.optional(),
+  /** GUI-driven periodic committer. Per-machine — describes how this machine
+   *  drives commits, not the tree. See {@link autoSyncSettings}. */
+  autoSync: autoSyncSettings.optional(),
   theme: z.enum(['light', 'dark', 'system']).optional(),
   layout: layoutSchema.optional(),
   welcome: z.object({ dismissed: z.boolean().optional() }).strict().optional(),

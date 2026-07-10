@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import type { ConfigShape } from './config-walk';
 import type {
   Agent,
+  AutoSyncSettings,
   CardMinWidthPrefs,
   DashboardSettings,
   LayoutState,
@@ -51,6 +52,7 @@ export interface EffectiveConfig extends ConfigShape {
   agents?: Agent[];
   taskConfig?: Record<string, TaskConfigEntry>;
   dashboard?: DashboardSettings;
+  autoSync?: AutoSyncSettings;
 }
 
 /**

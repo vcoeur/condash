@@ -242,7 +242,7 @@ A rejected push is a **warning, not a failure** (exit stays 0, `pushError` is se
 
 Paths under `projects/` or `knowledge/` that match no known shape (say `projects/stray.md`) are reported under `skipped[]` with reason `unresolved` and are never committed. Every other tracked, non-gitignored change is committed — under its item, `knowledge`, or `meta`. To keep a file out of sync, gitignore it.
 
-**There is no scheduler in condash.** The verb is the deliverable; the schedule is the operator's business. A `systemd --user` timer:
+**The CLI has no scheduler** — `sync run` is the deliverable, and headless scheduling is the operator's business. A `systemd --user` timer:
 
 ```ini
 # ~/.config/systemd/user/condash-sync.service
@@ -258,6 +258,8 @@ OnUnitActiveSec=2min
 [Install]
 WantedBy=timers.target
 ```
+
+**The GUI does have one** — an opt-in auto-commit engine that runs `sync run` on a timer while a conception is open (**Settings → Auto-commit**, off by default). It's the same sweep with the same safety; it just needs the app running. Use the timer above when you want commits to happen headless too. See [`autoSync`](config.md#auto-commit) in the config reference.
 
 ### `logs`
 

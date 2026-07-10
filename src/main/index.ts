@@ -11,6 +11,7 @@ import { setWatchedConception } from './watcher';
 import { rebuildSearchIndex } from './search/index-cache';
 import { setScheduledConception } from './task-scheduler';
 import { setDashboardConception } from './dashboard/engine';
+import { setSyncConception } from './sync/auto-engine';
 import { disposeRepoWatchers } from './repo-watchers';
 import {
   killAll,
@@ -38,6 +39,7 @@ import { registerTerminalIpc } from './ipc/terminal';
 import { registerLogsIpc } from './ipc/logs';
 import { registerTreesIpc } from './ipc/trees';
 import { registerDashboardIpc } from './ipc/dashboard';
+import { registerAutoSyncIpc } from './ipc/auto-sync';
 
 // Unified-binary dispatch (v2.24.0). The Linux bash wrapper at
 // build/after-pack.cjs already routes CLI invocations to plain-Node mode
@@ -364,6 +366,7 @@ function registerIpc(): void {
   registerTerminalIpc();
   registerLogsIpc();
   registerDashboardIpc();
+  registerAutoSyncIpc();
   registerSettingsIpc({ onLayoutChange: rebuildMenu });
   registerSystemIpc({
     onConceptionPicked: (picked) => {
@@ -379,6 +382,8 @@ function registerIpc(): void {
       void setScheduledConception(picked);
       // Re-point the live terminal-tab dashboard engine.
       void setDashboardConception(picked);
+      // Re-point the auto-sync commit engine.
+      void setSyncConception(picked);
       // Heal any orphan "running" logs in the newly-picked conception so
       // the Logs pane reflects reality on first render. Sessions are NOT
       // killed on a conception switch, so skip every tracked sid — a quiet
@@ -510,6 +515,8 @@ app.whenReady().then(async () => {
     setScheduledConception(conceptionPath),
     // Arm the live terminal-tab dashboard engine (opt-in; inert until enabled).
     setDashboardConception(conceptionPath),
+    // Arm the auto-sync commit engine (opt-in; inert until enabled).
+    setSyncConception(conceptionPath),
   ]);
   mainWindow = createdWindow;
   setMenuWindow(mainWindow);
@@ -649,6 +656,7 @@ app.on('before-quit', (event) => {
   // setScheduledConception(null) SIGKILLs every live task run;
   // setDashboardConception(null) clears the engine interval. Their pty sets are
   // disjoint from killAll's interactive sessions, so the three don't race.
+  void setSyncConception(null);
   void Promise.all([setScheduledConception(null), setDashboardConception(null), killAll()]).finally(
     () => {
       quitFlushDone = true;

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { CondashApi, MenuCommand, WatcherStatusMessage } from '../shared/api';
 import { EVENT_CHANNELS, TERM_ACK_CHANNEL } from '../shared/ipc-channels';
 import type {
+  AutoSyncStatus,
   DashboardState,
   DashboardTabSummariesMessage,
   RepoEvent,
@@ -140,6 +141,13 @@ const api: CondashApi = {
     const handler = (_: unknown, msg: DashboardTabSummariesMessage): void => callback(msg);
     ipcRenderer.on(EVENT_CHANNELS.dashboardTabSummaries, handler);
     return () => ipcRenderer.removeListener(EVENT_CHANNELS.dashboardTabSummaries, handler);
+  },
+  autoSyncGetStatus: () => ipcRenderer.invoke('autoSyncGetStatus'),
+  autoSyncNow: () => ipcRenderer.invoke('autoSyncNow'),
+  onAutoSyncStatus: (callback) => {
+    const handler = (_: unknown, status: AutoSyncStatus): void => callback(status);
+    ipcRenderer.on(EVENT_CHANNELS.autoSyncStatus, handler);
+    return () => ipcRenderer.removeListener(EVENT_CHANNELS.autoSyncStatus, handler);
   },
   logsListDays: () => ipcRenderer.invoke('logsListDays'),
   logsListSessions: (day) => ipcRenderer.invoke('logsListSessions', day),
