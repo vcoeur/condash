@@ -78,7 +78,13 @@ Trigger: `/projects close <slug>`.
    - If `data.projects.present` is true → `condash projects index --json`.
    - If `data.knowledge.present` is true → `condash knowledge index --json`.
 
-8. **Commit prompt.** Ask the user whether to commit — invoke `/commit` if they have it, otherwise run `git status` + `git diff --stat` and propose a commit message inline using:
+8. **Milestone commit.** `condash sync` is the conception's only committer — never run `git add` / `git commit` / `git push` here, and never invoke `/commit`. Close the item under the sync lock:
+
+   ```bash
+   condash sync commit <slug> --message "<subject>"
+   ```
+
+   Build `<subject>` as:
 
    ```
    Close <slug>. Outcome: <one-line outcome from the closing timeline entry>.
@@ -89,7 +95,7 @@ Trigger: `/projects close <slug>`.
    Branches deleted: <comma-separated list of `<branch>` (in `<repo>`), or "none">.
    ```
 
-   Never auto-push.
+   `sync commit` pushes by default; pass `--no-push` to hold the commit local. It commits **only that item's paths** — any regenerated `index.md` from step 7 is left for the next `condash sync run`. A held lock is an error (exit 3), not a silent skip: report it and stop rather than falling back to `git`.
 
 9. **Report** what changed: status, knowledge promotions, worktrees removed, branches deleted, indexes refreshed, commit created.
 

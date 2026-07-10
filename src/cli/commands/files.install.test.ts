@@ -84,6 +84,23 @@ describe('condash skills install — AGENTS.md marker region', () => {
     expect(agents).not.toContain('{{');
   });
 
+  it('ships the single-writer commit rule inside the condash-owned head', async () => {
+    await install();
+    const agents = await fs.readFile(join(dest, 'AGENTS.md'), 'utf8');
+    // Split on the marker *line*, as splitAtMarker does — the marker string also
+    // appears inline in the head's prose, so a substring search lands short.
+    const lines = agents.split('\n');
+    const markerIdx = lines.findIndex((line) => line === AGENTS_MD_MARKER);
+    expect(markerIdx).toBeGreaterThan(-1);
+    const head = lines.slice(0, markerIdx).join('\n');
+    // An agent that only ever reads the head must still learn that `sync` owns
+    // every commit — the rule cannot live solely in condash's own AGENTS.md.
+    expect(head).toContain('### Committing');
+    expect(head).toContain('only committer');
+    expect(head).toContain('condash sync run');
+    expect(head).toContain('condash sync commit');
+  });
+
   it('substitutes conception_name + description from condash.json', async () => {
     await fs.writeFile(join(dest, 'condash.json'), JSON.stringify({ description: 'My tree.' }));
     await install();

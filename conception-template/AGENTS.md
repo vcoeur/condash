@@ -23,6 +23,15 @@ condash exists to make every piece of work a tracked project. This loop is the d
 - **Code edits go in the project's worktree**, never the main repo checkout — set one up with `/projects worktree setup <branch>`, and edit a main checkout only when explicitly asked.
 - **`now → review → done`.** A project is `now` while active, `review` once work ships and awaits an external signal (for example a PR merge), `done` when that signal lands.
 
+### Committing
+
+`condash sync` is the conception's **only committer**. Parallel agent sessions share one `.git/index`, the `index.md` files are fan-in that no session owns, and concurrent pushes race — exactly one writer dissolves all three.
+
+- **Never run `git add`, `git commit`, or `git push` in the conception checkout.** Not to save a README, not to close an item. Write the files and stop; the sweeper takes them from there.
+- **`condash sync run`** sweeps settled work — one commit per item, then `knowledge`, then the regenerated indexes — and pushes. It skips any path written within the quiet period (default 90 s), so a live edit is never committed half-written.
+- **`condash sync commit <item> --message "<subject>"`** is the milestone commit: one item, a real subject line, taken under the same lock. Use it when closing an item.
+- **A repo worktree is a different tree.** `<worktrees_path>/<branch>/<repo>/` is not the conception — commit and push there as normal.
+
 ### Generated layers — never hand-edit
 
 - **Skills** under `.agents/skills/` ship from condash and are refreshed by `condash skills install` (`projects`, `knowledge`, `pr`, `applications`). To change one, edit it in condash. A conception may add its own skills; condash leaves those alone.
