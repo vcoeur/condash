@@ -33,7 +33,7 @@ const execFileAsync = promisify(execFile);
 /** Defaults for the per-tab scope (systemd size strings). Sized to fit ordinary
  * interactive + agent use while capping a runaway well below a typical
  * workstation's RAM, so the leak trips its own cgroup OOM instead of a global
- * one. Overridable via `terminal.memory` in settings.json / condash.json. */
+ * one. Overridable via `terminal.memory` in settings.json. */
 const DEFAULT_MEMORY_HIGH = '6G';
 const DEFAULT_MEMORY_MAX = '8G';
 const DEFAULT_MEMORY_SWAP_MAX = '2G';

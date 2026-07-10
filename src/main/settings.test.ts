@@ -137,6 +137,33 @@ describe('corrupt settings.json recovery (B1)', () => {
   });
 });
 
+describe('mutateSettingsJson corrupt-file recovery (C2)', () => {
+  it('quarantines a corrupt settings.json and writes a valid replacement', async () => {
+    await fs.writeFile(settingsFile, '{ "theme": "dark", ');
+    const { mutateSettingsJson } = await loadSettingsModule();
+    await mutateSettingsJson((current) => {
+      current.theme = 'light';
+    });
+    // The corrupt file was moved aside…
+    const entries = await fs.readdir(tmp);
+    const aside = entries.filter((e) => e.startsWith('settings.json.corrupt-'));
+    expect(aside).toHaveLength(1);
+    expect(await fs.readFile(join(tmp, aside[0]), 'utf8')).toBe('{ "theme": "dark", ');
+    // …and a fresh, valid file holds the mutation.
+    const onDisk = JSON.parse(await fs.readFile(settingsFile, 'utf8')) as Record<string, unknown>;
+    expect(onDisk.theme).toBe('light');
+  });
+
+  it('creates a valid file from scratch when settings.json is missing', async () => {
+    const { mutateSettingsJson } = await loadSettingsModule();
+    await mutateSettingsJson((current) => {
+      current.terminal = { shell: '/bin/zsh' };
+    });
+    const onDisk = JSON.parse(await fs.readFile(settingsFile, 'utf8')) as Record<string, unknown>;
+    expect(onDisk.terminal).toEqual({ shell: '/bin/zsh' });
+  });
+});
+
 describe('settings.json read memo', () => {
   // `dark` and `lite` are both 4-char sentinels: writing one over the other
   // keeps the JSON byte length (hence the stat `size`) identical, so these tests

@@ -153,18 +153,18 @@ export function invalidateSettingsMemo(): void {
  * @param path Absolute path of the corrupt settings file.
  * @param err The `JSON.parse` SyntaxError that flagged the corruption.
  */
-async function quarantineCorruptSettings(path: string, err: unknown): Promise<void> {
+export async function quarantineCorruptSettings(path: string, err: unknown): Promise<void> {
   const asidePath = `${path}.corrupt-${Date.now()}`;
   const detail = (err as Error).message;
   try {
     await fs.rename(path, asidePath);
     process.stderr.write(
-      `condash: ${FILE_NAME} is corrupt (${detail}); renamed to ${asidePath} — booting with defaults\n`,
+      `condash: ${FILE_NAME} is corrupt (${detail}); renamed to ${asidePath} — using defaults\n`,
     );
   } catch (renameErr) {
     process.stderr.write(
       `condash: ${FILE_NAME} is corrupt (${detail}) and could not be renamed aside ` +
-        `(${(renameErr as Error).message}) — booting with defaults\n`,
+        `(${(renameErr as Error).message}) — using defaults\n`,
     );
   }
 }
@@ -357,7 +357,18 @@ export async function mutateSettingsJson(
         current = parsed as Record<string, unknown>;
       }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        // Missing file reads as an empty object; the mutator will create it.
+      } else if (err instanceof SyntaxError) {
+        // A corrupt file — hand-edit, external tool, disk truncation — would
+        // otherwise brick CLI `config set --global` and the Settings modal raw
+        // save. Recover the same way the boot reader does: quarantine the bad
+        // file and start from `{}` so the mutator writes a valid replacement.
+        await quarantineCorruptSettings(path, err);
+      } else {
+        throw err;
+      }
     }
     await mutator(current);
     await fs.mkdir(dirname(path), { recursive: true });

@@ -120,6 +120,7 @@ vi.mock('node:fs', async (importOriginal) => {
 import {
   attachTerminal,
   closeSession,
+  getTerminalPrefs,
   killAll,
   listTerminalSessions,
   spawnTerminal,
@@ -127,6 +128,8 @@ import {
   trackedSessionIds,
   writeTerminal,
 } from './terminals';
+import { readSettings } from './settings';
+import { getEffectiveConceptionConfig } from './effective-config';
 
 interface FakeWebContents {
   id: number;
@@ -296,6 +299,21 @@ describe('terminals spawn wiring (M8c)', () => {
     await closeSession(id);
     expect(listTerminalSessions().find((s) => s.id === id)).toBeUndefined();
     expect(trackedSessionIds().has(id)).toBe(false);
+  });
+
+  it('getTerminalPrefs returns settings.terminal directly and ignores effective config (M14)', async () => {
+    const settingsTerminal = { shell: '/bin/zsh', scrollback: 10000 };
+    vi.mocked(getEffectiveConceptionConfig).mockClear();
+    vi.mocked(readSettings).mockResolvedValueOnce({
+      lastConceptionPath: '/fake/conception',
+      terminal: settingsTerminal,
+    } as unknown as Awaited<ReturnType<typeof readSettings>>);
+    vi.mocked(getEffectiveConceptionConfig).mockResolvedValueOnce({
+      terminal: { shell: '/bin/override', scrollback: 1 },
+    } as unknown as Awaited<ReturnType<typeof getEffectiveConceptionConfig>>);
+    const prefs = await getTerminalPrefs();
+    expect(prefs).toBe(settingsTerminal);
+    expect(getEffectiveConceptionConfig).not.toHaveBeenCalled();
   });
 });
 
