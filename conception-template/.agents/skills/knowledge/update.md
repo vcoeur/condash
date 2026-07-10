@@ -51,7 +51,7 @@ If the fact is in-flight project work or a point-in-time finding, it goes under 
 
 - Core rules live in `SKILL.md` — read before writing.
 - Preserve citations on edits. When refactoring existing prose, keep `([source]…)` and `(`path:line`…)` citations anchored to the right claims.
-- Do not commit. Write the file; user commits when ready.
+- Do not commit. Write the file and stop — `condash sync` is the conception's only committer and sweeps it up.
 
 ## After writing
 
