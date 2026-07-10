@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyPath, commitGroups, INDEX_COMMIT_SUBJECT } from './group';
+import { classifyPath, commitGroups, INDEX_COMMIT_SUBJECT, META_COMMIT_SUBJECT } from './group';
 
 describe('classifyPath', () => {
   it('assigns files under an item dir to that item', () => {
@@ -42,8 +42,20 @@ describe('classifyPath', () => {
     expect(classifyPath('knowledge')).toEqual({ kind: 'unresolved' });
   });
 
-  it('ignores everything outside the two managed trees', () => {
-    expect(classifyPath('AGENTS.md')).toEqual({ kind: 'outside' });
+  it('routes root structural files to the meta group', () => {
+    expect(classifyPath('AGENTS.md')).toEqual({ kind: 'meta' });
+    expect(classifyPath('README.md')).toEqual({ kind: 'meta' });
+    expect(classifyPath('.gitignore')).toEqual({ kind: 'meta' });
+    expect(classifyPath('.gitattributes')).toEqual({ kind: 'meta' });
+    expect(classifyPath('.agents/skills/projects/SKILL.md')).toEqual({ kind: 'meta' });
+    expect(classifyPath('.agents/.condash-skills.json')).toEqual({ kind: 'meta' });
+  });
+
+  it('leaves generated views, scratch dirs, and stray root files alone', () => {
+    // Per-harness generated views should be gitignored, not swept.
+    expect(classifyPath('CLAUDE.md')).toEqual({ kind: 'outside' });
+    expect(classifyPath('opencode.json')).toEqual({ kind: 'outside' });
+    expect(classifyPath('.claude/settings.json')).toEqual({ kind: 'outside' });
     expect(classifyPath('resources/local/scratch.png')).toEqual({ kind: 'outside' });
     expect(classifyPath('.condash/settings.json')).toEqual({ kind: 'outside' });
   });
@@ -70,15 +82,31 @@ describe('commitGroups', () => {
     ]);
   });
 
+  it('gathers root structural files into one meta commit, after knowledge', () => {
+    const groups = commitGroups([
+      'AGENTS.md',
+      'knowledge/internal/condash.md',
+      'projects/2026-07/2026-07-10-zeta/README.md',
+      '.agents/skills/projects/SKILL.md',
+      '.gitignore',
+    ]);
+
+    expect(groups.map((g) => g.key)).toEqual(['2026-07-10-zeta', 'knowledge', 'meta']);
+    const meta = groups[groups.length - 1];
+    expect(meta.subject).toBe('meta: sync');
+    expect(meta.paths).toEqual(['.agents/skills/projects/SKILL.md', '.gitignore', 'AGENTS.md']);
+  });
+
   it('drops index, unresolved, and outside paths', () => {
-    expect(commitGroups(['projects/index.md', 'projects/stray.md', 'AGENTS.md'])).toEqual([]);
+    expect(commitGroups(['projects/index.md', 'projects/stray.md', 'CLAUDE.md'])).toEqual([]);
   });
 
   it('returns nothing for an empty sweep', () => {
     expect(commitGroups([])).toEqual([]);
   });
 
-  it('names the index commit distinctly from any item', () => {
+  it('names the index and meta commits distinctly from any item', () => {
     expect(INDEX_COMMIT_SUBJECT).toBe('indexes: sync');
+    expect(META_COMMIT_SUBJECT).toBe('meta: sync');
   });
 });

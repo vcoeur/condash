@@ -101,6 +101,9 @@ export async function syncRun(
 
     const eligible: string[] = [];
     const skipped: SkippedPath[] = [];
+    // Only an item/knowledge path held back defers the indexes — a mid-write
+    // `AGENTS.md` (a `meta` path) is never referenced by a regenerated index.
+    let treePathHeldBack = false;
     for (const { path } of changed) {
       const cls = classifyPath(path);
       if (cls.kind === 'outside' || cls.kind === 'index') continue;
@@ -110,6 +113,7 @@ export async function syncRun(
       }
       if (!(await isSettled(join(conceptionPath, path), cutoffMs))) {
         skipped.push({ path, reason: 'quiet-period' });
+        if (cls.kind === 'item' || cls.kind === 'knowledge') treePathHeldBack = true;
         continue;
       }
       eligible.push(path);
@@ -121,7 +125,7 @@ export async function syncRun(
     // reference on `main`, which is worse than the mid-state file commits the
     // quiet period already tolerates. Defer the whole index step (leaving
     // `.index-dirty` set) until a tick finds the tree settled.
-    const indexesDeferred = skipped.some((skip) => skip.reason === 'quiet-period');
+    const indexesDeferred = treePathHeldBack;
 
     const regeneratedTrees = indexesDeferred
       ? []
