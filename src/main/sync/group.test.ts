@@ -42,22 +42,21 @@ describe('classifyPath', () => {
     expect(classifyPath('knowledge')).toEqual({ kind: 'unresolved' });
   });
 
-  it('routes root structural files to the meta group', () => {
+  it('routes every tracked non-tree path to the meta group (gitignore filters upstream)', () => {
+    // classifyPath is a pure function on the string and does not know about
+    // gitignore; the sweeper only ever hands it paths git status surfaced, so
+    // ignored views (`.claude/*`, `CLAUDE.md`, …) never actually reach it. The
+    // catch-all is what stops any tracked non-tree file from being stranded.
     expect(classifyPath('AGENTS.md')).toEqual({ kind: 'meta' });
     expect(classifyPath('README.md')).toEqual({ kind: 'meta' });
     expect(classifyPath('.gitignore')).toEqual({ kind: 'meta' });
     expect(classifyPath('.gitattributes')).toEqual({ kind: 'meta' });
     expect(classifyPath('.agents/skills/projects/SKILL.md')).toEqual({ kind: 'meta' });
-    expect(classifyPath('.agents/.condash-skills.json')).toEqual({ kind: 'meta' });
-  });
-
-  it('leaves generated views, scratch dirs, and stray root files alone', () => {
-    // Per-harness generated views should be gitignored, not swept.
-    expect(classifyPath('CLAUDE.md')).toEqual({ kind: 'outside' });
-    expect(classifyPath('opencode.json')).toEqual({ kind: 'outside' });
-    expect(classifyPath('.claude/settings.json')).toEqual({ kind: 'outside' });
-    expect(classifyPath('resources/local/scratch.png')).toEqual({ kind: 'outside' });
-    expect(classifyPath('.condash/settings.json')).toEqual({ kind: 'outside' });
+    expect(classifyPath('.claude/settings.json')).toEqual({ kind: 'meta' });
+    expect(classifyPath('.pi/settings.json')).toEqual({ kind: 'meta' });
+    expect(classifyPath('opencode.json')).toEqual({ kind: 'meta' });
+    expect(classifyPath('resources/reference/spec.pdf')).toEqual({ kind: 'meta' });
+    expect(classifyPath('tasks/report.json')).toEqual({ kind: 'meta' });
   });
 });
 
@@ -97,8 +96,8 @@ describe('commitGroups', () => {
     expect(meta.paths).toEqual(['.agents/skills/projects/SKILL.md', '.gitignore', 'AGENTS.md']);
   });
 
-  it('drops index, unresolved, and outside paths', () => {
-    expect(commitGroups(['projects/index.md', 'projects/stray.md', 'CLAUDE.md'])).toEqual([]);
+  it('drops index and unresolved paths', () => {
+    expect(commitGroups(['projects/index.md', 'projects/stray.md'])).toEqual([]);
   });
 
   it('returns nothing for an empty sweep', () => {

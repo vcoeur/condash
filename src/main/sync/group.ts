@@ -16,29 +16,14 @@ const MONTH_DIR = /^\d{4}-\d{2}$/;
 /** `2026-07-10-some-slug` */
 const ITEM_DIR = /^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$/;
 
-/**
- * Root-level structural files the sweeper owns, so the single-writer rule
- * ("nothing else commits in a conception") covers the whole tree and not just
- * `projects/` + `knowledge/`. This is a deliberate allowlist, never a catch-all:
- * a stray file at the root is no more sync's to commit than `projects/stray.md`
- * is, and the per-harness *generated* views (`.claude/`, `.kimi/`, `.pi/`,
- * `opencode.json`, `CLAUDE.md`) are excluded on purpose — they should be
- * gitignored, not swept. Add a new structural file here explicitly.
- */
-const META_FILES = new Set(['AGENTS.md', 'README.md', '.gitignore', '.gitattributes']);
-/** Directory prefixes whose entire subtree is structural (condash-shipped skills). */
-const META_PREFIXES = ['.agents/'];
-
 /** Subject of the single commit carrying every regenerated `index.md`. */
 export const INDEX_COMMIT_SUBJECT = 'indexes: sync';
 
-/** Subject of the single commit carrying the root structural files. */
+/**
+ * Subject of the single commit carrying every tracked non-tree change —
+ * `AGENTS.md`, `.agents/**`, config files, `resources/`, `tasks/`, …
+ */
 export const META_COMMIT_SUBJECT = 'meta: sync';
-
-/** True for a root-level structural file on the {@link META_FILES} allowlist. */
-function isMetaPath(relPath: string): boolean {
-  return META_FILES.has(relPath) || META_PREFIXES.some((prefix) => relPath.startsWith(prefix));
-}
 
 export type PathKind =
   /** A file inside `projects/<month>/<item>/`; `item` is the dated folder name. */
@@ -47,12 +32,10 @@ export type PathKind =
   | { kind: 'knowledge' }
   /** A generated `index.md` in either tree. */
   | { kind: 'index' }
-  /** A root-level structural file (`AGENTS.md`, `.agents/**`, `.gitignore`, …). */
+  /** Any tracked path outside both trees — root files, config, `resources/`, `tasks/`. */
   | { kind: 'meta' }
   /** Under `projects/` or `knowledge/` but matching no known shape. */
-  | { kind: 'unresolved' }
-  /** Outside both managed trees and not a structural file — sync never touches it. */
-  | { kind: 'outside' };
+  | { kind: 'unresolved' };
 
 export interface CommitGroup {
   /** Stable identity: the item folder name, or `knowledge`. */
@@ -66,12 +49,19 @@ export interface CommitGroup {
 /**
  * Classify one repo-relative, POSIX-separated path.
  *
+ * The sweeper only ever sees paths `git status` surfaced, and git status omits
+ * gitignored paths — so the compiled per-harness views (`.claude/*`, `.pi/*`,
+ * `CLAUDE.md`, …) never reach here to begin with. That is what lets the
+ * non-tree branch be a **catch-all** rather than an allowlist: every tracked,
+ * non-ignored file outside `projects/`/`knowledge/` is `meta`, so no file the
+ * single-writer rule strands is left without a committer. A malformed path
+ * *inside* a tree stays `unresolved` — a file misplaced under `projects/` is a
+ * mistake worth reporting, not silently sweeping.
+ *
  * @param relPath path as git reports it (forward slashes, no quoting)
  * @returns the group the path belongs to
  */
 export function classifyPath(relPath: string): PathKind {
-  if (isMetaPath(relPath)) return { kind: 'meta' };
-
   const segments = relPath.split('/');
   const [root] = segments;
 
@@ -80,7 +70,7 @@ export function classifyPath(relPath: string): PathKind {
     return segments[segments.length - 1] === 'index.md' ? { kind: 'index' } : { kind: 'knowledge' };
   }
 
-  if (root !== 'projects') return { kind: 'outside' };
+  if (root !== 'projects') return { kind: 'meta' };
 
   // projects/index.md
   if (segments.length === 2) {
@@ -104,9 +94,9 @@ const TRAILING_KEYS = ['knowledge', 'meta'];
  * Bucket eligible paths into per-item commits plus one knowledge and one meta
  * commit.
  *
- * `index` / `unresolved` / `outside` paths are dropped: the caller filters
- * them out beforehand (indexes get their own commit after regeneration,
- * unresolved paths are reported and never committed).
+ * `index` / `unresolved` paths are dropped: the caller filters them out
+ * beforehand (indexes get their own commit after regeneration, unresolved
+ * paths are reported and never committed).
  *
  * @param paths repo-relative paths that passed the quiet-period filter
  * @returns groups ordered items-first (by item name), then knowledge, then meta

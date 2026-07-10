@@ -226,6 +226,39 @@ describe('syncRun', () => {
     expect((await git(root, 'status', '--porcelain')).trim()).toBe('');
   });
 
+  it('sweeps every tracked non-tree file into meta, but never a gitignored view', async () => {
+    // The catch-all: config files and durable subtrees get a committer too, so
+    // nothing the single-writer rule forbids is left stranded. Gitignored views
+    // are excluded upstream by git status, not by classification.
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    const agents = join(root, 'AGENTS.md');
+    await fs.writeFile(agents, '# AGENTS\n');
+    const opencode = join(root, 'opencode.json');
+    await fs.writeFile(opencode, '{}\n');
+    await fs.mkdir(join(root, 'resources', 'reference'), { recursive: true });
+    const spec = join(root, 'resources', 'reference', 'spec.md');
+    await fs.writeFile(spec, '# spec\n');
+    // A generated view, gitignored → must never be swept.
+    const gitignore = join(root, '.gitignore');
+    await fs.appendFile(gitignore, 'CLAUDE.md\n');
+    await fs.writeFile(join(root, 'CLAUDE.md'), '# generated\n');
+    await settle(readme, agents, opencode, spec, gitignore);
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    const meta = report.commits.find((c) => c.subject === 'meta: sync');
+    expect(meta?.paths).toEqual([
+      '.gitignore',
+      'AGENTS.md',
+      'opencode.json',
+      'resources/reference/spec.md',
+    ]);
+    // CLAUDE.md is gitignored — never classified, never committed, still on disk.
+    const tracked = await git(root, 'ls-tree', '-r', '--name-only', 'HEAD');
+    expect(tracked).not.toContain('CLAUDE.md');
+    await expect(fs.stat(join(root, 'CLAUDE.md'))).resolves.toBeTruthy();
+  });
+
   it('does not let a mid-write meta file defer the indexes', async () => {
     // A `meta` path (AGENTS.md, .agents/**) is never referenced by a regenerated
     // index, so — unlike a mid-write item — it must not hold index regeneration
