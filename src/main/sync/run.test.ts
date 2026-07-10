@@ -204,6 +204,50 @@ describe('syncRun', () => {
     expect(report.commits.map((c) => c.subject)).toContain('indexes: sync');
   });
 
+  it('sweeps root structural files into a meta commit, ordered after items and before indexes', async () => {
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    const agents = join(root, 'AGENTS.md');
+    await fs.writeFile(agents, '# AGENTS\n');
+    const gitignore = join(root, '.gitignore');
+    await fs.appendFile(gitignore, 'extra-line\n');
+    await settle(readme, agents, gitignore);
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'meta: sync',
+      'indexes: sync',
+    ]);
+    // HEAD is the index commit; the meta commit sits one behind it.
+    const metaFiles = await git(root, 'show', '--name-only', '--format=', 'HEAD~1');
+    expect(metaFiles.trim().split('\n').sort()).toEqual(['.gitignore', 'AGENTS.md']);
+    expect((await git(root, 'status', '--porcelain')).trim()).toBe('');
+  });
+
+  it('does not let a mid-write meta file defer the indexes', async () => {
+    // A `meta` path (AGENTS.md, .agents/**) is never referenced by a regenerated
+    // index, so — unlike a mid-write item — it must not hold index regeneration
+    // back. It just waits for the next tick like any quiet-period skip.
+    const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
+    await fs.writeFile(join(root, 'projects', '.index-dirty'), '');
+    await fs.writeFile(join(root, 'AGENTS.md'), '# AGENTS\n'); // fresh: inside the quiet period
+    await settle(readme); // the item is settled; AGENTS.md is not
+
+    const report = await syncRun(root, RUN_DEFAULTS);
+
+    expect(report.indexesDeferred).toBe(false);
+    expect(report.regeneratedTrees).toEqual(['projects']);
+    expect(report.skipped).toEqual([{ path: 'AGENTS.md', reason: 'quiet-period' }]);
+    expect(report.commits.map((c) => c.subject)).toEqual([
+      '2026-07-10-alpha: sync',
+      'indexes: sync',
+    ]);
+    // AGENTS.md was left for the next tick, not committed.
+    expect(await git(root, 'status', '--porcelain')).toContain('AGENTS.md');
+  });
+
   it('commits a deletion even inside the quiet period (no mtime to compare)', async () => {
     const readme = await writeProjectReadme(root, 'alpha', { date: '2026-07-10', kind: 'project' });
     await settle(readme);
