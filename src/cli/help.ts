@@ -38,6 +38,8 @@ Nouns:
   audit        umbrella audit (--include all|lfs,binaries,cross-repo,worktrees,
                index,stale-index,stale-verification,knowledge-recheck,knowledge-check)
   dirty        list, touch <tree>, clear <tree|all>
+  sync         run (default), commit <item> --message "…"
+               (single-writer git for a checkout shared by parallel sessions)
   logs         days (default), list [<day>], read <sid|path>, tail (session logs)
   skills       list shipped artefacts; install [<name-or-path>...]; status; validate
   config       conception-path, path, list [--effective|--global],

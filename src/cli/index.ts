@@ -152,6 +152,11 @@ async function dispatch(
       await runDirty(args.verb, args, ctx, conceptionPath, help);
       return ExitCodes.OK;
     }
+    case 'sync': {
+      const { runSync } = await import('./commands/sync');
+      await runSync(args.verb, args, ctx, conceptionPath, help);
+      return ExitCodes.OK;
+    }
     case 'logs': {
       const { runLogs } = await import('./commands/logs');
       await runLogs(args.verb, args, ctx, conceptionPath, help);
