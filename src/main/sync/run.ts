@@ -106,7 +106,7 @@ export async function syncRun(
     let treePathHeldBack = false;
     for (const { path } of changed) {
       const cls = classifyPath(path);
-      if (cls.kind === 'outside' || cls.kind === 'index') continue;
+      if (cls.kind === 'index') continue;
       if (cls.kind === 'unresolved') {
         skipped.push({ path, reason: 'unresolved' });
         continue;

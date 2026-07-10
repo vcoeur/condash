@@ -28,7 +28,7 @@ condash exists to make every piece of work a tracked project. This loop is the d
 `condash sync` is the conception's **only committer**. Parallel agent sessions share one `.git/index`, the `index.md` files are fan-in that no session owns, and concurrent pushes race — exactly one writer dissolves all three.
 
 - **Never run `git add`, `git commit`, or `git push` in the conception checkout.** Not to save a README, not to close an item. Write the files and stop; the sweeper takes them from there.
-- **`condash sync run`** sweeps settled work — one commit per item, then `knowledge`, then the root structural files (`AGENTS.md`, `.agents/`, `.gitignore`, …) as `meta`, then the regenerated indexes — and pushes. It skips any path written within the quiet period (default 90 s), so a live edit is never committed half-written.
+- **`condash sync run`** sweeps every settled, non-gitignored change — one commit per item, then `knowledge`, then everything outside the two trees (`AGENTS.md`, `.agents/`, config, `resources/`, …) as `meta`, then the regenerated indexes — and pushes. It skips any path written within the quiet period (default 90 s), so a live edit is never committed half-written. To keep a file out of `sync`, gitignore it.
 - **`condash sync commit <item> --message "<subject>"`** is the milestone commit: one item, a real subject line, taken under the same lock. Use it when closing an item.
 - **A repo worktree is a different tree.** `<worktrees_path>/<branch>/<repo>/` is not the conception — commit and push there as normal.
 
