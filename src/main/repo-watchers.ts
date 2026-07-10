@@ -72,16 +72,6 @@ interface MatcherHolder {
   matcher: GitignoreMatcher;
 }
 
-/** The user's global excludes file (`git config core.excludesFile`), resolved
- *  once for the app lifetime — it is per-user, not per-conception. `null` once
- *  resolved-to-absent. */
-let globalExcludesPromise: Promise<string | null> | undefined;
-
-function resolveGlobalExcludesFile(): Promise<string | null> {
-  if (!globalExcludesPromise) globalExcludesPromise = computeGlobalExcludesFile();
-  return globalExcludesPromise;
-}
-
 function expandHome(p: string): string {
   if (p === '~') return homedir();
   if (p.startsWith('~/')) return join(homedir(), p.slice(2));
@@ -175,6 +165,15 @@ function reArmRepoWatchers(): void {
   repoReArmedForSignature = signature;
   void teardownAllRepoWatchers()
     .then(() => setRepoWatchers(lastRepoTargets))
+    .then(() => {
+      // Re-arm tears down every watcher, so FS events that arrived during the
+      // gap are lost. Refresh scalar dirty/upstream state and nudge the
+      // renderer to re-read worktree structure for every primary (S3).
+      void recomputeAllWatchedRepos();
+      for (const target of lastRepoTargets) {
+        if (target.isPrimary) emitStructural(target.path);
+      }
+    })
     .catch((e) => console.error('[repo-watcher] re-arm failed', e));
 }
 
@@ -239,7 +238,10 @@ export async function setRepoWatchers(targets: WatchedPath[]): Promise<void> {
   // re-arm path calls back in with the same targets and must stay guarded.
   lastRepoTargets = targets;
   const wantedKeys = new Set(targets.map((t) => t.path));
-  const globalExcludesFile = await resolveGlobalExcludesFile();
+  // Resolve the global excludes file on every watcher build rather than caching
+  // it for the process lifetime, so a changed `git config core.excludesFile`
+  // takes effect on the next rebuild (C3).
+  const globalExcludesFile = await computeGlobalExcludesFile();
   const closing: Promise<void>[] = [];
 
   for (const [path, entry] of watchers) {
