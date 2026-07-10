@@ -1,6 +1,7 @@
 import type {
   ActionTemplate,
   Agent,
+  AutoSyncSettings,
   CardMinWidthPrefs,
   DashboardSettings,
   Platform,
@@ -27,6 +28,7 @@ export type Section =
   | 'agents'
   | 'open-with'
   | 'dashboard'
+  | 'auto-sync'
   | 'workspace'
   | 'repositories';
 
@@ -50,6 +52,7 @@ export const SECTIONS: SectionMeta[] = [
   { id: 'agents', label: 'Launchers', scope: 'global' },
   { id: 'open-with', label: 'Open with', scope: 'global' },
   { id: 'dashboard', label: 'Dashboard', scope: 'global' },
+  { id: 'auto-sync', label: 'Auto-commit', scope: 'global' },
   // This conception — .condash/settings.json.
   { id: 'workspace', label: 'Workspace & paths', scope: 'conception' },
   { id: 'repositories', label: 'Repositories', scope: 'conception' },
@@ -68,6 +71,7 @@ export const SECTION_KEYS: Record<Section, readonly (keyof RawConfig)[]> = {
   agents: ['agents'],
   'open-with': ['open_with'],
   dashboard: ['dashboard'],
+  'auto-sync': ['autoSync'],
   workspace: ['workspace_path', 'worktrees_path', 'long_lived_branches'],
   repositories: ['repositories'],
 };
@@ -251,6 +255,8 @@ export interface RawConfig {
   /** Live terminal-tab summarization. Personal/global key (the `apiKey`
    *  secret never lands in a tree's settings file). */
   dashboard?: DashboardSettings;
+  /** GUI-driven periodic committer. Personal/global key. */
+  autoSync?: AutoSyncSettings;
   /** Path-tracking fields — global file only, never written by a section. */
   lastConceptionPath?: string | null;
   recentConceptionPaths?: string[];
@@ -279,6 +285,7 @@ export const RAW_CONFIG_KEYS = [
   'cardMinWidth',
   'terminal',
   'dashboard',
+  'autoSync',
   'lastConceptionPath',
   'recentConceptionPaths',
 ] as const satisfies readonly (keyof RawConfig)[];

@@ -1,6 +1,7 @@
 import type { TaskDef, TaskListItem } from './tasks';
 import type {
   Agent,
+  AutoSyncStatus,
   BootstrapData,
   CardMinWidthPrefs,
   ConceptionInitState,
@@ -358,6 +359,17 @@ export interface CondashApi {
   /** Subscribe to the per-tab summaries pushed each cycle (tab titles + hover
    *  popovers). Returns an unsubscribe function. */
   onDashboardTabSummaries(callback: (msg: DashboardTabSummariesMessage) => void): () => void;
+
+  /** Latest auto-sync engine status (phase + next-run ETA + last result). Read
+   *  on the Settings section mount so it shows current state immediately. */
+  autoSyncGetStatus(): Promise<AutoSyncStatus>;
+  /** Run one auto-sync sweep now, regardless of the cadence (the "Commit &
+   *  push now" button). Resolves the resulting status; no-ops when the engine is
+   *  unarmed or already mid-sweep. */
+  autoSyncNow(): Promise<AutoSyncStatus>;
+  /** Subscribe to auto-sync status pushed on every engine state change. Returns
+   *  an unsubscribe function. */
+  onAutoSyncStatus(callback: (status: AutoSyncStatus) => void): () => void;
 
   /** List the day-directories present under
    * `<conception>/.condash/logs/` — newest first. Empty when no

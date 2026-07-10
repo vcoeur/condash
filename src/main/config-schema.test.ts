@@ -251,6 +251,39 @@ describe('configSchema dashboard', () => {
   });
 });
 
+describe('configSchema autoSync', () => {
+  const autoSync = { enabled: true, intervalMinutes: 10, quietPeriodSeconds: 90, push: true };
+
+  it('accepts a full autoSync block on the global schema and rejects it on the conception one', () => {
+    // autoSync is global-only — it describes how this machine drives commits.
+    expect(globalSettingsSchema.safeParse({ autoSync }).success).toBe(true);
+    expect(configSchema.safeParse({ autoSync }).success).toBe(false);
+  });
+
+  it('accepts an empty autoSync block (all fields optional)', () => {
+    expect(globalSettingsSchema.safeParse({ autoSync: {} }).success).toBe(true);
+  });
+
+  it('rejects an unknown autoSync field (strict)', () => {
+    expect(globalSettingsSchema.safeParse({ autoSync: { cadence: 5 } }).success).toBe(false);
+  });
+
+  it('rejects a non-integer / non-positive intervalMinutes', () => {
+    expect(globalSettingsSchema.safeParse({ autoSync: { intervalMinutes: 1.5 } }).success).toBe(
+      false,
+    );
+    expect(globalSettingsSchema.safeParse({ autoSync: { intervalMinutes: 0 } }).success).toBe(
+      false,
+    );
+  });
+
+  it('allows quietPeriodSeconds of 0 (quiet period disabled)', () => {
+    expect(globalSettingsSchema.safeParse({ autoSync: { quietPeriodSeconds: 0 } }).success).toBe(
+      true,
+    );
+  });
+});
+
 describe('configSchema dropped path keys', () => {
   // Both `resources_path` and `skills_path` were dropped in the reframe —
   // the Resources pane is hard-coded to `<root>/resources/` and the Skills
@@ -567,6 +600,13 @@ describe('every settings key the IPC layer can write survives the canonicaliser'
       intervalSec: 120,
       gateOnActivity: true,
       historyLimit: 20,
+    },
+    // Settings → Auto-commit — every field
+    autoSync: {
+      enabled: true,
+      intervalMinutes: 10,
+      quietPeriodSeconds: 90,
+      push: true,
     },
     // agents / open_with / pdf_viewer have no narrow IPC setter — they are
     // edited through the Settings modal's raw save (writeNote →

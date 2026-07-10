@@ -21,6 +21,7 @@ export * from './common';
 export * from './project';
 export * from './layout';
 export * from './dashboard';
+export * from './sync';
 export * from './settings';
 export * from './git';
 export * from './terminal';

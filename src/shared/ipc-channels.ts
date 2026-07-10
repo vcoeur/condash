@@ -28,6 +28,8 @@ export const EVENT_CHANNELS = {
   dashboardTabSummaries: 'dashboard-tab-summaries',
   /** Full dashboard state (overview + per-tab cards + history) snapshot. */
   dashboardState: 'dashboard-state',
+  /** Live auto-sync engine status (phase + next-run ETA + last result). */
+  autoSyncStatus: 'auto-sync-status',
   /** Live headless task-run roster — pushed on each run start / exit so the
    *  Tasks pane updates without polling. */
   taskRuns: 'task-runs',

@@ -50,6 +50,7 @@ Every top-level key, in one place. **Scope** is the one file the key lives in: _
 | `pdf_viewer`            | global      | array        | —        | Ordered fallback chain of external PDF viewers.                                                                                                                                                                          |
 | `terminal`              | global      | object       | —        | Shell, shortcuts, screenshot dir, `xterm` theming, `logging`, `memory` containment, project-action templates — one whole personal/per-machine key. [↓](#terminal)                                                                        |
 | `dashboard`             | global      | object       | —        | Live terminal-tab summarization (direct OpenAI-compatible endpoint, DeepSeek by default): `{enabled, provider, apiKey, baseUrl, model, writerModel, cardReasoning, writerReasoning, cardInputChars, intervalSec, gateOnActivity, historyLimit}`. Off by default; set it in **Settings → Dashboard**, which writes to the global file (the `apiKey` is a secret). [↓](#dashboard)                                                                 |
+| `autoSync`              | global      | object       | —        | GUI-driven periodic committer: `{enabled, intervalMinutes, quietPeriodSeconds, push}`. While a conception is open, runs `condash sync run` on a timer. Off by default; set it in **Settings → Auto-commit**. [↓](#auto-commit)                                                                                    |
 | `theme`                 | global      | enum         | `system` | `light` \| `dark` \| `system`.                                                                                                                                                                                           |
 | `layout`                | global      | object       | —        | Persisted pane layout, including `leftView` (`projects` \| `tasks` \| `deliverables`). [↓](#layoutstate)                                                                                                                 |
 | `welcome`               | global      | object       | —        | `{ dismissed }` — first-launch welcome-screen state.                                                                                                                                                                     |
@@ -150,6 +151,21 @@ Edit it once in **Settings → Dashboard** (under **Personal · this machine**).
 | `historyLimit`   | integer     | `20`             | Maximum retained events per tab and in the global history; older events roll off.                                                                                                       |
 
 > **Privacy:** enabling the dashboard transmits recent on-screen terminal output to the configured API endpoint — the DeepSeek API by default, or whatever `baseUrl` points at. Before any text leaves the machine it is run through the same secret redactor as `condash logs --redact` (provider key prefixes, bearer tokens, JWTs, secret-named assignments, PEM private-key blocks → `«redacted:…»`). That redactor is conservative by design and recognises only high-precision secret shapes, so it is a backstop, not a guarantee: leave the dashboard off for tabs that display credentials you don't want sent off-machine.
+
+### Auto-commit
+
+The `autoSync` block turns condash into the single writer for a conception shared by parallel agent sessions: while a conception is open, a main-process engine runs [`condash sync run`](cli.md#sync) on a timer, committing every settled, non-gitignored change and pushing. It is the same sweep as the CLI verb, with the same safety — the non-blocking lock, the quiet-period mid-edit guard, the mid-merge/conflict refusal, and push-as-a-warning — so nothing here can commit a half-written file or rewrite the tree under a live session.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Master switch. Off by default — the engine is armed but never commits. |
+| `intervalMinutes` | `10` | How often to sweep and commit. Clamped to 1–120. |
+| `quietPeriodSeconds` | `90` | A file edited more recently than this is left for the next sweep — the guard against committing mid-edit. Clamped to 0–3600; `0` commits even just-touched files. |
+| `push` | `true` | Push after committing (a rejected push is a warning; the next sweep retries). |
+
+Edit it in **Settings → Auto-commit** (under **Personal · this machine**), which also carries a **Commit & push now** button (one sweep, regardless of the cadence) and a live status line (next-run ETA · last result · any error). It is a personal/per-machine setting written to `settings.json` — nothing about it is committed to a tree's `.condash/settings.json`.
+
+The first commit lands one interval **after** you enable it, never the instant the app opens. To keep a file out of auto-commit, gitignore it. Two caveats: the engine only runs while the condash app is open (for headless commits, use the [`systemd` timer](cli.md#sync)), and the quiet period is the *only* thing standing between an in-progress edit and a commit — set it comfortably longer than your longest pause between keystrokes.
 
 ### Workspace keys
 
