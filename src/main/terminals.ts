@@ -323,6 +323,13 @@ export function attachTerminal(
   // WebContents (stable `id`, no `'destroyed'` event), so the early return below
   // is the *common* re-attach, not a rare one.
   s.flow.reset();
+  // The renderer that requested the attach may have been destroyed before the
+  // IPC handler ran (fast window close / reload race). Do not reassign the
+  // session's webContents or register a listener on a dead frame — return null
+  // so the renderer does not mount a dead session.
+  if (sender.isDestroyed()) {
+    return null;
+  }
   // Reassign the live data sink to the calling renderer so that subsequent
   // `termData` events from the still-running pty land in the freshly-loaded
   // window. Without this, after a renderer reload the session row is visible
@@ -562,6 +569,20 @@ export async function spawnTerminal(
     memMaxBytes: spawnTarget.scopeMaxBytes,
     flow,
   };
+  // Guard against the window being destroyed during the async spawn window.
+  // Adding a session with no 'destroyed' listener (the event already fired)
+  // would leak the pty until app quit; safeSend would silently drop output.
+  if (webContents.isDestroyed()) {
+    try {
+      ptyProcess.kill();
+    } catch {
+      /* pty may already be gone */
+    }
+    if (logger) {
+      void logger.close();
+    }
+    throw new Error('Terminal spawn failed: target WebContents was destroyed');
+  }
   sessions.set(id, session);
   logger?.spawn();
 
@@ -793,18 +814,13 @@ export function closeSession(id: string): Promise<void> {
   return stopSession(id);
 }
 
-/** Read effective terminal prefs. The active conception's `condash.json`
- * may override the entire `terminal` block (top-level replace); when no
- * override is set, the per-machine `settings.json` value applies. The
- * one-shot migration that promoted terminal from configuration.json into
- * settings.json (2026-05-01) still runs at boot — the overridable layer
- * sits on top of that. */
+/** Read terminal prefs. The `terminal` key is global-only (`settings.json`);
+ * `condash.json` / `configuration.json` are legacy read fallbacks for
+ * conception-owned keys, not an override layer for `terminal`. The one-shot
+ * migration that promoted terminal from configuration.json into settings.json
+ * (2026-05-01) still runs at boot. */
 export async function getTerminalPrefs(): Promise<TerminalPrefs> {
   const settings = await readSettings();
-  if (settings.lastConceptionPath) {
-    const effective = await getEffectiveConceptionConfig(settings.lastConceptionPath);
-    if (effective.terminal) return effective.terminal;
-  }
   return settings.terminal ?? {};
 }
 

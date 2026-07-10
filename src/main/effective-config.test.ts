@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -203,6 +204,22 @@ describe('getEffectiveConceptionConfig', () => {
     );
     const eff = await getEffectiveConceptionConfig(tmp, global);
     expect(eff.terminal).toEqual({ shell: '/bin/bash' });
+  });
+
+  it('recovers from a corrupt global settings.json by quarantining it and returning defaults', async () => {
+    const global = join(tmp, 'settings.json');
+    writeFileSync(global, '{ "theme": "dark", ');
+    const eff = await getEffectiveConceptionConfig(tmp, global);
+    // The corrupt global file is treated as empty: global-owned keys are absent
+    // (the effective reader has no defaulting layer) and the call does not throw.
+    expect(eff.theme).toBeUndefined();
+    expect(eff.terminal).toBeUndefined();
+    // The original path is cleared and a `.corrupt-<ts>` sibling holds the bad content.
+    await expect(fs.access(global)).rejects.toThrow();
+    const entries = await fs.readdir(tmp);
+    const aside = entries.filter((e) => e.startsWith('settings.json.corrupt-'));
+    expect(aside).toHaveLength(1);
+    expect(await fs.readFile(join(tmp, aside[0]), 'utf8')).toBe('{ "theme": "dark", ');
   });
 });
 

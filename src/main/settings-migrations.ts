@@ -26,8 +26,8 @@ export async function migrateTerminalFromConfigIfNeeded(): Promise<void> {
   if (initial.terminal && Object.keys(initial.terminal).length > 0) return;
   if (!initial.lastConceptionPath) return;
   // Legacy migration: only the original `configuration.json` is checked.
-  // A fresh `condash.json` carrying a terminal block is a deliberate
-  // per-conception override and stays put.
+  // `terminal` is global-only (settings.json); any terminal block left in a
+  // legacy `condash.json` is stale and is not treated as an override.
   const configFile = join(initial.lastConceptionPath, 'configuration.json');
   let raw: string;
   try {

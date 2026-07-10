@@ -8,7 +8,7 @@
  * node-pty are mocked, as are the settings / login-shell / memory-scope reads
  * a spawn touches, so no Electron runtime or real pty is involved.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WebContents } from 'electron';
 import { BATCH_FLUSH_BYTES, HIGH_WATERMARK_BYTES } from './terminal-flow';
 import { EVENT_CHANNELS } from '../shared/ipc-channels';
@@ -67,6 +67,7 @@ vi.mock('./tab-scope', () => ({
 import {
   ackTerminal,
   attachTerminal,
+  killAll,
   resetFlowsForWebContents,
   spawnTerminal,
   trackedSessionIds,
@@ -121,6 +122,13 @@ function termDataPayloads(wc: FakeWebContents): { id: string; data: string; epoc
     .filter(([channel]) => channel === EVENT_CHANNELS.termData)
     .map(([, payload]) => payload as { id: string; data: string; epoch: number });
 }
+
+afterEach(async () => {
+  // The module-level `sessions` map persists across tests; clear it so one
+  // test's spawned sessions don't leak into the next.
+  await killAll();
+  hoisted.spawned.length = 0;
+});
 
 describe('terminals attach ↔ flow seam (M8a)', () => {
   it('sends termData to the spawning webContents, stamped with the flow epoch', async () => {
@@ -208,5 +216,31 @@ describe('terminals attach ↔ flow seam (M8a)', () => {
     for (let i = 0; i < CHUNKS_TO_PAUSE * 2; i++) pty.onDataCb!(CHUNK);
     expect(termDataPayloads(wc)).toHaveLength(0);
     expect(pty.pause).not.toHaveBeenCalled();
+  });
+
+  it('spawnTerminal kills the pty and throws when the webContents died during the async spawn window (RB1)', async () => {
+    const wc = makeWebContents();
+    wc.destroyed = true;
+    await expect(spawnTerminal(null, wc as unknown as WebContents, { side: 'my' })).rejects.toThrow(
+      'Terminal spawn failed: target WebContents was destroyed',
+    );
+    // The freshly-created pty was killed and the session was never tracked.
+    const pty = hoisted.spawned[hoisted.spawned.length - 1] as FakePty;
+    expect(pty.kill).toHaveBeenCalled();
+    expect(trackedSessionIds().size).toBe(0);
+  });
+
+  it('attachTerminal returns null without reassigning when the sender is destroyed (RB1)', async () => {
+    const wc1 = makeWebContents();
+    const wc2 = makeWebContents();
+    wc2.destroyed = true;
+    const { id } = await spawnSession(wc1);
+    const before = wc1.once.mock.calls.length;
+    const attach = attachTerminal(id, wc2 as unknown as WebContents);
+    expect(attach).toBeNull();
+    // No listener was registered on the destroyed sender, and the existing
+    // session remains bound to the original webContents.
+    expect(wc2.once).not.toHaveBeenCalled();
+    expect(wc1.once.mock.calls.length).toBe(before);
   });
 });

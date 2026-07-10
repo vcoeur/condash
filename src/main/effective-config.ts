@@ -13,7 +13,7 @@ import type {
   TreeExpansionPrefs,
 } from '../shared/types';
 import { conceptionConfigCandidates, condashSettingsPath, isTombstone } from './condash-dir';
-import { settingsPath } from './settings';
+import { quarantineCorruptSettings, settingsPath } from './settings';
 import { migrateRawSettings } from './config-migrate';
 import { atomicWrite } from './atomic-write';
 import { withFileQueue } from './mutate-shared';
@@ -181,7 +181,15 @@ async function readGlobalSettingsRaw(settingsFile: string): Promise<Record<strin
     }
     return {};
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return {};
+    if (err instanceof SyntaxError) {
+      // Corrupt settings.json after boot would otherwise throw into IPC handlers
+      // and engine ticks that call getEffectiveConceptionConfig. Reuse the same
+      // quarantine + defaults recovery as the boot reader.
+      await quarantineCorruptSettings(settingsFile, err);
+      return {};
+    }
     throw err;
   }
 }
