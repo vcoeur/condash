@@ -10,7 +10,7 @@
 }
 
 .search-modal {
-  width: var(--modal-w-md);
+  width: var(--modal-w-lg);
   max-height: 82vh;
   display: flex;
   flex-direction: column;
@@ -19,13 +19,15 @@
 
 .search-modal-head {
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 .search-modal-input {
   flex: 1;
   font-size: var(--text-md);
   padding: 8px 12px;
+  border-radius: var(--radius-lg);
 }
 
 .search-modal-body {
@@ -38,62 +40,74 @@
   min-height: 0;
 }
 
-/* Source filter — pill-row that lets the user narrow results to
- * Projects only, Knowledge only, or All. Sits between the search input
- * and the result list. Counts on each pill always reflect the
- * unfiltered result set, so the user can see what each option would
- * yield without committing to it. */
-.search-source-filter {
-  display: flex;
+/* Segmented source filter — a compact, modern bar that replaces the loose
+ * pill row. The active segment is filled with the source colour, making the
+ * filter feel like a typed switch. */
+.search-filter-bar {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 14px 8px;
-  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin: 8px 14px 0;
+  align-self: flex-start;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
-/* Geometry from the shared `.pill` base (primitives.css). */
-.search-source-pill {
-  background: var(--bg);
-  border: 1px solid var(--border);
+.search-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   color: var(--text-muted);
   font-family: var(--font-ui);
   font-size: var(--text-2xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  padding: 4px 10px;
   cursor: pointer;
-  gap: 6px;
   transition:
     background 120ms ease,
     color 120ms ease,
     border-color 120ms ease;
   flex-shrink: 0;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.search-source-pill:hover {
+.search-filter-btn:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
 
-.search-source-pill.active {
-  background: var(--bg-elevated);
-  color: var(--text);
-  border-color: var(--border-strong);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
+.search-filter-btn.active {
+  background: var(--source-color, var(--accent));
+  color: #fff;
+  border-color: transparent;
 }
 
-.search-source-count {
+.search-filter-icon {
+  display: inline-flex;
+  width: 13px;
+  height: 13px;
+}
+
+.search-filter-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.search-filter-count {
   font-family: var(--font-mono);
   font-size: var(--text-3xs);
   font-weight: 500;
-  letter-spacing: 0;
-  color: var(--text-faint);
-  text-transform: none;
+  min-width: 1em;
+  text-align: center;
+  opacity: 0.85;
 }
 
 .search-modal-body .search-results {
@@ -102,8 +116,50 @@
   min-height: 0;
 }
 
-.search-results-grouped {
-  gap: 10px;
+/* Sectioned result list — each source bucket gets a sticky header so the
+ * list is scannable as a typed command palette. */
+.search-results-sectioned {
+  gap: 2px;
+}
+
+.search-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px 6px;
+  margin: 8px 0 4px;
+  background: var(--bg-elevated);
+  color: var(--source-color, var(--text-muted));
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-section-header:first-child {
+  margin-top: 0;
+}
+
+.search-section-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+}
+
+.search-section-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.search-section-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-faint);
 }
 
 /* Lift result rows above the modal's `--bg-elevated` background so they read
@@ -111,6 +167,9 @@
  * borders survive — which is what made results look "empty". */
 .search-modal-body .search-row {
   background: var(--bg-subtle);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
 }
 
 .search-modal-body .search-row:hover {
@@ -118,13 +177,57 @@
 }
 
 .search-row[data-selected='true'] {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-hover);
+  padding-left: 10px;
+}
+
+.search-row[data-selected='true'] .search-row-icon {
+  color: var(--accent);
 }
 
 .search-modal-body .search-project-header[data-selected='true'],
 .search-modal-body .search-project-files .search-row[data-selected='true'] {
   background: var(--bg-hover);
+}
+
+.search-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.search-row-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-row-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--source-color, var(--text-muted));
+  opacity: 0.85;
+}
+
+.search-row-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.search-row-hint {
+  flex-shrink: 0;
+  font-size: var(--text-3xs);
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: auto;
+  padding-left: 8px;
 }
 
 /* Per-token highlight palette. The mark element ships token-index-modulo-4
@@ -159,18 +262,16 @@
 }
 
 .badge-project {
-  background: color-mix(in srgb, var(--col-now) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--col-now) 30%, transparent);
-  color: var(--col-now);
+  display: none;
 }
 
 .search-project-group {
   display: flex;
   flex-direction: column;
   gap: 0;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
+  background: transparent;
+  border: none;
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -180,6 +281,7 @@
 .search-modal-body .search-project-header,
 .search-modal-body .search-project-files .search-row {
   background: transparent;
+  border: 1px solid transparent;
 }
 
 .search-modal-body .search-project-header:hover,
@@ -189,33 +291,27 @@
 
 .search-project-header {
   background: transparent;
-  border: none;
   border-radius: 0;
   border-bottom: 1px solid var(--border);
 }
 
-.search-project-header:hover {
-  background: var(--bg-hover);
-}
-
-.search-row-hint {
-  font-size: var(--text-3xs);
-  color: var(--text-faint);
-  letter-spacing: 0.04em;
-  margin-top: 2px;
+.search-project-header .search-row-main {
+  align-items: center;
 }
 
 .search-project-files {
   list-style: none;
   margin: 0;
   padding: 0;
+  background: var(--bg-subtle);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
 .search-project-files .search-row {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 6px 14px 8px 28px;
+  padding: 6px 14px 8px 34px;
 }
 
 .search-project-files .search-row:hover {
@@ -341,7 +437,7 @@
 
 .search-row {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 4px;
   width: 100%;
   text-align: left;
@@ -353,6 +449,7 @@
   font: inherit;
   color: inherit;
   flex-shrink: 0;
+  transition: background 80ms ease;
 }
 
 .search-result,
@@ -368,10 +465,15 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
 }
 
 .search-title {
   font-weight: 600;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search-count {
@@ -379,16 +481,20 @@
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   font-size: var(--text-2xs);
+  flex-shrink: 0;
 }
 
 .search-path {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search-snippets {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   padding-left: 16px;
   list-style: disc;
   font-size: var(--text-xs);

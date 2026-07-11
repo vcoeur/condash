@@ -65,6 +65,12 @@ export interface SearchHit {
    * project popup, each file row opens the note viewer.
    */
   projectPath?: string;
+  /**
+   * Title of the owning project, read from its README. Present on every
+   * `source === 'project'` hit so the search UI can label a project group
+   * even when the README itself did not match the query.
+   */
+  projectTitle?: string;
 }
 
 export interface SearchResults {

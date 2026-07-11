@@ -2,7 +2,6 @@ import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { Agent } from '@shared/types';
 import { createDropdownMenu } from '../dropdown-menu';
-import { IconClose } from '../icons';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
@@ -238,18 +237,6 @@ export function TerminalColumn(props: TerminalColumnProps) {
                     {formatMem(tab.memBytes!)}
                   </span>
                 </Show>
-                <button
-                  type="button"
-                  class="terminal-tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    props.onCloseTab(tab.id);
-                  }}
-                  title="Close tab"
-                  aria-label={`Close ${displayName(tab)}`}
-                >
-                  <IconClose />
-                </button>
               </div>
             )}
           </For>

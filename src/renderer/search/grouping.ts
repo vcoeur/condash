@@ -8,6 +8,9 @@ export interface ProjectGroup {
   files: SearchHit[];
   /** Sum of the scores of every member hit — used for inter-group sort. */
   totalScore: number;
+  /** Project title read from the README, available even when the README itself
+   *  did not match the query. */
+  projectTitle?: string;
 }
 
 export interface GroupedResults {
@@ -43,9 +46,15 @@ export function groupHits(hits: readonly SearchHit[]): GroupedResults {
     if (hit.source === 'project' && hit.projectPath) {
       let group = groups.get(hit.projectPath);
       if (!group) {
-        group = { projectPath: hit.projectPath, files: [], totalScore: 0 };
+        group = {
+          projectPath: hit.projectPath,
+          files: [],
+          totalScore: 0,
+          projectTitle: hit.projectTitle,
+        };
         groups.set(hit.projectPath, group);
       }
+      if (!group.projectTitle && hit.projectTitle) group.projectTitle = hit.projectTitle;
       const isReadme = hit.path.toLowerCase().endsWith('/readme.md');
       if (isReadme) {
         group.header = hit;

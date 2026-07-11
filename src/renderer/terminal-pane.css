@@ -198,6 +198,7 @@
 }
 
 .terminal-tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -229,27 +230,51 @@
 
 .terminal-tab.active {
   opacity: 1;
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-card);
 }
 
 .terminal-tab.active .terminal-tab-label {
   font-weight: 700;
 }
 
-/* App-pill-coloured terminal tabs — inactive tabs inherit the slot palette
- *  from `app-pill.css` so each session's source app is scannable at a glance.
- *  The active tab keeps the accent highlight instead, so selection state stays
- *  unambiguous. */
-.terminal-tab[class*='app-pill-']:not(.active) {
+/* Selected-tab indicator — a 2px accent bar at the bottom of the tab. This
+ *  keeps the app-pill background colour on the selected tab while giving
+ *  selection its own unambiguous marker. */
+.terminal-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+/* App-pill-coloured terminal tabs — tabs inherit the slot palette so each
+ *  session's source app is scannable at a glance, including the selected tab. */
+.terminal-tab[class*='app-pill-'] {
   background: var(--app-pill-bg);
   color: var(--app-pill-fg);
   border-color: transparent;
 }
 
-.terminal-tab[class*='app-pill-']:not(.active):hover {
+.terminal-tab[class*='app-pill-']:hover {
   filter: brightness(1.08);
+  border-color: transparent;
+}
+
+.terminal-tab[class*='app-pill-'].active {
+  background: var(--app-pill-bg);
+  color: var(--app-pill-fg);
+  border-color: var(--app-pill-fg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-pill-fg) 25%, transparent);
+}
+
+.terminal-tab[class*='app-pill-'].active::after {
+  background: var(--app-pill-fg);
 }
 
 /* Dashboard pseudo-tab: looks like a tab but is a fixed, always-first entry
@@ -337,44 +362,6 @@
   50% {
     opacity: 1;
   }
-}
-
-/* Tab close button — only visible on hover so the resting strip stays
- * compact; keyboard focus still reaches the button. */
-.terminal-tab-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  margin: 0 -4px 0 0;
-  background: transparent;
-  border: none;
-  border-radius: 3px;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0;
-  transition:
-    opacity 0.1s ease,
-    background 0.1s ease;
-}
-
-.terminal-tab:hover .terminal-tab-close,
-.terminal-tab:focus-visible .terminal-tab-close,
-.terminal-tab-close:focus-visible {
-  opacity: 1;
-}
-
-.terminal-tab-close:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.terminal-tab-close svg {
-  width: 10px;
-  height: 10px;
-  stroke-width: 1.8;
 }
 
 /* Per-tab memory meter — live cgroup-scope usage for a memory-scoped tab,

@@ -44,6 +44,8 @@ interface ConceptionIndex {
   conceptionPath: string;
   /** Keyed by posix absolute path. */
   byPath: Map<string, PreparedFile>;
+  /** Project directory → README title, derived from indexed READMEs. */
+  projectTitleByPath: Map<string, string>;
 }
 
 let current: ConceptionIndex | null = null;
@@ -108,7 +110,12 @@ export function searchIndex(
   for (const file of index.byPath.values()) {
     if (!wants(SOURCE_TO_SCOPE[file.source as IndexedSource])) continue;
     const m = matchPrepared(file, terms);
-    if (m) out.push(m);
+    if (m) {
+      if (m.hit.source === 'project' && m.hit.projectPath) {
+        m.hit.projectTitle = index.projectTitleByPath.get(m.hit.projectPath);
+      }
+      out.push(m);
+    }
   }
   return out;
 }
@@ -151,7 +158,17 @@ export async function rebuildSearchIndex(conceptionPath: string | null): Promise
   // A newer rebuild/clear (conception switch) superseded us — drop the result
   // (and the event buffer, which the newer build/clear already replaced).
   if (token !== buildToken) return;
-  current = { conceptionPath, byPath };
+
+  // Cache each project's README title so every project hit can carry its
+  // human-readable project title, even when the README itself didn't match.
+  const projectTitleByPath = new Map<string, string>();
+  for (const file of byPath.values()) {
+    if (file.source === 'project' && file.path.toLowerCase().endsWith('/readme.md')) {
+      projectTitleByPath.set(file.projectPath!, file.title);
+    }
+  }
+
+  current = { conceptionPath, byPath, projectTitleByPath };
 
   // Replay events that fired during the build window, in arrival order. Each
   // replay re-reads the file, so the index converges on the on-disk state even
@@ -190,10 +207,20 @@ export async function applyIndexFsEvent(
   const key = toPosix(absPath);
 
   if (eventName === 'unlink') {
+    const classified = classifyIndexedPath(conceptionPath, key);
     // Joins the per-path chain so a delete never lands before an in-flight
     // earlier add/change read for the same path.
     return enqueuePerPath(key, async () => {
-      getIndex(conceptionPath)?.byPath.delete(key);
+      const live = getIndex(conceptionPath);
+      if (!live) return;
+      live.byPath.delete(key);
+      if (
+        classified?.source === 'project' &&
+        classified.projectPath &&
+        key.toLowerCase().endsWith('/readme.md')
+      ) {
+        live.projectTitleByPath.delete(classified.projectPath);
+      }
     });
   }
   if (eventName === 'unlinkDir') {
@@ -202,6 +229,9 @@ export async function applyIndexFsEvent(
     const prefix = `${key}/`;
     for (const k of index.byPath.keys()) {
       if (k.startsWith(prefix)) index.byPath.delete(k);
+    }
+    for (const k of index.projectTitleByPath.keys()) {
+      if (k === key || k.startsWith(prefix)) index.projectTitleByPath.delete(k);
     }
     return;
   }
@@ -219,8 +249,25 @@ export async function applyIndexFsEvent(
     // Re-fetch: a conception switch could have landed while we read the file.
     const live = getIndex(conceptionPath);
     if (!live) return;
-    if (prepared) live.byPath.set(key, prepared);
-    else live.byPath.delete(key); // vanished between the event and the read
+    if (prepared) {
+      live.byPath.set(key, prepared);
+      if (
+        classified.source === 'project' &&
+        classified.projectPath &&
+        key.toLowerCase().endsWith('/readme.md')
+      ) {
+        live.projectTitleByPath.set(classified.projectPath, prepared.title);
+      }
+    } else {
+      live.byPath.delete(key); // vanished between the event and the read
+      if (
+        classified.source === 'project' &&
+        classified.projectPath &&
+        key.toLowerCase().endsWith('/readme.md')
+      ) {
+        live.projectTitleByPath.delete(classified.projectPath);
+      }
+    }
   });
 }
 
