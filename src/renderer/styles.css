@@ -43,6 +43,7 @@
   --border: #e8e3d6;
   --border-strong: #d6cfbf;
   --accent: #4f46e5;
+  --accent-soft: #e8effd;
   --warn: #b03020;
 
   /* Status palette — saturated red→green temperature scale so the six
@@ -140,7 +141,8 @@
    * so the existing ~80 references keep resolving. */
   --radius-sm: 3px;
   --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-pill: 999px;
   --radius: var(--radius-md);
 
@@ -208,30 +210,31 @@
  * pops a purple-pink hue so an unknown status doesn't merge with the
  * now/review reds. */
 :root {
-  --dark-bg: #14120e;
-  --dark-bg-panel: #1a1814;
-  --dark-bg-elevated: #24221c;
-  --dark-bg-subtle: #2a2722;
-  --dark-bg-hover: #322f29;
-  --dark-text: #f1efe8;
-  --dark-text-body: #d6d3c8;
-  --dark-text-muted: #a3a098;
-  --dark-text-faint: #837f76;
-  --dark-border: #322d24;
-  --dark-border-strong: #443e34;
-  --dark-accent: #a48cf0;
+  --dark-bg: #0a0a0a;
+  --dark-bg-panel: #111;
+  --dark-bg-elevated: #1a1a1a;
+  --dark-bg-subtle: #141414;
+  --dark-bg-hover: #222;
+  --dark-text: #f0f0f0;
+  --dark-text-body: #ccc;
+  --dark-text-muted: #999;
+  --dark-text-faint: #666;
+  --dark-border: rgba(255, 255, 255, 0.06);
+  --dark-border-strong: rgba(255, 255, 255, 0.12);
+  --dark-accent: #0070f3;
+  --dark-accent-soft: #0a1f3d;
   --dark-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
-  --dark-shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --dark-col-now: #f06b5d;
+  --dark-shadow-lift: 0 4px 14px rgba(0, 0, 0, 0.32), 0 2px 4px rgba(0, 0, 0, 0.24);
+  --dark-col-now: #ff6b6b;
   --dark-col-review: #f0a05a;
-  --dark-col-soon: #e8c25a;
-  --dark-col-later: #6aa6e8;
-  --dark-col-backlog: #7d92ad;
-  --dark-col-done: #7d8290;
+  --dark-col-soon: #f0d05a;
+  --dark-col-later: #66b3ff;
+  --dark-col-backlog: #8899aa;
+  --dark-col-done: #888;
   --dark-warn: #d6748f;
   --dark-success: #3fb950;
   --dark-col-unknown: #d6748f;
-  --dark-col-running: #5fc97f;
+  --dark-col-running: #3fb950;
   --dark-col-dirty: #e8a878;
   --dark-col-added: #4ade80;
   --dark-col-removed: #f87171;
@@ -258,6 +261,7 @@
     --border: var(--dark-border);
     --border-strong: var(--dark-border-strong);
     --accent: var(--dark-accent);
+    --accent-soft: var(--dark-accent-soft);
     --shadow-card: var(--dark-shadow-card);
     --shadow-lift: var(--dark-shadow-lift);
     --col-now: var(--dark-col-now);
@@ -293,6 +297,7 @@
   --border: var(--dark-border);
   --border-strong: var(--dark-border-strong);
   --accent: var(--dark-accent);
+  --accent-soft: var(--dark-accent-soft);
   --shadow-card: var(--dark-shadow-card);
   --shadow-lift: var(--dark-shadow-lift);
   --col-now: var(--dark-col-now);
@@ -428,9 +433,9 @@ button:hover {
   height: 100%;
 }
 
-/* Workspace — flex row holding the left edge strip, the center stack
- * (top band + TerminalPane + bottom strip), and the right edge strip.
- * Edge strips host the persistent pane handles; the center hosts the
+/* Workspace — flex row holding the left activity rail, the center stack
+ * (top band + TerminalPane + bottom strip), and the right activity rail.
+ * Activity rails host the persistent view toggles; the center hosts the
  * actual content. */
 .workspace {
   flex: 1;
@@ -445,101 +450,8 @@ button:hover {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-}
-
-/* Edge strip — narrow always-visible bar that hosts one or two pane
- * handles. The handle is a vertical (or horizontal for the bottom)
- * button doubling as a label and a toggle. Always present so a hidden
- * pane can be summoned back. */
-.edge-strip {
-  display: flex;
-  background: var(--bg-elevated);
-  flex-shrink: 0;
-}
-
-.edge-strip-left,
-.edge-strip-right {
-  width: 28px;
-  flex-direction: column;
-  align-items: stretch;
-  padding: 8px 0;
-  gap: 4px;
-}
-
-.edge-strip-left {
-  border-right: 1px solid var(--border);
-}
-
-.edge-strip-right {
-  border-left: 1px solid var(--border);
-}
-
-/* Edge handle — the clickable badge inside an edge strip. Carries the
- * pane name as vertical text on the side strips; horizontal text on
- * the bottom strip. Active state mirrors the toolbar's old pill style:
- * elevated background + strong border. */
-.edge-handle {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-  /* Bumped from 11 → 13 px so the side-strip labels don't disappear
-   * against busy content. The edge handles are the primary keyboard-
-   * free way to summon a hidden pane; making the affordance findable is
-   * worth two pixels of strip width. */
-  font-size: var(--text-md);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  padding: 6px 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    background 120ms ease,
-    color 120ms ease,
-    border-color 120ms ease;
-}
-
-.edge-handle:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-/* Active = the matching pane is currently visible. Accent border (in
- * addition to the existing inset shadow) so an open pane is obvious
- * before the user counts panes. */
-.edge-handle.active {
-  background: var(--bg);
-  color: var(--text);
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-.edge-handle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.edge-handle:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Vertical handles (left + right edges) — text reads top-to-bottom.
- * Sized to fill the strip width minus a few pixels of breathing room. */
-.edge-handle-vertical {
-  width: 100%;
-  flex: 0 0 auto;
-  padding: 8px 0;
-}
-
-.edge-handle-vertical .edge-handle-label {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  text-transform: uppercase;
-  white-space: nowrap;
+  padding: 16px;
+  gap: 16px;
 }
 
 /* Unified-layout top band — Projects + working surface (Code or
@@ -570,18 +482,22 @@ button:hover {
 
 /* Common pane wrapper. Each pane manages its own internal scroll; the
  * wrapper just provides a flex column with min-height: 0 so children
- * can shrink properly inside the grid cell. */
+ * can shrink properly inside the grid cell. The new shell uses a panel
+ * surface, a hairline border, and a generous radius so the workspace
+ * reads as a set of elevated cards rather than a divided page. */
 .pane {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
 }
 
 .pane-projects {
-  border-right: 1px solid var(--border);
+  /* No extra border; the panel surface is the divider. */
 }
 
 .empty {

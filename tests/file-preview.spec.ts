@@ -40,9 +40,7 @@ test('Resources viewers: image, highlighted code, HTML rendered/source, reveal',
   const { window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1280, height: 900 });
-    const resourcesHandle = window
-      .locator('.edge-strip-right .edge-handle')
-      .filter({ hasText: 'Resources' });
+    const resourcesHandle = window.locator('.rail-item[title*="Resources"]');
     await resourcesHandle.click();
     await expect(window.locator('.resources-pane')).toBeVisible();
 

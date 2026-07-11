@@ -1,9 +1,17 @@
+.projects-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .projects-stack {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 24px 28px 28px;
+  padding: 0 28px 28px;
   min-height: 0;
   overflow-y: auto;
   background: var(--bg-panel);
@@ -11,11 +19,10 @@
 
 .projects-filter {
   position: sticky;
-  top: -24px;
+  top: 0;
   z-index: 3;
   background: var(--bg-panel);
   padding: 12px 0 8px;
-  margin: -24px 0 0;
 }
 
 .projects-filter-input {
@@ -193,8 +200,8 @@ body[data-dragging='project'] .group-block.drag-over {
 .group-header .name {
   font-family: var(--font-ui);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  text-transform: none;
+  letter-spacing: 0;
   font-size: var(--text-sm);
   color: var(--text);
 }
@@ -253,8 +260,9 @@ body[data-dragging='project'] .group-block.drag-over {
 
 .group-block.subgroup .group-header .name {
   font-size: var(--text-xs);
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   color: var(--text-muted);
+  text-transform: none;
 }
 
 .row.draggable {
@@ -277,21 +285,50 @@ body[data-dragging='project'] .row {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 14px 12px 20px;
-  border: 1px solid var(--border);
+  padding: 14px 14px 12px 22px;
+  border: none;
   border-radius: var(--radius-lg);
   background: var(--bg-elevated);
-  /* No resting shadow — the panel↔card tonal step does the lifting now
-   * that --bg-panel sits between page and cards. Hover brightens the card
-   * surface (no lift transform) for a calmer feel. */
   box-shadow: none;
   cursor: pointer;
   contain: layout paint;
   transition:
     background-color 140ms ease,
-    border-color 140ms ease,
-    transform 120ms ease,
-    box-shadow 120ms ease;
+    box-shadow 140ms ease;
+}
+
+.row::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 10px;
+  bottom: 10px;
+  width: 5px;
+  border-radius: 999px;
+  background: var(--row-stripe);
+  opacity: 0.85;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.row:hover .title-actions,
+.row:focus-visible .title-actions,
+.row:focus-within .title-actions {
+  opacity: 1;
+}
+
+/* Focus ring on cards. The card is tabIndex={0} so the user can land on
+ * one with Tab or click and then drive status with Cmd/Ctrl+1..N. The ring
+ * is the "you're operating on this card" contract for the keyboard path. */
+.row:focus {
+  outline: none;
+}
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .row::before {

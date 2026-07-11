@@ -15,7 +15,7 @@
 export type WorkingSurface = 'code' | 'knowledge' | 'resources' | 'skills' | 'logs' | null;
 
 /** Left-band view — which pane fills the left band when it is visible.
- * Selected by the left edge-strip handles (Projects / Tasks / Deliverables). */
+ * Selected by the left activity-rail items (Projects / Tasks / Deliverables). */
 export type LeftView = 'projects' | 'tasks' | 'deliverables';
 
 /** Composite-layout state. The unified window has a top band (Projects on

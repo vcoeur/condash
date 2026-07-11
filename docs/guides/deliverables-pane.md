@@ -1,6 +1,6 @@
 # The Deliverables pane
 
-The Deliverables pane is a **separate left-band pane with its own edge-strip handle**, peer to Projects — *not* a tab inside the Projects pane, and *not* in the right working-surface slot with Code / Knowledge / Resources / Skills / Logs. The left edge strip carries three stacked handles, **Projects**, **[Tasks](tasks-pane.md)**, and **Deliverables**; click a handle to fill the left band with that pane (clicking the active one hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
+The Deliverables pane is a **separate left-band pane with its own activity-rail item**, peer to Projects — *not* a tab inside the Projects pane, and *not* in the right working-surface slot with Code / Knowledge / Resources / Skills / Logs. The left activity rail carries three stacked items, **Projects**, **[Tasks](tasks-pane.md)**, and **Deliverables**; click an item to fill the left band with that pane (clicking the active one hides the band). Which view was last shown is remembered across launches (the `leftView` layout field).
 
 ## What it shows
 

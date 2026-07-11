@@ -1,0 +1,229 @@
+/* App shell — status bar, activity rail, and pane headers for the
+ * modernised condash UI. */
+
+/* Status bar — thin top band showing conception context, sync state,
+ * counts, search, theme toggle, and settings. */
+.status-bar {
+  height: 38px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.status-bar .status-bar-spacer {
+  flex: 1;
+}
+
+.status-bar .status-bar-path-label {
+  color: var(--text-muted);
+}
+
+.status-bar .status-bar-path {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.status-bar .status-badge {
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+.status-bar .status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-bar .status-bar-action {
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-bar .status-bar-action:hover {
+  background: var(--bg-hover);
+}
+
+.status-bar .status-bar-action.icon-only {
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+}
+
+.status-bar .status-bar-action svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.7;
+}
+
+/* Activity rail — single 56 px left strip with icon buttons,
+ * tooltips, and an active accent indicator. */
+.rail {
+  width: 56px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 6px;
+}
+
+.rail-item {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+  padding: 0;
+}
+
+.rail-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.rail-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+.rail-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.rail-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rail-item svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.8;
+}
+
+.rail-item .rail-tooltip {
+  position: absolute;
+  left: 50px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 8px;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: var(--radius);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.rail-item:hover .rail-tooltip,
+.rail-item:focus-visible .rail-tooltip {
+  opacity: 1;
+}
+
+.rail-divider {
+  width: 28px;
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
+/* Pane header — title on the left, action cluster on the right. */
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px 10px;
+  flex-shrink: 0;
+}
+
+.pane-header-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pane-header .spacer {
+  flex: 1;
+}
+
+.pane-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pane-header-actions .pane-header-action,
+.pane-header-actions button {
+  padding: 5px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pane-header-actions .pane-header-action:hover,
+.pane-header-actions button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.pane-header-actions .pane-header-action.icon-only,
+.pane-header-actions button.icon-only {
+  padding: 5px;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+}
+
+.pane-header-actions .pane-header-action svg,
+.pane-header-actions button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.7;
+}
+
+.pane-header-actions .pane-header-action:disabled,
+.pane-header-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

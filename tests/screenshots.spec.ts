@@ -81,10 +81,10 @@ async function boot(theme: Theme): Promise<Booted> {
   await page.waitForLoadState('domcontentloaded');
   // Pin viewport so the captured PNG is exactly 3200×2200 at scale-factor 2.
   await page.setViewportSize({ width: 1600, height: 1100 });
-  // Wait for the left edge strip so we know the renderer mounted. The strip
-  // is always rendered (it hosts the Projects handle), so it's a stable
+  // Wait for the activity rail so we know the renderer mounted. The rail
+  // is always rendered (it hosts the Projects item), so it's a stable
   // mount landmark independent of whether a conception path is loaded.
-  await page.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
+  await page.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
   // Ensure the persisted theme has actually been applied to <html data-theme>.
   await page.evaluate((t) => {
     const root = document.documentElement;
@@ -138,8 +138,8 @@ async function sendMenu(app: ElectronApplication, command: string): Promise<void
 async function showPane(b: Booted, label: 'Projects' | 'Code' | 'Knowledge'): Promise<void> {
   if (label === 'Projects') {
     // toggle-projects is idempotent only against the live state; check the
-    // edge handle's aria-pressed and toggle only when Projects is hidden.
-    const handle = b.page.locator('.edge-strip-left .edge-handle').first();
+    // rail item's aria-pressed and toggle only when Projects is hidden.
+    const handle = b.page.locator('.rail-item[title*="Projects"]').first();
     const pressed = (await handle.getAttribute('aria-pressed')) === 'true';
     if (!pressed) await sendMenu(b.app, 'toggle-projects');
   } else if (label === 'Code') {

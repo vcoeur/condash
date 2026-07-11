@@ -4,7 +4,6 @@ import {
   createMemo,
   createResource,
   createSignal,
-  For,
   Match,
   Show,
   Switch,
@@ -48,31 +47,11 @@ import { useConception } from './hooks/use-conception';
 import { useWelcome } from './hooks/use-welcome';
 import { useSkillsScope } from './hooks/use-skills-scope';
 import { useTreeEvents } from './hooks/use-tree-events';
-import type { Deliverable, Project, WorkingSurface } from '@shared/types';
+import type { Deliverable, Project } from '@shared/types';
+import { ActivityRail } from './activity-rail';
 import './styles.css';
+import './app-shell.css';
 import './primitives.css';
-import './actions.css';
-import './modal-base.css';
-import './project-preview.css';
-import './action-dropdown-button.css';
-import './welcome-screen.css';
-
-/** Right-strip handles in display order. Each entry binds the
- *  working-surface enum value to its label + keyboard shortcut so the
- *  edge-strip JSX can map over them instead of repeating one block per
- *  surface. The actual key bindings live in `global-keyboard.ts`; the
- *  string here is just the tooltip suffix. */
-const WORKING_SURFACE_HANDLES: ReadonlyArray<{
-  key: NonNullable<WorkingSurface>;
-  label: string;
-  shortcut: string;
-}> = [
-  { key: 'code', label: 'Code', shortcut: 'Ctrl+Shift+C' },
-  { key: 'knowledge', label: 'Knowledge', shortcut: 'Ctrl+Shift+K' },
-  { key: 'resources', label: 'Resources', shortcut: 'Ctrl+R' },
-  { key: 'skills', label: 'Skills', shortcut: 'Ctrl+L' },
-  { key: 'logs', label: 'Logs', shortcut: 'Ctrl+Shift+L' },
-];
 
 function App() {
   // --- Toast first so every downstream hydration call can surface a
@@ -294,6 +273,16 @@ function App() {
       setForceStopState,
       flashToast,
     });
+  const handlePullAll = async (): Promise<void> => {
+    const paths = repos.map((r) => r.path);
+    for (const path of paths) {
+      try {
+        await handlePull(path);
+      } catch {
+        /* toast already surfaced by handlePull */
+      }
+    }
+  };
 
   // --- Tree actions (createMd / mkdir / importFile + open handlers) -----
   const {
@@ -447,50 +436,69 @@ function App() {
 
   return (
     <div class="app">
+      <Show when={conceptionPath()}>
+        <header class="status-bar">
+          <span class="status-item">
+            <span class="status-bar-path-label">conception</span>
+            <span class="status-bar-path">{conceptionPath()}</span>
+          </span>
+          <span class="status-bar-spacer" />
+          <span class="status-badge">auto-sync on</span>
+          <span class="status-item">
+            {(() => {
+              const parts: string[] = [];
+              const projectCount = (projects() ?? []).length;
+              if (projectCount > 0)
+                parts.push(`${projectCount} project${projectCount === 1 ? '' : 's'}`);
+              if (repos.length > 0)
+                parts.push(`${repos.length} repo${repos.length === 1 ? '' : 's'}`);
+              const runningCount = allSessions().filter((s) => s.exited === undefined).length;
+              if (runningCount > 0) parts.push(`${runningCount} running`);
+              return parts.join(' · ');
+            })()}
+          </span>
+          <button
+            type="button"
+            class="status-bar-action"
+            onClick={() => setSearchModalOpen(true)}
+            title="Search (Ctrl+K)"
+          >
+            ⌘K
+          </button>
+          <button
+            type="button"
+            class="status-bar-action icon-only"
+            onClick={() => {
+              const current = theme();
+              const next: typeof current =
+                current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system';
+              handleThemeChange(next);
+            }}
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
+            {theme() === 'dark' || (theme() === 'system' && isDark()) ? '☀' : '☾'}
+          </button>
+          <button
+            type="button"
+            class="status-bar-action"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+          >
+            Settings
+          </button>
+        </header>
+      </Show>
+
       <div class="workspace">
-        {/* Left strip — Projects handle. Always visible so a hidden
-            pane can be summoned back. Disabled until a conception path
-            is picked, since there is no Projects content to show. */}
-        <aside class="edge-strip edge-strip-left">
-          <button
-            class="edge-handle edge-handle-vertical"
-            classList={{ active: layout().projects && layout().leftView === 'projects' }}
-            aria-pressed={layout().projects && layout().leftView === 'projects'}
-            onClick={() => toggleLeftView('projects')}
-            disabled={!handlesEnabled()}
-            title={
-              layout().projects && layout().leftView === 'projects'
-                ? 'Hide Projects'
-                : 'Show Projects'
-            }
-          >
-            <span class="edge-handle-label">Projects</span>
-          </button>
-          <button
-            class="edge-handle edge-handle-vertical"
-            classList={{ active: layout().projects && layout().leftView === 'tasks' }}
-            aria-pressed={layout().projects && layout().leftView === 'tasks'}
-            onClick={() => toggleLeftView('tasks')}
-            disabled={!handlesEnabled()}
-            title={layout().projects && layout().leftView === 'tasks' ? 'Hide Tasks' : 'Show Tasks'}
-          >
-            <span class="edge-handle-label">Tasks</span>
-          </button>
-          <button
-            class="edge-handle edge-handle-vertical"
-            classList={{ active: layout().projects && layout().leftView === 'deliverables' }}
-            aria-pressed={layout().projects && layout().leftView === 'deliverables'}
-            onClick={() => toggleLeftView('deliverables')}
-            disabled={!handlesEnabled()}
-            title={
-              layout().projects && layout().leftView === 'deliverables'
-                ? 'Hide Deliverables'
-                : 'Show Deliverables'
-            }
-          >
-            <span class="edge-handle-label">Deliverables</span>
-          </button>
-        </aside>
+        <ActivityRail
+          leftView={layout().leftView}
+          workingSurface={layout().working}
+          projectsVisible={layout().projects}
+          disabled={!handlesEnabled()}
+          onToggleLeftView={toggleLeftView}
+          onSelectWorking={selectWorking}
+        />
 
         <div class="workspace-center">
           <Show
@@ -540,7 +548,7 @@ function App() {
                     }}
                   >
                     {/* Left band shows one pane at a time, selected by the left
-                        edge-strip handles (Projects / Tasks / Deliverables). */}
+                        activity-rail items (Projects / Tasks / Deliverables). */}
                     <Switch>
                       <Match when={layout().leftView === 'deliverables'}>
                         <DeliverablesView
@@ -580,6 +588,7 @@ function App() {
                             onNewProject={() => setNewProjectOpen(true)}
                             newProjectActions={newProjectActionItems()}
                             onNewProjectAction={(a) => void bridge.handleNewProjectAction(a)}
+                            onRefresh={() => void reloadProjects()}
                           />
                         </Show>
                       </Match>
@@ -714,6 +723,7 @@ function App() {
                         onSetNoneBranches={branchFilter.setNone}
                         onOpen={handleOpenInEditor}
                         onPull={(path) => void handlePull(path)}
+                        onPullAll={() => void handlePullAll()}
                         onLaunch={(slot, path) => void handleLaunch(slot, path)}
                         onForceStop={(r) => void handleForceStop(r)}
                         onStop={handleStopRepo}
@@ -728,30 +738,6 @@ function App() {
             </Show>
           </Show>
         </div>
-
-        {/* Right strip — working-surface handles. Mutually exclusive in
-            the working slot; clicking the active one hides the slot,
-            clicking another swaps. Surfaces listed in display order. */}
-        <aside class="edge-strip edge-strip-right">
-          <For each={WORKING_SURFACE_HANDLES}>
-            {(handle) => (
-              <button
-                class="edge-handle edge-handle-vertical"
-                classList={{ active: layout().working === handle.key }}
-                aria-pressed={layout().working === handle.key}
-                onClick={() => selectWorking(layout().working === handle.key ? null : handle.key)}
-                disabled={!handlesEnabled()}
-                title={
-                  layout().working === handle.key
-                    ? `Hide ${handle.label} (${handle.shortcut})`
-                    : `Show ${handle.label} (${handle.shortcut})`
-                }
-              >
-                <span class="edge-handle-label">{handle.label}</span>
-              </button>
-            )}
-          </For>
-        </aside>
       </div>
 
       {/* TerminalPane is always mounted at full window width, below the
@@ -760,7 +746,7 @@ function App() {
           the body open/closed. When closed, only the strip remains
           visible (height collapses to the strip height); when open,
           the body grows to its persisted height above the strip. The
-          left / right edge strips above end where this pane begins,
+           left / right activity rails above end where this pane begins,
           so the bottom band is genuinely full width. */}
       <TerminalPane
         open={layout().terminal}

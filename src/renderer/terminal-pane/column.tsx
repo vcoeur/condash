@@ -2,6 +2,7 @@ import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { Agent } from '@shared/types';
 import { createDropdownMenu } from '../dropdown-menu';
+import { IconClose, TerminalIcon } from '../icons';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
@@ -75,6 +76,14 @@ export interface TerminalColumnProps {
   /** Select the Dashboard body. The Dashboard pseudo-tab (always first in the
    *  left column's strip) fires this; re-selecting it closes the pane. */
   onToggleDashboard: () => void;
+  /** Toggle the bottom pane's split column: spawn right when unsplit,
+   *  collapse right into left when split. */
+  onSplitToggle: () => void;
+  /** True when the bottom pane is currently split into two columns. */
+  isSplit: boolean;
+  /** Working directory passed to spawned shells; shown in the column
+   *  header breadcrumb when no active tab cwd is available. */
+  cwd?: string | null;
 }
 
 /** One column of the bottom terminal pane: tab strip on top + xterm host
@@ -101,8 +110,82 @@ export function TerminalColumn(props: TerminalColumnProps) {
     setHoverAt({ top: rect.bottom + 4, left: rect.left });
   };
 
+  const splitLabel = (): string => {
+    if (props.col === 'right') return 'Unsplit';
+    return props.isSplit ? 'Unsplit' : 'Split';
+  };
+
+  const activeTab = (): Tab | undefined => props.tabs.find((t) => t.id === props.activeId);
+  const breadcrumbPath = (): string => {
+    const tab = activeTab();
+    if (tab?.cwd) return tab.cwd;
+    if (tab) return displayName(tab);
+    return props.cwd ?? '';
+  };
+
   return (
     <div class="terminal-column" classList={{ active: props.isActiveColumn }}>
+      <div class="terminal-column-header">
+        <span class="terminal-column-header-title">
+          <TerminalIcon />
+          <span>Terminal</span>
+        </span>
+        <span class="terminal-column-header-breadcrumb">{breadcrumbPath()}</span>
+        <div class="terminal-column-header-actions">
+          <button
+            type="button"
+            class="terminal-column-header-action"
+            data-label="find"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onOpenSearch(props.col);
+            }}
+            title="Find in buffer (Ctrl+F)"
+            aria-label="Find"
+          >
+            Find
+          </button>
+          <button
+            type="button"
+            class="terminal-column-header-action"
+            data-label="save"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onSaveBuffer(props.col);
+            }}
+            title="Save the active terminal buffer to a file"
+            aria-label="Save buffer"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            class="terminal-column-header-action"
+            data-label="refresh"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onRefresh(props.col);
+            }}
+            title="Repaint the active terminal (fixes a stale buffer after tab-switch)"
+            aria-label="Refresh"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            class="terminal-column-header-action"
+            data-label="split"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onSplitToggle();
+            }}
+            title={splitLabel()}
+            aria-label={splitLabel()}
+          >
+            {splitLabel()}
+          </button>
+        </div>
+      </div>
       <div
         class="terminal-tabs"
         classList={{
@@ -226,6 +309,18 @@ export function TerminalColumn(props: TerminalColumnProps) {
                   {formatMem(tab.memBytes!)}
                 </span>
               </Show>
+              <button
+                type="button"
+                class="terminal-tab-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onCloseTab(tab.id);
+                }}
+                title="Close tab"
+                aria-label={`Close ${displayName(tab)}`}
+              >
+                <IconClose />
+              </button>
             </div>
           )}
         </For>
@@ -253,43 +348,6 @@ export function TerminalColumn(props: TerminalColumnProps) {
           )}
         </Show>
         <SpawnDropdown agents={props.agents} onSpawn={(id) => props.onSpawnShell(props.col, id)} />
-        <span class="terminal-tab-strip-spacer" />
-        <button
-          class="terminal-tab-add"
-          data-label="save"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onSaveBuffer(props.col);
-          }}
-          title="Save the active terminal buffer to a file"
-          aria-label="Save buffer"
-        >
-          Save
-        </button>
-        <button
-          class="terminal-tab-add"
-          data-label="find"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onOpenSearch(props.col);
-          }}
-          title="Find in buffer (Ctrl+F)"
-          aria-label="Find"
-        >
-          Find
-        </button>
-        <button
-          class="terminal-tab-add"
-          data-label="refresh"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onRefresh(props.col);
-          }}
-          title="Repaint the active terminal (fixes a stale buffer after tab-switch)"
-          aria-label="Refresh"
-        >
-          Refresh
-        </button>
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />
       {/* Right-click tab menu. Portal'd to the body so it escapes the strip's

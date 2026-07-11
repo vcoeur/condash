@@ -46,6 +46,8 @@ export function CodeView(props: {
   onSetNoneBranches: () => void;
   onOpen: (path: string) => void;
   onPull: (path: string) => void;
+  /** Pull every configured repository. Shown as a pane-header action. */
+  onPullAll?: () => void;
   onLaunch: (slot: OpenWithSlotKey, path: string) => void;
   onForceStop: (repo: RepoEntry) => void;
   onStop: (repo: RepoEntry) => void;
@@ -88,16 +90,32 @@ export function CodeView(props: {
   });
   return (
     <div class="repos-pane">
+      <header class="pane-header">
+        <span class="pane-header-title">Code</span>
+        <span class="spacer" />
+        <div class="pane-header-actions">
+          <BranchFilter
+            available={filterable()}
+            selected={props.selectedBranches}
+            stickyAll={props.stickyAllBranches}
+            activeProjectBranches={props.activeProjectBranches}
+            onToggle={props.onToggleBranch}
+            onSetAllSticky={props.onSetAllSticky}
+            onSetNone={props.onSetNoneBranches}
+          />
+          <Show when={props.onPullAll}>
+            <button
+              type="button"
+              class="pane-header-action"
+              onClick={() => props.onPullAll?.()}
+              title="Pull all repositories"
+            >
+              Pull all
+            </button>
+          </Show>
+        </div>
+      </header>
       <div class="repos-pane-scroll" ref={scrollRef}>
-        <BranchFilter
-          available={filterable()}
-          selected={props.selectedBranches}
-          stickyAll={props.stickyAllBranches}
-          activeProjectBranches={props.activeProjectBranches}
-          onToggle={props.onToggleBranch}
-          onSetAllSticky={props.onSetAllSticky}
-          onSetNone={props.onSetNoneBranches}
-        />
         <For each={grouped()}>
           {(group) => {
             const isCollapsed = (): boolean => collapsed().has(group.key);

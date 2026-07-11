@@ -32,9 +32,7 @@ test('Resources pane: handle, render, copy path, view markdown', async () => {
     // The resources tree is read on-demand when the pane mounts. The watcher
     // also fires `tree-events` for newly-written files; either way, clicking
     // the handle below pulls the freshly-walked tree.
-    const resourcesHandle = window
-      .locator('.edge-strip-right .edge-handle')
-      .filter({ hasText: 'Resources' });
+    const resourcesHandle = window.locator('.rail-item[title*="Resources"]');
     await expect(resourcesHandle).toBeVisible();
     await resourcesHandle.click();
 
@@ -117,9 +115,7 @@ test('Skills pane: SKILL.md badge + shipped chip + diverged warning', async () =
   });
   const { window, cleanup } = booted;
   try {
-    const skillsHandle = window
-      .locator('.edge-strip-right .edge-handle')
-      .filter({ hasText: 'Skills' });
+    const skillsHandle = window.locator('.rail-item[title*="Skills"]');
     await skillsHandle.click();
 
     await expect(window.locator('.skills-pane')).toBeVisible();
