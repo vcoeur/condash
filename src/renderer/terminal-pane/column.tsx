@@ -125,16 +125,184 @@ export function TerminalColumn(props: TerminalColumnProps) {
 
   return (
     <div class="terminal-column" classList={{ active: props.isActiveColumn }}>
-      <div class="terminal-column-header">
-        <span class="terminal-column-header-title">
-          <TerminalIcon />
-          <span>Terminal</span>
-        </span>
-        <span class="terminal-column-header-breadcrumb">{breadcrumbPath()}</span>
-        <div class="terminal-column-header-actions">
+      <div class="terminal-header">
+        <div class="terminal-header-start">
+          <span class="terminal-header-title">
+            <TerminalIcon />
+            <span>Terminal</span>
+          </span>
+          <span class="terminal-header-breadcrumb">{breadcrumbPath()}</span>
+        </div>
+        <div
+          class="terminal-tabs"
+          classList={{
+            'drop-strip-target':
+              props.dnd.draggingId() !== null &&
+              props.dnd.dropTarget().column === props.col &&
+              props.dnd.dropTarget().id === null,
+          }}
+          onDragOver={(e) => props.dnd.onDragOverStrip(e, props.col)}
+          onDragLeave={(e) => props.dnd.onDragLeaveStrip(e, props.col)}
+          onDrop={(e) => props.dnd.onDropOnStrip(e, props.col)}
+          onClick={() => props.onActivateColumn(props.col)}
+        >
+          {/* Dashboard pseudo-tab — always present, always first, left column
+           *  only (it is one global view, not a per-column body). It reads as a
+           *  tab but is fixed: not draggable, renamable, or closable. Selecting
+           *  it shows the Dashboard body; selecting any real terminal tab below
+           *  switches back to the terminal view. Re-selecting it while active
+           *  closes the pane (same affordance the old Dashboard handle had). */}
+          <Show when={props.col === 'left'}>
+            <button
+              type="button"
+              class="terminal-tab terminal-tab-dashboard"
+              classList={{ active: props.paneOpen && props.dashboardActive }}
+              aria-pressed={props.paneOpen && props.dashboardActive}
+              title="Dashboard — live summary of all terminal tabs"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onToggleDashboard();
+              }}
+            >
+              <span class="terminal-tab-dashboard-icon" aria-hidden="true">
+                ▦
+              </span>
+              <span class="terminal-tab-label">Dashboard</span>
+            </button>
+          </Show>
+          <For each={props.tabs}>
+            {(tab) => (
+              <div
+                class={`terminal-tab app-pill-${tab.colorSlot ?? 0}`}
+                data-sid={tab.id}
+                classList={{
+                  active: tab.id === props.activeId && !props.dashboardActive,
+                  exited: tab.exited !== undefined,
+                  renaming: tab.id === props.renamingId,
+                  dragging: props.dnd.draggingId() === tab.id,
+                  'drop-before':
+                    props.dnd.dropTarget().id === tab.id &&
+                    props.dnd.draggingId() !== null &&
+                    props.dnd.draggingId() !== tab.id,
+                }}
+                draggable={tab.id !== props.renamingId}
+                onDragStart={(e) => props.dnd.onDragStart(e, tab.id)}
+                onDragEnd={props.dnd.onDragEndTab}
+                onDragOver={(e) => props.dnd.onDragOverTab(e, tab.id, props.col)}
+                onDrop={(e) => props.dnd.onDropOnTab(e, tab.id, props.col)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onActivateTab(props.col, tab.id);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCtxTabId(tab.id);
+                  ctxMenu.openAt(e.clientX, e.clientY);
+                }}
+                onDblClick={() => props.onRequestRename(tab.id)}
+                onMouseEnter={(e) => openTabPopover(tab, e.currentTarget)}
+                onMouseLeave={() => setHovered(null)}
+                // When the dashboard has a summary for this tab, the rich hover
+                // popover replaces the native tooltip (showing both would stack two
+                // tooltips). Otherwise lead with the full title so a hover reveals
+                // truncated text, and append the cwd when the shell reported one.
+                title={
+                  hasSummary(tab)
+                    ? undefined
+                    : tab.cwd
+                      ? `${displayName(tab)} — ${tab.cwd}`
+                      : displayName(tab)
+                }
+              >
+                <Show when={tab.busy && tab.exited === undefined && tab.id !== props.renamingId}>
+                  <span class="terminal-tab-busy" aria-hidden="true" />
+                </Show>
+                <Show
+                  when={tab.id === props.renamingId}
+                  fallback={<span class="terminal-tab-label">{displayName(tab)}</span>}
+                >
+                  <input
+                    class="terminal-tab-rename"
+                    type="text"
+                    value={displayName(tab)}
+                    ref={(el) => queueMicrotask(() => el && (el.focus(), el.select()))}
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={(e) => props.onCommitRename(tab.id, e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        props.onCommitRename(tab.id, e.currentTarget.value);
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        props.onCancelRename();
+                      }
+                      e.stopPropagation();
+                    }}
+                  />
+                </Show>
+                <Show
+                  when={
+                    tab.exited === undefined &&
+                    tab.memBytes !== undefined &&
+                    tab.id !== props.renamingId
+                  }
+                >
+                  <span
+                    class="terminal-tab-mem"
+                    classList={{ warn: memWarn(tab) }}
+                    title={memTitle(tab)}
+                  >
+                    {formatMem(tab.memBytes!)}
+                  </span>
+                </Show>
+                <button
+                  type="button"
+                  class="terminal-tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onCloseTab(tab.id);
+                  }}
+                  title="Close tab"
+                  aria-label={`Close ${displayName(tab)}`}
+                >
+                  <IconClose />
+                </button>
+              </div>
+            )}
+          </For>
+          <Show when={hovered()}>
+            {(tab) => (
+              <Portal>
+                <div
+                  class="terminal-tab-popover portal"
+                  style={{ top: `${hoverAt()?.top ?? 0}px`, left: `${hoverAt()?.left ?? 0}px` }}
+                >
+                  <div class="terminal-tab-popover-title">{displayName(tab())}</div>
+                  <Show when={tab().currentAction}>
+                    <div class="terminal-tab-popover-action">{tab().currentAction}</div>
+                  </Show>
+                  <Show when={(tab().contextLines?.length ?? 0) > 0}>
+                    <ul class="terminal-tab-popover-context">
+                      <For each={tab().contextLines}>{(line) => <li>{line}</li>}</For>
+                    </ul>
+                  </Show>
+                  <Show when={tab().cwd}>
+                    <div class="terminal-tab-popover-cwd">{tab().cwd}</div>
+                  </Show>
+                </div>
+              </Portal>
+            )}
+          </Show>
+          <SpawnDropdown
+            agents={props.agents}
+            onSpawn={(id) => props.onSpawnShell(props.col, id)}
+          />
+        </div>
+        <div class="terminal-header-actions">
           <button
             type="button"
-            class="terminal-column-header-action"
+            class="terminal-header-action"
             data-label="find"
             onClick={(e) => {
               e.stopPropagation();
@@ -147,7 +315,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
           </button>
           <button
             type="button"
-            class="terminal-column-header-action"
+            class="terminal-header-action"
             data-label="save"
             onClick={(e) => {
               e.stopPropagation();
@@ -160,7 +328,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
           </button>
           <button
             type="button"
-            class="terminal-column-header-action"
+            class="terminal-header-action"
             data-label="refresh"
             onClick={(e) => {
               e.stopPropagation();
@@ -173,7 +341,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
           </button>
           <button
             type="button"
-            class="terminal-column-header-action"
+            class="terminal-header-action"
             data-label="split"
             onClick={(e) => {
               e.stopPropagation();
@@ -185,169 +353,6 @@ export function TerminalColumn(props: TerminalColumnProps) {
             {splitLabel()}
           </button>
         </div>
-      </div>
-      <div
-        class="terminal-tabs"
-        classList={{
-          'drop-strip-target':
-            props.dnd.draggingId() !== null &&
-            props.dnd.dropTarget().column === props.col &&
-            props.dnd.dropTarget().id === null,
-        }}
-        onDragOver={(e) => props.dnd.onDragOverStrip(e, props.col)}
-        onDragLeave={(e) => props.dnd.onDragLeaveStrip(e, props.col)}
-        onDrop={(e) => props.dnd.onDropOnStrip(e, props.col)}
-        onClick={() => props.onActivateColumn(props.col)}
-      >
-        {/* Dashboard pseudo-tab — always present, always first, left column
-         *  only (it is one global view, not a per-column body). It reads as a
-         *  tab but is fixed: not draggable, renamable, or closable. Selecting
-         *  it shows the Dashboard body; selecting any real terminal tab below
-         *  switches back to the terminal view. Re-selecting it while active
-         *  closes the pane (same affordance the old Dashboard handle had). */}
-        <Show when={props.col === 'left'}>
-          <button
-            type="button"
-            class="terminal-tab terminal-tab-dashboard"
-            classList={{ active: props.paneOpen && props.dashboardActive }}
-            aria-pressed={props.paneOpen && props.dashboardActive}
-            title="Dashboard — live summary of all terminal tabs"
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onToggleDashboard();
-            }}
-          >
-            <span class="terminal-tab-dashboard-icon" aria-hidden="true">
-              ▦
-            </span>
-            <span class="terminal-tab-label">Dashboard</span>
-          </button>
-        </Show>
-        <For each={props.tabs}>
-          {(tab) => (
-            <div
-              class={`terminal-tab app-pill-${tab.colorSlot ?? 0}`}
-              data-sid={tab.id}
-              classList={{
-                active: tab.id === props.activeId && !props.dashboardActive,
-                exited: tab.exited !== undefined,
-                renaming: tab.id === props.renamingId,
-                dragging: props.dnd.draggingId() === tab.id,
-                'drop-before':
-                  props.dnd.dropTarget().id === tab.id &&
-                  props.dnd.draggingId() !== null &&
-                  props.dnd.draggingId() !== tab.id,
-              }}
-              draggable={tab.id !== props.renamingId}
-              onDragStart={(e) => props.dnd.onDragStart(e, tab.id)}
-              onDragEnd={props.dnd.onDragEndTab}
-              onDragOver={(e) => props.dnd.onDragOverTab(e, tab.id, props.col)}
-              onDrop={(e) => props.dnd.onDropOnTab(e, tab.id, props.col)}
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onActivateTab(props.col, tab.id);
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setCtxTabId(tab.id);
-                ctxMenu.openAt(e.clientX, e.clientY);
-              }}
-              onDblClick={() => props.onRequestRename(tab.id)}
-              onMouseEnter={(e) => openTabPopover(tab, e.currentTarget)}
-              onMouseLeave={() => setHovered(null)}
-              // When the dashboard has a summary for this tab, the rich hover
-              // popover replaces the native tooltip (showing both would stack two
-              // tooltips). Otherwise lead with the full title so a hover reveals
-              // truncated text, and append the cwd when the shell reported one.
-              title={
-                hasSummary(tab)
-                  ? undefined
-                  : tab.cwd
-                    ? `${displayName(tab)} — ${tab.cwd}`
-                    : displayName(tab)
-              }
-            >
-              <Show when={tab.busy && tab.exited === undefined && tab.id !== props.renamingId}>
-                <span class="terminal-tab-busy" aria-hidden="true" />
-              </Show>
-              <Show
-                when={tab.id === props.renamingId}
-                fallback={<span class="terminal-tab-label">{displayName(tab)}</span>}
-              >
-                <input
-                  class="terminal-tab-rename"
-                  type="text"
-                  value={displayName(tab)}
-                  ref={(el) => queueMicrotask(() => el && (el.focus(), el.select()))}
-                  onClick={(e) => e.stopPropagation()}
-                  onBlur={(e) => props.onCommitRename(tab.id, e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      props.onCommitRename(tab.id, e.currentTarget.value);
-                    } else if (e.key === 'Escape') {
-                      e.preventDefault();
-                      props.onCancelRename();
-                    }
-                    e.stopPropagation();
-                  }}
-                />
-              </Show>
-              <Show
-                when={
-                  tab.exited === undefined &&
-                  tab.memBytes !== undefined &&
-                  tab.id !== props.renamingId
-                }
-              >
-                <span
-                  class="terminal-tab-mem"
-                  classList={{ warn: memWarn(tab) }}
-                  title={memTitle(tab)}
-                >
-                  {formatMem(tab.memBytes!)}
-                </span>
-              </Show>
-              <button
-                type="button"
-                class="terminal-tab-close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onCloseTab(tab.id);
-                }}
-                title="Close tab"
-                aria-label={`Close ${displayName(tab)}`}
-              >
-                <IconClose />
-              </button>
-            </div>
-          )}
-        </For>
-        <Show when={hovered()}>
-          {(tab) => (
-            <Portal>
-              <div
-                class="terminal-tab-popover portal"
-                style={{ top: `${hoverAt()?.top ?? 0}px`, left: `${hoverAt()?.left ?? 0}px` }}
-              >
-                <div class="terminal-tab-popover-title">{displayName(tab())}</div>
-                <Show when={tab().currentAction}>
-                  <div class="terminal-tab-popover-action">{tab().currentAction}</div>
-                </Show>
-                <Show when={(tab().contextLines?.length ?? 0) > 0}>
-                  <ul class="terminal-tab-popover-context">
-                    <For each={tab().contextLines}>{(line) => <li>{line}</li>}</For>
-                  </ul>
-                </Show>
-                <Show when={tab().cwd}>
-                  <div class="terminal-tab-popover-cwd">{tab().cwd}</div>
-                </Show>
-              </div>
-            </Portal>
-          )}
-        </Show>
-        <SpawnDropdown agents={props.agents} onSpawn={(id) => props.onSpawnShell(props.col, id)} />
       </div>
       <div class="terminal-host" ref={(el) => props.registerHost(props.col, el)} />
       {/* Right-click tab menu. Portal'd to the body so it escapes the strip's

@@ -52,6 +52,11 @@ import { ActivityRail } from './activity-rail';
 import './styles.css';
 import './app-shell.css';
 import './primitives.css';
+import './actions.css';
+import './modal-base.css';
+import './project-preview.css';
+import './action-dropdown-button.css';
+import './welcome-screen.css';
 
 function App() {
   // --- Toast first so every downstream hydration call can surface a

@@ -4,14 +4,14 @@
 /* Status bar — thin top band showing conception context, sync state,
  * counts, search, theme toggle, and settings. */
 .status-bar {
-  height: 38px;
+  height: 30px;
   flex-shrink: 0;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 16px;
+  gap: 10px;
+  padding: 0 14px;
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
@@ -45,7 +45,7 @@
 }
 
 .status-bar .status-bar-action {
-  padding: 4px 10px;
+  padding: 3px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -62,15 +62,15 @@
 }
 
 .status-bar .status-bar-action.icon-only {
-  padding: 4px;
-  width: 28px;
-  height: 28px;
+  padding: 3px;
+  width: 24px;
+  height: 24px;
   justify-content: center;
 }
 
 .status-bar .status-bar-action svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   stroke-width: 1.7;
 }
 
@@ -167,12 +167,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 18px 10px;
+  padding: 10px 18px 8px;
   flex-shrink: 0;
 }
 
 .pane-header-title {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--text);
 }
@@ -189,7 +189,7 @@
 
 .pane-header-actions .pane-header-action,
 .pane-header-actions button {
-  padding: 5px 10px;
+  padding: 4px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -209,16 +209,16 @@
 
 .pane-header-actions .pane-header-action.icon-only,
 .pane-header-actions button.icon-only {
-  padding: 5px;
-  width: 28px;
-  height: 28px;
+  padding: 4px;
+  width: 24px;
+  height: 24px;
   justify-content: center;
 }
 
 .pane-header-actions .pane-header-action svg,
 .pane-header-actions button svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   stroke-width: 1.7;
 }
 
