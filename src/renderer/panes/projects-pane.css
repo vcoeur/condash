@@ -80,11 +80,11 @@
 }
 
 .group-block[data-empty='true']:not([data-status='now']) .group-header {
-  color: var(--text-faint);
+  opacity: 0.65;
 }
 
 .group-block[data-empty='true']:not([data-status='now']) .group-header .dot {
-  background: var(--border-strong);
+  background: var(--text-muted);
 }
 
 .group-block[data-empty='true'] .group-header {
@@ -142,10 +142,16 @@ body[data-dragging='project'] .group-block.drag-over {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 6px 12px;
+  padding: 8px 6px 8px 2px;
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+/* Subgroup headers are nested and should stay subtle — no dividing rule. */
+.group-block.subgroup > .group-header {
+  border-bottom: none;
 }
 
 /* The trailing slot pushes any header action (NOW gets the "+ New project"
@@ -190,8 +196,8 @@ body[data-dragging='project'] .group-block.drag-over {
 }
 
 .group-header .dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--col-status, var(--text-faint));
   flex-shrink: 0;
@@ -199,25 +205,25 @@ body[data-dragging='project'] .group-block.drag-over {
 
 .group-header .name {
   font-family: var(--font-ui);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: var(--text-xs);
   color: var(--text);
 }
 
 .group-header .count {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: var(--text-xs);
   letter-spacing: 0.04em;
 }
 
-/* The horizontal rule that used to extend from the section title to the
- * right edge has been removed (was visual noise, especially with several
- * empty sections stacked). Section identity now comes from the dot +
- * uppercase name + count alone, separated by negative space below. */
+/* A subtle bottom border separates each status section so the header
+ * scans as a distinct row when the section is collapsed. The rule is
+ * quiet enough not to compete with cards when expanded, but gives the
+ * collapsed stack enough structure to read at a glance. */
 
 .group-body {
   display: grid;

@@ -41,6 +41,11 @@
   margin-top: 0;
 }
 
+/* Section title sits between two bold, full-width horizontal rules in the
+ * section's own palette colour — `--section-color` comes from `--app-pill-fg`
+ * on the `app-pill-N` class hashed off the section name. The rules are
+ * brightened and desaturated toward white so they read as clean bright lines;
+ * the title stays near-white with only a faint tint of the section colour. */
 .repos-section-header {
   --section-color: var(--app-pill-fg, var(--border-strong));
   appearance: none;
@@ -48,16 +53,18 @@
   box-sizing: border-box;
   background: transparent;
   border: none;
+  border-top: 3px solid color-mix(in srgb, var(--section-color) 50%, white);
+  border-bottom: 3px solid color-mix(in srgb, var(--section-color) 50%, white);
   border-radius: 0;
-  padding: 10px 2px;
+  padding: 7px 2px;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--section-color);
-  letter-spacing: 0;
-  text-transform: none;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: color-mix(in srgb, var(--section-color) 25%, var(--text));
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
@@ -65,10 +72,17 @@
   filter: brightness(1.15);
 }
 
+.repos-section-header .caret-icon {
+  display: inline-block;
+  width: 1ch;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
 .repos-section-count {
   margin-left: auto;
   font-weight: 400;
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   letter-spacing: 0;
   color: var(--text-muted);
 }
