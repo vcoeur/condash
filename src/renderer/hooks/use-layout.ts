@@ -26,7 +26,7 @@ export interface UseLayout {
   updateLayout: (patch: Partial<LayoutState>) => void;
   toggleProjects: () => void;
   toggleTerminal: () => void;
-  /** Left edge-strip handle action: clicking the active view (band visible +
+  /** Left activity-rail item action: clicking the active view (band visible +
    *  that view) hides the band; clicking the other shows the band on it.
    *  Mirrors the right strip's mutually-exclusive working-surface toggle. */
   toggleLeftView: (view: LeftView) => void;

@@ -617,6 +617,40 @@ export function createTerminalController(props: TerminalPaneProps) {
     deleteMeta(id);
   };
 
+  /** Toggle a split column: when unsplit, spawn a new shell in the right
+   *  column; when split, move every right-column tab back to the left. */
+  const splitToggle = async (): Promise<void> => {
+    if (isSplit()) {
+      const rightTabs = tabsIn('right').slice();
+      const rightActive = activeIdIn('right');
+      for (const tab of rightTabs) {
+        const newColumn: Column = 'left';
+        setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, column: newColumn } : t)));
+        movemount(tab.id, newColumn);
+        const updatedTab = tabs().find((t) => t.id === tab.id);
+        if (updatedTab) {
+          setMeta(tab.id, {
+            label: updatedTab.label,
+            customName: updatedTab.customName,
+            column: newColumn,
+            colorSlot: updatedTab.colorSlot,
+            pinned: updatedTab.pinned,
+          });
+        }
+      }
+      setActiveIn('right', null);
+      if (rightActive) {
+        setActiveIn('left', rightActive);
+        setActiveColumn('left');
+      }
+      queueMicrotask(focusActive);
+    } else {
+      setNextSpawnColumn('right');
+      setActiveColumn('right');
+      await spawnUserShell(null, 'my');
+    }
+  };
+
   const commitRename = (id: string, value: string) => {
     const trimmed = value.trim();
     setTabs((prev) =>
@@ -914,6 +948,7 @@ export function createTerminalController(props: TerminalPaneProps) {
     commitRename,
     closeTab,
     spawnUserShell,
+    splitToggle,
     resolveAgent,
     saveActiveBuffer,
     refreshColumn,

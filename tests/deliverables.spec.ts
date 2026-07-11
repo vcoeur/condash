@@ -1,7 +1,7 @@
 /**
  * Deliverables pane e2e — boots the production build against a fixture project
  * whose `## Deliverables` section carries mixed item types (pdf / html / md /
- * external URL / wikilink), opens the pane from its own left edge-strip handle,
+ * external URL / wikilink), opens the pane from its own rail item,
  * and previews the local HTML deliverable in-app. Also doubles as the manual-
  * verification screenshot source (tests/screenshots-out/deliverables/).
  */
@@ -73,11 +73,11 @@ test('deliverables pane aggregates deliverables and previews HTML', async () => 
   const { app, window, cleanup } = booted;
   try {
     await window.setViewportSize({ width: 1400, height: 900 });
-    await window.locator('.edge-strip-left').first().waitFor({ state: 'visible', timeout: 10_000 });
+    await window.locator('.rail').first().waitFor({ state: 'visible', timeout: 10_000 });
 
-    // Open the Deliverables pane from its own left edge-strip handle (a peer of
+    // Open the Deliverables pane from its own rail item (a peer of
     // Projects — not a tab inside the Projects pane).
-    await window.locator('.edge-strip-left .edge-handle', { hasText: 'Deliverables' }).click();
+    await window.locator('.rail-item[title*="Deliverables"]').click();
 
     // One group (only the project that has deliverables), five rows.
     const groups = window.locator('.deliverables-group');

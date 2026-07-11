@@ -128,6 +128,7 @@ export function TerminalPane(props: TerminalPaneProps) {
     registerHost,
     setNextSpawnColumn,
     registerPaneSection,
+    splitToggle,
   } = createTerminalController(props);
 
   const renderColumn = (col: Column) => (
@@ -174,6 +175,8 @@ export function TerminalPane(props: TerminalPaneProps) {
       onRefreshTab={(id) => refreshSession(id)}
       dashboardActive={props.bottomView === 'dashboard'}
       onToggleDashboard={() => props.onSelectBand('dashboard')}
+      onSplitToggle={splitToggle}
+      isSplit={isSplit()}
     />
   );
 

@@ -58,7 +58,7 @@
  * bottom of the window and clicking the pill expands the body; when
  * open, clicking the pill collapses the body. Active styling marks
  * the pill while the body is showing. Matches the Projects / Code /
- * Knowledge edge handles in shape. */
+ * Knowledge activity-rail items in shape. */
 .terminal-columns {
   flex: 1;
   display: grid;
@@ -109,6 +109,38 @@
   position: relative;
 }
 
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.terminal-header-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.terminal-header-action {
+  font-size: var(--text-3xs);
+  padding: 3px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.terminal-header-action:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
 .terminal-column.active::after {
   content: '';
   position: absolute;
@@ -147,22 +179,15 @@
 
 .terminal-tabs {
   display: flex;
-  /* Tabs now carry richer auto-titles, so the strip wraps to several
-   * compact rows instead of scrolling sideways — every tab stays visible.
-   * Tight row-gap + thin vertical padding keep the extra rows from eating
-   * the terminal body; past a few rows it scrolls rather than grows. */
-  flex-wrap: wrap;
-  gap: 3px 4px;
+  /* Single horizontal row of tabs that scrolls when there are many. It lives
+   *  inside .terminal-header alongside the title/breadcrumb and actions. */
+  flex-wrap: nowrap;
+  gap: 4px;
   align-items: center;
-  align-content: flex-start;
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  overflow-y: auto;
-  max-height: 96px;
-  scrollbar-width: thin;
-  flex-shrink: 0;
-  min-height: 32px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
   transition: background 100ms ease;
 }
 
@@ -175,46 +200,56 @@
 .terminal-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  font-size: var(--text-xs);
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--text-2xs);
   font-weight: 500;
   cursor: pointer;
-  /* Button colour comes from the shared app-pill wheel — the `app-pill-N`
-   * class on the tab sets these vars (same palette as the Code pane + project
-   * cards). Falls back to the neutral surface if no slot resolved. */
-  background: var(--app-pill-bg, var(--bg-elevated));
-  color: var(--app-pill-fg, var(--text));
-  max-width: 300px;
-  min-width: 72px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  max-width: 260px;
+  min-width: 64px;
   flex-shrink: 0;
-  /* Inactive tabs stay nearly full-strength so their titles read clearly;
-   * the active tab is set apart by decoration (ring + glow + bold), not by
-   * dimming everything else. */
+  white-space: nowrap;
   opacity: 0.9;
   transition:
     opacity 0.1s ease,
+    background 0.1s ease,
+    border-color 0.1s ease,
     box-shadow 0.1s ease;
 }
 
 .terminal-tab:hover {
   opacity: 1;
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
 .terminal-tab.active {
   opacity: 1;
+  background: var(--accent-soft);
   border-color: var(--accent);
-  /* Crisp 2px accent ring + soft accent glow so the focused tab is
-   * unmistakable even when the inactive tabs are barely dimmed. */
-  box-shadow:
-    0 0 0 2px var(--accent),
-    0 1px 7px -1px color-mix(in srgb, var(--accent) 60%, transparent);
+  color: var(--accent);
 }
 
 .terminal-tab.active .terminal-tab-label {
   font-weight: 700;
+}
+
+/* App-pill-coloured terminal tabs — inactive tabs inherit the slot palette
+ *  from `app-pill.css` so each session's source app is scannable at a glance.
+ *  The active tab keeps the accent highlight instead, so selection state stays
+ *  unambiguous. */
+.terminal-tab[class*='app-pill-']:not(.active) {
+  background: var(--app-pill-bg);
+  color: var(--app-pill-fg);
+  border-color: transparent;
+}
+
+.terminal-tab[class*='app-pill-']:not(.active):hover {
+  filter: brightness(1.08);
 }
 
 /* Dashboard pseudo-tab: looks like a tab but is a fixed, always-first entry
@@ -302,6 +337,44 @@
   50% {
     opacity: 1;
   }
+}
+
+/* Tab close button — only visible on hover so the resting strip stays
+ * compact; keyboard focus still reaches the button. */
+.terminal-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0 -4px 0 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.1s ease,
+    background 0.1s ease;
+}
+
+.terminal-tab:hover .terminal-tab-close,
+.terminal-tab:focus-visible .terminal-tab-close,
+.terminal-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.terminal-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.terminal-tab-close svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 1.8;
 }
 
 /* Per-tab memory meter — live cgroup-scope usage for a memory-scoped tab,
