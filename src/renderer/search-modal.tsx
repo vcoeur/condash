@@ -69,7 +69,7 @@ const SOURCE_META: Record<SourceFilter, SourceMeta> = {
 export function SearchModal(props: {
   onClose: () => void;
   onOpenProject: (projectPath: string) => void;
-  onOpenFile: (filePath: string) => void;
+  onOpenFile: (path: string, projectPath?: string, projectTitle?: string) => void;
   /** Optional — when provided, log hits are surfaced as their own row
    * type that, on click, opens the Logs pane and selects that session. */
   onOpenLog?: (logPath: string) => void;

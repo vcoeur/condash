@@ -272,7 +272,18 @@ export function ModalHost(props: ModalHostProps) {
             router.setPreviewBackPath(null);
             setPreviewPath(`${projectDir}/README.md`);
           }}
-          onOpenFile={handleOpenKnowledgeFile}
+          onOpenFile={(path, projectPath, projectTitle) => {
+            if (projectPath && projectTitle) {
+              // Project note opened from search: close any open preview and
+              // remember the project README so the note modal's back button
+              // returns to the project preview instead of dismissing.
+              router.setPreviewBackPath(`${projectPath}/README.md`);
+              setPreviewPath(null);
+              setModal({ path, backLabel: projectTitle });
+              return;
+            }
+            handleOpenKnowledgeFile(path);
+          }}
           onOpenLog={(path) => {
             // Open the Logs pane and post an open-request the pane reacts
             // to. Nonce bumps every time so reactivating the same path

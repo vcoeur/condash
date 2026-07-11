@@ -44,7 +44,7 @@ function RowIcon(props: { source: string }) {
 export function ProjectGroupRow(props: {
   group: ProjectGroup;
   onOpenProject: (projectPath: string) => void;
-  onOpenFile: (filePath: string) => void;
+  onOpenFile: (path: string, projectPath: string, projectTitle: string) => void;
 }) {
   const headerTitle = (): string => {
     if (props.group.header) return props.group.header.title;
@@ -84,7 +84,13 @@ export function ProjectGroupRow(props: {
               <li>
                 <button
                   class="search-row search-file-row"
-                  onClick={() => props.onOpenFile(file.path)}
+                  onClick={() =>
+                    props.onOpenFile(
+                      file.path,
+                      props.group.projectPath,
+                      props.group.projectTitle ?? headerTitle(),
+                    )
+                  }
                 >
                   <div class="search-row-main">
                     <div class="search-row-content">
