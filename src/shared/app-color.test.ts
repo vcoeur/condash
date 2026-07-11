@@ -29,6 +29,12 @@ describe('appHandle', () => {
     expect(appHandle('/trailing/slash/')).toBe('slash');
   });
 
+  it('normalises Windows backslash separators to /', () => {
+    expect(appHandle('vcoeur\\notes.vcoeur.com')).toBe('notes.vcoeur.com');
+    expect(appHandle('C:\\Users\\alice\\src\\condash')).toBe('condash');
+    expect(appHandle('#vcoeur\\condash')).toBe('condash');
+  });
+
   it('returns empty for empty / #-only input', () => {
     expect(appHandle('')).toBe('');
     expect(appHandle('#')).toBe('');

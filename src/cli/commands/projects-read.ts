@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { toPosix } from '../../shared/path';
 import { findProjectReadmes } from '../../main/walk';
 import { parseReadmeWithHeader } from '../../main/parse';
 import { parseReadmesWithDiskCache } from '../../main/parse-cache-disk';
@@ -72,7 +73,7 @@ export async function listProjects(
     const itemDir = dirname(readme);
     rows.push({
       slug: project.slug,
-      path: relative(conceptionPath, itemDir),
+      path: toPosix(relative(conceptionPath, itemDir)),
       absPath: itemDir,
       title: project.title,
       kind: project.kind,
@@ -359,7 +360,7 @@ export async function validateCommand(
     totalErrors += v.errors.length + b.errors.length;
     reports.push({
       path: readme,
-      relPath: relative(conceptionPath, readme),
+      relPath: toPosix(relative(conceptionPath, readme)),
       errors: [...v.errors, ...b.errors],
       warnings: [...v.warnings, ...b.warnings],
     });

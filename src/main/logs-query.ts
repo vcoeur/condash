@@ -422,7 +422,7 @@ export async function resolveSession(
   if (
     selectorPosix.endsWith('.txt') &&
     selectorPosix.includes('/') &&
-    selectorPosix.startsWith(rootPosix)
+    selectorPosix.startsWith(rootPosix + '/')
   ) {
     const m = SESSION_RE.exec(selectorPosix);
     if (!m) return null;

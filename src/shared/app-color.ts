@@ -15,6 +15,8 @@
  * asked. Now every call site funnels through `appHandle`.
  */
 
+import { toPosix } from './path';
+
 /** Number of distinct slots; matches the palette in `app-pill.css`. */
 export const APP_COLOR_SLOT_COUNT = 20;
 
@@ -34,7 +36,7 @@ export const APP_COLOR_SLOT_COUNT = 20;
  * @returns the handle (no leading `#`), or `''` for an empty/`#`-only input
  */
 export function appHandle(ref: string): string {
-  let value = ref.trim().replace(/^#+/, '');
+  let value = toPosix(ref.trim()).replace(/^#+/, '');
   if (value.includes('/') || value.startsWith('~')) {
     const segments = value.replace(/\/+$/, '').split('/');
     value = segments[segments.length - 1] ?? '';

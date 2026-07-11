@@ -324,6 +324,16 @@ describe('resolveSession', () => {
     await makeLog({ day: '2026-05-30', time: '100000', sid: 't-abc1', exitCode: 0 });
     expect(await resolveSession(tmp, 't-zzz')).toBeNull();
   });
+
+  it('does not misclassify a sibling `logs*` directory as the logs root (C1)', async () => {
+    // A directory whose name starts with `logs` but is not `.condash/logs` must
+    // not satisfy the direct-path guard.
+    const siblingDir = join(condashLogsRoot(tmp).replace('/logs', '-extra'), '2026', '05', '30');
+    await mkdir(siblingDir, { recursive: true });
+    const siblingPath = join(siblingDir, '100000-t-sib.txt');
+    await writeFile(siblingPath, `${META_LINE_PREFIX}{}\n\nbody\n`, 'utf8');
+    expect(await resolveSession(tmp, siblingPath)).toBeNull();
+  });
 });
 
 describe('readSession — slicing', () => {

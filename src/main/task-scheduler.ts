@@ -28,7 +28,7 @@ import { listAgents } from './agents';
 import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings } from './settings';
 import { readTask } from './tasks';
-import { spawnEnv } from './shell-env';
+import { spawnPtyEnv } from './shell-env';
 import { substitute } from '../shared/action-template';
 import { parseCadence } from '../shared/cadence';
 import { quoteForShell, shellCommandArgv, shellFamily } from '../shared/shell-quote';
@@ -221,10 +221,7 @@ async function runHeadless(
   const command = `${agent.command} ${promptFlag(mode)} ${quoteForShell(prompt, family)}`;
   const argv = shellCommandArgv(family, command);
 
-  const childEnv: NodeJS.ProcessEnv = { ...(await spawnEnv()), TERM: 'xterm-256color' };
-  delete childEnv.npm_config_prefix;
-  delete childEnv.npm_config_globalconfig;
-  delete childEnv.npm_config_userconfig;
+  const childEnv = await spawnPtyEnv();
 
   // Teardown/switch guard (E1): the scheduler may have been re-pointed or torn
   // down during the setup awaits above (readTask / listAgents / readSettings /

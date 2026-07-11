@@ -19,7 +19,7 @@ import { getEffectiveConceptionConfig } from './effective-config';
 import { readSettings, updateSettings } from './settings';
 import { tokenise } from './launchers';
 import { wrapWithMemoryScope, sampleCgroupMemory } from './tab-scope';
-import { spawnEnv } from './shell-env';
+import { spawnEnv, spawnPtyEnv } from './shell-env';
 import { safeSend } from './safe-send';
 import { SessionLogger } from './terminal-logger';
 import { cleanTerminalText } from './dashboard/clean-text';
@@ -474,20 +474,11 @@ export async function spawnTerminal(
   const cols = request.cols ?? 80;
   const rows = request.rows ?? 24;
 
-  // Base env from spawnEnv(): a copy of process.env with PATH replaced by the
-  // resolved login-shell PATH, so user-installed CLIs (opencode, ~/bin
+  // Base env from spawnPtyEnv(): a copy of process.env with PATH replaced by
+  // the resolved login-shell PATH, so user-installed CLIs (opencode, ~/bin
   // wrappers) resolve even though GUI-launched condash never sourced
-  // ~/.profile.
-  //
-  // Then strip the npm-cli leakage: Electron runs through whatever shell
-  // launched it, which on systems with a global npm install at /usr/local
-  // sets `npm_config_prefix=/usr/local`. nvm refuses to load when that is set
-  // ("nvm is not compatible with the npm_config_prefix environment
-  // variable"), so user shells spawned here would dump that error on boot.
-  const childEnv: NodeJS.ProcessEnv = { ...(await spawnEnv()), TERM: 'xterm-256color' };
-  delete childEnv.npm_config_prefix;
-  delete childEnv.npm_config_globalconfig;
-  delete childEnv.npm_config_userconfig;
+  // ~/.profile, plus the AppImage/nvm hygiene scrub.
+  const childEnv = await spawnPtyEnv();
 
   // Generated before the spawn so the per-tab sidecar path can be handed to the
   // child via the environment. A cooperating program (the agedum claude hook /

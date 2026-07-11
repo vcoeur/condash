@@ -7,7 +7,7 @@
  *     successful spawn.
  *
  * The whole spawn surface is mocked so the tick can be driven without a real
- * pty / logger, and `spawnEnv()` is a controllable gate that lets the test hold
+ * pty / logger, and `spawnPtyEnv()` is a controllable gate that lets the test hold
  * `runHeadless` open at its last pre-spawn await to simulate a mid-setup teardown.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,8 +18,8 @@ const h = vi.hoisted(() => {
   return {
     ptySpawn: vi.fn(),
     loggerCtor: vi.fn(),
-    spawnEnv: vi.fn(() => gate),
-    /** Hold the next `spawnEnv()` open (the last await before `pty.spawn`). */
+    spawnPtyEnv: vi.fn(() => gate),
+    /** Hold the next `spawnPtyEnv()` open (the last await before `pty.spawn`). */
     armGate: () => {
       gate = new Promise((res) => {
         resolveGate = res;
@@ -35,7 +35,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 vi.mock('node-pty', () => ({ spawn: h.ptySpawn }));
-vi.mock('./shell-env', () => ({ spawnEnv: h.spawnEnv }));
+vi.mock('./shell-env', () => ({ spawnPtyEnv: h.spawnPtyEnv }));
 vi.mock('./terminal-logger', () => ({
   SessionLogger: class {
     constructor(...args: unknown[]) {
@@ -99,7 +99,7 @@ beforeEach(() => {
   h.ptySpawn.mockReset();
   h.ptySpawn.mockImplementation(() => fakePty());
   h.loggerCtor.mockClear();
-  h.spawnEnv.mockClear();
+  h.spawnPtyEnv.mockClear();
   h.resetGate();
 });
 
@@ -116,11 +116,11 @@ describe('task scheduler lifecycle', () => {
   });
 
   it('aborts before pty.spawn when torn down mid-tick (E1)', async () => {
-    h.armGate(); // hold runHeadless at its last await (spawnEnv)
+    h.armGate(); // hold runHeadless at its last await (spawnPtyEnv)
     await setScheduledConception(CONCEPTION);
     void tick(CONCEPTION);
-    // Wait until runHeadless has reached the held spawnEnv gate.
-    await vi.waitFor(() => expect(h.spawnEnv).toHaveBeenCalled());
+    // Wait until runHeadless has reached the held spawnPtyEnv gate.
+    await vi.waitFor(() => expect(h.spawnPtyEnv).toHaveBeenCalled());
     // Tear down mid-setup — this bumps the generation the run captured.
     await setScheduledConception(null);
     // Release the gate; the run resumes and must bail before spawning.
@@ -134,7 +134,7 @@ describe('task scheduler lifecycle', () => {
     h.armGate();
     await setScheduledConception(CONCEPTION);
     void tick(CONCEPTION);
-    await vi.waitFor(() => expect(h.spawnEnv).toHaveBeenCalled());
+    await vi.waitFor(() => expect(h.spawnPtyEnv).toHaveBeenCalled());
     // Switch to a different conception mid-setup.
     await setScheduledConception('/tmp/condash-other-tree');
     h.releaseGate();

@@ -1,21 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import {
-  buildProbeArgs,
-  parseMarkedEnv,
-  resetLoginPathCache,
-  resolveLoginPath,
-  withPath,
-} from './shell-env';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as shellEnv from './shell-env';
 
 describe('buildProbeArgs', () => {
   it('runs the shell as login + interactive and runs a command', () => {
-    const args = buildProbeArgs('/opt/condash/condash.bin', 'MARK');
+    const args = shellEnv.buildProbeArgs('/opt/condash/condash.bin', 'MARK');
     expect(args.slice(0, 3)).toEqual(['-l', '-i', '-c']);
     expect(args).toHaveLength(4);
   });
 
   it('embeds the marker on both sides of the env dump and single-quotes the binary', () => {
-    const command = buildProbeArgs('/opt/condash/condash.bin', 'M4RK3R')[3];
+    const command = shellEnv.buildProbeArgs('/opt/condash/condash.bin', 'M4RK3R')[3];
     expect(command).toContain("'/opt/condash/condash.bin'");
     expect(command).toContain('JSON.stringify(process.env)');
     // The marker is emitted as a JS string literal twice (leading + trailing).
@@ -23,7 +17,7 @@ describe('buildProbeArgs', () => {
   });
 
   it('escapes a single quote in the executable path', () => {
-    const command = buildProbeArgs("/weird/it's/condash", 'MARK')[3];
+    const command = shellEnv.buildProbeArgs("/weird/it's/condash", 'MARK')[3];
     expect(command).toContain("'/weird/it'\\''s/condash'");
   });
 });
@@ -33,24 +27,24 @@ describe('parseMarkedEnv', () => {
 
   it('extracts the JSON object framed by the markers', () => {
     const stdout = `motd banner\n${mark}{"PATH":"/a:/b","HOME":"/home/x"}${mark}\n`;
-    expect(parseMarkedEnv(stdout, mark)).toEqual({ PATH: '/a:/b', HOME: '/home/x' });
+    expect(shellEnv.parseMarkedEnv(stdout, mark)).toEqual({ PATH: '/a:/b', HOME: '/home/x' });
   });
 
   it('tolerates rc-file noise before and after the framed payload', () => {
     const stdout = `Welcome!\nno job control\n${mark}{"PATH":"/usr/bin"}${mark}trailing junk`;
-    expect(parseMarkedEnv(stdout, mark)).toEqual({ PATH: '/usr/bin' });
+    expect(shellEnv.parseMarkedEnv(stdout, mark)).toEqual({ PATH: '/usr/bin' });
   });
 
   it('returns null when the markers are absent', () => {
-    expect(parseMarkedEnv('nothing here', mark)).toBeNull();
+    expect(shellEnv.parseMarkedEnv('nothing here', mark)).toBeNull();
   });
 
   it('returns null when only one marker is present', () => {
-    expect(parseMarkedEnv(`${mark}{"PATH":"/a"}`, mark)).toBeNull();
+    expect(shellEnv.parseMarkedEnv(`${mark}{"PATH":"/a"}`, mark)).toBeNull();
   });
 
   it('returns null when the framed slice is not valid JSON', () => {
-    expect(parseMarkedEnv(`${mark}not json${mark}`, mark)).toBeNull();
+    expect(shellEnv.parseMarkedEnv(`${mark}not json${mark}`, mark)).toBeNull();
   });
 });
 
@@ -59,7 +53,7 @@ describe('resolveLoginPath', () => {
 
   afterEach(() => {
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
-    resetLoginPathCache();
+    shellEnv.resetLoginPathCache();
   });
 
   it('returns the PATH the probe shell reports', async () => {
@@ -69,7 +63,7 @@ describe('resolveLoginPath', () => {
       const marker = args[3].match(/"([0-9a-f]+)"/)?.[1];
       return { stdout: `${marker}{"PATH":"/home/x/.opencode/bin:/usr/bin"}${marker}` };
     };
-    expect(await resolveLoginPath(run)).toBe('/home/x/.opencode/bin:/usr/bin');
+    expect(await shellEnv.resolveLoginPath(run)).toBe('/home/x/.opencode/bin:/usr/bin');
   });
 
   it('returns null when the probe output carries no PATH', async () => {
@@ -77,14 +71,14 @@ describe('resolveLoginPath', () => {
       const marker = args[3].match(/"([0-9a-f]+)"/)?.[1];
       return { stdout: `${marker}{"HOME":"/home/x"}${marker}` };
     };
-    expect(await resolveLoginPath(run)).toBeNull();
+    expect(await shellEnv.resolveLoginPath(run)).toBeNull();
   });
 
   it('returns null when the probe shell throws', async () => {
     const run = async () => {
       throw new Error('spawn ENOENT');
     };
-    expect(await resolveLoginPath(run)).toBeNull();
+    expect(await shellEnv.resolveLoginPath(run)).toBeNull();
   });
 
   it('short-circuits to null on Windows without spawning', async () => {
@@ -94,7 +88,7 @@ describe('resolveLoginPath', () => {
       called = true;
       return { stdout: '' };
     };
-    expect(await resolveLoginPath(run)).toBeNull();
+    expect(await shellEnv.resolveLoginPath(run)).toBeNull();
     expect(called).toBe(false);
   });
 });
@@ -103,16 +97,48 @@ describe('withPath', () => {
   const base = { HOME: '/home/x', PATH: '/usr/bin' };
 
   it('replaces PATH when a resolved path is supplied', () => {
-    expect(withPath(base, '/a:/b')).toEqual({ HOME: '/home/x', PATH: '/a:/b' });
+    expect(shellEnv.withPath(base, '/a:/b')).toEqual({ HOME: '/home/x', PATH: '/a:/b' });
   });
 
   it('leaves PATH untouched when the resolved path is null', () => {
-    expect(withPath(base, null)).toEqual(base);
+    expect(shellEnv.withPath(base, null)).toEqual(base);
   });
 
   it('never mutates the base env', () => {
     const copy = { ...base };
-    withPath(base, '/changed');
+    shellEnv.withPath(base, '/changed');
     expect(base).toEqual(copy);
+  });
+});
+
+describe('spawnPtyEnv', () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    Object.assign(process.env, originalEnv);
+    vi.restoreAllMocks();
+  });
+
+  it('sets TERM and scrubs npm_config_* leakage without mutating the base env', async () => {
+    const base: NodeJS.ProcessEnv = {
+      PATH: '/test/bin',
+      npm_config_prefix: '/usr/local',
+      npm_config_globalconfig: '/usr/local/etc/npmrc',
+      npm_config_userconfig: '/home/x/.npmrc',
+      CONDASH_TEST_KEEP: 'keep',
+    };
+
+    const env = await shellEnv.spawnPtyEnv(base);
+    expect(env.TERM).toBe('xterm-256color');
+    expect(env.PATH).toBe('/test/bin');
+    expect(env.npm_config_prefix).toBeUndefined();
+    expect(env.npm_config_globalconfig).toBeUndefined();
+    expect(env.npm_config_userconfig).toBeUndefined();
+    expect(env.CONDASH_TEST_KEEP).toBe('keep');
+    expect(env).not.toBe(base);
+
+    // The supplied base env is left intact.
+    expect(base.npm_config_prefix).toBe('/usr/local');
+    expect(base.CONDASH_TEST_KEEP).toBe('keep');
   });
 });

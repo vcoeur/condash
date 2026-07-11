@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join, relative } from 'node:path';
+import { toPosix } from '../shared/path';
 import { ambiguous, notFound } from './output';
 
 export interface SlugCandidate {
@@ -32,7 +33,12 @@ export async function resolveSlug(conceptionPath: string, slug: string): Promise
     const itemDir = join(conceptionPath, 'projects', month, item);
     const readmePath = join(itemDir, 'README.md');
     if (await isFile(readmePath)) {
-      return { slug: item, readmePath, itemDir, relPath: relative(conceptionPath, itemDir) };
+      return {
+        slug: item,
+        readmePath,
+        itemDir,
+        relPath: toPosix(relative(conceptionPath, itemDir)),
+      };
     }
     notFound(`No README at projects/${month}/${item}/README.md`, { slug: normalised });
   }
@@ -63,7 +69,7 @@ async function findCandidates(conceptionPath: string, slug: string): Promise<Slu
         slug: item,
         readmePath,
         itemDir,
-        relPath: relative(conceptionPath, itemDir),
+        relPath: toPosix(relative(conceptionPath, itemDir)),
       });
     }
   }

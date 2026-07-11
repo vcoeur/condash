@@ -125,6 +125,23 @@ export async function spawnEnv(): Promise<NodeJS.ProcessEnv> {
   return withPath(process.env, await loginPath());
 }
 
+/**
+ * Environment for a pty-spawned shell, including the AppImage/nvm hygiene
+ * scrub: Electron inherits `npm_config_*` from whatever shell launched it, and
+ * a global `npm_config_prefix` breaks nvm loading in child shells. Returns a
+ * fresh object; does not mutate `process.env`.
+ *
+ * `baseEnv` is an optional seam for tests; production callers leave it unset
+ * so the resolved login-shell PATH is used.
+ */
+export async function spawnPtyEnv(baseEnv?: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
+  const env: NodeJS.ProcessEnv = { ...(baseEnv ?? (await spawnEnv())), TERM: 'xterm-256color' };
+  delete env.npm_config_prefix;
+  delete env.npm_config_globalconfig;
+  delete env.npm_config_userconfig;
+  return env;
+}
+
 /** Test-only: drop the memoised probe result so each case resolves fresh. */
 export function resetLoginPathCache(): void {
   cached = null;

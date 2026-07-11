@@ -89,6 +89,12 @@ describe('listApplications', () => {
     expect(retired.path).toBeUndefined();
   });
 
+  it('derives a handle from a Windows-style backslash path (C4)', async () => {
+    writeConfig({ repositories: [{ path: 'vcoeur\\notes.vcoeur.com' }] });
+    const apps = await listApplications(tmp, emptyGlobal);
+    expect(apps.map((a) => a.handle)).toEqual(['notes.vcoeur.com']);
+  });
+
   it('includes submodules as live apps carrying their parent handle (#335)', async () => {
     writeConfig({
       repositories: [

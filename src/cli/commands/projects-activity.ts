@@ -1,4 +1,5 @@
 import { relative } from 'node:path';
+import { toPosix } from '../../shared/path';
 import { findProjectReadmes } from '../../main/walk';
 import { parseReadmeWithHeader } from '../../main/parse';
 import { appPillText } from '../../shared/app-color';
@@ -165,7 +166,7 @@ async function buildActivity(
       branch: project.branch,
       date,
       closedAt,
-      path: relative(conceptionPath, itemDir),
+      path: toPosix(relative(conceptionPath, itemDir)),
       stepCounts: project.stepCounts,
       createdInRange,
       closedInRange,

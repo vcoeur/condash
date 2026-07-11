@@ -151,6 +151,28 @@ describe('listProjects', () => {
     expect(rows).toEqual([]);
   });
 
+  it('emits POSIX relative paths in the JSON envelope (C5)', async () => {
+    await seedThreeProjects();
+    const { stdout } = await captureStdout(() =>
+      listProjects(
+        { noun: 'projects', verb: 'list', positional: [], flags: {} },
+        jsonCtx(),
+        conceptionPath,
+      ),
+    );
+    const rows = parseJsonEnvelope<unknown[]>(stdout).data as Array<{
+      path: string;
+      absPath: string;
+    }>;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.path).not.toContain('\\');
+      expect(row.path).toMatch(/^projects\/\d{4}-\d{2}\/[^/]+$/);
+      // absPath stays native (absolute filesystem path).
+      expect(row.absPath.startsWith(conceptionPath)).toBe(true);
+    }
+  });
+
   it('reads each README exactly once (P1-13 — no double-read)', async () => {
     await seedThreeProjects();
     const origReadFile = fs.readFile;
