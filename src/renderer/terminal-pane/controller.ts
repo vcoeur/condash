@@ -12,23 +12,14 @@
 
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 import type { TabSummary, TermSide, TermSpawnRequest } from '@shared/types';
-import type { Terminal } from '@xterm/xterm';
-import type { FitAddon } from '@xterm/addon-fit';
-import type { SearchAddon } from '@xterm/addon-search';
-import type { SerializeAddon } from '@xterm/addon-serialize';
-import type { MountedTerm } from '../xterm-mount';
 import { createDragDropController } from './drag-drop';
 import { decideRefreshAction, refreshOnSwitchTargets, REPAINT_NUDGE_MS } from './nudge-machine';
 import { allocateColorSlot, deleteMeta, readLayout, readMeta, setMeta } from './persistence';
 import { createResizeHandlers } from './resize';
 import { createSearchController } from './search';
 import { type Column, displayName, sameStringList, type Tab } from './types';
-import {
-  desiredDomIds,
-  domVisibility,
-  planVisibility,
-  shouldPromoteOnFocus,
-} from './visibility-plan';
+import { desiredDomIds, domVisibility, planVisibility } from './visibility-plan';
+import { mountForSession, type XtermHandle } from './mount-session';
 import { TerminalWorkerManager } from '../terminal-worker-manager';
 import type {
   AgentChoice,
@@ -70,19 +61,7 @@ export function createTerminalController(props: TerminalPaneProps) {
   // don't race.
   const closingTabs = new Set<string>();
 
-  const xterms = new Map<
-    string,
-    {
-      term: Terminal;
-      fit: FitAddon;
-      search: SearchAddon;
-      serialize: SerializeAddon;
-      mounted: MountedTerm;
-      element: HTMLDivElement;
-      column: Column;
-      detachListeners?: () => void;
-    }
-  >();
+  const xterms = new Map<string, XtermHandle>();
   let leftHost: HTMLDivElement | undefined;
   let rightHost: HTMLDivElement | undefined;
 
@@ -152,95 +131,6 @@ export function createTerminalController(props: TerminalPaneProps) {
     } else {
       worker.write(id, data);
     }
-  };
-
-  /** Mount an xterm element into the host of its column. xterm + its addons are
-   * dynamic-imported on first call so they stay out of the boot chunk; the
-   * module is cached after the first load. */
-  const mountForSession = async (id: string, column: Column, replay?: string): Promise<void> => {
-    if (xterms.has(id) || pendingMounts.has(id)) return;
-    pendingMounts.add(id);
-    const element = document.createElement('div');
-    element.className = 'xterm-host';
-    element.style.display = 'none';
-    const host = hostFor(column);
-    if (host) host.appendChild(element);
-    const { mountXterm } = await import('../xterm-mount');
-    // Bail if a dispose/race removed the need while the chunk was loading.
-    if (xterms.has(id)) {
-      pendingMounts.delete(id);
-      element.remove();
-      return;
-    }
-    const mounted = mountXterm(element, id, {
-      replay,
-      prefs: props.xtermPrefs,
-      onCustomKey: (ev) => handleXtermKey(ev, id),
-    });
-    const handleEntry: {
-      term: Terminal;
-      fit: FitAddon;
-      search: SearchAddon;
-      serialize: SerializeAddon;
-      mounted: MountedTerm;
-      element: HTMLDivElement;
-      column: Column;
-      detachListeners?: () => void;
-    } = {
-      term: mounted.term,
-      fit: mounted.fit,
-      search: mounted.search,
-      serialize: mounted.serialize,
-      mounted,
-      element,
-      column,
-    };
-    xterms.set(id, handleEntry);
-    // Promote this tab to active when the user clicks/focuses inside the
-    // xterm (otherwise typing into it works but the tab strip's "active"
-    // styling stays on whichever tab last got a click).
-    const promote = () => {
-      // `xterms.get(id)?.column` so a tab that's been moved between columns
-      // still resolves to its current side.
-      const col = xterms.get(id)?.column ?? column;
-      // Ignore focus churn during a visibility transition IN THIS COLUMN. A tab
-      // switch demotes the old DOM Terminal and mounts the new one, and that
-      // teardown/mount moves DOM focus programmatically — a `focusin` fires on
-      // a terminal the user did NOT select. Honouring it here would call
-      // `setActiveIn` for the wrong tab, reverting the in-flight switch and
-      // demoting the tab the user actually picked (the hidden-tab round-trip
-      // then reads no live Terminal). Gating on the column (not the global set)
-      // keeps that guard while letting a genuine click in the OTHER column
-      // through even when this one is mid-transition or stuck (R1). Genuine user
-      // clicks/focus land in the steady state, when this column is idle.
-      if (!shouldPromoteOnFocus(transitioningInColumn[col])) return;
-      if (activeIdIn(col) !== id) setActiveIn(col, id);
-      if (activeColumn() !== col) setActiveColumn(col);
-    };
-    element.addEventListener('focusin', promote);
-    element.addEventListener('mousedown', promote);
-    // Stash a per-mount detacher so dispose() drops the listeners along
-    // with the rest of the xterm. Without it, repeated open/close churn
-    // leaves dead `promote` closures pinned to the host element via
-    // bubble-listener references the GC can't reach.
-    handleEntry.detachListeners = () => {
-      element.removeEventListener('focusin', promote);
-      element.removeEventListener('mousedown', promote);
-    };
-    // Track cwd updates from OSC 7 → reflect in the tab label.
-    mounted.onCwdChange((cwd) => {
-      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, cwd } : t)));
-    });
-    // Track the window title the program announces via OSC 0/2 (e.g. a harness
-    // summary) → reflect in the tab label. Coalesced + glyph-stripped upstream.
-    mounted.onTitleChange((termTitle) => {
-      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, termTitle } : t)));
-    });
-    // Track OSC 9;4 progress → drive the tab's busy/idle indicator.
-    mounted.onProgressChange((busy) => {
-      setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, busy } : t)));
-    });
-    pendingMounts.delete(id);
   };
 
   /** Move an existing xterm element to a new column's host (used when the
@@ -337,7 +227,7 @@ export function createTerminalController(props: TerminalPaneProps) {
         // Fire-and-forget, but `.catch` it: the dispose RPC can now reject via the
         // watchdog, and an unhandled rejection would spam the renderer (R1).
         if (fromWorker) void worker.dispose(id).catch(() => undefined);
-        await mountForSession(id, col, replay);
+        await mountForSession(mountCtx, id, col, replay);
         flushTransitionBuffer(id, 'dom');
       } finally {
         endTransition(id, col);
@@ -417,6 +307,22 @@ export function createTerminalController(props: TerminalPaneProps) {
     return true;
   };
 
+  // Context passed to the extracted mount helper. Kept in one object so the
+  // helper can be unit-tested without the full Solid controller (S2).
+  const mountCtx = {
+    xterms,
+    pendingMounts,
+    hostFor,
+    xtermPrefs: props.xtermPrefs,
+    handleXtermKey,
+    setTabs,
+    activeIdIn,
+    activeColumn,
+    setActiveIn,
+    setActiveColumn,
+    transitioningInColumn,
+  };
+
   // ---- onTermSessions: single source of truth for adds/removes ----
   const reconcile = async (
     snap: readonly {
@@ -470,7 +376,7 @@ export function createTerminalController(props: TerminalPaneProps) {
       // async mount below are re-buffered and flushed once the DOM Terminal
       // exists.
       transitionBuffers.delete(s.id);
-      await mountForSession(s.id, column, attach?.output);
+      await mountForSession(mountCtx, s.id, column, attach?.output);
       flushTransitionBuffer(s.id, 'dom');
       setActiveIn(column, s.id);
       setActiveColumn(column);

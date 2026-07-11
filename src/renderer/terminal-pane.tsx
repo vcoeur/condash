@@ -95,7 +95,7 @@ export interface TerminalPaneProps {
    * conception path). */
   cwd?: string | null;
   /** User-configured xterm preferences (font, colours, scrollback, …). Pulled
-   *  from condash.json under `terminal.xterm`. Undefined = defaults. */
+   *  from settings.json under `terminal.xterm`. Undefined = defaults. */
   xtermPrefs?: TerminalXtermPrefs;
   /** When not explicitly false, switching to a tab auto-runs the Refresh
    *  (repaint) action on the newly-active tab. Pulled from

@@ -9,6 +9,7 @@ import { decideDispatch } from './dispatch';
 import { DEFAULT_LAYOUT, readSettings } from './settings';
 import { setWatchedConception } from './watcher';
 import { rebuildSearchIndex } from './search/index-cache';
+import { scheduleBootSearchKick, type BootSearchKickHandle } from './boot-search-kick';
 import { setScheduledConception } from './task-scheduler';
 import { setDashboardConception } from './dashboard/engine';
 import { setSyncConception } from './sync/auto-engine';
@@ -204,6 +205,11 @@ let mainWindow: BrowserWindow | null = null;
 // embedded images in notes don't trigger a disk read per request.
 let cachedConceptionPath: string | null = null;
 
+// Handle for the deferred boot search-index kick. Cleared when the user
+// switches conceptions before the kick fires, so we never rebuild the index
+// for a conception that is no longer active (S1).
+let bootSearchKickHandle: BootSearchKickHandle | null = null;
+
 // Handle for the recurring log-janitor interval. Cleared and re-created
 // whenever the active conception changes so the sweep targets the right
 // tree.
@@ -376,6 +382,10 @@ function registerIpc(): void {
       // the new tree during a fast boot-time switch) and must never be awaited by
       // a later listRepos, which would hand back the wrong tree's repos (B5).
       clearBootRepos();
+      // Cancel the deferred boot search-index kick for the previous conception;
+      // the watcher for the new conception will build its own index (S1).
+      bootSearchKickHandle?.clear();
+      bootSearchKickHandle = null;
       void rebuildMenuFromSettings();
       startJanitor(picked);
       // Re-point the task scheduler at the newly picked conception.
@@ -527,33 +537,19 @@ app.whenReady().then(async () => {
   // falls back to a disk scan while the in-memory index is still unbuilt
   // (search/index.ts + index-cache.ts).
   if (conceptionPath) {
-    let indexKicked = false;
-    const kickIndexBuild = (): void => {
-      if (indexKicked) return;
-      indexKicked = true;
-      setTimeout(() => {
+    bootSearchKickHandle = scheduleBootSearchKick({
+      win: mainWindow,
+      idleMs: SEARCH_INDEX_BUILD_IDLE_MS,
+      backstopMs: SEARCH_INDEX_BUILD_BACKSTOP_MS,
+      onKick: () => {
+        // Defensive: if the user switched conceptions between the kick trigger
+        // and the idle-delayed rebuild, don't index the wrong tree.
+        if (cachedConceptionPath !== conceptionPath) return;
         void rebuildSearchIndex(conceptionPath).catch((err) =>
           process.stderr.write(`condash rebuildSearchIndex: ${(err as Error).message}\n`),
         );
-      }, SEARCH_INDEX_BUILD_IDLE_MS);
-    };
-    // `ready-to-show` may already have fired by the time createWindow's loadFile
-    // resolved (the window is shown from that handler); check visibility to cover
-    // the already-fired case.
-    if (mainWindow.isVisible()) {
-      kickIndexBuild();
-    } else {
-      // Otherwise latch on any of these — whichever fires first wins (the guard
-      // makes the kick run once). `ready-to-show` can already have fired on a
-      // window that is still not visible, in which case its once-listener never
-      // refires; `show`/`focus` and the unconditional timeout backstop cover
-      // that so the index always builds this session (W4).
-      const win = mainWindow;
-      win.once('ready-to-show', kickIndexBuild);
-      win.once('show', kickIndexBuild);
-      win.once('focus', kickIndexBuild);
-      setTimeout(kickIndexBuild, SEARCH_INDEX_BUILD_BACKSTOP_MS);
-    }
+      },
+    });
   }
   // App-scope memory backstop, off the pre-window critical path (S5) and fully
   // asynchronous: `capOwnAppScopeAsync` runs its systemd probe + `set-property`
