@@ -183,7 +183,7 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
  *  text becomes the title — this is intentional so every hit has a
  *  displayable label, but the name is deliberately `…OrLine` to warn
  *  callers that it is not strictly an H1 extractor. */
-function extractFirstHeadingOrLine(raw: string): string | null {
+export function extractFirstHeadingOrLine(raw: string): string | null {
   const limit = Math.min(raw.length, 4096);
   for (const line of raw.slice(0, limit).split(/\r?\n/)) {
     const trimmed = line.trim();

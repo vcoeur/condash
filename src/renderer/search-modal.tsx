@@ -8,10 +8,13 @@ import {
   onMount,
   Show,
   Suspense,
+  type Component,
+  type JSX,
 } from 'solid-js';
 import { ALL_SCOPES, type SearchResults } from '@shared/types';
 import { groupHits } from './search/grouping';
 import { Modal } from './modal';
+import { KnowledgeIcon, LogsIcon, ProjectsIcon, ResourcesIcon, SkillsIcon } from './icons';
 import { FileResultRow, LogResultRow, ProjectGroupRow } from './search-modal-parts/result-rows';
 import { SearchTips } from './search-modal-parts/search-tips';
 import './search-modal.css';
@@ -19,7 +22,7 @@ import './search-modal.css';
 const EMPTY_RESULTS: SearchResults = { hits: [], terms: [], totalBeforeCap: 0, truncated: false };
 
 /** Minimum query length before hitting the backend. A 1-char query matches
- * nearly everything and produces the worst-case scan for no useful result. */
+ *  nearly everything and produces the worst-case scan for no useful result. */
 const MIN_QUERY_LEN = 2;
 
 // The default "All" filter forwards ALL_SCOPES (shared constant in
@@ -43,10 +46,25 @@ const MIN_QUERY_LEN = 2;
  * re-creates the function identity, which trips Solid's reactive tracking).
  */
 /** Which source bucket(s) to surface in the result list. `all` shows
- * both — projects (with their notes) and knowledge files. The pill
- * filter sits on the search modal header. The backend doesn't know
- * about the filter; we just hide non-matching buckets in the UI. */
+ *  both — projects (with their notes) and knowledge files. The pill
+ *  filter sits on the search modal header. The backend doesn't know
+ *  about the filter; we just hide non-matching buckets in the UI. */
 type SourceFilter = 'all' | 'projects' | 'knowledge' | 'resources' | 'skills' | 'logs';
+
+interface SourceMeta {
+  label: string;
+  icon: Component;
+  color: string;
+}
+
+const SOURCE_META: Record<SourceFilter, SourceMeta> = {
+  all: { label: 'All', icon: () => null, color: 'var(--text-muted)' },
+  projects: { label: 'Projects', icon: ProjectsIcon, color: 'var(--kind-project)' },
+  knowledge: { label: 'Knowledge', icon: KnowledgeIcon, color: 'var(--col-later)' },
+  resources: { label: 'Resources', icon: ResourcesIcon, color: 'var(--col-soon)' },
+  skills: { label: 'Skills', icon: SkillsIcon, color: 'var(--col-review)' },
+  logs: { label: 'Logs', icon: LogsIcon, color: 'var(--text-muted)' },
+};
 
 export function SearchModal(props: {
   onClose: () => void;
@@ -67,7 +85,7 @@ export function SearchModal(props: {
   // is always forwarded to the backend so it scans only what's needed: a
   // specific filter narrows to that one bucket, and the default 'all' narrows to
   // the four indexed markdown sources (ALL_SCOPES) — never the heavy, unindexed
-  // logs tree. Logs are searched only when the Logs pill is active. Sub-
+  // logs tree. Logs are searched only when the Logs filter is active. Sub-
   // MIN_QUERY_LEN queries never reach the backend.
   const [results] = createResource(
     () => ({ q: query(), filter: sourceFilter() }),
@@ -96,17 +114,20 @@ export function SearchModal(props: {
     () => projectCount() + knowledgeCount() + resourcesCount() + skillsCount() + logsCount(),
   );
 
+  const counts = createMemo(() => ({
+    all: totalCount(),
+    projects: projectCount(),
+    knowledge: knowledgeCount(),
+    resources: resourcesCount(),
+    skills: skillsCount(),
+    logs: logsCount(),
+  }));
+
   const showProjects = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'projects';
   const showKnowledge = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'knowledge';
   const showResources = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'resources';
   const showSkills = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'skills';
   const showLogs = (): boolean => sourceFilter() === 'all' || sourceFilter() === 'logs';
-
-  // Once a specific filter narrows the backend, the other buckets aren't
-  // searched, so their counts would read a misleading 0. Show a pill's count
-  // only in the 'all' view or on the active pill itself.
-  const pillCount = (filter: SourceFilter, count: number): string =>
-    sourceFilter() === 'all' || sourceFilter() === filter ? String(count) : '';
 
   // Long enough to search — below this we keep showing the tips rather than
   // flashing a premature "no matches" while the user is still typing.
@@ -206,6 +227,53 @@ export function SearchModal(props: {
     props.onClose();
   };
 
+  const meta = (filter: SourceFilter): SourceMeta => SOURCE_META[filter];
+
+  const filterCount = (filter: SourceFilter): number => {
+    if (filter === 'logs') {
+      // Logs aren't scanned in the 'all' view (ALL_SCOPES excludes them),
+      // so their count is only known when the Logs filter is active.
+      return sourceFilter() === 'logs' ? counts().logs : 0;
+    }
+    return counts()[filter];
+  };
+
+  const FilterButton = (p: { filter: SourceFilter }): JSX.Element => {
+    const active = (): boolean => sourceFilter() === p.filter;
+    const Icon = meta(p.filter).icon;
+    return (
+      <button
+        class="search-filter-btn"
+        classList={{ active: active() }}
+        role="radio"
+        aria-checked={active()}
+        onClick={() => changeFilter(p.filter)}
+        style={{ '--source-color': meta(p.filter).color }}
+      >
+        <Show when={p.filter !== 'all'}>
+          <span class="search-filter-icon">
+            <Icon />
+          </span>
+        </Show>
+        <span class="search-filter-label">{meta(p.filter).label}</span>
+        <span class="search-filter-count">{filterCount(p.filter) || ''}</span>
+      </button>
+    );
+  };
+
+  const SectionHeader = (p: { filter: SourceFilter; count: number }): JSX.Element => {
+    const Icon = meta(p.filter).icon;
+    return (
+      <li class="search-section-header" style={{ '--source-color': meta(p.filter).color }}>
+        <span class="search-section-icon">
+          <Icon />
+        </span>
+        <span class="search-section-label">{meta(p.filter).label}</span>
+        <span class="search-section-count">{p.count}</span>
+      </li>
+    );
+  };
+
   return (
     <Modal
       class="search-modal"
@@ -225,70 +293,13 @@ export function SearchModal(props: {
       }
     >
       <Show when={queryLongEnough()}>
-        <div class="search-source-filter" role="radiogroup" aria-label="Filter by source">
-          <button
-            class="search-source-pill"
-            classList={{ active: sourceFilter() === 'all' }}
-            role="radio"
-            aria-checked={sourceFilter() === 'all'}
-            onClick={() => changeFilter('all')}
-          >
-            All <span class="search-source-count">{pillCount('all', totalCount())}</span>
-          </button>
-          <button
-            class="search-source-pill"
-            classList={{ active: sourceFilter() === 'projects' }}
-            role="radio"
-            aria-checked={sourceFilter() === 'projects'}
-            onClick={() => changeFilter('projects')}
-          >
-            Projects{' '}
-            <span class="search-source-count">{pillCount('projects', projectCount())}</span>
-          </button>
-          <button
-            class="search-source-pill"
-            classList={{ active: sourceFilter() === 'knowledge' }}
-            role="radio"
-            aria-checked={sourceFilter() === 'knowledge'}
-            onClick={() => changeFilter('knowledge')}
-          >
-            Knowledge{' '}
-            <span class="search-source-count">{pillCount('knowledge', knowledgeCount())}</span>
-          </button>
-          <button
-            class="search-source-pill"
-            classList={{ active: sourceFilter() === 'resources' }}
-            role="radio"
-            aria-checked={sourceFilter() === 'resources'}
-            onClick={() => changeFilter('resources')}
-          >
-            Resources{' '}
-            <span class="search-source-count">{pillCount('resources', resourcesCount())}</span>
-          </button>
-          <button
-            class="search-source-pill"
-            classList={{ active: sourceFilter() === 'skills' }}
-            role="radio"
-            aria-checked={sourceFilter() === 'skills'}
-            onClick={() => changeFilter('skills')}
-          >
-            Skills <span class="search-source-count">{pillCount('skills', skillsCount())}</span>
-          </button>
-          <button
-            class="search-source-pill"
-            classList={{ active: sourceFilter() === 'logs' }}
-            role="radio"
-            aria-checked={sourceFilter() === 'logs'}
-            onClick={() => changeFilter('logs')}
-          >
-            {/* Logs aren't scanned in the 'all' view (ALL_SCOPES excludes
-                  them), so unlike the other pills their count is only known —
-                  and shown — when the Logs filter is the active one. */}
-            Logs{' '}
-            <span class="search-source-count">
-              {sourceFilter() === 'logs' ? String(logsCount()) : ''}
-            </span>
-          </button>
+        <div class="search-filter-bar" role="radiogroup" aria-label="Filter by source">
+          <FilterButton filter="all" />
+          <FilterButton filter="projects" />
+          <FilterButton filter="knowledge" />
+          <FilterButton filter="resources" />
+          <FilterButton filter="skills" />
+          <FilterButton filter="logs" />
         </div>
       </Show>
       <div class="search-modal-body">
@@ -320,8 +331,9 @@ export function SearchModal(props: {
                 </div>
               }
             >
-              <ul class="search-results search-results-grouped">
-                <Show when={showProjects()}>
+              <ul class="search-results search-results-sectioned">
+                <Show when={showProjects() && projectCount() > 0}>
+                  <SectionHeader filter="projects" count={projectCount()} />
                   <For each={grouped().projects}>
                     {(g) => (
                       <ProjectGroupRow
@@ -332,22 +344,26 @@ export function SearchModal(props: {
                     )}
                   </For>
                 </Show>
-                <Show when={showKnowledge()}>
+                <Show when={showKnowledge() && knowledgeCount() > 0}>
+                  <SectionHeader filter="knowledge" count={knowledgeCount()} />
                   <For each={grouped().knowledge}>
                     {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
                   </For>
                 </Show>
-                <Show when={showResources()}>
+                <Show when={showResources() && resourcesCount() > 0}>
+                  <SectionHeader filter="resources" count={resourcesCount()} />
                   <For each={grouped().resources}>
                     {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
                   </For>
                 </Show>
-                <Show when={showSkills()}>
+                <Show when={showSkills() && skillsCount() > 0}>
+                  <SectionHeader filter="skills" count={skillsCount()} />
                   <For each={grouped().skills}>
                     {(hit) => <FileResultRow hit={hit} onOpen={openFileAndClose} />}
                   </For>
                 </Show>
-                <Show when={showLogs()}>
+                <Show when={showLogs() && logsCount() > 0}>
+                  <SectionHeader filter="logs" count={logsCount()} />
                   <For each={grouped().logs}>
                     {(hit) => <LogResultRow hit={hit} onOpen={openLogAndClose} />}
                   </For>

@@ -1,4 +1,5 @@
 import { join, relative } from 'node:path';
+import { promises as fs } from 'node:fs';
 import { emptySearchResults, type SearchResults, type SearchTerm } from '../../shared/types';
 import { toPosix } from '../../shared/path';
 import {
@@ -8,7 +9,7 @@ import {
   collectResourceFiles,
   collectSkillFiles,
 } from './walk';
-import { matchFile, type MatchOutput } from './match';
+import { matchFile, type MatchOutput, extractFirstHeadingOrLine } from './match';
 import { parseQuery } from './query';
 import { runWithConcurrency } from './concurrency';
 import { searchIndex } from './index-cache';
@@ -87,6 +88,18 @@ export async function search(
   return { hits, terms, totalBeforeCap, truncated };
 }
 
+/** Read a project's README title from disk. Used by the on-disk scan
+ *  fallback to give every project hit the same `projectTitle` metadata the
+ *  in-memory index provides. */
+async function readProjectTitle(projectPath: string): Promise<string | undefined> {
+  try {
+    const raw = await fs.readFile(join(projectPath, 'README.md'), 'utf8');
+    return extractFirstHeadingOrLine(raw) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * On-disk scan of the four markdown sources — the original brute-force path,
  * used only as a fallback while the in-memory index is still building. Honours
@@ -108,6 +121,18 @@ async function scanMarkdownFromDisk(
       : Promise.resolve([]),
     wants('skills') ? collectSkillFiles(join(conceptionPath, skills)) : Promise.resolve([]),
   ]);
+
+  const projectTitleByPath = new Map<string, string>();
+  if (projectFiles.length > 0) {
+    const projectPaths = new Set(projectFiles.map((f) => f.projectPath));
+    await runWithConcurrency(
+      [...projectPaths].map((projectPath) => async () => {
+        const title = await readProjectTitle(projectPath);
+        if (title) projectTitleByPath.set(toPosix(projectPath), title);
+      }),
+      READ_CONCURRENCY,
+    );
+  }
 
   const factories: Array<() => Promise<MatchOutput | null>> = [];
   for (const file of projectFiles) {
@@ -153,5 +178,13 @@ async function scanMarkdownFromDisk(
   }
 
   const settled = await runWithConcurrency(factories, READ_CONCURRENCY);
-  return settled.filter((m): m is MatchOutput => m !== null);
+  const matched: MatchOutput[] = [];
+  for (const m of settled) {
+    if (!m) continue;
+    if (m.hit.source === 'project' && m.hit.projectPath) {
+      m.hit.projectTitle = projectTitleByPath.get(m.hit.projectPath);
+    }
+    matched.push(m);
+  }
+  return matched;
 }

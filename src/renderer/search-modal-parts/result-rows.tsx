@@ -4,10 +4,40 @@
 // function identity on every render and trips reactive tracking. `SearchModal`
 // (search-modal.tsx) owns the shell/state; these render the grouped hits.
 
-import { For, Show } from 'solid-js';
+import { For, Show, type JSX } from 'solid-js';
 import type { SearchHighlight, SearchHit, SearchSnippet } from '@shared/types';
 import { HighlightedText } from '../search/highlight';
+import { KnowledgeIcon, LogsIcon, ProjectsIcon, ResourcesIcon, SkillsIcon } from '../icons';
 import type { ProjectGroup } from '../search/grouping';
+
+const SOURCE_ICON: Record<string, () => JSX.Element> = {
+  project: ProjectsIcon,
+  knowledge: KnowledgeIcon,
+  resources: ResourcesIcon,
+  skills: SkillsIcon,
+  logs: LogsIcon,
+};
+
+const SOURCE_COLOR: Record<string, string> = {
+  project: 'var(--kind-project)',
+  knowledge: 'var(--col-later)',
+  resources: 'var(--col-soon)',
+  skills: 'var(--col-review)',
+  logs: 'var(--text-muted)',
+};
+
+/** Leading source icon for a result row. */
+function RowIcon(props: { source: string }) {
+  const Icon = SOURCE_ICON[props.source] ?? (() => null);
+  return (
+    <span
+      class="search-row-icon"
+      style={{ '--source-color': SOURCE_COLOR[props.source] ?? 'var(--text-muted)' }}
+    >
+      <Icon />
+    </span>
+  );
+}
 
 /** A project card: the project header row (opens the project popup) plus its
  *  matching in-project files (notes, nested READMEs) as sub-rows. */
@@ -18,6 +48,7 @@ export function ProjectGroupRow(props: {
 }) {
   const headerTitle = (): string => {
     if (props.group.header) return props.group.header.title;
+    if (props.group.projectTitle) return props.group.projectTitle;
     const leaf = props.group.projectPath.split('/').pop();
     return leaf ?? props.group.projectPath;
   };
@@ -28,19 +59,23 @@ export function ProjectGroupRow(props: {
         class="search-row search-project-header"
         onClick={() => props.onOpenProject(props.group.projectPath)}
       >
-        <div class="search-head">
-          <span class="search-title">{headerTitle()}</span>
-          <span class="badge badge-project">project</span>
-          <span class="search-count">{props.group.totalScore}</span>
+        <div class="search-row-main">
+          <RowIcon source="project" />
+          <div class="search-row-content">
+            <div class="search-head">
+              <span class="search-title">{headerTitle()}</span>
+              <span class="search-count">{props.group.totalScore}</span>
+            </div>
+            <ResultPath
+              relPath={props.group.projectPath}
+              pathMatches={props.group.header?.pathMatches}
+            />
+            <Show when={props.group.header && props.group.header.snippets.length > 0}>
+              <SnippetList snippets={props.group.header!.snippets} />
+            </Show>
+          </div>
         </div>
-        <ResultPath
-          relPath={props.group.projectPath}
-          pathMatches={props.group.header?.pathMatches}
-        />
-        <Show when={props.group.header && props.group.header.snippets.length > 0}>
-          <SnippetList snippets={props.group.header!.snippets} />
-        </Show>
-        <span class="search-row-hint">Click to open the project popup ↗</span>
+        <span class="search-row-hint">Open project</span>
       </button>
       <Show when={props.group.files.length > 0}>
         <ul class="search-project-files">
@@ -51,13 +86,17 @@ export function ProjectGroupRow(props: {
                   class="search-row search-file-row"
                   onClick={() => props.onOpenFile(file.path)}
                 >
-                  <div class="search-head">
-                    <span class="search-title search-file-title">
-                      {relativeToProject(file.relPath, props.group.projectPath)}
-                    </span>
-                    <span class="search-count">{file.score}</span>
+                  <div class="search-row-main">
+                    <div class="search-row-content">
+                      <div class="search-head">
+                        <span class="search-title search-file-title">
+                          {relativeToProject(file.relPath, props.group.projectPath)}
+                        </span>
+                        <span class="search-count">{file.score}</span>
+                      </div>
+                      <SnippetList snippets={file.snippets} />
+                    </div>
                   </div>
-                  <SnippetList snippets={file.snippets} />
                 </button>
               </li>
             )}
@@ -73,13 +112,17 @@ export function FileResultRow(props: { hit: SearchHit; onOpen: (path: string) =>
   return (
     <li class="search-result">
       <button class="search-row" onClick={() => props.onOpen(props.hit.path)}>
-        <div class="search-head">
-          <span class="search-title">{props.hit.title}</span>
-          <span class="badge">{props.hit.source}</span>
-          <span class="search-count">{props.hit.score}</span>
+        <div class="search-row-main">
+          <RowIcon source={props.hit.source} />
+          <div class="search-row-content">
+            <div class="search-head">
+              <span class="search-title">{props.hit.title}</span>
+              <span class="search-count">{props.hit.score}</span>
+            </div>
+            <ResultPath relPath={props.hit.relPath} pathMatches={props.hit.pathMatches} />
+            <SnippetList snippets={props.hit.snippets} />
+          </div>
         </div>
-        <ResultPath relPath={props.hit.relPath} pathMatches={props.hit.pathMatches} />
-        <SnippetList snippets={props.hit.snippets} />
       </button>
     </li>
   );
@@ -100,13 +143,17 @@ export function LogResultRow(props: { hit: SearchHit; onOpen: (path: string) => 
   return (
     <li class="search-result">
       <button class="search-row" onClick={() => props.onOpen(props.hit.path)}>
-        <div class="search-head">
-          <span class="search-title">{niceTitle()}</span>
-          <span class="badge">log</span>
-          <span class="search-count">{props.hit.score}</span>
+        <div class="search-row-main">
+          <RowIcon source="logs" />
+          <div class="search-row-content">
+            <div class="search-head">
+              <span class="search-title">{niceTitle()}</span>
+              <span class="search-count">{props.hit.score}</span>
+            </div>
+            <ResultPath relPath={props.hit.relPath} pathMatches={props.hit.pathMatches} />
+            <SnippetList snippets={props.hit.snippets} />
+          </div>
         </div>
-        <ResultPath relPath={props.hit.relPath} pathMatches={props.hit.pathMatches} />
-        <SnippetList snippets={props.hit.snippets} />
       </button>
     </li>
   );
