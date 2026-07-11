@@ -214,7 +214,11 @@ export async function applyIndexFsEvent(
       const live = getIndex(conceptionPath);
       if (!live) return;
       live.byPath.delete(key);
-      if (classified?.source === 'project' && classified.projectPath && key.toLowerCase().endsWith('/readme.md')) {
+      if (
+        classified?.source === 'project' &&
+        classified.projectPath &&
+        key.toLowerCase().endsWith('/readme.md')
+      ) {
         live.projectTitleByPath.delete(classified.projectPath);
       }
     });
@@ -247,12 +251,20 @@ export async function applyIndexFsEvent(
     if (!live) return;
     if (prepared) {
       live.byPath.set(key, prepared);
-      if (classified.source === 'project' && classified.projectPath && key.toLowerCase().endsWith('/readme.md')) {
+      if (
+        classified.source === 'project' &&
+        classified.projectPath &&
+        key.toLowerCase().endsWith('/readme.md')
+      ) {
         live.projectTitleByPath.set(classified.projectPath, prepared.title);
       }
     } else {
       live.byPath.delete(key); // vanished between the event and the read
-      if (classified.source === 'project' && classified.projectPath && key.toLowerCase().endsWith('/readme.md')) {
+      if (
+        classified.source === 'project' &&
+        classified.projectPath &&
+        key.toLowerCase().endsWith('/readme.md')
+      ) {
         live.projectTitleByPath.delete(classified.projectPath);
       }
     }

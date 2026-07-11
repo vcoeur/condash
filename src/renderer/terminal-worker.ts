@@ -2,6 +2,7 @@
 // parsing, scrollback, and cursor bookkeeping for background tabs off the
 // renderer main thread (PR-F).
 
+import './terminal-worker-polyfill';
 import { Terminal } from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
 

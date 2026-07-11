@@ -178,17 +178,35 @@ export async function matchFile(input: MatchInput): Promise<MatchOutput | null> 
   return matchPrepared(prepared, input.terms);
 }
 
-/** Best-effort title: returns the first non-empty line with leading
- *  Markdown heading hashes stripped. If the file has no heading, body
- *  text becomes the title — this is intentional so every hit has a
- *  displayable label, but the name is deliberately `…OrLine` to warn
- *  callers that it is not strictly an H1 extractor. */
+/** Best-effort title: returns the first Markdown heading after an optional
+ *  YAML front-matter block, with leading hashes stripped. Falls back to the
+ *  first non-empty body line if no heading is found. This is intentional so
+ *  every hit has a displayable label, but the name is deliberately `…OrLine` to
+ *  warn callers that it is not strictly an H1 extractor. */
 export function extractFirstHeadingOrLine(raw: string): string | null {
   const limit = Math.min(raw.length, 4096);
-  for (const line of raw.slice(0, limit).split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    return trimmed.replace(/^#+\s*/, '').trim() || null;
+  const lines = raw.slice(0, limit).split(/\r?\n/);
+  let i = 0;
+
+  // Skip YAML front matter fenced by leading `---`.
+  if (lines[i]?.trim() === '---') {
+    i++;
+    while (i < lines.length) {
+      if (lines[i].trim() === '---') {
+        i++;
+        break;
+      }
+      i++;
+    }
   }
-  return null;
+
+  let firstBodyLine: string | null = null;
+  for (; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) continue;
+    if (firstBodyLine === null) firstBodyLine = trimmed;
+    const heading = trimmed.replace(/^#+\s*/, '').trim();
+    if (heading !== trimmed && heading) return heading;
+  }
+  return firstBodyLine;
 }

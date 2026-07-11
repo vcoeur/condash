@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { matchPrepared, prepareFile } from './match';
+import { extractFirstHeadingOrLine, matchPrepared, prepareFile } from './match';
 import { parseQuery } from './query';
 
 describe('prepareFile / matchPrepared — offset integrity', () => {
@@ -38,5 +38,25 @@ describe('prepareFile / matchPrepared — offset integrity', () => {
     const snippet = out!.hit.snippets[0];
     const match = snippet.matches[0];
     expect(snippet.text.slice(match.start, match.start + match.length)).toBe('needle');
+  });
+});
+
+describe('extractFirstHeadingOrLine', () => {
+  it('strips leading heading hashes', () => {
+    expect(extractFirstHeadingOrLine('# Title')).toBe('Title');
+  });
+
+  it('skips YAML front matter and returns the first heading', () => {
+    const raw = '---\ndate: 2026-05-13\n---\n# Project title\nbody\n';
+    expect(extractFirstHeadingOrLine(raw)).toBe('Project title');
+  });
+
+  it('falls back to the first non-empty line after front matter when there is no heading', () => {
+    const raw = '---\nkey: value\n---\nbody line\n';
+    expect(extractFirstHeadingOrLine(raw)).toBe('body line');
+  });
+
+  it('returns null for an empty file', () => {
+    expect(extractFirstHeadingOrLine('')).toBeNull();
   });
 });
