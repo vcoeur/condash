@@ -218,8 +218,8 @@ export function SearchModal(props: {
     props.onOpenProject(path);
     props.onClose();
   };
-  const openFileAndClose = (path: string): void => {
-    props.onOpenFile(path);
+  const openFileAndClose = (path: string, projectPath?: string, projectTitle?: string): void => {
+    props.onOpenFile(path, projectPath, projectTitle);
     props.onClose();
   };
   const openLogAndClose = (path: string): void => {
