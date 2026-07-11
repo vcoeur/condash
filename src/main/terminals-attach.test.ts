@@ -58,6 +58,7 @@ vi.mock('./settings', () => ({
 }));
 vi.mock('./shell-env', () => ({
   spawnEnv: vi.fn(async () => ({})),
+  spawnPtyEnv: vi.fn(async () => ({ TERM: 'xterm-256color' })),
 }));
 vi.mock('./tab-scope', () => ({
   wrapWithMemoryScope: (program: string, argv: string[]) => ({ program, argv }),

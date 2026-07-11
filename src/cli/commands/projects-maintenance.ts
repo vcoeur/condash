@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { toPosix } from '../../shared/path';
 import { findProjectReadmes } from '../../main/walk';
 import { parseHeader } from '../../shared/header';
 import { appendTimelineEntry, parseTimelineEntries } from '../../main/mutate';
@@ -98,7 +99,7 @@ function relativeIfPossible(path: string, rootPath: string): string {
   // path when the file lives outside the root (e.g. `--path` overrides).
   if (!path.startsWith(rootPath)) return path;
   const conceptionRoot = dirname(rootPath);
-  return relative(conceptionRoot, path) || path;
+  return toPosix(relative(conceptionRoot, path)) || path;
 }
 
 // Statuses accepted at create time. `done` is intentionally excluded — it
@@ -258,7 +259,7 @@ export async function rewriteHeadersCommand(
     lines.push(`README header rewrite (${d.dryRun ? 'dry-run' : 'wrote changes'})`);
     if (d.rewritten.length > 0) {
       lines.push(`Rewritten (${d.rewritten.length}):`);
-      for (const p of d.rewritten) lines.push(`  ~ ${relative(conceptionPath, p)}`);
+      for (const p of d.rewritten) lines.push(`  ~ ${toPosix(relative(conceptionPath, p))}`);
     }
     if (d.alreadyYaml.length > 0) {
       lines.push(`Already YAML: ${d.alreadyYaml.length}`);
@@ -266,7 +267,7 @@ export async function rewriteHeadersCommand(
     if (d.skipped.length > 0) {
       lines.push(`Skipped (${d.skipped.length}):`);
       for (const s of d.skipped) {
-        lines.push(`  ! ${relative(conceptionPath, s.path)}  [${s.reason}]`);
+        lines.push(`  ! ${toPosix(relative(conceptionPath, s.path))}  [${s.reason}]`);
       }
     }
     return lines.join('\n') + '\n';

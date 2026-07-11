@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { toPosix } from '../../shared/path';
 import { readKnowledgeTree } from '../../main/knowledge';
 import { regenerateIndex, type IndexRegenReport } from '../../main/index-tree';
 import { knowledgeStrategy } from '../../main/index-knowledge';
@@ -269,7 +270,7 @@ async function retrieveCommand(
         if (re.test(lines[i])) {
           grep.push({
             path,
-            relPath: relative(conceptionPath, path),
+            relPath: toPosix(relative(conceptionPath, path)),
             line: i + 1,
             snippet: lines[i].slice(0, 200),
           });
@@ -323,7 +324,7 @@ async function collectIndexEntries(
   const BULLET = /^-\s+\[[^\]]+\]\(([^)]+)\)\s+[—\-]\s+\*([^*]+)\*\s*`?\[?([^\]`]*)\]?`?/;
   for (const indexPath of indexFiles) {
     const raw = await fs.readFile(indexPath, 'utf8');
-    const dir = relative(conceptionPath, indexPath).replace(/\/index\.md$/, '');
+    const dir = toPosix(relative(conceptionPath, indexPath)).replace(/\/index\.md$/, '');
     for (const line of raw.split(/\r?\n/)) {
       const m = line.match(BULLET);
       if (!m) continue;

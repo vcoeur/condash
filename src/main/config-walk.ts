@@ -2,6 +2,7 @@ import { basename, isAbsolute, join } from 'node:path';
 import type { TerminalPrefs } from '../shared/types';
 import { appHandle } from '../shared/app-color';
 import { isSectionMarker, type RawRepo, type RawSubmoduleRepo } from '../shared/config-types';
+import { toPosix } from '../shared/path';
 
 /**
  * Shared configuration-walk helpers. Both `repos.ts` (for the flat repo list
@@ -126,7 +127,7 @@ function visitOne(
   // The directory name is `name`, or the basename of `path` when only a path
   // is configured (the clean `{handle, label, path}` form). The handle is
   // explicit or derived from that directory name.
-  const dirName = entry.name ?? basename(entry.path ?? '');
+  const dirName = entry.name ?? basename(toPosix(entry.path ?? ''));
   const lookup: RepoLookup = {
     display: parent ? `${parent}/${dirName}` : dirName,
     name: dirName,

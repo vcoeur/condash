@@ -17,6 +17,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { appHandle } from '../shared/app-color';
 import { parseHeader } from '../shared/header';
+import { toPosix } from '../shared/path';
 import { walkRepos, type ConfigShape, type RepoLookup } from './config-walk';
 import { getEffectiveConceptionConfig, mutateConceptionConfig } from './effective-config';
 import { findProjectReadmes } from './walk';
@@ -433,7 +434,8 @@ function isRepoWithHandle(raw: unknown, handle: string): boolean {
 
 function basenameOf(p?: string): string {
   if (!p) return '';
-  const parts = p.replace(/\/+$/, '').split('/');
+  const normalised = toPosix(p);
+  const parts = normalised.replace(/\/+$/, '').split('/');
   return parts[parts.length - 1] ?? '';
 }
 
