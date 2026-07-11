@@ -177,7 +177,6 @@ export function TerminalPane(props: TerminalPaneProps) {
       onToggleDashboard={() => props.onSelectBand('dashboard')}
       onSplitToggle={splitToggle}
       isSplit={isSplit()}
-      cwd={props.cwd}
     />
   );
 

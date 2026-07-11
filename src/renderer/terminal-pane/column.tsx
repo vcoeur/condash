@@ -2,7 +2,7 @@ import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { Agent } from '@shared/types';
 import { createDropdownMenu } from '../dropdown-menu';
-import { IconClose, TerminalIcon } from '../icons';
+import { IconClose } from '../icons';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
 import type { DragDropController } from './drag-drop';
 import { type Column, displayName, type Tab } from './types';
@@ -81,9 +81,6 @@ export interface TerminalColumnProps {
   onSplitToggle: () => void;
   /** True when the bottom pane is currently split into two columns. */
   isSplit: boolean;
-  /** Working directory passed to spawned shells; shown in the column
-   *  header breadcrumb when no active tab cwd is available. */
-  cwd?: string | null;
 }
 
 /** One column of the bottom terminal pane: tab strip on top + xterm host
@@ -115,24 +112,9 @@ export function TerminalColumn(props: TerminalColumnProps) {
     return props.isSplit ? 'Unsplit' : 'Split';
   };
 
-  const activeTab = (): Tab | undefined => props.tabs.find((t) => t.id === props.activeId);
-  const breadcrumbPath = (): string => {
-    const tab = activeTab();
-    if (tab?.cwd) return tab.cwd;
-    if (tab) return displayName(tab);
-    return props.cwd ?? '';
-  };
-
   return (
     <div class="terminal-column" classList={{ active: props.isActiveColumn }}>
       <div class="terminal-header">
-        <div class="terminal-header-start">
-          <span class="terminal-header-title">
-            <TerminalIcon />
-            <span>Terminal</span>
-          </span>
-          <span class="terminal-header-breadcrumb">{breadcrumbPath()}</span>
-        </div>
         <div
           class="terminal-tabs"
           classList={{

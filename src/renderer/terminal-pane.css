@@ -120,38 +120,6 @@
   min-height: 28px;
 }
 
-.terminal-header-start {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.terminal-header-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 600;
-  font-size: var(--text-xs);
-  color: var(--text);
-}
-
-.terminal-header-title svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 1.7;
-}
-
-.terminal-header-breadcrumb {
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .terminal-header-actions {
   display: flex;
   gap: 4px;
@@ -268,6 +236,20 @@
 
 .terminal-tab.active .terminal-tab-label {
   font-weight: 700;
+}
+
+/* App-pill-coloured terminal tabs — inactive tabs inherit the slot palette
+ *  from `app-pill.css` so each session's source app is scannable at a glance.
+ *  The active tab keeps the accent highlight instead, so selection state stays
+ *  unambiguous. */
+.terminal-tab[class*='app-pill-']:not(.active) {
+  background: var(--app-pill-bg);
+  color: var(--app-pill-fg);
+  border-color: transparent;
+}
+
+.terminal-tab[class*='app-pill-']:not(.active):hover {
+  filter: brightness(1.08);
 }
 
 /* Dashboard pseudo-tab: looks like a tab but is a fixed, always-first entry
