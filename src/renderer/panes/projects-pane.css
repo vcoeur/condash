@@ -286,15 +286,16 @@ body[data-dragging='project'] .row {
   flex-direction: column;
   gap: 10px;
   padding: 14px 14px 12px 22px;
-  border: none;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--bg-elevated);
-  box-shadow: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   contain: layout paint;
   transition:
     background-color 140ms ease,
-    box-shadow 140ms ease;
+    box-shadow 140ms ease,
+    border-color 140ms ease;
 }
 
 .row::before {
@@ -311,7 +312,8 @@ body[data-dragging='project'] .row {
 
 .row:hover {
   background: var(--bg-hover);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lift);
 }
 
 .row:hover .title-actions,
@@ -339,11 +341,9 @@ body[data-dragging='project'] .row {
   bottom: 8px;
   width: 4px;
   /* Rounded both ends so the stripe reads as an indicator, not a tab
-   * stuck onto the side of the card. Slight fade so it's a hint rather
-   * than a shout — the kind glyph carries the strong identity now. */
+   * stuck onto the side of the card. */
   border-radius: 3px;
   background: var(--row-stripe);
-  opacity: 0.7;
 }
 
 [data-status-card='now'] {
