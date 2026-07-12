@@ -233,6 +233,7 @@ export function TerminalColumn(props: TerminalColumnProps) {
                 <Show
                   when={
                     tab.id === props.activeId &&
+                    tab.exited === undefined &&
                     !props.dashboardActive &&
                     tab.id !== props.renamingId
                   }
