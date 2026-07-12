@@ -53,6 +53,7 @@ describe('deriveProvenance', () => {
       repo: 'vcoeur.com',
     });
     expect(prov.app).toBe('vcoeur');
+    expect(prov.appPath).toBe(join(tmp, 'src', 'vcoeur.com'));
   });
 
   it('leaves app undefined for a tab with no repo or an unknown repo', async () => {
@@ -69,7 +70,9 @@ describe('deriveProvenance', () => {
       repo: 'condash',
     });
     expect(prov.app).toBe('condash');
+    expect(prov.appPath).toBe(join(tmp, 'src', 'condash'));
     expect(prov.worktree).toBe('my-branch');
+    expect(prov.worktreePath).toBe(join(worktrees, 'my-branch'));
   });
 
   it('leaves worktree undefined for a cwd outside worktrees_path', async () => {
@@ -90,7 +93,15 @@ describe('deriveProvenance', () => {
       cwd: join(worktrees, 'my-branch', 'condash'),
       repo: 'condash',
     });
-    expect(prov.projects).toEqual([{ slug: '2026-06-30-redesign', title: 'Dashboard redesign' }]);
+    expect(prov.worktree).toBe('my-branch');
+    expect(prov.worktreePath).toBe(join(worktrees, 'my-branch'));
+    expect(prov.projects).toEqual([
+      {
+        slug: '2026-06-30-redesign',
+        title: 'Dashboard redesign',
+        readmePath: join(tmp, 'projects/2026-06/2026-06-30-redesign/README.md'),
+      },
+    ]);
   });
 
   it('matches a slash branch against its flattened worktree directory', async () => {
@@ -101,7 +112,14 @@ describe('deriveProvenance', () => {
       repo: 'condash',
     });
     expect(prov.worktree).toBe('feature-x');
-    expect(prov.projects).toEqual([{ slug: '2026-06-30-feat', title: 'Feature X' }]);
+    expect(prov.worktreePath).toBe(join(worktrees, 'feature-x'));
+    expect(prov.projects).toEqual([
+      {
+        slug: '2026-06-30-feat',
+        title: 'Feature X',
+        readmePath: join(tmp, 'projects/2026-06/2026-06-30-feat/README.md'),
+      },
+    ]);
   });
 
   it('leaves projects undefined when the worktree matches no README branch', async () => {

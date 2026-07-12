@@ -21,6 +21,7 @@ import {
 } from './state';
 import {
   clearSummarizerError,
+  clearWriterCache,
   getSummarizerError,
   makeEvent,
   summarizeTab,
@@ -59,7 +60,15 @@ let nextDueAt = new Map<string, number>();
 let jitterBySid = new Map<string, number>();
 /** Epoch ms of the last tick that actually summarized a tab — engine status only. */
 let lastRunAt = 0;
-let inFlight = false;
+/** SIDs currently being summarized. A non-empty set means a cycle is in flight,
+ *  so a new scheduled tick waits. A refresh for a different sid can still run. */
+let inFlightSids = new Set<string>();
+/** Consecutive failed summarization cycles (any cycle that ends with lastError). */
+let consecutiveFailures = 0;
+/** Epoch ms of the last cycle that failed. */
+let lastFailureAt = 0;
+/** Maximum backoff delay between retries, capping exponential growth. */
+const MAX_BACKOFF_MS = 300_000;
 /** Bumped on every engine re-point / teardown. A tick / refreshTab captures it
  *  at entry and re-checks after each await, so a cycle whose 60 s LLM round-trips
  *  straddle a conception switch neither overwrites the new tree's reset state,
@@ -72,6 +81,32 @@ function broadcast(channel: string, payload: unknown): void {
     if (win.isDestroyed()) continue;
     safeSend(win.webContents, channel, payload);
   }
+}
+
+/** Backoff delay grows exponentially with consecutive failures: 30s, 60s, 120s,
+ *  240s, capped at 5 min. Returns 0 when there are no consecutive failures. */
+export function getBackoffDelayMs(): number {
+  if (consecutiveFailures <= 0) return 0;
+  return Math.min(30_000 * 2 ** (consecutiveFailures - 1), MAX_BACKOFF_MS);
+}
+
+/** True when the engine is inside the backoff window after repeated failures. */
+export function isInBackoff(now: number): boolean {
+  if (consecutiveFailures <= 0) return false;
+  return now - lastFailureAt < getBackoffDelayMs();
+}
+
+/** Record a failed summarization cycle and return the current backoff delay. */
+export function recordFailure(now: number): number {
+  consecutiveFailures += 1;
+  lastFailureAt = now;
+  return getBackoffDelayMs();
+}
+
+/** Reset failure state after a successful cycle. */
+export function recordSuccess(): void {
+  consecutiveFailures = 0;
+  lastFailureAt = 0;
 }
 
 function pushState(): void {
@@ -116,7 +151,10 @@ export async function setDashboardConception(conceptionPath: string | null): Pro
   nextDueAt = new Map();
   jitterBySid = new Map();
   lastRunAt = 0;
-  inFlight = false;
+  inFlightSids = new Set();
+  consecutiveFailures = 0;
+  lastFailureAt = 0;
+  clearWriterCache();
   state = emptyDashboardState(0);
   if (!conceptionPath) return;
   const persisted = await loadDashboardState(conceptionPath);
@@ -150,6 +188,7 @@ export async function getDashboardConfigView(): Promise<DashboardConfigView> {
       cardInputChars: DASHBOARD_DEFAULTS.cardInputChars,
       intervalSec: DASHBOARD_DEFAULTS.intervalSec,
       gateOnActivity: DASHBOARD_DEFAULTS.gateOnActivity,
+      skipIdle: DASHBOARD_DEFAULTS.skipIdle,
       historyLimit: DASHBOARD_DEFAULTS.historyLimit,
     };
   }
@@ -360,7 +399,9 @@ async function buildSummary(
     activity: result.activity,
     ...(result.awaitingPrompt ? { awaitingPrompt: result.awaitingPrompt } : {}),
     ...(provenance.app ? { app: provenance.app } : {}),
+    ...(provenance.appPath ? { appPath: provenance.appPath } : {}),
     ...(provenance.worktree ? { worktree: provenance.worktree } : {}),
+    ...(provenance.worktreePath ? { worktreePath: provenance.worktreePath } : {}),
     ...(provenance.projects && provenance.projects.length > 0
       ? { projects: provenance.projects }
       : {}),
@@ -375,7 +416,7 @@ async function buildSummary(
  *  `conceptionPath`, already in flight, disabled, or the config read throws.
  *  Exported for unit testing. */
 export async function tick(conceptionPath: string): Promise<void> {
-  if (current?.path !== conceptionPath || inFlight) return;
+  if (current?.path !== conceptionPath || inFlightSids.size > 0) return;
   // Snapshot the generation at entry: setDashboardConception bumps it on every
   // re-point / teardown, so this cycle can tell — after any await below — that it
   // now belongs to a switched-away tree and bail before touching `state` (E3).
@@ -452,9 +493,18 @@ export async function tick(conceptionPath: string): Promise<void> {
   }
 
   // Per-tab activity gate: a due tab summarizes when the gate is off or its
-  // bytes grew since its own last attempt.
-  const gatePass = (sid: string): boolean =>
-    !config.gateOnActivity || bytes.get(sid) !== prevBytes.get(sid);
+  // bytes grew since its own last attempt. When skipIdle is on, idle tabs that
+  // have not grown are also held back, even with the activity gate off.
+  const priorBySid = new Map(state.tabs.map((tab) => [tab.sid, tab]));
+  const gatePass = (sid: string): boolean => {
+    const grew = bytes.get(sid) !== prevBytes.get(sid);
+    if (config.gateOnActivity) return grew;
+    if (config.skipIdle) {
+      const prior = priorBySid.get(sid);
+      if (prior?.state === 'idle' && !grew) return false;
+    }
+    return true;
+  };
   const toSummarize = dueSids.filter(gatePass);
 
   // Re-window a due-but-gated tab (no LLM): it waits one more interval, its byte
@@ -473,7 +523,18 @@ export async function tick(conceptionPath: string): Promise<void> {
     return;
   }
 
-  inFlight = true;
+  // Backoff after repeated failures: cheap roster/decay work still runs, but
+  // we pause LLM calls to protect quota and wallet.
+  if (isInBackoff(now)) {
+    publishEngine({
+      phase: 'backoff',
+      nextRunAt: lastFailureAt + getBackoffDelayMs(),
+      lastRunAt,
+    });
+    return;
+  }
+
+  inFlightSids = new Set(toSummarize);
   lastRunAt = now;
   // Advance the clock + byte baseline for each tab we will summarize. The
   // baseline moves only on an actual attempt, so a not-yet-due tab's growth is
@@ -499,7 +560,6 @@ export async function tick(conceptionPath: string): Promise<void> {
   pushState();
   try {
     const meta = new Map(roster.map((tab) => [tab.sid, tab]));
-    const priorBySid = new Map(state.tabs.map((tab) => [tab.sid, tab]));
     // Carry forward summaries for still-live tabs; drop the closed ones.
     const nextTabs: TabSummary[] = state.tabs.filter((tab) => liveSids.has(tab.sid));
     const indexOf = (sid: string): number => nextTabs.findIndex((tab) => tab.sid === sid);
@@ -527,6 +587,13 @@ export async function tick(conceptionPath: string): Promise<void> {
       else nextTabs.push(summary);
     }
 
+    const lastError = getSummarizerError();
+    if (lastError) {
+      recordFailure(now);
+    } else {
+      recordSuccess();
+    }
+
     state = pruneDashboardState(
       {
         updatedAt: now,
@@ -541,7 +608,7 @@ export async function tick(conceptionPath: string): Promise<void> {
         },
         // Window closed — drop the transient per-tab summarizing overlay.
         summarizingSids: [],
-        lastError: getSummarizerError() ?? undefined,
+        lastError: lastError ?? undefined,
       },
       config.historyLimit,
     );
@@ -566,10 +633,10 @@ export async function tick(conceptionPath: string): Promise<void> {
       pushState();
     }
   } finally {
-    // Only unlatch our own generation's guard: a conception switch mid-cycle set
-    // `inFlight = false` and a fresh tick may already have re-latched it, so
-    // clearing it here unconditionally would unlatch that running new cycle (E3).
-    if (generation === myGeneration) inFlight = false;
+    // Only clear our own generation's in-flight set: a conception switch mid-cycle
+    // set it to empty and a fresh tick may already have re-latched it, so clearing
+    // unconditionally would unlatch that running new cycle (E3).
+    if (generation === myGeneration) inFlightSids = new Set();
   }
 }
 
@@ -585,7 +652,7 @@ export async function tick(conceptionPath: string): Promise<void> {
  */
 export async function refreshTab(sid: string): Promise<void> {
   const armed = current;
-  if (!armed || inFlight) return;
+  if (!armed || inFlightSids.has(sid)) return;
   // Same generation guard as `tick` (E3): a conception switch during either await
   // below must abort before this refresh clobbers the new tree's state.
   const myGeneration = generation;
@@ -600,7 +667,7 @@ export async function refreshTab(sid: string): Promise<void> {
   const tabMeta = dashboardRoster().find((tab) => tab.sid === sid);
   if (!tabMeta) return;
 
-  inFlight = true;
+  inFlightSids.add(sid);
   const now = Date.now();
   clearSummarizerError();
   // Badge just this card "Summarizing" while its single LLM call is in flight.
@@ -646,6 +713,6 @@ export async function refreshTab(sid: string): Promise<void> {
     }
   } finally {
     // Unlatch only our own generation's guard (see the tick's finally, E3).
-    if (generation === myGeneration) inFlight = false;
+    if (generation === myGeneration) inFlightSids.delete(sid);
   }
 }

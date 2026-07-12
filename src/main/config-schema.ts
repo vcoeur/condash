@@ -449,6 +449,8 @@ const dashboardSettings = z
     intervalSec: z.number().int().positive().optional(),
     /** Skip a cycle when no open tab produced new output (reuses the growth gate). */
     gateOnActivity: z.boolean().optional(),
+    /** Skip idle tabs that have produced no new output, even when gateOnActivity is false. */
+    skipIdle: z.boolean().optional(),
     /** Max retained events per tab and globally. */
     historyLimit: z.number().int().positive().optional(),
   } satisfies Record<keyof DashboardSettings, z.ZodTypeAny>)

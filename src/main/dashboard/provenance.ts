@@ -20,10 +20,14 @@ import { branchToDir, defaultWorktreesPath } from '../worktree/shared';
 export interface TabProvenance {
   /** App `#handle` (no leading `#`) the tab's repo maps to. */
   app?: string;
+  /** Absolute path to the app repo when `app` is known. */
+  appPath?: string;
   /** Worktree/branch directory name when the cwd is under `worktrees_path`. */
   worktree?: string;
+  /** Absolute path to the worktree directory when `worktree` is known. */
+  worktreePath?: string;
   /** Conception projects whose README `branch:` matches `worktree`. */
-  projects?: { slug: string; title: string }[];
+  projects?: { slug: string; title: string; readmePath?: string }[];
 }
 
 /** True when `cwd` is `worktreesPath` itself or nested beneath it. */
@@ -63,7 +67,10 @@ export async function deriveProvenance(
 
   if (tab.repo) {
     const entry = findRepoEntry(config, tab.repo);
-    if (entry?.handle) out.app = entry.handle;
+    if (entry?.handle) {
+      out.app = entry.handle;
+      if (entry.cwd) out.appPath = entry.cwd;
+    }
   }
 
   const worktreesPath = config.worktrees_path ?? defaultWorktreesPath();
@@ -72,10 +79,11 @@ export async function deriveProvenance(
   const worktree = rel.split('/')[0];
   if (!worktree) return out;
   out.worktree = worktree;
+  out.worktreePath = `${worktreesPath}/${worktree}`;
 
   try {
     const readmes = await findProjectReadmes(conceptionPath);
-    const projects: { slug: string; title: string }[] = [];
+    const projects: { slug: string; title: string; readmePath?: string }[] = [];
     for (const readme of readmes) {
       const header = await readHeader(readme).catch(() => null);
       if (!header?.branch) continue;
@@ -85,7 +93,7 @@ export async function deriveProvenance(
           .replace(/\/README\.md$/, '')
           .split('/')
           .pop() ?? '';
-      projects.push({ slug, title: header.title ?? slug });
+      projects.push({ slug, title: header.title ?? slug, readmePath: readme });
     }
     if (projects.length > 0) out.projects = projects;
   } catch {

@@ -79,12 +79,16 @@ export interface TabSummary {
   /** Provenance: the app `#handle` the tab's cwd belongs to, stored WITHOUT the
    *  leading `#` (the UI adds it). Absent when the cwd maps to no known app. */
   app?: string;
+  /** Provenance: absolute path to the app repo when `app` is known. Absent otherwise. */
+  appPath?: string;
   /** Provenance: the worktree/branch directory name when the tab's cwd is under
    *  `<worktrees_path>/<branch>/<repo>/`. Absent for non-worktree cwds. */
   worktree?: string;
+  /** Provenance: absolute path to the worktree directory when `worktree` is known. */
+  worktreePath?: string;
   /** Provenance: the conception projects whose README `branch:` matches this
    *  tab's `worktree`. Absent/empty when none match. */
-  projects?: { slug: string; title: string }[];
+  projects?: { slug: string; title: string; readmePath?: string }[];
   /** Epoch ms of the last update. */
   updatedAt: number;
   /** Bounded history of notable events for this tab, oldest first. */
@@ -97,8 +101,9 @@ export interface TabSummary {
  *  - `waiting` — armed, tabs open, counting down to the next cycle (default
  *    resting state; with the activity gate on this is "waiting for activity").
  *  - `idle` — armed but no open terminal tabs to summarize.
- *  - `no-api-key` — enabled but no key, so summaries can't run. */
-export type DashboardEnginePhase = 'summarizing' | 'waiting' | 'idle' | 'no-api-key';
+ *  - `no-api-key` — enabled but no key, so summaries can't run.
+ *  - `backoff` — temporarily paused after repeated API failures. */
+export type DashboardEnginePhase = 'summarizing' | 'waiting' | 'idle' | 'no-api-key' | 'backoff';
 
 /** Liveness of the summarizer loop, independent of whether any tab has a
  *  summary yet. Live-only: rebuilt each tick, never trusted from disk. */
@@ -178,6 +183,8 @@ export interface DashboardSettings {
   cardInputChars?: number;
   intervalSec?: number;
   gateOnActivity?: boolean;
+  /** When true, idle tabs with no byte growth are skipped even if gateOnActivity is false. Default true. */
+  skipIdle?: boolean;
   historyLimit?: number;
 }
 
@@ -201,6 +208,8 @@ export interface DashboardConfig {
   cardInputChars: number;
   intervalSec: number;
   gateOnActivity: boolean;
+  /** When true, idle tabs with no byte growth are skipped even if gateOnActivity is false. */
+  skipIdle: boolean;
   historyLimit: number;
 }
 
@@ -225,5 +234,7 @@ export interface DashboardConfigView {
   cardInputChars: number;
   intervalSec: number;
   gateOnActivity: boolean;
+  /** When true, idle tabs with no byte growth are skipped even if gateOnActivity is false. */
+  skipIdle: boolean;
   historyLimit: number;
 }

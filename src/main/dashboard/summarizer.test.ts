@@ -1,13 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCompletionBody,
   buildTabUserPrompt,
   buildWriterUserPrompt,
+  clearWriterCache,
   parseCardWriter,
   parseTabSummary,
   TAB_SYSTEM_PROMPT,
   temperatureForModel,
   withTimeout,
+  writeCard,
 } from './summarizer';
 
 describe('parseTabSummary', () => {
@@ -261,6 +263,77 @@ describe('withTimeout', () => {
   });
 });
 
+describe('writeCard writer cache', () => {
+  const baseConfig = {
+    enabled: true,
+    provider: 'deepseek' as const,
+    apiKey: 'k',
+    model: 'm',
+    writerModel: 'w',
+    cardReasoning: false,
+    writerReasoning: false,
+    cardInputChars: 16000,
+    intervalSec: 120,
+    gateOnActivity: true,
+    skipIdle: true,
+    historyLimit: 20,
+  };
+  const facts = {
+    title: 'Draft title',
+    currentAction: 'Editing engine.ts',
+    contextLines: ['Refactoring in-flight guard'],
+    activity: 'implementing' as const,
+    state: 'working' as const,
+  };
+  const provenance = { app: 'condash', worktree: 'batch-1' };
+
+  beforeEach(() => {
+    clearWriterCache();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('reuses the previous result when facts + provenance + model are unchanged', async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls += 1;
+        return {
+          ok: true,
+          text: async () => '',
+          json: async () => ({
+            choices: [{ message: { content: '{"title":"T","subtitle":"S"}' } }],
+          }),
+        } as Response;
+      }),
+    );
+    await writeCard(baseConfig, facts, provenance);
+    await writeCard(baseConfig, facts, provenance);
+    expect(calls).toBe(1);
+    expect(await writeCard(baseConfig, facts, provenance)).toEqual({ title: 'T', subtitle: 'S' });
+  });
+
+  it('does not cache when the writer model changes', async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls += 1;
+        return {
+          ok: true,
+          text: async () => '',
+          json: async () => ({
+            choices: [{ message: { content: '{"title":"T","subtitle":"S"}' } }],
+          }),
+        } as Response;
+      }),
+    );
+    await writeCard(baseConfig, facts, provenance);
+    await writeCard({ ...baseConfig, writerModel: 'other' }, facts, provenance);
+    expect(calls).toBe(2);
+  });
+});
 describe('TAB_SYSTEM_PROMPT delegated-agent guidance', () => {
   // Regression guard for the delegated-background-agent idle-misread: an
   // [assistant] tail describing still-running delegated work (the "Waiting for N
