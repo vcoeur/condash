@@ -91,6 +91,52 @@ test('Dashboard lists every open tab even with no summaries', async () => {
 });
 
 /**
+ * A dashboard card is a link to the terminal tab it summarizes: clicking the
+ * card activates that tab and swaps the bottom band from the Dashboard back to
+ * the terminal. Two tabs are spawned so the test proves the *right* tab is
+ * activated (matched by `data-sid`), not merely "some" tab.
+ */
+test('Clicking a dashboard card opens that card’s terminal tab', async () => {
+  test.setTimeout(90_000);
+  const booted = await bootApp({
+    globalConfig: {
+      dashboard: { enabled: true },
+      layout: { projects: true, working: 'code', terminal: true },
+    },
+  });
+  try {
+    await booted.window.evaluate(() => window.condash.termSpawn({ side: 'my', command: 'sleep 60' }));
+    // Capture the second tab's session id — the card that summarizes it must
+    // activate exactly this tab.
+    const sid2 = await booted.window.evaluate(
+      async () => (await window.condash.termSpawn({ side: 'my', command: 'sleep 61' })).id,
+    );
+
+    const dashTab = booted.window.locator('.terminal-tab-dashboard');
+    await dashTab.waitFor({ state: 'visible', timeout: 10_000 });
+    await dashTab.click();
+    await expect(dashTab).toHaveClass(/active/);
+
+    // The second tab's card (its title is the cmd). The roster refresh runs on
+    // the engine's first tick, so allow headroom.
+    const pane = booted.window.locator('.dashboard-pane');
+    const card = pane.locator('.dashboard-card', { hasText: 'sleep 61' });
+    await expect(card).toBeVisible({ timeout: 60_000 });
+    await expect(card).toHaveAttribute('role', 'button');
+
+    await card.click();
+
+    // The band swaps back to the terminal, and the activated tab is exactly the
+    // one the card summarized — never the Dashboard pseudo-tab nor the other tab.
+    await expect(booted.window.locator('.terminal-dashboard-band')).toHaveCount(0);
+    await expect(dashTab).not.toHaveClass(/active/);
+    await expect(booted.window.locator(`.terminal-tab[data-sid="${sid2}"]`)).toHaveClass(/active/);
+  } finally {
+    await booted.cleanup();
+  }
+});
+
+/**
  * Regression for #366: the Code-pane Run button spawns a `side: 'code'` session
  * (a long-running dev server). Those are panes, not agent tabs, and must not
  * inflate the "Open tabs · N" count nor render as cards — only the user's

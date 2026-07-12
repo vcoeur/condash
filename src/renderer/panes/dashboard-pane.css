@@ -250,6 +250,19 @@
     0 6px 16px color-mix(in srgb, var(--state-color, #000000) 18%, transparent);
 }
 
+/* When wired to open its terminal tab, the whole card is a button — the
+ * existing hover-lift already signals interactivity, so this only adds the
+ * pointer cursor and a keyboard focus ring a button needs. Inner controls
+ * (crumb links, Update) keep their own cursor and stop the card click. */
+.dashboard-card.is-openable {
+  cursor: pointer;
+}
+
+.dashboard-card.is-openable:focus-visible {
+  outline: 2px solid var(--state-color, var(--accent));
+  outline-offset: 2px;
+}
+
 /* The bold left state bar — a thick, full-height edge in the state colour. */
 .dashboard-card::before {
   content: '';

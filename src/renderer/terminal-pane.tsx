@@ -111,6 +111,7 @@ export function TerminalPane(props: TerminalPaneProps) {
     renamingId,
     setActiveColumn,
     setActiveIn,
+    activateSession,
     setRenamingId,
     commitRename,
     closeTab,
@@ -243,7 +244,14 @@ export function TerminalPane(props: TerminalPaneProps) {
           handles remains visible above. */}
       <Show when={props.open && props.bottomView === 'dashboard'}>
         <div class="terminal-dashboard-band">
-          <DashboardView />
+          <DashboardView
+            onOpenTab={(sid) => {
+              // Jump to the card's terminal: activate its tab, then swap the
+              // band back to the terminal body. Skip the swap on a stale card
+              // (its tab closed since the last roster push).
+              if (activateSession(sid)) props.onShowTerminalBand();
+            }}
+          />
         </div>
       </Show>
       {search.SearchBar()}
