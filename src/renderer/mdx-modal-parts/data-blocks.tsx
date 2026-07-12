@@ -403,6 +403,7 @@ export function QuestionFormBlock(props: {
   const [answers, setAnswers] = createSignal<Record<string, string | string[]>>(seed());
   const [saving, setSaving] = createSignal(false);
   const [saved, setSaved] = createSignal(false);
+  const [failed, setFailed] = createSignal(false);
 
   const isChosen = (questionId: string, optionId: string): boolean => {
     const value = answers()[questionId];
@@ -411,6 +412,7 @@ export function QuestionFormBlock(props: {
   const chooseSingle = (questionId: string, optionId: string): void => {
     setAnswers({ ...answers(), [questionId]: optionId });
     setSaved(false);
+    setFailed(false);
   };
   const toggleMulti = (questionId: string, optionId: string): void => {
     const current = answers()[questionId];
@@ -420,10 +422,12 @@ export function QuestionFormBlock(props: {
       : [...list, optionId];
     setAnswers({ ...answers(), [questionId]: next });
     setSaved(false);
+    setFailed(false);
   };
   const setText = (questionId: string, text: string): void => {
     setAnswers({ ...answers(), [questionId]: text });
     setSaved(false);
+    setFailed(false);
   };
   const textValue = (questionId: string): string => {
     const value = answers()[questionId];
@@ -433,11 +437,13 @@ export function QuestionFormBlock(props: {
     const handler = props.onSave;
     if (!handler) return;
     setSaving(true);
+    setFailed(false);
     try {
       await handler(answers());
       setSaved(true);
     } catch {
       setSaved(false);
+      setFailed(true);
     } finally {
       setSaving(false);
     }
@@ -518,6 +524,9 @@ export function QuestionFormBlock(props: {
           </button>
           <Show when={saved()}>
             <span class="plan-muted">Saved ✓</span>
+          </Show>
+          <Show when={failed()}>
+            <span class="plan-issue-warning">Save failed — try again</span>
           </Show>
         </div>
       </Show>

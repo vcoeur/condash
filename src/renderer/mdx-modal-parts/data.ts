@@ -327,39 +327,50 @@ function elementDeclaresId(element: string, id: string): boolean {
   return (match[1] ?? match[2] ?? match[4]) === id;
 }
 
-/** Char span of the self-closing `<QuestionForm …/>` element carrying `id`,
- *  or null when absent. */
-export function findQuestionFormSpan(
-  source: string,
-  id: string,
-): { start: number; end: number } | null {
+/** All self-closing `<QuestionForm …/>` spans in the document, in order. */
+function questionFormSpans(source: string): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = [];
   const tag = '<QuestionForm';
   let from = 0;
   for (;;) {
     const start = source.indexOf(tag, from);
-    if (start === -1) return null;
+    if (start === -1) break;
     const gt = scanSelfCloseEnd(source, start + tag.length);
-    if (gt === -1) return null;
-    const end = gt + 1;
-    if (elementDeclaresId(source.slice(start, end), id)) return { start, end };
-    from = end;
+    if (gt === -1) break;
+    spans.push({ start, end: gt + 1 });
+    from = gt + 1;
   }
+  return spans;
 }
 
-/** Write `answers` into the `<QuestionForm id=…>` element's `questions` and
- *  return the new document source. Each answer keys by question id: an option
- *  id (single), option ids (multi), or free text (freeform); an empty value
- *  clears that question's `answer`. Returns the source unchanged when the
- *  element can't be located. Pure — no IO. */
+/** Char span of the `<QuestionForm …/>` element to write, or null when it can't
+ *  be located. Prefers the element that declares `id`; when the block id is
+ *  parser-auto-generated (no `id=` in source) and the document holds exactly one
+ *  form, that lone form is unambiguously the target. */
+export function findQuestionFormSpan(
+  source: string,
+  id: string,
+): { start: number; end: number } | null {
+  const spans = questionFormSpans(source);
+  const byId = spans.find((span) => elementDeclaresId(source.slice(span.start, span.end), id));
+  if (byId) return byId;
+  return spans.length === 1 ? spans[0] : null;
+}
+
+/** Write `answers` into the target `<QuestionForm>` element's `questions` and
+ *  return the new document source, or null when the element can't be located
+ *  (so the caller surfaces a failure instead of a silent no-op). Each answer
+ *  keys by question id: an option id (single), option ids (multi), or free text
+ *  (freeform); an empty value clears that question's `answer`. Pure — no IO. */
 export function applyAnswers(
   source: string,
   blockId: string,
   questions: readonly Question[],
   submitLabel: string | undefined,
   answers: Record<string, string | string[]>,
-): string {
+): string | null {
   const span = findQuestionFormSpan(source, blockId);
-  if (!span) return source;
+  if (!span) return null;
   const nextQuestions = questions.map((question) => {
     const value = answers[question.id];
     const filled =

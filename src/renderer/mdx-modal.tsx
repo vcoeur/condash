@@ -58,6 +58,7 @@ export function MdxModal(props: {
     if (current == null) return;
     const data = block.data as unknown as QuestionFormData;
     const next = applyAnswers(current, block.id, data.questions, data.submitLabel, answers);
+    if (next === null) throw new Error('could not locate the question-form in the note');
     if (next === current) return;
     try {
       await window.condash.writeNote(props.path, current, next);

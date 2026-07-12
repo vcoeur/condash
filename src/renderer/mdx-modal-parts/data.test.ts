@@ -139,7 +139,7 @@ describe('question-form answers', () => {
       q1: 'b',
       q2: ['x', 'y'],
       q3: 'hello',
-    });
+    })!;
     // Everything before the block is byte-identical.
     expect(next.startsWith('---\nkind: plan\n---\n\n### Open Questions')).toBe(true);
     const parsed = parsePlanMdx(next);
@@ -153,9 +153,9 @@ describe('question-form answers', () => {
   });
 
   it('is idempotent and clears an answer for an empty value', () => {
-    const once = applyAnswers(doc(FORM), 'oq', questions(), 'Go', { q1: 'a' });
+    const once = applyAnswers(doc(FORM), 'oq', questions(), 'Go', { q1: 'a' })!;
     expect(applyAnswers(once, 'oq', questions(), 'Go', { q1: 'a' })).toBe(once);
-    const cleared = applyAnswers(once, 'oq', questions(), 'Go', { q1: '' });
+    const cleared = applyAnswers(once, 'oq', questions(), 'Go', { q1: '' })!;
     const qs = (
       parsePlanMdx(cleared).blocks.find((b) => b.type === 'question-form')!
         .data as unknown as QuestionFormData
@@ -163,9 +163,15 @@ describe('question-form answers', () => {
     expect(qs[0].answer).toBeUndefined();
   });
 
-  it('leaves the source unchanged for an unknown block id', () => {
-    const source = doc(FORM);
-    expect(applyAnswers(source, 'nope', questions(), 'Go', { q1: 'a' })).toBe(source);
+  it('returns null when there is no question-form to write', () => {
+    expect(applyAnswers('# no form here\n', 'oq', questions(), 'Go', { q1: 'a' })).toBeNull();
+  });
+
+  it('falls back to the only form when the block id is not in the source', () => {
+    const noId = doc(FORM.replace('id="oq" ', ''));
+    const next = applyAnswers(noId, 'question-form-1', questions(), 'Go', { q1: 'a' });
+    expect(next).not.toBeNull();
+    expect(next).toContain('answer: "a"');
   });
 
   it('serializeLiteral emits parser-compatible identifier-keyed literals', () => {

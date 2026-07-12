@@ -88,20 +88,14 @@ export function BlockView(props: {
       );
     case 'tabs':
     case 'code-tabs':
-      return (
-        <TabsBlock
-          data={data<TabsData>()}
-          baseDir={props.baseDir}
-          onSaveAnswers={props.onSaveAnswers}
-        />
-      );
+      return <TabsBlock data={data<TabsData>()} baseDir={props.baseDir} />;
     case 'question-form':
     case 'visual-questions':
       return (
         <QuestionFormBlock
           data={data<QuestionFormData>()}
           onSave={
-            props.onSaveAnswers
+            props.onSaveAnswers && props.block.type === 'question-form'
               ? (answers) => props.onSaveAnswers!(props.block, answers)
               : undefined
           }
@@ -175,11 +169,7 @@ export function ColumnsBlock(props: {
 
 /** Tabs container; `code-tabs` (deprecated) normalizes each `{label, code}`
  *  tab into a nested `code` block on the fly. */
-export function TabsBlock(props: {
-  data: TabsData;
-  baseDir: string;
-  onSaveAnswers?: (block: PlanBlock, answers: Record<string, string | string[]>) => Promise<void>;
-}) {
+export function TabsBlock(props: { data: TabsData; baseDir: string }) {
   const tabs = createMemo(() =>
     props.data.tabs.map((tab, index) => {
       const legacy = tab as { code?: string; language?: string };
@@ -219,13 +209,7 @@ export function TabsBlock(props: {
       </div>
       <div class="plan-tab-body">
         <Show when={tabs()[active()]} keyed>
-          {(tab) => (
-            <BlockList
-              blocks={tab.blocks}
-              baseDir={props.baseDir}
-              onSaveAnswers={props.onSaveAnswers}
-            />
-          )}
+          {(tab) => <BlockList blocks={tab.blocks} baseDir={props.baseDir} />}
         </Show>
       </div>
     </div>
