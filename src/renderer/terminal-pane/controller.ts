@@ -981,8 +981,14 @@ export function createTerminalController(props: TerminalPaneProps) {
   onCleanup(() => props.registerHandle(null));
 
   /** Store a column's xterm host element (set from the column's ref) and observe
-   *  it for size changes so the column's active terminal always tracks its host. */
+   *  it for size changes so the column's active terminal always tracks its host.
+   *  Unobserve any previous element for the column first — the right column's host
+   *  is re-created on every split toggle, and a ResizeObserver keeps a strong ref
+   *  to each observed target until unobserve/disconnect, so re-registering without
+   *  this would accumulate detached hosts. */
   const registerHost = (col: Column, el: HTMLDivElement): void => {
+    const prev = col === 'left' ? leftHost : rightHost;
+    if (prev && prev !== el) hostResizeObserver.unobserve(prev);
     if (col === 'left') leftHost = el;
     else rightHost = el;
     hostResizeObserver.observe(el);
