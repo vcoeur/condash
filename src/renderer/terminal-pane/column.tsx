@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import type { Agent } from '@shared/types';
+import { RefreshIcon } from '../icons';
 import { createDropdownMenu } from '../dropdown-menu';
 import { SpawnDropdown } from './column-parts/spawn-dropdown';
 import type { DragDropController } from './drag-drop';
@@ -61,12 +62,10 @@ export interface TerminalColumnProps {
   onSpawnShell: (col: Column, agentId: string | null) => void;
   onSaveBuffer: (col: Column) => void;
   onOpenSearch: (col: Column) => void;
-  /** Repaint the column's active tab (Refresh strip button). Nudges the pty
-   *  size so the running program redraws — clears a half-frame left by the
-   *  hidden-tab serialize/hydrate round-trip. */
-  onRefresh: (col: Column) => void;
-  /** Repaint a specific tab (Refresh context-menu item); promotes it to active
-   *  first so there is a live terminal to redraw. */
+  /** Repaint a specific tab (active-tab in-title button + Refresh context-menu
+   *  item); promotes it to active first so there is a live terminal to redraw.
+   *  Nudges the pty size so the program redraws — clears a half-frame left by
+   *  the hidden-tab serialize/hydrate round-trip. */
   onRefreshTab: (id: string) => void;
   /** True when the bottom band is showing the Dashboard rather than the
    *  terminals. Drives the active state of the Dashboard pseudo-tab (and
@@ -75,11 +74,6 @@ export interface TerminalColumnProps {
   /** Select the Dashboard body. The Dashboard pseudo-tab (always first in the
    *  left column's strip) fires this; re-selecting it closes the pane. */
   onToggleDashboard: () => void;
-  /** Toggle the bottom pane's split column: spawn right when unsplit,
-   *  collapse right into left when split. */
-  onSplitToggle: () => void;
-  /** True when the bottom pane is currently split into two columns. */
-  isSplit: boolean;
 }
 
 /** One column of the bottom terminal pane: tab strip on top + xterm host
@@ -104,11 +98,6 @@ export function TerminalColumn(props: TerminalColumnProps) {
     const rect = el.getBoundingClientRect();
     setHovered(tab);
     setHoverAt({ top: rect.bottom + 4, left: rect.left });
-  };
-
-  const splitLabel = (): string => {
-    if (props.col === 'right') return 'Unsplit';
-    return props.isSplit ? 'Unsplit' : 'Split';
   };
 
   return (
@@ -237,6 +226,31 @@ export function TerminalColumn(props: TerminalColumnProps) {
                     {formatMem(tab.memBytes!)}
                   </span>
                 </Show>
+                {/* Repaint affordance — only on the selected tab, trailing the
+                 *  title (right edge). Replaces the old column-level Refresh
+                 *  toolbar button; stops propagation so it neither re-activates
+                 *  the tab nor starts a rename on double-click. */}
+                <Show
+                  when={
+                    tab.id === props.activeId &&
+                    !props.dashboardActive &&
+                    tab.id !== props.renamingId
+                  }
+                >
+                  <button
+                    type="button"
+                    class="terminal-tab-refresh"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onRefreshTab(tab.id);
+                    }}
+                    onDblClick={(e) => e.stopPropagation()}
+                    title="Repaint this terminal (fixes a stale buffer after tab-switch)"
+                    aria-label="Refresh terminal"
+                  >
+                    <RefreshIcon />
+                  </button>
+                </Show>
               </div>
             )}
           </For>
@@ -294,32 +308,6 @@ export function TerminalColumn(props: TerminalColumnProps) {
             aria-label="Save buffer"
           >
             Save
-          </button>
-          <button
-            type="button"
-            class="terminal-header-action"
-            data-label="refresh"
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onRefresh(props.col);
-            }}
-            title="Repaint the active terminal (fixes a stale buffer after tab-switch)"
-            aria-label="Refresh"
-          >
-            Refresh
-          </button>
-          <button
-            type="button"
-            class="terminal-header-action"
-            data-label="split"
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onSplitToggle();
-            }}
-            title={splitLabel()}
-            aria-label={splitLabel()}
-          >
-            {splitLabel()}
           </button>
         </div>
       </div>

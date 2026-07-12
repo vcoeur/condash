@@ -117,7 +117,6 @@ export function TerminalPane(props: TerminalPaneProps) {
     spawnUserShell,
     resolveAgent,
     saveActiveBuffer,
-    refreshColumn,
     refreshSession,
     dnd,
     search,
@@ -128,7 +127,6 @@ export function TerminalPane(props: TerminalPaneProps) {
     registerHost,
     setNextSpawnColumn,
     registerPaneSection,
-    splitToggle,
   } = createTerminalController(props);
 
   const renderColumn = (col: Column) => (
@@ -168,15 +166,9 @@ export function TerminalPane(props: TerminalPaneProps) {
         setActiveColumn(c);
         search.openSearch();
       }}
-      onRefresh={(c) => {
-        setActiveColumn(c);
-        refreshColumn(c);
-      }}
       onRefreshTab={(id) => refreshSession(id)}
       dashboardActive={props.bottomView === 'dashboard'}
       onToggleDashboard={() => props.onSelectBand('dashboard')}
-      onSplitToggle={splitToggle}
-      isSplit={isSplit()}
     />
   );
 
